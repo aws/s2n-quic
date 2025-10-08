@@ -6,13 +6,7 @@ use crate::{
     path::secret::schedule::Ciphersuite,
 };
 use s2n_codec::{DecoderBufferMut, DecoderBufferMutResult, DecoderError};
-use s2n_quic_core::{
-    connection::Limits,
-    dc::ApplicationParams,
-    transport::parameters::{InitialFlowControlLimits, InitialStreamLimits},
-    varint::VarInt,
-};
-use std::{num::NonZeroU32, time::Duration};
+use s2n_quic_core::{dc::ApplicationParams, varint::VarInt};
 
 #[derive(Clone, Debug)]
 pub struct Packet {
@@ -55,26 +49,12 @@ impl Packet {
         &self.payload
     }
 
-    #[inline]
-    #[cfg(test)]
-    pub fn total_len(&self) -> usize {
-        use super::encoder::application_params_encoding_size;
-        use s2n_codec::EncoderValue as _;
-        1 + // version tag
-        1 + // ciphersuite
-        VarInt::try_from(self.export_secret.len()).unwrap().encoding_size() +
-        self.export_secret.len() +
-        1 + // application params version
-        application_params_encoding_size(&self.application_params) +
-        VarInt::try_from(self.payload.len()).unwrap().encoding_size() +
-        self.payload.len()
-    }
-
+    #[inline(always)]
     pub fn decode(buffer: DecoderBufferMut) -> DecoderBufferMutResult<Packet> {
         let (version_tag, buffer) = buffer.decode::<u8>()?;
 
         if version_tag != PACKET_VERSION {
-            return Err(DecoderError::InvariantViolation("unsupported version tag"));
+            return Err(DecoderError::InvariantViolation("Unsupported version tag"));
         }
 
         let (ciphersuite_byte, buffer) = buffer.decode::<u8>()?;
@@ -82,26 +62,20 @@ impl Packet {
             .try_into()
             .map_err(DecoderError::InvariantViolation)?;
 
-        let (export_secret_len, buffer) = buffer.decode::<VarInt>()?;
-        let export_secret_len = *export_secret_len as usize;
-
-        let (export_secret_slice, buffer) = buffer.decode_slice(export_secret_len)?;
+        let (export_secret_slice, buffer) = buffer.decode_slice_with_len_prefix::<VarInt>()?;
         let export_secret = export_secret_slice.into_less_safe_slice().to_vec();
 
         let (application_params_version, buffer) = buffer.decode::<u8>()?;
 
         if application_params_version != APP_PARAMS_VERSION {
             return Err(DecoderError::InvariantViolation(
-                "unsupported application parameters version",
+                "Unsupported application parameters version",
             ));
         }
 
-        let (application_params, buffer) = Self::decode_application_params(buffer)?;
+        let (application_params, buffer) = buffer.decode::<ApplicationParams>()?;
 
-        let (payload_len, buffer) = buffer.decode::<VarInt>()?;
-        let payload_len = *payload_len as usize;
-
-        let (payload_slice, buffer) = buffer.decode_slice(payload_len)?;
+        let (payload_slice, buffer) = buffer.decode_slice_with_len_prefix::<VarInt>()?;
         let payload = payload_slice.into_less_safe_slice().to_vec();
 
         let packet = Packet {
@@ -114,61 +88,6 @@ impl Packet {
         };
 
         Ok((packet, buffer))
-    }
-
-    fn decode_application_params(
-        buffer: DecoderBufferMut,
-    ) -> DecoderBufferMutResult<ApplicationParams> {
-        let (max_datagram_size, buffer) = buffer.decode::<u16>()?;
-        let (remote_max_data, buffer) = buffer.decode::<VarInt>()?;
-        let (local_send_max_data, buffer) = buffer.decode::<VarInt>()?;
-        let (local_recv_max_data, buffer) = buffer.decode::<VarInt>()?;
-
-        let (presence_flag, buffer) = buffer.decode::<u8>()?;
-        let (max_idle_timeout, buffer) = match presence_flag {
-            0 => (None, buffer),
-            1 => {
-                let (timeout_value, buffer) = buffer.decode::<u32>()?;
-                let timeout = NonZeroU32::new(timeout_value).ok_or(
-                    DecoderError::InvariantViolation("max_idle_timeout cannot be zero"),
-                )?;
-                (Some(timeout), buffer)
-            }
-            _ => {
-                return Err(DecoderError::InvariantViolation(
-                    "invalid max_idle_timeout presence flag",
-                ))
-            }
-        };
-
-        let peer_flow_control_limits = InitialFlowControlLimits {
-            stream_limits: InitialStreamLimits {
-                // unused in ApplicationParams::new()
-                max_data_bidi_local: VarInt::from_u32(0),
-                max_data_bidi_remote: VarInt::from_u32(0),
-                max_data_uni: VarInt::from_u32(0),
-            },
-            max_data: remote_max_data,
-            max_open_remote_bidirectional_streams: VarInt::from_u32(0),
-            max_open_remote_unidirectional_streams: VarInt::from_u32(0),
-        };
-
-        let mut limits = Limits::new()
-            .with_bidirectional_local_data_window(local_send_max_data.as_u64())
-            .map_err(|_| DecoderError::InvariantViolation("invalid local_send_max_data"))?
-            .with_bidirectional_remote_data_window(local_recv_max_data.as_u64())
-            .map_err(|_| DecoderError::InvariantViolation("invalid local_recv_max_data"))?;
-        if let Some(timeout) = max_idle_timeout {
-            let timeout_duration = Duration::from_millis(timeout.get() as u64);
-            limits = limits
-                .with_max_idle_timeout(timeout_duration)
-                .map_err(|_| DecoderError::InvariantViolation("invalid max_idle_timeout"))?;
-        }
-
-        let application_params =
-            ApplicationParams::new(max_datagram_size, &peer_flow_control_limits, &limits);
-
-        Ok((application_params, buffer))
     }
 }
 
@@ -183,28 +102,23 @@ mod tests {
     };
     use s2n_codec::{DecoderBufferMut, DecoderError};
     use s2n_quic_core::dc;
+
     #[test]
     fn test_encode_decode() {
         let ciphersuite = Ciphersuite::AES_GCM_128_SHA256;
-        let export_secret = b"secret_data_123";
-        let export_secret_len = export_secret.len().try_into().unwrap();
+        let export_secret = b"secret_data";
         let application_params = dc::testing::TEST_APPLICATION_PARAMS;
         let payload = b"payload_with_data";
 
         // Encode
-        let expected_size = encoder::encoding_size(
-            export_secret,
-            export_secret_len,
-            &application_params,
-            payload,
-        );
+        let expected_size =
+            encoder::encoding_size(&ciphersuite, export_secret, &application_params, payload);
         let mut buffer = vec![0u8; expected_size];
         let enc = s2n_codec::EncoderBuffer::new(&mut buffer);
         let encoded_size = encoder::encode(
             enc,
             &ciphersuite,
             export_secret,
-            export_secret_len,
             &application_params,
             payload,
         );
@@ -218,11 +132,10 @@ mod tests {
         let decoded_params = packet.application_params();
 
         // Verify
-        assert_eq!(packet.version_tag, PACKET_VERSION);
+        assert_eq!(packet.version_tag(), PACKET_VERSION);
         assert_eq!(packet.ciphersuite(), ciphersuite);
         assert_eq!(packet.export_secret(), export_secret);
         assert_eq!(packet.payload(), payload);
-        assert_eq!(packet.total_len(), expected_size);
 
         use core::sync::atomic::Ordering;
         assert_eq!(
@@ -255,7 +168,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             DecoderError::InvariantViolation(msg) => {
-                assert_eq!(msg, "unsupported version tag");
+                assert_eq!(msg, "Unsupported version tag");
             }
             _ => panic!("Expected InvariantViolation error"),
         }
@@ -275,7 +188,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             DecoderError::InvariantViolation(msg) => {
-                assert_eq!(msg, "unsupported application parameters version");
+                assert_eq!(msg, "Unsupported application parameters version");
             }
             _ => panic!("Expected InvariantViolation error"),
         }
