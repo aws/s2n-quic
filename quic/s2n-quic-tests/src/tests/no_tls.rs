@@ -26,17 +26,17 @@ impl Provider for NoTlsProvider {
 fn no_tls_test() {
     let model = Model::default();
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(NoTlsProvider::default())?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .with_random(Random::with_seed(456))?
             .start()?;
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(NoTlsProvider::default())?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .with_random(Random::with_seed(456))?
             .start()?;
         let addr = start_server(server)?;

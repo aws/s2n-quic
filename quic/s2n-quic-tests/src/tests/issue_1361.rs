@@ -9,11 +9,11 @@ use super::*;
 #[test]
 fn stream_reset_test() {
     let model = Model::default();
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .with_random(Random::with_seed(456))?
             .with_limits(
                 provider::limits::Limits::default()
@@ -42,7 +42,7 @@ fn stream_reset_test() {
             }
         });
 
-        let client = build_client(handle)?;
+        let client = build_client(handle, model.max_udp_payload())?;
 
         primary::spawn(async move {
             let connect = Connect::new(server_addr).with_server_name("localhost");

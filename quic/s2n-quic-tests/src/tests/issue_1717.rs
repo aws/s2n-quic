@@ -15,6 +15,8 @@ fn increasing_pto_count_under_loss() {
     let subscriber = recorder::Pto::new();
     let pto_events = subscriber.events();
 
+    let max_udp_payload = model.max_udp_payload();
+
     test(model.clone(), |handle| {
         spawn(async move {
             // allow for 1 RTT worth of data and then drop all packet after
@@ -26,7 +28,7 @@ fn increasing_pto_count_under_loss() {
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, max_udp_payload))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -41,7 +43,7 @@ fn increasing_pto_count_under_loss() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(true), subscriber))?
+            .with_event((tracing_events(true, max_udp_payload), subscriber))?
             .with_random(Random::with_seed(456))?
             .start()?;
 

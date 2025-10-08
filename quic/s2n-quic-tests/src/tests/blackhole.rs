@@ -5,6 +5,7 @@ use super::*;
 
 fn blackhole(model: Model, blackhole_duration: Duration) {
     test(model.clone(), |handle| {
+        let max_udp_payload = model.max_udp_payload();
         spawn(async move {
             // switch back and forth between blackhole and not
             loop {
@@ -16,7 +17,10 @@ fn blackhole(model: Model, blackhole_duration: Duration) {
                 model.set_drop_rate(0.0);
             }
         });
-        client_server(handle)
+
+        let addr = server(handle, max_udp_payload)?;
+        client(handle, addr, max_udp_payload)?;
+        Ok(addr)
     })
     .unwrap();
 }

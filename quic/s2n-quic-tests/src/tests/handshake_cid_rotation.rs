@@ -18,7 +18,7 @@ fn rotate_handshake_test(
     let client_subscriber = recorder::FrameSent::new();
     let client_events = client_subscriber.events();
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server_cid_generator = connection_id::default::Format::builder()
             .with_handshake_connection_id_rotation(server_rotate_handshake_connection_id)?
             .build()?;
@@ -30,14 +30,20 @@ fn rotate_handshake_test(
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(true), server_subscriber))?
+            .with_event((
+                tracing_events(true, model.max_udp_payload()),
+                server_subscriber,
+            ))?
             .with_random(Random::with_seed(456))?
             .with_connection_id(server_cid_generator)?
             .start()?;
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(true), client_subscriber))?
+            .with_event((
+                tracing_events(true, model.max_udp_payload()),
+                client_subscriber,
+            ))?
             .with_random(Random::with_seed(456))?
             .with_connection_id(client_cid_generator)?
             .start()?;

@@ -33,7 +33,7 @@ impl ExporterHandler for Exporter {
 #[test]
 fn tls() {
     let model = Model::default();
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server_endpoint = default::Server::builder()
             .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
             .unwrap()
@@ -58,14 +58,14 @@ fn tls() {
 
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .with_tls(server_endpoint)?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(client_endpoint)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .start()?;
         let addr = start_server(server)?;
         start_client(client, addr, Data::new(1000))?;
@@ -83,7 +83,7 @@ fn failed_tls_handshake() {
     let connection_closed_event = connection_closed_subscriber.events();
 
     let model = Model::default();
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server_endpoint = default::Server::builder()
             .with_certificate(
                 certificates::UNTRUSTED_CERT_PEM,
@@ -112,14 +112,17 @@ fn failed_tls_handshake() {
 
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
-            .with_event((tracing_events(true), connection_closed_subscriber))?
+            .with_event((
+                tracing_events(true, model.max_udp_payload()),
+                connection_closed_subscriber,
+            ))?
             .with_tls(server_endpoint)?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(client_endpoint)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .start()?;
         let addr = start_server(server)?;
         primary::spawn(async move {
@@ -143,7 +146,7 @@ fn failed_tls_handshake() {
 #[cfg(unix)]
 fn mtls() {
     let model = Model::default();
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server_endpoint = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
         let client_endpoint = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
 
@@ -160,14 +163,14 @@ fn mtls() {
 
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .with_tls(server_endpoint)?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(client_endpoint)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .start()?;
         let addr = start_server(server)?;
         start_client(client, addr, Data::new(1000))?;
@@ -224,7 +227,7 @@ fn async_client_hello() {
             }
         }
     }
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server_endpoint = default::Server::builder()
             .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
             .unwrap()
@@ -251,14 +254,14 @@ fn async_client_hello() {
 
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .with_tls(server_endpoint)?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(client_endpoint)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .start()?;
         let addr = start_server(server)?;
         start_client(client, addr, Data::new(1000))?;

@@ -86,11 +86,11 @@ where
     let model = Model::default();
     model.set_delay(Duration::from_millis(50));
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((Exporter, tracing_events(true)))?
+            .with_event((Exporter, tracing_events(true, model.max_udp_payload())))?
             .start()?;
         let server_cipher_suite = Arc::new(Mutex::new(None));
 
@@ -99,7 +99,7 @@ where
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((Exporter, tracing_events(true)))?
+            .with_event((Exporter, tracing_events(true, model.max_udp_payload())))?
             .start()?;
 
         // show it working for several connections

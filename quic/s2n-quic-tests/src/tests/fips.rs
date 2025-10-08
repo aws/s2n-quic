@@ -7,7 +7,7 @@ use s2n_quic::provider::tls::default::{self as tls, security};
 fn test_policy(policy: &security::Policy) {
     let model = Model::default();
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server = tls::Server::from_loader({
             let mut builder = tls::config::Config::builder();
             builder
@@ -25,7 +25,7 @@ fn test_policy(policy: &security::Policy) {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(server)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -43,7 +43,7 @@ fn test_policy(policy: &security::Policy) {
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(client)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .with_random(Random::with_seed(456))?
             .start()?;
 

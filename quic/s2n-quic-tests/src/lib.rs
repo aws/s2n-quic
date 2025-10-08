@@ -24,11 +24,15 @@ pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::K
 /// A subscriber that panics when a blocklisted event is encountered
 pub struct BlocklistSubscriber {
     blocklist_enabled: bool,
+    max_udp_payload: u16,
 }
 
 impl BlocklistSubscriber {
-    pub fn new(blocklist_enabled: bool) -> Self {
-        Self { blocklist_enabled }
+    pub fn new(blocklist_enabled: bool, max_udp_payload: u16) -> Self {
+        Self {
+            blocklist_enabled,
+            max_udp_payload,
+        }
     }
 }
 
@@ -79,16 +83,20 @@ impl event::Subscriber for BlocklistSubscriber {
         }
     }
 
-    // fn on_packet_lost(
-    //     &mut self,
-    //     context: &mut Self::ConnectionContext,
-    //     meta: &events::ConnectionMeta,
-    //     event: &events::PacketLost,
-    // ) {
-    // }
+    fn on_packet_lost(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::PacketLost,
+    ) {
+        // packet which is smaller than the MTU should not be lost
+        if event.bytes_lost < self.max_udp_payload && self.blocklist_enabled {
+            panic!("Blocklisted packet lost event encountered: {:?}", event);
+        }
+    }
 }
 
-pub fn tracing_events(with_blocklist: bool) -> impl event::Subscriber {
+pub fn tracing_events(with_blocklist: bool, max_udp_payload: u16) -> impl event::Subscriber {
     use std::sync::Once;
 
     static TRACING: Once = Once::new();
@@ -128,7 +136,7 @@ pub fn tracing_events(with_blocklist: bool) -> impl event::Subscriber {
 
     (
         event::tracing::Subscriber::default(),
-        BlocklistSubscriber::new(with_blocklist),
+        BlocklistSubscriber::new(with_blocklist, max_udp_payload),
     )
 }
 
@@ -166,22 +174,22 @@ pub fn start_server(mut server: Server) -> Result<SocketAddr> {
     Ok(server_addr)
 }
 
-pub fn server(handle: &Handle) -> Result<SocketAddr> {
-    let server = build_server(handle)?;
+pub fn server(handle: &Handle, max_udp_payload: u16) -> Result<SocketAddr> {
+    let server = build_server(handle, max_udp_payload)?;
     start_server(server)
 }
 
-pub fn build_server(handle: &Handle) -> Result<Server> {
+pub fn build_server(handle: &Handle, max_udp_payload: u16) -> Result<Server> {
     Ok(Server::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls(SERVER_CERTS)?
-        .with_event(tracing_events(true))?
+        .with_event(tracing_events(true, max_udp_payload))?
         .with_random(Random::with_seed(123))?
         .start()?)
 }
 
-pub fn client(handle: &Handle, server_addr: SocketAddr) -> Result {
-    let client = build_client(handle)?;
+pub fn client(handle: &Handle, server_addr: SocketAddr, max_udp_payload: u16) -> Result {
+    let client = build_client(handle, max_udp_payload)?;
     start_client(client, server_addr, Data::new(10_000))
 }
 
@@ -216,19 +224,13 @@ pub fn start_client(client: Client, server_addr: SocketAddr, data: Data) -> Resu
     Ok(())
 }
 
-pub fn build_client(handle: &Handle) -> Result<Client> {
+pub fn build_client(handle: &Handle, max_udp_payload: u16) -> Result<Client> {
     Ok(Client::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls(certificates::CERT_PEM)?
-        .with_event(tracing_events(true))?
+        .with_event(tracing_events(true, max_udp_payload))?
         .with_random(Random::with_seed(123))?
         .start()?)
-}
-
-pub fn client_server(handle: &Handle) -> Result<SocketAddr> {
-    let addr = server(handle)?;
-    client(handle, addr)?;
-    Ok(addr)
 }
 
 pub struct Random {

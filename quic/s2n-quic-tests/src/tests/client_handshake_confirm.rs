@@ -137,12 +137,12 @@ where
     let model = Model::default();
     model.set_delay(Duration::from_millis(50));
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server_tls = build_server_mtls_provider(server_cert)?;
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(server_tls)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -152,7 +152,7 @@ where
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(client_tls)?
-            .with_event((ClientConfirm, tracing_events(true)))?
+            .with_event((ClientConfirm, tracing_events(true, model.max_udp_payload())))?
             .with_random(Random::with_seed(456))?
             .start()?;
 

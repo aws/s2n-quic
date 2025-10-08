@@ -30,7 +30,7 @@ fn buffer_limit_test() {
     let client_hello_subscriber = recorder::TlsClientHello::new();
     let client_hello_event = client_hello_subscriber.events();
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server = tls::Server::builder()
             .with_application_protocols(["h3"].iter())
             .unwrap()
@@ -43,7 +43,7 @@ fn buffer_limit_test() {
             .with_io(handle.builder().build()?)?
             .with_tls(server)?
             .with_event((
-                tracing_events(true),
+                tracing_events(true, model.max_udp_payload()),
                 (client_hello_subscriber, connection_closed_subscriber),
             ))?
             .with_random(Random::with_seed(456))?
@@ -66,7 +66,7 @@ fn buffer_limit_test() {
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(client)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .with_random(Random::with_seed(456))?
             .start()?;
 

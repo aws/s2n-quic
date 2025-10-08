@@ -24,11 +24,14 @@ fn optimistic_ack_mitigation() {
     let server_events = server_subscriber.events();
     let client_subscriber = recorder::PacketSkipped::new();
     let client_events = server_subscriber.events();
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(true), server_subscriber))?
+            .with_event((
+                tracing_events(true, model.max_udp_payload()),
+                server_subscriber,
+            ))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -43,7 +46,10 @@ fn optimistic_ack_mitigation() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(true), client_subscriber))?
+            .with_event((
+                tracing_events(true, model.max_udp_payload()),
+                client_subscriber,
+            ))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -113,11 +119,14 @@ fn detect_optimistic_ack() {
     let skip_interceptor = SkipInterceptor {
         skip_packet_number: skip_pn,
     };
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(true), skip_subscriber))?
+            .with_event((
+                tracing_events(true, model.max_udp_payload()),
+                skip_subscriber,
+            ))?
             .with_random(Random::with_seed(456))?
             .with_packet_interceptor(skip_interceptor)?
             .start()?;
@@ -144,7 +153,7 @@ fn detect_optimistic_ack() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(tracing_events(true))?
+            .with_event(tracing_events(true, model.max_udp_payload()))?
             .with_random(Random::with_seed(456))?
             .start()?;
 

@@ -16,12 +16,15 @@ fn mtls_happy_case() {
     let client_subscriber = recorder::HandshakeStatus::new();
     let client_events = client_subscriber.clone();
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(server_tls)?
-            .with_event((tracing_events(true), server_subscriber))?
+            .with_event((
+                tracing_events(true, model.max_udp_payload()),
+                server_subscriber,
+            ))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -37,7 +40,10 @@ fn mtls_happy_case() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(client_tls)?
-            .with_event((tracing_events(true), client_subscriber))?
+            .with_event((
+                tracing_events(true, model.max_udp_payload()),
+                client_subscriber,
+            ))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -87,12 +93,15 @@ fn mtls_auth_failure() {
     let server_connection_closed = Arc::new(AtomicBool::new(false));
     let server_connection_closed_clone = server_connection_closed.clone();
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server_tls = build_server_mtls_provider(certificates::UNTRUSTED_CERT_PEM)?;
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(server_tls)?
-            .with_event((tracing_events(true), server_subscriber))?
+            .with_event((
+                tracing_events(true, model.max_udp_payload()),
+                server_subscriber,
+            ))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -115,7 +124,10 @@ fn mtls_auth_failure() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(client_tls)?
-            .with_event((tracing_events(true), client_subscriber))?
+            .with_event((
+                tracing_events(true, model.max_udp_payload()),
+                client_subscriber,
+            ))?
             .with_random(Random::with_seed(456))?
             .start()?;
 

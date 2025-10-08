@@ -317,7 +317,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     let client_subscriber = DcRecorder::new();
     let client_events = client_subscriber.clone();
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let metrics = aggregate::testing::Registry::snapshot();
 
         let server_event = (
@@ -325,7 +325,10 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
                 (dc::ConfirmComplete, dc::MtuConfirmComplete),
                 metrics.subscriber("server"),
             ),
-            (tracing_events(true), server_subscriber),
+            (
+                tracing_events(true, model.max_udp_payload()),
+                server_subscriber,
+            ),
         );
 
         let mut server = server
@@ -361,7 +364,10 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
                 (dc::ConfirmComplete, dc::MtuConfirmComplete),
                 metrics.subscriber("client"),
             ),
-            (tracing_events(true), client_subscriber),
+            (
+                tracing_events(true, model.max_udp_payload()),
+                client_subscriber,
+            ),
         );
 
         let client = client

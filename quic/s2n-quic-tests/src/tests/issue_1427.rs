@@ -10,10 +10,11 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[test]
 fn tokio_read_exact_test() {
     let model = Model::default();
+    let max_udp_payload = model.max_udp_payload();
     test(model, |handle| {
-        let server_addr = server(handle)?;
+        let server_addr = server(handle, max_udp_payload)?;
 
-        let client = build_client(handle)?;
+        let client = build_client(handle, max_udp_payload)?;
 
         // send 5000 bytes
         const LEN: usize = 5000;
