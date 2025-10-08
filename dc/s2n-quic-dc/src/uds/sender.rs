@@ -1,16 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use nix::{
-    fcntl::{fcntl, FcntlArg, OFlag},
-    sys::socket::{
-        sendmsg, socket, AddressFamily, ControlMessage, MsgFlags, SockFlag, SockType, UnixAddr,
-    },
+use nix::sys::socket::{
+    sendmsg, socket, AddressFamily, ControlMessage, MsgFlags, SockFlag, SockType, UnixAddr,
 };
 use std::{
     os::{
-        fd::{AsFd, OwnedFd},
-        unix::io::{AsRawFd, RawFd},
+        fd::{BorrowedFd, OwnedFd},
+        unix::io::AsRawFd as _,
     },
     path::Path,
 };
@@ -25,13 +22,9 @@ impl Sender {
         let socket_owned = socket(
             AddressFamily::Unix,
             SockType::Datagram,
-            SockFlag::empty(),
+            SockFlag::SOCK_NONBLOCK | SockFlag::SOCK_CLOEXEC,
             None,
         )?;
-
-        let flags = fcntl(socket_owned.as_fd(), FcntlArg::F_GETFL)?;
-        let new_flags = OFlag::from_bits_truncate(flags) | OFlag::O_NONBLOCK;
-        fcntl(socket_owned.as_fd(), FcntlArg::F_SETFL(new_flags))?;
 
         let async_fd = AsyncFd::new(socket_owned)?;
 
@@ -44,7 +37,7 @@ impl Sender {
         &self,
         packet: &[u8],
         dest_path: &Path,
-        fd_to_send: RawFd,
+        fd_to_send: BorrowedFd<'_>,
     ) -> Result<(), std::io::Error> {
         loop {
             let mut guard = self.socket_fd.ready(Interest::WRITABLE).await?;
@@ -70,9 +63,9 @@ impl Sender {
         &self,
         packet: &[u8],
         dest_path: &Path,
-        fd_to_send: RawFd,
+        fd_to_send: BorrowedFd,
     ) -> Result<(), nix::Error> {
-        let fds = [fd_to_send];
+        let fds = [fd_to_send.as_raw_fd()];
         let cmsg = ControlMessage::ScmRights(&fds);
 
         let dest_unix_addr = UnixAddr::new(dest_path)?;
@@ -81,7 +74,7 @@ impl Sender {
             self.socket_fd.as_raw_fd(),
             &[std::io::IoSlice::new(packet)],
             &[cmsg],
-            MsgFlags::empty(),
+            MsgFlags::MSG_NOSIGNAL,
             Some(&dest_unix_addr),
         )?;
 

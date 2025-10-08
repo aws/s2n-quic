@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use nix::{
-    fcntl::{fcntl, FcntlArg, OFlag},
     sys::socket::{
         bind, recvmsg, socket, AddressFamily, ControlMessageOwned, MsgFlags, SockFlag, SockType,
         UnixAddr,
@@ -11,7 +10,7 @@ use nix::{
 };
 use std::{
     os::{
-        fd::{AsFd, OwnedFd},
+        fd::{FromRawFd as _, OwnedFd},
         unix::io::{AsRawFd, RawFd},
     },
     path::{Path, PathBuf},
@@ -32,17 +31,12 @@ impl Receiver {
         let socket_owned = socket(
             AddressFamily::Unix,
             SockType::Datagram,
-            SockFlag::empty(),
+            SockFlag::SOCK_NONBLOCK | SockFlag::SOCK_CLOEXEC,
             None,
         )?;
 
-        let flags = fcntl(socket_owned.as_fd(), FcntlArg::F_GETFL)?;
-        let new_flags = OFlag::from_bits_truncate(flags) | OFlag::O_NONBLOCK;
-        fcntl(socket_owned.as_fd(), FcntlArg::F_SETFL(new_flags))?;
-
-        let socket_fd = socket_owned.as_raw_fd();
         let unix_addr = UnixAddr::new(socket_path)?;
-        bind(socket_fd, &unix_addr)?;
+        bind(socket_owned.as_raw_fd(), &unix_addr)?;
 
         let async_fd = AsyncFd::new(socket_owned)?;
 
@@ -52,7 +46,7 @@ impl Receiver {
         })
     }
 
-    pub async fn receive_msg(&self) -> Result<(Vec<u8>, RawFd), std::io::Error> {
+    pub async fn receive_msg(&self) -> Result<(Vec<u8>, OwnedFd), std::io::Error> {
         loop {
             let mut guard = self.async_fd.ready(Interest::READABLE).await?;
 
@@ -71,7 +65,7 @@ impl Receiver {
         }
     }
 
-    fn try_receive_nonblocking(&self) -> Result<(Vec<u8>, RawFd), nix::Error> {
+    fn try_receive_nonblocking(&self) -> Result<(Vec<u8>, OwnedFd), nix::Error> {
         let mut buffer = [0u8; BUFFER_SIZE];
         let mut cmsg_buffer = nix::cmsg_space!([RawFd; 1]);
         let mut iov = [std::io::IoSliceMut::new(&mut buffer)];
@@ -80,7 +74,7 @@ impl Receiver {
             self.async_fd.as_raw_fd(),
             &mut iov,
             Some(&mut cmsg_buffer),
-            MsgFlags::empty(),
+            MsgFlags::MSG_CMSG_CLOEXEC,
         )?;
 
         let mut packet_data = Vec::new();
@@ -92,9 +86,10 @@ impl Receiver {
             if let ControlMessageOwned::ScmRights(fds) = cmsg {
                 if let Some(&fd) = fds.first() {
                     for &extra_fd in fds.iter().skip(1) {
+                        tracing::warn!("Closing extra file descriptors");
                         let _ = close(extra_fd);
                     }
-                    return Ok((packet_data, fd));
+                    return Ok((packet_data, unsafe { OwnedFd::from_raw_fd(fd) }));
                 }
             }
         }
@@ -113,11 +108,7 @@ impl Drop for Receiver {
 mod tests {
     use super::*;
     use crate::uds::sender::Sender;
-    use std::{
-        io::Read as _,
-        os::{fd::FromRawFd as _, unix::io::AsRawFd},
-        path::Path,
-    };
+    use std::{io::Read as _, os::fd::AsFd as _, path::Path};
     use tokio::{
         fs::File,
         io::AsyncWriteExt,
@@ -138,7 +129,7 @@ mod tests {
         file.sync_all().await.unwrap();
 
         let file = std::fs::File::open(file_path).unwrap();
-        let fd_to_send = file.as_raw_fd();
+        let fd_to_send = file.as_fd();
 
         let packet_data = b"test packet data";
 
@@ -154,8 +145,7 @@ mod tests {
         match result {
             Ok(((received_data, received_fd), ())) => {
                 assert_eq!(received_data, packet_data);
-                assert!(received_fd > 0);
-                let mut received_file = unsafe { std::fs::File::from_raw_fd(received_fd) };
+                let mut received_file = std::fs::File::from(received_fd);
                 let mut read_buffer = Vec::new();
                 received_file.read_to_end(&mut read_buffer).unwrap();
                 assert_eq!(read_buffer, test_data);
