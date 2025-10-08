@@ -210,7 +210,7 @@ impl Client {
 
         Ok(Self {
             client,
-            queue: Arc::new(HandshakeQueue::new()),
+            queue: Arc::new(HandshakeQueue::new(builder.success_jitter)),
         })
     }
 
@@ -240,11 +240,12 @@ struct HandshakeQueue {
     inner: Mutex<HandshakeQueueInner>,
     limiter_start: Semaphore,
     limiter_inflight: Arc<Semaphore>,
+    success_jitter: Duration,
     hasher: std::collections::hash_map::RandomState,
 }
 
 impl HandshakeQueue {
-    fn new() -> Self {
+    fn new(success_jitter: Duration) -> Self {
         HandshakeQueue {
             // The "start" limiter bounds TLS handshake concurrency.
             //
@@ -261,6 +262,7 @@ impl HandshakeQueue {
             // concurrency within s2n-quic. We haven't found a particular stress test for which is
             // meaningful yet though.
             limiter_inflight: Arc::new(Semaphore::new(750)),
+            success_jitter,
             inner: Default::default(),
             hasher: Default::default(),
         }
@@ -356,6 +358,8 @@ impl HandshakeQueue {
             // probing to complete. Depending on MTU configuration this is likely to complete
             // immediately, but a 10 second timeout is specified to avoid spawned tasks piling
             // up if the other end of the connection terminates ungracefully.
+            //
+            // This task also owns pruning our de-duplication tracking.
             let this = self.clone();
             tokio::spawn(async move {
                 let _ = tokio::time::timeout(
@@ -367,10 +371,28 @@ impl HandshakeQueue {
                 // to finish MTU probing as well
                 tokio::time::sleep(Duration::from_secs(1)).await;
 
-                this.remove_entry(&entry);
-
                 drop(connection);
                 drop(permit_inflight);
+
+                // Delay deleting the entry by a random time, up to 1 minute.
+                //
+                // The specific duration is not chosen with any particular rationale, mostly
+                // intended to be a relatively small amount while still significantly reducing
+                // handshake volume if we're repeatedly handshaking in a short period of time
+                // (e.g., due to replay protection packets repeatedly arriving). It's unlikely that
+                // handshaking more than roughly once per minute with a given peer actually
+                // produces meaningfully better results than allowing a more normal rate of
+                // handshakes.
+                //
+                // Note that we've already dropped the connection and permit above, so we're not
+                // blocking any other peer from handshaking.
+                let duration = {
+                    let mut rng = rand::rng();
+                    rng.random_range(0..=(this.success_jitter.as_millis() as u64))
+                };
+                tokio::time::sleep(Duration::from_millis(duration)).await;
+
+                this.remove_entry(&entry);
             });
 
             Ok::<_, io::Error>(())
@@ -403,9 +425,9 @@ impl HandshakeQueue {
                         // volume (>60x for fast-failing handshakes and >10x for timeouts).
                         let duration = {
                             let mut rng = rand::rng();
-                            rng.random_range(1..120)
+                            rng.random_range(1000..120_000)
                         };
-                        tokio::time::sleep(Duration::from_secs(duration)).await;
+                        tokio::time::sleep(Duration::from_millis(duration)).await;
 
                         // If the handshake fails, we also remove the entry from the map.
                         // This permits another handshake to start for the same peer.
