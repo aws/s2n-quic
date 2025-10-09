@@ -97,10 +97,11 @@ mod pem {
         pki_types::{CertificateDer, PrivateKeyDer},
         Error,
     };
+    use rustls_pki_types::pem::PemObject;
 
     pub fn into_certificate(contents: &[u8]) -> Result<Vec<CertificateDer<'static>>, Error> {
         let mut cursor = std::io::Cursor::new(contents);
-        rustls_pemfile::certs(&mut cursor)
+        rustls_pki_types::CertificateDer::pem_reader_iter(&mut cursor)
             .map(|cert| cert.map_err(|_| Error::General("Could not read certificate".to_string())))
             .collect()
     }
@@ -112,7 +113,7 @@ mod pem {
             ($parser:ident, $key_type:expr) => {
                 cursor.set_position(0);
 
-                let keys: Result<Vec<_>, Error> = rustls_pemfile::$parser(&mut cursor)
+                let keys: Result<Vec<_>, Error> = $parser(&mut cursor)
                     .map(|key| {
                         key.map_err(|_| {
                             Error::General("Could not load any private keys".to_string())
@@ -147,6 +148,36 @@ mod pem {
         Err(Error::General(
             "could not load any valid private keys".to_string(),
         ))
+    }
+
+    // parser wrapper for pkcs #8 encoded private keys
+    fn pkcs8_private_keys<R: std::io::Read>(
+        reader: &mut R,
+    ) -> impl Iterator<
+        Item = Result<rustls_pki_types::PrivatePkcs8KeyDer<'static>, rustls_pki_types::pem::Error>,
+    > + '_ {
+        rustls_pki_types::PrivatePkcs8KeyDer::pem_reader_iter(reader)
+            .map(|result| result.map(|key| key.clone_key()))
+    }
+
+    // parser wrapper for pkcs #1 encoded private keys
+    fn rsa_private_keys<R: std::io::Read>(
+        reader: &mut R,
+    ) -> impl Iterator<
+        Item = Result<rustls_pki_types::PrivatePkcs1KeyDer<'static>, rustls_pki_types::pem::Error>,
+    > + '_ {
+        rustls_pki_types::PrivatePkcs1KeyDer::pem_reader_iter(reader)
+            .map(|result| result.map(|key| key.clone_key()))
+    }
+
+    // parser wrapper for sec1 encoded private keys
+    fn ec_private_keys<R: std::io::Read>(
+        reader: &mut R,
+    ) -> impl Iterator<
+        Item = Result<rustls_pki_types::PrivateSec1KeyDer<'static>, rustls_pki_types::pem::Error>,
+    > + '_ {
+        rustls_pki_types::PrivateSec1KeyDer::pem_reader_iter(reader)
+            .map(|result| result.map(|key| key.clone_key()))
     }
 }
 
