@@ -333,6 +333,37 @@ impl GenerateConfig {
             OutputMode::Mut => quote!(),
         }
     }
+
+    pub fn c_ffi(
+        &self,
+        inner: &TokenStream,
+        connection_meta_c_type: &TokenStream,
+        connection_info_c_type: &TokenStream,
+    ) -> TokenStream {
+        if !self.c_api {
+            return quote!();
+        }
+
+        assert!(
+            !connection_meta_c_type.is_empty(),
+            "An associated C type must be specified for ConnectionMeta with the #[c_type()] \
+            attribute."
+        );
+        assert!(
+            !connection_info_c_type.is_empty(),
+            "An associated C type must be specified for ConnectionInfo with the #[c_type()] \
+            attribute."
+        );
+
+        quote!(
+            pub mod c_ffi {
+                #[allow(unused_imports)]
+                use std::ffi::*;
+
+                #inner
+            }
+        )
+    }
 }
 
 impl ToTokens for OutputMode {
