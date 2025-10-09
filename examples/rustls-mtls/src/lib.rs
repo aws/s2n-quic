@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use rustls_pki_types::pem::PemObject;
 use s2n_quic::provider::tls as s2n_quic_tls_provider;
 #[allow(deprecated)]
 use s2n_quic::provider::tls::rustls::rustls::{
@@ -13,7 +14,6 @@ use s2n_quic::provider::tls::rustls::rustls::{
 use std::{io::Cursor, path::Path, sync::Arc};
 use tokio::{fs::File, io::AsyncReadExt};
 use tracing::Level;
-use rustls_pki_types::pem::PemObject;
 
 pub fn initialize_logger(endpoint: &str) {
     use std::sync::Once;
@@ -179,7 +179,9 @@ async fn into_private_key(path: &Path) -> Result<PrivateKeyDer<'static>, RustlsE
 // parser wrapper for pkcs #8 encoded private keys
 fn pkcs8_private_keys<R: std::io::Read>(
     reader: &mut R,
-) -> impl Iterator<Item = Result<rustls_pki_types::PrivatePkcs8KeyDer<'static>, rustls_pki_types::pem::Error>> + '_ {
+) -> impl Iterator<
+    Item = Result<rustls_pki_types::PrivatePkcs8KeyDer<'static>, rustls_pki_types::pem::Error>,
+> + '_ {
     rustls_pki_types::PrivatePkcs8KeyDer::pem_reader_iter(reader)
         .map(|result| result.map(|key| key.clone_key()))
 }
@@ -187,7 +189,9 @@ fn pkcs8_private_keys<R: std::io::Read>(
 // parser wrapper for pkcs #1 encoded private keys
 fn rsa_private_keys<R: std::io::Read>(
     reader: &mut R,
-) -> impl Iterator<Item = Result<rustls_pki_types::PrivatePkcs1KeyDer<'static>, rustls_pki_types::pem::Error>> + '_ {
+) -> impl Iterator<
+    Item = Result<rustls_pki_types::PrivatePkcs1KeyDer<'static>, rustls_pki_types::pem::Error>,
+> + '_ {
     rustls_pki_types::PrivatePkcs1KeyDer::pem_reader_iter(reader)
         .map(|result| result.map(|key| key.clone_key()))
 }
@@ -195,7 +199,9 @@ fn rsa_private_keys<R: std::io::Read>(
 // parser wrapper for sec1 encoded private keys
 fn ec_private_keys<R: std::io::Read>(
     reader: &mut R,
-) -> impl Iterator<Item = Result<rustls_pki_types::PrivateSec1KeyDer<'static>, rustls_pki_types::pem::Error>> + '_ {
+) -> impl Iterator<
+    Item = Result<rustls_pki_types::PrivateSec1KeyDer<'static>, rustls_pki_types::pem::Error>,
+> + '_ {
     rustls_pki_types::PrivateSec1KeyDer::pem_reader_iter(reader)
         .map(|result| result.map(|key| key.clone_key()))
 }
