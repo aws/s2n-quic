@@ -1,13 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use nix::sys::socket::{
-    sendmsg, socket, AddressFamily, ControlMessage, MsgFlags, SockFlag, SockType, UnixAddr,
-};
+use nix::sys::socket::{sendmsg, ControlMessage, MsgFlags, UnixAddr};
 use std::{
     os::{
         fd::{BorrowedFd, OwnedFd},
-        unix::io::AsRawFd as _,
+        unix::{io::AsRawFd as _, net::UnixDatagram},
     },
     path::Path,
 };
@@ -19,14 +17,10 @@ pub struct Sender {
 
 impl Sender {
     pub fn new() -> Result<Self, std::io::Error> {
-        let socket_owned = socket(
-            AddressFamily::Unix,
-            SockType::Datagram,
-            SockFlag::SOCK_NONBLOCK | SockFlag::SOCK_CLOEXEC,
-            None,
-        )?;
+        let socket = UnixDatagram::unbound()?;
+        socket.set_nonblocking(true)?;
 
-        let async_fd = AsyncFd::new(socket_owned)?;
+        let async_fd = AsyncFd::new(OwnedFd::from(socket))?;
 
         Ok(Self {
             socket_fd: async_fd,
@@ -67,15 +61,20 @@ impl Sender {
     ) -> Result<(), nix::Error> {
         let fds = [fd_to_send.as_raw_fd()];
         let cmsg = ControlMessage::ScmRights(&fds);
+        let dest_addr = UnixAddr::new(dest_path)?;
 
-        let dest_unix_addr = UnixAddr::new(dest_path)?;
+        #[cfg(target_os = "linux")]
+        let send_flags = MsgFlags::MSG_NOSIGNAL;
+
+        #[cfg(not(target_os = "linux"))]
+        let send_flags = MsgFlags::empty();
 
         sendmsg::<UnixAddr>(
             self.socket_fd.as_raw_fd(),
             &[std::io::IoSlice::new(packet)],
             &[cmsg],
-            MsgFlags::MSG_NOSIGNAL,
-            Some(&dest_unix_addr),
+            send_flags,
+            Some(&dest_addr),
         )?;
 
         Ok(())

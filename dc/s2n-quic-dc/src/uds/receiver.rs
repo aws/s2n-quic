@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use nix::{
-    sys::socket::{
-        bind, recvmsg, socket, AddressFamily, ControlMessageOwned, MsgFlags, SockFlag, SockType,
-        UnixAddr,
-    },
+    sys::socket::{recvmsg, ControlMessageOwned, MsgFlags, UnixAddr},
     unistd::{close, unlink},
 };
 use std::{
     os::{
         fd::{FromRawFd as _, OwnedFd},
-        unix::io::{AsRawFd, RawFd},
+        unix::{
+            io::{AsRawFd, RawFd},
+            net::UnixDatagram,
+        },
     },
     path::{Path, PathBuf},
 };
@@ -26,19 +26,10 @@ pub struct Receiver {
 
 impl Receiver {
     pub fn new(socket_path: &Path) -> Result<Self, std::io::Error> {
-        let _ = unlink(socket_path);
+        let socket = UnixDatagram::bind(socket_path)?;
+        socket.set_nonblocking(true)?;
 
-        let socket_owned = socket(
-            AddressFamily::Unix,
-            SockType::Datagram,
-            SockFlag::SOCK_NONBLOCK | SockFlag::SOCK_CLOEXEC,
-            None,
-        )?;
-
-        let unix_addr = UnixAddr::new(socket_path)?;
-        bind(socket_owned.as_raw_fd(), &unix_addr)?;
-
-        let async_fd = AsyncFd::new(socket_owned)?;
+        let async_fd = AsyncFd::new(OwnedFd::from(socket))?;
 
         Ok(Self {
             async_fd,
@@ -70,11 +61,17 @@ impl Receiver {
         let mut cmsg_buffer = nix::cmsg_space!([RawFd; 1]);
         let mut iov = [std::io::IoSliceMut::new(&mut buffer)];
 
+        #[cfg(target_os = "linux")]
+        let recv_flags = MsgFlags::MSG_CMSG_CLOEXEC;
+
+        #[cfg(not(target_os = "linux"))]
+        let recv_flags = MsgFlags::empty();
+
         let msg = recvmsg::<UnixAddr>(
             self.async_fd.as_raw_fd(),
             &mut iov,
             Some(&mut cmsg_buffer),
-            MsgFlags::MSG_CMSG_CLOEXEC,
+            recv_flags,
         )?;
 
         let mut packet_data = Vec::new();
@@ -89,7 +86,13 @@ impl Receiver {
                         tracing::warn!("Closing extra file descriptors");
                         let _ = close(extra_fd);
                     }
-                    return Ok((packet_data, unsafe { OwnedFd::from_raw_fd(fd) }));
+                    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        use nix::fcntl::{fcntl, FcntlArg, FdFlag};
+                        fcntl(&fd, FcntlArg::F_SETFD(FdFlag::FD_CLOEXEC))?;
+                    }
+                    return Ok((packet_data, fd));
                 }
             }
         }
