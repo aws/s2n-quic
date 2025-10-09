@@ -13,6 +13,7 @@ use s2n_quic::provider::tls::rustls::rustls::{
 use std::{io::Cursor, path::Path, sync::Arc};
 use tokio::{fs::File, io::AsyncReadExt};
 use tracing::Level;
+use rustls_pki_types::pem::PemObject;
 
 pub fn initialize_logger(endpoint: &str) {
     use std::sync::Once;
@@ -116,7 +117,7 @@ async fn read_file(path: &Path) -> Result<Vec<u8>, RustlsError> {
 async fn into_certificate(path: &Path) -> Result<Vec<CertificateDer<'static>>, RustlsError> {
     let buf = &read_file(path).await?;
     let mut cursor = Cursor::new(buf);
-    rustls_pemfile::certs(&mut cursor)
+    rustls_pki_types::CertificateDer::pem_reader_iter(&mut cursor)
         .map(|cert| {
             cert.map_err(|_| RustlsError::General("Could not read certificate".to_string()))
         })
@@ -138,7 +139,7 @@ async fn into_private_key(path: &Path) -> Result<PrivateKeyDer<'static>, RustlsE
         ($parser:ident, $key_type:expr) => {
             cursor.set_position(0);
 
-            let keys: Result<Vec<_>, RustlsError> = rustls_pemfile::$parser(&mut cursor)
+            let keys: Result<Vec<_>, RustlsError> = $parser(&mut cursor)
                 .map(|key| {
                     key.map_err(|_| {
                         RustlsError::General("Could not load any private keys".to_string())
@@ -173,4 +174,28 @@ async fn into_private_key(path: &Path) -> Result<PrivateKeyDer<'static>, RustlsE
     Err(RustlsError::General(
         "could not load any valid private keys".to_string(),
     ))
+}
+
+// parser wrapper for pkcs #8 encoded private keys
+fn pkcs8_private_keys<R: std::io::Read>(
+    reader: &mut R,
+) -> impl Iterator<Item = Result<rustls_pki_types::PrivatePkcs8KeyDer<'static>, rustls_pki_types::pem::Error>> + '_ {
+    rustls_pki_types::PrivatePkcs8KeyDer::pem_reader_iter(reader)
+        .map(|result| result.map(|key| key.clone_key()))
+}
+
+// parser wrapper for pkcs #1 encoded private keys
+fn rsa_private_keys<R: std::io::Read>(
+    reader: &mut R,
+) -> impl Iterator<Item = Result<rustls_pki_types::PrivatePkcs1KeyDer<'static>, rustls_pki_types::pem::Error>> + '_ {
+    rustls_pki_types::PrivatePkcs1KeyDer::pem_reader_iter(reader)
+        .map(|result| result.map(|key| key.clone_key()))
+}
+
+// parser wrapper for sec1 encoded private keys
+fn ec_private_keys<R: std::io::Read>(
+    reader: &mut R,
+) -> impl Iterator<Item = Result<rustls_pki_types::PrivateSec1KeyDer<'static>, rustls_pki_types::pem::Error>> + '_ {
+    rustls_pki_types::PrivateSec1KeyDer::pem_reader_iter(reader)
+        .map(|result| result.map(|key| key.clone_key()))
 }
