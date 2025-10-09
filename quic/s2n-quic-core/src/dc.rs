@@ -24,6 +24,7 @@ mod traits;
 pub mod testing;
 
 pub use disabled::*;
+use s2n_codec::{decoder_value, DecoderError, Encoder, EncoderValue};
 pub use traits::*;
 
 pub type Version = u32;
@@ -143,6 +144,52 @@ impl ApplicationParams {
 
     pub fn max_datagram_size(&self) -> u16 {
         self.max_datagram_size.load(Ordering::Relaxed)
+    }
+}
+
+decoder_value!(
+    impl<'a> ApplicationParams {
+        fn decode(buffer: Buffer) -> Result<Self> {
+            let (max_datagram_size, buffer) = buffer.decode::<u16>()?;
+            let (remote_max_data, buffer) = buffer.decode::<VarInt>()?;
+            let (local_send_max_data, buffer) = buffer.decode::<VarInt>()?;
+            let (local_recv_max_data, buffer) = buffer.decode::<VarInt>()?;
+
+            let (timeout_value, buffer) = buffer.decode::<VarInt>()?;
+            let timeout_value: u32 = timeout_value.try_into().map_err(|_| {
+                DecoderError::InvariantViolation("Timeout value exceeds u32 maximum")
+            })?;
+            let max_idle_timeout = NonZeroU32::new(timeout_value);
+
+            Ok((
+                Self {
+                    max_datagram_size: AtomicU16::new(max_datagram_size),
+                    remote_max_data,
+                    local_send_max_data,
+                    local_recv_max_data,
+                    max_idle_timeout,
+                },
+                buffer,
+            ))
+        }
+    }
+);
+
+impl EncoderValue for ApplicationParams {
+    fn encode<E: Encoder>(&self, buffer: &mut E) {
+        buffer.encode(&self.max_datagram_size.load(Ordering::Relaxed));
+        buffer.encode(&self.remote_max_data);
+        buffer.encode(&self.local_send_max_data);
+        buffer.encode(&self.local_recv_max_data);
+
+        match self.max_idle_timeout {
+            Some(timeout) => {
+                buffer.encode(&VarInt::from(u32::from(timeout)));
+            }
+            None => {
+                buffer.encode(&VarInt::from(0u32));
+            }
+        }
     }
 }
 
