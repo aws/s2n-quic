@@ -100,7 +100,7 @@ mod tests {
         },
         path::secret::schedule::Ciphersuite,
     };
-    use s2n_codec::{DecoderBufferMut, DecoderError};
+    use s2n_codec::{DecoderBufferMut, DecoderError, EncoderLenEstimator};
     use s2n_quic_core::dc;
 
     #[test]
@@ -111,12 +111,18 @@ mod tests {
         let payload = b"payload_with_data";
 
         // Encode
-        let expected_size =
-            encoder::encoding_size(&ciphersuite, export_secret, &application_params, payload);
+        let mut estimator = EncoderLenEstimator::new(usize::MAX);
+        let expected_size = encoder::encode(
+            &mut estimator,
+            &ciphersuite,
+            export_secret,
+            &application_params,
+            payload,
+        );
         let mut buffer = vec![0u8; expected_size];
-        let enc = s2n_codec::EncoderBuffer::new(&mut buffer);
+        let mut enc = s2n_codec::EncoderBuffer::new(&mut buffer);
         let encoded_size = encoder::encode(
-            enc,
+            &mut enc,
             &ciphersuite,
             export_secret,
             &application_params,
