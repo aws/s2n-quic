@@ -24,7 +24,7 @@ mod traits;
 pub mod testing;
 
 pub use disabled::*;
-use s2n_codec::{decoder_value, Encoder, EncoderValue};
+use s2n_codec::{decoder_value, DecoderError, Encoder, EncoderValue};
 pub use traits::*;
 
 pub type Version = u32;
@@ -155,7 +155,10 @@ decoder_value!(
             let (local_send_max_data, buffer) = buffer.decode::<VarInt>()?;
             let (local_recv_max_data, buffer) = buffer.decode::<VarInt>()?;
 
-            let (timeout_value, buffer) = buffer.decode::<u32>()?;
+            let (timeout_value, buffer) = buffer.decode::<VarInt>()?;
+            let timeout_value: u32 = timeout_value.try_into().map_err(|_| {
+                DecoderError::InvariantViolation("Timeout value exceeds u32 maximum")
+            })?;
             let max_idle_timeout = NonZeroU32::new(timeout_value);
 
             Ok((
@@ -181,10 +184,10 @@ impl EncoderValue for ApplicationParams {
 
         match self.max_idle_timeout {
             Some(timeout) => {
-                buffer.encode(&timeout.get());
+                buffer.encode(&VarInt::from(u32::from(timeout)));
             }
             None => {
-                buffer.encode(&0u32);
+                buffer.encode(&VarInt::from(0u32));
             }
         }
     }
