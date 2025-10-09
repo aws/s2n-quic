@@ -91,8 +91,17 @@ impl event::Subscriber for BlocklistSubscriber {
     ) {
         // packet which is smaller than the MTU should not be lost
         if event.bytes_lost < self.max_udp_payload && self.blocklist_enabled {
-            panic!("Blocklisted packet lost event encountered: {:?}", event);
+            panic!("Bytes lost is {} and max udp payload is {}\nBlocklisted packet lost event encountered: {:?}", event.bytes_lost, self.max_udp_payload, event);
         }
+    }
+
+    fn on_mtu_updated(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::MtuUpdated,
+    ) {
+        self.max_udp_payload = event.mtu;
     }
 }
 
