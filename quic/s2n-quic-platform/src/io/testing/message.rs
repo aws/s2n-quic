@@ -94,7 +94,7 @@ impl MessageTrait for Message {
         let path = self.handle;
         let header = datagram::Header {
             path,
-            ecn: Default::default(),
+            ecn: self.ecn,
         };
         let payload = self.payload_mut();
 
@@ -123,6 +123,7 @@ impl MessageTrait for Message {
         }
 
         self.handle = *message.path_handle();
+        self.ecn = message.ecn();
 
         Ok(len)
     }
