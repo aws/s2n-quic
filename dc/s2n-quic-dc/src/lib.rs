@@ -21,6 +21,7 @@ pub mod socket;
 pub mod stream;
 pub mod sync;
 pub mod task;
+pub mod uds;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
