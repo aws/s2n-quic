@@ -23,9 +23,14 @@ on:
     # run every morning at 10am Pacific Time
     - cron: "0 17 * * *"
 
+permissions:
+  contents: read  # This is required for actions/checkout
+
 jobs:
   audit:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for GITHUB_TOKEN usage
     steps:
       - uses: actions/checkout@v5
         with:
