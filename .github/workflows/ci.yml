@@ -873,7 +873,9 @@ jobs:
         run: ./target/release/memory-report server &
 
       - name: Run client
+        id: run-client
         working-directory: tools/memory-report
+        continue-on-error: true
         run: ./target/release/memory-report client > report.tsv
 
       - name: Prepare artifacts
@@ -912,6 +914,12 @@ jobs:
           name: "dhat / report"
           status: "success"
           url: "${{ steps.s3.outputs.URL }}"
+          
+      - name: Check run client status
+        if: steps.run-client.outcome != 'success'
+        run: |
+          echo "Run client step failed"
+          exit 1
 
   loom:
     runs-on: ubuntu-latest
