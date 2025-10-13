@@ -876,7 +876,9 @@ jobs:
         id: run-client
         working-directory: tools/memory-report
         continue-on-error: true
-        run: ./target/release/memory-report client > report.tsv
+        run: |
+          ./target/release/memory-report client > report.tsv
+          exit 1
 
       - name: Prepare artifacts
         working-directory: tools/memory-report
