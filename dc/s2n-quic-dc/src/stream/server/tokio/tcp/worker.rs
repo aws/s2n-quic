@@ -5,13 +5,14 @@ use super::{accept, LazyBoundStream};
 use crate::{
     either::Either,
     event::{self, EndpointPublisher, IntoEvent},
-    msg,
+    msg, packet,
     path::secret,
     stream::{
         endpoint,
         environment::tokio::{self as env, Environment},
         recv, server, TransportFeatures,
     },
+    uds,
 };
 use core::{
     ops::ControlFlow,
@@ -19,13 +20,17 @@ use core::{
     task::{self, Poll},
     time::Duration,
 };
-use s2n_codec::DecoderError;
+use s2n_codec::{DecoderError, EncoderLenEstimator};
 use s2n_quic_core::{
     inet::SocketAddress,
     ready,
     time::{Clock, Timestamp},
 };
-use std::io;
+use std::{
+    io,
+    os::fd::AsFd as _,
+    path::{Path, PathBuf},
+};
 use tracing::debug;
 
 pub struct Context<Sub>
@@ -133,6 +138,7 @@ where
                 WorkerState::Init => 0,
                 WorkerState::Buffering { buffer, .. } => buffer.payload_len(),
                 WorkerState::Erroring { .. } => 0,
+                WorkerState::Sending { .. } => 0,
             };
             publisher.on_acceptor_tcp_stream_replaced(event::builder::AcceptorTcpStreamReplaced {
                 remote_address: &remote_address,
@@ -161,7 +167,7 @@ where
     {
         // if we don't have a stream then it's a bug in the worker impl - in production just return
         // `Ready`, which will correct the state
-        if self.stream.is_none() {
+        if self.stream.is_none() && !matches!(self.state, WorkerState::Sending { .. }) {
             debug_assert!(
                 false,
                 "Worker::poll should only be called with an active socket"
@@ -202,6 +208,9 @@ where
 
     #[inline]
     fn is_active(&self) -> bool {
+        if matches!(self.state, WorkerState::Sending { .. }) {
+            return true;
+        }
         let is_active = self.stream.is_some();
         if !is_active {
             debug_assert!(matches!(self.state, WorkerState::Init));
@@ -231,7 +240,6 @@ where
         Self: Sized;
 }
 
-#[derive(Debug)]
 pub enum WorkerState {
     /// Worker is waiting for a packet
     Init,
@@ -246,6 +254,10 @@ pub enum WorkerState {
         offset: usize,
         buffer: Vec<u8>,
         error: io::Error,
+    },
+    Sending {
+        future: Pin<Box<dyn std::future::Future<Output = Result<(), std::io::Error>> + Send>>,
+        event_data: SocketEventData,
     },
 }
 
@@ -287,11 +299,11 @@ where
     sender: accept::Sender<Sub>,
 }
 
-impl<Sub> DefaultBehavior<Sub> 
+impl<Sub> DefaultBehavior<Sub>
 where
     Sub: event::Subscriber + Clone,
 {
- #[inline]
+    #[inline]
     pub fn new(sender: &accept::Sender<Sub>) -> Self {
         Self {
             sender: sender.clone(),
@@ -350,6 +362,7 @@ where
 
                     return Err(Some(error)).into();
                 }
+                WorkerState::Sending { .. } => unreachable!(),
             };
 
             // try to read an initial packet from the socket
@@ -550,6 +563,258 @@ impl WorkerState {
                     return Err(None).into();
                 }
             }
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct SocketEventData {
+    blocked_count: usize,
+    payload_len: usize,
+    credential_id: Vec<u8>,
+    stream_id: u64,
+    sojourn_time: Duration,
+}
+
+#[derive(Clone)]
+pub struct SocketBehavior {
+    dest_path: PathBuf,
+}
+
+impl SocketBehavior {
+    #[inline]
+    pub fn new(dest_path: &Path) -> Self {
+        Self {
+            dest_path: dest_path.to_path_buf(),
+        }
+    }
+
+    fn poll_send<Pub, F>(
+        mut future: Pin<Box<F>>,
+        cx: &mut task::Context,
+        state: &mut WorkerState,
+        mut event_data: SocketEventData,
+        publisher: &Pub,
+    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    where
+        Pub: EndpointPublisher,
+        F: std::future::Future<Output = Result<(), std::io::Error>> + Send + 'static,
+    {
+        match future.as_mut().poll(cx) {
+            Poll::Ready(res) => match res {
+                Ok(_) => {
+                    publisher.on_acceptor_tcp_socket_sent(event::builder::AcceptorTcpSocketSent {
+                        credential_id: &event_data.credential_id,
+                        stream_id: event_data.stream_id,
+                        payload_len: event_data.payload_len,
+                        blocked_count: event_data.blocked_count,
+                        sojourn_time: event_data.sojourn_time,
+                    });
+                    Poll::Ready(Ok(ControlFlow::Continue(())))
+                }
+                Err(err) => {
+                    debug!("Error sending message to socket {:?}", err);
+                    Err(Some(err)).into()
+                }
+            },
+            Poll::Pending => {
+                event_data.blocked_count += 1;
+
+                *state = WorkerState::Sending { future, event_data };
+                Poll::Pending
+            }
+        }
+    }
+}
+
+impl<Sub> PollBehavior<Sub> for SocketBehavior
+where
+    Sub: event::Subscriber + Clone,
+{
+    fn poll<Pub>(
+        &self,
+        state: &mut WorkerState,
+        cx: &mut task::Context,
+        context: &mut Context<Sub>,
+        stream: &mut Option<(LazyBoundStream, SocketAddress)>,
+        _subscriber_ctx: &mut Option<Sub::ConnectionContext>,
+        queue_time: Timestamp,
+        now: Timestamp,
+        publisher: &Pub,
+    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    where
+        Pub: EndpointPublisher,
+    {
+        let sojourn_time = now.saturating_duration_since(queue_time);
+
+        loop {
+            // figure out where to put the received bytes
+            let (recv_buffer, blocked_count) = match state {
+                // borrow the context's recv buffer initially
+                WorkerState::Init => (&mut context.recv_buffer, 0),
+                // we have our own recv buffer to use
+                WorkerState::Buffering {
+                    buffer,
+                    blocked_count,
+                } => (buffer, *blocked_count),
+                // we encountered an error so try and send it back
+                WorkerState::Erroring { offset, buffer, .. } => {
+                    let (stream, _remote_address) = stream.as_mut().unwrap();
+                    let len = ready!(Pin::new(stream).poll_write(cx, &buffer[*offset..]))?;
+
+                    *offset += len;
+
+                    // if we still need to send part of the buffer then loop back around
+                    if *offset < buffer.len() {
+                        continue;
+                    }
+
+                    // io::Error doesn't implement clone so we have to take the error to return it
+                    let WorkerState::Erroring { error, .. } =
+                        core::mem::replace(state, WorkerState::Init)
+                    else {
+                        unreachable!()
+                    };
+
+                    return Err(Some(error)).into();
+                }
+                WorkerState::Sending { future, event_data } => match future.as_mut().poll(cx) {
+                    Poll::Ready(res) => match res {
+                        Ok(_) => {
+                            publisher.on_acceptor_tcp_socket_sent(
+                                event::builder::AcceptorTcpSocketSent {
+                                    credential_id: &event_data.credential_id,
+                                    stream_id: event_data.stream_id,
+                                    payload_len: event_data.payload_len,
+                                    blocked_count: event_data.blocked_count,
+                                    sojourn_time: event_data.sojourn_time,
+                                },
+                            );
+                            return Ok(ControlFlow::Continue(())).into();
+                        }
+                        Err(err) => {
+                            debug!("Error sending message to socket {:?}", err);
+                            return Err(Some(err)).into();
+                        }
+                    },
+                    Poll::Pending => {
+                        event_data.blocked_count += 1;
+                        return Poll::Pending;
+                    }
+                },
+            };
+
+            // try to read an initial packet from the socket
+            let res = {
+                let (stream, remote_address) = stream.as_mut().unwrap();
+                WorkerState::poll_initial_packet(
+                    cx,
+                    stream,
+                    remote_address,
+                    recv_buffer,
+                    sojourn_time,
+                    publisher,
+                )
+            };
+
+            let Poll::Ready(res) = res else {
+                // if we got `Pending` but we don't own the recv buffer then we need to copy it
+                // into the worker so we can resume where we left off last time
+                if blocked_count == 0 {
+                    let buffer = recv_buffer.take();
+                    *state = WorkerState::Buffering {
+                        buffer,
+                        blocked_count,
+                    };
+                }
+
+                if let WorkerState::Buffering { blocked_count, .. } = state {
+                    *blocked_count += 1;
+                }
+
+                return Poll::Pending;
+            };
+
+            let initial_packet = res?;
+
+            let (socket, remote_address) = stream.take().unwrap();
+
+            let recv_buffer = recv_buffer.make_contiguous();
+
+            let mut secret_control = vec![];
+            let credentials = &initial_packet.credentials;
+
+            let map = &context.secrets;
+            let Some((export_secret, ciphersuite, keys, application_params)) = map
+                .secret_for_credentials(
+                    credentials,
+                    initial_packet.source_queue_id,
+                    &TransportFeatures::TCP,
+                    &mut secret_control,
+                )
+            else {
+                let error = io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("missing credentials for client: {credentials:?}"),
+                );
+
+                if !secret_control.is_empty() {
+                    *stream = Some((socket, remote_address));
+                    *state = WorkerState::Erroring {
+                        offset: 0,
+                        buffer: secret_control,
+                        error,
+                    };
+                    continue;
+                } else {
+                    // Close socket immediately
+                    let _ = socket.set_linger(Some(Duration::ZERO));
+                    drop(socket);
+                }
+                return Err(Some(error)).into();
+            };
+
+            if keys.application.opener.dedup_check().is_err() {
+                return Ok(ControlFlow::Continue(())).into();
+            };
+
+            let mut estimator = EncoderLenEstimator::new(usize::MAX);
+            let size = packet::uds::encoder::encode(
+                &mut estimator,
+                &ciphersuite,
+                &export_secret,
+                &application_params,
+                recv_buffer,
+            );
+            let mut buffer = vec![0u8; size];
+            let mut encoder = s2n_codec::EncoderBuffer::new(&mut buffer);
+            packet::uds::encoder::encode(
+                &mut encoder,
+                &ciphersuite,
+                &export_secret,
+                &application_params,
+                recv_buffer,
+            );
+
+            let sender = uds::sender::Sender::new()?;
+            let dest_path = self.dest_path.clone();
+            let tcp_stream = socket.into_std()?;
+
+            let send_future = Box::pin(async move {
+                sender
+                    .send_msg(&buffer, &dest_path, tcp_stream.as_fd())
+                    .await
+            });
+
+            let event_data = SocketEventData {
+                credential_id: credentials.id.to_vec(),
+                stream_id: credentials.key_id.as_u64(),
+                payload_len: size,
+                blocked_count: 0,
+                sojourn_time,
+            };
+
+            return Self::poll_send(send_future, cx, state, event_data, publisher);
         }
     }
 }
