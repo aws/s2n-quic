@@ -192,6 +192,30 @@ struct AcceptorTcpIoError<'a> {
     error: &'a std::io::Error,
 }
 
+/// Emitted when the TCP stream has been sent over a Unix domain socket
+#[event("acceptor:tcp:socket_sent")]
+#[subject(endpoint)]
+struct AcceptorTcpSocketSent<'a>   {
+    /// The credential ID of the stream
+    #[snapshot("[HIDDEN]")]
+    credential_id: &'a[u8],
+
+    /// The ID of the stream
+    stream_id: u64,
+
+    /// The amount of time the TCP stream spent in the queue before being enqueued
+    #[timer("sojourn_time")]
+    sojourn_time: core::time::Duration,
+
+    /// The number of times the Unix domain socket was blocked on send
+    #[measure("blocked_count")]
+    blocked_count: usize,
+
+    /// The len of the payload sent over the Unix domain socket
+    #[measure("len", Bytes)]
+    payload_len: usize,
+}
+
 /// Emitted when a UDP acceptor is started
 #[event("acceptor:udp:started")]
 #[subject(endpoint)]
