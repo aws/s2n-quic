@@ -34,6 +34,7 @@ pub const MAX_TCP_WORKERS: usize = 4;
 
 pub mod tcp;
 pub mod udp;
+pub mod uds;
 
 // This trait is a solution to abstract local_addr and map methods
 pub trait Handshake: Clone {
