@@ -33,7 +33,6 @@ where
     Sub: event::Subscriber + Clone,
 {
     recv_buffer: msg::recv::Message,
-    sender: accept::Sender<Sub>,
     env: Environment<Sub>,
     secrets: secret::Map,
     accept_flavor: accept::Flavor,
@@ -48,7 +47,6 @@ where
     pub fn new<B: PollBehavior<Sub> + Clone>(acceptor: &super::Acceptor<Sub, B>) -> Self {
         Self {
             recv_buffer: msg::recv::Message::new(u16::MAX),
-            sender: acceptor.sender.clone(),
             env: acceptor.env.clone(),
             secrets: acceptor.secrets.clone(),
             accept_flavor: acceptor.accept_flavor,
@@ -282,9 +280,26 @@ impl WorkerState {
 }
 
 #[derive(Clone)]
-pub struct DefaultBehavior;
+pub struct DefaultBehavior<Sub>
+where
+    Sub: event::Subscriber + Clone,
+{
+    sender: accept::Sender<Sub>,
+}
 
-impl<Sub> PollBehavior<Sub> for DefaultBehavior
+impl<Sub> DefaultBehavior<Sub> 
+where
+    Sub: event::Subscriber + Clone,
+{
+ #[inline]
+    pub fn new(sender: &accept::Sender<Sub>) -> Self {
+        Self {
+            sender: sender.clone(),
+        }
+    }
+}
+
+impl<Sub> PollBehavior<Sub> for DefaultBehavior<Sub>
 where
     Sub: event::Subscriber + Clone,
 {
@@ -446,8 +461,8 @@ where
             }
 
             let res = match context.accept_flavor {
-                accept::Flavor::Fifo => context.sender.send_back(stream_builder),
-                accept::Flavor::Lifo => context.sender.send_front(stream_builder),
+                accept::Flavor::Fifo => self.sender.send_back(stream_builder),
+                accept::Flavor::Lifo => self.sender.send_front(stream_builder),
             };
 
             return Poll::Ready(Ok(match res {

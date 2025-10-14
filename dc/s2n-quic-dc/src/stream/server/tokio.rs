@@ -513,17 +513,16 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
 
         let socket = tokio::io::unix::AsyncFd::new(socket)?;
         let id = self.id();
-
+        let channel_behavior = tcp::worker::DefaultBehavior::new(&self.stream_sender);
         let acceptor = tcp::Acceptor::new(
             id,
             socket,
-            &self.stream_sender,
             &self.server.env,
             self.server.handshake.map(),
             self.backlog,
             self.accept_flavor,
             self.linger,
-            tcp::worker::DefaultBehavior,
+            channel_behavior,
         )?
         .run();
 
