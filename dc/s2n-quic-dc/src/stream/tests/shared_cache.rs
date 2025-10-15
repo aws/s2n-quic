@@ -123,17 +123,13 @@ async fn test_connection(
     );
 
     let app_server = crate::stream::server::application::Server::<NoopSubscriber>::builder()
-        .with_address("127.0.0.1:800".parse().unwrap())
         .with_protocol(Protocol::Tcp)
         .with_udp(false)
         .with_workers(NonZeroUsize::new(1).unwrap())
         .with_socket_path(unix_socket_path)
         .build(test_event_subscriber.clone())
         .unwrap();
-    info!(
-        "Application server created at: {:?}",
-        app_server.acceptor_addr()
-    );
+    info!("Application server created");
 
     info!("All servers setup completed successfully");
 
