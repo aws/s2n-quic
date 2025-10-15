@@ -198,17 +198,18 @@ struct AcceptorTcpIoError<'a> {
 struct AcceptorTcpSocketSent<'a>   {
     /// The credential ID of the stream
     #[snapshot("[HIDDEN]")]
-    credential_id: &'a[u8],
+    credential_id: &'a [u8],
 
     /// The ID of the stream
     stream_id: u64,
 
-    /// The amount of time the TCP stream spent in the queue before being enqueued
+    /// The amount of time the TCP stream spent in the queue before being sent over Unix domain socket
     #[timer("sojourn_time")]
     sojourn_time: core::time::Duration,
 
     /// The number of times the Unix domain socket was blocked on send
-    #[measure("blocked_count")]
+    #[counter("blocked_count_host")]
+    #[measure("blocked_count_stream")]
     blocked_count: usize,
 
     /// The len of the payload sent over the Unix domain socket

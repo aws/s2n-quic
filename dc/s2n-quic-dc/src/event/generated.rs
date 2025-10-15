@@ -277,7 +277,7 @@ pub mod api {
         pub credential_id: &'a [u8],
         #[doc = " The ID of the stream"]
         pub stream_id: u64,
-        #[doc = " The amount of time the TCP stream spent in the queue before being enqueued"]
+        #[doc = " The amount of time the TCP stream spent in the queue before being sent over Unix domain socket"]
         pub sojourn_time: core::time::Duration,
         #[doc = " The number of times the Unix domain socket was blocked on send"]
         pub blocked_count: usize,
@@ -3702,7 +3702,7 @@ pub mod builder {
         pub credential_id: &'a [u8],
         #[doc = " The ID of the stream"]
         pub stream_id: u64,
-        #[doc = " The amount of time the TCP stream spent in the queue before being enqueued"]
+        #[doc = " The amount of time the TCP stream spent in the queue before being sent over Unix domain socket"]
         pub sojourn_time: core::time::Duration,
         #[doc = " The number of times the Unix domain socket was blocked on send"]
         pub blocked_count: usize,
