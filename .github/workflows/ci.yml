@@ -66,8 +66,8 @@ jobs:
           RUSTC_WRAPPER: ""
   aifix:
     runs-on: ubuntu-latest
-    needs: [udeps]
-    if: needs.udeps.result == 'failure'
+    if: ${{ always() }}
+    needs: udeps
     permissions:
       contents: write
       pull-requests: write
@@ -76,28 +76,28 @@ jobs:
         with:
           submodules: true
       - uses: aws-actions/configure-aws-credentials@v5.1.0
-        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        if: github.event_name == 'workflow_dispatch'
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
-      # - name: Run Bedrock Analysis
-      #   uses: severity1/custom-amazon-bedrock-agent-action@v0.10.0
-      #   with:
-      #     agent_id: QNFDMSDYHR
-      #     agent_alias_id: EFGXMCUYAR
-      #     action_prompt: |
-      #       Role: You are a rust expert
-      #       Task: Review this codebase's Cargo.tomls and fix the udeps issue. There are unused dependencies in this project, and you need to make code changes to fix them.
-      # - name: Create AI pull request
-      #   uses: peter-evans/create-pull-request@v7
-      #   with:
-      #     commit-message: |
-      #       chore: fix CI issue
-      #     title: 'chore: fix CI issue'
-      #     body: |
-      #       ### Description of changes: 
-      #       CI has some problems. This PR should fix those.
+      - name: Run Bedrock Analysis
+        uses: severity1/custom-amazon-bedrock-agent-action@v0.10.0
+        with:
+          agent_id: QNFDMSDYHR
+          agent_alias_id: EFGXMCUYAR
+          action_prompt: |
+            Role: You are a rust expert
+            Task: Review this codebase's Cargo.tomls and fix the udeps issue. There are unused dependencies in this project, and you need to make code changes to fix them.
+      - name: Create AI pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: |
+            chore: fix CI issue
+          title: 'chore: fix CI issue'
+          body: |
+            ### Description of changes: 
+            CI has some problems. This PR should fix those.
 
-      #       ### Testing:
-      #       CI should pass.
+            ### Testing:
+            CI should pass.
