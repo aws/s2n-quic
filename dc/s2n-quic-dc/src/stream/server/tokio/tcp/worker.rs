@@ -774,7 +774,12 @@ where
                 return Err(Some(error)).into();
             };
 
-            if keys.application.opener.dedup_check().is_err() {
+            if keys
+                .application
+                .opener
+                .on_decrypt_success(recv_buffer.into())
+                .is_err()
+            {
                 return Ok(ControlFlow::Continue(())).into();
             };
 
