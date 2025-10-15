@@ -11,7 +11,11 @@ use crate::{
     testing::{init_tracing, query_event, server_name, NoopSubscriber, TestTlsProvider},
 };
 use s2n_quic_core::time::StdClock;
-use std::{num::NonZeroUsize, path::PathBuf, time::Duration};
+use std::{
+    num::NonZeroUsize,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 use tracing::info;
 
 #[tokio::test]
@@ -99,7 +103,7 @@ async fn setup_servers() {
 }
 
 async fn test_connection(
-    unix_socket_path: &PathBuf,
+    unix_socket_path: &Path,
     handshake_server: &ServerProvider,
     test_event_subscriber: NoopSubscriber,
     stream_client: &ClientTokio<ClientProvider, NoopSubscriber>,
@@ -109,7 +113,7 @@ async fn test_connection(
         .with_protocol(Protocol::Tcp)
         .with_udp(false)
         .with_workers(NonZeroUsize::new(1).unwrap())
-        .with_socket_path(&unix_socket_path)
+        .with_socket_path(unix_socket_path)
         .build(handshake_server.clone(), test_event_subscriber.clone())
         .unwrap();
 
@@ -123,7 +127,7 @@ async fn test_connection(
         .with_protocol(Protocol::Tcp)
         .with_udp(false)
         .with_workers(NonZeroUsize::new(1).unwrap())
-        .with_socket_path(&unix_socket_path)
+        .with_socket_path(unix_socket_path)
         .build(test_event_subscriber.clone())
         .unwrap();
     info!(
