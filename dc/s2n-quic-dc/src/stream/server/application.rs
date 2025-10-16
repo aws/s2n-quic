@@ -30,7 +30,6 @@ use tracing::Instrument as _;
 #[derive(Clone)]
 pub struct Server<S: event::Subscriber + Clone> {
     streams: accept::Receiver<S>,
-    local_addr: SocketAddr,
     stats: stats::Sender,
     /// This field retains a reference to the runtime being used
     #[allow(dead_code)]
@@ -41,10 +40,8 @@ pub struct Server<S: event::Subscriber + Clone> {
 
 impl<S: event::Subscriber + Clone> Server<S> {
     #[inline]
-    pub fn new(acceptor_addr: SocketAddr, subscriber: S) -> io::Result<Self> {
-        Builder::default()
-            .with_address(acceptor_addr)
-            .build(subscriber)
+    pub fn new(subscriber: S) -> io::Result<Self> {
+        Builder::default().build(subscriber)
     }
 
     pub fn builder() -> Builder {
@@ -55,11 +52,6 @@ impl<S: event::Subscriber + Clone> Server<S> {
     pub async fn accept(&self) -> io::Result<(crate::stream::application::Stream<S>, SocketAddr)> {
         accept::accept(&self.streams, &self.stats).await
     }
-
-    #[inline]
-    pub fn acceptor_addr(&self) -> io::Result<SocketAddr> {
-        Ok(self.local_addr)
-    }
 }
 
 /// Default to the SOMAXCONN, similar to rust:
@@ -69,7 +61,6 @@ const DEFAULT_BACKLOG: u16 = libc::SOMAXCONN as _;
 pub struct Builder {
     backlog: Option<NonZeroU16>,
     workers: Option<usize>,
-    acceptor_addr: SocketAddr,
     span: Option<tracing::Span>,
     enable_udp: bool,
     enable_tcp: bool,
@@ -82,8 +73,6 @@ impl Default for Builder {
         Self {
             backlog: None,
             workers: None,
-            // FIXME: Don't default to a fixed port?
-            acceptor_addr: "[::]:4444".parse().unwrap(),
             span: None,
             enable_udp: true,
             enable_tcp: false,
@@ -154,7 +143,6 @@ impl Builder {
 
         let mut server = Server {
             streams: stream_receiver,
-            local_addr: self.acceptor_addr,
             stats: stats_sender,
             env,
             acceptor_rt,
@@ -196,12 +184,6 @@ impl<S: event::Subscriber + Clone> Start<'_, S> {
         let _acceptor = self.server.acceptor_rt.enter();
 
         self.spawn_worker()?;
-
-        debug_assert_ne!(
-            self.server.local_addr.port(),
-            0,
-            "a port should be selected"
-        );
 
         Ok(())
     }

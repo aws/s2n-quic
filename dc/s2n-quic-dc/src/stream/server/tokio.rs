@@ -150,11 +150,6 @@ impl Default for Builder {
 
 macro_rules! common_builder_methods {
     () => {
-        pub fn with_address(mut self, addr: SocketAddr) -> Self {
-            self.acceptor_addr = addr;
-            self
-        }
-
         pub fn with_backlog(mut self, backlog: NonZeroU16) -> Self {
             self.backlog = Some(backlog);
             self
@@ -196,6 +191,11 @@ macro_rules! common_builder_methods {
 }
 macro_rules! manager_builder_methods {
     () => {
+        pub fn with_address(mut self, addr: SocketAddr) -> Self {
+            self.acceptor_addr = addr;
+            self
+        }
+
         pub fn with_linger(mut self, linger: Duration) -> Self {
             self.linger = Some(linger);
             self
