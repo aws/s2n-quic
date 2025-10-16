@@ -94,6 +94,10 @@ jobs:
             Output: Once you are done, run a git diff to show all of your changes. You should simply output the result of the git diff as is, so that I can store it into a git patch file directly.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload the patch to S3
+        run: |
+          TARGET_SHA="${{ github.sha }}/patch"
+          aws s3 cp /tmp/fix.patch "s3://s2n-quic-genai-artifacts/$TARGET_SHA" --acl private --follow-symlinks
       - name: Apply git patch
         run: |
           git apply /tmp/fix.patch
