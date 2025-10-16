@@ -80,11 +80,11 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v5.1.0
         if: github.event_name == 'workflow_dispatch'
         with:
-          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2nQuicGHAS3Session
+          role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
+          role-session-name: S2nBedrockAgentSession
           aws-region: us-west-2
       - name: Run Bedrock Analysis
-        uses: severity1/custom-amazon-bedrock-agent-action@v0.10.0
+        uses: boquan-fang/custom-amazon-bedrock-agent-action@main
         with:
           agent_id: QNFDMSDYHR
           agent_alias_id: EFGXMCUYAR
