@@ -91,6 +91,7 @@ jobs:
           action_prompt: |
             Role: You are a rust expert
             Task: Review this codebase's Cargo.tomls and fix the udeps issue. There are unused dependencies in this project, and you need to make code changes to fix them.
+            Make sure that all of your changes can be seen in the Github Action!
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Create AI pull request
