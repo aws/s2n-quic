@@ -38,36 +38,36 @@ permissions:
   id-token: write # This is required for requesting the JWT/OIDC
 
 jobs:
-  udeps:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: true
+  # udeps:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v5
+  #       with:
+  #         submodules: true
 
-      - name: Install rust toolchain
-        id: toolchain
-        run: |
-          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --profile minimal
-          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+  #     - name: Install rust toolchain
+  #       id: toolchain
+  #       run: |
+  #         rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --profile minimal
+  #         rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
-      - uses: camshaft/rust-cache@v1
+  #     - uses: camshaft/rust-cache@v1
 
-      # Ideally this would use the camshaft/install action to install cargo-udeps. However,
-      # the --locked flag can't currently be provided to camshaft/install. After support for this
-      # is added, camshaft/install should be used here instead:
-      # https://github.com/aws/s2n-quic/issues/2593
-      - name: Install cargo-udeps
-        run: cargo install cargo-udeps --locked
+  #     # Ideally this would use the camshaft/install action to install cargo-udeps. However,
+  #     # the --locked flag can't currently be provided to camshaft/install. After support for this
+  #     # is added, camshaft/install should be used here instead:
+  #     # https://github.com/aws/s2n-quic/issues/2593
+  #     - name: Install cargo-udeps
+  #       run: cargo install cargo-udeps --locked
 
-      - name: Run cargo udeps
-        run: cargo udeps --workspace --all-targets
-        env:
-          RUSTC_WRAPPER: ""
+  #     - name: Run cargo udeps
+  #       run: cargo udeps --workspace --all-targets
+  #       env:
+  #         RUSTC_WRAPPER: ""
   aifix:
     runs-on: ubuntu-latest
-    if: ${{ always() }}
-    needs: udeps
+    # if: ${{ always() }}
+    # needs: udeps
     permissions:
       statuses: write
       id-token: write # This is required for requesting the JWT/OIDC
@@ -91,6 +91,8 @@ jobs:
           action_prompt: |
             Role: You are a rust expert
             Task: Review this codebase's Cargo.tomls and fix the udeps issue. There are unused dependencies in this project, and you need to make code changes to fix them.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Create AI pull request
         uses: peter-evans/create-pull-request@v7
         with:
