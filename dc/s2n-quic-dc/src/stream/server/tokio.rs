@@ -150,16 +150,6 @@ impl Default for Builder {
 
 macro_rules! common_builder_methods {
     () => {
-        pub fn with_backlog(mut self, backlog: NonZeroU16) -> Self {
-            self.backlog = Some(backlog);
-            self
-        }
-
-        pub fn with_workers(mut self, workers: NonZeroUsize) -> Self {
-            self.workers = Some(workers.into());
-            self
-        }
-
         pub fn with_protocol(mut self, protocol: socket::Protocol) -> Self {
             match protocol {
                 socket::Protocol::Udp => {
@@ -193,6 +183,16 @@ macro_rules! manager_builder_methods {
     () => {
         pub fn with_address(mut self, addr: SocketAddr) -> Self {
             self.acceptor_addr = addr;
+            self
+        }
+
+        pub fn with_backlog(mut self, backlog: NonZeroU16) -> Self {
+            self.backlog = Some(backlog);
+            self
+        }
+
+        pub fn with_workers(mut self, workers: NonZeroUsize) -> Self {
+            self.workers = Some(workers.into());
             self
         }
 

@@ -54,7 +54,7 @@ async fn setup_servers() {
 
     info!("Client created");
 
-    // Create managers
+    // Create manager handshake server
     let manager_handshake_map = Map::new(
         Signer::new(b"default"),
         1,
@@ -126,7 +126,6 @@ async fn test_connection(
     let app_server = crate::stream::server::application::Server::<NoopSubscriber>::builder()
         .with_protocol(Protocol::Tcp)
         .with_udp(false)
-        .with_workers(NonZeroUsize::new(1).unwrap())
         .with_socket_path(unix_socket_path)
         .build(test_event_subscriber.clone())
         .unwrap();

@@ -12,13 +12,14 @@ use crate::{
         stateless_reset, Map,
     },
     stream::{
+        application::Builder,
         endpoint,
         environment::{
             tokio::{self as env, Environment},
             Environment as _,
         },
         recv::{self, buffer::Channel},
-        server::{self, accept, tokio::tcp::LazyBoundStream},
+        server::{self, tokio::tcp::LazyBoundStream},
     },
     uds::{self},
 };
@@ -31,59 +32,33 @@ use s2n_quic_core::{
 };
 use std::{io::ErrorKind, os::fd::OwnedFd, path::Path, time::Duration};
 use tokio::net::TcpStream;
-use tracing::debug;
 
-pub struct Worker<Sub>
+pub struct Receiver<Sub>
 where
     Sub: Subscriber + Clone,
 {
     receiver: uds::receiver::Receiver,
     env: Environment<Sub>,
-    sender: accept::Sender<Sub>,
-    accept_flavor: accept::Flavor,
 }
 
-impl<Sub> Worker<Sub>
+impl<Sub> Receiver<Sub>
 where
     Sub: Subscriber + Clone,
 {
-    pub fn new(
-        socket_path: &Path,
-        env: &Environment<Sub>,
-        sender: &accept::Sender<Sub>,
-        accept_flavor: accept::Flavor,
-    ) -> std::io::Result<Self> {
+    pub fn new(socket_path: &Path, env: &Environment<Sub>) -> std::io::Result<Self> {
         let receiver = uds::receiver::Receiver::new(socket_path)?;
         Ok(Self {
             receiver,
 
             env: env.clone(),
-            sender: sender.clone(),
-            accept_flavor,
         })
     }
 
-    pub async fn run(self) -> std::io::Result<()> {
+    pub async fn receive_stream(&self) -> std::io::Result<Builder<Sub>> {
         let now = self.env.clock().get_time();
+
         let publisher = self.env.endpoint_publisher_with_time(now);
 
-        loop {
-            match self.receive_and_process(&publisher).await {
-                Ok(_) => {
-                    continue;
-                }
-                Err(e) => {
-                    tracing::error!("Unix domain socket packet processing error {:?}", e);
-                    continue;
-                }
-            }
-        }
-    }
-
-    async fn receive_and_process<Pub>(&self, publisher: &Pub) -> std::io::Result<()>
-    where
-        Pub: EndpointPublisher,
-    {
         let (packet_data, fd) = self.receiver.receive_msg().await?;
 
         let decoded_packet = self.decode_packet(&packet_data)?;
@@ -202,28 +177,7 @@ where
                 blocked_count: 0,
             });
         }
-        let res = match self.accept_flavor {
-            accept::Flavor::Fifo => self.sender.send_back(stream_builder),
-            accept::Flavor::Lifo => self.sender.send_front(stream_builder),
-        };
-
-        match res {
-            Ok(prev) => {
-                if let Some(stream) = prev {
-                    stream.prune(
-                        event::builder::AcceptorStreamPruneReason::AcceptQueueCapacityExceeded,
-                    );
-                }
-                Ok(())
-            }
-            Err(_err) => {
-                debug!("application accept queue dropped; shutting down");
-                Err(std::io::Error::new(
-                    ErrorKind::ConnectionAborted,
-                    "accept queue dropped",
-                ))
-            }
-        }
+        Ok(stream_builder)
     }
 
     fn decode_packet(&self, data: &[u8]) -> std::io::Result<decoder::Packet> {
