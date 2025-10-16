@@ -24,7 +24,8 @@ async fn setup_servers() {
 
     let tls_materials_provider = TestTlsProvider {};
     let test_event_subscriber = NoopSubscriber {};
-    let unix_socket_path = PathBuf::from("/tmp/shared.sock");
+    let unix_socket_path1 = PathBuf::from("/tmp/shared1.sock");
+    let unix_socket_path2 = PathBuf::from("/tmp/shared2.sock");
 
     // Create client
     let handshake_client = ClientProvider::builder()
@@ -85,7 +86,7 @@ async fn setup_servers() {
 
     info!("Setting up first manager+application servers");
     test_connection(
-        &unix_socket_path,
+        &unix_socket_path1,
         &handshake_server,
         test_event_subscriber.clone(),
         &stream_client,
@@ -94,7 +95,7 @@ async fn setup_servers() {
 
     info!("Setting up second manager+application servers");
     test_connection(
-        &unix_socket_path,
+        &unix_socket_path2,
         &handshake_server,
         test_event_subscriber,
         &stream_client,
