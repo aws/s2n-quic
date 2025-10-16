@@ -6,7 +6,7 @@ use crate::{
     path::secret::schedule::Ciphersuite,
 };
 use s2n_codec::{DecoderBufferMut, DecoderBufferMutResult, DecoderError};
-use s2n_quic_core::{dc::ApplicationParams, varint::VarInt};
+use s2n_quic_core::{dc::ApplicationParams, time::Timestamp, varint::VarInt};
 
 #[derive(Clone, Debug)]
 pub struct Packet {
@@ -15,6 +15,7 @@ pub struct Packet {
     export_secret: Vec<u8>,
     application_params_version: u8,
     application_params: ApplicationParams,
+    queue_time: Timestamp,
     payload: Vec<u8>,
 }
 
@@ -42,6 +43,11 @@ impl Packet {
     #[inline]
     pub fn application_params(&self) -> &ApplicationParams {
         &self.application_params
+    }
+
+    #[inline]
+    pub fn queue_time(&self) -> &Timestamp {
+        &self.queue_time
     }
 
     #[inline]
@@ -75,6 +81,8 @@ impl Packet {
 
         let (application_params, buffer) = buffer.decode::<ApplicationParams>()?;
 
+        let (queue_time, buffer) = buffer.decode::<Timestamp>()?;
+
         let (payload_slice, buffer) = buffer.decode_slice_with_len_prefix::<VarInt>()?;
         let payload = payload_slice.into_less_safe_slice().to_vec();
 
@@ -84,6 +92,7 @@ impl Packet {
             export_secret,
             application_params_version,
             application_params,
+            queue_time,
             payload,
         };
 
@@ -93,6 +102,8 @@ impl Packet {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use crate::{
         packet::uds::{
             decoder,
@@ -101,7 +112,7 @@ mod tests {
         path::secret::schedule::Ciphersuite,
     };
     use s2n_codec::{DecoderBufferMut, DecoderError, EncoderLenEstimator};
-    use s2n_quic_core::dc;
+    use s2n_quic_core::{dc, time::Timestamp};
 
     #[test]
     fn test_encode_decode() {
@@ -109,6 +120,7 @@ mod tests {
         let export_secret = b"secret_data";
         let application_params = dc::testing::TEST_APPLICATION_PARAMS;
         let payload = b"payload_with_data";
+        let time = unsafe { Timestamp::from_duration(Duration::new(10, 0)) };
 
         // Encode
         let mut estimator = EncoderLenEstimator::new(usize::MAX);
@@ -117,6 +129,7 @@ mod tests {
             &ciphersuite,
             export_secret,
             &application_params,
+            time,
             payload,
         );
         let mut buffer = vec![0u8; expected_size];
@@ -126,6 +139,7 @@ mod tests {
             &ciphersuite,
             export_secret,
             &application_params,
+            time,
             payload,
         );
         assert_eq!(encoded_size, expected_size);
