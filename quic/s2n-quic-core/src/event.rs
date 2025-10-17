@@ -66,7 +66,14 @@ ident_into_event!(
     connection::Error,
     endpoint::Location,
 );
-borrowed_into_event!([u8; 4], [u8; 16], [u8], [u32], [&'a [u8]]);
+borrowed_into_event!(
+    [u8; 4],
+    [u8; 16],
+    [u8],
+    [u32],
+    [&'a [u8]],
+    (dyn core::error::Error + Send + Sync + 'static)
+);
 
 impl<T: IntoEvent<U>, U> IntoEvent<Option<U>> for Option<T> {
     #[inline]
