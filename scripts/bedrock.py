@@ -143,7 +143,9 @@ class CIFixer:
                 sessionId='ci-fixer-session',  # Using a fixed session ID for this purpose
                 inputText=prompt
             )
-            
+
+            print(f"The response['completion']['chunk'] is {response['completion']['chunk']}")
+
             # Process the response
             completion = response.get('completion', {})
             response_text = completion.get('text', '')
