@@ -113,7 +113,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Server<H, S> {
 
 /// Default to the SOMAXCONN, similar to rust:
 /// https://github.com/rust-lang/rust/blob/28a58f2fa7f0c46b8fab8237c02471a915924fe5/library/std/src/os/unix/net/listener.rs#L104
-const DEFAULT_BACKLOG: u16 = libc::SOMAXCONN as _;
+pub const DEFAULT_BACKLOG: u16 = libc::SOMAXCONN as _;
 
 pub struct Builder {
     backlog: Option<NonZeroU16>,
