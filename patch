@@ -1,0 +1,32 @@
+diff --git a/quic/s2n-quic-core/Cargo.toml b/quic/s2n-quic-core/Cargo.toml
+index c7a82404..1ec4fa8b 100644
+--- a/quic/s2n-quic-core/Cargo.toml
++++ b/quic/s2n-quic-core/Cargo.toml
+@@ -26,7 +26,6 @@ zlib = ["s2n-quic-platform/zlib"]
+ ahash = "0.8"
+ arbitrary = { version = "1", features = ["derive"], optional = true }
+ arrayvec = { version = "0.7", default-features = false }
+-arrayvec = { version = "0.7", default-features = false, features = ["std"] }
+ async-lock = "2"
+ bitflags = "2"
+ bytes = { version = "1", features = ["serde"] }
+@@ -93,7 +92,6 @@ tracing-attributes = "0.1"
+ type-operators = "0.2"
+ unicode-width = "0.1"
+ zeroize = { version = "1", features = ["zeroize_derive"], optional = true }
+-zeroize = "1"
+ 
+ [dev-dependencies]
+ bolero = "0.9"
+diff --git a/quic/s2n-quic-transport/Cargo.toml b/quic/s2n-quic-transport/Cargo.toml
+index 92b28b36..bfd5b303 100644
+--- a/quic/s2n-quic-transport/Cargo.toml
++++ b/quic/s2n-quic-transport/Cargo.toml
+@@ -35,7 +35,6 @@ bytes = { version = "1", features = ["serde"] }
+ futures = { version = "0.3", default-features = false, features = ["std"] }
+ h3-quinn = { version = "0.0.3", optional = true }
+ histogram = "0.7"
+-inout = { version = "0.1", features = ["std"] }
+ lazy_static = "1"
+ pin-project-lite = "0.2"
+ regex = { version = "1", optional = true }

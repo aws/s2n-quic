@@ -87,7 +87,7 @@ jobs:
         uses: boquan-fang/custom-amazon-bedrock-agent-action@main
         with:
           agent_id: QNFDMSDYHR
-          agent_alias_id: EFGXMCUYAR
+          agent_alias_id: PON8LP9FEI
           action_prompt: |
             Role: You are a rust expert
             Task: Review this codebase's Cargo.tomls and fix the udeps issue. There are unused dependencies in this project, and you need to make code changes to fix them.
