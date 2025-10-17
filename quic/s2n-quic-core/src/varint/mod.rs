@@ -34,8 +34,7 @@ impl fmt::Display for VarIntError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for VarIntError {}
+impl core::error::Error for VarIntError {}
 
 // === API ===
 

@@ -345,6 +345,7 @@ struct TlsExporterReady<'a> {
 #[event("connectivity:tls_handshake_failed")]
 struct TlsHandshakeFailed<'a> {
     session: crate::event::TlsSession<'a>,
+    error: &'a (dyn core::error::Error + Send + Sync + 'static),
 }
 
 #[event("connectivity:path_challenge_updated")]

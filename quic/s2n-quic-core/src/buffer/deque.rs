@@ -225,8 +225,7 @@ impl fmt::Display for FillError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for FillError {}
+impl core::error::Error for FillError {}
 
 #[cfg(feature = "std")]
 impl From<FillError> for std::io::Error {

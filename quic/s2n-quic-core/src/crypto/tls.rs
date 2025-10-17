@@ -166,6 +166,7 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     fn on_tls_handshake_failed(
         &mut self,
         session: &impl TlsSession,
+        error: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Result<(), crate::transport::Error>;
 
     /// Receives data from the initial packet space

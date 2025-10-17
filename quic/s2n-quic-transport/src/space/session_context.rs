@@ -570,10 +570,12 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
     fn on_tls_handshake_failed(
         &mut self,
         session: &impl tls::TlsSession,
+        e: &(dyn std::error::Error + Send + Sync + 'static),
     ) -> Result<(), transport::Error> {
         self.publisher
             .on_tls_handshake_failed(event::builder::TlsHandshakeFailed {
                 session: s2n_quic_core::event::TlsSession::new(session),
+                error: e,
             });
         Ok(())
     }

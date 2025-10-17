@@ -18,8 +18,7 @@ use core::{fmt, ops};
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub struct Error(VarInt);
 
-#[cfg(feature = "std")]
-impl std::error::Error for Error {}
+impl core::error::Error for Error {}
 
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

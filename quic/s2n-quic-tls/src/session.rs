@@ -162,7 +162,7 @@ impl tls::Session for Session {
                 Poll::Ready(Ok(()))
             }
             Poll::Ready(Err(e)) => {
-                context.on_tls_handshake_failed(self)?;
+                context.on_tls_handshake_failed(self, &e)?;
 
                 Poll::Ready(Err(e
                     .alert()
