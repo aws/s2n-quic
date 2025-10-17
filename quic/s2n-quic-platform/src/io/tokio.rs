@@ -282,7 +282,7 @@ impl Io {
                 }
             }
 
-            // construct the TX side for the endpoint event loop
+            // construct the TX side for the enpoint event loop
             socket::io::tx::Tx::new(producers, gso, mtu_config.max_mtu())
         };
 

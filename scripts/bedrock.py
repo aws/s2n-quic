@@ -209,7 +209,9 @@ class CIFixer:
             {file_content}
             ```
 
-            Please fix the typo and return the ENTIRE corrected file content with nothing else. Do not include any explanations or markdown formatting in your response. Just return the corrected file content as plain text.
+            Please fix the typo and return the ENTIRE corrected file content with nothing else.
+            Please only fix those lines that are provided by this prompt and don't touch any other lines.
+            Do not include any explanations or markdown formatting in your response. Just return the corrected file content as plain text.
             """
         return prompt
     

@@ -8,7 +8,7 @@ use crate::{
 
 macro_rules! impl_accept_api {
     () => {
-        /// Accepts an incoming [`PeerStream`](`crate::stream::PeerStream`)
+        /// Accets an incoming [`PeerStream`](`crate::stream::PeerStream`)
         ///
         /// The method will return
         /// - `Ok(Some(stream)))` if a [`PeerStream`](`crate::stream::PeerStream`) was accepted
