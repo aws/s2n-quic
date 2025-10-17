@@ -33,12 +33,17 @@ env:
 #
 # Updating status is relatively safe (doesnt modify source code) and caution
 # should we taken before adding more permissions.
-permissions:
-  statuses: write
-  id-token: write # This is required for requesting the JWT/OIDC
+# permissions:
+#   statuses: write
+#   id-token: write # This is required for requesting the JWT/OIDC
 
 jobs:
   typos:
+    permissions:
+      statuses: write
+      id-token: write # This is required for requesting the JWT/OIDC
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -51,6 +56,30 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup override set stable
 
+      - uses: camshaft/install@v1
+        with:
+          crate: typos-cli
+          bins: typos
+
+      - uses: aws-actions/configure-aws-credentials@v5.1.0
+        with:
+          role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
+          role-session-name: S2nQuicBedrockSession
+          aws-region: us-west-2
+
       - name: Run typos
         run: |
-          typos -c .github/config/typos.toml --format json | jq -c 'select(.type=="typo")'
+          ./scripts/typos --format json | jq -c 'select(.type=="typo")' | ./scripts/bedrock.py --agent-id QNFDMSDYHR --agent-alias-id PON8LP9FEI
+
+      - name: Create GenAI pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: |
+            chore: Bedrock PR
+          title: 'chore: Bedrock fixes CI'
+          body: |
+            ### Description of changes: 
+            AWS Bedrock agent fixes the CI problems?
+
+            ### Testing:
+            CI test should pass.
