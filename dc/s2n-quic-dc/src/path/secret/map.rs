@@ -5,7 +5,11 @@ use crate::{
     credentials::{Credentials, Id},
     event,
     packet::{secret_control as control, Packet},
-    path::secret::{open, seal, stateless_reset},
+    path::secret::{
+        open,
+        schedule::{Ciphersuite, ExportSecret},
+        seal, stateless_reset,
+    },
     stream::TransportFeatures,
 };
 use core::fmt;
@@ -168,6 +172,28 @@ impl Map {
         let keys = entry.bidi_remote(self.clone(), credentials, queue_id, features);
 
         Some((keys, params))
+    }
+
+    pub fn secret_for_credentials(
+        &self,
+        credentials: &Credentials,
+        queue_id: Option<VarInt>,
+        features: &TransportFeatures,
+        control_out: &mut Vec<u8>,
+    ) -> Option<(
+        ExportSecret,
+        Ciphersuite,
+        entry::Bidirectional,
+        dc::ApplicationParams,
+    )> {
+        let entry = self
+            .store
+            .pre_authentication(credentials, queue_id, control_out)?;
+        let params = entry.parameters();
+        let keys = entry.bidi_remote(self.clone(), credentials, queue_id, features); // for dedup check
+        let secret = entry.secret();
+
+        Some((*secret.export_secret(), *secret.ciphersuite(), keys, params))
     }
 
     /// This can be called from anywhere to ask the map to handle a packet.

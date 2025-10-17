@@ -44,6 +44,15 @@ impl Message {
         }
     }
 
+    pub fn new_from_packet(bytes: Vec<u8>, addr: std::net::SocketAddr) -> Self {
+        let buffer = Buffer::from(bytes);
+        Self {
+            addr: Addr::new(addr.into()),
+            buffer,
+            recv: Default::default(),
+        }
+    }
+
     #[inline]
     pub fn remote_address(&self) -> SocketAddress {
         self.addr.get()

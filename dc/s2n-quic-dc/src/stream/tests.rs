@@ -14,6 +14,7 @@ mod key_update;
 mod request_response;
 mod restart;
 mod rpc;
+mod shared_cache;
 
 /// Shows an endpoint doesn't need an application tokio runtime to be created
 #[test]

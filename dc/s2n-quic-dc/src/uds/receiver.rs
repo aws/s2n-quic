@@ -14,13 +14,15 @@ use std::{
         },
     },
     path::{Path, PathBuf},
+    sync::Arc,
 };
-use tokio::io::{unix::AsyncFd, Interest};
+use tokio::io::{unix::AsyncFd, Interest, Ready};
 
 const BUFFER_SIZE: usize = u16::MAX as usize;
 
+#[derive(Clone)]
 pub struct Receiver {
-    async_fd: AsyncFd<OwnedFd>,
+    async_fd: Arc<AsyncFd<OwnedFd>>,
     socket_path: PathBuf,
 }
 
@@ -29,7 +31,7 @@ impl Receiver {
         let socket = UnixDatagram::bind(socket_path)?;
         socket.set_nonblocking(true)?;
 
-        let async_fd = AsyncFd::new(OwnedFd::from(socket))?;
+        let async_fd = Arc::new(AsyncFd::new(OwnedFd::from(socket))?);
 
         Ok(Self {
             async_fd,
@@ -46,7 +48,7 @@ impl Receiver {
                     return Ok(result);
                 }
                 Err(nix::Error::EAGAIN) => {
-                    guard.clear_ready();
+                    guard.clear_ready_matching(Ready::READABLE);
                     continue;
                 }
                 Err(e) => {

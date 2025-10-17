@@ -3,83 +3,47 @@
 
 use crate::{
     event,
-    path::secret,
     stream::{
-        application::Builder as StreamBuilder,
-        environment::{
-            tokio::{self as env, Environment},
-            udp as udp_pool, Environment as _,
-        },
+        environment::tokio::{self as env, Environment},
         runtime::tokio as runtime,
-        server::{accept, stats},
+        server::{
+            accept,
+            tokio::{
+                common_builder_methods, manager_builder_methods, tcp, Handshake, DEFAULT_BACKLOG,
+                MAX_TCP_WORKERS,
+            },
+        },
         socket,
     },
-    sync::mpmc,
 };
 use core::num::{NonZeroU16, NonZeroUsize};
 use s2n_quic_core::ensure;
-use std::{io, net::SocketAddr, time::Duration};
-use tokio::io::unix::AsyncFd;
+use std::{
+    io,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 use tracing::{trace, Instrument as _};
-
-// The kernel contends on fdtable lock when calling accept to locate free file
-// descriptors, so even if we don't contend on the underlying socket (due to
-// REUSEPORT) it still ends up expensive to have large amounts of threads trying to
-// accept() within a single process. Clamp concurrency to at most 4 threads
-// executing the TCP acceptor tasks accordingly.
-//
-// With UDP there's ~no lock contention for receiving packets on separate UDP sockets,
-// so we don't clamp concurrency in that case.
-pub const MAX_TCP_WORKERS: usize = 4;
-
-pub mod tcp;
-pub mod udp;
-pub mod uds;
-
-// This trait is a solution to abstract local_addr and map methods
-pub trait Handshake: Clone {
-    fn local_addr(&self) -> SocketAddr;
-
-    fn map(&self) -> &secret::Map;
-}
-
-impl Handshake for crate::psk::server::Provider {
-    fn local_addr(&self) -> SocketAddr {
-        self.local_addr()
-    }
-
-    fn map(&self) -> &secret::Map {
-        self.map()
-    }
-}
 
 #[derive(Clone)]
 pub struct Server<H: Handshake + Clone, S: event::Subscriber + Clone> {
-    streams: accept::Receiver<S>,
     local_addr: SocketAddr,
     handshake: H,
-    stats: stats::Sender,
-    /// This field retains a reference to the runtime being used
-    #[allow(dead_code)]
     env: Environment<S>,
-    #[allow(dead_code)]
     acceptor_rt: runtime::Shared<S>,
 }
 
 impl<H: Handshake + Clone, S: event::Subscriber + Clone> Server<H, S> {
     #[inline]
-    pub fn new(acceptor_addr: SocketAddr, handshake: H, subscriber: S) -> io::Result<Self> {
+    pub fn new(acceptor_addr: SocketAddr, handshake: &H, subscriber: S) -> io::Result<Self> {
         Builder::default()
             .with_address(acceptor_addr)
-            .build(handshake, subscriber)
+            .build(handshake.clone(), subscriber)
     }
 
     pub fn builder() -> Builder {
         Builder::default()
-    }
-
-    pub fn drop_state(&self) {
-        self.handshake.map().drop_state()
     }
 
     pub fn handshake_state(&self) -> &H {
@@ -96,11 +60,6 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Server<H, S> {
     }
 
     #[inline]
-    pub async fn accept(&self) -> io::Result<(crate::stream::application::Stream<S>, SocketAddr)> {
-        accept::accept(&self.streams, &self.stats).await
-    }
-
-    #[inline]
     pub fn acceptor_addr(&self) -> io::Result<SocketAddr> {
         Ok(self.local_addr)
     }
@@ -110,10 +69,6 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Server<H, S> {
         Ok(self.handshake.local_addr())
     }
 }
-
-/// Default to the SOMAXCONN, similar to rust:
-/// https://github.com/rust-lang/rust/blob/28a58f2fa7f0c46b8fab8237c02471a915924fe5/library/std/src/os/unix/net/listener.rs#L104
-pub const DEFAULT_BACKLOG: u16 = libc::SOMAXCONN as _;
 
 pub struct Builder {
     backlog: Option<NonZeroU16>,
@@ -127,6 +82,7 @@ pub struct Builder {
     send_buffer: Option<usize>,
     recv_buffer: Option<usize>,
     reuse_addr: Option<bool>,
+    socket_path: Option<PathBuf>,
 }
 
 impl Default for Builder {
@@ -144,94 +100,22 @@ impl Default for Builder {
             send_buffer: None,
             recv_buffer: None,
             reuse_addr: None,
+            socket_path: None,
         }
     }
-}
-
-macro_rules! common_builder_methods {
-    () => {
-        pub fn with_protocol(mut self, protocol: socket::Protocol) -> Self {
-            match protocol {
-                socket::Protocol::Udp => {
-                    self.enable_udp = true;
-                    self.enable_tcp = false
-                }
-                socket::Protocol::Tcp => {
-                    self.enable_udp = false;
-                    self.enable_tcp = true;
-                }
-                _ => {
-                    self.enable_udp = false;
-                    self.enable_tcp = false;
-                }
-            }
-            self
-        }
-
-        pub fn with_udp(mut self, enabled: bool) -> Self {
-            self.enable_udp = enabled;
-            self
-        }
-
-        pub fn with_tcp(mut self, enabled: bool) -> Self {
-            self.enable_tcp = enabled;
-            self
-        }
-    };
-}
-macro_rules! manager_builder_methods {
-    () => {
-        pub fn with_address(mut self, addr: SocketAddr) -> Self {
-            self.acceptor_addr = addr;
-            self
-        }
-
-        pub fn with_backlog(mut self, backlog: NonZeroU16) -> Self {
-            self.backlog = Some(backlog);
-            self
-        }
-
-        pub fn with_workers(mut self, workers: NonZeroUsize) -> Self {
-            self.workers = Some(workers.into());
-            self
-        }
-
-        pub fn with_linger(mut self, linger: Duration) -> Self {
-            self.linger = Some(linger);
-            self
-        }
-
-        pub fn with_send_buffer(mut self, bytes: usize) -> Self {
-            self.send_buffer = Some(bytes);
-            self
-        }
-
-        pub fn with_recv_buffer(mut self, bytes: usize) -> Self {
-            self.recv_buffer = Some(bytes);
-            self
-        }
-
-        /// Sets the reuse address option for the OS socket handle.
-        ///
-        /// This allows the application to bind to a previously used local address.
-        /// In TCP, this can be useful when a closed socket is in the `TIME_WAIT` state and the application
-        /// would like to reuse that address immediately.
-        /// On Linux packets are routed to the most recently bound socket.
-        ///
-        /// See `SO_REUSEADDR` for more information.
-        pub fn with_reuse_addr(mut self, enabled: bool) -> Self {
-            self.reuse_addr = Some(enabled);
-            self
-        }
-    };
 }
 
 impl Builder {
     common_builder_methods!();
     manager_builder_methods!();
 
+    pub fn with_socket_path(mut self, path: &Path) -> Self {
+        self.socket_path = Some(path.to_path_buf());
+        self
+    }
+
     pub fn build<H: Handshake + Clone, S: event::Subscriber + Clone>(
-        mut self,
+        self,
         handshake: H,
         subscriber: S,
     ) -> io::Result<Server<H, S>> {
@@ -250,38 +134,19 @@ impl Builder {
         });
 
         let backlog: usize = self.backlog.map(NonZeroU16::get).unwrap_or(DEFAULT_BACKLOG) as usize;
-        let (stream_sender, stream_receiver) = mpmc::new::<StreamBuilder<S>>(backlog);
 
-        let mut env = env::Builder::new(subscriber)
-            .with_threads(concurrency)
-            .with_acceptor(stream_sender.clone());
+        let env = env::Builder::new(subscriber).with_threads(concurrency);
 
         let enable_udp_pool = true;
 
         if self.enable_udp && enable_udp_pool {
-            // configure the socket options with the specified address
-            let mut options = socket::Options::new(self.acceptor_addr);
-
-            options.send_buffer = self.send_buffer;
-            options.recv_buffer = self.recv_buffer;
-
-            env = env.with_socket_options(options);
-
-            let mut pool = udp_pool::Config::new(handshake.map().clone());
-
-            pool.reuse_port = concurrency > 1;
-            pool.accept_flavor = self.accept_flavor;
-
-            env = env.with_pool(pool);
+            // TODO UDP
         }
 
         let env = env.build()?;
 
         if self.enable_udp && enable_udp_pool {
-            // update the address with the selected port
-            self.acceptor_addr = env.pool_addr().unwrap();
-            // don't use the owned socket acceptor
-            self.enable_udp = false;
+            // TODO UDP
         }
 
         // TODO is it better to spawn one current_thread runtime per concurrency?
@@ -298,34 +163,22 @@ impl Builder {
             span = tracing::debug_span!("server");
         }
 
-        let (stats_sender, stats_worker, stats) = stats::channel();
-
-        acceptor_rt.spawn(stats_worker.run(env.clock().clone()));
-
-        // Spawn the queue pruner task
-        if matches!(self.accept_flavor, accept::Flavor::Lifo) {
-            let env = env.clone();
-            let channel = stream_receiver.downgrade();
-            let stats = stats.clone();
-
-            acceptor_rt.spawn(accept::Pruner::default().run(env, channel, stats));
-        }
-
         let mut server = Server {
-            streams: stream_receiver,
             local_addr: self.acceptor_addr,
             handshake,
-            stats: stats_sender,
             env,
             acceptor_rt,
         };
 
         // split the backlog between all of the workers
-        //
         // this is only used in TCP, so clamp division to maximum TCP worker concurrency
         let backlog = backlog
             .div_ceil(concurrency.clamp(0, MAX_TCP_WORKERS))
             .max(1);
+        let path = self.socket_path.ok_or(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Unix domain socket path is required",
+        ))?;
 
         Start {
             enable_tcp: self.enable_tcp,
@@ -335,12 +188,12 @@ impl Builder {
             backlog,
             concurrency,
             server: &mut server,
-            stream_sender,
             span,
             next_id: 0,
             send_buffer: self.send_buffer,
             recv_buffer: self.recv_buffer,
             reuse_addr: self.reuse_addr.unwrap_or(false),
+            socket_path: path,
         }
         .start()?;
 
@@ -355,13 +208,13 @@ struct Start<'a, H: Handshake + Clone, S: event::Subscriber + Clone> {
     backlog: usize,
     concurrency: usize,
     server: &'a mut Server<H, S>,
-    stream_sender: accept::Sender<S>,
     span: tracing::Span,
     next_id: usize,
     linger: Option<Duration>,
     send_buffer: Option<usize>,
     recv_buffer: Option<usize>,
     reuse_addr: bool,
+    socket_path: PathBuf,
 }
 
 impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
@@ -485,32 +338,8 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
     }
 
     #[inline]
-    fn spawn_udp(&mut self, socket: std::net::UdpSocket) -> io::Result<()> {
-        // if this is the first socket being spawned then update the local address
-        if self.server.local_addr.port() == 0 {
-            self.server.local_addr = socket.local_addr()?;
-        }
-
-        let socket = AsyncFd::new(socket)?;
-        let id = self.id();
-
-        let acceptor = udp::Acceptor::new(
-            id,
-            socket,
-            &self.stream_sender,
-            &self.server.env,
-            self.server.handshake.map(),
-            self.accept_flavor,
-        )
-        .run();
-
-        if self.span.is_disabled() {
-            self.server.acceptor_rt.spawn(acceptor);
-        } else {
-            self.server
-                .acceptor_rt
-                .spawn(acceptor.instrument(self.span.clone()));
-        }
+    fn spawn_udp(&mut self, _socket: std::net::UdpSocket) -> io::Result<()> {
+        // TODO UDP
 
         Ok(())
     }
@@ -524,7 +353,8 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
 
         let socket = tokio::io::unix::AsyncFd::new(socket)?;
         let id = self.id();
-        let channel_behavior = tcp::worker::DefaultBehavior::new(&self.stream_sender);
+
+        let socket_behavior = tcp::worker::SocketBehavior::new(&self.socket_path);
         let acceptor = tcp::Acceptor::new(
             id,
             socket,
@@ -533,7 +363,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
             self.backlog,
             self.accept_flavor,
             self.linger,
-            channel_behavior,
+            socket_behavior,
         )?
         .run();
 
@@ -554,6 +384,3 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
         id
     }
 }
-
-pub(crate) use common_builder_methods;
-pub(crate) use manager_builder_methods;

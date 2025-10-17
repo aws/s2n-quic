@@ -187,6 +187,16 @@ impl Secret {
     }
 
     #[inline]
+    pub fn export_secret(&self) -> &ExportSecret {
+        &self.export_secret
+    }
+
+    #[inline]
+    pub fn ciphersuite(&self) -> &Ciphersuite {
+        &self.ciphersuite
+    }
+
+    #[inline]
     pub fn application_pair(
         &self,
         key_id: VarInt,

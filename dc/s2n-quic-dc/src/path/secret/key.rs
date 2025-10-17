@@ -169,7 +169,7 @@ pub mod open {
 
             /// Ensures the key has not been used before
             #[inline]
-            fn on_decrypt_success(&self, payload: &mut UninitSlice) -> open::Result {
+            pub fn on_decrypt_success(&self, payload: &mut UninitSlice) -> open::Result {
                 self.dedup.check().map_err(|e| {
                     let payload = unsafe {
                         let ptr = payload.as_mut_ptr() as *mut MaybeUninit<u8>;
