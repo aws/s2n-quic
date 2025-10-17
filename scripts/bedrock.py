@@ -144,11 +144,15 @@ class CIFixer:
                 inputText=prompt
             )
 
-            print(f"The response['completion']['chunk'] is {response['completion']['chunk']}")
+            for event in response['completion']:
+                event_type = list(event.keys())[0]
+                data = event[event_type]
 
+                if event_type == 'chunk':
+                    response_text = data['bytes'].decode('utf-8')
             # Process the response
-            completion = response.get('completion', {})
-            response_text = completion.get('text', '')
+            # completion = response.get('completion', {})
+            # response_text = completion.get('text', '')
             
             # Extract the corrected content from the agent's response
             corrected_content = self._extract_corrected_content(response_text)
