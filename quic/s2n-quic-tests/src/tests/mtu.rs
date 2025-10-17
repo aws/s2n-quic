@@ -419,7 +419,7 @@ mtu_test!(
     }
 );
 
-// if we lose every packet during a round trip and then allow packets through,
+// if we lose every paket during a round trip and then allow packets through,
 // this is not determined to be an MTU black hole
 #[test]
 fn mtu_loss_no_blackhole() {
