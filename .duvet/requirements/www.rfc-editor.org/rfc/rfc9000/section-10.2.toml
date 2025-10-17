@@ -1,0 +1,85 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-10.2"
+
+# Immediate Close
+#
+#    An endpoint sends a CONNECTION_CLOSE frame (Section 19.19) to
+#    terminate the connection immediately.  A CONNECTION_CLOSE frame
+#    causes all streams to immediately become closed; open streams can be
+#    assumed to be implicitly reset.
+# 
+#    After sending a CONNECTION_CLOSE frame, an endpoint immediately
+#    enters the closing state; see Section 10.2.1.  After receiving a
+#    CONNECTION_CLOSE frame, endpoints enter the draining state; see
+#    Section 10.2.2.
+# 
+#    Violations of the protocol lead to an immediate close.
+# 
+#    An immediate close can be used after an application protocol has
+#    arranged to close a connection.  This might be after the application
+#    protocol negotiates a graceful shutdown.  The application protocol
+#    can exchange messages that are needed for both application endpoints
+#    to agree that the connection can be closed, after which the
+#    application requests that QUIC close the connection.  When QUIC
+#    consequently closes the connection, a CONNECTION_CLOSE frame with an
+#    application-supplied error code will be used to signal closure to the
+#    peer.
+# 
+#    The closing and draining connection states exist to ensure that
+#    connections close cleanly and that delayed or reordered packets are
+#    properly discarded.  These states SHOULD persist for at least three
+#    times the current PTO interval as defined in [QUIC-RECOVERY].
+# 
+#    Disposing of connection state prior to exiting the closing or
+#    draining state could result in an endpoint generating a Stateless
+#    Reset unnecessarily when it receives a late-arriving packet.
+#    Endpoints that have some alternative means to ensure that late-
+#    arriving packets do not induce a response, such as those that are
+#    able to close the UDP socket, MAY end these states earlier to allow
+#    for faster resource recovery.  Servers that retain an open socket for
+#    accepting new connections SHOULD NOT end the closing or draining
+#    state early.
+# 
+#    Once its closing or draining state ends, an endpoint SHOULD discard
+#    all connection state.  The endpoint MAY send a Stateless Reset in
+#    response to any further incoming packets belonging to this
+#    connection.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+These states SHOULD persist for at least three
+times the current PTO interval as defined in [QUIC-RECOVERY].
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Endpoints that have some alternative means to ensure that late-
+arriving packets do not induce a response, such as those that are
+able to close the UDP socket, MAY end these states earlier to allow
+for faster resource recovery.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Servers that retain an open socket for
+accepting new connections SHOULD NOT end the closing or draining
+state early.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Once its closing or draining state ends, an endpoint SHOULD discard
+all connection state.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+The endpoint MAY send a Stateless Reset in
+response to any further incoming packets belonging to this
+connection.
+'''
+

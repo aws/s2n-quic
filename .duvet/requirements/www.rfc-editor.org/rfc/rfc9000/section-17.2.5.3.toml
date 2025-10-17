@@ -1,0 +1,77 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.3"
+
+# Continuing a Handshake after Retry
+#
+#    Subsequent Initial packets from the client include the connection ID
+#    and token values from the Retry packet.  The client copies the Source
+#    Connection ID field from the Retry packet to the Destination
+#    Connection ID field and uses this value until an Initial packet with
+#    an updated value is received; see Section 7.2.  The value of the
+#    Token field is copied to all subsequent Initial packets; see
+#    Section 8.1.2.
+# 
+#    Other than updating the Destination Connection ID and Token fields,
+#    the Initial packet sent by the client is subject to the same
+#    restrictions as the first Initial packet.  A client MUST use the same
+#    cryptographic handshake message it included in this packet.  A server
+#    MAY treat a packet that contains a different cryptographic handshake
+#    message as a connection error or discard it.  Note that including a
+#    Token field reduces the available space for the cryptographic
+#    handshake message, which might result in the client needing to send
+#    multiple Initial packets.
+# 
+#    A client MAY attempt 0-RTT after receiving a Retry packet by sending
+#    0-RTT packets to the connection ID provided by the server.
+# 
+#    A client MUST NOT reset the packet number for any packet number space
+#    after processing a Retry packet.  In particular, 0-RTT packets
+#    contain confidential information that will most likely be
+#    retransmitted on receiving a Retry packet.  The keys used to protect
+#    these new 0-RTT packets will not change as a result of responding to
+#    a Retry packet.  However, the data sent in these packets could be
+#    different than what was sent earlier.  Sending these new packets with
+#    the same packet number is likely to compromise the packet protection
+#    for those packets because the same key and nonce could be used to
+#    protect different content.  A server MAY abort the connection if it
+#    detects that the client reset the packet number.
+# 
+#    The connection IDs used in Initial and Retry packets exchanged
+#    between client and server are copied to the transport parameters and
+#    validated as described in Section 7.3.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST use the same
+cryptographic handshake message it included in this packet.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A server
+MAY treat a packet that contains a different cryptographic handshake
+message as a connection error or discard it.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A client MAY attempt 0-RTT after receiving a Retry packet by sending
+0-RTT packets to the connection ID provided by the server.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST NOT reset the packet number for any packet number space
+after processing a Retry packet.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A server MAY abort the connection if it
+detects that the client reset the packet number.
+'''
+
