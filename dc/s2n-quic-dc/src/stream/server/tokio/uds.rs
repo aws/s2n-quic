@@ -39,6 +39,7 @@ where
 {
     receiver: uds::receiver::Receiver,
     env: Environment<Sub>,
+    map: Map, // placeholder map
 }
 
 impl<Sub> Receiver<Sub>
@@ -47,10 +48,17 @@ where
 {
     pub fn new(socket_path: &Path, env: &Environment<Sub>) -> std::io::Result<Self> {
         let receiver = uds::receiver::Receiver::new(socket_path)?;
+        let sub = env.subscriber();
+        let map = Map::new(
+            stateless_reset::Signer::random(),
+            1,
+            time::NoopClock,
+            sub.clone(),
+        );
         Ok(Self {
             receiver,
-
             env: env.clone(),
+            map,
         })
     }
 
@@ -92,15 +100,7 @@ where
 
         let recv_buffer = recv::buffer::Local::new(buffer, None);
         let recv_buffer: either::Either<_, Channel> = Either::A(recv_buffer);
-        let sub = self.env.subscriber();
-
-        let map = Map::new(
-            stateless_reset::Signer::random(),
-            1,
-            time::NoopClock,
-            sub.clone(),
-        );
-        let secret_control = vec![];
+        let secret_control = vec![]; // this is only used while returning an error from endpoint::accept_stream
 
         let export_secret: ExportSecret =
             decoded_packet.export_secret().try_into().map_err(|e| {
@@ -147,7 +147,7 @@ where
             &self.env,
             peer,
             &initial_packet,
-            &map,
+            &self.map,
             subscriber_ctx,
             None,
             crypto,
