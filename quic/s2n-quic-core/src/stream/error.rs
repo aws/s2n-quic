@@ -68,8 +68,7 @@ pub enum StreamError {
     },
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for StreamError {}
+impl core::error::Error for StreamError {}
 
 impl fmt::Display for StreamError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

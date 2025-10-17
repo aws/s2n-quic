@@ -49,8 +49,7 @@ pub enum BuilderError {
     ZeroCapacity,
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for BuilderError {}
+impl core::error::Error for BuilderError {}
 
 impl fmt::Display for BuilderError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
