@@ -17,6 +17,7 @@ use std::{
 };
 use tracing::Instrument as _;
 
+#[derive(Clone)]
 pub struct Server<S: event::Subscriber + Clone> {
     receiver: uds::Receiver<S>,
     span: tracing::Span,

@@ -9,7 +9,7 @@ use std::{
     },
     path::Path,
 };
-use tokio::io::{unix::AsyncFd, Interest};
+use tokio::io::{unix::AsyncFd, Interest, Ready};
 
 pub struct Sender {
     socket_fd: AsyncFd<OwnedFd>,
@@ -41,13 +41,11 @@ impl Sender {
                     return Ok(());
                 }
                 Err(nix::Error::EAGAIN) => {
-                    guard.clear_ready();
+                    guard.clear_ready_matching(Ready::WRITABLE);
                     continue;
                 }
                 Err(e) => {
-                    let err = Err(std::io::Error::from(e));
-                    println!("{:?}", err);
-                    return err;
+                    return Err(std::io::Error::from(e));
                 }
             }
         }

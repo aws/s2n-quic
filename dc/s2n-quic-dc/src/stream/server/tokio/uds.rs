@@ -33,6 +33,7 @@ use s2n_quic_core::{
 use std::{io::ErrorKind, os::fd::OwnedFd, path::Path, time::Duration};
 use tokio::net::TcpStream;
 
+#[derive(Clone)]
 pub struct Receiver<Sub>
 where
     Sub: Subscriber + Clone,
