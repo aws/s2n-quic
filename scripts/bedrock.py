@@ -224,7 +224,7 @@ class CIFixer:
             Optional[str]: The corrected content or None if not found
         """
         # The agent should be instructed to return just the corrected content
-        # But we'll clean the response just in case
+        # But we'll clean the response just in case, while preserving trailing newlines
         
         # Strip any markdown code block markers if present
         if response_text.startswith("```") and "```" in response_text[3:]:
@@ -242,10 +242,20 @@ class CIFixer:
             
             # Extract the content between the markers
             if content_end > content_start:
-                return response_text[content_start:content_end].strip()
+                content = response_text[content_start:content_end]
+                # Remove leading whitespace but preserve trailing newline
+                content = content.lstrip()
+                # Ensure the content ends with exactly one newline
+                if not content.endswith('\n'):
+                    content += '\n'
+                return content
         
-        # If no code block markers, return the full response
-        return response_text.strip()
+        # If no code block markers, use the full response but ensure trailing newline
+        content = response_text.lstrip()
+        # Ensure the content ends with exactly one newline
+        if not content.endswith('\n'):
+            content += '\n'
+        return content
 
 
 def parse_typo_json(json_data: str) -> List[Dict]:
