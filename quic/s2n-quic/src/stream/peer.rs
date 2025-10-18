@@ -13,7 +13,7 @@ pub enum PeerStream {
 impl PeerStream {
     /// Returns the stream's identifier
     ///
-    /// This value is unque to a particular connection. The format follows the same as what is
+    /// This value is unique to a particular connection. The format follows the same as what is
     /// defined in the
     /// [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-stream-types-and-identifier).
     ///
@@ -26,7 +26,7 @@ impl PeerStream {
     /// use s2n_quic::stream::Type;
     ///
     /// while let Some(stream) = connection.accept().await? {
-    ///     println!("New stream's id: {}", stream.id());
+    ///     println!("New stream's id: null", stream.id());
     /// }
     /// #
     /// #   Ok(())
