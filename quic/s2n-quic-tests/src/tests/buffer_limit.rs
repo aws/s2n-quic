@@ -17,7 +17,7 @@ static MAXIMUM_HANDSHAKE_MESSAGE_SIZE: usize = 65536;
 //= https://www.rfc-editor.org/rfc/rfc9000#section-4
 //= type=implication
 //# To avoid excessive buffering at multiple layers, QUIC implementations
-//# SHOULD provide an interface for the cryptographic protocol
+//# SHOULD provide an interface for the cryptographic protcol
 //# implementation to communicate its buffering limits.
 /// This test shows that the default TLS provider already provides
 /// limits for buffering. The server will drop a giant Client Hello.

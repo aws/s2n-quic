@@ -150,9 +150,6 @@ class CIFixer:
 
                 if event_type == 'chunk':
                     response_text = data['bytes'].decode('utf-8')
-            # Process the response
-            # completion = response.get('completion', {})
-            # response_text = completion.get('text', '')
             
             # Extract the corrected content from the agent's response
             corrected_content = self._extract_corrected_content(response_text)
@@ -211,6 +208,7 @@ class CIFixer:
 
             Please fix the typo and return the ENTIRE corrected file content with nothing else.
             Please only fix those lines that are provided by this prompt and don't touch any other lines.
+            Do note that every file should ends by one new line. You shouldn't remove that either.
             Do not include any explanations or markdown formatting in your response. Just return the corrected file content as plain text.
             """
         return prompt

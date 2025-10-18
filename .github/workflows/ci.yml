@@ -79,7 +79,7 @@ jobs:
           title: 'chore: Bedrock fixes CI'
           body: |
             ### Description of changes: 
-            AWS Bedrock agent fixes the CI problems?
+            AWS Bedrock agent fixes the CI problems.
 
             ### Testing:
             CI test should pass.
