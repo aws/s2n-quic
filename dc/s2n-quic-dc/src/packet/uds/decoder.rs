@@ -6,7 +6,7 @@ use crate::{
     path::secret::schedule::Ciphersuite,
 };
 use s2n_codec::{DecoderBufferMut, DecoderBufferMutResult, DecoderError};
-use s2n_quic_core::{dc::ApplicationParams, time::Timestamp, varint::VarInt};
+use s2n_quic_core::{dc::ApplicationParams, varint::VarInt};
 
 #[derive(Clone, Debug)]
 pub struct Packet {
@@ -15,7 +15,7 @@ pub struct Packet {
     export_secret: Vec<u8>,
     application_params_version: u8,
     application_params: ApplicationParams,
-    queue_time: Timestamp,
+    encode_time: i64, // CLOCK_MONOTONIC_RAW in microseconds
     payload: Vec<u8>,
 }
 
@@ -46,8 +46,8 @@ impl Packet {
     }
 
     #[inline]
-    pub fn queue_time(&self) -> &Timestamp {
-        &self.queue_time
+    pub fn encode_time(&self) -> i64 {
+        self.encode_time
     }
 
     #[inline]
@@ -81,7 +81,7 @@ impl Packet {
 
         let (application_params, buffer) = buffer.decode::<ApplicationParams>()?;
 
-        let (queue_time, buffer) = buffer.decode::<Timestamp>()?;
+        let (encode_time, buffer) = buffer.decode::<i64>()?;
 
         let (payload_slice, buffer) = buffer.decode_slice_with_len_prefix::<VarInt>()?;
         let payload = payload_slice.into_less_safe_slice().to_vec();
@@ -92,7 +92,7 @@ impl Packet {
             export_secret,
             application_params_version,
             application_params,
-            queue_time,
+            encode_time,
             payload,
         };
 
@@ -102,7 +102,6 @@ impl Packet {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
 
     use crate::{
         packet::uds::{
@@ -112,7 +111,7 @@ mod tests {
         path::secret::schedule::Ciphersuite,
     };
     use s2n_codec::{DecoderBufferMut, DecoderError, EncoderLenEstimator};
-    use s2n_quic_core::{dc, time::Timestamp};
+    use s2n_quic_core::dc;
 
     #[test]
     fn test_encode_decode() {
@@ -120,7 +119,7 @@ mod tests {
         let export_secret = b"secret_data";
         let application_params = dc::testing::TEST_APPLICATION_PARAMS;
         let payload = b"payload_with_data";
-        let time = unsafe { Timestamp::from_duration(Duration::new(10, 0)) };
+        let time = 0;
 
         // Encode
         let mut estimator = EncoderLenEstimator::new(usize::MAX);
@@ -155,6 +154,7 @@ mod tests {
         assert_eq!(packet.version_tag(), PACKET_VERSION);
         assert_eq!(packet.ciphersuite(), ciphersuite);
         assert_eq!(packet.export_secret(), export_secret);
+        assert_eq!(packet.encode_time(), time);
         assert_eq!(packet.payload(), payload);
 
         use core::sync::atomic::Ordering;

@@ -3,7 +3,7 @@
 
 use crate::path::secret::schedule::Ciphersuite;
 use s2n_codec::Encoder;
-use s2n_quic_core::{dc::ApplicationParams, time::Timestamp, varint::VarInt};
+use s2n_quic_core::{dc::ApplicationParams, varint::VarInt};
 
 pub const PACKET_VERSION: u8 = 0;
 pub const APP_PARAMS_VERSION: u8 = 0;
@@ -14,7 +14,7 @@ pub fn encode<E: Encoder>(
     ciphersuite: &Ciphersuite,
     export_secret: &[u8],
     application_params: &ApplicationParams,
-    queue_time: Timestamp,
+    encode_time: i64,
     payload: &[u8],
 ) -> usize {
     let start_len = encoder.len();
@@ -30,7 +30,7 @@ pub fn encode<E: Encoder>(
 
     encoder.encode(application_params);
 
-    encoder.encode(&queue_time);
+    encoder.encode(&encode_time);
 
     encoder.encode_with_len_prefix::<VarInt, _>(&payload);
 

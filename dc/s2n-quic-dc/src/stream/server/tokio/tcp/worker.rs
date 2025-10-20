@@ -20,6 +20,7 @@ use core::{
     task::{self, Poll},
     time::Duration,
 };
+use nix::{sys::time::TimeValLike as _, time::ClockId};
 use s2n_codec::{DecoderError, EncoderLenEstimator};
 use s2n_quic_core::{
     inet::SocketAddress,
@@ -783,13 +784,17 @@ where
                 return Ok(ControlFlow::Continue(())).into();
             };
 
+            let now = ClockId::now(ClockId::CLOCK_MONOTONIC_RAW)
+                .map_err(|errno| Some(io::Error::from_raw_os_error(errno as i32)))?;
+            let encode_time = now.num_microseconds();
+
             let mut estimator = EncoderLenEstimator::new(usize::MAX);
             let size = packet::uds::encoder::encode(
                 &mut estimator,
                 &ciphersuite,
                 &export_secret,
                 &application_params,
-                queue_time,
+                encode_time,
                 recv_buffer,
             );
             let mut buffer = vec![0u8; size];
@@ -799,7 +804,7 @@ where
                 &ciphersuite,
                 &export_secret,
                 &application_params,
-                queue_time,
+                encode_time,
                 recv_buffer,
             );
 
@@ -807,6 +812,7 @@ where
             let dest_path = self.dest_path.clone();
             let tcp_stream = socket.into_std()?;
 
+            // FIXME make this a manual Future impl instead of Box
             let send_future = Box::pin(async move {
                 sender
                     .send_msg(&buffer, &dest_path, tcp_stream.as_fd())

@@ -3,8 +3,6 @@
 
 //! Defines time related datatypes and functions
 
-use s2n_codec::{decoder_value, DecoderError, Encoder, EncoderValue};
-
 use crate::recovery::K_GRANULARITY;
 use core::{fmt, num::NonZeroU64, time::Duration};
 
@@ -185,23 +183,6 @@ impl core::ops::SubAssign<Duration> for Timestamp {
     #[inline]
     fn sub_assign(&mut self, other: Duration) {
         *self = *self - other;
-    }
-}
-
-decoder_value!(
-    impl<'a> Timestamp {
-        fn decode(buffer: Buffer) -> Result<Self> {
-            let (time, buffer) = buffer.decode::<u64>()?;
-            let time = NonZeroU64::new(time)
-                .ok_or(DecoderError::InvariantViolation("Timestamp cannot be 0"))?;
-            Ok((Self(time), buffer))
-        }
-    }
-);
-
-impl EncoderValue for Timestamp {
-    fn encode<E: Encoder>(&self, buffer: &mut E) {
-        buffer.encode(&self.0.get());
     }
 }
 
