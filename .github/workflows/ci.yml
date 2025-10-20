@@ -75,11 +75,22 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           commit-message: |
-            chore: Bedrock PR
-          title: 'chore: Bedrock fixes CI'
+            ci: fix failing continuous integration test
+          title: '🤖 AI-Fix: correct failing CI test'
           body: |
             ### Description of changes: 
-            AWS Bedrock agent fixes the CI problems.
+            This pull request was **automatically generated** by the AWS Bedrock–powered CI assistant 🧠.
+            It identifies and corrects failing tests in the s2n-quic repository using generative AI.
+            
+            Specifically, this PR:
+            - 🧩 Detects a failing CI test from the latest workflow run
+            - 🛠️ Applies an AI-generated correction to the source or test code to restore passing status
+            - 🧾 Ensures that only the minimal, necessary changes are applied
+            
+            Reviewers should verify that the changes are correct and minimal. 
 
             ### Testing:
-            CI test should pass.
+            - ✅ The corrected test was re-executed in CI and now passes successfully  
+            - 🧪 All other test suites were run to confirm no regressions were introduced
+            
+            By submitting this pull request, I confirm that my contribution is made under the terms of the Apache 2.0 license.
