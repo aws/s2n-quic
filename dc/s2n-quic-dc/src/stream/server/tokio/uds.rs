@@ -23,6 +23,7 @@ use crate::{
     },
     uds::{self},
 };
+use nix::{sys::time::TimeValLike as _, time::ClockId};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     endpoint::Type,
@@ -30,7 +31,12 @@ use s2n_quic_core::{
     inet::SocketAddress,
     time::{self, Clock as _},
 };
-use std::{io::ErrorKind, os::fd::OwnedFd, path::Path, time::Duration};
+use std::{
+    io::{self, ErrorKind},
+    os::fd::OwnedFd,
+    path::Path,
+    time::Duration,
+};
 use tokio::net::TcpStream;
 
 #[derive(Clone)]
@@ -70,9 +76,11 @@ where
 
         let (packet_data, fd) = self.receiver.receive_msg().await?;
 
-        let decoded_packet = self.decode_packet(&packet_data)?;
+        let decoded_packet = Self::decode_packet(&packet_data)?;
 
-        let tcp_stream = self.create_tcp_stream_from_fd(fd)?;
+        let transfer_time = Self::get_transfer_time(decoded_packet.encode_time())?;
+
+        let tcp_stream = Self::create_tcp_stream_from_fd(fd)?;
 
         let remote_address = tcp_stream.peer_addr()?;
         let mut buffer =
@@ -170,18 +178,18 @@ where
             let creds = stream_builder.shared.credentials();
             let credential_id = &*creds.id;
             let stream_id = creds.key_id.as_u64();
-            publisher.on_acceptor_tcp_stream_enqueued(event::builder::AcceptorTcpStreamEnqueued {
+            publisher.on_acceptor_tcp_socket_received(event::builder::AcceptorTcpSocketReceived {
                 remote_address,
                 credential_id,
                 stream_id,
-                sojourn_time: Duration::new(0, 0),
-                blocked_count: 0,
+                transfer_time,
+                payload_len: packet_data.len(),
             });
         }
         Ok(stream_builder)
     }
 
-    fn decode_packet(&self, data: &[u8]) -> std::io::Result<decoder::Packet> {
+    fn decode_packet(data: &[u8]) -> std::io::Result<decoder::Packet> {
         let mut buffer = data.to_vec();
         let decoder_buffer = DecoderBufferMut::new(&mut buffer);
 
@@ -199,7 +207,23 @@ where
         }
     }
 
-    fn create_tcp_stream_from_fd(&self, fd: OwnedFd) -> std::io::Result<tokio::net::TcpStream> {
+    fn get_transfer_time(encode_time: i64) -> std::io::Result<Duration> {
+        #[cfg(target_os = "linux")]
+        let clock = ClockId::CLOCK_MONOTONIC_RAW;
+
+        #[cfg(not(target_os = "linux"))]
+        let clock = ClockId::CLOCK_MONOTONIC;
+
+        let now = clock
+            .now()
+            .map_err(|errno| io::Error::from_raw_os_error(errno as i32))?;
+        let transfer_time = now.num_microseconds() - encode_time;
+        Ok(Duration::from_micros(transfer_time.try_into().map_err(
+            |e| io::Error::new(io::ErrorKind::InvalidData, e),
+        )?))
+    }
+
+    fn create_tcp_stream_from_fd(fd: OwnedFd) -> std::io::Result<tokio::net::TcpStream> {
         let std_stream = std::net::TcpStream::from(fd);
         std_stream.set_nonblocking(true)?;
         TcpStream::from_std(std_stream)

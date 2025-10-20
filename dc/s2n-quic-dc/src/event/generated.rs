@@ -301,6 +301,36 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Emitted when a TCP stream has been received from a Unix domain socket"]
+    pub struct AcceptorTcpSocketReceived<'a> {
+        #[doc = " The address of the stream's peer"]
+        pub remote_address: SocketAddress<'a>,
+        #[doc = " The credential ID of the stream"]
+        pub credential_id: &'a [u8],
+        #[doc = " The ID of the stream"]
+        pub stream_id: u64,
+        #[doc = " The amount of time taken from socket send to socket receive, including waiting if the kernel queue is full"]
+        pub transfer_time: core::time::Duration,
+        #[doc = " The len of the payload sent over the Unix domain socket"]
+        pub payload_len: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for AcceptorTcpSocketReceived<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AcceptorTcpSocketReceived");
+            fmt.field("remote_address", &self.remote_address);
+            fmt.field("credential_id", &"[HIDDEN]");
+            fmt.field("stream_id", &self.stream_id);
+            fmt.field("transfer_time", &self.transfer_time);
+            fmt.field("payload_len", &self.payload_len);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for AcceptorTcpSocketReceived<'a> {
+        const NAME: &'static str = "acceptor:tcp:socket_received";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Emitted when a UDP acceptor is started"]
     pub struct AcceptorUdpStarted<'a> {
         #[doc = " The id of the acceptor worker"]
@@ -2423,6 +2453,22 @@ pub mod tracing {
             tracing :: event ! (target : "acceptor_tcp_socket_sent" , parent : parent , tracing :: Level :: DEBUG , { credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , sojourn_time = tracing :: field :: debug (sojourn_time) , blocked_count = tracing :: field :: debug (blocked_count) , payload_len = tracing :: field :: debug (payload_len) });
         }
         #[inline]
+        fn on_acceptor_tcp_socket_received(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpSocketReceived,
+        ) {
+            let parent = self.parent(meta);
+            let api::AcceptorTcpSocketReceived {
+                remote_address,
+                credential_id,
+                stream_id,
+                transfer_time,
+                payload_len,
+            } = event;
+            tracing :: event ! (target : "acceptor_tcp_socket_received" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , transfer_time = tracing :: field :: debug (transfer_time) , payload_len = tracing :: field :: debug (payload_len) });
+        }
+        #[inline]
         fn on_acceptor_udp_started(
             &self,
             meta: &api::EndpointMeta,
@@ -3724,6 +3770,39 @@ pub mod builder {
                 stream_id: stream_id.into_event(),
                 sojourn_time: sojourn_time.into_event(),
                 blocked_count: blocked_count.into_event(),
+                payload_len: payload_len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when a TCP stream has been received from a Unix domain socket"]
+    pub struct AcceptorTcpSocketReceived<'a> {
+        #[doc = " The address of the stream's peer"]
+        pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        #[doc = " The credential ID of the stream"]
+        pub credential_id: &'a [u8],
+        #[doc = " The ID of the stream"]
+        pub stream_id: u64,
+        #[doc = " The amount of time taken from socket send to socket receive, including waiting if the kernel queue is full"]
+        pub transfer_time: core::time::Duration,
+        #[doc = " The len of the payload sent over the Unix domain socket"]
+        pub payload_len: usize,
+    }
+    impl<'a> IntoEvent<api::AcceptorTcpSocketReceived<'a>> for AcceptorTcpSocketReceived<'a> {
+        #[inline]
+        fn into_event(self) -> api::AcceptorTcpSocketReceived<'a> {
+            let AcceptorTcpSocketReceived {
+                remote_address,
+                credential_id,
+                stream_id,
+                transfer_time,
+                payload_len,
+            } = self;
+            api::AcceptorTcpSocketReceived {
+                remote_address: remote_address.into_event(),
+                credential_id: credential_id.into_event(),
+                stream_id: stream_id.into_event(),
+                transfer_time: transfer_time.into_event(),
                 payload_len: payload_len.into_event(),
             }
         }
@@ -5734,6 +5813,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `AcceptorTcpSocketReceived` event is triggered"]
+        #[inline]
+        fn on_acceptor_tcp_socket_received(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpSocketReceived,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `AcceptorUdpStarted` event is triggered"]
         #[inline]
         fn on_acceptor_udp_started(
@@ -6664,6 +6753,14 @@ mod traits {
             self.as_ref().on_acceptor_tcp_socket_sent(meta, event);
         }
         #[inline]
+        fn on_acceptor_tcp_socket_received(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpSocketReceived,
+        ) {
+            self.as_ref().on_acceptor_tcp_socket_received(meta, event);
+        }
+        #[inline]
         fn on_acceptor_udp_started(
             &self,
             meta: &api::EndpointMeta,
@@ -7450,6 +7547,15 @@ mod traits {
             (self.1).on_acceptor_tcp_socket_sent(meta, event);
         }
         #[inline]
+        fn on_acceptor_tcp_socket_received(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpSocketReceived,
+        ) {
+            (self.0).on_acceptor_tcp_socket_received(meta, event);
+            (self.1).on_acceptor_tcp_socket_received(meta, event);
+        }
+        #[inline]
         fn on_acceptor_udp_started(
             &self,
             meta: &api::EndpointMeta,
@@ -8199,6 +8305,8 @@ mod traits {
         fn on_acceptor_tcp_io_error(&self, event: builder::AcceptorTcpIoError);
         #[doc = "Publishes a `AcceptorTcpSocketSent` event to the publisher's subscriber"]
         fn on_acceptor_tcp_socket_sent(&self, event: builder::AcceptorTcpSocketSent);
+        #[doc = "Publishes a `AcceptorTcpSocketReceived` event to the publisher's subscriber"]
+        fn on_acceptor_tcp_socket_received(&self, event: builder::AcceptorTcpSocketReceived);
         #[doc = "Publishes a `AcceptorUdpStarted` event to the publisher's subscriber"]
         fn on_acceptor_udp_started(&self, event: builder::AcceptorUdpStarted);
         #[doc = "Publishes a `AcceptorUdpDatagramReceived` event to the publisher's subscriber"]
@@ -8425,6 +8533,13 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_acceptor_tcp_socket_sent(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_acceptor_tcp_socket_received(&self, event: builder::AcceptorTcpSocketReceived) {
+            let event = event.into_event();
+            self.subscriber
+                .on_acceptor_tcp_socket_received(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -9191,6 +9306,7 @@ pub mod testing {
             pub acceptor_tcp_stream_enqueued: AtomicU64,
             pub acceptor_tcp_io_error: AtomicU64,
             pub acceptor_tcp_socket_sent: AtomicU64,
+            pub acceptor_tcp_socket_received: AtomicU64,
             pub acceptor_udp_started: AtomicU64,
             pub acceptor_udp_datagram_received: AtomicU64,
             pub acceptor_udp_packet_received: AtomicU64,
@@ -9276,6 +9392,7 @@ pub mod testing {
                     acceptor_tcp_stream_enqueued: AtomicU64::new(0),
                     acceptor_tcp_io_error: AtomicU64::new(0),
                     acceptor_tcp_socket_sent: AtomicU64::new(0),
+                    acceptor_tcp_socket_received: AtomicU64::new(0),
                     acceptor_udp_started: AtomicU64::new(0),
                     acceptor_udp_datagram_received: AtomicU64::new(0),
                     acceptor_udp_packet_received: AtomicU64::new(0),
@@ -9454,6 +9571,18 @@ pub mod testing {
                 event: &api::AcceptorTcpSocketSent,
             ) {
                 self.acceptor_tcp_socket_sent
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_acceptor_tcp_socket_received(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::AcceptorTcpSocketReceived,
+            ) {
+                self.acceptor_tcp_socket_received
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -9976,6 +10105,7 @@ pub mod testing {
         pub acceptor_tcp_stream_enqueued: AtomicU64,
         pub acceptor_tcp_io_error: AtomicU64,
         pub acceptor_tcp_socket_sent: AtomicU64,
+        pub acceptor_tcp_socket_received: AtomicU64,
         pub acceptor_udp_started: AtomicU64,
         pub acceptor_udp_datagram_received: AtomicU64,
         pub acceptor_udp_packet_received: AtomicU64,
@@ -10093,6 +10223,7 @@ pub mod testing {
                 acceptor_tcp_stream_enqueued: AtomicU64::new(0),
                 acceptor_tcp_io_error: AtomicU64::new(0),
                 acceptor_tcp_socket_sent: AtomicU64::new(0),
+                acceptor_tcp_socket_received: AtomicU64::new(0),
                 acceptor_udp_started: AtomicU64::new(0),
                 acceptor_udp_datagram_received: AtomicU64::new(0),
                 acceptor_udp_packet_received: AtomicU64::new(0),
@@ -10303,6 +10434,18 @@ pub mod testing {
             event: &api::AcceptorTcpSocketSent,
         ) {
             self.acceptor_tcp_socket_sent
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_tcp_socket_received(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpSocketReceived,
+        ) {
+            self.acceptor_tcp_socket_received
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -11282,6 +11425,7 @@ pub mod testing {
         pub acceptor_tcp_stream_enqueued: AtomicU64,
         pub acceptor_tcp_io_error: AtomicU64,
         pub acceptor_tcp_socket_sent: AtomicU64,
+        pub acceptor_tcp_socket_received: AtomicU64,
         pub acceptor_udp_started: AtomicU64,
         pub acceptor_udp_datagram_received: AtomicU64,
         pub acceptor_udp_packet_received: AtomicU64,
@@ -11389,6 +11533,7 @@ pub mod testing {
                 acceptor_tcp_stream_enqueued: AtomicU64::new(0),
                 acceptor_tcp_io_error: AtomicU64::new(0),
                 acceptor_tcp_socket_sent: AtomicU64::new(0),
+                acceptor_tcp_socket_received: AtomicU64::new(0),
                 acceptor_udp_started: AtomicU64::new(0),
                 acceptor_udp_datagram_received: AtomicU64::new(0),
                 acceptor_udp_packet_received: AtomicU64::new(0),
@@ -11554,6 +11699,14 @@ pub mod testing {
         }
         fn on_acceptor_tcp_socket_sent(&self, event: builder::AcceptorTcpSocketSent) {
             self.acceptor_tcp_socket_sent
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_tcp_socket_received(&self, event: builder::AcceptorTcpSocketReceived) {
+            self.acceptor_tcp_socket_received
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);

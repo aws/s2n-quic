@@ -217,6 +217,30 @@ struct AcceptorTcpSocketSent<'a>   {
     payload_len: usize,
 }
 
+/// Emitted when a TCP stream has been received from a Unix domain socket
+#[event("acceptor:tcp:socket_received")]
+#[subject(endpoint)]
+struct AcceptorTcpSocketReceived<'a>   {
+    /// The address of the stream's peer
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    remote_address: SocketAddress<'a>,
+    
+    /// The credential ID of the stream
+    #[snapshot("[HIDDEN]")]
+    credential_id: &'a [u8],
+
+    /// The ID of the stream
+    stream_id: u64,
+
+    /// The amount of time taken from socket send to socket receive, including waiting if the kernel queue is full
+    #[timer("transfer_time")]
+    transfer_time: core::time::Duration,
+
+    /// The len of the payload sent over the Unix domain socket
+    #[measure("len", Bytes)]
+    payload_len: usize,
+}
+
 /// Emitted when a UDP acceptor is started
 #[event("acceptor:udp:started")]
 #[subject(endpoint)]
