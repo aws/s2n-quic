@@ -38,7 +38,7 @@ env:
 #   id-token: write # This is required for requesting the JWT/OIDC
 
 jobs:
-  typos:
+  ci-ai-fix:
     permissions:
       statuses: write
       id-token: write # This is required for requesting the JWT/OIDC
@@ -67,7 +67,7 @@ jobs:
           role-session-name: S2nQuicBedrockSession
           aws-region: us-west-2
 
-      - name: Run CI AI-Fix
+      - name: Invoke AWS Bedrock to fix CI failures
         run: |
           ./scripts/typos --format json | jq -c 'select(.type=="typo")' | ./scripts/bedrock.py --agent-id QNFDMSDYHR --agent-alias-id PON8LP9FEI
 
