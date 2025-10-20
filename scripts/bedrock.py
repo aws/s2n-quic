@@ -187,7 +187,13 @@ class CIFixer:
         
         # Build the prompt
         prompt = f"""
-            I have a file with a typo that needs to be fixed. Here's the information:
+            I have a file with a typo that needs to be fixed. 
+            Fix the typo and return only the ENTIRE corrected file content with nothing else.
+            Only fix those lines that are provided by this prompt and don't touch any other lines.
+            Do note that every file ends with one newline. Do not remove that newline.
+            Do not include any explanation or markdown formatting in your response. Only return the corrected file content as plain text.
+            
+            Here's the information:
 
             File: {file_path}
             Line number: {line_num}
@@ -205,11 +211,6 @@ class CIFixer:
             ```
             {file_content}
             ```
-
-            Please fix the typo and return the ENTIRE corrected file content with nothing else.
-            Please only fix those lines that are provided by this prompt and don't touch any other lines.
-            Do note that every file should ends by one new line. You shouldn't remove that either.
-            Do not include any explanations or markdown formatting in your response. Just return the corrected file content as plain text.
             """
         return prompt
     
