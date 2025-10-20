@@ -784,7 +784,14 @@ where
                 return Ok(ControlFlow::Continue(())).into();
             };
 
-            let now = ClockId::now(ClockId::CLOCK_MONOTONIC_RAW)
+            #[cfg(target_os = "linux")]
+            let clock = ClockId::CLOCK_MONOTONIC_RAW;
+
+            #[cfg(not(target_os = "linux"))]
+            let clock = ClockId::CLOCK_MONOTONIC;
+
+            let now = clock
+                .now()
                 .map_err(|errno| Some(io::Error::from_raw_os_error(errno as i32)))?;
             let encode_time = now.num_microseconds();
 
