@@ -28,12 +28,16 @@ pub struct ServerName(Bytes);
 
 /// A static value for localhost
 #[allow(dead_code)] // this is used by conditional modules so don't warn
-pub(crate) static LOCALHOST: ServerName = ServerName(Bytes::from_static(b"localhost"));
+pub(crate) static LOCALHOST: ServerName = ServerName::from_static("localhost");
 
 impl ServerName {
     #[inline]
     pub fn into_bytes(self) -> Bytes {
         self.0
+    }
+
+    pub const fn from_static(s: &'static str) -> Self {
+        ServerName(Bytes::from_static(s.as_bytes()))
     }
 
     #[inline]
