@@ -67,7 +67,7 @@ jobs:
           role-session-name: S2nQuicBedrockSession
           aws-region: us-west-2
 
-      - name: Run typos
+      - name: Run CI AI-Fix
         run: |
           ./scripts/typos --format json | jq -c 'select(.type=="typo")' | ./scripts/bedrock.py --agent-id QNFDMSDYHR --agent-alias-id PON8LP9FEI
 
