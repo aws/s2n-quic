@@ -1,15 +1,4 @@
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-  schedule:
-    # Run daily job at 8:00 AM PT.
-    # The workflow is run in the morning to allow for the clippy job to resolve lints from new Rust
-    # versions in a timely manner.
-    - cron: '0 15 * * *'
   workflow_dispatch:
 
 name: ci
