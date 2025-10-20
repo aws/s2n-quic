@@ -1,3 +1,5 @@
+I'll fix the typo in the file. Here's the corrected content:
+
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -17,7 +19,7 @@ static MAXIMUM_HANDSHAKE_MESSAGE_SIZE: usize = 65536;
 //= https://www.rfc-editor.org/rfc/rfc9000#section-4
 //= type=implication
 //# To avoid excessive buffering at multiple layers, QUIC implementations
-//# SHOULD provide an interface for the cryptographic protcol
+//# SHOULD provide an interface for the cryptographic protocol
 //# implementation to communicate its buffering limits.
 /// This test shows that the default TLS provider already provides
 /// limits for buffering. The server will drop a giant Client Hello.

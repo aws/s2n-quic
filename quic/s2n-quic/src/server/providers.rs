@@ -29,7 +29,7 @@ impl_providers_state! {
     }
 
     /// Opaque trait containing all of the configured providers
-    trait ServerProviders {}
+    trait ServerProviders null
 }
 
 impl<
@@ -112,7 +112,7 @@ impl<
         let dc = dc.start().map_err(StartError::new)?;
 
         // Validate providers
-        // TODO: Add more vaidation https://github.com/aws/s2n-quic/issues/285
+        // TODO: Add more validation https://github.com/aws/s2n-quic/issues/285
         let valid_lifetime = |lifetime| {
             (connection::id::MIN_LIFETIME..=connection::id::MAX_LIFETIME).contains(&lifetime)
         };
