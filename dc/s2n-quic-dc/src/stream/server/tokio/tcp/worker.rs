@@ -790,10 +790,8 @@ where
             #[cfg(not(target_os = "linux"))]
             let clock = ClockId::CLOCK_MONOTONIC;
 
-            let now = clock
-                .now()
-                .map_err(|errno| Some(io::Error::from_raw_os_error(errno as i32)))?;
-            let encode_time = now.num_microseconds();
+            let now = clock.now().map_err(|errno| Some(io::Error::from(errno)))?;
+            let encode_time = now.num_microseconds() as u64;
 
             let mut estimator = EncoderLenEstimator::new(usize::MAX);
             let size = packet::uds::encoder::encode(

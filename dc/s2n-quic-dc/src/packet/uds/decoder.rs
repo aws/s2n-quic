@@ -15,7 +15,7 @@ pub struct Packet {
     export_secret: Vec<u8>,
     application_params_version: u8,
     application_params: ApplicationParams,
-    encode_time: i64, // CLOCK_MONOTONIC_RAW in microseconds
+    encode_time: u64, // CLOCK_MONOTONIC_RAW in microseconds
     payload: Vec<u8>,
 }
 
@@ -46,7 +46,7 @@ impl Packet {
     }
 
     #[inline]
-    pub fn encode_time(&self) -> i64 {
+    pub fn encode_time(&self) -> u64 {
         self.encode_time
     }
 
@@ -81,7 +81,7 @@ impl Packet {
 
         let (application_params, buffer) = buffer.decode::<ApplicationParams>()?;
 
-        let (encode_time, buffer) = buffer.decode::<i64>()?;
+        let (encode_time, buffer) = buffer.decode::<u64>()?;
 
         let (payload_slice, buffer) = buffer.decode_slice_with_len_prefix::<VarInt>()?;
         let payload = payload_slice.into_less_safe_slice().to_vec();

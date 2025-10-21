@@ -74,9 +74,9 @@ where
 
         let publisher = self.env.endpoint_publisher_with_time(now);
 
-        let (packet_data, fd) = self.receiver.receive_msg().await?;
+        let (mut packet_data, fd) = self.receiver.receive_msg().await?;
 
-        let decoded_packet = Self::decode_packet(&packet_data)?;
+        let decoded_packet = Self::decode_packet(&mut packet_data)?;
 
         let transfer_time = Self::get_transfer_time(decoded_packet.encode_time())?;
 
@@ -189,9 +189,8 @@ where
         Ok(stream_builder)
     }
 
-    fn decode_packet(data: &[u8]) -> std::io::Result<decoder::Packet> {
-        let mut buffer = data.to_vec();
-        let decoder_buffer = DecoderBufferMut::new(&mut buffer);
+    fn decode_packet(packet: &mut [u8]) -> std::io::Result<decoder::Packet> {
+        let decoder_buffer = DecoderBufferMut::new(packet);
 
         match decoder::Packet::decode(decoder_buffer) {
             Ok((packet, remaining)) => {
@@ -207,20 +206,16 @@ where
         }
     }
 
-    fn get_transfer_time(encode_time: i64) -> std::io::Result<Duration> {
+    fn get_transfer_time(encode_time: u64) -> std::io::Result<Duration> {
         #[cfg(target_os = "linux")]
         let clock = ClockId::CLOCK_MONOTONIC_RAW;
 
         #[cfg(not(target_os = "linux"))]
         let clock = ClockId::CLOCK_MONOTONIC;
 
-        let now = clock
-            .now()
-            .map_err(|errno| io::Error::from_raw_os_error(errno as i32))?;
-        let transfer_time = now.num_microseconds() - encode_time;
-        Ok(Duration::from_micros(transfer_time.try_into().map_err(
-            |e| io::Error::new(io::ErrorKind::InvalidData, e),
-        )?))
+        let now = clock.now().map_err(io::Error::from)?;
+        let transfer_time = now.num_microseconds() as u64 - encode_time;
+        Ok(Duration::from_micros(transfer_time))
     }
 
     fn create_tcp_stream_from_fd(fd: OwnedFd) -> std::io::Result<tokio::net::TcpStream> {
