@@ -39,7 +39,9 @@
       "client",
       "server"
     ],
-    "xquic": []
+    "xquic": [
+      "server"
+    ]
   },
   "handshake": {
     "aioquic": [
@@ -80,7 +82,9 @@
       "client",
       "server"
     ],
-    "xquic": []
+    "xquic": [
+      "server"
+    ]
   },
   "transfer": {
     "aioquic": [
@@ -162,7 +166,9 @@
       "client",
       "server"
     ],
-    "xquic": []
+    "xquic": [
+      "server"
+    ]
   },
   "chacha20": {
     "aioquic": [
