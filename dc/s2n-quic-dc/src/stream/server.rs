@@ -12,7 +12,9 @@ use s2n_codec::{DecoderBufferMut, DecoderError};
 use s2n_quic_core::varint::VarInt;
 
 pub mod accept;
+pub mod application;
 pub mod handshake;
+pub mod manager;
 pub mod stats;
 pub mod tokio;
 pub mod udp;

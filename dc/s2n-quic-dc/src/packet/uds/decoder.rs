@@ -15,6 +15,7 @@ pub struct Packet {
     export_secret: Vec<u8>,
     application_params_version: u8,
     application_params: ApplicationParams,
+    encode_time: u64, // CLOCK_MONOTONIC_RAW in microseconds
     payload: Vec<u8>,
 }
 
@@ -42,6 +43,11 @@ impl Packet {
     #[inline]
     pub fn application_params(&self) -> &ApplicationParams {
         &self.application_params
+    }
+
+    #[inline]
+    pub fn encode_time(&self) -> u64 {
+        self.encode_time
     }
 
     #[inline]
@@ -75,6 +81,8 @@ impl Packet {
 
         let (application_params, buffer) = buffer.decode::<ApplicationParams>()?;
 
+        let (encode_time, buffer) = buffer.decode::<u64>()?;
+
         let (payload_slice, buffer) = buffer.decode_slice_with_len_prefix::<VarInt>()?;
         let payload = payload_slice.into_less_safe_slice().to_vec();
 
@@ -84,6 +92,7 @@ impl Packet {
             export_secret,
             application_params_version,
             application_params,
+            encode_time,
             payload,
         };
 
@@ -93,6 +102,7 @@ impl Packet {
 
 #[cfg(test)]
 mod tests {
+
     use crate::{
         packet::uds::{
             decoder,
@@ -109,6 +119,7 @@ mod tests {
         let export_secret = b"secret_data";
         let application_params = dc::testing::TEST_APPLICATION_PARAMS;
         let payload = b"payload_with_data";
+        let time = 0;
 
         // Encode
         let mut estimator = EncoderLenEstimator::new(usize::MAX);
@@ -117,6 +128,7 @@ mod tests {
             &ciphersuite,
             export_secret,
             &application_params,
+            time,
             payload,
         );
         let mut buffer = vec![0u8; expected_size];
@@ -126,6 +138,7 @@ mod tests {
             &ciphersuite,
             export_secret,
             &application_params,
+            time,
             payload,
         );
         assert_eq!(encoded_size, expected_size);
@@ -141,6 +154,7 @@ mod tests {
         assert_eq!(packet.version_tag(), PACKET_VERSION);
         assert_eq!(packet.ciphersuite(), ciphersuite);
         assert_eq!(packet.export_secret(), export_secret);
+        assert_eq!(packet.encode_time(), time);
         assert_eq!(packet.payload(), payload);
 
         use core::sync::atomic::Ordering;

@@ -27,7 +27,6 @@ where
     Sub: Subscriber + Clone,
     B: PollBehavior<Sub> + Clone,
 {
-    sender: accept::Sender<Sub>,
     socket: AsyncFd<TcpListener>,
     env: Environment<Sub>,
     secrets: secret::Map,
@@ -46,7 +45,6 @@ where
     pub fn new(
         id: usize,
         socket: AsyncFd<TcpListener>,
-        sender: &accept::Sender<Sub>,
         env: &Environment<Sub>,
         secrets: &secret::Map,
         backlog: usize,
@@ -55,7 +53,6 @@ where
         poll_behavior: B,
     ) -> std::io::Result<Self> {
         let acceptor = Self {
-            sender: sender.clone(),
             socket,
             env: env.clone(),
             secrets: secrets.clone(),

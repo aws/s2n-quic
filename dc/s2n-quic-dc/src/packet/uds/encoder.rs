@@ -14,6 +14,7 @@ pub fn encode<E: Encoder>(
     ciphersuite: &Ciphersuite,
     export_secret: &[u8],
     application_params: &ApplicationParams,
+    encode_time: u64,
     payload: &[u8],
 ) -> usize {
     let start_len = encoder.len();
@@ -28,6 +29,8 @@ pub fn encode<E: Encoder>(
     encoder.encode(&APP_PARAMS_VERSION);
 
     encoder.encode(application_params);
+
+    encoder.encode(&encode_time);
 
     encoder.encode_with_len_prefix::<VarInt, _>(&payload);
 

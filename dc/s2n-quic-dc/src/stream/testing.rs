@@ -837,17 +837,18 @@ pub mod server {
                         let socket = options.build_tcp_listener().unwrap();
                         let local_addr = socket.local_addr().unwrap();
                         let socket = ::tokio::io::unix::AsyncFd::new(socket).unwrap();
+                        let channel_behavior =
+                            stream_server::tokio::tcp::worker::DefaultBehavior::new(&sender);
 
                         let acceptor = stream_server::tokio::tcp::Acceptor::new(
                             0,
                             socket,
-                            &sender,
                             &env,
                             &map,
                             backlog,
                             flavor,
                             linger,
-                            stream_server::tokio::tcp::worker::DefaultBehavior,
+                            channel_behavior,
                         )
                         .unwrap();
                         let acceptor = drop_handle_receiver.wrap(acceptor.run());
