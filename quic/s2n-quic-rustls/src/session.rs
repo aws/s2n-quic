@@ -381,8 +381,8 @@ impl tls::Session for Session {
         context: &mut C,
     ) -> Poll<Result<(), transport::Error>> {
         let result = self.poll_impl(context);
-        if let Poll::Ready(Err(_)) = &result {
-            context.on_tls_handshake_failed(self)?;
+        if let Poll::Ready(Err(e)) = &result {
+            context.on_tls_handshake_failed(self, e)?;
         }
         // attempt to emit server_name and application_protocol events prior to possibly
         // returning with an error

@@ -167,8 +167,9 @@ where
     fn on_tls_handshake_failed(
         &mut self,
         session: &impl tls::TlsSession,
+        e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Result<(), transport::Error> {
-        self.0.on_tls_exporter_ready(session)
+        self.0.on_tls_handshake_failed(session, e)
     }
 
     fn receive_initial(&mut self, max_len: Option<usize>) -> Option<tls::Bytes> {

@@ -21,7 +21,11 @@ pub trait Executor {
 
 /// Allows access to the TlsSession on handshake failure and when the exporter secret is ready.
 pub trait ExporterHandler {
-    fn on_tls_handshake_failed(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
+    fn on_tls_handshake_failed(
+        &self,
+        session: &impl TlsSession,
+        e: &(dyn core::error::Error + Send + Sync + 'static),
+    ) -> Option<Box<dyn Any + Send>>;
     fn on_tls_exporter_ready(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
 }
 
@@ -30,6 +34,7 @@ impl ExporterHandler for () {
     fn on_tls_handshake_failed(
         &self,
         _session: &impl TlsSession,
+        _e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Option<Box<dyn std::any::Any + Send>> {
         None
     }
@@ -559,8 +564,9 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
     fn on_tls_handshake_failed(
         &mut self,
         session: &impl tls::TlsSession,
+        e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Result<(), crate::transport::Error> {
-        if let Some(context) = self.exporter_handler.on_tls_handshake_failed(session) {
+        if let Some(context) = self.exporter_handler.on_tls_handshake_failed(session, e) {
             match self.send_to_quic.push(Request::TlsContext(context)) {
                 Ok(_) => (),
                 Err(_) => self.error = Some(SLICE_ERROR),

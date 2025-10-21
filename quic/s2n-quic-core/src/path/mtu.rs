@@ -241,8 +241,7 @@ impl Display for MtuError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for MtuError {}
+impl core::error::Error for MtuError {}
 
 /// Information about the path that may be used when generating MTU configuration.
 #[non_exhaustive]

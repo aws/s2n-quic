@@ -259,8 +259,7 @@ impl From<core::convert::Infallible> for ValidationError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for ValidationError {}
+impl core::error::Error for ValidationError {}
 
 /// Creates a transport parameter struct with the inner codec type
 macro_rules! transport_parameter {

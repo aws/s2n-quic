@@ -18,6 +18,7 @@ impl ExporterHandler for Exporter {
     fn on_tls_handshake_failed(
         &self,
         _session: &impl s2n_quic_core::crypto::tls::TlsSession,
+        _e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Option<Box<dyn std::any::Any + Send>> {
         None
     }
