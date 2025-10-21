@@ -163,14 +163,15 @@ impl Provider {
         query_event_callback: fn(&mut Connection, Duration),
         server_name: Name,
     ) -> std::io::Result<(secret::map::Peer, HandshakeKind)> {
-        // Unconditionally request a background handshake. This schedules any re-handshaking
-        // needed.
-        if self.state.runtime.is_some() {
-            let _ = self.background_handshake_with(peer, query_event_callback, server_name.clone());
-        }
-
         if let Some(peer) = self.state.map.get_tracked(peer) {
             return Ok((peer, HandshakeKind::Cached));
+        }
+
+        // Unconditionally request a background handshake. This schedules any re-handshaking
+        // needed. We put this after get_tracked because that saves us a global lock to check
+        // presence in the map in the happy path.
+        if self.state.runtime.is_some() {
+            let _ = self.background_handshake_with(peer, query_event_callback, server_name.clone());
         }
 
         let state = self.state.clone();
