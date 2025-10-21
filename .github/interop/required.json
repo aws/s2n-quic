@@ -601,8 +601,7 @@
       "client",
       "server"
     ],
-    "kwik": [
-    ],
+    "kwik": [],
     "lsquic": [
       "client",
       "server"
