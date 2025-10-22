@@ -2255,6 +2255,42 @@ pub mod api {
     impl Event for PathSecretMapCleanerCycled {
         const NAME: &'static str = "path_secret_map:cleaner_cycled";
     }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct PathSecretMapIdWriteLock {
+        pub acquire: core::time::Duration,
+        pub duration: core::time::Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PathSecretMapIdWriteLock {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PathSecretMapIdWriteLock");
+            fmt.field("acquire", &self.acquire);
+            fmt.field("duration", &self.duration);
+            fmt.finish()
+        }
+    }
+    impl Event for PathSecretMapIdWriteLock {
+        const NAME: &'static str = "path_secret_map:id_cache_write_lock";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct PathSecretMapAddressWriteLock {
+        pub acquire: core::time::Duration,
+        pub duration: core::time::Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PathSecretMapAddressWriteLock {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PathSecretMapAddressWriteLock");
+            fmt.field("acquire", &self.acquire);
+            fmt.field("duration", &self.duration);
+            fmt.finish()
+        }
+    }
+    impl Event for PathSecretMapAddressWriteLock {
+        const NAME: &'static str = "path_secret_map:address_cache_write_lock";
+    }
     impl IntoEvent<builder::AcceptorPacketDropReason> for s2n_codec::DecoderError {
         fn into_event(self) -> builder::AcceptorPacketDropReason {
             use builder::AcceptorPacketDropReason as Reason;
@@ -3472,6 +3508,26 @@ pub mod tracing {
                 duration,
             } = event;
             tracing :: event ! (target : "path_secret_map_cleaner_cycled" , parent : parent , tracing :: Level :: DEBUG , { id_entries = tracing :: field :: debug (id_entries) , id_entries_retired = tracing :: field :: debug (id_entries_retired) , id_entries_active = tracing :: field :: debug (id_entries_active) , id_entries_active_utilization = tracing :: field :: debug (id_entries_active_utilization) , id_entries_utilization = tracing :: field :: debug (id_entries_utilization) , id_entries_initial_utilization = tracing :: field :: debug (id_entries_initial_utilization) , address_entries = tracing :: field :: debug (address_entries) , address_entries_active = tracing :: field :: debug (address_entries_active) , address_entries_active_utilization = tracing :: field :: debug (address_entries_active_utilization) , address_entries_retired = tracing :: field :: debug (address_entries_retired) , address_entries_utilization = tracing :: field :: debug (address_entries_utilization) , address_entries_initial_utilization = tracing :: field :: debug (address_entries_initial_utilization) , handshake_requests = tracing :: field :: debug (handshake_requests) , handshake_requests_retired = tracing :: field :: debug (handshake_requests_retired) , handshake_lock_duration = tracing :: field :: debug (handshake_lock_duration) , duration = tracing :: field :: debug (duration) });
+        }
+        #[inline]
+        fn on_path_secret_map_id_write_lock(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapIdWriteLock,
+        ) {
+            let parent = self.parent(meta);
+            let api::PathSecretMapIdWriteLock { acquire, duration } = event;
+            tracing :: event ! (target : "path_secret_map_id_write_lock" , parent : parent , tracing :: Level :: DEBUG , { acquire = tracing :: field :: debug (acquire) , duration = tracing :: field :: debug (duration) });
+        }
+        #[inline]
+        fn on_path_secret_map_address_write_lock(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapAddressWriteLock,
+        ) {
+            let parent = self.parent(meta);
+            let api::PathSecretMapAddressWriteLock { acquire, duration } = event;
+            tracing :: event ! (target : "path_secret_map_address_write_lock" , parent : parent , tracing :: Level :: DEBUG , { acquire = tracing :: field :: debug (acquire) , duration = tracing :: field :: debug (duration) });
         }
     }
 }
@@ -5645,6 +5701,36 @@ pub mod builder {
             }
         }
     }
+    #[derive(Clone, Debug)]
+    pub struct PathSecretMapIdWriteLock {
+        pub acquire: core::time::Duration,
+        pub duration: core::time::Duration,
+    }
+    impl IntoEvent<api::PathSecretMapIdWriteLock> for PathSecretMapIdWriteLock {
+        #[inline]
+        fn into_event(self) -> api::PathSecretMapIdWriteLock {
+            let PathSecretMapIdWriteLock { acquire, duration } = self;
+            api::PathSecretMapIdWriteLock {
+                acquire: acquire.into_event(),
+                duration: duration.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct PathSecretMapAddressWriteLock {
+        pub acquire: core::time::Duration,
+        pub duration: core::time::Duration,
+    }
+    impl IntoEvent<api::PathSecretMapAddressWriteLock> for PathSecretMapAddressWriteLock {
+        #[inline]
+        fn into_event(self) -> api::PathSecretMapAddressWriteLock {
+            let PathSecretMapAddressWriteLock { acquire, duration } = self;
+            api::PathSecretMapAddressWriteLock {
+                acquire: acquire.into_event(),
+                duration: duration.into_event(),
+            }
+        }
+    }
 }
 pub use traits::*;
 mod traits {
@@ -6625,6 +6711,26 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `PathSecretMapIdWriteLock` event is triggered"]
+        #[inline]
+        fn on_path_secret_map_id_write_lock(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapIdWriteLock,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `PathSecretMapAddressWriteLock` event is triggered"]
+        #[inline]
+        fn on_path_secret_map_address_write_lock(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapAddressWriteLock,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = r" Called for each event that relates to the endpoint and all connections"]
         #[inline]
         fn on_event<M: Meta, E: Event>(&self, meta: &M, event: &E) {
@@ -7413,6 +7519,23 @@ mod traits {
             event: &api::PathSecretMapCleanerCycled,
         ) {
             self.as_ref().on_path_secret_map_cleaner_cycled(meta, event);
+        }
+        #[inline]
+        fn on_path_secret_map_id_write_lock(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapIdWriteLock,
+        ) {
+            self.as_ref().on_path_secret_map_id_write_lock(meta, event);
+        }
+        #[inline]
+        fn on_path_secret_map_address_write_lock(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapAddressWriteLock,
+        ) {
+            self.as_ref()
+                .on_path_secret_map_address_write_lock(meta, event);
         }
         #[inline]
         fn on_event<M: Meta, E: Event>(&self, meta: &M, event: &E) {
@@ -8251,6 +8374,24 @@ mod traits {
             (self.1).on_path_secret_map_cleaner_cycled(meta, event);
         }
         #[inline]
+        fn on_path_secret_map_id_write_lock(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapIdWriteLock,
+        ) {
+            (self.0).on_path_secret_map_id_write_lock(meta, event);
+            (self.1).on_path_secret_map_id_write_lock(meta, event);
+        }
+        #[inline]
+        fn on_path_secret_map_address_write_lock(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapAddressWriteLock,
+        ) {
+            (self.0).on_path_secret_map_address_write_lock(meta, event);
+            (self.1).on_path_secret_map_address_write_lock(meta, event);
+        }
+        #[inline]
         fn on_event<M: Meta, E: Event>(&self, meta: &M, event: &E) {
             self.0.on_event(meta, event);
             self.1.on_event(meta, event);
@@ -8423,6 +8564,13 @@ mod traits {
         );
         #[doc = "Publishes a `PathSecretMapCleanerCycled` event to the publisher's subscriber"]
         fn on_path_secret_map_cleaner_cycled(&self, event: builder::PathSecretMapCleanerCycled);
+        #[doc = "Publishes a `PathSecretMapIdWriteLock` event to the publisher's subscriber"]
+        fn on_path_secret_map_id_write_lock(&self, event: builder::PathSecretMapIdWriteLock);
+        #[doc = "Publishes a `PathSecretMapAddressWriteLock` event to the publisher's subscriber"]
+        fn on_path_secret_map_address_write_lock(
+            &self,
+            event: builder::PathSecretMapAddressWriteLock,
+        );
         #[doc = r" Returns the QUIC version, if any"]
         fn quic_version(&self) -> Option<u32>;
     }
@@ -8863,6 +9011,23 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_path_secret_map_cleaner_cycled(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_path_secret_map_id_write_lock(&self, event: builder::PathSecretMapIdWriteLock) {
+            let event = event.into_event();
+            self.subscriber
+                .on_path_secret_map_id_write_lock(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_path_secret_map_address_write_lock(
+            &self,
+            event: builder::PathSecretMapAddressWriteLock,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_path_secret_map_address_write_lock(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -9350,6 +9515,8 @@ pub mod testing {
             pub path_secret_map_id_cache_accessed: AtomicU64,
             pub path_secret_map_id_cache_accessed_hit: AtomicU64,
             pub path_secret_map_cleaner_cycled: AtomicU64,
+            pub path_secret_map_id_write_lock: AtomicU64,
+            pub path_secret_map_address_write_lock: AtomicU64,
         }
         impl Drop for Subscriber {
             fn drop(&mut self) {
@@ -9436,6 +9603,8 @@ pub mod testing {
                     path_secret_map_id_cache_accessed: AtomicU64::new(0),
                     path_secret_map_id_cache_accessed_hit: AtomicU64::new(0),
                     path_secret_map_cleaner_cycled: AtomicU64::new(0),
+                    path_secret_map_id_write_lock: AtomicU64::new(0),
+                    path_secret_map_address_write_lock: AtomicU64::new(0),
                 }
             }
         }
@@ -10088,6 +10257,30 @@ pub mod testing {
                 let out = format!("{meta:?} {event:?}");
                 self.output.lock().unwrap().push(out);
             }
+            fn on_path_secret_map_id_write_lock(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::PathSecretMapIdWriteLock,
+            ) {
+                self.path_secret_map_id_write_lock
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_path_secret_map_address_write_lock(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::PathSecretMapAddressWriteLock,
+            ) {
+                self.path_secret_map_address_write_lock
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
         }
     }
     #[derive(Debug)]
@@ -10181,6 +10374,8 @@ pub mod testing {
         pub path_secret_map_id_cache_accessed: AtomicU64,
         pub path_secret_map_id_cache_accessed_hit: AtomicU64,
         pub path_secret_map_cleaner_cycled: AtomicU64,
+        pub path_secret_map_id_write_lock: AtomicU64,
+        pub path_secret_map_address_write_lock: AtomicU64,
     }
     impl Drop for Subscriber {
         fn drop(&mut self) {
@@ -10299,6 +10494,8 @@ pub mod testing {
                 path_secret_map_id_cache_accessed: AtomicU64::new(0),
                 path_secret_map_id_cache_accessed_hit: AtomicU64::new(0),
                 path_secret_map_cleaner_cycled: AtomicU64::new(0),
+                path_secret_map_id_write_lock: AtomicU64::new(0),
+                path_secret_map_address_write_lock: AtomicU64::new(0),
             }
         }
     }
@@ -11409,6 +11606,30 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
+        fn on_path_secret_map_id_write_lock(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapIdWriteLock,
+        ) {
+            self.path_secret_map_id_write_lock
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_path_secret_map_address_write_lock(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapAddressWriteLock,
+        ) {
+            self.path_secret_map_address_write_lock
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
     }
     #[derive(Debug)]
     pub struct Publisher {
@@ -11501,6 +11722,8 @@ pub mod testing {
         pub path_secret_map_id_cache_accessed: AtomicU64,
         pub path_secret_map_id_cache_accessed_hit: AtomicU64,
         pub path_secret_map_cleaner_cycled: AtomicU64,
+        pub path_secret_map_id_write_lock: AtomicU64,
+        pub path_secret_map_address_write_lock: AtomicU64,
     }
     impl Publisher {
         #[doc = r" Creates a publisher with snapshot assertions enabled"]
@@ -11609,6 +11832,8 @@ pub mod testing {
                 path_secret_map_id_cache_accessed: AtomicU64::new(0),
                 path_secret_map_id_cache_accessed_hit: AtomicU64::new(0),
                 path_secret_map_cleaner_cycled: AtomicU64::new(0),
+                path_secret_map_id_write_lock: AtomicU64::new(0),
+                path_secret_map_address_write_lock: AtomicU64::new(0),
             }
         }
     }
@@ -12072,6 +12297,25 @@ pub mod testing {
         }
         fn on_path_secret_map_cleaner_cycled(&self, event: builder::PathSecretMapCleanerCycled) {
             self.path_secret_map_cleaner_cycled
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_path_secret_map_id_write_lock(&self, event: builder::PathSecretMapIdWriteLock) {
+            self.path_secret_map_id_write_lock
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_path_secret_map_address_write_lock(
+            &self,
+            event: builder::PathSecretMapAddressWriteLock,
+        ) {
+            self.path_secret_map_address_write_lock
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);

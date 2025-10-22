@@ -434,3 +434,21 @@ struct PathSecretMapCleanerCycled {
     #[measure("total_duration", Duration)]
     duration: core::time::Duration,
 }
+
+#[event("path_secret_map:id_cache_write_lock")]
+#[subject(endpoint)]
+struct PathSecretMapIdWriteLock {
+    #[measure("acquire", Duration)]
+    acquire: core::time::Duration,
+    #[measure("duration", Duration)]
+    duration: core::time::Duration,
+}
+
+#[event("path_secret_map:address_cache_write_lock")]
+#[subject(endpoint)]
+struct PathSecretMapAddressWriteLock {
+    #[measure("acquire", Duration)]
+    acquire: core::time::Duration,
+    #[measure("duration", Duration)]
+    duration: core::time::Duration,
+}
