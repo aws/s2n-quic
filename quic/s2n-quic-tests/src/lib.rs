@@ -95,14 +95,14 @@ impl event::Subscriber for BlocklistSubscriber {
         }
     }
 
-    fn on_mtu_updated(
-        &mut self,
-        _context: &mut Self::ConnectionContext,
-        _meta: &events::ConnectionMeta,
-        event: &events::MtuUpdated,
-    ) {
-        self.max_udp_payload = event.mtu;
-    }
+    // fn on_mtu_updated(
+    //     &mut self,
+    //     _context: &mut Self::ConnectionContext,
+    //     _meta: &events::ConnectionMeta,
+    //     event: &events::MtuUpdated,
+    // ) {
+    //     self.max_udp_payload = event.mtu;
+    // }
 }
 
 pub fn tracing_events(with_blocklist: bool, max_udp_payload: u16) -> impl event::Subscriber {
