@@ -68,9 +68,11 @@ const CLIENT_CLOSE_ERROR_CODE: VarInt = VarInt::from_u8(222);
 fn dc_handshake_self_test() -> Result<()> {
     let server = Server::builder()
         .with_tls(SERVER_CERTS)?
+        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
     let client = Client::builder()
         .with_tls(certificates::CERT_PEM)?
+        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
     self_test(server, client, true, None, None)?;
@@ -111,11 +113,13 @@ fn dc_mtls_handshake_self_test() -> Result<()> {
     let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
     let server = Server::builder()
         .with_tls(server_tls)?
+        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
     let client = Client::builder()
         .with_tls(client_tls)?
+        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
     self_test(server, client, true, None, None)?;
@@ -128,11 +132,13 @@ fn dc_mtls_handshake_auth_failure_self_test() -> Result<()> {
     let server_tls = build_server_mtls_provider(certificates::UNTRUSTED_CERT_PEM)?;
     let server = Server::builder()
         .with_tls(server_tls)?
+        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
     let client = Client::builder()
         .with_tls(client_tls)?
+        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
     // convert from a ConnectionClose frame so the initiator is `Remote`
@@ -167,11 +173,14 @@ fn dc_mtls_handshake_auth_failure_self_test() -> Result<()> {
 fn dc_mtls_handshake_server_not_supported_self_test() -> Result<()> {
     // No dc Provider configured on the server
     let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
-    let server = Server::builder().with_tls(server_tls)?;
+    let server = Server::builder()
+        .with_tls(server_tls)?
+        .with_event(tracing_events())?;
 
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
     let client = Client::builder()
         .with_tls(client_tls)?
+        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
     // convert from a ConnectionClose frame so the initiator is `Remote`
@@ -216,11 +225,14 @@ fn dc_mtls_handshake_client_not_supported_self_test() -> Result<()> {
     let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
     let server = Server::builder()
         .with_tls(server_tls)?
+        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
     // No dc Provider configured on the client
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
-    let client = Client::builder().with_tls(client_tls)?;
+    let client = Client::builder()
+        .with_tls(client_tls)?
+        .with_event(tracing_events())?;
 
     // convert from a ConnectionClose frame so the initiator is `Remote`
     let expected_client_error = ConnectionClose {
@@ -259,6 +271,7 @@ fn dc_possible_secret_control_packet(
     let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
     let server = Server::builder()
         .with_tls(server_tls)?
+        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
@@ -269,6 +282,7 @@ fn dc_possible_secret_control_packet(
 
     let client = Client::builder()
         .with_tls(client_tls)?
+        .with_event(tracing_events())?
         .with_dc(dc_endpoint)?
         .with_packet_interceptor(RandomShort::default())?;
 

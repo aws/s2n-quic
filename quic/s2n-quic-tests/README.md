@@ -114,6 +114,22 @@ The test suite uses the [Bach](https://github.com/camshaft/bach) async simulatio
 - Bandwidth limitations
 - Connection blackholes
 
+### Event Tracing
+
+All test endpoints in the s2n-quic-tests crate must enable `tracing_events()` as their event subscriber to capture events during test execution. These events are essential for diagnostic purposes, debugging, and validating test behavior.
+
+Example implementation:
+
+```rust
+let server = Server::builder()
+    .with_io(handle.builder().build()?)?
+    .with_tls(SERVER_CERTS)?
+    .with_event(tracing_events())?
+    .start()?;
+```
+
+The `tracing_events()` function configures a standardized tracing subscriber with appropriate formatting and filtering options, ensuring consistent event collection across all tests.
+
 ### Event Recording
 
 The `recorder.rs` module provides utilities for recording and verifying events during test execution, allowing tests to assert on the sequence and content of events.
@@ -126,8 +142,9 @@ Implement the `s2n_quic_core::packet::interceptor::Interceptor` trait and config
 
 ```rust
 let client = Client::builder()
-    .with_io(handle.builder().build().unwrap())?  
-    .with_packet_interceptor(interceptor)?  
+    .with_io(handle.builder().build().unwrap())?
+    .with_event(tracing_events())?
+    .with_packet_interceptor(interceptor)?
     .start()?;
 ```
 
