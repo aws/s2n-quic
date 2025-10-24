@@ -18,6 +18,7 @@ fn resumption_handshake() {
             build_server_resumption_provider(certificates::CERT_PEM, certificates::KEY_PEM)?;
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
+            .with_event(tracing_events())?
             .with_tls(server_tls)?
             .start()?;
 
@@ -25,6 +26,7 @@ fn resumption_handshake() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(client_tls)?
+            .with_event(tracing_events())?
             .start()?;
         let addr = start_server(server)?;
         start_client(client, addr, Data::new(1000))?;
@@ -42,6 +44,7 @@ fn resumption_handshake() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(client_tls)?
+            .with_event(tracing_events())?
             .start()?;
 
         let server_tls = build_server_resumption_provider(
@@ -51,6 +54,7 @@ fn resumption_handshake() {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(server_tls)?
+            .with_event(tracing_events())?
             .start()?;
         let addr = start_server(server)?;
 

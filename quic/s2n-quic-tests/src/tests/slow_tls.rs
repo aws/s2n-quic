@@ -31,11 +31,13 @@ fn slow_tls() {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(slow_server)?
+            .with_event(tracing_events())?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(slow_client)?
+            .with_event(tracing_events())?
             .start()?;
         let addr = start_server(server)?;
         start_client(client, addr, Data::new(1000))?;
