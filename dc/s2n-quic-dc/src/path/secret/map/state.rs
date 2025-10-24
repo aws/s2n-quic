@@ -20,7 +20,7 @@ use std::{
     collections::VecDeque,
     hash::BuildHasher,
     mem::ManuallyDrop,
-    net::{Ipv4Addr, SocketAddr},
+    net::SocketAddr,
     sync::{Arc, Mutex, RwLock, Weak},
     time::Duration,
 };
@@ -298,7 +298,7 @@ where
 
     // This socket is used *only* for sending secret control packets.
     // FIXME: This will get replaced with sending on a handshake socket associated with the map.
-    pub(super) control_socket: Arc<std::net::UdpSocket>,
+    pub(super) control_socket: Option<Arc<std::net::UdpSocket>>,
 
     #[allow(clippy::type_complexity)]
     pub(super) request_handshake: RwLock<Option<Box<dyn Fn(SocketAddr) + Send + Sync>>>,
@@ -332,9 +332,47 @@ where
     >,
 }
 
-// Share control sockets -- we only send on these so it doesn't really matter if there's only one
-// per process.
-static CONTROL_SOCKET: Mutex<Weak<std::net::UdpSocket>> = Mutex::new(Weak::new());
+// FIXME: Avoid the whole socket.
+//
+// We only ever send on this socket - but we really should be sending on the same
+// socket as used by an associated s2n-quic handshake runtime, and receiving control packets
+// from that socket as well. Not exactly clear on how to achieve that yet though (both
+// ownership wise since the map doesn't have direct access to handshakes and in terms
+// of implementation).
+fn control_socket() -> Option<Arc<std::net::UdpSocket>> {
+    // Share control sockets -- we only send on these so it doesn't really matter if there's only one
+    // per process.
+    static CONTROL_SOCKET: Mutex<Weak<std::net::UdpSocket>> = Mutex::new(Weak::new());
+
+    let mut guard = CONTROL_SOCKET.lock().unwrap();
+    if let Some(socket) = guard.upgrade() {
+        return Some(socket);
+    }
+
+    // Try ipv6 before since that can support both
+    let addrs = ["[::]:0", "0.0.0.0:0"];
+
+    for addr in addrs {
+        let mut options = crate::socket::Options::new(addr.parse().unwrap());
+        options.blocking = false;
+        options.only_v6 = false;
+        options.gro = false;
+
+        match options.build_udp() {
+            Ok(socket) => {
+                let socket = Arc::new(socket);
+                *guard = Arc::downgrade(&socket);
+                return Some(socket);
+            }
+            Err(err) => {
+                tracing::warn!(%err, addr, "failed to create control socket");
+                continue;
+            }
+        }
+    }
+
+    None
+}
 
 impl<C, S> State<C, S>
 where
@@ -347,25 +385,7 @@ where
         clock: C,
         subscriber: S,
     ) -> Arc<Self> {
-        // FIXME: Avoid unwrap and the whole socket.
-        //
-        // We only ever send on this socket - but we really should be sending on the same
-        // socket as used by an associated s2n-quic handshake runtime, and receiving control packets
-        // from that socket as well. Not exactly clear on how to achieve that yet though (both
-        // ownership wise since the map doesn't have direct access to handshakes and in terms
-        // of implementation).
-        let control_socket = {
-            let mut guard = CONTROL_SOCKET.lock().unwrap();
-            if let Some(socket) = guard.upgrade() {
-                socket
-            } else {
-                let control_socket = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
-                control_socket.set_nonblocking(true).unwrap();
-                let control_socket = Arc::new(control_socket);
-                *guard = Arc::downgrade(&control_socket);
-                control_socket
-            }
-        };
+        let control_socket = control_socket();
 
         let init_time = clock.get_time();
 
@@ -904,7 +924,10 @@ where
     }
 
     fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]) {
-        match self.control_socket.send_to(buffer, dst) {
+        let Some(control_socket) = self.control_socket.as_ref() else {
+            return;
+        };
+        match control_socket.send_to(buffer, dst) {
             Ok(_) => {
                 // all done
                 match control::Packet::decode(s2n_codec::DecoderBufferMut::new(buffer))
