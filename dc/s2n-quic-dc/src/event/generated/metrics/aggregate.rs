@@ -13,7 +13,7 @@ use crate::event::{
     },
 };
 use core::sync::atomic::{AtomicU64, Ordering};
-static INFO: &[Info; 292usize] = &[
+static INFO: &[Info; 298usize] = &[
     info::Builder {
         id: 0usize,
         name: Str::new("acceptor_tcp_started\0"),
@@ -1766,6 +1766,42 @@ static INFO: &[Info; 292usize] = &[
         units: Units::Duration,
     }
     .build(),
+    info::Builder {
+        id: 292usize,
+        name: Str::new("path_secret_map_id_write_lock\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 293usize,
+        name: Str::new("path_secret_map_id_write_lock.acquire\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: 294usize,
+        name: Str::new("path_secret_map_id_write_lock.duration\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: 295usize,
+        name: Str::new("path_secret_map_address_write_lock\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 296usize,
+        name: Str::new("path_secret_map_address_write_lock.acquire\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: 297usize,
+        name: Str::new("path_secret_map_address_write_lock.duration\0"),
+        units: Units::Duration,
+    }
+    .build(),
 ];
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -1803,7 +1839,7 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 99usize]>,
+    counters: Box<[R::Counter; 101usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 21usize]>,
     #[allow(dead_code)]
@@ -1811,7 +1847,7 @@ pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
     nominal_counter_offsets: Box<[usize; 32usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure; 120usize]>,
+    measures: Box<[R::Measure; 124usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
@@ -1838,11 +1874,11 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(99usize);
+        let mut counters = Vec::with_capacity(101usize);
         let mut bool_counters = Vec::with_capacity(21usize);
         let mut nominal_counters = Vec::with_capacity(32usize);
         let mut nominal_counter_offsets = Vec::with_capacity(32usize);
-        let mut measures = Vec::with_capacity(120usize);
+        let mut measures = Vec::with_capacity(124usize);
         let mut gauges = Vec::with_capacity(0usize);
         let mut timers = Vec::with_capacity(20usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
@@ -1946,6 +1982,8 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[271usize]));
         counters.push(registry.register_counter(&INFO[273usize]));
         counters.push(registry.register_counter(&INFO[275usize]));
+        counters.push(registry.register_counter(&INFO[292usize]));
+        counters.push(registry.register_counter(&INFO[295usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[19usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[20usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[42usize]));
@@ -2443,6 +2481,10 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[289usize]));
         measures.push(registry.register_measure(&INFO[290usize]));
         measures.push(registry.register_measure(&INFO[291usize]));
+        measures.push(registry.register_measure(&INFO[293usize]));
+        measures.push(registry.register_measure(&INFO[294usize]));
+        measures.push(registry.register_measure(&INFO[296usize]));
+        measures.push(registry.register_measure(&INFO[297usize]));
         timers.push(registry.register_timer(&INFO[5usize]));
         timers.push(registry.register_timer(&INFO[15usize]));
         timers.push(registry.register_timer(&INFO[21usize]));
@@ -2596,6 +2638,8 @@ impl<R: Registry> Subscriber<R> {
                 96usize => (&INFO[271usize], entry),
                 97usize => (&INFO[273usize], entry),
                 98usize => (&INFO[275usize], entry),
+                99usize => (&INFO[292usize], entry),
+                100usize => (&INFO[295usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -2985,6 +3029,10 @@ impl<R: Registry> Subscriber<R> {
                 117usize => (&INFO[289usize], entry),
                 118usize => (&INFO[290usize], entry),
                 119usize => (&INFO[291usize], entry),
+                120usize => (&INFO[293usize], entry),
+                121usize => (&INFO[294usize], entry),
+                122usize => (&INFO[296usize], entry),
+                123usize => (&INFO[297usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -4512,6 +4560,34 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         self.measure(289usize, 117usize, event.handshake_requests_retired);
         self.measure(290usize, 118usize, event.handshake_lock_duration);
         self.measure(291usize, 119usize, event.duration);
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_path_secret_map_id_write_lock(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::PathSecretMapIdWriteLock,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(292usize, 99usize, 1usize);
+        self.measure(293usize, 120usize, event.acquire);
+        self.measure(294usize, 121usize, event.duration);
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_path_secret_map_address_write_lock(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::PathSecretMapAddressWriteLock,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(295usize, 100usize, 1usize);
+        self.measure(296usize, 122usize, event.acquire);
+        self.measure(297usize, 123usize, event.duration);
         let _ = event;
         let _ = meta;
     }

@@ -19,6 +19,7 @@ use s2n_quic_core::{
 use std::{
     collections::VecDeque,
     hash::BuildHasher,
+    mem::ManuallyDrop,
     net::{Ipv4Addr, SocketAddr},
     sync::{Arc, Mutex, RwLock, Weak},
     time::Duration,
@@ -38,6 +39,94 @@ pub(crate) struct PeerMap(
 #[repr(align(128))]
 pub(crate) struct IdMap(parking_lot::RwLock<hashbrown::HashTable<Arc<Entry>>>);
 
+struct WithEvents<'a, I, C, S: event::Subscriber + 'static> {
+    inner: &'a parking_lot::RwLock<hashbrown::HashTable<Arc<Entry>>>,
+    whole: &'a I,
+    clock: &'a C,
+    subscriber: event::EndpointPublisherSubscriber<'a, S>,
+}
+
+struct PeerWriteGuard<'a, F: FnOnce()> {
+    guard: ManuallyDrop<parking_lot::RwLockWriteGuard<'a, hashbrown::HashTable<Arc<Entry>>>>,
+    cb: Option<F>,
+}
+
+impl<F: FnOnce()> Drop for PeerWriteGuard<'_, F> {
+    fn drop(&mut self) {
+        // SAFETY: Only called in `drop`.
+        unsafe {
+            ManuallyDrop::drop(&mut self.guard);
+        }
+        (self.cb.take().unwrap())();
+    }
+}
+
+impl<F: FnOnce()> std::ops::Deref for PeerWriteGuard<'_, F> {
+    type Target = hashbrown::HashTable<Arc<Entry>>;
+    fn deref(&self) -> &Self::Target {
+        &self.guard
+    }
+}
+
+impl<F: FnOnce()> std::ops::DerefMut for PeerWriteGuard<'_, F> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.guard
+    }
+}
+
+impl<'a, C, S> WithEvents<'a, PeerMap, C, S>
+where
+    C: time::Clock + 'static,
+    S: event::Subscriber + 'static,
+{
+    fn write(&self) -> PeerWriteGuard<'a, impl FnOnce() + use<'_, 'a, C, S>> {
+        let start = self.clock.get_time();
+        let guard = self.inner.write();
+        let acquire_latency = self.clock.get_time().saturating_duration_since(start);
+        PeerWriteGuard {
+            guard: ManuallyDrop::new(guard),
+            cb: Some(move || {
+                self.subscriber.on_path_secret_map_address_write_lock(
+                    event::builder::PathSecretMapAddressWriteLock {
+                        acquire: acquire_latency,
+                        duration: self.clock.get_time().saturating_duration_since(start),
+                    },
+                );
+            }),
+        }
+    }
+
+    pub(crate) fn insert(&self, entry: Arc<Entry>) -> Option<Arc<Entry>> {
+        let hash = self.whole.hash(&entry);
+        let mut map = self.write();
+        match map.entry(
+            hash,
+            |other| other.peer() == entry.peer(),
+            |e| self.whole.hash(e),
+        ) {
+            hashbrown::hash_table::Entry::Occupied(mut o) => {
+                Some(std::mem::replace(o.get_mut(), entry))
+            }
+            hashbrown::hash_table::Entry::Vacant(v) => {
+                v.insert(entry);
+                None
+            }
+        }
+    }
+
+    fn remove_exact(&self, entry: &Arc<Entry>) -> Option<Arc<Entry>> {
+        let hash = self.whole.hash(entry);
+        let mut map = self.write();
+        // Note that we are passing `eq` by **ID** not by address: this ensures that we find the
+        // specific entry. The hash is still of the SocketAddr so we will look at the right entries
+        // while doing this.
+        match map.find_entry(hash, |other| other.id() == entry.id()) {
+            Ok(o) => Some(o.remove().0),
+            Err(_) => None,
+        }
+    }
+}
+
 impl PeerMap {
     fn reserve(&self, additional: usize) {
         self.0.write().reserve(additional, |e| self.hash(e));
@@ -51,7 +140,7 @@ impl PeerMap {
         self.1.hash_one(entry)
     }
 
-    pub(crate) fn insert(&self, entry: Arc<Entry>) -> Option<Arc<Entry>> {
+    pub(crate) fn insert_no_events(&self, entry: Arc<Entry>) -> Option<Arc<Entry>> {
         let hash = self.hash(&entry);
         let mut map = self.0.write();
         match map.entry(hash, |other| other.peer() == entry.peer(), |e| self.hash(e)) {
@@ -86,14 +175,52 @@ impl PeerMap {
         let map = self.0.read();
         map.len()
     }
+}
 
-    fn remove_exact(&self, entry: &Arc<Entry>) -> Option<Arc<Entry>> {
-        let hash = self.hash(entry);
-        let mut map = self.0.write();
-        // Note that we are passing `eq` by **ID** not by address: this ensures that we find the
-        // specific entry. The hash is still of the SocketAddr so we will look at the right entries
-        // while doing this.
-        match map.find_entry(hash, |other| other.id() == entry.id()) {
+impl<'a, C, S> WithEvents<'a, IdMap, C, S>
+where
+    C: time::Clock + 'static,
+    S: event::Subscriber + 'static,
+{
+    fn write(&self) -> PeerWriteGuard<'a, impl FnOnce() + use<'_, 'a, C, S>> {
+        let start = self.clock.get_time();
+        let guard = self.inner.write();
+        let acquire_latency = self.clock.get_time().saturating_duration_since(start);
+        PeerWriteGuard {
+            guard: ManuallyDrop::new(guard),
+            cb: Some(move || {
+                self.subscriber.on_path_secret_map_id_write_lock(
+                    event::builder::PathSecretMapIdWriteLock {
+                        acquire: acquire_latency,
+                        duration: self.clock.get_time().saturating_duration_since(start),
+                    },
+                );
+            }),
+        }
+    }
+
+    pub(crate) fn insert(&self, entry: Arc<Entry>) -> Option<Arc<Entry>> {
+        let hash = self.whole.hash(&entry);
+        let mut map = self.write();
+        match map.entry(
+            hash,
+            |other| other.id() == entry.id(),
+            |e| self.whole.hash(e),
+        ) {
+            hashbrown::hash_table::Entry::Occupied(mut o) => {
+                Some(std::mem::replace(o.get_mut(), entry))
+            }
+            hashbrown::hash_table::Entry::Vacant(v) => {
+                v.insert(entry);
+                None
+            }
+        }
+    }
+
+    pub(super) fn remove(&self, id: Id) -> Option<Arc<Entry>> {
+        let hash = self.whole.hash_key(&id);
+        let mut map = self.write();
+        match map.find_entry(hash, |other| *other.id() == id) {
             Ok(o) => Some(o.remove().0),
             Err(_) => None,
         }
@@ -111,20 +238,6 @@ impl IdMap {
 
     fn hash_key(&self, entry: &Id) -> u64 {
         entry.to_hash()
-    }
-
-    pub(crate) fn insert(&self, entry: Arc<Entry>) -> Option<Arc<Entry>> {
-        let hash = self.hash(&entry);
-        let mut map = self.0.write();
-        match map.entry(hash, |other| other.id() == entry.id(), |e| self.hash(e)) {
-            hashbrown::hash_table::Entry::Occupied(mut o) => {
-                Some(std::mem::replace(o.get_mut(), entry))
-            }
-            hashbrown::hash_table::Entry::Vacant(v) => {
-                v.insert(entry);
-                None
-            }
-        }
     }
 
     #[cfg(test)]
@@ -148,15 +261,6 @@ impl IdMap {
     pub(super) fn len(&self) -> usize {
         let map = self.0.read();
         map.len()
-    }
-
-    pub(super) fn remove(&self, id: Id) -> Option<Arc<Entry>> {
-        let hash = self.hash_key(&id);
-        let mut map = self.0.write();
-        match map.find_entry(hash, |other| *other.id() == id) {
-            Ok(o) => Some(o.remove().0),
-            Err(_) => None,
-        }
     }
 }
 
@@ -322,7 +426,7 @@ where
 
         // A concurrent cleaner can drop the entry from the `ids` map so we need to
         // re-check whether we actually evicted something.
-        if self.ids.remove(*evicted.id()).is_some() {
+        if self.ids().remove(*evicted.id()).is_some() {
             id_removed = true;
             self.subscriber().on_path_secret_map_id_entry_evicted(
                 event::builder::PathSecretMapIdEntryEvicted {
@@ -339,7 +443,7 @@ where
         // We drop from the peers map only if this is exactly the entry in that map to
         // avoid evicting a newer path secret (in case of rehandshaking with the same
         // peer).
-        if self.peers.remove_exact(evicted).is_some() {
+        if self.peers().remove_exact(evicted).is_some() {
             peer_removed = true;
             self.subscriber().on_path_secret_map_address_entry_evicted(
                 event::builder::PathSecretMapAddressEntryEvicted {
@@ -407,6 +511,24 @@ where
             &self.subscriber,
         )
     }
+
+    fn peers(&self) -> WithEvents<'_, PeerMap, C, S> {
+        WithEvents {
+            inner: &self.peers.0,
+            whole: &self.peers,
+            clock: &self.clock,
+            subscriber: self.subscriber(),
+        }
+    }
+
+    fn ids(&self) -> WithEvents<'_, IdMap, C, S> {
+        WithEvents {
+            inner: &self.ids.0,
+            whole: &self.ids,
+            clock: &self.clock,
+            subscriber: self.subscriber(),
+        }
+    }
 }
 
 impl<C, S> Store for State<C, S>
@@ -440,7 +562,7 @@ where
         let peer = entry.peer();
 
         // This is the only place that inserts into the ID list.
-        let same = self.ids.insert(entry.clone());
+        let same = self.ids().insert(entry.clone());
         if same.is_some() {
             // FIXME: Make insertion fallible and fail handshakes instead?
             panic!("inserting a path secret ID twice");
@@ -483,7 +605,7 @@ where
         let id = *entry.id();
         let peer = *entry.peer();
 
-        if let Some(prev) = self.peers.insert(entry.clone()) {
+        if let Some(prev) = self.peers().insert(entry.clone()) {
             // This shouldn't happen due to the panic in on_new_path_secrets, but just
             // in case something went wrong with the secret map we double check here.
             // FIXME: Make insertion fallible and fail handshakes instead?

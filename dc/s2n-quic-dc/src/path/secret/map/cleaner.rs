@@ -154,7 +154,11 @@ impl Cleaner {
             // Avoid double counting by making sure we have unique peer IPs.
             // We clear/take the accessed bit regardless of whether we're going to count it to
             // preserve the property that every cleaner run snapshots last ~minute.
-            if entry.take_accessed_addr() && state.cleaner_peer_seen.insert(entry.clone()).is_none()
+            if entry.take_accessed_addr()
+                && state
+                    .cleaner_peer_seen
+                    .insert_no_events(entry.clone())
+                    .is_none()
             {
                 address_entries_active += 1;
             }

@@ -116,6 +116,8 @@ mod counter {
                 271usize => Self(path_secret_map_id_cache_accessed),
                 273usize => Self(path_secret_map_id_cache_accessed_hit),
                 275usize => Self(path_secret_map_cleaner_cycled),
+                292usize => Self(path_secret_map_id_write_lock),
+                295usize => Self(path_secret_map_address_write_lock),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -325,6 +327,10 @@ mod counter {
             fn path_secret_map_id_cache_accessed_hit(value: u64);
             # [link_name = s2n_quic_dc__event__counter__path_secret_map_cleaner_cycled]
             fn path_secret_map_cleaner_cycled(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__path_secret_map_id_write_lock]
+            fn path_secret_map_id_write_lock(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__path_secret_map_address_write_lock]
+            fn path_secret_map_address_write_lock(value: u64);
         }
     );
     pub mod bool {
@@ -789,6 +795,10 @@ mod measure {
                 289usize => Self(path_secret_map_cleaner_cycled__handshake_requests__retired),
                 290usize => Self(path_secret_map_cleaner_cycled__handshake_lock_duration),
                 291usize => Self(path_secret_map_cleaner_cycled__total_duration),
+                293usize => Self(path_secret_map_id_write_lock__acquire),
+                294usize => Self(path_secret_map_id_write_lock__duration),
+                296usize => Self(path_secret_map_address_write_lock__acquire),
+                297usize => Self(path_secret_map_address_write_lock__duration),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -1040,6 +1050,14 @@ mod measure {
             fn path_secret_map_cleaner_cycled__handshake_lock_duration(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__total_duration]
             fn path_secret_map_cleaner_cycled__total_duration(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_id_write_lock__acquire]
+            fn path_secret_map_id_write_lock__acquire(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_id_write_lock__duration]
+            fn path_secret_map_id_write_lock__duration(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_address_write_lock__acquire]
+            fn path_secret_map_address_write_lock__acquire(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_address_write_lock__duration]
+            fn path_secret_map_address_write_lock__duration(value: u64);
         }
     );
 }
