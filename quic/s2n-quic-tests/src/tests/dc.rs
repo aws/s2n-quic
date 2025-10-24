@@ -325,10 +325,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
                 (dc::ConfirmComplete, dc::MtuConfirmComplete),
                 metrics.subscriber("server"),
             ),
-            (
-                tracing_events(true, model.max_udp_payload()),
-                server_subscriber,
-            ),
+            (tracing_events(false, model.clone()), server_subscriber),
         );
 
         let mut server = server
@@ -364,10 +361,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
                 (dc::ConfirmComplete, dc::MtuConfirmComplete),
                 metrics.subscriber("client"),
             ),
-            (
-                tracing_events(true, model.max_udp_payload()),
-                client_subscriber,
-            ),
+            (tracing_events(false, model.clone()), client_subscriber),
         );
 
         let client = client

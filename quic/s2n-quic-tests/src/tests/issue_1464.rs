@@ -23,7 +23,7 @@ use super::*;
 fn local_stream_open_notify_test() {
     let model = Model::default();
     test(model.clone(), |handle| {
-        let mut server = build_server(handle, model.max_udp_payload())?;
+        let mut server = build_server(handle, model.clone())?;
         let server_addr = server.local_addr()?;
 
         // send 100 bytes
@@ -39,7 +39,7 @@ fn local_stream_open_notify_test() {
             }
         });
 
-        let client = build_client(handle, model.max_udp_payload())?;
+        let client = build_client(handle, model.clone(), true)?;
 
         primary::spawn(async move {
             let connect = Connect::new(server_addr).with_server_name("localhost");

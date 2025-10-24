@@ -18,13 +18,13 @@ fn client_path_handle_update() {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event(tracing_events(true, model.max_udp_payload()))?
+            .with_event(tracing_events(true, model.clone()))?
             .with_random(Random::with_seed(456))?
             .start()?;
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(true, model.max_udp_payload()), subscriber))?
+            .with_event((tracing_events(true, model.clone()), subscriber))?
             .with_random(Random::with_seed(456))?
             .start()?;
         let addr = start_server(server)?;

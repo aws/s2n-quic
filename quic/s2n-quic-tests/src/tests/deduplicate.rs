@@ -21,7 +21,7 @@ fn deduplicate_successfully() {
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
             .with_event((
-                tracing_events(true, model.max_udp_payload()),
+                tracing_events(true, model.clone()),
                 server_subscriber.clone(),
             ))?
             .with_random(Random::with_seed(456))?
@@ -45,7 +45,7 @@ fn deduplicate_successfully() {
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
             .with_event((
-                tracing_events(true, model.max_udp_payload()),
+                tracing_events(true, model.clone()),
                 server_subscriber,
             ))?
             .with_random(Random::with_seed(456))?
@@ -64,7 +64,7 @@ fn deduplicate_successfully() {
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
             .with_event((
-                tracing_events(true, model.max_udp_payload()),
+                tracing_events(true, model.clone()),
                 client_subscriber,
             ))?
             .with_random(Random::with_seed(456))?
@@ -176,7 +176,7 @@ fn deduplicate_non_terminal() {
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
             .with_event((
-                tracing_events(true, model.max_udp_payload()),
+                tracing_events(true, model.clone()),
                 server_subscriber.clone(),
             ))?
             .with_random(Random::with_seed(456))?
@@ -203,7 +203,7 @@ fn deduplicate_non_terminal() {
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
             .with_event((
-                tracing_events(true, model.max_udp_payload()),
+                tracing_events(true, model.clone()),
                 client_subscriber,
             ))?
             .with_random(Random::with_seed(456))?

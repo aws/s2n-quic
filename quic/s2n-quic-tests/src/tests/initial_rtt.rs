@@ -37,7 +37,7 @@ fn test_with_initial_rtt(initial_rtt: Duration) -> usize {
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
             .with_event((
-                tracing_events(true, model.max_udp_payload()),
+                tracing_events(true, model.clone()),
                 pto_subscriber,
             ))?
             .with_random(Random::with_seed(456))?

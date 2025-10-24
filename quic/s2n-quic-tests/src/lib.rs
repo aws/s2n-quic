@@ -5,7 +5,7 @@ use s2n_quic::{
     client::Connect,
     provider::{
         event::{self, events},
-        io::testing::{primary, spawn, Handle, Result},
+        io::testing::{primary, spawn, Handle, Model, Result},
     },
     stream::PeerStream,
     Client, Server,
@@ -24,15 +24,19 @@ pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::K
 /// A subscriber that panics when a blocklisted event is encountered
 pub struct BlocklistSubscriber {
     blocklist_enabled: bool,
-    max_udp_payload: u16,
+    network_env: Model,
 }
 
 impl BlocklistSubscriber {
-    pub fn new(blocklist_enabled: bool, max_udp_payload: u16) -> Self {
+    pub fn new(blocklist_enabled: bool, network_env: Model) -> Self {
         Self {
             blocklist_enabled,
-            max_udp_payload,
+            network_env,
         }
+    }
+
+    pub fn max_udp_payload(&self) -> u16 {
+        self.network_env.max_udp_payload()
     }
 }
 
@@ -90,22 +94,13 @@ impl event::Subscriber for BlocklistSubscriber {
         event: &events::PacketLost,
     ) {
         // packet which is smaller than the MTU should not be lost
-        if event.bytes_lost < self.max_udp_payload && self.blocklist_enabled {
-            panic!("Bytes lost is {} and max udp payload is {}\nBlocklisted packet lost event encountered: {:?}", event.bytes_lost, self.max_udp_payload, event);
+        if event.bytes_lost < self.max_udp_payload() && self.blocklist_enabled {
+            panic!("Bytes lost is {} and max udp payload is {}\nBlocklisted packet lost event encountered: {:?}", event.bytes_lost, self.max_udp_payload(), event);
         }
     }
-
-    // fn on_mtu_updated(
-    //     &mut self,
-    //     _context: &mut Self::ConnectionContext,
-    //     _meta: &events::ConnectionMeta,
-    //     event: &events::MtuUpdated,
-    // ) {
-    //     self.max_udp_payload = event.mtu;
-    // }
 }
 
-pub fn tracing_events(with_blocklist: bool, max_udp_payload: u16) -> impl event::Subscriber {
+pub fn tracing_events(with_blocklist: bool, network_env: Model) -> impl event::Subscriber {
     use std::sync::Once;
 
     static TRACING: Once = Once::new();
@@ -145,7 +140,7 @@ pub fn tracing_events(with_blocklist: bool, max_udp_payload: u16) -> impl event:
 
     (
         event::tracing::Subscriber::default(),
-        BlocklistSubscriber::new(with_blocklist, max_udp_payload),
+        BlocklistSubscriber::new(with_blocklist, network_env),
     )
 }
 
@@ -183,22 +178,27 @@ pub fn start_server(mut server: Server) -> Result<SocketAddr> {
     Ok(server_addr)
 }
 
-pub fn server(handle: &Handle, max_udp_payload: u16) -> Result<SocketAddr> {
-    let server = build_server(handle, max_udp_payload)?;
+pub fn server(handle: &Handle, network_env: Model) -> Result<SocketAddr> {
+    let server = build_server(handle, network_env)?;
     start_server(server)
 }
 
-pub fn build_server(handle: &Handle, max_udp_payload: u16) -> Result<Server> {
+pub fn build_server(handle: &Handle, network_env: Model) -> Result<Server> {
     Ok(Server::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls(SERVER_CERTS)?
-        .with_event(tracing_events(true, max_udp_payload))?
+        .with_event(tracing_events(true, network_env))?
         .with_random(Random::with_seed(123))?
         .start()?)
 }
 
-pub fn client(handle: &Handle, server_addr: SocketAddr, max_udp_payload: u16) -> Result {
-    let client = build_client(handle, max_udp_payload)?;
+pub fn client(
+    handle: &Handle,
+    server_addr: SocketAddr,
+    network_env: Model,
+    with_blocklist: bool,
+) -> Result {
+    let client = build_client(handle, network_env, with_blocklist)?;
     start_client(client, server_addr, Data::new(10_000))
 }
 
@@ -233,11 +233,11 @@ pub fn start_client(client: Client, server_addr: SocketAddr, data: Data) -> Resu
     Ok(())
 }
 
-pub fn build_client(handle: &Handle, max_udp_payload: u16) -> Result<Client> {
+pub fn build_client(handle: &Handle, network_env: Model, with_blocklist: bool) -> Result<Client> {
     Ok(Client::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls(certificates::CERT_PEM)?
-        .with_event(tracing_events(true, max_udp_payload))?
+        .with_event(tracing_events(with_blocklist, network_env))?
         .with_random(Random::with_seed(123))?
         .start()?)
 }

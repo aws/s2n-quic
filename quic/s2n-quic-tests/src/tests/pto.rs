@@ -36,7 +36,7 @@ fn handshake_pto_timer_is_armed() {
             .with_tls(SERVER_CERTS)?
             .with_packet_interceptor(DropHandshakeTx)?
             .with_event((
-                tracing_events(true, model.max_udp_payload()),
+                tracing_events(true, model.clone()),
                 metrics.subscriber("server"),
             ))?
             .with_random(Random::with_seed(456))?
@@ -54,7 +54,7 @@ fn handshake_pto_timer_is_armed() {
             .with_tls(certificates::CERT_PEM)?
             .with_event((
                 (
-                    tracing_events(true, model.max_udp_payload()),
+                    tracing_events(true, model.clone()),
                     pto_subscriber,
                 ),
                 (packet_sent_subscriber, metrics.subscriber("client")),
@@ -126,7 +126,7 @@ fn pto_jitter() {
             .with_limits(limits)?
             .with_event((
                 (
-                    tracing_events(true, model.max_udp_payload()),
+                    tracing_events(true, model.clone()),
                     pto_subscriber,
                 ),
                 datagram_sent_subscriber,
@@ -148,7 +148,7 @@ fn pto_jitter() {
             .with_limits(limits)?
             .with_event((
                 (
-                    tracing_events(true, model.max_udp_payload()),
+                    tracing_events(true, model.clone()),
                     pto_subscriber_jitter,
                 ),
                 datagram_sent_subscriber_jitter,

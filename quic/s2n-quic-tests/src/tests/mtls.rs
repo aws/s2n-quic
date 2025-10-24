@@ -22,7 +22,7 @@ fn mtls_happy_case() {
             .with_io(handle.builder().build()?)?
             .with_tls(server_tls)?
             .with_event((
-                tracing_events(true, model.max_udp_payload()),
+                tracing_events(true, model.clone()),
                 server_subscriber,
             ))?
             .with_random(Random::with_seed(456))?
@@ -41,7 +41,7 @@ fn mtls_happy_case() {
             .with_io(handle.builder().build().unwrap())?
             .with_tls(client_tls)?
             .with_event((
-                tracing_events(true, model.max_udp_payload()),
+                tracing_events(true, model.clone()),
                 client_subscriber,
             ))?
             .with_random(Random::with_seed(456))?
@@ -99,7 +99,7 @@ fn mtls_auth_failure() {
             .with_io(handle.builder().build()?)?
             .with_tls(server_tls)?
             .with_event((
-                tracing_events(true, model.max_udp_payload()),
+                tracing_events(true, model.clone()),
                 server_subscriber,
             ))?
             .with_random(Random::with_seed(456))?
@@ -125,7 +125,7 @@ fn mtls_auth_failure() {
             .with_io(handle.builder().build().unwrap())?
             .with_tls(client_tls)?
             .with_event((
-                tracing_events(true, model.max_udp_payload()),
+                tracing_events(true, model.clone()),
                 client_subscriber,
             ))?
             .with_random(Random::with_seed(456))?

@@ -9,13 +9,13 @@ fn intercept_loss(loss: Loss<Random>) {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event(tracing_events(true, model.max_udp_payload()))?
+            .with_event(tracing_events(true, model.clone()))?
             .with_random(Random::with_seed(456))?
             .with_packet_interceptor(loss)?
             .start()?;
         let server_address = start_server(server)?;
 
-        client(handle, server_address, model.max_udp_payload())
+        client(handle, server_address, model.clone(), false)
     })
     .unwrap();
 }
