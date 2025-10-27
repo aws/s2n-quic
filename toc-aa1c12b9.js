@@ -8,7 +8,7 @@ class MDBookSidebarScrollbox extends HTMLElement {
         super();
     }
     connectedCallback() {
-        this.innerHTML = '<ol class="chapter"><li class="chapter-item expanded "><a href="index.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><div><strong aria-hidden="true">2.</strong> Introduction</div></li><li class="chapter-item expanded "><a href="user-guide/installation.html"><strong aria-hidden="true">3.</strong> Installation</a></li><li class="chapter-item expanded "><a href="user-guide/debugging.html"><strong aria-hidden="true">4.</strong> Debugging</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="user-guide/debugging-tracelog.html"><strong aria-hidden="true">4.1.</strong> Tracing Logs</a></li><li class="chapter-item expanded "><a href="user-guide/debugging-pcap.html"><strong aria-hidden="true">4.2.</strong> Packet Capture</a></li><li class="chapter-item expanded "><a href="user-guide/debugging-gso.html"><strong aria-hidden="true">4.3.</strong> GSO and GRO</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Developer Guide</li><li class="chapter-item expanded "><a href="dev-guide.html"><strong aria-hidden="true">5.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="dev-guide/setup.html"><strong aria-hidden="true">6.</strong> Setup</a></li><li class="chapter-item expanded "><a href="dev-guide/ci.html"><strong aria-hidden="true">7.</strong> Continuous Integration</a></li><li class="chapter-item expanded "><a href="dev-guide/kani.html"><strong aria-hidden="true">8.</strong> Kani</a></li><li class="chapter-item expanded affix "><li class="part-title">Examples</li><li class="chapter-item expanded "><a href="examples/async-client-hello-callback.html"><strong aria-hidden="true">9.</strong> Async client hello callback</a></li><li class="chapter-item expanded "><a href="examples/custom-congestion-controller.html"><strong aria-hidden="true">10.</strong> Custom congestion controller</a></li><li class="chapter-item expanded "><div><strong aria-hidden="true">11.</strong> dos mitigation</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">12.</strong> Echo</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">13.</strong> Event framework</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">14.</strong> Jumbo frame</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">15.</strong> rustls mtls</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">16.</strong> rustls provider</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">17.</strong> turmoil provider</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">18.</strong> Unreliable datagram</div></li></ol>';
+        this.innerHTML = '<ol class="chapter"><li class="chapter-item expanded "><span class="chapter-link-wrapper"><a href="index.html"><strong aria-hidden="true">1.</strong> Introduction</a></span></li><li class="chapter-item expanded "><li class="part-title">User Guide</li></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><span><strong aria-hidden="true">2.</strong> Introduction</span></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><a href="user-guide/installation.html"><strong aria-hidden="true">3.</strong> Installation</a></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><a href="user-guide/debugging.html"><strong aria-hidden="true">4.</strong> Debugging</a></span><ol class="section"><li class="chapter-item expanded "><span class="chapter-link-wrapper"><a href="user-guide/debugging-tracelog.html"><strong aria-hidden="true">4.1.</strong> Tracing Logs</a></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><a href="user-guide/debugging-pcap.html"><strong aria-hidden="true">4.2.</strong> Packet Capture</a></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><a href="user-guide/debugging-gso.html"><strong aria-hidden="true">4.3.</strong> GSO and GRO</a></span></li></ol><li class="chapter-item expanded "><li class="part-title">Developer Guide</li></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><a href="dev-guide.html"><strong aria-hidden="true">5.</strong> Introduction</a></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><a href="dev-guide/setup.html"><strong aria-hidden="true">6.</strong> Setup</a></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><a href="dev-guide/ci.html"><strong aria-hidden="true">7.</strong> Continuous Integration</a></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><a href="dev-guide/kani.html"><strong aria-hidden="true">8.</strong> Kani</a></span></li><li class="chapter-item expanded "><li class="part-title">Examples</li></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><a href="examples/async-client-hello-callback.html"><strong aria-hidden="true">9.</strong> Async client hello callback</a></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><a href="examples/custom-congestion-controller.html"><strong aria-hidden="true">10.</strong> Custom congestion controller</a></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><span><strong aria-hidden="true">11.</strong> dos mitigation</span></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><span><strong aria-hidden="true">12.</strong> Echo</span></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><span><strong aria-hidden="true">13.</strong> Event framework</span></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><span><strong aria-hidden="true">14.</strong> Jumbo frame</span></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><span><strong aria-hidden="true">15.</strong> rustls mtls</span></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><span><strong aria-hidden="true">16.</strong> rustls provider</span></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><span><strong aria-hidden="true">17.</strong> turmoil provider</span></span></li><li class="chapter-item expanded "><span class="chapter-link-wrapper"><span><strong aria-hidden="true">18.</strong> Unreliable datagram</span></span></li></ol>';
         // Set the current, active page, and reveal it if it's hidden
         let current_page = document.location.href.toString().split('#')[0].split('?')[0];
         if (current_page.endsWith('/')) {
@@ -29,14 +29,9 @@ class MDBookSidebarScrollbox extends HTMLElement {
                 && current_page.endsWith('/index.html')) {
                 link.classList.add('active');
                 let parent = link.parentElement;
-                if (parent && parent.classList.contains('chapter-item')) {
-                    parent.classList.add('expanded');
-                }
                 while (parent) {
-                    if (parent.tagName === 'LI' && parent.previousElementSibling) {
-                        if (parent.previousElementSibling.classList.contains('chapter-item')) {
-                            parent.previousElementSibling.classList.add('expanded');
-                        }
+                    if (parent.tagName === 'LI' && parent.classList.contains('chapter-item')) {
+                        parent.classList.add('expanded');
                     }
                     parent = parent.parentElement;
                 }
@@ -62,9 +57,9 @@ class MDBookSidebarScrollbox extends HTMLElement {
             }
         }
         // Toggle buttons
-        const sidebarAnchorToggles = document.querySelectorAll('#mdbook-sidebar a.toggle');
+        const sidebarAnchorToggles = document.querySelectorAll('.chapter-fold-toggle');
         function toggleSection(ev) {
-            ev.currentTarget.parentElement.classList.toggle('expanded');
+            ev.currentTarget.parentElement.parentElement.classList.toggle('expanded');
         }
         Array.from(sidebarAnchorToggles).forEach(el => {
             el.addEventListener('click', toggleSection);
@@ -76,10 +71,6 @@ window.customElements.define('mdbook-sidebar-scrollbox', MDBookSidebarScrollbox)
 
 // ---------------------------------------------------------------------------
 // Support for dynamically adding headers to the sidebar.
-
-// This is a debugging tool for the threshold which you can enable in the console.
-// eslint-disable-next-line prefer-const
-let mdbookThresholdDebug = false;
 
 (function() {
     // This is used to detect which direction the page has scrolled since the
@@ -107,6 +98,101 @@ let mdbookThresholdDebug = false;
     // I'm not sure why eslint seems to have a false positive here.
     // eslint-disable-next-line prefer-const
     let headerToggles = [];
+    // This is a debugging tool for the threshold which you can enable in the console.
+    let thresholdDebug = false;
+
+    // Updates the threshold based on the scroll position.
+    function updateThreshold() {
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const windowHeight = window.innerHeight;
+        const documentHeight = document.documentElement.scrollHeight;
+
+        // The number of pixels below the viewport, at most documentHeight.
+        // This is used to push the threshold down to the bottom of the page
+        // as the user scrolls towards the bottom.
+        const pixelsBelow = Math.max(0, documentHeight - (scrollTop + windowHeight));
+        // The number of pixels above the viewport, at least defaultDownThreshold.
+        // Similar to pixelsBelow, this is used to push the threshold back towards
+        // the top when reaching the top of the page.
+        const pixelsAbove = Math.max(0, defaultDownThreshold - scrollTop);
+        // How much the threshold should be offset once it gets close to the
+        // bottom of the page.
+        const bottomAdd = Math.max(0, windowHeight - pixelsBelow - defaultDownThreshold);
+        let adjustedBottomAdd = bottomAdd;
+
+        // Adjusts bottomAdd for a small document. The calculation above
+        // assumes the document is at least twice the windowheight in size. If
+        // it is less than that, then bottomAdd needs to be shrunk
+        // proportional to the difference in size.
+        if (documentHeight < windowHeight * 2) {
+            const maxPixelsBelow = documentHeight - windowHeight;
+            const t = 1 - pixelsBelow / Math.max(1, maxPixelsBelow);
+            const clamp = Math.max(0, Math.min(1, t));
+            adjustedBottomAdd *= clamp;
+        }
+
+        let scrollingDown = true;
+        if (scrollTop < lastKnownScrollPosition) {
+            scrollingDown = false;
+        }
+
+        if (scrollingDown) {
+            // When scrolling down, move the threshold up towards the default
+            // downwards threshold position. If near the bottom of the page,
+            // adjustedBottomAdd will offset the threshold towards the bottom
+            // of the page.
+            const amountScrolledDown = scrollTop - lastKnownScrollPosition;
+            const adjustedDefault = defaultDownThreshold + adjustedBottomAdd;
+            threshold = Math.max(adjustedDefault, threshold - amountScrolledDown);
+        } else {
+            // When scrolling up, move the threshold down towards the default
+            // upwards threshold position. If near the bottom of the page,
+            // quickly transition the threshold back up where it normally
+            // belongs.
+            const amountScrolledUp = lastKnownScrollPosition - scrollTop;
+            const adjustedDefault = defaultUpThreshold - pixelsAbove
+                + Math.max(0, adjustedBottomAdd - defaultDownThreshold);
+            threshold = Math.min(adjustedDefault, threshold + amountScrolledUp);
+        }
+
+        if (documentHeight <= windowHeight) {
+            threshold = 0;
+        }
+
+        if (thresholdDebug) {
+            const id = 'mdbook-threshold-debug-data';
+            let data = document.getElementById(id);
+            if (data === null) {
+                data = document.createElement('div');
+                data.id = id;
+                data.style.cssText = `
+                    position: fixed;
+                    top: 50px;
+                    right: 10px;
+                    background-color: 0xeeeeee;
+                    z-index: 9999;
+                    pointer-events: none;
+                `;
+                document.body.appendChild(data);
+            }
+            data.innerHTML = `
+                <table>
+                  <tr><td>documentHeight</td><td>${documentHeight.toFixed(1)}</td></tr>
+                  <tr><td>windowHeight</td><td>${windowHeight.toFixed(1)}</td></tr>
+                  <tr><td>scrollTop</td><td>${scrollTop.toFixed(1)}</td></tr>
+                  <tr><td>pixelsAbove</td><td>${pixelsAbove.toFixed(1)}</td></tr>
+                  <tr><td>pixelsBelow</td><td>${pixelsBelow.toFixed(1)}</td></tr>
+                  <tr><td>bottomAdd</td><td>${bottomAdd.toFixed(1)}</td></tr>
+                  <tr><td>adjustedBottomAdd</td><td>${adjustedBottomAdd.toFixed(1)}</td></tr>
+                  <tr><td>scrollingDown</td><td>${scrollingDown}</td></tr>
+                  <tr><td>threshold</td><td>${threshold.toFixed(1)}</td></tr>
+                </table>
+            `;
+            drawDebugLine();
+        }
+
+        lastKnownScrollPosition = scrollTop;
+    }
 
     function drawDebugLine() {
         if (!document.body) {
@@ -132,76 +218,25 @@ let mdbookThresholdDebug = false;
         document.body.appendChild(line);
     }
 
-    // Updates the threshold based on the scroll position.
-    function updateThreshold() {
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const windowHeight = window.innerHeight;
-        const documentHeight = document.documentElement.scrollHeight;
-        // The number of pixels below the viewport, at most documentHeight.
-        // This is used to push the threshold down to the bottom of the page
-        // as the user scrolls towards the bottom.
-        const pixelsBelow = Math.max(0, documentHeight - (scrollTop + windowHeight));
-        // The number of pixels above the viewport, at most defaultDownThreshold.
-        // Similar to pixelsBelow, this is used to push the threshold back towards
-        // the top when reaching the top of the page.
-        const pixelsAbove = Math.max(0, defaultDownThreshold - scrollTop);
-        // How much the threshold should be offset once it gets close to the
-        // bottom of the page.
-        let bottomAdd = Math.max(0, windowHeight - pixelsBelow - defaultDownThreshold);
-
-        // Adjusts bottomAdd for a small document. The calculation above
-        // assumes the document is at least twice the windowheight in size. If
-        // it is less than that, then bottomAdd needs to be shrunk
-        // proportional to the difference in size.
-        if (documentHeight < windowHeight * 2) {
-            const maxPixelsBelow = documentHeight - windowHeight;
-            const t = 1 - pixelsBelow / maxPixelsBelow;
-            const clamp = Math.max(0, Math.min(1, t));
-            bottomAdd *= clamp;
-        }
-
-        let scrollingDown = true;
-        if (scrollTop < lastKnownScrollPosition) {
-            scrollingDown = false;
-        }
-
-        if (scrollingDown) {
-            // When scrolling down, move the threshold up towards the default
-            // downwards threshold position. If near the bottom of the page,
-            // bottomAdd will offset the threshold towards the bottom of the
-            // page.
-            const amountScrolledDown = scrollTop - lastKnownScrollPosition;
-            const adjustedDefault = defaultDownThreshold + bottomAdd;
-            threshold = Math.max(adjustedDefault, threshold - amountScrolledDown);
-        } else {
-            // When scrolling up, move the threshold down towards the default
-            // upwards threshold position. If near the bottom of the page,
-            // quickly transition the threshold back up where it normally
-            // belongs.
-            const amountScrolledUp = lastKnownScrollPosition - scrollTop;
-            const adjustedDefault = defaultUpThreshold - pixelsAbove
-                + Math.max(0, bottomAdd - defaultDownThreshold);
-            threshold = Math.min(adjustedDefault, threshold + amountScrolledUp);
-        }
-        lastKnownScrollPosition = scrollTop;
+    function mdbookEnableThresholdDebug() {
+        thresholdDebug = true;
+        updateThreshold();
+        drawDebugLine();
     }
+
+    window.mdbookEnableThresholdDebug = mdbookEnableThresholdDebug;
 
     // Updates which headers in the sidebar should be expanded. If the current
     // header is inside a collapsed group, then it, and all its parents should
     // be expanded.
     function updateHeaderExpanded(currentA) {
         // Add expanded to all header-item li ancestors.
-        let current = currentA.parentElement.parentElement.parentElement;
-        while (current.tagName === 'LI') {
-            const prevSibling = current.previousElementSibling;
-            if (prevSibling !== null
-                && prevSibling.tagName === 'LI'
-                && prevSibling.classList.contains('header-item')) {
-                prevSibling.classList.add('expanded');
-                current = prevSibling.parentElement.parentElement;
-            } else {
-                break;
+        let current = currentA.parentElement;
+        while (current) {
+            if (current.tagName === 'LI' && current.classList.contains('header-item')) {
+                current.classList.add('expanded');
             }
+            current = current.parentElement;
         }
     }
 
@@ -209,9 +244,6 @@ let mdbookThresholdDebug = false;
     // This is done with a virtual Y threshold, where headers at or below
     // that line will be considered the current one.
     function updateCurrentHeader() {
-        if (mdbookThresholdDebug) {
-            drawDebugLine();
-        }
         if (!headers || !headers.length) {
             return;
         }
@@ -294,25 +326,22 @@ let mdbookThresholdDebug = false;
         });
     }
 
+    // Takes the nodes from the given head and copies them over to the
+    // destination, along with some filtering.
+    function filterHeader(source, dest) {
+        const clone = source.cloneNode(true);
+        clone.querySelectorAll('mark').forEach(mark => {
+            mark.replaceWith(...mark.childNodes);
+        });
+        dest.append(...clone.childNodes);
+    }
+
     // Scans page for headers and adds them to the sidebar.
     document.addEventListener('DOMContentLoaded', function() {
         const activeSection = document.querySelector('#mdbook-sidebar .active');
         if (activeSection === null) {
             return;
         }
-        const activeItem = activeSection.parentElement;
-        const activeList = activeItem.parentElement;
-
-        // Build a tree of headers in the sidebar.
-        const rootLi = document.createElement('li');
-        rootLi.classList.add('header-item');
-        rootLi.classList.add('expanded');
-        const rootOl = document.createElement('ol');
-        rootOl.classList.add('section');
-        rootLi.appendChild(rootOl);
-        const stack = [{ level: 0, ol: rootOl }];
-        // The level where it will start folding deeply nested headers.
-        const foldLevel = 3;
 
         const main = document.getElementsByTagName('main')[0];
         headers = Array.from(main.querySelectorAll('h2, h3, h4, h5, h6'))
@@ -322,57 +351,93 @@ let mdbookThresholdDebug = false;
             return;
         }
 
+        // Build a tree of headers in the sidebar.
+
+        const stack = [];
+
+        const firstLevel = parseInt(headers[0].tagName.charAt(1));
+        for (let i = 1; i < firstLevel; i++) {
+            const ol = document.createElement('ol');
+            ol.classList.add('section');
+            if (stack.length > 0) {
+                stack[stack.length - 1].ol.appendChild(ol);
+            }
+            stack.push({level: i + 1, ol: ol});
+        }
+
+        // The level where it will start folding deeply nested headers.
+        const foldLevel = 3;
+
         for (let i = 0; i < headers.length; i++) {
             const header = headers[i];
             const level = parseInt(header.tagName.charAt(1));
+
+            const currentLevel = stack[stack.length - 1].level;
+            if (level > currentLevel) {
+                // Begin nesting to this level.
+                for (let nextLevel = currentLevel + 1; nextLevel <= level; nextLevel++) {
+                    const ol = document.createElement('ol');
+                    ol.classList.add('section');
+                    const last = stack[stack.length - 1];
+                    const lastChild = last.ol.lastChild;
+                    // Handle the case where jumping more than one nesting
+                    // level, which doesn't have a list item to place this new
+                    // list inside of.
+                    if (lastChild) {
+                        lastChild.appendChild(ol);
+                    } else {
+                        last.ol.appendChild(ol);
+                    }
+                    stack.push({level: nextLevel, ol: ol});
+                }
+            } else if (level < currentLevel) {
+                while (stack.length > 1 && stack[stack.length - 1].level >= level) {
+                    stack.pop();
+                }
+            }
+
             const li = document.createElement('li');
             li.classList.add('header-item');
             li.classList.add('expanded');
             if (level < foldLevel) {
                 li.classList.add('expanded');
             }
+            const span = document.createElement('span');
+            span.classList.add('chapter-link-wrapper');
             const a = document.createElement('a');
+            span.appendChild(a);
             a.href = '#' + header.id;
             a.classList.add('header-in-summary');
-            a.innerHTML = header.children[0].innerHTML;
+            filterHeader(header.children[0], a);
             a.addEventListener('click', headerThresholdClick);
-            li.appendChild(a);
             const nextHeader = headers[i + 1];
             if (nextHeader !== undefined) {
                 const nextLevel = parseInt(nextHeader.tagName.charAt(1));
                 if (nextLevel > level && level >= foldLevel) {
-                    const div = document.createElement('div');
-                    div.textContent = '❱';
                     const toggle = document.createElement('a');
-                    toggle.classList.add('toggle');
+                    toggle.classList.add('chapter-fold-toggle');
                     toggle.classList.add('header-toggle');
-                    toggle.appendChild(div);
                     toggle.addEventListener('click', () => {
                         li.classList.toggle('expanded');
                     });
-                    li.appendChild(toggle);
+                    const toggleDiv = document.createElement('div');
+                    toggleDiv.textContent = '❱';
+                    toggle.appendChild(toggleDiv);
+                    span.appendChild(toggle);
                     headerToggles.push(li);
                 }
             }
-
-            // Find the appropriate parent level.
-            while (stack.length > 1 && stack[stack.length - 1].level >= level) {
-                stack.pop();
-            }
+            li.appendChild(span);
 
             const currentParent = stack[stack.length - 1];
             currentParent.ol.appendChild(li);
-
-            // Create new nested ol for potential children.
-            const nestedOl = document.createElement('ol');
-            nestedOl.classList.add('section');
-            const nestedLi = document.createElement('li');
-            nestedLi.appendChild(nestedOl);
-            currentParent.ol.appendChild(nestedLi);
-            stack.push({ level: level, ol: nestedOl });
         }
 
-        activeList.insertBefore(rootLi, activeItem.nextSibling);
+        const onThisPage = document.createElement('div');
+        onThisPage.classList.add('on-this-page');
+        onThisPage.append(stack[0].ol);
+        const activeItemSpan = activeSection.parentElement;
+        activeItemSpan.after(onThisPage);
     });
 
     document.addEventListener('DOMContentLoaded', reloadCurrentHeader);
