@@ -45,10 +45,7 @@ where
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((
-                tracing_events(false, model.clone()),
-                active_path_sub,
-            ))?
+            .with_event((tracing_events(false, model.clone()), active_path_sub))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -334,10 +331,7 @@ fn pto_backoff_exceeding_max_value_closes_connection() {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((
-                tracing_events(false, model.clone()),
-                subscriber_closed,
-            ))?
+            .with_event((tracing_events(false, model.clone()), subscriber_closed))?
             .with_random(Random::with_seed(456))?
             .with_packet_interceptor(RebindPortAfterTheFirstDatagram::default())?
             .start()?;

@@ -53,10 +53,7 @@ fn handshake_pto_timer_is_armed() {
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
             .with_event((
-                (
-                    tracing_events(true, model.clone()),
-                    pto_subscriber,
-                ),
+                (tracing_events(true, model.clone()), pto_subscriber),
                 (packet_sent_subscriber, metrics.subscriber("client")),
             ))?
             .with_random(Random::with_seed(456))?
@@ -125,10 +122,7 @@ fn pto_jitter() {
             .with_tls(certificates::CERT_PEM)?
             .with_limits(limits)?
             .with_event((
-                (
-                    tracing_events(true, model.clone()),
-                    pto_subscriber,
-                ),
+                (tracing_events(true, model.clone()), pto_subscriber),
                 datagram_sent_subscriber,
             ))?
             .start()?;
@@ -147,10 +141,7 @@ fn pto_jitter() {
             .with_tls(certificates::CERT_PEM)?
             .with_limits(limits)?
             .with_event((
-                (
-                    tracing_events(true, model.clone()),
-                    pto_subscriber_jitter,
-                ),
+                (tracing_events(true, model.clone()), pto_subscriber_jitter),
                 datagram_sent_subscriber_jitter,
             ))?
             .with_random(Random::with_seed(123))?

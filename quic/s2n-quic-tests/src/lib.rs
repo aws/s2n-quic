@@ -48,7 +48,6 @@ impl event::Subscriber for BlocklistSubscriber {
         _meta: &events::ConnectionMeta,
         _info: &events::ConnectionInfo,
     ) -> Self::ConnectionContext {
-        ()
     }
 
     fn on_datagram_dropped(

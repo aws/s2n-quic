@@ -147,7 +147,7 @@ let client = Client::builder()
     .start()?;
 ```
 
-When the `with_blocklist` parameter is set to `true`, the `tracing_events` function returns both the standard tracing subscriber and the blocklist subscriber. The standard subscriber logs events as usual, while the blocklist subscriber will cause a test to fail immediately if a blocklisted event is encountered. If certain unwanted events are expected during the test, switching the `with_blocklist` paremeter to false to disable the blocklist feature.
+When the `with_blocklist` parameter is set to `true`, the `tracing_events` function returns both the standard tracing subscriber and the blocklist subscriber. The standard subscriber logs events as usual, while the blocklist subscriber will cause a test to fail immediately if a blocklisted event is encountered. If certain unwanted events are expected during the test, switching the `with_blocklist` parameter to false to disable the blocklist feature.
 
 This is particularly useful for tests that need to verify that certain error conditions don't occur, as the test will fail early with a clear error message rather than continuing with potentially incorrect behavior.
 
