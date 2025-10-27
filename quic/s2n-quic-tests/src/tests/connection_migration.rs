@@ -13,7 +13,7 @@ fn run_test<F>(mut on_rebind: F)
 where
     F: FnMut(SocketAddr) -> SocketAddr + Send + 'static,
 {
-    let model = Model::default();
+    let model: Model = Model::default();
     let rtt = Duration::from_millis(10);
     let rebind_rate = rtt * 2;
     // we currently only support 4 migrations
@@ -41,11 +41,14 @@ where
     let active_paths = recorder::ActivePathUpdated::new();
     let active_path_sub = active_paths.clone();
 
-    test(model, move |handle| {
+    test(model.clone(), move |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), active_path_sub))?
+            .with_event((
+                tracing_events(false, model.clone()),
+                active_path_sub,
+            ))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -54,7 +57,7 @@ where
         let client = Client::builder()
             .with_io(client_io)?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(false, model.clone()))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -107,11 +110,11 @@ where
 fn rebind_after_handshake_confirmed() {
     let model = Model::default();
 
-    test(model, move |handle| {
+    test(model.clone(), move |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(false, model.clone()))?
             .with_random(Random::with_seed(456))?
             .with_packet_interceptor(RebindPortBeforeLastHandshakePacket::default())?
             .start()?;
@@ -119,7 +122,7 @@ fn rebind_after_handshake_confirmed() {
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(false, model.clone()))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -260,11 +263,11 @@ fn rebind_before_handshake_confirmed() {
     let addr_change_events = subscriber_addr_change.events();
     let subscriber = (subscriber_dropped, subscriber_addr_change);
 
-    test(model, move |handle| {
+    test(model.clone(), move |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), subscriber))?
+            .with_event((tracing_events(false, model.clone()), subscriber))?
             .with_random(Random::with_seed(456))?
             .with_packet_interceptor(RebindPortBeforeHandshakeConfirmed::default())?
             .start()?;
@@ -272,7 +275,7 @@ fn rebind_before_handshake_confirmed() {
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(false, model.clone()))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -327,11 +330,14 @@ fn pto_backoff_exceeding_max_value_closes_connection() {
     let subscriber_closed = recorder::ConnectionClosed::new();
     let connection_closed_events = subscriber_closed.events();
 
-    test(model, move |handle| {
+    test(model.clone(), move |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), subscriber_closed))?
+            .with_event((
+                tracing_events(false, model.clone()),
+                subscriber_closed,
+            ))?
             .with_random(Random::with_seed(456))?
             .with_packet_interceptor(RebindPortAfterTheFirstDatagram::default())?
             .start()?;
@@ -339,7 +345,7 @@ fn pto_backoff_exceeding_max_value_closes_connection() {
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(false, model.clone()))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -438,11 +444,11 @@ fn rebind_ipv4_mapped_before_handshake_confirmed() {
         let subscriber = recorder::DatagramDropped::new();
         let datagram_dropped_events = subscriber.events();
 
-        test(model, move |handle| {
+        test(model.clone(), move |handle| {
             let server = Server::builder()
                 .with_io(handle.builder().build()?)?
                 .with_tls(SERVER_CERTS)?
-                .with_event((tracing_events(), subscriber))?
+                .with_event((tracing_events(false, model.clone()), subscriber))?
                 .with_random(Random::with_seed(456))?
                 .with_packet_interceptor(interceptor)?
                 .start()?;
@@ -450,7 +456,7 @@ fn rebind_ipv4_mapped_before_handshake_confirmed() {
             let client = Client::builder()
                 .with_io(handle.builder().build()?)?
                 .with_tls(certificates::CERT_PEM)?
-                .with_event(tracing_events())?
+                .with_event(tracing_events(false, model.clone()))?
                 .with_random(Random::with_seed(456))?
                 .start()?;
 
@@ -513,11 +519,11 @@ fn rebind_blocked_port() {
     let subscriber = recorder::DatagramDropped::new();
     let datagram_dropped_events = subscriber.events();
 
-    test(model, move |handle| {
+    test(model.clone(), move |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), subscriber))?
+            .with_event((tracing_events(false, model.clone()), subscriber))?
             .with_random(Random::with_seed(456))?
             .with_packet_interceptor(RebindToPort { port: 53, after: 2 })?
             .start()?;
@@ -525,7 +531,7 @@ fn rebind_blocked_port() {
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(false, model.clone()))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -588,11 +594,11 @@ fn rebind_server_addr_before_handshake_confirmed() {
     let subscriber = recorder::DatagramDropped::new();
     let datagram_dropped_events = subscriber.events();
 
-    test(model, move |handle| {
+    test(model.clone(), move |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), subscriber))?
+            .with_event((tracing_events(false, model.clone()), subscriber))?
             .with_random(Random::with_seed(456))?
             .with_packet_interceptor(RebindAddrAfter { count: 1 })?
             .start()?;
@@ -600,7 +606,7 @@ fn rebind_server_addr_before_handshake_confirmed() {
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(false, model.clone()))?
             .with_random(Random::with_seed(456))?
             .start()?;
 

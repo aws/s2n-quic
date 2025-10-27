@@ -10,10 +10,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[test]
 fn tokio_read_exact_test() {
     let model = Model::default();
-    test(model, |handle| {
-        let server_addr = server(handle)?;
+    test(model.clone(), |handle| {
+        let server_addr = server(handle, model.clone())?;
 
-        let client = build_client(handle)?;
+        let client = build_client(handle, model.clone(), true)?;
 
         // send 5000 bytes
         const LEN: usize = 5000;

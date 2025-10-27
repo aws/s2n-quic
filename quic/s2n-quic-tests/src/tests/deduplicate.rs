@@ -16,11 +16,14 @@ fn deduplicate_successfully() {
     let server_events = server_subscriber.events();
     let client_subscriber = recorder::ConnectionStarted::new();
     let client_events = client_subscriber.events();
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), server_subscriber.clone()))?
+            .with_event((
+                tracing_events(true, model.clone()),
+                server_subscriber.clone(),
+            ))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -41,7 +44,10 @@ fn deduplicate_successfully() {
         let mut server2 = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), server_subscriber))?
+            .with_event((
+                tracing_events(true, model.clone()),
+                server_subscriber,
+            ))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -57,7 +63,10 @@ fn deduplicate_successfully() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(), client_subscriber))?
+            .with_event((
+                tracing_events(true, model.clone()),
+                client_subscriber,
+            ))?
             .with_random(Random::with_seed(456))?
             .with_dc(MockDcEndpoint::new(&tokens))?
             .start()?;
@@ -160,13 +169,16 @@ fn deduplicate_non_terminal() {
     let server_events = server_subscriber.events();
     let client_subscriber = recorder::ConnectionStarted::new();
     let client_events = client_subscriber.events();
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let toggle = Toggle::new(Outcome::drop());
         let tokens = [TEST_TOKEN_1];
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), server_subscriber.clone()))?
+            .with_event((
+                tracing_events(true, model.clone()),
+                server_subscriber.clone(),
+            ))?
             .with_random(Random::with_seed(456))?
             .with_dc(MockDcEndpoint::new(&tokens))?
             .with_endpoint_limits(toggle.clone())?
@@ -190,7 +202,10 @@ fn deduplicate_non_terminal() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(), client_subscriber))?
+            .with_event((
+                tracing_events(true, model.clone()),
+                client_subscriber,
+            ))?
             .with_random(Random::with_seed(456))?
             .with_dc(MockDcEndpoint::new(&tokens))?
             .start()?;

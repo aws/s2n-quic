@@ -13,12 +13,12 @@ fn resumption_handshake() {
 
     // The client and server do a single handshake in order to
     // negotiate a session ticket.
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server_tls =
             build_server_resumption_provider(certificates::CERT_PEM, certificates::KEY_PEM)?;
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true, model.clone()))?
             .with_tls(server_tls)?
             .start()?;
 
@@ -26,7 +26,7 @@ fn resumption_handshake() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(client_tls)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true, model.clone()))?
             .start()?;
         let addr = start_server(server)?;
         start_client(client, addr, Data::new(1000))?;
@@ -39,12 +39,12 @@ fn resumption_handshake() {
     // available. The handshake succeeds even though the client doesn't have the correct certificate
     // to authenticate the server.
     let model = Model::default();
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let client_tls = build_client_resumption_provider(certificates::CERT_PEM, &handler)?;
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(client_tls)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true, model.clone()))?
             .start()?;
 
         let server_tls = build_server_resumption_provider(
@@ -54,7 +54,7 @@ fn resumption_handshake() {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(server_tls)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true, model.clone()))?
             .start()?;
         let addr = start_server(server)?;
 

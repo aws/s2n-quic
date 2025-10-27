@@ -68,14 +68,12 @@ const CLIENT_CLOSE_ERROR_CODE: VarInt = VarInt::from_u8(222);
 fn dc_handshake_self_test() -> Result<()> {
     let server = Server::builder()
         .with_tls(SERVER_CERTS)?
-        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
     let client = Client::builder()
         .with_tls(certificates::CERT_PEM)?
-        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
-    self_test(server, client, true, None, None)?;
+    self_test(server, client, true, None, None, true)?;
 
     Ok(())
 }
@@ -113,16 +111,14 @@ fn dc_mtls_handshake_self_test() -> Result<()> {
     let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
     let server = Server::builder()
         .with_tls(server_tls)?
-        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
     let client = Client::builder()
         .with_tls(client_tls)?
-        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
-    self_test(server, client, true, None, None)?;
+    self_test(server, client, true, None, None, true)?;
 
     Ok(())
 }
@@ -132,13 +128,11 @@ fn dc_mtls_handshake_auth_failure_self_test() -> Result<()> {
     let server_tls = build_server_mtls_provider(certificates::UNTRUSTED_CERT_PEM)?;
     let server = Server::builder()
         .with_tls(server_tls)?
-        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
     let client = Client::builder()
         .with_tls(client_tls)?
-        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
     // convert from a ConnectionClose frame so the initiator is `Remote`
@@ -153,7 +147,14 @@ fn dc_mtls_handshake_auth_failure_self_test() -> Result<()> {
     }
     .into();
 
-    self_test(server, client, true, Some(expected_client_error), None)?;
+    self_test(
+        server,
+        client,
+        true,
+        Some(expected_client_error),
+        None,
+        true,
+    )?;
 
     Ok(())
 }
@@ -173,14 +174,11 @@ fn dc_mtls_handshake_auth_failure_self_test() -> Result<()> {
 fn dc_mtls_handshake_server_not_supported_self_test() -> Result<()> {
     // No dc Provider configured on the server
     let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
-    let server = Server::builder()
-        .with_tls(server_tls)?
-        .with_event(tracing_events())?;
+    let server = Server::builder().with_tls(server_tls)?;
 
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
     let client = Client::builder()
         .with_tls(client_tls)?
-        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
     // convert from a ConnectionClose frame so the initiator is `Remote`
@@ -199,6 +197,7 @@ fn dc_mtls_handshake_server_not_supported_self_test() -> Result<()> {
             "peer does not support specified dc versions",
         )),
         Some(expected_server_error),
+        true,
     )?;
 
     Ok(())
@@ -225,14 +224,11 @@ fn dc_mtls_handshake_client_not_supported_self_test() -> Result<()> {
     let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
     let server = Server::builder()
         .with_tls(server_tls)?
-        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
     // No dc Provider configured on the client
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
-    let client = Client::builder()
-        .with_tls(client_tls)?
-        .with_event(tracing_events())?;
+    let client = Client::builder().with_tls(client_tls)?;
 
     // convert from a ConnectionClose frame so the initiator is `Remote`
     let expected_client_error = ConnectionClose {
@@ -250,6 +246,7 @@ fn dc_mtls_handshake_client_not_supported_self_test() -> Result<()> {
         Some(connection::Error::invalid_configuration(
             "peer does not support specified dc versions",
         )),
+        true,
     )?;
 
     Ok(())
@@ -271,7 +268,6 @@ fn dc_possible_secret_control_packet(
     let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
     let server = Server::builder()
         .with_tls(server_tls)?
-        .with_event(tracing_events())?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
@@ -282,11 +278,10 @@ fn dc_possible_secret_control_packet(
 
     let client = Client::builder()
         .with_tls(client_tls)?
-        .with_event(tracing_events())?
         .with_dc(dc_endpoint)?
         .with_packet_interceptor(RandomShort::default())?;
 
-    let (client_events, _server_events) = self_test(server, client, true, None, None)?;
+    let (client_events, _server_events) = self_test(server, client, true, None, None, false)?;
 
     assert_eq!(
         1,
@@ -321,6 +316,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     client_has_dc: bool,
     expected_client_error: Option<connection::Error>,
     expected_server_error: Option<connection::Error>,
+    with_blocklist: bool,
 ) -> Result<(DcRecorder, DcRecorder)> {
     let model = Model::default();
     let rtt = Duration::from_millis(100);
@@ -331,7 +327,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     let client_subscriber = DcRecorder::new();
     let client_events = client_subscriber.clone();
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let metrics = aggregate::testing::Registry::snapshot();
 
         let server_event = (
@@ -339,7 +335,10 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
                 (dc::ConfirmComplete, dc::MtuConfirmComplete),
                 metrics.subscriber("server"),
             ),
-            (tracing_events(), server_subscriber),
+            (
+                tracing_events(with_blocklist, model.clone()),
+                server_subscriber,
+            ),
         );
 
         let mut server = server
@@ -375,7 +374,10 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
                 (dc::ConfirmComplete, dc::MtuConfirmComplete),
                 metrics.subscriber("client"),
             ),
-            (tracing_events(), client_subscriber),
+            (
+                tracing_events(with_blocklist, model.clone()),
+                client_subscriber,
+            ),
         );
 
         let client = client

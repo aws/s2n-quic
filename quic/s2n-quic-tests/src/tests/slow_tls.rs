@@ -27,17 +27,17 @@ fn slow_tls() {
         endpoint: client_endpoint,
     };
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(slow_server)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(false, model.clone()))?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(slow_client)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(false, model.clone()))?
             .start()?;
         let addr = start_server(server)?;
         start_client(client, addr, Data::new(1000))?;
