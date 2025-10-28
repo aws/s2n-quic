@@ -813,7 +813,7 @@ where
                 recv_buffer,
             );
 
-            let sender = uds::sender::Sender::new()?;
+            let sender = uds::sender::Sender::new(&self.dest_path)?;
             let dest_path = self.dest_path.clone();
             let tcp_stream = socket.into_std()?;
 
