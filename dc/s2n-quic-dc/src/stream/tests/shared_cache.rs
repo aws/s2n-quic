@@ -350,6 +350,7 @@ async fn test_application_crash() {
     // Reading from existing stream fails
     let mut buffer: Vec<u8> = Vec::new();
     let read_result = client_stream.read_into(&mut buffer).await;
+    info!("Read stream result: {:?}", read_result);
     assert!(read_result.is_err());
     let error = read_result.unwrap_err();
     assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
