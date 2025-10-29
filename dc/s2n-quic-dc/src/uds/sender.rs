@@ -34,13 +34,12 @@ impl Sender {
         dest_path: &Path,
         fd_to_send: BorrowedFd<'_>,
     ) -> Result<(), std::io::Error> {
-        let res = self
-            .socket_fd
+        self.socket_fd
             .async_io(Interest::WRITABLE, |_inner| {
                 self.try_send_nonblocking(packet, dest_path, fd_to_send)
             })
             .await?;
-        Ok(res)
+        Ok(())
     }
 
     fn try_send_nonblocking(

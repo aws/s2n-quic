@@ -7,7 +7,7 @@ use crate::{
     psk::{client::Provider as ClientProvider, server::Provider as ServerProvider},
     stream::{
         client::tokio::Client as ClientTokio,
-        server::{self, application, manager},
+        server::{application, manager},
         Protocol,
     },
     testing::{init_tracing, query_event, server_name, NoopSubscriber, TestTlsProvider},
@@ -278,14 +278,14 @@ async fn test_kernel_queue_full() {
     }
 
     let test_message = b"Hello from server!";
-    for i in 0..stream_count {
+    for mut stream in servers {
         let mut message_slice = &test_message[..];
-        servers[i].write_from(&mut message_slice).await.unwrap();
+        stream.write_from(&mut message_slice).await.unwrap();
     }
 
-    for i in 0..stream_count {
+    for mut stream in clients {
         let mut buffer: Vec<u8> = Vec::new();
-        let bytes_read = clients[i].read_into(&mut buffer).await.unwrap();
+        let bytes_read = stream.read_into(&mut buffer).await.unwrap();
         assert_eq!(
             &buffer[..bytes_read],
             test_message,
@@ -378,7 +378,7 @@ async fn test_application_crash() {
 async fn test_kernel_queue_full_application_crash() {
     init_tracing();
     let test_event_subscriber = NoopSubscriber {};
-    let unix_socket_path = PathBuf::from("/tmp/kernel_queue_test.sock");
+    let unix_socket_path = PathBuf::from("/tmp/kernel_queue_crash.sock");
 
     let stream_client = create_stream_client();
     let handshake_server = create_handshake_server().await;
@@ -433,9 +433,9 @@ async fn test_kernel_queue_full_application_crash() {
 
     drop(app_server);
 
-    for i in 0..stream_count {
+    for mut stream in clients {
         let mut buffer: Vec<u8> = Vec::new();
-        let read_result = clients[i].read_into(&mut buffer).await;
+        let read_result = stream.read_into(&mut buffer).await;
         assert!(read_result.is_err());
         let error = read_result.unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
