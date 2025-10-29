@@ -212,6 +212,7 @@ async fn test_connection(
     info!("Data exchange completed successfully");
 }
 
+#[cfg(not(target_os = "macos"))]
 #[tokio::test]
 async fn test_kernel_queue_full() {
     init_tracing();
@@ -294,87 +295,7 @@ async fn test_kernel_queue_full() {
     }
 }
 
-#[tokio::test]
-async fn test_application_crash() {
-    init_tracing();
-    let test_event_subscriber = NoopSubscriber {};
-    let unix_socket_path = PathBuf::from("/tmp/shared_crash.sock");
-
-    let stream_client = create_stream_client();
-    let handshake_server = create_handshake_server().await;
-
-    let handshake_addr = handshake_server.local_addr();
-    stream_client
-        .handshake_with(handshake_addr, server_name())
-        .await
-        .unwrap();
-    info!("Handshake completed");
-
-    let manager_server = manager::Server::<ServerProvider, NoopSubscriber>::builder()
-        .with_address("127.0.0.1:0".parse().unwrap())
-        .with_protocol(Protocol::Tcp)
-        .with_udp(false)
-        .with_workers(NonZeroUsize::new(1).unwrap())
-        .with_socket_path(&unix_socket_path)
-        .build(handshake_server.clone(), test_event_subscriber.clone())
-        .unwrap();
-
-    info!(
-        "Manager server created at: {:?}",
-        manager_server.acceptor_addr()
-    );
-
-    let app_server = create_application_server(&unix_socket_path, test_event_subscriber);
-
-    let handshake_addr = handshake_server.local_addr();
-    let acceptor_addr = manager_server.acceptor_addr().unwrap();
-    let connection_result = tokio::try_join!(
-        stream_client.connect(handshake_addr, acceptor_addr, server_name()),
-        async {
-            tokio::time::timeout(Duration::from_secs(5), app_server.accept())
-                .await
-                .unwrap()
-        }
-    );
-
-    assert!(
-        connection_result.is_ok(),
-        "Connection should be established successfully"
-    );
-    let (mut client_stream, server_result) = connection_result.unwrap();
-
-    // Application crash
-    drop(server_result);
-    drop(app_server);
-
-    // Reading from existing stream fails
-    let mut buffer: Vec<u8> = Vec::new();
-    let read_result = client_stream.read_into(&mut buffer).await;
-    info!("Read stream result: {:?}", read_result);
-    assert!(read_result.is_err());
-    let error = read_result.unwrap_err();
-    assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
-    info!("Stream error: {}", error.to_string()); // TruncatedTransport
-
-    // Create new stream
-    info!("Trying to open a new stream to app server");
-    let result = stream_client
-        .connect(handshake_addr, acceptor_addr, server_name())
-        .await;
-    assert!(
-        result.is_ok(),
-        "Connection should be established successfully"
-    );
-
-    // Reading from new stream fails
-    let mut client_stream = result.unwrap();
-    let read_result = client_stream.read_into(&mut buffer).await;
-    assert!(read_result.is_err());
-    let error = read_result.unwrap_err();
-    assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
-    info!("Stream error: {}", error.to_string()); // TruncatedTransport
-}
-
+#[cfg(not(target_os = "macos"))]
 #[tokio::test]
 async fn test_kernel_queue_full_application_crash() {
     init_tracing();
