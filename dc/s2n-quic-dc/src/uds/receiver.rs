@@ -43,7 +43,7 @@ impl Receiver {
     pub async fn receive_msg(&self) -> Result<(Vec<u8>, OwnedFd), std::io::Error> {
         let res = self
             .socket_fd
-            .async_io(Interest::WRITABLE, |_inner| self.try_receive_nonblocking())
+            .async_io(Interest::READABLE, |_inner| self.try_receive_nonblocking())
             .await?;
         Ok(res)
     }
@@ -133,7 +133,7 @@ mod tests {
                     .await
                     .unwrap()
             },
-            sender.send_msg(packet_data, receiver_path, fd_to_send)
+            sender.send_msg(packet_data, fd_to_send)
         );
 
         match result {
