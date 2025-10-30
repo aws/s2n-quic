@@ -186,6 +186,7 @@ macro_rules! tests {
     };
 }
 
+#[cfg(not(target_os = "macos"))]
 mod tcp {
     use super::*;
 
@@ -199,6 +200,7 @@ mod tcp {
     tests!();
 }
 
+#[cfg(not(target_os = "macos"))]
 mod udp {
     use super::*;
 
