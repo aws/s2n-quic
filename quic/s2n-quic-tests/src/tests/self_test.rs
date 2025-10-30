@@ -9,9 +9,8 @@ use super::*;
 #[test]
 fn client_server_test() {
     let model = Model::default();
-    let max_udp_payload = model.clone();
     test(model.clone(), |handle| {
-        let addr = server(handle, max_udp_payload)?;
+        let addr = server(handle, model.clone())?;
         client(handle, addr, model.clone(), true)?;
         Ok(addr)
     })

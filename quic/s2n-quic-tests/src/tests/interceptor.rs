@@ -9,7 +9,7 @@ fn intercept_loss(loss: Loss<Random>) {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event(tracing_events(true, model.clone()))?
+            .with_event(tracing_events(false, model.clone()))?
             .with_random(Random::with_seed(456))?
             .with_packet_interceptor(loss)?
             .start()?;

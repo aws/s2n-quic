@@ -70,7 +70,7 @@ fn endpoint_limits_close_test() {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event(tracing_events(true, model.clone()))?
+            .with_event(tracing_events(false, model.clone()))?
             .with_connection_id(MaxSizeIdFormat)?
             .with_random(Random::with_seed(456))?
             .with_endpoint_limits(AllowFirstThenCloseLimiter::default())?

@@ -97,6 +97,45 @@ impl event::Subscriber for BlocklistSubscriber {
             panic!("Bytes lost is {} and max udp payload is {}\nBlocklisted packet lost event encountered: {:?}", event.bytes_lost, self.max_udp_payload(), event);
         }
     }
+
+    fn on_platform_tx_error(
+        &mut self,
+        _meta: &events::EndpointMeta,
+        event: &events::PlatformTxError,
+    ) {
+        if self.blocklist_enabled {
+            panic!(
+                "Blocklisted platform tx error event encountered: {:?}",
+                event
+            );
+        }
+    }
+
+    fn on_platform_rx_error(
+        &mut self,
+        _meta: &events::EndpointMeta,
+        event: &events::PlatformRxError,
+    ) {
+        if self.blocklist_enabled {
+            panic!(
+                "Blocklisted platform rx error event encountered: {:?}",
+                event
+            );
+        }
+    }
+
+    fn on_endpoint_datagram_dropped(
+        &mut self,
+        _meta: &events::EndpointMeta,
+        event: &events::EndpointDatagramDropped,
+    ) {
+        if self.blocklist_enabled {
+            panic!(
+                "Blocklisted endpoint datagram dropped event encountered: {:?}",
+                event
+            );
+        }
+    }
 }
 
 pub fn tracing_events(with_blocklist: bool, network_env: Model) -> impl event::Subscriber {

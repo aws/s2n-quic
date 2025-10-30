@@ -170,7 +170,7 @@ fn deduplicate_non_terminal() {
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
             .with_event((
-                tracing_events(true, model.clone()),
+                tracing_events(false, model.clone()),
                 server_subscriber.clone(),
             ))?
             .with_random(Random::with_seed(456))?
