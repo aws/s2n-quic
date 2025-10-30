@@ -5,17 +5,17 @@ use super::*;
 
 fn intercept_loss(loss: Loss<Random>) {
     let model = Model::default();
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(false, model.clone()))?
             .with_random(Random::with_seed(456))?
             .with_packet_interceptor(loss)?
             .start()?;
         let server_address = start_server(server)?;
 
-        client(handle, server_address)
+        client(handle, server_address, model.clone(), false)
     })
     .unwrap();
 }

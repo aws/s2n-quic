@@ -66,11 +66,11 @@ fn endpoint_limits_close_test() {
     let connection_close_subscriber = recorder::ConnectionClosed::new();
     let connection_close_event = connection_close_subscriber.events();
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(false, model.clone()))?
             .with_connection_id(MaxSizeIdFormat)?
             .with_random(Random::with_seed(456))?
             .with_endpoint_limits(AllowFirstThenCloseLimiter::default())?
@@ -81,7 +81,7 @@ fn endpoint_limits_close_test() {
         let client1 = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true, model.clone()))?
             .with_connection_id(MaxSizeIdFormat)?
             .with_random(Random::with_seed(456))?
             .start()?;
@@ -89,7 +89,7 @@ fn endpoint_limits_close_test() {
         let client2 = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(), connection_close_subscriber))?
+            .with_event((tracing_events(true, model.clone()), connection_close_subscriber))?
             .with_connection_id(MaxSizeIdFormat)?
             .with_random(Random::with_seed(789))?
             .start()?;

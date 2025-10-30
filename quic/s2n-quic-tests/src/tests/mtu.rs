@@ -56,6 +56,7 @@ fn mtu_updates<S: tls::Provider, C: tls::Provider>(
     base_mtu: u16,
     max_mtu: u16,
     network_max_udp_payload: u16,
+    with_blocklist: bool,
 ) -> Vec<events::MtuUpdated> {
     let model = Model::default();
     model.set_max_udp_payload(network_max_udp_payload);
@@ -63,7 +64,7 @@ fn mtu_updates<S: tls::Provider, C: tls::Provider>(
     let subscriber = recorder::MtuUpdated::new();
     let events = subscriber.events();
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server = Server::builder()
             .with_io(
                 handle
@@ -74,7 +75,7 @@ fn mtu_updates<S: tls::Provider, C: tls::Provider>(
                     .build()?,
             )?
             .with_tls(server)?
-            .with_event((tracing_events(), subscriber))?
+            .with_event((tracing_events(with_blocklist, model.clone()), subscriber))?
             .with_random(Random::with_seed(456))?;
 
         let server = if let Some(config_override) = config_override {
@@ -93,7 +94,7 @@ fn mtu_updates<S: tls::Provider, C: tls::Provider>(
                     .build()
                     .unwrap(),
             )?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(with_blocklist, model.clone()))?
             .with_random(Random::with_seed(456))?
             .with_tls(client)?
             .start()?;
@@ -143,6 +144,7 @@ mtu_test!(
             BaseMtu::default().into(),
             9_001,
             10_000,
+            true
         );
 
         // handshake is padded to 1200, so we should immediately have an mtu of 1200
@@ -188,6 +190,7 @@ mtu_test!(
             BaseMtu::default().into(),
             9_001,
             1472,
+            true
         );
         let last_mtu = events.last().unwrap();
         // ETHERNET_MTU - UDP_HEADER_LEN - IPV4_HEADER_LEN
@@ -211,6 +214,7 @@ mtu_test!(
             BaseMtu::default().into(),
             u16::MAX,
             u16::MAX,
+            true
         );
         let last_mtu = events.last().unwrap();
         assert_eq!(last_mtu.mtu, 65475);
@@ -225,7 +229,7 @@ mtu_test!(
 // The configured base mtu is the smallest MTU used
 mtu_test!(
     fn base_mtu(server, client) {
-        let events = mtu_updates(server, client, None, 1250, 1250, 9_001, 10_000);
+        let events = mtu_updates(server, client, None, 1250, 1250, 9_001, 10_000, true);
         let base_mtu = events
             .iter()
             .min_by_key(|&mtu_event| mtu_event.mtu)
@@ -239,7 +243,7 @@ mtu_test!(
 // The configured initial mtu is the first MTU used
 mtu_test!(
     fn initial_mtu(server, client) {
-        let events = mtu_updates(server, client, None, 2000, BaseMtu::default().into(), 9_001, 10_000);
+        let events = mtu_updates(server, client, None, 2000, BaseMtu::default().into(), 9_001, 10_000, true);
         let first_mtu = events.first().unwrap();
         // 2000 - UDP_HEADER_LEN - IPV4_HEADER_LEN
         assert_eq!(first_mtu.mtu, 1972);
@@ -250,7 +254,7 @@ mtu_test!(
 // No override config
 mtu_test!(
     fn conn_mtu_no_override(server, client) {
-        let events = mtu_updates(server, client, None, 1228, BaseMtu::default().into(), 9_001, 10_000);
+        let events = mtu_updates(server, client, None, 1228, BaseMtu::default().into(), 9_001, 10_000, true);
         let first_mtu = events.first().unwrap();
         // 1228 - UDP_HEADER_LEN - IPV4_HEADER_LEN
         assert_eq!(first_mtu.mtu, 1200);
@@ -271,7 +275,7 @@ mtu_test!(
             .unwrap()
             .build()
             .unwrap();
-        let events = mtu_updates(server, client, Some(config), 1228, BaseMtu::default().into(), 9_001, 10_000);
+        let events = mtu_updates(server, client, Some(config), 1228, BaseMtu::default().into(), 9_001, 10_000, true);
         let first_mtu = events.first().unwrap();
         // 1528 - UDP_HEADER_LEN - IPV4_HEADER_LEN
         assert_eq!(first_mtu.mtu, 1300);
@@ -297,6 +301,7 @@ mtu_test!(
             BaseMtu::default().into(),
             9_001,
             10_000,
+            true,
         );
         let first_mtu = events.first().unwrap();
         assert_eq!(first_mtu.mtu, 1300);
@@ -314,7 +319,7 @@ mtu_test!(
             .unwrap()
             .build()
             .unwrap();
-        let events = mtu_updates(server, client, Some(config), 1228, BaseMtu::default().into(), 9_001, 10_000);
+        let events = mtu_updates(server, client, Some(config), 1228, BaseMtu::default().into(), 9_001, 10_000, true);
         let last_mtu = events.last().unwrap();
         assert_eq!(last_mtu.mtu, 5_936);
         assert!(last_mtu.search_complete);
@@ -325,7 +330,7 @@ mtu_test!(
 // the MTU drops to the base MTU, before increasing back to what the network supports.
 mtu_test!(
     fn initial_mtu_not_supported(server, client) {
-        let events = mtu_updates(server, client, None, 2000, BaseMtu::default().into(), 9_001, 1500);
+        let events = mtu_updates(server, client, None, 2000, BaseMtu::default().into(), 9_001, 1500, false);
         let first_mtu = events.first().unwrap();
         let second_mtu = events.get(1).unwrap();
         let last_mtu = events.last().unwrap();
@@ -352,7 +357,7 @@ mtu_test!(
 // The configured initial MTU is jumbo and the network supports it.
 mtu_test!(
     fn initial_mtu_is_jumbo(server, client) {
-        let events = mtu_updates(server, client, None, 9_001, BaseMtu::default().into(), 9_001, 10_000);
+        let events = mtu_updates(server, client, None, 9_001, BaseMtu::default().into(), 9_001, 10_000, true);
         let first_mtu = events.first().unwrap();
         let last_mtu = events.last().unwrap();
         // First try the initial MTU
@@ -376,7 +381,7 @@ mtu_test!(
 // MTU is used next.
 mtu_test!(
     fn initial_mtu_is_jumbo_not_supported(server, client) {
-        let events = mtu_updates(server, client, None, 9_001, 1_500, 9_001, 2_500);
+        let events = mtu_updates(server, client, None, 9_001, 1_500, 9_001, 2_500, false);
         let first_mtu = events.first().unwrap();
         let second_mtu = events.get(1).unwrap();
         let last_mtu = events.last().unwrap();
@@ -408,7 +413,7 @@ mtu_test!(
 // MTU probing has been disabled by setting BaseMTU = InitialMTU = MaxMTU
 mtu_test!(
     fn mtu_probing_disabled(server, client) {
-        let events = mtu_updates(server, client, None, BaseMtu::default().into(), BaseMtu::default().into(), BaseMtu::default().into(), 10_000);
+        let events = mtu_updates(server, client, None, BaseMtu::default().into(), BaseMtu::default().into(), BaseMtu::default().into(), 10_000, true);
         let first_mtu = events.first().unwrap();
         assert_eq!(first_mtu.mtu, 1200);
         assert!(first_mtu.search_complete);
@@ -436,13 +441,13 @@ fn mtu_loss_no_blackhole() {
         let server = Server::builder()
             .with_io(handle.builder().with_max_mtu(max_mtu).build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), subscriber))?
+            .with_event((tracing_events(false, model.clone()), subscriber))?
             .with_random(Random::with_seed(456))?
             .start()?;
         let client = Client::builder()
             .with_io(handle.builder().with_max_mtu(max_mtu).build()?)?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(false, model.clone()))?
             .with_random(Random::with_seed(456))?
             .start()?;
         let addr = start_server(server)?;
@@ -491,13 +496,13 @@ fn mtu_blackhole() {
         let server = Server::builder()
             .with_io(handle.builder().with_max_mtu(max_mtu).build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), subscriber))?
+            .with_event((tracing_events(true, model.clone()), subscriber))?
             .with_random(Random::with_seed(456))?
             .start()?;
         let client = Client::builder()
             .with_io(handle.builder().with_max_mtu(max_mtu).build()?)?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true, model.clone()))?
             .with_random(Random::with_seed(456))?
             .start()?;
         let addr = start_server(server)?;
@@ -543,7 +548,7 @@ fn minimum_initial_packet() {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), subscriber))?
+            .with_event((tracing_events(false, model.clone()), subscriber))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -551,7 +556,7 @@ fn minimum_initial_packet() {
             .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
             .with_packet_interceptor((EraseClientHello, TruncatePadding))?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(false, model.clone()))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
