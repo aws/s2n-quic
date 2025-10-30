@@ -25,6 +25,7 @@ pub struct Session {
     emitted_server_name: bool,
     emitted_application_protocol: bool,
     emitted_key_exchange_group: bool,
+    emitted_post_handshake: bool,
     server_name: Option<ServerName>,
 }
 
@@ -95,6 +96,7 @@ impl Session {
             emitted_server_name: false,
             emitted_application_protocol: false,
             emitted_key_exchange_group: false,
+            emitted_post_handshake: false,
             server_name,
         }
     }
@@ -207,7 +209,7 @@ impl Session {
         &mut self,
         context: &mut C,
     ) -> Poll<Result<(), transport::Error>> {
-        if self.tx_phase == HandshakePhase::Application && !self.connection.is_handshaking() {
+        if self.tx_phase == HandshakePhase::Application && self.emitted_post_handshake && !self.connection.is_handshaking() {
             // attempt to emit server_name and application_protocol events prior to completing the
             // handshake
             self.emit_events(context)?;
@@ -295,6 +297,8 @@ impl Session {
                     HandshakePhase::Initial => context.send_initial(transmission_buffer.into()),
                     HandshakePhase::Handshake => context.send_handshake(transmission_buffer.into()),
                     HandshakePhase::Application => {
+                        // FIXME: supposed to ensure all post-handshake messages are emitted
+                        self.emitted_post_handshake = true;
                         context.send_application(transmission_buffer.into())
                     }
                 }
