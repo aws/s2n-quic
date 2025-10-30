@@ -26,8 +26,7 @@ pub trait Writer: Default {
     fn write_frame<W: WriteContext>(&mut self, context: &mut W) -> Option<PacketNumber>;
 }
 
-#[derive(Debug, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, PartialEq, Default)]
 enum DeliveryState {
     /// The flag has not been requested
     #[default]
@@ -61,7 +60,6 @@ enum DeliveryState {
     /// The flag has been delivered
     Delivered,
 }
-
 
 impl<W: Writer> Flag<W> {
     /// Constructs a flag with the given `writer`

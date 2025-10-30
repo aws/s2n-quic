@@ -190,8 +190,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
     }
 }
 
-#[derive(Debug)]
-#[derive(Default)]
+#[derive(Debug, Default)]
 enum State {
     #[default]
     Idle,
@@ -203,7 +202,6 @@ enum State {
     },
     Closed,
 }
-
 
 impl State {
     pub fn on_timeout(&mut self, now: Timestamp) -> Poll<()> {

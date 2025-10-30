@@ -398,8 +398,7 @@ impl State {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Default)]
 enum HandshakePhase {
     #[default]
     Initial,
@@ -416,9 +415,7 @@ impl HandshakePhase {
     }
 }
 
-
-#[derive(Debug)]
-#[derive(Default)]
+#[derive(Debug, Default)]
 enum Secrets {
     #[default]
     Waiting,
@@ -427,7 +424,6 @@ enum Secrets {
         id: s2n_secret_type_t::Type,
     },
 }
-
 
 fn get_algo_type(
     connection: *mut s2n_connection,

@@ -20,7 +20,6 @@ pub enum AckElicitation {
     Eliciting,
 }
 
-
 impl AckElicitation {
     /// Returns true if the `AckElicitation` is set to `Eliciting`
     pub fn is_ack_eliciting(self) -> bool {

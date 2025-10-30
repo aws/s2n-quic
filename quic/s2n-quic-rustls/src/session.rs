@@ -391,8 +391,7 @@ impl tls::Session for Session {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Default)]
 enum HandshakePhase {
     #[default]
     Initial,
@@ -408,4 +407,3 @@ impl HandshakePhase {
         };
     }
 }
-

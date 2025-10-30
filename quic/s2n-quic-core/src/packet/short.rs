@@ -57,14 +57,12 @@ const SPIN_BIT_MASK: u8 = 0x20;
 
 const RESERVED_BITS_MASK: u8 = 0x18;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum SpinBit {
     #[default]
     Zero,
     One,
 }
-
 
 impl SpinBit {
     fn from_tag(tag: Tag) -> Self {
