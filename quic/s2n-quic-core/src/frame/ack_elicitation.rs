@@ -11,9 +11,8 @@ use core::ops::{BitOr, BitOrAssign};
 //#    delay and are called ack-eliciting packets.
 
 /// Describes if a frame or packet requires an ACK from the peer
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
-#[derive(Default)]
 pub enum AckElicitation {
     #[default]
     NonEliciting,
