@@ -190,8 +190,9 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 enum State {
+    #[default]
     Idle,
     Closing {
         packet: Bytes,
@@ -200,12 +201,6 @@ enum State {
         close_timer: Timer,
     },
     Closed,
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self::Idle
-    }
 }
 
 impl State {
