@@ -399,7 +399,9 @@ impl State {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Default)]
 enum HandshakePhase {
+    #[default]
     Initial,
     Handshake,
     Application,
@@ -414,14 +416,11 @@ impl HandshakePhase {
     }
 }
 
-impl Default for HandshakePhase {
-    fn default() -> Self {
-        Self::Initial
-    }
-}
 
 #[derive(Debug)]
+#[derive(Default)]
 enum Secrets {
+    #[default]
     Waiting,
     Half {
         secret: Prk,
@@ -429,11 +428,6 @@ enum Secrets {
     },
 }
 
-impl Default for Secrets {
-    fn default() -> Self {
-        Self::Waiting
-    }
-}
 
 fn get_algo_type(
     connection: *mut s2n_connection,

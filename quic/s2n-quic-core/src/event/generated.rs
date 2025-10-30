@@ -6922,19 +6922,17 @@ pub mod supervisor {
     };
     #[non_exhaustive]
     #[derive(Clone, Debug, Eq, PartialEq)]
+    #[derive(Default)]
     pub enum Outcome {
         #[doc = r" Allow the connection to remain open"]
+        #[default]
         Continue,
         #[doc = r" Close the connection and notify the peer"]
         Close { error_code: application::Error },
         #[doc = r" Close the connection without notifying the peer"]
         ImmediateClose { reason: &'static str },
     }
-    impl Default for Outcome {
-        fn default() -> Self {
-            Self::Continue
-        }
-    }
+    
     #[non_exhaustive]
     #[derive(Debug)]
     pub struct Context<'a> {

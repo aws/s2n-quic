@@ -13,16 +13,13 @@ use core::ops::{BitOr, BitOrAssign};
 /// Describes if a frame or packet requires an ACK from the peer
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
+#[derive(Default)]
 pub enum AckElicitation {
+    #[default]
     NonEliciting,
     Eliciting,
 }
 
-impl Default for AckElicitation {
-    fn default() -> Self {
-        Self::NonEliciting
-    }
-}
 
 impl AckElicitation {
     /// Returns true if the `AckElicitation` is set to `Eliciting`

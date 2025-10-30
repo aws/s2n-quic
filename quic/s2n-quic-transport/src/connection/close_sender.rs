@@ -191,7 +191,9 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
 }
 
 #[derive(Debug)]
+#[derive(Default)]
 enum State {
+    #[default]
     Idle,
     Closing {
         packet: Bytes,
@@ -202,11 +204,6 @@ enum State {
     Closed,
 }
 
-impl Default for State {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
 
 impl State {
     pub fn on_timeout(&mut self, now: Timestamp) -> Poll<()> {

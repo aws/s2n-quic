@@ -27,8 +27,10 @@ pub trait Writer: Default {
 }
 
 #[derive(Debug, PartialEq)]
+#[derive(Default)]
 enum DeliveryState {
     /// The flag has not been requested
+    #[default]
     Idle,
 
     /// The flag needs to be transmitted
@@ -60,11 +62,6 @@ enum DeliveryState {
     Delivered,
 }
 
-impl Default for DeliveryState {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
 
 impl<W: Writer> Flag<W> {
     /// Constructs a flag with the given `writer`
