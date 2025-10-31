@@ -265,7 +265,6 @@ async fn test_kernel_queue_full() {
             client_stream.read_into(&mut buffer),
         )
         .await;
-        assert!(read_result.is_err());
         assert!(matches!(
             read_result.unwrap_err(),
             tokio::time::error::Elapsed { .. }
@@ -347,7 +346,6 @@ async fn test_kernel_queue_full_application_crash() {
             client_stream.read_into(&mut buffer),
         )
         .await;
-        assert!(read_result.is_err());
         assert!(matches!(
             read_result.unwrap_err(),
             tokio::time::error::Elapsed { .. }
@@ -360,7 +358,6 @@ async fn test_kernel_queue_full_application_crash() {
     for mut stream in clients {
         let mut buffer: Vec<u8> = Vec::new();
         let read_result = stream.read_into(&mut buffer).await;
-        assert!(read_result.is_err());
         let error = read_result.unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
     }
@@ -448,11 +445,8 @@ async fn test_dedup_check() {
 
     let mut buffer: Vec<u8> = Vec::new();
     let read_result = client_stream2.read_into(&mut buffer).await;
-    assert!(read_result.is_err());
     let error = read_result.unwrap_err();
     info!("Read error {:?}", error);
     // FIXME should the server be sending a control packet on ReplayDefinitelyDetected?
     assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
-
-    tokio::time::sleep(Duration::from_secs(1)).await;
 }
