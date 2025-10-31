@@ -73,6 +73,11 @@ impl State {
         // Update the key to the new minimum to start at.
         self.current_id.fetch_max(*min_key_id, Ordering::Relaxed);
     }
+
+    #[cfg(test)]
+    pub fn reset_counter(&self) {
+        self.current_id.store(0, Ordering::Relaxed);
+    }
 }
 
 #[test]

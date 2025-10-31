@@ -1029,6 +1029,14 @@ where
             Ok(None)
         }
     }
+
+    #[cfg(test)]
+    fn reset_all_senders(&self) {
+        let peer_map = self.peers.0.read();
+        for entry in peer_map.iter() {
+            entry.reset_sender_counter();
+        }
+    }
 }
 
 impl<C, S> Drop for State<C, S>

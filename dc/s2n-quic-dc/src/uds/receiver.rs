@@ -16,49 +16,39 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tokio::io::{unix::AsyncFd, Interest, Ready};
+use tokio::io::{unix::AsyncFd, Interest};
 
 const BUFFER_SIZE: usize = u16::MAX as usize;
 
 #[derive(Clone)]
 pub struct Receiver {
-    async_fd: Arc<AsyncFd<OwnedFd>>,
+    socket_fd: Arc<AsyncFd<OwnedFd>>,
     socket_path: PathBuf,
 }
 
 impl Receiver {
     pub fn new(socket_path: &Path) -> Result<Self, std::io::Error> {
+        let _ = unlink(socket_path); // Required in case drop did not run previously
         let socket = UnixDatagram::bind(socket_path)?;
         socket.set_nonblocking(true)?;
 
         let async_fd = Arc::new(AsyncFd::new(OwnedFd::from(socket))?);
 
         Ok(Self {
-            async_fd,
+            socket_fd: async_fd,
             socket_path: socket_path.to_path_buf(),
         })
     }
 
     pub async fn receive_msg(&self) -> Result<(Vec<u8>, OwnedFd), std::io::Error> {
-        loop {
-            let mut guard = self.async_fd.ready(Interest::READABLE).await?;
-
-            match self.try_receive_nonblocking() {
-                Ok(result) => {
-                    return Ok(result);
-                }
-                Err(nix::Error::EAGAIN) => {
-                    guard.clear_ready_matching(Ready::READABLE);
-                    continue;
-                }
-                Err(e) => {
-                    return Err(std::io::Error::from(e));
-                }
-            }
-        }
+        let res = self
+            .socket_fd
+            .async_io(Interest::READABLE, |_inner| self.try_receive_nonblocking())
+            .await?;
+        Ok(res)
     }
 
-    fn try_receive_nonblocking(&self) -> Result<(Vec<u8>, OwnedFd), nix::Error> {
+    fn try_receive_nonblocking(&self) -> Result<(Vec<u8>, OwnedFd), std::io::Error> {
         let mut buffer = [0u8; BUFFER_SIZE];
         let mut cmsg_buffer = nix::cmsg_space!([RawFd; 1]);
         let mut iov = [std::io::IoSliceMut::new(&mut buffer)];
@@ -70,7 +60,7 @@ impl Receiver {
         let recv_flags = MsgFlags::empty();
 
         let msg = recvmsg::<UnixAddr>(
-            self.async_fd.as_raw_fd(),
+            self.socket_fd.as_raw_fd(),
             &mut iov,
             Some(&mut cmsg_buffer),
             recv_flags,
@@ -98,8 +88,7 @@ impl Receiver {
                 }
             }
         }
-
-        Err(nix::Error::EINVAL) // No file descriptor found
+        Err(std::io::Error::from(nix::Error::EINVAL)) // No file descriptor found
     }
 }
 
@@ -125,7 +114,7 @@ mod tests {
         let receiver_path = Path::new("/tmp/receiver.sock");
 
         let receiver = Receiver::new(receiver_path).unwrap();
-        let sender = Sender::new().unwrap();
+        let sender = Sender::new(receiver_path).unwrap();
 
         let file_path = "/tmp/test.txt";
         let mut file = File::create(file_path).await.unwrap();
@@ -144,7 +133,7 @@ mod tests {
                     .await
                     .unwrap()
             },
-            sender.send_msg(packet_data, receiver_path, fd_to_send)
+            sender.send_msg(packet_data, fd_to_send)
         );
 
         match result {

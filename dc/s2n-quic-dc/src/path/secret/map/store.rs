@@ -145,4 +145,7 @@ pub trait Store: 'static + Send + Sync {
         &self,
         session: &dyn s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Option<ApplicationData>, ApplicationDataError>;
+
+    #[cfg(test)]
+    fn reset_all_senders(&self);
 }
