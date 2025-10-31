@@ -781,6 +781,7 @@ where
                 .on_decrypt_success(recv_buffer.into())
                 .is_err()
             {
+                // we just close the stream
                 return Ok(ControlFlow::Continue(())).into();
             };
 

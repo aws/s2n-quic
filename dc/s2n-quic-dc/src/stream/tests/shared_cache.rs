@@ -20,19 +20,21 @@ use std::{
 };
 use tracing::info;
 
-fn create_stream_client() -> ClientTokio<ClientProvider, NoopSubscriber> {
+fn create_stream_client() -> (ClientTokio<ClientProvider, NoopSubscriber>, Map) {
     let tls_materials_provider = TestTlsProvider {};
     let test_event_subscriber = NoopSubscriber {};
+
+    let client_map = Map::new(
+        Signer::new(b"default"),
+        100,
+        StdClock::default(),
+        test_event_subscriber.clone(),
+    );
 
     let handshake_client = ClientProvider::builder()
         .start(
             "127.0.0.1:0".parse().unwrap(),
-            Map::new(
-                Signer::new(b"default"),
-                100,
-                StdClock::default(),
-                test_event_subscriber.clone(),
-            ),
+            client_map.clone(),
             tls_materials_provider.clone(),
             test_event_subscriber.clone(),
             query_event,
@@ -49,7 +51,7 @@ fn create_stream_client() -> ClientTokio<ClientProvider, NoopSubscriber> {
         .unwrap();
 
     info!("Client created");
-    stream_client
+    (stream_client, client_map)
 }
 
 async fn create_handshake_server() -> ServerProvider {
@@ -102,7 +104,7 @@ async fn setup_servers() {
     let unix_socket_path1 = PathBuf::from("/tmp/shared1.sock");
     let unix_socket_path2 = PathBuf::from("/tmp/shared2.sock");
 
-    let stream_client = create_stream_client();
+    let (stream_client, _) = create_stream_client();
     let handshake_server = create_handshake_server().await;
 
     let handshake_addr = handshake_server.local_addr();
@@ -219,7 +221,7 @@ async fn test_kernel_queue_full() {
     let test_event_subscriber = NoopSubscriber {};
     let unix_socket_path = PathBuf::from("/tmp/kernel_queue_test.sock");
 
-    let stream_client = create_stream_client();
+    let (stream_client, _) = create_stream_client();
     let handshake_server = create_handshake_server().await;
 
     let handshake_addr = handshake_server.local_addr();
@@ -302,7 +304,7 @@ async fn test_kernel_queue_full_application_crash() {
     let test_event_subscriber = NoopSubscriber {};
     let unix_socket_path = PathBuf::from("/tmp/kernel_queue_crash.sock");
 
-    let stream_client = create_stream_client();
+    let (stream_client, _) = create_stream_client();
     let handshake_server = create_handshake_server().await;
 
     let handshake_addr = handshake_server.local_addr();
@@ -362,4 +364,95 @@ async fn test_kernel_queue_full_application_crash() {
         let error = read_result.unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
     }
+}
+
+#[tokio::test]
+async fn test_dedup_check() {
+    init_tracing();
+    let test_event_subscriber = NoopSubscriber {};
+    let unix_socket_path1 = PathBuf::from("/tmp/dedup1.sock");
+    let unix_socket_path2 = PathBuf::from("/tmp/dedup2.sock");
+
+    let (client, client_map) = create_stream_client();
+
+    let handshake_server = create_handshake_server().await;
+    let handshake_addr = handshake_server.local_addr();
+    let res = client
+        .handshake_with(handshake_addr, server_name())
+        .await
+        .unwrap();
+    info!("Handshake completed, {:?}", res);
+
+    let manager_server1 = manager::Server::<ServerProvider, NoopSubscriber>::builder()
+        .with_address("127.0.0.1:0".parse().unwrap())
+        .with_protocol(Protocol::Tcp)
+        .with_udp(false)
+        .with_workers(NonZeroUsize::new(1).unwrap())
+        .with_socket_path(&unix_socket_path1)
+        .build(handshake_server.clone(), test_event_subscriber.clone())
+        .unwrap();
+
+    info!(
+        "Manager server created at: {:?}",
+        manager_server1.acceptor_addr()
+    );
+
+    let manager_server2 = manager::Server::<ServerProvider, NoopSubscriber>::builder()
+        .with_address("127.0.0.1:0".parse().unwrap())
+        .with_protocol(Protocol::Tcp)
+        .with_udp(false)
+        .with_workers(NonZeroUsize::new(1).unwrap())
+        .with_socket_path(&unix_socket_path2)
+        .build(handshake_server.clone(), test_event_subscriber.clone())
+        .unwrap();
+
+    info!(
+        "Manager server created at: {:?}",
+        manager_server2.acceptor_addr()
+    );
+
+    let app_server1 = create_application_server(&unix_socket_path1, test_event_subscriber.clone());
+    let _app_server2 = create_application_server(&unix_socket_path2, test_event_subscriber);
+
+    let acceptor_addr1 = manager_server1.acceptor_addr().unwrap();
+    let mut client_stream = client
+        .connect(handshake_addr, acceptor_addr1, server_name())
+        .await
+        .unwrap();
+    let (mut server_stream, _addr) = app_server1.accept().await.unwrap();
+
+    let test_message = b"Hello from server!";
+    let data_exchange_result = tokio::try_join!(
+        async {
+            let mut buffer = Vec::<u8>::new();
+            let bytes_read = client_stream.read_into(&mut buffer).await?;
+            assert_eq!(&buffer[..bytes_read], test_message);
+            Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+        },
+        async {
+            let mut message_slice = &test_message[..];
+            server_stream.write_from(&mut message_slice).await?;
+            Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+        }
+    );
+
+    assert!(data_exchange_result.is_ok());
+
+    client_map.reset_all_senders();
+
+    let acceptor_addr2 = manager_server2.acceptor_addr().unwrap();
+    let mut client_stream2 = client
+        .connect(handshake_addr, acceptor_addr2, server_name())
+        .await
+        .unwrap();
+
+    let mut buffer: Vec<u8> = Vec::new();
+    let read_result = client_stream2.read_into(&mut buffer).await;
+    assert!(read_result.is_err());
+    let error = read_result.unwrap_err();
+    info!("Read error {:?}", error);
+    // FIXME should the server be sending a control packet on ReplayDefinitelyDetected?
+    assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
 }

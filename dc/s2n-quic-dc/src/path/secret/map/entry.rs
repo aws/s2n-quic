@@ -300,6 +300,11 @@ impl Entry {
     pub fn application_data(&self) -> &Option<ApplicationData> {
         &self.application_data
     }
+
+    #[cfg(test)]
+    pub fn reset_sender_counter(&self) {
+        self.sender.reset_counter();
+    }
 }
 
 impl receiver::Error {

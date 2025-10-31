@@ -299,6 +299,12 @@ impl Map {
     }
 
     #[doc(hidden)]
+    #[cfg(test)]
+    pub fn reset_all_senders(&self) {
+        self.store.reset_all_senders();
+    }
+
+    #[doc(hidden)]
     #[cfg(any(test, feature = "testing"))]
     pub fn test_insert(&self, peer: SocketAddr) {
         let receiver = super::receiver::State::new();
