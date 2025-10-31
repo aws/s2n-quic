@@ -32,11 +32,11 @@ fn test_with_initial_rtt(initial_rtt: Duration) -> usize {
     let pto_subscriber = recorder::Pto::new();
     let pto_events = pto_subscriber.events();
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(), pto_subscriber))?
+            .with_event((tracing_events(true, model.clone()), pto_subscriber))?
             .with_random(Random::with_seed(456))?
             .with_limits(
                 provider::limits::Limits::default()

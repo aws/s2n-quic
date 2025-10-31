@@ -43,7 +43,7 @@ fn zero_length_cid_client_connection_migration_test() {
     // It is initially an unspecified address. It will be updated during test to verify connection migration
     let mut migrated_socket_address: SocketAddr = "0.0.0.0:0".parse().unwrap();
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         // Set up a s2n-quic server
         let server = tls::Server::builder()
             .with_application_protocols(["h3"].iter())
@@ -57,7 +57,7 @@ fn zero_length_cid_client_connection_migration_test() {
             .with_io(handle.builder().build()?)?
             .with_tls(server)?
             .with_event((
-                tracing_events(),
+                tracing_events(true, model.clone()),
                 (active_path_update_subscriber, connection_close_subscriber),
             ))?
             .with_random(Random::with_seed(456))?

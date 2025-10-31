@@ -4,8 +4,8 @@
 use s2n_quic::{
     client::Connect,
     provider::{
-        event,
-        io::testing::{primary, spawn, Handle, Result},
+        event::{self, events},
+        io::testing::{primary, spawn, Handle, Model, Result},
     },
     stream::PeerStream,
     Client, Server,
@@ -21,7 +21,124 @@ mod tests;
 
 pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::KEY_PEM);
 
-pub fn tracing_events() -> event::tracing::Subscriber {
+/// A subscriber that panics when a blocklisted event is encountered
+pub struct BlocklistSubscriber {
+    blocklist_enabled: bool,
+    network_env: Model,
+}
+
+impl BlocklistSubscriber {
+    pub fn new(blocklist_enabled: bool, network_env: Model) -> Self {
+        Self {
+            blocklist_enabled,
+            network_env,
+        }
+    }
+
+    pub fn max_udp_payload(&self) -> u16 {
+        self.network_env.max_udp_payload()
+    }
+}
+
+impl event::Subscriber for BlocklistSubscriber {
+    type ConnectionContext = ();
+
+    fn create_connection_context(
+        &mut self,
+        _meta: &events::ConnectionMeta,
+        _info: &events::ConnectionInfo,
+    ) -> Self::ConnectionContext {
+    }
+
+    fn on_datagram_dropped(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::DatagramDropped,
+    ) {
+        if self.blocklist_enabled {
+            panic!(
+                "Blacklisted datagram dropped event encountered: {:?}",
+                event
+            );
+        }
+    }
+
+    fn on_packet_dropped(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::PacketDropped,
+    ) {
+        if matches!(
+            event,
+            events::PacketDropped {
+                reason: events::PacketDropReason::DecryptionFailed { .. }
+                    | events::PacketDropReason::UnprotectFailed { .. }
+                    | events::PacketDropReason::VersionMismatch { .. }
+                    | events::PacketDropReason::UndersizedInitialPacket { .. }
+                    | events::PacketDropReason::InitialConnectionIdInvalidSpace { .. },
+                ..
+            }
+        ) && self.blocklist_enabled
+        {
+            panic!("Blocklisted packet dropped event encountered: {:?}", event);
+        }
+    }
+
+    fn on_packet_lost(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::PacketLost,
+    ) {
+        // packet which is smaller than the MTU should not be lost
+        if event.bytes_lost < self.max_udp_payload() && self.blocklist_enabled {
+            panic!("Bytes lost is {} and max udp payload is {}\nBlocklisted packet lost event encountered: {:?}", event.bytes_lost, self.max_udp_payload(), event);
+        }
+    }
+
+    fn on_platform_tx_error(
+        &mut self,
+        _meta: &events::EndpointMeta,
+        event: &events::PlatformTxError,
+    ) {
+        if self.blocklist_enabled {
+            panic!(
+                "Blocklisted platform tx error event encountered: {:?}",
+                event
+            );
+        }
+    }
+
+    fn on_platform_rx_error(
+        &mut self,
+        _meta: &events::EndpointMeta,
+        event: &events::PlatformRxError,
+    ) {
+        if self.blocklist_enabled {
+            panic!(
+                "Blocklisted platform rx error event encountered: {:?}",
+                event
+            );
+        }
+    }
+
+    fn on_endpoint_datagram_dropped(
+        &mut self,
+        _meta: &events::EndpointMeta,
+        event: &events::EndpointDatagramDropped,
+    ) {
+        if self.blocklist_enabled {
+            panic!(
+                "Blocklisted endpoint datagram dropped event encountered: {:?}",
+                event
+            );
+        }
+    }
+}
+
+pub fn tracing_events(with_blocklist: bool, network_env: Model) -> impl event::Subscriber {
     use std::sync::Once;
 
     static TRACING: Once = Once::new();
@@ -59,7 +176,10 @@ pub fn tracing_events() -> event::tracing::Subscriber {
             .init();
     });
 
-    event::tracing::Subscriber::default()
+    (
+        event::tracing::Subscriber::default(),
+        BlocklistSubscriber::new(with_blocklist, network_env),
+    )
 }
 
 pub fn start_server(mut server: Server) -> Result<SocketAddr> {
@@ -96,22 +216,27 @@ pub fn start_server(mut server: Server) -> Result<SocketAddr> {
     Ok(server_addr)
 }
 
-pub fn server(handle: &Handle) -> Result<SocketAddr> {
-    let server = build_server(handle)?;
+pub fn server(handle: &Handle, network_env: Model) -> Result<SocketAddr> {
+    let server = build_server(handle, network_env)?;
     start_server(server)
 }
 
-pub fn build_server(handle: &Handle) -> Result<Server> {
+pub fn build_server(handle: &Handle, network_env: Model) -> Result<Server> {
     Ok(Server::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls(SERVER_CERTS)?
-        .with_event(tracing_events())?
+        .with_event(tracing_events(true, network_env))?
         .with_random(Random::with_seed(123))?
         .start()?)
 }
 
-pub fn client(handle: &Handle, server_addr: SocketAddr) -> Result {
-    let client = build_client(handle)?;
+pub fn client(
+    handle: &Handle,
+    server_addr: SocketAddr,
+    network_env: Model,
+    with_blocklist: bool,
+) -> Result {
+    let client = build_client(handle, network_env, with_blocklist)?;
     start_client(client, server_addr, Data::new(10_000))
 }
 
@@ -146,19 +271,13 @@ pub fn start_client(client: Client, server_addr: SocketAddr, data: Data) -> Resu
     Ok(())
 }
 
-pub fn build_client(handle: &Handle) -> Result<Client> {
+pub fn build_client(handle: &Handle, network_env: Model, with_blocklist: bool) -> Result<Client> {
     Ok(Client::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls(certificates::CERT_PEM)?
-        .with_event(tracing_events())?
+        .with_event(tracing_events(with_blocklist, network_env))?
         .with_random(Random::with_seed(123))?
         .start()?)
-}
-
-pub fn client_server(handle: &Handle) -> Result<SocketAddr> {
-    let addr = server(handle)?;
-    client(handle, addr)?;
-    Ok(addr)
 }
 
 pub struct Random {

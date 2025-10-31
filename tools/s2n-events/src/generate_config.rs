@@ -173,9 +173,10 @@ impl GenerateConfig {
                     };
 
                     #[non_exhaustive]
-                    #[derive(Clone, Debug, Eq, PartialEq)]
+                    #[derive(Clone, Debug, Default, Eq, PartialEq)]
                     pub enum Outcome {
                         /// Allow the connection to remain open
+                        #[default]
                         Continue,
 
                         /// Close the connection and notify the peer
@@ -183,12 +184,6 @@ impl GenerateConfig {
 
                         /// Close the connection without notifying the peer
                         ImmediateClose { reason: &'static str },
-                    }
-
-                    impl Default for Outcome {
-                        fn default() -> Self {
-                            Self::Continue
-                        }
                     }
 
                     #[non_exhaustive]

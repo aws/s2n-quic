@@ -8,12 +8,12 @@ use s2n_quic_core::event::testing::endpoint;
 fn platform_events() {
     let model = Model::default();
 
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls((certificates::CERT_PEM, certificates::KEY_PEM))?
             .with_event((
-                tracing_events(),
+                tracing_events(true, model.clone()),
                 endpoint::Subscriber::named_snapshot("platform_events__server"),
             ))?
             .with_random(Random::with_seed(456))?
@@ -23,7 +23,7 @@ fn platform_events() {
             .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
             .with_event((
-                tracing_events(),
+                tracing_events(true, model.clone()),
                 endpoint::Subscriber::named_snapshot("platform_events__client"),
             ))?
             .with_random(Random::with_seed(456))?

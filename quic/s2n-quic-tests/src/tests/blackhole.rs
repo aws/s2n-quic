@@ -5,18 +5,22 @@ use super::*;
 
 fn blackhole(model: Model, blackhole_duration: Duration) {
     test(model.clone(), |handle| {
+        let model_for_spawn = model.clone();
         spawn(async move {
             // switch back and forth between blackhole and not
             loop {
                 delay(blackhole_duration).await;
                 // drop all packets
-                model.set_drop_rate(1.0);
+                model_for_spawn.set_drop_rate(1.0);
 
                 delay(blackhole_duration).await;
-                model.set_drop_rate(0.0);
+                model_for_spawn.set_drop_rate(0.0);
             }
         });
-        client_server(handle)
+
+        let addr = server(handle, model.clone())?;
+        client(handle, addr, model.clone(), true)?;
+        Ok(addr)
     })
     .unwrap();
 }

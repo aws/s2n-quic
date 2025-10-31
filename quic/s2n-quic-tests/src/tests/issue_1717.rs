@@ -16,17 +16,18 @@ fn increasing_pto_count_under_loss() {
     let pto_events = subscriber.events();
 
     test(model.clone(), |handle| {
+        let model_for_spawn = model.clone();
         spawn(async move {
             // allow for 1 RTT worth of data and then drop all packet after
             // the client gets an initial ACK from the server
             delay(delay_time * 2).await;
-            model.set_drop_rate(1.0);
+            model_for_spawn.set_drop_rate(1.0);
         });
 
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true, model.clone()))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -41,7 +42,7 @@ fn increasing_pto_count_under_loss() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(), subscriber))?
+            .with_event((tracing_events(true, model.clone()), subscriber))?
             .with_random(Random::with_seed(456))?
             .start()?;
 

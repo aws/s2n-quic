@@ -57,16 +57,11 @@ const SPIN_BIT_MASK: u8 = 0x20;
 
 const RESERVED_BITS_MASK: u8 = 0x18;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum SpinBit {
+    #[default]
     Zero,
     One,
-}
-
-impl Default for SpinBit {
-    fn default() -> Self {
-        Self::Zero
-    }
 }
 
 impl SpinBit {

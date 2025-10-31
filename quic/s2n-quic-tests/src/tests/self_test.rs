@@ -8,7 +8,13 @@ use super::*;
 /// Simple end-to-end test
 #[test]
 fn client_server_test() {
-    test(Model::default(), client_server).unwrap();
+    let model = Model::default();
+    test(model.clone(), |handle| {
+        let addr = server(handle, model.clone())?;
+        client(handle, addr, model.clone(), true)?;
+        Ok(addr)
+    })
+    .unwrap();
 }
 
 /// Showing that the TxRecorder is working
@@ -20,17 +26,18 @@ fn packet_sent_event_test() {
     let events = subscriber.events();
     let mut server_socket = None;
 
-    test((recorder, Model::default()), |handle| {
+    let model = Model::default();
+    test((recorder, model.clone()), |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), subscriber))?
+            .with_event((tracing_events(true, model.clone()), subscriber))?
             .start()?;
         let addr = start_server(server)?;
         // store addr in exterior scope so we can use it to filter packets
         // after the test ends
         server_socket = Some(addr);
-        client(handle, addr)?;
+        client(handle, addr, model.clone(), true)?;
         Ok(addr)
     })
     .unwrap();

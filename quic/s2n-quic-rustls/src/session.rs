@@ -391,8 +391,9 @@ impl tls::Session for Session {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Default)]
 enum HandshakePhase {
+    #[default]
     Initial,
     Handshake,
     Application,
@@ -404,11 +405,5 @@ impl HandshakePhase {
             Self::Initial => Self::Handshake,
             _ => Self::Application,
         };
-    }
-}
-
-impl Default for HandshakePhase {
-    fn default() -> Self {
-        Self::Initial
     }
 }

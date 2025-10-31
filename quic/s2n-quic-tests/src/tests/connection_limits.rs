@@ -30,16 +30,20 @@ fn connection_limits() {
     }
 
     let model = Model::default();
-    test(model, |handle| {
+    test(model.clone(), |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
+            .with_event(tracing_events(true, model.clone()))?
             .with_tls(SERVER_CERTS)?
+            .with_event(tracing_events(true, model.clone()))?
             .with_limits(LimitsProvider)?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
+            .with_event(tracing_events(true, model.clone()))?
             .with_tls(certificates::CERT_PEM)?
+            .with_event(tracing_events(true, model.clone()))?
             .start()?;
         let addr = start_server(server)?;
         start_client(client, addr, Data::new(1000))?;
