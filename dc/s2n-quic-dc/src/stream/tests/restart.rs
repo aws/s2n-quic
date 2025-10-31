@@ -186,7 +186,6 @@ macro_rules! tests {
     };
 }
 
-#[cfg(not(target_os = "macos"))]
 mod tcp {
     use super::*;
 
