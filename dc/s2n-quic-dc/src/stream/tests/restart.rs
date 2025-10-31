@@ -199,6 +199,7 @@ mod tcp {
     tests!();
 }
 
+#[cfg(not(target_os = "macos"))]
 mod udp {
     use super::*;
 
