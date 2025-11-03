@@ -20,7 +20,7 @@ permissions:
   packages: write # This is required for docker push to ghcr
 
 jobs:
-  qns:
+  qns_release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
