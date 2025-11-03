@@ -835,6 +835,15 @@ jobs:
           cat /tmp/typos.json
           ! grep -q '[^[:space:]]' /tmp/typos.json
 
+  commit-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - uses: ahmadnassri/action-commit-lint@v2
+        with:
+          config: ./.github/config/commitlint.config.js
   kani:
     runs-on: ubuntu-latest
     strategy:
