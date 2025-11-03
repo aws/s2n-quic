@@ -781,6 +781,7 @@ where
                 .on_decrypt_success(recv_buffer.into())
                 .is_err()
             {
+                // we just close the stream
                 return Ok(ControlFlow::Continue(())).into();
             };
 
@@ -813,16 +814,12 @@ where
                 recv_buffer,
             );
 
-            let sender = uds::sender::Sender::new()?;
-            let dest_path = self.dest_path.clone();
+            let sender = uds::sender::Sender::new(&self.dest_path)?;
             let tcp_stream = socket.into_std()?;
 
             // FIXME make this a manual Future impl instead of Box
-            let send_future = Box::pin(async move {
-                sender
-                    .send_msg(&buffer, &dest_path, tcp_stream.as_fd())
-                    .await
-            });
+            let send_future =
+                Box::pin(async move { sender.send_msg(&buffer, tcp_stream.as_fd()).await });
 
             let event_data = SocketEventData {
                 credential_id: credentials.id.to_vec(),
