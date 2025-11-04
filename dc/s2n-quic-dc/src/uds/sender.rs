@@ -3,13 +3,16 @@
 
 use nix::sys::socket::{sendmsg, ControlMessage, MsgFlags};
 use std::{
+    future::Future,
     os::{
-        fd::{BorrowedFd, OwnedFd},
+        fd::{AsFd, BorrowedFd, OwnedFd},
         unix::{io::AsRawFd as _, net::UnixDatagram},
     },
     path::Path,
+    pin::Pin,
+    task::{ready, Context, Poll},
 };
-use tokio::io::{unix::AsyncFd, Interest};
+use tokio::io::unix::AsyncFd;
 
 pub struct Sender {
     socket_fd: AsyncFd<OwnedFd>,
@@ -26,19 +29,6 @@ impl Sender {
         Ok(Self {
             socket_fd: async_fd,
         })
-    }
-
-    pub async fn send_msg(
-        &self,
-        packet: &[u8],
-        fd_to_send: BorrowedFd<'_>,
-    ) -> Result<(), std::io::Error> {
-        self.socket_fd
-            .async_io(Interest::WRITABLE, |_inner| {
-                self.try_send_nonblocking(packet, fd_to_send)
-            })
-            .await?;
-        Ok(())
     }
 
     fn try_send_nonblocking(
@@ -64,5 +54,41 @@ impl Sender {
         )?;
 
         Ok(())
+    }
+}
+
+pub struct SendMsg {
+    sender: Sender,
+    packet: Vec<u8>,
+    fd: OwnedFd,
+}
+
+impl SendMsg {
+    pub fn new(sender: Sender, packet: &[u8], fd_to_send: OwnedFd) -> SendMsg {
+        SendMsg {
+            sender,
+            packet: packet.to_vec(),
+            fd: fd_to_send,
+        }
+    }
+}
+
+impl Future for SendMsg {
+    type Output = Result<(), std::io::Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+
+        loop {
+            let mut guard = ready!(this.sender.socket_fd.poll_write_ready(cx))?;
+
+            match guard.try_io(|_inner| {
+                this.sender
+                    .try_send_nonblocking(&this.packet, this.fd.as_fd())
+            }) {
+                Ok(result) => return Poll::Ready(result),
+                Err(_would_block) => continue,
+            }
+        }
     }
 }

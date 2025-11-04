@@ -12,7 +12,7 @@ use crate::{
         environment::tokio::{self as env, Environment},
         recv, server, TransportFeatures,
     },
-    uds,
+    uds::{self, sender::SendMsg},
 };
 use core::{
     ops::ControlFlow,
@@ -28,8 +28,9 @@ use s2n_quic_core::{
     time::{Clock, Timestamp},
 };
 use std::{
+    future::Future,
     io,
-    os::fd::AsFd as _,
+    os::fd::OwnedFd,
     path::{Path, PathBuf},
 };
 use tracing::debug;
@@ -257,7 +258,7 @@ pub enum WorkerState {
         error: io::Error,
     },
     Sending {
-        future: Pin<Box<dyn std::future::Future<Output = Result<(), std::io::Error>> + Send>>,
+        future: uds::sender::SendMsg,
         event_data: SocketEventData,
     },
 }
@@ -590,18 +591,16 @@ impl SocketBehavior {
         }
     }
 
-    fn poll_send<Pub, F>(
-        mut future: Pin<Box<F>>,
+    fn poll_send<Pub>(
+        future: &mut SendMsg,
         cx: &mut task::Context,
-        state: &mut WorkerState,
-        mut event_data: SocketEventData,
+        event_data: &SocketEventData,
         publisher: &Pub,
     ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
     where
         Pub: EndpointPublisher,
-        F: std::future::Future<Output = Result<(), std::io::Error>> + Send + 'static,
     {
-        match future.as_mut().poll(cx) {
+        match Pin::new(future).as_mut().poll(cx) {
             Poll::Ready(res) => match res {
                 Ok(_) => {
                     publisher.on_acceptor_tcp_socket_sent(event::builder::AcceptorTcpSocketSent {
@@ -618,12 +617,7 @@ impl SocketBehavior {
                     Err(Some(err)).into()
                 }
             },
-            Poll::Pending => {
-                event_data.blocked_count += 1;
-
-                *state = WorkerState::Sending { future, event_data };
-                Poll::Pending
-            }
+            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -679,30 +673,15 @@ where
 
                     return Err(Some(error)).into();
                 }
-                WorkerState::Sending { future, event_data } => match future.as_mut().poll(cx) {
-                    Poll::Ready(res) => match res {
-                        Ok(_) => {
-                            publisher.on_acceptor_tcp_socket_sent(
-                                event::builder::AcceptorTcpSocketSent {
-                                    credential_id: &event_data.credential_id,
-                                    stream_id: event_data.stream_id,
-                                    payload_len: event_data.payload_len,
-                                    blocked_count: event_data.blocked_count,
-                                    sojourn_time: event_data.sojourn_time,
-                                },
-                            );
-                            return Ok(ControlFlow::Continue(())).into();
+                WorkerState::Sending { future, event_data } => {
+                    match Self::poll_send(future, cx, event_data, publisher) {
+                        Poll::Ready(result) => return Poll::Ready(result),
+                        Poll::Pending => {
+                            event_data.blocked_count += 1;
+                            return Poll::Pending;
                         }
-                        Err(err) => {
-                            debug!("Error sending message to socket {:?}", err);
-                            return Err(Some(err)).into();
-                        }
-                    },
-                    Poll::Pending => {
-                        event_data.blocked_count += 1;
-                        return Poll::Pending;
                     }
-                },
+                }
             };
 
             // try to read an initial packet from the socket
@@ -817,11 +796,8 @@ where
             let sender = uds::sender::Sender::new(&self.dest_path)?;
             let tcp_stream = socket.into_std()?;
 
-            // FIXME make this a manual Future impl instead of Box
-            let send_future =
-                Box::pin(async move { sender.send_msg(&buffer, tcp_stream.as_fd()).await });
-
-            let event_data = SocketEventData {
+            let mut future = SendMsg::new(sender, &buffer, OwnedFd::from(tcp_stream));
+            let mut event_data = SocketEventData {
                 credential_id: credentials.id.to_vec(),
                 stream_id: credentials.key_id.as_u64(),
                 payload_len: size,
@@ -829,7 +805,14 @@ where
                 sojourn_time,
             };
 
-            return Self::poll_send(send_future, cx, state, event_data, publisher);
+            match Self::poll_send(&mut future, cx, &event_data, publisher) {
+                Poll::Ready(result) => return Poll::Ready(result),
+                Poll::Pending => {
+                    event_data.blocked_count += 1;
+                    *state = WorkerState::Sending { future, event_data };
+                    return Poll::Pending;
+                }
+            }
         }
     }
 }
