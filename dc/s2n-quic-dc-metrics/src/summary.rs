@@ -1,5 +1,7 @@
-use crate::rseq::{Absorb, Channels};
-use crate::Unit;
+use crate::{
+    rseq::{Absorb, Channels},
+    Unit,
+};
 use std::{fmt::Write as _, sync::Arc, time::Duration};
 
 const FLOAT_INT_MULTIPLIER: f64 = 1000.0;

@@ -1,10 +1,14 @@
-use std::cell::Cell;
-use std::ffi::CStr;
-use std::fs;
-use std::mem::MaybeUninit;
-use std::ptr::NonNull;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::{
+    cell::Cell,
+    ffi::CStr,
+    fs,
+    mem::MaybeUninit,
+    ptr::NonNull,
+    sync::{
+        atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering},
+        Mutex,
+    },
+};
 
 const SLOTS: usize = 1024 * 8 - 1;
 

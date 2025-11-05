@@ -1,7 +1,5 @@
-use crate::counter::SharedCounter;
-use crate::rseq::Channels;
-use std::fmt::Write as _;
-use std::sync::Arc;
+use crate::{counter::SharedCounter, rseq::Channels};
+use std::{fmt::Write as _, sync::Arc};
 
 /// A `BoolCounter` represents an event with a success/failure or other binary state. For example,
 /// it can be used to count attempted outgoing connections while also representing the

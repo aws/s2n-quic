@@ -1,5 +1,4 @@
-use criterion::BenchmarkId;
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use s2n_quic_dc_metrics::Registry;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
