@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use s2n_quic_dc_metrics::Registry;
 use std::sync::atomic::{AtomicUsize, Ordering};
