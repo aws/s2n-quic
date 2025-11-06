@@ -139,21 +139,21 @@ async fn test_connection(
     test_event_subscriber: NoopSubscriber,
     stream_client: &ClientTokio<ClientProvider, NoopSubscriber>,
 ) {
+    let app_server = create_application_server(unix_socket_path, test_event_subscriber.clone());
+
     let manager_server = manager::Server::<ServerProvider, NoopSubscriber>::builder()
         .with_address("127.0.0.1:0".parse().unwrap())
         .with_protocol(Protocol::Tcp)
         .with_udp(false)
         .with_workers(NonZeroUsize::new(1).unwrap())
         .with_socket_path(unix_socket_path)
-        .build(handshake_server.clone(), test_event_subscriber.clone())
+        .build(handshake_server.clone(), test_event_subscriber)
         .unwrap();
 
     info!(
         "Manager server created at: {:?}",
         manager_server.acceptor_addr()
     );
-
-    let app_server = create_application_server(unix_socket_path, test_event_subscriber);
 
     info!("All servers setup completed successfully");
 
@@ -231,6 +231,8 @@ async fn test_kernel_queue_full() {
         .unwrap();
     info!("Handshake completed");
 
+    let app_server = create_application_server(&unix_socket_path, test_event_subscriber.clone());
+
     let manager_server = manager::Server::<ServerProvider, NoopSubscriber>::builder()
         .with_address("127.0.0.1:0".parse().unwrap())
         .with_protocol(Protocol::Tcp)
@@ -238,7 +240,7 @@ async fn test_kernel_queue_full() {
         .with_workers(NonZeroUsize::new(1).unwrap())
         .with_socket_path(&unix_socket_path)
         .with_backlog(NonZero::new(10000).unwrap()) // configuring backlog so that streams are not dropped
-        .build(handshake_server.clone(), test_event_subscriber.clone())
+        .build(handshake_server.clone(), test_event_subscriber)
         .unwrap();
 
     info!(
@@ -246,8 +248,6 @@ async fn test_kernel_queue_full() {
         manager_server.acceptor_addr()
     );
     let acceptor_addr = manager_server.acceptor_addr().unwrap();
-
-    let app_server = create_application_server(&unix_socket_path, test_event_subscriber);
 
     let mut clients = Vec::new();
     let stream_count = 10000;
@@ -313,6 +313,8 @@ async fn test_kernel_queue_full_application_crash() {
         .unwrap();
     info!("Handshake completed");
 
+    let app_server = create_application_server(&unix_socket_path, test_event_subscriber.clone());
+
     let manager_server = manager::Server::<ServerProvider, NoopSubscriber>::builder()
         .with_address("127.0.0.1:0".parse().unwrap())
         .with_protocol(Protocol::Tcp)
@@ -320,7 +322,7 @@ async fn test_kernel_queue_full_application_crash() {
         .with_workers(NonZeroUsize::new(1).unwrap())
         .with_socket_path(&unix_socket_path)
         .with_backlog(NonZero::new(5000).unwrap())
-        .build(handshake_server.clone(), test_event_subscriber.clone())
+        .build(handshake_server.clone(), test_event_subscriber)
         .unwrap();
 
     info!(
@@ -328,8 +330,6 @@ async fn test_kernel_queue_full_application_crash() {
         manager_server.acceptor_addr()
     );
     let acceptor_addr = manager_server.acceptor_addr().unwrap();
-
-    let app_server = create_application_server(&unix_socket_path, test_event_subscriber);
 
     let mut clients = Vec::new();
     let stream_count = 5000;
@@ -380,6 +380,9 @@ async fn test_dedup_check() {
         .unwrap();
     info!("Handshake completed, {:?}", res);
 
+    let app_server1 = create_application_server(&unix_socket_path1, test_event_subscriber.clone());
+    let _app_server2 = create_application_server(&unix_socket_path2, test_event_subscriber.clone());
+
     let manager_server1 = manager::Server::<ServerProvider, NoopSubscriber>::builder()
         .with_address("127.0.0.1:0".parse().unwrap())
         .with_protocol(Protocol::Tcp)
@@ -407,9 +410,6 @@ async fn test_dedup_check() {
         "Manager server created at: {:?}",
         manager_server2.acceptor_addr()
     );
-
-    let app_server1 = create_application_server(&unix_socket_path1, test_event_subscriber.clone());
-    let _app_server2 = create_application_server(&unix_socket_path2, test_event_subscriber);
 
     let acceptor_addr1 = manager_server1.acceptor_addr().unwrap();
     let mut client_stream = client
@@ -448,5 +448,5 @@ async fn test_dedup_check() {
     let error = read_result.unwrap_err();
     info!("Read error {:?}", error);
     // FIXME should the server be sending a control packet on ReplayDefinitelyDetected?
-    assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
+    assert_eq!(error.kind(), std::io::ErrorKind::ConnectionReset);
 }
