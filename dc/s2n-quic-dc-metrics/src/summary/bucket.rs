@@ -5,6 +5,8 @@
 //
 // See https://github.com/pelikan-io/rustcommon/tree/main/histogram for source.
 //
+// We made modifications to this file to better serves our needs.
+//
 // This is licensed as MIT or Apache 2.0.
 
 /// The configuration of a histogram which determines the bucketing strategy and
