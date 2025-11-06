@@ -3,10 +3,11 @@
 
 use super::{accept, LazyBoundStream};
 use crate::{
+    crypto::{self, open::Application},
     either::Either,
     event::{self, EndpointPublisher, IntoEvent},
     msg, packet,
-    path::secret,
+    path::secret::{self, map::Bidirectional},
     stream::{
         endpoint,
         environment::tokio::{self as env, Environment},
@@ -21,18 +22,13 @@ use core::{
     time::Duration,
 };
 use nix::{sys::time::TimeValLike as _, time::ClockId};
-use s2n_codec::{DecoderError, EncoderLenEstimator};
+use s2n_codec::{decoder, DecoderError, EncoderLenEstimator};
 use s2n_quic_core::{
     inet::SocketAddress,
     ready,
     time::{Clock, Timestamp},
 };
-use std::{
-    future::Future,
-    io,
-    os::fd::OwnedFd,
-    path::{Path, PathBuf},
-};
+use std::{future::Future, io, os::fd::OwnedFd, path::Path};
 use tracing::debug;
 
 pub struct Context<Sub>
@@ -580,15 +576,14 @@ pub struct SocketEventData {
 
 #[derive(Clone)]
 pub struct SocketBehavior {
-    dest_path: PathBuf,
+    sender: uds::sender::Sender,
 }
 
 impl SocketBehavior {
     #[inline]
-    pub fn new(dest_path: &Path) -> Self {
-        Self {
-            dest_path: dest_path.to_path_buf(),
-        }
+    pub fn new(dest_path: &Path) -> Result<Self, std::io::Error> {
+        let sender = uds::sender::Sender::new(dest_path)?;
+        Ok(Self { sender })
     }
 
     fn poll_send<Pub>(
@@ -619,6 +614,45 @@ impl SocketBehavior {
             },
             Poll::Pending => Poll::Pending,
         }
+    }
+
+    fn decrypt(keys: Bidirectional, recv_buffer: &mut [u8]) -> Result<(), io::Error> {
+        let tag_len = keys.application.opener.tag_len();
+        let decoder = decoder::DecoderBufferMut::new(recv_buffer);
+
+        let (packet, _remaining) = decoder.decode_parameterized(tag_len).map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Failed to decode stream packet: {:?}", error),
+            )
+        })?;
+        let packet::Packet::Stream(stream_packet) = packet else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Expected stream packet",
+            ));
+        };
+
+        let mut payload_out = vec![0u8; stream_packet.payload().len()];
+        let payload_out = crypto::UninitSlice::new(&mut payload_out);
+
+        keys.application
+            .opener
+            .decrypt(
+                stream_packet.tag().key_phase(),
+                *stream_packet.packet_number(),
+                stream_packet.header(),
+                stream_packet.payload(),
+                stream_packet.auth_tag(),
+                payload_out,
+            )
+            .map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Failed to decrypt stream packet: {:?}", error),
+                )
+            })?;
+        Ok(())
     }
 }
 
@@ -754,14 +788,10 @@ where
                 return Err(Some(error)).into();
             };
 
-            if keys
-                .application
-                .opener
-                .on_decrypt_success(recv_buffer.into())
-                .is_err()
-            {
-                // we just close the stream
-                return Ok(ControlFlow::Continue(())).into();
+            if let Err(err) = Self::decrypt(keys, recv_buffer) {
+                let _ = socket.set_linger(Some(Duration::ZERO));
+                drop(socket);
+                return Err(Some(err)).into();
             };
 
             #[cfg(target_os = "linux")]
