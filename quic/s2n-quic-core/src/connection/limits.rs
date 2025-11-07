@@ -208,7 +208,11 @@ impl Limits {
         }
     );
 
-    setter!(with_max_idle_timeout, max_idle_timeout, Duration);
+    setter!(
+        /// Sets how many seconds the connection will stay open without any activity on it.
+        with_max_idle_timeout,
+        max_idle_timeout,
+        Duration);
 
     /// Sets both the max local and remote limits for bidirectional streams.
     #[deprecated(
@@ -285,7 +289,14 @@ impl Limits {
         max_handshake_duration,
         Duration
     );
-    setter!(with_max_keep_alive_period, max_keep_alive_period, Duration);
+    setter!(
+        /// Sets the period at which the connection will send a ping to its peer.
+        ///
+        /// This setting will not have any effect unless the connection [`keep_alive`] function is
+        /// enabled. Additionally this setting should be smaller than the max_idle_timeout to have any effect.
+        with_max_keep_alive_period,
+        max_keep_alive_period,
+        Duration);
     /// Sets whether active connection migration is supported for a server endpoint (default: true)
     ///
     /// If set to false, the `disable_active_migration` transport parameter will be sent to the
