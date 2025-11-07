@@ -838,15 +838,23 @@ jobs:
           cat /tmp/typos.json
           ! grep -q '[^[:space:]]' /tmp/typos.json
 
-  commit-lint:
+  validate-pr-title:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: PR Conventional Commit Validation
+        id: cc_check
+        uses: ytanikin/pr-conventional-commits@1.4.0
         with:
-          submodules: true
-      - uses: ahmadnassri/action-commit-lint@v2
-        with:
-          config: ./.github/config/commitlint.config.js
+          task_types: '["feat","fix","docs","test","ci","refactor","perf","chore","revert","build"]'
+          add_label: 'false'
+      - name: Failure case
+        if: steps.cc_check.outcome != 'success'
+        run: |
+          echo "Make sure the PR title/commit follows https://www.conventionalcommits.org/"
+          exit 1
+
+
   kani:
     runs-on: ubuntu-latest
     strategy:
