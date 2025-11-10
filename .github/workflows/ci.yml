@@ -21,7 +21,7 @@ env:
   RUST_BACKTRACE: 1
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
-  RUST_NIGHTLY_TOOLCHAIN: nightly-2025-03-31
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2025-11-09
   CDN: https://dnglbrstg7yg.cloudfront.net
   # enable unstable features for testing
   S2N_UNSTABLE_CRYPTO_OPT_TX: 100
@@ -248,19 +248,22 @@ jobs:
         target: [native]
         env: [default]
         include:
+          - rust: ${{ needs.env.outputs.msrv }}
+            # s2n-quic-dc-metrics crate' MSRV is 1.88.0, which is higher than the rest
+            exclude: --exclude s2n-quic-dc-metrics
           - os: windows-latest
             # s2n-tls and s2n-quic-dc don't currently build on windows
-            exclude: --exclude s2n-quic-tls --exclude s2n-quic-dc --exclude s2n-quic-dc-benches
+            exclude: --exclude s2n-quic-tls --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics
           - rust: stable
             os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             # s2n-quic-dc tests are too slow to be emulated with QEMU
-            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches
+            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics
           - rust: stable
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
             # s2n-quic-dc requires a large number of threads for testing, which isn't supported on i686
-            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches
+            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics
           - rust: stable
             os: ubuntu-latest
             target: x86_64-unknown-linux-musl
@@ -271,7 +274,7 @@ jobs:
             target: native
             env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE=""
             # s2n-quic-dc requires platform features
-            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches
+            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics
           - rust: stable
             os: ubuntu-latest
             target: native

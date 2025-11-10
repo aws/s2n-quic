@@ -1,0 +1,2 @@
+# The MSRV for s2n-quic-dc-metrics crate is 1.88.0
+msrv = "1.88.0"

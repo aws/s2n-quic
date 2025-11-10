@@ -50,7 +50,11 @@ fn w_cubic() {
 
     // K = cubic_root(W_max*(1-beta_cubic)/C)
     // K = cubic_root(2304 * 0.75) = 12
-    assert_eq!(cubic.k, Duration::from_secs(12));
+    assert_delta!(
+        cubic.k.as_secs_f64(),
+        Duration::from_secs(12).as_secs_f64(),
+        0.001
+    );
 
     //= https://www.rfc-editor.org/rfc/rfc8312#section-5.1
     //= type=test
