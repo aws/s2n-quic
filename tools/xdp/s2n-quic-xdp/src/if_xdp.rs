@@ -1,6 +1,5 @@
 // Copyright Intel Corporation
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
-// Modifications copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Result;
