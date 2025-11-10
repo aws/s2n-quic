@@ -209,7 +209,9 @@ impl Limits {
     );
 
     setter!(
-        /// Sets how many seconds the connection will stay open without any activity on it.
+        /// Sets the max_idle_timeout duration to advertise to the peer. If a max_idle_timeout is
+        /// specified by either endpoint, the connection is silently closed if it remains idle for
+        /// longer than the minimum of the max_idle_timeout value advertised by both endpoints.
         with_max_idle_timeout,
         max_idle_timeout,
         Duration);
@@ -292,8 +294,9 @@ impl Limits {
     setter!(
         /// Sets the period at which the connection will send a ping to its peer.
         ///
-        /// This setting will not have any effect unless the connection [`keep_alive`] function is
-        /// enabled. Additionally this setting should be smaller than the max_idle_timeout to have any effect.
+        /// Note: This setting will not have any effect unless the connection [`keep_alive`] function is
+        /// enabled. Additionally this setting should be smaller than the max_idle_timeout value. Typically
+        /// this value is used to prevent middleboxes from losing state for UDP flows.
         with_max_keep_alive_period,
         max_keep_alive_period,
         Duration);
