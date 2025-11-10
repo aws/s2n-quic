@@ -12,8 +12,8 @@ S2N_QUIC_FILES=$(find "$PWD" -type f \( -name "*.rs" -o -name "*.py" \) -not -pa
 FAILED=0
 
 for file in $S2N_QUIC_FILES; do
-    # The word "Copyright" should appear at least once in the first 3 lines of every file
-    COUNT=`head -3 $file | grep "Copyright" | wc -l`;
+    # The phrase "Copyright Amazon.com, Inc. or its affiliates." should appear at least once in the first 3 lines of every file
+    COUNT=`head -3 $file | grep -i "Copyright Amazon.com, Inc. or its affiliates." | wc -l`;
     if [ $COUNT == 0 ]; then
         FAILED=1;
         echo "Copyright Check Failed: $file";
