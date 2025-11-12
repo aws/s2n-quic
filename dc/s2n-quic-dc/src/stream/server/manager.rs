@@ -354,7 +354,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
         let socket = tokio::io::unix::AsyncFd::new(socket)?;
         let id = self.id();
 
-        let socket_behavior = tcp::worker::SocketBehavior::new(&self.socket_path);
+        let socket_behavior = tcp::worker::SocketBehavior::new(&self.socket_path)?;
         let acceptor = tcp::Acceptor::new(
             id,
             socket,

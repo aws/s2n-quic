@@ -101,8 +101,8 @@ impl Drop for Receiver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::uds::sender::Sender;
-    use std::{io::Read as _, os::fd::AsFd as _, path::Path};
+    use crate::uds::sender::{SendMsg, Sender};
+    use std::{io::Read as _, path::Path};
     use tokio::{
         fs::File,
         io::AsyncWriteExt,
@@ -123,9 +123,9 @@ mod tests {
         file.sync_all().await.unwrap();
 
         let file = std::fs::File::open(file_path).unwrap();
-        let fd_to_send = file.as_fd();
 
         let packet_data = b"test packet data";
+        let send_future = SendMsg::new(sender, packet_data, OwnedFd::from(file));
 
         let result = tokio::try_join!(
             async {
@@ -133,7 +133,7 @@ mod tests {
                     .await
                     .unwrap()
             },
-            sender.send_msg(packet_data, fd_to_send)
+            send_future
         );
 
         match result {

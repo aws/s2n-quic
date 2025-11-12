@@ -219,6 +219,11 @@ impl Packet<'_> {
     }
 
     #[inline]
+    pub fn auth_tag(&self) -> &[u8] {
+        self.auth_tag
+    }
+
+    #[inline]
     pub fn payload_mut(&mut self) -> &mut [u8] {
         self.payload
     }
