@@ -1,0 +1,30 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-6.4"
+
+# Sending with Updated Keys
+#
+#    An endpoint never sends packets that are protected with old keys.
+#    Only the current keys are used.  Keys used for protecting packets can
+#    be discarded immediately after switching to newer keys.
+# 
+#    Packets with higher packet numbers MUST be protected with either the
+#    same or newer packet protection keys than packets with lower packet
+#    numbers.  An endpoint that successfully removes protection with old
+#    keys when newer keys were used for packets with lower packet numbers
+#    MUST treat this as a connection error of type KEY_UPDATE_ERROR.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Packets with higher packet numbers MUST be protected with either the
+same or newer packet protection keys than packets with lower packet
+numbers.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint that successfully removes protection with old
+keys when newer keys were used for packets with lower packet numbers
+MUST treat this as a connection error of type KEY_UPDATE_ERROR.
+'''
+
