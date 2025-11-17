@@ -3,16 +3,21 @@
 
 use nix::sys::socket::{sendmsg, ControlMessage, MsgFlags};
 use std::{
+    future::Future,
     os::{
-        fd::{BorrowedFd, OwnedFd},
+        fd::{AsFd, BorrowedFd, OwnedFd},
         unix::{io::AsRawFd as _, net::UnixDatagram},
     },
     path::Path,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
 };
 use tokio::io::{unix::AsyncFd, Interest};
 
+#[derive(Clone)]
 pub struct Sender {
-    socket_fd: AsyncFd<OwnedFd>,
+    socket_fd: Arc<AsyncFd<OwnedFd>>,
 }
 
 impl Sender {
@@ -20,25 +25,11 @@ impl Sender {
         let socket = UnixDatagram::unbound()?;
         socket.set_nonblocking(true)?;
         socket.connect(connect_path)?; // without this the socket is always writable
-
-        let async_fd = AsyncFd::new(OwnedFd::from(socket))?;
+        let async_fd = Arc::new(AsyncFd::new(OwnedFd::from(socket))?);
 
         Ok(Self {
             socket_fd: async_fd,
         })
-    }
-
-    pub async fn send_msg(
-        &self,
-        packet: &[u8],
-        fd_to_send: BorrowedFd<'_>,
-    ) -> Result<(), std::io::Error> {
-        self.socket_fd
-            .async_io(Interest::WRITABLE, |_inner| {
-                self.try_send_nonblocking(packet, fd_to_send)
-            })
-            .await?;
-        Ok(())
     }
 
     fn try_send_nonblocking(
@@ -64,5 +55,73 @@ impl Sender {
         )?;
 
         Ok(())
+    }
+}
+
+pub enum SendMsg {
+    Initial {
+        sender: Sender,
+        packet: Vec<u8>,
+        fd_to_send: OwnedFd,
+    },
+    Blocked {
+        send_future: Pin<Box<dyn Future<Output = std::io::Result<()>> + Send + Sync>>,
+    },
+    Temporary,
+}
+
+impl SendMsg {
+    pub fn new(sender: Sender, packet: Vec<u8>, fd_to_send: OwnedFd) -> SendMsg {
+        Self::Initial {
+            sender,
+            packet,
+            fd_to_send,
+        }
+    }
+}
+
+impl Future for SendMsg {
+    type Output = std::io::Result<()>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+
+        match std::mem::replace(this, Self::Temporary) {
+            Self::Initial {
+                sender,
+                packet,
+                fd_to_send,
+            } => match sender.try_send_nonblocking(&packet, fd_to_send.as_fd()) {
+                Ok(_) => Poll::Ready(Ok(())),
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                    let mut future = Box::pin(async move {
+                        sender
+                            .socket_fd
+                            .async_io(Interest::WRITABLE, |_| {
+                                sender.try_send_nonblocking(&packet, fd_to_send.as_fd())
+                            })
+                            .await
+                    });
+                    match future.as_mut().poll(cx) {
+                        Poll::Ready(result) => Poll::Ready(result),
+                        Poll::Pending => {
+                            *this = Self::Blocked {
+                                send_future: future,
+                            };
+                            Poll::Pending
+                        }
+                    }
+                }
+                Err(err) => Poll::Ready(Err(err)),
+            },
+            Self::Blocked { mut send_future } => match send_future.as_mut().poll(cx) {
+                Poll::Ready(result) => Poll::Ready(result),
+                Poll::Pending => {
+                    *this = Self::Blocked { send_future };
+                    Poll::Pending
+                }
+            },
+            Self::Temporary => unreachable!(),
+        }
     }
 }

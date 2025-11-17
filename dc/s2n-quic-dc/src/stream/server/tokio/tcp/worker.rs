@@ -3,16 +3,17 @@
 
 use super::{accept, LazyBoundStream};
 use crate::{
+    crypto::{self, open::Application},
     either::Either,
     event::{self, EndpointPublisher, IntoEvent},
     msg, packet,
-    path::secret,
+    path::secret::{self, map::Bidirectional},
     stream::{
         endpoint,
         environment::tokio::{self as env, Environment},
         recv, server, TransportFeatures,
     },
-    uds,
+    uds::{self, sender::SendMsg},
 };
 use core::{
     ops::ControlFlow,
@@ -21,17 +22,13 @@ use core::{
     time::Duration,
 };
 use nix::{sys::time::TimeValLike as _, time::ClockId};
-use s2n_codec::{DecoderError, EncoderLenEstimator};
+use s2n_codec::{decoder, DecoderError, EncoderLenEstimator};
 use s2n_quic_core::{
     inet::SocketAddress,
     ready,
     time::{Clock, Timestamp},
 };
-use std::{
-    io,
-    os::fd::AsFd as _,
-    path::{Path, PathBuf},
-};
+use std::{future::Future, io, os::fd::OwnedFd, path::Path};
 use tracing::debug;
 
 pub struct Context<Sub>
@@ -257,7 +254,7 @@ pub enum WorkerState {
         error: io::Error,
     },
     Sending {
-        future: Pin<Box<dyn std::future::Future<Output = Result<(), std::io::Error>> + Send>>,
+        future: uds::sender::SendMsg,
         event_data: SocketEventData,
     },
 }
@@ -579,29 +576,26 @@ pub struct SocketEventData {
 
 #[derive(Clone)]
 pub struct SocketBehavior {
-    dest_path: PathBuf,
+    sender: uds::sender::Sender,
 }
 
 impl SocketBehavior {
     #[inline]
-    pub fn new(dest_path: &Path) -> Self {
-        Self {
-            dest_path: dest_path.to_path_buf(),
-        }
+    pub fn new(dest_path: &Path) -> Result<Self, std::io::Error> {
+        let sender = uds::sender::Sender::new(dest_path)?;
+        Ok(Self { sender })
     }
 
-    fn poll_send<Pub, F>(
-        mut future: Pin<Box<F>>,
+    fn poll_send<Pub>(
+        future: &mut SendMsg,
         cx: &mut task::Context,
-        state: &mut WorkerState,
-        mut event_data: SocketEventData,
+        event_data: &SocketEventData,
         publisher: &Pub,
     ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
     where
         Pub: EndpointPublisher,
-        F: std::future::Future<Output = Result<(), std::io::Error>> + Send + 'static,
     {
-        match future.as_mut().poll(cx) {
+        match Pin::new(future).as_mut().poll(cx) {
             Poll::Ready(res) => match res {
                 Ok(_) => {
                     publisher.on_acceptor_tcp_socket_sent(event::builder::AcceptorTcpSocketSent {
@@ -618,13 +612,47 @@ impl SocketBehavior {
                     Err(Some(err)).into()
                 }
             },
-            Poll::Pending => {
-                event_data.blocked_count += 1;
-
-                *state = WorkerState::Sending { future, event_data };
-                Poll::Pending
-            }
+            Poll::Pending => Poll::Pending,
         }
+    }
+
+    fn decrypt(keys: Bidirectional, recv_buffer: &mut [u8]) -> Result<(), io::Error> {
+        let tag_len = keys.application.opener.tag_len();
+        let decoder = decoder::DecoderBufferMut::new(recv_buffer);
+
+        let (packet, _remaining) = decoder.decode_parameterized(tag_len).map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Failed to decode stream packet: {:?}", error),
+            )
+        })?;
+        let packet::Packet::Stream(stream_packet) = packet else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Expected stream packet",
+            ));
+        };
+
+        let mut payload_out = vec![0u8; stream_packet.payload().len()];
+        let payload_out = crypto::UninitSlice::new(&mut payload_out);
+
+        keys.application
+            .opener
+            .decrypt(
+                stream_packet.tag().key_phase(),
+                *stream_packet.packet_number(),
+                stream_packet.header(),
+                stream_packet.payload(),
+                stream_packet.auth_tag(),
+                payload_out,
+            )
+            .map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Failed to decrypt stream packet: {:?}", error),
+                )
+            })?;
+        Ok(())
     }
 }
 
@@ -679,30 +707,15 @@ where
 
                     return Err(Some(error)).into();
                 }
-                WorkerState::Sending { future, event_data } => match future.as_mut().poll(cx) {
-                    Poll::Ready(res) => match res {
-                        Ok(_) => {
-                            publisher.on_acceptor_tcp_socket_sent(
-                                event::builder::AcceptorTcpSocketSent {
-                                    credential_id: &event_data.credential_id,
-                                    stream_id: event_data.stream_id,
-                                    payload_len: event_data.payload_len,
-                                    blocked_count: event_data.blocked_count,
-                                    sojourn_time: event_data.sojourn_time,
-                                },
-                            );
-                            return Ok(ControlFlow::Continue(())).into();
+                WorkerState::Sending { future, event_data } => {
+                    match Self::poll_send(future, cx, event_data, publisher) {
+                        Poll::Ready(result) => return Poll::Ready(result),
+                        Poll::Pending => {
+                            event_data.blocked_count += 1;
+                            return Poll::Pending;
                         }
-                        Err(err) => {
-                            debug!("Error sending message to socket {:?}", err);
-                            return Err(Some(err)).into();
-                        }
-                    },
-                    Poll::Pending => {
-                        event_data.blocked_count += 1;
-                        return Poll::Pending;
                     }
-                },
+                }
             };
 
             // try to read an initial packet from the socket
@@ -775,14 +788,10 @@ where
                 return Err(Some(error)).into();
             };
 
-            if keys
-                .application
-                .opener
-                .on_decrypt_success(recv_buffer.into())
-                .is_err()
-            {
-                // we just close the stream
-                return Ok(ControlFlow::Continue(())).into();
+            if let Err(err) = Self::decrypt(keys, recv_buffer) {
+                let _ = socket.set_linger(Some(Duration::ZERO));
+                drop(socket);
+                return Err(Some(err)).into();
             };
 
             #[cfg(target_os = "linux")]
@@ -813,15 +822,10 @@ where
                 encode_time,
                 recv_buffer,
             );
-
-            let sender = uds::sender::Sender::new(&self.dest_path)?;
             let tcp_stream = socket.into_std()?;
 
-            // FIXME make this a manual Future impl instead of Box
-            let send_future =
-                Box::pin(async move { sender.send_msg(&buffer, tcp_stream.as_fd()).await });
-
-            let event_data = SocketEventData {
+            let mut future = SendMsg::new(self.sender.clone(), buffer, OwnedFd::from(tcp_stream));
+            let mut event_data = SocketEventData {
                 credential_id: credentials.id.to_vec(),
                 stream_id: credentials.key_id.as_u64(),
                 payload_len: size,
@@ -829,7 +833,14 @@ where
                 sojourn_time,
             };
 
-            return Self::poll_send(send_future, cx, state, event_data, publisher);
+            match Self::poll_send(&mut future, cx, &event_data, publisher) {
+                Poll::Ready(result) => return Poll::Ready(result),
+                Poll::Pending => {
+                    event_data.blocked_count += 1;
+                    *state = WorkerState::Sending { future, event_data };
+                    return Poll::Pending;
+                }
+            }
         }
     }
 }
