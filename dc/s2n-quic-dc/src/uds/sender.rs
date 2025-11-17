@@ -58,20 +58,24 @@ impl Sender {
     }
 }
 
-pub struct SendMsg {
-    sender: Sender,
-    packet: Vec<u8>,
-    fd_to_send: OwnedFd,
-    send_future: Option<Pin<Box<dyn Future<Output = std::io::Result<()>> + Send + Sync>>>,
+pub enum SendMsg {
+    Initial {
+        sender: Sender,
+        packet: Vec<u8>,
+        fd_to_send: OwnedFd,
+    },
+    Blocked {
+        send_future: Pin<Box<dyn Future<Output = std::io::Result<()>> + Send + Sync>>,
+    },
+    Temporary,
 }
 
 impl SendMsg {
-    pub fn new(sender: Sender, packet: &[u8], fd_to_send: OwnedFd) -> SendMsg {
-        SendMsg {
+    pub fn new(sender: Sender, packet: Vec<u8>, fd_to_send: OwnedFd) -> SendMsg {
+        Self::Initial {
             sender,
-            packet: packet.to_vec(),
+            packet,
             fd_to_send,
-            send_future: None,
         }
     }
 }
@@ -81,36 +85,43 @@ impl Future for SendMsg {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        if this.send_future.is_none() {
-            match this
-                .sender
-                .try_send_nonblocking(&this.packet, this.fd_to_send.as_fd())
-            {
-                Ok(_) => return Poll::Ready(Ok(())),
-                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                    // Allocate a future on the heap only if initial send returns WouldBlock
-                    let sender = this.sender.clone();
-                    let packet = this.packet.clone();
-                    let fd = this.fd_to_send.try_clone()?;
 
-                    let future = Box::pin(async move {
+        match std::mem::replace(this, Self::Temporary) {
+            Self::Initial {
+                sender,
+                packet,
+                fd_to_send,
+            } => match sender.try_send_nonblocking(&packet, fd_to_send.as_fd()) {
+                Ok(_) => Poll::Ready(Ok(())),
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                    let mut future = Box::pin(async move {
                         sender
                             .socket_fd
                             .async_io(Interest::WRITABLE, |_| {
-                                sender.try_send_nonblocking(&packet, fd.as_fd())
+                                sender.try_send_nonblocking(&packet, fd_to_send.as_fd())
                             })
                             .await
                     });
-                    this.send_future = Some(future);
+                    match future.as_mut().poll(cx) {
+                        Poll::Ready(result) => Poll::Ready(result),
+                        Poll::Pending => {
+                            *this = Self::Blocked {
+                                send_future: future,
+                            };
+                            Poll::Pending
+                        }
+                    }
                 }
-                Err(err) => return Poll::Ready(Err(err)),
-            }
-        }
-
-        if let Some(ref mut future) = this.send_future {
-            future.as_mut().poll(cx)
-        } else {
-            unreachable!()
+                Err(err) => Poll::Ready(Err(err)),
+            },
+            Self::Blocked { mut send_future } => match send_future.as_mut().poll(cx) {
+                Poll::Ready(result) => Poll::Ready(result),
+                Poll::Pending => {
+                    *this = Self::Blocked { send_future };
+                    Poll::Pending
+                }
+            },
+            Self::Temporary => unreachable!(),
         }
     }
 }

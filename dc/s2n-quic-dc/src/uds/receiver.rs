@@ -125,7 +125,7 @@ mod tests {
         let file = std::fs::File::open(file_path).unwrap();
 
         let packet_data = b"test packet data";
-        let send_future = SendMsg::new(sender, packet_data, OwnedFd::from(file));
+        let send_future = SendMsg::new(sender, packet_data.to_vec(), OwnedFd::from(file));
 
         let result = tokio::try_join!(
             async {

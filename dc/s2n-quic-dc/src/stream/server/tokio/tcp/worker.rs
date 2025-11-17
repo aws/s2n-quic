@@ -824,7 +824,7 @@ where
             );
             let tcp_stream = socket.into_std()?;
 
-            let mut future = SendMsg::new(self.sender.clone(), &buffer, OwnedFd::from(tcp_stream));
+            let mut future = SendMsg::new(self.sender.clone(), buffer, OwnedFd::from(tcp_stream));
             let mut event_data = SocketEventData {
                 credential_id: credentials.id.to_vec(),
                 stream_id: credentials.key_id.as_u64(),
