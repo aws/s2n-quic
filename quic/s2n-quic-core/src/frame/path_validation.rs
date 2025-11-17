@@ -70,6 +70,7 @@ impl<Data> Probing for crate::frame::Crypto<Data> {}
 impl<Data> Probing for crate::frame::Datagram<Data> {}
 impl Probing for crate::frame::DataBlocked {}
 impl Probing for crate::frame::DcStatelessResetTokens<'_> {}
+impl Probing for crate::frame::MtuProbingComplete {}
 impl Probing for crate::frame::HandshakeDone {}
 impl Probing for crate::frame::MaxData {}
 impl Probing for crate::frame::MaxStreamData {}

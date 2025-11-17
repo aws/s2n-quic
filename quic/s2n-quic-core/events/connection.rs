@@ -402,6 +402,17 @@ struct MtuUpdated {
     search_complete: bool,
 }
 
+#[event("transport:mtu_probing_complete_received")]
+/// MTU_PROBING_COMPLETE frame was received
+struct MtuProbingCompleteReceived<'a> {
+    #[nominal_counter("packet")]
+    packet_header: PacketHeader,
+    path: Path<'a>,
+    /// The confirmed MTU value from the frame
+    #[measure("mtu", Bytes)]
+    mtu: u16,
+}
+
 #[event("recovery:slow_start_exited")]
 /// The slow start congestion controller state has been exited
 struct SlowStartExited {

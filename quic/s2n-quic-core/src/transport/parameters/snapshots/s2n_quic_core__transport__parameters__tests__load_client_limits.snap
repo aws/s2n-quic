@@ -76,4 +76,5 @@ TransportParameters {
             0,
         ],
     },
+    mtu_probing_complete_support: Enabled,
 }

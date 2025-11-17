@@ -513,6 +513,10 @@ pub struct Controller {
     //# sender will continue to use the current PLPMTU, after which it
     //# reenters the Search Phase.
     pmtu_raise_timer: Timer,
+    /// Flag indicating we need to send MtuProbingComplete frame to the peer
+    needs_to_send_completion: bool,
+    /// Whether DC is enabled for this endpoint
+    dc_enabled: bool,
 }
 
 impl Controller {
@@ -577,7 +581,18 @@ impl Controller {
             black_hole_counter: Default::default(),
             largest_acked_mtu_sized_packet: None,
             pmtu_raise_timer: Timer::default(),
+            needs_to_send_completion: false,
+            dc_enabled: false,
         }
+    }
+
+    /// Enable DC-specific MTU behavior
+    ///
+    /// When DC is enabled, the controller will send MtuProbingComplete frames
+    /// to notify the peer when MTU probing completes
+    #[inline]
+    pub fn enable_dc(&mut self) {
+        self.dc_enabled = true;
     }
 
     /// Enable path MTU probing
@@ -844,6 +859,12 @@ impl Controller {
             // so its not worth additional probing.
             self.state = State::SearchComplete;
 
+            // Mark that we need to send the MtuProbingComplete frame to the peer.
+            // MtuProbingComplete is not a IETF QUIC frame, so we only send it if dcQUIC is enabled.
+            if !self.needs_to_send_completion && self.dc_enabled {
+                self.needs_to_send_completion = true;
+            }
+
             if let Some(last_probe_time) = last_probe_time {
                 self.arm_pmtu_raise_timer(last_probe_time + PMTU_RAISE_TIMER_DURATION);
             }
@@ -915,6 +936,15 @@ impl transmission::Provider for Controller {
     /// written by this method to be in its own connection transmission.
     #[inline]
     fn on_transmit<W: transmission::Writer>(&mut self, context: &mut W) {
+        // Send MtuProbingComplete frame if needed and DC is enabled
+        if self.needs_to_send_completion {
+            let frame = frame::MtuProbingComplete::new(self.plpmtu);
+            if context.write_frame(&frame).is_some() {
+                self.needs_to_send_completion = false;
+            }
+            return;
+        }
+
         //= https://www.rfc-editor.org/rfc/rfc8899#section-5.2
         //# When used with an acknowledged PL (e.g., SCTP), DPLPMTUD SHOULD NOT continue to
         //# generate PLPMTU probes in this state.
@@ -967,8 +997,16 @@ impl transmission::interest::Provider for Controller {
         query: &mut Q,
     ) -> transmission::interest::Result {
         match self.state {
-            State::SearchRequested => query.on_new_data(),
-            _ => Ok(()),
+            State::SearchRequested => query.on_new_data()?,
+            State::SearchComplete => {
+                // Indicate interest if we need to send the MtuProbingComplete frame
+                if self.needs_to_send_completion {
+                    query.on_new_data()?
+                }
+            }
+            _ => {}
         }
+
+        Ok(())
     }
 }

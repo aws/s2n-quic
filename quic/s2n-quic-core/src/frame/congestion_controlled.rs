@@ -29,6 +29,7 @@ impl CongestionControlled for crate::frame::DataBlocked {}
 //# Extension frames MUST be congestion controlled and MUST cause
 //# an ACK frame to be sent.
 impl CongestionControlled for crate::frame::DcStatelessResetTokens<'_> {}
+impl CongestionControlled for crate::frame::MtuProbingComplete {}
 impl CongestionControlled for crate::frame::HandshakeDone {}
 impl CongestionControlled for crate::frame::MaxData {}
 impl CongestionControlled for crate::frame::MaxStreamData {}

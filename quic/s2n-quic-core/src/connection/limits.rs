@@ -10,7 +10,8 @@ use crate::{
         AckDelayExponent, ActiveConnectionIdLimit, InitialFlowControlLimits, InitialMaxData,
         InitialMaxStreamDataBidiLocal, InitialMaxStreamDataBidiRemote, InitialMaxStreamDataUni,
         InitialMaxStreamsBidi, InitialMaxStreamsUni, InitialStreamLimits, MaxAckDelay,
-        MaxDatagramFrameSize, MaxIdleTimeout, MigrationSupport, TransportParameters,
+        MaxDatagramFrameSize, MaxIdleTimeout, MigrationSupport, MtuProbingCompleteSupport,
+        TransportParameters,
     },
 };
 #[cfg(feature = "alloc")]
@@ -108,6 +109,7 @@ pub struct Limits {
     pub(crate) max_datagram_frame_size: MaxDatagramFrameSize,
     pub(crate) initial_round_trip_time: Duration,
     pub(crate) migration_support: MigrationSupport,
+    pub(crate) mtu_probing_complete_support: MtuProbingCompleteSupport,
     pub(crate) anti_amplification_multiplier: u8,
     pub(crate) stream_batch_size: u8,
     pub(crate) pto_jitter_percentage: u8,
@@ -156,6 +158,7 @@ impl Limits {
             max_datagram_frame_size: MaxDatagramFrameSize::DEFAULT,
             initial_round_trip_time: recovery::DEFAULT_INITIAL_RTT,
             migration_support: MigrationSupport::RECOMMENDED,
+            mtu_probing_complete_support: MtuProbingCompleteSupport::RECOMMENDED,
             anti_amplification_multiplier: ANTI_AMPLIFICATION_MULTIPLIER,
             stream_batch_size: DEFAULT_STREAM_BATCH_SIZE,
             pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
@@ -312,6 +315,26 @@ impl Limits {
             self.migration_support = MigrationSupport::Enabled
         } else {
             self.migration_support = MigrationSupport::Disabled
+        }
+        Ok(self)
+    }
+
+    /// Sets whether the endpoint will send MTU probing complete frames (default: true)
+    ///
+    /// This parameter is only relevant when using dcQUIC endpoints. For standard QUIC
+    /// endpoints, this setting has no effect. When enabled, the endpoint will send
+    /// MtuProbingComplete frames to signal completion of MTU probing.
+    ///
+    /// Note: This is a dcQUIC-specific transport parameter and will only be transmitted
+    /// when the dcQUIC provider is enabled.
+    pub fn with_mtu_probing_complete_support(
+        mut self,
+        enabled: bool,
+    ) -> Result<Self, ValidationError> {
+        if enabled {
+            self.mtu_probing_complete_support = MtuProbingCompleteSupport::Enabled
+        } else {
+            self.mtu_probing_complete_support = MtuProbingCompleteSupport::Disabled
         }
         Ok(self)
     }

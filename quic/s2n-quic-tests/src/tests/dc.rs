@@ -7,7 +7,7 @@ use s2n_quic::{
     client,
     client::ClientProviders,
     connection,
-    provider::{dc, io::testing::Result},
+    provider::{dc, io::testing::Result, limits::Limits},
     server,
     server::ServerProviders,
 };
@@ -248,6 +248,162 @@ fn dc_mtls_handshake_client_not_supported_self_test() -> Result<()> {
         )),
         true,
     )?;
+
+    Ok(())
+}
+
+// Test that verifies MtuProbingComplete frames are exchanged between client and server
+// when DC is enabled and MTU probing completes.
+//
+// Client                                                                    Server
+//
+// <DC handshake completes>
+// <MTU probing completes locally> ->
+// 1-RTT: MTU_PROBING_COMPLETE[mtu=1472]
+//                                                  # on_mtu_probing_complete_received
+//                                      <- 1-RTT: MTU_PROBING_COMPLETE[mtu=1472]
+// # on_mtu_probing_complete_received
+#[test]
+fn mtu_probing_complete_frame_exchange_test() -> Result<()> {
+    let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let server = Server::builder()
+        .with_tls(server_tls)?
+        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
+
+    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let client = Client::builder()
+        .with_tls(client_tls)?
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+    let (client_events, server_events) = self_test(server, client, true, None, None, true)?;
+
+    // Verify that client received MtuProbingComplete from server
+    let client_mtu_complete_events = client_events
+        .mtu_probing_complete_received_events()
+        .lock()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        1,
+        client_mtu_complete_events.len(),
+        "Client should receive one MtuProbingComplete frame from server"
+    );
+    // Verify the MTU value matches the confirmed MTU (1472 = 1500 - headers)
+    assert_eq!(
+        1472, client_mtu_complete_events[0].mtu,
+        "Received MTU should match confirmed MTU"
+    );
+
+    // Verify that server received MtuProbingComplete from client
+    let server_mtu_complete_events = server_events
+        .mtu_probing_complete_received_events()
+        .lock()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        1,
+        server_mtu_complete_events.len(),
+        "Server should receive one MtuProbingComplete frame from client"
+    );
+    assert_eq!(
+        1472, server_mtu_complete_events[0].mtu,
+        "Received MTU should match confirmed MTU"
+    );
+
+    // Verify both sides completed their local MTU probing
+    let client_mtu_events = client_events.mtu_updated_events.lock().unwrap().clone();
+    let server_mtu_events = server_events.mtu_updated_events.lock().unwrap().clone();
+
+    assert!(
+        client_mtu_events
+            .iter()
+            .any(|event| event.search_complete && event.mtu == 1472),
+        "Client should have completed MTU probing at 1472"
+    );
+    assert!(
+        server_mtu_events
+            .iter()
+            .any(|event| event.search_complete && event.mtu == 1472),
+        "Server should have completed MTU probing at 1472"
+    );
+
+    Ok(())
+}
+
+// Test that verifies asymmetric MtuProbingComplete frame exchange when only the server
+// has mtu_probing_complete_support enabled but the client has it disabled.
+//
+// Client (disabled)                                                    Server (enabled)
+//
+// <DC handshake completes>
+// <MTU probing completes locally>
+// (no frame sent) ->
+//                                                                      <- 1-RTT: MTU_PROBING_COMPLETE[mtu=1472]
+// # on_mtu_probing_complete_received
+//                                                 (no frame received on server)
+#[test]
+fn mtu_probing_complete_server_only_test() -> Result<()> {
+    // Server with mtu_probing_complete_support enabled (default)
+    let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let server = Server::builder()
+        .with_tls(server_tls)?
+        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
+    // Note: Default is enabled, so no need to explicitly set
+
+    // Client with mtu_probing_complete_support DISABLED
+    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let client_limits = Limits::default().with_mtu_probing_complete_support(false)?;
+    let client = Client::builder()
+        .with_tls(client_tls)?
+        .with_limits(client_limits)?
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+    let (client_events, server_events) = self_test(server, client, true, None, None, true)?;
+
+    // Verify that client received MtuProbingComplete from server
+    let client_mtu_complete_events = client_events
+        .mtu_probing_complete_received_events()
+        .lock()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        1,
+        client_mtu_complete_events.len(),
+        "Client should receive one MtuProbingComplete frame from server"
+    );
+    assert_eq!(
+        1472, client_mtu_complete_events[0].mtu,
+        "Received MTU should match confirmed MTU"
+    );
+
+    // Verify that server did NOT receive MtuProbingComplete from client
+    let server_mtu_complete_events = server_events
+        .mtu_probing_complete_received_events()
+        .lock()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        0,
+        server_mtu_complete_events.len(),
+        "Server should NOT receive any MtuProbingComplete frame from client (client has it disabled)"
+    );
+
+    // Verify both sides still completed their local MTU probing
+    let client_mtu_events = client_events.mtu_updated_events.lock().unwrap().clone();
+    let server_mtu_events = server_events.mtu_updated_events.lock().unwrap().clone();
+
+    assert!(
+        client_mtu_events
+            .iter()
+            .any(|event| event.search_complete && event.mtu == 1472),
+        "Client should have completed MTU probing at 1472"
+    );
+    assert!(
+        server_mtu_events
+            .iter()
+            .any(|event| event.search_complete && event.mtu == 1472),
+        "Server should have completed MTU probing at 1472"
+    );
 
     Ok(())
 }
@@ -529,10 +685,16 @@ struct MtuUpdatedEvent {
     search_complete: bool,
 }
 
+#[derive(Clone)]
+struct MtuProbingCompleteReceivedEvent {
+    mtu: u16,
+}
+
 #[derive(Clone, Default)]
 struct DcRecorder {
     pub dc_state_changed_events: Arc<Mutex<Vec<DcStateChangedEvent>>>,
     pub mtu_updated_events: Arc<Mutex<Vec<MtuUpdatedEvent>>>,
+    pub mtu_probing_complete_received_events: Arc<Mutex<Vec<MtuProbingCompleteReceivedEvent>>>,
     pub endpoint_datagram_dropped_events: Arc<Mutex<Vec<EndpointDatagramDropped>>>,
 }
 impl DcRecorder {
@@ -542,6 +704,12 @@ impl DcRecorder {
 
     pub fn dc_state_changed_events(&self) -> Arc<Mutex<Vec<DcStateChangedEvent>>> {
         self.dc_state_changed_events.clone()
+    }
+
+    pub fn mtu_probing_complete_received_events(
+        &self,
+    ) -> Arc<Mutex<Vec<MtuProbingCompleteReceivedEvent>>> {
+        self.mtu_probing_complete_received_events.clone()
     }
 }
 
@@ -585,6 +753,20 @@ impl events::Subscriber for DcRecorder {
             });
         };
         let mut buffer = context.mtu_updated_events.lock().unwrap();
+        store(event, &mut buffer);
+    }
+
+    fn on_mtu_probing_complete_received(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &ConnectionMeta,
+        event: &events::MtuProbingCompleteReceived,
+    ) {
+        let store = |event: &events::MtuProbingCompleteReceived,
+                     storage: &mut Vec<MtuProbingCompleteReceivedEvent>| {
+            storage.push(MtuProbingCompleteReceivedEvent { mtu: event.mtu });
+        };
+        let mut buffer = context.mtu_probing_complete_received_events.lock().unwrap();
         store(event, &mut buffer);
     }
 

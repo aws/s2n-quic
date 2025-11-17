@@ -78,6 +78,7 @@ impl AckElicitable for crate::frame::DataBlocked {}
 //# Extension frames MUST be congestion controlled and MUST cause
 //# an ACK frame to be sent.
 impl AckElicitable for crate::frame::DcStatelessResetTokens<'_> {}
+impl AckElicitable for crate::frame::MtuProbingComplete {}
 impl AckElicitable for crate::frame::HandshakeDone {}
 impl AckElicitable for crate::frame::MaxData {}
 impl AckElicitable for crate::frame::MaxStreamData {}

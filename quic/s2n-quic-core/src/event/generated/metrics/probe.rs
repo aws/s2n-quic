@@ -66,39 +66,40 @@ mod counter {
                 92usize => Self(tx_stream_progress__bytes__total),
                 94usize => Self(keep_alive_timer_expired),
                 95usize => Self(mtu_updated),
-                99usize => Self(slow_start_exited),
-                103usize => Self(delivery_rate_sampled),
-                104usize => Self(pacing_rate_updated),
-                108usize => Self(bbr_state_changed),
-                110usize => Self(dc_state_changed),
-                116usize => Self(dc_path_created),
-                117usize => Self(connection_closed),
-                120usize => Self(version_information),
-                121usize => Self(endpoint_packet_sent),
-                122usize => Self(endpoint_packet_received),
-                123usize => Self(endpoint_datagram_sent),
-                127usize => Self(endpoint_datagram_received),
-                130usize => Self(endpoint_datagram_dropped),
-                134usize => Self(endpoint_connection_attempt_failed),
-                136usize => Self(endpoint_connection_attempt_deduplicated),
-                137usize => Self(platform_tx),
-                138usize => Self(platform_tx__packets__total),
-                140usize => Self(platform_tx__syscalls__total),
-                142usize => Self(platform_tx__syscalls__blocked__total),
-                144usize => Self(platform_tx__errors__total),
-                146usize => Self(platform_tx__errors__dropped__total),
-                148usize => Self(platform_tx_error),
-                149usize => Self(platform_rx),
-                150usize => Self(platform_rx__packets__total),
-                152usize => Self(platform_rx__syscalls__total),
-                154usize => Self(platform_rx__syscalls__blocked__total),
-                156usize => Self(platform_rx__errors__total),
-                158usize => Self(platform_rx__errors__dropped__total),
-                160usize => Self(platform_rx_error),
-                161usize => Self(platform_feature_configured),
-                162usize => Self(platform_event_loop_wakeup),
-                163usize => Self(platform_event_loop_sleep),
-                165usize => Self(platform_event_loop_started),
+                99usize => Self(mtu_probing_complete_received),
+                102usize => Self(slow_start_exited),
+                106usize => Self(delivery_rate_sampled),
+                107usize => Self(pacing_rate_updated),
+                111usize => Self(bbr_state_changed),
+                113usize => Self(dc_state_changed),
+                119usize => Self(dc_path_created),
+                120usize => Self(connection_closed),
+                123usize => Self(version_information),
+                124usize => Self(endpoint_packet_sent),
+                125usize => Self(endpoint_packet_received),
+                126usize => Self(endpoint_datagram_sent),
+                130usize => Self(endpoint_datagram_received),
+                133usize => Self(endpoint_datagram_dropped),
+                137usize => Self(endpoint_connection_attempt_failed),
+                139usize => Self(endpoint_connection_attempt_deduplicated),
+                140usize => Self(platform_tx),
+                141usize => Self(platform_tx__packets__total),
+                143usize => Self(platform_tx__syscalls__total),
+                145usize => Self(platform_tx__syscalls__blocked__total),
+                147usize => Self(platform_tx__errors__total),
+                149usize => Self(platform_tx__errors__dropped__total),
+                151usize => Self(platform_tx_error),
+                152usize => Self(platform_rx),
+                153usize => Self(platform_rx__packets__total),
+                155usize => Self(platform_rx__syscalls__total),
+                157usize => Self(platform_rx__syscalls__blocked__total),
+                159usize => Self(platform_rx__errors__total),
+                161usize => Self(platform_rx__errors__dropped__total),
+                163usize => Self(platform_rx_error),
+                164usize => Self(platform_feature_configured),
+                165usize => Self(platform_event_loop_wakeup),
+                166usize => Self(platform_event_loop_sleep),
+                168usize => Self(platform_event_loop_started),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -204,6 +205,8 @@ mod counter {
             fn keep_alive_timer_expired(value: u64);
             # [link_name = s2n_quic__event__counter__mtu_updated]
             fn mtu_updated(value: u64);
+            # [link_name = s2n_quic__event__counter__mtu_probing_complete_received]
+            fn mtu_probing_complete_received(value: u64);
             # [link_name = s2n_quic__event__counter__slow_start_exited]
             fn slow_start_exited(value: u64);
             # [link_name = s2n_quic__event__counter__delivery_rate_sampled]
@@ -333,12 +336,13 @@ mod counter {
                     79usize => Self(handshake_status_updated__status),
                     83usize => Self(path_challenge_updated__status),
                     97usize => Self(mtu_updated__cause),
-                    100usize => Self(slow_start_exited__cause),
-                    109usize => Self(bbr_state_changed__state),
-                    115usize => Self(dc_state_changed__state),
-                    119usize => Self(connection_closed__error),
-                    133usize => Self(endpoint_datagram_dropped__reason),
-                    135usize => Self(endpoint_connection_attempt_failed__error),
+                    100usize => Self(mtu_probing_complete_received__packet),
+                    103usize => Self(slow_start_exited__cause),
+                    112usize => Self(bbr_state_changed__state),
+                    118usize => Self(dc_state_changed__state),
+                    122usize => Self(connection_closed__error),
+                    136usize => Self(endpoint_datagram_dropped__reason),
+                    138usize => Self(endpoint_connection_attempt_failed__error),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -417,6 +421,12 @@ mod counter {
                 );
                 # [link_name = s2n_quic__event__counter__nominal__mtu_updated__cause]
                 fn mtu_updated__cause(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic__event__counter__nominal__mtu_probing_complete_received__packet]
+                fn mtu_probing_complete_received__packet(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
                 # [link_name = s2n_quic__event__counter__nominal__slow_start_exited__cause]
                 fn slow_start_exited__cause(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__bbr_state_changed__state]
@@ -466,27 +476,28 @@ mod measure {
                 90usize => Self(rx_stream_progress__bytes),
                 93usize => Self(tx_stream_progress__bytes),
                 96usize => Self(mtu_updated__mtu),
-                102usize => Self(slow_start_exited__congestion_window),
-                105usize => Self(pacing_rate_updated__bytes_per_second),
-                106usize => Self(pacing_rate_updated__burst_size),
-                107usize => Self(pacing_rate_updated__pacing_gain),
-                124usize => Self(endpoint_datagram_sent__bytes),
-                125usize => Self(endpoint_datagram_sent__bytes__total),
-                126usize => Self(endpoint_datagram_sent__gso_offset),
-                128usize => Self(endpoint_datagram_received__bytes),
-                129usize => Self(endpoint_datagram_received__bytes__total),
-                131usize => Self(endpoint_datagram_dropped__bytes),
-                132usize => Self(endpoint_datagram_dropped__bytes__total),
-                139usize => Self(platform_tx__packets),
-                141usize => Self(platform_tx__syscalls),
-                143usize => Self(platform_tx__syscalls__blocked),
-                145usize => Self(platform_tx__errors),
-                147usize => Self(platform_tx__errors__dropped),
-                151usize => Self(platform_rx__packets),
-                153usize => Self(platform_rx__syscalls),
-                155usize => Self(platform_rx__syscalls__blocked),
-                157usize => Self(platform_rx__errors),
-                159usize => Self(platform_rx__errors__dropped),
+                101usize => Self(mtu_probing_complete_received__mtu),
+                105usize => Self(slow_start_exited__congestion_window),
+                108usize => Self(pacing_rate_updated__bytes_per_second),
+                109usize => Self(pacing_rate_updated__burst_size),
+                110usize => Self(pacing_rate_updated__pacing_gain),
+                127usize => Self(endpoint_datagram_sent__bytes),
+                128usize => Self(endpoint_datagram_sent__bytes__total),
+                129usize => Self(endpoint_datagram_sent__gso_offset),
+                131usize => Self(endpoint_datagram_received__bytes),
+                132usize => Self(endpoint_datagram_received__bytes__total),
+                134usize => Self(endpoint_datagram_dropped__bytes),
+                135usize => Self(endpoint_datagram_dropped__bytes__total),
+                142usize => Self(platform_tx__packets),
+                144usize => Self(platform_tx__syscalls),
+                146usize => Self(platform_tx__syscalls__blocked),
+                148usize => Self(platform_tx__errors),
+                150usize => Self(platform_tx__errors__dropped),
+                154usize => Self(platform_rx__packets),
+                156usize => Self(platform_rx__syscalls),
+                158usize => Self(platform_rx__syscalls__blocked),
+                160usize => Self(platform_rx__errors),
+                162usize => Self(platform_rx__errors__dropped),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -532,6 +543,8 @@ mod measure {
             fn tx_stream_progress__bytes(value: u64);
             # [link_name = s2n_quic__event__measure__mtu_updated__mtu]
             fn mtu_updated__mtu(value: u64);
+            # [link_name = s2n_quic__event__measure__mtu_probing_complete_received__mtu]
+            fn mtu_probing_complete_received__mtu(value: u64);
             # [link_name = s2n_quic__event__measure__slow_start_exited__congestion_window]
             fn slow_start_exited__congestion_window(value: u64);
             # [link_name = s2n_quic__event__measure__pacing_rate_updated__bytes_per_second]
@@ -610,12 +623,12 @@ mod timer {
                 78usize => Self(handshake_status_updated__handshake_done_acked__latency),
                 85usize => Self(tls_client_hello__latency),
                 87usize => Self(tls_server_hello__latency),
-                111usize => Self(dc_state_changed__version_negotiated__latency),
-                112usize => Self(dc_state_changed__no_version_negotiated__latency),
-                113usize => Self(dc_state_changed__path_secrets__latency),
-                114usize => Self(dc_state_changed__complete__latency),
-                118usize => Self(connection_closed__latency),
-                164usize => Self(platform_event_loop_sleep__processing_duration),
+                114usize => Self(dc_state_changed__version_negotiated__latency),
+                115usize => Self(dc_state_changed__no_version_negotiated__latency),
+                116usize => Self(dc_state_changed__path_secrets__latency),
+                117usize => Self(dc_state_changed__complete__latency),
+                121usize => Self(connection_closed__latency),
+                167usize => Self(platform_event_loop_sleep__processing_duration),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -667,7 +680,7 @@ mod timer {
         impl Recorder {
             pub(crate) fn new(info: &'static Info, _variant: &'static info::Variant) -> Self {
                 match info.id {
-                    101usize => Self(slow_start_exited__latency),
+                    104usize => Self(slow_start_exited__latency),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
