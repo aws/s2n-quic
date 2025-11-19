@@ -3,5 +3,8 @@ members = ["s2n-quic-xdp", "tester", "xtask"]
 resolver = "2"
 
 [workspace.dependencies]
+aya-obj = "=0.2.1" # new version requires MSRV 1.87.0 https://crates.io/crates/aya-obj/versions
+aya-log = "=0.2.1" # v0.2.2+ requires MSRV 1.87.0, v0.2.1 is compatible with aya 0.13
+aya-log-common = "=0.1.15" # v0.1.16+ requires MSRV 1.87.0, v0.1.15 is compatible with aya-log 0.2.1
 bolero = "0.13"
 bolero-generator = { version = "0.13", default-features = false }
