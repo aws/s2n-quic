@@ -47,7 +47,7 @@ jobs:
       crates: ${{ steps.definitions.outputs.crates }}
       workspaces:  ${{ steps.definitions.outputs.workspaces }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       # examples is populated by
       # find all child folders in the examples directory
       # jq -R - raw content is passed in (not json, just strings)
@@ -87,7 +87,7 @@ jobs:
   rustfmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -110,7 +110,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -164,7 +164,7 @@ jobs:
   udeps:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -191,7 +191,7 @@ jobs:
   doc:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -281,7 +281,7 @@ jobs:
             env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE="mtu_disc,pktinfo,tos,socket_msg" >> $GITHUB_ENV; echo S2N_QUIC_RUN_VERSION_SPECIFIC_TESTS=1
     steps:
       - uses: ilammy/setup-nasm@v1
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           lfs: true
           submodules: true
@@ -328,7 +328,7 @@ jobs:
   asan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -366,7 +366,7 @@ jobs:
   fips:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -394,7 +394,7 @@ jobs:
       matrix:
         crate: [quic/s2n-quic-core, quic/s2n-quic-platform]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -418,7 +418,7 @@ jobs:
   no_std:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -436,7 +436,7 @@ jobs:
   compliance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
       - uses: awslabs/duvet-action@v1
@@ -452,7 +452,7 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           lfs: true
           submodules: true
@@ -516,7 +516,7 @@ jobs:
       matrix:
         crate: ${{ fromJson(needs.env.outputs.crates) }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -538,7 +538,7 @@ jobs:
         example: ${{ fromJson(needs.env.outputs.examples) }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -573,7 +573,7 @@ jobs:
   recovery-simulations:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -621,7 +621,7 @@ jobs:
   sims:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -672,7 +672,7 @@ jobs:
   copyright:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Check
         run: |
@@ -681,7 +681,7 @@ jobs:
   s2n-events:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -714,7 +714,7 @@ jobs:
   generate-events:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -739,7 +739,7 @@ jobs:
   snapshots:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -770,7 +770,7 @@ jobs:
   timing:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -817,7 +817,7 @@ jobs:
   typos:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -841,7 +841,7 @@ jobs:
   validate-pr-title:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: PR Conventional Commit Validation
         id: cc_check
         if: github.event_name == 'pull_request_target'
@@ -863,7 +863,7 @@ jobs:
       matrix:
         crate: [common/s2n-codec, quic/s2n-quic-core, quic/s2n-quic-platform]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -875,7 +875,7 @@ jobs:
   dhat:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install rust toolchain
         id: toolchain
@@ -948,7 +948,7 @@ jobs:
       matrix:
         crate: [quic/s2n-quic-core]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -971,7 +971,7 @@ jobs:
   xdp:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           lfs: true
 
@@ -1000,7 +1000,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macOS-latest]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           lfs: true
 
