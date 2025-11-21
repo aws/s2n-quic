@@ -38,7 +38,7 @@ jobs:
     env:
       WIRESHARK_VERSION: ${{ inputs.version || '4.4.2' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - run: mkdir -p target/tshark/v$WIRESHARK_VERSION
 
