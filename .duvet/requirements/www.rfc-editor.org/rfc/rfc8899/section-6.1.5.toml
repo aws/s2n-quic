@@ -1,0 +1,18 @@
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-6.1.5"
+
+# Validating the Path
+#
+#    An application that does not have other higher-layer information
+#    confirming correct delivery of datagrams SHOULD implement the
+#    CONFIRMATION_TIMER to periodically send probe packets while in the
+#    SEARCH_COMPLETE state.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An application that does not have other higher-layer information
+confirming correct delivery of datagrams SHOULD implement the
+CONFIRMATION_TIMER to periodically send probe packets while in the
+SEARCH_COMPLETE state.
+'''
+

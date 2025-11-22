@@ -1,0 +1,45 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2"
+
+# ECN Validation
+#
+#    It is possible for faulty network devices to corrupt or erroneously
+#    drop packets that carry a non-zero ECN codepoint.  To ensure
+#    connectivity in the presence of such devices, an endpoint validates
+#    the ECN counts for each network path and disables the use of ECN on
+#    that path if errors are detected.
+# 
+#    To perform ECN validation for a new path:
+# 
+#    *  The endpoint sets an ECT(0) codepoint in the IP header of early
+#       outgoing packets sent on a new path to the peer [RFC8311].
+# 
+#    *  The endpoint monitors whether all packets sent with an ECT
+#       codepoint are eventually deemed lost (Section 6 of
+#       [QUIC-RECOVERY]), indicating that ECN validation has failed.
+# 
+#    If an endpoint has cause to expect that IP packets with an ECT
+#    codepoint might be dropped by a faulty network element, the endpoint
+#    could set an ECT codepoint for only the first ten outgoing packets on
+#    a path, or for a period of three PTOs (see Section 6.2 of
+#    [QUIC-RECOVERY]).  If all packets marked with non-zero ECN codepoints
+#    are subsequently lost, it can disable marking on the assumption that
+#    the marking caused the loss.
+# 
+#    An endpoint thus attempts to use ECN and validates this for each new
+#    connection, when switching to a server's preferred address, and on
+#    active connection migration to a new path.  Appendix A.4 describes
+#    one possible algorithm.
+# 
+#    Other methods of probing paths for ECN support are possible, as are
+#    different marking strategies.  Implementations MAY use other methods
+#    defined in RFCs; see [RFC8311].  Implementations that use the ECT(1)
+#    codepoint need to perform ECN validation using the reported ECT(1)
+#    counts.
+
+[[spec]]
+level = "MAY"
+quote = '''
+Implementations MAY use other methods
+defined in RFCs; see [RFC8311].
+'''
+

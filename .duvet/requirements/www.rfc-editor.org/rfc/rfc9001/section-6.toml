@@ -1,0 +1,77 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-6"
+
+# Key Update
+#
+#    Once the handshake is confirmed (see Section 4.1.2), an endpoint MAY
+#    initiate a key update.
+# 
+#    The Key Phase bit indicates which packet protection keys are used to
+#    protect the packet.  The Key Phase bit is initially set to 0 for the
+#    first set of 1-RTT packets and toggled to signal each subsequent key
+#    update.
+# 
+#    The Key Phase bit allows a recipient to detect a change in keying
+#    material without needing to receive the first packet that triggered
+#    the change.  An endpoint that notices a changed Key Phase bit updates
+#    keys and decrypts the packet that contains the changed value.
+# 
+#    Initiating a key update results in both endpoints updating keys.
+#    This differs from TLS where endpoints can update keys independently.
+# 
+#    This mechanism replaces the key update mechanism of TLS, which relies
+#    on KeyUpdate messages sent using 1-RTT encryption keys.  Endpoints
+#    MUST NOT send a TLS KeyUpdate message.  Endpoints MUST treat the
+#    receipt of a TLS KeyUpdate message as a connection error of type
+#    0x010a, equivalent to a fatal TLS alert of unexpected_message; see
+#    Section 4.8.
+# 
+#    Figure 9 shows a key update process, where the initial set of keys
+#    used (identified with @M) are replaced by updated keys (identified
+#    with @N).  The value of the Key Phase bit is indicated in brackets
+#    [].
+# 
+#       Initiating Peer                    Responding Peer
+# 
+#    @M [0] QUIC Packets
+# 
+#    ... Update to @N
+#    @N [1] QUIC Packets
+#                          -------->
+#                                             Update to @N ...
+#                                          QUIC Packets [1] @N
+#                          <--------
+#                                          QUIC Packets [1] @N
+#                                        containing ACK
+#                          <--------
+#    ... Key Update Permitted
+# 
+#    @N [1] QUIC Packets
+#             containing ACK for @N packets
+#                          -------->
+#                                     Key Update Permitted ...
+# 
+#                             Figure 9: Key Update
+
+[[spec]]
+level = "MAY"
+quote = '''
+Once the handshake is confirmed (see Section 4.1.2), an endpoint MAY
+initiate a key update.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Endpoints
+MUST NOT send a TLS KeyUpdate message.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Endpoints MUST treat the
+receipt of a TLS KeyUpdate message as a connection error of type
+0x010a, equivalent to a fatal TLS alert of unexpected_message; see
+Section 4.8.
+'''
+
