@@ -3,6 +3,7 @@
 use crate::{
     application,
     crypto::{tls, CryptoSuite},
+    path::RemoteAddress,
     transport,
 };
 use alloc::{boxed::Box, vec::Vec};
@@ -26,8 +27,11 @@ impl<E: tls::Endpoint> tls::Endpoint for SlowEndpoint<E> {
     fn new_server_session<Params: s2n_codec::EncoderValue>(
         &mut self,
         transport_parameters: &Params,
+        client_remote_addr: Option<RemoteAddress>,
     ) -> Self::Session {
-        let inner_session = self.endpoint.new_server_session(transport_parameters);
+        let inner_session = self
+            .endpoint
+            .new_server_session(transport_parameters, client_remote_addr);
         SlowSession {
             defer: DEFER_COUNT,
             inner_session,

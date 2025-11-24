@@ -228,7 +228,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let tls_session = endpoint_context
             .tls
-            .new_server_session(&transport_parameters);
+            .new_server_session(&transport_parameters, Some(remote_address));
 
         let quic_version = packet.version;
 

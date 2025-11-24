@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::path::RemoteAddress;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 #[cfg(feature = "alloc")]
@@ -206,6 +207,7 @@ pub trait Endpoint: 'static + Sized + Send {
     fn new_server_session<Params: s2n_codec::EncoderValue>(
         &mut self,
         transport_parameters: &Params,
+        client_remote_addr: Option<RemoteAddress>,
     ) -> Self::Session;
 
     fn new_client_session<Params: s2n_codec::EncoderValue>(
