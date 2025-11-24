@@ -11,7 +11,9 @@ use crate::{
         tls::{ApplicationParameters, CipherSuite, NamedGroup, TlsExportError, TlsSession},
         CryptoSuite, HeaderKey, Key,
     },
-    endpoint, transport,
+    endpoint,
+    path::LocalAddress,
+    transport,
     transport::parameters::{ClientTransportParameters, ServerTransportParameters},
 };
 use alloc::sync::Arc;
@@ -69,6 +71,7 @@ impl super::Endpoint for Endpoint {
     fn new_server_session<Params: EncoderValue>(
         &mut self,
         _transport_parameters: &Params,
+        _server_local_addr: Option<LocalAddress>,
     ) -> Self::Session {
         Session
     }
@@ -155,7 +158,7 @@ pub struct Pair<S: tls::Session, C: tls::Session> {
     pub server_name: ServerName,
 }
 
-fn server_params() -> Bytes {
+pub fn server_params() -> Bytes {
     ServerTransportParameters {
         initial_max_data: 123.try_into().unwrap(),
         ..Default::default()
@@ -185,7 +188,7 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
     {
         use crate::crypto::InitialKey;
 
-        let server = server_endpoint.new_server_session(&&server_params()[..]);
+        let server = server_endpoint.new_server_session(&&server_params()[..], None);
         let mut server_context =
             Context::new(endpoint::Type::Server, ServerState::WaitingClientHello);
         server_context.initial.crypto = Some(S::InitialKey::new_server(server_name.as_bytes()));

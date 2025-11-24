@@ -6,8 +6,13 @@ use bytes::BytesMut;
 use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
     application::ServerName,
-    crypto::{tls, tls::CipherSuite, CryptoSuite},
-    endpoint, ensure, transport,
+    crypto::{
+        tls::{self, CipherSuite},
+        CryptoSuite,
+    },
+    endpoint, ensure,
+    path::LocalAddress,
+    transport,
 };
 use s2n_quic_crypto::Suite;
 use s2n_tls::{
@@ -39,6 +44,7 @@ impl Session {
         config: Config,
         params: &[u8],
         server_name: Option<ServerName>,
+        server_local_addr: Option<LocalAddress>,
     ) -> Result<Self, Error> {
         let mut connection = Connection::new(match endpoint {
             endpoint::Type::Server => Mode::Server,
@@ -66,6 +72,10 @@ impl Session {
             connection
                 .set_server_name(server_name)
                 .expect("invalid server name value");
+        }
+
+        if let Some(server_local_addr) = server_local_addr {
+            connection.set_application_context(server_local_addr);
         }
 
         Ok(Self {
