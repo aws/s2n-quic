@@ -21,7 +21,7 @@ phases:
       - cargo build --timings --release
   post_build:
     commands:
-      - cargo test --workspace
+      - cargo test
 
 artifacts:
   # upload timing reports
