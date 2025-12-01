@@ -18,10 +18,10 @@ phases:
       - yum update -y && yum install -y cmake
   build:
     commands:
-      - cargo build --timings --release
+      - cargo build --workspace --timings --release --exclude s2n-quic-dc-metrics
   post_build:
     commands:
-      - cargo test
+      - cargo test --workspace --exclude s2n-quic-dc-metrics
 
 artifacts:
   # upload timing reports
