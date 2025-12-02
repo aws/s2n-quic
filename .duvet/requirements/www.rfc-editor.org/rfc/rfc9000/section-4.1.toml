@@ -1,0 +1,99 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-4.1"
+
+# Data Flow Control
+#
+#    QUIC employs a limit-based flow control scheme where a receiver
+#    advertises the limit of total bytes it is prepared to receive on a
+#    given stream or for the entire connection.  This leads to two levels
+#    of data flow control in QUIC:
+# 
+#    *  Stream flow control, which prevents a single stream from consuming
+#       the entire receive buffer for a connection by limiting the amount
+#       of data that can be sent on each stream.
+# 
+#    *  Connection flow control, which prevents senders from exceeding a
+#       receiver's buffer capacity for the connection by limiting the
+#       total bytes of stream data sent in STREAM frames on all streams.
+# 
+#    Senders MUST NOT send data in excess of either limit.
+# 
+#    A receiver sets initial limits for all streams through transport
+#    parameters during the handshake (Section 7.4).  Subsequently, a
+#    receiver sends MAX_STREAM_DATA frames (Section 19.10) or MAX_DATA
+#    frames (Section 19.9) to the sender to advertise larger limits.
+# 
+#    A receiver can advertise a larger limit for a stream by sending a
+#    MAX_STREAM_DATA frame with the corresponding stream ID.  A
+#    MAX_STREAM_DATA frame indicates the maximum absolute byte offset of a
+#    stream.  A receiver could determine the flow control offset to be
+#    advertised based on the current offset of data consumed on that
+#    stream.
+# 
+#    A receiver can advertise a larger limit for a connection by sending a
+#    MAX_DATA frame, which indicates the maximum of the sum of the
+#    absolute byte offsets of all streams.  A receiver maintains a
+#    cumulative sum of bytes received on all streams, which is used to
+#    check for violations of the advertised connection or stream data
+#    limits.  A receiver could determine the maximum data limit to be
+#    advertised based on the sum of bytes consumed on all streams.
+# 
+#    Once a receiver advertises a limit for the connection or a stream, it
+#    is not an error to advertise a smaller limit, but the smaller limit
+#    has no effect.
+# 
+#    A receiver MUST close the connection with an error of type
+#    FLOW_CONTROL_ERROR if the sender violates the advertised connection
+#    or stream data limits; see Section 11 for details on error handling.
+# 
+#    A sender MUST ignore any MAX_STREAM_DATA or MAX_DATA frames that do
+#    not increase flow control limits.
+# 
+#    If a sender has sent data up to the limit, it will be unable to send
+#    new data and is considered blocked.  A sender SHOULD send a
+#    STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
+#    that it has data to write but is blocked by flow control limits.  If
+#    a sender is blocked for a period longer than the idle timeout
+#    (Section 10.1), the receiver might close the connection even when the
+#    sender has data that is available for transmission.  To keep the
+#    connection from closing, a sender that is flow control limited SHOULD
+#    periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
+#    has no ack-eliciting packets in flight.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Senders MUST NOT send data in excess of either limit.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A receiver MUST close the connection with an error of type
+FLOW_CONTROL_ERROR if the sender violates the advertised connection
+or stream data limits; see Section 11 for details on error handling.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A sender MUST ignore any MAX_STREAM_DATA or MAX_DATA frames that do
+not increase flow control limits.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A sender SHOULD send a
+STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
+that it has data to write but is blocked by flow control limits.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+To keep the
+connection from closing, a sender that is flow control limited SHOULD
+periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
+has no ack-eliciting packets in flight.
+'''
+
