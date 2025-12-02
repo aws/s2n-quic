@@ -29,4 +29,4 @@ path = "benches/main.rs"
 harness = false
 
 [dev-dependencies]
-criterion = "0.7"
+criterion = "0.8"
