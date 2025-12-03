@@ -13,6 +13,7 @@
 use crate::{
     application::{server_name::LOCALHOST, ServerName},
     crypto::{self, tls},
+    path::RemoteAddress,
     transport,
 };
 use bytes::Bytes;
@@ -88,6 +89,7 @@ impl<T: Send + Clone + 'static + std::fmt::Debug> crypto::tls::Endpoint for Endp
     fn new_server_session<Params: s2n_codec::EncoderValue>(
         &mut self,
         transport_parameters: &Params,
+        _client_remote_addr: Option<RemoteAddress>,
     ) -> Self::Session {
         let params = transport_parameters.encode_to_vec().into();
         Session::Server(server::TlsSession::Init {
