@@ -348,6 +348,14 @@ struct TlsHandshakeFailed<'a> {
     error: &'a (dyn core::error::Error + Send + Sync + 'static),
 }
 
+#[event("connectivity:tls_server_session_created")]
+/// TLS server session was created for an incoming connection
+struct TlsServerSessionCreated<'a> {
+    /// The server's local address that was provided when creating the session
+    /// This address is stored in the TLS connection's application context
+    server_local_addr: Option<SocketAddress<'a>>,
+}
+
 #[event("connectivity:path_challenge_updated")]
 /// Path challenge updated
 struct PathChallengeUpdated<'a> {

@@ -47,6 +47,7 @@ mod resumption;
 mod self_test;
 mod skip_packets;
 mod slow_tls;
+mod tls_connection_with_server_address;
 mod tls_context;
 // quiche does not currently build on 32-bit platforms
 // see https://github.com/cloudflare/quiche/issues/2097

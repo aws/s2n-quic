@@ -2484,6 +2484,25 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " TLS server session was created for an incoming connection"]
+    pub struct TlsServerSessionCreated<'a> {
+        #[doc = " The server's local address that was provided when creating the session"]
+        #[doc = " This address is stored in the TLS connection's application context"]
+        pub server_local_addr: Option<SocketAddress<'a>>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for TlsServerSessionCreated<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("TlsServerSessionCreated");
+            fmt.field("server_local_addr", &self.server_local_addr);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for TlsServerSessionCreated<'a> {
+        const NAME: &'static str = "connectivity:tls_server_session_created";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Path challenge updated"]
     pub struct PathChallengeUpdated<'a> {
         pub path_challenge_status: PathChallengeStatus,
@@ -4136,6 +4155,17 @@ pub mod tracing {
             let id = context.id();
             let api::TlsHandshakeFailed { session, error } = event;
             tracing :: event ! (target : "tls_handshake_failed" , parent : id , tracing :: Level :: DEBUG , { session = tracing :: field :: debug (session) , error = tracing :: field :: debug (error) });
+        }
+        #[inline]
+        fn on_tls_server_session_created(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::TlsServerSessionCreated,
+        ) {
+            let id = context.id();
+            let api::TlsServerSessionCreated { server_local_addr } = event;
+            tracing :: event ! (target : "tls_server_session_created" , parent : id , tracing :: Level :: DEBUG , { server_local_addr = tracing :: field :: debug (server_local_addr) });
         }
         #[inline]
         fn on_path_challenge_updated(
@@ -6315,6 +6345,22 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " TLS server session was created for an incoming connection"]
+    pub struct TlsServerSessionCreated<'a> {
+        #[doc = " The server's local address that was provided when creating the session"]
+        #[doc = " This address is stored in the TLS connection's application context"]
+        pub server_local_addr: Option<SocketAddress<'a>>,
+    }
+    impl<'a> IntoEvent<api::TlsServerSessionCreated<'a>> for TlsServerSessionCreated<'a> {
+        #[inline]
+        fn into_event(self) -> api::TlsServerSessionCreated<'a> {
+            let TlsServerSessionCreated { server_local_addr } = self;
+            api::TlsServerSessionCreated {
+                server_local_addr: server_local_addr.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Path challenge updated"]
     pub struct PathChallengeUpdated<'a> {
         pub path_challenge_status: PathChallengeStatus,
@@ -7459,6 +7505,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `TlsServerSessionCreated` event is triggered"]
+        #[inline]
+        fn on_tls_server_session_created(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsServerSessionCreated,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `PathChallengeUpdated` event is triggered"]
         #[inline]
         fn on_path_challenge_updated(
@@ -8211,6 +8269,16 @@ mod traits {
             (self.1).on_tls_handshake_failed(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_tls_server_session_created(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsServerSessionCreated,
+        ) {
+            (self.0).on_tls_server_session_created(&mut context.0, meta, event);
+            (self.1).on_tls_server_session_created(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_path_challenge_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -8779,6 +8847,8 @@ mod traits {
         fn on_tls_exporter_ready(&mut self, event: builder::TlsExporterReady);
         #[doc = "Publishes a `TlsHandshakeFailed` event to the publisher's subscriber"]
         fn on_tls_handshake_failed(&mut self, event: builder::TlsHandshakeFailed);
+        #[doc = "Publishes a `TlsServerSessionCreated` event to the publisher's subscriber"]
+        fn on_tls_server_session_created(&mut self, event: builder::TlsServerSessionCreated);
         #[doc = "Publishes a `PathChallengeUpdated` event to the publisher's subscriber"]
         fn on_path_challenge_updated(&mut self, event: builder::PathChallengeUpdated);
         #[doc = "Publishes a `TlsClientHello` event to the publisher's subscriber"]
@@ -9161,6 +9231,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_tls_handshake_failed(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_tls_server_session_created(&mut self, event: builder::TlsServerSessionCreated) {
+            let event = event.into_event();
+            self.subscriber
+                .on_tls_server_session_created(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -9592,6 +9671,7 @@ pub mod testing {
         pub handshake_status_updated: u64,
         pub tls_exporter_ready: u64,
         pub tls_handshake_failed: u64,
+        pub tls_server_session_created: u64,
         pub path_challenge_updated: u64,
         pub tls_client_hello: u64,
         pub tls_server_hello: u64,
@@ -9687,6 +9767,7 @@ pub mod testing {
                 handshake_status_updated: 0,
                 tls_exporter_ready: 0,
                 tls_handshake_failed: 0,
+                tls_server_session_created: 0,
                 path_challenge_updated: 0,
                 tls_client_hello: 0,
                 tls_server_hello: 0,
@@ -10205,6 +10286,20 @@ pub mod testing {
                 self.output.push(out);
             }
         }
+        fn on_tls_server_session_created(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsServerSessionCreated,
+        ) {
+            self.tls_server_session_created += 1;
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+        }
         fn on_path_challenge_updated(
             &mut self,
             _context: &mut Self::ConnectionContext,
@@ -10600,6 +10695,7 @@ pub mod testing {
         pub handshake_status_updated: u64,
         pub tls_exporter_ready: u64,
         pub tls_handshake_failed: u64,
+        pub tls_server_session_created: u64,
         pub path_challenge_updated: u64,
         pub tls_client_hello: u64,
         pub tls_server_hello: u64,
@@ -10685,6 +10781,7 @@ pub mod testing {
                 handshake_status_updated: 0,
                 tls_exporter_ready: 0,
                 tls_handshake_failed: 0,
+                tls_server_session_created: 0,
                 path_challenge_updated: 0,
                 tls_client_hello: 0,
                 tls_server_hello: 0,
@@ -11154,6 +11251,15 @@ pub mod testing {
         }
         fn on_tls_handshake_failed(&mut self, event: builder::TlsHandshakeFailed) {
             self.tls_handshake_failed += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_tls_server_session_created(&mut self, event: builder::TlsServerSessionCreated) {
+            self.tls_server_session_created += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);

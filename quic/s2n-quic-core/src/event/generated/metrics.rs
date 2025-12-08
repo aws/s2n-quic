@@ -60,6 +60,7 @@ pub struct Context<R: Recorder> {
     handshake_status_updated: u64,
     tls_exporter_ready: u64,
     tls_handshake_failed: u64,
+    tls_server_session_created: u64,
     path_challenge_updated: u64,
     tls_client_hello: u64,
     tls_server_hello: u64,
@@ -129,6 +130,7 @@ where
             handshake_status_updated: 0,
             tls_exporter_ready: 0,
             tls_handshake_failed: 0,
+            tls_server_session_created: 0,
             path_challenge_updated: 0,
             tls_client_hello: 0,
             tls_server_hello: 0,
@@ -524,6 +526,17 @@ where
             .on_tls_handshake_failed(&mut context.recorder, meta, event);
     }
     #[inline]
+    fn on_tls_server_session_created(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::TlsServerSessionCreated,
+    ) {
+        context.tls_server_session_created += 1;
+        self.subscriber
+            .on_tls_server_session_created(&mut context.recorder, meta, event);
+    }
+    #[inline]
     fn on_path_challenge_updated(
         &mut self,
         context: &mut Self::ConnectionContext,
@@ -760,6 +773,10 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("tls_exporter_ready", self.tls_exporter_ready as _);
         self.recorder
             .increment_counter("tls_handshake_failed", self.tls_handshake_failed as _);
+        self.recorder.increment_counter(
+            "tls_server_session_created",
+            self.tls_server_session_created as _,
+        );
         self.recorder
             .increment_counter("path_challenge_updated", self.path_challenge_updated as _);
         self.recorder

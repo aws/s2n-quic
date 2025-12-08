@@ -226,3 +226,17 @@ event_recorder!(
         storage.push(addr);
     }
 );
+
+event_recorder!(
+    TlsServerSessionCreated,
+    TlsServerSessionCreated,
+    on_tls_server_session_created,
+    Option<SocketAddr>,
+    |event: &events::TlsServerSessionCreated, storage: &mut Vec<Option<SocketAddr>>| {
+        let addr = event
+            .server_local_addr
+            .as_ref()
+            .map(|sa| sa.to_string().parse().unwrap());
+        storage.push(addr);
+    }
+);
