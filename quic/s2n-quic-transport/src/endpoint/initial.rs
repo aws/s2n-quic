@@ -280,11 +280,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             &mut event_context,
         );
 
-        // Emit event that TLS server session was created with client remote address
-        publisher.on_tls_server_session_created(event::builder::TlsServerSessionCreated {
-            server_local_addr: Some(local_address.into_event()),
-        });
-
         let path_info = congestion_controller::PathInfo::new(&mtu_config, &remote_address);
         let congestion_controller = endpoint_context
             .congestion_controller
