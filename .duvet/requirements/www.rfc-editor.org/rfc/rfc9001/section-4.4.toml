@@ -1,0 +1,86 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-4.4"
+
+# Peer Authentication
+#
+#    The requirements for authentication depend on the application
+#    protocol that is in use.  TLS provides server authentication and
+#    permits the server to request client authentication.
+# 
+#    A client MUST authenticate the identity of the server.  This
+#    typically involves verification that the identity of the server is
+#    included in a certificate and that the certificate is issued by a
+#    trusted entity (see for example [RFC2818]).
+# 
+#       |  Note: Where servers provide certificates for authentication,
+#       |  the size of the certificate chain can consume a large number of
+#       |  bytes.  Controlling the size of certificate chains is critical
+#       |  to performance in QUIC as servers are limited to sending 3
+#       |  bytes for every byte received prior to validating the client
+#       |  address; see Section 8.1 of [QUIC-TRANSPORT].  The size of a
+#       |  certificate chain can be managed by limiting the number of
+#       |  names or extensions; using keys with small public key
+#       |  representations, like ECDSA; or by using certificate
+#       |  compression [COMPRESS].
+# 
+#    A server MAY request that the client authenticate during the
+#    handshake.  A server MAY refuse a connection if the client is unable
+#    to authenticate when requested.  The requirements for client
+#    authentication vary based on application protocol and deployment.
+# 
+#    A server MUST NOT use post-handshake client authentication (as
+#    defined in Section 4.6.2 of [TLS13]) because the multiplexing offered
+#    by QUIC prevents clients from correlating the certificate request
+#    with the application-level event that triggered it (see
+#    [HTTP2-TLS13]).  More specifically, servers MUST NOT send post-
+#    handshake TLS CertificateRequest messages, and clients MUST treat
+#    receipt of such messages as a connection error of type
+#    PROTOCOL_VIOLATION.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST authenticate the identity of the server.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A server MAY request that the client authenticate during the
+handshake.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A server MAY refuse a connection if the client is unable
+to authenticate when requested.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST NOT use post-handshake client authentication (as
+defined in Section 4.6.2 of [TLS13]) because the multiplexing offered
+by QUIC prevents clients from correlating the certificate request
+with the application-level event that triggered it (see
+[HTTP2-TLS13]).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+More specifically, servers MUST NOT send post-
+handshake TLS CertificateRequest messages, and clients MUST treat
+receipt of such messages as a connection error of type
+PROTOCOL_VIOLATION.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+More specifically, servers MUST NOT send post-
+handshake TLS CertificateRequest messages, and clients MUST treat
+receipt of such messages as a connection error of type
+PROTOCOL_VIOLATION.
+'''
+

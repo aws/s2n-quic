@@ -1,0 +1,19 @@
+target = "https://www.rfc-editor.org/rfc/rfc8312#section-5.8"
+
+# Behavior for Application-Limited Flows
+#
+#    CUBIC does not raise its congestion window size if the flow is
+#    currently limited by the application instead of the congestion
+#    window.  In case of long periods when cwnd has not been updated due
+#    to the application rate limit, such as idle periods, t in Eq. 1 MUST
+#    NOT include these periods; otherwise, W_cubic(t) might be very high
+#    after restarting from these periods.
+
+[[spec]]
+level = "MUST"
+quote = '''
+1 MUST
+NOT include these periods; otherwise, W_cubic(t) might be very high
+after restarting from these periods.
+'''
+

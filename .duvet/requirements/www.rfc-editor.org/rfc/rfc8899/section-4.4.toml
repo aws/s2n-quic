@@ -1,0 +1,72 @@
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-4.4"
+
+# The Maximum Packet Size (MPS)
+#
+#    The result of probing determines a usable PLPMTU, which is used to
+#    set the MPS used by the application.  The MPS is smaller than the
+#    PLPMTU because it is reduced by the size of PL headers (including the
+#    overhead of security-related fields such as an AEAD tag and TLS
+#    record layer padding).  The relationship between the MPS and the
+#    PLPMTUD is illustrated in Figure 1.
+# 
+#    Any additional
+#      headers         .--- MPS -----.
+#             |        |             |
+#             v        v             v
+#      +------------------------------+
+#      | IP | ** | PL | protocol data |
+#      +------------------------------+
+# 
+#                 <----- PLPMTU ----->
+#      <---------- PMTU -------------->
+# 
+#                Figure 1: Relationship between MPS and PLPMTU
+# 
+#    A PL is unable to send a packet (other than a probe packet) with a
+#    size larger than the current PLPMTU at the network layer.  To avoid
+#    this, a PL MAY be designed to segment data blocks larger than the MPS
+#    into multiple datagrams.
+# 
+#    DPLPMTUD seeks to avoid IP fragmentation.  An attempt to send a data
+#    block larger than the MPS will therefore fail if a PL is unable to
+#    segment data.  To determine the largest data block that can be sent,
+#    a PL SHOULD provide applications with a primitive that returns the
+#    MPS, derived from the current PLPMTU.
+# 
+#    If DPLPMTUD results in a change to the MPS, the application needs to
+#    adapt to the new MPS.  A particular case can arise when packets have
+#    been sent with a size less than the MPS and the PLPMTU was
+#    subsequently reduced.  If these packets are lost, the PL MAY segment
+#    the data using the new MPS.  If a PL is unable to resegment a
+#    previously sent datagram (e.g., [RFC4960]), then the sender either
+#    discards the datagram or could perform retransmission using network-
+#    layer fragmentation to form multiple IP packets not larger than the
+#    PLPMTU.  For IPv4, the use of endpoint fragmentation by the sender is
+#    preferred over clearing the DF bit in the IPv4 header.  Operational
+#    experience reveals that IP fragmentation can reduce the reliability
+#    of Internet communication [RFC8900], which may reduce the probability
+#    of successful retransmission.
+
+[[spec]]
+level = "MAY"
+quote = '''
+To avoid
+this, a PL MAY be designed to segment data blocks larger than the MPS
+into multiple datagrams.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+To determine the largest data block that can be sent,
+a PL SHOULD provide applications with a primitive that returns the
+MPS, derived from the current PLPMTU.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+If these packets are lost, the PL MAY segment
+the data using the new MPS.
+'''
+
