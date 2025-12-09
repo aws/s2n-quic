@@ -8,12 +8,13 @@ use crate::{
     crypto::{
         header_crypto::{LONG_HEADER_MASK, SHORT_HEADER_MASK},
         scatter, tls,
-        tls::{ApplicationParameters, CipherSuite, NamedGroup, TlsExportError, TlsSession},
+        tls::{
+            ApplicationParameters, CipherSuite, ConnectionInfo, NamedGroup, TlsExportError,
+            TlsSession,
+        },
         CryptoSuite, HeaderKey, Key,
     },
-    endpoint,
-    path::LocalAddress,
-    transport,
+    endpoint, transport,
     transport::parameters::{ClientTransportParameters, ServerTransportParameters},
 };
 use alloc::sync::Arc;
@@ -71,7 +72,7 @@ impl super::Endpoint for Endpoint {
     fn new_server_session<Params: EncoderValue>(
         &mut self,
         _transport_parameters: &Params,
-        _server_local_addr: Option<LocalAddress>,
+        _connection_info: Option<ConnectionInfo>,
     ) -> Self::Session {
         Session
     }

@@ -9,7 +9,7 @@ use crate::{
     ConfigLoader,
 };
 use s2n_codec::EncoderValue;
-use s2n_quic_core::{application::ServerName, crypto::tls, endpoint, path::LocalAddress};
+use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
 use s2n_tls::{
     callbacks::VerifyHostNameCallback,
     config::{self, Config},
@@ -203,7 +203,7 @@ impl<L: ConfigLoader> tls::Endpoint for Client<L> {
     fn new_server_session<Params: EncoderValue>(
         &mut self,
         _params: &Params,
-        _server_local_addr: Option<LocalAddress>,
+        _connection_info: Option<tls::ConnectionInfo>,
     ) -> Self::Session {
         panic!("cannot create a server session from a client config");
     }

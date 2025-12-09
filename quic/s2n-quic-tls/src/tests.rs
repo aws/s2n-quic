@@ -15,10 +15,9 @@ use s2n_quic_core::{
             certificates::{CERT_PEM, KEY_PEM, UNTRUSTED_CERT_PEM, UNTRUSTED_KEY_PEM},
             server_params,
         },
-        Endpoint,
+        ConnectionInfo, Endpoint,
     },
-    inet::SocketAddressV4,
-    path::LocalAddress,
+    inet::SocketAddress,
     transport,
 };
 #[cfg(any(test, feature = "unstable_client_hello"))]
@@ -30,7 +29,11 @@ use s2n_tls::{
     connection::Connection,
     error::Error,
 };
-use std::{sync::Arc, time::SystemTime};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::Arc,
+    time::SystemTime,
+};
 
 pub struct MyCallbackHandler {
     done: Arc<AtomicBool>,
@@ -482,17 +485,27 @@ fn s2n_client_with_custom_hostname_auth_accepts_server_name() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn new_server_session_with_remote_address_test() {
-    let test_addr = LocalAddress::from(SocketAddressV4::new([127, 0, 0, 1], 8080));
-    let mut server_endpoint = s2n_server();
+    let test_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    let test_socket_address: SocketAddress = test_addr.into();
+    let test_connection_info = ConnectionInfo::new(test_socket_address, test_socket_address);
 
-    let session = server_endpoint.new_server_session(&&server_params()[..], Some(test_addr));
+    let mut server_endpoint = s2n_server();
+    let session =
+        server_endpoint.new_server_session(&&server_params()[..], Some(test_connection_info));
 
     // Access the underlying s2n-tls connection to query the application context
-    // The application_context should contain the RemoteAddress we set
-    let addr_in_session = session.connection.application_context::<LocalAddress>();
+    // The application_context should contain the ConnectionInfo we set
+    let conn_info_in_session = session.connection.application_context::<ConnectionInfo>();
 
-    if let Some(addr_in_session) = addr_in_session {
-        assert_eq!(*addr_in_session, test_addr);
+    if let Some(conn_info_in_session) = conn_info_in_session {
+        assert_eq!(
+            conn_info_in_session.remote_address,
+            conn_info_in_session.remote_address
+        );
+        assert_eq!(
+            conn_info_in_session.local_address,
+            conn_info_in_session.local_address
+        );
     }
 }
 

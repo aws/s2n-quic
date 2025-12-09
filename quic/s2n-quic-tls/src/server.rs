@@ -9,7 +9,7 @@ use crate::{
     ConfigLoader,
 };
 use s2n_codec::EncoderValue;
-use s2n_quic_core::{application::ServerName, crypto::tls, endpoint, path::LocalAddress};
+use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
 #[cfg(any(test, feature = "unstable_client_hello"))]
 use s2n_tls::callbacks::ClientHelloCallback;
 #[cfg(any(test, feature = "unstable_private_key"))]
@@ -236,7 +236,7 @@ impl<L: ConfigLoader> tls::Endpoint for Server<L> {
     fn new_server_session<Params: EncoderValue>(
         &mut self,
         params: &Params,
-        server_local_addr: Option<LocalAddress>,
+        connection_info: Option<tls::ConnectionInfo>,
     ) -> Self::Session {
         let config = self
             .loader
@@ -247,7 +247,7 @@ impl<L: ConfigLoader> tls::Endpoint for Server<L> {
                 config,
                 params,
                 None,
-                server_local_addr,
+                connection_info,
             )
             .unwrap()
         })

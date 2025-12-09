@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::path::LocalAddress;
+use crate::inet::SocketAddress;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 #[cfg(feature = "alloc")]
@@ -23,6 +23,27 @@ pub mod slow_tls;
 
 #[cfg(feature = "std")]
 pub mod offload;
+
+/// Holds connection address information for establishing a TLS session.
+/// This includes both the local and remote addresses.
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub struct ConnectionInfo {
+    /// The local address of the connection
+    pub local_address: SocketAddress,
+    /// The remote address of the connection
+    pub remote_address: SocketAddress,
+}
+
+impl ConnectionInfo {
+    /// Create a new ConnectionInfo
+    pub fn new(local_address: SocketAddress, remote_address: SocketAddress) -> Self {
+        Self {
+            local_address,
+            remote_address,
+        }
+    }
+}
 
 /// Holds all application parameters which are exchanged within the TLS handshake.
 #[derive(Debug)]
@@ -207,7 +228,7 @@ pub trait Endpoint: 'static + Sized + Send {
     fn new_server_session<Params: s2n_codec::EncoderValue>(
         &mut self,
         transport_parameters: &Params,
-        server_local_addr: Option<LocalAddress>,
+        connection_info: Option<ConnectionInfo>,
     ) -> Self::Session;
 
     fn new_client_session<Params: s2n_codec::EncoderValue>(
