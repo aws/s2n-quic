@@ -5,7 +5,7 @@ use crate::inet::{
     ip, ipv4::IpV4Address, unspecified::Unspecified, ExplicitCongestionNotification, IpAddress,
     SocketAddress, SocketAddressV4,
 };
-use core::fmt;
+use core::{fmt, net};
 use s2n_codec::zerocopy::U16;
 
 //= https://www.rfc-editor.org/rfc/rfc2373#section-2.0
@@ -340,6 +340,68 @@ impl Unspecified for SocketAddressV6 {
     }
 }
 
+impl From<net::Ipv6Addr> for IpV6Address {
+    fn from(address: net::Ipv6Addr) -> Self {
+        (&address).into()
+    }
+}
+
+impl From<&net::Ipv6Addr> for IpV6Address {
+    fn from(address: &net::Ipv6Addr) -> Self {
+        address.octets().into()
+    }
+}
+
+impl From<IpV6Address> for net::Ipv6Addr {
+    fn from(address: IpV6Address) -> Self {
+        address.octets.into()
+    }
+}
+
+impl From<net::SocketAddrV6> for SocketAddressV6 {
+    fn from(address: net::SocketAddrV6) -> Self {
+        let ip = address.ip().into();
+        let port = address.port().into();
+        Self { ip, port }
+    }
+}
+
+impl From<(net::Ipv6Addr, u16)> for SocketAddressV6 {
+    fn from((ip, port): (net::Ipv6Addr, u16)) -> Self {
+        Self::new(ip, port)
+    }
+}
+
+impl From<SocketAddressV6> for net::SocketAddrV6 {
+    fn from(address: SocketAddressV6) -> Self {
+        let ip = address.ip.into();
+        let port = address.port.into();
+        Self::new(ip, port, 0, 0)
+    }
+}
+
+impl From<&SocketAddressV6> for net::SocketAddrV6 {
+    fn from(address: &SocketAddressV6) -> Self {
+        let ip = address.ip.into();
+        let port = address.port.into();
+        Self::new(ip, port, 0, 0)
+    }
+}
+
+impl From<SocketAddressV6> for net::SocketAddr {
+    fn from(address: SocketAddressV6) -> Self {
+        let addr: net::SocketAddrV6 = address.into();
+        addr.into()
+    }
+}
+
+impl From<&SocketAddressV6> for net::SocketAddr {
+    fn from(address: &SocketAddressV6) -> Self {
+        let addr: net::SocketAddrV6 = address.into();
+        addr.into()
+    }
+}
+
 test_inet_snapshot!(socket_v6, socket_v6_snapshot_test, SocketAddressV6);
 
 impl From<[u8; IPV6_LEN]> for IpV6Address {
@@ -584,68 +646,6 @@ impl Vtcfl {
 mod std_conversion {
     use super::*;
     use std::net;
-
-    impl From<net::Ipv6Addr> for IpV6Address {
-        fn from(address: net::Ipv6Addr) -> Self {
-            (&address).into()
-        }
-    }
-
-    impl From<&net::Ipv6Addr> for IpV6Address {
-        fn from(address: &net::Ipv6Addr) -> Self {
-            address.octets().into()
-        }
-    }
-
-    impl From<IpV6Address> for net::Ipv6Addr {
-        fn from(address: IpV6Address) -> Self {
-            address.octets.into()
-        }
-    }
-
-    impl From<net::SocketAddrV6> for SocketAddressV6 {
-        fn from(address: net::SocketAddrV6) -> Self {
-            let ip = address.ip().into();
-            let port = address.port().into();
-            Self { ip, port }
-        }
-    }
-
-    impl From<(net::Ipv6Addr, u16)> for SocketAddressV6 {
-        fn from((ip, port): (net::Ipv6Addr, u16)) -> Self {
-            Self::new(ip, port)
-        }
-    }
-
-    impl From<SocketAddressV6> for net::SocketAddrV6 {
-        fn from(address: SocketAddressV6) -> Self {
-            let ip = address.ip.into();
-            let port = address.port.into();
-            Self::new(ip, port, 0, 0)
-        }
-    }
-
-    impl From<&SocketAddressV6> for net::SocketAddrV6 {
-        fn from(address: &SocketAddressV6) -> Self {
-            let ip = address.ip.into();
-            let port = address.port.into();
-            Self::new(ip, port, 0, 0)
-        }
-    }
-
-    impl From<SocketAddressV6> for net::SocketAddr {
-        fn from(address: SocketAddressV6) -> Self {
-            let addr: net::SocketAddrV6 = address.into();
-            addr.into()
-        }
-    }
-
-    impl From<&SocketAddressV6> for net::SocketAddr {
-        fn from(address: &SocketAddressV6) -> Self {
-            let addr: net::SocketAddrV6 = address.into();
-            addr.into()
-        }
-    }
 
     impl net::ToSocketAddrs for SocketAddressV6 {
         type Iter = std::iter::Once<net::SocketAddr>;
