@@ -17,7 +17,8 @@ use s2n_quic_core::{
         },
         ConnectionInfo, Endpoint,
     },
-    inet::SocketAddress,
+    inet::SocketAddressV4,
+    path::{LocalAddress, RemoteAddress},
     transport,
 };
 #[cfg(any(test, feature = "unstable_client_hello"))]
@@ -29,11 +30,7 @@ use s2n_tls::{
     connection::Connection,
     error::Error,
 };
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::Arc,
-    time::SystemTime,
-};
+use std::{sync::Arc, time::SystemTime};
 
 pub struct MyCallbackHandler {
     done: Arc<AtomicBool>,
@@ -485,9 +482,9 @@ fn s2n_client_with_custom_hostname_auth_accepts_server_name() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn new_server_session_with_remote_address_test() {
-    let test_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    let test_socket_address: SocketAddress = test_addr.into();
-    let test_connection_info = ConnectionInfo::new(test_socket_address, test_socket_address);
+    let test_local_addr = LocalAddress::from(SocketAddressV4::new([0, 0, 0, 0], 8080));
+    let test_remote_addr = RemoteAddress::from(SocketAddressV4::new([127, 0, 0, 1], 1234));
+    let test_connection_info = ConnectionInfo::new(test_local_addr, test_remote_addr);
 
     let mut server_endpoint = s2n_server();
     let session =
@@ -506,6 +503,8 @@ fn new_server_session_with_remote_address_test() {
             conn_info_in_session.local_address,
             conn_info_in_session.local_address
         );
+    } else {
+        panic!("The TLS' connection info must be successfully acquired!");
     }
 }
 

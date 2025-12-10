@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::inet::SocketAddress;
+use crate::path::{LocalAddress, RemoteAddress};
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 #[cfg(feature = "alloc")]
@@ -30,14 +30,14 @@ pub mod offload;
 #[non_exhaustive]
 pub struct ConnectionInfo {
     /// The local address of the connection
-    pub local_address: SocketAddress,
+    pub local_address: LocalAddress,
     /// The remote address of the connection
-    pub remote_address: SocketAddress,
+    pub remote_address: RemoteAddress,
 }
 
 impl ConnectionInfo {
     /// Create a new ConnectionInfo
-    pub fn new(local_address: SocketAddress, remote_address: SocketAddress) -> Self {
+    pub fn new(local_address: LocalAddress, remote_address: RemoteAddress) -> Self {
         Self {
             local_address,
             remote_address,
