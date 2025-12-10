@@ -14,11 +14,12 @@ phases:
       - echo "Installing Rust ..."
       - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
       - . $HOME/.cargo/env
+      - rustup override set stable
       # cmake is a dependency of quiche, which is one of our test dependencies
       - yum update -y && yum install -y cmake
   build:
     commands:
-      - cargo build --timings --release
+      - cargo build --workspace --timings --release
   post_build:
     commands:
       - cargo test --workspace

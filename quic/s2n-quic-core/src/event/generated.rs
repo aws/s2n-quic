@@ -3279,11 +3279,10 @@ pub mod api {
             }
         }
     }
-    #[cfg(feature = "std")]
-    impl From<SocketAddress<'_>> for std::net::SocketAddr {
+    impl From<SocketAddress<'_>> for core::net::SocketAddr {
         #[inline]
         fn from(address: SocketAddress) -> Self {
-            use std::net;
+            use core::net;
             match address {
                 SocketAddress::IpV4 { ip, port } => {
                     let ip = net::IpAddr::V4(net::Ipv4Addr::from(*ip));
@@ -3296,11 +3295,10 @@ pub mod api {
             }
         }
     }
-    #[cfg(feature = "std")]
-    impl From<&SocketAddress<'_>> for std::net::SocketAddr {
+    impl From<&SocketAddress<'_>> for core::net::SocketAddr {
         #[inline]
         fn from(address: &SocketAddress) -> Self {
-            use std::net;
+            use core::net;
             match address {
                 SocketAddress::IpV4 { ip, port } => {
                     let ip = net::IpAddr::V4(net::Ipv4Addr::from(**ip));

@@ -145,6 +145,13 @@ macro_rules! impl_addr {
             }
         }
 
+        impl From<$name> for core::net::SocketAddr {
+            #[inline]
+            fn from(value: $name) -> Self {
+                value.0.into()
+            }
+        }
+
         impl core::ops::Deref for $name {
             type Target = SocketAddress;
 
