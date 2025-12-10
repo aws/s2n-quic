@@ -6,8 +6,8 @@ on:
     branches:
       - main
   schedule:
-    # Run the daily job at 8 AM PST / 3 PM UTC
-    - cron: '0 15 * * *'
+    # Run the daily job at 8 AM PST and 8 PM PST
+    - cron: '0 3,15 * * *'
 
 name: qns
 
@@ -42,7 +42,12 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       matrix: ${{ steps.implementations.outputs.matrix }}
+      start-time: ${{ steps.start-time.outputs.time }}
     steps:
+      - name: Record workflow start time
+        id: start-time
+        run: echo "time=$(date +%s)" >> $GITHUB_OUTPUT
+
       - uses: actions/checkout@v6
         with:
           path: s2n-quic
@@ -577,14 +582,44 @@ jobs:
     needs: [retry-failures, env, s2n-quic-qns, interop, interop-report, h3spec, perf, perf-report, attack]
     steps:
       - uses: aws-actions/configure-aws-credentials@v5.1.1
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
           role-session-name: S2nQuicGHASession
           aws-region: us-west-2
+
       - name: Report daily qns run to CloudWatch
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
         run: |
           METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
           aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFailure" \
             --value $METRIC_VALUE --dimensions Initiator=${{github.event_name}} --timestamp $(date +%s)
+
+      - name: Calculate workflow duration
+        run: |
+          START_TIME=${{ needs.env.outputs.start-time }}
+          END_TIME=$(date +%s)
+          DURATION_SECONDS=$((END_TIME - START_TIME))
+          DURATION_MINUTES=$(echo "scale=2; $DURATION_SECONDS / 60" | bc)
+          CI_STATUS="${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}"
+          
+          echo "Workflow duration: $DURATION_MINUTES minutes"
+          echo "CI Status: $CI_STATUS"
+          echo "Event type: ${{ github.event_name }}"
+          
+          # Save for next step
+          echo "DURATION_MINUTES=$DURATION_MINUTES" >> $GITHUB_ENV
+          echo "CI_STATUS=$CI_STATUS" >> $GITHUB_ENV
+          echo "END_TIME=$END_TIME" >> $GITHUB_ENV
+
+      - name: Report workflow duration to CloudWatch
+        if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace "Github" \
+            --metric-name "ActionQNSDuration" \
+            --value $DURATION_MINUTES \
+            --dimensions Status=$CI_STATUS \
+            --timestamp $END_TIME
+          
+          echo "Successfully reported workflow duration to CloudWatch"
