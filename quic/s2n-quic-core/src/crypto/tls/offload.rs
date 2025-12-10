@@ -76,7 +76,7 @@ where
     fn new_server_session<Params: s2n_codec::EncoderValue>(
         &mut self,
         transport_parameters: &Params,
-        connection_info: Option<ConnectionInfo>,
+        connection_info: ConnectionInfo,
     ) -> Self::Session {
         OffloadSession::new(
             self.inner

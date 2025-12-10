@@ -72,6 +72,7 @@ impl Session {
                 .expect("invalid server name value");
         }
 
+        // Allow customers to access server's addressing information at the early stage of TLS handshake (after ClientHello is received by the server)
         if let Some(connection_info) = connection_info {
             connection.set_application_context(connection_info);
         }

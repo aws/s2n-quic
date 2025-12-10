@@ -29,14 +29,12 @@ pub mod offload;
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub struct ConnectionInfo {
-    /// The local address of the connection
     pub local_address: SocketAddr,
-    /// The remote address of the connection
     pub remote_address: SocketAddr,
 }
 
 impl ConnectionInfo {
-    /// Create a new ConnectionInfo
+    #[doc(hidden)]
     pub fn new(local_address: LocalAddress, remote_address: RemoteAddress) -> Self {
         Self {
             local_address: local_address.into(),
@@ -228,7 +226,7 @@ pub trait Endpoint: 'static + Sized + Send {
     fn new_server_session<Params: s2n_codec::EncoderValue>(
         &mut self,
         transport_parameters: &Params,
-        connection_info: Option<ConnectionInfo>,
+        connection_info: ConnectionInfo,
     ) -> Self::Session;
 
     fn new_client_session<Params: s2n_codec::EncoderValue>(

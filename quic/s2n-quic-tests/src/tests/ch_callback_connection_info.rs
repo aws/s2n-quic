@@ -32,6 +32,7 @@ impl ClientHelloCallback for TestClientHelloHandle {
     ) -> Result<Option<Pin<Box<dyn ConnectionFuture>>>, S2nError> {
         let connection_info = connection.application_context::<ConnectionInfo>();
 
+        assert!(connection_info.is_some());
         if let Some(info) = connection_info {
             *self.recorded_info.lock().unwrap() = Some(*info);
         }
@@ -58,10 +59,8 @@ fn ch_callback_connection_info_test() {
     let ch_callback_handle_inner = Arc::new(Mutex::new(None));
     let ch_callback_handle_inner_clone = ch_callback_handle_inner.clone();
 
-    let server_local_address = Arc::new(Mutex::new(None));
-    let server_local_address_clone = server_local_address.clone();
-    let server_remote_address = Arc::new(Mutex::new(None));
-    let server_remote_address_clone = server_remote_address.clone();
+    let mut server_local_address = None;
+    let mut server_remote_address = None;
 
     test(model.clone(), |handle| {
         let server_tls = tls::s2n_tls::Server::builder()
@@ -80,10 +79,10 @@ fn ch_callback_connection_info_test() {
             .start()?;
 
         let server_addr = start_server(server)?;
-        *server_local_address_clone.lock().unwrap() = Some(server_addr);
+        server_local_address = Some(server_addr);
 
         let client = build_client(handle, model.clone(), true)?;
-        *server_remote_address_clone.lock().unwrap() = Some(client.local_addr().unwrap());
+        server_remote_address = Some(client.local_addr().unwrap());
 
         start_client(client, server_addr, Data::new(1000))?;
 
@@ -92,12 +91,13 @@ fn ch_callback_connection_info_test() {
     .unwrap();
 
     let connection_info = ch_callback_handle_inner.lock().unwrap().unwrap();
-    let server_local_address = server_local_address.lock().unwrap().unwrap();
-    let server_remote_address = server_remote_address.lock().unwrap().unwrap();
 
     // Verify that the ConnectionInfo contains the exact server local address
-    assert_eq!(connection_info.local_address, server_local_address);
+    assert_eq!(connection_info.local_address, server_local_address.unwrap());
 
     // Verify that the ConnectionInfo contains the exact server's remote address (client's local address)
-    assert_eq!(connection_info.remote_address, server_remote_address);
+    assert_eq!(
+        connection_info.remote_address,
+        server_remote_address.unwrap()
+    );
 }

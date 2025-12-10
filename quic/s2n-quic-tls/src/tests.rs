@@ -487,8 +487,7 @@ fn new_server_session_with_remote_address_test() {
     let test_connection_info = ConnectionInfo::new(test_local_addr, test_remote_addr);
 
     let mut server_endpoint = s2n_server();
-    let session =
-        server_endpoint.new_server_session(&&server_params()[..], Some(test_connection_info));
+    let session = server_endpoint.new_server_session(&&server_params()[..], test_connection_info);
 
     // Access the underlying s2n-tls connection to query the application context
     // The application_context should contain the ConnectionInfo we set
@@ -546,6 +545,11 @@ fn config_loader() {
     let server: Box<dyn ConfigLoader> = Box::new(server);
     let mut server: Server<Box<dyn ConfigLoader>> = Server::from_loader(server);
 
+    // This test doesn't use tls::ConnectionInfo. Hence, we can create random local/remote addresses to pass in new_server_session
+    let test_local_addr = LocalAddress::from(SocketAddressV4::new([0, 0, 0, 0], 8080));
+    let test_remote_addr = RemoteAddress::from(SocketAddressV4::new([127, 0, 0, 1], 1234));
+    let test_connection_info = ConnectionInfo::new(test_local_addr, test_remote_addr);
+
     // make sure the server can actually create a session
-    let _ = server.new_server_session(&1, None);
+    let _ = server.new_server_session(&1, test_connection_info);
 }

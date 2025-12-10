@@ -6,6 +6,8 @@
 use cfg_if::cfg_if;
 use s2n_quic_core::crypto;
 
+pub use s2n_quic_core::crypto::tls::ConnectionInfo;
+
 pub trait Provider {
     type Server: 'static + crypto::tls::Endpoint;
     type Client: 'static + crypto::tls::Endpoint;

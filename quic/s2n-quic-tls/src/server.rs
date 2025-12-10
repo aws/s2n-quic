@@ -236,7 +236,7 @@ impl<L: ConfigLoader> tls::Endpoint for Server<L> {
     fn new_server_session<Params: EncoderValue>(
         &mut self,
         params: &Params,
-        connection_info: Option<tls::ConnectionInfo>,
+        connection_info: tls::ConnectionInfo,
     ) -> Self::Session {
         let config = self
             .loader
@@ -247,7 +247,7 @@ impl<L: ConfigLoader> tls::Endpoint for Server<L> {
                 config,
                 params,
                 None,
-                connection_info,
+                Some(connection_info),
             )
             .unwrap()
         })

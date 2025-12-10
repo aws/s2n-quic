@@ -71,7 +71,7 @@ impl tls::Endpoint for Client {
     fn new_server_session<Params: EncoderValue>(
         &mut self,
         _transport_parameters: &Params,
-        _connection_info: Option<tls::ConnectionInfo>,
+        _connection_info: tls::ConnectionInfo,
     ) -> Self::Session {
         panic!("cannot create a server session from a client config");
     }
