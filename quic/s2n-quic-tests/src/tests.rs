@@ -11,6 +11,7 @@ use s2n_quic::{
             self as io, network::Packet, primary, rand, spawn, test, time::delay, Model,
         },
         packet_interceptor::Loss,
+        tls,
     },
     Client, Server,
 };
@@ -25,6 +26,7 @@ use std::{
 
 mod blackhole;
 mod buffer_limit;
+mod ch_callback_server_local_address;
 mod connection_limits;
 mod connection_migration;
 mod deduplicate;

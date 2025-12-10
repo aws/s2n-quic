@@ -1,0 +1,94 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+use super::*;
+use s2n_quic_core::crypto::tls::ConnectionInfo;
+use s2n_tls::{
+    callbacks::{ClientHelloCallback, ConnectionFuture},
+    error::Error as S2nError,
+};
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+
+pub struct TestClientHelloHandle {
+    // The ClientHelloCallback trait requires `&self` as a immutable reference.
+    // We use Arc<Mutex<>> to enable interior mutability - allowing us to mutate the recorded
+    // ConnectionInfo through an immutable reference.
+    recorded_info: Arc<Mutex<Option<ConnectionInfo>>>,
+}
+
+impl TestClientHelloHandle {
+    pub fn new(recorded_info: Arc<Mutex<Option<ConnectionInfo>>>) -> Self {
+        Self { recorded_info }
+    }
+}
+
+impl ClientHelloCallback for TestClientHelloHandle {
+    fn on_client_hello(
+        &self,
+        connection: &mut s2n_tls::connection::Connection,
+    ) -> Result<Option<Pin<Box<dyn ConnectionFuture>>>, S2nError> {
+        let connection_info = connection.application_context::<ConnectionInfo>();
+
+        if let Some(info) = connection_info {
+            *self.recorded_info.lock().unwrap() = Some(*info);
+        }
+
+        Ok(None)
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn ch_callback_server_local_address_test() {
+    let model = Model::default();
+
+    let ch_callback_handle_inner = Arc::new(Mutex::new(None));
+    let ch_callback_handle_inner_clone = ch_callback_handle_inner.clone();
+
+    let server_local_address = Arc::new(Mutex::new(None));
+    let server_local_address_clone = server_local_address.clone();
+    let server_remote_address = Arc::new(Mutex::new(None));
+    let server_remote_address_clone = server_remote_address.clone();
+
+    test(model.clone(), |handle| {
+        // Build server with client hello callback
+        let callback_handler = TestClientHelloHandle::new(ch_callback_handle_inner_clone);
+
+        let server_tls = tls::s2n_tls::Server::builder()
+            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
+            .unwrap()
+            .with_client_hello_handler(callback_handler)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(server_tls)?
+            .with_event(tracing_events(true, model.clone()))?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+
+        let server_addr = start_server(server)?;
+        *server_local_address_clone.lock().unwrap() = Some(server_addr);
+
+        let client = build_client(handle, model.clone(), true)?;
+        *server_remote_address_clone.lock().unwrap() = Some(client.local_addr().unwrap());
+
+        start_client(client, server_addr, Data::new(1000))?;
+
+        Ok(server_addr)
+    })
+    .unwrap();
+
+    let connection_info = ch_callback_handle_inner.lock().unwrap().unwrap();
+    let server_local = server_local_address.lock().unwrap().unwrap();
+    let server_remote = server_remote_address.lock().unwrap().unwrap();
+
+    // Verify that the ConnectionInfo contains the exact server local address
+    assert_eq!(connection_info.local_address, server_local.into(),);
+
+    // Verify that the ConnectionInfo contains the exact server's remote address (client's local address)
+    assert_eq!(connection_info.remote_address, server_remote.into(),);
+}
