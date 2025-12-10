@@ -26,7 +26,6 @@ use std::{
 
 mod blackhole;
 mod buffer_limit;
-mod ch_callback_server_local_address;
 mod connection_limits;
 mod connection_migration;
 mod deduplicate;
@@ -55,6 +54,9 @@ mod tls_context;
 #[cfg(not(target_arch = "x86"))]
 mod zero_length_cid_client_connection_migration;
 
+// The ClientHelloCallback trait is only available with s2n-tls
+#[cfg(not(target_os = "windows"))]
+mod ch_callback_connection_info;
 // TODO: https://github.com/aws/s2n-quic/issues/1726
 //
 // The rustls tls provider is used on windows and has different

@@ -227,7 +227,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .expect("Failed to convert max_datagram_frame_size");
 
         let local_address = header.path.local_address().0;
-
         let connection_info = tls::ConnectionInfo::new(local_address, remote_address.0);
 
         let tls_session = endpoint_context
