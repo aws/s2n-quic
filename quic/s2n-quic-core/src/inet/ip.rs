@@ -6,7 +6,7 @@ use crate::inet::{
     ipv6::{IpV6Address, SocketAddressV6},
     unspecified::Unspecified,
 };
-use core::fmt;
+use core::{fmt, net};
 
 #[cfg(any(test, feature = "generator"))]
 use bolero_generator::prelude::*;
@@ -14,7 +14,7 @@ use bolero_generator::prelude::*;
 /// An IP address, either IPv4 or IPv6.
 ///
 /// Instead of using `std::net::IPAddr`, this implementation
-/// is geared towards `no_std` environments and zerocopy decoding.
+/// is geared towards zerocopy decoding.
 ///
 /// The size is also consistent across target operating systems.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -114,7 +114,7 @@ impl<'a> From<&'a IpV6Address> for IpAddressRef<'a> {
 /// An IP socket address, either IPv4 or IPv6, with a specific port.
 ///
 /// Instead of using `std::net::SocketAddr`, this implementation
-/// is geared towards `no_std` environments and zerocopy decoding.
+/// is geared towards zerocopy decoding.
 ///
 /// The size is also consistent across target operating systems.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -209,6 +209,42 @@ impl Unspecified for SocketAddress {
     }
 }
 
+impl From<SocketAddress> for net::SocketAddr {
+    fn from(address: SocketAddress) -> Self {
+        match address {
+            SocketAddress::IpV4(addr) => addr.into(),
+            SocketAddress::IpV6(addr) => addr.into(),
+        }
+    }
+}
+
+impl From<(net::IpAddr, u16)> for SocketAddress {
+    fn from((ip, port): (net::IpAddr, u16)) -> Self {
+        match ip {
+            net::IpAddr::V4(ip) => Self::IpV4((ip, port).into()),
+            net::IpAddr::V6(ip) => Self::IpV6((ip, port).into()),
+        }
+    }
+}
+
+impl<'a> From<SocketAddressRef<'a>> for net::SocketAddr {
+    fn from(address: SocketAddressRef<'a>) -> Self {
+        match address {
+            SocketAddressRef::IpV4(addr) => addr.into(),
+            SocketAddressRef::IpV6(addr) => addr.into(),
+        }
+    }
+}
+
+impl From<net::SocketAddr> for SocketAddress {
+    fn from(addr: net::SocketAddr) -> Self {
+        match addr {
+            net::SocketAddr::V4(addr) => Self::IpV4(addr.into()),
+            net::SocketAddr::V6(addr) => Self::IpV6(addr.into()),
+        }
+    }
+}
+
 impl From<SocketAddressV4> for SocketAddress {
     fn from(addr: SocketAddressV4) -> Self {
         SocketAddress::IpV4(addr)
@@ -276,42 +312,6 @@ mod std_conversion {
             match self {
                 Self::IpV4(addr) => addr.to_socket_addrs(),
                 Self::IpV6(addr) => addr.to_socket_addrs(),
-            }
-        }
-    }
-
-    impl From<SocketAddress> for net::SocketAddr {
-        fn from(address: SocketAddress) -> Self {
-            match address {
-                SocketAddress::IpV4(addr) => addr.into(),
-                SocketAddress::IpV6(addr) => addr.into(),
-            }
-        }
-    }
-
-    impl From<(net::IpAddr, u16)> for SocketAddress {
-        fn from((ip, port): (net::IpAddr, u16)) -> Self {
-            match ip {
-                net::IpAddr::V4(ip) => Self::IpV4((ip, port).into()),
-                net::IpAddr::V6(ip) => Self::IpV6((ip, port).into()),
-            }
-        }
-    }
-
-    impl<'a> From<SocketAddressRef<'a>> for net::SocketAddr {
-        fn from(address: SocketAddressRef<'a>) -> Self {
-            match address {
-                SocketAddressRef::IpV4(addr) => addr.into(),
-                SocketAddressRef::IpV6(addr) => addr.into(),
-            }
-        }
-    }
-
-    impl From<net::SocketAddr> for SocketAddress {
-        fn from(addr: net::SocketAddr) -> Self {
-            match addr {
-                net::SocketAddr::V4(addr) => Self::IpV4(addr.into()),
-                net::SocketAddr::V6(addr) => Self::IpV6(addr.into()),
             }
         }
     }

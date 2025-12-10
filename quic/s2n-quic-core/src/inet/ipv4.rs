@@ -7,7 +7,7 @@ use crate::inet::{
     unspecified::Unspecified,
     ExplicitCongestionNotification,
 };
-use core::{fmt, mem::size_of};
+use core::{fmt, mem::size_of, net};
 use s2n_codec::zerocopy::U16;
 
 //= https://www.rfc-editor.org/rfc/rfc791#section-2.3
@@ -295,6 +295,68 @@ impl Unspecified for SocketAddressV4 {
     #[inline]
     fn is_unspecified(&self) -> bool {
         Self::UNSPECIFIED.eq(self)
+    }
+}
+
+impl From<net::Ipv4Addr> for IpV4Address {
+    fn from(address: net::Ipv4Addr) -> Self {
+        (&address).into()
+    }
+}
+
+impl From<&net::Ipv4Addr> for IpV4Address {
+    fn from(address: &net::Ipv4Addr) -> Self {
+        address.octets().into()
+    }
+}
+
+impl From<IpV4Address> for net::Ipv4Addr {
+    fn from(address: IpV4Address) -> Self {
+        address.octets.into()
+    }
+}
+
+impl From<net::SocketAddrV4> for SocketAddressV4 {
+    fn from(address: net::SocketAddrV4) -> Self {
+        let ip = address.ip().into();
+        let port = address.port().into();
+        Self { ip, port }
+    }
+}
+
+impl From<(net::Ipv4Addr, u16)> for SocketAddressV4 {
+    fn from((ip, port): (net::Ipv4Addr, u16)) -> Self {
+        Self::new(ip, port)
+    }
+}
+
+impl From<SocketAddressV4> for net::SocketAddrV4 {
+    fn from(address: SocketAddressV4) -> Self {
+        let ip = address.ip.into();
+        let port = address.port.into();
+        Self::new(ip, port)
+    }
+}
+
+impl From<&SocketAddressV4> for net::SocketAddrV4 {
+    fn from(address: &SocketAddressV4) -> Self {
+        let ip = address.ip.into();
+        let port = address.port.into();
+        Self::new(ip, port)
+    }
+}
+
+impl From<SocketAddressV4> for net::SocketAddr {
+    fn from(address: SocketAddressV4) -> Self {
+        let addr: net::SocketAddrV4 = address.into();
+        addr.into()
+    }
+}
+
+impl From<&SocketAddressV4> for net::SocketAddr {
+    fn from(address: &SocketAddressV4) -> Self {
+        let addr: net::SocketAddrV4 = address.into();
+        addr.into()
     }
 }
 
@@ -672,68 +734,6 @@ impl fmt::Debug for FlagFragment {
 mod std_conversion {
     use super::*;
     use std::net;
-
-    impl From<net::Ipv4Addr> for IpV4Address {
-        fn from(address: net::Ipv4Addr) -> Self {
-            (&address).into()
-        }
-    }
-
-    impl From<&net::Ipv4Addr> for IpV4Address {
-        fn from(address: &net::Ipv4Addr) -> Self {
-            address.octets().into()
-        }
-    }
-
-    impl From<IpV4Address> for net::Ipv4Addr {
-        fn from(address: IpV4Address) -> Self {
-            address.octets.into()
-        }
-    }
-
-    impl From<net::SocketAddrV4> for SocketAddressV4 {
-        fn from(address: net::SocketAddrV4) -> Self {
-            let ip = address.ip().into();
-            let port = address.port().into();
-            Self { ip, port }
-        }
-    }
-
-    impl From<(net::Ipv4Addr, u16)> for SocketAddressV4 {
-        fn from((ip, port): (net::Ipv4Addr, u16)) -> Self {
-            Self::new(ip, port)
-        }
-    }
-
-    impl From<SocketAddressV4> for net::SocketAddrV4 {
-        fn from(address: SocketAddressV4) -> Self {
-            let ip = address.ip.into();
-            let port = address.port.into();
-            Self::new(ip, port)
-        }
-    }
-
-    impl From<&SocketAddressV4> for net::SocketAddrV4 {
-        fn from(address: &SocketAddressV4) -> Self {
-            let ip = address.ip.into();
-            let port = address.port.into();
-            Self::new(ip, port)
-        }
-    }
-
-    impl From<SocketAddressV4> for net::SocketAddr {
-        fn from(address: SocketAddressV4) -> Self {
-            let addr: net::SocketAddrV4 = address.into();
-            addr.into()
-        }
-    }
-
-    impl From<&SocketAddressV4> for net::SocketAddr {
-        fn from(address: &SocketAddressV4) -> Self {
-            let addr: net::SocketAddrV4 = address.into();
-            addr.into()
-        }
-    }
 
     impl net::ToSocketAddrs for SocketAddressV4 {
         type Iter = std::iter::Once<net::SocketAddr>;
