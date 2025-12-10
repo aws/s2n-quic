@@ -6,7 +6,7 @@ use crate::path::{LocalAddress, RemoteAddress};
 use alloc::vec::Vec;
 #[cfg(feature = "alloc")]
 pub use bytes::{Bytes, BytesMut};
-use core::{any::Any, fmt::Debug};
+use core::{any::Any, fmt::Debug, net::SocketAddr};
 use zerocopy::{FromBytes, IntoBytes, Unaligned};
 
 mod error;
@@ -30,17 +30,17 @@ pub mod offload;
 #[non_exhaustive]
 pub struct ConnectionInfo {
     /// The local address of the connection
-    pub local_address: LocalAddress,
+    pub local_address: SocketAddr,
     /// The remote address of the connection
-    pub remote_address: RemoteAddress,
+    pub remote_address: SocketAddr,
 }
 
 impl ConnectionInfo {
     /// Create a new ConnectionInfo
     pub fn new(local_address: LocalAddress, remote_address: RemoteAddress) -> Self {
         Self {
-            local_address,
-            remote_address,
+            local_address: local_address.into(),
+            remote_address: remote_address.into(),
         }
     }
 }

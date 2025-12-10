@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use s2n_quic_core::{
-    crypto::tls::ConnectionInfo,
-    inet::ip::SocketAddress,
-    path::{LocalAddress, RemoteAddress},
-};
+use s2n_quic_core::crypto::tls::ConnectionInfo;
 use s2n_tls::{
     callbacks::{ClientHelloCallback, ConnectionFuture},
     error::Error as S2nError,
@@ -98,10 +94,6 @@ fn ch_callback_connection_info_test() {
     let connection_info = ch_callback_handle_inner.lock().unwrap().unwrap();
     let server_local_address = server_local_address.lock().unwrap().unwrap();
     let server_remote_address = server_remote_address.lock().unwrap().unwrap();
-
-    // Type conversions are required: std::net::SocketAddr -> s2n_quic_core::inet::ip:: SocketAddress -> s2n_quic_core::path::Local/RemoteAddress
-    let server_local_address = LocalAddress::from(SocketAddress::from(server_local_address));
-    let server_remote_address = RemoteAddress::from(SocketAddress::from(server_remote_address));
 
     // Verify that the ConnectionInfo contains the exact server local address
     assert_eq!(connection_info.local_address, server_local_address);
