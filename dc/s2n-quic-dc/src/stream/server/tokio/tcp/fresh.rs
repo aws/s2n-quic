@@ -72,6 +72,7 @@ impl<Stream> Queue<Stream> {
                     // to
                     publisher.on_acceptor_tcp_io_error(event::builder::AcceptorTcpIoError {
                         error: &error,
+                        source: event::builder::AcceptorTcpIoErrorSource::Accept,
                     });
                     errored += 1;
                 }

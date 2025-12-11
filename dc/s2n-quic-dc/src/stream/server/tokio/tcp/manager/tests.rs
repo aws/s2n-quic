@@ -84,7 +84,7 @@ impl super::Worker for Worker {
         _cx: &mut Self::Context,
         _publisher: &Pub,
         _clock: &C,
-    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
     where
         Pub: EndpointPublisher,
         C: Clock,
@@ -101,7 +101,10 @@ impl super::Worker for Worker {
             }
             State::Error(err) => {
                 self.state = State::Idle;
-                Poll::Ready(Err(Some(err.into())))
+                Poll::Ready(Err(WorkerError {
+                    error: err.into(),
+                    source: AcceptorTcpIoErrorSource::System,
+                }))
             }
         }
     }
