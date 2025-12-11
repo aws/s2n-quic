@@ -11,9 +11,14 @@ use pin_project::pin_project;
 use s2n_quic_core::{
     crypto::tls::{
         self,
-        testing::certificates::{CERT_PEM, KEY_PEM, UNTRUSTED_CERT_PEM, UNTRUSTED_KEY_PEM},
-        Endpoint,
+        testing::{
+            certificates::{CERT_PEM, KEY_PEM, UNTRUSTED_CERT_PEM, UNTRUSTED_KEY_PEM},
+            server_params,
+        },
+        ConnectionInfo, Endpoint,
     },
+    inet::SocketAddressV4,
+    path::{LocalAddress, RemoteAddress},
     transport,
 };
 #[cfg(any(test, feature = "unstable_client_hello"))]
@@ -474,6 +479,34 @@ fn s2n_client_with_custom_hostname_auth_accepts_server_name() {
     run_result(&mut server_endpoint, &mut client_endpoint, None).unwrap();
 }
 
+#[test]
+#[cfg_attr(miri, ignore)]
+fn new_server_session_with_remote_address_test() {
+    let test_local_addr = LocalAddress::from(SocketAddressV4::new([0, 0, 0, 0], 8080));
+    let test_remote_addr = RemoteAddress::from(SocketAddressV4::new([127, 0, 0, 1], 1234));
+    let test_connection_info = ConnectionInfo::new(test_local_addr, test_remote_addr);
+
+    let mut server_endpoint = s2n_server();
+    let session = server_endpoint.new_server_session(&&server_params()[..], test_connection_info);
+
+    // Access the underlying s2n-tls connection to query the application context
+    // The application_context should contain the ConnectionInfo we set
+    let conn_info_in_session = session.connection.application_context::<ConnectionInfo>();
+
+    if let Some(conn_info_in_session) = conn_info_in_session {
+        assert_eq!(
+            conn_info_in_session.remote_address,
+            conn_info_in_session.remote_address
+        );
+        assert_eq!(
+            conn_info_in_session.local_address,
+            conn_info_in_session.local_address
+        );
+    } else {
+        panic!("The TLS' connection info must be successfully acquired!");
+    }
+}
+
 /// Executes the handshake to completion
 fn run_result<S: Endpoint, C: Endpoint>(
     server: &mut S,
@@ -512,6 +545,11 @@ fn config_loader() {
     let server: Box<dyn ConfigLoader> = Box::new(server);
     let mut server: Server<Box<dyn ConfigLoader>> = Server::from_loader(server);
 
+    // This test doesn't use tls::ConnectionInfo. Hence, we can create random local/remote addresses to pass in new_server_session
+    let test_local_addr = LocalAddress::from(SocketAddressV4::new([0, 0, 0, 0], 8080));
+    let test_remote_addr = RemoteAddress::from(SocketAddressV4::new([127, 0, 0, 1], 1234));
+    let test_connection_info = ConnectionInfo::new(test_local_addr, test_remote_addr);
+
     // make sure the server can actually create a session
-    let _ = server.new_server_session(&1);
+    let _ = server.new_server_session(&1, test_connection_info);
 }

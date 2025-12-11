@@ -200,7 +200,11 @@ impl Builder {
 impl<L: ConfigLoader> tls::Endpoint for Client<L> {
     type Session = Session;
 
-    fn new_server_session<Params: EncoderValue>(&mut self, _params: &Params) -> Self::Session {
+    fn new_server_session<Params: EncoderValue>(
+        &mut self,
+        _params: &Params,
+        _connection_info: tls::ConnectionInfo,
+    ) -> Self::Session {
         panic!("cannot create a server session from a client config");
     }
 
@@ -213,7 +217,14 @@ impl<L: ConfigLoader> tls::Endpoint for Client<L> {
             server_name: Some(&server_name),
         });
         self.params.with(params, |params| {
-            Session::new(endpoint::Type::Client, config, params, Some(server_name)).unwrap()
+            Session::new(
+                endpoint::Type::Client,
+                config,
+                params,
+                Some(server_name),
+                None,
+            )
+            .unwrap()
         })
     }
 

@@ -3,7 +3,7 @@
 use crate::{
     application,
     crypto::{
-        tls::{self, NamedGroup, TlsSession},
+        tls::{self, ConnectionInfo, NamedGroup, TlsSession},
         CryptoSuite,
     },
     sync::spsc::{channel, Receiver, SendSlice, Sender},
@@ -76,9 +76,11 @@ where
     fn new_server_session<Params: s2n_codec::EncoderValue>(
         &mut self,
         transport_parameters: &Params,
+        connection_info: ConnectionInfo,
     ) -> Self::Session {
         OffloadSession::new(
-            self.inner.new_server_session(transport_parameters),
+            self.inner
+                .new_server_session(transport_parameters, connection_info),
             &self.executor,
             self.exporter.clone(),
             self.channel_capacity,

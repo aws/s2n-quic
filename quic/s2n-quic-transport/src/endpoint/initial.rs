@@ -226,9 +226,12 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .try_into()
             .expect("Failed to convert max_datagram_frame_size");
 
+        let local_address = header.path.local_address();
+        let connection_info = tls::ConnectionInfo::new(local_address, remote_address);
+
         let tls_session = endpoint_context
             .tls
-            .new_server_session(&transport_parameters);
+            .new_server_session(&transport_parameters, connection_info);
 
         let quic_version = packet.version;
 
@@ -341,8 +344,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                         endpoint_context.event_subscriber,
                         |publisher, _path| {
                             publisher.on_datagram_dropped(event::builder::DatagramDropped {
-                                local_addr: header.path.local_address().into_event(),
-                                remote_addr: header.path.remote_address().into_event(),
+                                local_addr: local_address.into_event(),
+                                remote_addr: remote_address.into_event(),
                                 destination_cid: datagram.destination_connection_id.into_event(),
                                 source_cid: datagram
                                     .source_connection_id

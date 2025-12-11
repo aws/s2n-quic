@@ -69,6 +69,7 @@ impl tls::Endpoint for Server {
     fn new_server_session<Params: EncoderValue>(
         &mut self,
         transport_parameters: &Params,
+        _connection_info: tls::ConnectionInfo,
     ) -> Self::Session {
         //= https://www.rfc-editor.org/rfc/rfc9001#section-8.2
         //# Endpoints MUST send the quic_transport_parameters extension;

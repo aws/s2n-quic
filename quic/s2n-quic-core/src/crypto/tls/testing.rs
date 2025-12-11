@@ -8,10 +8,16 @@ use crate::{
     crypto::{
         header_crypto::{LONG_HEADER_MASK, SHORT_HEADER_MASK},
         scatter, tls,
-        tls::{ApplicationParameters, CipherSuite, NamedGroup, TlsExportError, TlsSession},
+        tls::{
+            ApplicationParameters, CipherSuite, ConnectionInfo, NamedGroup, TlsExportError,
+            TlsSession,
+        },
         CryptoSuite, HeaderKey, Key,
     },
-    endpoint, transport,
+    endpoint,
+    inet::SocketAddressV4,
+    path::{LocalAddress, RemoteAddress},
+    transport,
     transport::parameters::{ClientTransportParameters, ServerTransportParameters},
 };
 use alloc::sync::Arc;
@@ -69,6 +75,7 @@ impl super::Endpoint for Endpoint {
     fn new_server_session<Params: EncoderValue>(
         &mut self,
         _transport_parameters: &Params,
+        _connection_info: ConnectionInfo,
     ) -> Self::Session {
         Session
     }
@@ -155,7 +162,7 @@ pub struct Pair<S: tls::Session, C: tls::Session> {
     pub server_name: ServerName,
 }
 
-fn server_params() -> Bytes {
+pub fn server_params() -> Bytes {
     ServerTransportParameters {
         initial_max_data: 123.try_into().unwrap(),
         ..Default::default()
@@ -185,7 +192,12 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
     {
         use crate::crypto::InitialKey;
 
-        let server = server_endpoint.new_server_session(&&server_params()[..]);
+        // This testing pair doesn't use tls::ConnectionInfo. Hence, we can create random local/remote addresses to pass in new_server_session
+        let local_address: LocalAddress = SocketAddressV4::new([127, 0, 0, 1], 443).into();
+        let remote_address: RemoteAddress = SocketAddressV4::new([127, 0, 0, 1], 12345).into();
+        let connection_info = tls::ConnectionInfo::new(local_address, remote_address);
+
+        let server = server_endpoint.new_server_session(&&server_params()[..], connection_info);
         let mut server_context =
             Context::new(endpoint::Type::Server, ServerState::WaitingClientHello);
         server_context.initial.crypto = Some(S::InitialKey::new_server(server_name.as_bytes()));

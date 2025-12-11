@@ -23,7 +23,8 @@ s2n-codec = { version = "=0.69.0", path = "../../common/s2n-codec", default-feat
 s2n-quic-core = { version = "=0.69.0", path = "../s2n-quic-core", default-features = false, features = ["alloc"] }
 s2n-quic-crypto = { version = "=0.69.0", path = "../s2n-quic-crypto", default-features = false }
 # the `on_key_exchange_group` event relies on an API added in 0.3.15
-s2n-tls = { version = "0.3.16", features = ["quic"] }
+# s2n-tls v0.3.31 and beyond allows setting multiple application context to a TLS connection
+s2n-tls = { version = "0.3.31", features = ["quic"] }
 
 [dev-dependencies]
 checkers = "0.7"

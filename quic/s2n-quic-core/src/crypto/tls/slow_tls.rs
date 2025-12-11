@@ -26,8 +26,11 @@ impl<E: tls::Endpoint> tls::Endpoint for SlowEndpoint<E> {
     fn new_server_session<Params: s2n_codec::EncoderValue>(
         &mut self,
         transport_parameters: &Params,
+        connection_info: tls::ConnectionInfo,
     ) -> Self::Session {
-        let inner_session = self.endpoint.new_server_session(transport_parameters);
+        let inner_session = self
+            .endpoint
+            .new_server_session(transport_parameters, connection_info);
         SlowSession {
             defer: DEFER_COUNT,
             inner_session,

@@ -6,7 +6,10 @@ use bytes::BytesMut;
 use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
     application::ServerName,
-    crypto::{tls, tls::CipherSuite, CryptoSuite},
+    crypto::{
+        tls::{self, CipherSuite, ConnectionInfo},
+        CryptoSuite,
+    },
     endpoint, ensure, transport,
 };
 use s2n_quic_crypto::Suite;
@@ -39,6 +42,7 @@ impl Session {
         config: Config,
         params: &[u8],
         server_name: Option<ServerName>,
+        connection_info: Option<ConnectionInfo>,
     ) -> Result<Self, Error> {
         let mut connection = Connection::new(match endpoint {
             endpoint::Type::Server => Mode::Server,
@@ -66,6 +70,11 @@ impl Session {
             connection
                 .set_server_name(server_name)
                 .expect("invalid server name value");
+        }
+
+        // Allow customers to access server's addressing information at the early stage of TLS handshake (after ClientHello is received by the server)
+        if let Some(connection_info) = connection_info {
+            connection.set_application_context(connection_info);
         }
 
         Ok(Self {
