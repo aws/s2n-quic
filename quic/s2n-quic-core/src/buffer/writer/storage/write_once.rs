@@ -1,10 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    buffer::{reader::storage::Chunk, writer::Storage},
-    ensure,
-};
+use crate::buffer::{reader::storage::Chunk, writer::Storage};
 use bytes::{buf::UninitSlice, Bytes, BytesMut};
 
 /// Only allows a single write into the storage. After that, no more writes are allowed.

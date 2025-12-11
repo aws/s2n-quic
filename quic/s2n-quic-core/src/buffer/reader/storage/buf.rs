@@ -1,14 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    assume,
-    buffer::{
+use crate::buffer::{
         reader::{storage::Chunk, Storage},
         writer,
-    },
-    ensure,
-};
+    };
 use core::cmp::Ordering;
 
 /// Implementation of [`Storage`] that delegates to a [`bytes::Buf`] implementation.

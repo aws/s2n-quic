@@ -8,13 +8,10 @@
     unused_mut
 )]
 
-use crate::{
-    buffer::{
+use crate::buffer::{
         reader::{storage::Chunk, Storage},
         writer,
-    },
-    ensure,
-};
+    };
 
 macro_rules! impl_slice {
     ($ty:ty, $default:expr, $split:ident $(, $extend:expr, $new:expr)?) => {
