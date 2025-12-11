@@ -9,9 +9,9 @@
 )]
 
 use crate::buffer::{
-        reader::{storage::Chunk, Storage},
-        writer,
-    };
+    reader::{storage::Chunk, Storage},
+    writer,
+};
 
 macro_rules! impl_slice {
     ($ty:ty, $default:expr, $split:ident $(, $extend:expr, $new:expr)?) => {

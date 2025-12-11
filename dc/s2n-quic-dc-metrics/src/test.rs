@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-
 // This has a very much shorter list than the actual enum - this is intentional, it tests that we
 // handle non_exhaustive correctly.
 counters_for_enum! {

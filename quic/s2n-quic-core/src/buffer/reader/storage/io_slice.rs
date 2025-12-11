@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::buffer::{
-        reader::{storage::Chunk, Storage},
-        writer,
-    };
+    reader::{storage::Chunk, Storage},
+    writer,
+};
 use core::{cmp::Ordering, ops::ControlFlow};
 
 /// A vectored reader [`Storage`]

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::buffer::{
-        reader::{storage::Chunk, Storage},
-        writer,
-    };
+    reader::{storage::Chunk, Storage},
+    writer,
+};
 use core::cmp::Ordering;
 
 /// Implementation of [`Storage`] that delegates to a [`bytes::Buf`] implementation.
