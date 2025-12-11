@@ -1,10 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    assume,
-    buffer::{reader::storage::Chunk, writer::Storage},
-};
+use crate::buffer::{reader::storage::Chunk, writer::Storage};
 use bytes::{buf::UninitSlice, Bytes, BytesMut};
 
 /// An implementation that limits the number of bytes that can be written to the underlying storage

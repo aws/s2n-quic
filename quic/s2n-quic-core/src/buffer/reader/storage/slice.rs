@@ -8,12 +8,9 @@
     unused_mut
 )]
 
-use crate::{
-    buffer::{
-        reader::{storage::Chunk, Storage},
-        writer,
-    },
-    ensure,
+use crate::buffer::{
+    reader::{storage::Chunk, Storage},
+    writer,
 };
 
 macro_rules! impl_slice {

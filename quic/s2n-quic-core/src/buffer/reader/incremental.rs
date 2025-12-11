@@ -6,7 +6,6 @@ use crate::{
         reader::{storage::Chunk, Reader, Storage},
         writer, Error,
     },
-    ensure,
     varint::VarInt,
 };
 
