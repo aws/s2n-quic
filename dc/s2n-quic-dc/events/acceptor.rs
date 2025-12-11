@@ -190,12 +190,34 @@ struct AcceptorTcpIoError<'a> {
     /// The error encountered
     #[builder(&'a std::io::Error)]
     error: &'a std::io::Error,
+
+    #[nominal_counter("source")]
+    source: AcceptorTcpIoErrorSource,
+}
+
+enum AcceptorTcpIoErrorSource {
+    /// Problem during accept of the TCP socket
+    Accept,
+    /// Problem writing to the TCP socket
+    Send,
+    /// Kernel originating from sending the TCP socket over UDS
+    UnixSend,
+    /// Problem reading from the TCP socket
+    Recv,
+    /// Something within dcQUIC failed related to the remote state or network contents (e.g.,
+    /// parsing the packet)
+    Remote,
+    /// Something in the local application state was wrong (e.g., missing credentials).
+    Local,
+    /// Something went wrong that we didn't expect to happen.
+    /// This is used for failures that aren't expected to relate to dcQUIC state at all.
+    System,
 }
 
 /// Emitted when the TCP stream has been sent over a Unix domain socket
 #[event("acceptor:tcp:socket_sent")]
 #[subject(endpoint)]
-struct AcceptorTcpSocketSent<'a>   {
+struct AcceptorTcpSocketSent<'a> {
     /// The credential ID of the stream
     #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
@@ -220,11 +242,11 @@ struct AcceptorTcpSocketSent<'a>   {
 /// Emitted when a TCP stream has been received from a Unix domain socket
 #[event("acceptor:tcp:socket_received")]
 #[subject(endpoint)]
-struct AcceptorTcpSocketReceived<'a>   {
+struct AcceptorTcpSocketReceived<'a> {
     /// The address of the stream's peer
     #[builder(&'a s2n_quic_core::inet::SocketAddress)]
     remote_address: SocketAddress<'a>,
-    
+
     /// The credential ID of the stream
     #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],

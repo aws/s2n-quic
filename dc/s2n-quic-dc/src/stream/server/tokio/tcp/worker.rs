@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{accept, LazyBoundStream};
+use super::{accept, manager::WorkerError, LazyBoundStream};
 use crate::{
     crypto::{self, open::Application},
     either::Either,
@@ -158,7 +158,7 @@ where
         context: &mut Context<Sub>,
         publisher: &Pub,
         clock: &C,
-    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
     where
         Pub: EndpointPublisher,
         C: Clock,
@@ -232,7 +232,7 @@ where
         queue_time: Timestamp,
         now: Timestamp,
         publisher: &Pub,
-    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
     where
         Pub: EndpointPublisher,
         Self: Sized;
@@ -251,7 +251,7 @@ pub enum WorkerState {
     Erroring {
         offset: usize,
         buffer: Vec<u8>,
-        error: io::Error,
+        error: WorkerError,
     },
     Sending {
         future: uds::sender::SendMsg,
@@ -270,7 +270,7 @@ impl WorkerState {
         now: Timestamp,
         publisher: &Pub,
         poll_behavior: &B,
-    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
     where
         Sub: event::Subscriber + Clone,
         Pub: EndpointPublisher,
@@ -323,7 +323,7 @@ where
         queue_time: Timestamp,
         now: Timestamp,
         publisher: &Pub,
-    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
     where
         Pub: EndpointPublisher,
     {
@@ -342,7 +342,12 @@ where
                 // we encountered an error so try and send it back
                 WorkerState::Erroring { offset, buffer, .. } => {
                     let (stream, _remote_address) = stream.as_mut().unwrap();
-                    let len = ready!(Pin::new(stream).poll_write(cx, &buffer[*offset..]))?;
+                    let len = ready!(Pin::new(stream).poll_write(cx, &buffer[*offset..])).map_err(
+                        |e| WorkerError {
+                            error: e,
+                            source: event::builder::AcceptorTcpIoErrorSource::Send,
+                        },
+                    )?;
 
                     *offset += len;
 
@@ -358,7 +363,7 @@ where
                         unreachable!()
                     };
 
-                    return Err(Some(error)).into();
+                    return Err(error).into();
                 }
                 WorkerState::Sending { .. } => unreachable!(),
             };
@@ -417,7 +422,12 @@ where
                         *state = WorkerState::Erroring {
                             offset: 0,
                             buffer: secret_control,
-                            error,
+                            // Deriving stream credentials failing is a local problem, likely
+                            // missing credentials.
+                            error: WorkerError {
+                                error,
+                                source: event::builder::AcceptorTcpIoErrorSource::Local,
+                            },
                         };
                         continue;
                     } else {
@@ -425,7 +435,11 @@ where
                         let _ = socket.set_linger(Some(Duration::ZERO));
                         drop(socket);
                     }
-                    return Err(Some(error)).into();
+                    return Err(WorkerError {
+                        error,
+                        source: event::builder::AcceptorTcpIoErrorSource::Local,
+                    })
+                    .into();
                 }
             };
 
@@ -450,7 +464,11 @@ where
             ) {
                 Ok(stream) => stream,
                 Err(error) => {
-                    return Err(Some(error.error)).into();
+                    return Err(WorkerError {
+                        error: error.error,
+                        source: event::builder::AcceptorTcpIoErrorSource::Local,
+                    })
+                    .into();
                 }
             };
 
@@ -503,7 +521,7 @@ impl WorkerState {
         recv_buffer: &mut msg::recv::Message,
         sojourn_time: Duration,
         publisher: &Pub,
-    ) -> Poll<Result<server::InitialPacket, Option<io::Error>>>
+    ) -> Poll<Result<server::InitialPacket, WorkerError>>
     where
         Pub: EndpointPublisher,
     {
@@ -521,10 +539,18 @@ impl WorkerState {
                 // close the stream immediately and send a reset to the client
                 let _ = stream.set_linger(Some(Duration::ZERO));
 
-                return Err(None).into();
+                return Err(WorkerError {
+                    source: event::builder::AcceptorTcpIoErrorSource::Remote,
+                    error: io::Error::from(io::ErrorKind::FileTooLarge),
+                })
+                .into();
             }
 
-            let res = ready!(stream.poll_recv_buffer(cx, recv_buffer)).map_err(Some)?;
+            let res =
+                ready!(stream.poll_recv_buffer(cx, recv_buffer)).map_err(|error| WorkerError {
+                    source: event::builder::AcceptorTcpIoErrorSource::Recv,
+                    error,
+                })?;
 
             match server::InitialPacket::peek(recv_buffer, 16) {
                 Ok(packet) => {
@@ -558,7 +584,11 @@ impl WorkerState {
                     // close the stream immediately and send a reset to the client
                     let _ = stream.set_linger(Some(Duration::ZERO));
 
-                    return Err(None).into();
+                    return Err(WorkerError {
+                        source: event::builder::AcceptorTcpIoErrorSource::Remote,
+                        error: io::Error::from(io::ErrorKind::InvalidData),
+                    })
+                    .into();
                 }
             }
         }
@@ -591,7 +621,7 @@ impl SocketBehavior {
         cx: &mut task::Context,
         event_data: &SocketEventData,
         publisher: &Pub,
-    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
     where
         Pub: EndpointPublisher,
     {
@@ -609,28 +639,36 @@ impl SocketBehavior {
                 }
                 Err(err) => {
                     debug!("Error sending message to socket {:?}", err);
-                    Err(Some(err)).into()
+                    Err(WorkerError {
+                        source: event::builder::AcceptorTcpIoErrorSource::UnixSend,
+                        error: err,
+                    })
+                    .into()
                 }
             },
             Poll::Pending => Poll::Pending,
         }
     }
 
-    fn decrypt(keys: Bidirectional, recv_buffer: &mut [u8]) -> Result<(), io::Error> {
+    fn decrypt(keys: Bidirectional, recv_buffer: &mut [u8]) -> Result<(), WorkerError> {
         let tag_len = keys.application.opener.tag_len();
         let decoder = decoder::DecoderBufferMut::new(recv_buffer);
 
-        let (packet, _remaining) = decoder.decode_parameterized(tag_len).map_err(|error| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("Failed to decode stream packet: {:?}", error),
-            )
-        })?;
+        let (packet, _remaining) =
+            decoder
+                .decode_parameterized(tag_len)
+                .map_err(|error| WorkerError {
+                    source: event::builder::AcceptorTcpIoErrorSource::Remote,
+                    error: io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("Failed to decode stream packet: {:?}", error),
+                    ),
+                })?;
         let packet::Packet::Stream(stream_packet) = packet else {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Expected stream packet",
-            ));
+            return Err(WorkerError {
+                source: event::builder::AcceptorTcpIoErrorSource::Remote,
+                error: io::Error::new(io::ErrorKind::InvalidData, "Expected stream packet"),
+            });
         };
 
         let mut payload_out = vec![0u8; stream_packet.payload().len()];
@@ -646,11 +684,12 @@ impl SocketBehavior {
                 stream_packet.auth_tag(),
                 payload_out,
             )
-            .map_err(|error| {
-                io::Error::new(
+            .map_err(|error| WorkerError {
+                source: event::builder::AcceptorTcpIoErrorSource::Remote,
+                error: io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("Failed to decrypt stream packet: {:?}", error),
-                )
+                ),
             })?;
         Ok(())
     }
@@ -670,7 +709,7 @@ where
         queue_time: Timestamp,
         now: Timestamp,
         publisher: &Pub,
-    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
     where
         Pub: EndpointPublisher,
     {
@@ -689,7 +728,12 @@ where
                 // we encountered an error so try and send it back
                 WorkerState::Erroring { offset, buffer, .. } => {
                     let (stream, _remote_address) = stream.as_mut().unwrap();
-                    let len = ready!(Pin::new(stream).poll_write(cx, &buffer[*offset..]))?;
+                    let len = ready!(Pin::new(stream).poll_write(cx, &buffer[*offset..])).map_err(
+                        |error| WorkerError {
+                            source: event::builder::AcceptorTcpIoErrorSource::Send,
+                            error,
+                        },
+                    )?;
 
                     *offset += len;
 
@@ -705,7 +749,7 @@ where
                         unreachable!()
                     };
 
-                    return Err(Some(error)).into();
+                    return Err(error).into();
                 }
                 WorkerState::Sending { future, event_data } => {
                     match Self::poll_send(future, cx, event_data, publisher) {
@@ -777,7 +821,10 @@ where
                     *state = WorkerState::Erroring {
                         offset: 0,
                         buffer: secret_control,
-                        error,
+                        error: WorkerError {
+                            source: event::builder::AcceptorTcpIoErrorSource::Local,
+                            error,
+                        },
                     };
                     continue;
                 } else {
@@ -785,13 +832,17 @@ where
                     let _ = socket.set_linger(Some(Duration::ZERO));
                     drop(socket);
                 }
-                return Err(Some(error)).into();
+                return Err(WorkerError {
+                    source: event::builder::AcceptorTcpIoErrorSource::Local,
+                    error,
+                })
+                .into();
             };
 
             if let Err(err) = Self::decrypt(keys, recv_buffer) {
                 let _ = socket.set_linger(Some(Duration::ZERO));
                 drop(socket);
-                return Err(Some(err)).into();
+                return Err(err).into();
             };
 
             #[cfg(target_os = "linux")]
@@ -800,7 +851,10 @@ where
             #[cfg(not(target_os = "linux"))]
             let clock = ClockId::CLOCK_MONOTONIC;
 
-            let now = clock.now().map_err(|errno| Some(io::Error::from(errno)))?;
+            let now = clock.now().map_err(|errno| WorkerError {
+                source: event::builder::AcceptorTcpIoErrorSource::System,
+                error: io::Error::from(errno),
+            })?;
             let encode_time = now.num_microseconds() as u64;
 
             let mut estimator = EncoderLenEstimator::new(usize::MAX);
@@ -822,7 +876,10 @@ where
                 encode_time,
                 recv_buffer,
             );
-            let tcp_stream = socket.into_std()?;
+            let tcp_stream = socket.into_std().map_err(|error| WorkerError {
+                source: event::builder::AcceptorTcpIoErrorSource::System,
+                error,
+            })?;
 
             let mut future = SendMsg::new(self.sender.clone(), buffer, OwnedFd::from(tcp_stream));
             let mut event_data = SocketEventData {

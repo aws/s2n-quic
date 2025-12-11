@@ -257,12 +257,14 @@ pub mod api {
     pub struct AcceptorTcpIoError<'a> {
         #[doc = " The error encountered"]
         pub error: &'a std::io::Error,
+        pub source: AcceptorTcpIoErrorSource,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for AcceptorTcpIoError<'a> {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("AcceptorTcpIoError");
             fmt.field("error", &self.error);
+            fmt.field("source", &self.source);
             fmt.finish()
         }
     }
@@ -559,6 +561,84 @@ pub mod api {
             match self {
                 Self::FreshQueueAtCapacity { .. } => 0usize,
                 Self::SlotsAtCapacity { .. } => 1usize,
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub enum AcceptorTcpIoErrorSource {
+        #[non_exhaustive]
+        #[doc = " Problem during accept of the TCP socket"]
+        Accept {},
+        #[non_exhaustive]
+        #[doc = " Problem writing to the TCP socket"]
+        Send {},
+        #[non_exhaustive]
+        #[doc = " Kernel originating from sending the TCP socket over UDS"]
+        UnixSend {},
+        #[non_exhaustive]
+        #[doc = " Problem reading from the TCP socket"]
+        Recv {},
+        #[non_exhaustive]
+        #[doc = " Something within dcQUIC failed related to the remote state or network contents (e.g.,"]
+        #[doc = " parsing the packet)"]
+        Remote {},
+        #[non_exhaustive]
+        #[doc = " Something in the local application state was wrong (e.g., missing credentials)."]
+        Local {},
+        #[non_exhaustive]
+        #[doc = " Something went wrong that we didn't expect to happen."]
+        #[doc = " This is used for failures that aren't expected to relate to dcQUIC state at all."]
+        System {},
+    }
+    impl aggregate::AsVariant for AcceptorTcpIoErrorSource {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("ACCEPT\0"),
+                id: 0usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("SEND\0"),
+                id: 1usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("UNIX_SEND\0"),
+                id: 2usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("RECV\0"),
+                id: 3usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("REMOTE\0"),
+                id: 4usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("LOCAL\0"),
+                id: 5usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("SYSTEM\0"),
+                id: 6usize,
+            }
+            .build(),
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Accept { .. } => 0usize,
+                Self::Send { .. } => 1usize,
+                Self::UnixSend { .. } => 2usize,
+                Self::Recv { .. } => 3usize,
+                Self::Remote { .. } => 4usize,
+                Self::Local { .. } => 5usize,
+                Self::System { .. } => 6usize,
             }
         }
     }
@@ -2469,8 +2549,8 @@ pub mod tracing {
             event: &api::AcceptorTcpIoError,
         ) {
             let parent = self.parent(meta);
-            let api::AcceptorTcpIoError { error } = event;
-            tracing :: event ! (target : "acceptor_tcp_io_error" , parent : parent , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) });
+            let api::AcceptorTcpIoError { error, source } = event;
+            tracing :: event ! (target : "acceptor_tcp_io_error" , parent : parent , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) , source = tracing :: field :: debug (source) });
         }
         #[inline]
         fn on_acceptor_tcp_socket_sent(
@@ -3787,13 +3867,15 @@ pub mod builder {
     pub struct AcceptorTcpIoError<'a> {
         #[doc = " The error encountered"]
         pub error: &'a std::io::Error,
+        pub source: AcceptorTcpIoErrorSource,
     }
     impl<'a> IntoEvent<api::AcceptorTcpIoError<'a>> for AcceptorTcpIoError<'a> {
         #[inline]
         fn into_event(self) -> api::AcceptorTcpIoError<'a> {
-            let AcceptorTcpIoError { error } = self;
+            let AcceptorTcpIoError { error, source } = self;
             api::AcceptorTcpIoError {
                 error: error.into_event(),
+                source: source.into_event(),
             }
         }
     }
@@ -4085,6 +4167,40 @@ pub mod builder {
             match self {
                 Self::FreshQueueAtCapacity => FreshQueueAtCapacity {},
                 Self::SlotsAtCapacity => SlotsAtCapacity {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub enum AcceptorTcpIoErrorSource {
+        #[doc = " Problem during accept of the TCP socket"]
+        Accept,
+        #[doc = " Problem writing to the TCP socket"]
+        Send,
+        #[doc = " Kernel originating from sending the TCP socket over UDS"]
+        UnixSend,
+        #[doc = " Problem reading from the TCP socket"]
+        Recv,
+        #[doc = " Something within dcQUIC failed related to the remote state or network contents (e.g.,"]
+        #[doc = " parsing the packet)"]
+        Remote,
+        #[doc = " Something in the local application state was wrong (e.g., missing credentials)."]
+        Local,
+        #[doc = " Something went wrong that we didn't expect to happen."]
+        #[doc = " This is used for failures that aren't expected to relate to dcQUIC state at all."]
+        System,
+    }
+    impl IntoEvent<api::AcceptorTcpIoErrorSource> for AcceptorTcpIoErrorSource {
+        #[inline]
+        fn into_event(self) -> api::AcceptorTcpIoErrorSource {
+            use api::AcceptorTcpIoErrorSource::*;
+            match self {
+                Self::Accept => Accept {},
+                Self::Send => Send {},
+                Self::UnixSend => UnixSend {},
+                Self::Recv => Recv {},
+                Self::Remote => Remote {},
+                Self::Local => Local {},
+                Self::System => System {},
             }
         }
     }

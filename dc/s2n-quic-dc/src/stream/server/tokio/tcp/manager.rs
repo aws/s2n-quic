@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    event::{self, EndpointPublisher},
+    event::{self, builder::AcceptorTcpIoErrorSource, EndpointPublisher},
     task::waker,
 };
 use core::{
@@ -284,9 +284,10 @@ where
             Ok(ControlFlow::Break(())) => {
                 cf = ControlFlow::Break(());
             }
-            Err(Some(err)) => publisher
-                .on_acceptor_tcp_io_error(event::builder::AcceptorTcpIoError { error: &err }),
-            Err(None) => {}
+            Err(err) => publisher.on_acceptor_tcp_io_error(event::builder::AcceptorTcpIoError {
+                error: &err.error,
+                source: err.source,
+            }),
         }
 
         // the worker is all done so indicate we have another free slot
@@ -370,6 +371,11 @@ where
     }
 }
 
+pub struct WorkerError {
+    pub error: io::Error,
+    pub source: AcceptorTcpIoErrorSource,
+}
+
 pub(crate) trait Worker {
     type Context;
     type ConnectionContext;
@@ -393,7 +399,7 @@ pub(crate) trait Worker {
         cx: &mut Self::Context,
         publisher: &Pub,
         clock: &C,
-    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
     where
         Pub: EndpointPublisher,
         C: Clock;
