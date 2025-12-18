@@ -37,7 +37,7 @@ impl MtuConfirmComplete {
                     state.is_ready()
                 } else {
                     // Only wait for local completion since peer won't send
-                    state.local_complete
+                    state.local_ready
                 }
             };
 
@@ -62,7 +62,7 @@ impl Default for MtuConfirmContext {
         let (sender, _receiver) = watch::channel(MtuProbingState::default());
         Self {
             sender,
-            // Default to true (optimistic - assume peer will send)
+            // Default to true, but this field will be overriden in on_transport_parameters prior to being used.
             peer_will_send_completion: true,
         }
     }
@@ -82,21 +82,21 @@ impl Drop for MtuConfirmContext {
     fn drop(&mut self) {
         self.sender.send_modify(|state| {
             // Force ready state on connection close
-            state.local_complete = true;
-            state.remote_complete = true;
+            state.local_ready = true;
+            state.remote_ready = true;
         });
     }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 struct MtuProbingState {
-    local_complete: bool,
-    remote_complete: bool,
+    local_ready: bool,
+    remote_ready: bool,
 }
 
 impl MtuProbingState {
     fn is_ready(&self) -> bool {
-        self.local_complete && self.remote_complete
+        self.local_ready && self.remote_ready
     }
 }
 
@@ -135,8 +135,8 @@ impl Subscriber for MtuConfirmComplete {
         // The connection closed before MTU probing completed
         // Force both to complete to unblock any waiting tasks
         context.update_and_check(|state| {
-            state.local_complete = true;
-            state.remote_complete = true;
+            state.local_ready = true;
+            state.remote_ready = true;
         });
     }
 
@@ -149,7 +149,7 @@ impl Subscriber for MtuConfirmComplete {
     ) {
         if event.search_complete {
             context.update_and_check(|state| {
-                state.local_complete = true;
+                state.local_ready = true;
             });
         }
     }
@@ -162,7 +162,7 @@ impl Subscriber for MtuConfirmComplete {
         _event: &events::MtuProbingCompleteReceived,
     ) {
         context.update_and_check(|state| {
-            state.remote_complete = true;
+            state.remote_ready = true;
         });
     }
 }
