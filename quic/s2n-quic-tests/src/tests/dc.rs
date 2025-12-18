@@ -257,7 +257,6 @@ fn dc_mtls_handshake_client_not_supported_self_test() -> Result<()> {
 //
 // Client                                                                    Server
 //
-// <DC handshake completes>
 // <MTU probing completes locally> ->
 // 1-RTT: MTU_PROBING_COMPLETE[mtu=1472]
 //                                                  # on_mtu_probing_complete_received
@@ -335,7 +334,6 @@ fn mtu_probing_complete_frame_exchange_test() -> Result<()> {
 //
 // Client (disabled)                                                    Server (enabled)
 //
-// <DC handshake completes>
 // <MTU probing completes locally>
 // (no frame sent) ->
 //                                                                      <- 1-RTT: MTU_PROBING_COMPLETE[mtu=1472]
@@ -348,7 +346,6 @@ fn mtu_probing_complete_server_only_test() -> Result<()> {
     let server = Server::builder()
         .with_tls(server_tls)?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
-    // Note: Default is enabled, so no need to explicitly set
 
     // Client with mtu_probing_complete_support DISABLED
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
@@ -392,18 +389,39 @@ fn mtu_probing_complete_server_only_test() -> Result<()> {
     let client_mtu_events = client_events.mtu_updated_events.lock().unwrap().clone();
     let server_mtu_events = server_events.mtu_updated_events.lock().unwrap().clone();
 
-    assert!(
-        client_mtu_events
-            .iter()
-            .any(|event| event.search_complete && event.mtu == 1472),
-        "Client should have completed MTU probing at 1472"
-    );
-    assert!(
-        server_mtu_events
-            .iter()
-            .any(|event| event.search_complete && event.mtu == 1472),
-        "Server should have completed MTU probing at 1472"
-    );
+    // Check that server's wait_ready didn't wait for client's frame
+    // Since client has mtu_probing_complete_support disabled, the server should complete
+    // wait_ready immediately after its own local MTU probing completes, not wait for a
+    // frame from the client (which will never arrive).
+
+    // If the server were incorrectly waiting for the client's frame,
+    // the test would take 10 seconds to timeout.
+
+    let server_local_complete_time = server_mtu_events
+        .iter()
+        .find(|event| event.search_complete && event.mtu == 1472)
+        .unwrap()
+        .timestamp;
+
+    let client_local_complete_time = client_mtu_events
+        .iter()
+        .find(|event| event.search_complete && event.mtu == 1472)
+        .unwrap()
+        .timestamp;
+
+    let server_duration = server_local_complete_time.duration_since_start();
+    let client_duration = client_local_complete_time.duration_since_start();
+
+    let time_difference = if server_duration > client_duration {
+        server_duration.saturating_sub(client_duration)
+    } else {
+        client_duration.saturating_sub(server_duration)
+    };
+
+    // Server should complete MTU probing independently of the client.
+    // Both should complete around the same time.
+    // If server were waiting for client's frame, there would be a significant additional delay.
+    assert!(time_difference < Duration::from_millis(100));
 
     Ok(())
 }
@@ -681,6 +699,7 @@ struct DcStateChangedEvent {
 
 #[derive(Clone)]
 struct MtuUpdatedEvent {
+    timestamp: Timestamp,
     mtu: u16,
     search_complete: bool,
 }
@@ -743,17 +762,20 @@ impl events::Subscriber for DcRecorder {
     fn on_mtu_updated(
         &mut self,
         context: &mut Self::ConnectionContext,
-        _meta: &ConnectionMeta,
+        meta: &ConnectionMeta,
         event: &MtuUpdated,
     ) {
-        let store = |event: &events::MtuUpdated, storage: &mut Vec<MtuUpdatedEvent>| {
+        let store = |meta: &ConnectionMeta,
+                     event: &events::MtuUpdated,
+                     storage: &mut Vec<MtuUpdatedEvent>| {
             storage.push(MtuUpdatedEvent {
+                timestamp: meta.timestamp,
                 mtu: event.mtu,
                 search_complete: event.search_complete,
             });
         };
         let mut buffer = context.mtu_updated_events.lock().unwrap();
-        store(event, &mut buffer);
+        store(meta, event, &mut buffer);
     }
 
     fn on_mtu_probing_complete_received(
