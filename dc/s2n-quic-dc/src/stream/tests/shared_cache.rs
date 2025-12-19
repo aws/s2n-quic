@@ -10,7 +10,7 @@ use crate::{
         server::{application, manager},
         Protocol,
     },
-    testing::{init_tracing, query_event, server_name, NoopSubscriber, TestTlsProvider},
+    testing::{init_tracing, server_name, NoopSubscriber, TestTlsProvider},
 };
 use s2n_quic_core::time::StdClock;
 use std::{
@@ -37,7 +37,6 @@ fn create_stream_client() -> (ClientTokio<ClientProvider, NoopSubscriber>, Map) 
             client_map.clone(),
             tls_materials_provider.clone(),
             test_event_subscriber.clone(),
-            query_event,
             server_name(),
         )
         .unwrap();

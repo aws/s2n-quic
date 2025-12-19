@@ -48,7 +48,7 @@ impl Handshake for crate::psk::client::Provider {
         remote_handshake_addr: SocketAddr,
         server_name: Name,
     ) -> std::io::Result<(secret::map::Peer, secret::HandshakeKind)> {
-        self.handshake_with_entry(remote_handshake_addr, |_conn, _duration| {}, server_name)
+        self.handshake_with_entry(remote_handshake_addr, server_name)
             .await
     }
 

@@ -10,6 +10,7 @@ use crate::{
         schedule::{Ciphersuite, ExportSecret},
         seal, stateless_reset,
     },
+    psk::io::HandshakeReason,
     stream::TransportFeatures,
 };
 use core::fmt;
@@ -109,7 +110,10 @@ impl Map {
         self.store.contains(peer)
     }
 
-    pub fn register_request_handshake(&self, cb: Box<dyn Fn(SocketAddr) + Send + Sync>) {
+    pub fn register_request_handshake(
+        &self,
+        cb: Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>,
+    ) {
         self.store.register_request_handshake(cb);
     }
 

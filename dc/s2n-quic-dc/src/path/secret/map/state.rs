@@ -10,6 +10,7 @@ use crate::{
     event::{self, EndpointPublisher as _, IntoEvent as _},
     packet::{secret_control as control, Packet},
     path::secret::receiver,
+    psk::io::HandshakeReason,
 };
 use s2n_quic_core::{
     inet::SocketAddress,
@@ -301,7 +302,8 @@ where
     pub(super) control_socket: Option<Arc<std::net::UdpSocket>>,
 
     #[allow(clippy::type_complexity)]
-    pub(super) request_handshake: RwLock<Option<Box<dyn Fn(SocketAddr) + Send + Sync>>>,
+    pub(super) request_handshake:
+        RwLock<Option<Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>>>,
 
     cleaner: Cleaner,
 
@@ -477,7 +479,7 @@ where
         (id_removed, peer_removed)
     }
 
-    pub fn request_handshake(&self, peer: SocketAddr) {
+    pub fn request_handshake(&self, peer: SocketAddr, reason: HandshakeReason) {
         self.subscriber()
             .on_path_secret_map_background_handshake_requested(
                 event::builder::PathSecretMapBackgroundHandshakeRequested {
@@ -496,11 +498,14 @@ where
             .unwrap_or_else(|e| e.into_inner())
             .as_deref()
         {
-            (callback)(peer);
+            (callback)(peer, reason);
         }
     }
 
-    fn register_request_handshake(&self, cb: Box<dyn Fn(SocketAddr) + Send + Sync>) {
+    fn register_request_handshake(
+        &self,
+        cb: Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>,
+    ) {
         // FIXME: Maybe panic if already initialized?
         *self
             .request_handshake
@@ -655,7 +660,10 @@ where
             });
     }
 
-    fn register_request_handshake(&self, cb: Box<dyn Fn(SocketAddr) + Send + Sync>) {
+    fn register_request_handshake(
+        &self,
+        cb: Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>,
+    ) {
         self.register_request_handshake(cb);
     }
 
@@ -805,7 +813,7 @@ where
 
         // FIXME: More actively schedule a new handshake.
         // See comment on requested_handshakes for details.
-        self.request_handshake(*entry.peer());
+        self.request_handshake(*entry.peer(), HandshakeReason::Remote);
 
         Some(packet)
     }
@@ -914,7 +922,7 @@ where
         //
         // Handshaking will be rate limited per destination peer (and at least
         // de-duplicated).
-        self.request_handshake(*entry.peer());
+        self.request_handshake(*entry.peer(), HandshakeReason::Remote);
 
         Some(packet)
     }

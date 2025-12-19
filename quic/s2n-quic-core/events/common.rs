@@ -19,7 +19,18 @@ struct EndpointMeta {
     timestamp: crate::event::Timestamp,
 }
 
-struct ConnectionInfo {}
+struct ConnectionInfo<'a> {
+    application: Option<&'a (dyn core::any::Any + Send + Sync)>,
+}
+
+impl<'a> IntoEvent<&'a (dyn core::any::Any + Send + Sync)>
+    for &'a (dyn core::any::Any + Send + Sync)
+{
+    #[inline]
+    fn into_event(self) -> Self {
+        self
+    }
+}
 
 // https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.3
 struct TransportParameters<'a> {

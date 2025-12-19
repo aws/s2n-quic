@@ -6,6 +6,7 @@ use crate::{
     credentials::{Credentials, Id},
     packet::{secret_control as control, Packet, WireVersion},
     path::secret::{receiver, stateless_reset},
+    psk::io::HandshakeReason,
 };
 use core::time::Duration;
 use s2n_codec::EncoderBuffer;
@@ -61,7 +62,10 @@ pub trait Store: 'static + Send + Sync {
 
     fn rehandshake_period(&self) -> Duration;
 
-    fn register_request_handshake(&self, cb: Box<dyn Fn(SocketAddr) + Send + Sync>);
+    fn register_request_handshake(
+        &self,
+        cb: Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>,
+    );
 
     fn check_dedup(
         &self,

@@ -11,13 +11,16 @@ use s2n_quic::{
         tls::Provider as Prov,
     },
     server::Name,
-    Connection,
 };
+use s2n_quic_core::inet::SocketAddress;
 use std::{
     hash::BuildHasher,
     io,
     net::SocketAddr,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU16, Ordering},
+        Arc, Mutex,
+    },
     time::Duration,
 };
 use tokio::sync::Semaphore;
@@ -223,19 +226,20 @@ impl Client {
     pub(super) async fn connect(
         &self,
         peer: SocketAddr,
-        query_event_callback: fn(&mut Connection, Duration),
+        reason: HandshakeReason,
         server_name: Name,
     ) -> Result<(), HandshakeFailed> {
         self.queue
             .clone()
-            .handshake(&self.client, peer, query_event_callback, server_name)
+            .handshake(&self.client, peer, reason, server_name)
             .await
     }
 }
 
 struct Entry {
-    peer: SocketAddr,
+    peer: SocketAddress,
     handshaker: tokio::sync::OnceCell<Result<(), HandshakeFailed>>,
+    by_reason: [AtomicU16; REASON_COUNT],
 }
 
 #[derive(Default)]
@@ -276,7 +280,8 @@ impl HandshakeQueue {
 
     /// Allocate an entry that will let us wait for the handshake to complete.
     /// This entry also stores the result of the handshake (success or failure).
-    fn allocate_entry(&self, peer: SocketAddr) -> Arc<Entry> {
+    fn allocate_entry(&self, peer: SocketAddr, reason: HandshakeReason) -> Arc<Entry> {
+        let peer: SocketAddress = peer.into();
         // FIXME: Maybe limit the size of the map?
         // It's not clear what we'd do if we exceeded the limit -- at least today, we only track
         // actively pending handshakes, so that implies dropping handshake requests entirely. But
@@ -290,12 +295,21 @@ impl HandshakeQueue {
             |e| e.peer == peer,
             |e| self.hasher.hash_one(e.peer),
         ) {
-            hashbrown::hash_table::Entry::Occupied(o) => o.get().clone(),
+            hashbrown::hash_table::Entry::Occupied(o) => {
+                let entry = o.get().clone();
+                entry.by_reason[reason as usize]
+                    .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                        Some(v.saturating_add(1))
+                    })
+                    .expect("Some means always OK");
+                entry
+            }
             hashbrown::hash_table::Entry::Vacant(v) => {
                 let entry = v
                     .insert(Arc::new(Entry {
                         peer,
                         handshaker: tokio::sync::OnceCell::new(),
+                        by_reason: [const { AtomicU16::new(0) }; REASON_COUNT],
                     }))
                     .get()
                     .clone();
@@ -331,10 +345,10 @@ impl HandshakeQueue {
         self: Arc<Self>,
         client: &s2n_quic::Client,
         peer: SocketAddr,
-        query_event_callback: fn(&mut Connection, Duration),
+        reason: HandshakeReason,
         server_name: Name,
     ) -> Result<(), HandshakeFailed> {
-        let entry = self.allocate_entry(peer);
+        let entry = self.allocate_entry(peer, reason);
         let entry2 = entry.clone();
         let entry3 = entry.clone();
 
@@ -346,11 +360,27 @@ impl HandshakeQueue {
             let permit_start = self.limiter_start.acquire().await;
             let limiter_duration = start.elapsed();
 
-            let mut connection = client
-                .connect(s2n_quic::client::Connect::new(peer).with_server_name(server_name))
-                .await?;
+            let mut attempt =
+                client.connect(s2n_quic::client::Connect::new(peer).with_server_name(server_name));
 
-            query_event_callback(&mut connection, limiter_duration);
+            // Note that this provides counts at the time of starting the connection attempt.
+            // Technically, this omits counts that happen after this point while the deduplication
+            // is still active.
+            let mut reason_counts = [
+                (HandshakeReason::User, 0),
+                (HandshakeReason::Periodic, 0),
+                (HandshakeReason::Remote, 0),
+            ];
+            for (reason, count) in reason_counts.iter_mut() {
+                *count = entry.by_reason[*reason as usize].load(Ordering::Relaxed) as usize;
+            }
+
+            attempt.set_application_context(Box::new(ConnectionContext {
+                limiter_latency: limiter_duration,
+                reason_counts,
+            }));
+
+            let mut connection = attempt.await?;
 
             // we need to wait for confirmation that the dcQUIC handshake is complete
             // TODO: This will not be needed if https://github.com/aws/s2n-quic/issues/2273 is addressed
@@ -477,4 +507,21 @@ impl From<HandshakeFailed> for io::Error {
     fn from(e: HandshakeFailed) -> io::Error {
         e.0
     }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum HandshakeReason {
+    /// An explicit request by the application owner
+    User,
+    /// Periodic re-handshaking
+    Periodic,
+    /// Rehandshaking driven by remote packets (e.g., unknown path secret).
+    Remote,
+}
+
+const REASON_COUNT: usize = 3;
+
+pub struct ConnectionContext {
+    pub limiter_latency: Duration,
+    pub reason_counts: [(HandshakeReason, usize); REASON_COUNT],
 }
