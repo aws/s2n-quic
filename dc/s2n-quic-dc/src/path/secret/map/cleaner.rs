@@ -204,7 +204,7 @@ impl Cleaner {
         let mut handshake_requests = 0;
         rehandshake.next_rehandshake_batch(state.peers.len(), |peer| {
             handshake_requests += 1;
-            state.request_handshake(peer);
+            state.request_handshake(peer, crate::psk::io::HandshakeReason::Periodic);
         });
 
         drop(rehandshake);

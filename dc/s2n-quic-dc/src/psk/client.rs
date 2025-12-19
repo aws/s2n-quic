@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::io::{self, HandshakeFailed};
-use crate::path::secret;
+use crate::{path::secret, psk::io::HandshakeReason};
 use s2n_quic::{
     provider::{event::Subscriber as Sub, tls::Provider as Prov},
     server::Name,
-    Connection,
 };
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc};
 use tokio::runtime::Runtime;
 use tokio_util::sync::DropGuard;
 
@@ -100,7 +99,6 @@ impl Provider {
         map: secret::Map,
         tls_materials_provider: Provider,
         subscriber: Subscriber,
-        query_event_callback: fn(&mut Connection, Duration),
         builder: Builder<Event>,
         server_name: Name,
     ) -> io::Result<Self> {
@@ -115,7 +113,7 @@ impl Provider {
 
         // Avoid holding onto the state unintentionally after it's no longer needed.
         let weak = Arc::downgrade(&state);
-        map.register_request_handshake(Box::new(move |peer| {
+        map.register_request_handshake(Box::new(move |peer, reason| {
             if let Some(state) = weak.upgrade() {
                 let runtime = state.runtime.as_ref().map(|v| &v.0).unwrap();
                 let client = state.client.clone();
@@ -123,9 +121,8 @@ impl Provider {
                 // Drop the JoinHandle -- we're not actually going to block on the join handle's
                 // result. The future will keep running in the background.
                 runtime.spawn(async move {
-                    if let Err(HandshakeFailed { .. }) = client
-                        .connect(peer, query_event_callback, server_name)
-                        .await
+                    if let Err(HandshakeFailed { .. }) =
+                        client.connect(peer, reason, server_name).await
                     {
                         // failure has already been logged, no further action required.
                     }
@@ -143,12 +140,9 @@ impl Provider {
     pub async fn handshake_with(
         &self,
         peer: SocketAddr,
-        query_event_callback: fn(&mut Connection, Duration),
         server_name: Name,
     ) -> std::io::Result<HandshakeKind> {
-        let (_peer, kind) = self
-            .handshake_with_entry(peer, query_event_callback, server_name)
-            .await?;
+        let (_peer, kind) = self.handshake_with_entry(peer, server_name).await?;
         Ok(kind)
     }
 
@@ -160,7 +154,6 @@ impl Provider {
     pub async fn handshake_with_entry(
         &self,
         peer: SocketAddr,
-        query_event_callback: fn(&mut Connection, Duration),
         server_name: Name,
     ) -> std::io::Result<(secret::map::Peer, HandshakeKind)> {
         if let Some(peer) = self.state.map.get_tracked(peer) {
@@ -171,7 +164,7 @@ impl Provider {
         // needed. We put this after get_tracked because that saves us a global lock to check
         // presence in the map in the happy path.
         if self.state.runtime.is_some() {
-            let _ = self.background_handshake_with(peer, query_event_callback, server_name.clone());
+            let _ = self.background_handshake_with(peer, server_name.clone());
         }
 
         let state = self.state.clone();
@@ -180,14 +173,14 @@ impl Provider {
                 .spawn(async move {
                     state
                         .client
-                        .connect(peer, query_event_callback, server_name)
+                        .connect(peer, HandshakeReason::User, server_name)
                         .await
                 })
                 .await??;
         } else {
             state
                 .client
-                .connect(peer, query_event_callback, server_name)
+                .connect(peer, HandshakeReason::User, server_name)
                 .await?;
         }
 
@@ -207,7 +200,6 @@ impl Provider {
     pub fn background_handshake_with(
         &self,
         peer: SocketAddr,
-        query_event_callback: fn(&mut Connection, Duration),
         server_name: Name,
     ) -> std::io::Result<HandshakeKind> {
         if self.state.map.contains(&peer) {
@@ -220,7 +212,7 @@ impl Provider {
             // result. The future will keep running in the background.
             runtime.spawn(async move {
                 if let Err(HandshakeFailed { .. }) = client
-                    .connect(peer, query_event_callback, server_name)
+                    .connect(peer, HandshakeReason::User, server_name)
                     .await
                 {
                     // error already logged
@@ -245,13 +237,12 @@ impl Provider {
     pub fn blocking_handshake_with(
         &self,
         peer: SocketAddr,
-        query_event_callback: fn(&mut Connection, Duration),
         server_name: Name,
     ) -> std::io::Result<HandshakeKind> {
         // Unconditionally request a background handshake. This schedules any re-handshaking
         // needed.
         if self.state.runtime.is_some() {
-            let _ = self.background_handshake_with(peer, query_event_callback, server_name.clone());
+            let _ = self.background_handshake_with(peer, server_name.clone());
         }
 
         if self.state.map.contains(&peer) {
@@ -261,7 +252,7 @@ impl Provider {
         let fut = self
             .state
             .client
-            .connect(peer, query_event_callback, server_name);
+            .connect(peer, HandshakeReason::User, server_name);
         if let Some((runtime, _)) = self.state.runtime.as_ref() {
             runtime.block_on(fut)?
         } else {
@@ -280,7 +271,6 @@ impl Provider {
     pub async fn unconditionally_handshake_with_entry(
         &self,
         peer: SocketAddr,
-        query_event_callback: fn(&mut Connection, Duration),
         server_name: Name,
     ) -> std::io::Result<secret::map::Peer> {
         let state = self.state.clone();
@@ -289,7 +279,7 @@ impl Provider {
                 .spawn(async move {
                     state
                         .client
-                        .connect(peer, query_event_callback, server_name)
+                        .connect(peer, HandshakeReason::User, server_name)
                         .await
                 })
                 .await??;

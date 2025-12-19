@@ -6,7 +6,7 @@ use crate::{
     path::secret::{stateless_reset::Signer, Map},
     psk::{client, server},
 };
-use s2n_quic::{provider::tls::Provider, server::Name, Connection};
+use s2n_quic::{provider::tls::Provider, server::Name};
 use s2n_quic_core::{crypto::tls::testing::certificates, time::StdClock};
 use std::{sync::OnceLock, time::Duration};
 
@@ -163,8 +163,6 @@ pub fn sim(f: impl FnOnce()) {
     rt.run(f);
 }
 
-pub(crate) fn query_event(_connection: &mut Connection, _limiter_duration: Duration) {}
-
 #[derive(Clone, Default)]
 pub struct NoopSubscriber;
 
@@ -286,7 +284,6 @@ impl Pair {
                 ),
                 tls_materials_provider,
                 test_event_subscriber,
-                query_event,
                 server_name(),
             )
             .unwrap();
@@ -327,7 +324,6 @@ impl Pair {
                 ),
                 tls_materials_provider,
                 test_event_subscriber,
-                query_event,
                 server_name(),
             )
             .unwrap();
