@@ -1,0 +1,11 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: values
+---
+[
+    MtuProbingComplete(
+        MtuProbingComplete {
+            mtu: 1500,
+        },
+    ),
+]

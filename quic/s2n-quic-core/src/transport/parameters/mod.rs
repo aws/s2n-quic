@@ -1207,6 +1207,49 @@ impl<'a> IntoEvent<&'a [u32]> for &'a DcSupportedVersions {
     }
 }
 
+/// Indicates whether the endpoint will send MtuProbingComplete frames
+/// This is a DC-specific transport parameter
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum MtuProbingCompleteSupport {
+    #[default]
+    Enabled,
+    Disabled,
+}
+
+impl MtuProbingCompleteSupport {
+    pub const RECOMMENDED: Self = Self::Enabled;
+}
+
+impl TransportParameter for MtuProbingCompleteSupport {
+    type CodecValue = ();
+
+    const ID: TransportParameterId = TransportParameterId::from_u32(0xdc0001);
+
+    fn from_codec_value(_value: ()) -> Self {
+        MtuProbingCompleteSupport::Disabled
+    }
+
+    fn try_into_codec_value(&self) -> Option<&()> {
+        if let MtuProbingCompleteSupport::Disabled = self {
+            Some(&())
+        } else {
+            None
+        }
+    }
+
+    fn default_value() -> Self {
+        Self::default()
+    }
+}
+
+impl TransportParameterValidator for MtuProbingCompleteSupport {}
+
+impl IntoEvent<bool> for MtuProbingCompleteSupport {
+    fn into_event(self) -> bool {
+        matches!(self, MtuProbingCompleteSupport::Enabled)
+    }
+}
+
 //= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# If present, transport parameters that set initial per-stream flow
 //# control limits (initial_max_stream_data_bidi_local,
@@ -1389,6 +1432,7 @@ impl<'a> IntoEvent<event::builder::TransportParameters<'a>> for &'a ServerTransp
             initial_max_streams_uni: self.initial_max_streams_uni.into_event(),
             max_datagram_frame_size: self.max_datagram_frame_size.into_event(),
             dc_supported_versions: self.dc_supported_versions.into_event(),
+            mtu_probing_complete_support: self.mtu_probing_complete_support.into_event(),
         }
     }
 }
@@ -1421,6 +1465,7 @@ impl<'a> IntoEvent<event::builder::TransportParameters<'a>> for &'a ClientTransp
             initial_max_streams_uni: self.initial_max_streams_uni.into_event(),
             max_datagram_frame_size: self.max_datagram_frame_size.into_event(),
             dc_supported_versions: self.dc_supported_versions.into_event(),
+            mtu_probing_complete_support: self.mtu_probing_complete_support.into_event(),
         }
     }
 }
@@ -1566,6 +1611,7 @@ impl_transport_parameters!(
         initial_source_connection_id: Option<InitialSourceConnectionId>,
         retry_source_connection_id: RetrySourceConnectionId,
         dc_supported_versions: DcSupportedVersions,
+        mtu_probing_complete_support: MtuProbingCompleteSupport,
     }
 );
 

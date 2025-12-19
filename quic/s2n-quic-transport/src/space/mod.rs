@@ -21,13 +21,17 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application::ServerName,
     connection::{limits::Limits, InitialId, PeerId},
-    crypto::{tls, tls::Session, CryptoSuite, Key},
+    crypto::{
+        tls::{self, Session},
+        CryptoSuite, Key,
+    },
     event::{self, IntoEvent},
     frame::{
         ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
         ConnectionClose, DataBlocked, DcStatelessResetTokens, HandshakeDone, MaxData,
-        MaxStreamData, MaxStreams, NewConnectionId, NewToken, PathChallenge, PathResponse,
-        ResetStream, RetireConnectionId, StopSending, StreamDataBlocked, StreamsBlocked,
+        MaxStreamData, MaxStreams, MtuProbingComplete, NewConnectionId, NewToken, PathChallenge,
+        PathResponse, ResetStream, RetireConnectionId, StopSending, StreamDataBlocked,
+        StreamsBlocked,
     },
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -836,6 +840,25 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
             .with_frame_type(frame.tag()))
     }
 
+    fn handle_mtu_probing_complete_frame<Pub: event::ConnectionPublisher>(
+        &mut self,
+        frame: MtuProbingComplete,
+        packet_number: PacketNumber,
+        path_id: path::Id,
+        path: &Path<Config>,
+        publisher: &mut Pub,
+    ) -> Result<(), transport::Error> {
+        publisher.on_mtu_probing_complete_received(event::builder::MtuProbingCompleteReceived {
+            packet_header: event::builder::PacketHeader::new(
+                packet_number,
+                publisher.quic_version(),
+            ),
+            path: path_event!(path, path_id),
+            mtu: frame.mtu,
+        });
+        Ok(())
+    }
+
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
     default_frame_handler!(handle_max_data_frame, MaxData);
     default_frame_handler!(handle_max_stream_data_frame, MaxStreamData);
@@ -1101,6 +1124,17 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
                     let on_error = on_frame_processed!(frame);
                     self.handle_dc_stateless_reset_tokens_frame(frame, publisher)
                         .map_err(on_error)?;
+                }
+                Frame::MtuProbingComplete(frame) => {
+                    let on_error = on_frame_processed!(frame);
+                    self.handle_mtu_probing_complete_frame(
+                        frame,
+                        packet_number,
+                        path_id,
+                        &path_manager[path_id],
+                        publisher,
+                    )
+                    .map_err(on_error)?;
                 }
             }
 

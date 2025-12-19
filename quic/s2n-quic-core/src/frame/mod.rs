@@ -264,6 +264,7 @@ frames! {
     [handshake_done_tag] => handshake_done, handle_handshake_done_frame, HandshakeDone;
     [datagram_tag] => datagram, handle_datagram_frame, Datagram[Data];
     extension[dc_stateless_reset_tokens_tag] => dc_stateless_reset_tokens, handle_dc_stateless_reset_tokens_frame, DcStatelessResetTokens['a];
+    extension[mtu_probing_complete_tag] => mtu_probing_complete, handle_mtu_probing_complete_frame, MtuProbingComplete;
 }
 
 #[derive(Clone, Copy, Debug, Default)]

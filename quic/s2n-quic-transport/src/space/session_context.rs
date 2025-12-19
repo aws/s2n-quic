@@ -482,6 +482,13 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.publisher
                 .on_dc_path_created(DcPathCreated { path: &dc_path });
 
+            if self.dc.mtu_probing_complete_support() {
+                self.path_manager
+                    .active_path_mut()
+                    .mtu_controller
+                    .enable_mtu_probing_complete_support();
+            }
+
             crate::dc::Manager::new(dc_path, dc_version, self.publisher)
         } else {
             if Config::DcEndpoint::ENABLED {

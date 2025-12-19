@@ -18,16 +18,32 @@ pub struct MtuConfirmComplete;
 
 impl MtuConfirmComplete {
     /// Blocks the task until the provided connection has either completed MTU probing or closed
-    pub async fn wait_ready(conn: &mut Connection) -> io::Result<()> {
-        let mut receiver = conn
-            .query_event_context_mut(|context: &mut MtuConfirmContext| context.sender.subscribe())
+    /// Returns whether the peer supports sending MtuProbingComplete frames
+    pub async fn wait_ready(conn: &mut Connection) -> io::Result<bool> {
+        let (mut receiver, peer_will_send) = conn
+            .query_event_context_mut(|context: &mut MtuConfirmContext| {
+                (
+                    context.sender.subscribe(),
+                    context.peer_will_send_completion,
+                )
+            })
             .map_err(io::Error::other)?;
 
         loop {
-            match &*receiver.borrow_and_update() {
-                // if we're ready then let the application know
-                State::Ready => return Ok(()),
-                State::Waiting => {}
+            let ready = {
+                let state = receiver.borrow_and_update();
+
+                if peer_will_send {
+                    // Wait for both local and remote completion
+                    state.is_ready()
+                } else {
+                    // Only wait for local completion since peer won't send
+                    state.local_ready
+                }
+            };
+
+            if ready {
+                return Ok(peer_will_send);
             }
 
             if receiver.changed().await.is_err() {
@@ -38,20 +54,29 @@ impl MtuConfirmComplete {
 }
 
 pub struct MtuConfirmContext {
-    sender: watch::Sender<State>,
+    sender: watch::Sender<MtuProbingState>,
+    peer_will_send_completion: bool,
 }
 
 impl Default for MtuConfirmContext {
     fn default() -> Self {
-        let (sender, _receiver) = watch::channel(State::default());
-        Self { sender }
+        let (sender, _receiver) = watch::channel(MtuProbingState::default());
+        Self {
+            sender,
+            // Default to false in case that some users didn't deploy MtuProbingComplete frame feature.
+            // If the feature is enabled, then this will always be overridden by mtu_probing_complete_support
+            // transport parameter before it is used.
+            peer_will_send_completion: false,
+        }
     }
 }
 
 impl MtuConfirmContext {
-    /// Updates the state on the context
-    fn update(&mut self, state: State) {
-        self.sender.send_replace(state);
+    /// Updates the state and checks if both local and remote are complete
+    fn update_and_check(&mut self, updater: impl FnOnce(&mut MtuProbingState)) {
+        self.sender.send_modify(|state| {
+            updater(state);
+        });
     }
 }
 
@@ -59,18 +84,23 @@ impl Drop for MtuConfirmContext {
     // make sure the application is notified that we're closing the connection
     fn drop(&mut self) {
         self.sender.send_modify(|state| {
-            if matches!(state, State::Waiting) {
-                *state = State::Ready
-            }
+            // Force ready state on connection close
+            state.local_ready = true;
+            state.remote_ready = true;
         });
     }
 }
 
-#[derive(Default)]
-enum State {
-    #[default]
-    Waiting,
-    Ready,
+#[derive(Debug, Clone, Copy, Default)]
+struct MtuProbingState {
+    local_ready: bool,
+    remote_ready: bool,
+}
+
+impl MtuProbingState {
+    fn is_ready(&self) -> bool {
+        self.local_ready && self.remote_ready
+    }
 }
 
 impl Subscriber for MtuConfirmComplete {
@@ -86,16 +116,31 @@ impl Subscriber for MtuConfirmComplete {
     }
 
     #[inline]
+    fn on_transport_parameters_received(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &ConnectionMeta,
+        event: &events::TransportParametersReceived,
+    ) {
+        context.peer_will_send_completion = event.transport_parameters.mtu_probing_complete_support;
+    }
+
+    #[inline]
     fn on_connection_closed(
         &mut self,
         context: &mut Self::ConnectionContext,
         _meta: &ConnectionMeta,
         _event: &events::ConnectionClosed,
     ) {
-        ensure!(matches!(*context.sender.borrow(), State::Waiting));
+        let state = *context.sender.borrow();
+        ensure!(!state.is_ready());
 
         // The connection closed before MTU probing completed
-        context.update(State::Ready);
+        // Force both to complete to unblock any waiting tasks
+        context.update_and_check(|state| {
+            state.local_ready = true;
+            state.remote_ready = true;
+        });
     }
 
     #[inline]
@@ -105,10 +150,22 @@ impl Subscriber for MtuConfirmComplete {
         _meta: &ConnectionMeta,
         event: &MtuUpdated,
     ) {
-        ensure!(matches!(*context.sender.borrow(), State::Waiting));
-
         if event.search_complete {
-            context.update(State::Ready)
+            context.update_and_check(|state| {
+                state.local_ready = true;
+            });
         }
+    }
+
+    #[inline]
+    fn on_mtu_probing_complete_received(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &ConnectionMeta,
+        _event: &events::MtuProbingCompleteReceived,
+    ) {
+        context.update_and_check(|state| {
+            state.remote_ready = true;
+        });
     }
 }

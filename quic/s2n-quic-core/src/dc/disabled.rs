@@ -27,6 +27,10 @@ impl Endpoint for Disabled {
     ) -> bool {
         unreachable!()
     }
+
+    fn mtu_probing_complete_support(&self) -> bool {
+        false
+    }
 }
 
 // The Disabled Endpoint returns `None`, so this is not used

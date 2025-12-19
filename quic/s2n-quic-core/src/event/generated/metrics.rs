@@ -67,6 +67,7 @@ pub struct Context<R: Recorder> {
     tx_stream_progress: u64,
     keep_alive_timer_expired: u64,
     mtu_updated: u64,
+    mtu_probing_complete_received: u64,
     slow_start_exited: u64,
     delivery_rate_sampled: u64,
     pacing_rate_updated: u64,
@@ -136,6 +137,7 @@ where
             tx_stream_progress: 0,
             keep_alive_timer_expired: 0,
             mtu_updated: 0,
+            mtu_probing_complete_received: 0,
             slow_start_exited: 0,
             delivery_rate_sampled: 0,
             pacing_rate_updated: 0,
@@ -601,6 +603,17 @@ where
             .on_mtu_updated(&mut context.recorder, meta, event);
     }
     #[inline]
+    fn on_mtu_probing_complete_received(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::MtuProbingCompleteReceived,
+    ) {
+        context.mtu_probing_complete_received += 1;
+        self.subscriber
+            .on_mtu_probing_complete_received(&mut context.recorder, meta, event);
+    }
+    #[inline]
     fn on_slow_start_exited(
         &mut self,
         context: &mut Self::ConnectionContext,
@@ -776,6 +789,10 @@ impl<R: Recorder> Drop for Context<R> {
         );
         self.recorder
             .increment_counter("mtu_updated", self.mtu_updated as _);
+        self.recorder.increment_counter(
+            "mtu_probing_complete_received",
+            self.mtu_probing_complete_received as _,
+        );
         self.recorder
             .increment_counter("slow_start_exited", self.slow_start_exited as _);
         self.recorder

@@ -41,6 +41,7 @@ struct TransportParameters<'a> {
     initial_max_streams_uni: u64,
     max_datagram_frame_size: u64,
     dc_supported_versions: &'a [u32],
+    mtu_probing_complete_support: bool,
 }
 
 struct PreferredAddress<'a> {
@@ -369,6 +370,9 @@ enum Frame {
         len: u16,
     },
     DcStatelessResetTokens,
+    MtuProbingComplete {
+        mtu: u16,
+    },
 }
 
 impl IntoEvent<builder::Frame> for &crate::frame::Padding {

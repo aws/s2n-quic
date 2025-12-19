@@ -27,6 +27,12 @@ pub trait Endpoint: 'static + Send {
         datagram_info: &dc::DatagramInfo,
         payload: &mut [u8],
     ) -> bool;
+
+    /// Returns whether mtu_probing_complete_support is enabled.
+    /// This value is default to true if dc is enabled.
+    fn mtu_probing_complete_support(&self) -> bool {
+        true
+    }
 }
 
 /// A dc path

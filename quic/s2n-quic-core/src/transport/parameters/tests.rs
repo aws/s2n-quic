@@ -84,6 +84,7 @@ fn server_transport_parameters() -> ServerTransportParameters {
             len: 1,
             versions: [3, 0, 0, 0],
         },
+        mtu_probing_complete_support: MtuProbingCompleteSupport::Enabled,
     }
 }
 
@@ -125,6 +126,7 @@ fn client_transport_parameters() -> ClientTransportParameters {
             len: 4,
             versions: [1, 2, 3, 4],
         },
+        mtu_probing_complete_support: MtuProbingCompleteSupport::Enabled,
     }
 }
 
