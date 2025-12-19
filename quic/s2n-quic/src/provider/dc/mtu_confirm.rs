@@ -18,7 +18,8 @@ pub struct MtuConfirmComplete;
 
 impl MtuConfirmComplete {
     /// Blocks the task until the provided connection has either completed MTU probing or closed
-    pub async fn wait_ready(conn: &mut Connection) -> io::Result<()> {
+    /// Returns whether the peer supports sending MtuProbingComplete frames
+    pub async fn wait_ready(conn: &mut Connection) -> io::Result<bool> {
         let (mut receiver, peer_will_send) = conn
             .query_event_context_mut(|context: &mut MtuConfirmContext| {
                 (
@@ -42,7 +43,7 @@ impl MtuConfirmComplete {
             };
 
             if ready {
-                return Ok(());
+                return Ok(peer_will_send);
             }
 
             if receiver.changed().await.is_err() {
