@@ -30,6 +30,14 @@ impl MockDcEndpoint {
             mtu_probing_complete_support: MtuProbingCompleteSupport::Enabled,
         }
     }
+
+    pub fn with_mtu_probing_complete_support(mut self, mtu_probing_complete_support: bool) -> Self {
+        self.mtu_probing_complete_support = match mtu_probing_complete_support {
+            true => MtuProbingCompleteSupport::Enabled,
+            false => MtuProbingCompleteSupport::Disabled,
+        };
+        self
+    }
 }
 
 #[derive(Default)]
@@ -64,14 +72,6 @@ impl dc::Endpoint for MockDcEndpoint {
         self.on_possible_secret_control_packet_count
             .fetch_add(1, Ordering::Relaxed);
         (self.on_possible_secret_control_packet)()
-    }
-
-    fn with_mtu_probing_complete_support(mut self, mtu_probing_complete_support: bool) -> Self {
-        self.mtu_probing_complete_support = match mtu_probing_complete_support {
-            true => MtuProbingCompleteSupport::Enabled,
-            false => MtuProbingCompleteSupport::Disabled,
-        };
-        self
     }
 
     fn mtu_probing_complete_support(&self) -> bool {

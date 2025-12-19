@@ -28,16 +28,6 @@ pub trait Endpoint: 'static + Send {
         payload: &mut [u8],
     ) -> bool;
 
-    /// Configure whether mtu_probing_complete_support transport parameter is supported.
-    ///
-    /// The default implementation doesn't change anything. This method is primarily used by tests.
-    fn with_mtu_probing_complete_support(self, _mtu_probing_complete_support: bool) -> Self
-    where
-        Self: Sized,
-    {
-        self
-    }
-
     /// Returns whether mtu_probing_complete_support is enabled.
     /// This value is default to true if dc is enabled.
     fn mtu_probing_complete_support(&self) -> bool {

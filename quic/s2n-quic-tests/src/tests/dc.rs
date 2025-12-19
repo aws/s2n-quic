@@ -13,7 +13,7 @@ use s2n_quic::{
 };
 use s2n_quic_core::{
     crypto::tls,
-    dc::{testing::MockDcEndpoint, Endpoint},
+    dc::testing::MockDcEndpoint,
     event::{
         api::{
             ConnectionMeta, DatagramDropReason, DcState, EndpointDatagramDropped, EndpointMeta,
