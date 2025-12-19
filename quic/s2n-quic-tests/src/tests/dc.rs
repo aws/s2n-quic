@@ -7,13 +7,13 @@ use s2n_quic::{
     client,
     client::ClientProviders,
     connection,
-    provider::{dc, io::testing::Result, limits::Limits},
+    provider::{dc, io::testing::Result},
     server,
     server::ServerProviders,
 };
 use s2n_quic_core::{
     crypto::tls,
-    dc::testing::MockDcEndpoint,
+    dc::{testing::MockDcEndpoint, Endpoint},
     event::{
         api::{
             ConnectionMeta, DatagramDropReason, DcState, EndpointDatagramDropped, EndpointMeta,
@@ -24,8 +24,10 @@ use s2n_quic_core::{
     },
     frame::ConnectionClose,
     packet::interceptor::{Datagram, Interceptor},
-    stateless_reset,
-    stateless_reset::token::testing::{TEST_TOKEN_1, TEST_TOKEN_2},
+    stateless_reset::{
+        self,
+        token::testing::{TEST_TOKEN_1, TEST_TOKEN_2},
+    },
     transport,
     varint::VarInt,
 };
@@ -349,11 +351,9 @@ fn mtu_probing_complete_server_only_test() -> Result<()> {
 
     // Client with mtu_probing_complete_support DISABLED
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
-    let client_limits = Limits::default().with_mtu_probing_complete_support(false)?;
     let client = Client::builder()
         .with_tls(client_tls)?
-        .with_limits(client_limits)?
-        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS).with_mtu_probing_complete_support(false))?;
 
     let (client_events, server_events) = self_test(server, client, true, None, None, true)?;
 

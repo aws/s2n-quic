@@ -3,9 +3,9 @@
 
 use crate::{
     crypto::tls::TlsSession,
-    dc,
-    dc::{ApplicationParams, ConnectionInfo, DatagramInfo},
-    stateless_reset, transport,
+    dc::{self, ApplicationParams, ConnectionInfo, DatagramInfo},
+    stateless_reset,
+    transport::{self, parameters::MtuProbingCompleteSupport},
     varint::VarInt,
 };
 use core::{num::NonZeroU32, time::Duration};
@@ -18,6 +18,7 @@ pub struct MockDcEndpoint {
     stateless_reset_tokens: Vec<stateless_reset::Token>,
     pub on_possible_secret_control_packet_count: Arc<AtomicU8>,
     pub on_possible_secret_control_packet: fn() -> bool,
+    mtu_probing_complete_support: MtuProbingCompleteSupport,
 }
 
 impl MockDcEndpoint {
@@ -26,6 +27,7 @@ impl MockDcEndpoint {
             stateless_reset_tokens: tokens.to_vec(),
             on_possible_secret_control_packet_count: Arc::new(AtomicU8::default()),
             on_possible_secret_control_packet: || false,
+            mtu_probing_complete_support: MtuProbingCompleteSupport::Enabled,
         }
     }
 }
@@ -62,6 +64,21 @@ impl dc::Endpoint for MockDcEndpoint {
         self.on_possible_secret_control_packet_count
             .fetch_add(1, Ordering::Relaxed);
         (self.on_possible_secret_control_packet)()
+    }
+
+    fn with_mtu_probing_complete_support(mut self, mtu_probing_complete_support: bool) -> Self {
+        self.mtu_probing_complete_support = match mtu_probing_complete_support {
+            true => MtuProbingCompleteSupport::Enabled,
+            false => MtuProbingCompleteSupport::Disabled,
+        };
+        self
+    }
+
+    fn mtu_probing_complete_support(&self) -> bool {
+        matches!(
+            self.mtu_probing_complete_support,
+            MtuProbingCompleteSupport::Enabled
+        )
     }
 }
 

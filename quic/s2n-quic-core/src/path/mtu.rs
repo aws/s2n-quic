@@ -6,8 +6,7 @@ use crate::{
     event::{self, builder::MtuUpdatedCause, IntoEvent},
     frame, inet,
     packet::number::PacketNumber,
-    path,
-    path::mtu,
+    path::{self, mtu},
     recovery::{congestion_controller, CongestionController},
     time::{timer, Timer, Timestamp},
     transmission,
@@ -515,8 +514,8 @@ pub struct Controller {
     pmtu_raise_timer: Timer,
     /// Flag indicating we need to send MtuProbingComplete frame to the peer
     needs_to_send_completion: bool,
-    /// Whether DC is enabled for this endpoint
-    dc_enabled: bool,
+    /// Flag indicating MtuProbingComplete frame is enabled
+    mtu_probing_complete_support: bool,
 }
 
 impl Controller {
@@ -582,17 +581,14 @@ impl Controller {
             largest_acked_mtu_sized_packet: None,
             pmtu_raise_timer: Timer::default(),
             needs_to_send_completion: false,
-            dc_enabled: false,
+            mtu_probing_complete_support: false,
         }
     }
 
-    /// Enable DC-specific MTU behavior
-    ///
-    /// When DC is enabled, the controller will send MtuProbingComplete frames
-    /// to notify the peer when MTU probing completes
+    /// Enable MtuProbingComplete Support
     #[inline]
-    pub fn enable_dc(&mut self) {
-        self.dc_enabled = true;
+    pub fn enable_mtu_probing_complete_support(&mut self) {
+        self.mtu_probing_complete_support = true;
     }
 
     /// Enable path MTU probing
@@ -861,7 +857,7 @@ impl Controller {
 
             // Mark that we need to send the MtuProbingComplete frame to the peer.
             // MtuProbingComplete is not a IETF QUIC frame, so we only send it if dcQUIC is enabled.
-            if !self.needs_to_send_completion && self.dc_enabled {
+            if !self.needs_to_send_completion && self.mtu_probing_complete_support {
                 self.needs_to_send_completion = true;
             }
 

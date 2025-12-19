@@ -1660,6 +1660,5 @@ impl<
         load!(max_active_connection_ids, active_connection_id_limit);
         load!(max_datagram_frame_size, max_datagram_frame_size);
         load!(migration_support, migration_support);
-        load!(mtu_probing_complete_support, mtu_probing_complete_support);
     }
 }

@@ -62,8 +62,10 @@ impl Default for MtuConfirmContext {
         let (sender, _receiver) = watch::channel(MtuProbingState::default());
         Self {
             sender,
-            // Default to true, but this field will be overriden in on_transport_parameters prior to being used.
-            peer_will_send_completion: true,
+            // Default to false in case that some users didn't deploy MtuProbingComplete frame feature.
+            // If the feature is enabled, then this will always be overridden by mtu_probing_complete_support
+            // transport parameter before it is used.
+            peer_will_send_completion: false,
         }
     }
 }
