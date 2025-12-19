@@ -48,11 +48,14 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub struct ConnectionInfo {}
+    pub struct ConnectionInfo<'a> {
+        pub application: Option<&'a (dyn core::any::Any + Send + Sync)>,
+    }
     #[cfg(any(test, feature = "testing"))]
-    impl crate::event::snapshot::Fmt for ConnectionInfo {
+    impl<'a> crate::event::snapshot::Fmt for ConnectionInfo<'a> {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("ConnectionInfo");
+            fmt.field("application", &self.application);
             fmt.finish()
         }
     }
@@ -3144,6 +3147,14 @@ pub mod api {
             }
         }
     }
+    impl<'a> IntoEvent<&'a (dyn core::any::Any + Send + Sync)>
+        for &'a (dyn core::any::Any + Send + Sync)
+    {
+        #[inline]
+        fn into_event(self) -> Self {
+            self
+        }
+    }
     impl<'a> IntoEvent<builder::PreferredAddress<'a>>
         for &'a crate::transport::parameters::PreferredAddress
     {
@@ -4525,12 +4536,16 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub struct ConnectionInfo {}
-    impl IntoEvent<api::ConnectionInfo> for ConnectionInfo {
+    pub struct ConnectionInfo<'a> {
+        pub application: Option<&'a (dyn core::any::Any + Send + Sync)>,
+    }
+    impl<'a> IntoEvent<api::ConnectionInfo<'a>> for ConnectionInfo<'a> {
         #[inline]
-        fn into_event(self) -> api::ConnectionInfo {
-            let ConnectionInfo {} = self;
-            api::ConnectionInfo {}
+        fn into_event(self) -> api::ConnectionInfo<'a> {
+            let ConnectionInfo { application } = self;
+            api::ConnectionInfo {
+                application: application.into_event(),
+            }
         }
     }
     #[derive(Clone, Debug)]

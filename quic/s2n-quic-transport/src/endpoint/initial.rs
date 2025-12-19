@@ -250,7 +250,12 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let mut event_context = endpoint_context.event_subscriber.create_connection_context(
             &meta.clone().into_event(),
-            &event::builder::ConnectionInfo {}.into_event(),
+            &event::builder::ConnectionInfo {
+                // Servers can't provide meaningful application context since there's not been an
+                // accept() yet.
+                application: None,
+            }
+            .into_event(),
         );
 
         let mut endpoint_publisher = event::EndpointPublisherSubscriber::new(

@@ -17,6 +17,11 @@ use s2n_quic_core::{application::ServerName, inet::SocketAddress, path::RemoteAd
 /// Held by connection Attempt future. Used to receive the actual connection.
 pub(crate) type ConnectionReceiver = oneshot::Receiver<Result<Connection, connection::Error>>;
 
+/// Provides extra application-specific context to be threaded into `ConnectionInfo` when a
+/// connection is created.
+// Cannot be part of `Connect` because it's an opaque blob and Connect is Clone/PartialEq/Hash.
+pub(crate) type RequestContext = Box<dyn core::any::Any + Send + Sync>;
+
 /// Held within the library connection_container. Used to send the actual connection once
 /// its been created.
 pub(crate) type ConnectionSender = oneshot::Sender<Result<Connection, connection::Error>>;
@@ -92,6 +97,7 @@ impl<T: Into<SocketAddress>> From<T> for Connect {
 pub(crate) struct Request {
     pub connect: Connect,
     pub sender: ConnectionSender,
+    pub context: Option<RequestContext>,
 }
 
 #[must_use = "futures do nothing unless you `.await` or poll them"]
@@ -116,9 +122,18 @@ impl Attempt {
         let request = Request {
             connect,
             sender: response,
+            context: None,
         };
         Self {
             state: AttemptState::Connect(request, opener.clone(), receiver),
+        }
+    }
+
+    pub fn set_application_context(&mut self, application: RequestContext) {
+        if let AttemptState::Connect(req, ..) = &mut self.state {
+            req.context = Some(application);
+        } else {
+            panic!("Cannot set context, not in the right state. Must be called before first poll.");
         }
     }
 

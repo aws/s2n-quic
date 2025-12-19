@@ -1001,6 +1001,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     deduplicate,
                 },
             sender,
+            context: application_context,
         } = request;
 
         let internal_connection_id = self.connection_id_generator.generate_id();
@@ -1155,9 +1156,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
             &remote_address,
             true,
         );
+
         let mut event_context = endpoint_context.event_subscriber.create_connection_context(
             &meta.clone().into_event(),
-            &event::builder::ConnectionInfo {}.into_event(),
+            &event::builder::ConnectionInfo {
+                application: application_context.as_deref(),
+            }
+            .into_event(),
         );
 
         let mut transport_parameters = ClientTransportParameters {

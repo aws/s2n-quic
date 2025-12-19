@@ -171,6 +171,17 @@ impl Client {
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct ConnectionAttempt(connect::Attempt);
 
+impl ConnectionAttempt {
+    /// Configure application context on this connection attempt.
+    ///
+    /// This context is passed to the `Subscriber::create_connection_context` method, allowing the
+    /// application to thread arbitrary connection-specific context into the subscriber
+    /// implementation.
+    pub fn set_application_context(&mut self, application: Box<dyn std::any::Any + Send + Sync>) {
+        self.0.set_application_context(application);
+    }
+}
+
 impl Future for ConnectionAttempt {
     type Output = Result<Connection, connection::Error>;
 
