@@ -271,6 +271,12 @@ jobs:
             exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics
           - rust: stable
             os: ubuntu-latest
+            target: armv5te-unknown-linux-musleabi
+            # s2n-quic-dc and s2n-quic-dc-benches depends on seize which takes dependency on core::sync::atomic::AtomicU64.
+            # That dependency is not supported on armv5te-unknown-linux-musleabi.
+            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches
+          - rust: stable
+            os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             args: --features aws-lc-bindgen
           # test with different platform features
