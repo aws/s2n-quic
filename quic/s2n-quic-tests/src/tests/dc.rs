@@ -328,6 +328,28 @@ fn mtu_probing_complete_frame_exchange_test() -> Result<()> {
         "Server should have completed MTU probing at 1472"
     );
 
+    // Verify that both sides correctly received mtu_probing_complete_support=true from peer
+    // This ensures the transport parameter was correctly encoded and decoded
+    let client_received_peer_support = client_events
+        .peer_mtu_probing_complete_support()
+        .lock()
+        .unwrap()
+        .expect("Client should have received transport parameters");
+    assert!(
+        client_received_peer_support,
+        "Client should receive mtu_probing_complete_support=true from server"
+    );
+
+    let server_received_peer_support = server_events
+        .peer_mtu_probing_complete_support()
+        .lock()
+        .unwrap()
+        .expect("Server should have received transport parameters");
+    assert!(
+        server_received_peer_support,
+        "Server should receive mtu_probing_complete_support=true from client"
+    );
+
     Ok(())
 }
 
@@ -422,6 +444,29 @@ fn mtu_probing_complete_server_only_test() -> Result<()> {
     // Both should complete around the same time.
     // If server were waiting for client's frame, there would be a significant additional delay.
     assert!(time_difference < Duration::from_millis(100));
+
+    // Verify that the transport parameter was correctly encoded and decoded
+    // Server should receive mtu_probing_complete_support=false from client (client has it disabled)
+    let server_received_peer_support = server_events
+        .peer_mtu_probing_complete_support()
+        .lock()
+        .unwrap()
+        .expect("Server should have received transport parameters");
+    assert!(
+        !server_received_peer_support,
+        "Server should receive mtu_probing_complete_support=false from client (client has it disabled)"
+    );
+
+    // Client should receive mtu_probing_complete_support=true from server (server has it enabled)
+    let client_received_peer_support = client_events
+        .peer_mtu_probing_complete_support()
+        .lock()
+        .unwrap()
+        .expect("Client should have received transport parameters");
+    assert!(
+        client_received_peer_support,
+        "Client should receive mtu_probing_complete_support=true from server"
+    );
 
     Ok(())
 }
@@ -715,6 +760,7 @@ struct DcRecorder {
     pub mtu_updated_events: Arc<Mutex<Vec<MtuUpdatedEvent>>>,
     pub mtu_probing_complete_received_events: Arc<Mutex<Vec<MtuProbingCompleteReceivedEvent>>>,
     pub endpoint_datagram_dropped_events: Arc<Mutex<Vec<EndpointDatagramDropped>>>,
+    pub peer_mtu_probing_complete_support: Arc<Mutex<Option<bool>>>,
 }
 impl DcRecorder {
     pub fn new() -> Self {
@@ -729,6 +775,10 @@ impl DcRecorder {
         &self,
     ) -> Arc<Mutex<Vec<MtuProbingCompleteReceivedEvent>>> {
         self.mtu_probing_complete_received_events.clone()
+    }
+
+    pub fn peer_mtu_probing_complete_support(&self) -> Arc<Mutex<Option<bool>>> {
+        self.peer_mtu_probing_complete_support.clone()
     }
 }
 
@@ -801,6 +851,16 @@ impl events::Subscriber for DcRecorder {
             .lock()
             .unwrap()
             .push(event.clone());
+    }
+
+    fn on_transport_parameters_received(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &ConnectionMeta,
+        event: &events::TransportParametersReceived,
+    ) {
+        let mut buffer = context.peer_mtu_probing_complete_support.lock().unwrap();
+        *buffer = Some(event.transport_parameters.mtu_probing_complete_support);
     }
 }
 

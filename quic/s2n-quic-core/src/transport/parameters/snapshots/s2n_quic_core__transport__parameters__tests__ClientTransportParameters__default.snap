@@ -1,5 +1,6 @@
 ---
 source: quic/s2n-quic-core/src/transport/parameters/tests.rs
+assertion_line: 52
 expression: default_value
 ---
 TransportParameters {
@@ -76,5 +77,5 @@ TransportParameters {
             0,
         ],
     },
-    mtu_probing_complete_support: Enabled,
+    mtu_probing_complete_support: Disabled,
 }

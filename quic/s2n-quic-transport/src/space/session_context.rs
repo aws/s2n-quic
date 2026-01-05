@@ -41,7 +41,7 @@ use s2n_quic_core::{
         parameters::{
             ActiveConnectionIdLimit, ClientTransportParameters, DatagramLimits,
             DcSupportedVersions, InitialFlowControlLimits, InitialSourceConnectionId, MaxAckDelay,
-            ServerTransportParameters, TransportParameter as _,
+            MtuProbingCompleteSupport, ServerTransportParameters, TransportParameter as _,
         },
         Error,
     },
@@ -747,6 +747,10 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             if let Some(selected_version) = dc::select_version(client_params.dc_supported_versions)
             {
                 DcSupportedVersions::for_server(selected_version).append_to_buffer(server_params)
+            }
+
+            if self.dc.mtu_probing_complete_support() {
+                MtuProbingCompleteSupport::Enabled.append_to_buffer(server_params);
             }
         }
 
