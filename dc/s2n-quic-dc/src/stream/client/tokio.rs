@@ -530,6 +530,7 @@ where
     let _ = socket.set_nodelay(true);
 
     if linger.is_some() {
+        #[allow(deprecated)]
         let _ = socket.set_linger(linger);
     }
 
