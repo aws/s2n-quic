@@ -34,6 +34,7 @@ impl LazyBoundStream {
 
     pub fn set_linger(&self, linger: Option<Duration>) -> io::Result<()> {
         match self {
+            #[allow(deprecated)]
             LazyBoundStream::Tokio(s) => s.set_linger(linger),
             LazyBoundStream::Std(s) => {
                 // Once it stabilizes we can switch to the std function
