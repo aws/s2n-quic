@@ -1219,7 +1219,7 @@ pub enum MtuProbingCompleteSupport {
 impl TransportParameter for MtuProbingCompleteSupport {
     type CodecValue = ();
 
-    const ID: TransportParameterId = TransportParameterId::from_u32(0xdc0001);
+    const ID: TransportParameterId = TransportParameterId::from_u32(0xdc0002);
 
     fn from_codec_value(_value: ()) -> Self {
         MtuProbingCompleteSupport::Enabled
