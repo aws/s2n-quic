@@ -446,16 +446,12 @@ fn mtu_probing_complete_server_only_test() -> Result<()> {
     assert!(time_difference < Duration::from_millis(100));
 
     // Verify that the transport parameter was correctly encoded and decoded
-    // Server should receive mtu_probing_complete_support=false from client (client has it disabled)
     let server_received_peer_support = server_events
         .peer_mtu_probing_complete_support()
         .lock()
         .unwrap()
-        .expect("Server should have received transport parameters");
-    assert!(
-        !server_received_peer_support,
-        "Server should receive mtu_probing_complete_support=false from client (client has it disabled)"
-    );
+        .unwrap();
+    assert!(!server_received_peer_support);
 
     // Client should receive mtu_probing_complete_support=true from server (server has it enabled)
     let client_received_peer_support = client_events
