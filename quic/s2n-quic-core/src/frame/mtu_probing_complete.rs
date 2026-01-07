@@ -4,16 +4,16 @@
 use crate::{event, frame::ExtensionTag, varint::VarInt};
 use s2n_codec::{Encoder, EncoderValue};
 
-const TAG: VarInt = VarInt::from_u32(0xdc0001);
+const TAG: VarInt = VarInt::from_u32(0xdc0002);
 
 macro_rules! mtu_probing_complete_tag {
     () => {
-        0xdc0001u64
+        0xdc0002u64
     };
 }
 
 //# MTU_PROBING_COMPLETE Frame {
-//#   Type (i) = 0xdc0001,
+//#   Type (i) = 0xdc0002,
 //#   Mtu [16],
 //# }
 
@@ -76,9 +76,7 @@ impl EncoderValue for MtuProbingComplete {
 impl event::IntoEvent<event::builder::Frame> for &MtuProbingComplete {
     #[inline]
     fn into_event(self) -> event::builder::Frame {
-        event::builder::Frame::MtuProbingComplete {
-            mtu: self.mtu,
-        }
+        event::builder::Frame::MtuProbingComplete { mtu: self.mtu }
     }
 }
 

@@ -336,3 +336,35 @@ fn dc_selected_version() {
         .selected_version()
         .is_err());
 }
+
+#[test]
+fn mtu_probing_complete_support_encoding() {
+    let id_bytes = MtuProbingCompleteSupport::ID.encode_to_vec();
+    let mut params = ClientTransportParameters::default();
+
+    // When Enabled, the parameter SHOULD be encoded
+    {
+        params.mtu_probing_complete_support = MtuProbingCompleteSupport::Enabled;
+        let encoded = params.encode_to_vec();
+
+        assert!(
+            encoded
+                .windows(id_bytes.len())
+                .any(|window| window == id_bytes.as_slice()),
+            "MtuProbingCompleteSupport parameter should be encoded when Enabled"
+        );
+    }
+
+    // When Disabled, the parameter should NOT be encoded
+    {
+        params.mtu_probing_complete_support = MtuProbingCompleteSupport::Disabled;
+        let encoded = params.encode_to_vec();
+
+        assert!(
+            !encoded
+                .windows(id_bytes.len())
+                .any(|window| window == id_bytes.as_slice()),
+            "MtuProbingCompleteSupport parameter should NOT be encoded when Disabled"
+        );
+    }
+}

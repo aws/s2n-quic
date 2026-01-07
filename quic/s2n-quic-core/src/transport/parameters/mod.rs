@@ -1211,26 +1211,22 @@ impl<'a> IntoEvent<&'a [u32]> for &'a DcSupportedVersions {
 /// This is a DC-specific transport parameter
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum MtuProbingCompleteSupport {
-    #[default]
     Enabled,
+    #[default]
     Disabled,
-}
-
-impl MtuProbingCompleteSupport {
-    pub const RECOMMENDED: Self = Self::Enabled;
 }
 
 impl TransportParameter for MtuProbingCompleteSupport {
     type CodecValue = ();
 
-    const ID: TransportParameterId = TransportParameterId::from_u32(0xdc0001);
+    const ID: TransportParameterId = TransportParameterId::from_u32(0xdc0002);
 
     fn from_codec_value(_value: ()) -> Self {
-        MtuProbingCompleteSupport::Disabled
+        MtuProbingCompleteSupport::Enabled
     }
 
     fn try_into_codec_value(&self) -> Option<&()> {
-        if let MtuProbingCompleteSupport::Disabled = self {
+        if let MtuProbingCompleteSupport::Enabled = self {
             Some(&())
         } else {
             None

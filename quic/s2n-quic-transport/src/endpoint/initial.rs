@@ -17,12 +17,16 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
     datagram::{Endpoint, PreConnectionInfo},
+    dc::Endpoint as _,
     event::{self, supervisor, ConnectionPublisher, EndpointPublisher, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     packet::initial::ProtectedInitial,
     path::Handle as _,
     stateless_reset::token::Generator as _,
-    transport::{self, parameters::ServerTransportParameters},
+    transport::{
+        self,
+        parameters::{MtuProbingCompleteSupport, ServerTransportParameters},
+    },
 };
 
 impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
@@ -225,6 +229,10 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .max_datagram_frame_size(&PreConnectionInfo::new())
             .try_into()
             .expect("Failed to convert max_datagram_frame_size");
+
+        if endpoint_context.dc.mtu_probing_complete_support() {
+            transport_parameters.mtu_probing_complete_support = MtuProbingCompleteSupport::Enabled;
+        }
 
         let local_address = header.path.local_address();
         let connection_info = tls::ConnectionInfo::new(local_address, remote_address);
