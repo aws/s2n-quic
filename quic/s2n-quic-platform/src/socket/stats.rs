@@ -1,11 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::{
-    fmt,
-    sync::atomic::{AtomicU64, Ordering},
-    task::Poll,
-};
+use core::{fmt, task::Poll};
+use portable_atomic::{AtomicU64, Ordering};
 use s2n_quic_core::{
     event::{self, EndpointPublisher},
     io::event_loop,
