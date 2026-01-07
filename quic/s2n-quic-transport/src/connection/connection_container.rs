@@ -45,30 +45,30 @@ use smallvec::SmallVec;
 
 // Intrusive list adapter for managing the list of `done` connections
 intrusive_adapter!(DoneConnectionsAdapter<C, L> = Arc<ConnectionNode<C, L>>: ConnectionNode<C, L> {
-    done_connections_link: LinkedListLink
+    done_connections_link => LinkedListLink
 } where C: connection::Trait, L: connection::Lock<C>);
 
 // Intrusive list adapter for managing the list of
 // `waiting_for_transmission` connections
 intrusive_adapter!(WaitingForTransmissionAdapter<C, L> = Arc<ConnectionNode<C, L>>: ConnectionNode<C, L> {
-    waiting_for_transmission_link: LinkedListLink
+    waiting_for_transmission_link => LinkedListLink
 } where C: connection::Trait, L: connection::Lock<C>);
 
 // Intrusive list adapter for managing the list of
 // `waiting_for_connection_id` connections
 intrusive_adapter!(WaitingForConnectionIdAdapter<C, L> = Arc<ConnectionNode<C, L>>: ConnectionNode<C, L> {
-    waiting_for_connection_id_link: LinkedListLink
+    waiting_for_connection_id_link => LinkedListLink
 } where C: connection::Trait, L: connection::Lock<C>);
 
 // Intrusive red black tree adapter for managing a list of `waiting_for_timeout` connections
 intrusive_adapter!(WaitingForTimeoutAdapter<C, L> = Arc<ConnectionNode<C, L>>: ConnectionNode<C, L> {
-    waiting_for_timeout_link: RBTreeLink
+    waiting_for_timeout_link => RBTreeLink
 } where C: connection::Trait, L: connection::Lock<C>);
 
 // Intrusive red black tree adapter for managing all connections in a tree for
 // lookup by Connection ID
 intrusive_adapter!(ConnectionTreeAdapter<C, L> = Arc<ConnectionNode<C, L>>: ConnectionNode<C, L> {
-    tree_link: RBTreeLink
+    tree_link => RBTreeLink
 } where C: connection::Trait, L: connection::Lock<C>);
 
 /// A wrapper around a `Connection` implementation which allows to insert the
