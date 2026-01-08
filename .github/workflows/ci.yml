@@ -329,6 +329,8 @@ jobs:
       - name: Run cargo/cross test
         run: |
           ${{ matrix.target != 'native' && 'cross' || 'cargo' }} test --workspace ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
+        env:
+          BOLERO_RANDOM_SEED: "295353984720809612519119726345414715368"
 
   asan:
     runs-on: ubuntu-latest
