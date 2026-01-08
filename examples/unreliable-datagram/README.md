@@ -4,7 +4,7 @@ This folder contains an example of sending and receiving an 'unreliable datagram
 
 # Default Datagram Implementation
 
-`s2n-quic` contains a default implementation of the unreliable datagram sender and receiver. This implementation is minimal, given the many different ways that unreliable datagrams could be used. Users should look out for the fact that datagrams that are too large to be sent will be automatically dropped, and old datagrams will be dropped in favor of new datagrams from the peer if there is no more space on the receiving queue.
+`s2n-quic` contains a default implementation of the unreliable datagram sender and receiver. This implementation is a proof-of-concept implementation and we do not consider it production ready nor particularly performant. Any default implementation we provide would likely not work for any production use-case given the many different ways that this feature could be used. With the default implementation users should look out for the fact that datagrams that are too large to be sent will be automatically dropped, and old datagrams will be dropped in favor of new datagrams from the peer if there is no more space on the receiving queue.
 
 # Set-up
 
