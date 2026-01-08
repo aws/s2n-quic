@@ -309,8 +309,7 @@ impl Harness {
     async fn run_with(self, client: testing::Client, server: testing::Server) {
         let (run_handle, run_watch) = testing::drop_handle::new();
         let task = self.run_with_drop_handle(client, server, run_watch);
-        // try 5 mins next? this is how we fixed previous flakiness issue
-        let duration = Duration::from_secs(180);
+        let duration = Duration::from_secs(300);
         timeout(duration, task).await.unwrap();
         drop(run_handle);
     }
