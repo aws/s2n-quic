@@ -738,7 +738,70 @@ mod udp {
     }
 
     tests!(tokio_test);
-    tokio_fuzz_test!();
+    #[test]
+    fn fuzz_test() {
+        without_tracing(|| {
+            use std::sync::OnceLock;
+
+            let client_delays = Delays {
+                read: Duration::from_nanos(1_850_154),          // 1.850154ms
+                write: Duration::from_nanos(168_887),           // 168.887µs
+                shutdown_write: Duration::from_nanos(171_977),  // 171.977µs
+                shutdown_read: Duration::from_nanos(1_665_386), // 1.665386ms
+                drop: Duration::from_nanos(994_129),            // 994.129µs
+            };
+            let client = Client {
+                delays: client_delays,
+                count: 4,
+                concurrency: 3,
+                max_read_len: 14,
+                max_mtu: Some(3004),
+            };
+
+            let server_delays = Delays {
+                read: Duration::from_nanos(803_769),             // 803.769µs
+                write: Duration::from_nanos(411_939),            // 411.939µs
+                shutdown_write: Duration::from_nanos(1_621_583), // 1.621583ms
+                shutdown_read: Duration::from_nanos(510_440),    // 510.44µs
+                drop: Duration::from_nanos(951_090),             // 951.09µs
+            };
+            let server = Server {
+                delays: server_delays,
+                count: 1,
+                max_read_len: 7180,
+                max_mtu: Some(5121),
+            };
+
+            let requests = vec![
+                Request {
+                    count: 5,
+                    request_size: 91960,
+                    response_size: 43021,
+                },
+                Request {
+                    count: 3,
+                    request_size: 45697,
+                    response_size: 62848,
+                },
+                Request {
+                    count: 8,
+                    request_size: 1663,
+                    response_size: 57203,
+                },
+                Request {
+                    count: 9,
+                    request_size: 61251,
+                    response_size: 90583,
+                },
+            ];
+
+            static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+            RUNTIME
+                .get_or_init(|| Runtime::new(&harness()))
+                .run_with(client, server, requests);
+        });
+    }
+    // tokio_fuzz_test!();
 }
 
 mod udp_sim {
