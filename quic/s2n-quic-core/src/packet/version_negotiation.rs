@@ -92,7 +92,7 @@ impl<'a> ProtectedVersionNegotiation<'a> {
 
         // ensure payload length can successfully decode a list of u32s
         decoder_invariant!(
-            supported_versions.len() % size_of::<u32>() == 0,
+            supported_versions.len().is_multiple_of(size_of::<u32>()),
             "invalid payload length"
         );
 

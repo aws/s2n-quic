@@ -1,6 +1,6 @@
 [toolchain]
 # pin the version to prevent random breakage
-channel = "nightly-2024-10-31"
+channel = "nightly-2025-03-31"
 # The source code of rustc, provided by the rust-src component, is needed for
 # building eBPF programs.
 components = [ "rustc", "cargo", "rust-src" ]
