@@ -56,8 +56,7 @@ impl Descriptor {
 
     #[cfg(debug_assertions)]
     pub(super) fn as_usize(&self) -> usize {
-        // TODO use `.addr()` once MSRV is 1.84
-        self.ptr.as_ptr() as usize
+        self.ptr.as_ptr().addr()
     }
 
     #[inline]
