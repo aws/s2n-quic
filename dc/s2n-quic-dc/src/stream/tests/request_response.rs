@@ -446,7 +446,7 @@ fn cap_large_requests(
             request.request_size = max_size;
         }
         if request.response_size > max_size {
-             request.response_size = max_size;
+            request.response_size = max_size;
         }
     }
 
