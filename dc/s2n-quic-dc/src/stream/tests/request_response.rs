@@ -309,7 +309,7 @@ impl Harness {
     async fn run_with(self, client: testing::Client, server: testing::Server) {
         let (run_handle, run_watch) = testing::drop_handle::new();
         let task = self.run_with_drop_handle(client, server, run_watch);
-        let duration = Duration::from_secs(300);
+        let duration = Duration::from_secs(180);
         timeout(duration, task).await.unwrap();
         drop(run_handle);
     }
@@ -446,7 +446,7 @@ fn cap_large_requests(
             request.request_size = max_size;
         }
         if request.response_size > max_size {
-            request.response_size = max_size;
+             request.response_size = max_size;
         }
     }
 
