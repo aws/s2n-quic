@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Integration tests for s2n-quic"
 authors = ["AWS s2n"]
 edition = "2021"
-rust-version = "1.84"
+rust-version = "1.88"
 license = "Apache-2.0"
 # this only contains internal tests and should not be published
 publish = false
