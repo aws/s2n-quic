@@ -25,6 +25,6 @@ s2n-quic-core = { version = "=0.72.0", path = "../s2n-quic-core", default-featur
 zeroize = { version = "1", default-features = false, features = ["derive"] }
 
 [dev-dependencies]
-hex-literal = "0.4"
+hex-literal = "1.1"
 insta = { version = "1", features = ["json"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
