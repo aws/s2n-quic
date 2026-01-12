@@ -1,0 +1,71 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-4.5"
+
+# Stream Final Size
+#
+#    The final size is the amount of flow control credit that is consumed
+#    by a stream.  Assuming that every contiguous byte on the stream was
+#    sent once, the final size is the number of bytes sent.  More
+#    generally, this is one higher than the offset of the byte with the
+#    largest offset sent on the stream, or zero if no bytes were sent.
+# 
+#    A sender always communicates the final size of a stream to the
+#    receiver reliably, no matter how the stream is terminated.  The final
+#    size is the sum of the Offset and Length fields of a STREAM frame
+#    with a FIN flag, noting that these fields might be implicit.
+#    Alternatively, the Final Size field of a RESET_STREAM frame carries
+#    this value.  This guarantees that both endpoints agree on how much
+#    flow control credit was consumed by the sender on that stream.
+# 
+#    An endpoint will know the final size for a stream when the receiving
+#    part of the stream enters the "Size Known" or "Reset Recvd" state
+#    (Section 3).  The receiver MUST use the final size of the stream to
+#    account for all bytes sent on the stream in its connection-level flow
+#    controller.
+# 
+#    An endpoint MUST NOT send data on a stream at or beyond the final
+#    size.
+# 
+#    Once a final size for a stream is known, it cannot change.  If a
+#    RESET_STREAM or STREAM frame is received indicating a change in the
+#    final size for the stream, an endpoint SHOULD respond with an error
+#    of type FINAL_SIZE_ERROR; see Section 11 for details on error
+#    handling.  A receiver SHOULD treat receipt of data at or beyond the
+#    final size as an error of type FINAL_SIZE_ERROR, even after a stream
+#    is closed.  Generating these errors is not mandatory, because
+#    requiring that an endpoint generate these errors also means that the
+#    endpoint needs to maintain the final size state for closed streams,
+#    which could mean a significant state commitment.
+
+[[spec]]
+level = "MUST"
+quote = '''
+The receiver MUST use the final size of the stream to
+account for all bytes sent on the stream in its connection-level flow
+controller.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST NOT send data on a stream at or beyond the final
+size.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If a
+RESET_STREAM or STREAM frame is received indicating a change in the
+final size for the stream, an endpoint SHOULD respond with an error
+of type FINAL_SIZE_ERROR; see Section 11 for details on error
+handling.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A receiver SHOULD treat receipt of data at or beyond the
+final size as an error of type FINAL_SIZE_ERROR, even after a stream
+is closed.
+'''
+

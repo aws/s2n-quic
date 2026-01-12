@@ -1,0 +1,49 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-19.14"
+
+# STREAMS_BLOCKED Frames
+#
+#    A sender SHOULD send a STREAMS_BLOCKED frame (type=0x16 or 0x17) when
+#    it wishes to open a stream but is unable to do so due to the maximum
+#    stream limit set by its peer; see Section 19.11.  A STREAMS_BLOCKED
+#    frame of type 0x16 is used to indicate reaching the bidirectional
+#    stream limit, and a STREAMS_BLOCKED frame of type 0x17 is used to
+#    indicate reaching the unidirectional stream limit.
+# 
+#    A STREAMS_BLOCKED frame does not open the stream, but informs the
+#    peer that a new stream was needed and the stream limit prevented the
+#    creation of the stream.
+# 
+#    STREAMS_BLOCKED frames are formatted as shown in Figure 38.
+# 
+#    STREAMS_BLOCKED Frame {
+#      Type (i) = 0x16..0x17,
+#      Maximum Streams (i),
+#    }
+# 
+#                   Figure 38: STREAMS_BLOCKED Frame Format
+# 
+#    STREAMS_BLOCKED frames contain the following field:
+# 
+#    Maximum Streams:  A variable-length integer indicating the maximum
+#       number of streams allowed at the time the frame was sent.  This
+#       value cannot exceed 2^60, as it is not possible to encode stream
+#       IDs larger than 2^62-1.  Receipt of a frame that encodes a larger
+#       stream ID MUST be treated as a connection error of type
+#       STREAM_LIMIT_ERROR or FRAME_ENCODING_ERROR.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A sender SHOULD send a STREAMS_BLOCKED frame (type=0x16 or 0x17) when
+it wishes to open a stream but is unable to do so due to the maximum
+stream limit set by its peer; see Section 19.11.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Receipt of a frame that encodes a larger
+stream ID MUST be treated as a connection error of type
+STREAM_LIMIT_ERROR or FRAME_ENCODING_ERROR.
+'''
+
