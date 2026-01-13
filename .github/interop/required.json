@@ -398,7 +398,7 @@
     "msquic": [],
     "mvfst": [],
     "neqo": [
-      "client"
+      "server"
     ],
     "ngtcp2": [
       "client",
