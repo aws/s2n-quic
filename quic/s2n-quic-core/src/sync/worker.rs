@@ -59,12 +59,14 @@ impl Receiver {
         // if we didn't get any credits then register the waker
         state.receiver.register(cx.waker());
 
-        // make one last effort to acquire credits in case a sender submitted some while we were
+        // make one more effort to acquire credits in case a sender submitted some while we were
         // registering the waker
         acquire!();
 
         // If we're the only ones with a handle to the state then we're done
         if state.senders.load(Ordering::Acquire) == 0 {
+            // One last check in case the sender submitted work before dropping
+            acquire!();
             return Poll::Ready(None);
         }
 
