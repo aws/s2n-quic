@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use s2n_quic_core::crypto::tls::ConnectionInfo;
+use s2n_quic::provider::tls::ConnectionInfo;
 use s2n_tls::{
     callbacks::{ClientHelloCallback, ConnectionFuture},
     error::Error as S2nError,
