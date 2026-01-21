@@ -589,6 +589,11 @@ impl Controller {
     #[inline]
     pub fn enable_mtu_probing_complete_support(&mut self) {
         self.mtu_probing_complete_support = true;
+        // If search is already complete when DC support is enabled,
+        // we need to send the completion frame
+        if self.state.is_search_complete() {
+            self.needs_to_send_completion = true;
+        }
     }
 
     /// Enable path MTU probing
