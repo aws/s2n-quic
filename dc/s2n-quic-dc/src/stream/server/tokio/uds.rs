@@ -92,7 +92,7 @@ where
             Err(err) => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    format!("Failed to peek initial packet, err: {:?}", err),
+                    format!("Failed to peek initial packet, err: {err:?}"),
                 ));
             }
         };
@@ -116,7 +116,7 @@ where
             decoded_packet.export_secret().try_into().map_err(|e| {
                 std::io::Error::new(
                     ErrorKind::InvalidInput,
-                    format!("Error parsing export secret {:?}", e),
+                    format!("Error parsing export secret {e:?}"),
                 )
             })?;
 
@@ -202,7 +202,7 @@ where
             }
             Err(e) => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Failed to decode unix packet: {:?}", e),
+                format!("Failed to decode unix packet: {e:?}"),
             )),
         }
     }

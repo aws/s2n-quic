@@ -661,7 +661,7 @@ impl SocketBehavior {
                     source: event::builder::AcceptorTcpIoErrorSource::Remote,
                     error: io::Error::new(
                         io::ErrorKind::InvalidData,
-                        format!("Failed to decode stream packet: {:?}", error),
+                        format!("Failed to decode stream packet: {error:?}"),
                     ),
                 })?;
         let packet::Packet::Stream(stream_packet) = packet else {
@@ -688,7 +688,7 @@ impl SocketBehavior {
                 source: event::builder::AcceptorTcpIoErrorSource::Remote,
                 error: io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!("Failed to decrypt stream packet: {:?}", error),
+                    format!("Failed to decrypt stream packet: {error:?}"),
                 ),
             })?;
         Ok(())

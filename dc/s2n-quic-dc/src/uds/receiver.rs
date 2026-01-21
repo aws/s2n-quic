@@ -145,7 +145,7 @@ mod tests {
                 assert_eq!(read_buffer, test_data);
             }
             Err(e) => {
-                panic!("Error: {}", e);
+                panic!("Error: {e}");
             }
         }
 
