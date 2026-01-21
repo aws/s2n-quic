@@ -59,6 +59,7 @@ where
         let map = Map::new(
             stateless_reset::Signer::random(),
             1,
+            false,
             time::NoopClock,
             sub.clone(),
         );

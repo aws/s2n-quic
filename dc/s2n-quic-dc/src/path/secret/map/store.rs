@@ -20,6 +20,8 @@ pub trait Store: 'static + Send + Sync {
 
     fn secrets_capacity(&self) -> usize;
 
+    fn ups_eviction_policy(&self) -> bool;
+
     fn drop_state(&self);
 
     fn on_new_path_secrets(&self, entry: Arc<Entry>);

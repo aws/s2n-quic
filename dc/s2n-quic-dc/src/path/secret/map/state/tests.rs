@@ -20,7 +20,7 @@ fn fake_entry(port: u16) -> Arc<Entry> {
 #[test]
 fn cleans_after_delay() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = State::new(signer, 50, Clock, tracing::Subscriber::default());
+    let map = State::new(signer, 50, false, Clock, tracing::Subscriber::default());
 
     // Stop background processing. We expect to manually invoke clean, and a background worker
     // might interfere with our state.
@@ -51,6 +51,7 @@ fn thread_shutdown() {
     let map = State::new(
         signer,
         10,
+        false,
         Clock,
         (
             tracing::Subscriber::default(),
@@ -177,11 +178,13 @@ impl Model {
                         id,
                         &stateless_reset,
                     );
+
+                if state.ups_eviction_policy() {
+                    assert!(self.invariants.insert(Invariant::IdRemoved(id)), "{id:?}");
+                }
+
                 state
                     .handle_unknown_path_secret_packet(&packet, &"127.0.0.1:1234".parse().unwrap());
-
-                // ReceiveUnknown does not cause any action with respect to our invariants, no
-                // updates required.
             }
         }
     }
@@ -220,7 +223,7 @@ impl Model {
     }
 }
 
-fn has_duplicate_pids(ops: &[Operation]) -> bool {
+fn has_duplicate_pids(ops: &[Operation], evict_on_ups: bool) -> bool {
     let mut ids = HashSet::new();
     for op in ops.iter() {
         match op {
@@ -233,8 +236,12 @@ fn has_duplicate_pids(ops: &[Operation]) -> bool {
                 }
             }
             Operation::AdvanceTime => {}
-            Operation::ReceiveUnknown { path_secret_id: _ } => {
-                // no-op, we're fine receiving unknown pids.
+            Operation::ReceiveUnknown { path_secret_id } => {
+                if evict_on_ups {
+                    if !ids.insert(path_secret_id) {
+                        return true;
+                    }
+                }
             }
         }
     }
@@ -242,20 +249,25 @@ fn has_duplicate_pids(ops: &[Operation]) -> bool {
     false
 }
 
-#[test]
-fn check_invariants() {
+fn check_invariants_inner(ups_eviction_policy: bool) {
     bolero::check!()
         .with_type::<Vec<Operation>>()
         .with_iterations(10_000)
         .for_each(|input: &Vec<Operation>| {
-            if has_duplicate_pids(input) {
+            if has_duplicate_pids(input, ups_eviction_policy) {
                 // Ignore this attempt.
                 return;
             }
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let mut map = State::new(signer, 10_000, Clock, tracing::Subscriber::default());
+            let mut map = State::new(
+                signer,
+                10_000,
+                ups_eviction_policy,
+                Clock,
+                tracing::Subscriber::default(),
+            );
 
             // Avoid background work interfering with testing.
             map.cleaner.stop();
@@ -272,20 +284,30 @@ fn check_invariants() {
 }
 
 #[test]
+fn check_invariants() {
+    check_invariants_inner(false);
+}
+
+#[test]
+fn check_invariants_evict_unknown_pid() {
+    check_invariants_inner(true);
+}
+
+#[test]
 #[ignore = "fixed size maps currently break overflow assumptions, too small bucket size"]
 fn check_invariants_no_overflow() {
     bolero::check!()
         .with_type::<Vec<Operation>>()
         .with_iterations(10_000)
         .for_each(|input: &Vec<Operation>| {
-            if has_duplicate_pids(input) {
+            if has_duplicate_pids(input, false) {
                 // Ignore this attempt.
                 return;
             }
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let map = State::new(signer, 10_000, Clock, tracing::Subscriber::default());
+            let map = State::new(signer, 10_000, false, Clock, tracing::Subscriber::default());
 
             // Avoid background work interfering with testing.
             map.cleaner.stop();
@@ -308,7 +330,13 @@ fn check_invariants_no_overflow() {
 #[ignore = "memory growth takes a long time to run"]
 fn no_memory_growth() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = State::new(signer, 100_000, Clock, tracing::Subscriber::default());
+    let map = State::new(
+        signer,
+        100_000,
+        false,
+        Clock,
+        tracing::Subscriber::default(),
+    );
     map.cleaner.stop();
 
     for idx in 0..500_000 {

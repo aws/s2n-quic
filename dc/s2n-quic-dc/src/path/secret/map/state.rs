@@ -273,6 +273,9 @@ where
     // This is in number of entries.
     max_capacity: usize,
 
+    // Determines if path secret is evicted upon receiving an UnknownPathSecret packet.
+    ups_eviction_policy: bool,
+
     rehandshake_period: Duration,
 
     // peers is the most recent entry originating from a locally *or* remote initiated handshake.
@@ -384,6 +387,7 @@ where
     pub fn new(
         signer: stateless_reset::Signer,
         capacity: usize,
+        ups_eviction_policy: bool,
         clock: C,
         subscriber: S,
     ) -> Arc<Self> {
@@ -397,6 +401,7 @@ where
         let mut state = Self {
             // This is around 500MB with current entry size.
             max_capacity: capacity,
+            ups_eviction_policy,
             rehandshake_period,
             peers: Default::default(),
             ids: Default::default(),
@@ -571,6 +576,10 @@ where
 
     fn secrets_capacity(&self) -> usize {
         self.max_capacity
+    }
+
+    fn ups_eviction_policy(&self) -> bool {
+        self.ups_eviction_policy
     }
 
     fn drop_state(&self) {
@@ -814,6 +823,10 @@ where
         // FIXME: More actively schedule a new handshake.
         // See comment on requested_handshakes for details.
         self.request_handshake(*entry.peer(), HandshakeReason::Remote);
+
+        if self.ups_eviction_policy() {
+            self.evict(&entry);
+        }
 
         Some(packet)
     }
