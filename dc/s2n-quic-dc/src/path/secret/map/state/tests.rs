@@ -179,12 +179,24 @@ impl Model {
                         &stateless_reset,
                     );
 
-                if state.ups_eviction_policy() {
-                    assert!(self.invariants.insert(Invariant::IdRemoved(id)), "{id:?}");
-                }
-
                 state
                     .handle_unknown_path_secret_packet(&packet, &"127.0.0.1:1234".parse().unwrap());
+
+                if state.ups_eviction_policy()
+                    && self.invariants.contains(&Invariant::ContainsId(id))
+                {
+                    self.invariants.retain(|invariant| {
+                        if let Invariant::ContainsId(prev_id) = invariant {
+                            if prev_id == &id {
+                                return false;
+                            }
+                        }
+
+                        true
+                    });
+
+                    self.invariants.insert(Invariant::IdRemoved(id));
+                }
             }
         }
     }
@@ -223,7 +235,7 @@ impl Model {
     }
 }
 
-fn has_duplicate_pids(ops: &[Operation], evict_on_ups: bool) -> bool {
+fn has_duplicate_pids(ops: &[Operation]) -> bool {
     let mut ids = HashSet::new();
     for op in ops.iter() {
         match op {
@@ -236,10 +248,8 @@ fn has_duplicate_pids(ops: &[Operation], evict_on_ups: bool) -> bool {
                 }
             }
             Operation::AdvanceTime => {}
-            Operation::ReceiveUnknown { path_secret_id } => {
-                if evict_on_ups && !ids.insert(path_secret_id) {
-                    return true;
-                }
+            Operation::ReceiveUnknown { path_secret_id: _ } => {
+                // no-op, we're fine receiving unknown pids.
             }
         }
     }
@@ -252,7 +262,7 @@ fn check_invariants_inner(ups_eviction_policy: bool) {
         .with_type::<Vec<Operation>>()
         .with_iterations(10_000)
         .for_each(|input: &Vec<Operation>| {
-            if has_duplicate_pids(input, ups_eviction_policy) {
+            if has_duplicate_pids(input) {
                 // Ignore this attempt.
                 return;
             }
@@ -298,7 +308,7 @@ fn check_invariants_no_overflow() {
         .with_type::<Vec<Operation>>()
         .with_iterations(10_000)
         .for_each(|input: &Vec<Operation>| {
-            if has_duplicate_pids(input, false) {
+            if has_duplicate_pids(input) {
                 // Ignore this attempt.
                 return;
             }
