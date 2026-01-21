@@ -342,3 +342,23 @@ fn no_memory_growth() {
         map.test_insert(fake_entry(idx as u16));
     }
 }
+
+#[test]
+fn unknown_path_secret_evicts() {
+    let signer = stateless_reset::Signer::new(b"secret");
+    let map = State::new(signer, 5, true, Clock, tracing::Subscriber::default());
+
+    let entry = fake_entry(0);
+    map.test_insert(entry.clone());
+
+    let packet = crate::packet::secret_control::unknown_path_secret::Packet::new_for_test(
+        *entry.clone().id(),
+        &entry.sender().stateless_reset,
+    );
+
+    assert!(map.ids.contains_key(entry.id()), "{:?}", map.ids);
+
+    map.handle_unknown_path_secret_packet(&packet, &"127.0.0.1:1234".parse().unwrap());
+
+    assert!(!map.ids.contains_key(entry.id()), "{:?}", map.ids);
+}

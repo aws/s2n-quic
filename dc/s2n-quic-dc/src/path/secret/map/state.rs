@@ -36,7 +36,7 @@ pub(crate) struct PeerMap(
     std::collections::hash_map::RandomState,
 );
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 #[repr(align(128))]
 pub(crate) struct IdMap(parking_lot::RwLock<hashbrown::HashTable<Arc<Entry>>>);
 
