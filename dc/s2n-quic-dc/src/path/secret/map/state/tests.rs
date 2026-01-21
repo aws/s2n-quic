@@ -237,10 +237,9 @@ fn has_duplicate_pids(ops: &[Operation], evict_on_ups: bool) -> bool {
             }
             Operation::AdvanceTime => {}
             Operation::ReceiveUnknown { path_secret_id } => {
-                if evict_on_ups
-                    && !ids.insert(path_secret_id) {
-                        return true;
-                    }
+                if evict_on_ups && !ids.insert(path_secret_id) {
+                    return true;
+                }
             }
         }
     }
