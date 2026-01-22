@@ -83,7 +83,13 @@ impl Map {
         C: 'static + time::Clock + Send + Sync,
         S: event::Subscriber,
     {
-        let store = state::State::new(signer, capacity, should_evict_on_unknown_path_secret, clock, subscriber);
+        let store = state::State::new(
+            signer,
+            capacity,
+            should_evict_on_unknown_path_secret,
+            clock,
+            subscriber,
+        );
         Self { store }
     }
 
