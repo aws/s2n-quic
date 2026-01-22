@@ -20,7 +20,7 @@ pub trait Store: 'static + Send + Sync {
 
     fn secrets_capacity(&self) -> usize;
 
-    fn ups_eviction_policy(&self) -> bool;
+    fn should_evict_on_unknown_path_secret(&self) -> bool;
 
     fn drop_state(&self);
 

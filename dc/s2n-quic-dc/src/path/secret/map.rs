@@ -75,7 +75,7 @@ impl Map {
     pub fn new<C, S>(
         signer: stateless_reset::Signer,
         capacity: usize,
-        ups_eviction_policy: bool,
+        should_evict_on_unknown_path_secret: bool,
         clock: C,
         subscriber: S,
     ) -> Self
@@ -83,7 +83,7 @@ impl Map {
         C: 'static + time::Clock + Send + Sync,
         S: event::Subscriber,
     {
-        let store = state::State::new(signer, capacity, ups_eviction_policy, clock, subscriber);
+        let store = state::State::new(signer, capacity, should_evict_on_unknown_path_secret, clock, subscriber);
         Self { store }
     }
 

@@ -182,7 +182,7 @@ impl Model {
                 state
                     .handle_unknown_path_secret_packet(&packet, &"127.0.0.1:1234".parse().unwrap());
 
-                if state.ups_eviction_policy()
+                if state.should_evict_on_unknown_path_secret()
                     && self.invariants.contains(&Invariant::ContainsId(id))
                 {
                     self.invariants.retain(|invariant| {
@@ -257,7 +257,7 @@ fn has_duplicate_pids(ops: &[Operation]) -> bool {
     false
 }
 
-fn check_invariants_inner(ups_eviction_policy: bool) {
+fn check_invariants_inner(should_evict_on_unknown_path_secret: bool) {
     bolero::check!()
         .with_type::<Vec<Operation>>()
         .with_iterations(10_000)
@@ -272,7 +272,7 @@ fn check_invariants_inner(ups_eviction_policy: bool) {
             let mut map = State::new(
                 signer,
                 10_000,
-                ups_eviction_policy,
+                should_evict_on_unknown_path_secret,
                 Clock,
                 tracing::Subscriber::default(),
             );
@@ -367,8 +367,10 @@ fn unknown_path_secret_evicts() {
     );
 
     assert!(map.ids.contains_key(entry.id()), "{:?}", map.ids);
+    assert!(map.peers.contains_key(entry.peer()), "{:?}", map.peers);
 
     map.handle_unknown_path_secret_packet(&packet, &"127.0.0.1:1234".parse().unwrap());
 
     assert!(!map.ids.contains_key(entry.id()), "{:?}", map.ids);
+    assert!(!map.peers.contains_key(entry.peer()), "{:?}", map.peers);
 }

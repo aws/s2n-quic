@@ -29,7 +29,7 @@ use std::{
 #[cfg(test)]
 mod tests;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 #[repr(align(128))]
 pub(crate) struct PeerMap(
     parking_lot::RwLock<hashbrown::HashTable<Arc<Entry>>>,
@@ -274,7 +274,7 @@ where
     max_capacity: usize,
 
     // Determines if path secret is evicted upon receiving an UnknownPathSecret packet.
-    ups_eviction_policy: bool,
+    should_evict_on_unknown_path_secret: bool,
 
     rehandshake_period: Duration,
 
@@ -387,7 +387,7 @@ where
     pub fn new(
         signer: stateless_reset::Signer,
         capacity: usize,
-        ups_eviction_policy: bool,
+        should_evict_on_unknown_path_secret: bool,
         clock: C,
         subscriber: S,
     ) -> Arc<Self> {
@@ -401,7 +401,7 @@ where
         let mut state = Self {
             // This is around 500MB with current entry size.
             max_capacity: capacity,
-            ups_eviction_policy,
+            should_evict_on_unknown_path_secret,
             rehandshake_period,
             peers: Default::default(),
             ids: Default::default(),
@@ -578,8 +578,8 @@ where
         self.max_capacity
     }
 
-    fn ups_eviction_policy(&self) -> bool {
-        self.ups_eviction_policy
+    fn should_evict_on_unknown_path_secret(&self) -> bool {
+        self.should_evict_on_unknown_path_secret
     }
 
     fn drop_state(&self) {
@@ -824,7 +824,7 @@ where
         // See comment on requested_handshakes for details.
         self.request_handshake(*entry.peer(), HandshakeReason::Remote);
 
-        if self.ups_eviction_policy() {
+        if self.should_evict_on_unknown_path_secret() {
             self.evict(&entry);
         }
 
