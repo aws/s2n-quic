@@ -75,6 +75,7 @@ impl Map {
     pub fn new<C, S>(
         signer: stateless_reset::Signer,
         capacity: usize,
+        should_evict_on_unknown_path_secret: bool,
         clock: C,
         subscriber: S,
     ) -> Self
@@ -82,7 +83,13 @@ impl Map {
         C: 'static + time::Clock + Send + Sync,
         S: event::Subscriber,
     {
-        let store = state::State::new(signer, capacity, clock, subscriber);
+        let store = state::State::new(
+            signer,
+            capacity,
+            should_evict_on_unknown_path_secret,
+            clock,
+            subscriber,
+        );
         Self { store }
     }
 
@@ -260,6 +267,7 @@ impl Map {
         let provider = Self::new(
             stateless_reset::Signer::random(),
             peers.len() * 3,
+            false,
             time::NoopClock,
             event::testing::Subscriber::no_snapshot(),
         );
