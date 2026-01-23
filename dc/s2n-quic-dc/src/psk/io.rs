@@ -555,6 +555,7 @@ mod tests {
         let server_map = Map::new(
             Signer::new(b"default"),
             50_000,
+            false,
             StdClock::default(),
             subscriber.clone(),
         );
@@ -569,6 +570,7 @@ mod tests {
         let client_map = Map::new(
             Signer::new(b"default"),
             50_000,
+            false,
             StdClock::default(),
             subscriber.clone(),
         );
