@@ -236,6 +236,18 @@ impl Client {
     }
 }
 
+#[cfg(test)]
+impl Client {
+    /// Returns true if there's a pending handshake entry for this peer.
+    /// This is only available in test builds.
+    pub fn has_pending_entry(&self, peer: SocketAddr) -> bool {
+        let peer: SocketAddress = peer.into();
+        let peer_hash = self.queue.hasher.hash_one(peer);
+        let guard = self.queue.inner.lock().unwrap();
+        guard.table.find(peer_hash, |e| e.peer == peer).is_some()
+    }
+}
+
 struct Entry {
     peer: SocketAddress,
     handshaker: tokio::sync::OnceCell<Result<(), HandshakeFailed>>,
@@ -542,9 +554,9 @@ mod tests {
     /// After a handshake, a cleanup task runs in the background. If MtuProbingComplete
     /// is NOT working, this task sleeps for 1 second before removing the deduplication entry.
     ///
-    /// We detect this by waiting 500ms then attempting a second handshake:
-    /// - If entry was removed (MtuProbingComplete works): second handshake is fresh (>=1ms)
-    /// - If entry still exists (1-second delay active): second handshake is deduplicated (<1ms)
+    /// We detect this by waiting 500ms then checking if the entry was removed:
+    /// - If entry was removed (MtuProbingComplete works): cleanup completed quickly
+    /// - If entry still exists (1-second delay active): cleanup is still sleeping
     #[tokio::test]
     async fn mtu_probing_complete_no_delay_test() {
         init_tracing();
@@ -592,26 +604,28 @@ mod tests {
         let server_name: s2n_quic::server::Name = "localhost".into();
 
         // First handshake
-        let first_handshake_start_time = Instant::now();
         let first_handshake_result = client
             .connect(server_addr, HandshakeReason::User, server_name.clone())
             .await;
-        let _first_handshake_duration = first_handshake_start_time.elapsed();
         assert!(first_handshake_result.is_ok());
 
         // Wait 500ms - enough for cleanup if MtuProbingComplete works, but not if 1s delay triggered
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        // Second handshake to same peer
-        let second_handshake_start_time = Instant::now();
+        // If entry still exists after 500ms, the cleanup task hasn't finished yet,
+        // which indicates the 1-second fallback delay is active.
+        assert!(!client.has_pending_entry(server_addr),);
+
+        // Second handshake to same peer - should succeed since entry was removed
+        let second_handshake_start = Instant::now();
         let second_handshake_result = client
             .connect(server_addr, HandshakeReason::User, server_name.clone())
             .await;
-        let second_handshake_duration = second_handshake_start_time.elapsed();
+        let second_handshake_duration = second_handshake_start.elapsed();
         assert!(second_handshake_result.is_ok());
 
-        // If second handshake takes <1ms, the entry still exists (was deduplicated), meaning
-        // the cleanup task hasn't finished yet, which indicates the 1-second delay is active.
+        // Additional timing check: if entry was properly removed, the second handshake
+        // should take at least 1ms (a fresh handshake). If it's <1ms, it was deduplicated.
         assert!(second_handshake_duration >= Duration::from_millis(1));
     }
 }
