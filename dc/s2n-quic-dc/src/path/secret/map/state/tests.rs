@@ -20,7 +20,7 @@ fn fake_entry(port: u16) -> Arc<Entry> {
 #[test]
 fn cleans_after_delay() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = State::new(signer, 50, Clock, tracing::Subscriber::default());
+    let map = State::new(signer, 50, false, Clock, tracing::Subscriber::default());
 
     // Stop background processing. We expect to manually invoke clean, and a background worker
     // might interfere with our state.
@@ -51,6 +51,7 @@ fn thread_shutdown() {
     let map = State::new(
         signer,
         10,
+        false,
         Clock,
         (
             tracing::Subscriber::default(),
@@ -177,11 +178,25 @@ impl Model {
                         id,
                         &stateless_reset,
                     );
+
                 state
                     .handle_unknown_path_secret_packet(&packet, &"127.0.0.1:1234".parse().unwrap());
 
-                // ReceiveUnknown does not cause any action with respect to our invariants, no
-                // updates required.
+                if state.should_evict_on_unknown_path_secret()
+                    && self.invariants.contains(&Invariant::ContainsId(id))
+                {
+                    self.invariants.retain(|invariant| {
+                        if let Invariant::ContainsId(prev_id) = invariant {
+                            if prev_id == &id {
+                                return false;
+                            }
+                        }
+
+                        true
+                    });
+
+                    self.invariants.insert(Invariant::IdRemoved(id));
+                }
             }
         }
     }
@@ -242,8 +257,7 @@ fn has_duplicate_pids(ops: &[Operation]) -> bool {
     false
 }
 
-#[test]
-fn check_invariants() {
+fn check_invariants_inner(should_evict_on_unknown_path_secret: bool) {
     bolero::check!()
         .with_type::<Vec<Operation>>()
         .with_iterations(10_000)
@@ -255,7 +269,13 @@ fn check_invariants() {
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let mut map = State::new(signer, 10_000, Clock, tracing::Subscriber::default());
+            let mut map = State::new(
+                signer,
+                10_000,
+                should_evict_on_unknown_path_secret,
+                Clock,
+                tracing::Subscriber::default(),
+            );
 
             // Avoid background work interfering with testing.
             map.cleaner.stop();
@@ -272,6 +292,16 @@ fn check_invariants() {
 }
 
 #[test]
+fn check_invariants() {
+    check_invariants_inner(false);
+}
+
+#[test]
+fn check_invariants_evict_unknown_pid() {
+    check_invariants_inner(true);
+}
+
+#[test]
 #[ignore = "fixed size maps currently break overflow assumptions, too small bucket size"]
 fn check_invariants_no_overflow() {
     bolero::check!()
@@ -285,7 +315,7 @@ fn check_invariants_no_overflow() {
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let map = State::new(signer, 10_000, Clock, tracing::Subscriber::default());
+            let map = State::new(signer, 10_000, false, Clock, tracing::Subscriber::default());
 
             // Avoid background work interfering with testing.
             map.cleaner.stop();
@@ -308,11 +338,39 @@ fn check_invariants_no_overflow() {
 #[ignore = "memory growth takes a long time to run"]
 fn no_memory_growth() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = State::new(signer, 100_000, Clock, tracing::Subscriber::default());
+    let map = State::new(
+        signer,
+        100_000,
+        false,
+        Clock,
+        tracing::Subscriber::default(),
+    );
     map.cleaner.stop();
 
     for idx in 0..500_000 {
         // FIXME: this ends up 2**16 peers in the `peers` map
         map.test_insert(fake_entry(idx as u16));
     }
+}
+
+#[test]
+fn unknown_path_secret_evicts() {
+    let signer = stateless_reset::Signer::new(b"secret");
+    let map = State::new(signer, 5, true, Clock, tracing::Subscriber::default());
+
+    let entry = fake_entry(0);
+    map.test_insert(entry.clone());
+
+    let packet = crate::packet::secret_control::unknown_path_secret::Packet::new_for_test(
+        *entry.clone().id(),
+        &entry.sender().stateless_reset,
+    );
+
+    assert!(map.ids.contains_key(entry.id()), "{:?}", map.ids);
+    assert!(map.peers.contains_key(entry.peer()), "{:?}", map.peers);
+
+    map.handle_unknown_path_secret_packet(&packet, &"127.0.0.1:1234".parse().unwrap());
+
+    assert!(!map.ids.contains_key(entry.id()), "{:?}", map.ids);
+    assert!(!map.peers.contains_key(entry.peer()), "{:?}", map.peers);
 }

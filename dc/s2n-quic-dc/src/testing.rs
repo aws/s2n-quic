@@ -265,6 +265,7 @@ impl Pair {
                 Map::new(
                     Signer::new(b"default"),
                     50_000,
+                    false,
                     StdClock::default(),
                     test_event_subscriber.clone(),
                 ),
@@ -279,6 +280,7 @@ impl Pair {
                 Map::new(
                     Signer::new(b"default"),
                     50_000,
+                    false,
                     StdClock::default(),
                     test_event_subscriber.clone(),
                 ),
@@ -306,6 +308,7 @@ impl Pair {
                 Map::new(
                     Signer::new(b"default"),
                     50_000,
+                    false,
                     StdClock::default(),
                     test_event_subscriber.clone(),
                 ),
@@ -319,6 +322,7 @@ impl Pair {
                 Map::new(
                     Signer::new(b"default"),
                     50_000,
+                    false,
                     StdClock::default(),
                     test_event_subscriber.clone(),
                 ),
