@@ -14,7 +14,7 @@ exclude = ["corpus.tar.gz"]
 default = ["alloc", "std"]
 alloc = ["atomic-waker", "bytes", "crossbeam-utils", "s2n-codec/alloc"]
 std = ["alloc", "once_cell"]
-testing = ["std", "generator", "s2n-codec/testing", "checked-counters", "insta", "futures-test"]
+testing = ["std", "generator", "s2n-codec/testing", "checked-counters", "insta", "futures-test", "bach"]
 generator = ["bolero-generator"]
 checked-counters = []
 branch-tracing = ["tracing"]
@@ -47,6 +47,7 @@ tracing = { version = "0.1", default-features = false, optional = true }
 zerocopy = { version = "0.8", features = ["derive"] }
 futures-test = { version = "0.3", optional = true } # For testing Waker interactions
 once_cell = { version = "1", optional = true }
+bach = { version = "0.1.0", optional = true }
 
 [dev-dependencies]
 bolero = "0.13"
