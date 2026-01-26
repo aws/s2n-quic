@@ -731,11 +731,10 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
                     } else {
                         assert!(result.is_ok());
                         // If the client support MtuProbingComplete frame, then server's MtuConfirmComplete::wait_ready should return true
-                        if client_mtu_probing_complete_support {
-                            assert!(dc::MtuConfirmComplete::wait_ready(&mut conn).await.unwrap());
-                        } else {
-                            assert!(dc::MtuConfirmComplete::wait_ready(&mut conn).await.is_ok());
-                        }
+                        assert_eq!(
+                            dc::MtuConfirmComplete::wait_ready(&mut conn).await.unwrap(),
+                            client_mtu_probing_complete_support
+                        );
                     }
                 }
             }
@@ -796,11 +795,10 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
                             .clone();
                         assert_dc_complete(&client_events);
 
-                        if server_mtu_probing_complete_support {
-                            assert!(dc::MtuConfirmComplete::wait_ready(&mut conn).await.unwrap());
-                        } else {
-                            assert!(dc::MtuConfirmComplete::wait_ready(&mut conn).await.is_ok());
-                        }
+                        assert_eq!(
+                            dc::MtuConfirmComplete::wait_ready(&mut conn).await.unwrap(),
+                            server_mtu_probing_complete_support
+                        );
 
                         // wait briefly for MTU probing to complete on the server
                         delay(Duration::from_millis(100)).await;

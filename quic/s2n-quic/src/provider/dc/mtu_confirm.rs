@@ -27,7 +27,7 @@ impl MtuConfirmComplete {
                     context.peer_will_send_completion,
                 )
             })
-            .map_err(io::Error::other)?;
+            .expect("connection context isn't properly set");
 
         loop {
             let ready = {
