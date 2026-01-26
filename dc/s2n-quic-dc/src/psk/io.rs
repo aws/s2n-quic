@@ -154,7 +154,8 @@ pub(super) async fn server<
                     MtuConfirmComplete::wait_ready(&mut connection),
                 )
                 .await
-                .unwrap_or(Ok(false))
+                // If the wait_ready timeouts, then we assume the peer doesn't support MtuProbingComplete frame,
+                // and keep the connection open for one additional second.
                 .unwrap_or(false);
 
                 // If the peer supports MtuProbingComplete, we've already synchronized via the
@@ -415,7 +416,8 @@ impl HandshakeQueue {
                     MtuConfirmComplete::wait_ready(&mut connection),
                 )
                 .await
-                .unwrap_or(Ok(false))
+                // If the wait_ready timeouts, then we assume the peer doesn't support MtuProbingComplete frame,
+                // and keep the connection open for one additional second.
                 .unwrap_or(false);
 
                 // If the peer supports MtuProbingComplete, we've already synchronized via the

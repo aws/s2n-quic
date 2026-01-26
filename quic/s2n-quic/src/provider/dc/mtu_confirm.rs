@@ -9,7 +9,6 @@ use s2n_quic_core::{
         api::{ConnectionInfo, ConnectionMeta, MtuUpdated, Subscriber},
     },
 };
-use std::io;
 use tokio::sync::watch;
 
 /// `event::Subscriber` used for ensuring an s2n-quic client or server negotiating dc
@@ -19,7 +18,7 @@ pub struct MtuConfirmComplete;
 impl MtuConfirmComplete {
     /// Blocks the task until the provided connection has either completed MTU probing or closed
     /// Returns whether the peer supports sending MtuProbingComplete frames
-    pub async fn wait_ready(conn: &mut Connection) -> io::Result<bool> {
+    pub async fn wait_ready(conn: &mut Connection) -> bool {
         let (mut receiver, peer_will_send) = conn
             .query_event_context_mut(|context: &mut MtuConfirmContext| {
                 (
@@ -42,12 +41,11 @@ impl MtuConfirmComplete {
                 }
             };
 
-            if ready {
-                return Ok(peer_will_send);
-            }
-
-            if receiver.changed().await.is_err() {
-                return Err(io::Error::other("never reached terminal state"));
+            // receiver.changed() usually failed when the MTU probing is finished
+            // and the MtuConfirmContext is dropped. In this case, it should return
+            // whether the peer will send mtu_probing_complete_support transport parameter.
+            if ready || receiver.changed().await.is_err() {
+                return peer_will_send;
             }
         }
     }

@@ -732,7 +732,7 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
                         assert!(result.is_ok());
                         // If the client support MtuProbingComplete frame, then server's MtuConfirmComplete::wait_ready should return true
                         assert_eq!(
-                            dc::MtuConfirmComplete::wait_ready(&mut conn).await.unwrap(),
+                            dc::MtuConfirmComplete::wait_ready(&mut conn).await,
                             client_mtu_probing_complete_support
                         );
                     }
@@ -796,7 +796,7 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
                         assert_dc_complete(&client_events);
 
                         assert_eq!(
-                            dc::MtuConfirmComplete::wait_ready(&mut conn).await.unwrap(),
+                            dc::MtuConfirmComplete::wait_ready(&mut conn).await,
                             server_mtu_probing_complete_support
                         );
 
