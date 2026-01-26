@@ -145,25 +145,10 @@ pub(super) async fn server<
             .is_ok_and(|inner| inner.is_ok());
 
             if success {
-                // If the handshake completes successfully, the connection is left open for a
-                // little longer to allow for MTU probing to complete. Depending on MTU configuration
-                // this is likely to complete immediately, but a 10 second timeout is specified to
-                // avoid spawned tasks piling up if the other end of the connection terminates ungracefully.
-                let peer_supports_mtu_probing_complete = tokio::time::timeout(
-                    Duration::from_secs(10),
-                    MtuConfirmComplete::wait_ready(&mut connection),
-                )
-                .await
-                // If the wait_ready timeouts, then we assume the peer doesn't support MtuProbingComplete frame,
-                // and keep the connection open for one additional second.
-                .unwrap_or(false);
-
-                // If the peer supports MtuProbingComplete, we've already synchronized via the
-                // MtuProbingComplete frame, so no additional wait is needed. Otherwise, leave
-                // the connection open for 1 more second to allow the peer to finish MTU probing.
-                if !peer_supports_mtu_probing_complete {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
+                // Leave the connection open for MTU probing to complete.
+                // The 1-second wait for peers that don't support MtuProbingComplete
+                // is handled inside wait_ready() when the connection closes gracefully.
+                let _ = MtuConfirmComplete::wait_ready(&mut connection).await;
             }
         });
     }
@@ -403,29 +388,14 @@ impl HandshakeQueue {
             // drop the permit.
             drop(permit_start);
 
-            // Spawn a task to leave the connection open for a little longer to allow for MTU
-            // probing to complete. Depending on MTU configuration this is likely to complete
-            // immediately, but a 10 second timeout is specified to avoid spawned tasks piling
-            // up if the other end of the connection terminates ungracefully.
+            // Spawn a task to leave the connection open for MTU probing to complete.
+            // The 1-second wait for peers that don't support MtuProbingComplete
+            // is handled inside wait_ready() when the connection closes gracefully.
             //
             // This task also owns pruning our de-duplication tracking.
             let this = self.clone();
             tokio::spawn(async move {
-                let peer_supports_mtu_probing_complete = tokio::time::timeout(
-                    Duration::from_secs(10),
-                    MtuConfirmComplete::wait_ready(&mut connection),
-                )
-                .await
-                // If the wait_ready timeouts, then we assume the peer doesn't support MtuProbingComplete frame,
-                // and keep the connection open for one additional second.
-                .unwrap_or(false);
-
-                // If the peer supports MtuProbingComplete, we've already synchronized via the
-                // MtuProbingComplete frame, so no additional wait is needed. Otherwise, leave
-                // the connection open for 1 more second to allow the peer to finish MTU probing.
-                if !peer_supports_mtu_probing_complete {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
+                let _ = MtuConfirmComplete::wait_ready(&mut connection).await;
 
                 drop(connection);
                 drop(permit_inflight);
