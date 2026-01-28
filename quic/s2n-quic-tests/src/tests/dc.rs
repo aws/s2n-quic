@@ -378,7 +378,7 @@ fn mtu_probing_complete_server_only_test() -> Result<()> {
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS).with_mtu_probing_complete_support(false))?;
 
     let (client_events, server_events) =
-        self_test_with_mtu(server, client, true, None, None, false, true, true, None)?;
+        self_test_with_mtu(server, client, true, None, None, false, None)?;
 
     // Verify that client received MtuProbingComplete from server
     let client_mtu_complete_events = client_events
@@ -492,17 +492,8 @@ fn mtu_probing_complete_frame_exchange_jumbo_mtu_test() -> Result<()> {
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
     // Use 9000 byte MTU for jumbo frames
-    let (client_events, server_events) = self_test_with_mtu(
-        server,
-        client,
-        true,
-        None,
-        None,
-        true,
-        true,
-        true,
-        Some(9000),
-    )?;
+    let (client_events, server_events) =
+        self_test_with_mtu(server, client, true, None, None, true, Some(9000))?;
 
     let expected_mtu = 8972;
 
@@ -652,8 +643,6 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
         client_has_dc,
         expected_client_error,
         expected_server_error,
-        true,
-        true,
         with_blocklist,
         None,
     )
@@ -666,8 +655,6 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
     client_has_dc: bool,
     expected_client_error: Option<connection::Error>,
     expected_server_error: Option<connection::Error>,
-    client_mtu_probing_complete_support: bool,
-    server_mtu_probing_complete_support: bool,
     with_blocklist: bool,
     max_mtu: Option<u16>,
 ) -> Result<(DcRecorder, DcRecorder)> {
@@ -730,11 +717,7 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
                         }
                     } else {
                         assert!(result.is_ok());
-                        // If the client support MtuProbingComplete frame, then server's MtuConfirmComplete::wait_ready should return true
-                        assert_eq!(
-                            dc::MtuConfirmComplete::wait_ready(&mut conn).await,
-                            client_mtu_probing_complete_support
-                        );
+                        dc::MtuConfirmComplete::wait_ready(&mut conn).await;
                     }
                 }
             }
@@ -795,10 +778,7 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
                             .clone();
                         assert_dc_complete(&client_events);
 
-                        assert_eq!(
-                            dc::MtuConfirmComplete::wait_ready(&mut conn).await,
-                            server_mtu_probing_complete_support
-                        );
+                        dc::MtuConfirmComplete::wait_ready(&mut conn).await;
 
                         // wait briefly for MTU probing to complete on the server
                         delay(Duration::from_millis(100)).await;

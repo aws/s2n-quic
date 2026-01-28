@@ -23,7 +23,7 @@ impl MtuConfirmComplete {
     /// completes to allow the peer to finish their probing.
     ///
     /// Returns whether the peer supports sending MtuProbingComplete frames.
-    pub async fn wait_ready(conn: &mut Connection) -> bool {
+    pub async fn wait_ready(conn: &mut Connection) {
         let (mut receiver, peer_will_send) = conn
             .query_event_context_mut(|context: &mut MtuConfirmContext| {
                 (
@@ -60,14 +60,12 @@ impl MtuConfirmComplete {
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                 }
-                return peer_will_send;
+                return;
             }
 
             if receiver.changed().await.is_err() {
-                // If peer_will_send is true but connection closed, the on_connection_closed
-                // handler logs a warning about this case.
-                // We return immediately since there's no point waiting.
-                return peer_will_send;
+                // If the peer closes the connection, we return immediately since there's no point waiting.
+                return;
             }
         }
     }
