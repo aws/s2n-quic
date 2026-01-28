@@ -7,9 +7,12 @@ use crate::{
     credentials::{self, Credentials},
     msg::recv,
     packet,
+    stream::socket,
 };
 use s2n_codec::{DecoderBufferMut, DecoderError};
 use s2n_quic_core::varint::VarInt;
+use std::{io, net::SocketAddr};
+use tracing::trace;
 
 pub mod accept;
 pub mod application;
@@ -97,4 +100,28 @@ impl<'a> From<packet::stream::decoder::Packet<'a>> for InitialPacket {
             is_fin_known,
         }
     }
+}
+
+pub(crate) fn spawn_initial_wildcard_pair(
+    local_addr: SocketAddr,
+    socket_opts: impl Fn(SocketAddr) -> socket::Options,
+) -> io::Result<(SocketAddr, std::net::UdpSocket, std::net::TcpListener)> {
+    debug_assert_eq!(local_addr.port(), 0);
+
+    for iteration in 0..10 {
+        trace!(wildcard_search_iteration = iteration);
+        let udp_socket = socket_opts(local_addr).build_udp()?;
+        let candidate_addr = udp_socket.local_addr()?;
+        trace!(candidate = %candidate_addr);
+        match socket_opts(candidate_addr).build_tcp_listener() {
+            Ok(tcp_socket) => {
+                trace!(selected = %candidate_addr);
+                return Ok((candidate_addr, udp_socket, tcp_socket));
+            }
+            Err(err) if err.kind() == io::ErrorKind::AddrInUse => continue,
+            Err(err) => return Err(err),
+        }
+    }
+
+    Err(io::ErrorKind::AddrInUse.into())
 }
