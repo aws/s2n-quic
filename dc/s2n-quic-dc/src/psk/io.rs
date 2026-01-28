@@ -81,7 +81,7 @@ impl Server {
             .with_bidirectional_remote_data_window(initial_max_data)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
-        let event = (ConfirmComplete, subscriber);
+        let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
         let server = server
             .with_limits(connection_limits)?
@@ -145,24 +145,10 @@ pub(super) async fn server<
             .is_ok_and(|inner| inner.is_ok());
 
             if success {
-                // If the handshake completes successfully, the connection is left open for a
-                // little longer to allow for MTU probing to complete. Depending on MTU configuration
-                // this is likely to complete immediately, but a 10 second timeout is specified to
-                // avoid spawned tasks piling up if the other end of the connection terminates ungracefully.
-                let peer_supports_mtu_probing_complete = tokio::time::timeout(
-                    Duration::from_secs(10),
-                    MtuConfirmComplete::wait_ready(&mut connection),
-                )
-                .await
-                .unwrap_or(Ok(false))
-                .unwrap_or(false);
-
-                // If the peer supports MtuProbingComplete, we've already synchronized via the
-                // MtuProbingComplete frame, so no additional wait is needed. Otherwise, leave
-                // the connection open for 1 more second to allow the peer to finish MTU probing.
-                if !peer_supports_mtu_probing_complete {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
+                // Leave the connection open for MTU probing to complete.
+                // The 1-second wait for peers that don't support MtuProbingComplete
+                // is handled inside wait_ready() when the connection closes gracefully.
+                let _ = MtuConfirmComplete::wait_ready(&mut connection).await;
             }
         });
     }
@@ -208,7 +194,7 @@ impl Client {
             .with_bidirectional_remote_data_window(builder.data_window)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
-        let event = (ConfirmComplete, subscriber);
+        let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
         let client = client
             .with_limits(connection_limits)?
@@ -233,6 +219,18 @@ impl Client {
             .clone()
             .handshake(&self.client, peer, reason, server_name)
             .await
+    }
+}
+
+#[cfg(test)]
+impl Client {
+    /// Returns true if there's a pending handshake entry for this peer.
+    /// This is only available in test builds.
+    pub fn has_pending_entry(&self, peer: SocketAddr) -> bool {
+        let peer: SocketAddress = peer.into();
+        let peer_hash = self.queue.hasher.hash_one(peer);
+        let guard = self.queue.inner.lock().unwrap();
+        guard.table.find(peer_hash, |e| e.peer == peer).is_some()
     }
 }
 
@@ -390,28 +388,14 @@ impl HandshakeQueue {
             // drop the permit.
             drop(permit_start);
 
-            // Spawn a task to leave the connection open for a little longer to allow for MTU
-            // probing to complete. Depending on MTU configuration this is likely to complete
-            // immediately, but a 10 second timeout is specified to avoid spawned tasks piling
-            // up if the other end of the connection terminates ungracefully.
+            // Spawn a task to leave the connection open for MTU probing to complete.
+            // The 1-second wait for peers that don't support MtuProbingComplete
+            // is handled inside wait_ready() when the connection closes gracefully.
             //
             // This task also owns pruning our de-duplication tracking.
             let this = self.clone();
             tokio::spawn(async move {
-                let peer_supports_mtu_probing_complete = tokio::time::timeout(
-                    Duration::from_secs(10),
-                    MtuConfirmComplete::wait_ready(&mut connection),
-                )
-                .await
-                .unwrap_or(Ok(false))
-                .unwrap_or(false);
-
-                // If the peer supports MtuProbingComplete, we've already synchronized via the
-                // MtuProbingComplete frame, so no additional wait is needed. Otherwise, leave
-                // the connection open for 1 more second to allow the peer to finish MTU probing.
-                if !peer_supports_mtu_probing_complete {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
+                let _ = MtuConfirmComplete::wait_ready(&mut connection).await;
 
                 drop(connection);
                 drop(permit_inflight);
@@ -524,4 +508,96 @@ const REASON_COUNT: usize = 3;
 pub struct ConnectionContext {
     pub limiter_latency: Duration,
     pub reason_counts: [(HandshakeReason, usize); REASON_COUNT],
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        path::secret::{stateless_reset::Signer, Map},
+        testing::{init_tracing, NoopSubscriber, TestTlsProvider},
+    };
+    use s2n_quic::provider::tls::Provider;
+    use s2n_quic_core::time::StdClock;
+    use std::time::Instant;
+
+    /// Verifies MtuProbingComplete works correctly (no 1-second fallback delay).
+    ///
+    /// After a handshake, a cleanup task runs in the background. If MtuProbingComplete
+    /// is NOT working, this task sleeps for 1 second before removing the deduplication entry.
+    ///
+    /// We detect this by waiting 500ms then checking if the entry was removed:
+    /// - If entry was removed (MtuProbingComplete works): cleanup completed quickly
+    /// - If entry still exists (1-second delay active): cleanup is still sleeping
+    #[tokio::test]
+    async fn mtu_probing_complete_no_delay_test() {
+        init_tracing();
+
+        let tls = TestTlsProvider {};
+        let subscriber = NoopSubscriber {};
+
+        let server_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            subscriber.clone(),
+        );
+        let (server_addr_rx, _server_guard) = crate::psk::server::Provider::setup(
+            "127.0.0.1:0".parse().unwrap(),
+            server_map.clone(),
+            tls.clone(),
+            subscriber.clone(),
+            crate::psk::server::Builder::default(),
+        );
+
+        let client_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            subscriber.clone(),
+        );
+        // Set success_jitter to zero, so that the entry is removed immediately when the cleanup completes.
+        let client = Client::bind::<
+            <TestTlsProvider as Provider>::Client,
+            NoopSubscriber,
+            s2n_quic::provider::event::default::Subscriber,
+        >(
+            "0.0.0.0:0".parse().unwrap(),
+            client_map,
+            tls.start_client().unwrap(),
+            subscriber,
+            crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
+        )
+        .unwrap();
+
+        let server_addr = server_addr_rx.await.unwrap().unwrap();
+        let server_name: s2n_quic::server::Name = "localhost".into();
+
+        // First handshake
+        let first_handshake_result = client
+            .connect(server_addr, HandshakeReason::User, server_name.clone())
+            .await;
+        assert!(first_handshake_result.is_ok());
+
+        // Wait 500ms - enough for cleanup if MtuProbingComplete works, but not if 1s delay triggered
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // If entry still exists after 500ms, the cleanup task hasn't finished yet,
+        // which indicates the 1-second fallback delay is active.
+        assert!(!client.has_pending_entry(server_addr),);
+
+        // Second handshake to same peer - should succeed since entry was removed
+        let second_handshake_start = Instant::now();
+        let second_handshake_result = client
+            .connect(server_addr, HandshakeReason::User, server_name.clone())
+            .await;
+        let second_handshake_duration = second_handshake_start.elapsed();
+        assert!(second_handshake_result.is_ok());
+
+        // Additional timing check: if entry was properly removed, the second handshake
+        // should take at least 1ms (a fresh handshake). If it's <1ms, it was deduplicated.
+        assert!(second_handshake_duration >= Duration::from_millis(1));
+    }
 }
