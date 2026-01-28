@@ -108,7 +108,17 @@ pub(crate) fn spawn_initial_wildcard_pair(
 ) -> io::Result<(SocketAddr, std::net::UdpSocket, std::net::TcpListener)> {
     debug_assert_eq!(local_addr.port(), 0);
 
-    for iteration in 0..10 {
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(5);
+
+    for iteration in 0..10_000 {
+        if start.elapsed() >= timeout {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "could not find free port after 5 seconds",
+            ));
+        }
+
         trace!(wildcard_search_iteration = iteration);
         let udp_socket = socket_opts(local_addr).build_udp()?;
         let candidate_addr = udp_socket.local_addr()?;
@@ -123,5 +133,8 @@ pub(crate) fn spawn_initial_wildcard_pair(
         }
     }
 
-    Err(io::ErrorKind::AddrInUse.into())
+    Err(io::Error::new(
+        io::ErrorKind::AddrInUse,
+        "could not find free port after 10,000 attempts",
+    ))
 }
