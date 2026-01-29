@@ -83,12 +83,27 @@ impl Server {
 
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
+        #[cfg(not(any(test, feature = "testing")))]
         let server = server
             .with_limits(connection_limits)?
             .with_dc(map.clone())?
             .with_event(event)?
             .with_tls(tls_materials_provider)?
             .start()?;
+
+        #[cfg(any(test, feature = "testing"))]
+        let server = {
+            let server = server
+                .with_limits(connection_limits)?
+                .with_dc(map.clone())?
+                .with_event(event)?
+                .with_tls(tls_materials_provider)?;
+            if let Some(limiter) = builder.endpoint_limits {
+                server.with_endpoint_limits(limiter)?.start()?
+            } else {
+                server.start()?
+            }
+        };
 
         Ok(Self { server })
     }
@@ -539,9 +554,99 @@ mod tests {
         path::secret::{stateless_reset::Signer, Map},
         testing::{init_tracing, NoopSubscriber, TestTlsProvider},
     };
-    use s2n_quic::provider::tls::Provider;
+    use s2n_quic::provider::{
+        endpoint_limits::{ConnectionAttempt, Limiter, Outcome},
+        tls::Provider,
+    };
     use s2n_quic_core::time::StdClock;
     use std::time::Instant;
+    use tokio_util::sync::DropGuard;
+
+    /// A test limiter that closes all incoming connections immediately
+    #[derive(Default)]
+    struct CloseAllConnectionsLimiter;
+
+    impl Limiter for CloseAllConnectionsLimiter {
+        fn on_connection_attempt(&mut self, _info: &ConnectionAttempt) -> Outcome {
+            Outcome::close()
+        }
+    }
+
+    /// Helper to set up a test client and server
+    struct TestSetup {
+        client: Client,
+        server_addr: SocketAddr,
+        _server_guard: DropGuard,
+    }
+
+    impl TestSetup {
+        /// Creates a test setup with an optional endpoint limiter for the server
+        async fn new<L>(endpoint_limits: Option<L>) -> Self
+        where
+            L: s2n_quic::provider::endpoint_limits::Limiter + Send + Sync + 'static,
+        {
+            init_tracing();
+
+            let tls = TestTlsProvider {};
+            let subscriber = NoopSubscriber {};
+
+            let server_map = Map::new(
+                Signer::new(b"default"),
+                50_000,
+                false,
+                StdClock::default(),
+                subscriber.clone(),
+            );
+
+            let server_builder = crate::psk::server::Builder::default();
+            let (server_addr_rx, server_guard) = if let Some(limiter) = endpoint_limits {
+                crate::psk::server::Provider::setup(
+                    "127.0.0.1:0".parse().unwrap(),
+                    server_map.clone(),
+                    tls.clone(),
+                    subscriber.clone(),
+                    server_builder.with_endpoint_limits(limiter),
+                )
+            } else {
+                crate::psk::server::Provider::setup(
+                    "127.0.0.1:0".parse().unwrap(),
+                    server_map.clone(),
+                    tls.clone(),
+                    subscriber.clone(),
+                    server_builder,
+                )
+            };
+
+            let client_map = Map::new(
+                Signer::new(b"default"),
+                50_000,
+                false,
+                StdClock::default(),
+                subscriber.clone(),
+            );
+
+            let client = Client::bind::<
+                <TestTlsProvider as Provider>::Client,
+                NoopSubscriber,
+                s2n_quic::provider::event::default::Subscriber,
+            >(
+                "0.0.0.0:0".parse().unwrap(),
+                client_map,
+                tls.start_client().unwrap(),
+                subscriber,
+                crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
+            )
+            .unwrap();
+
+            let server_addr = server_addr_rx.await.unwrap().unwrap();
+
+            Self {
+                client,
+                server_addr,
+                _server_guard: server_guard,
+            }
+        }
+    }
 
     /// Verifies MtuProbingComplete works correctly (no 1-second fallback delay).
     ///
@@ -553,53 +658,17 @@ mod tests {
     /// - If entry still exists (1-second delay active): cleanup is still sleeping
     #[tokio::test]
     async fn mtu_probing_complete_no_delay_test() {
-        init_tracing();
-
-        let tls = TestTlsProvider {};
-        let subscriber = NoopSubscriber {};
-
-        let server_map = Map::new(
-            Signer::new(b"default"),
-            50_000,
-            false,
-            StdClock::default(),
-            subscriber.clone(),
-        );
-        let (server_addr_rx, _server_guard) = crate::psk::server::Provider::setup(
-            "127.0.0.1:0".parse().unwrap(),
-            server_map.clone(),
-            tls.clone(),
-            subscriber.clone(),
-            crate::psk::server::Builder::default(),
-        );
-
-        let client_map = Map::new(
-            Signer::new(b"default"),
-            50_000,
-            false,
-            StdClock::default(),
-            subscriber.clone(),
-        );
-        // Set success_jitter to zero, so that the entry is removed immediately when the cleanup completes.
-        let client = Client::bind::<
-            <TestTlsProvider as Provider>::Client,
-            NoopSubscriber,
-            s2n_quic::provider::event::default::Subscriber,
-        >(
-            "0.0.0.0:0".parse().unwrap(),
-            client_map,
-            tls.start_client().unwrap(),
-            subscriber,
-            crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
-        )
-        .unwrap();
-
-        let server_addr = server_addr_rx.await.unwrap().unwrap();
+        let setup = TestSetup::new::<CloseAllConnectionsLimiter>(None).await;
         let server_name: s2n_quic::server::Name = "localhost".into();
 
         // First handshake
-        let first_handshake_result = client
-            .connect(server_addr, HandshakeReason::User, server_name.clone())
+        let first_handshake_result = setup
+            .client
+            .connect(
+                setup.server_addr,
+                HandshakeReason::User,
+                server_name.clone(),
+            )
             .await;
         assert!(first_handshake_result.is_ok());
 
@@ -608,12 +677,17 @@ mod tests {
 
         // If entry still exists after 500ms, the cleanup task hasn't finished yet,
         // which indicates the 1-second fallback delay is active.
-        assert!(!client.has_pending_entry(server_addr),);
+        assert!(!setup.client.has_pending_entry(setup.server_addr));
 
         // Second handshake to same peer - should succeed since entry was removed
         let second_handshake_start = Instant::now();
-        let second_handshake_result = client
-            .connect(server_addr, HandshakeReason::User, server_name.clone())
+        let second_handshake_result = setup
+            .client
+            .connect(
+                setup.server_addr,
+                HandshakeReason::User,
+                server_name.clone(),
+            )
             .await;
         let second_handshake_duration = second_handshake_start.elapsed();
         assert!(second_handshake_result.is_ok());
@@ -621,5 +695,35 @@ mod tests {
         // Additional timing check: if entry was properly removed, the second handshake
         // should take at least 1ms (a fresh handshake). If it's <1ms, it was deduplicated.
         assert!(second_handshake_duration >= Duration::from_millis(1));
+    }
+
+    /// Verifies that when the server closes a connection immediately (via endpoint limits),
+    /// the client connection closes without waiting.
+    ///
+    /// This test ensures that `MtuConfirmComplete::wait_ready` properly detects the
+    /// connection close signal and returns immediately rather than blocking.
+    #[tokio::test]
+    async fn server_close_connection_no_delay_test() {
+        let setup = TestSetup::new(Some(CloseAllConnectionsLimiter)).await;
+        let server_name: s2n_quic::server::Name = "localhost".into();
+
+        // Attempt to connect - the server should immediately close the connection
+        let start = Instant::now();
+        let result = setup
+            .client
+            .connect(setup.server_addr, HandshakeReason::User, server_name)
+            .await;
+        let duration = start.elapsed();
+
+        // The connection should fail (server rejected it)
+        assert!(result.is_err());
+
+        // The failure should be fast - definitely less than the 10-second timeout
+        // and less than the 1-second fallback delay
+        assert!(
+            duration < Duration::from_millis(500),
+            "Connection took {:?}, expected < 500ms",
+            duration
+        );
     }
 }

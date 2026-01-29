@@ -22,6 +22,24 @@ pub struct Builder<
     pub(crate) mtu: u16,
     pub(crate) max_idle_timeout: Duration,
     pub(crate) pto_jitter_percentage: u8,
+    #[cfg(any(test, feature = "testing"))]
+    pub(crate) endpoint_limits: Option<TestEndpointLimiter>,
+}
+
+/// A wrapper type for test endpoint limiters
+#[cfg(any(test, feature = "testing"))]
+pub struct TestEndpointLimiter(
+    pub Box<dyn s2n_quic::provider::endpoint_limits::Limiter + Send + Sync>,
+);
+
+#[cfg(any(test, feature = "testing"))]
+impl s2n_quic::provider::endpoint_limits::Limiter for TestEndpointLimiter {
+    fn on_connection_attempt(
+        &mut self,
+        info: &s2n_quic::provider::endpoint_limits::ConnectionAttempt,
+    ) -> s2n_quic::provider::endpoint_limits::Outcome {
+        self.0.on_connection_attempt(info)
+    }
 }
 
 impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
@@ -33,6 +51,8 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
             mtu: DEFAULT_MTU,
             max_idle_timeout: DEFAULT_IDLE_TIMEOUT,
             pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
+            #[cfg(any(test, feature = "testing"))]
+            endpoint_limits: None,
         }
     }
 }
@@ -50,7 +70,21 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             mtu: self.mtu,
             max_idle_timeout: self.max_idle_timeout,
             pto_jitter_percentage: self.pto_jitter_percentage,
+            #[cfg(any(test, feature = "testing"))]
+            endpoint_limits: self.endpoint_limits,
         }
+    }
+
+    /// Sets endpoint limits for testing purposes only
+    #[cfg(any(test, feature = "testing"))]
+    pub fn with_endpoint_limits<
+        L: s2n_quic::provider::endpoint_limits::Limiter + Send + Sync + 'static,
+    >(
+        mut self,
+        limiter: L,
+    ) -> Self {
+        self.endpoint_limits = Some(TestEndpointLimiter(Box::new(limiter)));
+        self
     }
 
     /// Sets the data window to use for flow control
