@@ -9,7 +9,7 @@ use s2n_quic_core::{
         api::{ConnectionInfo, ConnectionMeta, MtuUpdated, Subscriber},
     },
 };
-use std::io;
+use std::time::Duration;
 use tokio::sync::watch;
 
 /// `event::Subscriber` used for ensuring an s2n-quic client or server negotiating dc
@@ -17,9 +17,13 @@ use tokio::sync::watch;
 pub struct MtuConfirmComplete;
 
 impl MtuConfirmComplete {
-    /// Blocks the task until the provided connection has either completed MTU probing or closed
-    /// Returns whether the peer supports sending MtuProbingComplete frames
-    pub async fn wait_ready(conn: &mut Connection) -> io::Result<bool> {
+    /// Blocks the task until the provided connection has either completed MTU probing or closed.
+    ///
+    /// If the peer doesn't support MtuProbingComplete, waits 1 second after local MTU probing
+    /// completes to allow the peer to finish their probing.
+    ///
+    /// Returns whether the peer supports sending MtuProbingComplete frames.
+    pub async fn wait_ready(conn: &mut Connection) {
         let (mut receiver, peer_will_send) = conn
             .query_event_context_mut(|context: &mut MtuConfirmContext| {
                 (
@@ -27,7 +31,7 @@ impl MtuConfirmComplete {
                     context.peer_will_send_completion,
                 )
             })
-            .map_err(io::Error::other)?;
+            .expect("connection context isn't properly set");
 
         loop {
             let ready = {
@@ -43,11 +47,25 @@ impl MtuConfirmComplete {
             };
 
             if ready {
-                return Ok(peer_will_send);
+                // Peer didn't indicate they would send MtuProbingComplete.
+                // Wait 1 second to allow the peer to finish their MTU probing.
+                if !peer_will_send {
+                    // s2n-quic testing module is using bach runtime, while it is using tokio runtime in production
+                    #[cfg(any(test, feature = "unstable-provider-io-testing"))]
+                    {
+                        crate::provider::io::testing::time::delay(Duration::from_secs(1)).await;
+                    }
+                    #[cfg(not(any(test, feature = "unstable-provider-io-testing")))]
+                    {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                }
+                return;
             }
 
             if receiver.changed().await.is_err() {
-                return Err(io::Error::other("never reached terminal state"));
+                // If the peer closes the connection, we return immediately since there's no point waiting.
+                return;
             }
         }
     }
@@ -134,6 +152,14 @@ impl Subscriber for MtuConfirmComplete {
     ) {
         let state = *context.sender.borrow();
         ensure!(!state.is_ready());
+
+        // Log if peer indicated they would send MtuProbingComplete but never did
+        if context.peer_will_send_completion && !state.remote_ready {
+            tracing::warn!(
+                local_ready = state.local_ready,
+                "peer indicated MtuProbingComplete support but closed connection before sending it"
+            );
+        }
 
         // The connection closed before MTU probing completed
         // Force both to complete to unblock any waiting tasks

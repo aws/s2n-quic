@@ -1081,6 +1081,22 @@ where
             entry.reset_sender_counter();
         }
     }
+
+    fn on_dc_connection_timeout(&self, peer: &SocketAddr, is_client: bool) {
+        use crate::event::builder::DcConnectionTimeoutSide;
+
+        let side = if is_client {
+            DcConnectionTimeoutSide::Client
+        } else {
+            DcConnectionTimeoutSide::Server
+        };
+
+        self.subscriber()
+            .on_dc_connection_timeout(event::builder::DcConnectionTimeout {
+                peer_address: SocketAddress::from(*peer).into_event(),
+                side,
+            });
+    }
 }
 
 impl<C, S> Drop for State<C, S>
