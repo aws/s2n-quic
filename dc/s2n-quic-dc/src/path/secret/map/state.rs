@@ -29,6 +29,98 @@ use std::{
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug)]
+#[allow(clippy::enum_variant_names)]
+pub enum StateBuilderError {
+    MissingSigner,
+    MissingCapacity,
+    MissingClock,
+    MissingSubscriber,
+}
+
+impl std::fmt::Display for StateBuilderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StateBuilderError::MissingSigner => write!(f, "signer is required"),
+            StateBuilderError::MissingCapacity => write!(f, "capacity is required"),
+            StateBuilderError::MissingClock => write!(f, "clock is required"),
+            StateBuilderError::MissingSubscriber => write!(f, "subscriber is required"),
+        }
+    }
+}
+
+impl std::error::Error for StateBuilderError {}
+
+pub struct StateBuilder<C, S>
+where
+    C: 'static + time::Clock + Sync + Send,
+    S: event::Subscriber,
+{
+    signer: Option<stateless_reset::Signer>,
+    capacity: Option<usize>,
+    should_evict_on_unknown_path_secret: bool,
+    clock: Option<C>,
+    subscriber: Option<S>,
+}
+
+impl<C, S> StateBuilder<C, S>
+where
+    C: 'static + time::Clock + Sync + Send,
+    S: event::Subscriber,
+{
+    pub fn new() -> Self {
+        Self {
+            signer: None,
+            capacity: None,
+            should_evict_on_unknown_path_secret: false,
+            clock: None,
+            subscriber: None,
+        }
+    }
+
+    pub fn with_signer(mut self, signer: stateless_reset::Signer) -> Self {
+        self.signer = Some(signer);
+        self
+    }
+
+    pub fn with_capacity(mut self, capacity: usize) -> Self {
+        self.capacity = Some(capacity);
+        self
+    }
+
+    pub fn with_evict_on_unknown_path_secret(mut self, should_evict: bool) -> Self {
+        self.should_evict_on_unknown_path_secret = should_evict;
+        self
+    }
+
+    pub fn with_clock(mut self, clock: C) -> Self {
+        self.clock = Some(clock);
+        self
+    }
+
+    pub fn with_subscriber(mut self, subscriber: S) -> Self {
+        self.subscriber = Some(subscriber);
+        self
+    }
+
+    pub fn build(self) -> Result<Arc<State<C, S>>, StateBuilderError> {
+        let signer = self.signer.ok_or(StateBuilderError::MissingSigner)?;
+        let capacity = self.capacity.ok_or(StateBuilderError::MissingCapacity)?;
+        let clock = self.clock.ok_or(StateBuilderError::MissingClock)?;
+        let subscriber = self
+            .subscriber
+            .ok_or(StateBuilderError::MissingSubscriber)?;
+
+        Ok(State::new(
+            signer,
+            capacity,
+            self.should_evict_on_unknown_path_secret,
+            clock,
+            subscriber,
+        ))
+    }
+}
+
 #[derive(Default, Debug)]
 #[repr(align(128))]
 pub(crate) struct PeerMap(
