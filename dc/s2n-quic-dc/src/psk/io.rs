@@ -129,6 +129,7 @@ pub(super) async fn server<
     let _ = on_ready.send(Ok(server.local_addr().unwrap()));
 
     while let Some(mut connection) = server.server.accept().await {
+        let map_clone = map.clone();
         tokio::spawn(async move {
             // The accepted connection must remain open until the client has finished inserting
             // the entry into its map. The client indicates this by sending a ConnectionClose
@@ -137,12 +138,19 @@ pub(super) async fn server<
             // A 10 second timeout is specified to avoid spawned tasks piling up when the
             // ConnectionClose from the client is lost. This timeout covers both the dc handshake
             // confirmation and MTU probing completion.
-            let _ = tokio::time::timeout(Duration::from_secs(10), async {
+            let result = tokio::time::timeout(Duration::from_secs(10), async {
                 if ConfirmComplete::wait_ready(&mut connection).await.is_ok() {
                     MtuConfirmComplete::wait_ready(&mut connection).await;
                 }
             })
             .await;
+
+            // Emit event if timeout occurred
+            if result.is_err() {
+                if let Ok(peer) = connection.remote_addr() {
+                    map_clone.on_dc_connection_timeout(&peer, false);
+                }
+            }
         });
     }
 }
@@ -150,7 +158,7 @@ pub(super) async fn server<
 #[derive(Clone)]
 pub struct Client {
     client: s2n_quic::Client,
-
+    map: secret::Map,
     queue: Arc<HandshakeQueue>,
 }
 
@@ -198,6 +206,7 @@ impl Client {
 
         Ok(Self {
             client,
+            map: map.clone(),
             queue: Arc::new(HandshakeQueue::new(builder.success_jitter)),
         })
     }
@@ -210,7 +219,7 @@ impl Client {
     ) -> Result<(), HandshakeFailed> {
         self.queue
             .clone()
-            .handshake(&self.client, peer, reason, server_name)
+            .handshake(&self.client, &self.map, peer, reason, server_name)
             .await
     }
 }
@@ -335,6 +344,7 @@ impl HandshakeQueue {
     async fn handshake(
         self: Arc<Self>,
         client: &s2n_quic::Client,
+        map: &secret::Map,
         peer: SocketAddr,
         reason: HandshakeReason,
         server_name: Name,
@@ -379,8 +389,12 @@ impl HandshakeQueue {
 
             // We need to wait for confirmation that the dcQUIC handshake is complete.
             // TODO: This will not be needed if https://github.com/aws/s2n-quic/issues/2273 is addressed
-            let _ = tokio::time::timeout_at(deadline, ConfirmComplete::wait_ready(&mut connection))
-                .await;
+            if tokio::time::timeout_at(deadline, ConfirmComplete::wait_ready(&mut connection))
+                .await
+                .is_err()
+            {
+                map.on_dc_connection_timeout(&peer, true);
+            }
 
             // Don't wait for the connection to fully close, just wait until dc.complete to
             // drop the permit.
@@ -392,13 +406,18 @@ impl HandshakeQueue {
             //
             // This task also owns pruning our de-duplication tracking.
             let this = self.clone();
+            let map_clone = map.clone();
             tokio::spawn(async move {
                 // Use the same deadline for MTU probing - any remaining time from the 10s budget
-                let _ = tokio::time::timeout_at(
+                if tokio::time::timeout_at(
                     deadline,
                     MtuConfirmComplete::wait_ready(&mut connection),
                 )
-                .await;
+                .await
+                .is_err()
+                {
+                    map_clone.on_dc_connection_timeout(&peer, true);
+                }
 
                 drop(connection);
                 drop(permit_inflight);
