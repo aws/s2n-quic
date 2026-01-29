@@ -23,7 +23,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::sync::Semaphore;
+use tokio::{sync::Semaphore, time::Instant as TokioInstant};
 
 pub use crate::stream::DEFAULT_IDLE_TIMEOUT;
 pub const DEFAULT_MAX_DATA: u64 = 1u64 << 25;
@@ -132,24 +132,17 @@ pub(super) async fn server<
         tokio::spawn(async move {
             // The accepted connection must remain open until the client has finished inserting
             // the entry into its map. The client indicates this by sending a ConnectionClose
-            // when it is done. This will cause the `connection.accept()` to return and allow
-            // the server's connection to be dropped.
+            // when it is done.
             //
             // A 10 second timeout is specified to avoid spawned tasks piling up when the
-            // ConnectionClose from the client is lost.
-            let success = tokio::time::timeout(
-                Duration::from_secs(10),
-                ConfirmComplete::wait_ready(&mut connection),
-            )
-            .await
-            .is_ok_and(|inner| inner.is_ok());
-
-            if success {
-                // Leave the connection open for MTU probing to complete.
-                // The 1-second wait for peers that don't support MtuProbingComplete
-                // is handled inside wait_ready() when the connection closes gracefully.
-                let _ = MtuConfirmComplete::wait_ready(&mut connection).await;
-            }
+            // ConnectionClose from the client is lost. This timeout covers both the dc handshake
+            // confirmation and MTU probing completion.
+            let _ = tokio::time::timeout(Duration::from_secs(10), async {
+                if ConfirmComplete::wait_ready(&mut connection).await.is_ok() {
+                    MtuConfirmComplete::wait_ready(&mut connection).await;
+                }
+            })
+            .await;
         });
     }
 }
@@ -380,9 +373,14 @@ impl HandshakeQueue {
 
             let mut connection = attempt.await?;
 
-            // we need to wait for confirmation that the dcQUIC handshake is complete
+            // A 10 second deadline is used to bound both ConfirmComplete and MtuConfirmComplete
+            // wait operations, avoiding unbounded waits if the server is slow or unresponsive.
+            let deadline = TokioInstant::now() + Duration::from_secs(10);
+
+            // We need to wait for confirmation that the dcQUIC handshake is complete.
             // TODO: This will not be needed if https://github.com/aws/s2n-quic/issues/2273 is addressed
-            ConfirmComplete::wait_ready(&mut connection).await?;
+            let _ = tokio::time::timeout_at(deadline, ConfirmComplete::wait_ready(&mut connection))
+                .await;
 
             // Don't wait for the connection to fully close, just wait until dc.complete to
             // drop the permit.
@@ -395,7 +393,12 @@ impl HandshakeQueue {
             // This task also owns pruning our de-duplication tracking.
             let this = self.clone();
             tokio::spawn(async move {
-                let _ = MtuConfirmComplete::wait_ready(&mut connection).await;
+                // Use the same deadline for MTU probing - any remaining time from the 10s budget
+                let _ = tokio::time::timeout_at(
+                    deadline,
+                    MtuConfirmComplete::wait_ready(&mut connection),
+                )
+                .await;
 
                 drop(connection);
                 drop(permit_inflight);
