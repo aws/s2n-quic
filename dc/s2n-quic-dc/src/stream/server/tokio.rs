@@ -20,7 +20,7 @@ use core::num::{NonZeroU16, NonZeroUsize};
 use s2n_quic_core::ensure;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::unix::AsyncFd;
-use tracing::{trace, Instrument as _};
+use tracing::Instrument as _;
 
 // The kernel contends on fdtable lock when calling accept to locate free file
 // descriptors, so even if we don't contend on the underlying socket (due to
@@ -393,34 +393,15 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
     fn spawn_initial_wildcard_pair(&mut self) -> io::Result<()> {
         debug_assert!(self.enable_tcp);
         debug_assert!(self.enable_udp);
-        debug_assert_eq!(self.server.local_addr.port(), 0);
 
-        // try 10 times before bailing
-        for iteration in 0..10 {
-            trace!(wildcard_search_iteration = iteration);
-            let udp_socket = self.socket_opts(self.server.local_addr).build_udp()?;
-            let local_addr = udp_socket.local_addr()?;
-            trace!(candidate = %local_addr);
-            match self.socket_opts(local_addr).build_tcp_listener() {
-                Ok(tcp_socket) => {
-                    trace!(selected = %local_addr);
-                    // we found a port that both protocols can use
-                    self.server.local_addr = local_addr;
-                    self.spawn_udp(udp_socket)?;
-                    self.spawn_tcp(tcp_socket)?;
-                    return Ok(());
-                }
-                Err(err) if err.kind() == io::ErrorKind::AddrInUse => {
-                    // try to find another address
-                    continue;
-                }
-                // bubble up all other error types
-                Err(err) => return Err(err),
-            }
-        }
-
-        // we couldn't find a free port so return and error
-        Err(io::ErrorKind::AddrInUse.into())
+        let (local_addr, udp_socket, tcp_socket) =
+            super::spawn_initial_wildcard_pair(self.server.local_addr, |addr| {
+                self.socket_opts(addr)
+            })?;
+        self.server.local_addr = local_addr;
+        self.spawn_udp(udp_socket)?;
+        self.spawn_tcp(tcp_socket)?;
+        Ok(())
     }
 
     #[inline]
