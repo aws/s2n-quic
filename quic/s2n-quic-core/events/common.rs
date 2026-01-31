@@ -267,6 +267,13 @@ impl From<&SocketAddress<'_>> for core::net::SocketAddr {
     }
 }
 
+impl IntoEvent<crate::inet::SocketAddress> for &crate::inet::SocketAddress {
+    #[inline]
+    fn into_event(self) -> crate::inet::SocketAddress {
+        *self
+    }
+}
+
 enum DuplicatePacketError {
     /// The packet number was already received and is a duplicate.
     Duplicate,
@@ -777,11 +784,10 @@ enum DatagramDropReason {
     InvalidMtuConfiguration {
         /// MTU configuration for the endpoint
         endpoint_mtu_config: MtuConfig,
-        // TODO expose connection level mtu config.
-        // TODO expose the remote address.
-        // https://github.com/aws/s2n-quic/issues/2254
-        // error from mtu::Config
-        // remote_addr: SocketAddress<'a>,
+        /// The connection-specific MTU configuration that was invalid
+        conn_mtu_config: MtuConfig,
+        /// The remote address that caused the MTU configuration error
+        remote_addr: crate::inet::SocketAddress,
     },
     /// The Destination Connection Id is unknown and does not map to a Connection.
     ///
