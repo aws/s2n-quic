@@ -61,7 +61,7 @@ jobs:
           registry-type: public
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3.6.0
+        uses: docker/login-action@v3.7.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           registry: ghcr.io
