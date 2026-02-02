@@ -7,6 +7,10 @@ check-filename = true
 0f2496ba = "0f2496ba"
 
 [default.extend-words]
+# msg_controllen is a standard POSIX field name in msghdr struct
+controllen = "controllen"
+# abbreviation for "copy" used in debug messages
+cpy = "cpy"
 # ECN Capable Transport
 ect = "ect"
 # num_rational uses "numer" as short for "numerator"
