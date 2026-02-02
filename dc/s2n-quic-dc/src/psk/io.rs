@@ -153,7 +153,7 @@ pub(super) async fn server<
             // A 10 second timeout is specified to avoid spawned tasks piling up when the
             // ConnectionClose from the client is lost. This timeout covers both the dc handshake
             // confirmation and MTU probing completion.
-            let result = tokio::time::timeout(Duration::from_secs(10), async {
+            let result = tokio::time::timeout(Duration::from_secs(1), async {
                 if ConfirmComplete::wait_ready(&mut connection).await.is_ok() {
                     MtuConfirmComplete::wait_ready(&mut connection).await;
                 }
@@ -404,11 +404,21 @@ impl HandshakeQueue {
 
             // We need to wait for confirmation that the dcQUIC handshake is complete.
             // TODO: This will not be needed if https://github.com/aws/s2n-quic/issues/2273 is addressed
-            if tokio::time::timeout_at(deadline, ConfirmComplete::wait_ready(&mut connection))
+            match tokio::time::timeout_at(deadline, ConfirmComplete::wait_ready(&mut connection))
                 .await
-                .is_err()
             {
-                map.on_dc_connection_timeout(&peer, true);
+                Ok(Ok(())) => {
+                    // ConfirmComplete succeeded within the deadline - continue
+                }
+                Ok(Err(e)) => {
+                    // ConfirmComplete::wait_ready failed. We should treat the handshake as failed.
+                    return Err(e);
+                }
+                Err(_elapsed) => {
+                    // Timeout occurred - emit event and continue.
+                    // MTU probing will timeout immediately as well.
+                    map.on_dc_connection_timeout(&peer, true);
+                }
             }
 
             // Don't wait for the connection to fully close, just wait until dc.complete to
