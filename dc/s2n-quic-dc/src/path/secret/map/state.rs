@@ -1083,12 +1083,12 @@ where
     }
 
     fn on_dc_connection_timeout(&self, peer: &SocketAddr, is_client: bool) {
-        use crate::event::builder::DcConnectionTimeoutSide;
+        use crate::event::builder::EndpointType;
 
         let side = if is_client {
-            DcConnectionTimeoutSide::Client
+            EndpointType::Client
         } else {
-            DcConnectionTimeoutSide::Server
+            EndpointType::Server
         };
 
         self.subscriber()

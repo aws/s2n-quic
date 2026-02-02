@@ -1657,7 +1657,7 @@ pub mod api {
     pub struct DcConnectionTimeout<'a> {
         pub peer_address: SocketAddress<'a>,
         #[doc = " Whether the timeout occurred on the client or server side"]
-        pub side: DcConnectionTimeoutSide,
+        pub side: EndpointType,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for DcConnectionTimeout<'a> {
@@ -1670,35 +1670,6 @@ pub mod api {
     }
     impl<'a> Event for DcConnectionTimeout<'a> {
         const NAME: &'static str = "dc:connection_timeout";
-    }
-    #[derive(Clone, Debug)]
-    #[non_exhaustive]
-    pub enum DcConnectionTimeoutSide {
-        #[non_exhaustive]
-        Client {},
-        #[non_exhaustive]
-        Server {},
-    }
-    impl aggregate::AsVariant for DcConnectionTimeoutSide {
-        const VARIANTS: &'static [aggregate::info::Variant] = &[
-            aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("CLIENT\0"),
-                id: 0usize,
-            }
-            .build(),
-            aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("SERVER\0"),
-                id: 1usize,
-            }
-            .build(),
-        ];
-        #[inline]
-        fn variant_idx(&self) -> usize {
-            match self {
-                Self::Client { .. } => 0usize,
-                Self::Server { .. } => 1usize,
-            }
-        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -5194,7 +5165,7 @@ pub mod builder {
     pub struct DcConnectionTimeout<'a> {
         pub peer_address: SocketAddress<'a>,
         #[doc = " Whether the timeout occurred on the client or server side"]
-        pub side: DcConnectionTimeoutSide,
+        pub side: EndpointType,
     }
     impl<'a> IntoEvent<api::DcConnectionTimeout<'a>> for DcConnectionTimeout<'a> {
         #[inline]
@@ -5203,21 +5174,6 @@ pub mod builder {
             api::DcConnectionTimeout {
                 peer_address: peer_address.into_event(),
                 side: side.into_event(),
-            }
-        }
-    }
-    #[derive(Clone, Debug)]
-    pub enum DcConnectionTimeoutSide {
-        Client,
-        Server,
-    }
-    impl IntoEvent<api::DcConnectionTimeoutSide> for DcConnectionTimeoutSide {
-        #[inline]
-        fn into_event(self) -> api::DcConnectionTimeoutSide {
-            use api::DcConnectionTimeoutSide::*;
-            match self {
-                Self::Client => Client {},
-                Self::Server => Server {},
             }
         }
     }

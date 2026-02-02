@@ -2157,7 +2157,7 @@ impl<R: Registry> Subscriber<R> {
             {
                 let offset = nominal_counters.len();
                 let mut count = 0;
-                for variant in <DcConnectionTimeoutSide as AsVariant>::VARIANTS.iter() {
+                for variant in <EndpointType as AsVariant>::VARIANTS.iter() {
                     nominal_counters
                         .push(registry.register_nominal_counter(&INFO[212usize], variant));
                     count += 1;
@@ -2826,7 +2826,7 @@ impl<R: Registry> Subscriber<R> {
                 }
                 11usize => {
                     let offset = *entry;
-                    let variants = <DcConnectionTimeoutSide as AsVariant>::VARIANTS;
+                    let variants = <EndpointType as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
                     (&INFO[212usize], entries, variants)
                 }

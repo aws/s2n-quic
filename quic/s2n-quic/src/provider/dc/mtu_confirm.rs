@@ -154,6 +154,7 @@ impl Subscriber for MtuConfirmComplete {
         ensure!(!state.is_ready());
 
         // Log if peer indicated they would send MtuProbingComplete but never did
+        #[cfg(feature = "unstable-provider-dc")]
         if context.peer_will_send_completion && !state.remote_ready {
             tracing::warn!(
                 local_ready = state.local_ready,

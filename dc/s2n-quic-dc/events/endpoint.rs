@@ -23,10 +23,5 @@ struct DcConnectionTimeout<'a> {
 
     /// Whether the timeout occurred on the client or server side
     #[nominal_counter("side")]
-    side: DcConnectionTimeoutSide,
-}
-
-enum DcConnectionTimeoutSide {
-    Client,
-    Server,
+    side: EndpointType,
 }
