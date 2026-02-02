@@ -415,9 +415,11 @@ impl HandshakeQueue {
                     return Err(e);
                 }
                 Err(_elapsed) => {
-                    // Timeout occurred - emit event and continue.
-                    // MTU probing will timeout immediately as well.
-                    map.on_dc_connection_timeout(&peer, true);
+                    // Handshake timeout occurred. We should treat the handshake as failed.
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "ConfirmComplete handshake timeout",
+                    ));
                 }
             }
 
