@@ -31,18 +31,11 @@ impl Socket for UdpSocket {
     }
 
     #[inline]
-    fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>> {
-        // Turmoil doesn't have a peek method, so we poll readable and return a placeholder
-        let fut = self.readable();
-        tokio::pin!(fut);
-        match fut.poll(cx) {
-            Poll::Ready(Ok(())) => {
-                // Socket is readable, but we can't peek - return a reasonable buffer size
-                Poll::Ready(Ok(65535))
-            }
-            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
-            Poll::Pending => Poll::Pending,
-        }
+    fn poll_peek_ready(&self, cx: &mut Context) -> Poll<io::Result<()>> {
+        // Turmoil doesn't have a peek method, so we poll readable
+        let readable_fut = self.readable();
+        tokio::pin!(readable_fut);
+        readable_fut.poll(cx)
     }
 
     #[inline]
