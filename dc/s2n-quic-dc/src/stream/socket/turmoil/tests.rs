@@ -145,3 +145,109 @@ fn socket_trait_poll_methods() -> Result {
 
     sim.run()
 }
+
+/// Test that packets are dropped during partition
+#[test]
+fn packet_drops() -> Result {
+    let mut sim = Builder::new()
+        .simulation_duration(core::time::Duration::from_secs(10))
+        .build();
+
+    sim.host("server", || async move {
+        let socket = turmoil::net::UdpSocket::bind("0.0.0.0:9000").await?;
+        let mut buf = [0u8; 1024];
+        let mut received = Vec::new();
+
+        // Collect messages with timeout
+        loop {
+            match tokio::time::timeout(
+                core::time::Duration::from_millis(500),
+                socket.recv_from(&mut buf),
+            )
+            .await
+            {
+                Ok(Ok((len, _))) => {
+                    received.push(buf[..len].to_vec());
+                }
+                _ => break,
+            }
+        }
+
+        // Should only receive "msg2" - "msg1" was dropped during partition
+        assert_eq!(received.len(), 1);
+        assert_eq!(&received[0], b"msg2");
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        let socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+        let server_addr: SocketAddr = (turmoil::lookup("server"), 9000).into();
+
+        // Partition network - packets will be dropped
+        turmoil::partition("client", "server");
+        socket.send_to(b"msg1", server_addr).await?;
+
+        tokio::time::sleep(core::time::Duration::from_millis(50)).await;
+
+        // Repair network
+        turmoil::repair("client", "server");
+        socket.send_to(b"msg2", server_addr).await?;
+
+        tokio::time::sleep(core::time::Duration::from_millis(100)).await;
+        Ok(())
+    });
+
+    sim.run()
+}
+
+/// Test packet hold/release - verifies held packets are delayed until released
+#[test]
+fn packet_hold_release() -> Result {
+    let mut sim = Builder::new()
+        .simulation_duration(core::time::Duration::from_secs(10))
+        .build();
+
+    sim.host("server", || async move {
+        let socket = turmoil::net::UdpSocket::bind("0.0.0.0:9000").await?;
+        let mut buf = [0u8; 1024];
+
+        // First receive should timeout - packets are held
+        let first_result = tokio::time::timeout(
+            core::time::Duration::from_millis(200),
+            socket.recv_from(&mut buf),
+        )
+        .await;
+        assert!(first_result.is_err(), "expected timeout while packets held");
+
+        // After client releases, we should receive the message
+        let (len, _) = tokio::time::timeout(
+            core::time::Duration::from_secs(2),
+            socket.recv_from(&mut buf),
+        )
+        .await
+        .expect("should receive after release")?;
+
+        assert_eq!(&buf[..len], b"held_msg");
+        Ok(())
+    });
+
+    sim.client("client", async move {
+        let socket = turmoil::net::UdpSocket::bind("0.0.0.0:0").await?;
+        let server_addr: SocketAddr = (turmoil::lookup("server"), 9000).into();
+
+        // Hold packets from client to server
+        turmoil::hold("client", "server");
+        socket.send_to(b"held_msg", server_addr).await?;
+
+        // Wait for server's first timeout attempt
+        tokio::time::sleep(core::time::Duration::from_millis(300)).await;
+
+        // Release held packets
+        turmoil::release("client", "server");
+
+        tokio::time::sleep(core::time::Duration::from_millis(200)).await;
+        Ok(())
+    });
+
+    sim.run()
+}
