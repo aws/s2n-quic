@@ -54,7 +54,7 @@ unstable-provider-packet-interceptor = []
 # This feature enables the random provider
 unstable-provider-random = []
 # This feature enables the dc provider
-unstable-provider-dc = ["s2n-quic-transport/unstable-provider-dc", "tracing"]
+unstable-provider-dc = ["s2n-quic-transport/unstable-provider-dc"]
 # This feature enables support for third party congestion controller implementations
 unstable-congestion-controller = ["s2n-quic-core/unstable-congestion-controller"]
 # This feature enables the use of unstable connection limits
@@ -82,7 +82,6 @@ s2n-quic-tls = { version = "=0.72.0", path = "../s2n-quic-tls", optional = true 
 s2n-quic-tls-default = { version = "=0.72.0", path = "../s2n-quic-tls-default", optional = true }
 s2n-quic-transport = { version = "=0.72.0", path = "../s2n-quic-transport" }
 tokio = { version = "1", default-features = false, features = ["sync"] }
-tracing = { version = "0.1", optional = true }
 zerocopy = { version = "0.8", optional = true, features = ["derive"] }
 zeroize = { version = "1", optional = true, default-features = false }
 
