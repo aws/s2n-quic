@@ -1,0 +1,28 @@
+target = "https://www.rfc-editor.org/rfc/rfc8312#section-4.4"
+
+# Convex Region
+#
+#    When receiving an ACK in congestion avoidance, if CUBIC is not in the
+#    TCP-friendly region and cwnd is larger than or equal to W_max, then
+#    CUBIC is in the convex region.  The convex region indicates that the
+#    network conditions might have been perturbed since the last
+#    congestion event, possibly implying more available bandwidth after
+#    some flow departures.  Since the Internet is highly asynchronous,
+#    some amount of perturbation is always possible without causing a
+#    major change in available bandwidth.  In this region, CUBIC is being
+#    very careful by very slowly increasing its window size.  The convex
+#    profile ensures that the window increases very slowly at the
+#    beginning and gradually increases its increase rate.  We also call
+#    this region the "maximum probing phase" since CUBIC is searching for
+#    a new W_max.  In this region, cwnd MUST be incremented by
+#    (W_cubic(t+RTT) - cwnd)/cwnd for each received ACK, where
+#    W_cubic(t+RTT) is calculated using Eq. 1.
+
+[[spec]]
+level = "MUST"
+quote = '''
+In this region, cwnd MUST be incremented by
+(W_cubic(t+RTT) - cwnd)/cwnd for each received ACK, where
+W_cubic(t+RTT) is calculated using Eq.
+'''
+

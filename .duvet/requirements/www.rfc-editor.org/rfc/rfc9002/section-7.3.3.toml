@@ -1,0 +1,26 @@
+target = "https://www.rfc-editor.org/rfc/rfc9002#section-7.3.3"
+
+# Congestion Avoidance
+#
+#    A NewReno sender is in congestion avoidance any time the congestion
+#    window is at or above the slow start threshold and not in a recovery
+#    period.
+# 
+#    A sender in congestion avoidance uses an Additive Increase
+#    Multiplicative Decrease (AIMD) approach that MUST limit the increase
+#    to the congestion window to at most one maximum datagram size for
+#    each congestion window that is acknowledged.
+# 
+#    The sender exits congestion avoidance and enters a recovery period
+#    when a packet is lost or when the ECN-CE count reported by its peer
+#    increases.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A sender in congestion avoidance uses an Additive Increase
+Multiplicative Decrease (AIMD) approach that MUST limit the increase
+to the congestion window to at most one maximum datagram size for
+each congestion window that is acknowledged.
+'''
+

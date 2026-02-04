@@ -1,0 +1,110 @@
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-8"
+
+# Security Considerations
+#
+#    The security considerations for the use of UDP and SCTP are provided
+#    in the referenced RFCs.
+# 
+#    To avoid excessive load, the interval between individual probe
+#    packets MUST be at least one RTT, and the interval between rounds of
+#    probing is determined by the PMTU_RAISE_TIMER.
+# 
+#    A PL sender needs to ensure that the method used to confirm reception
+#    of probe packets protects from off-path attackers injecting packets
+#    into the path.  This protection is provided in IETF-defined protocols
+#    (e.g., TCP, SCTP) using a randomly initialized sequence number.  A
+#    description of one way to do this when using UDP is provided in
+#    Section 5.1 of [BCP145]).
+# 
+#    There are cases where ICMP Packet Too Big (PTB) messages are not
+#    delivered due to policy, configuration, or equipment design (see
+#    Section 1.1).  This method therefore does not rely upon PTB messages
+#    being received but is able to utilize these when they are received by
+#    the sender.  PTB messages could potentially be used to cause a node
+#    to inappropriately reduce the PLPMTU.  A node supporting DPLPMTUD
+#    MUST therefore appropriately validate the payload of PTB messages to
+#    ensure these are received in response to transmitted traffic (i.e., a
+#    reported error condition that corresponds to a datagram actually sent
+#    by the path layer, see Section 4.6.1).
+# 
+#    An on-path attacker able to create a PTB message could forge PTB
+#    messages that include a valid quoted IP packet.  Such an attack could
+#    be used to drive down the PLPMTU.  An on-path device could similarly
+#    force a reduction of the PLPMTU by implementing a policy that drops
+#    packets larger than a configured size.  There are two ways this
+#    method can be mitigated against such attacks: first, by ensuring that
+#    a PL sender never reduces the PLPMTU below the base size solely in
+#    response to receiving a PTB message.  This is achieved by first
+#    entering the BASE state when such a message is received.  Second, the
+#    design does not require processing of PTB messages; a PL sender could
+#    therefore suspend processing of PTB messages (e.g., in a robustness
+#    mode after detecting that subsequent probes actually confirm that a
+#    size larger than the PTB_SIZE is supported by a path).
+# 
+#    Parsing the quoted packet inside a PTB message can introduce
+#    additional per-packet processing at the PL sender.  This processing
+#    SHOULD be limited to avoid a denial-of-service attack when arbitrary
+#    headers are included.  Rate-limiting the processing could result in
+#    PTB messages not being received by a PL; however, the DPLPMTUD method
+#    is robust to such loss.
+# 
+#    The successful processing of an ICMP message can trigger a probe when
+#    the reported PTB size is valid, but this does not directly update the
+#    PLPMTU for the path.  This prevents a message attempting to black
+#    hole data by indicating a size larger than supported by the path.
+# 
+#    It is possible that the information about a path is not stable.  This
+#    could be a result of forwarding across more than one path that has a
+#    different actual PMTU or a single path presents a varying PMTU.  The
+#    design of a PLPMTUD implementation SHOULD consider how to mitigate
+#    the effects of varying path information.  One possible mitigation is
+#    to provide robustness (see Section 5.4) in the method that avoids
+#    oscillation in the MPS.
+# 
+#    DPLPMTUD methods can introduce padding data to inflate the length of
+#    the datagram to the total size required for a probe packet.  The
+#    total size of a probe packet includes all headers and padding added
+#    to the payload data being sent (e.g., including security-related
+#    fields such as an AEAD tag and TLS record layer padding).  The value
+#    of the padding data does not influence the DPLPMTUD search algorithm,
+#    and therefore needs to be set consistent with the policy of the PL.
+# 
+#    If a PL can make use of cryptographic confidentiality or data-
+#    integrity mechanisms, then the design ought to avoid adding anything
+#    (e.g., padding) to DPLPMTUD probe packets that is not also protected
+#    by those cryptographic mechanisms.
+
+[[spec]]
+level = "MUST"
+quote = '''
+To avoid excessive load, the interval between individual probe
+packets MUST be at least one RTT, and the interval between rounds of
+probing is determined by the PMTU_RAISE_TIMER.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A node supporting DPLPMTUD
+MUST therefore appropriately validate the payload of PTB messages to
+ensure these are received in response to transmitted traffic (i.e., a
+reported error condition that corresponds to a datagram actually sent
+by the path layer, see Section 4.6.1).
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+This processing
+SHOULD be limited to avoid a denial-of-service attack when arbitrary
+headers are included.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The
+design of a PLPMTUD implementation SHOULD consider how to mitigate
+the effects of varying path information.
+'''
+
