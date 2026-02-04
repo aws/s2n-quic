@@ -150,10 +150,10 @@ pub(super) async fn server<
             // the entry into its map. The client indicates this by sending a ConnectionClose
             // when it is done.
             //
-            // A 1 second timeout is specified to avoid spawned tasks piling up when the
+            // A 10 second timeout is specified to avoid spawned tasks piling up when the
             // ConnectionClose from the client is lost. This timeout covers both the dc handshake
             // confirmation and MTU probing completion.
-            let result = tokio::time::timeout(Duration::from_secs(1), async {
+            let result = tokio::time::timeout(Duration::from_secs(10), async {
                 if ConfirmComplete::wait_ready(&mut connection).await.is_ok() {
                     MtuConfirmComplete::wait_ready(&mut connection).await;
                 }
