@@ -10,7 +10,7 @@ use s2n_quic_core::{
     },
 };
 use std::time::Duration;
-use tokio::sync::watch;
+use tokio::{runtime::Handle, sync::watch};
 
 /// `event::Subscriber` used for ensuring an s2n-quic client or server negotiating dc
 /// waits for post-handshake MTU probing to complete
@@ -50,10 +50,14 @@ impl MtuConfirmComplete {
                 // Peer didn't indicate they would send MtuProbingComplete.
                 // Wait 1 second to allow the peer to finish their MTU probing.
                 if !peer_will_send {
-                    // s2n-quic testing module is using bach runtime, while it is using tokio runtime in production
+                    // s2n-quic testing module is using bach/tokio runtime, while it's only using tokio runtime in production
                     #[cfg(any(test, feature = "unstable-provider-io-testing"))]
                     {
-                        crate::provider::io::testing::time::delay(Duration::from_secs(1)).await;
+                        if Handle::try_current().is_err() {
+                            crate::provider::io::testing::time::delay(Duration::from_secs(1)).await;
+                        } else {
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                        }
                     }
                     #[cfg(not(any(test, feature = "unstable-provider-io-testing")))]
                     {
