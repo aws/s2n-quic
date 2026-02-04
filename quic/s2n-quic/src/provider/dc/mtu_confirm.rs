@@ -153,6 +153,15 @@ impl Subscriber for MtuConfirmComplete {
         let state = *context.sender.borrow();
         ensure!(!state.is_ready());
 
+        // Log if peer indicated they would send MtuProbingComplete but never did
+        #[cfg(feature = "unstable-provider-dc")]
+        if context.peer_will_send_completion && !state.remote_ready {
+            tracing::warn!(
+                local_ready = state.local_ready,
+                "peer indicated MtuProbingComplete support but closed connection before sending it"
+            );
+        }
+
         // The connection closed before MTU probing completed
         // Force both to complete to unblock any waiting tasks
         context.update_and_check(|state| {
