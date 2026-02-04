@@ -1656,15 +1656,12 @@ pub mod api {
     #[doc = " Emitted when the DC handshake confirmation or MTU probing times out"]
     pub struct DcConnectionTimeout<'a> {
         pub peer_address: SocketAddress<'a>,
-        #[doc = " Whether the timeout occurred on the client or server side"]
-        pub side: EndpointType,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for DcConnectionTimeout<'a> {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("DcConnectionTimeout");
             fmt.field("peer_address", &self.peer_address);
-            fmt.field("side", &self.side);
             fmt.finish()
         }
     }
@@ -3213,8 +3210,8 @@ pub mod tracing {
             event: &api::DcConnectionTimeout,
         ) {
             let parent = self.parent(meta);
-            let api::DcConnectionTimeout { peer_address, side } = event;
-            tracing :: event ! (target : "dc_connection_timeout" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , side = tracing :: field :: debug (side) });
+            let api::DcConnectionTimeout { peer_address } = event;
+            tracing :: event ! (target : "dc_connection_timeout" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) });
         }
         #[inline]
         fn on_path_secret_map_initialized(
@@ -5164,16 +5161,13 @@ pub mod builder {
     #[doc = " Emitted when the DC handshake confirmation or MTU probing times out"]
     pub struct DcConnectionTimeout<'a> {
         pub peer_address: SocketAddress<'a>,
-        #[doc = " Whether the timeout occurred on the client or server side"]
-        pub side: EndpointType,
     }
     impl<'a> IntoEvent<api::DcConnectionTimeout<'a>> for DcConnectionTimeout<'a> {
         #[inline]
         fn into_event(self) -> api::DcConnectionTimeout<'a> {
-            let DcConnectionTimeout { peer_address, side } = self;
+            let DcConnectionTimeout { peer_address } = self;
             api::DcConnectionTimeout {
                 peer_address: peer_address.into_event(),
-                side: side.into_event(),
             }
         }
     }

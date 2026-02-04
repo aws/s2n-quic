@@ -20,8 +20,4 @@ struct EndpointInitialized<'a> {
 struct DcConnectionTimeout<'a> {
     #[nominal_counter("peer_address.protocol")]
     peer_address: SocketAddress<'a>,
-
-    /// Whether the timeout occurred on the client or server side
-    #[nominal_counter("side")]
-    side: EndpointType,
 }

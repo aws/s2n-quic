@@ -216,8 +216,8 @@ impl Map {
     }
 
     /// Emits a DcConnectionTimeout event via the subscriber
-    pub fn on_dc_connection_timeout(&self, peer: &SocketAddr, is_client: bool) {
-        self.store.on_dc_connection_timeout(peer, is_client);
+    pub fn on_dc_connection_timeout(&self, peer_address: &SocketAddr) {
+        self.store.on_dc_connection_timeout(peer_address);
     }
 
     pub fn handle_control_packet(&self, packet: &control::Packet, peer: &SocketAddr) {

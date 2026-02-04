@@ -1082,19 +1082,10 @@ where
         }
     }
 
-    fn on_dc_connection_timeout(&self, peer: &SocketAddr, is_client: bool) {
-        use crate::event::builder::EndpointType;
-
-        let side = if is_client {
-            EndpointType::Client
-        } else {
-            EndpointType::Server
-        };
-
+    fn on_dc_connection_timeout(&self, peer_address: &SocketAddr) {
         self.subscriber()
             .on_dc_connection_timeout(event::builder::DcConnectionTimeout {
-                peer_address: SocketAddress::from(*peer).into_event(),
-                side,
+                peer_address: SocketAddress::from(*peer_address).into_event(),
             });
     }
 }

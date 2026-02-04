@@ -162,8 +162,8 @@ pub(super) async fn server<
 
             // Emit event if timeout occurred
             if result.is_err() {
-                if let Ok(peer) = connection.remote_addr() {
-                    map_clone.on_dc_connection_timeout(&peer, false);
+                if let Ok(peer_address) = connection.remote_addr() {
+                    map_clone.on_dc_connection_timeout(&peer_address);
                 }
             }
         });
@@ -443,7 +443,7 @@ impl HandshakeQueue {
                 .await
                 .is_err()
                 {
-                    map_clone.on_dc_connection_timeout(&peer, true);
+                    map_clone.on_dc_connection_timeout(&peer);
                 }
 
                 drop(connection);

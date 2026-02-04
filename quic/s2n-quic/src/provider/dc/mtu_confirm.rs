@@ -50,9 +50,11 @@ impl MtuConfirmComplete {
                 // Peer didn't indicate they would send MtuProbingComplete.
                 // Wait 1 second to allow the peer to finish their MTU probing.
                 if !peer_will_send {
-                    // s2n-quic testing module is using bach/tokio runtime, while it's only using tokio runtime in production
+                    // s2n-quic tests are using bach/tokio runtime, while it's only using tokio runtime in production
                     #[cfg(any(test, feature = "unstable-provider-io-testing"))]
                     {
+                        // We might be running in cfg(test) with a real tokio runtime, not against the bach provider.
+                        // Hence, we use Handle::try_current to test if a tokio runtime has been started.
                         if Handle::try_current().is_err() {
                             crate::provider::io::testing::time::delay(Duration::from_secs(1)).await;
                         } else {

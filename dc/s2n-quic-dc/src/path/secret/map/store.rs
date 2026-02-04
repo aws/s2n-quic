@@ -155,5 +155,5 @@ pub trait Store: 'static + Send + Sync {
     #[cfg(test)]
     fn reset_all_senders(&self);
 
-    fn on_dc_connection_timeout(&self, peer: &SocketAddr, is_client: bool);
+    fn on_dc_connection_timeout(&self, peer_address: &SocketAddr);
 }
