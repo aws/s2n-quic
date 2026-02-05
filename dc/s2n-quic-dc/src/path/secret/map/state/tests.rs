@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{StateBuilder, *};
+use super::*;
 use crate::{
     event::{testing, tracing},
     path::secret::{schedule, sender},
@@ -20,7 +20,7 @@ fn fake_entry(port: u16) -> Arc<Entry> {
 #[test]
 fn cleans_after_delay() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = StateBuilder::new()
+    let map = State::builder()
         .with_signer(signer)
         .with_capacity(50)
         .with_clock(Clock)
@@ -54,7 +54,7 @@ fn cleans_after_delay() {
 #[test]
 fn thread_shutdown() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = StateBuilder::new()
+    let map = State::builder()
         .with_signer(signer)
         .with_capacity(10)
         .with_clock(Clock)
@@ -275,7 +275,7 @@ fn check_invariants_inner(should_evict_on_unknown_path_secret: bool) {
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let mut map = StateBuilder::new()
+            let mut map = State::builder()
                 .with_signer(signer)
                 .with_capacity(10_000)
                 .with_evict_on_unknown_path_secret(should_evict_on_unknown_path_secret)
@@ -322,7 +322,7 @@ fn check_invariants_no_overflow() {
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let map = StateBuilder::new()
+            let map = State::builder()
                 .with_signer(signer)
                 .with_capacity(10_000)
                 .with_clock(Clock)
@@ -351,7 +351,7 @@ fn check_invariants_no_overflow() {
 #[ignore = "memory growth takes a long time to run"]
 fn no_memory_growth() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = StateBuilder::new()
+    let map = State::builder()
         .with_signer(signer)
         .with_capacity(100_000)
         .with_clock(Clock)
@@ -369,7 +369,7 @@ fn no_memory_growth() {
 #[test]
 fn unknown_path_secret_evicts() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = StateBuilder::new()
+    let map = State::builder()
         .with_signer(signer)
         .with_capacity(5)
         .with_evict_on_unknown_path_secret(true)

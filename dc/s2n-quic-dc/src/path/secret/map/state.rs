@@ -93,14 +93,27 @@ where
         self
     }
 
-    pub fn with_clock(mut self, clock: C) -> Self {
-        self.clock = Some(clock);
-        self
+    pub fn with_clock<C2: 'static + time::Clock + Sync + Send>(
+        self,
+        clock: C2,
+    ) -> StateBuilder<C2, S> {
+        StateBuilder {
+            clock: Some(clock),
+            subscriber: self.subscriber,
+            should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
+            signer: self.signer,
+            capacity: self.capacity,
+        }
     }
 
-    pub fn with_subscriber(mut self, subscriber: S) -> Self {
-        self.subscriber = Some(subscriber);
-        self
+    pub fn with_subscriber<S2: event::Subscriber>(self, subscriber: S2) -> StateBuilder<C, S2> {
+        StateBuilder {
+            clock: self.clock,
+            subscriber: Some(subscriber),
+            should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
+            signer: self.signer,
+            capacity: self.capacity,
+        }
     }
 
     pub fn build(self) -> Result<Arc<State<C, S>>, StateBuilderError> {
@@ -476,6 +489,10 @@ where
     C: 'static + time::Clock + Sync + Send,
     S: event::Subscriber,
 {
+    pub fn builder() -> StateBuilder<C, S> {
+        StateBuilder::new()
+    }
+
     pub fn new(
         signer: stateless_reset::Signer,
         capacity: usize,
