@@ -21,10 +21,10 @@ impl MtuConfirmComplete {
     ///
     /// If the peer doesn't support MtuProbingComplete, waits 1 second after local MTU probing
     /// completes to allow the peer to finish their probing.
-    ///
-    /// Returns whether the peer supports sending MtuProbingComplete frames.
     pub async fn wait_ready(conn: &mut Connection) {
         let (mut receiver, peer_will_send) = conn
+            // FIXME: We need to follow up on making this code either wait for peer_will_send_completion to be initialized or check that it was updated.
+            // https://github.com/aws/s2n-quic/issues/2957
             .query_event_context_mut(|context: &mut MtuConfirmContext| {
                 (
                     context.sender.subscribe(),
