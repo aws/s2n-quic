@@ -54,6 +54,8 @@ struct PeerTransportParams {
     datagram_limits: DatagramLimits,
     max_ack_delay: MaxAckDelay,
     dc_version: Option<dc::Version>,
+    /// The peer is both prepared to receive MtuProbingComplete frame and will send the frame if the local side indicates
+    /// it supports MtuProbingComplete frame via transport parameter.
     mtu_probing_complete_support: MtuProbingCompleteSupport,
 }
 
