@@ -353,25 +353,22 @@ fn mtu_probing_complete_frame_exchange_test() -> Result<()> {
     Ok(())
 }
 
-// Test that verifies asymmetric MtuProbingComplete frame exchange when only the server
-// has mtu_probing_complete_support enabled but the client has it disabled.
+// Test that verifies when the client has mtu_probing_complete_support disabled, neither side sends MtuProbingComplete frames.
 //
 // Client (disabled)                                                    Server (enabled)
 //
 // <MTU probing completes locally>
-// (no frame sent) ->
-//                                                                      <- 1-RTT: MTU_PROBING_COMPLETE[mtu=1472]
-// # on_mtu_probing_complete_received
+// (no frame sent because local support is disabled) ->
 //                                                 (no frame received on server)
+//                         (server sees peer didn't send transport param, doesn't send frame)
+//                                                 (no frame received on client)
 #[test]
 fn mtu_probing_complete_server_only_test() -> Result<()> {
-    // Server with mtu_probing_complete_support enabled (default)
     let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
     let server = Server::builder()
         .with_tls(server_tls)?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
-    // Client with mtu_probing_complete_support DISABLED
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
     let client = Client::builder()
         .with_tls(client_tls)?
@@ -379,20 +376,16 @@ fn mtu_probing_complete_server_only_test() -> Result<()> {
 
     let (client_events, server_events) = self_test(server, client, true, None, None, true)?;
 
-    // Verify that client received MtuProbingComplete from server
+    // Server doesn't send because client didn't indicate support via transport parameter
     let client_mtu_complete_events = client_events
         .mtu_probing_complete_received_events()
         .lock()
         .unwrap()
         .clone();
     assert_eq!(
-        1,
+        0,
         client_mtu_complete_events.len(),
-        "Client should receive one MtuProbingComplete frame from server"
-    );
-    assert_eq!(
-        1472, client_mtu_complete_events[0].mtu,
-        "Received MTU should match confirmed MTU"
+        "Client should NOT receive MtuProbingComplete frame from server (client didn't send transport param)"
     );
 
     // Verify that server did NOT receive MtuProbingComplete from client
@@ -446,12 +439,16 @@ fn mtu_probing_complete_server_only_test() -> Result<()> {
     assert!(time_difference < Duration::from_millis(100));
 
     // Verify that the transport parameter was correctly encoded and decoded
+    // Server received that client does NOT support mtu_probing_complete
     let server_received_peer_support = server_events
         .peer_mtu_probing_complete_support()
         .lock()
         .unwrap()
         .unwrap();
-    assert!(!server_received_peer_support);
+    assert!(
+        !server_received_peer_support,
+        "Server should see that client does not support mtu_probing_complete"
+    );
 
     // Client should receive mtu_probing_complete_support=true from server (server has it enabled)
     let client_received_peer_support = client_events

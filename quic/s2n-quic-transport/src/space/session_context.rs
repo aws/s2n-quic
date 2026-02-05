@@ -41,7 +41,7 @@ use s2n_quic_core::{
         parameters::{
             ActiveConnectionIdLimit, ClientTransportParameters, DatagramLimits,
             DcSupportedVersions, InitialFlowControlLimits, InitialSourceConnectionId, MaxAckDelay,
-            ServerTransportParameters, TransportParameter as _,
+            MtuProbingCompleteSupport, ServerTransportParameters, TransportParameter as _,
         },
         Error,
     },
@@ -84,6 +84,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'
             DatagramLimits,
             MaxAckDelay,
             Option<dc::Version>,
+            MtuProbingCompleteSupport,
         ),
         transport::Error,
     > {
@@ -215,6 +216,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'
             datagram_limits,
             peer_parameters.max_ack_delay,
             dc_version,
+            peer_parameters.mtu_probing_complete_support,
         ))
     }
 
@@ -229,6 +231,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'
             DatagramLimits,
             MaxAckDelay,
             Option<dc::Version>,
+            MtuProbingCompleteSupport,
         ),
         transport::Error,
     > {
@@ -281,6 +284,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'
             datagram_limits,
             peer_parameters.max_ack_delay,
             dc_version,
+            peer_parameters.mtu_probing_complete_support,
         ))
     }
 
@@ -414,6 +418,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             datagram_limits,
             max_ack_delay,
             dc_version,
+            peer_mtu_probing_complete_support,
         ) = match Config::ENDPOINT_TYPE {
             endpoint::Type::Client => self.on_server_params(param_decoder)?,
             endpoint::Type::Server => self.on_client_params(param_decoder)?,
@@ -482,7 +487,13 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.publisher
                 .on_dc_path_created(DcPathCreated { path: &dc_path });
 
-            if self.dc.mtu_probing_complete_support() {
+            // Only enable MtuProbingComplete if both local DC endpoint has MTU probing complete support enabled
+            // and peer indicates they support receiving MtuProbingComplete frames via transport parameter
+            let peer_supports_mtu_probing_complete = matches!(
+                peer_mtu_probing_complete_support,
+                MtuProbingCompleteSupport::Enabled
+            );
+            if self.dc.mtu_probing_complete_support() && peer_supports_mtu_probing_complete {
                 self.path_manager
                     .active_path_mut()
                     .mtu_controller
