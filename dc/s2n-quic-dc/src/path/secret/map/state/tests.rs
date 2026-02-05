@@ -287,7 +287,9 @@ fn check_invariants_inner(should_evict_on_unknown_path_secret: bool) {
             // Avoid background work interfering with testing.
             map.cleaner.stop();
 
-            Arc::get_mut(&mut map).unwrap().set_max_capacity(5);
+            Arc::<State<Clock, tracing::Subscriber>>::get_mut(&mut map)
+                .unwrap()
+                .set_max_capacity(5);
 
             model.check_invariants(&map);
 

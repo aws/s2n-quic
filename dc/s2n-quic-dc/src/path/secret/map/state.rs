@@ -484,15 +484,17 @@ fn control_socket() -> Option<Arc<std::net::UdpSocket>> {
     None
 }
 
+impl State<time::StdClock, crate::event::tracing::Subscriber> {
+    pub fn builder() -> StateBuilder<time::StdClock, crate::event::tracing::Subscriber> {
+        StateBuilder::new()
+    }
+}
+
 impl<C, S> State<C, S>
 where
     C: 'static + time::Clock + Sync + Send,
     S: event::Subscriber,
 {
-    pub fn builder() -> StateBuilder<C, S> {
-        StateBuilder::new()
-    }
-
     pub fn new(
         signer: stateless_reset::Signer,
         capacity: usize,
