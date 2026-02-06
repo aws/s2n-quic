@@ -20,6 +20,8 @@ type Result<T = (), E = io::Error> = core::result::Result<T, E>;
 pub mod bach;
 #[cfg(feature = "tokio")]
 pub mod tokio;
+#[cfg(feature = "unstable-provider-io-turmoil")]
+pub mod turmoil;
 pub mod udp;
 
 pub trait Environment {

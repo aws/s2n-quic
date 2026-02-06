@@ -6,3 +6,5 @@ pub mod bach;
 pub mod rpc;
 #[cfg(feature = "tokio")]
 pub mod tokio;
+#[cfg(feature = "unstable-provider-io-turmoil")]
+pub mod turmoil;
