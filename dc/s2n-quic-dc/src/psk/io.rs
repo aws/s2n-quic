@@ -154,6 +154,7 @@ pub(super) async fn server<
             // ConnectionClose from the client is lost. This timeout covers both the dc handshake
             // confirmation and MTU probing completion.
             let result = tokio::time::timeout(Duration::from_secs(10), async {
+                // FIXME: add more logging information if the subscriber is not registered with the endpoint.
                 if ConfirmComplete::wait_ready(&mut connection).await.is_ok() {
                     MtuConfirmComplete::wait_ready(&mut connection).await;
                 }
