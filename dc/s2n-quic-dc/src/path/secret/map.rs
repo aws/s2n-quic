@@ -215,6 +215,11 @@ impl Map {
         self.store.handle_unexpected_packet(packet, peer);
     }
 
+    /// Emits a DcConnectionTimeout event via the subscriber
+    pub fn on_dc_connection_timeout(&self, peer_address: &SocketAddr) {
+        self.store.on_dc_connection_timeout(peer_address);
+    }
+
     pub fn handle_control_packet(&self, packet: &control::Packet, peer: &SocketAddr) {
         match packet {
             control::Packet::StaleKey(packet) => {
