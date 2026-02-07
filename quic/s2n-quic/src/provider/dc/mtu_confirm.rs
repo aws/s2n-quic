@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Connection;
+use cfg_if::cfg_if;
 use s2n_quic_core::{
     ensure,
     event::{
@@ -51,20 +52,19 @@ impl MtuConfirmComplete {
                 // Wait 1 second to allow the peer to finish their MTU probing.
                 if !peer_will_send {
                     // s2n-quic tests are using bach/tokio runtime, while it's only using tokio runtime in production
-                    #[cfg(any(test, feature = "unstable-provider-io-testing"))]
-                    {
-                        // We might be running in cfg(test) with a real tokio runtime, not against the bach provider.
-                        // Hence, we use Handle::try_current to test if a tokio runtime has been started.
-                        if Handle::try_current().is_err() {
-                            crate::provider::io::testing::time::delay(Duration::from_secs(1)).await;
+                    cfg_if!(
+                        if #[cfg(any(test, feature = "unstable-provider-io-testing"))] {
+                            // We might be running in cfg(test) with a real tokio runtime, not against the bach provider.
+                            // Hence, we use Handle::try_current to test if a tokio runtime has been started.
+                            if Handle::try_current().is_err() {
+                                crate::provider::io::testing::time::delay(Duration::from_secs(1)).await;
+                            } else {
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                            }
                         } else {
                             tokio::time::sleep(Duration::from_secs(1)).await;
                         }
-                    }
-                    #[cfg(not(any(test, feature = "unstable-provider-io-testing")))]
-                    {
-                        tokio::time::sleep(Duration::from_secs(1)).await;
-                    }
+                    );
                 }
                 return;
             }
@@ -160,7 +160,7 @@ impl Subscriber for MtuConfirmComplete {
         ensure!(!state.is_ready());
 
         // Log if peer indicated they would send MtuProbingComplete but never did
-        #[cfg(feature = "unstable-provider-dc")]
+        #[cfg(feature = "provider-event-tracing")]
         if context.peer_will_send_completion && !state.remote_ready {
             tracing::warn!(
                 local_ready = state.local_ready,
