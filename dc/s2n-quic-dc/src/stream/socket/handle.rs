@@ -28,8 +28,8 @@ pub trait Socket: 'static + Send + Sync {
     /// Returns the [`TransportFeatures`] that the socket supports
     fn features(&self) -> TransportFeatures;
 
-    /// Returns the amount of buffered data on the socket
-    fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>>;
+    /// Returns whether the underlying socket has data to receive from
+    fn poll_peek_ready(&self, cx: &mut Context) -> Poll<io::Result<()>>;
 
     #[inline]
     fn poll_recv_buffer(
@@ -133,8 +133,8 @@ macro_rules! impl_box {
             }
 
             #[inline(always)]
-            fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>> {
-                (**self).poll_peek_len(cx)
+            fn poll_peek_ready(&self, cx: &mut Context) -> Poll<io::Result<()>> {
+                (**self).poll_peek_ready(cx)
             }
 
             #[inline(always)]

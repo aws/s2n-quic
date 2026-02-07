@@ -31,16 +31,16 @@ impl Socket for UdpSocket {
     }
 
     #[inline]
-    fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>> {
+    fn poll_peek_ready(&self, cx: &mut Context) -> Poll<io::Result<()>> {
         let buffer = &mut [0];
         let buffer = &mut [IoSliceMut::new(buffer)];
 
         let mut opts = RecvOptions::default();
         opts.peek = true;
 
-        let res = ready!(self.poll_recv_msg(cx, buffer, opts))?;
+        let _res = ready!(self.poll_recv_msg(cx, buffer, opts))?;
 
-        Ok(res.len).into()
+        Ok(()).into()
     }
 
     #[inline]
