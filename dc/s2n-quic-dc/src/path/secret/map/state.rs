@@ -1081,6 +1081,13 @@ where
             entry.reset_sender_counter();
         }
     }
+
+    fn on_dc_connection_timeout(&self, peer_address: &SocketAddr) {
+        self.subscriber()
+            .on_dc_connection_timeout(event::builder::DcConnectionTimeout {
+                peer_address: SocketAddress::from(*peer_address).into_event(),
+            });
+    }
 }
 
 impl<C, S> Drop for State<C, S>

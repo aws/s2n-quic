@@ -1653,6 +1653,23 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Emitted when the DC handshake confirmation or MTU probing times out"]
+    pub struct DcConnectionTimeout<'a> {
+        pub peer_address: SocketAddress<'a>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for DcConnectionTimeout<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("DcConnectionTimeout");
+            fmt.field("peer_address", &self.peer_address);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for DcConnectionTimeout<'a> {
+        const NAME: &'static str = "dc:connection_timeout";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct PathSecretMapInitialized {
         #[doc = " The capacity of the path secret map"]
         pub capacity: usize,
@@ -3185,6 +3202,16 @@ pub mod tracing {
                 udp,
             } = event;
             tracing :: event ! (target : "endpoint_initialized" , parent : parent , tracing :: Level :: DEBUG , { acceptor_addr = tracing :: field :: debug (acceptor_addr) , handshake_addr = tracing :: field :: debug (handshake_addr) , tcp = tracing :: field :: debug (tcp) , udp = tracing :: field :: debug (udp) });
+        }
+        #[inline]
+        fn on_dc_connection_timeout(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::DcConnectionTimeout,
+        ) {
+            let parent = self.parent(meta);
+            let api::DcConnectionTimeout { peer_address } = event;
+            tracing :: event ! (target : "dc_connection_timeout" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) });
         }
         #[inline]
         fn on_path_secret_map_initialized(
@@ -5131,6 +5158,20 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Emitted when the DC handshake confirmation or MTU probing times out"]
+    pub struct DcConnectionTimeout<'a> {
+        pub peer_address: SocketAddress<'a>,
+    }
+    impl<'a> IntoEvent<api::DcConnectionTimeout<'a>> for DcConnectionTimeout<'a> {
+        #[inline]
+        fn into_event(self) -> api::DcConnectionTimeout<'a> {
+            let DcConnectionTimeout { peer_address } = self;
+            api::DcConnectionTimeout {
+                peer_address: peer_address.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct PathSecretMapInitialized {
         #[doc = " The capacity of the path secret map"]
         pub capacity: usize,
@@ -6521,6 +6562,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `DcConnectionTimeout` event is triggered"]
+        #[inline]
+        fn on_dc_connection_timeout(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::DcConnectionTimeout,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `PathSecretMapInitialized` event is triggered"]
         #[inline]
         fn on_path_secret_map_initialized(
@@ -7378,6 +7429,14 @@ mod traits {
             self.as_ref().on_endpoint_initialized(meta, event);
         }
         #[inline]
+        fn on_dc_connection_timeout(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::DcConnectionTimeout,
+        ) {
+            self.as_ref().on_dc_connection_timeout(meta, event);
+        }
+        #[inline]
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -8215,6 +8274,15 @@ mod traits {
             (self.1).on_endpoint_initialized(meta, event);
         }
         #[inline]
+        fn on_dc_connection_timeout(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::DcConnectionTimeout,
+        ) {
+            (self.0).on_dc_connection_timeout(meta, event);
+            (self.1).on_dc_connection_timeout(meta, event);
+        }
+        #[inline]
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -8588,6 +8656,8 @@ mod traits {
         fn on_stream_connect_error(&self, event: builder::StreamConnectError);
         #[doc = "Publishes a `EndpointInitialized` event to the publisher's subscriber"]
         fn on_endpoint_initialized(&self, event: builder::EndpointInitialized);
+        #[doc = "Publishes a `DcConnectionTimeout` event to the publisher's subscriber"]
+        fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout);
         #[doc = "Publishes a `PathSecretMapInitialized` event to the publisher's subscriber"]
         fn on_path_secret_map_initialized(&self, event: builder::PathSecretMapInitialized);
         #[doc = "Publishes a `PathSecretMapUninitialized` event to the publisher's subscriber"]
@@ -8882,6 +8952,12 @@ mod traits {
         fn on_endpoint_initialized(&self, event: builder::EndpointInitialized) {
             let event = event.into_event();
             self.subscriber.on_endpoint_initialized(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout) {
+            let event = event.into_event();
+            self.subscriber.on_dc_connection_timeout(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -9600,6 +9676,7 @@ pub mod testing {
             pub stream_connect: AtomicU64,
             pub stream_connect_error: AtomicU64,
             pub endpoint_initialized: AtomicU64,
+            pub dc_connection_timeout: AtomicU64,
             pub path_secret_map_initialized: AtomicU64,
             pub path_secret_map_uninitialized: AtomicU64,
             pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -9688,6 +9765,7 @@ pub mod testing {
                     stream_connect: AtomicU64::new(0),
                     stream_connect_error: AtomicU64::new(0),
                     endpoint_initialized: AtomicU64::new(0),
+                    dc_connection_timeout: AtomicU64::new(0),
                     path_secret_map_initialized: AtomicU64::new(0),
                     path_secret_map_uninitialized: AtomicU64::new(0),
                     path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -10002,6 +10080,17 @@ pub mod testing {
                 event: &api::EndpointInitialized,
             ) {
                 self.endpoint_initialized.fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_dc_connection_timeout(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::DcConnectionTimeout,
+            ) {
+                self.dc_connection_timeout.fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 let out = format!("{meta:?} {event:?}");
@@ -10459,6 +10548,7 @@ pub mod testing {
         pub stream_sender_errored: AtomicU64,
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
+        pub dc_connection_timeout: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
         pub path_secret_map_uninitialized: AtomicU64,
         pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -10579,6 +10669,7 @@ pub mod testing {
                 stream_sender_errored: AtomicU64::new(0),
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
+                dc_connection_timeout: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
                 path_secret_map_uninitialized: AtomicU64::new(0),
                 path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -11356,6 +11447,17 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
+        fn on_dc_connection_timeout(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::DcConnectionTimeout,
+        ) {
+            self.dc_connection_timeout.fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -11807,6 +11909,7 @@ pub mod testing {
         pub stream_sender_errored: AtomicU64,
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
+        pub dc_connection_timeout: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
         pub path_secret_map_uninitialized: AtomicU64,
         pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -11917,6 +12020,7 @@ pub mod testing {
                 stream_sender_errored: AtomicU64::new(0),
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
+                dc_connection_timeout: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
                 path_secret_map_uninitialized: AtomicU64::new(0),
                 path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -12138,6 +12242,13 @@ pub mod testing {
         }
         fn on_endpoint_initialized(&self, event: builder::EndpointInitialized) {
             self.endpoint_initialized.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout) {
+            self.dc_connection_timeout.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             let out = format!("{event:?}");

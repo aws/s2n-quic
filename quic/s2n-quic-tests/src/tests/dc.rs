@@ -382,7 +382,8 @@ fn mtu_probing_complete_asymmetric_support_test(
         MockDcEndpoint::new(&CLIENT_TOKENS).with_mtu_probing_complete_support(client_support),
     )?;
 
-    let (client_events, server_events) = self_test(server, client, true, None, None, false)?;
+    let (client_events, server_events) =
+        self_test_with_mtu(server, client, true, None, None, false, None)?;
 
     // Verify that client did NOT receive MtuProbingComplete from server
     let client_mtu_complete_events = client_events
@@ -458,6 +459,109 @@ fn mtu_probing_complete_asymmetric_support_test(
     Ok(())
 }
 
+// Test that verifies MtuProbingComplete frames are exchanged between client and server
+// when DC is enabled and MTU probing completes with jumbo frames (9000 byte MTU).
+// This specifically tests the scenario where the first probe at max MTU succeeds.
+//
+// Client                                                                    Server
+//
+// <MTU probing completes locally with first probe success at 9000 bytes> ->
+// 1-RTT: MTU_PROBING_COMPLETE[mtu=8972]
+//                                                  # on_mtu_probing_complete_received
+//                                      <- 1-RTT: MTU_PROBING_COMPLETE[mtu=8972]
+// # on_mtu_probing_complete_received
+#[test]
+fn mtu_probing_complete_frame_exchange_jumbo_mtu_test() -> Result<()> {
+    let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let server = Server::builder()
+        .with_tls(server_tls)?
+        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
+
+    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let client = Client::builder()
+        .with_tls(client_tls)?
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+    // Use 9000 byte MTU for jumbo frames
+    let (client_events, server_events) =
+        self_test_with_mtu(server, client, true, None, None, true, Some(9000))?;
+
+    let expected_mtu = 8972;
+
+    // Verify that client received MtuProbingComplete from server
+    let client_mtu_complete_events = client_events
+        .mtu_probing_complete_received_events()
+        .lock()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        1,
+        client_mtu_complete_events.len(),
+        "Client should receive one MtuProbingComplete frame from server"
+    );
+    // Verify the MTU value matches the confirmed MTU (8972 = 9000 - headers)
+    assert_eq!(
+        expected_mtu, client_mtu_complete_events[0].mtu,
+        "Received MTU should match confirmed MTU for jumbo frames"
+    );
+
+    // Verify that server received MtuProbingComplete from client
+    let server_mtu_complete_events = server_events
+        .mtu_probing_complete_received_events()
+        .lock()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        1,
+        server_mtu_complete_events.len(),
+        "Server should receive one MtuProbingComplete frame from client"
+    );
+    assert_eq!(
+        expected_mtu, server_mtu_complete_events[0].mtu,
+        "Received MTU should match confirmed MTU for jumbo frames"
+    );
+
+    // Verify both sides completed their local MTU probing
+    let client_mtu_events = client_events.mtu_updated_events.lock().unwrap().clone();
+    let server_mtu_events = server_events.mtu_updated_events.lock().unwrap().clone();
+
+    assert!(
+        client_mtu_events
+            .iter()
+            .any(|event| event.search_complete && event.mtu == expected_mtu),
+        "Client should have completed MTU probing at {expected_mtu}"
+    );
+    assert!(
+        server_mtu_events
+            .iter()
+            .any(|event| event.search_complete && event.mtu == expected_mtu),
+        "Server should have completed MTU probing at {expected_mtu}"
+    );
+
+    // Verify that both sides correctly received mtu_probing_complete_support=true from peer
+    let client_received_peer_support = client_events
+        .peer_mtu_probing_complete_support()
+        .lock()
+        .unwrap()
+        .expect("Client should have received transport parameters");
+    assert!(
+        client_received_peer_support,
+        "Client should receive mtu_probing_complete_support=true from server"
+    );
+
+    let server_received_peer_support = server_events
+        .peer_mtu_probing_complete_support()
+        .lock()
+        .unwrap()
+        .expect("Server should have received transport parameters");
+    assert!(
+        server_received_peer_support,
+        "Server should receive mtu_probing_complete_support=true from client"
+    );
+
+    Ok(())
+}
+
 #[test]
 fn dc_secret_control_packet() -> Result<()> {
     dc_possible_secret_control_packet(|| true)
@@ -524,9 +628,34 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     expected_server_error: Option<connection::Error>,
     with_blocklist: bool,
 ) -> Result<(DcRecorder, DcRecorder)> {
+    self_test_with_mtu(
+        server,
+        client,
+        client_has_dc,
+        expected_client_error,
+        expected_server_error,
+        with_blocklist,
+        None,
+    )
+}
+
+#[track_caller]
+fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
+    server: server::Builder<S>,
+    client: client::Builder<C>,
+    client_has_dc: bool,
+    expected_client_error: Option<connection::Error>,
+    expected_server_error: Option<connection::Error>,
+    with_blocklist: bool,
+    max_mtu: Option<u16>,
+) -> Result<(DcRecorder, DcRecorder)> {
     let model = Model::default();
     let rtt = Duration::from_millis(100);
     model.set_delay(rtt / 2);
+
+    if let Some(max_mtu) = max_mtu {
+        model.set_max_udp_payload(max_mtu);
+    }
 
     let server_subscriber = DcRecorder::new();
     let server_events = server_subscriber.clone();
@@ -547,8 +676,18 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
             ),
         );
 
+        let server_io_builder = handle.builder();
+        let server_io_builder = if let Some(mtu) = max_mtu {
+            server_io_builder
+                .with_max_mtu(mtu)
+                .with_base_mtu(mtu)
+                .with_initial_mtu(mtu)
+        } else {
+            server_io_builder
+        };
+
         let mut server = server
-            .with_io(handle.builder().build()?)?
+            .with_io(server_io_builder.build()?)?
             .with_event(server_event)?
             .with_random(Random::with_seed(456))?
             .start()?;
@@ -569,7 +708,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
                         }
                     } else {
                         assert!(result.is_ok());
-                        assert!(dc::MtuConfirmComplete::wait_ready(&mut conn).await.is_ok());
+                        dc::MtuConfirmComplete::wait_ready(&mut conn).await;
                     }
                 }
             }
@@ -586,8 +725,18 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
             ),
         );
 
+        let client_io_builder = handle.builder();
+        let client_io_builder = if let Some(mtu) = max_mtu {
+            client_io_builder
+                .with_max_mtu(mtu)
+                .with_base_mtu(mtu)
+                .with_initial_mtu(mtu)
+        } else {
+            client_io_builder
+        };
+
         let client = client
-            .with_io(handle.builder().build().unwrap())?
+            .with_io(client_io_builder.build().unwrap())?
             .with_event(client_event)?
             .with_random(Random::with_seed(456))?
             .start()?;
@@ -620,7 +769,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
                             .clone();
                         assert_dc_complete(&client_events);
 
-                        assert!(dc::MtuConfirmComplete::wait_ready(&mut conn).await.is_ok());
+                        dc::MtuConfirmComplete::wait_ready(&mut conn).await;
 
                         // wait briefly for MTU probing to complete on the server
                         delay(Duration::from_millis(100)).await;
@@ -685,8 +834,11 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     let client_mtu_events = client_events.mtu_updated_events.lock().unwrap().clone();
     let server_mtu_events = server_events.mtu_updated_events.lock().unwrap().clone();
 
-    assert_mtu_probing_completed(&client_mtu_events);
-    assert_mtu_probing_completed(&server_mtu_events);
+    // Expected MTU is max_mtu minus IP/UDP headers (28 bytes for IPv4)
+    // Default max_mtu is 1500 bytes
+    let expected_mtu = max_mtu.unwrap_or(1500) - 28;
+    assert_mtu_probing_completed(&client_mtu_events, expected_mtu);
+    assert_mtu_probing_completed(&server_mtu_events, expected_mtu);
 
     Ok((client_events, server_events))
 }
@@ -705,12 +857,11 @@ fn assert_dc_complete(events: &[DcStateChangedEvent]) {
     assert!(matches!(events[2].state, DcState::Complete { .. }));
 }
 
-fn assert_mtu_probing_completed(events: &[MtuUpdatedEvent]) {
+fn assert_mtu_probing_completed(events: &[MtuUpdatedEvent], mtu: u16) {
     assert!(!events.is_empty());
     let last_event = events.last().unwrap();
     assert!(last_event.search_complete);
-    // 1472 = default MaxMtu (1500) - headers
-    assert_eq!(1472, last_event.mtu);
+    assert_eq!(mtu, last_event.mtu);
 }
 
 fn convert_io_result(io_result: std::io::Result<()>) -> Option<connection::Error> {
