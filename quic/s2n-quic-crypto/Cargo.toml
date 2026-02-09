@@ -1,6 +1,6 @@
 [package]
 name = "s2n-quic-crypto"
-version = "0.73.0"
+version = "0.74.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -20,8 +20,8 @@ testing = []
 aws-lc-rs = { version = "1.12", features = ["prebuilt-nasm"] }
 cfg-if = "1"
 lazy_static = "1"
-s2n-codec = { version = "=0.73.0", path = "../../common/s2n-codec", default-features = false }
-s2n-quic-core = { version = "=0.73.0", path = "../s2n-quic-core", default-features = false }
+s2n-codec = { version = "=0.74.0", path = "../../common/s2n-codec", default-features = false }
+s2n-quic-core = { version = "=0.74.0", path = "../s2n-quic-core", default-features = false }
 zeroize = { version = "1", default-features = false, features = ["derive"] }
 
 [dev-dependencies]
