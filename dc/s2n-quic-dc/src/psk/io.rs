@@ -23,7 +23,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::sync::Semaphore;
+use tokio::{sync::Semaphore, time::Instant as TokioInstant};
 
 pub use crate::stream::DEFAULT_IDLE_TIMEOUT;
 pub const DEFAULT_MAX_DATA: u64 = 1u64 << 25;
@@ -81,14 +81,29 @@ impl Server {
             .with_bidirectional_remote_data_window(initial_max_data)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
-        let event = (ConfirmComplete, subscriber);
+        let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
+        #[cfg(not(any(test, feature = "testing")))]
         let server = server
             .with_limits(connection_limits)?
             .with_dc(map.clone())?
             .with_event(event)?
             .with_tls(tls_materials_provider)?
             .start()?;
+
+        #[cfg(any(test, feature = "testing"))]
+        let server = {
+            let server = server
+                .with_limits(connection_limits)?
+                .with_dc(map.clone())?
+                .with_event(event)?
+                .with_tls(tls_materials_provider)?;
+            if let Some(limiter) = builder.endpoint_limits {
+                server.with_endpoint_limits(limiter)?.start()?
+            } else {
+                server.start()?
+            }
+        };
 
         Ok(Self { server })
     }
@@ -129,39 +144,27 @@ pub(super) async fn server<
     let _ = on_ready.send(Ok(server.local_addr().unwrap()));
 
     while let Some(mut connection) = server.server.accept().await {
+        let map_clone = map.clone();
         tokio::spawn(async move {
             // The accepted connection must remain open until the client has finished inserting
             // the entry into its map. The client indicates this by sending a ConnectionClose
-            // when it is done. This will cause the `connection.accept()` to return and allow
-            // the server's connection to be dropped.
+            // when it is done.
             //
             // A 10 second timeout is specified to avoid spawned tasks piling up when the
-            // ConnectionClose from the client is lost.
-            let success = tokio::time::timeout(
-                Duration::from_secs(10),
-                ConfirmComplete::wait_ready(&mut connection),
-            )
-            .await
-            .is_ok_and(|inner| inner.is_ok());
+            // ConnectionClose from the client is lost. This timeout covers both the dc handshake
+            // confirmation and MTU probing completion.
+            let result = tokio::time::timeout(Duration::from_secs(10), async {
+                // FIXME: add more logging information if the subscriber is not registered with the endpoint.
+                if ConfirmComplete::wait_ready(&mut connection).await.is_ok() {
+                    MtuConfirmComplete::wait_ready(&mut connection).await;
+                }
+            })
+            .await;
 
-            if success {
-                // If the handshake completes successfully, the connection is left open for a
-                // little longer to allow for MTU probing to complete. Depending on MTU configuration
-                // this is likely to complete immediately, but a 10 second timeout is specified to
-                // avoid spawned tasks piling up if the other end of the connection terminates ungracefully.
-                let peer_supports_mtu_probing_complete = tokio::time::timeout(
-                    Duration::from_secs(10),
-                    MtuConfirmComplete::wait_ready(&mut connection),
-                )
-                .await
-                .unwrap_or(Ok(false))
-                .unwrap_or(false);
-
-                // If the peer supports MtuProbingComplete, we've already synchronized via the
-                // MtuProbingComplete frame, so no additional wait is needed. Otherwise, leave
-                // the connection open for 1 more second to allow the peer to finish MTU probing.
-                if !peer_supports_mtu_probing_complete {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+            // Emit event if timeout occurred
+            if result.is_err() {
+                if let Ok(peer_address) = connection.remote_addr() {
+                    map_clone.on_dc_connection_timeout(&peer_address);
                 }
             }
         });
@@ -171,7 +174,7 @@ pub(super) async fn server<
 #[derive(Clone)]
 pub struct Client {
     client: s2n_quic::Client,
-
+    map: secret::Map,
     queue: Arc<HandshakeQueue>,
 }
 
@@ -208,7 +211,7 @@ impl Client {
             .with_bidirectional_remote_data_window(builder.data_window)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
-        let event = (ConfirmComplete, subscriber);
+        let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
         let client = client
             .with_limits(connection_limits)?
@@ -219,6 +222,7 @@ impl Client {
 
         Ok(Self {
             client,
+            map: map.clone(),
             queue: Arc::new(HandshakeQueue::new(builder.success_jitter)),
         })
     }
@@ -231,8 +235,20 @@ impl Client {
     ) -> Result<(), HandshakeFailed> {
         self.queue
             .clone()
-            .handshake(&self.client, peer, reason, server_name)
+            .handshake(&self.client, &self.map, peer, reason, server_name)
             .await
+    }
+}
+
+#[cfg(test)]
+impl Client {
+    /// Returns true if there's a pending handshake entry for this peer.
+    /// This is only available in test builds.
+    pub fn has_pending_entry(&self, peer: SocketAddr) -> bool {
+        let peer: SocketAddress = peer.into();
+        let peer_hash = self.queue.hasher.hash_one(peer);
+        let guard = self.queue.inner.lock().unwrap();
+        guard.table.find(peer_hash, |e| e.peer == peer).is_some()
     }
 }
 
@@ -344,6 +360,7 @@ impl HandshakeQueue {
     async fn handshake(
         self: Arc<Self>,
         client: &s2n_quic::Client,
+        map: &secret::Map,
         peer: SocketAddr,
         reason: HandshakeReason,
         server_name: Name,
@@ -382,35 +399,52 @@ impl HandshakeQueue {
 
             let mut connection = attempt.await?;
 
-            // we need to wait for confirmation that the dcQUIC handshake is complete
+            // A 10 second deadline is used to bound both ConfirmComplete and MtuConfirmComplete
+            // wait operations, avoiding unbounded waits if the server is slow or unresponsive.
+            let deadline = TokioInstant::now() + Duration::from_secs(10);
+
+            // We need to wait for confirmation that the dcQUIC handshake is complete.
             // TODO: This will not be needed if https://github.com/aws/s2n-quic/issues/2273 is addressed
-            ConfirmComplete::wait_ready(&mut connection).await?;
+            match tokio::time::timeout_at(deadline, ConfirmComplete::wait_ready(&mut connection))
+                .await
+            {
+                Ok(Ok(())) => {
+                    // ConfirmComplete succeeded within the deadline - continue
+                }
+                Ok(Err(e)) => {
+                    // ConfirmComplete::wait_ready failed. We should treat the handshake as failed.
+                    return Err(e);
+                }
+                Err(_elapsed) => {
+                    // Handshake timeout occurred. We should treat the handshake as failed.
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "ConfirmComplete handshake timeout",
+                    ));
+                }
+            }
 
             // Don't wait for the connection to fully close, just wait until dc.complete to
             // drop the permit.
             drop(permit_start);
 
-            // Spawn a task to leave the connection open for a little longer to allow for MTU
-            // probing to complete. Depending on MTU configuration this is likely to complete
-            // immediately, but a 10 second timeout is specified to avoid spawned tasks piling
-            // up if the other end of the connection terminates ungracefully.
+            // Spawn a task to leave the connection open for MTU probing to complete.
+            // The 1-second wait for peers that don't support MtuProbingComplete
+            // is handled inside wait_ready() when the connection closes gracefully.
             //
             // This task also owns pruning our de-duplication tracking.
             let this = self.clone();
+            let map_clone = map.clone();
             tokio::spawn(async move {
-                let peer_supports_mtu_probing_complete = tokio::time::timeout(
-                    Duration::from_secs(10),
+                // Use the same deadline for MTU probing - any remaining time from the 10s budget
+                if tokio::time::timeout_at(
+                    deadline,
                     MtuConfirmComplete::wait_ready(&mut connection),
                 )
                 .await
-                .unwrap_or(Ok(false))
-                .unwrap_or(false);
-
-                // If the peer supports MtuProbingComplete, we've already synchronized via the
-                // MtuProbingComplete frame, so no additional wait is needed. Otherwise, leave
-                // the connection open for 1 more second to allow the peer to finish MTU probing.
-                if !peer_supports_mtu_probing_complete {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                .is_err()
+                {
+                    map_clone.on_dc_connection_timeout(&peer);
                 }
 
                 drop(connection);
@@ -524,4 +558,185 @@ const REASON_COUNT: usize = 3;
 pub struct ConnectionContext {
     pub limiter_latency: Duration,
     pub reason_counts: [(HandshakeReason, usize); REASON_COUNT],
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        path::secret::{stateless_reset::Signer, Map},
+        testing::{init_tracing, NoopSubscriber, TestTlsProvider},
+    };
+    use s2n_quic::provider::{
+        endpoint_limits::{ConnectionAttempt, Limiter, Outcome},
+        tls::Provider,
+    };
+    use s2n_quic_core::time::StdClock;
+    use std::time::Instant;
+    use tokio_util::sync::DropGuard;
+
+    /// A test limiter that closes all incoming connections immediately
+    #[derive(Default)]
+    struct CloseAllConnectionsLimiter;
+
+    impl Limiter for CloseAllConnectionsLimiter {
+        fn on_connection_attempt(&mut self, _info: &ConnectionAttempt) -> Outcome {
+            Outcome::close()
+        }
+    }
+
+    /// Helper to set up a test client and server
+    struct TestSetup {
+        client: Client,
+        server_addr: SocketAddr,
+        _server_guard: DropGuard,
+    }
+
+    impl TestSetup {
+        /// Creates a test setup with an optional endpoint limiter for the server
+        async fn new<L>(endpoint_limits: Option<L>) -> Self
+        where
+            L: s2n_quic::provider::endpoint_limits::Limiter + Send + Sync + 'static,
+        {
+            init_tracing();
+
+            let tls = TestTlsProvider {};
+            let subscriber = NoopSubscriber {};
+
+            let server_map = Map::new(
+                Signer::new(b"default"),
+                50_000,
+                false,
+                StdClock::default(),
+                subscriber.clone(),
+            );
+
+            let server_builder = crate::psk::server::Builder::default();
+            let (server_addr_rx, server_guard) = if let Some(limiter) = endpoint_limits {
+                crate::psk::server::Provider::setup(
+                    "127.0.0.1:0".parse().unwrap(),
+                    server_map.clone(),
+                    tls.clone(),
+                    subscriber.clone(),
+                    server_builder.with_endpoint_limits(limiter),
+                )
+            } else {
+                crate::psk::server::Provider::setup(
+                    "127.0.0.1:0".parse().unwrap(),
+                    server_map.clone(),
+                    tls.clone(),
+                    subscriber.clone(),
+                    server_builder,
+                )
+            };
+
+            let client_map = Map::new(
+                Signer::new(b"default"),
+                50_000,
+                false,
+                StdClock::default(),
+                subscriber.clone(),
+            );
+
+            let client = Client::bind::<
+                <TestTlsProvider as Provider>::Client,
+                NoopSubscriber,
+                s2n_quic::provider::event::default::Subscriber,
+            >(
+                "0.0.0.0:0".parse().unwrap(),
+                client_map,
+                tls.start_client().unwrap(),
+                subscriber,
+                crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
+            )
+            .unwrap();
+
+            let server_addr = server_addr_rx.await.unwrap().unwrap();
+
+            Self {
+                client,
+                server_addr,
+                _server_guard: server_guard,
+            }
+        }
+    }
+
+    /// Verifies MtuProbingComplete works correctly (no 1-second fallback delay).
+    ///
+    /// After a handshake, a cleanup task runs in the background. If MtuProbingComplete
+    /// is NOT working, this task sleeps for 1 second before removing the deduplication entry.
+    ///
+    /// We detect this by waiting 500ms then checking if the entry was removed:
+    /// - If entry was removed (MtuProbingComplete works): cleanup completed quickly
+    /// - If entry still exists (1-second delay active): cleanup is still sleeping
+    #[tokio::test]
+    async fn mtu_probing_complete_no_delay_test() {
+        let setup = TestSetup::new::<CloseAllConnectionsLimiter>(None).await;
+        let server_name: s2n_quic::server::Name = "localhost".into();
+
+        // First handshake
+        let first_handshake_result = setup
+            .client
+            .connect(
+                setup.server_addr,
+                HandshakeReason::User,
+                server_name.clone(),
+            )
+            .await;
+        assert!(first_handshake_result.is_ok());
+
+        // Wait 500ms - enough for cleanup if MtuProbingComplete works, but not if 1s delay triggered
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // If entry still exists after 500ms, the cleanup task hasn't finished yet,
+        // which indicates the 1-second fallback delay is active.
+        assert!(!setup.client.has_pending_entry(setup.server_addr));
+
+        // Second handshake to same peer - should succeed since entry was removed
+        let second_handshake_start = Instant::now();
+        let second_handshake_result = setup
+            .client
+            .connect(
+                setup.server_addr,
+                HandshakeReason::User,
+                server_name.clone(),
+            )
+            .await;
+        let second_handshake_duration = second_handshake_start.elapsed();
+        assert!(second_handshake_result.is_ok());
+
+        // Additional timing check: if entry was properly removed, the second handshake
+        // should take at least 1ms (a fresh handshake). If it's <1ms, it was deduplicated.
+        assert!(second_handshake_duration >= Duration::from_millis(1));
+    }
+
+    /// Verifies that when the server closes a connection immediately (via endpoint limits),
+    /// the client connection closes without waiting.
+    ///
+    /// This test ensures that `MtuConfirmComplete::wait_ready` properly detects the
+    /// connection close signal and returns immediately rather than blocking.
+    #[tokio::test]
+    async fn server_close_connection_no_delay_test() {
+        let setup = TestSetup::new(Some(CloseAllConnectionsLimiter)).await;
+        let server_name: s2n_quic::server::Name = "localhost".into();
+
+        // Attempt to connect - the server should immediately close the connection
+        let start = Instant::now();
+        let result = setup
+            .client
+            .connect(setup.server_addr, HandshakeReason::User, server_name)
+            .await;
+        let duration = start.elapsed();
+
+        // The connection should fail (server rejected it)
+        assert!(result.is_err());
+
+        // The failure should be fast - definitely less than the 10-second timeout
+        // and less than the 1-second fallback delay
+        assert!(
+            duration < Duration::from_millis(500),
+            "Connection took {:?}, expected < 500ms",
+            duration
+        );
+    }
 }
