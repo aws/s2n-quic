@@ -33,6 +33,7 @@ bach = { version = "0.1.0", features = [
 bitflags = "2"
 bolero-generator = { version = "0.13", default-features = false, optional = true }
 bytes = "1"
+cfg-if = "1.0"
 crossbeam-channel = "0.5"
 crossbeam-queue = { version = "0.3" }
 dashmap = "6"
