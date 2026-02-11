@@ -6,9 +6,7 @@ use crate::{
     path::secret,
     stream::{
         application::Stream,
-        endpoint,
-        environment::bach::{self as env, Environment},
-        socket::Protocol,
+        environment::bach::{udp, Environment},
     },
 };
 use std::{io, net::SocketAddr};
@@ -27,17 +25,5 @@ where
     H: core::future::Future<Output = io::Result<secret::map::Peer>>,
     Sub: event::Subscriber + Clone,
 {
-    // ensure we have a secret for the peer
-    let entry = handshake.await?;
-
-    // TODO potentially branch on not using the recv pool if we're under a certain concurrency?
-    let peer = env::udp::Pooled(acceptor_addr.into());
-    let stream = endpoint::open_stream(env, entry, peer, None)?;
-
-    // build the stream inside the application context
-    let stream = stream.connect()?;
-
-    debug_assert_eq!(stream.protocol(), Protocol::Udp);
-
-    Ok(stream)
+    super::connect_udp(handshake, acceptor_addr, env, |addr| udp::Pooled(addr.into())).await
 }
