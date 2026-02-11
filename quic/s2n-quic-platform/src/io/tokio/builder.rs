@@ -6,7 +6,7 @@ use super::*;
 #[derive(Debug, Default)]
 pub struct Builder {
     pub(super) handle: Option<Handle>,
-    pub(super) rx_socket: Option<socket2::Socket>,
+    pub(super) rx_sockets: Vec<socket2::Socket>,
     pub(super) tx_socket: Option<socket2::Socket>,
     pub(super) recv_addr: Option<std::net::SocketAddr>,
     pub(super) send_addr: Option<std::net::SocketAddr>,
@@ -34,7 +34,7 @@ impl Builder {
     ///
     /// NOTE: this method is mutually exclusive with `with_rx_socket`
     pub fn with_receive_address(mut self, addr: std::net::SocketAddr) -> io::Result<Self> {
-        debug_assert!(self.rx_socket.is_none(), "rx socket has already been set");
+        debug_assert!(self.rx_sockets.is_empty(), "rx socket has already been set");
         self.recv_addr = Some(addr);
         Ok(self)
     }
@@ -49,8 +49,9 @@ impl Builder {
         Ok(self)
     }
 
-    /// Sets the socket used for receiving for the runtime. If no tx_socket or send address is
-    /// specified, this socket will be used for transmitting.
+    /// Adds a socket to be used for receiving packets. This method can be called multiple times
+    /// to add multiple sockets for packet filtering/routing scenarios.
+    /// If no tx_socket or send address is specified, the first socket will be used for transmitting.
     ///
     /// NOTE: this method is mutually exclusive with `with_receive_address`
     pub fn with_rx_socket(mut self, socket: std::net::UdpSocket) -> io::Result<Self> {
@@ -58,7 +59,7 @@ impl Builder {
             self.recv_addr.is_none(),
             "recv address has already been set"
         );
-        self.rx_socket = Some(socket.into());
+        self.rx_sockets.push(socket.into());
         Ok(self)
     }
 

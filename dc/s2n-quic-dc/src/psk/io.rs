@@ -13,6 +13,7 @@ use s2n_quic::{
     server::Name,
 };
 use s2n_quic_core::inet::SocketAddress;
+use s2n_quic_platform::syscall;
 use std::{
     hash::BuildHasher,
     io,
@@ -58,8 +59,12 @@ impl Server {
         subscriber: Subscriber,
         builder: server::Builder<Event>,
     ) -> Result<Self, Error> {
+        let socket_for_client_hello_packets = syscall::bind_udp(addr, false, true, false).unwrap();
+        let socket_for_other_packets = syscall::bind_udp(addr, false, true, false).unwrap();
+
         let io = s2n_quic::provider::io::default::Builder::default()
-            .with_receive_address(addr)?
+            .with_rx_socket(socket_for_client_hello_packets.into())?
+            .with_rx_socket(socket_for_other_packets.into())?
             .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
             .with_initial_mtu(builder.mtu)?
             .with_max_mtu(builder.mtu)?

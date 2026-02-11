@@ -39,8 +39,10 @@ libc = "0.2"
 bach = { version = "0.1.0" }
 bolero = "0.13"
 bolero-generator = "0.13"
+bytes = "1"
 futures = { version = "0.3", features = ["std"] }
 insta = { version = "1", features = ["json"] }
+s2n-quic = { path = "../s2n-quic" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
