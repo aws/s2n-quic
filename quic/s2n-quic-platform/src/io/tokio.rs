@@ -14,9 +14,6 @@ use s2n_quic_core::{
 use std::{convert::TryInto, io, io::ErrorKind};
 use tokio::runtime::Handle;
 
-#[cfg(all(target_os = "linux", not(target_arch = "aarch64")))]
-use crate::bpf::cbpf::{abs, and, jeq, ldb, ret, Program};
-
 mod builder;
 mod clock;
 pub(crate) mod task;
@@ -31,25 +28,6 @@ pub(crate) use clock::Clock;
 pub struct Io {
     builder: Builder,
 }
-
-/// cBPF program to route QUIC packets across multiple sockets.
-/// Routes Initial packets with DCID length = 8 to socket 0, all other packets to socket 1.
-#[cfg(all(target_os = "linux", not(target_arch = "aarch64")))]
-pub static ROUTER: Program = Program::new(&[
-    // Load byte 0 and check if it's an Initial packet (first 4 bits = 1100)
-    ldb(abs(0)),
-    and(0b1111_0000), // Mask the last four bits of the first byte. The first four bits can confirm if the packet is a INITIAL packet.
-    // If Initial packet, continue; else jump to ret(1)
-    jeq(0b1100_0000, 0, 3), // First four bits of INITIAL packet should be 1100.
-    // Load byte 5 (DCID length) and check if it equals 8
-    ldb(abs(5)),
-    // If DCID len = 8, continue to ret(0); else jump to ret(1)
-    jeq(0x08, 0, 1),
-    // Return 0: socket 0 handles Initial packets with DCID length = 8
-    ret(0),
-    // Return 1: socket 1 handles all other packets
-    ret(1),
-]);
 
 impl Io {
     pub fn builder() -> Builder {
@@ -111,11 +89,8 @@ impl Io {
 
         let guard = handle.enter();
 
-        // Track whether sockets were explicitly provided by the user (for ROUTER attachment)
-        let user_provided_sockets = !rx_sockets.is_empty();
-
         // Build the list of rx sockets - either from provided sockets or create from recv_addr
-        let rx_socket_list = if user_provided_sockets {
+        let rx_socket_list = if !rx_sockets.is_empty() {
             rx_sockets
         } else if let Some(recv_addr) = recv_addr {
             // Check env var for number of sockets to create (unstable feature)
@@ -140,15 +115,6 @@ impl Io {
 
         // Get the address from the first socket
         let rx_addr = convert_addr_to_std(rx_socket_list[0].local_addr()?)?;
-
-        // Only attach ROUTER if user explicitly provided multiple sockets (Linux x86_64 only)
-        // ROUTER is not used for sockets created via S2N_QUIC_UNSTABLE_RX_SOCKET_COUNT or there is only one socket in place
-        #[cfg(all(target_os = "linux", not(target_arch = "aarch64")))]
-        if user_provided_sockets && rx_socket_list.len() > 1 {
-            for socket in &rx_socket_list {
-                ROUTER.attach(socket)?;
-            }
-        }
 
         let tx_socket = if let Some(tx_socket) = tx_socket {
             tx_socket
@@ -199,7 +165,7 @@ impl Io {
             },
         });
 
-        // Configure the socket with GRO (check first socket, apply to all)
+        // Configure the socket with GRO
         let gro_enabled = gro_enabled.unwrap_or(true) && syscall::configure_gro(&rx_socket_list[0]);
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
@@ -212,7 +178,7 @@ impl Io {
         let mut tos_enabled = false;
         for socket in &rx_socket_list {
             syscall::configure_pktinfo(socket);
-            tos_enabled = syscall::configure_tos(socket);
+            tos_enabled &= syscall::configure_tos(socket);
         }
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
