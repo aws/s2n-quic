@@ -219,9 +219,8 @@ impl Io {
                 consumers.push(consumer);
 
                 // spawn a task that actually reads from the socket into the ring buffer
-                let rx_socket = socket.try_clone()?;
                 handle.spawn(task::rx(
-                    rx_socket,
+                    socket,
                     producer,
                     rx_cooldown.clone(),
                     stats_sender.clone(),
