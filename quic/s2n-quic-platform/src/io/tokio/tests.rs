@@ -6,7 +6,6 @@ use core::{
     convert::TryInto,
     task::{Context, Poll},
 };
-use s2n_quic::{client::Connect, provider::io::tokio::Builder, Client, Server};
 use s2n_quic_core::{
     crypto::tls::testing::certificates,
     endpoint::{self, CloseError},
@@ -21,6 +20,9 @@ use std::{
     net::{SocketAddr, ToSocketAddrs},
     time::Duration as StdDuration,
 };
+
+#[cfg(all(target_os = "linux", not(target_arch = "aarch64")))]
+use s2n_quic::{client::Connect, provider::io::tokio::Builder, Client, Server};
 
 struct TestEndpoint<const IS_SERVER: bool> {
     handle: PathHandle,
@@ -290,6 +292,8 @@ async fn only_v6_test() -> io::Result<()> {
 }
 
 // Tests that the ROUTER cBPF filter correctly routes packets to the appropriate socket.
+// This test is Linux x86_64-only because cBPF socket filters are not supported on aarch64.
+#[cfg(all(target_os = "linux", not(target_arch = "aarch64")))]
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
 async fn router_cbpf_packet_filtering_test() -> io::Result<()> {
@@ -411,6 +415,7 @@ async fn router_cbpf_packet_filtering_test() -> io::Result<()> {
 
 /// Creates two UDP sockets bound to the same IP address and port with SO_REUSEPORT.
 /// ROUTER will be automatically attached when these are passed to with_rx_socket().
+#[cfg(all(target_os = "linux", not(target_arch = "aarch64")))]
 fn create_reuseport_sockets() -> io::Result<(std::net::UdpSocket, std::net::UdpSocket, u16)> {
     let socket_0 = syscall::bind_udp("127.0.0.1:0", false, true, false)?;
     socket_0.set_nonblocking(true)?;
@@ -427,6 +432,8 @@ fn create_reuseport_sockets() -> io::Result<(std::net::UdpSocket, std::net::UdpS
 }
 
 // Tests the full s2n-quic Server and Client over multiple sockets with SO_REUSEPORT.
+// This test is Linux x86_64-only because cBPF socket filters (ROUTER) are not supported on aarch64.
+#[cfg(all(target_os = "linux", not(target_arch = "aarch64")))]
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
 async fn router_multi_socket_server_client_test() {
