@@ -25,6 +25,7 @@ use std::{
     sync::{Arc, Mutex, RwLock, Weak},
     time::Duration,
 };
+use tokio::task::JoinHandle;
 
 #[cfg(test)]
 mod tests;
@@ -410,8 +411,9 @@ where
     pub(super) control_socket: Option<Arc<std::net::UdpSocket>>,
 
     #[allow(clippy::type_complexity)]
-    pub(super) request_handshake:
-        RwLock<Option<Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>>>,
+    pub(super) request_handshake: RwLock<
+        Option<Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>>,
+    >,
 
     cleaner: Cleaner,
 
@@ -595,7 +597,11 @@ where
         (id_removed, peer_removed)
     }
 
-    pub fn request_handshake(&self, peer: SocketAddr, reason: HandshakeReason) {
+    pub fn request_handshake(
+        &self,
+        peer: SocketAddr,
+        reason: HandshakeReason,
+    ) -> Option<JoinHandle<()>> {
         self.subscriber()
             .on_path_secret_map_background_handshake_requested(
                 event::builder::PathSecretMapBackgroundHandshakeRequested {
@@ -614,13 +620,14 @@ where
             .unwrap_or_else(|e| e.into_inner())
             .as_deref()
         {
-            (callback)(peer, reason);
+            return (callback)(peer, reason);
         }
+        None
     }
 
     fn register_request_handshake(
         &self,
-        cb: Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>,
+        cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
     ) {
         // FIXME: Maybe panic if already initialized?
         *self
@@ -782,7 +789,7 @@ where
 
     fn register_request_handshake(
         &self,
-        cb: Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>,
+        cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
     ) {
         self.register_request_handshake(cb);
     }

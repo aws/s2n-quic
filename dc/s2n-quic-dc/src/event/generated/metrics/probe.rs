@@ -809,7 +809,7 @@ mod measure {
                     Self(path_secret_map_cleaner_cycled__entries__address__utilization__initial)
                 }
                 292usize => Self(path_secret_map_cleaner_cycled__handshake_requests),
-                293usize => Self(path_secret_map_cleaner_cycled__handshake_requests__retired),
+                293usize => Self(path_secret_map_cleaner_cycled__handshake_requests__skipped),
                 294usize => Self(path_secret_map_cleaner_cycled__handshake_lock_duration),
                 295usize => Self(path_secret_map_cleaner_cycled__total_duration),
                 297usize => Self(path_secret_map_id_write_lock__acquire),
@@ -1061,8 +1061,8 @@ mod measure {
             fn path_secret_map_cleaner_cycled__entries__address__utilization__initial(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_requests]
             fn path_secret_map_cleaner_cycled__handshake_requests(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_requests__retired]
-            fn path_secret_map_cleaner_cycled__handshake_requests__retired(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_requests__skipped]
+            fn path_secret_map_cleaner_cycled__handshake_requests__skipped(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_lock_duration]
             fn path_secret_map_cleaner_cycled__handshake_lock_duration(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__total_duration]

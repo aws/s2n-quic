@@ -12,6 +12,7 @@ use core::time::Duration;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::varint::VarInt;
 use std::{net::SocketAddr, sync::Arc};
+use tokio::task::JoinHandle;
 
 pub trait Store: 'static + Send + Sync {
     fn secrets_len(&self) -> usize;
@@ -66,7 +67,7 @@ pub trait Store: 'static + Send + Sync {
 
     fn register_request_handshake(
         &self,
-        cb: Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>,
+        cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
     );
 
     fn check_dedup(

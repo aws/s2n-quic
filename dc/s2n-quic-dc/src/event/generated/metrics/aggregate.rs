@@ -1774,7 +1774,7 @@ static INFO: &[Info; 302usize] = &[
     .build(),
     info::Builder {
         id: 293usize,
-        name: Str::new("path_secret_map_cleaner_cycled.handshake_requests.retired\0"),
+        name: Str::new("path_secret_map_cleaner_cycled.handshake_requests.skipped\0"),
         units: Units::None,
     }
     .build(),
@@ -4630,7 +4630,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             event.address_entries_initial_utilization,
         );
         self.measure(292usize, 116usize, event.handshake_requests);
-        self.measure(293usize, 117usize, event.handshake_requests_retired);
+        self.measure(293usize, 117usize, event.handshake_requests_skipped);
         self.measure(294usize, 118usize, event.handshake_lock_duration);
         self.measure(295usize, 119usize, event.duration);
         let _ = event;
