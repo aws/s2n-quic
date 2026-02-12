@@ -91,9 +91,6 @@ pub fn bind_udp<A: std::net::ToSocketAddrs>(
             "the provided bind address was empty",
         )
     })?;
-
-    debug_assert!(!(reuse_port && addr.port() == 0));
-
     let socket = udp_socket(addr, only_v6)?;
 
     socket.set_reuse_address(reuse_address)?;
