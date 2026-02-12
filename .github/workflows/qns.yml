@@ -195,31 +195,11 @@ jobs:
       - name: Run quic-interop-runner
         working-directory: quic-interop-runner
         run: |
-          set -euxo pipefail
+          # enable IPv6 support
           sudo modprobe ip6table_filter
-          mkdir -p results results/logs
-
-          # run without tee first so stderr isn't obscured
-          PYTHONUNBUFFERED=1 python3 -u run.py \
-            --client ${{ matrix.client }} \
-            --server ${{ matrix.server }} \
-            --json results/result.json \
-            --debug \
-            --log-dir results/logs
-
-      - name: Dump runner outputs
-        if: always()
-        working-directory: quic-interop-runner
-        run: |
-          echo "== results tree =="
-          find results -maxdepth 4 -type f | sort || true
-
-          echo "== any traceback =="
-          grep -RIn "Traceback" results 2>/dev/null || true
-
-          echo "== runner stdout if present =="
-          find results -name '*.txt' -maxdepth 5 -print -exec sed -n '1,120p' {} \; 2>/dev/null || true
-
+          mkdir -p results
+          python3 run.py --client ${{ matrix.client }} --server ${{ matrix.server }} --json results/result.json --debug --log-dir results/logs
+          
       - name: Prepare artifacts
         working-directory: quic-interop-runner
         run: |
