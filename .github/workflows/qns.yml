@@ -195,10 +195,23 @@ jobs:
       - name: Run quic-interop-runner
         working-directory: quic-interop-runner
         run: |
-          # enable IPv6 support
-          sudo modprobe ip6table_filter
-          mkdir -p results/logs
-          python3 run.py --client ${{ matrix.client }} --server ${{ matrix.server }} --json results/result.json --debug --log-dir results/logs
+          set -euxo pipefail
+          # Show where we are and what exists
+          pwd
+          ls -al
+
+          # enable IPv6 support (don't let a silent modprobe failure hide the real issue)
+          sudo modprobe ip6table_filter || (echo "modprobe failed"; lsmod | head -n 50; exit 1)
+
+          mkdir -p results results/logs
+
+          # Run with unbuffered output and capture everything to a file
+          PYTHONUNBUFFERED=1 python3 -u run.py \
+            --client s2n-quic \
+            --server msquic \
+            --json results/result.json \
+            --debug \
+            --log-dir results/logs 2>&1 | tee results/logs/runner.stdout.txt
 
       - name: Prepare artifacts
         working-directory: quic-interop-runner
