@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    credentials::Id,
     event::{self, EndpointPublisher as _},
     stream::{
         recv::application::{self as recv, Reader},
@@ -146,6 +147,11 @@ where
     #[inline]
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.read.local_addr()
+    }
+
+    #[inline]
+    pub fn path_secret_id(&self) -> &Id {
+        self.read.path_secret_id()
     }
 
     #[inline]

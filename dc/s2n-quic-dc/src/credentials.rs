@@ -45,6 +45,12 @@ impl fmt::Debug for Id {
     }
 }
 
+impl fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        format_args!("{:#01x}", u128::from_be_bytes(self.0)).fmt(f)
+    }
+}
+
 impl From<[u8; 16]> for Id {
     #[inline]
     fn from(v: [u8; 16]) -> Self {
