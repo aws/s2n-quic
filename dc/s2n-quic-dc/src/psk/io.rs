@@ -598,7 +598,6 @@ mod tests {
     };
     use s2n_quic_core::time::StdClock;
     use std::time::Instant;
-
     use tokio_util::sync::DropGuard;
 
     /// A test limiter that closes all incoming connections immediately

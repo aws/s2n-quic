@@ -166,7 +166,8 @@ impl Io {
         });
 
         // Configure the socket with GRO
-        let gro_enabled = gro_enabled.unwrap_or(true) && syscall::configure_gro(&rx_socket_list[0]);
+        let gro_enabled =
+            gro_enabled.unwrap_or(true) && rx_socket_list.iter().all(syscall::configure_gro);
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::Gro {
@@ -178,7 +179,7 @@ impl Io {
         let mut tos_enabled = false;
         for socket in &rx_socket_list {
             syscall::configure_pktinfo(socket);
-            tos_enabled &= syscall::configure_tos(socket);
+            tos_enabled |= syscall::configure_tos(socket);
         }
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {

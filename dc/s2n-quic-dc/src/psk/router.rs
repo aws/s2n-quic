@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use s2n_quic_platform::bpf::cbpf::{abs, and, jeq, ldb, ret, Program};
 
 /// cBPF program to route QUIC packets across multiple sockets.
