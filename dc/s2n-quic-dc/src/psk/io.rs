@@ -80,8 +80,19 @@ impl Server {
         subscriber: Subscriber,
         builder: server::Builder<Event>,
     ) -> Result<Self, Error> {
-        let socket_for_client_hello_packets = syscall::bind_udp(addr, false, true, false).unwrap();
-        let socket_for_other_packets = syscall::bind_udp(addr, false, true, false).unwrap();
+        let socket_for_client_hello_packets = syscall::bind_udp(addr, false, false, false)?;
+
+        // Acquire the bound address with a port assigned
+        let bound_addr = socket_for_client_hello_packets
+            .local_addr()?
+            .as_socket()
+            .unwrap();
+
+        socket_for_client_hello_packets
+            .set_reuse_port(true)
+            .unwrap();
+
+        let socket_for_other_packets = syscall::bind_udp(bound_addr, false, true, false)?;
 
         // Attach ROUTER to both sockets for packet filtering
         #[cfg(target_os = "linux")]
