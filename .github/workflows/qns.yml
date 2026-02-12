@@ -196,22 +196,29 @@ jobs:
         working-directory: quic-interop-runner
         run: |
           set -euxo pipefail
-          # Show where we are and what exists
-          pwd
-          ls -al
-
-          # enable IPv6 support (don't let a silent modprobe failure hide the real issue)
-          sudo modprobe ip6table_filter || (echo "modprobe failed"; lsmod | head -n 50; exit 1)
-
+          sudo modprobe ip6table_filter
           mkdir -p results results/logs
 
-          # Run with unbuffered output and capture everything to a file
+          # run without tee first so stderr isn't obscured
           PYTHONUNBUFFERED=1 python3 -u run.py \
-            --client s2n-quic \
-            --server msquic \
+            --client ${{ matrix.client }} \
+            --server ${{ matrix.server }} \
             --json results/result.json \
             --debug \
-            --log-dir results/logs 2>&1 | tee results/logs/runner.stdout.txt
+            --log-dir results/logs
+
+      - name: Dump runner outputs
+        if: always()
+        working-directory: quic-interop-runner
+        run: |
+          echo "== results tree =="
+          find results -maxdepth 4 -type f | sort || true
+
+          echo "== any traceback =="
+          grep -RIn "Traceback" results 2>/dev/null || true
+
+          echo "== runner stdout if present =="
+          find results -name '*.txt' -maxdepth 5 -print -exec sed -n '1,120p' {} \; 2>/dev/null || true
 
       - name: Prepare artifacts
         working-directory: quic-interop-runner
