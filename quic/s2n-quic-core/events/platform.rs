@@ -123,6 +123,18 @@ enum PlatformFeatureConfiguration {
     MaxMtu { mtu: u16 },
 }
 
+#[event("platform:rx_socket")]
+#[subject(endpoint)]
+/// Emitted for each receive socket with per-socket packet counts
+struct PlatformRxSocketStats {
+    /// The index of the socket in the rx socket list
+    id: usize,
+
+    /// The number of packets received on this socket since the last event
+    #[counter("packets.total")]
+    count: usize,
+}
+
 #[event("platform:event_loop_wakeup")]
 #[subject(endpoint)]
 struct PlatformEventLoopWakeup {

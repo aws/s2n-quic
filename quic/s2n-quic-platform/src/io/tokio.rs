@@ -188,7 +188,9 @@ impl Io {
             },
         });
 
-        let (stats_sender, stats_recv) = crate::socket::stats::channel();
+        let rx_socket_count = rx_socket_list.len();
+        let (stats_sender, stats_recv) =
+            crate::socket::stats::channel_with_rx_socket_count(rx_socket_count);
 
         let rx = {
             // if GRO is enabled, then we need to provide the syscall with the maximum size buffer
@@ -215,7 +217,7 @@ impl Io {
             // complete
             let rx_cooldown = cooldown("RX");
 
-            for socket in rx_socket_list {
+            for (idx, socket) in rx_socket_list.into_iter().enumerate() {
                 let (producer, consumer) = socket::ring::pair(entries, payload_len);
                 consumers.push(consumer);
 
@@ -224,7 +226,7 @@ impl Io {
                     socket,
                     producer,
                     rx_cooldown.clone(),
-                    stats_sender.clone(),
+                    stats_sender.clone().with_socket_index(idx),
                 ));
             }
 
