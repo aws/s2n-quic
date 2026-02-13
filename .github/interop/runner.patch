@@ -19,7 +19,7 @@ index 93664f0..f0fa93e 100644
  services:
    sim:
 -    image: martenseemann/quic-network-simulator
-+    image: wesleyrosenblum/quic-network-simulator
++    image: qns-local:runsh-fix
      container_name: sim
      hostname: sim
      stdin_open: true
