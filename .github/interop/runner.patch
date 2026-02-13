@@ -18,7 +18,8 @@ index 93664f0..f0fa93e 100644
 
  services:
    sim:
-     image: martenseemann/quic-network-simulator
+-    image: martenseemann/quic-network-simulator
++    image: wesleyrosenblum/quic-network-simulator
      container_name: sim
      hostname: sim
      stdin_open: true
@@ -145,7 +146,8 @@ index c2d6d1f..844bbd5 100644
  from implementations import IMPLEMENTATIONS
  
  print("Pulling the simulator...")
- os.system("docker pull martenseemann/quic-network-simulator")
+-os.system("docker pull martenseemann/quic-network-simulator")
++os.system("docker pull wesleyrosenblum/quic-network-simulator")
  
  print("\nPulling the iperf endpoint...")
  os.system("docker pull martenseemann/quic-interop-iperf-endpoint")
