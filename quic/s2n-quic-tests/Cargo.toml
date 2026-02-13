@@ -29,7 +29,7 @@ zerocopy = { version = "0.8", features = ["derive"] }
 # quiche does not currently build on 32-bit platforms
 # see https://github.com/cloudflare/quiche/issues/2097
 [target.'cfg(not(target_arch = "x86"))'.dependencies]
-quiche = "0.24"
+quiche = "0.25"
 
 # s2n-tls is required by ch_callback_server_local_address_test and doesn't build on Windows
 [target.'cfg(not(target_os = "windows"))'.dependencies]
