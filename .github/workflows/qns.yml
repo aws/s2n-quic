@@ -199,6 +199,7 @@ jobs:
           sudo modprobe ip6table_filter
           mkdir -p results
           python3 run.py --client ${{ matrix.client }} --server ${{ matrix.server }} --json results/result.json --debug --log-dir results/logs
+          mkdir -p results/logs
 
       - name: Prepare artifacts
         working-directory: quic-interop-runner
