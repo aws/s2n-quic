@@ -5,6 +5,7 @@
 use super::router;
 use super::{client, server};
 use crate::path::secret;
+use cfg_if::cfg_if;
 use rand::Rng;
 use s2n_quic::{
     provider::{
@@ -108,27 +109,29 @@ impl Server {
 
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
-        #[cfg(not(any(test, feature = "testing")))]
-        let server = server
-            .with_limits(connection_limits)?
-            .with_dc(map.clone())?
-            .with_event(event)?
-            .with_tls(tls_materials_provider)?
-            .start()?;
-
-        #[cfg(any(test, feature = "testing"))]
-        let server = {
-            let server = server
-                .with_limits(connection_limits)?
-                .with_dc(map.clone())?
-                .with_event(event)?
-                .with_tls(tls_materials_provider)?;
-            if let Some(limiter) = builder.endpoint_limits {
-                server.with_endpoint_limits(limiter)?.start()?
+        cfg_if!(
+            if #[cfg(any(test, feature = "testing"))] {
+                let server = {
+                    let server = server
+                        .with_limits(connection_limits)?
+                        .with_dc(map.clone())?
+                        .with_event(event)?
+                        .with_tls(tls_materials_provider)?;
+                    if let Some(limiter) = builder.endpoint_limits {
+                        server.with_endpoint_limits(limiter)?.start()?
+                    } else {
+                        server.start()?
+                    }
+                };
             } else {
-                server.start()?
+                let server = server
+                    .with_limits(connection_limits)?
+                    .with_dc(map.clone())?
+                    .with_event(event)?
+                    .with_tls(tls_materials_provider)?
+                    .start()?;
             }
-        };
+        );
 
         Ok(Self { server })
     }
