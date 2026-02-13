@@ -881,10 +881,10 @@ mod tests {
         let socket_0 = stats_subscriber.socket_count(0);
         let socket_1 = stats_subscriber.socket_count(1);
 
-        // Socket 0 should receive exactly 1 packet: the Client Hello (Initial with DCID len=8)
-        assert_eq!(socket_0, 1);
+        // Socket 1 should receive exactly 1 packet: the Client Hello (Initial with DCID len=8)
+        assert_eq!(socket_1, 1);
 
-        // Socket 1 should receive the remaining handshake packets
-        assert!(socket_1 > 0);
+        // Socket 0 should receive the remaining handshake packets
+        assert!(socket_0 > 0);
     }
 }

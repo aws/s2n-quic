@@ -57,7 +57,7 @@ mod test {
         let target_addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
 
         // Test packet A: Initial packet with DCID length = 8
-        // Should route to socket 0
+        // Should route to socket 1
         // Format: [header byte, version (4 bytes), dcid_len, ...]
         let packet_a = {
             let mut p = vec![0u8; 32];
@@ -68,7 +68,7 @@ mod test {
         };
 
         // Test packet B: Handshake packet
-        // Should route to socket 1
+        // Should route to socket 0
         let packet_b = {
             let mut p = vec![0u8; 32];
             p[0] = 0xE0; // Handshake packet first four bits are 1110
@@ -76,7 +76,7 @@ mod test {
         };
 
         // Test packet C: Initial packet but DCID length != 8
-        // Should route to socket 1
+        // Should route to socket 0
         let packet_c = {
             let mut p = vec![0u8; 32];
             p[0] = 0xC0; // Initial packet (first 4 bits = 1100)
@@ -91,36 +91,36 @@ mod test {
         sender.send_to(&packet_c, target_addr).await?;
 
         // Receive and verify routing
-        let mut buf_socket0 = [0u8; 1024];
-        let mut buf_packet1_socket1 = [0u8; 1024];
-        let mut buf_packet2_socket1 = [0u8; 1024];
+        let mut buf_socket1 = [0u8; 1024];
+        let mut buf_packet1_socket0 = [0u8; 1024];
+        let mut buf_packet2_socket0 = [0u8; 1024];
 
-        // Socket 0 should receive packet_a (Initial with DCID len = 8)
+        // Socket 1 should receive packet_a (Initial with DCID len = 8)
         let recv_result = tokio::time::timeout(
             Duration::from_millis(500),
-            rx_socket_0.recv_from(&mut buf_socket0),
+            rx_socket_1.recv_from(&mut buf_socket1),
         )
         .await;
         let (len, _) = recv_result.unwrap()?;
-        assert_eq!(&buf_socket0[..len], &packet_a);
+        assert_eq!(&buf_socket1[..len], &packet_a);
 
         // Socket 1 should receive packet_b and packet_c
         let recv_result = tokio::time::timeout(
             Duration::from_millis(500),
-            rx_socket_1.recv_from(&mut buf_packet1_socket1),
+            rx_socket_0.recv_from(&mut buf_packet1_socket0),
         )
         .await;
         let (len1, _) = recv_result.unwrap()?;
 
         let recv_result = tokio::time::timeout(
             Duration::from_millis(500),
-            rx_socket_1.recv_from(&mut buf_packet2_socket1),
+            rx_socket_0.recv_from(&mut buf_packet2_socket0),
         )
         .await;
         let (len2, _) = recv_result.unwrap()?;
 
         // Verify that socket 1 received exactly packet_b and packet_c in either order
-        let received_packets = [&buf_packet1_socket1[..len1], &buf_packet2_socket1[..len2]];
+        let received_packets = [&buf_packet1_socket0[..len1], &buf_packet2_socket0[..len2]];
 
         // Check that one packet matches packet_b (Handshake: header = 0xE0)
         let has_packet_b = received_packets.iter().any(|p| p[..] == packet_b[..]);
@@ -139,7 +139,7 @@ mod test {
         // Socket 0 should not have any more packets
         let recv_result = tokio::time::timeout(
             Duration::from_millis(100),
-            rx_socket_0.recv_from(&mut buf_socket0),
+            rx_socket_0.recv_from(&mut buf_socket1),
         )
         .await;
         assert!(
