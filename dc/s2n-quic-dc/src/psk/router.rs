@@ -9,12 +9,12 @@ pub(super) static ROUTER: Program = Program::new(&[
     // Load byte 0 and check if it's an Initial packet (first 4 bits = 1100)
     ldb(abs(0)),
     and(0b1111_0000), // Mask the last four bits of the first byte. The first four bits can confirm if the packet is a INITIAL packet.
-    // If Initial packet, continue; else jump to ret(1)
-    jeq(0b1100_0000, 0, 3), // First four bits of INITIAL packet should be 1100.
+    // If Initial packet, continue; else jump to ret(0)
+    jeq(0b1100_0000, 0, 2), // First four bits of INITIAL packet should be 1100.
     // Load byte 5 (DCID length) and check if it equals 8
     ldb(abs(5)),
-    // If DCID len = 8, continue to ret(0); else jump to ret(1)
-    jeq(0x08, 0, 1),
+    // If DCID len = 8, jump to ret(1); else continue to ret(0)
+    jeq(0x08, 1, 0),
     // Return 0: socket 0 handles Initial packets with DCID length = 8
     ret(0),
     // Return 1: socket 1 handles all other packets

@@ -597,7 +597,7 @@ mod tests {
         tls::Provider,
     };
     use s2n_quic_core::time::StdClock;
-    use std::time::Instant;
+    use std::{sync::atomic::AtomicU64, time::Instant};
     use tokio_util::sync::DropGuard;
 
     /// A test limiter that closes all incoming connections immediately
@@ -763,5 +763,128 @@ mod tests {
             "Connection took {:?}, expected < 500ms",
             duration
         );
+    }
+
+    /// A subscriber that captures per-socket rx packet counts via `PlatformRxSocketStats` events.
+    #[derive(Clone)]
+    struct SocketStatsSubscriber {
+        /// Accumulated per-socket rx packet counts: [socket_0_count, socket_1_count]
+        counts: Arc<[AtomicU64; 2]>,
+    }
+
+    impl SocketStatsSubscriber {
+        fn new() -> Self {
+            Self {
+                counts: Arc::new([AtomicU64::new(0), AtomicU64::new(0)]),
+            }
+        }
+
+        fn socket_count(&self, index: usize) -> u64 {
+            self.counts[index].load(Ordering::Relaxed)
+        }
+    }
+
+    impl s2n_quic_core::event::Subscriber for SocketStatsSubscriber {
+        type ConnectionContext = ();
+
+        fn create_connection_context(
+            &mut self,
+            _meta: &s2n_quic_core::event::api::ConnectionMeta,
+            _info: &s2n_quic_core::event::api::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+        }
+
+        fn on_platform_rx_socket_stats(
+            &mut self,
+            _meta: &s2n_quic_core::event::api::EndpointMeta,
+            event: &s2n_quic_core::event::api::PlatformRxSocketStats,
+        ) {
+            if let Some(counter) = self.counts.get(event.id) {
+                counter.fetch_add(event.count as u64, Ordering::Relaxed);
+            }
+        }
+    }
+
+    // Also implement the dc event subscriber trait so it can be used as the
+    // `subscriber` parameter in `Provider::setup`.
+    impl crate::event::Subscriber for SocketStatsSubscriber {
+        type ConnectionContext = ();
+
+        fn create_connection_context(
+            &self,
+            _meta: &crate::event::api::ConnectionMeta,
+            _info: &crate::event::api::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+        }
+    }
+
+    /// Verifies that when a dcQUIC client connects to the server, the BPF router
+    /// directs exactly one packet (the Client Hello Initial) to socket 0, and all
+    /// remaining handshake packets to socket 1.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn client_hello_routed_to_socket_zero() {
+        init_tracing();
+
+        let tls = TestTlsProvider {};
+        let stats_subscriber = SocketStatsSubscriber::new();
+
+        let server_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            stats_subscriber.clone(),
+        );
+
+        let server_builder = crate::psk::server::Builder::default();
+        let (server_addr_rx, _server_guard) = crate::psk::server::Provider::setup(
+            "127.0.0.1:0".parse().unwrap(),
+            server_map.clone(),
+            tls.clone(),
+            stats_subscriber.clone(),
+            server_builder,
+        );
+
+        let noop_subscriber = NoopSubscriber {};
+        let client_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            noop_subscriber.clone(),
+        );
+
+        let client = Client::bind::<
+            <TestTlsProvider as Provider>::Client,
+            NoopSubscriber,
+            s2n_quic::provider::event::default::Subscriber,
+        >(
+            "0.0.0.0:0".parse().unwrap(),
+            client_map,
+            tls.start_client().unwrap(),
+            noop_subscriber,
+            crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
+        )
+        .unwrap();
+
+        let server_addr = server_addr_rx.await.unwrap().unwrap();
+
+        client
+            .connect(server_addr, HandshakeReason::User, "localhost".into())
+            .await
+            .unwrap();
+
+        // Wait for 500 ms for the connection to finish
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let socket_0 = stats_subscriber.socket_count(0);
+        let socket_1 = stats_subscriber.socket_count(1);
+
+        // Socket 0 should receive exactly 1 packet: the Client Hello (Initial with DCID len=8)
+        assert_eq!(socket_0, 1);
+
+        // Socket 1 should receive the remaining handshake packets
+        assert!(socket_1 > 0);
     }
 }
