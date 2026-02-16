@@ -826,7 +826,7 @@ mod tests {
     /// remaining handshake packets to socket 1.
     #[cfg(target_os = "linux")]
     #[tokio::test]
-    async fn client_hello_routed_to_socket_zero() {
+    async fn client_hello_routed_test() {
         init_tracing();
 
         let tls = TestTlsProvider {};

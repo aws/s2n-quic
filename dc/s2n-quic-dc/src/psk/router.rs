@@ -15,9 +15,9 @@ pub(super) static ROUTER: Program = Program::new(&[
     ldb(abs(5)),
     // If DCID len = 8, jump to ret(1); else continue to ret(0)
     jeq(0x08, 1, 0),
-    // Return 0: socket 0 handles Initial packets with DCID length = 8
+    // Return 0: socket 0 handles all other packets
     ret(0),
-    // Return 1: socket 1 handles all other packets
+    // Return 1: socket 1 handles Initial packets with DCID length = 8
     ret(1),
 ]);
 
