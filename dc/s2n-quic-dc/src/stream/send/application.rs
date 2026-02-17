@@ -3,6 +3,7 @@
 
 use crate::{
     clock,
+    credentials::Id,
     event::{self, ConnectionPublisher},
     msg,
     stream::{
@@ -84,6 +85,11 @@ where
     #[inline]
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.0.sockets.write_application().local_addr()
+    }
+
+    #[inline]
+    pub fn path_secret_id(&self) -> &Id {
+        &self.0.shared.credentials().id
     }
 
     #[inline]
