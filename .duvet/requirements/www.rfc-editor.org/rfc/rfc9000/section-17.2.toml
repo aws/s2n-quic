@@ -1,0 +1,204 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-17.2"
+
+# Long Header Packets
+#
+#    Long Header Packet {
+#      Header Form (1) = 1,
+#      Fixed Bit (1) = 1,
+#      Long Packet Type (2),
+#      Type-Specific Bits (4),
+#      Version (32),
+#      Destination Connection ID Length (8),
+#      Destination Connection ID (0..160),
+#      Source Connection ID Length (8),
+#      Source Connection ID (0..160),
+#      Type-Specific Payload (..),
+#    }
+# 
+#                     Figure 13: Long Header Packet Format
+# 
+#    Long headers are used for packets that are sent prior to the
+#    establishment of 1-RTT keys.  Once 1-RTT keys are available, a sender
+#    switches to sending packets using the short header (Section 17.3).
+#    The long form allows for special packets -- such as the Version
+#    Negotiation packet -- to be represented in this uniform fixed-length
+#    packet format.  Packets that use the long header contain the
+#    following fields:
+# 
+#    Header Form:  The most significant bit (0x80) of byte 0 (the first
+#       byte) is set to 1 for long headers.
+# 
+#    Fixed Bit:  The next bit (0x40) of byte 0 is set to 1, unless the
+#       packet is a Version Negotiation packet.  Packets containing a zero
+#       value for this bit are not valid packets in this version and MUST
+#       be discarded.  A value of 1 for this bit allows QUIC to coexist
+#       with other protocols; see [RFC7983].
+# 
+#    Long Packet Type:  The next two bits (those with a mask of 0x30) of
+#       byte 0 contain a packet type.  Packet types are listed in Table 5.
+# 
+#    Type-Specific Bits:  The semantics of the lower four bits (those with
+#       a mask of 0x0f) of byte 0 are determined by the packet type.
+# 
+#    Version:  The QUIC Version is a 32-bit field that follows the first
+#       byte.  This field indicates the version of QUIC that is in use and
+#       determines how the rest of the protocol fields are interpreted.
+# 
+#    Destination Connection ID Length:  The byte following the version
+#       contains the length in bytes of the Destination Connection ID
+#       field that follows it.  This length is encoded as an 8-bit
+#       unsigned integer.  In QUIC version 1, this value MUST NOT exceed
+#       20 bytes.  Endpoints that receive a version 1 long header with a
+#       value larger than 20 MUST drop the packet.  In order to properly
+#       form a Version Negotiation packet, servers SHOULD be able to read
+#       longer connection IDs from other QUIC versions.
+# 
+#    Destination Connection ID:  The Destination Connection ID field
+#       follows the Destination Connection ID Length field, which
+#       indicates the length of this field.  Section 7.2 describes the use
+#       of this field in more detail.
+# 
+#    Source Connection ID Length:  The byte following the Destination
+#       Connection ID contains the length in bytes of the Source
+#       Connection ID field that follows it.  This length is encoded as an
+#       8-bit unsigned integer.  In QUIC version 1, this value MUST NOT
+#       exceed 20 bytes.  Endpoints that receive a version 1 long header
+#       with a value larger than 20 MUST drop the packet.  In order to
+#       properly form a Version Negotiation packet, servers SHOULD be able
+#       to read longer connection IDs from other QUIC versions.
+# 
+#    Source Connection ID:  The Source Connection ID field follows the
+#       Source Connection ID Length field, which indicates the length of
+#       this field.  Section 7.2 describes the use of this field in more
+#       detail.
+# 
+#    Type-Specific Payload:  The remainder of the packet, if any, is type
+#       specific.
+# 
+#    In this version of QUIC, the following packet types with the long
+#    header are defined:
+# 
+#                    +======+===========+================+
+#                    | Type | Name      | Section        |
+#                    +======+===========+================+
+#                    | 0x00 | Initial   | Section 17.2.2 |
+#                    +------+-----------+----------------+
+#                    | 0x01 | 0-RTT     | Section 17.2.3 |
+#                    +------+-----------+----------------+
+#                    | 0x02 | Handshake | Section 17.2.4 |
+#                    +------+-----------+----------------+
+#                    | 0x03 | Retry     | Section 17.2.5 |
+#                    +------+-----------+----------------+
+# 
+#                      Table 5: Long Header Packet Types
+# 
+#    The header form bit, Destination and Source Connection ID lengths,
+#    Destination and Source Connection ID fields, and Version fields of a
+#    long header packet are version independent.  The other fields in the
+#    first byte are version specific.  See [QUIC-INVARIANTS] for details
+#    on how packets from different versions of QUIC are interpreted.
+# 
+#    The interpretation of the fields and the payload are specific to a
+#    version and packet type.  While type-specific semantics for this
+#    version are described in the following sections, several long header
+#    packets in this version of QUIC contain these additional fields:
+# 
+#    Reserved Bits:  Two bits (those with a mask of 0x0c) of byte 0 are
+#       reserved across multiple packet types.  These bits are protected
+#       using header protection; see Section 5.4 of [QUIC-TLS].  The value
+#       included prior to protection MUST be set to 0.  An endpoint MUST
+#       treat receipt of a packet that has a non-zero value for these bits
+#       after removing both packet and header protection as a connection
+#       error of type PROTOCOL_VIOLATION.  Discarding such a packet after
+#       only removing header protection can expose the endpoint to
+#       attacks; see Section 9.5 of [QUIC-TLS].
+# 
+#    Packet Number Length:  In packet types that contain a Packet Number
+#       field, the least significant two bits (those with a mask of 0x03)
+#       of byte 0 contain the length of the Packet Number field, encoded
+#       as an unsigned two-bit integer that is one less than the length of
+#       the Packet Number field in bytes.  That is, the length of the
+#       Packet Number field is the value of this field plus one.  These
+#       bits are protected using header protection; see Section 5.4 of
+#       [QUIC-TLS].
+# 
+#    Length:  This is the length of the remainder of the packet (that is,
+#       the Packet Number and Payload fields) in bytes, encoded as a
+#       variable-length integer (Section 16).
+# 
+#    Packet Number:  This field is 1 to 4 bytes long.  The packet number
+#       is protected using header protection; see Section 5.4 of
+#       [QUIC-TLS].  The length of the Packet Number field is encoded in
+#       the Packet Number Length bits of byte 0; see above.
+# 
+#    Packet Payload:  This is the payload of the packet -- containing a
+#       sequence of frames -- that is protected using packet protection.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Packets containing a zero
+value for this bit are not valid packets in this version and MUST
+be discarded.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+In QUIC version 1, this value MUST NOT exceed
+20 bytes.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Endpoints that receive a version 1 long header with a
+value larger than 20 MUST drop the packet.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+In order to properly
+form a Version Negotiation packet, servers SHOULD be able to read
+longer connection IDs from other QUIC versions.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+In QUIC version 1, this value MUST NOT
+exceed 20 bytes.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Endpoints that receive a version 1 long header
+with a value larger than 20 MUST drop the packet.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+In order to
+properly form a Version Negotiation packet, servers SHOULD be able
+to read longer connection IDs from other QUIC versions.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The value
+included prior to protection MUST be set to 0.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST
+treat receipt of a packet that has a non-zero value for these bits
+after removing both packet and header protection as a connection
+error of type PROTOCOL_VIOLATION.
+'''
+
