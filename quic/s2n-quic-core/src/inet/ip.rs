@@ -111,6 +111,15 @@ impl<'a> From<&'a IpV6Address> for IpAddressRef<'a> {
     }
 }
 
+impl From<net::IpAddr> for IpAddress {
+    fn from(addr: net::IpAddr) -> Self {
+        match addr {
+            net::IpAddr::V4(addr) => Self::Ipv4(addr.into()),
+            net::IpAddr::V6(addr) => Self::Ipv6(addr.into()),
+        }
+    }
+}
+
 /// An IP socket address, either IPv4 or IPv6, with a specific port.
 ///
 /// Instead of using `std::net::SocketAddr`, this implementation
