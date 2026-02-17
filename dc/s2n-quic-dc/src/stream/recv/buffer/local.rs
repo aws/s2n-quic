@@ -6,9 +6,10 @@ use crate::{
     event, msg,
     stream::{recv, server::handshake, socket::Socket, Actor, TransportFeatures},
 };
+use bytes::buf::UninitSlice;
 use core::task::{Context, Poll};
 use s2n_codec::{DecoderBufferMut, DecoderError};
-use s2n_quic_core::{ensure, ready};
+use s2n_quic_core::{buffer::writer::Storage, ensure, ready};
 use std::io;
 
 #[derive(Debug)]
@@ -26,6 +27,25 @@ impl Local {
             saw_fin: false,
             handshake,
         }
+    }
+
+    pub fn saw_fin(&self) -> bool {
+        self.saw_fin
+    }
+
+    pub fn copy_into(&mut self, mut output: &mut UninitSlice) -> usize {
+        let mut written = 0usize;
+        while output.has_remaining_capacity() && !self.recv_buffer.peek().is_empty() {
+            let chunk_len = self
+                .recv_buffer
+                .peek()
+                .len()
+                .clamp(0, output.remaining_capacity());
+            output.put_slice(&self.recv_buffer.peek()[..chunk_len]);
+            written += chunk_len;
+            self.recv_buffer.consume(chunk_len);
+        }
+        written
     }
 }
 
