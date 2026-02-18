@@ -1229,12 +1229,14 @@ pub mod api {
     #[doc = " Currently only emitted in cases where dcQUIC owns the TCP connect too."]
     pub struct StreamConnectError {
         pub reason: StreamTcpConnectErrorReason,
+        pub latency: core::time::Duration,
     }
     #[cfg(any(test, feature = "testing"))]
     impl crate::event::snapshot::Fmt for StreamConnectError {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("StreamConnectError");
             fmt.field("reason", &self.reason);
+            fmt.field("latency", &self.latency);
             fmt.finish()
         }
     }
@@ -1599,8 +1601,19 @@ pub mod api {
         #[non_exhaustive]
         #[doc = " When the connect future is dropped prior to returning any result."]
         #[doc = ""]
-        #[doc = " Usually indicates a timeout in the application."]
-        Aborted {},
+        #[doc = " This means the TCP connect succeeded, but the handshake hasn't yet by the time the connect"]
+        #[doc = " future was dropped."]
+        AbortedPendingHandshake {},
+        #[non_exhaustive]
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " The handshake succeeded (or wasn't needed), but the TCP connect hasn't yet finished."]
+        AbortedPendingConnect {},
+        #[non_exhaustive]
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " Neither the TCP connect or handshake have finished yet."]
+        AbortedPendingBoth {},
     }
     impl aggregate::AsVariant for StreamTcpConnectErrorReason {
         const VARIANTS: &'static [aggregate::info::Variant] = &[
@@ -1615,8 +1628,18 @@ pub mod api {
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("ABORTED\0"),
+                name: aggregate::info::Str::new("ABORTED_PENDING_HANDSHAKE\0"),
                 id: 2usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("ABORTED_PENDING_CONNECT\0"),
+                id: 3usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("ABORTED_PENDING_BOTH\0"),
+                id: 4usize,
             }
             .build(),
         ];
@@ -1625,7 +1648,9 @@ pub mod api {
             match self {
                 Self::TcpConnect { .. } => 0usize,
                 Self::Handshake { .. } => 1usize,
-                Self::Aborted { .. } => 2usize,
+                Self::AbortedPendingHandshake { .. } => 2usize,
+                Self::AbortedPendingConnect { .. } => 3usize,
+                Self::AbortedPendingBoth { .. } => 4usize,
             }
         }
     }
@@ -3001,8 +3026,8 @@ pub mod tracing {
             event: &api::StreamConnectError,
         ) {
             let parent = self.parent(meta);
-            let api::StreamConnectError { reason } = event;
-            tracing :: event ! (target : "stream_connect_error" , parent : parent , tracing :: Level :: DEBUG , { reason = tracing :: field :: debug (reason) });
+            let api::StreamConnectError { reason, latency } = event;
+            tracing :: event ! (target : "stream_connect_error" , parent : parent , tracing :: Level :: DEBUG , { reason = tracing :: field :: debug (reason) , latency = tracing :: field :: debug (latency) });
         }
         #[inline]
         fn on_stream_packet_transmitted(
@@ -4760,13 +4785,15 @@ pub mod builder {
     #[doc = " Currently only emitted in cases where dcQUIC owns the TCP connect too."]
     pub struct StreamConnectError {
         pub reason: StreamTcpConnectErrorReason,
+        pub latency: core::time::Duration,
     }
     impl IntoEvent<api::StreamConnectError> for StreamConnectError {
         #[inline]
         fn into_event(self) -> api::StreamConnectError {
-            let StreamConnectError { reason } = self;
+            let StreamConnectError { reason, latency } = self;
             api::StreamConnectError {
                 reason: reason.into_event(),
+                latency: latency.into_event(),
             }
         }
     }
@@ -5119,8 +5146,17 @@ pub mod builder {
         Handshake,
         #[doc = " When the connect future is dropped prior to returning any result."]
         #[doc = ""]
-        #[doc = " Usually indicates a timeout in the application."]
-        Aborted,
+        #[doc = " This means the TCP connect succeeded, but the handshake hasn't yet by the time the connect"]
+        #[doc = " future was dropped."]
+        AbortedPendingHandshake,
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " The handshake succeeded (or wasn't needed), but the TCP connect hasn't yet finished."]
+        AbortedPendingConnect,
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " Neither the TCP connect or handshake have finished yet."]
+        AbortedPendingBoth,
     }
     impl IntoEvent<api::StreamTcpConnectErrorReason> for StreamTcpConnectErrorReason {
         #[inline]
@@ -5129,7 +5165,9 @@ pub mod builder {
             match self {
                 Self::TcpConnect => TcpConnect {},
                 Self::Handshake => Handshake {},
-                Self::Aborted => Aborted {},
+                Self::AbortedPendingHandshake => AbortedPendingHandshake {},
+                Self::AbortedPendingConnect => AbortedPendingConnect {},
+                Self::AbortedPendingBoth => AbortedPendingBoth {},
             }
         }
     }
