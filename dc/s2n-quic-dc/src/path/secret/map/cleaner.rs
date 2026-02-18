@@ -202,10 +202,11 @@ impl Cleaner {
         }
 
         let mut handshake_requests = 0;
-        rehandshake.next_rehandshake_batch(state.peers.len(), |peer| {
-            handshake_requests += 1;
-            state.request_handshake(peer, crate::psk::io::HandshakeReason::Periodic);
-        });
+        let handshake_requests_skipped =
+            rehandshake.next_rehandshake_batch(state.peers.len(), |peer| {
+                handshake_requests += 1;
+                state.request_handshake(peer, crate::psk::io::HandshakeReason::Periodic)
+            });
 
         drop(rehandshake);
 
@@ -227,7 +228,7 @@ impl Cleaner {
                 address_entries_initial_utilization: utilization(address_entries_initial),
                 address_entries_retired,
                 handshake_requests,
-                handshake_requests_retired: 0,
+                handshake_requests_skipped,
                 handshake_lock_duration,
                 duration: state.clock.get_time().saturating_duration_since(start),
             },

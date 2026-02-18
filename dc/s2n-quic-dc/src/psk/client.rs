@@ -114,20 +114,16 @@ impl Provider {
         // Avoid holding onto the state unintentionally after it's no longer needed.
         let weak = Arc::downgrade(&state);
         map.register_request_handshake(Box::new(move |peer, reason| {
-            if let Some(state) = weak.upgrade() {
-                let runtime = state.runtime.as_ref().map(|v| &v.0).unwrap();
-                let client = state.client.clone();
-                let server_name = server_name.clone();
-                // Drop the JoinHandle -- we're not actually going to block on the join handle's
-                // result. The future will keep running in the background.
-                runtime.spawn(async move {
-                    if let Err(HandshakeFailed { .. }) =
-                        client.connect(peer, reason, server_name).await
-                    {
-                        // failure has already been logged, no further action required.
-                    }
-                });
-            }
+            let state = weak.upgrade()?;
+            let runtime = state.runtime.as_ref().map(|v| &v.0)?;
+            let client = state.client.clone();
+            let server_name = server_name.clone();
+            Some(runtime.spawn(async move {
+                if let Err(HandshakeFailed { .. }) = client.connect(peer, reason, server_name).await
+                {
+                    // failure has already been logged, no further action required.
+                }
+            }))
         }));
 
         Ok(Self { state })

@@ -75,7 +75,7 @@ s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
 s2n-quic-platform = { path = "../../quic/s2n-quic-platform", features = [
     "testing",
 ] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full", "test-util"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [lints.rust.unexpected_cfgs]

@@ -16,6 +16,7 @@ use crate::{
 use core::fmt;
 use s2n_quic_core::{dc, time, varint::VarInt};
 use std::{net::SocketAddr, sync::Arc};
+use tokio::task::JoinHandle;
 
 mod cleaner;
 mod entry;
@@ -121,7 +122,7 @@ impl Map {
 
     pub fn register_request_handshake(
         &self,
-        cb: Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>,
+        cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
     ) {
         self.store.register_request_handshake(cb);
     }
