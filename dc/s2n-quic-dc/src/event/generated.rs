@@ -1229,12 +1229,14 @@ pub mod api {
     #[doc = " Currently only emitted in cases where dcQUIC owns the TCP connect too."]
     pub struct StreamConnectError {
         pub reason: StreamTcpConnectErrorReason,
+        pub latency: core::time::Duration,
     }
     #[cfg(any(test, feature = "testing"))]
     impl crate::event::snapshot::Fmt for StreamConnectError {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("StreamConnectError");
             fmt.field("reason", &self.reason);
+            fmt.field("latency", &self.latency);
             fmt.finish()
         }
     }
@@ -1599,8 +1601,19 @@ pub mod api {
         #[non_exhaustive]
         #[doc = " When the connect future is dropped prior to returning any result."]
         #[doc = ""]
-        #[doc = " Usually indicates a timeout in the application."]
-        Aborted {},
+        #[doc = " This means the TCP connect succeeded, but the handshake hasn't yet by the time the connect"]
+        #[doc = " future was dropped."]
+        AbortedPendingHandshake {},
+        #[non_exhaustive]
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " The handshake succeeded (or wasn't needed), but the TCP connect hasn't yet finished."]
+        AbortedPendingConnect {},
+        #[non_exhaustive]
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " Neither the TCP connect or handshake have finished yet."]
+        AbortedPendingBoth {},
     }
     impl aggregate::AsVariant for StreamTcpConnectErrorReason {
         const VARIANTS: &'static [aggregate::info::Variant] = &[
@@ -1615,8 +1628,18 @@ pub mod api {
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("ABORTED\0"),
+                name: aggregate::info::Str::new("ABORTED_PENDING_HANDSHAKE\0"),
                 id: 2usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("ABORTED_PENDING_CONNECT\0"),
+                id: 3usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("ABORTED_PENDING_BOTH\0"),
+                id: 4usize,
             }
             .build(),
         ];
@@ -1625,7 +1648,9 @@ pub mod api {
             match self {
                 Self::TcpConnect { .. } => 0usize,
                 Self::Handshake { .. } => 1usize,
-                Self::Aborted { .. } => 2usize,
+                Self::AbortedPendingHandshake { .. } => 2usize,
+                Self::AbortedPendingConnect { .. } => 3usize,
+                Self::AbortedPendingBoth { .. } => 4usize,
             }
         }
     }
@@ -2301,8 +2326,10 @@ pub mod api {
         pub address_entries_initial_utilization: f32,
         #[doc = " The number of handshake requests that are pending after the cleaning cycle"]
         pub handshake_requests: usize,
-        #[doc = " The number of handshake requests that were retired in the cycle"]
-        pub handshake_requests_retired: usize,
+        #[doc = " The number of handshake requests that were skipped in the cycle due to running out of time"]
+        #[doc = " (other background handshakes took too long to complete, and so were postponed to the next"]
+        #[doc = " cleaner cycle)."]
+        pub handshake_requests_skipped: usize,
         #[doc = " How long we kept the handshake lock held (this blocks completing handshakes)."]
         pub handshake_lock_duration: core::time::Duration,
         #[doc = " Total duration of a cycle."]
@@ -2341,8 +2368,8 @@ pub mod api {
             );
             fmt.field("handshake_requests", &self.handshake_requests);
             fmt.field(
-                "handshake_requests_retired",
-                &self.handshake_requests_retired,
+                "handshake_requests_skipped",
+                &self.handshake_requests_skipped,
             );
             fmt.field("handshake_lock_duration", &self.handshake_lock_duration);
             fmt.field("duration", &self.duration);
@@ -3001,8 +3028,8 @@ pub mod tracing {
             event: &api::StreamConnectError,
         ) {
             let parent = self.parent(meta);
-            let api::StreamConnectError { reason } = event;
-            tracing :: event ! (target : "stream_connect_error" , parent : parent , tracing :: Level :: DEBUG , { reason = tracing :: field :: debug (reason) });
+            let api::StreamConnectError { reason, latency } = event;
+            tracing :: event ! (target : "stream_connect_error" , parent : parent , tracing :: Level :: DEBUG , { reason = tracing :: field :: debug (reason) , latency = tracing :: field :: debug (latency) });
         }
         #[inline]
         fn on_stream_packet_transmitted(
@@ -3610,11 +3637,11 @@ pub mod tracing {
                 address_entries_utilization,
                 address_entries_initial_utilization,
                 handshake_requests,
-                handshake_requests_retired,
+                handshake_requests_skipped,
                 handshake_lock_duration,
                 duration,
             } = event;
-            tracing :: event ! (target : "path_secret_map_cleaner_cycled" , parent : parent , tracing :: Level :: DEBUG , { id_entries = tracing :: field :: debug (id_entries) , id_entries_retired = tracing :: field :: debug (id_entries_retired) , id_entries_active = tracing :: field :: debug (id_entries_active) , id_entries_active_utilization = tracing :: field :: debug (id_entries_active_utilization) , id_entries_utilization = tracing :: field :: debug (id_entries_utilization) , id_entries_initial_utilization = tracing :: field :: debug (id_entries_initial_utilization) , address_entries = tracing :: field :: debug (address_entries) , address_entries_active = tracing :: field :: debug (address_entries_active) , address_entries_active_utilization = tracing :: field :: debug (address_entries_active_utilization) , address_entries_retired = tracing :: field :: debug (address_entries_retired) , address_entries_utilization = tracing :: field :: debug (address_entries_utilization) , address_entries_initial_utilization = tracing :: field :: debug (address_entries_initial_utilization) , handshake_requests = tracing :: field :: debug (handshake_requests) , handshake_requests_retired = tracing :: field :: debug (handshake_requests_retired) , handshake_lock_duration = tracing :: field :: debug (handshake_lock_duration) , duration = tracing :: field :: debug (duration) });
+            tracing :: event ! (target : "path_secret_map_cleaner_cycled" , parent : parent , tracing :: Level :: DEBUG , { id_entries = tracing :: field :: debug (id_entries) , id_entries_retired = tracing :: field :: debug (id_entries_retired) , id_entries_active = tracing :: field :: debug (id_entries_active) , id_entries_active_utilization = tracing :: field :: debug (id_entries_active_utilization) , id_entries_utilization = tracing :: field :: debug (id_entries_utilization) , id_entries_initial_utilization = tracing :: field :: debug (id_entries_initial_utilization) , address_entries = tracing :: field :: debug (address_entries) , address_entries_active = tracing :: field :: debug (address_entries_active) , address_entries_active_utilization = tracing :: field :: debug (address_entries_active_utilization) , address_entries_retired = tracing :: field :: debug (address_entries_retired) , address_entries_utilization = tracing :: field :: debug (address_entries_utilization) , address_entries_initial_utilization = tracing :: field :: debug (address_entries_initial_utilization) , handshake_requests = tracing :: field :: debug (handshake_requests) , handshake_requests_skipped = tracing :: field :: debug (handshake_requests_skipped) , handshake_lock_duration = tracing :: field :: debug (handshake_lock_duration) , duration = tracing :: field :: debug (duration) });
         }
         #[inline]
         fn on_path_secret_map_id_write_lock(
@@ -4760,13 +4787,15 @@ pub mod builder {
     #[doc = " Currently only emitted in cases where dcQUIC owns the TCP connect too."]
     pub struct StreamConnectError {
         pub reason: StreamTcpConnectErrorReason,
+        pub latency: core::time::Duration,
     }
     impl IntoEvent<api::StreamConnectError> for StreamConnectError {
         #[inline]
         fn into_event(self) -> api::StreamConnectError {
-            let StreamConnectError { reason } = self;
+            let StreamConnectError { reason, latency } = self;
             api::StreamConnectError {
                 reason: reason.into_event(),
+                latency: latency.into_event(),
             }
         }
     }
@@ -5119,8 +5148,17 @@ pub mod builder {
         Handshake,
         #[doc = " When the connect future is dropped prior to returning any result."]
         #[doc = ""]
-        #[doc = " Usually indicates a timeout in the application."]
-        Aborted,
+        #[doc = " This means the TCP connect succeeded, but the handshake hasn't yet by the time the connect"]
+        #[doc = " future was dropped."]
+        AbortedPendingHandshake,
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " The handshake succeeded (or wasn't needed), but the TCP connect hasn't yet finished."]
+        AbortedPendingConnect,
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " Neither the TCP connect or handshake have finished yet."]
+        AbortedPendingBoth,
     }
     impl IntoEvent<api::StreamTcpConnectErrorReason> for StreamTcpConnectErrorReason {
         #[inline]
@@ -5129,7 +5167,9 @@ pub mod builder {
             match self {
                 Self::TcpConnect => TcpConnect {},
                 Self::Handshake => Handshake {},
-                Self::Aborted => Aborted {},
+                Self::AbortedPendingHandshake => AbortedPendingHandshake {},
+                Self::AbortedPendingConnect => AbortedPendingConnect {},
+                Self::AbortedPendingBoth => AbortedPendingBoth {},
             }
         }
     }
@@ -5809,8 +5849,10 @@ pub mod builder {
         pub address_entries_initial_utilization: f32,
         #[doc = " The number of handshake requests that are pending after the cleaning cycle"]
         pub handshake_requests: usize,
-        #[doc = " The number of handshake requests that were retired in the cycle"]
-        pub handshake_requests_retired: usize,
+        #[doc = " The number of handshake requests that were skipped in the cycle due to running out of time"]
+        #[doc = " (other background handshakes took too long to complete, and so were postponed to the next"]
+        #[doc = " cleaner cycle)."]
+        pub handshake_requests_skipped: usize,
         #[doc = " How long we kept the handshake lock held (this blocks completing handshakes)."]
         pub handshake_lock_duration: core::time::Duration,
         #[doc = " Total duration of a cycle."]
@@ -5833,7 +5875,7 @@ pub mod builder {
                 address_entries_utilization,
                 address_entries_initial_utilization,
                 handshake_requests,
-                handshake_requests_retired,
+                handshake_requests_skipped,
                 handshake_lock_duration,
                 duration,
             } = self;
@@ -5852,7 +5894,7 @@ pub mod builder {
                 address_entries_initial_utilization: address_entries_initial_utilization
                     .into_event(),
                 handshake_requests: handshake_requests.into_event(),
-                handshake_requests_retired: handshake_requests_retired.into_event(),
+                handshake_requests_skipped: handshake_requests_skipped.into_event(),
                 handshake_lock_duration: handshake_lock_duration.into_event(),
                 duration: duration.into_event(),
             }

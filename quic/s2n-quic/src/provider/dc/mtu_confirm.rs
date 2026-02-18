@@ -11,7 +11,7 @@ use s2n_quic_core::{
     },
 };
 use std::time::Duration;
-use tokio::{runtime::Handle, sync::watch};
+use tokio::sync::watch;
 
 /// `event::Subscriber` used for ensuring an s2n-quic client or server negotiating dc
 /// waits for post-handshake MTU probing to complete
@@ -56,7 +56,7 @@ impl MtuConfirmComplete {
                         if #[cfg(any(test, feature = "unstable-provider-io-testing"))] {
                             // We might be running in cfg(test) with a real tokio runtime, not against the bach provider.
                             // Hence, we use Handle::try_current to test if a tokio runtime has been started.
-                            if Handle::try_current().is_err() {
+                            if tokio::runtime::Handle::try_current().is_err() {
                                 crate::provider::io::testing::time::delay(Duration::from_secs(1)).await;
                             } else {
                                 tokio::time::sleep(Duration::from_secs(1)).await;
