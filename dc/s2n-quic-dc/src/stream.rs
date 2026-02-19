@@ -25,6 +25,7 @@ pub mod send;
 pub mod server;
 pub mod shared;
 pub mod socket;
+pub(crate) mod tls;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;

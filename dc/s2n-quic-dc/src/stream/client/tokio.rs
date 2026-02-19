@@ -18,8 +18,13 @@ use crate::{
     },
 };
 use s2n_quic::server::Name;
-use s2n_quic_core::time::{Clock, Timestamp};
-use std::{io, net::SocketAddr, time::Duration};
+use s2n_quic_core::{
+    event::IntoEvent,
+    inet::ExplicitCongestionNotification,
+    time::{Clock, Timestamp},
+    varint::VarInt,
+};
+use std::{cell::UnsafeCell, io, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::net::TcpStream;
 
 pub mod rpc {
@@ -230,6 +235,28 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         let mut stream =
             client::connect_tcp(handshake, acceptor_addr, &self.env, self.linger).await?;
         Self::write_prelude(&mut stream).await?;
+        Ok(stream)
+    }
+
+    /// Connects using the TLS over TCP transport layer.
+    ///
+    /// Note that the handshake and acceptor addresses must be the same for TLS.
+    #[inline]
+    pub async fn connect_tls(
+        &self,
+        addr: SocketAddr,
+        server_name: Name,
+        config: &s2n_tls::config::Config,
+    ) -> io::Result<Stream<S>> {
+        let stream = client::connect_tls(
+            addr,
+            server_name,
+            config,
+            &self.env,
+            self.linger,
+            self.handshake.map(),
+        )
+        .await?;
         Ok(stream)
     }
 
@@ -626,4 +653,317 @@ fn recv_buffer() -> recv::shared::RecvBuffer {
     // TODO replace this with a parameter once everything is in place
     let recv_buffer = recv::buffer::Local::new(msg::recv::Message::new(9000), None);
     Either::A(recv_buffer)
+}
+
+/// Connects and negotiated TLS 1.3
+#[inline]
+pub async fn connect_tls<Sub>(
+    addr: SocketAddr,
+    server_name: Name,
+    config: &s2n_tls::config::Config,
+    env: &Environment<Sub>,
+    linger: Option<Duration>,
+    // FIXME: Do we really need the map for this?
+    map: &crate::path::secret::Map,
+) -> io::Result<Stream<Sub>>
+where
+    Sub: event::Subscriber + Clone,
+{
+    let socket = TcpStream::connect(addr).await?;
+
+    // Make sure TCP_NODELAY is set
+    let _ = socket.set_nodelay(true);
+
+    if linger.is_some() {
+        #[allow(deprecated)]
+        let _ = socket.set_linger(linger);
+    }
+
+    use s2n_tls::connection::Builder as _;
+    let mut connection = config.build_connection(s2n_tls::enums::Mode::Client)?;
+    connection.set_server_name(&server_name)?;
+
+    let socket = Arc::new(crate::stream::socket::application::Single(socket));
+    let mut connection =
+        crate::stream::tls::S2nTlsConnection::from_connection(socket.clone(), connection)?;
+
+    connection.negotiate().await?;
+
+    // The handshake is complete at this point, so the stream should be considered open. Eventually
+    // at this point we'll want to export the TLS keys from the connection and add those into the
+    // state below. Right now though we're continuing to use s2n-tls for maintaining relevant
+    // state.
+
+    // if the ip isn't known, then ask the socket to resolve it for us
+    let peer_addr = if addr.ip().is_unspecified() {
+        socket.0.peer_addr()?
+    } else {
+        addr
+    };
+
+    let stream_id = crate::packet::stream::Id {
+        queue_id: VarInt::ZERO,
+        is_reliable: true,
+        is_bidirectional: true,
+    };
+
+    let params = s2n_quic_core::dc::ApplicationParams::new(
+        1 << 14,
+        &Default::default(),
+        &Default::default(),
+    );
+
+    let meta = event::api::ConnectionMeta {
+        id: 0, // TODO use an actual connection ID
+        timestamp: env.clock().get_time().into_event(),
+    };
+    let info = event::api::ConnectionInfo {};
+
+    let subscriber = env.subscriber().clone();
+    let subscriber_ctx = subscriber.create_connection_context(&meta, &info);
+
+    // Fake up a secret -- this will need some reworking to store the keys in the TLS state
+    // probably?
+    let mut secret = [0; 32];
+    aws_lc_rs::rand::fill(&mut secret).unwrap();
+    let secret = crate::path::secret::schedule::Secret::new(
+        crate::path::secret::schedule::Ciphersuite::AES_GCM_128_SHA256,
+        s2n_quic_core::dc::SUPPORTED_VERSIONS[0],
+        s2n_quic_core::endpoint::Type::Client,
+        &secret,
+    );
+
+    let common = {
+        let application = crate::stream::send::application::state::State { is_reliable: true };
+
+        let fixed = crate::stream::shared::FixedValues {
+            remote_ip: UnsafeCell::new(peer_addr.ip().into()),
+            application: UnsafeCell::new(application),
+            credentials: UnsafeCell::new(crate::credentials::Credentials {
+                id: crate::credentials::Id::from([1; 16]),
+                key_id: VarInt::ZERO,
+            }),
+        };
+
+        crate::stream::shared::Common {
+            clock: env.clock().clone(),
+            gso: env.gso(),
+            remote_port: peer_addr.port().into(),
+            remote_queue_id: stream_id.queue_id.as_u64().into(),
+            local_queue_id: u64::MAX.into(),
+            last_peer_activity: Default::default(),
+            fixed,
+            closed_halves: 0u8.into(),
+            subscriber: crate::stream::shared::Subscriber {
+                subscriber,
+                context: subscriber_ctx,
+            },
+            s2n_connection: Some(connection),
+        }
+    };
+
+    let pair = crate::path::secret::map::ApplicationPair::new(
+        &secret,
+        VarInt::ZERO,
+        crate::path::secret::schedule::Initiator::Local,
+        // Not currently actually using these credentials.
+        crate::path::secret::map::Dedup::disabled(),
+    );
+    let shared = Arc::new(crate::stream::shared::Shared {
+        receiver: crate::stream::recv::shared::State::new(
+            stream_id,
+            &params,
+            crate::stream::TransportFeatures::TCP,
+            crate::stream::recv::shared::RecvBuffer::A(recv::buffer::Local::new(
+                // FIXME: Maybe use a larger buffer fitting the TLS record size (14kb)?
+                msg::recv::Message::new(9000),
+                None,
+            )),
+            s2n_quic_core::endpoint::Type::Client,
+            &env.clock(),
+        ),
+        sender: crate::stream::send::shared::State::new(
+            crate::stream::send::flow::non_blocking::State::new(VarInt::MAX),
+            crate::stream::send::path::Info {
+                max_datagram_size: params.max_datagram_size(),
+                send_quantum: 10,
+                ecn: ExplicitCongestionNotification::Ect0,
+                next_expected_control_packet: VarInt::ZERO,
+            },
+            None,
+        ),
+        crypto: crate::stream::shared::Crypto::new(pair.sealer, pair.opener, None, map),
+        common,
+    });
+
+    let read = crate::stream::recv::application::Builder::new(
+        s2n_quic_core::endpoint::Type::Client,
+        env.reader_rt(),
+    );
+    let write = crate::stream::send::application::Builder::new(env.writer_rt());
+
+    let stream = crate::stream::application::Builder {
+        read,
+        write,
+        shared,
+        sockets: Box::new(socket),
+        queue_time: env.clock().get_time(),
+    };
+
+    stream.build()
+}
+
+#[cfg(test)]
+mod test {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    async fn check(message: &[u8]) {
+        let mut client_config = s2n_tls::config::Builder::new();
+        client_config
+            .with_system_certs(false)
+            .unwrap()
+            .wipe_trust_store()
+            .unwrap()
+            .trust_pem(s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.as_bytes())
+            .unwrap()
+            .load_pem(
+                s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.as_bytes(),
+                s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.as_bytes(),
+            )
+            .unwrap();
+        let client_config = client_config.build().unwrap();
+
+        let mut server_config = s2n_tls::config::Builder::new();
+        server_config
+            .with_system_certs(false)
+            .unwrap()
+            .wipe_trust_store()
+            .unwrap()
+            .set_client_auth_type(s2n_tls::enums::ClientAuthType::Required)
+            .unwrap()
+            .set_verify_host_callback(VerifyHostNameClientCertVerifier::new("qlaws.qlaws"))
+            .unwrap()
+            .load_pem(
+                s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.as_bytes(),
+                s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.as_bytes(),
+            )
+            .unwrap()
+            .trust_pem(s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.as_bytes())
+            .unwrap();
+        let server_config = server_config.build().unwrap();
+
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = server.local_addr().unwrap();
+        tokio::spawn(async move {
+            let acceptor = s2n_tls_tokio::TlsAcceptor::new(server_config);
+            while let Ok((conn, _)) = server.accept().await {
+                conn.set_nodelay(true).unwrap();
+
+                let mut stream = acceptor.accept(conn).await.unwrap();
+                let mut buffer = vec![];
+                stream.read_to_end(&mut buffer).await.unwrap();
+                eprintln!("server read {} bytes", buffer.len());
+                stream.write_all(&buffer).await.unwrap();
+                eprintln!("server finished writing {} bytes", buffer.len());
+                stream.flush().await.unwrap();
+                stream.shutdown().await.unwrap();
+                drop(stream);
+            }
+        });
+
+        let handshake = DummyHandshake {
+            map: crate::path::secret::Map::new(
+                crate::path::secret::stateless_reset::Signer::new(b"default"),
+                50,
+                false,
+                s2n_quic_core::time::StdClock::default(),
+                crate::event::disabled::Subscriber::default(),
+            ),
+        };
+        let _ = tracing_subscriber::fmt::try_init();
+        let client =
+            super::Client::new(handshake, crate::event::tracing::Subscriber::default()).unwrap();
+
+        let stream = client
+            .connect_tls(
+                server_addr,
+                super::Name::from_static("qlaws.qlaws"),
+                &client_config,
+            )
+            .await
+            .unwrap();
+        let (mut reader, mut writer) = stream.into_split();
+
+        writer.write_all_from(&mut &message[..]).await.unwrap();
+        eprintln!("finished writing");
+
+        writer.shutdown().unwrap();
+
+        eprintln!("writer.shutdown() done");
+
+        let mut buffer: Vec<u8> = vec![];
+        reader.read_to_end(&mut buffer).await.unwrap();
+        assert_eq!(buffer, message);
+    }
+
+    #[tokio::test]
+    async fn short() {
+        check(&b"testing"[..]).await;
+    }
+
+    #[tokio::test]
+    async fn medium() {
+        let message = vec![0x3; 1024 * 1024];
+        check(&message).await;
+    }
+
+    #[tokio::test]
+    async fn large() {
+        let message = vec![0x3; 50 * 1024 * 1024];
+        check(&message).await;
+    }
+
+    #[derive(Clone)]
+    struct DummyHandshake {
+        map: crate::path::secret::Map,
+    }
+
+    impl super::Handshake for DummyHandshake {
+        async fn handshake_with_entry(
+            &self,
+            _remote_handshake_addr: std::net::SocketAddr,
+            _server_name: s2n_quic::server::Name,
+        ) -> std::io::Result<(
+            crate::path::secret::map::Peer,
+            crate::path::secret::HandshakeKind,
+        )> {
+            todo!()
+        }
+
+        fn local_addr(&self) -> std::io::Result<std::net::SocketAddr> {
+            Ok(std::net::SocketAddrV4::new(std::net::Ipv4Addr::LOCALHOST, 1111).into())
+        }
+
+        fn map(&self) -> &crate::path::secret::Map {
+            &self.map
+        }
+    }
+
+    pub struct VerifyHostNameClientCertVerifier {
+        host_name: String,
+    }
+
+    impl s2n_tls::callbacks::VerifyHostNameCallback for VerifyHostNameClientCertVerifier {
+        fn verify_host_name(&self, host_name: &str) -> bool {
+            self.host_name == host_name
+        }
+    }
+
+    impl VerifyHostNameClientCertVerifier {
+        pub fn new(host_name: impl ToString) -> VerifyHostNameClientCertVerifier {
+            VerifyHostNameClientCertVerifier {
+                host_name: host_name.to_string(),
+            }
+        }
+    }
 }

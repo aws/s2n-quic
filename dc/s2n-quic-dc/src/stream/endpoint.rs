@@ -267,6 +267,7 @@ where
                 subscriber,
                 context: subscriber_ctx,
             },
+            s2n_connection: None,
         }
     };
 

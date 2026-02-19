@@ -49,6 +49,7 @@ s2n-codec = { version = "=0.75.0", path = "../../common/s2n-codec", default-feat
 s2n-quic = { version = "=1.75.0", path = "../../quic/s2n-quic", features = ["unstable-provider-dc"] }
 s2n-quic-core = { version = "=0.75.0", path = "../../quic/s2n-quic-core", default-features = false }
 s2n-quic-platform = { version = "=0.75.0", path = "../../quic/s2n-quic-platform" }
+s2n-tls = "0.3"
 slotmap = "1"
 hashbrown = "0.16"
 thiserror = "2"
@@ -66,6 +67,7 @@ nix = {version = "0.31.1", features = ["socket", "uio", "fs", "time"] }
 
 [dev-dependencies]
 bach = { version = "0.1.0", features = ["net", "tokio-compat"] }
+s2n-tls-tokio = "0.3"
 bolero = "0.13"
 bolero-generator = "0.13"
 insta = "1"
