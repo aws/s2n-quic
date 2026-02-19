@@ -12,6 +12,8 @@ mod send_only;
 #[cfg(feature = "tokio")]
 mod tokio;
 mod tracing;
+#[cfg(feature = "unstable-provider-io-turmoil")]
+mod turmoil;
 
 pub use self::tracing::Tracing;
 pub use crate::socket::*;

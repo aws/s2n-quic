@@ -31,14 +31,14 @@ impl Socket for TcpStream {
     }
 
     #[inline]
-    fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>> {
+    fn poll_peek_ready(&self, cx: &mut Context) -> Poll<io::Result<()>> {
         loop {
             ready!(self.poll_read_ready(cx))?;
 
             let res = self.try_io(Interest::READABLE, || tcp::peek(self));
 
             match res {
-                Ok(len) => return Ok(len).into(),
+                Ok(_len) => return Ok(()).into(),
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {
                     // try the operation again if we were interrupted
                     continue;
