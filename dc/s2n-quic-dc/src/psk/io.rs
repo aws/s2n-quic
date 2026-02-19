@@ -912,4 +912,129 @@ mod tests {
         // Socket 0 should receive the remaining handshake packets
         assert!(socket_0 > 0);
     }
+
+    /// Verifies that under a flood of fake client hello packets, a real dcQUIC client
+    /// can still complete a handshake successfully.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn non_client_hello_acceptance_under_flood_test() {
+        init_tracing();
+
+        let tls = TestTlsProvider {};
+        let stats_subscriber = SocketStatsSubscriber::new();
+
+        let server_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            stats_subscriber.clone(),
+        );
+
+        let server_builder = crate::psk::server::Builder::default();
+        let (server_addr_rx, _server_guard) = crate::psk::server::Provider::setup(
+            "127.0.0.1:0".parse().unwrap(),
+            server_map.clone(),
+            tls.clone(),
+            (
+                stats_subscriber.clone(),
+                s2n_quic::provider::event::tracing::Subscriber::default(),
+            ),
+            server_builder,
+        );
+
+        let server_addr = server_addr_rx.await.unwrap().unwrap();
+
+        // start client hello generator and flood server with client hellos
+        let flood_cancel = tokio_util::sync::CancellationToken::new();
+        let flood_cancel_clone = flood_cancel.clone();
+        let flood_count = Arc::new(AtomicU64::new(0));
+        let flood_count_clone = flood_count.clone();
+
+        let flood_task = tokio::spawn(async move {
+            let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+
+            // The EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET is a client hello Initial packet with a DCID length of eight.
+            // Its header is c300000001088394c8f03e5157080000449e00000002.
+            let packet = s2n_quic_core::crypto::initial::EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET;
+
+            loop {
+                tokio::select! {
+                    _ = flood_cancel_clone.cancelled() => break,
+                    result = sender.send_to(&packet, server_addr) => {
+                        if result.is_ok() {
+                            flood_count_clone.fetch_add(1, Ordering::Relaxed);
+                        }
+                        // Yield to allow other tasks to run, but keep flooding fast
+                        tokio::task::yield_now().await;
+                    }
+                }
+            }
+        });
+
+        // Give the flood a moment to start saturating socket 1
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Connect a real client while the flood is active
+        let noop_subscriber = NoopSubscriber {};
+        let client_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            noop_subscriber.clone(),
+        );
+
+        let client = Client::bind::<
+            <TestTlsProvider as Provider>::Client,
+            s2n_quic::provider::event::tracing::Subscriber,
+            s2n_quic::provider::event::default::Subscriber,
+        >(
+            "0.0.0.0:0".parse().unwrap(),
+            client_map,
+            tls.start_client().unwrap(),
+            s2n_quic::provider::event::tracing::Subscriber::default(),
+            crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
+        )
+        .unwrap();
+
+        // Attempt handshake with a 10-second timeout
+        let handshake_result = client
+            .connect(server_addr, HandshakeReason::User, "localhost".into())
+            .await;
+
+        // Stop the flood and collect stats
+        flood_cancel.cancel();
+        let _ = flood_task.await;
+
+        // Wait briefly for events to propagate
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let total_flood_packets = flood_count.load(Ordering::Relaxed);
+        let socket_0_count = stats_subscriber.socket_count(0);
+        let socket_1_count = stats_subscriber.socket_count(1);
+
+        tracing::info!(
+            "Flood packets sent: {}, Socket 0 (non-CH) rx: {}, Socket 1 (CH) rx: {}",
+            total_flood_packets,
+            socket_0_count,
+            socket_1_count,
+        );
+
+        // The handshake should complete successfully despite the flood
+        assert!(handshake_result.is_ok(),);
+
+        // Socket 0 should have received non-client-hello packets from the real handshake,
+        // confirming the router correctly separated traffic
+        assert!(
+            socket_0_count > 0,
+            "Socket 0 should receive non-client-hello handshake packets, got 0"
+        );
+
+        // Socket 1 should have received packets (flood + real client's Initial)
+        assert!(
+            socket_1_count > 0,
+            "Socket 1 should receive client hello packets (flood + real), got 0"
+        );
+    }
 }
