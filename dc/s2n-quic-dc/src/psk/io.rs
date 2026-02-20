@@ -790,33 +790,46 @@ mod tests {
         );
     }
 
-    /// A subscriber that captures per-socket rx packet counts via `PlatformRxSocketStats` events.
-    #[derive(Clone)]
-    struct SocketStatsSubscriber {
+    /// A combined test subscriber that captures:
+    /// - Per-socket rx packet counts via `PlatformRxSocketStats` (endpoint-level)
+    /// - Per-connection packet sent and packet lost counts (connection-level)
+    #[derive(Clone, Default)]
+    struct TestStatsSubscriber {
         /// Accumulated per-socket rx packet counts: [socket_0_count, socket_1_count]
-        counts: Arc<[AtomicU64; 2]>,
+        socket_counts: Arc<[AtomicU64; 2]>,
+        /// Total packets sent across all connections
+        packets_sent: Arc<AtomicU64>,
+        /// Total packets lost across all connections
+        packets_lost: Arc<AtomicU64>,
     }
 
-    impl SocketStatsSubscriber {
+    impl TestStatsSubscriber {
         fn new() -> Self {
-            Self {
-                counts: Arc::new([AtomicU64::new(0), AtomicU64::new(0)]),
-            }
+            Self::default()
         }
 
         fn socket_count(&self, index: usize) -> u64 {
-            self.counts[index].load(Ordering::Relaxed)
+            self.socket_counts[index].load(Ordering::Relaxed)
+        }
+
+        fn sent(&self) -> u64 {
+            self.packets_sent.load(Ordering::Relaxed)
+        }
+
+        fn lost(&self) -> u64 {
+            self.packets_lost.load(Ordering::Relaxed)
         }
     }
 
-    impl s2n_quic_core::event::Subscriber for SocketStatsSubscriber {
-        type ConnectionContext = ();
+    impl s2n_quic_core::event::Subscriber for TestStatsSubscriber {
+        type ConnectionContext = TestStatsSubscriber;
 
         fn create_connection_context(
             &mut self,
             _meta: &s2n_quic_core::event::api::ConnectionMeta,
             _info: &s2n_quic_core::event::api::ConnectionInfo,
         ) -> Self::ConnectionContext {
+            self.clone()
         }
 
         fn on_platform_rx_socket_stats(
@@ -824,15 +837,33 @@ mod tests {
             _meta: &s2n_quic_core::event::api::EndpointMeta,
             event: &s2n_quic_core::event::api::PlatformRxSocketStats,
         ) {
-            if let Some(counter) = self.counts.get(event.id) {
+            if let Some(counter) = self.socket_counts.get(event.id) {
                 counter.fetch_add(event.count as u64, Ordering::Relaxed);
             }
+        }
+
+        fn on_packet_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &s2n_quic_core::event::api::ConnectionMeta,
+            _event: &s2n_quic_core::event::api::PacketSent,
+        ) {
+            context.packets_sent.fetch_add(1, Ordering::Relaxed);
+        }
+
+        fn on_packet_lost(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &s2n_quic_core::event::api::ConnectionMeta,
+            _event: &s2n_quic_core::event::api::PacketLost,
+        ) {
+            context.packets_lost.fetch_add(1, Ordering::Relaxed);
         }
     }
 
     // Also implement the dc event subscriber trait so it can be used as the
     // `subscriber` parameter in `Provider::setup`.
-    impl crate::event::Subscriber for SocketStatsSubscriber {
+    impl crate::event::Subscriber for TestStatsSubscriber {
         type ConnectionContext = ();
 
         fn create_connection_context(
@@ -852,7 +883,7 @@ mod tests {
         init_tracing();
 
         let tls = TestTlsProvider {};
-        let stats_subscriber = SocketStatsSubscriber::new();
+        let stats_subscriber = TestStatsSubscriber::new();
 
         let server_map = Map::new(
             Signer::new(b"default"),
@@ -921,14 +952,14 @@ mod tests {
         init_tracing();
 
         let tls = TestTlsProvider {};
-        let stats_subscriber = SocketStatsSubscriber::new();
+        let server_stats = TestStatsSubscriber::new();
 
         let server_map = Map::new(
             Signer::new(b"default"),
             50_000,
             false,
             StdClock::default(),
-            stats_subscriber.clone(),
+            server_stats.clone(),
         );
 
         let server_builder = crate::psk::server::Builder::default();
@@ -937,7 +968,7 @@ mod tests {
             server_map.clone(),
             tls.clone(),
             (
-                stats_subscriber.clone(),
+                server_stats.clone(),
                 s2n_quic::provider::event::tracing::Subscriber::default(),
             ),
             server_builder,
@@ -948,6 +979,7 @@ mod tests {
         // Create the real client *before* starting the flood so its Client Hello
         // is the first packet queued to socket 1.
         let noop_subscriber = NoopSubscriber {};
+        let client_stats = TestStatsSubscriber::new();
         let client_map = Map::new(
             Signer::new(b"default"),
             50_000,
@@ -958,13 +990,19 @@ mod tests {
 
         let client = Client::bind::<
             <TestTlsProvider as Provider>::Client,
-            s2n_quic::provider::event::tracing::Subscriber,
+            (
+                TestStatsSubscriber,
+                s2n_quic::provider::event::tracing::Subscriber,
+            ),
             s2n_quic::provider::event::default::Subscriber,
         >(
             "0.0.0.0:0".parse().unwrap(),
             client_map,
             tls.start_client().unwrap(),
-            s2n_quic::provider::event::tracing::Subscriber::default(),
+            (
+                client_stats.clone(),
+                s2n_quic::provider::event::tracing::Subscriber::default(),
+            ),
             crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
         )
         .unwrap();
@@ -1018,18 +1056,30 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let total_flood_packets = flood_count.load(Ordering::Relaxed);
-        let socket_0_count = stats_subscriber.socket_count(0);
-        let socket_1_count = stats_subscriber.socket_count(1);
+        let socket_0_count = server_stats.socket_count(0);
+        let socket_1_count = server_stats.socket_count(1);
+
+        let client_packets_sent = client_stats.sent();
+        let client_packets_lost = client_stats.lost();
 
         tracing::info!(
-            "Flood packets sent: {}, Socket 0 (non-CH) rx: {}, Socket 1 (CH) rx: {}",
+            "Flood packets sent: {}, Socket 0 (non-CH) rx: {}, Socket 1 (CH) rx: {}, \
+             Client packets sent: {}, Client packets lost: {}",
             total_flood_packets,
             socket_0_count,
             socket_1_count,
+            client_packets_sent,
+            client_packets_lost,
         );
 
         // The handshake should complete successfully despite the flood
         assert!(handshake_result.is_ok());
+
+        // The client must have sent at least one packet (the Client Hello Initial)
+        assert!(
+            client_packets_sent > 0,
+            "Client should have sent at least one packet, got 0"
+        );
 
         // Socket 0 should have received non-client-hello packets from the real handshake,
         // confirming the router correctly separated traffic
