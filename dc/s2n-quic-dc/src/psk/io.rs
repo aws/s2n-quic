@@ -917,7 +917,7 @@ mod tests {
     /// can still complete a handshake successfully.
     #[cfg(target_os = "linux")]
     #[tokio::test]
-    async fn non_client_hello_acceptance_under_flood_test() {
+    async fn dc_server_packet_filtering_load_test() {
         init_tracing();
 
         let tls = TestTlsProvider {};
@@ -945,7 +945,41 @@ mod tests {
 
         let server_addr = server_addr_rx.await.unwrap().unwrap();
 
-        // start client hello generator and flood server with client hellos
+        // Create the real client *before* starting the flood so its Client Hello
+        // is the first packet queued to socket 1.
+        let noop_subscriber = NoopSubscriber {};
+        let client_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            noop_subscriber.clone(),
+        );
+
+        let client = Client::bind::<
+            <TestTlsProvider as Provider>::Client,
+            s2n_quic::provider::event::tracing::Subscriber,
+            s2n_quic::provider::event::default::Subscriber,
+        >(
+            "0.0.0.0:0".parse().unwrap(),
+            client_map,
+            tls.start_client().unwrap(),
+            s2n_quic::provider::event::tracing::Subscriber::default(),
+            crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
+        )
+        .unwrap();
+
+        // Spawn the handshake so the Client Hello is sent immediately.
+        let handshake_handle = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .connect(server_addr, HandshakeReason::User, "localhost".into())
+                    .await
+            }
+        });
+
+        // Now start the flood — the real Client Hello is already in-flight.
         let flood_cancel = tokio_util::sync::CancellationToken::new();
         let flood_cancel_clone = flood_cancel.clone();
         let flood_count = Arc::new(AtomicU64::new(0));
@@ -972,36 +1006,9 @@ mod tests {
             }
         });
 
-        // Give the flood a moment to start saturating socket 1
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        // Connect a real client while the flood is active
-        let noop_subscriber = NoopSubscriber {};
-        let client_map = Map::new(
-            Signer::new(b"default"),
-            50_000,
-            false,
-            StdClock::default(),
-            noop_subscriber.clone(),
-        );
-
-        let client = Client::bind::<
-            <TestTlsProvider as Provider>::Client,
-            s2n_quic::provider::event::tracing::Subscriber,
-            s2n_quic::provider::event::default::Subscriber,
-        >(
-            "0.0.0.0:0".parse().unwrap(),
-            client_map,
-            tls.start_client().unwrap(),
-            s2n_quic::provider::event::tracing::Subscriber::default(),
-            crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
-        )
-        .unwrap();
-
-        // Attempt handshake with a 10-second timeout
-        let handshake_result = client
-            .connect(server_addr, HandshakeReason::User, "localhost".into())
-            .await;
+        // Await the handshake result (the handshake continuation packets flow
+        // through socket 0, which is not affected by the flood on socket 1).
+        let handshake_result = handshake_handle.await.expect("handshake task panicked");
 
         // Stop the flood and collect stats
         flood_cancel.cancel();
@@ -1022,7 +1029,7 @@ mod tests {
         );
 
         // The handshake should complete successfully despite the flood
-        assert!(handshake_result.is_ok(),);
+        assert!(handshake_result.is_ok());
 
         // Socket 0 should have received non-client-hello packets from the real handshake,
         // confirming the router correctly separated traffic

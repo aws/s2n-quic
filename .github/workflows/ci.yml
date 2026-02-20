@@ -370,7 +370,7 @@ jobs:
             -Zbuild-std \
             --target x86_64-unknown-linux-gnu \
             --workspace \
-            -- --skip client_hello_routed_test --skip non_client_hello_acceptance_under_flood_test
+            -- --skip client_hello_routed_test
 
   fips:
     runs-on: ubuntu-latest
