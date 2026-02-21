@@ -70,7 +70,7 @@ bolero = "0.13"
 bolero-generator = "0.13"
 insta = "1"
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
-s2n-quic = { path = "../../quic/s2n-quic" }
+s2n-quic = { path = "../../quic/s2n-quic", features = ["provider-event-tracing"] }
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
 s2n-quic-platform = { path = "../../quic/s2n-quic-platform", features = [
     "testing",

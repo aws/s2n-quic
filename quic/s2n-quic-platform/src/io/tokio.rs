@@ -46,7 +46,7 @@ impl Io {
     ) -> io::Result<(tokio::task::JoinHandle<()>, SocketAddress)> {
         let Builder {
             handle,
-            rx_socket,
+            rx_sockets,
             tx_socket,
             recv_addr,
             send_addr,
@@ -89,10 +89,23 @@ impl Io {
 
         let guard = handle.enter();
 
-        let rx_socket = if let Some(rx_socket) = rx_socket {
-            rx_socket
+        // Build the list of rx sockets - either from provided sockets or create from recv_addr
+        let rx_socket_list = if !rx_sockets.is_empty() {
+            rx_sockets
         } else if let Some(recv_addr) = recv_addr {
-            syscall::bind_udp(recv_addr, reuse_address, reuse_port, only_v6)?
+            // Check env var for number of sockets to create (unstable feature)
+            let rx_socket_count: usize =
+                parse_env("S2N_QUIC_UNSTABLE_RX_SOCKET_COUNT").unwrap_or(1);
+            let mut sockets = Vec::with_capacity(rx_socket_count);
+            for _ in 0..rx_socket_count {
+                sockets.push(syscall::bind_udp(
+                    recv_addr,
+                    reuse_address,
+                    reuse_port,
+                    only_v6,
+                )?);
+            }
+            sockets
         } else {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -100,7 +113,8 @@ impl Io {
             ));
         };
 
-        let rx_addr = convert_addr_to_std(rx_socket.local_addr()?)?;
+        // Get the address from the first socket
+        let rx_addr = convert_addr_to_std(rx_socket_list[0].local_addr()?)?;
 
         let tx_socket = if let Some(tx_socket) = tx_socket {
             tx_socket
@@ -108,8 +122,8 @@ impl Io {
             syscall::bind_udp(send_addr, reuse_address, reuse_port, only_v6)?
         } else {
             // No tx_socket or send address was specified, so the tx socket
-            // will be a handle to the rx socket.
-            rx_socket.try_clone()?
+            // will be a handle to the first rx socket.
+            rx_socket_list[0].try_clone()?
         };
 
         if let Some(size) = socket_send_buffer_size {
@@ -117,7 +131,9 @@ impl Io {
         }
 
         if let Some(size) = socket_recv_buffer_size {
-            rx_socket.set_recv_buffer_size(size)?;
+            for socket in &rx_socket_list {
+                socket.set_recv_buffer_size(size)?;
+            }
         }
 
         let mut mtu_config = mtu_config_builder
@@ -150,7 +166,8 @@ impl Io {
         });
 
         // Configure the socket with GRO
-        let gro_enabled = gro_enabled.unwrap_or(true) && syscall::configure_gro(&rx_socket);
+        let gro_enabled =
+            gro_enabled.unwrap_or(true) && rx_socket_list.iter().all(syscall::configure_gro);
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::Gro {
@@ -158,11 +175,12 @@ impl Io {
             },
         });
 
-        // Configure packet info CMSG
-        syscall::configure_pktinfo(&rx_socket);
-
-        // Configure TOS/ECN
-        let tos_enabled = syscall::configure_tos(&rx_socket);
+        // Configure packet info CMSG and TOS/ECN for all rx sockets
+        let mut tos_enabled = false;
+        for socket in &rx_socket_list {
+            syscall::configure_pktinfo(socket);
+            tos_enabled |= syscall::configure_tos(socket);
+        }
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::Ecn {
@@ -170,7 +188,9 @@ impl Io {
             },
         });
 
-        let (stats_sender, stats_recv) = crate::socket::stats::channel();
+        let rx_socket_count = rx_socket_list.len();
+        let (stats_sender, stats_recv) =
+            crate::socket::stats::channel_with_rx_socket_count(rx_socket_count);
 
         let rx = {
             // if GRO is enabled, then we need to provide the syscall with the maximum size buffer
@@ -193,34 +213,21 @@ impl Io {
 
             let mut consumers = vec![];
 
-            let rx_socket_count = parse_env("S2N_QUIC_UNSTABLE_RX_SOCKET_COUNT").unwrap_or(1);
-
             // configure the number of self-wakes before "cooling down" and waiting for epoll to
             // complete
             let rx_cooldown = cooldown("RX");
 
-            for idx in 0usize..rx_socket_count {
+            for (idx, socket) in rx_socket_list.into_iter().enumerate() {
                 let (producer, consumer) = socket::ring::pair(entries, payload_len);
                 consumers.push(consumer);
 
                 // spawn a task that actually reads from the socket into the ring buffer
-                if idx + 1 == rx_socket_count {
-                    handle.spawn(task::rx(
-                        rx_socket,
-                        producer,
-                        rx_cooldown,
-                        stats_sender.clone(),
-                    ));
-                    break;
-                } else {
-                    let rx_socket = rx_socket.try_clone()?;
-                    handle.spawn(task::rx(
-                        rx_socket,
-                        producer,
-                        rx_cooldown.clone(),
-                        stats_sender.clone(),
-                    ));
-                }
+                handle.spawn(task::rx(
+                    socket,
+                    producer,
+                    rx_cooldown.clone(),
+                    stats_sender.clone().with_socket_index(idx),
+                ));
             }
 
             // construct the RX side for the endpoint event loop

@@ -3,4 +3,6 @@
 
 pub mod client;
 pub mod io;
+#[cfg(target_os = "linux")]
+pub mod router;
 pub mod server;

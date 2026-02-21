@@ -97,9 +97,11 @@ mod counter {
                 161usize => Self(platform_rx__errors__dropped__total),
                 163usize => Self(platform_rx_error),
                 164usize => Self(platform_feature_configured),
-                165usize => Self(platform_event_loop_wakeup),
-                166usize => Self(platform_event_loop_sleep),
-                168usize => Self(platform_event_loop_started),
+                165usize => Self(platform_rx_socket_stats),
+                166usize => Self(platform_rx_socket_stats__packets__total),
+                167usize => Self(platform_event_loop_wakeup),
+                168usize => Self(platform_event_loop_sleep),
+                170usize => Self(platform_event_loop_started),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -267,6 +269,10 @@ mod counter {
             fn platform_rx_error(value: u64);
             # [link_name = s2n_quic__event__counter__platform_feature_configured]
             fn platform_feature_configured(value: u64);
+            # [link_name = s2n_quic__event__counter__platform_rx_socket_stats]
+            fn platform_rx_socket_stats(value: u64);
+            # [link_name = s2n_quic__event__counter__platform_rx_socket_stats__packets__total]
+            fn platform_rx_socket_stats__packets__total(value: u64);
             # [link_name = s2n_quic__event__counter__platform_event_loop_wakeup]
             fn platform_event_loop_wakeup(value: u64);
             # [link_name = s2n_quic__event__counter__platform_event_loop_sleep]
@@ -628,7 +634,7 @@ mod timer {
                 116usize => Self(dc_state_changed__path_secrets__latency),
                 117usize => Self(dc_state_changed__complete__latency),
                 121usize => Self(connection_closed__latency),
-                167usize => Self(platform_event_loop_sleep__processing_duration),
+                169usize => Self(platform_event_loop_sleep__processing_duration),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
