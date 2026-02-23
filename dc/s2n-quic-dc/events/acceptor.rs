@@ -207,8 +207,10 @@ enum AcceptorTcpIoErrorSource {
     /// Something within dcQUIC failed related to the remote state or network contents (e.g.,
     /// parsing the packet)
     Remote,
-    /// Something in the local application state was wrong (e.g., missing credentials).
+    /// Something in the local application state was wrong.
     Local,
+    /// Unknown path secret for remote stream.
+    UnknownPathSecret,
     /// Something went wrong that we didn't expect to happen.
     /// This is used for failures that aren't expected to relate to dcQUIC state at all.
     System,
