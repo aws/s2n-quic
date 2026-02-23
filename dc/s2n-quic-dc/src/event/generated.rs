@@ -584,8 +584,11 @@ pub mod api {
         #[doc = " parsing the packet)"]
         Remote {},
         #[non_exhaustive]
-        #[doc = " Something in the local application state was wrong (e.g., missing credentials)."]
+        #[doc = " Something in the local application state was wrong."]
         Local {},
+        #[non_exhaustive]
+        #[doc = " Unknown path secret for remote stream."]
+        UnknownPathSecret {},
         #[non_exhaustive]
         #[doc = " Something went wrong that we didn't expect to happen."]
         #[doc = " This is used for failures that aren't expected to relate to dcQUIC state at all."]
@@ -624,8 +627,13 @@ pub mod api {
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("SYSTEM\0"),
+                name: aggregate::info::Str::new("UNKNOWN_PATH_SECRET\0"),
                 id: 6usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("SYSTEM\0"),
+                id: 7usize,
             }
             .build(),
         ];
@@ -638,7 +646,8 @@ pub mod api {
                 Self::Recv { .. } => 3usize,
                 Self::Remote { .. } => 4usize,
                 Self::Local { .. } => 5usize,
-                Self::System { .. } => 6usize,
+                Self::UnknownPathSecret { .. } => 6usize,
+                Self::System { .. } => 7usize,
             }
         }
     }
@@ -4237,8 +4246,10 @@ pub mod builder {
         #[doc = " Something within dcQUIC failed related to the remote state or network contents (e.g.,"]
         #[doc = " parsing the packet)"]
         Remote,
-        #[doc = " Something in the local application state was wrong (e.g., missing credentials)."]
+        #[doc = " Something in the local application state was wrong."]
         Local,
+        #[doc = " Unknown path secret for remote stream."]
+        UnknownPathSecret,
         #[doc = " Something went wrong that we didn't expect to happen."]
         #[doc = " This is used for failures that aren't expected to relate to dcQUIC state at all."]
         System,
@@ -4254,6 +4265,7 @@ pub mod builder {
                 Self::Recv => Recv {},
                 Self::Remote => Remote {},
                 Self::Local => Local {},
+                Self::UnknownPathSecret => UnknownPathSecret {},
                 Self::System => System {},
             }
         }
