@@ -817,7 +817,7 @@ where
 mod test {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    async fn check(message: &[u8]) {
+    fn client_config() -> s2n_tls::config::Config {
         let mut client_config = s2n_tls::config::Builder::new();
         client_config
             .with_system_certs(false)
@@ -831,8 +831,10 @@ mod test {
                 s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.as_bytes(),
             )
             .unwrap();
-        let client_config = client_config.build().unwrap();
+        client_config.build().unwrap()
+    }
 
+    fn server_config() -> s2n_tls::config::Config {
         let mut server_config = s2n_tls::config::Builder::new();
         server_config
             .with_system_certs(false)
@@ -850,7 +852,25 @@ mod test {
             .unwrap()
             .trust_pem(s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.as_bytes())
             .unwrap();
-        let server_config = server_config.build().unwrap();
+        server_config.build().unwrap()
+    }
+
+    fn dc_client() -> super::Client<DummyHandshake, crate::event::tracing::Subscriber> {
+        let handshake = DummyHandshake {
+            map: crate::path::secret::Map::new(
+                crate::path::secret::stateless_reset::Signer::new(b"default"),
+                50,
+                false,
+                s2n_quic_core::time::StdClock::default(),
+                crate::event::disabled::Subscriber::default(),
+            ),
+        };
+        super::Client::new(handshake, crate::event::tracing::Subscriber::default()).unwrap()
+    }
+
+    async fn check(message: &[u8]) {
+        let client_config = client_config();
+        let server_config = server_config();
 
         let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let server_addr = server.local_addr().unwrap();
@@ -871,19 +891,7 @@ mod test {
             }
         });
 
-        let handshake = DummyHandshake {
-            map: crate::path::secret::Map::new(
-                crate::path::secret::stateless_reset::Signer::new(b"default"),
-                50,
-                false,
-                s2n_quic_core::time::StdClock::default(),
-                crate::event::disabled::Subscriber::default(),
-            ),
-        };
-        let _ = tracing_subscriber::fmt::try_init();
-        let client =
-            super::Client::new(handshake, crate::event::tracing::Subscriber::default()).unwrap();
-
+        let client = dc_client();
         let stream = client
             .connect_tls(
                 server_addr,
@@ -921,6 +929,133 @@ mod test {
     async fn large() {
         let message = vec![0x3; 50 * 1024 * 1024];
         check(&message).await;
+    }
+
+    #[tokio::test]
+    async fn closed_during_handshake() {
+        let client_config = client_config();
+
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = server.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((conn, _)) = server.accept().await {
+                drop(conn);
+            }
+        });
+
+        let client = dc_client();
+        let err = client
+            .connect_tls(
+                server_addr,
+                super::Name::from_static("qlaws.qlaws"),
+                &client_config,
+            )
+            .await
+            .expect_err("handshake failed");
+        let err = format!("{:?}", err);
+        assert!(err.contains("Connection reset by peer"), "{}", err);
+    }
+
+    #[tokio::test]
+    async fn incorrect_record_after_handshake() {
+        let client_config = client_config();
+        let server_config = server_config();
+
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = server.local_addr().unwrap();
+        tokio::spawn(async move {
+            let acceptor = s2n_tls_tokio::TlsAcceptor::new(server_config);
+            while let Ok((conn, _)) = server.accept().await {
+                conn.set_nodelay(true).unwrap();
+
+                let mut stream = acceptor.accept(conn).await.unwrap();
+                let mut buffer = vec![];
+                stream.read_to_end(&mut buffer).await.unwrap();
+
+                // Bypass the s2n-tls wrapper and write raw bytes to the stream. This confirms the
+                // receiver correctly handles closing the stream.
+                stream.get_mut().write_all(&buffer).await.unwrap();
+                stream.get_mut().flush().await.unwrap();
+                stream.get_mut().shutdown().await.unwrap();
+
+                drop(stream);
+            }
+        });
+
+        let client = dc_client();
+        let stream = client
+            .connect_tls(
+                server_addr,
+                super::Name::from_static("qlaws.qlaws"),
+                &client_config,
+            )
+            .await
+            .unwrap();
+
+        let message = [0x3; 1024];
+        let (mut reader, mut writer) = stream.into_split();
+
+        writer.write_all_from(&mut &message[..]).await.unwrap();
+        eprintln!("finished writing");
+
+        writer.shutdown().unwrap();
+
+        eprintln!("writer.shutdown() done");
+
+        let mut buffer: Vec<u8> = vec![];
+        let err = reader.read_to_end(&mut buffer).await.unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData, "{:?}", err);
+    }
+
+    #[tokio::test]
+    async fn unauthenticated_closure() {
+        let client_config = client_config();
+        let server_config = server_config();
+
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = server.local_addr().unwrap();
+        tokio::spawn(async move {
+            let acceptor = s2n_tls_tokio::TlsAcceptor::new(server_config);
+            while let Ok((conn, _)) = server.accept().await {
+                conn.set_nodelay(true).unwrap();
+
+                let mut stream = acceptor.accept(conn).await.unwrap();
+                let mut buffer = vec![];
+                stream.read_to_end(&mut buffer).await.unwrap();
+
+                // Directly close the stream without shutting it down.
+                stream.get_mut().flush().await.unwrap();
+                stream.get_mut().shutdown().await.unwrap();
+
+                // Ensure the Drop impl can't write anything either. This does leak the fd and some
+                // memory but we're OK with that in test code.
+                std::mem::forget(stream);
+            }
+        });
+
+        let client = dc_client();
+        let stream = client
+            .connect_tls(
+                server_addr,
+                super::Name::from_static("qlaws.qlaws"),
+                &client_config,
+            )
+            .await
+            .unwrap();
+
+        let message = [0x3; 1024];
+        let (mut reader, mut writer) = stream.into_split();
+
+        writer.write_all_from(&mut &message[..]).await.unwrap();
+        eprintln!("finished writing");
+
+        writer.shutdown().unwrap();
+
+        eprintln!("writer.shutdown() done");
+
+        let mut buffer: Vec<u8> = vec![];
+        let err = reader.read_to_end(&mut buffer).await.unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::UnexpectedEof, "{:?}", err);
     }
 
     #[derive(Clone)]
