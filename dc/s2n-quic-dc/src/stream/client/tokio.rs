@@ -822,8 +822,6 @@ mod test {
         client_config
             .with_system_certs(false)
             .unwrap()
-            .wipe_trust_store()
-            .unwrap()
             .trust_pem(s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.as_bytes())
             .unwrap()
             .load_pem(
@@ -838,8 +836,6 @@ mod test {
         let mut server_config = s2n_tls::config::Builder::new();
         server_config
             .with_system_certs(false)
-            .unwrap()
-            .wipe_trust_store()
             .unwrap()
             .set_client_auth_type(s2n_tls::enums::ClientAuthType::Required)
             .unwrap()
