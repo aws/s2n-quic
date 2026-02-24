@@ -1,0 +1,68 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-7.4"
+
+# Transport Parameters
+#
+#    During connection establishment, both endpoints make authenticated
+#    declarations of their transport parameters.  Endpoints are required
+#    to comply with the restrictions that each parameter defines; the
+#    description of each parameter includes rules for its handling.
+# 
+#    Transport parameters are declarations that are made unilaterally by
+#    each endpoint.  Each endpoint can choose values for transport
+#    parameters independent of the values chosen by its peer.
+# 
+#    The encoding of the transport parameters is detailed in Section 18.
+# 
+#    QUIC includes the encoded transport parameters in the cryptographic
+#    handshake.  Once the handshake completes, the transport parameters
+#    declared by the peer are available.  Each endpoint validates the
+#    values provided by its peer.
+# 
+#    Definitions for each of the defined transport parameters are included
+#    in Section 18.2.
+# 
+#    An endpoint MUST treat receipt of a transport parameter with an
+#    invalid value as a connection error of type
+#    TRANSPORT_PARAMETER_ERROR.
+# 
+#    An endpoint MUST NOT send a parameter more than once in a given
+#    transport parameters extension.  An endpoint SHOULD treat receipt of
+#    duplicate transport parameters as a connection error of type
+#    TRANSPORT_PARAMETER_ERROR.
+# 
+#    Endpoints use transport parameters to authenticate the negotiation of
+#    connection IDs during the handshake; see Section 7.3.
+# 
+#    ALPN (see [ALPN]) allows clients to offer multiple application
+#    protocols during connection establishment.  The transport parameters
+#    that a client includes during the handshake apply to all application
+#    protocols that the client offers.  Application protocols can
+#    recommend values for transport parameters, such as the initial flow
+#    control limits.  However, application protocols that set constraints
+#    on values for transport parameters could make it impossible for a
+#    client to offer multiple application protocols if these constraints
+#    conflict.
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST treat receipt of a transport parameter with an
+invalid value as a connection error of type
+TRANSPORT_PARAMETER_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST NOT send a parameter more than once in a given
+transport parameters extension.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An endpoint SHOULD treat receipt of
+duplicate transport parameters as a connection error of type
+TRANSPORT_PARAMETER_ERROR.
+'''
+

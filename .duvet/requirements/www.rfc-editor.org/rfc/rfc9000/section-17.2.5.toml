@@ -1,0 +1,44 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5"
+
+# Retry Packet
+#
+#    As shown in Figure 18, a Retry packet uses a long packet header with
+#    a type value of 0x03.  It carries an address validation token created
+#    by the server.  It is used by a server that wishes to perform a
+#    retry; see Section 8.1.
+# 
+#    Retry Packet {
+#      Header Form (1) = 1,
+#      Fixed Bit (1) = 1,
+#      Long Packet Type (2) = 3,
+#      Unused (4),
+#      Version (32),
+#      Destination Connection ID Length (8),
+#      Destination Connection ID (0..160),
+#      Source Connection ID Length (8),
+#      Source Connection ID (0..160),
+#      Retry Token (..),
+#      Retry Integrity Tag (128),
+#    }
+# 
+#                           Figure 18: Retry Packet
+# 
+#    A Retry packet does not contain any protected fields.  The value in
+#    the Unused field is set to an arbitrary value by the server; a client
+#    MUST ignore these bits.  In addition to the fields from the long
+#    header, it contains these additional fields:
+# 
+#    Retry Token:  An opaque token that the server can use to validate the
+#       client's address.
+# 
+#    Retry Integrity Tag:  Defined in Section 5.8 ("Retry Packet
+#       Integrity") of [QUIC-TLS].
+
+[[spec]]
+level = "MUST"
+quote = '''
+The value in
+the Unused field is set to an arbitrary value by the server; a client
+MUST ignore these bits.
+'''
+

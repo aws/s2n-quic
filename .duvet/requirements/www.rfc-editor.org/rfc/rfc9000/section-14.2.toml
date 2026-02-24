@@ -1,0 +1,97 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-14.2"
+
+# Path Maximum Transmission Unit
+#
+#    The PMTU is the maximum size of the entire IP packet, including the
+#    IP header, UDP header, and UDP payload.  The UDP payload includes one
+#    or more QUIC packet headers and protected payloads.  The PMTU can
+#    depend on path characteristics and can therefore change over time.
+#    The largest UDP payload an endpoint sends at any given time is
+#    referred to as the endpoint's maximum datagram size.
+# 
+#    An endpoint SHOULD use DPLPMTUD (Section 14.3) or PMTUD
+#    (Section 14.2.1) to determine whether the path to a destination will
+#    support a desired maximum datagram size without fragmentation.  In
+#    the absence of these mechanisms, QUIC endpoints SHOULD NOT send
+#    datagrams larger than the smallest allowed maximum datagram size.
+# 
+#    Both DPLPMTUD and PMTUD send datagrams that are larger than the
+#    current maximum datagram size, referred to as PMTU probes.  All QUIC
+#    packets that are not sent in a PMTU probe SHOULD be sized to fit
+#    within the maximum datagram size to avoid the datagram being
+#    fragmented or dropped [RFC8085].
+# 
+#    If a QUIC endpoint determines that the PMTU between any pair of local
+#    and remote IP addresses cannot support the smallest allowed maximum
+#    datagram size of 1200 bytes, it MUST immediately cease sending QUIC
+#    packets, except for those in PMTU probes or those containing
+#    CONNECTION_CLOSE frames, on the affected path.  An endpoint MAY
+#    terminate the connection if an alternative path cannot be found.
+# 
+#    Each pair of local and remote addresses could have a different PMTU.
+#    QUIC implementations that implement any kind of PMTU discovery
+#    therefore SHOULD maintain a maximum datagram size for each
+#    combination of local and remote IP addresses.
+# 
+#    A QUIC implementation MAY be more conservative in computing the
+#    maximum datagram size to allow for unknown tunnel overheads or IP
+#    header options/extensions.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An endpoint SHOULD use DPLPMTUD (Section 14.3) or PMTUD
+(Section 14.2.1) to determine whether the path to a destination will
+support a desired maximum datagram size without fragmentation.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+In
+the absence of these mechanisms, QUIC endpoints SHOULD NOT send
+datagrams larger than the smallest allowed maximum datagram size.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+All QUIC
+packets that are not sent in a PMTU probe SHOULD be sized to fit
+within the maximum datagram size to avoid the datagram being
+fragmented or dropped [RFC8085].
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a QUIC endpoint determines that the PMTU between any pair of local
+and remote IP addresses cannot support the smallest allowed maximum
+datagram size of 1200 bytes, it MUST immediately cease sending QUIC
+packets, except for those in PMTU probes or those containing
+CONNECTION_CLOSE frames, on the affected path.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+An endpoint MAY
+terminate the connection if an alternative path cannot be found.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+QUIC implementations that implement any kind of PMTU discovery
+therefore SHOULD maintain a maximum datagram size for each
+combination of local and remote IP addresses.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A QUIC implementation MAY be more conservative in computing the
+maximum datagram size to allow for unknown tunnel overheads or IP
+header options/extensions.
+'''
+

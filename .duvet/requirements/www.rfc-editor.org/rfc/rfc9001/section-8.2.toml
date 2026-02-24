@@ -1,0 +1,81 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-8.2"
+
+# QUIC Transport Parameters Extension
+#
+#    QUIC transport parameters are carried in a TLS extension.  Different
+#    versions of QUIC might define a different method for negotiating
+#    transport configuration.
+# 
+#    Including transport parameters in the TLS handshake provides
+#    integrity protection for these values.
+# 
+#       enum {
+#          quic_transport_parameters(0x39), (65535)
+#       } ExtensionType;
+# 
+#    The extension_data field of the quic_transport_parameters extension
+#    contains a value that is defined by the version of QUIC that is in
+#    use.
+# 
+#    The quic_transport_parameters extension is carried in the ClientHello
+#    and the EncryptedExtensions messages during the handshake.  Endpoints
+#    MUST send the quic_transport_parameters extension; endpoints that
+#    receive ClientHello or EncryptedExtensions messages without the
+#    quic_transport_parameters extension MUST close the connection with an
+#    error of type 0x016d (equivalent to a fatal TLS missing_extension
+#    alert, see Section 4.8).
+# 
+#    Transport parameters become available prior to the completion of the
+#    handshake.  A server might use these values earlier than handshake
+#    completion.  However, the value of transport parameters is not
+#    authenticated until the handshake completes, so any use of these
+#    parameters cannot depend on their authenticity.  Any tampering with
+#    transport parameters will cause the handshake to fail.
+# 
+#    Endpoints MUST NOT send this extension in a TLS connection that does
+#    not use QUIC (such as the use of TLS with TCP defined in [TLS13]).  A
+#    fatal unsupported_extension alert MUST be sent by an implementation
+#    that supports this extension if the extension is received when the
+#    transport is not QUIC.
+# 
+#    Negotiating the quic_transport_parameters extension causes the
+#    EndOfEarlyData to be removed; see Section 8.3.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Endpoints
+MUST send the quic_transport_parameters extension; endpoints that
+receive ClientHello or EncryptedExtensions messages without the
+quic_transport_parameters extension MUST close the connection with an
+error of type 0x016d (equivalent to a fatal TLS missing_extension
+alert, see Section 4.8).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Endpoints
+MUST send the quic_transport_parameters extension; endpoints that
+receive ClientHello or EncryptedExtensions messages without the
+quic_transport_parameters extension MUST close the connection with an
+error of type 0x016d (equivalent to a fatal TLS missing_extension
+alert, see Section 4.8).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Endpoints MUST NOT send this extension in a TLS connection that does
+not use QUIC (such as the use of TLS with TCP defined in [TLS13]).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A
+fatal unsupported_extension alert MUST be sent by an implementation
+that supports this extension if the extension is received when the
+transport is not QUIC.
+'''
+

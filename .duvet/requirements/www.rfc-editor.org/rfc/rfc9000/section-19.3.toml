@@ -1,0 +1,85 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-19.3"
+
+# ACK Frames
+#
+#    Receivers send ACK frames (types 0x02 and 0x03) to inform senders of
+#    packets they have received and processed.  The ACK frame contains one
+#    or more ACK Ranges.  ACK Ranges identify acknowledged packets.  If
+#    the frame type is 0x03, ACK frames also contain the cumulative count
+#    of QUIC packets with associated ECN marks received on the connection
+#    up until this point.  QUIC implementations MUST properly handle both
+#    types, and, if they have enabled ECN for packets they send, they
+#    SHOULD use the information in the ECN section to manage their
+#    congestion state.
+# 
+#    QUIC acknowledgments are irrevocable.  Once acknowledged, a packet
+#    remains acknowledged, even if it does not appear in a future ACK
+#    frame.  This is unlike reneging for TCP Selective Acknowledgments
+#    (SACKs) [RFC2018].
+# 
+#    Packets from different packet number spaces can be identified using
+#    the same numeric value.  An acknowledgment for a packet needs to
+#    indicate both a packet number and a packet number space.  This is
+#    accomplished by having each ACK frame only acknowledge packet numbers
+#    in the same space as the packet in which the ACK frame is contained.
+# 
+#    Version Negotiation and Retry packets cannot be acknowledged because
+#    they do not contain a packet number.  Rather than relying on ACK
+#    frames, these packets are implicitly acknowledged by the next Initial
+#    packet sent by the client.
+# 
+#    ACK frames are formatted as shown in Figure 25.
+# 
+#    ACK Frame {
+#      Type (i) = 0x02..0x03,
+#      Largest Acknowledged (i),
+#      ACK Delay (i),
+#      ACK Range Count (i),
+#      First ACK Range (i),
+#      ACK Range (..) ...,
+#      [ECN Counts (..)],
+#    }
+# 
+#                         Figure 25: ACK Frame Format
+# 
+#    ACK frames contain the following fields:
+# 
+#    Largest Acknowledged:  A variable-length integer representing the
+#       largest packet number the peer is acknowledging; this is usually
+#       the largest packet number that the peer has received prior to
+#       generating the ACK frame.  Unlike the packet number in the QUIC
+#       long or short header, the value in an ACK frame is not truncated.
+# 
+#    ACK Delay:  A variable-length integer encoding the acknowledgment
+#       delay in microseconds; see Section 13.2.5.  It is decoded by
+#       multiplying the value in the field by 2 to the power of the
+#       ack_delay_exponent transport parameter sent by the sender of the
+#       ACK frame; see Section 18.2.  Compared to simply expressing the
+#       delay as an integer, this encoding allows for a larger range of
+#       values within the same number of bytes, at the cost of lower
+#       resolution.
+# 
+#    ACK Range Count:  A variable-length integer specifying the number of
+#       ACK Range fields in the frame.
+# 
+#    First ACK Range:  A variable-length integer indicating the number of
+#       contiguous packets preceding the Largest Acknowledged that are
+#       being acknowledged.  That is, the smallest packet acknowledged in
+#       the range is determined by subtracting the First ACK Range value
+#       from the Largest Acknowledged field.
+# 
+#    ACK Ranges:  Contains additional ranges of packets that are
+#       alternately not acknowledged (Gap) and acknowledged (ACK Range);
+#       see Section 19.3.1.
+# 
+#    ECN Counts:  The three ECN counts; see Section 19.3.2.
+
+[[spec]]
+level = "MUST"
+quote = '''
+QUIC implementations MUST properly handle both
+types, and, if they have enabled ECN for packets they send, they
+SHOULD use the information in the ECN section to manage their
+congestion state.
+'''
+

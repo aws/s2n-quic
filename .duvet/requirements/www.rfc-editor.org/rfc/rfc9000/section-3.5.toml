@@ -1,0 +1,104 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-3.5"
+
+# Solicited State Transitions
+#
+#    If an application is no longer interested in the data it is receiving
+#    on a stream, it can abort reading the stream and specify an
+#    application error code.
+# 
+#    If the stream is in the "Recv" or "Size Known" state, the transport
+#    SHOULD signal this by sending a STOP_SENDING frame to prompt closure
+#    of the stream in the opposite direction.  This typically indicates
+#    that the receiving application is no longer reading data it receives
+#    from the stream, but it is not a guarantee that incoming data will be
+#    ignored.
+# 
+#    STREAM frames received after sending a STOP_SENDING frame are still
+#    counted toward connection and stream flow control, even though these
+#    frames can be discarded upon receipt.
+# 
+#    A STOP_SENDING frame requests that the receiving endpoint send a
+#    RESET_STREAM frame.  An endpoint that receives a STOP_SENDING frame
+#    MUST send a RESET_STREAM frame if the stream is in the "Ready" or
+#    "Send" state.  If the stream is in the "Data Sent" state, the
+#    endpoint MAY defer sending the RESET_STREAM frame until the packets
+#    containing outstanding data are acknowledged or declared lost.  If
+#    any outstanding data is declared lost, the endpoint SHOULD send a
+#    RESET_STREAM frame instead of retransmitting the data.
+# 
+#    An endpoint SHOULD copy the error code from the STOP_SENDING frame to
+#    the RESET_STREAM frame it sends, but it can use any application error
+#    code.  An endpoint that sends a STOP_SENDING frame MAY ignore the
+#    error code in any RESET_STREAM frames subsequently received for that
+#    stream.
+# 
+#    STOP_SENDING SHOULD only be sent for a stream that has not been reset
+#    by the peer.  STOP_SENDING is most useful for streams in the "Recv"
+#    or "Size Known" state.
+# 
+#    An endpoint is expected to send another STOP_SENDING frame if a
+#    packet containing a previous STOP_SENDING is lost.  However, once
+#    either all stream data or a RESET_STREAM frame has been received for
+#    the stream -- that is, the stream is in any state other than "Recv"
+#    or "Size Known" -- sending a STOP_SENDING frame is unnecessary.
+# 
+#    An endpoint that wishes to terminate both directions of a
+#    bidirectional stream can terminate one direction by sending a
+#    RESET_STREAM frame, and it can encourage prompt termination in the
+#    opposite direction by sending a STOP_SENDING frame.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If the stream is in the "Recv" or "Size Known" state, the transport
+SHOULD signal this by sending a STOP_SENDING frame to prompt closure
+of the stream in the opposite direction.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint that receives a STOP_SENDING frame
+MUST send a RESET_STREAM frame if the stream is in the "Ready" or
+"Send" state.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+If the stream is in the "Data Sent" state, the
+endpoint MAY defer sending the RESET_STREAM frame until the packets
+containing outstanding data are acknowledged or declared lost.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If
+any outstanding data is declared lost, the endpoint SHOULD send a
+RESET_STREAM frame instead of retransmitting the data.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An endpoint SHOULD copy the error code from the STOP_SENDING frame to
+the RESET_STREAM frame it sends, but it can use any application error
+code.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+An endpoint that sends a STOP_SENDING frame MAY ignore the
+error code in any RESET_STREAM frames subsequently received for that
+stream.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+STOP_SENDING SHOULD only be sent for a stream that has not been reset
+by the peer.
+'''
+

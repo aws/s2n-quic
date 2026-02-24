@@ -1,0 +1,105 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-22.5"
+
+# QUIC Transport Error Codes Registry
+#
+#    IANA has added a registry for "QUIC Transport Error Codes" under a
+#    "QUIC" heading.
+# 
+#    The "QUIC Transport Error Codes" registry governs a 62-bit space.
+#    This space is split into three ranges that are governed by different
+#    policies.  Permanent registrations in this registry are assigned
+#    using the Specification Required policy (Section 4.6 of [RFC8126]),
+#    except for values between 0x00 and 0x3f (in hexadecimal), inclusive,
+#    which are assigned using Standards Action or IESG Approval as defined
+#    in Sections 4.9 and 4.10 of [RFC8126].
+# 
+#    In addition to the fields listed in Section 22.1.1, permanent
+#    registrations in this registry MUST include the following fields:
+# 
+#    Code:  A short mnemonic for the parameter.
+# 
+#    Description:  A brief description of the error code semantics, which
+#       MAY be a summary if a specification reference is provided.
+# 
+#    The initial contents of this registry are shown in Table 7.
+# 
+#    +=======+===========================+================+==============+
+#    |Value  | Code                      |Description     |Specification |
+#    +=======+===========================+================+==============+
+#    |0x00   | NO_ERROR                  |No error        |Section 20    |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x01   | INTERNAL_ERROR            |Implementation  |Section 20    |
+#    |       |                           |error           |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x02   | CONNECTION_REFUSED        |Server refuses a|Section 20    |
+#    |       |                           |connection      |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x03   | FLOW_CONTROL_ERROR        |Flow control    |Section 20    |
+#    |       |                           |error           |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x04   | STREAM_LIMIT_ERROR        |Too many streams|Section 20    |
+#    |       |                           |opened          |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x05   | STREAM_STATE_ERROR        |Frame received  |Section 20    |
+#    |       |                           |in invalid      |              |
+#    |       |                           |stream state    |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x06   | FINAL_SIZE_ERROR          |Change to final |Section 20    |
+#    |       |                           |size            |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x07   | FRAME_ENCODING_ERROR      |Frame encoding  |Section 20    |
+#    |       |                           |error           |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x08   | TRANSPORT_PARAMETER_ERROR |Error in        |Section 20    |
+#    |       |                           |transport       |              |
+#    |       |                           |parameters      |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x09   | CONNECTION_ID_LIMIT_ERROR |Too many        |Section 20    |
+#    |       |                           |connection IDs  |              |
+#    |       |                           |received        |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x0a   | PROTOCOL_VIOLATION        |Generic protocol|Section 20    |
+#    |       |                           |violation       |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x0b   | INVALID_TOKEN             |Invalid Token   |Section 20    |
+#    |       |                           |received        |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x0c   | APPLICATION_ERROR         |Application     |Section 20    |
+#    |       |                           |error           |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x0d   | CRYPTO_BUFFER_EXCEEDED    |CRYPTO data     |Section 20    |
+#    |       |                           |buffer          |              |
+#    |       |                           |overflowed      |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x0e   | KEY_UPDATE_ERROR          |Invalid packet  |Section 20    |
+#    |       |                           |protection      |              |
+#    |       |                           |update          |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x0f   | AEAD_LIMIT_REACHED        |Excessive use of|Section 20    |
+#    |       |                           |packet          |              |
+#    |       |                           |protection keys |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x10   | NO_VIABLE_PATH            |No viable       |Section 20    |
+#    |       |                           |network path    |              |
+#    |       |                           |exists          |              |
+#    +-------+---------------------------+----------------+--------------+
+#    |0x0100-| CRYPTO_ERROR              |TLS alert code  |Section 20    |
+#    |0x01ff |                           |                |              |
+#    +-------+---------------------------+----------------+--------------+
+# 
+#         Table 7: Initial QUIC Transport Error Codes Registry Entries
+
+[[spec]]
+level = "MUST"
+quote = '''
+In addition to the fields listed in Section 22.1.1, permanent
+registrations in this registry MUST include the following fields:
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Description:  A brief description of the error code semantics, which
+MAY be a summary if a specification reference is provided.
+'''
+

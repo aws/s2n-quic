@@ -1,0 +1,45 @@
+target = "https://www.rfc-editor.org/rfc/rfc9002#section-7.6.1"
+
+# Duration
+#
+#    The persistent congestion duration is computed as follows:
+# 
+#    (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) *
+#        kPersistentCongestionThreshold
+# 
+#    Unlike the PTO computation in Section 6.2, this duration includes the
+#    max_ack_delay irrespective of the packet number spaces in which
+#    losses are established.
+# 
+#    This duration allows a sender to send as many packets before
+#    establishing persistent congestion, including some in response to PTO
+#    expiration, as TCP does with Tail Loss Probes [RFC8985] and an RTO
+#    [RFC5681].
+# 
+#    Larger values of kPersistentCongestionThreshold cause the sender to
+#    become less responsive to persistent congestion in the network, which
+#    can result in aggressive sending into a congested network.  Too small
+#    a value can result in a sender declaring persistent congestion
+#    unnecessarily, resulting in reduced throughput for the sender.
+# 
+#    The RECOMMENDED value for kPersistentCongestionThreshold is 3, which
+#    results in behavior that is approximately equivalent to a TCP sender
+#    declaring an RTO after two TLPs.
+# 
+#    This design does not use consecutive PTO events to establish
+#    persistent congestion, since application patterns impact PTO
+#    expiration.  For example, a sender that sends small amounts of data
+#    with silence periods between them restarts the PTO timer every time
+#    it sends, potentially preventing the PTO timer from expiring for a
+#    long period of time, even when no acknowledgments are being received.
+#    The use of a duration enables a sender to establish persistent
+#    congestion without depending on PTO expiration.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The RECOMMENDED value for kPersistentCongestionThreshold is 3, which
+results in behavior that is approximately equivalent to a TCP sender
+declaring an RTO after two TLPs.
+'''
+

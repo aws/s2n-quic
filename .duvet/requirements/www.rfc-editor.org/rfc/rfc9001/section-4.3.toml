@@ -1,0 +1,53 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-4.3"
+
+# ClientHello Size
+#
+#    The first Initial packet from a client contains the start or all of
+#    its first cryptographic handshake message, which for TLS is the
+#    ClientHello.  Servers might need to parse the entire ClientHello
+#    (e.g., to access extensions such as Server Name Identification (SNI)
+#    or Application-Layer Protocol Negotiation (ALPN)) in order to decide
+#    whether to accept the new incoming QUIC connection.  If the
+#    ClientHello spans multiple Initial packets, such servers would need
+#    to buffer the first received fragments, which could consume excessive
+#    resources if the client's address has not yet been validated.  To
+#    avoid this, servers MAY use the Retry feature (see Section 8.1 of
+#    [QUIC-TRANSPORT]) to only buffer partial ClientHello messages from
+#    clients with a validated address.
+# 
+#    QUIC packet and framing add at least 36 bytes of overhead to the
+#    ClientHello message.  That overhead increases if the client chooses a
+#    Source Connection ID field longer than zero bytes.  Overheads also do
+#    not include the token or a Destination Connection ID longer than 8
+#    bytes, both of which might be required if a server sends a Retry
+#    packet.
+# 
+#    A typical TLS ClientHello can easily fit into a 1200-byte packet.
+#    However, in addition to the overheads added by QUIC, there are
+#    several variables that could cause this limit to be exceeded.  Large
+#    session tickets, multiple or large key shares, and long lists of
+#    supported ciphers, signature algorithms, versions, QUIC transport
+#    parameters, and other negotiable parameters and extensions could
+#    cause this message to grow.
+# 
+#    For servers, in addition to connection IDs and tokens, the size of
+#    TLS session tickets can have an effect on a client's ability to
+#    connect efficiently.  Minimizing the size of these values increases
+#    the probability that clients can use them and still fit their entire
+#    ClientHello message in their first Initial packet.
+# 
+#    The TLS implementation does not need to ensure that the ClientHello
+#    is large enough to meet QUIC's requirements for datagrams that carry
+#    Initial packets; see Section 14.1 of [QUIC-TRANSPORT].  QUIC
+#    implementations use PADDING frames or packet coalescing to ensure
+#    that datagrams are large enough.
+
+[[spec]]
+level = "MAY"
+quote = '''
+To
+avoid this, servers MAY use the Retry feature (see Section 8.1 of
+[QUIC-TRANSPORT]) to only buffer partial ClientHello messages from
+clients with a validated address.
+'''
+

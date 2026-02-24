@@ -1,0 +1,42 @@
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-6.2"
+
+# DPLPMTUD for SCTP
+#
+#    Section 10.2 of [RFC4821] specifies a recommended PLPMTUD probing
+#    method for SCTP, and Section 7.3 of [RFC4960] recommends an endpoint
+#    apply the techniques in RFC 4821 on a per-destination-address basis.
+#    The specification for DPLPMTUD continues the practice of using the PL
+#    to discover the PMTU but updates RFC4960 with a recommendation to use
+#    the method specified in this document: The RECOMMENDED method for
+#    generating probes is to add a chunk consisting only of padding to an
+#    SCTP message.  The PAD chunk defined in [RFC4820] SHOULD be attached
+#    to a minimum-length HEARTBEAT (HB) chunk to build a probe packet.
+#    This enables probing without affecting the transfer of user messages
+#    and without being limited by congestion control or flow control.
+#    This is preferred to using DATA chunks (with padding as required) as
+#    path probes.
+# 
+#    Section 6.9 of [RFC4960] describes dividing the user messages into
+#    DATA chunks sent by the PL when using SCTP.  This notes that once an
+#    SCTP message has been sent, it cannot be resegmented.  [RFC4960]
+#    describes the method for retransmitting DATA chunks when the MPS has
+#    been reduced, and Section 6.9 of [RFC4960] describes use of IP
+#    fragmentation for this case.  This is unchanged by this document.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The specification for DPLPMTUD continues the practice of using the PL
+to discover the PMTU but updates RFC4960 with a recommendation to use
+the method specified in this document: The RECOMMENDED method for
+generating probes is to add a chunk consisting only of padding to an
+SCTP message.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The PAD chunk defined in [RFC4820] SHOULD be attached
+to a minimum-length HEARTBEAT (HB) chunk to build a probe packet.
+'''
+

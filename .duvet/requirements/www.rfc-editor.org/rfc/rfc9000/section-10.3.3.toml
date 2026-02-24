@@ -1,0 +1,37 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-10.3.3"
+
+# Looping
+#
+#    The design of a Stateless Reset is such that without knowing the
+#    stateless reset token it is indistinguishable from a valid packet.
+#    For instance, if a server sends a Stateless Reset to another server,
+#    it might receive another Stateless Reset in response, which could
+#    lead to an infinite exchange.
+# 
+#    An endpoint MUST ensure that every Stateless Reset that it sends is
+#    smaller than the packet that triggered it, unless it maintains state
+#    sufficient to prevent looping.  In the event of a loop, this results
+#    in packets eventually being too small to trigger a response.
+# 
+#    An endpoint can remember the number of Stateless Resets that it has
+#    sent and stop generating new Stateless Resets once a limit is
+#    reached.  Using separate limits for different remote addresses will
+#    ensure that Stateless Resets can be used to close connections when
+#    other peers or connections have exhausted limits.
+# 
+#    A Stateless Reset that is smaller than 41 bytes might be identifiable
+#    as a Stateless Reset by an observer, depending upon the length of the
+#    peer's connection IDs.  Conversely, not sending a Stateless Reset in
+#    response to a small packet might result in Stateless Resets not being
+#    useful in detecting cases of broken connections where only very small
+#    packets are sent; such failures might only be detected by other
+#    means, such as timers.
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST ensure that every Stateless Reset that it sends is
+smaller than the packet that triggered it, unless it maintains state
+sufficient to prevent looping.
+'''
+

@@ -1,0 +1,56 @@
+target = "https://www.rfc-editor.org/rfc/rfc9002#section-5.1"
+
+# Generating RTT Samples
+#
+#    An endpoint generates an RTT sample on receiving an ACK frame that
+#    meets the following two conditions:
+# 
+#    *  the largest acknowledged packet number is newly acknowledged, and
+# 
+#    *  at least one of the newly acknowledged packets was ack-eliciting.
+# 
+#    The RTT sample, latest_rtt, is generated as the time elapsed since
+#    the largest acknowledged packet was sent:
+# 
+#    latest_rtt = ack_time - send_time_of_largest_acked
+# 
+#    An RTT sample is generated using only the largest acknowledged packet
+#    in the received ACK frame.  This is because a peer reports
+#    acknowledgment delays for only the largest acknowledged packet in an
+#    ACK frame.  While the reported acknowledgment delay is not used by
+#    the RTT sample measurement, it is used to adjust the RTT sample in
+#    subsequent computations of smoothed_rtt and rttvar (Section 5.3).
+# 
+#    To avoid generating multiple RTT samples for a single packet, an ACK
+#    frame SHOULD NOT be used to update RTT estimates if it does not newly
+#    acknowledge the largest acknowledged packet.
+# 
+#    An RTT sample MUST NOT be generated on receiving an ACK frame that
+#    does not newly acknowledge at least one ack-eliciting packet.  A peer
+#    usually does not send an ACK frame when only non-ack-eliciting
+#    packets are received.  Therefore, an ACK frame that contains
+#    acknowledgments for only non-ack-eliciting packets could include an
+#    arbitrarily large ACK Delay value.  Ignoring such ACK frames avoids
+#    complications in subsequent smoothed_rtt and rttvar computations.
+# 
+#    A sender might generate multiple RTT samples per RTT when multiple
+#    ACK frames are received within an RTT.  As suggested in [RFC6298],
+#    doing so might result in inadequate history in smoothed_rtt and
+#    rttvar.  Ensuring that RTT estimates retain sufficient history is an
+#    open research question.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+To avoid generating multiple RTT samples for a single packet, an ACK
+frame SHOULD NOT be used to update RTT estimates if it does not newly
+acknowledge the largest acknowledged packet.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An RTT sample MUST NOT be generated on receiving an ACK frame that
+does not newly acknowledge at least one ack-eliciting packet.
+'''
+

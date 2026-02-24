@@ -1,0 +1,93 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-4.6"
+
+# Controlling Concurrency
+#
+#    An endpoint limits the cumulative number of incoming streams a peer
+#    can open.  Only streams with a stream ID less than "(max_streams * 4
+#    + first_stream_id_of_type)" can be opened; see Table 1.  Initial
+#    limits are set in the transport parameters; see Section 18.2.
+#    Subsequent limits are advertised using MAX_STREAMS frames; see
+#    Section 19.11.  Separate limits apply to unidirectional and
+#    bidirectional streams.
+# 
+#    If a max_streams transport parameter or a MAX_STREAMS frame is
+#    received with a value greater than 2^60, this would allow a maximum
+#    stream ID that cannot be expressed as a variable-length integer; see
+#    Section 16.  If either is received, the connection MUST be closed
+#    immediately with a connection error of type TRANSPORT_PARAMETER_ERROR
+#    if the offending value was received in a transport parameter or of
+#    type FRAME_ENCODING_ERROR if it was received in a frame; see
+#    Section 10.2.
+# 
+#    Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
+#    that receives a frame with a stream ID exceeding the limit it has
+#    sent MUST treat this as a connection error of type
+#    STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
+# 
+#    Once a receiver advertises a stream limit using the MAX_STREAMS
+#    frame, advertising a smaller limit has no effect.  MAX_STREAMS frames
+#    that do not increase the stream limit MUST be ignored.
+# 
+#    As with stream and connection flow control, this document leaves
+#    implementations to decide when and how many streams should be
+#    advertised to a peer via MAX_STREAMS.  Implementations might choose
+#    to increase limits as streams are closed, to keep the number of
+#    streams available to peers roughly consistent.
+# 
+#    An endpoint that is unable to open a new stream due to the peer's
+#    limits SHOULD send a STREAMS_BLOCKED frame (Section 19.14).  This
+#    signal is considered useful for debugging.  An endpoint MUST NOT wait
+#    to receive this signal before advertising additional credit, since
+#    doing so will mean that the peer will be blocked for at least an
+#    entire round trip, and potentially indefinitely if the peer chooses
+#    not to send STREAMS_BLOCKED frames.
+
+[[spec]]
+level = "MUST"
+quote = '''
+If either is received, the connection MUST be closed
+immediately with a connection error of type TRANSPORT_PARAMETER_ERROR
+if the offending value was received in a transport parameter or of
+type FRAME_ENCODING_ERROR if it was received in a frame; see
+Section 10.2.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Endpoints MUST NOT exceed the limit set by their peer.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint
+that receives a frame with a stream ID exceeding the limit it has
+sent MUST treat this as a connection error of type
+STREAM_LIMIT_ERROR; see Section 11 for details on error handling.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+MAX_STREAMS frames
+that do not increase the stream limit MUST be ignored.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An endpoint that is unable to open a new stream due to the peer's
+limits SHOULD send a STREAMS_BLOCKED frame (Section 19.14).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST NOT wait
+to receive this signal before advertising additional credit, since
+doing so will mean that the peer will be blocked for at least an
+entire round trip, and potentially indefinitely if the peer chooses
+not to send STREAMS_BLOCKED frames.
+'''
+

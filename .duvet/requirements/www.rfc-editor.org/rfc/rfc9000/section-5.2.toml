@@ -1,0 +1,55 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-5.2"
+
+# Matching Packets to Connections
+#
+#    Incoming packets are classified on receipt.  Packets can either be
+#    associated with an existing connection or -- for servers --
+#    potentially create a new connection.
+# 
+#    Endpoints try to associate a packet with an existing connection.  If
+#    the packet has a non-zero-length Destination Connection ID
+#    corresponding to an existing connection, QUIC processes that packet
+#    accordingly.  Note that more than one connection ID can be associated
+#    with a connection; see Section 5.1.
+# 
+#    If the Destination Connection ID is zero length and the addressing
+#    information in the packet matches the addressing information the
+#    endpoint uses to identify a connection with a zero-length connection
+#    ID, QUIC processes the packet as part of that connection.  An
+#    endpoint can use just destination IP and port or both source and
+#    destination addresses for identification, though this makes
+#    connections fragile as described in Section 5.1.
+# 
+#    Endpoints can send a Stateless Reset (Section 10.3) for any packets
+#    that cannot be attributed to an existing connection.  A Stateless
+#    Reset allows a peer to more quickly identify when a connection
+#    becomes unusable.
+# 
+#    Packets that are matched to an existing connection are discarded if
+#    the packets are inconsistent with the state of that connection.  For
+#    example, packets are discarded if they indicate a different protocol
+#    version than that of the connection or if the removal of packet
+#    protection is unsuccessful once the expected keys are available.
+# 
+#    Invalid packets that lack strong integrity protection, such as
+#    Initial, Retry, or Version Negotiation, MAY be discarded.  An
+#    endpoint MUST generate a connection error if processing the contents
+#    of these packets prior to discovering an error, or fully revert any
+#    changes made during that processing.
+
+[[spec]]
+level = "MAY"
+quote = '''
+Invalid packets that lack strong integrity protection, such as
+Initial, Retry, or Version Negotiation, MAY be discarded.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An
+endpoint MUST generate a connection error if processing the contents
+of these packets prior to discovering an error, or fully revert any
+changes made during that processing.
+'''
+

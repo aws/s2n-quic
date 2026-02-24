@@ -1,0 +1,27 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-9.6"
+
+# Server's Preferred Address
+#
+#    QUIC allows servers to accept connections on one IP address and
+#    attempt to transfer these connections to a more preferred address
+#    shortly after the handshake.  This is particularly useful when
+#    clients initially connect to an address shared by multiple servers
+#    but would prefer to use a unicast address to ensure connection
+#    stability.  This section describes the protocol for migrating a
+#    connection to a preferred server address.
+# 
+#    Migrating a connection to a new server address mid-connection is not
+#    supported by the version of QUIC specified in this document.  If a
+#    client receives packets from a new server address when the client has
+#    not initiated a migration to that address, the client SHOULD discard
+#    these packets.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If a
+client receives packets from a new server address when the client has
+not initiated a migration to that address, the client SHOULD discard
+these packets.
+'''
+

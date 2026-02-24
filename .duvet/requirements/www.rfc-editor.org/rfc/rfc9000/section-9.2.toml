@@ -1,0 +1,33 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-9.2"
+
+# Initiating Connection Migration
+#
+#    An endpoint can migrate a connection to a new local address by
+#    sending packets containing non-probing frames from that address.
+# 
+#    Each endpoint validates its peer's address during connection
+#    establishment.  Therefore, a migrating endpoint can send to its peer
+#    knowing that the peer is willing to receive at the peer's current
+#    address.  Thus, an endpoint can migrate to a new local address
+#    without first validating the peer's address.
+# 
+#    To establish reachability on the new path, an endpoint initiates path
+#    validation (Section 8.2) on the new path.  An endpoint MAY defer path
+#    validation until after a peer sends the next non-probing frame to its
+#    new address.
+# 
+#    When migrating, the new path might not support the endpoint's current
+#    sending rate.  Therefore, the endpoint resets its congestion
+#    controller and RTT estimate, as described in Section 9.4.
+# 
+#    The new path might not have the same ECN capability.  Therefore, the
+#    endpoint validates ECN capability as described in Section 13.4.
+
+[[spec]]
+level = "MAY"
+quote = '''
+An endpoint MAY defer path
+validation until after a peer sends the next non-probing frame to its
+new address.
+'''
+

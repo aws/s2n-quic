@@ -1,0 +1,31 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-8"
+
+# Address Validation
+#
+#    Address validation ensures that an endpoint cannot be used for a
+#    traffic amplification attack.  In such an attack, a packet is sent to
+#    a server with spoofed source address information that identifies a
+#    victim.  If a server generates more or larger packets in response to
+#    that packet, the attacker can use the server to send more data toward
+#    the victim than it would be able to send on its own.
+# 
+#    The primary defense against amplification attacks is verifying that a
+#    peer is able to receive packets at the transport address that it
+#    claims.  Therefore, after receiving packets from an address that is
+#    not yet validated, an endpoint MUST limit the amount of data it sends
+#    to the unvalidated address to three times the amount of data received
+#    from that address.  This limit on the size of responses is known as
+#    the anti-amplification limit.
+# 
+#    Address validation is performed both during connection establishment
+#    (see Section 8.1) and during connection migration (see Section 8.2).
+
+[[spec]]
+level = "MUST"
+quote = '''
+Therefore, after receiving packets from an address that is
+not yet validated, an endpoint MUST limit the amount of data it sends
+to the unvalidated address to three times the amount of data received
+from that address.
+'''
+

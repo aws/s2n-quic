@@ -1,0 +1,21 @@
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-6.2.2"
+
+# DPLPMTUD for SCTP/UDP
+#
+#    The UDP encapsulation of SCTP is specified in [RFC6951].
+# 
+#    This specification updates the reference to RFC 4821 in Section 5.6
+#    of RFC 6951 to refer to this document (RFC 8899).  RFC 6951 is
+#    updated by the addition of the following sentence at the end of
+#    Section 5.6:
+# 
+#    |  The RECOMMENDED method for determining the MTU of the path is
+#    |  specified in RFC 8899.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+|  The RECOMMENDED method for determining the MTU of the path is
+|  specified in RFC 8899.
+'''
+

@@ -1,0 +1,26 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-14.3"
+
+# Datagram Packetization Layer PMTU Discovery
+#
+#    DPLPMTUD [DPLPMTUD] relies on tracking loss or acknowledgment of QUIC
+#    packets that are carried in PMTU probes.  PMTU probes for DPLPMTUD
+#    that use the PADDING frame implement "Probing using padding data", as
+#    defined in Section 4.1 of [DPLPMTUD].
+# 
+#    Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
+#    [DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
+#    datagram size.  The MIN_PLPMTU is the same as the BASE_PLPMTU.
+# 
+#    QUIC endpoints implementing DPLPMTUD maintain a DPLPMTUD Maximum
+#    Packet Size (MPS) (Section 4.4 of [DPLPMTUD]) for each combination of
+#    local and remote IP addresses.  This corresponds to the maximum
+#    datagram size.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
+[DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
+datagram size.
+'''
+

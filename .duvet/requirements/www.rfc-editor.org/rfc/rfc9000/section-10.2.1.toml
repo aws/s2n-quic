@@ -1,0 +1,114 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1"
+
+# Closing Connection State
+#
+#    An endpoint enters the closing state after initiating an immediate
+#    close.
+# 
+#    In the closing state, an endpoint retains only enough information to
+#    generate a packet containing a CONNECTION_CLOSE frame and to identify
+#    packets as belonging to the connection.  An endpoint in the closing
+#    state sends a packet containing a CONNECTION_CLOSE frame in response
+#    to any incoming packet that it attributes to the connection.
+# 
+#    An endpoint SHOULD limit the rate at which it generates packets in
+#    the closing state.  For instance, an endpoint could wait for a
+#    progressively increasing number of received packets or amount of time
+#    before responding to received packets.
+# 
+#    An endpoint's selected connection ID and the QUIC version are
+#    sufficient information to identify packets for a closing connection;
+#    the endpoint MAY discard all other connection state.  An endpoint
+#    that is closing is not required to process any received frame.  An
+#    endpoint MAY retain packet protection keys for incoming packets to
+#    allow it to read and process a CONNECTION_CLOSE frame.
+# 
+#    An endpoint MAY drop packet protection keys when entering the closing
+#    state and send a packet containing a CONNECTION_CLOSE frame in
+#    response to any UDP datagram that is received.  However, an endpoint
+#    that discards packet protection keys cannot identify and discard
+#    invalid packets.  To avoid being used for an amplification attack,
+#    such endpoints MUST limit the cumulative size of packets it sends to
+#    three times the cumulative size of the packets that are received and
+#    attributed to the connection.  To minimize the state that an endpoint
+#    maintains for a closing connection, endpoints MAY send the exact same
+#    packet in response to any received packet.
+# 
+#       |  Note: Allowing retransmission of a closing packet is an
+#       |  exception to the requirement that a new packet number be used
+#       |  for each packet; see Section 12.3.  Sending new packet numbers
+#       |  is primarily of advantage to loss recovery and congestion
+#       |  control, which are not expected to be relevant for a closed
+#       |  connection.  Retransmitting the final packet requires less
+#       |  state.
+# 
+#    While in the closing state, an endpoint could receive packets from a
+#    new source address, possibly indicating a connection migration; see
+#    Section 9.  An endpoint in the closing state MUST either discard
+#    packets received from an unvalidated address or limit the cumulative
+#    size of packets it sends to an unvalidated address to three times the
+#    size of packets it receives from that address.
+# 
+#    An endpoint is not expected to handle key updates when it is closing
+#    (Section 6 of [QUIC-TLS]).  A key update might prevent the endpoint
+#    from moving from the closing state to the draining state, as the
+#    endpoint will not be able to process subsequently received packets,
+#    but it otherwise has no impact.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An endpoint SHOULD limit the rate at which it generates packets in
+the closing state.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+An endpoint's selected connection ID and the QUIC version are
+sufficient information to identify packets for a closing connection;
+the endpoint MAY discard all other connection state.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+An
+endpoint MAY retain packet protection keys for incoming packets to
+allow it to read and process a CONNECTION_CLOSE frame.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+An endpoint MAY drop packet protection keys when entering the closing
+state and send a packet containing a CONNECTION_CLOSE frame in
+response to any UDP datagram that is received.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+To avoid being used for an amplification attack,
+such endpoints MUST limit the cumulative size of packets it sends to
+three times the cumulative size of the packets that are received and
+attributed to the connection.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+To minimize the state that an endpoint
+maintains for a closing connection, endpoints MAY send the exact same
+packet in response to any received packet.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint in the closing state MUST either discard
+packets received from an unvalidated address or limit the cumulative
+size of packets it sends to an unvalidated address to three times the
+size of packets it receives from that address.
+'''
+

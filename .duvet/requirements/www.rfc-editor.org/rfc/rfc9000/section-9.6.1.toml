@@ -1,0 +1,55 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-9.6.1"
+
+# Communicating a Preferred Address
+#
+#    A server conveys a preferred address by including the
+#    preferred_address transport parameter in the TLS handshake.
+# 
+#    Servers MAY communicate a preferred address of each address family
+#    (IPv4 and IPv6) to allow clients to pick the one most suited to their
+#    network attachment.
+# 
+#    Once the handshake is confirmed, the client SHOULD select one of the
+#    two addresses provided by the server and initiate path validation
+#    (see Section 8.2).  A client constructs packets using any previously
+#    unused active connection ID, taken from either the preferred_address
+#    transport parameter or a NEW_CONNECTION_ID frame.
+# 
+#    As soon as path validation succeeds, the client SHOULD begin sending
+#    all future packets to the new server address using the new connection
+#    ID and discontinue use of the old server address.  If path validation
+#    fails, the client MUST continue sending all future packets to the
+#    server's original IP address.
+
+[[spec]]
+level = "MAY"
+quote = '''
+Servers MAY communicate a preferred address of each address family
+(IPv4 and IPv6) to allow clients to pick the one most suited to their
+network attachment.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Once the handshake is confirmed, the client SHOULD select one of the
+two addresses provided by the server and initiate path validation
+(see Section 8.2).
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+As soon as path validation succeeds, the client SHOULD begin sending
+all future packets to the new server address using the new connection
+ID and discontinue use of the old server address.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If path validation
+fails, the client MUST continue sending all future packets to the
+server's original IP address.
+'''
+

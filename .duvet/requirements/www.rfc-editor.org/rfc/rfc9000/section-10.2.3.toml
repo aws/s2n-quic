@@ -1,0 +1,131 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-10.2.3"
+
+# Immediate Close during the Handshake
+#
+#    When sending a CONNECTION_CLOSE frame, the goal is to ensure that the
+#    peer will process the frame.  Generally, this means sending the frame
+#    in a packet with the highest level of packet protection to avoid the
+#    packet being discarded.  After the handshake is confirmed (see
+#    Section 4.1.2 of [QUIC-TLS]), an endpoint MUST send any
+#    CONNECTION_CLOSE frames in a 1-RTT packet.  However, prior to
+#    confirming the handshake, it is possible that more advanced packet
+#    protection keys are not available to the peer, so another
+#    CONNECTION_CLOSE frame MAY be sent in a packet that uses a lower
+#    packet protection level.  More specifically:
+# 
+#    *  A client will always know whether the server has Handshake keys
+#       (see Section 17.2.2.1), but it is possible that a server does not
+#       know whether the client has Handshake keys.  Under these
+#       circumstances, a server SHOULD send a CONNECTION_CLOSE frame in
+#       both Handshake and Initial packets to ensure that at least one of
+#       them is processable by the client.
+# 
+#    *  A client that sends a CONNECTION_CLOSE frame in a 0-RTT packet
+#       cannot be assured that the server has accepted 0-RTT.  Sending a
+#       CONNECTION_CLOSE frame in an Initial packet makes it more likely
+#       that the server can receive the close signal, even if the
+#       application error code might not be received.
+# 
+#    *  Prior to confirming the handshake, a peer might be unable to
+#       process 1-RTT packets, so an endpoint SHOULD send a
+#       CONNECTION_CLOSE frame in both Handshake and 1-RTT packets.  A
+#       server SHOULD also send a CONNECTION_CLOSE frame in an Initial
+#       packet.
+# 
+#    Sending a CONNECTION_CLOSE of type 0x1d in an Initial or Handshake
+#    packet could expose application state or be used to alter application
+#    state.  A CONNECTION_CLOSE of type 0x1d MUST be replaced by a
+#    CONNECTION_CLOSE of type 0x1c when sending the frame in Initial or
+#    Handshake packets.  Otherwise, information about the application
+#    state might be revealed.  Endpoints MUST clear the value of the
+#    Reason Phrase field and SHOULD use the APPLICATION_ERROR code when
+#    converting to a CONNECTION_CLOSE of type 0x1c.
+# 
+#    CONNECTION_CLOSE frames sent in multiple packet types can be
+#    coalesced into a single UDP datagram; see Section 12.2.
+# 
+#    An endpoint can send a CONNECTION_CLOSE frame in an Initial packet.
+#    This might be in response to unauthenticated information received in
+#    Initial or Handshake packets.  Such an immediate close might expose
+#    legitimate connections to a denial of service.  QUIC does not include
+#    defensive measures for on-path attacks during the handshake; see
+#    Section 21.2.  However, at the cost of reducing feedback about errors
+#    for legitimate peers, some forms of denial of service can be made
+#    more difficult for an attacker if endpoints discard illegal packets
+#    rather than terminating a connection with CONNECTION_CLOSE.  For this
+#    reason, endpoints MAY discard packets rather than immediately close
+#    if errors are detected in packets that lack authentication.
+# 
+#    An endpoint that has not established state, such as a server that
+#    detects an error in an Initial packet, does not enter the closing
+#    state.  An endpoint that has no state for the connection does not
+#    enter a closing or draining period on sending a CONNECTION_CLOSE
+#    frame.
+
+[[spec]]
+level = "MUST"
+quote = '''
+After the handshake is confirmed (see
+Section 4.1.2 of [QUIC-TLS]), an endpoint MUST send any
+CONNECTION_CLOSE frames in a 1-RTT packet.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+However, prior to
+confirming the handshake, it is possible that more advanced packet
+protection keys are not available to the peer, so another
+CONNECTION_CLOSE frame MAY be sent in a packet that uses a lower
+packet protection level.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Under these
+circumstances, a server SHOULD send a CONNECTION_CLOSE frame in
+both Handshake and Initial packets to ensure that at least one of
+them is processable by the client.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+*  Prior to confirming the handshake, a peer might be unable to
+process 1-RTT packets, so an endpoint SHOULD send a
+CONNECTION_CLOSE frame in both Handshake and 1-RTT packets.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A
+server SHOULD also send a CONNECTION_CLOSE frame in an Initial
+packet.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A CONNECTION_CLOSE of type 0x1d MUST be replaced by a
+CONNECTION_CLOSE of type 0x1c when sending the frame in Initial or
+Handshake packets.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Endpoints MUST clear the value of the
+Reason Phrase field and SHOULD use the APPLICATION_ERROR code when
+converting to a CONNECTION_CLOSE of type 0x1c.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+For this
+reason, endpoints MAY discard packets rather than immediately close
+if errors are detected in packets that lack authentication.
+'''
+

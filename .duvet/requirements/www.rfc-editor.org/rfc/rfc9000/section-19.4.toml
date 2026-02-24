@@ -1,0 +1,46 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-19.4"
+
+# RESET_STREAM Frames
+#
+#    An endpoint uses a RESET_STREAM frame (type=0x04) to abruptly
+#    terminate the sending part of a stream.
+# 
+#    After sending a RESET_STREAM, an endpoint ceases transmission and
+#    retransmission of STREAM frames on the identified stream.  A receiver
+#    of RESET_STREAM can discard any data that it already received on that
+#    stream.
+# 
+#    An endpoint that receives a RESET_STREAM frame for a send-only stream
+#    MUST terminate the connection with error STREAM_STATE_ERROR.
+# 
+#    RESET_STREAM frames are formatted as shown in Figure 28.
+# 
+#    RESET_STREAM Frame {
+#      Type (i) = 0x04,
+#      Stream ID (i),
+#      Application Protocol Error Code (i),
+#      Final Size (i),
+#    }
+# 
+#                     Figure 28: RESET_STREAM Frame Format
+# 
+#    RESET_STREAM frames contain the following fields:
+# 
+#    Stream ID:  A variable-length integer encoding of the stream ID of
+#       the stream being terminated.
+# 
+#    Application Protocol Error Code:  A variable-length integer
+#       containing the application protocol error code (see Section 20.2)
+#       that indicates why the stream is being closed.
+# 
+#    Final Size:  A variable-length integer indicating the final size of
+#       the stream by the RESET_STREAM sender, in units of bytes; see
+#       Section 4.5.
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint that receives a RESET_STREAM frame for a send-only stream
+MUST terminate the connection with error STREAM_STATE_ERROR.
+'''
+

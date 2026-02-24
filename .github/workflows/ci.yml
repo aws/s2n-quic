@@ -447,7 +447,7 @@ jobs:
       - uses: awslabs/duvet-action@v1
         with:
           report-script: ./scripts/compliance
-          report-path: ./target/compliance/report.html
+          report-path: ./.duvet/reports/report.html
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-s3-region: us-west-2
