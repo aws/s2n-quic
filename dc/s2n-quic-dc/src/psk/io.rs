@@ -792,15 +792,15 @@ mod tests {
 
     /// A combined test subscriber that captures:
     /// - Per-socket rx packet counts via `PlatformRxSocketStats` (endpoint-level)
-    /// - Per-connection packet sent and packet lost counts (connection-level)
+    /// - Per-connection packet sent and non-initial packets received (connection-level)
     #[derive(Clone, Default)]
     struct TestStatsSubscriber {
         /// Accumulated per-socket rx packet counts: [socket_0_count, socket_1_count]
         socket_counts: Arc<[AtomicU64; 2]>,
         /// Total packets sent across all connections
         packets_sent: Arc<AtomicU64>,
-        /// Total packets lost across all connections
-        packets_lost: Arc<AtomicU64>,
+        /// Non-Initial packets received
+        non_initial_packets_received: Arc<AtomicU64>,
     }
 
     impl TestStatsSubscriber {
@@ -816,8 +816,8 @@ mod tests {
             self.packets_sent.load(Ordering::Relaxed)
         }
 
-        fn lost(&self) -> u64 {
-            self.packets_lost.load(Ordering::Relaxed)
+        fn non_initial_received(&self) -> u64 {
+            self.non_initial_packets_received.load(Ordering::Relaxed)
         }
     }
 
@@ -851,13 +851,20 @@ mod tests {
             context.packets_sent.fetch_add(1, Ordering::Relaxed);
         }
 
-        fn on_packet_lost(
+        fn on_packet_received(
             &mut self,
             context: &mut Self::ConnectionContext,
             _meta: &s2n_quic_core::event::api::ConnectionMeta,
-            _event: &s2n_quic_core::event::api::PacketLost,
+            event: &s2n_quic_core::event::api::PacketReceived,
         ) {
-            context.packets_lost.fetch_add(1, Ordering::Relaxed);
+            if !matches!(
+                event.packet_header,
+                s2n_quic_core::event::api::PacketHeader::Initial { .. }
+            ) {
+                context
+                    .non_initial_packets_received
+                    .fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
 
@@ -1060,16 +1067,16 @@ mod tests {
         let socket_1_count = server_stats.socket_count(1);
 
         let client_packets_sent = client_stats.sent();
-        let client_packets_lost = client_stats.lost();
+        let server_non_initial_received = server_stats.non_initial_received();
 
         tracing::info!(
             "Flood packets sent: {}, Socket 0 (non-CH) rx: {}, Socket 1 (CH) rx: {}, \
-             Client packets sent: {}, Client packets lost: {}",
+             Client packets sent: {}, Server non-initial packets received: {}",
             total_flood_packets,
             socket_0_count,
             socket_1_count,
             client_packets_sent,
-            client_packets_lost,
+            server_non_initial_received,
         );
 
         // The handshake should complete successfully despite the flood
