@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Stream server supporting dcQUIC streams over UDP, TCP, including forwarding over UDS.
+
 use crate::{
     event,
     path::secret,

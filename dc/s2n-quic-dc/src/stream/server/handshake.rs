@@ -1,6 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! dcQUIC streams over UDP require forwarding incoming streams from a central 'handshake' port to
+//! pooled/shared per-stream sockets. This contains the tracking data structure supporting that
+//! forwarding.
+
 use crate::{credentials, msg::recv};
 use core::task::{Context, Poll};
 use s2n_quic_core::varint::VarInt;

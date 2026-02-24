@@ -1,6 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Statistic tracking for accepted streams.
+//!
+//! This maintains an estimated RTT streams take to be accepted.
+
 use crate::{event::Subscriber, sync::mpmc as chan};
 use core::time::Duration;
 use s2n_quic_core::recovery::RttEstimator;
