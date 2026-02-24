@@ -43,6 +43,10 @@ pub trait Handshake: Clone {
     fn local_addr(&self) -> SocketAddr;
 
     fn map(&self) -> &secret::Map;
+
+    fn server_tls(&self) -> Option<tcp::tls::Builder> {
+        None
+    }
 }
 
 impl Handshake for crate::psk::server::Provider {
@@ -507,7 +511,17 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
 
         let socket = tokio::io::unix::AsyncFd::new(socket)?;
         let id = self.id();
-        let channel_behavior = tcp::worker::DefaultBehavior::new(&self.stream_sender);
+        let channel_behavior = tcp::worker::DefaultBehavior::new(
+            &self.stream_sender,
+            self.server.handshake.server_tls().map(|b| {
+                b.build(
+                    self.stream_sender.clone(),
+                    self.server.env.clone(),
+                    self.server.handshake.map().clone(),
+                    self.accept_flavor,
+                )
+            }),
+        );
         let acceptor = tcp::Acceptor::new(
             id,
             socket,
