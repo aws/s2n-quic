@@ -13,3 +13,11 @@ struct EndpointInitialized<'a> {
     #[bool_counter("udp")]
     udp: bool,
 }
+
+#[event("dc:connection_timeout")]
+#[subject(endpoint)]
+/// Emitted when the DC handshake confirmation or MTU probing times out
+struct DcConnectionTimeout<'a> {
+    #[nominal_counter("peer_address.protocol")]
+    peer_address: SocketAddress<'a>,
+}

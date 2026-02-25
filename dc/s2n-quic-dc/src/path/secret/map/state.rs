@@ -25,9 +25,115 @@ use std::{
     sync::{Arc, Mutex, RwLock, Weak},
     time::Duration,
 };
+use tokio::task::JoinHandle;
 
 #[cfg(test)]
 mod tests;
+
+#[derive(Debug)]
+#[allow(clippy::enum_variant_names)]
+pub enum StateBuilderError {
+    MissingSigner,
+    MissingCapacity,
+    MissingClock,
+    MissingSubscriber,
+}
+
+impl std::fmt::Display for StateBuilderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StateBuilderError::MissingSigner => write!(f, "signer is required"),
+            StateBuilderError::MissingCapacity => write!(f, "capacity is required"),
+            StateBuilderError::MissingClock => write!(f, "clock is required"),
+            StateBuilderError::MissingSubscriber => write!(f, "subscriber is required"),
+        }
+    }
+}
+
+impl std::error::Error for StateBuilderError {}
+
+pub struct StateBuilder<C, S>
+where
+    C: 'static + time::Clock + Sync + Send,
+    S: event::Subscriber,
+{
+    signer: Option<stateless_reset::Signer>,
+    capacity: Option<usize>,
+    should_evict_on_unknown_path_secret: bool,
+    clock: Option<C>,
+    subscriber: Option<S>,
+}
+
+impl<C, S> StateBuilder<C, S>
+where
+    C: 'static + time::Clock + Sync + Send,
+    S: event::Subscriber,
+{
+    pub fn new() -> Self {
+        Self {
+            signer: None,
+            capacity: None,
+            should_evict_on_unknown_path_secret: false,
+            clock: None,
+            subscriber: None,
+        }
+    }
+
+    pub fn with_signer(mut self, signer: stateless_reset::Signer) -> Self {
+        self.signer = Some(signer);
+        self
+    }
+
+    pub fn with_capacity(mut self, capacity: usize) -> Self {
+        self.capacity = Some(capacity);
+        self
+    }
+
+    pub fn with_evict_on_unknown_path_secret(mut self, should_evict: bool) -> Self {
+        self.should_evict_on_unknown_path_secret = should_evict;
+        self
+    }
+
+    pub fn with_clock<C2: 'static + time::Clock + Sync + Send>(
+        self,
+        clock: C2,
+    ) -> StateBuilder<C2, S> {
+        StateBuilder {
+            clock: Some(clock),
+            subscriber: self.subscriber,
+            should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
+            signer: self.signer,
+            capacity: self.capacity,
+        }
+    }
+
+    pub fn with_subscriber<S2: event::Subscriber>(self, subscriber: S2) -> StateBuilder<C, S2> {
+        StateBuilder {
+            clock: self.clock,
+            subscriber: Some(subscriber),
+            should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
+            signer: self.signer,
+            capacity: self.capacity,
+        }
+    }
+
+    pub fn build(self) -> Result<Arc<State<C, S>>, StateBuilderError> {
+        let signer = self.signer.ok_or(StateBuilderError::MissingSigner)?;
+        let capacity = self.capacity.ok_or(StateBuilderError::MissingCapacity)?;
+        let clock = self.clock.ok_or(StateBuilderError::MissingClock)?;
+        let subscriber = self
+            .subscriber
+            .ok_or(StateBuilderError::MissingSubscriber)?;
+
+        Ok(State::new(
+            signer,
+            capacity,
+            self.should_evict_on_unknown_path_secret,
+            clock,
+            subscriber,
+        ))
+    }
+}
 
 #[derive(Default, Debug)]
 #[repr(align(128))]
@@ -305,8 +411,9 @@ where
     pub(super) control_socket: Option<Arc<std::net::UdpSocket>>,
 
     #[allow(clippy::type_complexity)]
-    pub(super) request_handshake:
-        RwLock<Option<Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>>>,
+    pub(super) request_handshake: RwLock<
+        Option<Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>>,
+    >,
 
     cleaner: Cleaner,
 
@@ -377,6 +484,12 @@ fn control_socket() -> Option<Arc<std::net::UdpSocket>> {
     }
 
     None
+}
+
+impl State<time::StdClock, crate::event::tracing::Subscriber> {
+    pub fn builder() -> StateBuilder<time::StdClock, crate::event::tracing::Subscriber> {
+        StateBuilder::new()
+    }
 }
 
 impl<C, S> State<C, S>
@@ -484,7 +597,11 @@ where
         (id_removed, peer_removed)
     }
 
-    pub fn request_handshake(&self, peer: SocketAddr, reason: HandshakeReason) {
+    pub fn request_handshake(
+        &self,
+        peer: SocketAddr,
+        reason: HandshakeReason,
+    ) -> Option<JoinHandle<()>> {
         self.subscriber()
             .on_path_secret_map_background_handshake_requested(
                 event::builder::PathSecretMapBackgroundHandshakeRequested {
@@ -503,13 +620,14 @@ where
             .unwrap_or_else(|e| e.into_inner())
             .as_deref()
         {
-            (callback)(peer, reason);
+            return (callback)(peer, reason);
         }
+        None
     }
 
     fn register_request_handshake(
         &self,
-        cb: Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>,
+        cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
     ) {
         // FIXME: Maybe panic if already initialized?
         *self
@@ -671,7 +789,7 @@ where
 
     fn register_request_handshake(
         &self,
-        cb: Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>,
+        cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
     ) {
         self.register_request_handshake(cb);
     }
@@ -1080,6 +1198,13 @@ where
         for entry in peer_map.iter() {
             entry.reset_sender_counter();
         }
+    }
+
+    fn on_dc_connection_timeout(&self, peer_address: &SocketAddr) {
+        self.subscriber()
+            .on_dc_connection_timeout(event::builder::DcConnectionTimeout {
+                peer_address: SocketAddress::from(*peer_address).into_event(),
+            });
     }
 }
 

@@ -18,7 +18,7 @@ use crate::{
     },
 };
 use s2n_quic::server::Name;
-use s2n_quic_core::time::Clock;
+use s2n_quic_core::time::{Clock, Timestamp};
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::net::TcpStream;
 
@@ -423,15 +423,20 @@ where
 
 struct DropGuard<'a, S: event::Subscriber + Clone> {
     env: &'a Environment<S>,
+    start: Timestamp,
     reason: Option<StreamTcpConnectErrorReason>,
 }
 
 impl<S: event::Subscriber + Clone> Drop for DropGuard<'_, S> {
     fn drop(&mut self) {
         if let Some(reason) = self.reason.take() {
+            let now = self.env.clock().get_time();
             self.env
-                .endpoint_publisher()
-                .on_stream_connect_error(event::builder::StreamConnectError { reason });
+                .endpoint_publisher_with_time(now)
+                .on_stream_connect_error(event::builder::StreamConnectError {
+                    reason,
+                    latency: now.saturating_duration_since(self.start),
+                });
         }
     }
 }
@@ -451,10 +456,12 @@ where
     H: core::future::Future<Output = io::Result<secret::map::Peer>>,
     Sub: event::Subscriber + Clone,
 {
+    let start = env.clock().get_time();
     // This emits the error event in case this future gets dropped.
     let mut guard = DropGuard {
         env,
-        reason: Some(StreamTcpConnectErrorReason::Aborted),
+        reason: Some(StreamTcpConnectErrorReason::AbortedPendingBoth),
+        start,
     };
 
     let connect = TcpStream::connect(acceptor_addr);
@@ -469,7 +476,6 @@ where
     let mut error = None;
     let mut socket = None;
     let mut peer = None;
-    let start = env.clock().get_time();
     while (socket.is_none() || peer.is_none()) && error.is_none() {
         tokio::select! {
             connected = &mut connect, if socket.is_none() => {
@@ -479,7 +485,15 @@ where
                     latency: now.saturating_duration_since(start),
                 });
                 match connected {
-                    Ok(v) => socket = Some(Ok(v)),
+                    Ok(v) => {
+                        socket = Some(Ok(v));
+                        guard.reason = match guard.reason.clone() {
+                            Some(StreamTcpConnectErrorReason::AbortedPendingBoth) => Some(
+                                StreamTcpConnectErrorReason::AbortedPendingHandshake
+                            ),
+                            other => other,
+                        };
+                    },
                     Err(e) => {
                         guard.reason = Some(StreamTcpConnectErrorReason::TcpConnect);
                         error = Some(e);
@@ -489,7 +503,15 @@ where
             }
             handshaked = &mut handshake, if peer.is_none() => {
                 match handshaked {
-                    Ok(v) => peer = Some(Ok(v)),
+                    Ok(v) => {
+                        peer = Some(Ok(v));
+                        guard.reason = match guard.reason.clone() {
+                            Some(StreamTcpConnectErrorReason::AbortedPendingBoth) => Some(
+                                StreamTcpConnectErrorReason::AbortedPendingConnect
+                            ),
+                            other => other,
+                        };
+                    },
                     Err(e) => {
                         guard.reason = Some(StreamTcpConnectErrorReason::Handshake);
                         error = Some(e);

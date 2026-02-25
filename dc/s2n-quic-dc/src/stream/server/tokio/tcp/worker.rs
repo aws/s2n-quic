@@ -426,7 +426,7 @@ where
                             // missing credentials.
                             error: WorkerError {
                                 error,
-                                source: event::builder::AcceptorTcpIoErrorSource::Local,
+                                source: event::builder::AcceptorTcpIoErrorSource::UnknownPathSecret,
                             },
                         };
                         continue;
@@ -437,7 +437,7 @@ where
                     }
                     return Err(WorkerError {
                         error,
-                        source: event::builder::AcceptorTcpIoErrorSource::Local,
+                        source: event::builder::AcceptorTcpIoErrorSource::UnknownPathSecret,
                     })
                     .into();
                 }
@@ -822,7 +822,7 @@ where
                         offset: 0,
                         buffer: secret_control,
                         error: WorkerError {
-                            source: event::builder::AcceptorTcpIoErrorSource::Local,
+                            source: event::builder::AcceptorTcpIoErrorSource::UnknownPathSecret,
                             error,
                         },
                     };
@@ -833,7 +833,7 @@ where
                     drop(socket);
                 }
                 return Err(WorkerError {
-                    source: event::builder::AcceptorTcpIoErrorSource::Local,
+                    source: event::builder::AcceptorTcpIoErrorSource::UnknownPathSecret,
                     error,
                 })
                 .into();

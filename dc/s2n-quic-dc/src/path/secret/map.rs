@@ -16,6 +16,7 @@ use crate::{
 use core::fmt;
 use s2n_quic_core::{dc, time, varint::VarInt};
 use std::{net::SocketAddr, sync::Arc};
+use tokio::task::JoinHandle;
 
 mod cleaner;
 mod entry;
@@ -83,13 +84,15 @@ impl Map {
         C: 'static + time::Clock + Send + Sync,
         S: event::Subscriber,
     {
-        let store = state::State::new(
-            signer,
-            capacity,
-            should_evict_on_unknown_path_secret,
-            clock,
-            subscriber,
-        );
+        let store = state::State::builder()
+            .with_signer(signer)
+            .with_capacity(capacity)
+            .with_evict_on_unknown_path_secret(should_evict_on_unknown_path_secret)
+            .with_clock(clock)
+            .with_subscriber(subscriber)
+            .build()
+            .unwrap();
+
         Self { store }
     }
 
@@ -119,7 +122,7 @@ impl Map {
 
     pub fn register_request_handshake(
         &self,
-        cb: Box<dyn Fn(SocketAddr, HandshakeReason) + Send + Sync>,
+        cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
     ) {
         self.store.register_request_handshake(cb);
     }
@@ -213,6 +216,11 @@ impl Map {
     /// For other packets, the map may collect metrics but will otherwise drop the packets.
     pub fn handle_unexpected_packet(&self, packet: &Packet, peer: &SocketAddr) {
         self.store.handle_unexpected_packet(packet, peer);
+    }
+
+    /// Emits a DcConnectionTimeout event via the subscriber
+    pub fn on_dc_connection_timeout(&self, peer_address: &SocketAddr) {
+        self.store.on_dc_connection_timeout(peer_address);
     }
 
     pub fn handle_control_packet(&self, packet: &control::Packet, peer: &SocketAddr) {

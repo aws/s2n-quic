@@ -34,8 +34,8 @@ impl CloseHandle {
         if self.first_waker.is_some() {
             Poll::Ready(())
         } else {
-            match self.close_receiver.try_next() {
-                Ok(Some(waker)) => {
+            match self.close_receiver.try_recv() {
+                Ok(waker) => {
                     self.first_waker = Some(waker);
                     Poll::Ready(())
                 }
@@ -52,7 +52,7 @@ impl CloseHandle {
         if let Some(waker) = self.first_waker.take() {
             waker.wake();
         }
-        while let Ok(Some(waker)) = self.close_receiver.try_next() {
+        while let Ok(waker) = self.close_receiver.try_recv() {
             waker.wake_by_ref();
         }
     }

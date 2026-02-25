@@ -626,6 +626,11 @@ impl Controller {
     #[inline]
     pub fn enable_mtu_probing_complete_support(&mut self) {
         self.mtu_probing_complete_support = true;
+        // If search is already complete when DC support is enabled,
+        // we need to send the completion frame
+        if self.state.is_search_complete() {
+            self.needs_to_send_completion = true;
+        }
     }
 
     /// Enable path MTU probing
@@ -667,7 +672,7 @@ impl Controller {
                 // wait for regular MTU probing to be enabled to attempt higher MTUs
                 self.state = State::Disabled;
             } else {
-                self.state = State::SearchComplete;
+                self.set_search_complete();
             }
 
             // Publish an `on_mtu_updated` event since the cause
@@ -777,7 +782,7 @@ impl Controller {
                 } else {
                     // The next probe is within the threshold, so move directly
                     // to the SearchComplete state
-                    self.state = State::SearchComplete;
+                    self.set_search_complete();
                 }
 
                 publisher.on_mtu_updated(event::builder::MtuUpdated {
@@ -877,6 +882,18 @@ impl Controller {
         self.probed_size - self.plpmtu >= PROBE_THRESHOLD
     }
 
+    /// Transitions to SearchComplete state and marks MtuProbingComplete frame as needed if the mtu_probing_complete_support
+    /// transport parameter is set to true.
+    ///
+    /// MtuProbingComplete is not an IETF QUIC frame, so we only send it if dcQUIC is enabled.
+    #[inline]
+    fn set_search_complete(&mut self) {
+        self.state = State::SearchComplete;
+        if self.mtu_probing_complete_support {
+            self.needs_to_send_completion = true;
+        }
+    }
+
     /// Requests a new search to be initiated
     ///
     /// If `last_probe_time` is supplied, the PMTU Raise Timer will be armed as
@@ -890,13 +907,7 @@ impl Controller {
         } else {
             // The next probe size is within the threshold of the current MTU
             // so its not worth additional probing.
-            self.state = State::SearchComplete;
-
-            // Mark that we need to send the MtuProbingComplete frame to the peer.
-            // MtuProbingComplete is not a IETF QUIC frame, so we only send it if dcQUIC is enabled.
-            if !self.needs_to_send_completion && self.mtu_probing_complete_support {
-                self.needs_to_send_completion = true;
-            }
+            self.set_search_complete();
 
             if let Some(last_probe_time) = last_probe_time {
                 self.arm_pmtu_raise_timer(last_probe_time + PMTU_RAISE_TIMER_DURATION);
@@ -922,7 +933,7 @@ impl Controller {
             &mut congestion_controller::PathPublisher::new(publisher, path_id),
         );
         // Cancel any current probes
-        self.state = State::SearchComplete;
+        self.set_search_complete();
         // Arm the PMTU raise timer to try a larger MTU again after a cooling off period
         self.arm_pmtu_raise_timer(now + BLACK_HOLE_COOL_OFF_DURATION);
 
@@ -994,7 +1005,7 @@ impl transmission::Provider for Controller {
         if context.remaining_capacity() < probe_payload_size {
             // There isn't enough capacity in the buffer to write the datagram we
             // want to probe, so we've reached the maximum pmtu and the search is complete.
-            self.state = State::SearchComplete;
+            self.set_search_complete();
             return;
         }
 

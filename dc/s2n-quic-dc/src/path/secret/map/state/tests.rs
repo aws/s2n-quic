@@ -20,7 +20,13 @@ fn fake_entry(port: u16) -> Arc<Entry> {
 #[test]
 fn cleans_after_delay() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = State::new(signer, 50, false, Clock, tracing::Subscriber::default());
+    let map = State::builder()
+        .with_signer(signer)
+        .with_capacity(50)
+        .with_clock(Clock)
+        .with_subscriber(tracing::Subscriber::default())
+        .build()
+        .unwrap();
 
     // Stop background processing. We expect to manually invoke clean, and a background worker
     // might interfere with our state.
@@ -48,16 +54,16 @@ fn cleans_after_delay() {
 #[test]
 fn thread_shutdown() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = State::new(
-        signer,
-        10,
-        false,
-        Clock,
-        (
+    let map = State::builder()
+        .with_signer(signer)
+        .with_capacity(10)
+        .with_clock(Clock)
+        .with_subscriber((
             tracing::Subscriber::default(),
             testing::Subscriber::snapshot(),
-        ),
-    );
+        ))
+        .build()
+        .unwrap();
     let state = Arc::downgrade(&map);
     drop(map);
 
@@ -269,18 +275,21 @@ fn check_invariants_inner(should_evict_on_unknown_path_secret: bool) {
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let mut map = State::new(
-                signer,
-                10_000,
-                should_evict_on_unknown_path_secret,
-                Clock,
-                tracing::Subscriber::default(),
-            );
+            let mut map = State::builder()
+                .with_signer(signer)
+                .with_capacity(10_000)
+                .with_evict_on_unknown_path_secret(should_evict_on_unknown_path_secret)
+                .with_clock(Clock)
+                .with_subscriber(tracing::Subscriber::default())
+                .build()
+                .unwrap();
 
             // Avoid background work interfering with testing.
             map.cleaner.stop();
 
-            Arc::get_mut(&mut map).unwrap().set_max_capacity(5);
+            Arc::<State<Clock, tracing::Subscriber>>::get_mut(&mut map)
+                .unwrap()
+                .set_max_capacity(5);
 
             model.check_invariants(&map);
 
@@ -315,7 +324,13 @@ fn check_invariants_no_overflow() {
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let map = State::new(signer, 10_000, false, Clock, tracing::Subscriber::default());
+            let map = State::builder()
+                .with_signer(signer)
+                .with_capacity(10_000)
+                .with_clock(Clock)
+                .with_subscriber(tracing::Subscriber::default())
+                .build()
+                .unwrap();
 
             // Avoid background work interfering with testing.
             map.cleaner.stop();
@@ -338,13 +353,13 @@ fn check_invariants_no_overflow() {
 #[ignore = "memory growth takes a long time to run"]
 fn no_memory_growth() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = State::new(
-        signer,
-        100_000,
-        false,
-        Clock,
-        tracing::Subscriber::default(),
-    );
+    let map = State::builder()
+        .with_signer(signer)
+        .with_capacity(100_000)
+        .with_clock(Clock)
+        .with_subscriber(tracing::Subscriber::default())
+        .build()
+        .unwrap();
     map.cleaner.stop();
 
     for idx in 0..500_000 {
@@ -356,7 +371,14 @@ fn no_memory_growth() {
 #[test]
 fn unknown_path_secret_evicts() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = State::new(signer, 5, true, Clock, tracing::Subscriber::default());
+    let map = State::builder()
+        .with_signer(signer)
+        .with_capacity(5)
+        .with_evict_on_unknown_path_secret(true)
+        .with_clock(Clock)
+        .with_subscriber(tracing::Subscriber::default())
+        .build()
+        .unwrap();
 
     let entry = fake_entry(0);
     map.test_insert(entry.clone());
