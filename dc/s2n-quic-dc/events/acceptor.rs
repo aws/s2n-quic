@@ -13,6 +13,7 @@ struct AcceptorTcpStarted<'a> {
     local_address: SocketAddress<'a>,
 
     /// The backlog size
+    #[measure("backlog")]
     backlog: usize,
 }
 
