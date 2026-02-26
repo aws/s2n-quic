@@ -157,6 +157,7 @@ where
         cx: &mut W::Context,
         connection_context: W::ConnectionContext,
         publisher: &Pub,
+        queue_time: Timestamp,
         clock: &C,
     ) -> bool
     where
@@ -184,6 +185,7 @@ where
             connection_context,
             publisher,
             clock,
+            queue_time,
         );
 
         self.inner
@@ -242,16 +244,15 @@ where
     }
 
     #[inline]
-    fn poll_worker<Pub, C>(
+    fn poll_worker<Pub>(
         &mut self,
         idx: usize,
         cx: &mut W::Context,
         publisher: &Pub,
-        clock: &C,
+        clock: &impl Clock,
     ) -> ControlFlow<()>
     where
         Pub: EndpointPublisher,
-        C: Clock,
     {
         let mut cf = ControlFlow::Continue(());
 
@@ -299,10 +300,7 @@ where
     }
 
     #[inline]
-    fn next_worker<C>(&mut self, clock: &C) -> Option<usize>
-    where
-        C: Clock,
-    {
+    fn next_worker<C: Clock>(&mut self, clock: &C) -> Option<usize> {
         // if we have a free worker then use that
         if let Some(idx) = self.free.pop_front(&mut self.workers) {
             trace!(op = %"next_worker", free = idx);
@@ -389,6 +387,7 @@ pub(crate) trait Worker {
         connection_context: Self::ConnectionContext,
         publisher: &Pub,
         clock: &C,
+        queue_time: Timestamp,
     ) where
         Pub: EndpointPublisher,
         C: Clock;

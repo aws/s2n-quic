@@ -408,10 +408,14 @@ struct AcceptorStreamDequeued<'a> {
     /// The ID of the stream
     stream_id: u64,
 
-    /// The amount of time that the stream spent in the accept queue before
-    /// being dequeued
+    /// The amount of time that the stream spent in dcQUIC before being dequeued
     #[timer("sojourn_time")]
     sojourn_time: core::time::Duration,
+
+    /// The amount of time that the stream spent in the queue to the application before being
+    /// dequeued
+    #[timer("queue_sojourn_time")]
+    queue_sojourn_time: core::time::Duration,
 }
 
 enum AcceptorPacketDropReason {

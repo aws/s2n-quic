@@ -515,9 +515,11 @@ pub mod api {
         pub credential_id: &'a [u8],
         #[doc = " The ID of the stream"]
         pub stream_id: u64,
-        #[doc = " The amount of time that the stream spent in the accept queue before"]
-        #[doc = " being dequeued"]
+        #[doc = " The amount of time that the stream spent in dcQUIC before being dequeued"]
         pub sojourn_time: core::time::Duration,
+        #[doc = " The amount of time that the stream spent in the queue to the application before being"]
+        #[doc = " dequeued"]
+        pub queue_sojourn_time: core::time::Duration,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for AcceptorStreamDequeued<'a> {
@@ -527,6 +529,7 @@ pub mod api {
             fmt.field("credential_id", &"[HIDDEN]");
             fmt.field("stream_id", &self.stream_id);
             fmt.field("sojourn_time", &self.sojourn_time);
+            fmt.field("queue_sojourn_time", &self.queue_sojourn_time);
             fmt.finish()
         }
     }
@@ -2744,8 +2747,9 @@ pub mod tracing {
                 credential_id,
                 stream_id,
                 sojourn_time,
+                queue_sojourn_time,
             } = event;
-            tracing :: event ! (target : "acceptor_stream_dequeued" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , sojourn_time = tracing :: field :: debug (sojourn_time) });
+            tracing :: event ! (target : "acceptor_stream_dequeued" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , sojourn_time = tracing :: field :: debug (sojourn_time) , queue_sojourn_time = tracing :: field :: debug (queue_sojourn_time) });
         }
         #[inline]
         fn on_stream_write_flushed(
@@ -4195,9 +4199,11 @@ pub mod builder {
         pub credential_id: &'a [u8],
         #[doc = " The ID of the stream"]
         pub stream_id: u64,
-        #[doc = " The amount of time that the stream spent in the accept queue before"]
-        #[doc = " being dequeued"]
+        #[doc = " The amount of time that the stream spent in dcQUIC before being dequeued"]
         pub sojourn_time: core::time::Duration,
+        #[doc = " The amount of time that the stream spent in the queue to the application before being"]
+        #[doc = " dequeued"]
+        pub queue_sojourn_time: core::time::Duration,
     }
     impl<'a> IntoEvent<api::AcceptorStreamDequeued<'a>> for AcceptorStreamDequeued<'a> {
         #[inline]
@@ -4207,12 +4213,14 @@ pub mod builder {
                 credential_id,
                 stream_id,
                 sojourn_time,
+                queue_sojourn_time,
             } = self;
             api::AcceptorStreamDequeued {
                 remote_address: remote_address.into_event(),
                 credential_id: credential_id.into_event(),
                 stream_id: stream_id.into_event(),
                 sojourn_time: sojourn_time.into_event(),
+                queue_sojourn_time: queue_sojourn_time.into_event(),
             }
         }
     }

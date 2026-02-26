@@ -84,7 +84,10 @@ impl Pruner {
             loop {
                 // pop off any items that have expired
                 let res = channel.pop_back_if(priority, |stream| {
-                    stream.queue_time.has_elapsed(queue_time_threshold)
+                    stream
+                        .app_queue_time
+                        .expect("server streams only")
+                        .has_elapsed(queue_time_threshold)
                 });
 
                 match res {
