@@ -162,6 +162,10 @@ pub fn recv<Sock: AsRawFd, E: SocketEvents>(
 
     stats.recv().on_operation_result(&res, |count| *count as _);
 
+    if let Ok(count) = &res {
+        stats.on_recv_socket_packets(*count as usize);
+    }
+
     let _ = match res {
         Ok(count) => events.on_complete(count as _),
         Err(error) => events.on_error(error),

@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#[cfg(target_os = "linux")]
+use super::router;
 use super::{client, server};
 use crate::path::secret;
 use cfg_if::cfg_if;
@@ -14,6 +16,7 @@ use s2n_quic::{
     server::Name,
 };
 use s2n_quic_core::inet::SocketAddress;
+use s2n_quic_platform::syscall;
 use std::{
     hash::BuildHasher,
     io,
@@ -59,8 +62,30 @@ impl Server {
         subscriber: Subscriber,
         builder: server::Builder<Event>,
     ) -> Result<Self, Error> {
+        let socket_for_client_hello_packets = syscall::bind_udp(addr, false, false, false)?;
+
+        // Acquire the bound address with a port assigned
+        let bound_addr = socket_for_client_hello_packets
+            .local_addr()?
+            .as_socket()
+            .unwrap();
+
+        socket_for_client_hello_packets
+            .set_reuse_port(true)
+            .unwrap();
+
+        let socket_for_other_packets = syscall::bind_udp(bound_addr, false, true, false)?;
+
+        // Attach ROUTER to both sockets for packet filtering
+        #[cfg(target_os = "linux")]
+        {
+            router::ROUTER.attach(&socket_for_client_hello_packets)?;
+            router::ROUTER.attach(&socket_for_other_packets)?;
+        }
+
         let io = s2n_quic::provider::io::default::Builder::default()
-            .with_receive_address(addr)?
+            .with_rx_socket(socket_for_client_hello_packets.into())?
+            .with_rx_socket(socket_for_other_packets.into())?
             .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
             .with_initial_mtu(builder.mtu)?
             .with_max_mtu(builder.mtu)?
@@ -570,7 +595,7 @@ mod tests {
         tls::Provider,
     };
     use s2n_quic_core::time::StdClock;
-    use std::time::Instant;
+    use std::{sync::atomic::AtomicU64, time::Instant};
     use tokio_util::sync::DropGuard;
 
     /// A test limiter that closes all incoming connections immediately
@@ -762,6 +787,318 @@ mod tests {
                 .by_reason[HandshakeReason::Periodic as usize]
                 .load(Ordering::Relaxed),
             1
+        );
+    }
+
+    /// A combined test subscriber that captures:
+    /// - Per-socket rx packet counts via `PlatformRxSocketStats` (endpoint-level)
+    /// - Per-connection packet sent and non-initial packets received (connection-level)
+    #[derive(Clone, Default)]
+    struct TestStatsSubscriber {
+        /// Accumulated per-socket rx packet counts: [socket_0_count, socket_1_count]
+        socket_counts: Arc<[AtomicU64; 2]>,
+        /// Total packets sent across all connections
+        packets_sent: Arc<AtomicU64>,
+        /// Non-Initial packets received
+        non_initial_packets_received: Arc<AtomicU64>,
+    }
+
+    impl TestStatsSubscriber {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn socket_count(&self, index: usize) -> u64 {
+            self.socket_counts[index].load(Ordering::Relaxed)
+        }
+
+        fn sent(&self) -> u64 {
+            self.packets_sent.load(Ordering::Relaxed)
+        }
+
+        fn non_initial_received(&self) -> u64 {
+            self.non_initial_packets_received.load(Ordering::Relaxed)
+        }
+    }
+
+    impl s2n_quic_core::event::Subscriber for TestStatsSubscriber {
+        type ConnectionContext = TestStatsSubscriber;
+
+        fn create_connection_context(
+            &mut self,
+            _meta: &s2n_quic_core::event::api::ConnectionMeta,
+            _info: &s2n_quic_core::event::api::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+            self.clone()
+        }
+
+        fn on_platform_rx_socket_stats(
+            &mut self,
+            _meta: &s2n_quic_core::event::api::EndpointMeta,
+            event: &s2n_quic_core::event::api::PlatformRxSocketStats,
+        ) {
+            if let Some(counter) = self.socket_counts.get(event.id) {
+                counter.fetch_add(event.count as u64, Ordering::Relaxed);
+            }
+        }
+
+        fn on_packet_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &s2n_quic_core::event::api::ConnectionMeta,
+            _event: &s2n_quic_core::event::api::PacketSent,
+        ) {
+            context.packets_sent.fetch_add(1, Ordering::Relaxed);
+        }
+
+        fn on_packet_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &s2n_quic_core::event::api::ConnectionMeta,
+            event: &s2n_quic_core::event::api::PacketReceived,
+        ) {
+            if !matches!(
+                event.packet_header,
+                s2n_quic_core::event::api::PacketHeader::Initial { .. }
+            ) {
+                context
+                    .non_initial_packets_received
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
+
+    // Also implement the dc event subscriber trait so it can be used as the
+    // `subscriber` parameter in `Provider::setup`.
+    impl crate::event::Subscriber for TestStatsSubscriber {
+        type ConnectionContext = ();
+
+        fn create_connection_context(
+            &self,
+            _meta: &crate::event::api::ConnectionMeta,
+            _info: &crate::event::api::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+        }
+    }
+
+    /// Verifies that when a dcQUIC client connects to the server, the BPF router
+    /// directs exactly one packet (the Client Hello Initial) to socket 0, and all
+    /// remaining handshake packets to socket 1.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn client_hello_routed_test() {
+        init_tracing();
+
+        let tls = TestTlsProvider {};
+        let stats_subscriber = TestStatsSubscriber::new();
+
+        let server_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            stats_subscriber.clone(),
+        );
+
+        let server_builder = crate::psk::server::Builder::default();
+        let (server_addr_rx, _server_guard) = crate::psk::server::Provider::setup(
+            "127.0.0.1:0".parse().unwrap(),
+            server_map.clone(),
+            tls.clone(),
+            stats_subscriber.clone(),
+            server_builder,
+        );
+
+        let noop_subscriber = NoopSubscriber {};
+        let client_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            noop_subscriber.clone(),
+        );
+
+        let client = Client::bind::<
+            <TestTlsProvider as Provider>::Client,
+            NoopSubscriber,
+            s2n_quic::provider::event::default::Subscriber,
+        >(
+            "0.0.0.0:0".parse().unwrap(),
+            client_map,
+            tls.start_client().unwrap(),
+            noop_subscriber,
+            crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
+        )
+        .unwrap();
+
+        let server_addr = server_addr_rx.await.unwrap().unwrap();
+
+        client
+            .connect(server_addr, HandshakeReason::User, "localhost".into())
+            .await
+            .unwrap();
+
+        // Wait for 500 ms for the connection to finish
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let socket_0 = stats_subscriber.socket_count(0);
+        let socket_1 = stats_subscriber.socket_count(1);
+
+        // Socket 1 should receive exactly 1 packet: the Client Hello (Initial with DCID len=8)
+        assert_eq!(socket_1, 1);
+
+        // Socket 0 should receive the remaining handshake packets
+        assert!(socket_0 > 0);
+    }
+
+    /// Verifies that under a flood of fake client hello packets, a real dcQUIC client
+    /// can still complete a handshake successfully.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn dc_server_packet_filtering_load_test() {
+        init_tracing();
+
+        let tls = TestTlsProvider {};
+        let server_stats = TestStatsSubscriber::new();
+
+        let server_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            server_stats.clone(),
+        );
+
+        let server_builder = crate::psk::server::Builder::default();
+        let (server_addr_rx, _server_guard) = crate::psk::server::Provider::setup(
+            "127.0.0.1:0".parse().unwrap(),
+            server_map.clone(),
+            tls.clone(),
+            (
+                server_stats.clone(),
+                s2n_quic::provider::event::tracing::Subscriber::default(),
+            ),
+            server_builder,
+        );
+
+        let server_addr = server_addr_rx.await.unwrap().unwrap();
+
+        // Create the real client *before* starting the flood so its Client Hello
+        // is the first packet queued to socket 1.
+        let noop_subscriber = NoopSubscriber {};
+        let client_stats = TestStatsSubscriber::new();
+        let client_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            noop_subscriber.clone(),
+        );
+
+        let client = Client::bind::<
+            <TestTlsProvider as Provider>::Client,
+            (
+                TestStatsSubscriber,
+                s2n_quic::provider::event::tracing::Subscriber,
+            ),
+            s2n_quic::provider::event::default::Subscriber,
+        >(
+            "0.0.0.0:0".parse().unwrap(),
+            client_map,
+            tls.start_client().unwrap(),
+            (
+                client_stats.clone(),
+                s2n_quic::provider::event::tracing::Subscriber::default(),
+            ),
+            crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
+        )
+        .unwrap();
+
+        // Spawn the handshake so the Client Hello is sent immediately.
+        let handshake_handle = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .connect(server_addr, HandshakeReason::User, "localhost".into())
+                    .await
+            }
+        });
+
+        // Now start the flood — the real Client Hello is already in-flight.
+        let flood_cancel = tokio_util::sync::CancellationToken::new();
+        let flood_cancel_clone = flood_cancel.clone();
+        let flood_count = Arc::new(AtomicU64::new(0));
+        let flood_count_clone = flood_count.clone();
+
+        let flood_task = tokio::spawn(async move {
+            let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+
+            // The EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET is a client hello Initial packet with a DCID length of eight.
+            // Its header is c300000001088394c8f03e5157080000449e00000002.
+            let packet = s2n_quic_core::crypto::initial::EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET;
+
+            loop {
+                tokio::select! {
+                    _ = flood_cancel_clone.cancelled() => break,
+                    result = sender.send_to(&packet, server_addr) => {
+                        if result.is_ok() {
+                            flood_count_clone.fetch_add(1, Ordering::Relaxed);
+                        }
+                        // Yield to allow other tasks to run, but keep flooding fast
+                        tokio::task::yield_now().await;
+                    }
+                }
+            }
+        });
+
+        // Await the handshake result (the handshake continuation packets flow
+        // through socket 0, which is not affected by the flood on socket 1).
+        let handshake_result = handshake_handle.await.expect("handshake task panicked");
+
+        // Stop the flood and collect stats
+        flood_cancel.cancel();
+        let _ = flood_task.await;
+
+        // Wait briefly for events to propagate
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let total_flood_packets = flood_count.load(Ordering::Relaxed);
+        let socket_0_count = server_stats.socket_count(0);
+        let socket_1_count = server_stats.socket_count(1);
+
+        let client_packets_sent = client_stats.sent();
+        let server_non_initial_received = server_stats.non_initial_received();
+
+        tracing::info!(
+            "Flood packets sent: {}, Socket 0 (non-CH) rx: {}, Socket 1 (CH) rx: {}, \
+             Client packets sent: {}, Server non-initial packets received: {}",
+            total_flood_packets,
+            socket_0_count,
+            socket_1_count,
+            client_packets_sent,
+            server_non_initial_received,
+        );
+
+        // The handshake should complete successfully despite the flood
+        assert!(handshake_result.is_ok());
+
+        // The client must have sent at least one packet (the Client Hello Initial)
+        assert!(
+            client_packets_sent > 0,
+            "Client should have sent at least one packet, got 0"
+        );
+
+        // Socket 0 should have received non-client-hello packets from the real handshake,
+        // confirming the router correctly separated traffic
+        assert!(
+            socket_0_count > 0,
+            "Socket 0 should receive non-client-hello handshake packets, got 0"
+        );
+
+        // Socket 1 should have received packets (flood + real client's Initial)
+        assert!(
+            socket_1_count > 0,
+            "Socket 1 should receive client hello packets (flood + real), got 0"
         );
     }
 }

@@ -21,9 +21,25 @@ const ERROR_QUEUE_CAP: usize = 256;
 type Error = c_int;
 
 pub fn channel() -> (Sender, Receiver) {
-    let state = Arc::new(State::default());
+    channel_with_rx_socket_count(0)
+}
 
-    let sender = Sender(state.clone());
+pub fn channel_with_rx_socket_count(rx_socket_count: usize) -> (Sender, Receiver) {
+    let per_socket_rx = (0..rx_socket_count)
+        .map(|_| AtomicU64::new(0))
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+
+    let state = Arc::new(State {
+        send: Stats::default(),
+        recv: Stats::default(),
+        per_socket_rx,
+    });
+
+    let sender = Sender {
+        state: state.clone(),
+        socket_index: None,
+    };
 
     let recv = Receiver {
         state,
@@ -34,7 +50,10 @@ pub fn channel() -> (Sender, Receiver) {
 }
 
 #[derive(Clone)]
-pub struct Sender(Arc<State>);
+pub struct Sender {
+    state: Arc<State>,
+    socket_index: Option<usize>,
+}
 
 impl fmt::Debug for Sender {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -45,12 +64,35 @@ impl fmt::Debug for Sender {
 impl Sender {
     #[inline]
     pub fn send(&self) -> &Stats {
-        &self.0.send
+        &self.state.send
     }
 
     #[inline]
     pub fn recv(&self) -> &Stats {
-        &self.0.recv
+        &self.state.recv
+    }
+
+    /// Returns a new `Sender` with the given socket index set.
+    ///
+    /// When set, recv operations will also be tracked per-socket, enabling
+    /// `PlatformRxSocketStats` events to be emitted for each socket.
+    #[inline]
+    pub fn with_socket_index(mut self, index: usize) -> Self {
+        self.socket_index = Some(index);
+        self
+    }
+
+    /// Records that packets were received on this sender's socket.
+    ///
+    /// This should be called after a successful recv operation to track
+    /// per-socket packet counts.
+    #[inline]
+    pub fn on_recv_socket_packets(&self, count: usize) {
+        if let Some(index) = self.socket_index {
+            if let Some(counter) = self.state.per_socket_rx.get(index) {
+                counter.fetch_add(count as u64, Ordering::Relaxed);
+            }
+        }
     }
 }
 
@@ -84,6 +126,17 @@ impl event_loop::Stats for Receiver {
             },
             |publisher, metrics| publisher.on_platform_rx(metrics.into()),
         );
+
+        // Emit per-socket rx stats
+        for (id, counter) in self.state.per_socket_rx.iter().enumerate() {
+            let count = counter.swap(0, Ordering::Relaxed);
+            if count > 0 {
+                publisher.on_platform_rx_socket_stats(event::builder::PlatformRxSocketStats {
+                    id,
+                    count: count as usize,
+                });
+            }
+        }
     }
 }
 
@@ -91,6 +144,7 @@ impl event_loop::Stats for Receiver {
 struct State {
     send: Stats,
     recv: Stats,
+    per_socket_rx: Box<[AtomicU64]>,
 }
 
 pub struct Stats {

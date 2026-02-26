@@ -13,7 +13,7 @@ use crate::event::{
     },
 };
 use alloc::{boxed::Box, vec::Vec};
-static INFO: &[Info; 169usize] = &[
+static INFO: &[Info; 171usize] = &[
     info::Builder {
         id: 0usize,
         name: Str::new("application_protocol_information\0"),
@@ -1006,24 +1006,36 @@ static INFO: &[Info; 169usize] = &[
     .build(),
     info::Builder {
         id: 165usize,
-        name: Str::new("platform_event_loop_wakeup\0"),
+        name: Str::new("platform_rx_socket_stats\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 166usize,
-        name: Str::new("platform_event_loop_sleep\0"),
+        name: Str::new("platform_rx_socket_stats.packets.total\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 167usize,
+        name: Str::new("platform_event_loop_wakeup\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 168usize,
+        name: Str::new("platform_event_loop_sleep\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 169usize,
         name: Str::new("platform_event_loop_sleep.processing_duration\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 168usize,
+        id: 170usize,
         name: Str::new("platform_event_loop_started\0"),
         units: Units::None,
     }
@@ -1036,7 +1048,7 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 81usize]>,
+    counters: Box<[R::Counter; 83usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 3usize]>,
     #[allow(dead_code)]
@@ -1071,7 +1083,7 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(81usize);
+        let mut counters = Vec::with_capacity(83usize);
         let mut bool_counters = Vec::with_capacity(3usize);
         let mut nominal_counters = Vec::with_capacity(30usize);
         let mut nominal_counter_offsets = Vec::with_capacity(30usize);
@@ -1160,7 +1172,9 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[164usize]));
         counters.push(registry.register_counter(&INFO[165usize]));
         counters.push(registry.register_counter(&INFO[166usize]));
+        counters.push(registry.register_counter(&INFO[167usize]));
         counters.push(registry.register_counter(&INFO[168usize]));
+        counters.push(registry.register_counter(&INFO[170usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[24usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[34usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[98usize]));
@@ -1551,7 +1565,7 @@ impl<R: Registry> Subscriber<R> {
         timers.push(registry.register_timer(&INFO[116usize]));
         timers.push(registry.register_timer(&INFO[117usize]));
         timers.push(registry.register_timer(&INFO[121usize]));
-        timers.push(registry.register_timer(&INFO[167usize]));
+        timers.push(registry.register_timer(&INFO[169usize]));
         {
             #[allow(unused_imports)]
             use api::*;
@@ -1676,7 +1690,9 @@ impl<R: Registry> Subscriber<R> {
                 77usize => (&INFO[164usize], entry),
                 78usize => (&INFO[165usize], entry),
                 79usize => (&INFO[166usize], entry),
-                80usize => (&INFO[168usize], entry),
+                80usize => (&INFO[167usize], entry),
+                81usize => (&INFO[168usize], entry),
+                82usize => (&INFO[170usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -1998,7 +2014,7 @@ impl<R: Registry> Subscriber<R> {
                 11usize => (&INFO[116usize], entry),
                 12usize => (&INFO[117usize], entry),
                 13usize => (&INFO[121usize], entry),
-                14usize => (&INFO[167usize], entry),
+                14usize => (&INFO[169usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -3083,6 +3099,19 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         let _ = meta;
     }
     #[inline]
+    fn on_platform_rx_socket_stats(
+        &mut self,
+        meta: &api::EndpointMeta,
+        event: &api::PlatformRxSocketStats,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(165usize, 78usize, 1usize);
+        self.count(166usize, 79usize, event.count);
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
     fn on_platform_event_loop_wakeup(
         &mut self,
         meta: &api::EndpointMeta,
@@ -3090,7 +3119,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(165usize, 78usize, 1usize);
+        self.count(167usize, 80usize, 1usize);
         let _ = event;
         let _ = meta;
     }
@@ -3102,8 +3131,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(166usize, 79usize, 1usize);
-        self.time(167usize, 14usize, event.processing_duration);
+        self.count(168usize, 81usize, 1usize);
+        self.time(169usize, 14usize, event.processing_duration);
         let _ = event;
         let _ = meta;
     }
@@ -3115,7 +3144,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(168usize, 80usize, 1usize);
+        self.count(170usize, 82usize, 1usize);
         let _ = event;
         let _ = meta;
     }

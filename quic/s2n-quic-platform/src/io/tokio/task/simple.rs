@@ -109,6 +109,7 @@ impl rx::Socket<Message> for UdpSocket {
             stats.recv().on_operation(&res, |_len| 1);
             match res {
                 Poll::Ready(Ok(addr)) => {
+                    stats.on_recv_socket_packets(1);
                     unsafe {
                         let len = buf.filled().len();
                         entry.set_payload_len(len);

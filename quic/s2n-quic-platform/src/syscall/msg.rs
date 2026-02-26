@@ -168,6 +168,7 @@ pub fn recv<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: Socket
 
         let cf = match result {
             Ok(payload_len) => {
+                stats.on_recv_socket_packets(1);
                 // update the message based on the return size of the syscall
                 unsafe {
                     msg.set_payload_len(payload_len.min(u16::MAX as _).max(0) as _);
