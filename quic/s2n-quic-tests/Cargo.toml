@@ -14,7 +14,7 @@ publish = false
 bach = "0.1.0"
 bytes = { version = "1", default-features = false }
 futures = { version = "0.3", default-features = false, features = ["std"] }
-rand = "0.9"
+rand = "0.10"
 rand_chacha = "0.9"
 s2n-codec = { path = "../../common/s2n-codec" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["branch-tracing", "event-tracing", "probe-tracing", "testing"] }
