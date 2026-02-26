@@ -1,6 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Provides support code for TLS streams.
+//!
+//! TLS is integrated into dcQUIC streams via s2n-tls, with two primary phases:
+//!
+//! * Handshaking (`poll_negotiate`) is handled with raw socket operations, i.e., s2n-tls directly
+//!   reads/writes from the underlying socket.
+//! * Dataplane I/O (`poll_send` / `poll_recv`) are handled via s2n-quic-dc owned buffers. s2n-tls
+//!   operations read/write from in-memory buffers that are filled / emptied by s2n-quic-dc. This
+//!   means that sending/receiving doesn't need to setup async state in s2n-tls since all
+//!   operations finish synchronously. (EWOULDBLOCK is still needed when reading, but registering
+//!   read interest and refilling the buffer is handled by wrapping s2n-quic-dc code).
+//!
+//! A future revision is expected to replace the dataplane I/O with a non-s2n-tls backed
+//! implementation that will reduce intermediate buffering / copies that the current strategy
+//! forces. This will also eliminate the Mutex wrapping the s2n-tls connection.
+
 use s2n_quic_core::{
     buffer::{reader::Incremental, writer::Storage as _, Writer as _},
     time::Timestamp,
@@ -15,11 +31,6 @@ use std::{
 use tokio::net::TcpStream;
 
 use crate::stream::socket::{application::Single, Application};
-
-struct S2nTlsContext {
-    socket: Arc<Single<TcpStream>>,
-    waker: std::task::Waker,
-}
 
 pub struct S2nTlsConnection {
     socket: Arc<Single<TcpStream>>,
@@ -54,9 +65,9 @@ impl S2nTlsConnection {
         std::future::poll_fn(|cx| -> Poll<io::Result<()>> {
             let connection = &mut self.connection.get_mut().unwrap().0;
 
-            let context = S2nTlsContext {
-                socket: self.socket.clone(),
-                waker: cx.waker().clone(),
+            let context = NegotiateContext {
+                socket: &self.socket,
+                waker: cx.waker(),
             };
 
             let mut connection = CallbackResetGuard {
@@ -227,13 +238,25 @@ impl S2nTlsConnection {
     }
 }
 
-/// The function should return the number of bytes received, or set errno and return an error code < 0.
-unsafe extern "C" fn recv_direct_cb(ctx: *mut core::ffi::c_void, buf: *mut u8, len: u32) -> i32 {
-    // Note that we intentionally aren't assuming unique access, since we intend to call from
-    // multiple threads.
-    let ctx = ctx.cast::<S2nTlsContext>().as_ref().unwrap();
+/// `NegotiateContext` for poll_negotiate.
+///
+/// This is registered with s2n-tls during poll_negotiate for the callbacks to call, used with
+/// [`recv_direct_cb`] and [`send_direct_cb`].
+struct NegotiateContext<'a> {
+    socket: &'a Single<TcpStream>,
+    waker: &'a std::task::Waker,
+}
 
-    let mut cx = std::task::Context::from_waker(&ctx.waker);
+/// The function should return the number of bytes received, or set errno and return an error code < 0.
+#[allow(clippy::extra_unused_lifetimes)]
+unsafe extern "C" fn recv_direct_cb<'a>(
+    ctx: *mut core::ffi::c_void,
+    buf: *mut u8,
+    len: u32,
+) -> i32 {
+    let ctx = ctx.cast::<NegotiateContext<'a>>().as_ref::<'a>().unwrap();
+
+    let mut cx = std::task::Context::from_waker(ctx.waker);
 
     // FIXME: The output is not necessarily initialized, but we don't currently have an
     // uninit-compatible socket read API. In practice the buffer isn't read from but this is
@@ -264,12 +287,15 @@ unsafe extern "C" fn recv_direct_cb(ctx: *mut core::ffi::c_void, buf: *mut u8, l
 }
 
 /// The function should return the number of bytes sent or set errno and return an error code < 0.
-unsafe extern "C" fn send_direct_cb(ctx: *mut core::ffi::c_void, buf: *const u8, len: u32) -> i32 {
-    // Note that we intentionally aren't assuming unique access, since we intend to call from
-    // multiple threads.
-    let ctx = ctx.cast::<S2nTlsContext>().as_ref().unwrap();
+#[allow(clippy::extra_unused_lifetimes)]
+unsafe extern "C" fn send_direct_cb<'a>(
+    ctx: *mut core::ffi::c_void,
+    buf: *const u8,
+    len: u32,
+) -> i32 {
+    let ctx = ctx.cast::<NegotiateContext<'a>>().as_ref::<'a>().unwrap();
 
-    let mut cx = std::task::Context::from_waker(&ctx.waker);
+    let mut cx = std::task::Context::from_waker(ctx.waker);
 
     let buf = std::slice::from_raw_parts(buf, len as usize);
     let buf = std::io::IoSlice::new(buf);
@@ -297,11 +323,11 @@ unsafe extern "C" fn send_direct_cb(ctx: *mut core::ffi::c_void, buf: *const u8,
 }
 
 /// The function should return the number of bytes sent or set errno and return an error code < 0.
-unsafe extern "C" fn send_io_cb<M>(ctx: *mut core::ffi::c_void, buf: *const u8, len: u32) -> i32
+unsafe extern "C" fn send_io_cb<'a, M>(ctx: *mut core::ffi::c_void, buf: *const u8, len: u32) -> i32
 where
-    M: super::send::application::state::Message,
+    M: 'a + super::send::application::state::Message,
 {
-    let message = ctx.cast::<M>().as_mut().unwrap();
+    let message = ctx.cast::<M>().as_mut::<'a>().unwrap();
 
     let mut buf = std::slice::from_raw_parts(buf, len as usize);
 
@@ -335,12 +361,13 @@ where
 }
 
 /// The function should return the number of bytes received, or set errno and return an error code < 0.
-unsafe extern "C" fn recv_io_cb(ctx: *mut core::ffi::c_void, buf: *mut u8, len: u32) -> i32 {
+#[allow(clippy::extra_unused_lifetimes)]
+unsafe extern "C" fn recv_io_cb<'a>(ctx: *mut core::ffi::c_void, buf: *mut u8, len: u32) -> i32 {
     // Note that we intentionally aren't assuming unique access, since we intend to call from
     // multiple threads.
     let mut ctx = ctx
         .cast::<super::recv::shared::RecvBuffer>()
-        .as_mut()
+        .as_mut::<'a>()
         .unwrap();
 
     let crate::either::Either::A(a) = &mut ctx else {
