@@ -67,12 +67,13 @@ impl super::Worker for Worker {
         _linger: Option<Duration>,
         _connection_context: Self::ConnectionContext,
         _publisher: &Pub,
-        clock: &C,
+        _clock: &C,
+        queue_time: Timestamp,
     ) where
         Pub: EndpointPublisher,
         C: Clock,
     {
-        self.queue_time = clock.get_time();
+        self.queue_time = queue_time;
         self.state = State::Active;
         self.epoch += 1;
         self.poll_count = 0;
@@ -168,6 +169,7 @@ impl Harness {
             &mut (),
             (),
             &publisher(&self.subscriber, &self.clock),
+            self.clock.get_time(),
             &self.clock,
         )
     }
