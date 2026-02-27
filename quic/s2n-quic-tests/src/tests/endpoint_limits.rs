@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use ::rand::Rng;
 use s2n_quic::provider::{
     connection_id,
     endpoint_limits::{ConnectionAttempt, Limiter, Outcome},

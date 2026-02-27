@@ -6,7 +6,7 @@ use crate::{
     event::{self, EndpointPublisher as _},
     path::secret::map::store::Store,
 };
-use rand::Rng as _;
+use rand::RngExt as _;
 use s2n_quic_core::time;
 use std::{
     sync::{
