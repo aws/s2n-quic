@@ -20,6 +20,7 @@ testing = [
     "tracing-subscriber",
 ]
 tokio = ["tokio/io-util", "tokio/net", "tokio/rt-multi-thread", "tokio/time"]
+unstable-provider-io-turmoil = ["dep:turmoil"]
 
 [dependencies]
 ahash = "0.8"
@@ -59,6 +60,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [
     "env-filter",
 ], optional = true }
+turmoil = { version = ">=0.6", optional = true }
 zerocopy = { version = "0.8", features = ["derive"] }
 zeroize = "1"
 parking_lot = "0.12"

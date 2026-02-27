@@ -233,7 +233,7 @@ impl State {
         Sub: event::Subscriber,
     {
         if self.is_owned_socket {
-            let _ = ready!(socket.poll_peek_len(cx));
+            let _ = ready!(socket.poll_peek_ready(cx));
             return Poll::Ready(());
         }
         let Ok(Some(mut inner)) = self.worker_try_lock() else {

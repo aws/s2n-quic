@@ -1,0 +1,18 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "turmoil-examples"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+s2n-quic-dc = { path = "../..", features = ["unstable-provider-io-turmoil", "testing"] }
+s2n-quic-core = { path = "../../../../quic/s2n-quic-core" }
+tokio = { version = "1", features = ["time", "macros", "rt-multi-thread", "io-util"] }
+turmoil = "0.7"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

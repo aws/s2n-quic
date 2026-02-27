@@ -33,7 +33,7 @@ where
     }
 
     #[inline]
-    fn poll_peek_len(&self, _cx: &mut Context) -> Poll<io::Result<usize>> {
+    fn poll_peek_ready(&self, _cx: &mut Context) -> Poll<io::Result<()>> {
         unimplemented!()
     }
 

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{client::tokio::Client as ClientTokio, server::tokio::Server as ServerTokio};
+#[cfg(feature = "unstable-provider-io-turmoil")]
+use super::environment::turmoil;
 use crate::{
     either::Either,
     event::{self, testing},
@@ -60,7 +62,12 @@ pub(crate) const MAX_DATAGRAM_SIZE: u16 = if cfg!(target_os = "linux") {
     1450
 };
 
+#[cfg(not(feature = "unstable-provider-io-turmoil"))]
 type Env = Either<tokio::Environment<Subscriber>, bach::Environment<Subscriber>>;
+
+// tokio or testing where testing is either bach or turmoil
+#[cfg(feature = "unstable-provider-io-turmoil")]
+type Env = Either<tokio::Environment<Subscriber>, Either<bach::Environment<Subscriber>, turmoil::Environment<Subscriber>>>;
 
 pub fn bind_pair(
     protocol: Protocol,
@@ -438,18 +445,27 @@ impl Client {
         let server_addr = server.local_addr;
         let handshake = core::future::ready(self.handshake_with(server));
 
-        match (server.protocol, &self.env) {
+        match (&server.protocol, &self.env) {
             (Protocol::Tcp, Either::A(env)) => {
                 stream_client::tokio::connect_tcp(handshake, server_addr, env, None).await
             }
-            (Protocol::Tcp, Either::B(_env)) => {
-                todo!("tcp is not implemented in bach yet");
+            (Protocol::Tcp, Either::B(_)) => {
+                todo!("tcp is not implemented in simulation testing yet");
             }
             (Protocol::Udp, Either::A(env)) => {
                 stream_client::tokio::connect_udp(handshake, server_addr, env).await
             }
-            (Protocol::Udp, Either::B(env)) => {
-                stream_client::bach::connect_udp(handshake, server_addr, env).await
+            #[cfg(feature = "unstable-provider-io-turmoil")]
+            (Protocol::Udp, Either::B(Either::A(sim_env))) => {
+                stream_client::bach::connect_udp(handshake, server_addr, sim_env).await
+            }
+            #[cfg(feature = "unstable-provider-io-turmoil")]
+            (Protocol::Udp, Either::B(Either::B(sim_env))) => {
+                stream_client::turmoil::connect_udp(handshake, server_addr, sim_env).await
+            }
+            #[cfg(not(feature = "unstable-provider-io-turmoil"))]
+            (Protocol::Udp, Either::B(sim_env)) => {
+                stream_client::bach::connect_udp(handshake, server_addr, sim_env).await
             }
             (Protocol::Other(name), _) => {
                 todo!("protocol {name:?} not implemented")
@@ -550,6 +566,16 @@ pub mod client {
                 }};
             }
 
+            #[cfg(feature = "unstable-provider-io-turmoil")]
+            let env = if ::bach::is_active() {
+                Either::B(Either::A(build!(bach, true, "0.0.0.0:0")))
+            } else if ::turmoil::in_simulation() {
+                Either::B(Either::B(build!(turmoil, true, "0.0.0.0:0")))
+            } else {
+                Either::A(build!(tokio, pooled, "127.0.0.1:0"))
+            };
+
+            #[cfg(not(feature = "unstable-provider-io-turmoil"))]
             let env = if ::bach::is_active() {
                 Either::B(build!(bach, true, "0.0.0.0:0"))
             } else {
@@ -571,6 +597,8 @@ pub struct Server {
     drop_handle: drop_handle::Sender,
     #[allow(dead_code)]
     addr_reservation: Arc<server::AddrReservation>,
+    #[cfg(feature = "unstable-provider-io-turmoil")]
+    turmoil_env: Option<turmoil::Environment<Subscriber>>,
 }
 
 impl Default for Server {
@@ -607,6 +635,10 @@ impl Server {
     }
 
     pub async fn accept(&self) -> io::Result<(Stream, SocketAddr)> {
+        #[cfg(feature = "unstable-provider-io-turmoil")]
+        if let Some(env) = &self.turmoil_env {
+            env.ensure_ready().await?;
+        }
         stream_server::accept::accept(&self.receiver, &self.stats).await
     }
 
@@ -823,12 +855,35 @@ pub mod server {
             let (drop_handle_sender, drop_handle_receiver) = drop_handle::new();
             let (stats_sender, stats_worker, stats) = stats::channel();
 
-            let local_addr = if ::bach::is_active() {
-                assert_eq!(Protocol::Udp, protocol, "bach only supports UDP currently");
+            #[cfg(feature = "unstable-provider-io-turmoil")]
+            let in_simulation = ::bach::is_active() || ::turmoil::in_simulation();
+            #[cfg(not(feature = "unstable-provider-io-turmoil"))]
+            let in_simulation = ::bach::is_active();
 
-                let (env, _options) = build!(bach, true);
+            #[cfg(feature = "unstable-provider-io-turmoil")]
+            let mut turmoil_env_opt: Option<turmoil::Environment<Subscriber>> = None;
 
-                env.pool_addr().unwrap()
+            let local_addr = if in_simulation {
+                assert_eq!(Protocol::Udp, protocol, "simulation only supports UDP currently");
+
+                #[cfg(feature = "unstable-provider-io-turmoil")]
+                let pool_addr = if ::bach::is_active() {
+                    let (env, _options) = build!(bach, true);
+                    env.pool_addr().unwrap()
+                } else {
+                    let (env, _options) = build!(turmoil, true);
+                    let addr = env.pool_addr().unwrap();
+                    turmoil_env_opt = Some(env);
+                    addr
+                };
+
+                #[cfg(not(feature = "unstable-provider-io-turmoil"))]
+                let pool_addr = {
+                    let (env, _options) = build!(bach, true);
+                    env.pool_addr().unwrap()
+                };
+
+                pool_addr
             } else {
                 let (env, options) = build!(tokio, pooled);
 
@@ -881,7 +936,7 @@ pub mod server {
                     }
                 };
 
-                // TODO add support for bach
+                // TODO add support for simulation
                 {
                     let task = stats_worker.run(env.clock().clone());
                     let task = task.instrument(tracing::info_span!("stats"));
@@ -919,6 +974,8 @@ pub mod server {
                 drop_handle: drop_handle_sender,
                 subscriber: test_subscriber,
                 addr_reservation: Arc::new(AddrReservation { local_addr }),
+                #[cfg(feature = "unstable-provider-io-turmoil")]
+                turmoil_env: if in_simulation { turmoil_env_opt } else { None },
             }
         }
     }

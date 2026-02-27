@@ -34,14 +34,14 @@ where
     }
 
     #[inline]
-    fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>> {
+    fn poll_peek_ready(&self, cx: &mut Context) -> Poll<io::Result<()>> {
         loop {
             let mut socket = ready!(self.poll_read_ready(cx))?;
 
             let res = socket.try_io(udp::peek);
 
             match res {
-                Ok(Ok(len)) => return Ok(len).into(),
+                Ok(Ok(_len)) => return Ok(()).into(),
                 Ok(Err(ref e)) if e.kind() == io::ErrorKind::Interrupted => {
                     // try the operation again if we were interrupted
                     continue;

@@ -6,15 +6,12 @@ use crate::{
     path::secret,
     stream::{
         application::Stream,
-        environment::bach::{udp, Environment},
+        environment::turmoil::{udp, Environment},
     },
 };
 use std::{io, net::SocketAddr};
 
-/// Connects using the UDP transport layer
-///
-/// Callers should send data immediately after calling this to ensure minimal
-/// credential reordering.
+/// Connects using the UDP transport layer over turmoil's simulated network
 #[inline]
 pub async fn connect_udp<H, Sub>(
     handshake: H,

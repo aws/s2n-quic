@@ -31,11 +31,11 @@ impl<S: Socket> Socket for Tracing<S> {
     }
 
     #[inline(always)]
-    fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>> {
-        let result = self.0.poll_peek_len(cx);
+    fn poll_peek_ready(&self, cx: &mut Context) -> Poll<io::Result<()>> {
+        let result = self.0.poll_peek_ready(cx);
 
         trace!(
-            operation = %"poll_peek_len",
+            operation = %"poll_peek_ready",
             protocol = ?self.protocol(),
             local_addr = ?self.local_addr(),
             result = ?result,
