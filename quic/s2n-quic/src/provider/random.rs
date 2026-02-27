@@ -17,9 +17,9 @@ impl_provider_utils!();
 
 mod rand {
     use core::convert::Infallible;
-    use rand_chacha::{
+    use rand::{
         rand_core::{Rng, SeedableRng, TryRng},
-        ChaCha20Rng,
+        rngs::ChaCha20Rng,
     };
     use s2n_quic_core::random;
 
@@ -54,14 +54,16 @@ mod rand {
         }
 
         pub fn fill_bytes(&mut self, dest: &mut [u8]) {
-            Rng::fill_bytes(&mut self.inner, dest);
-            let len = dest.len() as u64;
-            self.bytes_until_reseed = self.bytes_until_reseed.saturating_sub(len);
+            // We should first check whether the rng needs to be reseeded before generate random bytes.
+            // This matches the behavior of rand: https://github.com/rust-random/rand/blob/0.9.1/src/rngs/reseeding.rs#L163.
             if self.bytes_until_reseed == 0 {
                 self.inner = ChaCha20Rng::try_from_rng(&mut self.entropy)
                     .expect("entropy source failed during reseed");
                 self.bytes_until_reseed = RESEED_THRESHOLD;
             }
+            Rng::fill_bytes(&mut self.inner, dest);
+            let len = dest.len() as u64;
+            self.bytes_until_reseed = self.bytes_until_reseed.saturating_sub(len);
         }
     }
 

@@ -1,8 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use rand::RngExt;
-use rand_core::SeedableRng;
+use rand::{
+    rand_core::{Rng, SeedableRng, TryRng},
+    rngs::ChaCha8Rng,
+    RngExt,
+};
 use s2n_quic::{
     client::Connect,
     provider::{
@@ -281,20 +284,20 @@ pub fn build_client(handle: &Handle, network_env: Model, with_blocklist: bool) -
 }
 
 pub struct Random {
-    inner: rand_chacha::ChaCha8Rng,
+    inner: ChaCha8Rng,
 }
 
 impl Random {
     pub fn with_seed(seed: u64) -> Self {
         Self {
-            inner: rand_chacha::ChaCha8Rng::seed_from_u64(seed),
+            inner: ChaCha8Rng::seed_from_u64(seed),
         }
     }
 }
 
 impl havoc::Random for Random {
     fn fill(&mut self, bytes: &mut [u8]) {
-        rand_core::Rng::fill_bytes(&mut self.inner, bytes);
+        Rng::fill_bytes(&mut self.inner, bytes);
     }
 
     fn gen_range(&mut self, range: std::ops::Range<u64>) -> u64 {
@@ -302,19 +305,19 @@ impl havoc::Random for Random {
     }
 }
 
-impl rand_core::TryRng for Random {
+impl TryRng for Random {
     type Error = core::convert::Infallible;
 
     fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
-        Ok(rand_core::Rng::next_u32(&mut self.inner))
+        Ok(Rng::next_u32(&mut self.inner))
     }
 
     fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
-        Ok(rand_core::Rng::next_u64(&mut self.inner))
+        Ok(Rng::next_u64(&mut self.inner))
     }
 
     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Self::Error> {
-        rand_core::Rng::fill_bytes(&mut self.inner, dest);
+        Rng::fill_bytes(&mut self.inner, dest);
         Ok(())
     }
 }
@@ -331,11 +334,11 @@ impl s2n_quic::provider::random::Provider for Random {
 
 impl s2n_quic::provider::random::Generator for Random {
     fn public_random_fill(&mut self, dest: &mut [u8]) {
-        rand_core::Rng::fill_bytes(self, dest);
+        Rng::fill_bytes(self, dest);
     }
 
     fn private_random_fill(&mut self, dest: &mut [u8]) {
-        rand_core::Rng::fill_bytes(self, dest);
+        Rng::fill_bytes(self, dest);
     }
 }
 

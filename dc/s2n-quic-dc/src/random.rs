@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use rand_chacha::rand_core::TryRng;
+use rand::rand_core::TryRng;
 
 pub use s2n_quic_core::random::*;
 
