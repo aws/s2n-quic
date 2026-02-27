@@ -13,1017 +13,1445 @@ use crate::event::{
     },
 };
 use alloc::{boxed::Box, vec::Vec};
+mod id {
+    pub const APPLICATION_PROTOCOL_INFORMATION: usize = 0usize;
+    pub const SERVER_NAME_INFORMATION: usize = APPLICATION_PROTOCOL_INFORMATION + 1;
+    pub const KEY_EXCHANGE_GROUP: usize = SERVER_NAME_INFORMATION + 1;
+    pub const PACKET_SKIPPED: usize = KEY_EXCHANGE_GROUP + 1;
+    pub const PACKET_SENT: usize = PACKET_SKIPPED + 1;
+    pub const PACKET_SENT__KIND: usize = PACKET_SENT + 1;
+    pub const PACKET_SENT__BYTES__TOTAL: usize = PACKET_SENT__KIND + 1;
+    pub const PACKET_SENT__BYTES: usize = PACKET_SENT__BYTES__TOTAL + 1;
+    pub const PACKET_RECEIVED: usize = PACKET_SENT__BYTES + 1;
+    pub const PACKET_RECEIVED__KIND: usize = PACKET_RECEIVED + 1;
+    pub const ACTIVE_PATH_UPDATED: usize = PACKET_RECEIVED__KIND + 1;
+    pub const PATH_CREATED: usize = ACTIVE_PATH_UPDATED + 1;
+    pub const FRAME_SENT: usize = PATH_CREATED + 1;
+    pub const FRAME_SENT__PACKET: usize = FRAME_SENT + 1;
+    pub const FRAME_SENT__FRAME: usize = FRAME_SENT__PACKET + 1;
+    pub const FRAME_RECEIVED: usize = FRAME_SENT__FRAME + 1;
+    pub const FRAME_RECEIVED__PACKET: usize = FRAME_RECEIVED + 1;
+    pub const FRAME_RECEIVED__FRAME: usize = FRAME_RECEIVED__PACKET + 1;
+    pub const CONNECTION_CLOSE_FRAME_RECEIVED: usize = FRAME_RECEIVED__FRAME + 1;
+    pub const CONNECTION_CLOSE_FRAME_RECEIVED__PACKET: usize = CONNECTION_CLOSE_FRAME_RECEIVED + 1;
+    pub const PACKET_LOST: usize = CONNECTION_CLOSE_FRAME_RECEIVED__PACKET + 1;
+    pub const PACKET_LOST__KIND: usize = PACKET_LOST + 1;
+    pub const PACKET_LOST__BYTES__TOTAL: usize = PACKET_LOST__KIND + 1;
+    pub const PACKET_LOST__BYTES: usize = PACKET_LOST__BYTES__TOTAL + 1;
+    pub const PACKET_LOST__IS_MTU_PROBE: usize = PACKET_LOST__BYTES + 1;
+    pub const RECOVERY_METRICS: usize = PACKET_LOST__IS_MTU_PROBE + 1;
+    pub const RECOVERY_METRICS__MIN_RTT: usize = RECOVERY_METRICS + 1;
+    pub const RECOVERY_METRICS__SMOOTHED_RTT: usize = RECOVERY_METRICS__MIN_RTT + 1;
+    pub const RECOVERY_METRICS__LATEST_RTT: usize = RECOVERY_METRICS__SMOOTHED_RTT + 1;
+    pub const RECOVERY_METRICS__RTT_VARIANCE: usize = RECOVERY_METRICS__LATEST_RTT + 1;
+    pub const RECOVERY_METRICS__MAX_ACK_DELAY: usize = RECOVERY_METRICS__RTT_VARIANCE + 1;
+    pub const RECOVERY_METRICS__PTO_COUNT: usize = RECOVERY_METRICS__MAX_ACK_DELAY + 1;
+    pub const RECOVERY_METRICS__CONGESTION_WINDOW: usize = RECOVERY_METRICS__PTO_COUNT + 1;
+    pub const RECOVERY_METRICS__BYTES_IN_FLIGHT: usize = RECOVERY_METRICS__CONGESTION_WINDOW + 1;
+    pub const RECOVERY_METRICS__CONGESTION_LIMITED: usize = RECOVERY_METRICS__BYTES_IN_FLIGHT + 1;
+    pub const CONGESTION: usize = RECOVERY_METRICS__CONGESTION_LIMITED + 1;
+    pub const CONGESTION__SOURCE: usize = CONGESTION + 1;
+    pub const RX_ACK_RANGE_DROPPED: usize = CONGESTION__SOURCE + 1;
+    pub const ACK_RANGE_RECEIVED: usize = RX_ACK_RANGE_DROPPED + 1;
+    pub const ACK_RANGE_RECEIVED__PACKET: usize = ACK_RANGE_RECEIVED + 1;
+    pub const ACK_RANGE_SENT: usize = ACK_RANGE_RECEIVED__PACKET + 1;
+    pub const ACK_RANGE_SENT__PACKET: usize = ACK_RANGE_SENT + 1;
+    pub const PACKET_DROPPED: usize = ACK_RANGE_SENT__PACKET + 1;
+    pub const PACKET_DROPPED__REASON: usize = PACKET_DROPPED + 1;
+    pub const KEY_UPDATE: usize = PACKET_DROPPED__REASON + 1;
+    pub const KEY_UPDATE__KEY_TYPE: usize = KEY_UPDATE + 1;
+    pub const KEY_UPDATE__CIPHER_SUITE: usize = KEY_UPDATE__KEY_TYPE + 1;
+    pub const KEY_SPACE_DISCARDED: usize = KEY_UPDATE__CIPHER_SUITE + 1;
+    pub const KEY_SPACE_DISCARDED__INITIAL__LATENCY: usize = KEY_SPACE_DISCARDED + 1;
+    pub const KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY: usize =
+        KEY_SPACE_DISCARDED__INITIAL__LATENCY + 1;
+    pub const KEY_SPACE_DISCARDED__ONE_RTT__LATENCY: usize =
+        KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY + 1;
+    pub const KEY_SPACE_DISCARDED__SPACE: usize = KEY_SPACE_DISCARDED__ONE_RTT__LATENCY + 1;
+    pub const CONNECTION_STARTED: usize = KEY_SPACE_DISCARDED__SPACE + 1;
+    pub const DUPLICATE_PACKET: usize = CONNECTION_STARTED + 1;
+    pub const DUPLICATE_PACKET__KIND: usize = DUPLICATE_PACKET + 1;
+    pub const DUPLICATE_PACKET__ERROR: usize = DUPLICATE_PACKET__KIND + 1;
+    pub const TRANSPORT_PARAMETERS_RECEIVED: usize = DUPLICATE_PACKET__ERROR + 1;
+    pub const TRANSPORT_PARAMETERS_RECEIVED__LATENCY: usize = TRANSPORT_PARAMETERS_RECEIVED + 1;
+    pub const DATAGRAM_SENT: usize = TRANSPORT_PARAMETERS_RECEIVED__LATENCY + 1;
+    pub const DATAGRAM_SENT__BYTES__TOTAL: usize = DATAGRAM_SENT + 1;
+    pub const DATAGRAM_SENT__BYTES: usize = DATAGRAM_SENT__BYTES__TOTAL + 1;
+    pub const DATAGRAM_SENT__GSO_OFFSET: usize = DATAGRAM_SENT__BYTES + 1;
+    pub const DATAGRAM_RECEIVED: usize = DATAGRAM_SENT__GSO_OFFSET + 1;
+    pub const DATAGRAM_RECEIVED__BYTES__TOTAL: usize = DATAGRAM_RECEIVED + 1;
+    pub const DATAGRAM_RECEIVED__BYTES: usize = DATAGRAM_RECEIVED__BYTES__TOTAL + 1;
+    pub const DATAGRAM_DROPPED: usize = DATAGRAM_RECEIVED__BYTES + 1;
+    pub const DATAGRAM_DROPPED__BYTES__TOTAL: usize = DATAGRAM_DROPPED + 1;
+    pub const DATAGRAM_DROPPED__BYTES: usize = DATAGRAM_DROPPED__BYTES__TOTAL + 1;
+    pub const DATAGRAM_DROPPED__REASON: usize = DATAGRAM_DROPPED__BYTES + 1;
+    pub const HANDSHAKE_REMOTE_ADDRESS_CHANGE_OBSERVED: usize = DATAGRAM_DROPPED__REASON + 1;
+    pub const CONNECTION_ID_UPDATED: usize = HANDSHAKE_REMOTE_ADDRESS_CHANGE_OBSERVED + 1;
+    pub const ECN_STATE_CHANGED: usize = CONNECTION_ID_UPDATED + 1;
+    pub const ECN_STATE_CHANGED__STATE: usize = ECN_STATE_CHANGED + 1;
+    pub const CONNECTION_MIGRATION_DENIED: usize = ECN_STATE_CHANGED__STATE + 1;
+    pub const CONNECTION_MIGRATION_DENIED__REASON: usize = CONNECTION_MIGRATION_DENIED + 1;
+    pub const HANDSHAKE_STATUS_UPDATED: usize = CONNECTION_MIGRATION_DENIED__REASON + 1;
+    pub const HANDSHAKE_STATUS_UPDATED__COMPLETE__LATENCY: usize = HANDSHAKE_STATUS_UPDATED + 1;
+    pub const HANDSHAKE_STATUS_UPDATED__CONFIRMED__LATENCY: usize =
+        HANDSHAKE_STATUS_UPDATED__COMPLETE__LATENCY + 1;
+    pub const HANDSHAKE_STATUS_UPDATED__HANDSHAKE_DONE_ACKED__LATENCY: usize =
+        HANDSHAKE_STATUS_UPDATED__CONFIRMED__LATENCY + 1;
+    pub const HANDSHAKE_STATUS_UPDATED__STATUS: usize =
+        HANDSHAKE_STATUS_UPDATED__HANDSHAKE_DONE_ACKED__LATENCY + 1;
+    pub const TLS_EXPORTER_READY: usize = HANDSHAKE_STATUS_UPDATED__STATUS + 1;
+    pub const TLS_HANDSHAKE_FAILED: usize = TLS_EXPORTER_READY + 1;
+    pub const PATH_CHALLENGE_UPDATED: usize = TLS_HANDSHAKE_FAILED + 1;
+    pub const PATH_CHALLENGE_UPDATED__STATUS: usize = PATH_CHALLENGE_UPDATED + 1;
+    pub const TLS_CLIENT_HELLO: usize = PATH_CHALLENGE_UPDATED__STATUS + 1;
+    pub const TLS_CLIENT_HELLO__LATENCY: usize = TLS_CLIENT_HELLO + 1;
+    pub const TLS_SERVER_HELLO: usize = TLS_CLIENT_HELLO__LATENCY + 1;
+    pub const TLS_SERVER_HELLO__LATENCY: usize = TLS_SERVER_HELLO + 1;
+    pub const RX_STREAM_PROGRESS: usize = TLS_SERVER_HELLO__LATENCY + 1;
+    pub const RX_STREAM_PROGRESS__BYTES__TOTAL: usize = RX_STREAM_PROGRESS + 1;
+    pub const RX_STREAM_PROGRESS__BYTES: usize = RX_STREAM_PROGRESS__BYTES__TOTAL + 1;
+    pub const TX_STREAM_PROGRESS: usize = RX_STREAM_PROGRESS__BYTES + 1;
+    pub const TX_STREAM_PROGRESS__BYTES__TOTAL: usize = TX_STREAM_PROGRESS + 1;
+    pub const TX_STREAM_PROGRESS__BYTES: usize = TX_STREAM_PROGRESS__BYTES__TOTAL + 1;
+    pub const KEEP_ALIVE_TIMER_EXPIRED: usize = TX_STREAM_PROGRESS__BYTES + 1;
+    pub const MTU_UPDATED: usize = KEEP_ALIVE_TIMER_EXPIRED + 1;
+    pub const MTU_UPDATED__MTU: usize = MTU_UPDATED + 1;
+    pub const MTU_UPDATED__CAUSE: usize = MTU_UPDATED__MTU + 1;
+    pub const MTU_UPDATED__SEARCH_COMPLETE: usize = MTU_UPDATED__CAUSE + 1;
+    pub const MTU_PROBING_COMPLETE_RECEIVED: usize = MTU_UPDATED__SEARCH_COMPLETE + 1;
+    pub const MTU_PROBING_COMPLETE_RECEIVED__PACKET: usize = MTU_PROBING_COMPLETE_RECEIVED + 1;
+    pub const MTU_PROBING_COMPLETE_RECEIVED__MTU: usize = MTU_PROBING_COMPLETE_RECEIVED__PACKET + 1;
+    pub const SLOW_START_EXITED: usize = MTU_PROBING_COMPLETE_RECEIVED__MTU + 1;
+    pub const SLOW_START_EXITED__CAUSE: usize = SLOW_START_EXITED + 1;
+    pub const SLOW_START_EXITED__LATENCY: usize = SLOW_START_EXITED__CAUSE + 1;
+    pub const SLOW_START_EXITED__CONGESTION_WINDOW: usize = SLOW_START_EXITED__LATENCY + 1;
+    pub const DELIVERY_RATE_SAMPLED: usize = SLOW_START_EXITED__CONGESTION_WINDOW + 1;
+    pub const PACING_RATE_UPDATED: usize = DELIVERY_RATE_SAMPLED + 1;
+    pub const PACING_RATE_UPDATED__BYTES_PER_SECOND: usize = PACING_RATE_UPDATED + 1;
+    pub const PACING_RATE_UPDATED__BURST_SIZE: usize = PACING_RATE_UPDATED__BYTES_PER_SECOND + 1;
+    pub const PACING_RATE_UPDATED__PACING_GAIN: usize = PACING_RATE_UPDATED__BURST_SIZE + 1;
+    pub const BBR_STATE_CHANGED: usize = PACING_RATE_UPDATED__PACING_GAIN + 1;
+    pub const BBR_STATE_CHANGED__STATE: usize = BBR_STATE_CHANGED + 1;
+    pub const DC_STATE_CHANGED: usize = BBR_STATE_CHANGED__STATE + 1;
+    pub const DC_STATE_CHANGED__VERSION_NEGOTIATED__LATENCY: usize = DC_STATE_CHANGED + 1;
+    pub const DC_STATE_CHANGED__NO_VERSION_NEGOTIATED__LATENCY: usize =
+        DC_STATE_CHANGED__VERSION_NEGOTIATED__LATENCY + 1;
+    pub const DC_STATE_CHANGED__PATH_SECRETS__LATENCY: usize =
+        DC_STATE_CHANGED__NO_VERSION_NEGOTIATED__LATENCY + 1;
+    pub const DC_STATE_CHANGED__COMPLETE__LATENCY: usize =
+        DC_STATE_CHANGED__PATH_SECRETS__LATENCY + 1;
+    pub const DC_STATE_CHANGED__STATE: usize = DC_STATE_CHANGED__COMPLETE__LATENCY + 1;
+    pub const DC_PATH_CREATED: usize = DC_STATE_CHANGED__STATE + 1;
+    pub const CONNECTION_CLOSED: usize = DC_PATH_CREATED + 1;
+    pub const CONNECTION_CLOSED__LATENCY: usize = CONNECTION_CLOSED + 1;
+    pub const CONNECTION_CLOSED__ERROR: usize = CONNECTION_CLOSED__LATENCY + 1;
+    pub const VERSION_INFORMATION: usize = CONNECTION_CLOSED__ERROR + 1;
+    pub const ENDPOINT_PACKET_SENT: usize = VERSION_INFORMATION + 1;
+    pub const ENDPOINT_PACKET_RECEIVED: usize = ENDPOINT_PACKET_SENT + 1;
+    pub const ENDPOINT_DATAGRAM_SENT: usize = ENDPOINT_PACKET_RECEIVED + 1;
+    pub const ENDPOINT_DATAGRAM_SENT__BYTES: usize = ENDPOINT_DATAGRAM_SENT + 1;
+    pub const ENDPOINT_DATAGRAM_SENT__BYTES__TOTAL: usize = ENDPOINT_DATAGRAM_SENT__BYTES + 1;
+    pub const ENDPOINT_DATAGRAM_SENT__GSO_OFFSET: usize = ENDPOINT_DATAGRAM_SENT__BYTES__TOTAL + 1;
+    pub const ENDPOINT_DATAGRAM_RECEIVED: usize = ENDPOINT_DATAGRAM_SENT__GSO_OFFSET + 1;
+    pub const ENDPOINT_DATAGRAM_RECEIVED__BYTES: usize = ENDPOINT_DATAGRAM_RECEIVED + 1;
+    pub const ENDPOINT_DATAGRAM_RECEIVED__BYTES__TOTAL: usize =
+        ENDPOINT_DATAGRAM_RECEIVED__BYTES + 1;
+    pub const ENDPOINT_DATAGRAM_DROPPED: usize = ENDPOINT_DATAGRAM_RECEIVED__BYTES__TOTAL + 1;
+    pub const ENDPOINT_DATAGRAM_DROPPED__BYTES: usize = ENDPOINT_DATAGRAM_DROPPED + 1;
+    pub const ENDPOINT_DATAGRAM_DROPPED__BYTES__TOTAL: usize = ENDPOINT_DATAGRAM_DROPPED__BYTES + 1;
+    pub const ENDPOINT_DATAGRAM_DROPPED__REASON: usize =
+        ENDPOINT_DATAGRAM_DROPPED__BYTES__TOTAL + 1;
+    pub const ENDPOINT_CONNECTION_ATTEMPT_FAILED: usize = ENDPOINT_DATAGRAM_DROPPED__REASON + 1;
+    pub const ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR: usize =
+        ENDPOINT_CONNECTION_ATTEMPT_FAILED + 1;
+    pub const ENDPOINT_CONNECTION_ATTEMPT_DEDUPLICATED: usize =
+        ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR + 1;
+    pub const PLATFORM_TX: usize = ENDPOINT_CONNECTION_ATTEMPT_DEDUPLICATED + 1;
+    pub const PLATFORM_TX__PACKETS__TOTAL: usize = PLATFORM_TX + 1;
+    pub const PLATFORM_TX__PACKETS: usize = PLATFORM_TX__PACKETS__TOTAL + 1;
+    pub const PLATFORM_TX__SYSCALLS__TOTAL: usize = PLATFORM_TX__PACKETS + 1;
+    pub const PLATFORM_TX__SYSCALLS: usize = PLATFORM_TX__SYSCALLS__TOTAL + 1;
+    pub const PLATFORM_TX__SYSCALLS__BLOCKED__TOTAL: usize = PLATFORM_TX__SYSCALLS + 1;
+    pub const PLATFORM_TX__SYSCALLS__BLOCKED: usize = PLATFORM_TX__SYSCALLS__BLOCKED__TOTAL + 1;
+    pub const PLATFORM_TX__ERRORS__TOTAL: usize = PLATFORM_TX__SYSCALLS__BLOCKED + 1;
+    pub const PLATFORM_TX__ERRORS: usize = PLATFORM_TX__ERRORS__TOTAL + 1;
+    pub const PLATFORM_TX__ERRORS__DROPPED__TOTAL: usize = PLATFORM_TX__ERRORS + 1;
+    pub const PLATFORM_TX__ERRORS__DROPPED: usize = PLATFORM_TX__ERRORS__DROPPED__TOTAL + 1;
+    pub const PLATFORM_TX_ERROR: usize = PLATFORM_TX__ERRORS__DROPPED + 1;
+    pub const PLATFORM_RX: usize = PLATFORM_TX_ERROR + 1;
+    pub const PLATFORM_RX__PACKETS__TOTAL: usize = PLATFORM_RX + 1;
+    pub const PLATFORM_RX__PACKETS: usize = PLATFORM_RX__PACKETS__TOTAL + 1;
+    pub const PLATFORM_RX__SYSCALLS__TOTAL: usize = PLATFORM_RX__PACKETS + 1;
+    pub const PLATFORM_RX__SYSCALLS: usize = PLATFORM_RX__SYSCALLS__TOTAL + 1;
+    pub const PLATFORM_RX__SYSCALLS__BLOCKED__TOTAL: usize = PLATFORM_RX__SYSCALLS + 1;
+    pub const PLATFORM_RX__SYSCALLS__BLOCKED: usize = PLATFORM_RX__SYSCALLS__BLOCKED__TOTAL + 1;
+    pub const PLATFORM_RX__ERRORS__TOTAL: usize = PLATFORM_RX__SYSCALLS__BLOCKED + 1;
+    pub const PLATFORM_RX__ERRORS: usize = PLATFORM_RX__ERRORS__TOTAL + 1;
+    pub const PLATFORM_RX__ERRORS__DROPPED__TOTAL: usize = PLATFORM_RX__ERRORS + 1;
+    pub const PLATFORM_RX__ERRORS__DROPPED: usize = PLATFORM_RX__ERRORS__DROPPED__TOTAL + 1;
+    pub const PLATFORM_RX_ERROR: usize = PLATFORM_RX__ERRORS__DROPPED + 1;
+    pub const PLATFORM_FEATURE_CONFIGURED: usize = PLATFORM_RX_ERROR + 1;
+    pub const PLATFORM_EVENT_LOOP_WAKEUP: usize = PLATFORM_FEATURE_CONFIGURED + 1;
+    pub const PLATFORM_EVENT_LOOP_SLEEP: usize = PLATFORM_EVENT_LOOP_WAKEUP + 1;
+    pub const PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION: usize = PLATFORM_EVENT_LOOP_SLEEP + 1;
+    pub const PLATFORM_EVENT_LOOP_STARTED: usize =
+        PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION + 1;
+    pub const COUNTERS_APPLICATION_PROTOCOL_INFORMATION: usize = 0usize;
+    pub const COUNTERS_SERVER_NAME_INFORMATION: usize =
+        COUNTERS_APPLICATION_PROTOCOL_INFORMATION + 1;
+    pub const COUNTERS_KEY_EXCHANGE_GROUP: usize = COUNTERS_SERVER_NAME_INFORMATION + 1;
+    pub const COUNTERS_PACKET_SKIPPED: usize = COUNTERS_KEY_EXCHANGE_GROUP + 1;
+    pub const COUNTERS_PACKET_SENT: usize = COUNTERS_PACKET_SKIPPED + 1;
+    pub const COUNTERS_PACKET_SENT__BYTES__TOTAL: usize = COUNTERS_PACKET_SENT + 1;
+    pub const COUNTERS_PACKET_RECEIVED: usize = COUNTERS_PACKET_SENT__BYTES__TOTAL + 1;
+    pub const COUNTERS_ACTIVE_PATH_UPDATED: usize = COUNTERS_PACKET_RECEIVED + 1;
+    pub const COUNTERS_PATH_CREATED: usize = COUNTERS_ACTIVE_PATH_UPDATED + 1;
+    pub const COUNTERS_FRAME_SENT: usize = COUNTERS_PATH_CREATED + 1;
+    pub const COUNTERS_FRAME_RECEIVED: usize = COUNTERS_FRAME_SENT + 1;
+    pub const COUNTERS_CONNECTION_CLOSE_FRAME_RECEIVED: usize = COUNTERS_FRAME_RECEIVED + 1;
+    pub const COUNTERS_PACKET_LOST: usize = COUNTERS_CONNECTION_CLOSE_FRAME_RECEIVED + 1;
+    pub const COUNTERS_PACKET_LOST__BYTES__TOTAL: usize = COUNTERS_PACKET_LOST + 1;
+    pub const COUNTERS_RECOVERY_METRICS: usize = COUNTERS_PACKET_LOST__BYTES__TOTAL + 1;
+    pub const COUNTERS_CONGESTION: usize = COUNTERS_RECOVERY_METRICS + 1;
+    pub const COUNTERS_RX_ACK_RANGE_DROPPED: usize = COUNTERS_CONGESTION + 1;
+    pub const COUNTERS_ACK_RANGE_RECEIVED: usize = COUNTERS_RX_ACK_RANGE_DROPPED + 1;
+    pub const COUNTERS_ACK_RANGE_SENT: usize = COUNTERS_ACK_RANGE_RECEIVED + 1;
+    pub const COUNTERS_PACKET_DROPPED: usize = COUNTERS_ACK_RANGE_SENT + 1;
+    pub const COUNTERS_KEY_UPDATE: usize = COUNTERS_PACKET_DROPPED + 1;
+    pub const COUNTERS_KEY_SPACE_DISCARDED: usize = COUNTERS_KEY_UPDATE + 1;
+    pub const COUNTERS_CONNECTION_STARTED: usize = COUNTERS_KEY_SPACE_DISCARDED + 1;
+    pub const COUNTERS_DUPLICATE_PACKET: usize = COUNTERS_CONNECTION_STARTED + 1;
+    pub const COUNTERS_TRANSPORT_PARAMETERS_RECEIVED: usize = COUNTERS_DUPLICATE_PACKET + 1;
+    pub const COUNTERS_DATAGRAM_SENT: usize = COUNTERS_TRANSPORT_PARAMETERS_RECEIVED + 1;
+    pub const COUNTERS_DATAGRAM_SENT__BYTES__TOTAL: usize = COUNTERS_DATAGRAM_SENT + 1;
+    pub const COUNTERS_DATAGRAM_RECEIVED: usize = COUNTERS_DATAGRAM_SENT__BYTES__TOTAL + 1;
+    pub const COUNTERS_DATAGRAM_RECEIVED__BYTES__TOTAL: usize = COUNTERS_DATAGRAM_RECEIVED + 1;
+    pub const COUNTERS_DATAGRAM_DROPPED: usize = COUNTERS_DATAGRAM_RECEIVED__BYTES__TOTAL + 1;
+    pub const COUNTERS_DATAGRAM_DROPPED__BYTES__TOTAL: usize = COUNTERS_DATAGRAM_DROPPED + 1;
+    pub const COUNTERS_HANDSHAKE_REMOTE_ADDRESS_CHANGE_OBSERVED: usize =
+        COUNTERS_DATAGRAM_DROPPED__BYTES__TOTAL + 1;
+    pub const COUNTERS_CONNECTION_ID_UPDATED: usize =
+        COUNTERS_HANDSHAKE_REMOTE_ADDRESS_CHANGE_OBSERVED + 1;
+    pub const COUNTERS_ECN_STATE_CHANGED: usize = COUNTERS_CONNECTION_ID_UPDATED + 1;
+    pub const COUNTERS_CONNECTION_MIGRATION_DENIED: usize = COUNTERS_ECN_STATE_CHANGED + 1;
+    pub const COUNTERS_HANDSHAKE_STATUS_UPDATED: usize = COUNTERS_CONNECTION_MIGRATION_DENIED + 1;
+    pub const COUNTERS_TLS_EXPORTER_READY: usize = COUNTERS_HANDSHAKE_STATUS_UPDATED + 1;
+    pub const COUNTERS_TLS_HANDSHAKE_FAILED: usize = COUNTERS_TLS_EXPORTER_READY + 1;
+    pub const COUNTERS_PATH_CHALLENGE_UPDATED: usize = COUNTERS_TLS_HANDSHAKE_FAILED + 1;
+    pub const COUNTERS_TLS_CLIENT_HELLO: usize = COUNTERS_PATH_CHALLENGE_UPDATED + 1;
+    pub const COUNTERS_TLS_SERVER_HELLO: usize = COUNTERS_TLS_CLIENT_HELLO + 1;
+    pub const COUNTERS_RX_STREAM_PROGRESS: usize = COUNTERS_TLS_SERVER_HELLO + 1;
+    pub const COUNTERS_RX_STREAM_PROGRESS__BYTES__TOTAL: usize = COUNTERS_RX_STREAM_PROGRESS + 1;
+    pub const COUNTERS_TX_STREAM_PROGRESS: usize = COUNTERS_RX_STREAM_PROGRESS__BYTES__TOTAL + 1;
+    pub const COUNTERS_TX_STREAM_PROGRESS__BYTES__TOTAL: usize = COUNTERS_TX_STREAM_PROGRESS + 1;
+    pub const COUNTERS_KEEP_ALIVE_TIMER_EXPIRED: usize =
+        COUNTERS_TX_STREAM_PROGRESS__BYTES__TOTAL + 1;
+    pub const COUNTERS_MTU_UPDATED: usize = COUNTERS_KEEP_ALIVE_TIMER_EXPIRED + 1;
+    pub const COUNTERS_MTU_PROBING_COMPLETE_RECEIVED: usize = COUNTERS_MTU_UPDATED + 1;
+    pub const COUNTERS_SLOW_START_EXITED: usize = COUNTERS_MTU_PROBING_COMPLETE_RECEIVED + 1;
+    pub const COUNTERS_DELIVERY_RATE_SAMPLED: usize = COUNTERS_SLOW_START_EXITED + 1;
+    pub const COUNTERS_PACING_RATE_UPDATED: usize = COUNTERS_DELIVERY_RATE_SAMPLED + 1;
+    pub const COUNTERS_BBR_STATE_CHANGED: usize = COUNTERS_PACING_RATE_UPDATED + 1;
+    pub const COUNTERS_DC_STATE_CHANGED: usize = COUNTERS_BBR_STATE_CHANGED + 1;
+    pub const COUNTERS_DC_PATH_CREATED: usize = COUNTERS_DC_STATE_CHANGED + 1;
+    pub const COUNTERS_CONNECTION_CLOSED: usize = COUNTERS_DC_PATH_CREATED + 1;
+    pub const COUNTERS_VERSION_INFORMATION: usize = COUNTERS_CONNECTION_CLOSED + 1;
+    pub const COUNTERS_ENDPOINT_PACKET_SENT: usize = COUNTERS_VERSION_INFORMATION + 1;
+    pub const COUNTERS_ENDPOINT_PACKET_RECEIVED: usize = COUNTERS_ENDPOINT_PACKET_SENT + 1;
+    pub const COUNTERS_ENDPOINT_DATAGRAM_SENT: usize = COUNTERS_ENDPOINT_PACKET_RECEIVED + 1;
+    pub const COUNTERS_ENDPOINT_DATAGRAM_RECEIVED: usize = COUNTERS_ENDPOINT_DATAGRAM_SENT + 1;
+    pub const COUNTERS_ENDPOINT_DATAGRAM_DROPPED: usize = COUNTERS_ENDPOINT_DATAGRAM_RECEIVED + 1;
+    pub const COUNTERS_ENDPOINT_CONNECTION_ATTEMPT_FAILED: usize =
+        COUNTERS_ENDPOINT_DATAGRAM_DROPPED + 1;
+    pub const COUNTERS_ENDPOINT_CONNECTION_ATTEMPT_DEDUPLICATED: usize =
+        COUNTERS_ENDPOINT_CONNECTION_ATTEMPT_FAILED + 1;
+    pub const COUNTERS_PLATFORM_TX: usize = COUNTERS_ENDPOINT_CONNECTION_ATTEMPT_DEDUPLICATED + 1;
+    pub const COUNTERS_PLATFORM_TX__PACKETS__TOTAL: usize = COUNTERS_PLATFORM_TX + 1;
+    pub const COUNTERS_PLATFORM_TX__SYSCALLS__TOTAL: usize =
+        COUNTERS_PLATFORM_TX__PACKETS__TOTAL + 1;
+    pub const COUNTERS_PLATFORM_TX__SYSCALLS__BLOCKED__TOTAL: usize =
+        COUNTERS_PLATFORM_TX__SYSCALLS__TOTAL + 1;
+    pub const COUNTERS_PLATFORM_TX__ERRORS__TOTAL: usize =
+        COUNTERS_PLATFORM_TX__SYSCALLS__BLOCKED__TOTAL + 1;
+    pub const COUNTERS_PLATFORM_TX__ERRORS__DROPPED__TOTAL: usize =
+        COUNTERS_PLATFORM_TX__ERRORS__TOTAL + 1;
+    pub const COUNTERS_PLATFORM_TX_ERROR: usize = COUNTERS_PLATFORM_TX__ERRORS__DROPPED__TOTAL + 1;
+    pub const COUNTERS_PLATFORM_RX: usize = COUNTERS_PLATFORM_TX_ERROR + 1;
+    pub const COUNTERS_PLATFORM_RX__PACKETS__TOTAL: usize = COUNTERS_PLATFORM_RX + 1;
+    pub const COUNTERS_PLATFORM_RX__SYSCALLS__TOTAL: usize =
+        COUNTERS_PLATFORM_RX__PACKETS__TOTAL + 1;
+    pub const COUNTERS_PLATFORM_RX__SYSCALLS__BLOCKED__TOTAL: usize =
+        COUNTERS_PLATFORM_RX__SYSCALLS__TOTAL + 1;
+    pub const COUNTERS_PLATFORM_RX__ERRORS__TOTAL: usize =
+        COUNTERS_PLATFORM_RX__SYSCALLS__BLOCKED__TOTAL + 1;
+    pub const COUNTERS_PLATFORM_RX__ERRORS__DROPPED__TOTAL: usize =
+        COUNTERS_PLATFORM_RX__ERRORS__TOTAL + 1;
+    pub const COUNTERS_PLATFORM_RX_ERROR: usize = COUNTERS_PLATFORM_RX__ERRORS__DROPPED__TOTAL + 1;
+    pub const COUNTERS_PLATFORM_FEATURE_CONFIGURED: usize = COUNTERS_PLATFORM_RX_ERROR + 1;
+    pub const COUNTERS_PLATFORM_EVENT_LOOP_WAKEUP: usize = COUNTERS_PLATFORM_FEATURE_CONFIGURED + 1;
+    pub const COUNTERS_PLATFORM_EVENT_LOOP_SLEEP: usize = COUNTERS_PLATFORM_EVENT_LOOP_WAKEUP + 1;
+    pub const COUNTERS_PLATFORM_EVENT_LOOP_STARTED: usize = COUNTERS_PLATFORM_EVENT_LOOP_SLEEP + 1;
+    pub const BOOL_COUNTERS_PACKET_LOST__IS_MTU_PROBE: usize = 0usize;
+    pub const BOOL_COUNTERS_RECOVERY_METRICS__CONGESTION_LIMITED: usize =
+        BOOL_COUNTERS_PACKET_LOST__IS_MTU_PROBE + 1;
+    pub const BOOL_COUNTERS_MTU_UPDATED__SEARCH_COMPLETE: usize =
+        BOOL_COUNTERS_RECOVERY_METRICS__CONGESTION_LIMITED + 1;
+    pub const NOMINAL_COUNTERS_PACKET_SENT__KIND: usize = 0usize;
+    pub const NOMINAL_COUNTERS_PACKET_RECEIVED__KIND: usize =
+        NOMINAL_COUNTERS_PACKET_SENT__KIND + 1;
+    pub const NOMINAL_COUNTERS_FRAME_SENT__PACKET: usize =
+        NOMINAL_COUNTERS_PACKET_RECEIVED__KIND + 1;
+    pub const NOMINAL_COUNTERS_FRAME_SENT__FRAME: usize = NOMINAL_COUNTERS_FRAME_SENT__PACKET + 1;
+    pub const NOMINAL_COUNTERS_FRAME_RECEIVED__PACKET: usize =
+        NOMINAL_COUNTERS_FRAME_SENT__FRAME + 1;
+    pub const NOMINAL_COUNTERS_FRAME_RECEIVED__FRAME: usize =
+        NOMINAL_COUNTERS_FRAME_RECEIVED__PACKET + 1;
+    pub const NOMINAL_COUNTERS_CONNECTION_CLOSE_FRAME_RECEIVED__PACKET: usize =
+        NOMINAL_COUNTERS_FRAME_RECEIVED__FRAME + 1;
+    pub const NOMINAL_COUNTERS_PACKET_LOST__KIND: usize =
+        NOMINAL_COUNTERS_CONNECTION_CLOSE_FRAME_RECEIVED__PACKET + 1;
+    pub const NOMINAL_COUNTERS_CONGESTION__SOURCE: usize = NOMINAL_COUNTERS_PACKET_LOST__KIND + 1;
+    pub const NOMINAL_COUNTERS_ACK_RANGE_RECEIVED__PACKET: usize =
+        NOMINAL_COUNTERS_CONGESTION__SOURCE + 1;
+    pub const NOMINAL_COUNTERS_ACK_RANGE_SENT__PACKET: usize =
+        NOMINAL_COUNTERS_ACK_RANGE_RECEIVED__PACKET + 1;
+    pub const NOMINAL_COUNTERS_PACKET_DROPPED__REASON: usize =
+        NOMINAL_COUNTERS_ACK_RANGE_SENT__PACKET + 1;
+    pub const NOMINAL_COUNTERS_KEY_UPDATE__KEY_TYPE: usize =
+        NOMINAL_COUNTERS_PACKET_DROPPED__REASON + 1;
+    pub const NOMINAL_COUNTERS_KEY_UPDATE__CIPHER_SUITE: usize =
+        NOMINAL_COUNTERS_KEY_UPDATE__KEY_TYPE + 1;
+    pub const NOMINAL_COUNTERS_KEY_SPACE_DISCARDED__SPACE: usize =
+        NOMINAL_COUNTERS_KEY_UPDATE__CIPHER_SUITE + 1;
+    pub const NOMINAL_COUNTERS_DUPLICATE_PACKET__KIND: usize =
+        NOMINAL_COUNTERS_KEY_SPACE_DISCARDED__SPACE + 1;
+    pub const NOMINAL_COUNTERS_DUPLICATE_PACKET__ERROR: usize =
+        NOMINAL_COUNTERS_DUPLICATE_PACKET__KIND + 1;
+    pub const NOMINAL_COUNTERS_DATAGRAM_DROPPED__REASON: usize =
+        NOMINAL_COUNTERS_DUPLICATE_PACKET__ERROR + 1;
+    pub const NOMINAL_COUNTERS_ECN_STATE_CHANGED__STATE: usize =
+        NOMINAL_COUNTERS_DATAGRAM_DROPPED__REASON + 1;
+    pub const NOMINAL_COUNTERS_CONNECTION_MIGRATION_DENIED__REASON: usize =
+        NOMINAL_COUNTERS_ECN_STATE_CHANGED__STATE + 1;
+    pub const NOMINAL_COUNTERS_HANDSHAKE_STATUS_UPDATED__STATUS: usize =
+        NOMINAL_COUNTERS_CONNECTION_MIGRATION_DENIED__REASON + 1;
+    pub const NOMINAL_COUNTERS_PATH_CHALLENGE_UPDATED__STATUS: usize =
+        NOMINAL_COUNTERS_HANDSHAKE_STATUS_UPDATED__STATUS + 1;
+    pub const NOMINAL_COUNTERS_MTU_UPDATED__CAUSE: usize =
+        NOMINAL_COUNTERS_PATH_CHALLENGE_UPDATED__STATUS + 1;
+    pub const NOMINAL_COUNTERS_MTU_PROBING_COMPLETE_RECEIVED__PACKET: usize =
+        NOMINAL_COUNTERS_MTU_UPDATED__CAUSE + 1;
+    pub const NOMINAL_COUNTERS_SLOW_START_EXITED__CAUSE: usize =
+        NOMINAL_COUNTERS_MTU_PROBING_COMPLETE_RECEIVED__PACKET + 1;
+    pub const NOMINAL_COUNTERS_BBR_STATE_CHANGED__STATE: usize =
+        NOMINAL_COUNTERS_SLOW_START_EXITED__CAUSE + 1;
+    pub const NOMINAL_COUNTERS_DC_STATE_CHANGED__STATE: usize =
+        NOMINAL_COUNTERS_BBR_STATE_CHANGED__STATE + 1;
+    pub const NOMINAL_COUNTERS_CONNECTION_CLOSED__ERROR: usize =
+        NOMINAL_COUNTERS_DC_STATE_CHANGED__STATE + 1;
+    pub const NOMINAL_COUNTERS_ENDPOINT_DATAGRAM_DROPPED__REASON: usize =
+        NOMINAL_COUNTERS_CONNECTION_CLOSED__ERROR + 1;
+    pub const NOMINAL_COUNTERS_ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR: usize =
+        NOMINAL_COUNTERS_ENDPOINT_DATAGRAM_DROPPED__REASON + 1;
+    pub const MEASURES_PACKET_SENT__BYTES: usize = 0usize;
+    pub const MEASURES_PACKET_LOST__BYTES: usize = MEASURES_PACKET_SENT__BYTES + 1;
+    pub const MEASURES_RECOVERY_METRICS__MIN_RTT: usize = MEASURES_PACKET_LOST__BYTES + 1;
+    pub const MEASURES_RECOVERY_METRICS__SMOOTHED_RTT: usize =
+        MEASURES_RECOVERY_METRICS__MIN_RTT + 1;
+    pub const MEASURES_RECOVERY_METRICS__LATEST_RTT: usize =
+        MEASURES_RECOVERY_METRICS__SMOOTHED_RTT + 1;
+    pub const MEASURES_RECOVERY_METRICS__RTT_VARIANCE: usize =
+        MEASURES_RECOVERY_METRICS__LATEST_RTT + 1;
+    pub const MEASURES_RECOVERY_METRICS__MAX_ACK_DELAY: usize =
+        MEASURES_RECOVERY_METRICS__RTT_VARIANCE + 1;
+    pub const MEASURES_RECOVERY_METRICS__PTO_COUNT: usize =
+        MEASURES_RECOVERY_METRICS__MAX_ACK_DELAY + 1;
+    pub const MEASURES_RECOVERY_METRICS__CONGESTION_WINDOW: usize =
+        MEASURES_RECOVERY_METRICS__PTO_COUNT + 1;
+    pub const MEASURES_RECOVERY_METRICS__BYTES_IN_FLIGHT: usize =
+        MEASURES_RECOVERY_METRICS__CONGESTION_WINDOW + 1;
+    pub const MEASURES_DATAGRAM_SENT__BYTES: usize = MEASURES_RECOVERY_METRICS__BYTES_IN_FLIGHT + 1;
+    pub const MEASURES_DATAGRAM_SENT__GSO_OFFSET: usize = MEASURES_DATAGRAM_SENT__BYTES + 1;
+    pub const MEASURES_DATAGRAM_RECEIVED__BYTES: usize = MEASURES_DATAGRAM_SENT__GSO_OFFSET + 1;
+    pub const MEASURES_DATAGRAM_DROPPED__BYTES: usize = MEASURES_DATAGRAM_RECEIVED__BYTES + 1;
+    pub const MEASURES_RX_STREAM_PROGRESS__BYTES: usize = MEASURES_DATAGRAM_DROPPED__BYTES + 1;
+    pub const MEASURES_TX_STREAM_PROGRESS__BYTES: usize = MEASURES_RX_STREAM_PROGRESS__BYTES + 1;
+    pub const MEASURES_MTU_UPDATED__MTU: usize = MEASURES_TX_STREAM_PROGRESS__BYTES + 1;
+    pub const MEASURES_MTU_PROBING_COMPLETE_RECEIVED__MTU: usize = MEASURES_MTU_UPDATED__MTU + 1;
+    pub const MEASURES_SLOW_START_EXITED__CONGESTION_WINDOW: usize =
+        MEASURES_MTU_PROBING_COMPLETE_RECEIVED__MTU + 1;
+    pub const MEASURES_PACING_RATE_UPDATED__BYTES_PER_SECOND: usize =
+        MEASURES_SLOW_START_EXITED__CONGESTION_WINDOW + 1;
+    pub const MEASURES_PACING_RATE_UPDATED__BURST_SIZE: usize =
+        MEASURES_PACING_RATE_UPDATED__BYTES_PER_SECOND + 1;
+    pub const MEASURES_PACING_RATE_UPDATED__PACING_GAIN: usize =
+        MEASURES_PACING_RATE_UPDATED__BURST_SIZE + 1;
+    pub const MEASURES_ENDPOINT_DATAGRAM_SENT__BYTES: usize =
+        MEASURES_PACING_RATE_UPDATED__PACING_GAIN + 1;
+    pub const MEASURES_ENDPOINT_DATAGRAM_SENT__BYTES__TOTAL: usize =
+        MEASURES_ENDPOINT_DATAGRAM_SENT__BYTES + 1;
+    pub const MEASURES_ENDPOINT_DATAGRAM_SENT__GSO_OFFSET: usize =
+        MEASURES_ENDPOINT_DATAGRAM_SENT__BYTES__TOTAL + 1;
+    pub const MEASURES_ENDPOINT_DATAGRAM_RECEIVED__BYTES: usize =
+        MEASURES_ENDPOINT_DATAGRAM_SENT__GSO_OFFSET + 1;
+    pub const MEASURES_ENDPOINT_DATAGRAM_RECEIVED__BYTES__TOTAL: usize =
+        MEASURES_ENDPOINT_DATAGRAM_RECEIVED__BYTES + 1;
+    pub const MEASURES_ENDPOINT_DATAGRAM_DROPPED__BYTES: usize =
+        MEASURES_ENDPOINT_DATAGRAM_RECEIVED__BYTES__TOTAL + 1;
+    pub const MEASURES_ENDPOINT_DATAGRAM_DROPPED__BYTES__TOTAL: usize =
+        MEASURES_ENDPOINT_DATAGRAM_DROPPED__BYTES + 1;
+    pub const MEASURES_PLATFORM_TX__PACKETS: usize =
+        MEASURES_ENDPOINT_DATAGRAM_DROPPED__BYTES__TOTAL + 1;
+    pub const MEASURES_PLATFORM_TX__SYSCALLS: usize = MEASURES_PLATFORM_TX__PACKETS + 1;
+    pub const MEASURES_PLATFORM_TX__SYSCALLS__BLOCKED: usize = MEASURES_PLATFORM_TX__SYSCALLS + 1;
+    pub const MEASURES_PLATFORM_TX__ERRORS: usize = MEASURES_PLATFORM_TX__SYSCALLS__BLOCKED + 1;
+    pub const MEASURES_PLATFORM_TX__ERRORS__DROPPED: usize = MEASURES_PLATFORM_TX__ERRORS + 1;
+    pub const MEASURES_PLATFORM_RX__PACKETS: usize = MEASURES_PLATFORM_TX__ERRORS__DROPPED + 1;
+    pub const MEASURES_PLATFORM_RX__SYSCALLS: usize = MEASURES_PLATFORM_RX__PACKETS + 1;
+    pub const MEASURES_PLATFORM_RX__SYSCALLS__BLOCKED: usize = MEASURES_PLATFORM_RX__SYSCALLS + 1;
+    pub const MEASURES_PLATFORM_RX__ERRORS: usize = MEASURES_PLATFORM_RX__SYSCALLS__BLOCKED + 1;
+    pub const MEASURES_PLATFORM_RX__ERRORS__DROPPED: usize = MEASURES_PLATFORM_RX__ERRORS + 1;
+    pub const TIMERS_KEY_SPACE_DISCARDED__INITIAL__LATENCY: usize = 0usize;
+    pub const TIMERS_KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY: usize =
+        TIMERS_KEY_SPACE_DISCARDED__INITIAL__LATENCY + 1;
+    pub const TIMERS_KEY_SPACE_DISCARDED__ONE_RTT__LATENCY: usize =
+        TIMERS_KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY + 1;
+    pub const TIMERS_TRANSPORT_PARAMETERS_RECEIVED__LATENCY: usize =
+        TIMERS_KEY_SPACE_DISCARDED__ONE_RTT__LATENCY + 1;
+    pub const TIMERS_HANDSHAKE_STATUS_UPDATED__COMPLETE__LATENCY: usize =
+        TIMERS_TRANSPORT_PARAMETERS_RECEIVED__LATENCY + 1;
+    pub const TIMERS_HANDSHAKE_STATUS_UPDATED__CONFIRMED__LATENCY: usize =
+        TIMERS_HANDSHAKE_STATUS_UPDATED__COMPLETE__LATENCY + 1;
+    pub const TIMERS_HANDSHAKE_STATUS_UPDATED__HANDSHAKE_DONE_ACKED__LATENCY: usize =
+        TIMERS_HANDSHAKE_STATUS_UPDATED__CONFIRMED__LATENCY + 1;
+    pub const TIMERS_TLS_CLIENT_HELLO__LATENCY: usize =
+        TIMERS_HANDSHAKE_STATUS_UPDATED__HANDSHAKE_DONE_ACKED__LATENCY + 1;
+    pub const TIMERS_TLS_SERVER_HELLO__LATENCY: usize = TIMERS_TLS_CLIENT_HELLO__LATENCY + 1;
+    pub const TIMERS_DC_STATE_CHANGED__VERSION_NEGOTIATED__LATENCY: usize =
+        TIMERS_TLS_SERVER_HELLO__LATENCY + 1;
+    pub const TIMERS_DC_STATE_CHANGED__NO_VERSION_NEGOTIATED__LATENCY: usize =
+        TIMERS_DC_STATE_CHANGED__VERSION_NEGOTIATED__LATENCY + 1;
+    pub const TIMERS_DC_STATE_CHANGED__PATH_SECRETS__LATENCY: usize =
+        TIMERS_DC_STATE_CHANGED__NO_VERSION_NEGOTIATED__LATENCY + 1;
+    pub const TIMERS_DC_STATE_CHANGED__COMPLETE__LATENCY: usize =
+        TIMERS_DC_STATE_CHANGED__PATH_SECRETS__LATENCY + 1;
+    pub const TIMERS_CONNECTION_CLOSED__LATENCY: usize =
+        TIMERS_DC_STATE_CHANGED__COMPLETE__LATENCY + 1;
+    pub const TIMERS_PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION: usize =
+        TIMERS_CONNECTION_CLOSED__LATENCY + 1;
+    pub const NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY: usize = 0usize;
+}
 static INFO: &[Info; 169usize] = &[
     info::Builder {
-        id: 0usize,
+        id: id::APPLICATION_PROTOCOL_INFORMATION,
         name: Str::new("application_protocol_information\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 1usize,
+        id: id::SERVER_NAME_INFORMATION,
         name: Str::new("server_name_information\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 2usize,
+        id: id::KEY_EXCHANGE_GROUP,
         name: Str::new("key_exchange_group\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 3usize,
+        id: id::PACKET_SKIPPED,
         name: Str::new("packet_skipped\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 4usize,
+        id: id::PACKET_SENT,
         name: Str::new("packet_sent\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 5usize,
+        id: id::PACKET_SENT__KIND,
         name: Str::new("packet_sent.kind\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 6usize,
+        id: id::PACKET_SENT__BYTES__TOTAL,
         name: Str::new("packet_sent.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 7usize,
+        id: id::PACKET_SENT__BYTES,
         name: Str::new("packet_sent.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 8usize,
+        id: id::PACKET_RECEIVED,
         name: Str::new("packet_received\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 9usize,
+        id: id::PACKET_RECEIVED__KIND,
         name: Str::new("packet_received.kind\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 10usize,
+        id: id::ACTIVE_PATH_UPDATED,
         name: Str::new("active_path_updated\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 11usize,
+        id: id::PATH_CREATED,
         name: Str::new("path_created\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 12usize,
+        id: id::FRAME_SENT,
         name: Str::new("frame_sent\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 13usize,
+        id: id::FRAME_SENT__PACKET,
         name: Str::new("frame_sent.packet\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 14usize,
+        id: id::FRAME_SENT__FRAME,
         name: Str::new("frame_sent.frame\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 15usize,
+        id: id::FRAME_RECEIVED,
         name: Str::new("frame_received\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 16usize,
+        id: id::FRAME_RECEIVED__PACKET,
         name: Str::new("frame_received.packet\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 17usize,
+        id: id::FRAME_RECEIVED__FRAME,
         name: Str::new("frame_received.frame\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 18usize,
+        id: id::CONNECTION_CLOSE_FRAME_RECEIVED,
         name: Str::new("connection_close_frame_received\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 19usize,
+        id: id::CONNECTION_CLOSE_FRAME_RECEIVED__PACKET,
         name: Str::new("connection_close_frame_received.packet\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 20usize,
+        id: id::PACKET_LOST,
         name: Str::new("packet_lost\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 21usize,
+        id: id::PACKET_LOST__KIND,
         name: Str::new("packet_lost.kind\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 22usize,
+        id: id::PACKET_LOST__BYTES__TOTAL,
         name: Str::new("packet_lost.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 23usize,
+        id: id::PACKET_LOST__BYTES,
         name: Str::new("packet_lost.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 24usize,
+        id: id::PACKET_LOST__IS_MTU_PROBE,
         name: Str::new("packet_lost.is_mtu_probe\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 25usize,
+        id: id::RECOVERY_METRICS,
         name: Str::new("recovery_metrics\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 26usize,
+        id: id::RECOVERY_METRICS__MIN_RTT,
         name: Str::new("recovery_metrics.min_rtt\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 27usize,
+        id: id::RECOVERY_METRICS__SMOOTHED_RTT,
         name: Str::new("recovery_metrics.smoothed_rtt\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 28usize,
+        id: id::RECOVERY_METRICS__LATEST_RTT,
         name: Str::new("recovery_metrics.latest_rtt\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 29usize,
+        id: id::RECOVERY_METRICS__RTT_VARIANCE,
         name: Str::new("recovery_metrics.rtt_variance\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 30usize,
+        id: id::RECOVERY_METRICS__MAX_ACK_DELAY,
         name: Str::new("recovery_metrics.max_ack_delay\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 31usize,
+        id: id::RECOVERY_METRICS__PTO_COUNT,
         name: Str::new("recovery_metrics.pto_count\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 32usize,
+        id: id::RECOVERY_METRICS__CONGESTION_WINDOW,
         name: Str::new("recovery_metrics.congestion_window\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 33usize,
+        id: id::RECOVERY_METRICS__BYTES_IN_FLIGHT,
         name: Str::new("recovery_metrics.bytes_in_flight\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 34usize,
+        id: id::RECOVERY_METRICS__CONGESTION_LIMITED,
         name: Str::new("recovery_metrics.congestion_limited\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 35usize,
+        id: id::CONGESTION,
         name: Str::new("congestion\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 36usize,
+        id: id::CONGESTION__SOURCE,
         name: Str::new("congestion.source\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 37usize,
+        id: id::RX_ACK_RANGE_DROPPED,
         name: Str::new("rx_ack_range_dropped\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 38usize,
+        id: id::ACK_RANGE_RECEIVED,
         name: Str::new("ack_range_received\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 39usize,
+        id: id::ACK_RANGE_RECEIVED__PACKET,
         name: Str::new("ack_range_received.packet\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 40usize,
+        id: id::ACK_RANGE_SENT,
         name: Str::new("ack_range_sent\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 41usize,
+        id: id::ACK_RANGE_SENT__PACKET,
         name: Str::new("ack_range_sent.packet\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 42usize,
+        id: id::PACKET_DROPPED,
         name: Str::new("packet_dropped\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 43usize,
+        id: id::PACKET_DROPPED__REASON,
         name: Str::new("packet_dropped.reason\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 44usize,
+        id: id::KEY_UPDATE,
         name: Str::new("key_update\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 45usize,
+        id: id::KEY_UPDATE__KEY_TYPE,
         name: Str::new("key_update.key_type\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 46usize,
+        id: id::KEY_UPDATE__CIPHER_SUITE,
         name: Str::new("key_update.cipher_suite\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 47usize,
+        id: id::KEY_SPACE_DISCARDED,
         name: Str::new("key_space_discarded\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 48usize,
+        id: id::KEY_SPACE_DISCARDED__INITIAL__LATENCY,
         name: Str::new("key_space_discarded.initial.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 49usize,
+        id: id::KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY,
         name: Str::new("key_space_discarded.handshake.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 50usize,
+        id: id::KEY_SPACE_DISCARDED__ONE_RTT__LATENCY,
         name: Str::new("key_space_discarded.one_rtt.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 51usize,
+        id: id::KEY_SPACE_DISCARDED__SPACE,
         name: Str::new("key_space_discarded.space\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 52usize,
+        id: id::CONNECTION_STARTED,
         name: Str::new("connection_started\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 53usize,
+        id: id::DUPLICATE_PACKET,
         name: Str::new("duplicate_packet\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 54usize,
+        id: id::DUPLICATE_PACKET__KIND,
         name: Str::new("duplicate_packet.kind\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 55usize,
+        id: id::DUPLICATE_PACKET__ERROR,
         name: Str::new("duplicate_packet.error\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 56usize,
+        id: id::TRANSPORT_PARAMETERS_RECEIVED,
         name: Str::new("transport_parameters_received\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 57usize,
+        id: id::TRANSPORT_PARAMETERS_RECEIVED__LATENCY,
         name: Str::new("transport_parameters_received.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 58usize,
+        id: id::DATAGRAM_SENT,
         name: Str::new("datagram_sent\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 59usize,
+        id: id::DATAGRAM_SENT__BYTES__TOTAL,
         name: Str::new("datagram_sent.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 60usize,
+        id: id::DATAGRAM_SENT__BYTES,
         name: Str::new("datagram_sent.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 61usize,
+        id: id::DATAGRAM_SENT__GSO_OFFSET,
         name: Str::new("datagram_sent.gso_offset\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 62usize,
+        id: id::DATAGRAM_RECEIVED,
         name: Str::new("datagram_received\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 63usize,
+        id: id::DATAGRAM_RECEIVED__BYTES__TOTAL,
         name: Str::new("datagram_received.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 64usize,
+        id: id::DATAGRAM_RECEIVED__BYTES,
         name: Str::new("datagram_received.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 65usize,
+        id: id::DATAGRAM_DROPPED,
         name: Str::new("datagram_dropped\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 66usize,
+        id: id::DATAGRAM_DROPPED__BYTES__TOTAL,
         name: Str::new("datagram_dropped.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 67usize,
+        id: id::DATAGRAM_DROPPED__BYTES,
         name: Str::new("datagram_dropped.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 68usize,
+        id: id::DATAGRAM_DROPPED__REASON,
         name: Str::new("datagram_dropped.reason\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 69usize,
+        id: id::HANDSHAKE_REMOTE_ADDRESS_CHANGE_OBSERVED,
         name: Str::new("handshake_remote_address_change_observed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 70usize,
+        id: id::CONNECTION_ID_UPDATED,
         name: Str::new("connection_id_updated\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 71usize,
+        id: id::ECN_STATE_CHANGED,
         name: Str::new("ecn_state_changed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 72usize,
+        id: id::ECN_STATE_CHANGED__STATE,
         name: Str::new("ecn_state_changed.state\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 73usize,
+        id: id::CONNECTION_MIGRATION_DENIED,
         name: Str::new("connection_migration_denied\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 74usize,
+        id: id::CONNECTION_MIGRATION_DENIED__REASON,
         name: Str::new("connection_migration_denied.reason\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 75usize,
+        id: id::HANDSHAKE_STATUS_UPDATED,
         name: Str::new("handshake_status_updated\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 76usize,
+        id: id::HANDSHAKE_STATUS_UPDATED__COMPLETE__LATENCY,
         name: Str::new("handshake_status_updated.complete.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 77usize,
+        id: id::HANDSHAKE_STATUS_UPDATED__CONFIRMED__LATENCY,
         name: Str::new("handshake_status_updated.confirmed.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 78usize,
+        id: id::HANDSHAKE_STATUS_UPDATED__HANDSHAKE_DONE_ACKED__LATENCY,
         name: Str::new("handshake_status_updated.handshake_done_acked.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 79usize,
+        id: id::HANDSHAKE_STATUS_UPDATED__STATUS,
         name: Str::new("handshake_status_updated.status\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 80usize,
+        id: id::TLS_EXPORTER_READY,
         name: Str::new("tls_exporter_ready\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 81usize,
+        id: id::TLS_HANDSHAKE_FAILED,
         name: Str::new("tls_handshake_failed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 82usize,
+        id: id::PATH_CHALLENGE_UPDATED,
         name: Str::new("path_challenge_updated\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 83usize,
+        id: id::PATH_CHALLENGE_UPDATED__STATUS,
         name: Str::new("path_challenge_updated.status\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 84usize,
+        id: id::TLS_CLIENT_HELLO,
         name: Str::new("tls_client_hello\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 85usize,
+        id: id::TLS_CLIENT_HELLO__LATENCY,
         name: Str::new("tls_client_hello.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 86usize,
+        id: id::TLS_SERVER_HELLO,
         name: Str::new("tls_server_hello\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 87usize,
+        id: id::TLS_SERVER_HELLO__LATENCY,
         name: Str::new("tls_server_hello.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 88usize,
+        id: id::RX_STREAM_PROGRESS,
         name: Str::new("rx_stream_progress\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 89usize,
+        id: id::RX_STREAM_PROGRESS__BYTES__TOTAL,
         name: Str::new("rx_stream_progress.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 90usize,
+        id: id::RX_STREAM_PROGRESS__BYTES,
         name: Str::new("rx_stream_progress.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 91usize,
+        id: id::TX_STREAM_PROGRESS,
         name: Str::new("tx_stream_progress\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 92usize,
+        id: id::TX_STREAM_PROGRESS__BYTES__TOTAL,
         name: Str::new("tx_stream_progress.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 93usize,
+        id: id::TX_STREAM_PROGRESS__BYTES,
         name: Str::new("tx_stream_progress.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 94usize,
+        id: id::KEEP_ALIVE_TIMER_EXPIRED,
         name: Str::new("keep_alive_timer_expired\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 95usize,
+        id: id::MTU_UPDATED,
         name: Str::new("mtu_updated\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 96usize,
+        id: id::MTU_UPDATED__MTU,
         name: Str::new("mtu_updated.mtu\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 97usize,
+        id: id::MTU_UPDATED__CAUSE,
         name: Str::new("mtu_updated.cause\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 98usize,
+        id: id::MTU_UPDATED__SEARCH_COMPLETE,
         name: Str::new("mtu_updated.search_complete\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 99usize,
+        id: id::MTU_PROBING_COMPLETE_RECEIVED,
         name: Str::new("mtu_probing_complete_received\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 100usize,
+        id: id::MTU_PROBING_COMPLETE_RECEIVED__PACKET,
         name: Str::new("mtu_probing_complete_received.packet\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 101usize,
+        id: id::MTU_PROBING_COMPLETE_RECEIVED__MTU,
         name: Str::new("mtu_probing_complete_received.mtu\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 102usize,
+        id: id::SLOW_START_EXITED,
         name: Str::new("slow_start_exited\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 103usize,
+        id: id::SLOW_START_EXITED__CAUSE,
         name: Str::new("slow_start_exited.cause\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 104usize,
+        id: id::SLOW_START_EXITED__LATENCY,
         name: Str::new("slow_start_exited.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 105usize,
+        id: id::SLOW_START_EXITED__CONGESTION_WINDOW,
         name: Str::new("slow_start_exited.congestion_window\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 106usize,
+        id: id::DELIVERY_RATE_SAMPLED,
         name: Str::new("delivery_rate_sampled\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 107usize,
+        id: id::PACING_RATE_UPDATED,
         name: Str::new("pacing_rate_updated\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 108usize,
+        id: id::PACING_RATE_UPDATED__BYTES_PER_SECOND,
         name: Str::new("pacing_rate_updated.bytes_per_second\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 109usize,
+        id: id::PACING_RATE_UPDATED__BURST_SIZE,
         name: Str::new("pacing_rate_updated.burst_size\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 110usize,
+        id: id::PACING_RATE_UPDATED__PACING_GAIN,
         name: Str::new("pacing_rate_updated.pacing_gain\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 111usize,
+        id: id::BBR_STATE_CHANGED,
         name: Str::new("bbr_state_changed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 112usize,
+        id: id::BBR_STATE_CHANGED__STATE,
         name: Str::new("bbr_state_changed.state\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 113usize,
+        id: id::DC_STATE_CHANGED,
         name: Str::new("dc_state_changed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 114usize,
+        id: id::DC_STATE_CHANGED__VERSION_NEGOTIATED__LATENCY,
         name: Str::new("dc_state_changed.version_negotiated.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 115usize,
+        id: id::DC_STATE_CHANGED__NO_VERSION_NEGOTIATED__LATENCY,
         name: Str::new("dc_state_changed.no_version_negotiated.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 116usize,
+        id: id::DC_STATE_CHANGED__PATH_SECRETS__LATENCY,
         name: Str::new("dc_state_changed.path_secrets.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 117usize,
+        id: id::DC_STATE_CHANGED__COMPLETE__LATENCY,
         name: Str::new("dc_state_changed.complete.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 118usize,
+        id: id::DC_STATE_CHANGED__STATE,
         name: Str::new("dc_state_changed.state\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 119usize,
+        id: id::DC_PATH_CREATED,
         name: Str::new("dc_path_created\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 120usize,
+        id: id::CONNECTION_CLOSED,
         name: Str::new("connection_closed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 121usize,
+        id: id::CONNECTION_CLOSED__LATENCY,
         name: Str::new("connection_closed.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 122usize,
+        id: id::CONNECTION_CLOSED__ERROR,
         name: Str::new("connection_closed.error\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 123usize,
+        id: id::VERSION_INFORMATION,
         name: Str::new("version_information\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 124usize,
+        id: id::ENDPOINT_PACKET_SENT,
         name: Str::new("endpoint_packet_sent\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 125usize,
+        id: id::ENDPOINT_PACKET_RECEIVED,
         name: Str::new("endpoint_packet_received\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 126usize,
+        id: id::ENDPOINT_DATAGRAM_SENT,
         name: Str::new("endpoint_datagram_sent\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 127usize,
+        id: id::ENDPOINT_DATAGRAM_SENT__BYTES,
         name: Str::new("endpoint_datagram_sent.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 128usize,
+        id: id::ENDPOINT_DATAGRAM_SENT__BYTES__TOTAL,
         name: Str::new("endpoint_datagram_sent.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 129usize,
+        id: id::ENDPOINT_DATAGRAM_SENT__GSO_OFFSET,
         name: Str::new("endpoint_datagram_sent.gso_offset\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 130usize,
+        id: id::ENDPOINT_DATAGRAM_RECEIVED,
         name: Str::new("endpoint_datagram_received\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 131usize,
+        id: id::ENDPOINT_DATAGRAM_RECEIVED__BYTES,
         name: Str::new("endpoint_datagram_received.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 132usize,
+        id: id::ENDPOINT_DATAGRAM_RECEIVED__BYTES__TOTAL,
         name: Str::new("endpoint_datagram_received.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 133usize,
+        id: id::ENDPOINT_DATAGRAM_DROPPED,
         name: Str::new("endpoint_datagram_dropped\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 134usize,
+        id: id::ENDPOINT_DATAGRAM_DROPPED__BYTES,
         name: Str::new("endpoint_datagram_dropped.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 135usize,
+        id: id::ENDPOINT_DATAGRAM_DROPPED__BYTES__TOTAL,
         name: Str::new("endpoint_datagram_dropped.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 136usize,
+        id: id::ENDPOINT_DATAGRAM_DROPPED__REASON,
         name: Str::new("endpoint_datagram_dropped.reason\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 137usize,
+        id: id::ENDPOINT_CONNECTION_ATTEMPT_FAILED,
         name: Str::new("endpoint_connection_attempt_failed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 138usize,
+        id: id::ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR,
         name: Str::new("endpoint_connection_attempt_failed.error\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 139usize,
+        id: id::ENDPOINT_CONNECTION_ATTEMPT_DEDUPLICATED,
         name: Str::new("endpoint_connection_attempt_deduplicated\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 140usize,
+        id: id::PLATFORM_TX,
         name: Str::new("platform_tx\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 141usize,
+        id: id::PLATFORM_TX__PACKETS__TOTAL,
         name: Str::new("platform_tx.packets.total\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 142usize,
+        id: id::PLATFORM_TX__PACKETS,
         name: Str::new("platform_tx.packets\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 143usize,
+        id: id::PLATFORM_TX__SYSCALLS__TOTAL,
         name: Str::new("platform_tx.syscalls.total\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 144usize,
+        id: id::PLATFORM_TX__SYSCALLS,
         name: Str::new("platform_tx.syscalls\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 145usize,
+        id: id::PLATFORM_TX__SYSCALLS__BLOCKED__TOTAL,
         name: Str::new("platform_tx.syscalls.blocked.total\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 146usize,
+        id: id::PLATFORM_TX__SYSCALLS__BLOCKED,
         name: Str::new("platform_tx.syscalls.blocked\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 147usize,
+        id: id::PLATFORM_TX__ERRORS__TOTAL,
         name: Str::new("platform_tx.errors.total\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 148usize,
+        id: id::PLATFORM_TX__ERRORS,
         name: Str::new("platform_tx.errors\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 149usize,
+        id: id::PLATFORM_TX__ERRORS__DROPPED__TOTAL,
         name: Str::new("platform_tx.errors.dropped.total\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 150usize,
+        id: id::PLATFORM_TX__ERRORS__DROPPED,
         name: Str::new("platform_tx.errors.dropped\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 151usize,
+        id: id::PLATFORM_TX_ERROR,
         name: Str::new("platform_tx_error\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 152usize,
+        id: id::PLATFORM_RX,
         name: Str::new("platform_rx\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 153usize,
+        id: id::PLATFORM_RX__PACKETS__TOTAL,
         name: Str::new("platform_rx.packets.total\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 154usize,
+        id: id::PLATFORM_RX__PACKETS,
         name: Str::new("platform_rx.packets\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 155usize,
+        id: id::PLATFORM_RX__SYSCALLS__TOTAL,
         name: Str::new("platform_rx.syscalls.total\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 156usize,
+        id: id::PLATFORM_RX__SYSCALLS,
         name: Str::new("platform_rx.syscalls\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 157usize,
+        id: id::PLATFORM_RX__SYSCALLS__BLOCKED__TOTAL,
         name: Str::new("platform_rx.syscalls.blocked.total\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 158usize,
+        id: id::PLATFORM_RX__SYSCALLS__BLOCKED,
         name: Str::new("platform_rx.syscalls.blocked\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 159usize,
+        id: id::PLATFORM_RX__ERRORS__TOTAL,
         name: Str::new("platform_rx.errors.total\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 160usize,
+        id: id::PLATFORM_RX__ERRORS,
         name: Str::new("platform_rx.errors\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 161usize,
+        id: id::PLATFORM_RX__ERRORS__DROPPED__TOTAL,
         name: Str::new("platform_rx.errors.dropped.total\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 162usize,
+        id: id::PLATFORM_RX__ERRORS__DROPPED,
         name: Str::new("platform_rx.errors.dropped\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 163usize,
+        id: id::PLATFORM_RX_ERROR,
         name: Str::new("platform_rx_error\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 164usize,
+        id: id::PLATFORM_FEATURE_CONFIGURED,
         name: Str::new("platform_feature_configured\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 165usize,
+        id: id::PLATFORM_EVENT_LOOP_WAKEUP,
         name: Str::new("platform_event_loop_wakeup\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 166usize,
+        id: id::PLATFORM_EVENT_LOOP_SLEEP,
         name: Str::new("platform_event_loop_sleep\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 167usize,
+        id: id::PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION,
         name: Str::new("platform_event_loop_sleep.processing_duration\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 168usize,
+        id: id::PLATFORM_EVENT_LOOP_STARTED,
         name: Str::new("platform_event_loop_started\0"),
         units: Units::None,
     }
@@ -1080,90 +1508,93 @@ impl<R: Registry> Subscriber<R> {
         let mut timers = Vec::with_capacity(15usize);
         let mut nominal_timers = Vec::with_capacity(1usize);
         let mut nominal_timer_offsets = Vec::with_capacity(1usize);
-        counters.push(registry.register_counter(&INFO[0usize]));
-        counters.push(registry.register_counter(&INFO[1usize]));
-        counters.push(registry.register_counter(&INFO[2usize]));
-        counters.push(registry.register_counter(&INFO[3usize]));
-        counters.push(registry.register_counter(&INFO[4usize]));
-        counters.push(registry.register_counter(&INFO[6usize]));
-        counters.push(registry.register_counter(&INFO[8usize]));
-        counters.push(registry.register_counter(&INFO[10usize]));
-        counters.push(registry.register_counter(&INFO[11usize]));
-        counters.push(registry.register_counter(&INFO[12usize]));
-        counters.push(registry.register_counter(&INFO[15usize]));
-        counters.push(registry.register_counter(&INFO[18usize]));
-        counters.push(registry.register_counter(&INFO[20usize]));
-        counters.push(registry.register_counter(&INFO[22usize]));
-        counters.push(registry.register_counter(&INFO[25usize]));
-        counters.push(registry.register_counter(&INFO[35usize]));
-        counters.push(registry.register_counter(&INFO[37usize]));
-        counters.push(registry.register_counter(&INFO[38usize]));
-        counters.push(registry.register_counter(&INFO[40usize]));
-        counters.push(registry.register_counter(&INFO[42usize]));
-        counters.push(registry.register_counter(&INFO[44usize]));
-        counters.push(registry.register_counter(&INFO[47usize]));
-        counters.push(registry.register_counter(&INFO[52usize]));
-        counters.push(registry.register_counter(&INFO[53usize]));
-        counters.push(registry.register_counter(&INFO[56usize]));
-        counters.push(registry.register_counter(&INFO[58usize]));
-        counters.push(registry.register_counter(&INFO[59usize]));
-        counters.push(registry.register_counter(&INFO[62usize]));
-        counters.push(registry.register_counter(&INFO[63usize]));
-        counters.push(registry.register_counter(&INFO[65usize]));
-        counters.push(registry.register_counter(&INFO[66usize]));
-        counters.push(registry.register_counter(&INFO[69usize]));
-        counters.push(registry.register_counter(&INFO[70usize]));
-        counters.push(registry.register_counter(&INFO[71usize]));
-        counters.push(registry.register_counter(&INFO[73usize]));
-        counters.push(registry.register_counter(&INFO[75usize]));
-        counters.push(registry.register_counter(&INFO[80usize]));
-        counters.push(registry.register_counter(&INFO[81usize]));
-        counters.push(registry.register_counter(&INFO[82usize]));
-        counters.push(registry.register_counter(&INFO[84usize]));
-        counters.push(registry.register_counter(&INFO[86usize]));
-        counters.push(registry.register_counter(&INFO[88usize]));
-        counters.push(registry.register_counter(&INFO[89usize]));
-        counters.push(registry.register_counter(&INFO[91usize]));
-        counters.push(registry.register_counter(&INFO[92usize]));
-        counters.push(registry.register_counter(&INFO[94usize]));
-        counters.push(registry.register_counter(&INFO[95usize]));
-        counters.push(registry.register_counter(&INFO[99usize]));
-        counters.push(registry.register_counter(&INFO[102usize]));
-        counters.push(registry.register_counter(&INFO[106usize]));
-        counters.push(registry.register_counter(&INFO[107usize]));
-        counters.push(registry.register_counter(&INFO[111usize]));
-        counters.push(registry.register_counter(&INFO[113usize]));
-        counters.push(registry.register_counter(&INFO[119usize]));
-        counters.push(registry.register_counter(&INFO[120usize]));
-        counters.push(registry.register_counter(&INFO[123usize]));
-        counters.push(registry.register_counter(&INFO[124usize]));
-        counters.push(registry.register_counter(&INFO[125usize]));
-        counters.push(registry.register_counter(&INFO[126usize]));
-        counters.push(registry.register_counter(&INFO[130usize]));
-        counters.push(registry.register_counter(&INFO[133usize]));
-        counters.push(registry.register_counter(&INFO[137usize]));
-        counters.push(registry.register_counter(&INFO[139usize]));
-        counters.push(registry.register_counter(&INFO[140usize]));
-        counters.push(registry.register_counter(&INFO[141usize]));
-        counters.push(registry.register_counter(&INFO[143usize]));
-        counters.push(registry.register_counter(&INFO[145usize]));
-        counters.push(registry.register_counter(&INFO[147usize]));
-        counters.push(registry.register_counter(&INFO[149usize]));
-        counters.push(registry.register_counter(&INFO[151usize]));
-        counters.push(registry.register_counter(&INFO[152usize]));
-        counters.push(registry.register_counter(&INFO[153usize]));
-        counters.push(registry.register_counter(&INFO[155usize]));
-        counters.push(registry.register_counter(&INFO[157usize]));
-        counters.push(registry.register_counter(&INFO[159usize]));
-        counters.push(registry.register_counter(&INFO[161usize]));
-        counters.push(registry.register_counter(&INFO[163usize]));
-        counters.push(registry.register_counter(&INFO[164usize]));
-        counters.push(registry.register_counter(&INFO[165usize]));
-        counters.push(registry.register_counter(&INFO[166usize]));
-        counters.push(registry.register_counter(&INFO[168usize]));
-        bool_counters.push(registry.register_bool_counter(&INFO[24usize]));
-        bool_counters.push(registry.register_bool_counter(&INFO[34usize]));
-        bool_counters.push(registry.register_bool_counter(&INFO[98usize]));
+        counters.push(registry.register_counter(&INFO[id::APPLICATION_PROTOCOL_INFORMATION]));
+        counters.push(registry.register_counter(&INFO[id::SERVER_NAME_INFORMATION]));
+        counters.push(registry.register_counter(&INFO[id::KEY_EXCHANGE_GROUP]));
+        counters.push(registry.register_counter(&INFO[id::PACKET_SKIPPED]));
+        counters.push(registry.register_counter(&INFO[id::PACKET_SENT]));
+        counters.push(registry.register_counter(&INFO[id::PACKET_SENT__BYTES__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PACKET_RECEIVED]));
+        counters.push(registry.register_counter(&INFO[id::ACTIVE_PATH_UPDATED]));
+        counters.push(registry.register_counter(&INFO[id::PATH_CREATED]));
+        counters.push(registry.register_counter(&INFO[id::FRAME_SENT]));
+        counters.push(registry.register_counter(&INFO[id::FRAME_RECEIVED]));
+        counters.push(registry.register_counter(&INFO[id::CONNECTION_CLOSE_FRAME_RECEIVED]));
+        counters.push(registry.register_counter(&INFO[id::PACKET_LOST]));
+        counters.push(registry.register_counter(&INFO[id::PACKET_LOST__BYTES__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::RECOVERY_METRICS]));
+        counters.push(registry.register_counter(&INFO[id::CONGESTION]));
+        counters.push(registry.register_counter(&INFO[id::RX_ACK_RANGE_DROPPED]));
+        counters.push(registry.register_counter(&INFO[id::ACK_RANGE_RECEIVED]));
+        counters.push(registry.register_counter(&INFO[id::ACK_RANGE_SENT]));
+        counters.push(registry.register_counter(&INFO[id::PACKET_DROPPED]));
+        counters.push(registry.register_counter(&INFO[id::KEY_UPDATE]));
+        counters.push(registry.register_counter(&INFO[id::KEY_SPACE_DISCARDED]));
+        counters.push(registry.register_counter(&INFO[id::CONNECTION_STARTED]));
+        counters.push(registry.register_counter(&INFO[id::DUPLICATE_PACKET]));
+        counters.push(registry.register_counter(&INFO[id::TRANSPORT_PARAMETERS_RECEIVED]));
+        counters.push(registry.register_counter(&INFO[id::DATAGRAM_SENT]));
+        counters.push(registry.register_counter(&INFO[id::DATAGRAM_SENT__BYTES__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::DATAGRAM_RECEIVED]));
+        counters.push(registry.register_counter(&INFO[id::DATAGRAM_RECEIVED__BYTES__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::DATAGRAM_DROPPED]));
+        counters.push(registry.register_counter(&INFO[id::DATAGRAM_DROPPED__BYTES__TOTAL]));
+        counters
+            .push(registry.register_counter(&INFO[id::HANDSHAKE_REMOTE_ADDRESS_CHANGE_OBSERVED]));
+        counters.push(registry.register_counter(&INFO[id::CONNECTION_ID_UPDATED]));
+        counters.push(registry.register_counter(&INFO[id::ECN_STATE_CHANGED]));
+        counters.push(registry.register_counter(&INFO[id::CONNECTION_MIGRATION_DENIED]));
+        counters.push(registry.register_counter(&INFO[id::HANDSHAKE_STATUS_UPDATED]));
+        counters.push(registry.register_counter(&INFO[id::TLS_EXPORTER_READY]));
+        counters.push(registry.register_counter(&INFO[id::TLS_HANDSHAKE_FAILED]));
+        counters.push(registry.register_counter(&INFO[id::PATH_CHALLENGE_UPDATED]));
+        counters.push(registry.register_counter(&INFO[id::TLS_CLIENT_HELLO]));
+        counters.push(registry.register_counter(&INFO[id::TLS_SERVER_HELLO]));
+        counters.push(registry.register_counter(&INFO[id::RX_STREAM_PROGRESS]));
+        counters.push(registry.register_counter(&INFO[id::RX_STREAM_PROGRESS__BYTES__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::TX_STREAM_PROGRESS]));
+        counters.push(registry.register_counter(&INFO[id::TX_STREAM_PROGRESS__BYTES__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::KEEP_ALIVE_TIMER_EXPIRED]));
+        counters.push(registry.register_counter(&INFO[id::MTU_UPDATED]));
+        counters.push(registry.register_counter(&INFO[id::MTU_PROBING_COMPLETE_RECEIVED]));
+        counters.push(registry.register_counter(&INFO[id::SLOW_START_EXITED]));
+        counters.push(registry.register_counter(&INFO[id::DELIVERY_RATE_SAMPLED]));
+        counters.push(registry.register_counter(&INFO[id::PACING_RATE_UPDATED]));
+        counters.push(registry.register_counter(&INFO[id::BBR_STATE_CHANGED]));
+        counters.push(registry.register_counter(&INFO[id::DC_STATE_CHANGED]));
+        counters.push(registry.register_counter(&INFO[id::DC_PATH_CREATED]));
+        counters.push(registry.register_counter(&INFO[id::CONNECTION_CLOSED]));
+        counters.push(registry.register_counter(&INFO[id::VERSION_INFORMATION]));
+        counters.push(registry.register_counter(&INFO[id::ENDPOINT_PACKET_SENT]));
+        counters.push(registry.register_counter(&INFO[id::ENDPOINT_PACKET_RECEIVED]));
+        counters.push(registry.register_counter(&INFO[id::ENDPOINT_DATAGRAM_SENT]));
+        counters.push(registry.register_counter(&INFO[id::ENDPOINT_DATAGRAM_RECEIVED]));
+        counters.push(registry.register_counter(&INFO[id::ENDPOINT_DATAGRAM_DROPPED]));
+        counters.push(registry.register_counter(&INFO[id::ENDPOINT_CONNECTION_ATTEMPT_FAILED]));
+        counters
+            .push(registry.register_counter(&INFO[id::ENDPOINT_CONNECTION_ATTEMPT_DEDUPLICATED]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_TX]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_TX__PACKETS__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_TX__SYSCALLS__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_TX__SYSCALLS__BLOCKED__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_TX__ERRORS__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_TX__ERRORS__DROPPED__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_TX_ERROR]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_RX]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_RX__PACKETS__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_RX__SYSCALLS__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_RX__SYSCALLS__BLOCKED__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_RX__ERRORS__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_RX__ERRORS__DROPPED__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_RX_ERROR]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_FEATURE_CONFIGURED]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_EVENT_LOOP_WAKEUP]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_EVENT_LOOP_SLEEP]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_EVENT_LOOP_STARTED]));
+        bool_counters.push(registry.register_bool_counter(&INFO[id::PACKET_LOST__IS_MTU_PROBE]));
+        bool_counters
+            .push(registry.register_bool_counter(&INFO[id::RECOVERY_METRICS__CONGESTION_LIMITED]));
+        bool_counters.push(registry.register_bool_counter(&INFO[id::MTU_UPDATED__SEARCH_COMPLETE]));
         {
             #[allow(unused_imports)]
             use api::*;
@@ -1171,8 +1602,9 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <PacketHeader as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[5usize], variant));
+                    nominal_counters.push(
+                        registry.register_nominal_counter(&INFO[id::PACKET_SENT__KIND], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1182,8 +1614,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <PacketHeader as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[9usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::PACKET_RECEIVED__KIND], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1193,8 +1627,9 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <PacketHeader as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[13usize], variant));
+                    nominal_counters.push(
+                        registry.register_nominal_counter(&INFO[id::FRAME_SENT__PACKET], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1204,8 +1639,9 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <Frame as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[14usize], variant));
+                    nominal_counters.push(
+                        registry.register_nominal_counter(&INFO[id::FRAME_SENT__FRAME], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1215,8 +1651,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <PacketHeader as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[16usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::FRAME_RECEIVED__PACKET], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1226,8 +1664,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <Frame as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[17usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::FRAME_RECEIVED__FRAME], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1237,8 +1677,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <PacketHeader as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[19usize], variant));
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::CONNECTION_CLOSE_FRAME_RECEIVED__PACKET],
+                        variant,
+                    ));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1248,8 +1690,9 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <PacketHeader as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[21usize], variant));
+                    nominal_counters.push(
+                        registry.register_nominal_counter(&INFO[id::PACKET_LOST__KIND], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1259,8 +1702,9 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <CongestionSource as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[36usize], variant));
+                    nominal_counters.push(
+                        registry.register_nominal_counter(&INFO[id::CONGESTION__SOURCE], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1270,8 +1714,12 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <PacketHeader as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[39usize], variant));
+                    nominal_counters.push(
+                        registry.register_nominal_counter(
+                            &INFO[id::ACK_RANGE_RECEIVED__PACKET],
+                            variant,
+                        ),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1281,8 +1729,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <PacketHeader as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[41usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::ACK_RANGE_SENT__PACKET], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1292,8 +1742,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <PacketDropReason as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[43usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::PACKET_DROPPED__REASON], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1303,8 +1755,9 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <KeyType as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[45usize], variant));
+                    nominal_counters.push(
+                        registry.register_nominal_counter(&INFO[id::KEY_UPDATE__KEY_TYPE], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1314,8 +1767,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <CipherSuite as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[46usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::KEY_UPDATE__CIPHER_SUITE], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1325,8 +1780,12 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <KeySpace as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[51usize], variant));
+                    nominal_counters.push(
+                        registry.register_nominal_counter(
+                            &INFO[id::KEY_SPACE_DISCARDED__SPACE],
+                            variant,
+                        ),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1336,8 +1795,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <PacketHeader as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[54usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::DUPLICATE_PACKET__KIND], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1347,8 +1808,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <DuplicatePacketError as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[55usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::DUPLICATE_PACKET__ERROR], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1358,8 +1821,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <DatagramDropReason as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[68usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::DATAGRAM_DROPPED__REASON], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1369,8 +1834,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <EcnState as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[72usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::ECN_STATE_CHANGED__STATE], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1380,8 +1847,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <MigrationDenyReason as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[74usize], variant));
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::CONNECTION_MIGRATION_DENIED__REASON],
+                        variant,
+                    ));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1391,8 +1860,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <HandshakeStatus as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[79usize], variant));
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::HANDSHAKE_STATUS_UPDATED__STATUS],
+                        variant,
+                    ));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1402,8 +1873,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <PathChallengeStatus as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[83usize], variant));
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::PATH_CHALLENGE_UPDATED__STATUS],
+                        variant,
+                    ));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1413,8 +1886,9 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <MtuUpdatedCause as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[97usize], variant));
+                    nominal_counters.push(
+                        registry.register_nominal_counter(&INFO[id::MTU_UPDATED__CAUSE], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1424,8 +1898,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <PacketHeader as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[100usize], variant));
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::MTU_PROBING_COMPLETE_RECEIVED__PACKET],
+                        variant,
+                    ));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1435,8 +1911,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <SlowStartExitCause as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[103usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::SLOW_START_EXITED__CAUSE], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1446,8 +1924,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <BbrState as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[112usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::BBR_STATE_CHANGED__STATE], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1457,8 +1937,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <DcState as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[118usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::DC_STATE_CHANGED__STATE], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1468,8 +1950,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <crate::connection::Error as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[122usize], variant));
+                    nominal_counters.push(
+                        registry
+                            .register_nominal_counter(&INFO[id::CONNECTION_CLOSED__ERROR], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1479,8 +1963,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <DatagramDropReason as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[136usize], variant));
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::ENDPOINT_DATAGRAM_DROPPED__REASON],
+                        variant,
+                    ));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1490,68 +1976,83 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <crate::connection::Error as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[138usize], variant));
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR],
+                        variant,
+                    ));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
                 nominal_counter_offsets.push(offset);
             }
         }
-        measures.push(registry.register_measure(&INFO[7usize]));
-        measures.push(registry.register_measure(&INFO[23usize]));
-        measures.push(registry.register_measure(&INFO[26usize]));
-        measures.push(registry.register_measure(&INFO[27usize]));
-        measures.push(registry.register_measure(&INFO[28usize]));
-        measures.push(registry.register_measure(&INFO[29usize]));
-        measures.push(registry.register_measure(&INFO[30usize]));
-        measures.push(registry.register_measure(&INFO[31usize]));
-        measures.push(registry.register_measure(&INFO[32usize]));
-        measures.push(registry.register_measure(&INFO[33usize]));
-        measures.push(registry.register_measure(&INFO[60usize]));
-        measures.push(registry.register_measure(&INFO[61usize]));
-        measures.push(registry.register_measure(&INFO[64usize]));
-        measures.push(registry.register_measure(&INFO[67usize]));
-        measures.push(registry.register_measure(&INFO[90usize]));
-        measures.push(registry.register_measure(&INFO[93usize]));
-        measures.push(registry.register_measure(&INFO[96usize]));
-        measures.push(registry.register_measure(&INFO[101usize]));
-        measures.push(registry.register_measure(&INFO[105usize]));
-        measures.push(registry.register_measure(&INFO[108usize]));
-        measures.push(registry.register_measure(&INFO[109usize]));
-        measures.push(registry.register_measure(&INFO[110usize]));
-        measures.push(registry.register_measure(&INFO[127usize]));
-        measures.push(registry.register_measure(&INFO[128usize]));
-        measures.push(registry.register_measure(&INFO[129usize]));
-        measures.push(registry.register_measure(&INFO[131usize]));
-        measures.push(registry.register_measure(&INFO[132usize]));
-        measures.push(registry.register_measure(&INFO[134usize]));
-        measures.push(registry.register_measure(&INFO[135usize]));
-        measures.push(registry.register_measure(&INFO[142usize]));
-        measures.push(registry.register_measure(&INFO[144usize]));
-        measures.push(registry.register_measure(&INFO[146usize]));
-        measures.push(registry.register_measure(&INFO[148usize]));
-        measures.push(registry.register_measure(&INFO[150usize]));
-        measures.push(registry.register_measure(&INFO[154usize]));
-        measures.push(registry.register_measure(&INFO[156usize]));
-        measures.push(registry.register_measure(&INFO[158usize]));
-        measures.push(registry.register_measure(&INFO[160usize]));
-        measures.push(registry.register_measure(&INFO[162usize]));
-        timers.push(registry.register_timer(&INFO[48usize]));
-        timers.push(registry.register_timer(&INFO[49usize]));
-        timers.push(registry.register_timer(&INFO[50usize]));
-        timers.push(registry.register_timer(&INFO[57usize]));
-        timers.push(registry.register_timer(&INFO[76usize]));
-        timers.push(registry.register_timer(&INFO[77usize]));
-        timers.push(registry.register_timer(&INFO[78usize]));
-        timers.push(registry.register_timer(&INFO[85usize]));
-        timers.push(registry.register_timer(&INFO[87usize]));
-        timers.push(registry.register_timer(&INFO[114usize]));
-        timers.push(registry.register_timer(&INFO[115usize]));
-        timers.push(registry.register_timer(&INFO[116usize]));
-        timers.push(registry.register_timer(&INFO[117usize]));
-        timers.push(registry.register_timer(&INFO[121usize]));
-        timers.push(registry.register_timer(&INFO[167usize]));
+        measures.push(registry.register_measure(&INFO[id::PACKET_SENT__BYTES]));
+        measures.push(registry.register_measure(&INFO[id::PACKET_LOST__BYTES]));
+        measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__MIN_RTT]));
+        measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__SMOOTHED_RTT]));
+        measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__LATEST_RTT]));
+        measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__RTT_VARIANCE]));
+        measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__MAX_ACK_DELAY]));
+        measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__PTO_COUNT]));
+        measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__CONGESTION_WINDOW]));
+        measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__BYTES_IN_FLIGHT]));
+        measures.push(registry.register_measure(&INFO[id::DATAGRAM_SENT__BYTES]));
+        measures.push(registry.register_measure(&INFO[id::DATAGRAM_SENT__GSO_OFFSET]));
+        measures.push(registry.register_measure(&INFO[id::DATAGRAM_RECEIVED__BYTES]));
+        measures.push(registry.register_measure(&INFO[id::DATAGRAM_DROPPED__BYTES]));
+        measures.push(registry.register_measure(&INFO[id::RX_STREAM_PROGRESS__BYTES]));
+        measures.push(registry.register_measure(&INFO[id::TX_STREAM_PROGRESS__BYTES]));
+        measures.push(registry.register_measure(&INFO[id::MTU_UPDATED__MTU]));
+        measures.push(registry.register_measure(&INFO[id::MTU_PROBING_COMPLETE_RECEIVED__MTU]));
+        measures.push(registry.register_measure(&INFO[id::SLOW_START_EXITED__CONGESTION_WINDOW]));
+        measures.push(registry.register_measure(&INFO[id::PACING_RATE_UPDATED__BYTES_PER_SECOND]));
+        measures.push(registry.register_measure(&INFO[id::PACING_RATE_UPDATED__BURST_SIZE]));
+        measures.push(registry.register_measure(&INFO[id::PACING_RATE_UPDATED__PACING_GAIN]));
+        measures.push(registry.register_measure(&INFO[id::ENDPOINT_DATAGRAM_SENT__BYTES]));
+        measures.push(registry.register_measure(&INFO[id::ENDPOINT_DATAGRAM_SENT__BYTES__TOTAL]));
+        measures.push(registry.register_measure(&INFO[id::ENDPOINT_DATAGRAM_SENT__GSO_OFFSET]));
+        measures.push(registry.register_measure(&INFO[id::ENDPOINT_DATAGRAM_RECEIVED__BYTES]));
+        measures
+            .push(registry.register_measure(&INFO[id::ENDPOINT_DATAGRAM_RECEIVED__BYTES__TOTAL]));
+        measures.push(registry.register_measure(&INFO[id::ENDPOINT_DATAGRAM_DROPPED__BYTES]));
+        measures
+            .push(registry.register_measure(&INFO[id::ENDPOINT_DATAGRAM_DROPPED__BYTES__TOTAL]));
+        measures.push(registry.register_measure(&INFO[id::PLATFORM_TX__PACKETS]));
+        measures.push(registry.register_measure(&INFO[id::PLATFORM_TX__SYSCALLS]));
+        measures.push(registry.register_measure(&INFO[id::PLATFORM_TX__SYSCALLS__BLOCKED]));
+        measures.push(registry.register_measure(&INFO[id::PLATFORM_TX__ERRORS]));
+        measures.push(registry.register_measure(&INFO[id::PLATFORM_TX__ERRORS__DROPPED]));
+        measures.push(registry.register_measure(&INFO[id::PLATFORM_RX__PACKETS]));
+        measures.push(registry.register_measure(&INFO[id::PLATFORM_RX__SYSCALLS]));
+        measures.push(registry.register_measure(&INFO[id::PLATFORM_RX__SYSCALLS__BLOCKED]));
+        measures.push(registry.register_measure(&INFO[id::PLATFORM_RX__ERRORS]));
+        measures.push(registry.register_measure(&INFO[id::PLATFORM_RX__ERRORS__DROPPED]));
+        timers.push(registry.register_timer(&INFO[id::KEY_SPACE_DISCARDED__INITIAL__LATENCY]));
+        timers.push(registry.register_timer(&INFO[id::KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY]));
+        timers.push(registry.register_timer(&INFO[id::KEY_SPACE_DISCARDED__ONE_RTT__LATENCY]));
+        timers.push(registry.register_timer(&INFO[id::TRANSPORT_PARAMETERS_RECEIVED__LATENCY]));
+        timers
+            .push(registry.register_timer(&INFO[id::HANDSHAKE_STATUS_UPDATED__COMPLETE__LATENCY]));
+        timers
+            .push(registry.register_timer(&INFO[id::HANDSHAKE_STATUS_UPDATED__CONFIRMED__LATENCY]));
+        timers
+            .push(registry.register_timer(
+                &INFO[id::HANDSHAKE_STATUS_UPDATED__HANDSHAKE_DONE_ACKED__LATENCY],
+            ));
+        timers.push(registry.register_timer(&INFO[id::TLS_CLIENT_HELLO__LATENCY]));
+        timers.push(registry.register_timer(&INFO[id::TLS_SERVER_HELLO__LATENCY]));
+        timers.push(
+            registry.register_timer(&INFO[id::DC_STATE_CHANGED__VERSION_NEGOTIATED__LATENCY]),
+        );
+        timers.push(
+            registry.register_timer(&INFO[id::DC_STATE_CHANGED__NO_VERSION_NEGOTIATED__LATENCY]),
+        );
+        timers.push(registry.register_timer(&INFO[id::DC_STATE_CHANGED__PATH_SECRETS__LATENCY]));
+        timers.push(registry.register_timer(&INFO[id::DC_STATE_CHANGED__COMPLETE__LATENCY]));
+        timers.push(registry.register_timer(&INFO[id::CONNECTION_CLOSED__LATENCY]));
+        timers.push(
+            registry.register_timer(&INFO[id::PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION]),
+        );
         {
             #[allow(unused_imports)]
             use api::*;
@@ -1559,7 +2060,10 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_timers.len();
                 let mut count = 0;
                 for variant in <SlowStartExitCause as AsVariant>::VARIANTS.iter() {
-                    nominal_timers.push(registry.register_nominal_timer(&INFO[104usize], variant));
+                    nominal_timers.push(
+                        registry
+                            .register_nominal_timer(&INFO[id::SLOW_START_EXITED__LATENCY], variant),
+                    );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1596,87 +2100,155 @@ impl<R: Registry> Subscriber<R> {
             .iter()
             .enumerate()
             .map(|(idx, entry)| match idx {
-                0usize => (&INFO[0usize], entry),
-                1usize => (&INFO[1usize], entry),
-                2usize => (&INFO[2usize], entry),
-                3usize => (&INFO[3usize], entry),
-                4usize => (&INFO[4usize], entry),
-                5usize => (&INFO[6usize], entry),
-                6usize => (&INFO[8usize], entry),
-                7usize => (&INFO[10usize], entry),
-                8usize => (&INFO[11usize], entry),
-                9usize => (&INFO[12usize], entry),
-                10usize => (&INFO[15usize], entry),
-                11usize => (&INFO[18usize], entry),
-                12usize => (&INFO[20usize], entry),
-                13usize => (&INFO[22usize], entry),
-                14usize => (&INFO[25usize], entry),
-                15usize => (&INFO[35usize], entry),
-                16usize => (&INFO[37usize], entry),
-                17usize => (&INFO[38usize], entry),
-                18usize => (&INFO[40usize], entry),
-                19usize => (&INFO[42usize], entry),
-                20usize => (&INFO[44usize], entry),
-                21usize => (&INFO[47usize], entry),
-                22usize => (&INFO[52usize], entry),
-                23usize => (&INFO[53usize], entry),
-                24usize => (&INFO[56usize], entry),
-                25usize => (&INFO[58usize], entry),
-                26usize => (&INFO[59usize], entry),
-                27usize => (&INFO[62usize], entry),
-                28usize => (&INFO[63usize], entry),
-                29usize => (&INFO[65usize], entry),
-                30usize => (&INFO[66usize], entry),
-                31usize => (&INFO[69usize], entry),
-                32usize => (&INFO[70usize], entry),
-                33usize => (&INFO[71usize], entry),
-                34usize => (&INFO[73usize], entry),
-                35usize => (&INFO[75usize], entry),
-                36usize => (&INFO[80usize], entry),
-                37usize => (&INFO[81usize], entry),
-                38usize => (&INFO[82usize], entry),
-                39usize => (&INFO[84usize], entry),
-                40usize => (&INFO[86usize], entry),
-                41usize => (&INFO[88usize], entry),
-                42usize => (&INFO[89usize], entry),
-                43usize => (&INFO[91usize], entry),
-                44usize => (&INFO[92usize], entry),
-                45usize => (&INFO[94usize], entry),
-                46usize => (&INFO[95usize], entry),
-                47usize => (&INFO[99usize], entry),
-                48usize => (&INFO[102usize], entry),
-                49usize => (&INFO[106usize], entry),
-                50usize => (&INFO[107usize], entry),
-                51usize => (&INFO[111usize], entry),
-                52usize => (&INFO[113usize], entry),
-                53usize => (&INFO[119usize], entry),
-                54usize => (&INFO[120usize], entry),
-                55usize => (&INFO[123usize], entry),
-                56usize => (&INFO[124usize], entry),
-                57usize => (&INFO[125usize], entry),
-                58usize => (&INFO[126usize], entry),
-                59usize => (&INFO[130usize], entry),
-                60usize => (&INFO[133usize], entry),
-                61usize => (&INFO[137usize], entry),
-                62usize => (&INFO[139usize], entry),
-                63usize => (&INFO[140usize], entry),
-                64usize => (&INFO[141usize], entry),
-                65usize => (&INFO[143usize], entry),
-                66usize => (&INFO[145usize], entry),
-                67usize => (&INFO[147usize], entry),
-                68usize => (&INFO[149usize], entry),
-                69usize => (&INFO[151usize], entry),
-                70usize => (&INFO[152usize], entry),
-                71usize => (&INFO[153usize], entry),
-                72usize => (&INFO[155usize], entry),
-                73usize => (&INFO[157usize], entry),
-                74usize => (&INFO[159usize], entry),
-                75usize => (&INFO[161usize], entry),
-                76usize => (&INFO[163usize], entry),
-                77usize => (&INFO[164usize], entry),
-                78usize => (&INFO[165usize], entry),
-                79usize => (&INFO[166usize], entry),
-                80usize => (&INFO[168usize], entry),
+                id::COUNTERS_APPLICATION_PROTOCOL_INFORMATION => {
+                    (&INFO[id::APPLICATION_PROTOCOL_INFORMATION], entry)
+                }
+                id::COUNTERS_SERVER_NAME_INFORMATION => (&INFO[id::SERVER_NAME_INFORMATION], entry),
+                id::COUNTERS_KEY_EXCHANGE_GROUP => (&INFO[id::KEY_EXCHANGE_GROUP], entry),
+                id::COUNTERS_PACKET_SKIPPED => (&INFO[id::PACKET_SKIPPED], entry),
+                id::COUNTERS_PACKET_SENT => (&INFO[id::PACKET_SENT], entry),
+                id::COUNTERS_PACKET_SENT__BYTES__TOTAL => {
+                    (&INFO[id::PACKET_SENT__BYTES__TOTAL], entry)
+                }
+                id::COUNTERS_PACKET_RECEIVED => (&INFO[id::PACKET_RECEIVED], entry),
+                id::COUNTERS_ACTIVE_PATH_UPDATED => (&INFO[id::ACTIVE_PATH_UPDATED], entry),
+                id::COUNTERS_PATH_CREATED => (&INFO[id::PATH_CREATED], entry),
+                id::COUNTERS_FRAME_SENT => (&INFO[id::FRAME_SENT], entry),
+                id::COUNTERS_FRAME_RECEIVED => (&INFO[id::FRAME_RECEIVED], entry),
+                id::COUNTERS_CONNECTION_CLOSE_FRAME_RECEIVED => {
+                    (&INFO[id::CONNECTION_CLOSE_FRAME_RECEIVED], entry)
+                }
+                id::COUNTERS_PACKET_LOST => (&INFO[id::PACKET_LOST], entry),
+                id::COUNTERS_PACKET_LOST__BYTES__TOTAL => {
+                    (&INFO[id::PACKET_LOST__BYTES__TOTAL], entry)
+                }
+                id::COUNTERS_RECOVERY_METRICS => (&INFO[id::RECOVERY_METRICS], entry),
+                id::COUNTERS_CONGESTION => (&INFO[id::CONGESTION], entry),
+                id::COUNTERS_RX_ACK_RANGE_DROPPED => (&INFO[id::RX_ACK_RANGE_DROPPED], entry),
+                id::COUNTERS_ACK_RANGE_RECEIVED => (&INFO[id::ACK_RANGE_RECEIVED], entry),
+                id::COUNTERS_ACK_RANGE_SENT => (&INFO[id::ACK_RANGE_SENT], entry),
+                id::COUNTERS_PACKET_DROPPED => (&INFO[id::PACKET_DROPPED], entry),
+                id::COUNTERS_KEY_UPDATE => (&INFO[id::KEY_UPDATE], entry),
+                id::COUNTERS_KEY_SPACE_DISCARDED => (&INFO[id::KEY_SPACE_DISCARDED], entry),
+                id::COUNTERS_CONNECTION_STARTED => (&INFO[id::CONNECTION_STARTED], entry),
+                id::COUNTERS_DUPLICATE_PACKET => (&INFO[id::DUPLICATE_PACKET], entry),
+                id::COUNTERS_TRANSPORT_PARAMETERS_RECEIVED => {
+                    (&INFO[id::TRANSPORT_PARAMETERS_RECEIVED], entry)
+                }
+                id::COUNTERS_DATAGRAM_SENT => (&INFO[id::DATAGRAM_SENT], entry),
+                id::COUNTERS_DATAGRAM_SENT__BYTES__TOTAL => {
+                    (&INFO[id::DATAGRAM_SENT__BYTES__TOTAL], entry)
+                }
+                id::COUNTERS_DATAGRAM_RECEIVED => (&INFO[id::DATAGRAM_RECEIVED], entry),
+                id::COUNTERS_DATAGRAM_RECEIVED__BYTES__TOTAL => {
+                    (&INFO[id::DATAGRAM_RECEIVED__BYTES__TOTAL], entry)
+                }
+                id::COUNTERS_DATAGRAM_DROPPED => (&INFO[id::DATAGRAM_DROPPED], entry),
+                id::COUNTERS_DATAGRAM_DROPPED__BYTES__TOTAL => {
+                    (&INFO[id::DATAGRAM_DROPPED__BYTES__TOTAL], entry)
+                }
+                id::COUNTERS_HANDSHAKE_REMOTE_ADDRESS_CHANGE_OBSERVED => {
+                    (&INFO[id::HANDSHAKE_REMOTE_ADDRESS_CHANGE_OBSERVED], entry)
+                }
+                id::COUNTERS_CONNECTION_ID_UPDATED => (&INFO[id::CONNECTION_ID_UPDATED], entry),
+                id::COUNTERS_ECN_STATE_CHANGED => (&INFO[id::ECN_STATE_CHANGED], entry),
+                id::COUNTERS_CONNECTION_MIGRATION_DENIED => {
+                    (&INFO[id::CONNECTION_MIGRATION_DENIED], entry)
+                }
+                id::COUNTERS_HANDSHAKE_STATUS_UPDATED => {
+                    (&INFO[id::HANDSHAKE_STATUS_UPDATED], entry)
+                }
+                id::COUNTERS_TLS_EXPORTER_READY => (&INFO[id::TLS_EXPORTER_READY], entry),
+                id::COUNTERS_TLS_HANDSHAKE_FAILED => (&INFO[id::TLS_HANDSHAKE_FAILED], entry),
+                id::COUNTERS_PATH_CHALLENGE_UPDATED => (&INFO[id::PATH_CHALLENGE_UPDATED], entry),
+                id::COUNTERS_TLS_CLIENT_HELLO => (&INFO[id::TLS_CLIENT_HELLO], entry),
+                id::COUNTERS_TLS_SERVER_HELLO => (&INFO[id::TLS_SERVER_HELLO], entry),
+                id::COUNTERS_RX_STREAM_PROGRESS => (&INFO[id::RX_STREAM_PROGRESS], entry),
+                id::COUNTERS_RX_STREAM_PROGRESS__BYTES__TOTAL => {
+                    (&INFO[id::RX_STREAM_PROGRESS__BYTES__TOTAL], entry)
+                }
+                id::COUNTERS_TX_STREAM_PROGRESS => (&INFO[id::TX_STREAM_PROGRESS], entry),
+                id::COUNTERS_TX_STREAM_PROGRESS__BYTES__TOTAL => {
+                    (&INFO[id::TX_STREAM_PROGRESS__BYTES__TOTAL], entry)
+                }
+                id::COUNTERS_KEEP_ALIVE_TIMER_EXPIRED => {
+                    (&INFO[id::KEEP_ALIVE_TIMER_EXPIRED], entry)
+                }
+                id::COUNTERS_MTU_UPDATED => (&INFO[id::MTU_UPDATED], entry),
+                id::COUNTERS_MTU_PROBING_COMPLETE_RECEIVED => {
+                    (&INFO[id::MTU_PROBING_COMPLETE_RECEIVED], entry)
+                }
+                id::COUNTERS_SLOW_START_EXITED => (&INFO[id::SLOW_START_EXITED], entry),
+                id::COUNTERS_DELIVERY_RATE_SAMPLED => (&INFO[id::DELIVERY_RATE_SAMPLED], entry),
+                id::COUNTERS_PACING_RATE_UPDATED => (&INFO[id::PACING_RATE_UPDATED], entry),
+                id::COUNTERS_BBR_STATE_CHANGED => (&INFO[id::BBR_STATE_CHANGED], entry),
+                id::COUNTERS_DC_STATE_CHANGED => (&INFO[id::DC_STATE_CHANGED], entry),
+                id::COUNTERS_DC_PATH_CREATED => (&INFO[id::DC_PATH_CREATED], entry),
+                id::COUNTERS_CONNECTION_CLOSED => (&INFO[id::CONNECTION_CLOSED], entry),
+                id::COUNTERS_VERSION_INFORMATION => (&INFO[id::VERSION_INFORMATION], entry),
+                id::COUNTERS_ENDPOINT_PACKET_SENT => (&INFO[id::ENDPOINT_PACKET_SENT], entry),
+                id::COUNTERS_ENDPOINT_PACKET_RECEIVED => {
+                    (&INFO[id::ENDPOINT_PACKET_RECEIVED], entry)
+                }
+                id::COUNTERS_ENDPOINT_DATAGRAM_SENT => (&INFO[id::ENDPOINT_DATAGRAM_SENT], entry),
+                id::COUNTERS_ENDPOINT_DATAGRAM_RECEIVED => {
+                    (&INFO[id::ENDPOINT_DATAGRAM_RECEIVED], entry)
+                }
+                id::COUNTERS_ENDPOINT_DATAGRAM_DROPPED => {
+                    (&INFO[id::ENDPOINT_DATAGRAM_DROPPED], entry)
+                }
+                id::COUNTERS_ENDPOINT_CONNECTION_ATTEMPT_FAILED => {
+                    (&INFO[id::ENDPOINT_CONNECTION_ATTEMPT_FAILED], entry)
+                }
+                id::COUNTERS_ENDPOINT_CONNECTION_ATTEMPT_DEDUPLICATED => {
+                    (&INFO[id::ENDPOINT_CONNECTION_ATTEMPT_DEDUPLICATED], entry)
+                }
+                id::COUNTERS_PLATFORM_TX => (&INFO[id::PLATFORM_TX], entry),
+                id::COUNTERS_PLATFORM_TX__PACKETS__TOTAL => {
+                    (&INFO[id::PLATFORM_TX__PACKETS__TOTAL], entry)
+                }
+                id::COUNTERS_PLATFORM_TX__SYSCALLS__TOTAL => {
+                    (&INFO[id::PLATFORM_TX__SYSCALLS__TOTAL], entry)
+                }
+                id::COUNTERS_PLATFORM_TX__SYSCALLS__BLOCKED__TOTAL => {
+                    (&INFO[id::PLATFORM_TX__SYSCALLS__BLOCKED__TOTAL], entry)
+                }
+                id::COUNTERS_PLATFORM_TX__ERRORS__TOTAL => {
+                    (&INFO[id::PLATFORM_TX__ERRORS__TOTAL], entry)
+                }
+                id::COUNTERS_PLATFORM_TX__ERRORS__DROPPED__TOTAL => {
+                    (&INFO[id::PLATFORM_TX__ERRORS__DROPPED__TOTAL], entry)
+                }
+                id::COUNTERS_PLATFORM_TX_ERROR => (&INFO[id::PLATFORM_TX_ERROR], entry),
+                id::COUNTERS_PLATFORM_RX => (&INFO[id::PLATFORM_RX], entry),
+                id::COUNTERS_PLATFORM_RX__PACKETS__TOTAL => {
+                    (&INFO[id::PLATFORM_RX__PACKETS__TOTAL], entry)
+                }
+                id::COUNTERS_PLATFORM_RX__SYSCALLS__TOTAL => {
+                    (&INFO[id::PLATFORM_RX__SYSCALLS__TOTAL], entry)
+                }
+                id::COUNTERS_PLATFORM_RX__SYSCALLS__BLOCKED__TOTAL => {
+                    (&INFO[id::PLATFORM_RX__SYSCALLS__BLOCKED__TOTAL], entry)
+                }
+                id::COUNTERS_PLATFORM_RX__ERRORS__TOTAL => {
+                    (&INFO[id::PLATFORM_RX__ERRORS__TOTAL], entry)
+                }
+                id::COUNTERS_PLATFORM_RX__ERRORS__DROPPED__TOTAL => {
+                    (&INFO[id::PLATFORM_RX__ERRORS__DROPPED__TOTAL], entry)
+                }
+                id::COUNTERS_PLATFORM_RX_ERROR => (&INFO[id::PLATFORM_RX_ERROR], entry),
+                id::COUNTERS_PLATFORM_FEATURE_CONFIGURED => {
+                    (&INFO[id::PLATFORM_FEATURE_CONFIGURED], entry)
+                }
+                id::COUNTERS_PLATFORM_EVENT_LOOP_WAKEUP => {
+                    (&INFO[id::PLATFORM_EVENT_LOOP_WAKEUP], entry)
+                }
+                id::COUNTERS_PLATFORM_EVENT_LOOP_SLEEP => {
+                    (&INFO[id::PLATFORM_EVENT_LOOP_SLEEP], entry)
+                }
+                id::COUNTERS_PLATFORM_EVENT_LOOP_STARTED => {
+                    (&INFO[id::PLATFORM_EVENT_LOOP_STARTED], entry)
+                }
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -1694,9 +2266,15 @@ impl<R: Registry> Subscriber<R> {
             .iter()
             .enumerate()
             .map(|(idx, entry)| match idx {
-                0usize => (&INFO[24usize], entry),
-                1usize => (&INFO[34usize], entry),
-                2usize => (&INFO[98usize], entry),
+                id::BOOL_COUNTERS_PACKET_LOST__IS_MTU_PROBE => {
+                    (&INFO[id::PACKET_LOST__IS_MTU_PROBE], entry)
+                }
+                id::BOOL_COUNTERS_RECOVERY_METRICS__CONGESTION_LIMITED => {
+                    (&INFO[id::RECOVERY_METRICS__CONGESTION_LIMITED], entry)
+                }
+                id::BOOL_COUNTERS_MTU_UPDATED__SEARCH_COMPLETE => {
+                    (&INFO[id::MTU_UPDATED__SEARCH_COMPLETE], entry)
+                }
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -1718,185 +2296,209 @@ impl<R: Registry> Subscriber<R> {
             .iter()
             .enumerate()
             .map(|(idx, entry)| match idx {
-                0usize => {
+                id::NOMINAL_COUNTERS_PACKET_SENT__KIND => {
                     let offset = *entry;
                     let variants = <PacketHeader as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[5usize], entries, variants)
+                    (&INFO[id::PACKET_SENT__KIND], entries, variants)
                 }
-                1usize => {
+                id::NOMINAL_COUNTERS_PACKET_RECEIVED__KIND => {
                     let offset = *entry;
                     let variants = <PacketHeader as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[9usize], entries, variants)
+                    (&INFO[id::PACKET_RECEIVED__KIND], entries, variants)
                 }
-                2usize => {
+                id::NOMINAL_COUNTERS_FRAME_SENT__PACKET => {
                     let offset = *entry;
                     let variants = <PacketHeader as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[13usize], entries, variants)
+                    (&INFO[id::FRAME_SENT__PACKET], entries, variants)
                 }
-                3usize => {
+                id::NOMINAL_COUNTERS_FRAME_SENT__FRAME => {
                     let offset = *entry;
                     let variants = <Frame as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[14usize], entries, variants)
+                    (&INFO[id::FRAME_SENT__FRAME], entries, variants)
                 }
-                4usize => {
+                id::NOMINAL_COUNTERS_FRAME_RECEIVED__PACKET => {
                     let offset = *entry;
                     let variants = <PacketHeader as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[16usize], entries, variants)
+                    (&INFO[id::FRAME_RECEIVED__PACKET], entries, variants)
                 }
-                5usize => {
+                id::NOMINAL_COUNTERS_FRAME_RECEIVED__FRAME => {
                     let offset = *entry;
                     let variants = <Frame as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[17usize], entries, variants)
+                    (&INFO[id::FRAME_RECEIVED__FRAME], entries, variants)
                 }
-                6usize => {
+                id::NOMINAL_COUNTERS_CONNECTION_CLOSE_FRAME_RECEIVED__PACKET => {
                     let offset = *entry;
                     let variants = <PacketHeader as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[19usize], entries, variants)
+                    (
+                        &INFO[id::CONNECTION_CLOSE_FRAME_RECEIVED__PACKET],
+                        entries,
+                        variants,
+                    )
                 }
-                7usize => {
+                id::NOMINAL_COUNTERS_PACKET_LOST__KIND => {
                     let offset = *entry;
                     let variants = <PacketHeader as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[21usize], entries, variants)
+                    (&INFO[id::PACKET_LOST__KIND], entries, variants)
                 }
-                8usize => {
+                id::NOMINAL_COUNTERS_CONGESTION__SOURCE => {
                     let offset = *entry;
                     let variants = <CongestionSource as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[36usize], entries, variants)
+                    (&INFO[id::CONGESTION__SOURCE], entries, variants)
                 }
-                9usize => {
+                id::NOMINAL_COUNTERS_ACK_RANGE_RECEIVED__PACKET => {
                     let offset = *entry;
                     let variants = <PacketHeader as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[39usize], entries, variants)
+                    (&INFO[id::ACK_RANGE_RECEIVED__PACKET], entries, variants)
                 }
-                10usize => {
+                id::NOMINAL_COUNTERS_ACK_RANGE_SENT__PACKET => {
                     let offset = *entry;
                     let variants = <PacketHeader as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[41usize], entries, variants)
+                    (&INFO[id::ACK_RANGE_SENT__PACKET], entries, variants)
                 }
-                11usize => {
+                id::NOMINAL_COUNTERS_PACKET_DROPPED__REASON => {
                     let offset = *entry;
                     let variants = <PacketDropReason as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[43usize], entries, variants)
+                    (&INFO[id::PACKET_DROPPED__REASON], entries, variants)
                 }
-                12usize => {
+                id::NOMINAL_COUNTERS_KEY_UPDATE__KEY_TYPE => {
                     let offset = *entry;
                     let variants = <KeyType as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[45usize], entries, variants)
+                    (&INFO[id::KEY_UPDATE__KEY_TYPE], entries, variants)
                 }
-                13usize => {
+                id::NOMINAL_COUNTERS_KEY_UPDATE__CIPHER_SUITE => {
                     let offset = *entry;
                     let variants = <CipherSuite as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[46usize], entries, variants)
+                    (&INFO[id::KEY_UPDATE__CIPHER_SUITE], entries, variants)
                 }
-                14usize => {
+                id::NOMINAL_COUNTERS_KEY_SPACE_DISCARDED__SPACE => {
                     let offset = *entry;
                     let variants = <KeySpace as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[51usize], entries, variants)
+                    (&INFO[id::KEY_SPACE_DISCARDED__SPACE], entries, variants)
                 }
-                15usize => {
+                id::NOMINAL_COUNTERS_DUPLICATE_PACKET__KIND => {
                     let offset = *entry;
                     let variants = <PacketHeader as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[54usize], entries, variants)
+                    (&INFO[id::DUPLICATE_PACKET__KIND], entries, variants)
                 }
-                16usize => {
+                id::NOMINAL_COUNTERS_DUPLICATE_PACKET__ERROR => {
                     let offset = *entry;
                     let variants = <DuplicatePacketError as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[55usize], entries, variants)
+                    (&INFO[id::DUPLICATE_PACKET__ERROR], entries, variants)
                 }
-                17usize => {
+                id::NOMINAL_COUNTERS_DATAGRAM_DROPPED__REASON => {
                     let offset = *entry;
                     let variants = <DatagramDropReason as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[68usize], entries, variants)
+                    (&INFO[id::DATAGRAM_DROPPED__REASON], entries, variants)
                 }
-                18usize => {
+                id::NOMINAL_COUNTERS_ECN_STATE_CHANGED__STATE => {
                     let offset = *entry;
                     let variants = <EcnState as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[72usize], entries, variants)
+                    (&INFO[id::ECN_STATE_CHANGED__STATE], entries, variants)
                 }
-                19usize => {
+                id::NOMINAL_COUNTERS_CONNECTION_MIGRATION_DENIED__REASON => {
                     let offset = *entry;
                     let variants = <MigrationDenyReason as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[74usize], entries, variants)
+                    (
+                        &INFO[id::CONNECTION_MIGRATION_DENIED__REASON],
+                        entries,
+                        variants,
+                    )
                 }
-                20usize => {
+                id::NOMINAL_COUNTERS_HANDSHAKE_STATUS_UPDATED__STATUS => {
                     let offset = *entry;
                     let variants = <HandshakeStatus as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[79usize], entries, variants)
+                    (
+                        &INFO[id::HANDSHAKE_STATUS_UPDATED__STATUS],
+                        entries,
+                        variants,
+                    )
                 }
-                21usize => {
+                id::NOMINAL_COUNTERS_PATH_CHALLENGE_UPDATED__STATUS => {
                     let offset = *entry;
                     let variants = <PathChallengeStatus as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[83usize], entries, variants)
+                    (&INFO[id::PATH_CHALLENGE_UPDATED__STATUS], entries, variants)
                 }
-                22usize => {
+                id::NOMINAL_COUNTERS_MTU_UPDATED__CAUSE => {
                     let offset = *entry;
                     let variants = <MtuUpdatedCause as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[97usize], entries, variants)
+                    (&INFO[id::MTU_UPDATED__CAUSE], entries, variants)
                 }
-                23usize => {
+                id::NOMINAL_COUNTERS_MTU_PROBING_COMPLETE_RECEIVED__PACKET => {
                     let offset = *entry;
                     let variants = <PacketHeader as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[100usize], entries, variants)
+                    (
+                        &INFO[id::MTU_PROBING_COMPLETE_RECEIVED__PACKET],
+                        entries,
+                        variants,
+                    )
                 }
-                24usize => {
+                id::NOMINAL_COUNTERS_SLOW_START_EXITED__CAUSE => {
                     let offset = *entry;
                     let variants = <SlowStartExitCause as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[103usize], entries, variants)
+                    (&INFO[id::SLOW_START_EXITED__CAUSE], entries, variants)
                 }
-                25usize => {
+                id::NOMINAL_COUNTERS_BBR_STATE_CHANGED__STATE => {
                     let offset = *entry;
                     let variants = <BbrState as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[112usize], entries, variants)
+                    (&INFO[id::BBR_STATE_CHANGED__STATE], entries, variants)
                 }
-                26usize => {
+                id::NOMINAL_COUNTERS_DC_STATE_CHANGED__STATE => {
                     let offset = *entry;
                     let variants = <DcState as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[118usize], entries, variants)
+                    (&INFO[id::DC_STATE_CHANGED__STATE], entries, variants)
                 }
-                27usize => {
+                id::NOMINAL_COUNTERS_CONNECTION_CLOSED__ERROR => {
                     let offset = *entry;
                     let variants = <crate::connection::Error as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[122usize], entries, variants)
+                    (&INFO[id::CONNECTION_CLOSED__ERROR], entries, variants)
                 }
-                28usize => {
+                id::NOMINAL_COUNTERS_ENDPOINT_DATAGRAM_DROPPED__REASON => {
                     let offset = *entry;
                     let variants = <DatagramDropReason as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[136usize], entries, variants)
+                    (
+                        &INFO[id::ENDPOINT_DATAGRAM_DROPPED__REASON],
+                        entries,
+                        variants,
+                    )
                 }
-                29usize => {
+                id::NOMINAL_COUNTERS_ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR => {
                     let offset = *entry;
                     let variants = <crate::connection::Error as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[138usize], entries, variants)
+                    (
+                        &INFO[id::ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR],
+                        entries,
+                        variants,
+                    )
                 }
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
@@ -1916,45 +2518,101 @@ impl<R: Registry> Subscriber<R> {
             .iter()
             .enumerate()
             .map(|(idx, entry)| match idx {
-                0usize => (&INFO[7usize], entry),
-                1usize => (&INFO[23usize], entry),
-                2usize => (&INFO[26usize], entry),
-                3usize => (&INFO[27usize], entry),
-                4usize => (&INFO[28usize], entry),
-                5usize => (&INFO[29usize], entry),
-                6usize => (&INFO[30usize], entry),
-                7usize => (&INFO[31usize], entry),
-                8usize => (&INFO[32usize], entry),
-                9usize => (&INFO[33usize], entry),
-                10usize => (&INFO[60usize], entry),
-                11usize => (&INFO[61usize], entry),
-                12usize => (&INFO[64usize], entry),
-                13usize => (&INFO[67usize], entry),
-                14usize => (&INFO[90usize], entry),
-                15usize => (&INFO[93usize], entry),
-                16usize => (&INFO[96usize], entry),
-                17usize => (&INFO[101usize], entry),
-                18usize => (&INFO[105usize], entry),
-                19usize => (&INFO[108usize], entry),
-                20usize => (&INFO[109usize], entry),
-                21usize => (&INFO[110usize], entry),
-                22usize => (&INFO[127usize], entry),
-                23usize => (&INFO[128usize], entry),
-                24usize => (&INFO[129usize], entry),
-                25usize => (&INFO[131usize], entry),
-                26usize => (&INFO[132usize], entry),
-                27usize => (&INFO[134usize], entry),
-                28usize => (&INFO[135usize], entry),
-                29usize => (&INFO[142usize], entry),
-                30usize => (&INFO[144usize], entry),
-                31usize => (&INFO[146usize], entry),
-                32usize => (&INFO[148usize], entry),
-                33usize => (&INFO[150usize], entry),
-                34usize => (&INFO[154usize], entry),
-                35usize => (&INFO[156usize], entry),
-                36usize => (&INFO[158usize], entry),
-                37usize => (&INFO[160usize], entry),
-                38usize => (&INFO[162usize], entry),
+                id::MEASURES_PACKET_SENT__BYTES => (&INFO[id::PACKET_SENT__BYTES], entry),
+                id::MEASURES_PACKET_LOST__BYTES => (&INFO[id::PACKET_LOST__BYTES], entry),
+                id::MEASURES_RECOVERY_METRICS__MIN_RTT => {
+                    (&INFO[id::RECOVERY_METRICS__MIN_RTT], entry)
+                }
+                id::MEASURES_RECOVERY_METRICS__SMOOTHED_RTT => {
+                    (&INFO[id::RECOVERY_METRICS__SMOOTHED_RTT], entry)
+                }
+                id::MEASURES_RECOVERY_METRICS__LATEST_RTT => {
+                    (&INFO[id::RECOVERY_METRICS__LATEST_RTT], entry)
+                }
+                id::MEASURES_RECOVERY_METRICS__RTT_VARIANCE => {
+                    (&INFO[id::RECOVERY_METRICS__RTT_VARIANCE], entry)
+                }
+                id::MEASURES_RECOVERY_METRICS__MAX_ACK_DELAY => {
+                    (&INFO[id::RECOVERY_METRICS__MAX_ACK_DELAY], entry)
+                }
+                id::MEASURES_RECOVERY_METRICS__PTO_COUNT => {
+                    (&INFO[id::RECOVERY_METRICS__PTO_COUNT], entry)
+                }
+                id::MEASURES_RECOVERY_METRICS__CONGESTION_WINDOW => {
+                    (&INFO[id::RECOVERY_METRICS__CONGESTION_WINDOW], entry)
+                }
+                id::MEASURES_RECOVERY_METRICS__BYTES_IN_FLIGHT => {
+                    (&INFO[id::RECOVERY_METRICS__BYTES_IN_FLIGHT], entry)
+                }
+                id::MEASURES_DATAGRAM_SENT__BYTES => (&INFO[id::DATAGRAM_SENT__BYTES], entry),
+                id::MEASURES_DATAGRAM_SENT__GSO_OFFSET => {
+                    (&INFO[id::DATAGRAM_SENT__GSO_OFFSET], entry)
+                }
+                id::MEASURES_DATAGRAM_RECEIVED__BYTES => {
+                    (&INFO[id::DATAGRAM_RECEIVED__BYTES], entry)
+                }
+                id::MEASURES_DATAGRAM_DROPPED__BYTES => (&INFO[id::DATAGRAM_DROPPED__BYTES], entry),
+                id::MEASURES_RX_STREAM_PROGRESS__BYTES => {
+                    (&INFO[id::RX_STREAM_PROGRESS__BYTES], entry)
+                }
+                id::MEASURES_TX_STREAM_PROGRESS__BYTES => {
+                    (&INFO[id::TX_STREAM_PROGRESS__BYTES], entry)
+                }
+                id::MEASURES_MTU_UPDATED__MTU => (&INFO[id::MTU_UPDATED__MTU], entry),
+                id::MEASURES_MTU_PROBING_COMPLETE_RECEIVED__MTU => {
+                    (&INFO[id::MTU_PROBING_COMPLETE_RECEIVED__MTU], entry)
+                }
+                id::MEASURES_SLOW_START_EXITED__CONGESTION_WINDOW => {
+                    (&INFO[id::SLOW_START_EXITED__CONGESTION_WINDOW], entry)
+                }
+                id::MEASURES_PACING_RATE_UPDATED__BYTES_PER_SECOND => {
+                    (&INFO[id::PACING_RATE_UPDATED__BYTES_PER_SECOND], entry)
+                }
+                id::MEASURES_PACING_RATE_UPDATED__BURST_SIZE => {
+                    (&INFO[id::PACING_RATE_UPDATED__BURST_SIZE], entry)
+                }
+                id::MEASURES_PACING_RATE_UPDATED__PACING_GAIN => {
+                    (&INFO[id::PACING_RATE_UPDATED__PACING_GAIN], entry)
+                }
+                id::MEASURES_ENDPOINT_DATAGRAM_SENT__BYTES => {
+                    (&INFO[id::ENDPOINT_DATAGRAM_SENT__BYTES], entry)
+                }
+                id::MEASURES_ENDPOINT_DATAGRAM_SENT__BYTES__TOTAL => {
+                    (&INFO[id::ENDPOINT_DATAGRAM_SENT__BYTES__TOTAL], entry)
+                }
+                id::MEASURES_ENDPOINT_DATAGRAM_SENT__GSO_OFFSET => {
+                    (&INFO[id::ENDPOINT_DATAGRAM_SENT__GSO_OFFSET], entry)
+                }
+                id::MEASURES_ENDPOINT_DATAGRAM_RECEIVED__BYTES => {
+                    (&INFO[id::ENDPOINT_DATAGRAM_RECEIVED__BYTES], entry)
+                }
+                id::MEASURES_ENDPOINT_DATAGRAM_RECEIVED__BYTES__TOTAL => {
+                    (&INFO[id::ENDPOINT_DATAGRAM_RECEIVED__BYTES__TOTAL], entry)
+                }
+                id::MEASURES_ENDPOINT_DATAGRAM_DROPPED__BYTES => {
+                    (&INFO[id::ENDPOINT_DATAGRAM_DROPPED__BYTES], entry)
+                }
+                id::MEASURES_ENDPOINT_DATAGRAM_DROPPED__BYTES__TOTAL => {
+                    (&INFO[id::ENDPOINT_DATAGRAM_DROPPED__BYTES__TOTAL], entry)
+                }
+                id::MEASURES_PLATFORM_TX__PACKETS => (&INFO[id::PLATFORM_TX__PACKETS], entry),
+                id::MEASURES_PLATFORM_TX__SYSCALLS => (&INFO[id::PLATFORM_TX__SYSCALLS], entry),
+                id::MEASURES_PLATFORM_TX__SYSCALLS__BLOCKED => {
+                    (&INFO[id::PLATFORM_TX__SYSCALLS__BLOCKED], entry)
+                }
+                id::MEASURES_PLATFORM_TX__ERRORS => (&INFO[id::PLATFORM_TX__ERRORS], entry),
+                id::MEASURES_PLATFORM_TX__ERRORS__DROPPED => {
+                    (&INFO[id::PLATFORM_TX__ERRORS__DROPPED], entry)
+                }
+                id::MEASURES_PLATFORM_RX__PACKETS => (&INFO[id::PLATFORM_RX__PACKETS], entry),
+                id::MEASURES_PLATFORM_RX__SYSCALLS => (&INFO[id::PLATFORM_RX__SYSCALLS], entry),
+                id::MEASURES_PLATFORM_RX__SYSCALLS__BLOCKED => {
+                    (&INFO[id::PLATFORM_RX__SYSCALLS__BLOCKED], entry)
+                }
+                id::MEASURES_PLATFORM_RX__ERRORS => (&INFO[id::PLATFORM_RX__ERRORS], entry),
+                id::MEASURES_PLATFORM_RX__ERRORS__DROPPED => {
+                    (&INFO[id::PLATFORM_RX__ERRORS__DROPPED], entry)
+                }
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -1984,21 +2642,57 @@ impl<R: Registry> Subscriber<R> {
             .iter()
             .enumerate()
             .map(|(idx, entry)| match idx {
-                0usize => (&INFO[48usize], entry),
-                1usize => (&INFO[49usize], entry),
-                2usize => (&INFO[50usize], entry),
-                3usize => (&INFO[57usize], entry),
-                4usize => (&INFO[76usize], entry),
-                5usize => (&INFO[77usize], entry),
-                6usize => (&INFO[78usize], entry),
-                7usize => (&INFO[85usize], entry),
-                8usize => (&INFO[87usize], entry),
-                9usize => (&INFO[114usize], entry),
-                10usize => (&INFO[115usize], entry),
-                11usize => (&INFO[116usize], entry),
-                12usize => (&INFO[117usize], entry),
-                13usize => (&INFO[121usize], entry),
-                14usize => (&INFO[167usize], entry),
+                id::TIMERS_KEY_SPACE_DISCARDED__INITIAL__LATENCY => {
+                    (&INFO[id::KEY_SPACE_DISCARDED__INITIAL__LATENCY], entry)
+                }
+                id::TIMERS_KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY => {
+                    (&INFO[id::KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY], entry)
+                }
+                id::TIMERS_KEY_SPACE_DISCARDED__ONE_RTT__LATENCY => {
+                    (&INFO[id::KEY_SPACE_DISCARDED__ONE_RTT__LATENCY], entry)
+                }
+                id::TIMERS_TRANSPORT_PARAMETERS_RECEIVED__LATENCY => {
+                    (&INFO[id::TRANSPORT_PARAMETERS_RECEIVED__LATENCY], entry)
+                }
+                id::TIMERS_HANDSHAKE_STATUS_UPDATED__COMPLETE__LATENCY => (
+                    &INFO[id::HANDSHAKE_STATUS_UPDATED__COMPLETE__LATENCY],
+                    entry,
+                ),
+                id::TIMERS_HANDSHAKE_STATUS_UPDATED__CONFIRMED__LATENCY => (
+                    &INFO[id::HANDSHAKE_STATUS_UPDATED__CONFIRMED__LATENCY],
+                    entry,
+                ),
+                id::TIMERS_HANDSHAKE_STATUS_UPDATED__HANDSHAKE_DONE_ACKED__LATENCY => (
+                    &INFO[id::HANDSHAKE_STATUS_UPDATED__HANDSHAKE_DONE_ACKED__LATENCY],
+                    entry,
+                ),
+                id::TIMERS_TLS_CLIENT_HELLO__LATENCY => {
+                    (&INFO[id::TLS_CLIENT_HELLO__LATENCY], entry)
+                }
+                id::TIMERS_TLS_SERVER_HELLO__LATENCY => {
+                    (&INFO[id::TLS_SERVER_HELLO__LATENCY], entry)
+                }
+                id::TIMERS_DC_STATE_CHANGED__VERSION_NEGOTIATED__LATENCY => (
+                    &INFO[id::DC_STATE_CHANGED__VERSION_NEGOTIATED__LATENCY],
+                    entry,
+                ),
+                id::TIMERS_DC_STATE_CHANGED__NO_VERSION_NEGOTIATED__LATENCY => (
+                    &INFO[id::DC_STATE_CHANGED__NO_VERSION_NEGOTIATED__LATENCY],
+                    entry,
+                ),
+                id::TIMERS_DC_STATE_CHANGED__PATH_SECRETS__LATENCY => {
+                    (&INFO[id::DC_STATE_CHANGED__PATH_SECRETS__LATENCY], entry)
+                }
+                id::TIMERS_DC_STATE_CHANGED__COMPLETE__LATENCY => {
+                    (&INFO[id::DC_STATE_CHANGED__COMPLETE__LATENCY], entry)
+                }
+                id::TIMERS_CONNECTION_CLOSED__LATENCY => {
+                    (&INFO[id::CONNECTION_CLOSED__LATENCY], entry)
+                }
+                id::TIMERS_PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION => (
+                    &INFO[id::PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION],
+                    entry,
+                ),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -2044,7 +2738,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(0usize, 0usize, 1usize);
+        self.count(
+            id::APPLICATION_PROTOCOL_INFORMATION,
+            id::COUNTERS_APPLICATION_PROTOCOL_INFORMATION,
+            1usize,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2058,7 +2756,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(1usize, 1usize, 1usize);
+        self.count(
+            id::SERVER_NAME_INFORMATION,
+            id::COUNTERS_SERVER_NAME_INFORMATION,
+            1usize,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2072,7 +2774,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(2usize, 2usize, 1usize);
+        self.count(
+            id::KEY_EXCHANGE_GROUP,
+            id::COUNTERS_KEY_EXCHANGE_GROUP,
+            1usize,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2086,7 +2792,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(3usize, 3usize, 1usize);
+        self.count(id::PACKET_SKIPPED, id::COUNTERS_PACKET_SKIPPED, 1usize);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2100,10 +2806,22 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(4usize, 4usize, 1usize);
-        self.count_nominal(5usize, 0usize, &event.packet_header);
-        self.count(6usize, 5usize, event.packet_len);
-        self.measure(7usize, 0usize, event.packet_len);
+        self.count(id::PACKET_SENT, id::COUNTERS_PACKET_SENT, 1usize);
+        self.count_nominal(
+            id::PACKET_SENT__KIND,
+            id::NOMINAL_COUNTERS_PACKET_SENT__KIND,
+            &event.packet_header,
+        );
+        self.count(
+            id::PACKET_SENT__BYTES__TOTAL,
+            id::COUNTERS_PACKET_SENT__BYTES__TOTAL,
+            event.packet_len,
+        );
+        self.measure(
+            id::PACKET_SENT__BYTES,
+            id::MEASURES_PACKET_SENT__BYTES,
+            event.packet_len,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2117,8 +2835,12 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(8usize, 6usize, 1usize);
-        self.count_nominal(9usize, 1usize, &event.packet_header);
+        self.count(id::PACKET_RECEIVED, id::COUNTERS_PACKET_RECEIVED, 1usize);
+        self.count_nominal(
+            id::PACKET_RECEIVED__KIND,
+            id::NOMINAL_COUNTERS_PACKET_RECEIVED__KIND,
+            &event.packet_header,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2132,7 +2854,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(10usize, 7usize, 1usize);
+        self.count(
+            id::ACTIVE_PATH_UPDATED,
+            id::COUNTERS_ACTIVE_PATH_UPDATED,
+            1usize,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2146,7 +2872,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(11usize, 8usize, 1usize);
+        self.count(id::PATH_CREATED, id::COUNTERS_PATH_CREATED, 1usize);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2160,9 +2886,17 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(12usize, 9usize, 1usize);
-        self.count_nominal(13usize, 2usize, &event.packet_header);
-        self.count_nominal(14usize, 3usize, &event.frame);
+        self.count(id::FRAME_SENT, id::COUNTERS_FRAME_SENT, 1usize);
+        self.count_nominal(
+            id::FRAME_SENT__PACKET,
+            id::NOMINAL_COUNTERS_FRAME_SENT__PACKET,
+            &event.packet_header,
+        );
+        self.count_nominal(
+            id::FRAME_SENT__FRAME,
+            id::NOMINAL_COUNTERS_FRAME_SENT__FRAME,
+            &event.frame,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2176,9 +2910,17 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(15usize, 10usize, 1usize);
-        self.count_nominal(16usize, 4usize, &event.packet_header);
-        self.count_nominal(17usize, 5usize, &event.frame);
+        self.count(id::FRAME_RECEIVED, id::COUNTERS_FRAME_RECEIVED, 1usize);
+        self.count_nominal(
+            id::FRAME_RECEIVED__PACKET,
+            id::NOMINAL_COUNTERS_FRAME_RECEIVED__PACKET,
+            &event.packet_header,
+        );
+        self.count_nominal(
+            id::FRAME_RECEIVED__FRAME,
+            id::NOMINAL_COUNTERS_FRAME_RECEIVED__FRAME,
+            &event.frame,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2192,8 +2934,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(18usize, 11usize, 1usize);
-        self.count_nominal(19usize, 6usize, &event.packet_header);
+        self.count(
+            id::CONNECTION_CLOSE_FRAME_RECEIVED,
+            id::COUNTERS_CONNECTION_CLOSE_FRAME_RECEIVED,
+            1usize,
+        );
+        self.count_nominal(
+            id::CONNECTION_CLOSE_FRAME_RECEIVED__PACKET,
+            id::NOMINAL_COUNTERS_CONNECTION_CLOSE_FRAME_RECEIVED__PACKET,
+            &event.packet_header,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2207,11 +2957,27 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(20usize, 12usize, 1usize);
-        self.count_nominal(21usize, 7usize, &event.packet_header);
-        self.count(22usize, 13usize, event.bytes_lost);
-        self.measure(23usize, 1usize, event.bytes_lost);
-        self.count_bool(24usize, 0usize, event.is_mtu_probe);
+        self.count(id::PACKET_LOST, id::COUNTERS_PACKET_LOST, 1usize);
+        self.count_nominal(
+            id::PACKET_LOST__KIND,
+            id::NOMINAL_COUNTERS_PACKET_LOST__KIND,
+            &event.packet_header,
+        );
+        self.count(
+            id::PACKET_LOST__BYTES__TOTAL,
+            id::COUNTERS_PACKET_LOST__BYTES__TOTAL,
+            event.bytes_lost,
+        );
+        self.measure(
+            id::PACKET_LOST__BYTES,
+            id::MEASURES_PACKET_LOST__BYTES,
+            event.bytes_lost,
+        );
+        self.count_bool(
+            id::PACKET_LOST__IS_MTU_PROBE,
+            id::BOOL_COUNTERS_PACKET_LOST__IS_MTU_PROBE,
+            event.is_mtu_probe,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2225,16 +2991,52 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(25usize, 14usize, 1usize);
-        self.measure(26usize, 2usize, event.min_rtt);
-        self.measure(27usize, 3usize, event.smoothed_rtt);
-        self.measure(28usize, 4usize, event.latest_rtt);
-        self.measure(29usize, 5usize, event.rtt_variance);
-        self.measure(30usize, 6usize, event.max_ack_delay);
-        self.measure(31usize, 7usize, event.pto_count);
-        self.measure(32usize, 8usize, event.congestion_window);
-        self.measure(33usize, 9usize, event.bytes_in_flight);
-        self.count_bool(34usize, 1usize, event.congestion_limited);
+        self.count(id::RECOVERY_METRICS, id::COUNTERS_RECOVERY_METRICS, 1usize);
+        self.measure(
+            id::RECOVERY_METRICS__MIN_RTT,
+            id::MEASURES_RECOVERY_METRICS__MIN_RTT,
+            event.min_rtt,
+        );
+        self.measure(
+            id::RECOVERY_METRICS__SMOOTHED_RTT,
+            id::MEASURES_RECOVERY_METRICS__SMOOTHED_RTT,
+            event.smoothed_rtt,
+        );
+        self.measure(
+            id::RECOVERY_METRICS__LATEST_RTT,
+            id::MEASURES_RECOVERY_METRICS__LATEST_RTT,
+            event.latest_rtt,
+        );
+        self.measure(
+            id::RECOVERY_METRICS__RTT_VARIANCE,
+            id::MEASURES_RECOVERY_METRICS__RTT_VARIANCE,
+            event.rtt_variance,
+        );
+        self.measure(
+            id::RECOVERY_METRICS__MAX_ACK_DELAY,
+            id::MEASURES_RECOVERY_METRICS__MAX_ACK_DELAY,
+            event.max_ack_delay,
+        );
+        self.measure(
+            id::RECOVERY_METRICS__PTO_COUNT,
+            id::MEASURES_RECOVERY_METRICS__PTO_COUNT,
+            event.pto_count,
+        );
+        self.measure(
+            id::RECOVERY_METRICS__CONGESTION_WINDOW,
+            id::MEASURES_RECOVERY_METRICS__CONGESTION_WINDOW,
+            event.congestion_window,
+        );
+        self.measure(
+            id::RECOVERY_METRICS__BYTES_IN_FLIGHT,
+            id::MEASURES_RECOVERY_METRICS__BYTES_IN_FLIGHT,
+            event.bytes_in_flight,
+        );
+        self.count_bool(
+            id::RECOVERY_METRICS__CONGESTION_LIMITED,
+            id::BOOL_COUNTERS_RECOVERY_METRICS__CONGESTION_LIMITED,
+            event.congestion_limited,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2248,8 +3050,12 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(35usize, 15usize, 1usize);
-        self.count_nominal(36usize, 8usize, &event.source);
+        self.count(id::CONGESTION, id::COUNTERS_CONGESTION, 1usize);
+        self.count_nominal(
+            id::CONGESTION__SOURCE,
+            id::NOMINAL_COUNTERS_CONGESTION__SOURCE,
+            &event.source,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2263,7 +3069,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(37usize, 16usize, 1usize);
+        self.count(
+            id::RX_ACK_RANGE_DROPPED,
+            id::COUNTERS_RX_ACK_RANGE_DROPPED,
+            1usize,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2277,8 +3087,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(38usize, 17usize, 1usize);
-        self.count_nominal(39usize, 9usize, &event.packet_header);
+        self.count(
+            id::ACK_RANGE_RECEIVED,
+            id::COUNTERS_ACK_RANGE_RECEIVED,
+            1usize,
+        );
+        self.count_nominal(
+            id::ACK_RANGE_RECEIVED__PACKET,
+            id::NOMINAL_COUNTERS_ACK_RANGE_RECEIVED__PACKET,
+            &event.packet_header,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2292,8 +3110,12 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(40usize, 18usize, 1usize);
-        self.count_nominal(41usize, 10usize, &event.packet_header);
+        self.count(id::ACK_RANGE_SENT, id::COUNTERS_ACK_RANGE_SENT, 1usize);
+        self.count_nominal(
+            id::ACK_RANGE_SENT__PACKET,
+            id::NOMINAL_COUNTERS_ACK_RANGE_SENT__PACKET,
+            &event.packet_header,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2307,8 +3129,12 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(42usize, 19usize, 1usize);
-        self.count_nominal(43usize, 11usize, &event.reason);
+        self.count(id::PACKET_DROPPED, id::COUNTERS_PACKET_DROPPED, 1usize);
+        self.count_nominal(
+            id::PACKET_DROPPED__REASON,
+            id::NOMINAL_COUNTERS_PACKET_DROPPED__REASON,
+            &event.reason,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2322,9 +3148,17 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(44usize, 20usize, 1usize);
-        self.count_nominal(45usize, 12usize, &event.key_type);
-        self.count_nominal(46usize, 13usize, &event.cipher_suite);
+        self.count(id::KEY_UPDATE, id::COUNTERS_KEY_UPDATE, 1usize);
+        self.count_nominal(
+            id::KEY_UPDATE__KEY_TYPE,
+            id::NOMINAL_COUNTERS_KEY_UPDATE__KEY_TYPE,
+            &event.key_type,
+        );
+        self.count_nominal(
+            id::KEY_UPDATE__CIPHER_SUITE,
+            id::NOMINAL_COUNTERS_KEY_UPDATE__CIPHER_SUITE,
+            &event.cipher_suite,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2338,15 +3172,19 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(47usize, 21usize, 1usize);
+        self.count(
+            id::KEY_SPACE_DISCARDED,
+            id::COUNTERS_KEY_SPACE_DISCARDED,
+            1usize,
+        );
         {
             fn check(evt: &api::KeySpaceDiscarded) -> bool {
                 matches!(evt.space, KeySpace::Initial { .. })
             }
             if check(event) {
                 self.time(
-                    48usize,
-                    0usize,
+                    id::KEY_SPACE_DISCARDED__INITIAL__LATENCY,
+                    id::TIMERS_KEY_SPACE_DISCARDED__INITIAL__LATENCY,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
@@ -2357,8 +3195,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             }
             if check(event) {
                 self.time(
-                    49usize,
-                    1usize,
+                    id::KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY,
+                    id::TIMERS_KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
@@ -2369,13 +3207,17 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             }
             if check(event) {
                 self.time(
-                    50usize,
-                    2usize,
+                    id::KEY_SPACE_DISCARDED__ONE_RTT__LATENCY,
+                    id::TIMERS_KEY_SPACE_DISCARDED__ONE_RTT__LATENCY,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
         }
-        self.count_nominal(51usize, 14usize, &event.space);
+        self.count_nominal(
+            id::KEY_SPACE_DISCARDED__SPACE,
+            id::NOMINAL_COUNTERS_KEY_SPACE_DISCARDED__SPACE,
+            &event.space,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2389,7 +3231,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(52usize, 22usize, 1usize);
+        self.count(
+            id::CONNECTION_STARTED,
+            id::COUNTERS_CONNECTION_STARTED,
+            1usize,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2403,9 +3249,17 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(53usize, 23usize, 1usize);
-        self.count_nominal(54usize, 15usize, &event.packet_header);
-        self.count_nominal(55usize, 16usize, &event.error);
+        self.count(id::DUPLICATE_PACKET, id::COUNTERS_DUPLICATE_PACKET, 1usize);
+        self.count_nominal(
+            id::DUPLICATE_PACKET__KIND,
+            id::NOMINAL_COUNTERS_DUPLICATE_PACKET__KIND,
+            &event.packet_header,
+        );
+        self.count_nominal(
+            id::DUPLICATE_PACKET__ERROR,
+            id::NOMINAL_COUNTERS_DUPLICATE_PACKET__ERROR,
+            &event.error,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2419,10 +3273,14 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(56usize, 24usize, 1usize);
+        self.count(
+            id::TRANSPORT_PARAMETERS_RECEIVED,
+            id::COUNTERS_TRANSPORT_PARAMETERS_RECEIVED,
+            1usize,
+        );
         self.time(
-            57usize,
-            3usize,
+            id::TRANSPORT_PARAMETERS_RECEIVED__LATENCY,
+            id::TIMERS_TRANSPORT_PARAMETERS_RECEIVED__LATENCY,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
         let _ = context;
@@ -2438,10 +3296,22 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(58usize, 25usize, 1usize);
-        self.count(59usize, 26usize, event.len);
-        self.measure(60usize, 10usize, event.len);
-        self.measure(61usize, 11usize, event.gso_offset);
+        self.count(id::DATAGRAM_SENT, id::COUNTERS_DATAGRAM_SENT, 1usize);
+        self.count(
+            id::DATAGRAM_SENT__BYTES__TOTAL,
+            id::COUNTERS_DATAGRAM_SENT__BYTES__TOTAL,
+            event.len,
+        );
+        self.measure(
+            id::DATAGRAM_SENT__BYTES,
+            id::MEASURES_DATAGRAM_SENT__BYTES,
+            event.len,
+        );
+        self.measure(
+            id::DATAGRAM_SENT__GSO_OFFSET,
+            id::MEASURES_DATAGRAM_SENT__GSO_OFFSET,
+            event.gso_offset,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2455,9 +3325,21 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(62usize, 27usize, 1usize);
-        self.count(63usize, 28usize, event.len);
-        self.measure(64usize, 12usize, event.len);
+        self.count(
+            id::DATAGRAM_RECEIVED,
+            id::COUNTERS_DATAGRAM_RECEIVED,
+            1usize,
+        );
+        self.count(
+            id::DATAGRAM_RECEIVED__BYTES__TOTAL,
+            id::COUNTERS_DATAGRAM_RECEIVED__BYTES__TOTAL,
+            event.len,
+        );
+        self.measure(
+            id::DATAGRAM_RECEIVED__BYTES,
+            id::MEASURES_DATAGRAM_RECEIVED__BYTES,
+            event.len,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2471,10 +3353,22 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(65usize, 29usize, 1usize);
-        self.count(66usize, 30usize, event.len);
-        self.measure(67usize, 13usize, event.len);
-        self.count_nominal(68usize, 17usize, &event.reason);
+        self.count(id::DATAGRAM_DROPPED, id::COUNTERS_DATAGRAM_DROPPED, 1usize);
+        self.count(
+            id::DATAGRAM_DROPPED__BYTES__TOTAL,
+            id::COUNTERS_DATAGRAM_DROPPED__BYTES__TOTAL,
+            event.len,
+        );
+        self.measure(
+            id::DATAGRAM_DROPPED__BYTES,
+            id::MEASURES_DATAGRAM_DROPPED__BYTES,
+            event.len,
+        );
+        self.count_nominal(
+            id::DATAGRAM_DROPPED__REASON,
+            id::NOMINAL_COUNTERS_DATAGRAM_DROPPED__REASON,
+            &event.reason,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2488,7 +3382,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(69usize, 31usize, 1usize);
+        self.count(
+            id::HANDSHAKE_REMOTE_ADDRESS_CHANGE_OBSERVED,
+            id::COUNTERS_HANDSHAKE_REMOTE_ADDRESS_CHANGE_OBSERVED,
+            1usize,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2502,7 +3400,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(70usize, 32usize, 1usize);
+        self.count(
+            id::CONNECTION_ID_UPDATED,
+            id::COUNTERS_CONNECTION_ID_UPDATED,
+            1usize,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2516,8 +3418,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(71usize, 33usize, 1usize);
-        self.count_nominal(72usize, 18usize, &event.state);
+        self.count(
+            id::ECN_STATE_CHANGED,
+            id::COUNTERS_ECN_STATE_CHANGED,
+            1usize,
+        );
+        self.count_nominal(
+            id::ECN_STATE_CHANGED__STATE,
+            id::NOMINAL_COUNTERS_ECN_STATE_CHANGED__STATE,
+            &event.state,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2531,8 +3441,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(73usize, 34usize, 1usize);
-        self.count_nominal(74usize, 19usize, &event.reason);
+        self.count(
+            id::CONNECTION_MIGRATION_DENIED,
+            id::COUNTERS_CONNECTION_MIGRATION_DENIED,
+            1usize,
+        );
+        self.count_nominal(
+            id::CONNECTION_MIGRATION_DENIED__REASON,
+            id::NOMINAL_COUNTERS_CONNECTION_MIGRATION_DENIED__REASON,
+            &event.reason,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2546,15 +3464,19 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(75usize, 35usize, 1usize);
+        self.count(
+            id::HANDSHAKE_STATUS_UPDATED,
+            id::COUNTERS_HANDSHAKE_STATUS_UPDATED,
+            1usize,
+        );
         {
             fn check(evt: &api::HandshakeStatusUpdated) -> bool {
                 matches!(evt.status, HandshakeStatus::Complete { .. })
             }
             if check(event) {
                 self.time(
-                    76usize,
-                    4usize,
+                    id::HANDSHAKE_STATUS_UPDATED__COMPLETE__LATENCY,
+                    id::TIMERS_HANDSHAKE_STATUS_UPDATED__COMPLETE__LATENCY,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
@@ -2565,8 +3487,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             }
             if check(event) {
                 self.time(
-                    77usize,
-                    5usize,
+                    id::HANDSHAKE_STATUS_UPDATED__CONFIRMED__LATENCY,
+                    id::TIMERS_HANDSHAKE_STATUS_UPDATED__CONFIRMED__LATENCY,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
@@ -2577,13 +3499,17 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             }
             if check(event) {
                 self.time(
-                    78usize,
-                    6usize,
+                    id::HANDSHAKE_STATUS_UPDATED__HANDSHAKE_DONE_ACKED__LATENCY,
+                    id::TIMERS_HANDSHAKE_STATUS_UPDATED__HANDSHAKE_DONE_ACKED__LATENCY,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
         }
-        self.count_nominal(79usize, 20usize, &event.status);
+        self.count_nominal(
+            id::HANDSHAKE_STATUS_UPDATED__STATUS,
+            id::NOMINAL_COUNTERS_HANDSHAKE_STATUS_UPDATED__STATUS,
+            &event.status,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2597,7 +3523,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(80usize, 36usize, 1usize);
+        self.count(
+            id::TLS_EXPORTER_READY,
+            id::COUNTERS_TLS_EXPORTER_READY,
+            1usize,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2611,7 +3541,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(81usize, 37usize, 1usize);
+        self.count(
+            id::TLS_HANDSHAKE_FAILED,
+            id::COUNTERS_TLS_HANDSHAKE_FAILED,
+            1usize,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2625,8 +3559,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(82usize, 38usize, 1usize);
-        self.count_nominal(83usize, 21usize, &event.path_challenge_status);
+        self.count(
+            id::PATH_CHALLENGE_UPDATED,
+            id::COUNTERS_PATH_CHALLENGE_UPDATED,
+            1usize,
+        );
+        self.count_nominal(
+            id::PATH_CHALLENGE_UPDATED__STATUS,
+            id::NOMINAL_COUNTERS_PATH_CHALLENGE_UPDATED__STATUS,
+            &event.path_challenge_status,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2640,10 +3582,10 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(84usize, 39usize, 1usize);
+        self.count(id::TLS_CLIENT_HELLO, id::COUNTERS_TLS_CLIENT_HELLO, 1usize);
         self.time(
-            85usize,
-            7usize,
+            id::TLS_CLIENT_HELLO__LATENCY,
+            id::TIMERS_TLS_CLIENT_HELLO__LATENCY,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
         let _ = context;
@@ -2659,10 +3601,10 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(86usize, 40usize, 1usize);
+        self.count(id::TLS_SERVER_HELLO, id::COUNTERS_TLS_SERVER_HELLO, 1usize);
         self.time(
-            87usize,
-            8usize,
+            id::TLS_SERVER_HELLO__LATENCY,
+            id::TIMERS_TLS_SERVER_HELLO__LATENCY,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
         let _ = context;
@@ -2678,9 +3620,21 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(88usize, 41usize, 1usize);
-        self.count(89usize, 42usize, event.bytes);
-        self.measure(90usize, 14usize, event.bytes);
+        self.count(
+            id::RX_STREAM_PROGRESS,
+            id::COUNTERS_RX_STREAM_PROGRESS,
+            1usize,
+        );
+        self.count(
+            id::RX_STREAM_PROGRESS__BYTES__TOTAL,
+            id::COUNTERS_RX_STREAM_PROGRESS__BYTES__TOTAL,
+            event.bytes,
+        );
+        self.measure(
+            id::RX_STREAM_PROGRESS__BYTES,
+            id::MEASURES_RX_STREAM_PROGRESS__BYTES,
+            event.bytes,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2694,9 +3648,21 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(91usize, 43usize, 1usize);
-        self.count(92usize, 44usize, event.bytes);
-        self.measure(93usize, 15usize, event.bytes);
+        self.count(
+            id::TX_STREAM_PROGRESS,
+            id::COUNTERS_TX_STREAM_PROGRESS,
+            1usize,
+        );
+        self.count(
+            id::TX_STREAM_PROGRESS__BYTES__TOTAL,
+            id::COUNTERS_TX_STREAM_PROGRESS__BYTES__TOTAL,
+            event.bytes,
+        );
+        self.measure(
+            id::TX_STREAM_PROGRESS__BYTES,
+            id::MEASURES_TX_STREAM_PROGRESS__BYTES,
+            event.bytes,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2710,7 +3676,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(94usize, 45usize, 1usize);
+        self.count(
+            id::KEEP_ALIVE_TIMER_EXPIRED,
+            id::COUNTERS_KEEP_ALIVE_TIMER_EXPIRED,
+            1usize,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2724,10 +3694,22 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(95usize, 46usize, 1usize);
-        self.measure(96usize, 16usize, event.mtu);
-        self.count_nominal(97usize, 22usize, &event.cause);
-        self.count_bool(98usize, 2usize, event.search_complete);
+        self.count(id::MTU_UPDATED, id::COUNTERS_MTU_UPDATED, 1usize);
+        self.measure(
+            id::MTU_UPDATED__MTU,
+            id::MEASURES_MTU_UPDATED__MTU,
+            event.mtu,
+        );
+        self.count_nominal(
+            id::MTU_UPDATED__CAUSE,
+            id::NOMINAL_COUNTERS_MTU_UPDATED__CAUSE,
+            &event.cause,
+        );
+        self.count_bool(
+            id::MTU_UPDATED__SEARCH_COMPLETE,
+            id::BOOL_COUNTERS_MTU_UPDATED__SEARCH_COMPLETE,
+            event.search_complete,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2741,9 +3723,21 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(99usize, 47usize, 1usize);
-        self.count_nominal(100usize, 23usize, &event.packet_header);
-        self.measure(101usize, 17usize, event.mtu);
+        self.count(
+            id::MTU_PROBING_COMPLETE_RECEIVED,
+            id::COUNTERS_MTU_PROBING_COMPLETE_RECEIVED,
+            1usize,
+        );
+        self.count_nominal(
+            id::MTU_PROBING_COMPLETE_RECEIVED__PACKET,
+            id::NOMINAL_COUNTERS_MTU_PROBING_COMPLETE_RECEIVED__PACKET,
+            &event.packet_header,
+        );
+        self.measure(
+            id::MTU_PROBING_COMPLETE_RECEIVED__MTU,
+            id::MEASURES_MTU_PROBING_COMPLETE_RECEIVED__MTU,
+            event.mtu,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2757,15 +3751,27 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(102usize, 48usize, 1usize);
-        self.count_nominal(103usize, 24usize, &event.cause);
+        self.count(
+            id::SLOW_START_EXITED,
+            id::COUNTERS_SLOW_START_EXITED,
+            1usize,
+        );
+        self.count_nominal(
+            id::SLOW_START_EXITED__CAUSE,
+            id::NOMINAL_COUNTERS_SLOW_START_EXITED__CAUSE,
+            &event.cause,
+        );
         self.time_nominal(
-            104usize,
-            0usize,
+            id::SLOW_START_EXITED__LATENCY,
+            id::NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY,
             &event.cause,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
-        self.measure(105usize, 18usize, event.congestion_window);
+        self.measure(
+            id::SLOW_START_EXITED__CONGESTION_WINDOW,
+            id::MEASURES_SLOW_START_EXITED__CONGESTION_WINDOW,
+            event.congestion_window,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2779,7 +3785,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(106usize, 49usize, 1usize);
+        self.count(
+            id::DELIVERY_RATE_SAMPLED,
+            id::COUNTERS_DELIVERY_RATE_SAMPLED,
+            1usize,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2793,10 +3803,26 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(107usize, 50usize, 1usize);
-        self.measure(108usize, 19usize, event.bytes_per_second);
-        self.measure(109usize, 20usize, event.burst_size);
-        self.measure(110usize, 21usize, event.pacing_gain);
+        self.count(
+            id::PACING_RATE_UPDATED,
+            id::COUNTERS_PACING_RATE_UPDATED,
+            1usize,
+        );
+        self.measure(
+            id::PACING_RATE_UPDATED__BYTES_PER_SECOND,
+            id::MEASURES_PACING_RATE_UPDATED__BYTES_PER_SECOND,
+            event.bytes_per_second,
+        );
+        self.measure(
+            id::PACING_RATE_UPDATED__BURST_SIZE,
+            id::MEASURES_PACING_RATE_UPDATED__BURST_SIZE,
+            event.burst_size,
+        );
+        self.measure(
+            id::PACING_RATE_UPDATED__PACING_GAIN,
+            id::MEASURES_PACING_RATE_UPDATED__PACING_GAIN,
+            event.pacing_gain,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2810,8 +3836,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(111usize, 51usize, 1usize);
-        self.count_nominal(112usize, 25usize, &event.state);
+        self.count(
+            id::BBR_STATE_CHANGED,
+            id::COUNTERS_BBR_STATE_CHANGED,
+            1usize,
+        );
+        self.count_nominal(
+            id::BBR_STATE_CHANGED__STATE,
+            id::NOMINAL_COUNTERS_BBR_STATE_CHANGED__STATE,
+            &event.state,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2825,15 +3859,15 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(113usize, 52usize, 1usize);
+        self.count(id::DC_STATE_CHANGED, id::COUNTERS_DC_STATE_CHANGED, 1usize);
         {
             fn check(evt: &api::DcStateChanged) -> bool {
                 matches!(evt.state, DcState::VersionNegotiated { .. })
             }
             if check(event) {
                 self.time(
-                    114usize,
-                    9usize,
+                    id::DC_STATE_CHANGED__VERSION_NEGOTIATED__LATENCY,
+                    id::TIMERS_DC_STATE_CHANGED__VERSION_NEGOTIATED__LATENCY,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
@@ -2844,8 +3878,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             }
             if check(event) {
                 self.time(
-                    115usize,
-                    10usize,
+                    id::DC_STATE_CHANGED__NO_VERSION_NEGOTIATED__LATENCY,
+                    id::TIMERS_DC_STATE_CHANGED__NO_VERSION_NEGOTIATED__LATENCY,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
@@ -2856,8 +3890,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             }
             if check(event) {
                 self.time(
-                    116usize,
-                    11usize,
+                    id::DC_STATE_CHANGED__PATH_SECRETS__LATENCY,
+                    id::TIMERS_DC_STATE_CHANGED__PATH_SECRETS__LATENCY,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
@@ -2868,13 +3902,17 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             }
             if check(event) {
                 self.time(
-                    117usize,
-                    12usize,
+                    id::DC_STATE_CHANGED__COMPLETE__LATENCY,
+                    id::TIMERS_DC_STATE_CHANGED__COMPLETE__LATENCY,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
         }
-        self.count_nominal(118usize, 26usize, &event.state);
+        self.count_nominal(
+            id::DC_STATE_CHANGED__STATE,
+            id::NOMINAL_COUNTERS_DC_STATE_CHANGED__STATE,
+            &event.state,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2888,7 +3926,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(119usize, 53usize, 1usize);
+        self.count(id::DC_PATH_CREATED, id::COUNTERS_DC_PATH_CREATED, 1usize);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2902,13 +3940,21 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(120usize, 54usize, 1usize);
+        self.count(
+            id::CONNECTION_CLOSED,
+            id::COUNTERS_CONNECTION_CLOSED,
+            1usize,
+        );
         self.time(
-            121usize,
-            13usize,
+            id::CONNECTION_CLOSED__LATENCY,
+            id::TIMERS_CONNECTION_CLOSED__LATENCY,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
-        self.count_nominal(122usize, 27usize, &event.error);
+        self.count_nominal(
+            id::CONNECTION_CLOSED__ERROR,
+            id::NOMINAL_COUNTERS_CONNECTION_CLOSED__ERROR,
+            &event.error,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2921,7 +3967,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(123usize, 55usize, 1usize);
+        self.count(
+            id::VERSION_INFORMATION,
+            id::COUNTERS_VERSION_INFORMATION,
+            1usize,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -2933,7 +3983,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(124usize, 56usize, 1usize);
+        self.count(
+            id::ENDPOINT_PACKET_SENT,
+            id::COUNTERS_ENDPOINT_PACKET_SENT,
+            1usize,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -2945,7 +3999,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(125usize, 57usize, 1usize);
+        self.count(
+            id::ENDPOINT_PACKET_RECEIVED,
+            id::COUNTERS_ENDPOINT_PACKET_RECEIVED,
+            1usize,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -2957,10 +4015,26 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(126usize, 58usize, 1usize);
-        self.measure(127usize, 22usize, event.len);
-        self.measure(128usize, 23usize, event.len);
-        self.measure(129usize, 24usize, event.gso_offset);
+        self.count(
+            id::ENDPOINT_DATAGRAM_SENT,
+            id::COUNTERS_ENDPOINT_DATAGRAM_SENT,
+            1usize,
+        );
+        self.measure(
+            id::ENDPOINT_DATAGRAM_SENT__BYTES,
+            id::MEASURES_ENDPOINT_DATAGRAM_SENT__BYTES,
+            event.len,
+        );
+        self.measure(
+            id::ENDPOINT_DATAGRAM_SENT__BYTES__TOTAL,
+            id::MEASURES_ENDPOINT_DATAGRAM_SENT__BYTES__TOTAL,
+            event.len,
+        );
+        self.measure(
+            id::ENDPOINT_DATAGRAM_SENT__GSO_OFFSET,
+            id::MEASURES_ENDPOINT_DATAGRAM_SENT__GSO_OFFSET,
+            event.gso_offset,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -2972,9 +4046,21 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(130usize, 59usize, 1usize);
-        self.measure(131usize, 25usize, event.len);
-        self.measure(132usize, 26usize, event.len);
+        self.count(
+            id::ENDPOINT_DATAGRAM_RECEIVED,
+            id::COUNTERS_ENDPOINT_DATAGRAM_RECEIVED,
+            1usize,
+        );
+        self.measure(
+            id::ENDPOINT_DATAGRAM_RECEIVED__BYTES,
+            id::MEASURES_ENDPOINT_DATAGRAM_RECEIVED__BYTES,
+            event.len,
+        );
+        self.measure(
+            id::ENDPOINT_DATAGRAM_RECEIVED__BYTES__TOTAL,
+            id::MEASURES_ENDPOINT_DATAGRAM_RECEIVED__BYTES__TOTAL,
+            event.len,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -2986,10 +4072,26 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(133usize, 60usize, 1usize);
-        self.measure(134usize, 27usize, event.len);
-        self.measure(135usize, 28usize, event.len);
-        self.count_nominal(136usize, 28usize, &event.reason);
+        self.count(
+            id::ENDPOINT_DATAGRAM_DROPPED,
+            id::COUNTERS_ENDPOINT_DATAGRAM_DROPPED,
+            1usize,
+        );
+        self.measure(
+            id::ENDPOINT_DATAGRAM_DROPPED__BYTES,
+            id::MEASURES_ENDPOINT_DATAGRAM_DROPPED__BYTES,
+            event.len,
+        );
+        self.measure(
+            id::ENDPOINT_DATAGRAM_DROPPED__BYTES__TOTAL,
+            id::MEASURES_ENDPOINT_DATAGRAM_DROPPED__BYTES__TOTAL,
+            event.len,
+        );
+        self.count_nominal(
+            id::ENDPOINT_DATAGRAM_DROPPED__REASON,
+            id::NOMINAL_COUNTERS_ENDPOINT_DATAGRAM_DROPPED__REASON,
+            &event.reason,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -3001,8 +4103,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(137usize, 61usize, 1usize);
-        self.count_nominal(138usize, 29usize, &event.error);
+        self.count(
+            id::ENDPOINT_CONNECTION_ATTEMPT_FAILED,
+            id::COUNTERS_ENDPOINT_CONNECTION_ATTEMPT_FAILED,
+            1usize,
+        );
+        self.count_nominal(
+            id::ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR,
+            id::NOMINAL_COUNTERS_ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR,
+            &event.error,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -3014,7 +4124,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(139usize, 62usize, 1usize);
+        self.count(
+            id::ENDPOINT_CONNECTION_ATTEMPT_DEDUPLICATED,
+            id::COUNTERS_ENDPOINT_CONNECTION_ATTEMPT_DEDUPLICATED,
+            1usize,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -3022,17 +4136,57 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(140usize, 63usize, 1usize);
-        self.count(141usize, 64usize, event.count);
-        self.measure(142usize, 29usize, event.count);
-        self.count(143usize, 65usize, event.syscalls);
-        self.measure(144usize, 30usize, event.syscalls);
-        self.count(145usize, 66usize, event.blocked_syscalls);
-        self.measure(146usize, 31usize, event.blocked_syscalls);
-        self.count(147usize, 67usize, event.total_errors);
-        self.measure(148usize, 32usize, event.total_errors);
-        self.count(149usize, 68usize, event.dropped_errors);
-        self.measure(150usize, 33usize, event.dropped_errors);
+        self.count(id::PLATFORM_TX, id::COUNTERS_PLATFORM_TX, 1usize);
+        self.count(
+            id::PLATFORM_TX__PACKETS__TOTAL,
+            id::COUNTERS_PLATFORM_TX__PACKETS__TOTAL,
+            event.count,
+        );
+        self.measure(
+            id::PLATFORM_TX__PACKETS,
+            id::MEASURES_PLATFORM_TX__PACKETS,
+            event.count,
+        );
+        self.count(
+            id::PLATFORM_TX__SYSCALLS__TOTAL,
+            id::COUNTERS_PLATFORM_TX__SYSCALLS__TOTAL,
+            event.syscalls,
+        );
+        self.measure(
+            id::PLATFORM_TX__SYSCALLS,
+            id::MEASURES_PLATFORM_TX__SYSCALLS,
+            event.syscalls,
+        );
+        self.count(
+            id::PLATFORM_TX__SYSCALLS__BLOCKED__TOTAL,
+            id::COUNTERS_PLATFORM_TX__SYSCALLS__BLOCKED__TOTAL,
+            event.blocked_syscalls,
+        );
+        self.measure(
+            id::PLATFORM_TX__SYSCALLS__BLOCKED,
+            id::MEASURES_PLATFORM_TX__SYSCALLS__BLOCKED,
+            event.blocked_syscalls,
+        );
+        self.count(
+            id::PLATFORM_TX__ERRORS__TOTAL,
+            id::COUNTERS_PLATFORM_TX__ERRORS__TOTAL,
+            event.total_errors,
+        );
+        self.measure(
+            id::PLATFORM_TX__ERRORS,
+            id::MEASURES_PLATFORM_TX__ERRORS,
+            event.total_errors,
+        );
+        self.count(
+            id::PLATFORM_TX__ERRORS__DROPPED__TOTAL,
+            id::COUNTERS_PLATFORM_TX__ERRORS__DROPPED__TOTAL,
+            event.dropped_errors,
+        );
+        self.measure(
+            id::PLATFORM_TX__ERRORS__DROPPED,
+            id::MEASURES_PLATFORM_TX__ERRORS__DROPPED,
+            event.dropped_errors,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -3040,7 +4194,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     fn on_platform_tx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTxError) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(151usize, 69usize, 1usize);
+        self.count(
+            id::PLATFORM_TX_ERROR,
+            id::COUNTERS_PLATFORM_TX_ERROR,
+            1usize,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -3048,17 +4206,57 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     fn on_platform_rx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRx) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(152usize, 70usize, 1usize);
-        self.count(153usize, 71usize, event.count);
-        self.measure(154usize, 34usize, event.count);
-        self.count(155usize, 72usize, event.syscalls);
-        self.measure(156usize, 35usize, event.syscalls);
-        self.count(157usize, 73usize, event.blocked_syscalls);
-        self.measure(158usize, 36usize, event.blocked_syscalls);
-        self.count(159usize, 74usize, event.total_errors);
-        self.measure(160usize, 37usize, event.total_errors);
-        self.count(161usize, 75usize, event.dropped_errors);
-        self.measure(162usize, 38usize, event.dropped_errors);
+        self.count(id::PLATFORM_RX, id::COUNTERS_PLATFORM_RX, 1usize);
+        self.count(
+            id::PLATFORM_RX__PACKETS__TOTAL,
+            id::COUNTERS_PLATFORM_RX__PACKETS__TOTAL,
+            event.count,
+        );
+        self.measure(
+            id::PLATFORM_RX__PACKETS,
+            id::MEASURES_PLATFORM_RX__PACKETS,
+            event.count,
+        );
+        self.count(
+            id::PLATFORM_RX__SYSCALLS__TOTAL,
+            id::COUNTERS_PLATFORM_RX__SYSCALLS__TOTAL,
+            event.syscalls,
+        );
+        self.measure(
+            id::PLATFORM_RX__SYSCALLS,
+            id::MEASURES_PLATFORM_RX__SYSCALLS,
+            event.syscalls,
+        );
+        self.count(
+            id::PLATFORM_RX__SYSCALLS__BLOCKED__TOTAL,
+            id::COUNTERS_PLATFORM_RX__SYSCALLS__BLOCKED__TOTAL,
+            event.blocked_syscalls,
+        );
+        self.measure(
+            id::PLATFORM_RX__SYSCALLS__BLOCKED,
+            id::MEASURES_PLATFORM_RX__SYSCALLS__BLOCKED,
+            event.blocked_syscalls,
+        );
+        self.count(
+            id::PLATFORM_RX__ERRORS__TOTAL,
+            id::COUNTERS_PLATFORM_RX__ERRORS__TOTAL,
+            event.total_errors,
+        );
+        self.measure(
+            id::PLATFORM_RX__ERRORS,
+            id::MEASURES_PLATFORM_RX__ERRORS,
+            event.total_errors,
+        );
+        self.count(
+            id::PLATFORM_RX__ERRORS__DROPPED__TOTAL,
+            id::COUNTERS_PLATFORM_RX__ERRORS__DROPPED__TOTAL,
+            event.dropped_errors,
+        );
+        self.measure(
+            id::PLATFORM_RX__ERRORS__DROPPED,
+            id::MEASURES_PLATFORM_RX__ERRORS__DROPPED,
+            event.dropped_errors,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -3066,7 +4264,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     fn on_platform_rx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRxError) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(163usize, 76usize, 1usize);
+        self.count(
+            id::PLATFORM_RX_ERROR,
+            id::COUNTERS_PLATFORM_RX_ERROR,
+            1usize,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -3078,7 +4280,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(164usize, 77usize, 1usize);
+        self.count(
+            id::PLATFORM_FEATURE_CONFIGURED,
+            id::COUNTERS_PLATFORM_FEATURE_CONFIGURED,
+            1usize,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -3090,7 +4296,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(165usize, 78usize, 1usize);
+        self.count(
+            id::PLATFORM_EVENT_LOOP_WAKEUP,
+            id::COUNTERS_PLATFORM_EVENT_LOOP_WAKEUP,
+            1usize,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -3102,8 +4312,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(166usize, 79usize, 1usize);
-        self.time(167usize, 14usize, event.processing_duration);
+        self.count(
+            id::PLATFORM_EVENT_LOOP_SLEEP,
+            id::COUNTERS_PLATFORM_EVENT_LOOP_SLEEP,
+            1usize,
+        );
+        self.time(
+            id::PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION,
+            id::TIMERS_PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION,
+            event.processing_duration,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -3115,7 +4333,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(168usize, 80usize, 1usize);
+        self.count(
+            id::PLATFORM_EVENT_LOOP_STARTED,
+            id::COUNTERS_PLATFORM_EVENT_LOOP_STARTED,
+            1usize,
+        );
         let _ = event;
         let _ = meta;
     }

@@ -11,6 +11,190 @@ use crate::{
     },
     probe::define,
 };
+mod id {
+    pub const APPLICATION_PROTOCOL_INFORMATION: usize = 0usize;
+    pub const SERVER_NAME_INFORMATION: usize = APPLICATION_PROTOCOL_INFORMATION + 1;
+    pub const KEY_EXCHANGE_GROUP: usize = SERVER_NAME_INFORMATION + 1;
+    pub const PACKET_SKIPPED: usize = KEY_EXCHANGE_GROUP + 1;
+    pub const PACKET_SENT: usize = PACKET_SKIPPED + 1;
+    pub const PACKET_SENT__KIND: usize = PACKET_SENT + 1;
+    pub const PACKET_SENT__BYTES__TOTAL: usize = PACKET_SENT__KIND + 1;
+    pub const PACKET_SENT__BYTES: usize = PACKET_SENT__BYTES__TOTAL + 1;
+    pub const PACKET_RECEIVED: usize = PACKET_SENT__BYTES + 1;
+    pub const PACKET_RECEIVED__KIND: usize = PACKET_RECEIVED + 1;
+    pub const ACTIVE_PATH_UPDATED: usize = PACKET_RECEIVED__KIND + 1;
+    pub const PATH_CREATED: usize = ACTIVE_PATH_UPDATED + 1;
+    pub const FRAME_SENT: usize = PATH_CREATED + 1;
+    pub const FRAME_SENT__PACKET: usize = FRAME_SENT + 1;
+    pub const FRAME_SENT__FRAME: usize = FRAME_SENT__PACKET + 1;
+    pub const FRAME_RECEIVED: usize = FRAME_SENT__FRAME + 1;
+    pub const FRAME_RECEIVED__PACKET: usize = FRAME_RECEIVED + 1;
+    pub const FRAME_RECEIVED__FRAME: usize = FRAME_RECEIVED__PACKET + 1;
+    pub const CONNECTION_CLOSE_FRAME_RECEIVED: usize = FRAME_RECEIVED__FRAME + 1;
+    pub const CONNECTION_CLOSE_FRAME_RECEIVED__PACKET: usize = CONNECTION_CLOSE_FRAME_RECEIVED + 1;
+    pub const PACKET_LOST: usize = CONNECTION_CLOSE_FRAME_RECEIVED__PACKET + 1;
+    pub const PACKET_LOST__KIND: usize = PACKET_LOST + 1;
+    pub const PACKET_LOST__BYTES__TOTAL: usize = PACKET_LOST__KIND + 1;
+    pub const PACKET_LOST__BYTES: usize = PACKET_LOST__BYTES__TOTAL + 1;
+    pub const PACKET_LOST__IS_MTU_PROBE: usize = PACKET_LOST__BYTES + 1;
+    pub const RECOVERY_METRICS: usize = PACKET_LOST__IS_MTU_PROBE + 1;
+    pub const RECOVERY_METRICS__MIN_RTT: usize = RECOVERY_METRICS + 1;
+    pub const RECOVERY_METRICS__SMOOTHED_RTT: usize = RECOVERY_METRICS__MIN_RTT + 1;
+    pub const RECOVERY_METRICS__LATEST_RTT: usize = RECOVERY_METRICS__SMOOTHED_RTT + 1;
+    pub const RECOVERY_METRICS__RTT_VARIANCE: usize = RECOVERY_METRICS__LATEST_RTT + 1;
+    pub const RECOVERY_METRICS__MAX_ACK_DELAY: usize = RECOVERY_METRICS__RTT_VARIANCE + 1;
+    pub const RECOVERY_METRICS__PTO_COUNT: usize = RECOVERY_METRICS__MAX_ACK_DELAY + 1;
+    pub const RECOVERY_METRICS__CONGESTION_WINDOW: usize = RECOVERY_METRICS__PTO_COUNT + 1;
+    pub const RECOVERY_METRICS__BYTES_IN_FLIGHT: usize = RECOVERY_METRICS__CONGESTION_WINDOW + 1;
+    pub const RECOVERY_METRICS__CONGESTION_LIMITED: usize = RECOVERY_METRICS__BYTES_IN_FLIGHT + 1;
+    pub const CONGESTION: usize = RECOVERY_METRICS__CONGESTION_LIMITED + 1;
+    pub const CONGESTION__SOURCE: usize = CONGESTION + 1;
+    pub const RX_ACK_RANGE_DROPPED: usize = CONGESTION__SOURCE + 1;
+    pub const ACK_RANGE_RECEIVED: usize = RX_ACK_RANGE_DROPPED + 1;
+    pub const ACK_RANGE_RECEIVED__PACKET: usize = ACK_RANGE_RECEIVED + 1;
+    pub const ACK_RANGE_SENT: usize = ACK_RANGE_RECEIVED__PACKET + 1;
+    pub const ACK_RANGE_SENT__PACKET: usize = ACK_RANGE_SENT + 1;
+    pub const PACKET_DROPPED: usize = ACK_RANGE_SENT__PACKET + 1;
+    pub const PACKET_DROPPED__REASON: usize = PACKET_DROPPED + 1;
+    pub const KEY_UPDATE: usize = PACKET_DROPPED__REASON + 1;
+    pub const KEY_UPDATE__KEY_TYPE: usize = KEY_UPDATE + 1;
+    pub const KEY_UPDATE__CIPHER_SUITE: usize = KEY_UPDATE__KEY_TYPE + 1;
+    pub const KEY_SPACE_DISCARDED: usize = KEY_UPDATE__CIPHER_SUITE + 1;
+    pub const KEY_SPACE_DISCARDED__INITIAL__LATENCY: usize = KEY_SPACE_DISCARDED + 1;
+    pub const KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY: usize =
+        KEY_SPACE_DISCARDED__INITIAL__LATENCY + 1;
+    pub const KEY_SPACE_DISCARDED__ONE_RTT__LATENCY: usize =
+        KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY + 1;
+    pub const KEY_SPACE_DISCARDED__SPACE: usize = KEY_SPACE_DISCARDED__ONE_RTT__LATENCY + 1;
+    pub const CONNECTION_STARTED: usize = KEY_SPACE_DISCARDED__SPACE + 1;
+    pub const DUPLICATE_PACKET: usize = CONNECTION_STARTED + 1;
+    pub const DUPLICATE_PACKET__KIND: usize = DUPLICATE_PACKET + 1;
+    pub const DUPLICATE_PACKET__ERROR: usize = DUPLICATE_PACKET__KIND + 1;
+    pub const TRANSPORT_PARAMETERS_RECEIVED: usize = DUPLICATE_PACKET__ERROR + 1;
+    pub const TRANSPORT_PARAMETERS_RECEIVED__LATENCY: usize = TRANSPORT_PARAMETERS_RECEIVED + 1;
+    pub const DATAGRAM_SENT: usize = TRANSPORT_PARAMETERS_RECEIVED__LATENCY + 1;
+    pub const DATAGRAM_SENT__BYTES__TOTAL: usize = DATAGRAM_SENT + 1;
+    pub const DATAGRAM_SENT__BYTES: usize = DATAGRAM_SENT__BYTES__TOTAL + 1;
+    pub const DATAGRAM_SENT__GSO_OFFSET: usize = DATAGRAM_SENT__BYTES + 1;
+    pub const DATAGRAM_RECEIVED: usize = DATAGRAM_SENT__GSO_OFFSET + 1;
+    pub const DATAGRAM_RECEIVED__BYTES__TOTAL: usize = DATAGRAM_RECEIVED + 1;
+    pub const DATAGRAM_RECEIVED__BYTES: usize = DATAGRAM_RECEIVED__BYTES__TOTAL + 1;
+    pub const DATAGRAM_DROPPED: usize = DATAGRAM_RECEIVED__BYTES + 1;
+    pub const DATAGRAM_DROPPED__BYTES__TOTAL: usize = DATAGRAM_DROPPED + 1;
+    pub const DATAGRAM_DROPPED__BYTES: usize = DATAGRAM_DROPPED__BYTES__TOTAL + 1;
+    pub const DATAGRAM_DROPPED__REASON: usize = DATAGRAM_DROPPED__BYTES + 1;
+    pub const HANDSHAKE_REMOTE_ADDRESS_CHANGE_OBSERVED: usize = DATAGRAM_DROPPED__REASON + 1;
+    pub const CONNECTION_ID_UPDATED: usize = HANDSHAKE_REMOTE_ADDRESS_CHANGE_OBSERVED + 1;
+    pub const ECN_STATE_CHANGED: usize = CONNECTION_ID_UPDATED + 1;
+    pub const ECN_STATE_CHANGED__STATE: usize = ECN_STATE_CHANGED + 1;
+    pub const CONNECTION_MIGRATION_DENIED: usize = ECN_STATE_CHANGED__STATE + 1;
+    pub const CONNECTION_MIGRATION_DENIED__REASON: usize = CONNECTION_MIGRATION_DENIED + 1;
+    pub const HANDSHAKE_STATUS_UPDATED: usize = CONNECTION_MIGRATION_DENIED__REASON + 1;
+    pub const HANDSHAKE_STATUS_UPDATED__COMPLETE__LATENCY: usize = HANDSHAKE_STATUS_UPDATED + 1;
+    pub const HANDSHAKE_STATUS_UPDATED__CONFIRMED__LATENCY: usize =
+        HANDSHAKE_STATUS_UPDATED__COMPLETE__LATENCY + 1;
+    pub const HANDSHAKE_STATUS_UPDATED__HANDSHAKE_DONE_ACKED__LATENCY: usize =
+        HANDSHAKE_STATUS_UPDATED__CONFIRMED__LATENCY + 1;
+    pub const HANDSHAKE_STATUS_UPDATED__STATUS: usize =
+        HANDSHAKE_STATUS_UPDATED__HANDSHAKE_DONE_ACKED__LATENCY + 1;
+    pub const TLS_EXPORTER_READY: usize = HANDSHAKE_STATUS_UPDATED__STATUS + 1;
+    pub const TLS_HANDSHAKE_FAILED: usize = TLS_EXPORTER_READY + 1;
+    pub const PATH_CHALLENGE_UPDATED: usize = TLS_HANDSHAKE_FAILED + 1;
+    pub const PATH_CHALLENGE_UPDATED__STATUS: usize = PATH_CHALLENGE_UPDATED + 1;
+    pub const TLS_CLIENT_HELLO: usize = PATH_CHALLENGE_UPDATED__STATUS + 1;
+    pub const TLS_CLIENT_HELLO__LATENCY: usize = TLS_CLIENT_HELLO + 1;
+    pub const TLS_SERVER_HELLO: usize = TLS_CLIENT_HELLO__LATENCY + 1;
+    pub const TLS_SERVER_HELLO__LATENCY: usize = TLS_SERVER_HELLO + 1;
+    pub const RX_STREAM_PROGRESS: usize = TLS_SERVER_HELLO__LATENCY + 1;
+    pub const RX_STREAM_PROGRESS__BYTES__TOTAL: usize = RX_STREAM_PROGRESS + 1;
+    pub const RX_STREAM_PROGRESS__BYTES: usize = RX_STREAM_PROGRESS__BYTES__TOTAL + 1;
+    pub const TX_STREAM_PROGRESS: usize = RX_STREAM_PROGRESS__BYTES + 1;
+    pub const TX_STREAM_PROGRESS__BYTES__TOTAL: usize = TX_STREAM_PROGRESS + 1;
+    pub const TX_STREAM_PROGRESS__BYTES: usize = TX_STREAM_PROGRESS__BYTES__TOTAL + 1;
+    pub const KEEP_ALIVE_TIMER_EXPIRED: usize = TX_STREAM_PROGRESS__BYTES + 1;
+    pub const MTU_UPDATED: usize = KEEP_ALIVE_TIMER_EXPIRED + 1;
+    pub const MTU_UPDATED__MTU: usize = MTU_UPDATED + 1;
+    pub const MTU_UPDATED__CAUSE: usize = MTU_UPDATED__MTU + 1;
+    pub const MTU_UPDATED__SEARCH_COMPLETE: usize = MTU_UPDATED__CAUSE + 1;
+    pub const MTU_PROBING_COMPLETE_RECEIVED: usize = MTU_UPDATED__SEARCH_COMPLETE + 1;
+    pub const MTU_PROBING_COMPLETE_RECEIVED__PACKET: usize = MTU_PROBING_COMPLETE_RECEIVED + 1;
+    pub const MTU_PROBING_COMPLETE_RECEIVED__MTU: usize = MTU_PROBING_COMPLETE_RECEIVED__PACKET + 1;
+    pub const SLOW_START_EXITED: usize = MTU_PROBING_COMPLETE_RECEIVED__MTU + 1;
+    pub const SLOW_START_EXITED__CAUSE: usize = SLOW_START_EXITED + 1;
+    pub const SLOW_START_EXITED__LATENCY: usize = SLOW_START_EXITED__CAUSE + 1;
+    pub const SLOW_START_EXITED__CONGESTION_WINDOW: usize = SLOW_START_EXITED__LATENCY + 1;
+    pub const DELIVERY_RATE_SAMPLED: usize = SLOW_START_EXITED__CONGESTION_WINDOW + 1;
+    pub const PACING_RATE_UPDATED: usize = DELIVERY_RATE_SAMPLED + 1;
+    pub const PACING_RATE_UPDATED__BYTES_PER_SECOND: usize = PACING_RATE_UPDATED + 1;
+    pub const PACING_RATE_UPDATED__BURST_SIZE: usize = PACING_RATE_UPDATED__BYTES_PER_SECOND + 1;
+    pub const PACING_RATE_UPDATED__PACING_GAIN: usize = PACING_RATE_UPDATED__BURST_SIZE + 1;
+    pub const BBR_STATE_CHANGED: usize = PACING_RATE_UPDATED__PACING_GAIN + 1;
+    pub const BBR_STATE_CHANGED__STATE: usize = BBR_STATE_CHANGED + 1;
+    pub const DC_STATE_CHANGED: usize = BBR_STATE_CHANGED__STATE + 1;
+    pub const DC_STATE_CHANGED__VERSION_NEGOTIATED__LATENCY: usize = DC_STATE_CHANGED + 1;
+    pub const DC_STATE_CHANGED__NO_VERSION_NEGOTIATED__LATENCY: usize =
+        DC_STATE_CHANGED__VERSION_NEGOTIATED__LATENCY + 1;
+    pub const DC_STATE_CHANGED__PATH_SECRETS__LATENCY: usize =
+        DC_STATE_CHANGED__NO_VERSION_NEGOTIATED__LATENCY + 1;
+    pub const DC_STATE_CHANGED__COMPLETE__LATENCY: usize =
+        DC_STATE_CHANGED__PATH_SECRETS__LATENCY + 1;
+    pub const DC_STATE_CHANGED__STATE: usize = DC_STATE_CHANGED__COMPLETE__LATENCY + 1;
+    pub const DC_PATH_CREATED: usize = DC_STATE_CHANGED__STATE + 1;
+    pub const CONNECTION_CLOSED: usize = DC_PATH_CREATED + 1;
+    pub const CONNECTION_CLOSED__LATENCY: usize = CONNECTION_CLOSED + 1;
+    pub const CONNECTION_CLOSED__ERROR: usize = CONNECTION_CLOSED__LATENCY + 1;
+    pub const VERSION_INFORMATION: usize = CONNECTION_CLOSED__ERROR + 1;
+    pub const ENDPOINT_PACKET_SENT: usize = VERSION_INFORMATION + 1;
+    pub const ENDPOINT_PACKET_RECEIVED: usize = ENDPOINT_PACKET_SENT + 1;
+    pub const ENDPOINT_DATAGRAM_SENT: usize = ENDPOINT_PACKET_RECEIVED + 1;
+    pub const ENDPOINT_DATAGRAM_SENT__BYTES: usize = ENDPOINT_DATAGRAM_SENT + 1;
+    pub const ENDPOINT_DATAGRAM_SENT__BYTES__TOTAL: usize = ENDPOINT_DATAGRAM_SENT__BYTES + 1;
+    pub const ENDPOINT_DATAGRAM_SENT__GSO_OFFSET: usize = ENDPOINT_DATAGRAM_SENT__BYTES__TOTAL + 1;
+    pub const ENDPOINT_DATAGRAM_RECEIVED: usize = ENDPOINT_DATAGRAM_SENT__GSO_OFFSET + 1;
+    pub const ENDPOINT_DATAGRAM_RECEIVED__BYTES: usize = ENDPOINT_DATAGRAM_RECEIVED + 1;
+    pub const ENDPOINT_DATAGRAM_RECEIVED__BYTES__TOTAL: usize =
+        ENDPOINT_DATAGRAM_RECEIVED__BYTES + 1;
+    pub const ENDPOINT_DATAGRAM_DROPPED: usize = ENDPOINT_DATAGRAM_RECEIVED__BYTES__TOTAL + 1;
+    pub const ENDPOINT_DATAGRAM_DROPPED__BYTES: usize = ENDPOINT_DATAGRAM_DROPPED + 1;
+    pub const ENDPOINT_DATAGRAM_DROPPED__BYTES__TOTAL: usize = ENDPOINT_DATAGRAM_DROPPED__BYTES + 1;
+    pub const ENDPOINT_DATAGRAM_DROPPED__REASON: usize =
+        ENDPOINT_DATAGRAM_DROPPED__BYTES__TOTAL + 1;
+    pub const ENDPOINT_CONNECTION_ATTEMPT_FAILED: usize = ENDPOINT_DATAGRAM_DROPPED__REASON + 1;
+    pub const ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR: usize =
+        ENDPOINT_CONNECTION_ATTEMPT_FAILED + 1;
+    pub const ENDPOINT_CONNECTION_ATTEMPT_DEDUPLICATED: usize =
+        ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR + 1;
+    pub const PLATFORM_TX: usize = ENDPOINT_CONNECTION_ATTEMPT_DEDUPLICATED + 1;
+    pub const PLATFORM_TX__PACKETS__TOTAL: usize = PLATFORM_TX + 1;
+    pub const PLATFORM_TX__PACKETS: usize = PLATFORM_TX__PACKETS__TOTAL + 1;
+    pub const PLATFORM_TX__SYSCALLS__TOTAL: usize = PLATFORM_TX__PACKETS + 1;
+    pub const PLATFORM_TX__SYSCALLS: usize = PLATFORM_TX__SYSCALLS__TOTAL + 1;
+    pub const PLATFORM_TX__SYSCALLS__BLOCKED__TOTAL: usize = PLATFORM_TX__SYSCALLS + 1;
+    pub const PLATFORM_TX__SYSCALLS__BLOCKED: usize = PLATFORM_TX__SYSCALLS__BLOCKED__TOTAL + 1;
+    pub const PLATFORM_TX__ERRORS__TOTAL: usize = PLATFORM_TX__SYSCALLS__BLOCKED + 1;
+    pub const PLATFORM_TX__ERRORS: usize = PLATFORM_TX__ERRORS__TOTAL + 1;
+    pub const PLATFORM_TX__ERRORS__DROPPED__TOTAL: usize = PLATFORM_TX__ERRORS + 1;
+    pub const PLATFORM_TX__ERRORS__DROPPED: usize = PLATFORM_TX__ERRORS__DROPPED__TOTAL + 1;
+    pub const PLATFORM_TX_ERROR: usize = PLATFORM_TX__ERRORS__DROPPED + 1;
+    pub const PLATFORM_RX: usize = PLATFORM_TX_ERROR + 1;
+    pub const PLATFORM_RX__PACKETS__TOTAL: usize = PLATFORM_RX + 1;
+    pub const PLATFORM_RX__PACKETS: usize = PLATFORM_RX__PACKETS__TOTAL + 1;
+    pub const PLATFORM_RX__SYSCALLS__TOTAL: usize = PLATFORM_RX__PACKETS + 1;
+    pub const PLATFORM_RX__SYSCALLS: usize = PLATFORM_RX__SYSCALLS__TOTAL + 1;
+    pub const PLATFORM_RX__SYSCALLS__BLOCKED__TOTAL: usize = PLATFORM_RX__SYSCALLS + 1;
+    pub const PLATFORM_RX__SYSCALLS__BLOCKED: usize = PLATFORM_RX__SYSCALLS__BLOCKED__TOTAL + 1;
+    pub const PLATFORM_RX__ERRORS__TOTAL: usize = PLATFORM_RX__SYSCALLS__BLOCKED + 1;
+    pub const PLATFORM_RX__ERRORS: usize = PLATFORM_RX__ERRORS__TOTAL + 1;
+    pub const PLATFORM_RX__ERRORS__DROPPED__TOTAL: usize = PLATFORM_RX__ERRORS + 1;
+    pub const PLATFORM_RX__ERRORS__DROPPED: usize = PLATFORM_RX__ERRORS__DROPPED__TOTAL + 1;
+    pub const PLATFORM_RX_ERROR: usize = PLATFORM_RX__ERRORS__DROPPED + 1;
+    pub const PLATFORM_FEATURE_CONFIGURED: usize = PLATFORM_RX_ERROR + 1;
+    pub const PLATFORM_EVENT_LOOP_WAKEUP: usize = PLATFORM_FEATURE_CONFIGURED + 1;
+    pub const PLATFORM_EVENT_LOOP_SLEEP: usize = PLATFORM_EVENT_LOOP_WAKEUP + 1;
+    pub const PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION: usize = PLATFORM_EVENT_LOOP_SLEEP + 1;
+    pub const PLATFORM_EVENT_LOOP_STARTED: usize =
+        PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION + 1;
+}
 mod counter {
     #![allow(non_snake_case)]
     use super::*;
@@ -19,87 +203,99 @@ mod counter {
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
             match info.id {
-                0usize => Self(application_protocol_information),
-                1usize => Self(server_name_information),
-                2usize => Self(key_exchange_group),
-                3usize => Self(packet_skipped),
-                4usize => Self(packet_sent),
-                6usize => Self(packet_sent__bytes__total),
-                8usize => Self(packet_received),
-                10usize => Self(active_path_updated),
-                11usize => Self(path_created),
-                12usize => Self(frame_sent),
-                15usize => Self(frame_received),
-                18usize => Self(connection_close_frame_received),
-                20usize => Self(packet_lost),
-                22usize => Self(packet_lost__bytes__total),
-                25usize => Self(recovery_metrics),
-                35usize => Self(congestion),
-                37usize => Self(rx_ack_range_dropped),
-                38usize => Self(ack_range_received),
-                40usize => Self(ack_range_sent),
-                42usize => Self(packet_dropped),
-                44usize => Self(key_update),
-                47usize => Self(key_space_discarded),
-                52usize => Self(connection_started),
-                53usize => Self(duplicate_packet),
-                56usize => Self(transport_parameters_received),
-                58usize => Self(datagram_sent),
-                59usize => Self(datagram_sent__bytes__total),
-                62usize => Self(datagram_received),
-                63usize => Self(datagram_received__bytes__total),
-                65usize => Self(datagram_dropped),
-                66usize => Self(datagram_dropped__bytes__total),
-                69usize => Self(handshake_remote_address_change_observed),
-                70usize => Self(connection_id_updated),
-                71usize => Self(ecn_state_changed),
-                73usize => Self(connection_migration_denied),
-                75usize => Self(handshake_status_updated),
-                80usize => Self(tls_exporter_ready),
-                81usize => Self(tls_handshake_failed),
-                82usize => Self(path_challenge_updated),
-                84usize => Self(tls_client_hello),
-                86usize => Self(tls_server_hello),
-                88usize => Self(rx_stream_progress),
-                89usize => Self(rx_stream_progress__bytes__total),
-                91usize => Self(tx_stream_progress),
-                92usize => Self(tx_stream_progress__bytes__total),
-                94usize => Self(keep_alive_timer_expired),
-                95usize => Self(mtu_updated),
-                99usize => Self(mtu_probing_complete_received),
-                102usize => Self(slow_start_exited),
-                106usize => Self(delivery_rate_sampled),
-                107usize => Self(pacing_rate_updated),
-                111usize => Self(bbr_state_changed),
-                113usize => Self(dc_state_changed),
-                119usize => Self(dc_path_created),
-                120usize => Self(connection_closed),
-                123usize => Self(version_information),
-                124usize => Self(endpoint_packet_sent),
-                125usize => Self(endpoint_packet_received),
-                126usize => Self(endpoint_datagram_sent),
-                130usize => Self(endpoint_datagram_received),
-                133usize => Self(endpoint_datagram_dropped),
-                137usize => Self(endpoint_connection_attempt_failed),
-                139usize => Self(endpoint_connection_attempt_deduplicated),
-                140usize => Self(platform_tx),
-                141usize => Self(platform_tx__packets__total),
-                143usize => Self(platform_tx__syscalls__total),
-                145usize => Self(platform_tx__syscalls__blocked__total),
-                147usize => Self(platform_tx__errors__total),
-                149usize => Self(platform_tx__errors__dropped__total),
-                151usize => Self(platform_tx_error),
-                152usize => Self(platform_rx),
-                153usize => Self(platform_rx__packets__total),
-                155usize => Self(platform_rx__syscalls__total),
-                157usize => Self(platform_rx__syscalls__blocked__total),
-                159usize => Self(platform_rx__errors__total),
-                161usize => Self(platform_rx__errors__dropped__total),
-                163usize => Self(platform_rx_error),
-                164usize => Self(platform_feature_configured),
-                165usize => Self(platform_event_loop_wakeup),
-                166usize => Self(platform_event_loop_sleep),
-                168usize => Self(platform_event_loop_started),
+                id::APPLICATION_PROTOCOL_INFORMATION => Self(application_protocol_information),
+                id::SERVER_NAME_INFORMATION => Self(server_name_information),
+                id::KEY_EXCHANGE_GROUP => Self(key_exchange_group),
+                id::PACKET_SKIPPED => Self(packet_skipped),
+                id::PACKET_SENT => Self(packet_sent),
+                id::PACKET_SENT__BYTES__TOTAL => Self(packet_sent__bytes__total),
+                id::PACKET_RECEIVED => Self(packet_received),
+                id::ACTIVE_PATH_UPDATED => Self(active_path_updated),
+                id::PATH_CREATED => Self(path_created),
+                id::FRAME_SENT => Self(frame_sent),
+                id::FRAME_RECEIVED => Self(frame_received),
+                id::CONNECTION_CLOSE_FRAME_RECEIVED => Self(connection_close_frame_received),
+                id::PACKET_LOST => Self(packet_lost),
+                id::PACKET_LOST__BYTES__TOTAL => Self(packet_lost__bytes__total),
+                id::RECOVERY_METRICS => Self(recovery_metrics),
+                id::CONGESTION => Self(congestion),
+                id::RX_ACK_RANGE_DROPPED => Self(rx_ack_range_dropped),
+                id::ACK_RANGE_RECEIVED => Self(ack_range_received),
+                id::ACK_RANGE_SENT => Self(ack_range_sent),
+                id::PACKET_DROPPED => Self(packet_dropped),
+                id::KEY_UPDATE => Self(key_update),
+                id::KEY_SPACE_DISCARDED => Self(key_space_discarded),
+                id::CONNECTION_STARTED => Self(connection_started),
+                id::DUPLICATE_PACKET => Self(duplicate_packet),
+                id::TRANSPORT_PARAMETERS_RECEIVED => Self(transport_parameters_received),
+                id::DATAGRAM_SENT => Self(datagram_sent),
+                id::DATAGRAM_SENT__BYTES__TOTAL => Self(datagram_sent__bytes__total),
+                id::DATAGRAM_RECEIVED => Self(datagram_received),
+                id::DATAGRAM_RECEIVED__BYTES__TOTAL => Self(datagram_received__bytes__total),
+                id::DATAGRAM_DROPPED => Self(datagram_dropped),
+                id::DATAGRAM_DROPPED__BYTES__TOTAL => Self(datagram_dropped__bytes__total),
+                id::HANDSHAKE_REMOTE_ADDRESS_CHANGE_OBSERVED => {
+                    Self(handshake_remote_address_change_observed)
+                }
+                id::CONNECTION_ID_UPDATED => Self(connection_id_updated),
+                id::ECN_STATE_CHANGED => Self(ecn_state_changed),
+                id::CONNECTION_MIGRATION_DENIED => Self(connection_migration_denied),
+                id::HANDSHAKE_STATUS_UPDATED => Self(handshake_status_updated),
+                id::TLS_EXPORTER_READY => Self(tls_exporter_ready),
+                id::TLS_HANDSHAKE_FAILED => Self(tls_handshake_failed),
+                id::PATH_CHALLENGE_UPDATED => Self(path_challenge_updated),
+                id::TLS_CLIENT_HELLO => Self(tls_client_hello),
+                id::TLS_SERVER_HELLO => Self(tls_server_hello),
+                id::RX_STREAM_PROGRESS => Self(rx_stream_progress),
+                id::RX_STREAM_PROGRESS__BYTES__TOTAL => Self(rx_stream_progress__bytes__total),
+                id::TX_STREAM_PROGRESS => Self(tx_stream_progress),
+                id::TX_STREAM_PROGRESS__BYTES__TOTAL => Self(tx_stream_progress__bytes__total),
+                id::KEEP_ALIVE_TIMER_EXPIRED => Self(keep_alive_timer_expired),
+                id::MTU_UPDATED => Self(mtu_updated),
+                id::MTU_PROBING_COMPLETE_RECEIVED => Self(mtu_probing_complete_received),
+                id::SLOW_START_EXITED => Self(slow_start_exited),
+                id::DELIVERY_RATE_SAMPLED => Self(delivery_rate_sampled),
+                id::PACING_RATE_UPDATED => Self(pacing_rate_updated),
+                id::BBR_STATE_CHANGED => Self(bbr_state_changed),
+                id::DC_STATE_CHANGED => Self(dc_state_changed),
+                id::DC_PATH_CREATED => Self(dc_path_created),
+                id::CONNECTION_CLOSED => Self(connection_closed),
+                id::VERSION_INFORMATION => Self(version_information),
+                id::ENDPOINT_PACKET_SENT => Self(endpoint_packet_sent),
+                id::ENDPOINT_PACKET_RECEIVED => Self(endpoint_packet_received),
+                id::ENDPOINT_DATAGRAM_SENT => Self(endpoint_datagram_sent),
+                id::ENDPOINT_DATAGRAM_RECEIVED => Self(endpoint_datagram_received),
+                id::ENDPOINT_DATAGRAM_DROPPED => Self(endpoint_datagram_dropped),
+                id::ENDPOINT_CONNECTION_ATTEMPT_FAILED => Self(endpoint_connection_attempt_failed),
+                id::ENDPOINT_CONNECTION_ATTEMPT_DEDUPLICATED => {
+                    Self(endpoint_connection_attempt_deduplicated)
+                }
+                id::PLATFORM_TX => Self(platform_tx),
+                id::PLATFORM_TX__PACKETS__TOTAL => Self(platform_tx__packets__total),
+                id::PLATFORM_TX__SYSCALLS__TOTAL => Self(platform_tx__syscalls__total),
+                id::PLATFORM_TX__SYSCALLS__BLOCKED__TOTAL => {
+                    Self(platform_tx__syscalls__blocked__total)
+                }
+                id::PLATFORM_TX__ERRORS__TOTAL => Self(platform_tx__errors__total),
+                id::PLATFORM_TX__ERRORS__DROPPED__TOTAL => {
+                    Self(platform_tx__errors__dropped__total)
+                }
+                id::PLATFORM_TX_ERROR => Self(platform_tx_error),
+                id::PLATFORM_RX => Self(platform_rx),
+                id::PLATFORM_RX__PACKETS__TOTAL => Self(platform_rx__packets__total),
+                id::PLATFORM_RX__SYSCALLS__TOTAL => Self(platform_rx__syscalls__total),
+                id::PLATFORM_RX__SYSCALLS__BLOCKED__TOTAL => {
+                    Self(platform_rx__syscalls__blocked__total)
+                }
+                id::PLATFORM_RX__ERRORS__TOTAL => Self(platform_rx__errors__total),
+                id::PLATFORM_RX__ERRORS__DROPPED__TOTAL => {
+                    Self(platform_rx__errors__dropped__total)
+                }
+                id::PLATFORM_RX_ERROR => Self(platform_rx_error),
+                id::PLATFORM_FEATURE_CONFIGURED => Self(platform_feature_configured),
+                id::PLATFORM_EVENT_LOOP_WAKEUP => Self(platform_event_loop_wakeup),
+                id::PLATFORM_EVENT_LOOP_SLEEP => Self(platform_event_loop_sleep),
+                id::PLATFORM_EVENT_LOOP_STARTED => Self(platform_event_loop_started),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -282,9 +478,11 @@ mod counter {
         impl Recorder {
             pub(crate) fn new(info: &'static Info) -> Self {
                 match info.id {
-                    24usize => Self(packet_lost__is_mtu_probe),
-                    34usize => Self(recovery_metrics__congestion_limited),
-                    98usize => Self(mtu_updated__search_complete),
+                    id::PACKET_LOST__IS_MTU_PROBE => Self(packet_lost__is_mtu_probe),
+                    id::RECOVERY_METRICS__CONGESTION_LIMITED => {
+                        Self(recovery_metrics__congestion_limited)
+                    }
+                    id::MTU_UPDATED__SEARCH_COMPLETE => Self(mtu_updated__search_complete),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -313,36 +511,46 @@ mod counter {
         impl Recorder {
             pub(crate) fn new(info: &'static Info, _variant: &'static info::Variant) -> Self {
                 match info.id {
-                    5usize => Self(packet_sent__kind),
-                    9usize => Self(packet_received__kind),
-                    13usize => Self(frame_sent__packet),
-                    14usize => Self(frame_sent__frame),
-                    16usize => Self(frame_received__packet),
-                    17usize => Self(frame_received__frame),
-                    19usize => Self(connection_close_frame_received__packet),
-                    21usize => Self(packet_lost__kind),
-                    36usize => Self(congestion__source),
-                    39usize => Self(ack_range_received__packet),
-                    41usize => Self(ack_range_sent__packet),
-                    43usize => Self(packet_dropped__reason),
-                    45usize => Self(key_update__key_type),
-                    46usize => Self(key_update__cipher_suite),
-                    51usize => Self(key_space_discarded__space),
-                    54usize => Self(duplicate_packet__kind),
-                    55usize => Self(duplicate_packet__error),
-                    68usize => Self(datagram_dropped__reason),
-                    72usize => Self(ecn_state_changed__state),
-                    74usize => Self(connection_migration_denied__reason),
-                    79usize => Self(handshake_status_updated__status),
-                    83usize => Self(path_challenge_updated__status),
-                    97usize => Self(mtu_updated__cause),
-                    100usize => Self(mtu_probing_complete_received__packet),
-                    103usize => Self(slow_start_exited__cause),
-                    112usize => Self(bbr_state_changed__state),
-                    118usize => Self(dc_state_changed__state),
-                    122usize => Self(connection_closed__error),
-                    136usize => Self(endpoint_datagram_dropped__reason),
-                    138usize => Self(endpoint_connection_attempt_failed__error),
+                    id::PACKET_SENT__KIND => Self(packet_sent__kind),
+                    id::PACKET_RECEIVED__KIND => Self(packet_received__kind),
+                    id::FRAME_SENT__PACKET => Self(frame_sent__packet),
+                    id::FRAME_SENT__FRAME => Self(frame_sent__frame),
+                    id::FRAME_RECEIVED__PACKET => Self(frame_received__packet),
+                    id::FRAME_RECEIVED__FRAME => Self(frame_received__frame),
+                    id::CONNECTION_CLOSE_FRAME_RECEIVED__PACKET => {
+                        Self(connection_close_frame_received__packet)
+                    }
+                    id::PACKET_LOST__KIND => Self(packet_lost__kind),
+                    id::CONGESTION__SOURCE => Self(congestion__source),
+                    id::ACK_RANGE_RECEIVED__PACKET => Self(ack_range_received__packet),
+                    id::ACK_RANGE_SENT__PACKET => Self(ack_range_sent__packet),
+                    id::PACKET_DROPPED__REASON => Self(packet_dropped__reason),
+                    id::KEY_UPDATE__KEY_TYPE => Self(key_update__key_type),
+                    id::KEY_UPDATE__CIPHER_SUITE => Self(key_update__cipher_suite),
+                    id::KEY_SPACE_DISCARDED__SPACE => Self(key_space_discarded__space),
+                    id::DUPLICATE_PACKET__KIND => Self(duplicate_packet__kind),
+                    id::DUPLICATE_PACKET__ERROR => Self(duplicate_packet__error),
+                    id::DATAGRAM_DROPPED__REASON => Self(datagram_dropped__reason),
+                    id::ECN_STATE_CHANGED__STATE => Self(ecn_state_changed__state),
+                    id::CONNECTION_MIGRATION_DENIED__REASON => {
+                        Self(connection_migration_denied__reason)
+                    }
+                    id::HANDSHAKE_STATUS_UPDATED__STATUS => Self(handshake_status_updated__status),
+                    id::PATH_CHALLENGE_UPDATED__STATUS => Self(path_challenge_updated__status),
+                    id::MTU_UPDATED__CAUSE => Self(mtu_updated__cause),
+                    id::MTU_PROBING_COMPLETE_RECEIVED__PACKET => {
+                        Self(mtu_probing_complete_received__packet)
+                    }
+                    id::SLOW_START_EXITED__CAUSE => Self(slow_start_exited__cause),
+                    id::BBR_STATE_CHANGED__STATE => Self(bbr_state_changed__state),
+                    id::DC_STATE_CHANGED__STATE => Self(dc_state_changed__state),
+                    id::CONNECTION_CLOSED__ERROR => Self(connection_closed__error),
+                    id::ENDPOINT_DATAGRAM_DROPPED__REASON => {
+                        Self(endpoint_datagram_dropped__reason)
+                    }
+                    id::ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR => {
+                        Self(endpoint_connection_attempt_failed__error)
+                    }
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -459,45 +667,57 @@ mod measure {
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
             match info.id {
-                7usize => Self(packet_sent__bytes),
-                23usize => Self(packet_lost__bytes),
-                26usize => Self(recovery_metrics__min_rtt),
-                27usize => Self(recovery_metrics__smoothed_rtt),
-                28usize => Self(recovery_metrics__latest_rtt),
-                29usize => Self(recovery_metrics__rtt_variance),
-                30usize => Self(recovery_metrics__max_ack_delay),
-                31usize => Self(recovery_metrics__pto_count),
-                32usize => Self(recovery_metrics__congestion_window),
-                33usize => Self(recovery_metrics__bytes_in_flight),
-                60usize => Self(datagram_sent__bytes),
-                61usize => Self(datagram_sent__gso_offset),
-                64usize => Self(datagram_received__bytes),
-                67usize => Self(datagram_dropped__bytes),
-                90usize => Self(rx_stream_progress__bytes),
-                93usize => Self(tx_stream_progress__bytes),
-                96usize => Self(mtu_updated__mtu),
-                101usize => Self(mtu_probing_complete_received__mtu),
-                105usize => Self(slow_start_exited__congestion_window),
-                108usize => Self(pacing_rate_updated__bytes_per_second),
-                109usize => Self(pacing_rate_updated__burst_size),
-                110usize => Self(pacing_rate_updated__pacing_gain),
-                127usize => Self(endpoint_datagram_sent__bytes),
-                128usize => Self(endpoint_datagram_sent__bytes__total),
-                129usize => Self(endpoint_datagram_sent__gso_offset),
-                131usize => Self(endpoint_datagram_received__bytes),
-                132usize => Self(endpoint_datagram_received__bytes__total),
-                134usize => Self(endpoint_datagram_dropped__bytes),
-                135usize => Self(endpoint_datagram_dropped__bytes__total),
-                142usize => Self(platform_tx__packets),
-                144usize => Self(platform_tx__syscalls),
-                146usize => Self(platform_tx__syscalls__blocked),
-                148usize => Self(platform_tx__errors),
-                150usize => Self(platform_tx__errors__dropped),
-                154usize => Self(platform_rx__packets),
-                156usize => Self(platform_rx__syscalls),
-                158usize => Self(platform_rx__syscalls__blocked),
-                160usize => Self(platform_rx__errors),
-                162usize => Self(platform_rx__errors__dropped),
+                id::PACKET_SENT__BYTES => Self(packet_sent__bytes),
+                id::PACKET_LOST__BYTES => Self(packet_lost__bytes),
+                id::RECOVERY_METRICS__MIN_RTT => Self(recovery_metrics__min_rtt),
+                id::RECOVERY_METRICS__SMOOTHED_RTT => Self(recovery_metrics__smoothed_rtt),
+                id::RECOVERY_METRICS__LATEST_RTT => Self(recovery_metrics__latest_rtt),
+                id::RECOVERY_METRICS__RTT_VARIANCE => Self(recovery_metrics__rtt_variance),
+                id::RECOVERY_METRICS__MAX_ACK_DELAY => Self(recovery_metrics__max_ack_delay),
+                id::RECOVERY_METRICS__PTO_COUNT => Self(recovery_metrics__pto_count),
+                id::RECOVERY_METRICS__CONGESTION_WINDOW => {
+                    Self(recovery_metrics__congestion_window)
+                }
+                id::RECOVERY_METRICS__BYTES_IN_FLIGHT => Self(recovery_metrics__bytes_in_flight),
+                id::DATAGRAM_SENT__BYTES => Self(datagram_sent__bytes),
+                id::DATAGRAM_SENT__GSO_OFFSET => Self(datagram_sent__gso_offset),
+                id::DATAGRAM_RECEIVED__BYTES => Self(datagram_received__bytes),
+                id::DATAGRAM_DROPPED__BYTES => Self(datagram_dropped__bytes),
+                id::RX_STREAM_PROGRESS__BYTES => Self(rx_stream_progress__bytes),
+                id::TX_STREAM_PROGRESS__BYTES => Self(tx_stream_progress__bytes),
+                id::MTU_UPDATED__MTU => Self(mtu_updated__mtu),
+                id::MTU_PROBING_COMPLETE_RECEIVED__MTU => Self(mtu_probing_complete_received__mtu),
+                id::SLOW_START_EXITED__CONGESTION_WINDOW => {
+                    Self(slow_start_exited__congestion_window)
+                }
+                id::PACING_RATE_UPDATED__BYTES_PER_SECOND => {
+                    Self(pacing_rate_updated__bytes_per_second)
+                }
+                id::PACING_RATE_UPDATED__BURST_SIZE => Self(pacing_rate_updated__burst_size),
+                id::PACING_RATE_UPDATED__PACING_GAIN => Self(pacing_rate_updated__pacing_gain),
+                id::ENDPOINT_DATAGRAM_SENT__BYTES => Self(endpoint_datagram_sent__bytes),
+                id::ENDPOINT_DATAGRAM_SENT__BYTES__TOTAL => {
+                    Self(endpoint_datagram_sent__bytes__total)
+                }
+                id::ENDPOINT_DATAGRAM_SENT__GSO_OFFSET => Self(endpoint_datagram_sent__gso_offset),
+                id::ENDPOINT_DATAGRAM_RECEIVED__BYTES => Self(endpoint_datagram_received__bytes),
+                id::ENDPOINT_DATAGRAM_RECEIVED__BYTES__TOTAL => {
+                    Self(endpoint_datagram_received__bytes__total)
+                }
+                id::ENDPOINT_DATAGRAM_DROPPED__BYTES => Self(endpoint_datagram_dropped__bytes),
+                id::ENDPOINT_DATAGRAM_DROPPED__BYTES__TOTAL => {
+                    Self(endpoint_datagram_dropped__bytes__total)
+                }
+                id::PLATFORM_TX__PACKETS => Self(platform_tx__packets),
+                id::PLATFORM_TX__SYSCALLS => Self(platform_tx__syscalls),
+                id::PLATFORM_TX__SYSCALLS__BLOCKED => Self(platform_tx__syscalls__blocked),
+                id::PLATFORM_TX__ERRORS => Self(platform_tx__errors),
+                id::PLATFORM_TX__ERRORS__DROPPED => Self(platform_tx__errors__dropped),
+                id::PLATFORM_RX__PACKETS => Self(platform_rx__packets),
+                id::PLATFORM_RX__SYSCALLS => Self(platform_rx__syscalls),
+                id::PLATFORM_RX__SYSCALLS__BLOCKED => Self(platform_rx__syscalls__blocked),
+                id::PLATFORM_RX__ERRORS => Self(platform_rx__errors),
+                id::PLATFORM_RX__ERRORS__DROPPED => Self(platform_rx__errors__dropped),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -614,21 +834,45 @@ mod timer {
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
             match info.id {
-                48usize => Self(key_space_discarded__initial__latency),
-                49usize => Self(key_space_discarded__handshake__latency),
-                50usize => Self(key_space_discarded__one_rtt__latency),
-                57usize => Self(transport_parameters_received__latency),
-                76usize => Self(handshake_status_updated__complete__latency),
-                77usize => Self(handshake_status_updated__confirmed__latency),
-                78usize => Self(handshake_status_updated__handshake_done_acked__latency),
-                85usize => Self(tls_client_hello__latency),
-                87usize => Self(tls_server_hello__latency),
-                114usize => Self(dc_state_changed__version_negotiated__latency),
-                115usize => Self(dc_state_changed__no_version_negotiated__latency),
-                116usize => Self(dc_state_changed__path_secrets__latency),
-                117usize => Self(dc_state_changed__complete__latency),
-                121usize => Self(connection_closed__latency),
-                167usize => Self(platform_event_loop_sleep__processing_duration),
+                id::KEY_SPACE_DISCARDED__INITIAL__LATENCY => {
+                    Self(key_space_discarded__initial__latency)
+                }
+                id::KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY => {
+                    Self(key_space_discarded__handshake__latency)
+                }
+                id::KEY_SPACE_DISCARDED__ONE_RTT__LATENCY => {
+                    Self(key_space_discarded__one_rtt__latency)
+                }
+                id::TRANSPORT_PARAMETERS_RECEIVED__LATENCY => {
+                    Self(transport_parameters_received__latency)
+                }
+                id::HANDSHAKE_STATUS_UPDATED__COMPLETE__LATENCY => {
+                    Self(handshake_status_updated__complete__latency)
+                }
+                id::HANDSHAKE_STATUS_UPDATED__CONFIRMED__LATENCY => {
+                    Self(handshake_status_updated__confirmed__latency)
+                }
+                id::HANDSHAKE_STATUS_UPDATED__HANDSHAKE_DONE_ACKED__LATENCY => {
+                    Self(handshake_status_updated__handshake_done_acked__latency)
+                }
+                id::TLS_CLIENT_HELLO__LATENCY => Self(tls_client_hello__latency),
+                id::TLS_SERVER_HELLO__LATENCY => Self(tls_server_hello__latency),
+                id::DC_STATE_CHANGED__VERSION_NEGOTIATED__LATENCY => {
+                    Self(dc_state_changed__version_negotiated__latency)
+                }
+                id::DC_STATE_CHANGED__NO_VERSION_NEGOTIATED__LATENCY => {
+                    Self(dc_state_changed__no_version_negotiated__latency)
+                }
+                id::DC_STATE_CHANGED__PATH_SECRETS__LATENCY => {
+                    Self(dc_state_changed__path_secrets__latency)
+                }
+                id::DC_STATE_CHANGED__COMPLETE__LATENCY => {
+                    Self(dc_state_changed__complete__latency)
+                }
+                id::CONNECTION_CLOSED__LATENCY => Self(connection_closed__latency),
+                id::PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION => {
+                    Self(platform_event_loop_sleep__processing_duration)
+                }
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -680,7 +924,7 @@ mod timer {
         impl Recorder {
             pub(crate) fn new(info: &'static Info, _variant: &'static info::Variant) -> Self {
                 match info.id {
-                    104usize => Self(slow_start_exited__latency),
+                    id::SLOW_START_EXITED__LATENCY => Self(slow_start_exited__latency),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }

@@ -9,6 +9,455 @@ use crate::event::metrics::aggregate::{
     self, info, BoolRecorder, Info, NominalRecorder, Recorder as MetricRecorder,
 };
 use s2n_quic_core::probe::define;
+mod id {
+    pub const ACCEPTOR_TCP_STARTED: usize = 0usize;
+    pub const ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED: usize = ACCEPTOR_TCP_STARTED + 1;
+    pub const ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PENDING_STREAMS: usize =
+        ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED + 1;
+    pub const ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOTS_IDLE: usize =
+        ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PENDING_STREAMS + 1;
+    pub const ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOT_UTILIZATION: usize =
+        ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOTS_IDLE + 1;
+    pub const ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PROCESSING_DURATION: usize =
+        ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOT_UTILIZATION + 1;
+    pub const ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__MAX_SOJOURN_TIME: usize =
+        ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PROCESSING_DURATION + 1;
+    pub const ACCEPTOR_TCP_FRESH_ENQUEUED: usize =
+        ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__MAX_SOJOURN_TIME + 1;
+    pub const ACCEPTOR_TCP_FRESH_BATCH_COMPLETED: usize = ACCEPTOR_TCP_FRESH_ENQUEUED + 1;
+    pub const ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ENQUEUED: usize =
+        ACCEPTOR_TCP_FRESH_BATCH_COMPLETED + 1;
+    pub const ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__DROPPED: usize =
+        ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ENQUEUED + 1;
+    pub const ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ERRORED: usize =
+        ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__DROPPED + 1;
+    pub const ACCEPTOR_TCP_STREAM_DROPPED: usize = ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ERRORED + 1;
+    pub const ACCEPTOR_TCP_STREAM_DROPPED__REASON: usize = ACCEPTOR_TCP_STREAM_DROPPED + 1;
+    pub const ACCEPTOR_TCP_STREAM_REPLACED: usize = ACCEPTOR_TCP_STREAM_DROPPED__REASON + 1;
+    pub const ACCEPTOR_TCP_STREAM_REPLACED__SOJOURN_TIME: usize = ACCEPTOR_TCP_STREAM_REPLACED + 1;
+    pub const ACCEPTOR_TCP_STREAM_REPLACED__BUFFER_LEN: usize =
+        ACCEPTOR_TCP_STREAM_REPLACED__SOJOURN_TIME + 1;
+    pub const ACCEPTOR_TCP_PACKET_RECEIVED: usize = ACCEPTOR_TCP_STREAM_REPLACED__BUFFER_LEN + 1;
+    pub const ACCEPTOR_TCP_PACKET_RECEIVED__PAYLOAD_LEN: usize = ACCEPTOR_TCP_PACKET_RECEIVED + 1;
+    pub const ACCEPTOR_TCP_PACKET_RECEIVED__IS_FIN: usize =
+        ACCEPTOR_TCP_PACKET_RECEIVED__PAYLOAD_LEN + 1;
+    pub const ACCEPTOR_TCP_PACKET_RECEIVED__IS_FIN_KNOWN: usize =
+        ACCEPTOR_TCP_PACKET_RECEIVED__IS_FIN + 1;
+    pub const ACCEPTOR_TCP_PACKET_RECEIVED__SOJOURN_TIME: usize =
+        ACCEPTOR_TCP_PACKET_RECEIVED__IS_FIN_KNOWN + 1;
+    pub const ACCEPTOR_TCP_PACKET_DROPPED: usize = ACCEPTOR_TCP_PACKET_RECEIVED__SOJOURN_TIME + 1;
+    pub const ACCEPTOR_TCP_PACKET_DROPPED__REASON: usize = ACCEPTOR_TCP_PACKET_DROPPED + 1;
+    pub const ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME: usize =
+        ACCEPTOR_TCP_PACKET_DROPPED__REASON + 1;
+    pub const ACCEPTOR_TCP_STREAM_ENQUEUED: usize = ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME + 1;
+    pub const ACCEPTOR_TCP_STREAM_ENQUEUED__SOJOURN_TIME: usize = ACCEPTOR_TCP_STREAM_ENQUEUED + 1;
+    pub const ACCEPTOR_TCP_STREAM_ENQUEUED__BLOCKED_COUNT: usize =
+        ACCEPTOR_TCP_STREAM_ENQUEUED__SOJOURN_TIME + 1;
+    pub const ACCEPTOR_TCP_IO_ERROR: usize = ACCEPTOR_TCP_STREAM_ENQUEUED__BLOCKED_COUNT + 1;
+    pub const ACCEPTOR_TCP_IO_ERROR__SOURCE: usize = ACCEPTOR_TCP_IO_ERROR + 1;
+    pub const ACCEPTOR_TCP_SOCKET_SENT: usize = ACCEPTOR_TCP_IO_ERROR__SOURCE + 1;
+    pub const ACCEPTOR_TCP_SOCKET_SENT__SOJOURN_TIME: usize = ACCEPTOR_TCP_SOCKET_SENT + 1;
+    pub const ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_HOST: usize =
+        ACCEPTOR_TCP_SOCKET_SENT__SOJOURN_TIME + 1;
+    pub const ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_STREAM: usize =
+        ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_HOST + 1;
+    pub const ACCEPTOR_TCP_SOCKET_SENT__LEN: usize =
+        ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_STREAM + 1;
+    pub const ACCEPTOR_TCP_SOCKET_RECEIVED: usize = ACCEPTOR_TCP_SOCKET_SENT__LEN + 1;
+    pub const ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME: usize = ACCEPTOR_TCP_SOCKET_RECEIVED + 1;
+    pub const ACCEPTOR_TCP_SOCKET_RECEIVED__LEN: usize =
+        ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME + 1;
+    pub const ACCEPTOR_UDP_STARTED: usize = ACCEPTOR_TCP_SOCKET_RECEIVED__LEN + 1;
+    pub const ACCEPTOR_UDP_DATAGRAM_RECEIVED: usize = ACCEPTOR_UDP_STARTED + 1;
+    pub const ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN: usize = ACCEPTOR_UDP_DATAGRAM_RECEIVED + 1;
+    pub const ACCEPTOR_UDP_PACKET_RECEIVED: usize = ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN + 1;
+    pub const ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN: usize = ACCEPTOR_UDP_PACKET_RECEIVED + 1;
+    pub const ACCEPTOR_UDP_PACKET_RECEIVED__IS_ZERO_OFFSET: usize =
+        ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN + 1;
+    pub const ACCEPTOR_UDP_PACKET_RECEIVED__IS_RETRANSMISSION: usize =
+        ACCEPTOR_UDP_PACKET_RECEIVED__IS_ZERO_OFFSET + 1;
+    pub const ACCEPTOR_UDP_PACKET_RECEIVED__IS_FIN: usize =
+        ACCEPTOR_UDP_PACKET_RECEIVED__IS_RETRANSMISSION + 1;
+    pub const ACCEPTOR_UDP_PACKET_RECEIVED__IS_FIN_KNOWN: usize =
+        ACCEPTOR_UDP_PACKET_RECEIVED__IS_FIN + 1;
+    pub const ACCEPTOR_UDP_PACKET_DROPPED: usize = ACCEPTOR_UDP_PACKET_RECEIVED__IS_FIN_KNOWN + 1;
+    pub const ACCEPTOR_UDP_PACKET_DROPPED__REASON: usize = ACCEPTOR_UDP_PACKET_DROPPED + 1;
+    pub const ACCEPTOR_UDP_STREAM_ENQUEUED: usize = ACCEPTOR_UDP_PACKET_DROPPED__REASON + 1;
+    pub const ACCEPTOR_UDP_IO_ERROR: usize = ACCEPTOR_UDP_STREAM_ENQUEUED + 1;
+    pub const ACCEPTOR_STREAM_PRUNED: usize = ACCEPTOR_UDP_IO_ERROR + 1;
+    pub const ACCEPTOR_STREAM_PRUNED__SOJOURN_TIME: usize = ACCEPTOR_STREAM_PRUNED + 1;
+    pub const ACCEPTOR_STREAM_PRUNED__REASON: usize = ACCEPTOR_STREAM_PRUNED__SOJOURN_TIME + 1;
+    pub const ACCEPTOR_STREAM_DEQUEUED: usize = ACCEPTOR_STREAM_PRUNED__REASON + 1;
+    pub const ACCEPTOR_STREAM_DEQUEUED__SOJOURN_TIME: usize = ACCEPTOR_STREAM_DEQUEUED + 1;
+    pub const STREAM_WRITE_FLUSHED: usize = ACCEPTOR_STREAM_DEQUEUED__SOJOURN_TIME + 1;
+    pub const STREAM_WRITE_FLUSHED__LATENCY: usize = STREAM_WRITE_FLUSHED + 1;
+    pub const STREAM_WRITE_FLUSHED__CONN: usize = STREAM_WRITE_FLUSHED__LATENCY + 1;
+    pub const STREAM_WRITE_FLUSHED__PROVIDED: usize = STREAM_WRITE_FLUSHED__CONN + 1;
+    pub const STREAM_WRITE_FLUSHED__COMMITTED__TOTAL: usize = STREAM_WRITE_FLUSHED__PROVIDED + 1;
+    pub const STREAM_WRITE_FLUSHED__COMMITTED: usize = STREAM_WRITE_FLUSHED__COMMITTED__TOTAL + 1;
+    pub const STREAM_WRITE_FLUSHED__COMMITTED__CONN: usize = STREAM_WRITE_FLUSHED__COMMITTED + 1;
+    pub const STREAM_WRITE_FLUSHED__PROCESSING_DURATION: usize =
+        STREAM_WRITE_FLUSHED__COMMITTED__CONN + 1;
+    pub const STREAM_WRITE_FLUSHED__PROCESSING_DURATION__CONN: usize =
+        STREAM_WRITE_FLUSHED__PROCESSING_DURATION + 1;
+    pub const STREAM_WRITE_FIN_FLUSHED: usize = STREAM_WRITE_FLUSHED__PROCESSING_DURATION__CONN + 1;
+    pub const STREAM_WRITE_FIN_FLUSHED__LATENCY: usize = STREAM_WRITE_FIN_FLUSHED + 1;
+    pub const STREAM_WRITE_FIN_FLUSHED__CONN: usize = STREAM_WRITE_FIN_FLUSHED__LATENCY + 1;
+    pub const STREAM_WRITE_FIN_FLUSHED__PROVIDED: usize = STREAM_WRITE_FIN_FLUSHED__CONN + 1;
+    pub const STREAM_WRITE_FIN_FLUSHED__COMMITTED__TOTAL: usize =
+        STREAM_WRITE_FIN_FLUSHED__PROVIDED + 1;
+    pub const STREAM_WRITE_FIN_FLUSHED__COMMITTED: usize =
+        STREAM_WRITE_FIN_FLUSHED__COMMITTED__TOTAL + 1;
+    pub const STREAM_WRITE_FIN_FLUSHED__COMMITTED__CONN: usize =
+        STREAM_WRITE_FIN_FLUSHED__COMMITTED + 1;
+    pub const STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION: usize =
+        STREAM_WRITE_FIN_FLUSHED__COMMITTED__CONN + 1;
+    pub const STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION__CONN: usize =
+        STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION + 1;
+    pub const STREAM_WRITE_BLOCKED: usize = STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION__CONN + 1;
+    pub const STREAM_WRITE_BLOCKED__LATENCY: usize = STREAM_WRITE_BLOCKED + 1;
+    pub const STREAM_WRITE_BLOCKED__CONN: usize = STREAM_WRITE_BLOCKED__LATENCY + 1;
+    pub const STREAM_WRITE_BLOCKED__PROVIDED: usize = STREAM_WRITE_BLOCKED__CONN + 1;
+    pub const STREAM_WRITE_BLOCKED__PROCESSING_DURATION: usize = STREAM_WRITE_BLOCKED__PROVIDED + 1;
+    pub const STREAM_WRITE_BLOCKED__PROCESSING_DURATION__CONN: usize =
+        STREAM_WRITE_BLOCKED__PROCESSING_DURATION + 1;
+    pub const STREAM_WRITE_ERRORED: usize = STREAM_WRITE_BLOCKED__PROCESSING_DURATION__CONN + 1;
+    pub const STREAM_WRITE_ERRORED__LATENCY: usize = STREAM_WRITE_ERRORED + 1;
+    pub const STREAM_WRITE_ERRORED__PROVIDED: usize = STREAM_WRITE_ERRORED__LATENCY + 1;
+    pub const STREAM_WRITE_ERRORED__PROCESSING_DURATION: usize = STREAM_WRITE_ERRORED__PROVIDED + 1;
+    pub const STREAM_WRITE_ERRORED__PROCESSING_DURATION__CONN: usize =
+        STREAM_WRITE_ERRORED__PROCESSING_DURATION + 1;
+    pub const STREAM_WRITE_KEY_UPDATED: usize = STREAM_WRITE_ERRORED__PROCESSING_DURATION__CONN + 1;
+    pub const STREAM_WRITE_ALLOCATED: usize = STREAM_WRITE_KEY_UPDATED + 1;
+    pub const STREAM_WRITE_ALLOCATED__CONN: usize = STREAM_WRITE_ALLOCATED + 1;
+    pub const STREAM_WRITE_ALLOCATED__ALLOCATED_LEN: usize = STREAM_WRITE_ALLOCATED__CONN + 1;
+    pub const STREAM_WRITE_ALLOCATED__ALLOCATED_LEN__CONN: usize =
+        STREAM_WRITE_ALLOCATED__ALLOCATED_LEN + 1;
+    pub const STREAM_WRITE_SHUTDOWN: usize = STREAM_WRITE_ALLOCATED__ALLOCATED_LEN__CONN + 1;
+    pub const STREAM_WRITE_SHUTDOWN__LATENCY: usize = STREAM_WRITE_SHUTDOWN + 1;
+    pub const STREAM_WRITE_SHUTDOWN__BUFFER_LEN: usize = STREAM_WRITE_SHUTDOWN__LATENCY + 1;
+    pub const STREAM_WRITE_SHUTDOWN__BACKGROUND: usize = STREAM_WRITE_SHUTDOWN__BUFFER_LEN + 1;
+    pub const STREAM_WRITE_SOCKET_FLUSHED: usize = STREAM_WRITE_SHUTDOWN__BACKGROUND + 1;
+    pub const STREAM_WRITE_SOCKET_FLUSHED__CONN: usize = STREAM_WRITE_SOCKET_FLUSHED + 1;
+    pub const STREAM_WRITE_SOCKET_FLUSHED__PROVIDED: usize = STREAM_WRITE_SOCKET_FLUSHED__CONN + 1;
+    pub const STREAM_WRITE_SOCKET_FLUSHED__COMMITTED__TOTAL: usize =
+        STREAM_WRITE_SOCKET_FLUSHED__PROVIDED + 1;
+    pub const STREAM_WRITE_SOCKET_FLUSHED__COMMITTED: usize =
+        STREAM_WRITE_SOCKET_FLUSHED__COMMITTED__TOTAL + 1;
+    pub const STREAM_WRITE_SOCKET_FLUSHED__COMMITTED__CONN: usize =
+        STREAM_WRITE_SOCKET_FLUSHED__COMMITTED + 1;
+    pub const STREAM_WRITE_SOCKET_BLOCKED: usize = STREAM_WRITE_SOCKET_FLUSHED__COMMITTED__CONN + 1;
+    pub const STREAM_WRITE_SOCKET_BLOCKED__CONN: usize = STREAM_WRITE_SOCKET_BLOCKED + 1;
+    pub const STREAM_WRITE_SOCKET_BLOCKED__PROVIDED: usize = STREAM_WRITE_SOCKET_BLOCKED__CONN + 1;
+    pub const STREAM_WRITE_SOCKET_ERRORED: usize = STREAM_WRITE_SOCKET_BLOCKED__PROVIDED + 1;
+    pub const STREAM_WRITE_SOCKET_ERRORED__PROVIDED: usize = STREAM_WRITE_SOCKET_ERRORED + 1;
+    pub const STREAM_READ_FLUSHED: usize = STREAM_WRITE_SOCKET_ERRORED__PROVIDED + 1;
+    pub const STREAM_READ_FLUSHED__LATENCY: usize = STREAM_READ_FLUSHED + 1;
+    pub const STREAM_READ_FLUSHED__CONN: usize = STREAM_READ_FLUSHED__LATENCY + 1;
+    pub const STREAM_READ_FLUSHED__CAPACITY: usize = STREAM_READ_FLUSHED__CONN + 1;
+    pub const STREAM_READ_FLUSHED__COMMITTED__TOTAL: usize = STREAM_READ_FLUSHED__CAPACITY + 1;
+    pub const STREAM_READ_FLUSHED__COMMITTED: usize = STREAM_READ_FLUSHED__COMMITTED__TOTAL + 1;
+    pub const STREAM_READ_FLUSHED__COMMITTED__CONN: usize = STREAM_READ_FLUSHED__COMMITTED + 1;
+    pub const STREAM_READ_FLUSHED__PROCESSING_DURATION: usize =
+        STREAM_READ_FLUSHED__COMMITTED__CONN + 1;
+    pub const STREAM_READ_FLUSHED__PROCESSING_DURATION__CONN: usize =
+        STREAM_READ_FLUSHED__PROCESSING_DURATION + 1;
+    pub const STREAM_READ_FIN_FLUSHED: usize = STREAM_READ_FLUSHED__PROCESSING_DURATION__CONN + 1;
+    pub const STREAM_READ_FIN_FLUSHED__LATENCY: usize = STREAM_READ_FIN_FLUSHED + 1;
+    pub const STREAM_READ_FIN_FLUSHED__CONN: usize = STREAM_READ_FIN_FLUSHED__LATENCY + 1;
+    pub const STREAM_READ_FIN_FLUSHED__CAPACITY: usize = STREAM_READ_FIN_FLUSHED__CONN + 1;
+    pub const STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION: usize =
+        STREAM_READ_FIN_FLUSHED__CAPACITY + 1;
+    pub const STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION__CONN: usize =
+        STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION + 1;
+    pub const STREAM_READ_BLOCKED: usize = STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION__CONN + 1;
+    pub const STREAM_READ_BLOCKED__LATENCY: usize = STREAM_READ_BLOCKED + 1;
+    pub const STREAM_READ_BLOCKED__CAPACITY: usize = STREAM_READ_BLOCKED__LATENCY + 1;
+    pub const STREAM_READ_BLOCKED__PROCESSING_DURATION: usize = STREAM_READ_BLOCKED__CAPACITY + 1;
+    pub const STREAM_READ_BLOCKED__PROCESSING_DURATION__CONN: usize =
+        STREAM_READ_BLOCKED__PROCESSING_DURATION + 1;
+    pub const STREAM_READ_ERRORED: usize = STREAM_READ_BLOCKED__PROCESSING_DURATION__CONN + 1;
+    pub const STREAM_READ_ERRORED__LATENCY: usize = STREAM_READ_ERRORED + 1;
+    pub const STREAM_READ_ERRORED__CAPACITY: usize = STREAM_READ_ERRORED__LATENCY + 1;
+    pub const STREAM_READ_ERRORED__PROCESSING_DURATION: usize = STREAM_READ_ERRORED__CAPACITY + 1;
+    pub const STREAM_READ_ERRORED__PROCESSING_DURATION__CONN: usize =
+        STREAM_READ_ERRORED__PROCESSING_DURATION + 1;
+    pub const STREAM_READ_KEY_UPDATED: usize = STREAM_READ_ERRORED__PROCESSING_DURATION__CONN + 1;
+    pub const STREAM_READ_SHUTDOWN: usize = STREAM_READ_KEY_UPDATED + 1;
+    pub const STREAM_READ_SHUTDOWN__LATENCY: usize = STREAM_READ_SHUTDOWN + 1;
+    pub const STREAM_READ_SHUTDOWN__BACKGROUND: usize = STREAM_READ_SHUTDOWN__LATENCY + 1;
+    pub const STREAM_READ_SOCKET_FLUSHED: usize = STREAM_READ_SHUTDOWN__BACKGROUND + 1;
+    pub const STREAM_READ_SOCKET_FLUSHED__CONN: usize = STREAM_READ_SOCKET_FLUSHED + 1;
+    pub const STREAM_READ_SOCKET_FLUSHED__CAPACITY: usize = STREAM_READ_SOCKET_FLUSHED__CONN + 1;
+    pub const STREAM_READ_SOCKET_FLUSHED__COMMITTED__TOTAL: usize =
+        STREAM_READ_SOCKET_FLUSHED__CAPACITY + 1;
+    pub const STREAM_READ_SOCKET_FLUSHED__COMMITTED: usize =
+        STREAM_READ_SOCKET_FLUSHED__COMMITTED__TOTAL + 1;
+    pub const STREAM_READ_SOCKET_FLUSHED__COMMITTED__CONN: usize =
+        STREAM_READ_SOCKET_FLUSHED__COMMITTED + 1;
+    pub const STREAM_READ_SOCKET_BLOCKED: usize = STREAM_READ_SOCKET_FLUSHED__COMMITTED__CONN + 1;
+    pub const STREAM_READ_SOCKET_BLOCKED__CONN: usize = STREAM_READ_SOCKET_BLOCKED + 1;
+    pub const STREAM_READ_SOCKET_BLOCKED__CAPACITY: usize = STREAM_READ_SOCKET_BLOCKED__CONN + 1;
+    pub const STREAM_READ_SOCKET_ERRORED: usize = STREAM_READ_SOCKET_BLOCKED__CAPACITY + 1;
+    pub const STREAM_READ_SOCKET_ERRORED__CAPACITY: usize = STREAM_READ_SOCKET_ERRORED + 1;
+    pub const STREAM_DECRYPT_PACKET: usize = STREAM_READ_SOCKET_ERRORED__CAPACITY + 1;
+    pub const STREAM_DECRYPT_PACKET__DECRYPTED_IN_PLACE: usize = STREAM_DECRYPT_PACKET + 1;
+    pub const STREAM_DECRYPT_PACKET__FORCED_COPY: usize =
+        STREAM_DECRYPT_PACKET__DECRYPTED_IN_PLACE + 1;
+    pub const STREAM_DECRYPT_PACKET__REQUIRED_APPLICATION_BUFFER: usize =
+        STREAM_DECRYPT_PACKET__FORCED_COPY + 1;
+    pub const STREAM_TCP_CONNECT: usize = STREAM_DECRYPT_PACKET__REQUIRED_APPLICATION_BUFFER + 1;
+    pub const STREAM_TCP_CONNECT__ERROR: usize = STREAM_TCP_CONNECT + 1;
+    pub const STREAM_TCP_CONNECT__TCP_LATENCY: usize = STREAM_TCP_CONNECT__ERROR + 1;
+    pub const STREAM_CONNECT: usize = STREAM_TCP_CONNECT__TCP_LATENCY + 1;
+    pub const STREAM_CONNECT__ERROR: usize = STREAM_CONNECT + 1;
+    pub const STREAM_CONNECT__TCP: usize = STREAM_CONNECT__ERROR + 1;
+    pub const STREAM_CONNECT__HANDSHAKE: usize = STREAM_CONNECT__TCP + 1;
+    pub const STREAM_CONNECT_ERROR: usize = STREAM_CONNECT__HANDSHAKE + 1;
+    pub const STREAM_CONNECT_ERROR__REASON: usize = STREAM_CONNECT_ERROR + 1;
+    pub const STREAM_CONNECT_ERROR__LATENCY: usize = STREAM_CONNECT_ERROR__REASON + 1;
+    pub const STREAM_PACKET_TRANSMITTED: usize = STREAM_CONNECT_ERROR__LATENCY + 1;
+    pub const STREAM_PACKET_TRANSMITTED__PACKET_LEN: usize = STREAM_PACKET_TRANSMITTED + 1;
+    pub const STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN__TOTAL: usize =
+        STREAM_PACKET_TRANSMITTED__PACKET_LEN + 1;
+    pub const STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN: usize =
+        STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN__TOTAL + 1;
+    pub const STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN__CONN: usize =
+        STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN + 1;
+    pub const STREAM_PACKET_TRANSMITTED__RETRANSMISSION: usize =
+        STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN__CONN + 1;
+    pub const STREAM_PROBE_TRANSMITTED: usize = STREAM_PACKET_TRANSMITTED__RETRANSMISSION + 1;
+    pub const STREAM_PROBE_TRANSMITTED__PACKET_LEN: usize = STREAM_PROBE_TRANSMITTED + 1;
+    pub const STREAM_PACKET_RECEIVED: usize = STREAM_PROBE_TRANSMITTED__PACKET_LEN + 1;
+    pub const STREAM_PACKET_RECEIVED__PACKET_LEN: usize = STREAM_PACKET_RECEIVED + 1;
+    pub const STREAM_PACKET_RECEIVED__PAYLOAD_LEN__TOTAL: usize =
+        STREAM_PACKET_RECEIVED__PACKET_LEN + 1;
+    pub const STREAM_PACKET_RECEIVED__PAYLOAD_LEN: usize =
+        STREAM_PACKET_RECEIVED__PAYLOAD_LEN__TOTAL + 1;
+    pub const STREAM_PACKET_RECEIVED__PAYLOAD_LEN__CONN: usize =
+        STREAM_PACKET_RECEIVED__PAYLOAD_LEN + 1;
+    pub const STREAM_PACKET_RECEIVED__RETRANSMISSION: usize =
+        STREAM_PACKET_RECEIVED__PAYLOAD_LEN__CONN + 1;
+    pub const STREAM_PACKET_LOST: usize = STREAM_PACKET_RECEIVED__RETRANSMISSION + 1;
+    pub const STREAM_PACKET_LOST__PACKET_LEN: usize = STREAM_PACKET_LOST + 1;
+    pub const STREAM_PACKET_LOST__PAYLOAD_LEN__TOTAL: usize = STREAM_PACKET_LOST__PACKET_LEN + 1;
+    pub const STREAM_PACKET_LOST__PAYLOAD_LEN: usize = STREAM_PACKET_LOST__PAYLOAD_LEN__TOTAL + 1;
+    pub const STREAM_PACKET_LOST__PAYLOAD_LEN__CONN: usize = STREAM_PACKET_LOST__PAYLOAD_LEN + 1;
+    pub const STREAM_PACKET_LOST__LIFETIME: usize = STREAM_PACKET_LOST__PAYLOAD_LEN__CONN + 1;
+    pub const STREAM_PACKET_LOST__RETRANSMISSION: usize = STREAM_PACKET_LOST__LIFETIME + 1;
+    pub const STREAM_PACKET_ACKED: usize = STREAM_PACKET_LOST__RETRANSMISSION + 1;
+    pub const STREAM_PACKET_ACKED__PACKET_LEN: usize = STREAM_PACKET_ACKED + 1;
+    pub const STREAM_PACKET_ACKED__PAYLOAD_LEN__TOTAL: usize = STREAM_PACKET_ACKED__PACKET_LEN + 1;
+    pub const STREAM_PACKET_ACKED__PAYLOAD_LEN: usize = STREAM_PACKET_ACKED__PAYLOAD_LEN__TOTAL + 1;
+    pub const STREAM_PACKET_ACKED__PAYLOAD_LEN__CONN: usize = STREAM_PACKET_ACKED__PAYLOAD_LEN + 1;
+    pub const STREAM_PACKET_ACKED__LIFETIME: usize = STREAM_PACKET_ACKED__PAYLOAD_LEN__CONN + 1;
+    pub const STREAM_PACKET_ACKED__RETRANSMISSION: usize = STREAM_PACKET_ACKED__LIFETIME + 1;
+    pub const STREAM_PACKET_SPURIOUSLY_RETRANSMITTED: usize =
+        STREAM_PACKET_ACKED__RETRANSMISSION + 1;
+    pub const STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PACKET_LEN: usize =
+        STREAM_PACKET_SPURIOUSLY_RETRANSMITTED + 1;
+    pub const STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN__TOTAL: usize =
+        STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PACKET_LEN + 1;
+    pub const STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN: usize =
+        STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN__TOTAL + 1;
+    pub const STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN__CONN: usize =
+        STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN + 1;
+    pub const STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__RETRANSMISSION: usize =
+        STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN__CONN + 1;
+    pub const STREAM_MAX_DATA_RECEIVED: usize =
+        STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__RETRANSMISSION + 1;
+    pub const STREAM_MAX_DATA_RECEIVED__INCREASE__TOTAL: usize = STREAM_MAX_DATA_RECEIVED + 1;
+    pub const STREAM_MAX_DATA_RECEIVED__INCREASE: usize =
+        STREAM_MAX_DATA_RECEIVED__INCREASE__TOTAL + 1;
+    pub const STREAM_CONTROL_PACKET_TRANSMITTED: usize = STREAM_MAX_DATA_RECEIVED__INCREASE + 1;
+    pub const STREAM_CONTROL_PACKET_TRANSMITTED__PACKET_LEN: usize =
+        STREAM_CONTROL_PACKET_TRANSMITTED + 1;
+    pub const STREAM_CONTROL_PACKET_TRANSMITTED__CONTROL_DATA_LEN: usize =
+        STREAM_CONTROL_PACKET_TRANSMITTED__PACKET_LEN + 1;
+    pub const STREAM_CONTROL_PACKET_RECEIVED: usize =
+        STREAM_CONTROL_PACKET_TRANSMITTED__CONTROL_DATA_LEN + 1;
+    pub const STREAM_CONTROL_PACKET_RECEIVED__PACKET_LEN: usize =
+        STREAM_CONTROL_PACKET_RECEIVED + 1;
+    pub const STREAM_CONTROL_PACKET_RECEIVED__CONTROL_DATA_LEN: usize =
+        STREAM_CONTROL_PACKET_RECEIVED__PACKET_LEN + 1;
+    pub const STREAM_CONTROL_PACKET_RECEIVED__AUTHENTICATED: usize =
+        STREAM_CONTROL_PACKET_RECEIVED__CONTROL_DATA_LEN + 1;
+    pub const STREAM_RECEIVER_ERRORED: usize = STREAM_CONTROL_PACKET_RECEIVED__AUTHENTICATED + 1;
+    pub const STREAM_SENDER_ERRORED: usize = STREAM_RECEIVER_ERRORED + 1;
+    pub const CONNECTION_CLOSED: usize = STREAM_SENDER_ERRORED + 1;
+    pub const ENDPOINT_INITIALIZED: usize = CONNECTION_CLOSED + 1;
+    pub const ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL: usize = ENDPOINT_INITIALIZED + 1;
+    pub const ENDPOINT_INITIALIZED__HANDSHAKE__PROTOCOL: usize =
+        ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL + 1;
+    pub const ENDPOINT_INITIALIZED__TCP: usize = ENDPOINT_INITIALIZED__HANDSHAKE__PROTOCOL + 1;
+    pub const ENDPOINT_INITIALIZED__UDP: usize = ENDPOINT_INITIALIZED__TCP + 1;
+    pub const DC_CONNECTION_TIMEOUT: usize = ENDPOINT_INITIALIZED__UDP + 1;
+    pub const DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL: usize = DC_CONNECTION_TIMEOUT + 1;
+    pub const PATH_SECRET_MAP_INITIALIZED: usize =
+        DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL + 1;
+    pub const PATH_SECRET_MAP_INITIALIZED__CAPACITY: usize = PATH_SECRET_MAP_INITIALIZED + 1;
+    pub const PATH_SECRET_MAP_UNINITIALIZED: usize = PATH_SECRET_MAP_INITIALIZED__CAPACITY + 1;
+    pub const PATH_SECRET_MAP_UNINITIALIZED__CAPACITY: usize = PATH_SECRET_MAP_UNINITIALIZED + 1;
+    pub const PATH_SECRET_MAP_UNINITIALIZED__ENTRIES: usize =
+        PATH_SECRET_MAP_UNINITIALIZED__CAPACITY + 1;
+    pub const PATH_SECRET_MAP_UNINITIALIZED__LIFETIME: usize =
+        PATH_SECRET_MAP_UNINITIALIZED__ENTRIES + 1;
+    pub const PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED: usize =
+        PATH_SECRET_MAP_UNINITIALIZED__LIFETIME + 1;
+    pub const PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL: usize =
+        PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED + 1;
+    pub const PATH_SECRET_MAP_ENTRY_INSERTED: usize =
+        PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL: usize =
+        PATH_SECRET_MAP_ENTRY_INSERTED + 1;
+    pub const PATH_SECRET_MAP_ENTRY_READY: usize =
+        PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const PATH_SECRET_MAP_ENTRY_READY__PEER_ADDRESS__PROTOCOL: usize =
+        PATH_SECRET_MAP_ENTRY_READY + 1;
+    pub const PATH_SECRET_MAP_ENTRY_REPLACED: usize =
+        PATH_SECRET_MAP_ENTRY_READY__PEER_ADDRESS__PROTOCOL + 1;
+    pub const PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL: usize =
+        PATH_SECRET_MAP_ENTRY_REPLACED + 1;
+    pub const PATH_SECRET_MAP_ID_ENTRY_EVICTED: usize =
+        PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL: usize =
+        PATH_SECRET_MAP_ID_ENTRY_EVICTED + 1;
+    pub const PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE: usize =
+        PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED: usize =
+        PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE + 1;
+    pub const PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL: usize =
+        PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED + 1;
+    pub const PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE: usize =
+        PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const UNKNOWN_PATH_SECRET_PACKET_SENT: usize =
+        PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE + 1;
+    pub const UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL: usize =
+        UNKNOWN_PATH_SECRET_PACKET_SENT + 1;
+    pub const UNKNOWN_PATH_SECRET_PACKET_RECEIVED: usize =
+        UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL + 1;
+    pub const UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL: usize =
+        UNKNOWN_PATH_SECRET_PACKET_RECEIVED + 1;
+    pub const UNKNOWN_PATH_SECRET_PACKET_ACCEPTED: usize =
+        UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL: usize =
+        UNKNOWN_PATH_SECRET_PACKET_ACCEPTED + 1;
+    pub const UNKNOWN_PATH_SECRET_PACKET_REJECTED: usize =
+        UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL: usize =
+        UNKNOWN_PATH_SECRET_PACKET_REJECTED + 1;
+    pub const UNKNOWN_PATH_SECRET_PACKET_DROPPED: usize =
+        UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const UNKNOWN_PATH_SECRET_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL: usize =
+        UNKNOWN_PATH_SECRET_PACKET_DROPPED + 1;
+    pub const KEY_ACCEPTED: usize = UNKNOWN_PATH_SECRET_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const KEY_ACCEPTED__GAP: usize = KEY_ACCEPTED + 1;
+    pub const KEY_ACCEPTED__FORWARD_SHIFT: usize = KEY_ACCEPTED__GAP + 1;
+    pub const REPLAY_DEFINITELY_DETECTED: usize = KEY_ACCEPTED__FORWARD_SHIFT + 1;
+    pub const REPLAY_POTENTIALLY_DETECTED: usize = REPLAY_DEFINITELY_DETECTED + 1;
+    pub const REPLAY_POTENTIALLY_DETECTED__GAP: usize = REPLAY_POTENTIALLY_DETECTED + 1;
+    pub const REPLAY_DETECTED_PACKET_SENT: usize = REPLAY_POTENTIALLY_DETECTED__GAP + 1;
+    pub const REPLAY_DETECTED_PACKET_SENT__PEER_ADDRESS__PROTOCOL: usize =
+        REPLAY_DETECTED_PACKET_SENT + 1;
+    pub const REPLAY_DETECTED_PACKET_RECEIVED: usize =
+        REPLAY_DETECTED_PACKET_SENT__PEER_ADDRESS__PROTOCOL + 1;
+    pub const REPLAY_DETECTED_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL: usize =
+        REPLAY_DETECTED_PACKET_RECEIVED + 1;
+    pub const REPLAY_DETECTED_PACKET_ACCEPTED: usize =
+        REPLAY_DETECTED_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const REPLAY_DETECTED_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL: usize =
+        REPLAY_DETECTED_PACKET_ACCEPTED + 1;
+    pub const REPLAY_DETECTED_PACKET_REJECTED: usize =
+        REPLAY_DETECTED_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const REPLAY_DETECTED_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL: usize =
+        REPLAY_DETECTED_PACKET_REJECTED + 1;
+    pub const REPLAY_DETECTED_PACKET_DROPPED: usize =
+        REPLAY_DETECTED_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const REPLAY_DETECTED_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL: usize =
+        REPLAY_DETECTED_PACKET_DROPPED + 1;
+    pub const STALE_KEY_PACKET_SENT: usize =
+        REPLAY_DETECTED_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const STALE_KEY_PACKET_SENT__PEER_ADDRESS__PROTOCOL: usize = STALE_KEY_PACKET_SENT + 1;
+    pub const STALE_KEY_PACKET_RECEIVED: usize = STALE_KEY_PACKET_SENT__PEER_ADDRESS__PROTOCOL + 1;
+    pub const STALE_KEY_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL: usize =
+        STALE_KEY_PACKET_RECEIVED + 1;
+    pub const STALE_KEY_PACKET_ACCEPTED: usize =
+        STALE_KEY_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL: usize =
+        STALE_KEY_PACKET_ACCEPTED + 1;
+    pub const STALE_KEY_PACKET_REJECTED: usize =
+        STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL: usize =
+        STALE_KEY_PACKET_REJECTED + 1;
+    pub const STALE_KEY_PACKET_DROPPED: usize =
+        STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const STALE_KEY_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL: usize =
+        STALE_KEY_PACKET_DROPPED + 1;
+    pub const PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED: usize =
+        STALE_KEY_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__PEER_ADDRESS__PROTOCOL: usize =
+        PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED + 1;
+    pub const PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT: usize =
+        PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__PEER_ADDRESS__PROTOCOL + 1;
+    pub const PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT: usize =
+        PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT + 1;
+    pub const PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__PEER_ADDRESS__PROTOCOL: usize =
+        PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT + 1;
+    pub const PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE: usize =
+        PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__PEER_ADDRESS__PROTOCOL + 1;
+    pub const PATH_SECRET_MAP_ID_CACHE_ACCESSED: usize =
+        PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE + 1;
+    pub const PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT: usize = PATH_SECRET_MAP_ID_CACHE_ACCESSED + 1;
+    pub const PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT: usize =
+        PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT + 1;
+    pub const PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT__AGE: usize =
+        PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED: usize =
+        PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT__AGE + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__RETIRED: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__RETIRED + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE__UTILIZATION: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE__UTILIZATION + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION__INITIAL: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION__INITIAL + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE__UTILIZATION: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__RETIRED: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE__UTILIZATION + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__RETIRED + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED + 1;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION + 1;
+    pub const PATH_SECRET_MAP_ID_WRITE_LOCK: usize =
+        PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION + 1;
+    pub const PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE: usize = PATH_SECRET_MAP_ID_WRITE_LOCK + 1;
+    pub const PATH_SECRET_MAP_ID_WRITE_LOCK__DURATION: usize =
+        PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE + 1;
+    pub const PATH_SECRET_MAP_ADDRESS_WRITE_LOCK: usize =
+        PATH_SECRET_MAP_ID_WRITE_LOCK__DURATION + 1;
+    pub const PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__ACQUIRE: usize =
+        PATH_SECRET_MAP_ADDRESS_WRITE_LOCK + 1;
+    pub const PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__DURATION: usize =
+        PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__ACQUIRE + 1;
+}
 mod counter {
     #![allow(non_snake_case)]
     use super::*;
@@ -17,108 +466,152 @@ mod counter {
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
             match info.id {
-                0usize => Self(acceptor_tcp_started),
-                1usize => Self(acceptor_tcp_loop_iteration_completed),
-                7usize => Self(acceptor_tcp_fresh_enqueued),
-                8usize => Self(acceptor_tcp_fresh_batch_completed),
-                12usize => Self(acceptor_tcp_stream_dropped),
-                14usize => Self(acceptor_tcp_stream_replaced),
-                17usize => Self(acceptor_tcp_packet_received),
-                22usize => Self(acceptor_tcp_packet_dropped),
-                25usize => Self(acceptor_tcp_stream_enqueued),
-                28usize => Self(acceptor_tcp_io_error),
-                30usize => Self(acceptor_tcp_socket_sent),
-                32usize => Self(acceptor_tcp_socket_sent__blocked_count_host),
-                35usize => Self(acceptor_tcp_socket_received),
-                38usize => Self(acceptor_udp_started),
-                39usize => Self(acceptor_udp_datagram_received),
-                41usize => Self(acceptor_udp_packet_received),
-                47usize => Self(acceptor_udp_packet_dropped),
-                49usize => Self(acceptor_udp_stream_enqueued),
-                50usize => Self(acceptor_udp_io_error),
-                51usize => Self(acceptor_stream_pruned),
-                54usize => Self(acceptor_stream_dequeued),
-                56usize => Self(stream_write_flushed),
-                60usize => Self(stream_write_flushed__committed__total),
-                65usize => Self(stream_write_fin_flushed),
-                69usize => Self(stream_write_fin_flushed__committed__total),
-                74usize => Self(stream_write_blocked),
-                80usize => Self(stream_write_errored),
-                85usize => Self(stream_write_key_updated),
-                86usize => Self(stream_write_allocated),
-                90usize => Self(stream_write_shutdown),
-                94usize => Self(stream_write_socket_flushed),
-                97usize => Self(stream_write_socket_flushed__committed__total),
-                100usize => Self(stream_write_socket_blocked),
-                103usize => Self(stream_write_socket_errored),
-                105usize => Self(stream_read_flushed),
-                109usize => Self(stream_read_flushed__committed__total),
-                114usize => Self(stream_read_fin_flushed),
-                120usize => Self(stream_read_blocked),
-                125usize => Self(stream_read_errored),
-                130usize => Self(stream_read_key_updated),
-                131usize => Self(stream_read_shutdown),
-                134usize => Self(stream_read_socket_flushed),
-                137usize => Self(stream_read_socket_flushed__committed__total),
-                140usize => Self(stream_read_socket_blocked),
-                143usize => Self(stream_read_socket_errored),
-                145usize => Self(stream_decrypt_packet),
-                149usize => Self(stream_tcp_connect),
-                152usize => Self(stream_connect),
-                156usize => Self(stream_connect_error),
-                159usize => Self(stream_packet_transmitted),
-                161usize => Self(stream_packet_transmitted__payload_len__total),
-                165usize => Self(stream_probe_transmitted),
-                167usize => Self(stream_packet_received),
-                169usize => Self(stream_packet_received__payload_len__total),
-                173usize => Self(stream_packet_lost),
-                175usize => Self(stream_packet_lost__payload_len__total),
-                180usize => Self(stream_packet_acked),
-                182usize => Self(stream_packet_acked__payload_len__total),
-                187usize => Self(stream_packet_spuriously_retransmitted),
-                189usize => Self(stream_packet_spuriously_retransmitted__payload_len__total),
-                193usize => Self(stream_max_data_received),
-                194usize => Self(stream_max_data_received__increase__total),
-                196usize => Self(stream_control_packet_transmitted),
-                199usize => Self(stream_control_packet_received),
-                203usize => Self(stream_receiver_errored),
-                204usize => Self(stream_sender_errored),
-                205usize => Self(connection_closed),
-                206usize => Self(endpoint_initialized),
-                211usize => Self(dc_connection_timeout),
-                213usize => Self(path_secret_map_initialized),
-                215usize => Self(path_secret_map_uninitialized),
-                219usize => Self(path_secret_map_background_handshake_requested),
-                221usize => Self(path_secret_map_entry_inserted),
-                223usize => Self(path_secret_map_entry_ready),
-                225usize => Self(path_secret_map_entry_replaced),
-                227usize => Self(path_secret_map_id_entry_evicted),
-                230usize => Self(path_secret_map_address_entry_evicted),
-                233usize => Self(unknown_path_secret_packet_sent),
-                235usize => Self(unknown_path_secret_packet_received),
-                237usize => Self(unknown_path_secret_packet_accepted),
-                239usize => Self(unknown_path_secret_packet_rejected),
-                241usize => Self(unknown_path_secret_packet_dropped),
-                243usize => Self(key_accepted),
-                246usize => Self(replay_definitely_detected),
-                247usize => Self(replay_potentially_detected),
-                249usize => Self(replay_detected_packet_sent),
-                251usize => Self(replay_detected_packet_received),
-                253usize => Self(replay_detected_packet_accepted),
-                255usize => Self(replay_detected_packet_rejected),
-                257usize => Self(replay_detected_packet_dropped),
-                259usize => Self(stale_key_packet_sent),
-                261usize => Self(stale_key_packet_received),
-                263usize => Self(stale_key_packet_accepted),
-                265usize => Self(stale_key_packet_rejected),
-                267usize => Self(stale_key_packet_dropped),
-                269usize => Self(path_secret_map_address_cache_accessed),
-                272usize => Self(path_secret_map_address_cache_accessed_hit),
-                275usize => Self(path_secret_map_id_cache_accessed),
-                277usize => Self(path_secret_map_id_cache_accessed_hit),
-                279usize => Self(path_secret_map_cleaner_cycled),
-                296usize => Self(path_secret_map_id_write_lock),
-                299usize => Self(path_secret_map_address_write_lock),
+                id::ACCEPTOR_TCP_STARTED => Self(acceptor_tcp_started),
+                id::ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED => {
+                    Self(acceptor_tcp_loop_iteration_completed)
+                }
+                id::ACCEPTOR_TCP_FRESH_ENQUEUED => Self(acceptor_tcp_fresh_enqueued),
+                id::ACCEPTOR_TCP_FRESH_BATCH_COMPLETED => Self(acceptor_tcp_fresh_batch_completed),
+                id::ACCEPTOR_TCP_STREAM_DROPPED => Self(acceptor_tcp_stream_dropped),
+                id::ACCEPTOR_TCP_STREAM_REPLACED => Self(acceptor_tcp_stream_replaced),
+                id::ACCEPTOR_TCP_PACKET_RECEIVED => Self(acceptor_tcp_packet_received),
+                id::ACCEPTOR_TCP_PACKET_DROPPED => Self(acceptor_tcp_packet_dropped),
+                id::ACCEPTOR_TCP_STREAM_ENQUEUED => Self(acceptor_tcp_stream_enqueued),
+                id::ACCEPTOR_TCP_IO_ERROR => Self(acceptor_tcp_io_error),
+                id::ACCEPTOR_TCP_SOCKET_SENT => Self(acceptor_tcp_socket_sent),
+                id::ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_HOST => {
+                    Self(acceptor_tcp_socket_sent__blocked_count_host)
+                }
+                id::ACCEPTOR_TCP_SOCKET_RECEIVED => Self(acceptor_tcp_socket_received),
+                id::ACCEPTOR_UDP_STARTED => Self(acceptor_udp_started),
+                id::ACCEPTOR_UDP_DATAGRAM_RECEIVED => Self(acceptor_udp_datagram_received),
+                id::ACCEPTOR_UDP_PACKET_RECEIVED => Self(acceptor_udp_packet_received),
+                id::ACCEPTOR_UDP_PACKET_DROPPED => Self(acceptor_udp_packet_dropped),
+                id::ACCEPTOR_UDP_STREAM_ENQUEUED => Self(acceptor_udp_stream_enqueued),
+                id::ACCEPTOR_UDP_IO_ERROR => Self(acceptor_udp_io_error),
+                id::ACCEPTOR_STREAM_PRUNED => Self(acceptor_stream_pruned),
+                id::ACCEPTOR_STREAM_DEQUEUED => Self(acceptor_stream_dequeued),
+                id::STREAM_WRITE_FLUSHED => Self(stream_write_flushed),
+                id::STREAM_WRITE_FLUSHED__COMMITTED__TOTAL => {
+                    Self(stream_write_flushed__committed__total)
+                }
+                id::STREAM_WRITE_FIN_FLUSHED => Self(stream_write_fin_flushed),
+                id::STREAM_WRITE_FIN_FLUSHED__COMMITTED__TOTAL => {
+                    Self(stream_write_fin_flushed__committed__total)
+                }
+                id::STREAM_WRITE_BLOCKED => Self(stream_write_blocked),
+                id::STREAM_WRITE_ERRORED => Self(stream_write_errored),
+                id::STREAM_WRITE_KEY_UPDATED => Self(stream_write_key_updated),
+                id::STREAM_WRITE_ALLOCATED => Self(stream_write_allocated),
+                id::STREAM_WRITE_SHUTDOWN => Self(stream_write_shutdown),
+                id::STREAM_WRITE_SOCKET_FLUSHED => Self(stream_write_socket_flushed),
+                id::STREAM_WRITE_SOCKET_FLUSHED__COMMITTED__TOTAL => {
+                    Self(stream_write_socket_flushed__committed__total)
+                }
+                id::STREAM_WRITE_SOCKET_BLOCKED => Self(stream_write_socket_blocked),
+                id::STREAM_WRITE_SOCKET_ERRORED => Self(stream_write_socket_errored),
+                id::STREAM_READ_FLUSHED => Self(stream_read_flushed),
+                id::STREAM_READ_FLUSHED__COMMITTED__TOTAL => {
+                    Self(stream_read_flushed__committed__total)
+                }
+                id::STREAM_READ_FIN_FLUSHED => Self(stream_read_fin_flushed),
+                id::STREAM_READ_BLOCKED => Self(stream_read_blocked),
+                id::STREAM_READ_ERRORED => Self(stream_read_errored),
+                id::STREAM_READ_KEY_UPDATED => Self(stream_read_key_updated),
+                id::STREAM_READ_SHUTDOWN => Self(stream_read_shutdown),
+                id::STREAM_READ_SOCKET_FLUSHED => Self(stream_read_socket_flushed),
+                id::STREAM_READ_SOCKET_FLUSHED__COMMITTED__TOTAL => {
+                    Self(stream_read_socket_flushed__committed__total)
+                }
+                id::STREAM_READ_SOCKET_BLOCKED => Self(stream_read_socket_blocked),
+                id::STREAM_READ_SOCKET_ERRORED => Self(stream_read_socket_errored),
+                id::STREAM_DECRYPT_PACKET => Self(stream_decrypt_packet),
+                id::STREAM_TCP_CONNECT => Self(stream_tcp_connect),
+                id::STREAM_CONNECT => Self(stream_connect),
+                id::STREAM_CONNECT_ERROR => Self(stream_connect_error),
+                id::STREAM_PACKET_TRANSMITTED => Self(stream_packet_transmitted),
+                id::STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN__TOTAL => {
+                    Self(stream_packet_transmitted__payload_len__total)
+                }
+                id::STREAM_PROBE_TRANSMITTED => Self(stream_probe_transmitted),
+                id::STREAM_PACKET_RECEIVED => Self(stream_packet_received),
+                id::STREAM_PACKET_RECEIVED__PAYLOAD_LEN__TOTAL => {
+                    Self(stream_packet_received__payload_len__total)
+                }
+                id::STREAM_PACKET_LOST => Self(stream_packet_lost),
+                id::STREAM_PACKET_LOST__PAYLOAD_LEN__TOTAL => {
+                    Self(stream_packet_lost__payload_len__total)
+                }
+                id::STREAM_PACKET_ACKED => Self(stream_packet_acked),
+                id::STREAM_PACKET_ACKED__PAYLOAD_LEN__TOTAL => {
+                    Self(stream_packet_acked__payload_len__total)
+                }
+                id::STREAM_PACKET_SPURIOUSLY_RETRANSMITTED => {
+                    Self(stream_packet_spuriously_retransmitted)
+                }
+                id::STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN__TOTAL => {
+                    Self(stream_packet_spuriously_retransmitted__payload_len__total)
+                }
+                id::STREAM_MAX_DATA_RECEIVED => Self(stream_max_data_received),
+                id::STREAM_MAX_DATA_RECEIVED__INCREASE__TOTAL => {
+                    Self(stream_max_data_received__increase__total)
+                }
+                id::STREAM_CONTROL_PACKET_TRANSMITTED => Self(stream_control_packet_transmitted),
+                id::STREAM_CONTROL_PACKET_RECEIVED => Self(stream_control_packet_received),
+                id::STREAM_RECEIVER_ERRORED => Self(stream_receiver_errored),
+                id::STREAM_SENDER_ERRORED => Self(stream_sender_errored),
+                id::CONNECTION_CLOSED => Self(connection_closed),
+                id::ENDPOINT_INITIALIZED => Self(endpoint_initialized),
+                id::DC_CONNECTION_TIMEOUT => Self(dc_connection_timeout),
+                id::PATH_SECRET_MAP_INITIALIZED => Self(path_secret_map_initialized),
+                id::PATH_SECRET_MAP_UNINITIALIZED => Self(path_secret_map_uninitialized),
+                id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED => {
+                    Self(path_secret_map_background_handshake_requested)
+                }
+                id::PATH_SECRET_MAP_ENTRY_INSERTED => Self(path_secret_map_entry_inserted),
+                id::PATH_SECRET_MAP_ENTRY_READY => Self(path_secret_map_entry_ready),
+                id::PATH_SECRET_MAP_ENTRY_REPLACED => Self(path_secret_map_entry_replaced),
+                id::PATH_SECRET_MAP_ID_ENTRY_EVICTED => Self(path_secret_map_id_entry_evicted),
+                id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED => {
+                    Self(path_secret_map_address_entry_evicted)
+                }
+                id::UNKNOWN_PATH_SECRET_PACKET_SENT => Self(unknown_path_secret_packet_sent),
+                id::UNKNOWN_PATH_SECRET_PACKET_RECEIVED => {
+                    Self(unknown_path_secret_packet_received)
+                }
+                id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED => {
+                    Self(unknown_path_secret_packet_accepted)
+                }
+                id::UNKNOWN_PATH_SECRET_PACKET_REJECTED => {
+                    Self(unknown_path_secret_packet_rejected)
+                }
+                id::UNKNOWN_PATH_SECRET_PACKET_DROPPED => Self(unknown_path_secret_packet_dropped),
+                id::KEY_ACCEPTED => Self(key_accepted),
+                id::REPLAY_DEFINITELY_DETECTED => Self(replay_definitely_detected),
+                id::REPLAY_POTENTIALLY_DETECTED => Self(replay_potentially_detected),
+                id::REPLAY_DETECTED_PACKET_SENT => Self(replay_detected_packet_sent),
+                id::REPLAY_DETECTED_PACKET_RECEIVED => Self(replay_detected_packet_received),
+                id::REPLAY_DETECTED_PACKET_ACCEPTED => Self(replay_detected_packet_accepted),
+                id::REPLAY_DETECTED_PACKET_REJECTED => Self(replay_detected_packet_rejected),
+                id::REPLAY_DETECTED_PACKET_DROPPED => Self(replay_detected_packet_dropped),
+                id::STALE_KEY_PACKET_SENT => Self(stale_key_packet_sent),
+                id::STALE_KEY_PACKET_RECEIVED => Self(stale_key_packet_received),
+                id::STALE_KEY_PACKET_ACCEPTED => Self(stale_key_packet_accepted),
+                id::STALE_KEY_PACKET_REJECTED => Self(stale_key_packet_rejected),
+                id::STALE_KEY_PACKET_DROPPED => Self(stale_key_packet_dropped),
+                id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED => {
+                    Self(path_secret_map_address_cache_accessed)
+                }
+                id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT => {
+                    Self(path_secret_map_address_cache_accessed_hit)
+                }
+                id::PATH_SECRET_MAP_ID_CACHE_ACCESSED => Self(path_secret_map_id_cache_accessed),
+                id::PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT => {
+                    Self(path_secret_map_id_cache_accessed_hit)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED => Self(path_secret_map_cleaner_cycled),
+                id::PATH_SECRET_MAP_ID_WRITE_LOCK => Self(path_secret_map_id_write_lock),
+                id::PATH_SECRET_MAP_ADDRESS_WRITE_LOCK => Self(path_secret_map_address_write_lock),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -343,27 +836,59 @@ mod counter {
         impl Recorder {
             pub(crate) fn new(info: &'static Info) -> Self {
                 match info.id {
-                    19usize => Self(acceptor_tcp_packet_received__is_fin),
-                    20usize => Self(acceptor_tcp_packet_received__is_fin_known),
-                    43usize => Self(acceptor_udp_packet_received__is_zero_offset),
-                    44usize => Self(acceptor_udp_packet_received__is_retransmission),
-                    45usize => Self(acceptor_udp_packet_received__is_fin),
-                    46usize => Self(acceptor_udp_packet_received__is_fin_known),
-                    93usize => Self(stream_write_shutdown__background),
-                    133usize => Self(stream_read_shutdown__background),
-                    146usize => Self(stream_decrypt_packet__decrypted_in_place),
-                    150usize => Self(stream_tcp_connect__error),
-                    153usize => Self(stream_connect__error),
-                    164usize => Self(stream_packet_transmitted__retransmission),
-                    172usize => Self(stream_packet_received__retransmission),
-                    179usize => Self(stream_packet_lost__retransmission),
-                    186usize => Self(stream_packet_acked__retransmission),
-                    192usize => Self(stream_packet_spuriously_retransmitted__retransmission),
-                    202usize => Self(stream_control_packet_received__authenticated),
-                    209usize => Self(endpoint_initialized__tcp),
-                    210usize => Self(endpoint_initialized__udp),
-                    271usize => Self(path_secret_map_address_cache_accessed__hit),
-                    276usize => Self(path_secret_map_id_cache_accessed__hit),
+                    id::ACCEPTOR_TCP_PACKET_RECEIVED__IS_FIN => {
+                        Self(acceptor_tcp_packet_received__is_fin)
+                    }
+                    id::ACCEPTOR_TCP_PACKET_RECEIVED__IS_FIN_KNOWN => {
+                        Self(acceptor_tcp_packet_received__is_fin_known)
+                    }
+                    id::ACCEPTOR_UDP_PACKET_RECEIVED__IS_ZERO_OFFSET => {
+                        Self(acceptor_udp_packet_received__is_zero_offset)
+                    }
+                    id::ACCEPTOR_UDP_PACKET_RECEIVED__IS_RETRANSMISSION => {
+                        Self(acceptor_udp_packet_received__is_retransmission)
+                    }
+                    id::ACCEPTOR_UDP_PACKET_RECEIVED__IS_FIN => {
+                        Self(acceptor_udp_packet_received__is_fin)
+                    }
+                    id::ACCEPTOR_UDP_PACKET_RECEIVED__IS_FIN_KNOWN => {
+                        Self(acceptor_udp_packet_received__is_fin_known)
+                    }
+                    id::STREAM_WRITE_SHUTDOWN__BACKGROUND => {
+                        Self(stream_write_shutdown__background)
+                    }
+                    id::STREAM_READ_SHUTDOWN__BACKGROUND => Self(stream_read_shutdown__background),
+                    id::STREAM_DECRYPT_PACKET__DECRYPTED_IN_PLACE => {
+                        Self(stream_decrypt_packet__decrypted_in_place)
+                    }
+                    id::STREAM_TCP_CONNECT__ERROR => Self(stream_tcp_connect__error),
+                    id::STREAM_CONNECT__ERROR => Self(stream_connect__error),
+                    id::STREAM_PACKET_TRANSMITTED__RETRANSMISSION => {
+                        Self(stream_packet_transmitted__retransmission)
+                    }
+                    id::STREAM_PACKET_RECEIVED__RETRANSMISSION => {
+                        Self(stream_packet_received__retransmission)
+                    }
+                    id::STREAM_PACKET_LOST__RETRANSMISSION => {
+                        Self(stream_packet_lost__retransmission)
+                    }
+                    id::STREAM_PACKET_ACKED__RETRANSMISSION => {
+                        Self(stream_packet_acked__retransmission)
+                    }
+                    id::STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__RETRANSMISSION => {
+                        Self(stream_packet_spuriously_retransmitted__retransmission)
+                    }
+                    id::STREAM_CONTROL_PACKET_RECEIVED__AUTHENTICATED => {
+                        Self(stream_control_packet_received__authenticated)
+                    }
+                    id::ENDPOINT_INITIALIZED__TCP => Self(endpoint_initialized__tcp),
+                    id::ENDPOINT_INITIALIZED__UDP => Self(endpoint_initialized__udp),
+                    id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT => {
+                        Self(path_secret_map_address_cache_accessed__hit)
+                    }
+                    id::PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT => {
+                        Self(path_secret_map_id_cache_accessed__hit)
+                    }
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -428,44 +953,96 @@ mod counter {
         impl Recorder {
             pub(crate) fn new(info: &'static Info, _variant: &'static info::Variant) -> Self {
                 match info.id {
-                    13usize => Self(acceptor_tcp_stream_dropped__reason),
-                    23usize => Self(acceptor_tcp_packet_dropped__reason),
-                    29usize => Self(acceptor_tcp_io_error__source),
-                    48usize => Self(acceptor_udp_packet_dropped__reason),
-                    53usize => Self(acceptor_stream_pruned__reason),
-                    154usize => Self(stream_connect__tcp),
-                    155usize => Self(stream_connect__handshake),
-                    157usize => Self(stream_connect_error__reason),
-                    207usize => Self(endpoint_initialized__acceptor__protocol),
-                    208usize => Self(endpoint_initialized__handshake__protocol),
-                    212usize => Self(dc_connection_timeout__peer_address__protocol),
-                    220usize => {
+                    id::ACCEPTOR_TCP_STREAM_DROPPED__REASON => {
+                        Self(acceptor_tcp_stream_dropped__reason)
+                    }
+                    id::ACCEPTOR_TCP_PACKET_DROPPED__REASON => {
+                        Self(acceptor_tcp_packet_dropped__reason)
+                    }
+                    id::ACCEPTOR_TCP_IO_ERROR__SOURCE => Self(acceptor_tcp_io_error__source),
+                    id::ACCEPTOR_UDP_PACKET_DROPPED__REASON => {
+                        Self(acceptor_udp_packet_dropped__reason)
+                    }
+                    id::ACCEPTOR_STREAM_PRUNED__REASON => Self(acceptor_stream_pruned__reason),
+                    id::STREAM_CONNECT__TCP => Self(stream_connect__tcp),
+                    id::STREAM_CONNECT__HANDSHAKE => Self(stream_connect__handshake),
+                    id::STREAM_CONNECT_ERROR__REASON => Self(stream_connect_error__reason),
+                    id::ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL => {
+                        Self(endpoint_initialized__acceptor__protocol)
+                    }
+                    id::ENDPOINT_INITIALIZED__HANDSHAKE__PROTOCOL => {
+                        Self(endpoint_initialized__handshake__protocol)
+                    }
+                    id::DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL => {
+                        Self(dc_connection_timeout__peer_address__protocol)
+                    }
+                    id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL => {
                         Self(path_secret_map_background_handshake_requested__peer_address__protocol)
                     }
-                    222usize => Self(path_secret_map_entry_inserted__peer_address__protocol),
-                    224usize => Self(path_secret_map_entry_ready__peer_address__protocol),
-                    226usize => Self(path_secret_map_entry_replaced__peer_address__protocol),
-                    228usize => Self(path_secret_map_id_entry_evicted__peer_address__protocol),
-                    231usize => Self(path_secret_map_address_entry_evicted__peer_address__protocol),
-                    234usize => Self(unknown_path_secret_packet_sent__peer_address__protocol),
-                    236usize => Self(unknown_path_secret_packet_received__peer_address__protocol),
-                    238usize => Self(unknown_path_secret_packet_accepted__peer_address__protocol),
-                    240usize => Self(unknown_path_secret_packet_rejected__peer_address__protocol),
-                    242usize => Self(unknown_path_secret_packet_dropped__peer_address__protocol),
-                    250usize => Self(replay_detected_packet_sent__peer_address__protocol),
-                    252usize => Self(replay_detected_packet_received__peer_address__protocol),
-                    254usize => Self(replay_detected_packet_accepted__peer_address__protocol),
-                    256usize => Self(replay_detected_packet_rejected__peer_address__protocol),
-                    258usize => Self(replay_detected_packet_dropped__peer_address__protocol),
-                    260usize => Self(stale_key_packet_sent__peer_address__protocol),
-                    262usize => Self(stale_key_packet_received__peer_address__protocol),
-                    264usize => Self(stale_key_packet_accepted__peer_address__protocol),
-                    266usize => Self(stale_key_packet_rejected__peer_address__protocol),
-                    268usize => Self(stale_key_packet_dropped__peer_address__protocol),
-                    270usize => {
+                    id::PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL => {
+                        Self(path_secret_map_entry_inserted__peer_address__protocol)
+                    }
+                    id::PATH_SECRET_MAP_ENTRY_READY__PEER_ADDRESS__PROTOCOL => {
+                        Self(path_secret_map_entry_ready__peer_address__protocol)
+                    }
+                    id::PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL => {
+                        Self(path_secret_map_entry_replaced__peer_address__protocol)
+                    }
+                    id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL => {
+                        Self(path_secret_map_id_entry_evicted__peer_address__protocol)
+                    }
+                    id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL => {
+                        Self(path_secret_map_address_entry_evicted__peer_address__protocol)
+                    }
+                    id::UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL => {
+                        Self(unknown_path_secret_packet_sent__peer_address__protocol)
+                    }
+                    id::UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL => {
+                        Self(unknown_path_secret_packet_received__peer_address__protocol)
+                    }
+                    id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL => {
+                        Self(unknown_path_secret_packet_accepted__peer_address__protocol)
+                    }
+                    id::UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL => {
+                        Self(unknown_path_secret_packet_rejected__peer_address__protocol)
+                    }
+                    id::UNKNOWN_PATH_SECRET_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL => {
+                        Self(unknown_path_secret_packet_dropped__peer_address__protocol)
+                    }
+                    id::REPLAY_DETECTED_PACKET_SENT__PEER_ADDRESS__PROTOCOL => {
+                        Self(replay_detected_packet_sent__peer_address__protocol)
+                    }
+                    id::REPLAY_DETECTED_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL => {
+                        Self(replay_detected_packet_received__peer_address__protocol)
+                    }
+                    id::REPLAY_DETECTED_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL => {
+                        Self(replay_detected_packet_accepted__peer_address__protocol)
+                    }
+                    id::REPLAY_DETECTED_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL => {
+                        Self(replay_detected_packet_rejected__peer_address__protocol)
+                    }
+                    id::REPLAY_DETECTED_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL => {
+                        Self(replay_detected_packet_dropped__peer_address__protocol)
+                    }
+                    id::STALE_KEY_PACKET_SENT__PEER_ADDRESS__PROTOCOL => {
+                        Self(stale_key_packet_sent__peer_address__protocol)
+                    }
+                    id::STALE_KEY_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL => {
+                        Self(stale_key_packet_received__peer_address__protocol)
+                    }
+                    id::STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL => {
+                        Self(stale_key_packet_accepted__peer_address__protocol)
+                    }
+                    id::STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL => {
+                        Self(stale_key_packet_rejected__peer_address__protocol)
+                    }
+                    id::STALE_KEY_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL => {
+                        Self(stale_key_packet_dropped__peer_address__protocol)
+                    }
+                    id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__PEER_ADDRESS__PROTOCOL => {
                         Self(path_secret_map_address_cache_accessed__peer_address__protocol)
                     }
-                    273usize => {
+                    id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__PEER_ADDRESS__PROTOCOL => {
                         Self(path_secret_map_address_cache_accessed_hit__peer_address__protocol)
                     }
                     _ => unreachable!("invalid info: {info:?}"),
@@ -688,134 +1265,308 @@ mod measure {
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
             match info.id {
-                2usize => Self(acceptor_tcp_loop_iteration_completed__pending_streams),
-                3usize => Self(acceptor_tcp_loop_iteration_completed__slots_idle),
-                4usize => Self(acceptor_tcp_loop_iteration_completed__slot_utilization),
-                6usize => Self(acceptor_tcp_loop_iteration_completed__max_sojourn_time),
-                9usize => Self(acceptor_tcp_fresh_batch_completed__enqueued),
-                10usize => Self(acceptor_tcp_fresh_batch_completed__dropped),
-                11usize => Self(acceptor_tcp_fresh_batch_completed__errored),
-                16usize => Self(acceptor_tcp_stream_replaced__buffer_len),
-                18usize => Self(acceptor_tcp_packet_received__payload_len),
-                27usize => Self(acceptor_tcp_stream_enqueued__blocked_count),
-                33usize => Self(acceptor_tcp_socket_sent__blocked_count_stream),
-                34usize => Self(acceptor_tcp_socket_sent__len),
-                37usize => Self(acceptor_tcp_socket_received__len),
-                40usize => Self(acceptor_udp_datagram_received__len),
-                42usize => Self(acceptor_udp_packet_received__payload_len),
-                58usize => Self(stream_write_flushed__conn),
-                59usize => Self(stream_write_flushed__provided),
-                61usize => Self(stream_write_flushed__committed),
-                62usize => Self(stream_write_flushed__committed__conn),
-                63usize => Self(stream_write_flushed__processing_duration),
-                64usize => Self(stream_write_flushed__processing_duration__conn),
-                67usize => Self(stream_write_fin_flushed__conn),
-                68usize => Self(stream_write_fin_flushed__provided),
-                70usize => Self(stream_write_fin_flushed__committed),
-                71usize => Self(stream_write_fin_flushed__committed__conn),
-                72usize => Self(stream_write_fin_flushed__processing_duration),
-                73usize => Self(stream_write_fin_flushed__processing_duration__conn),
-                76usize => Self(stream_write_blocked__conn),
-                77usize => Self(stream_write_blocked__provided),
-                78usize => Self(stream_write_blocked__processing_duration),
-                79usize => Self(stream_write_blocked__processing_duration__conn),
-                82usize => Self(stream_write_errored__provided),
-                83usize => Self(stream_write_errored__processing_duration),
-                84usize => Self(stream_write_errored__processing_duration__conn),
-                87usize => Self(stream_write_allocated__conn),
-                88usize => Self(stream_write_allocated__allocated_len),
-                89usize => Self(stream_write_allocated__allocated_len__conn),
-                92usize => Self(stream_write_shutdown__buffer_len),
-                95usize => Self(stream_write_socket_flushed__conn),
-                96usize => Self(stream_write_socket_flushed__provided),
-                98usize => Self(stream_write_socket_flushed__committed),
-                99usize => Self(stream_write_socket_flushed__committed__conn),
-                101usize => Self(stream_write_socket_blocked__conn),
-                102usize => Self(stream_write_socket_blocked__provided),
-                104usize => Self(stream_write_socket_errored__provided),
-                107usize => Self(stream_read_flushed__conn),
-                108usize => Self(stream_read_flushed__capacity),
-                110usize => Self(stream_read_flushed__committed),
-                111usize => Self(stream_read_flushed__committed__conn),
-                112usize => Self(stream_read_flushed__processing_duration),
-                113usize => Self(stream_read_flushed__processing_duration__conn),
-                116usize => Self(stream_read_fin_flushed__conn),
-                117usize => Self(stream_read_fin_flushed__capacity),
-                118usize => Self(stream_read_fin_flushed__processing_duration),
-                119usize => Self(stream_read_fin_flushed__processing_duration__conn),
-                122usize => Self(stream_read_blocked__capacity),
-                123usize => Self(stream_read_blocked__processing_duration),
-                124usize => Self(stream_read_blocked__processing_duration__conn),
-                127usize => Self(stream_read_errored__capacity),
-                128usize => Self(stream_read_errored__processing_duration),
-                129usize => Self(stream_read_errored__processing_duration__conn),
-                135usize => Self(stream_read_socket_flushed__conn),
-                136usize => Self(stream_read_socket_flushed__capacity),
-                138usize => Self(stream_read_socket_flushed__committed),
-                139usize => Self(stream_read_socket_flushed__committed__conn),
-                141usize => Self(stream_read_socket_blocked__conn),
-                142usize => Self(stream_read_socket_blocked__capacity),
-                144usize => Self(stream_read_socket_errored__capacity),
-                147usize => Self(stream_decrypt_packet__forced_copy),
-                148usize => Self(stream_decrypt_packet__required_application_buffer),
-                160usize => Self(stream_packet_transmitted__packet_len),
-                162usize => Self(stream_packet_transmitted__payload_len),
-                163usize => Self(stream_packet_transmitted__payload_len__conn),
-                166usize => Self(stream_probe_transmitted__packet_len),
-                168usize => Self(stream_packet_received__packet_len),
-                170usize => Self(stream_packet_received__payload_len),
-                171usize => Self(stream_packet_received__payload_len__conn),
-                174usize => Self(stream_packet_lost__packet_len),
-                176usize => Self(stream_packet_lost__payload_len),
-                177usize => Self(stream_packet_lost__payload_len__conn),
-                178usize => Self(stream_packet_lost__lifetime),
-                181usize => Self(stream_packet_acked__packet_len),
-                183usize => Self(stream_packet_acked__payload_len),
-                184usize => Self(stream_packet_acked__payload_len__conn),
-                185usize => Self(stream_packet_acked__lifetime),
-                188usize => Self(stream_packet_spuriously_retransmitted__packet_len),
-                190usize => Self(stream_packet_spuriously_retransmitted__payload_len),
-                191usize => Self(stream_packet_spuriously_retransmitted__payload_len__conn),
-                195usize => Self(stream_max_data_received__increase),
-                197usize => Self(stream_control_packet_transmitted__packet_len),
-                198usize => Self(stream_control_packet_transmitted__control_data_len),
-                200usize => Self(stream_control_packet_received__packet_len),
-                201usize => Self(stream_control_packet_received__control_data_len),
-                214usize => Self(path_secret_map_initialized__capacity),
-                216usize => Self(path_secret_map_uninitialized__capacity),
-                217usize => Self(path_secret_map_uninitialized__entries),
-                218usize => Self(path_secret_map_uninitialized__lifetime),
-                229usize => Self(path_secret_map_id_entry_evicted__age),
-                232usize => Self(path_secret_map_address_entry_evicted__age),
-                244usize => Self(key_accepted__gap),
-                245usize => Self(key_accepted__forward_shift),
-                248usize => Self(replay_potentially_detected__gap),
-                274usize => Self(path_secret_map_address_cache_accessed_hit__age),
-                278usize => Self(path_secret_map_id_cache_accessed_hit__age),
-                280usize => Self(path_secret_map_cleaner_cycled__entries__id),
-                281usize => Self(path_secret_map_cleaner_cycled__entries__id__retired),
-                282usize => Self(path_secret_map_cleaner_cycled__entries__id__active),
-                283usize => Self(path_secret_map_cleaner_cycled__entries__id__active__utilization),
-                284usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization),
-                285usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization__initial),
-                286usize => Self(path_secret_map_cleaner_cycled__entries__address),
-                287usize => Self(path_secret_map_cleaner_cycled__entries__address__active),
-                288usize => {
+                id::ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PENDING_STREAMS => {
+                    Self(acceptor_tcp_loop_iteration_completed__pending_streams)
+                }
+                id::ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOTS_IDLE => {
+                    Self(acceptor_tcp_loop_iteration_completed__slots_idle)
+                }
+                id::ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOT_UTILIZATION => {
+                    Self(acceptor_tcp_loop_iteration_completed__slot_utilization)
+                }
+                id::ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__MAX_SOJOURN_TIME => {
+                    Self(acceptor_tcp_loop_iteration_completed__max_sojourn_time)
+                }
+                id::ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ENQUEUED => {
+                    Self(acceptor_tcp_fresh_batch_completed__enqueued)
+                }
+                id::ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__DROPPED => {
+                    Self(acceptor_tcp_fresh_batch_completed__dropped)
+                }
+                id::ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ERRORED => {
+                    Self(acceptor_tcp_fresh_batch_completed__errored)
+                }
+                id::ACCEPTOR_TCP_STREAM_REPLACED__BUFFER_LEN => {
+                    Self(acceptor_tcp_stream_replaced__buffer_len)
+                }
+                id::ACCEPTOR_TCP_PACKET_RECEIVED__PAYLOAD_LEN => {
+                    Self(acceptor_tcp_packet_received__payload_len)
+                }
+                id::ACCEPTOR_TCP_STREAM_ENQUEUED__BLOCKED_COUNT => {
+                    Self(acceptor_tcp_stream_enqueued__blocked_count)
+                }
+                id::ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_STREAM => {
+                    Self(acceptor_tcp_socket_sent__blocked_count_stream)
+                }
+                id::ACCEPTOR_TCP_SOCKET_SENT__LEN => Self(acceptor_tcp_socket_sent__len),
+                id::ACCEPTOR_TCP_SOCKET_RECEIVED__LEN => Self(acceptor_tcp_socket_received__len),
+                id::ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN => {
+                    Self(acceptor_udp_datagram_received__len)
+                }
+                id::ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN => {
+                    Self(acceptor_udp_packet_received__payload_len)
+                }
+                id::STREAM_WRITE_FLUSHED__CONN => Self(stream_write_flushed__conn),
+                id::STREAM_WRITE_FLUSHED__PROVIDED => Self(stream_write_flushed__provided),
+                id::STREAM_WRITE_FLUSHED__COMMITTED => Self(stream_write_flushed__committed),
+                id::STREAM_WRITE_FLUSHED__COMMITTED__CONN => {
+                    Self(stream_write_flushed__committed__conn)
+                }
+                id::STREAM_WRITE_FLUSHED__PROCESSING_DURATION => {
+                    Self(stream_write_flushed__processing_duration)
+                }
+                id::STREAM_WRITE_FLUSHED__PROCESSING_DURATION__CONN => {
+                    Self(stream_write_flushed__processing_duration__conn)
+                }
+                id::STREAM_WRITE_FIN_FLUSHED__CONN => Self(stream_write_fin_flushed__conn),
+                id::STREAM_WRITE_FIN_FLUSHED__PROVIDED => Self(stream_write_fin_flushed__provided),
+                id::STREAM_WRITE_FIN_FLUSHED__COMMITTED => {
+                    Self(stream_write_fin_flushed__committed)
+                }
+                id::STREAM_WRITE_FIN_FLUSHED__COMMITTED__CONN => {
+                    Self(stream_write_fin_flushed__committed__conn)
+                }
+                id::STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION => {
+                    Self(stream_write_fin_flushed__processing_duration)
+                }
+                id::STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION__CONN => {
+                    Self(stream_write_fin_flushed__processing_duration__conn)
+                }
+                id::STREAM_WRITE_BLOCKED__CONN => Self(stream_write_blocked__conn),
+                id::STREAM_WRITE_BLOCKED__PROVIDED => Self(stream_write_blocked__provided),
+                id::STREAM_WRITE_BLOCKED__PROCESSING_DURATION => {
+                    Self(stream_write_blocked__processing_duration)
+                }
+                id::STREAM_WRITE_BLOCKED__PROCESSING_DURATION__CONN => {
+                    Self(stream_write_blocked__processing_duration__conn)
+                }
+                id::STREAM_WRITE_ERRORED__PROVIDED => Self(stream_write_errored__provided),
+                id::STREAM_WRITE_ERRORED__PROCESSING_DURATION => {
+                    Self(stream_write_errored__processing_duration)
+                }
+                id::STREAM_WRITE_ERRORED__PROCESSING_DURATION__CONN => {
+                    Self(stream_write_errored__processing_duration__conn)
+                }
+                id::STREAM_WRITE_ALLOCATED__CONN => Self(stream_write_allocated__conn),
+                id::STREAM_WRITE_ALLOCATED__ALLOCATED_LEN => {
+                    Self(stream_write_allocated__allocated_len)
+                }
+                id::STREAM_WRITE_ALLOCATED__ALLOCATED_LEN__CONN => {
+                    Self(stream_write_allocated__allocated_len__conn)
+                }
+                id::STREAM_WRITE_SHUTDOWN__BUFFER_LEN => Self(stream_write_shutdown__buffer_len),
+                id::STREAM_WRITE_SOCKET_FLUSHED__CONN => Self(stream_write_socket_flushed__conn),
+                id::STREAM_WRITE_SOCKET_FLUSHED__PROVIDED => {
+                    Self(stream_write_socket_flushed__provided)
+                }
+                id::STREAM_WRITE_SOCKET_FLUSHED__COMMITTED => {
+                    Self(stream_write_socket_flushed__committed)
+                }
+                id::STREAM_WRITE_SOCKET_FLUSHED__COMMITTED__CONN => {
+                    Self(stream_write_socket_flushed__committed__conn)
+                }
+                id::STREAM_WRITE_SOCKET_BLOCKED__CONN => Self(stream_write_socket_blocked__conn),
+                id::STREAM_WRITE_SOCKET_BLOCKED__PROVIDED => {
+                    Self(stream_write_socket_blocked__provided)
+                }
+                id::STREAM_WRITE_SOCKET_ERRORED__PROVIDED => {
+                    Self(stream_write_socket_errored__provided)
+                }
+                id::STREAM_READ_FLUSHED__CONN => Self(stream_read_flushed__conn),
+                id::STREAM_READ_FLUSHED__CAPACITY => Self(stream_read_flushed__capacity),
+                id::STREAM_READ_FLUSHED__COMMITTED => Self(stream_read_flushed__committed),
+                id::STREAM_READ_FLUSHED__COMMITTED__CONN => {
+                    Self(stream_read_flushed__committed__conn)
+                }
+                id::STREAM_READ_FLUSHED__PROCESSING_DURATION => {
+                    Self(stream_read_flushed__processing_duration)
+                }
+                id::STREAM_READ_FLUSHED__PROCESSING_DURATION__CONN => {
+                    Self(stream_read_flushed__processing_duration__conn)
+                }
+                id::STREAM_READ_FIN_FLUSHED__CONN => Self(stream_read_fin_flushed__conn),
+                id::STREAM_READ_FIN_FLUSHED__CAPACITY => Self(stream_read_fin_flushed__capacity),
+                id::STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION => {
+                    Self(stream_read_fin_flushed__processing_duration)
+                }
+                id::STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION__CONN => {
+                    Self(stream_read_fin_flushed__processing_duration__conn)
+                }
+                id::STREAM_READ_BLOCKED__CAPACITY => Self(stream_read_blocked__capacity),
+                id::STREAM_READ_BLOCKED__PROCESSING_DURATION => {
+                    Self(stream_read_blocked__processing_duration)
+                }
+                id::STREAM_READ_BLOCKED__PROCESSING_DURATION__CONN => {
+                    Self(stream_read_blocked__processing_duration__conn)
+                }
+                id::STREAM_READ_ERRORED__CAPACITY => Self(stream_read_errored__capacity),
+                id::STREAM_READ_ERRORED__PROCESSING_DURATION => {
+                    Self(stream_read_errored__processing_duration)
+                }
+                id::STREAM_READ_ERRORED__PROCESSING_DURATION__CONN => {
+                    Self(stream_read_errored__processing_duration__conn)
+                }
+                id::STREAM_READ_SOCKET_FLUSHED__CONN => Self(stream_read_socket_flushed__conn),
+                id::STREAM_READ_SOCKET_FLUSHED__CAPACITY => {
+                    Self(stream_read_socket_flushed__capacity)
+                }
+                id::STREAM_READ_SOCKET_FLUSHED__COMMITTED => {
+                    Self(stream_read_socket_flushed__committed)
+                }
+                id::STREAM_READ_SOCKET_FLUSHED__COMMITTED__CONN => {
+                    Self(stream_read_socket_flushed__committed__conn)
+                }
+                id::STREAM_READ_SOCKET_BLOCKED__CONN => Self(stream_read_socket_blocked__conn),
+                id::STREAM_READ_SOCKET_BLOCKED__CAPACITY => {
+                    Self(stream_read_socket_blocked__capacity)
+                }
+                id::STREAM_READ_SOCKET_ERRORED__CAPACITY => {
+                    Self(stream_read_socket_errored__capacity)
+                }
+                id::STREAM_DECRYPT_PACKET__FORCED_COPY => Self(stream_decrypt_packet__forced_copy),
+                id::STREAM_DECRYPT_PACKET__REQUIRED_APPLICATION_BUFFER => {
+                    Self(stream_decrypt_packet__required_application_buffer)
+                }
+                id::STREAM_PACKET_TRANSMITTED__PACKET_LEN => {
+                    Self(stream_packet_transmitted__packet_len)
+                }
+                id::STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN => {
+                    Self(stream_packet_transmitted__payload_len)
+                }
+                id::STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN__CONN => {
+                    Self(stream_packet_transmitted__payload_len__conn)
+                }
+                id::STREAM_PROBE_TRANSMITTED__PACKET_LEN => {
+                    Self(stream_probe_transmitted__packet_len)
+                }
+                id::STREAM_PACKET_RECEIVED__PACKET_LEN => Self(stream_packet_received__packet_len),
+                id::STREAM_PACKET_RECEIVED__PAYLOAD_LEN => {
+                    Self(stream_packet_received__payload_len)
+                }
+                id::STREAM_PACKET_RECEIVED__PAYLOAD_LEN__CONN => {
+                    Self(stream_packet_received__payload_len__conn)
+                }
+                id::STREAM_PACKET_LOST__PACKET_LEN => Self(stream_packet_lost__packet_len),
+                id::STREAM_PACKET_LOST__PAYLOAD_LEN => Self(stream_packet_lost__payload_len),
+                id::STREAM_PACKET_LOST__PAYLOAD_LEN__CONN => {
+                    Self(stream_packet_lost__payload_len__conn)
+                }
+                id::STREAM_PACKET_LOST__LIFETIME => Self(stream_packet_lost__lifetime),
+                id::STREAM_PACKET_ACKED__PACKET_LEN => Self(stream_packet_acked__packet_len),
+                id::STREAM_PACKET_ACKED__PAYLOAD_LEN => Self(stream_packet_acked__payload_len),
+                id::STREAM_PACKET_ACKED__PAYLOAD_LEN__CONN => {
+                    Self(stream_packet_acked__payload_len__conn)
+                }
+                id::STREAM_PACKET_ACKED__LIFETIME => Self(stream_packet_acked__lifetime),
+                id::STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PACKET_LEN => {
+                    Self(stream_packet_spuriously_retransmitted__packet_len)
+                }
+                id::STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN => {
+                    Self(stream_packet_spuriously_retransmitted__payload_len)
+                }
+                id::STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN__CONN => {
+                    Self(stream_packet_spuriously_retransmitted__payload_len__conn)
+                }
+                id::STREAM_MAX_DATA_RECEIVED__INCREASE => Self(stream_max_data_received__increase),
+                id::STREAM_CONTROL_PACKET_TRANSMITTED__PACKET_LEN => {
+                    Self(stream_control_packet_transmitted__packet_len)
+                }
+                id::STREAM_CONTROL_PACKET_TRANSMITTED__CONTROL_DATA_LEN => {
+                    Self(stream_control_packet_transmitted__control_data_len)
+                }
+                id::STREAM_CONTROL_PACKET_RECEIVED__PACKET_LEN => {
+                    Self(stream_control_packet_received__packet_len)
+                }
+                id::STREAM_CONTROL_PACKET_RECEIVED__CONTROL_DATA_LEN => {
+                    Self(stream_control_packet_received__control_data_len)
+                }
+                id::PATH_SECRET_MAP_INITIALIZED__CAPACITY => {
+                    Self(path_secret_map_initialized__capacity)
+                }
+                id::PATH_SECRET_MAP_UNINITIALIZED__CAPACITY => {
+                    Self(path_secret_map_uninitialized__capacity)
+                }
+                id::PATH_SECRET_MAP_UNINITIALIZED__ENTRIES => {
+                    Self(path_secret_map_uninitialized__entries)
+                }
+                id::PATH_SECRET_MAP_UNINITIALIZED__LIFETIME => {
+                    Self(path_secret_map_uninitialized__lifetime)
+                }
+                id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE => {
+                    Self(path_secret_map_id_entry_evicted__age)
+                }
+                id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE => {
+                    Self(path_secret_map_address_entry_evicted__age)
+                }
+                id::KEY_ACCEPTED__GAP => Self(key_accepted__gap),
+                id::KEY_ACCEPTED__FORWARD_SHIFT => Self(key_accepted__forward_shift),
+                id::REPLAY_POTENTIALLY_DETECTED__GAP => Self(replay_potentially_detected__gap),
+                id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE => {
+                    Self(path_secret_map_address_cache_accessed_hit__age)
+                }
+                id::PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT__AGE => {
+                    Self(path_secret_map_id_cache_accessed_hit__age)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID => {
+                    Self(path_secret_map_cleaner_cycled__entries__id)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__RETIRED => {
+                    Self(path_secret_map_cleaner_cycled__entries__id__retired)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE => {
+                    Self(path_secret_map_cleaner_cycled__entries__id__active)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE__UTILIZATION => {
+                    Self(path_secret_map_cleaner_cycled__entries__id__active__utilization)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION => {
+                    Self(path_secret_map_cleaner_cycled__entries__id__utilization)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION__INITIAL => {
+                    Self(path_secret_map_cleaner_cycled__entries__id__utilization__initial)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS => {
+                    Self(path_secret_map_cleaner_cycled__entries__address)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE => {
+                    Self(path_secret_map_cleaner_cycled__entries__address__active)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE__UTILIZATION => {
                     Self(path_secret_map_cleaner_cycled__entries__address__active__utilization)
                 }
-                289usize => Self(path_secret_map_cleaner_cycled__entries__address__retired),
-                290usize => Self(path_secret_map_cleaner_cycled__entries__address__utilization),
-                291usize => {
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__RETIRED => {
+                    Self(path_secret_map_cleaner_cycled__entries__address__retired)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION => {
+                    Self(path_secret_map_cleaner_cycled__entries__address__utilization)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL => {
                     Self(path_secret_map_cleaner_cycled__entries__address__utilization__initial)
                 }
-                292usize => Self(path_secret_map_cleaner_cycled__handshake_requests),
-                293usize => Self(path_secret_map_cleaner_cycled__handshake_requests__skipped),
-                294usize => Self(path_secret_map_cleaner_cycled__handshake_lock_duration),
-                295usize => Self(path_secret_map_cleaner_cycled__total_duration),
-                297usize => Self(path_secret_map_id_write_lock__acquire),
-                298usize => Self(path_secret_map_id_write_lock__duration),
-                300usize => Self(path_secret_map_address_write_lock__acquire),
-                301usize => Self(path_secret_map_address_write_lock__duration),
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS => {
+                    Self(path_secret_map_cleaner_cycled__handshake_requests)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED => {
+                    Self(path_secret_map_cleaner_cycled__handshake_requests__skipped)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION => {
+                    Self(path_secret_map_cleaner_cycled__handshake_lock_duration)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION => {
+                    Self(path_secret_map_cleaner_cycled__total_duration)
+                }
+                id::PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE => {
+                    Self(path_secret_map_id_write_lock__acquire)
+                }
+                id::PATH_SECRET_MAP_ID_WRITE_LOCK__DURATION => {
+                    Self(path_secret_map_id_write_lock__duration)
+                }
+                id::PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__ACQUIRE => {
+                    Self(path_secret_map_address_write_lock__acquire)
+                }
+                id::PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__DURATION => {
+                    Self(path_secret_map_address_write_lock__duration)
+                }
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -1102,27 +1853,45 @@ mod timer {
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
             match info.id {
-                5usize => Self(acceptor_tcp_loop_iteration_completed__processing_duration),
-                15usize => Self(acceptor_tcp_stream_replaced__sojourn_time),
-                21usize => Self(acceptor_tcp_packet_received__sojourn_time),
-                24usize => Self(acceptor_tcp_packet_dropped__sojourn_time),
-                26usize => Self(acceptor_tcp_stream_enqueued__sojourn_time),
-                31usize => Self(acceptor_tcp_socket_sent__sojourn_time),
-                36usize => Self(acceptor_tcp_socket_received__transfer_time),
-                52usize => Self(acceptor_stream_pruned__sojourn_time),
-                55usize => Self(acceptor_stream_dequeued__sojourn_time),
-                57usize => Self(stream_write_flushed__latency),
-                66usize => Self(stream_write_fin_flushed__latency),
-                75usize => Self(stream_write_blocked__latency),
-                81usize => Self(stream_write_errored__latency),
-                91usize => Self(stream_write_shutdown__latency),
-                106usize => Self(stream_read_flushed__latency),
-                115usize => Self(stream_read_fin_flushed__latency),
-                121usize => Self(stream_read_blocked__latency),
-                126usize => Self(stream_read_errored__latency),
-                132usize => Self(stream_read_shutdown__latency),
-                151usize => Self(stream_tcp_connect__tcp_latency),
-                158usize => Self(stream_connect_error__latency),
+                id::ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PROCESSING_DURATION => {
+                    Self(acceptor_tcp_loop_iteration_completed__processing_duration)
+                }
+                id::ACCEPTOR_TCP_STREAM_REPLACED__SOJOURN_TIME => {
+                    Self(acceptor_tcp_stream_replaced__sojourn_time)
+                }
+                id::ACCEPTOR_TCP_PACKET_RECEIVED__SOJOURN_TIME => {
+                    Self(acceptor_tcp_packet_received__sojourn_time)
+                }
+                id::ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME => {
+                    Self(acceptor_tcp_packet_dropped__sojourn_time)
+                }
+                id::ACCEPTOR_TCP_STREAM_ENQUEUED__SOJOURN_TIME => {
+                    Self(acceptor_tcp_stream_enqueued__sojourn_time)
+                }
+                id::ACCEPTOR_TCP_SOCKET_SENT__SOJOURN_TIME => {
+                    Self(acceptor_tcp_socket_sent__sojourn_time)
+                }
+                id::ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME => {
+                    Self(acceptor_tcp_socket_received__transfer_time)
+                }
+                id::ACCEPTOR_STREAM_PRUNED__SOJOURN_TIME => {
+                    Self(acceptor_stream_pruned__sojourn_time)
+                }
+                id::ACCEPTOR_STREAM_DEQUEUED__SOJOURN_TIME => {
+                    Self(acceptor_stream_dequeued__sojourn_time)
+                }
+                id::STREAM_WRITE_FLUSHED__LATENCY => Self(stream_write_flushed__latency),
+                id::STREAM_WRITE_FIN_FLUSHED__LATENCY => Self(stream_write_fin_flushed__latency),
+                id::STREAM_WRITE_BLOCKED__LATENCY => Self(stream_write_blocked__latency),
+                id::STREAM_WRITE_ERRORED__LATENCY => Self(stream_write_errored__latency),
+                id::STREAM_WRITE_SHUTDOWN__LATENCY => Self(stream_write_shutdown__latency),
+                id::STREAM_READ_FLUSHED__LATENCY => Self(stream_read_flushed__latency),
+                id::STREAM_READ_FIN_FLUSHED__LATENCY => Self(stream_read_fin_flushed__latency),
+                id::STREAM_READ_BLOCKED__LATENCY => Self(stream_read_blocked__latency),
+                id::STREAM_READ_ERRORED__LATENCY => Self(stream_read_errored__latency),
+                id::STREAM_READ_SHUTDOWN__LATENCY => Self(stream_read_shutdown__latency),
+                id::STREAM_TCP_CONNECT__TCP_LATENCY => Self(stream_tcp_connect__tcp_latency),
+                id::STREAM_CONNECT_ERROR__LATENCY => Self(stream_connect_error__latency),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
