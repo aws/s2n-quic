@@ -115,15 +115,15 @@ where
         poll_fn(move |cx| {
             workers.poll_start(cx);
 
-            let now = self.env.clock().get_time();
-            let publisher = self.env.endpoint_publisher_with_time(now);
+            let poll_start = self.env.clock().get_time();
+            let publisher = self.env.endpoint_publisher_with_time(poll_start);
 
             fresh.fill(cx, &mut self.socket, &publisher);
 
             for (socket, remote_address) in fresh.drain() {
                 let meta = event::api::ConnectionMeta {
                     id: 0, // TODO use an actual connection ID
-                    timestamp: now.into_event(),
+                    timestamp: poll_start.into_event(),
                 };
                 let info = event::api::ConnectionInfo {};
 
@@ -139,11 +139,12 @@ where
                     &mut context,
                     subscriber_ctx,
                     &publisher,
-                    &now,
+                    poll_start,
+                    &self.env.clock(),
                 );
             }
 
-            let res = workers.poll(&mut context, &publisher, &now);
+            let res = workers.poll(&mut context, &publisher, &self.env.clock());
 
             publisher.on_acceptor_tcp_loop_iteration_completed(
                 event::builder::AcceptorTcpLoopIterationCompleted {
@@ -151,7 +152,11 @@ where
                     slots_idle: workers.free_slots(),
                     slot_utilization: (workers.active_slots() as f32 / workers.capacity() as f32)
                         * 100.0,
-                    processing_duration: self.env.clock().get_time().saturating_duration_since(now),
+                    processing_duration: self
+                        .env
+                        .clock()
+                        .get_time()
+                        .saturating_duration_since(poll_start),
                     max_sojourn_time: workers.max_sojourn_time(),
                 },
             );

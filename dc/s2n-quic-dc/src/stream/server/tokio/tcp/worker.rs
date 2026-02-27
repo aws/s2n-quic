@@ -105,6 +105,7 @@ where
         subscriber_ctx: Self::ConnectionContext,
         publisher: &Pub,
         clock: &C,
+        queue_time: Timestamp,
     ) where
         Pub: EndpointPublisher,
         C: Clock,
@@ -116,9 +117,7 @@ where
             let _ = stream.set_linger(linger);
         }
 
-        let now = clock.get_time();
-
-        let prev_queue_time = core::mem::replace(&mut self.queue_time, now);
+        let prev_queue_time = core::mem::replace(&mut self.queue_time, queue_time);
         let prev_state = core::mem::replace(&mut self.state, WorkerState::Init);
         let prev_stream = self.stream.replace((stream, remote_address));
         let prev_ctx = self.subscriber_ctx.replace(subscriber_ctx);
@@ -131,7 +130,7 @@ where
             }
             remote_address
         }) {
-            let sojourn_time = now.saturating_duration_since(prev_queue_time);
+            let sojourn_time = clock.get_time().saturating_duration_since(prev_queue_time);
             let buffer_len = match prev_state {
                 WorkerState::Init => 0,
                 WorkerState::Buffering { buffer, .. } => buffer.payload_len(),
@@ -176,15 +175,15 @@ where
         // make sure another worker didn't leave around a buffer
         context.recv_buffer.clear();
 
-        let res = ready!(self.state.poll::<Sub, Pub, B>(
+        let res = ready!(self.poll_behavior.poll(
+            &mut self.state,
             task_cx,
             context,
             &mut self.stream,
             &mut self.subscriber_ctx,
             self.queue_time,
-            clock.get_time(),
+            clock,
             publisher,
-            &self.poll_behavior
         ));
 
         // if we're ready then reset the worker
@@ -222,7 +221,7 @@ pub trait PollBehavior<Sub>
 where
     Sub: event::Subscriber + Clone,
 {
-    fn poll<Pub>(
+    fn poll<Pub, C>(
         &self,
         state: &mut WorkerState,
         cx: &mut task::Context,
@@ -230,11 +229,12 @@ where
         stream: &mut Option<(LazyBoundStream, SocketAddress)>,
         subscriber_ctx: &mut Option<Sub::ConnectionContext>,
         queue_time: Timestamp,
-        now: Timestamp,
+        clock: &C,
         publisher: &Pub,
     ) -> Poll<Result<ControlFlow<()>, WorkerError>>
     where
         Pub: EndpointPublisher,
+        C: Clock,
         Self: Sized;
 }
 
@@ -257,36 +257,6 @@ pub enum WorkerState {
         future: uds::sender::SendMsg,
         event_data: SocketEventData,
     },
-}
-
-impl WorkerState {
-    fn poll<Sub, Pub, B>(
-        &mut self,
-        cx: &mut task::Context,
-        context: &mut Context<Sub>,
-        stream: &mut Option<(LazyBoundStream, SocketAddress)>,
-        subscriber_ctx: &mut Option<Sub::ConnectionContext>,
-        queue_time: Timestamp,
-        now: Timestamp,
-        publisher: &Pub,
-        poll_behavior: &B,
-    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
-    where
-        Sub: event::Subscriber + Clone,
-        Pub: EndpointPublisher,
-        B: PollBehavior<Sub>,
-    {
-        poll_behavior.poll(
-            self,
-            cx,
-            context,
-            stream,
-            subscriber_ctx,
-            queue_time,
-            now,
-            publisher,
-        )
-    }
 }
 
 #[derive(Clone)]
@@ -313,7 +283,7 @@ impl<Sub> PollBehavior<Sub> for DefaultBehavior<Sub>
 where
     Sub: event::Subscriber + Clone,
 {
-    fn poll<Pub>(
+    fn poll<Pub, C>(
         &self,
         state: &mut WorkerState,
         cx: &mut task::Context,
@@ -321,13 +291,14 @@ where
         stream: &mut Option<(LazyBoundStream, SocketAddress)>,
         subscriber_ctx: &mut Option<Sub::ConnectionContext>,
         queue_time: Timestamp,
-        now: Timestamp,
+        clock: &C,
         publisher: &Pub,
     ) -> Poll<Result<ControlFlow<()>, WorkerError>>
     where
         Pub: EndpointPublisher,
+        C: Clock,
     {
-        let sojourn_time = now.saturating_duration_since(queue_time);
+        let sojourn_time = || clock.get_time().saturating_duration_since(queue_time);
 
         loop {
             // figure out where to put the received bytes
@@ -376,7 +347,7 @@ where
                     stream,
                     remote_address,
                     recv_buffer,
-                    sojourn_time,
+                    sojourn_time(),
                     publisher,
                 )
             };
@@ -450,8 +421,8 @@ where
                 recv_buffer,
             };
 
-            let stream_builder = match endpoint::accept_stream(
-                now,
+            let mut stream_builder = match endpoint::accept_stream(
+                clock.get_time(),
                 &context.env,
                 peer,
                 &initial_packet,
@@ -478,6 +449,9 @@ where
                 let creds = stream_builder.shared.credentials();
                 let credential_id = &*creds.id;
                 let stream_id = creds.key_id.as_u64();
+                let now = clock.get_time();
+                let sojourn_time = now.saturating_duration_since(queue_time);
+                stream_builder.app_queue_time = Some(now);
                 publisher.on_acceptor_tcp_stream_enqueued(
                     event::builder::AcceptorTcpStreamEnqueued {
                         remote_address,
@@ -699,7 +673,7 @@ impl<Sub> PollBehavior<Sub> for SocketBehavior
 where
     Sub: event::Subscriber + Clone,
 {
-    fn poll<Pub>(
+    fn poll<Pub, C>(
         &self,
         state: &mut WorkerState,
         cx: &mut task::Context,
@@ -707,13 +681,14 @@ where
         stream: &mut Option<(LazyBoundStream, SocketAddress)>,
         _subscriber_ctx: &mut Option<Sub::ConnectionContext>,
         queue_time: Timestamp,
-        now: Timestamp,
+        clock: &C,
         publisher: &Pub,
     ) -> Poll<Result<ControlFlow<()>, WorkerError>>
     where
         Pub: EndpointPublisher,
+        C: Clock,
     {
-        let sojourn_time = now.saturating_duration_since(queue_time);
+        let sojourn_time = || clock.get_time().saturating_duration_since(queue_time);
 
         loop {
             // figure out where to put the received bytes
@@ -770,7 +745,7 @@ where
                     stream,
                     remote_address,
                     recv_buffer,
-                    sojourn_time,
+                    sojourn_time(),
                     publisher,
                 )
             };
@@ -887,7 +862,7 @@ where
                 stream_id: credentials.key_id.as_u64(),
                 payload_len: size,
                 blocked_count: 0,
-                sojourn_time,
+                sojourn_time: sojourn_time(),
             };
 
             match Self::poll_send(&mut future, cx, &event_data, publisher) {

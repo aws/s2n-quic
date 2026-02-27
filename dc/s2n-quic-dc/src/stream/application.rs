@@ -20,7 +20,11 @@ pub struct Builder<Sub: event::Subscriber> {
     pub write: send::Builder<Sub>,
     pub shared: ArcShared<Sub>,
     pub sockets: Box<dyn socket::application::Builder>,
-    pub queue_time: Timestamp,
+    /// Timestamp of accept(2)/connect(2) syscall -- either end of that call or start, depending on
+    /// the details of our internal implementation.
+    pub kernel_start_time: Timestamp,
+    /// Timestamp of dcQUIC enqueuing the stream to the application (for server sockets)
+    pub app_queue_time: Option<Timestamp>,
 }
 
 impl<Sub> Builder<Sub>
@@ -37,7 +41,9 @@ where
             let credential_id = &*creds.id;
             let stream_id = creds.key_id.as_u64();
             let now = self.shared.common.clock.get_time();
-            let sojourn_time = now.saturating_duration_since(self.queue_time);
+            let total_sojourn_time = now.saturating_duration_since(self.kernel_start_time);
+            let queue_sojourn_time =
+                now.saturating_duration_since(self.app_queue_time.expect("server builder"));
 
             self.shared
                 .endpoint_publisher(now)
@@ -45,12 +51,11 @@ where
                     remote_address,
                     credential_id,
                     stream_id,
-                    sojourn_time,
+                    sojourn_time: total_sojourn_time,
+                    queue_sojourn_time,
                 });
 
-            // TODO emit event
-
-            sojourn_time
+            queue_sojourn_time
         };
 
         self.build().map(|stream| (stream, sojourn_time))
@@ -68,7 +73,8 @@ where
             write,
             shared,
             sockets,
-            queue_time: _,
+            kernel_start_time: _,
+            app_queue_time: _,
         } = self;
 
         // TODO emit event
@@ -88,7 +94,8 @@ where
         let creds = self.shared.credentials();
         let credential_id = &*creds.id;
         let stream_id = creds.key_id.as_u64();
-        let sojourn_time = now.saturating_duration_since(self.queue_time);
+        let sojourn_time = now
+            .saturating_duration_since(self.app_queue_time.expect("only called on server streams"));
 
         self.shared
             .endpoint_publisher(now)
