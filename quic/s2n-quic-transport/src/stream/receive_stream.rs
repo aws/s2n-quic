@@ -788,7 +788,7 @@ impl ReceiveStream {
                 }
             }
 
-            // STOP_SENDING cannot be flushed so it natually operates in detached mode
+            // STOP_SENDING cannot be flushed so it naturally operates in detached mode
             self.detach();
 
             // We clear the receive buffer, to free up any buffer
