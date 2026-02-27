@@ -84,7 +84,7 @@ impl super::Worker for Worker {
         _cx: &mut Self::Context,
         _publisher: &Pub,
         _clock: &C,
-    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
+    ) -> Poll<Result<WorkerOutput, WorkerError>>
     where
         Pub: EndpointPublisher,
         C: Clock,
@@ -97,7 +97,7 @@ impl super::Worker for Worker {
             State::Active => Poll::Pending,
             State::Ready => {
                 self.state = State::Idle;
-                Poll::Ready(Ok(ControlFlow::Continue(())))
+                Poll::Ready(Ok(WorkerOutput::Continue))
             }
             State::Error(err) => {
                 self.state = State::Idle;

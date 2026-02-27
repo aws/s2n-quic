@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{accept, manager::WorkerError, LazyBoundStream};
+use super::{accept, manager::WorkerError, tls::TlsServer, LazyBoundStream};
 use crate::{
     crypto::{self, open::Application},
     either::Either,
@@ -11,12 +11,13 @@ use crate::{
     stream::{
         endpoint,
         environment::tokio::{self as env, Environment},
-        recv, server, TransportFeatures,
+        recv,
+        server::{self, tokio::tcp::manager::WorkerOutput},
+        TransportFeatures,
     },
     uds::{self, sender::SendMsg},
 };
 use core::{
-    ops::ControlFlow,
     pin::Pin,
     task::{self, Poll},
     time::Duration,
@@ -158,7 +159,7 @@ where
         context: &mut Context<Sub>,
         publisher: &Pub,
         clock: &C,
-    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
+    ) -> Poll<Result<WorkerOutput, WorkerError>>
     where
         Pub: EndpointPublisher,
         C: Clock,
@@ -170,7 +171,7 @@ where
                 false,
                 "Worker::poll should only be called with an active socket"
             );
-            return Poll::Ready(Ok(ControlFlow::Continue(())));
+            return Poll::Ready(Ok(WorkerOutput::Continue));
         }
 
         // make sure another worker didn't leave around a buffer
@@ -232,7 +233,7 @@ where
         queue_time: Timestamp,
         now: Timestamp,
         publisher: &Pub,
-    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
+    ) -> Poll<Result<WorkerOutput, WorkerError>>
     where
         Pub: EndpointPublisher,
         Self: Sized;
@@ -270,7 +271,7 @@ impl WorkerState {
         now: Timestamp,
         publisher: &Pub,
         poll_behavior: &B,
-    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
+    ) -> Poll<Result<WorkerOutput, WorkerError>>
     where
         Sub: event::Subscriber + Clone,
         Pub: EndpointPublisher,
@@ -295,6 +296,7 @@ where
     Sub: event::Subscriber + Clone,
 {
     sender: accept::Sender<Sub>,
+    tls: Option<TlsServer<Sub>>,
 }
 
 impl<Sub> DefaultBehavior<Sub>
@@ -302,9 +304,10 @@ where
     Sub: event::Subscriber + Clone,
 {
     #[inline]
-    pub fn new(sender: &accept::Sender<Sub>) -> Self {
+    pub fn new(sender: &accept::Sender<Sub>, tls: Option<TlsServer<Sub>>) -> Self {
         Self {
             sender: sender.clone(),
+            tls,
         }
     }
 }
@@ -323,7 +326,7 @@ where
         queue_time: Timestamp,
         now: Timestamp,
         publisher: &Pub,
-    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
+    ) -> Poll<Result<WorkerOutput, WorkerError>>
     where
         Pub: EndpointPublisher,
     {
@@ -403,6 +406,34 @@ where
 
             let subscriber_ctx = subscriber_ctx.take().unwrap();
             let (socket, remote_address) = stream.take().unwrap();
+
+            let initial_packet = match initial_packet {
+                InitialPacket::Dc(initial_packet) => initial_packet,
+                InitialPacket::Tls => {
+                    if let Some(tls) = &self.tls {
+                        tls.spawn(socket, remote_address, recv_buffer.take(), queue_time);
+                    } else {
+                        publisher.on_acceptor_tcp_packet_dropped(
+                            event::builder::AcceptorTcpPacketDropped {
+                                remote_address: &remote_address,
+                                reason: DecoderError::UnexpectedBytes(recv_buffer.payload_len())
+                                    .into_event(),
+                                sojourn_time,
+                            },
+                        );
+
+                        // close the stream immediately and send a reset to the client
+                        let _ = socket.set_linger(Some(Duration::ZERO));
+
+                        return Err(WorkerError {
+                            source: event::builder::AcceptorTcpIoErrorSource::Remote,
+                            error: io::Error::from(io::ErrorKind::Unsupported),
+                        })
+                        .into();
+                    }
+                    return Poll::Ready(Ok(WorkerOutput::Continue));
+                }
+            };
 
             let recv_buffer = recv::buffer::Local::new(recv_buffer.take(), None);
             let recv_buffer = Either::A(recv_buffer);
@@ -501,15 +532,20 @@ where
                             event::builder::AcceptorStreamPruneReason::AcceptQueueCapacityExceeded,
                         );
                     }
-                    ControlFlow::Continue(())
+                    WorkerOutput::RecordSojournTime
                 }
                 Err(_err) => {
                     debug!("application accept queue dropped; shutting down");
-                    ControlFlow::Break(())
+                    WorkerOutput::Exit
                 }
             }));
         }
     }
+}
+
+enum InitialPacket {
+    Dc(server::InitialPacket),
+    Tls,
 }
 
 impl WorkerState {
@@ -521,7 +557,7 @@ impl WorkerState {
         recv_buffer: &mut msg::recv::Message,
         sojourn_time: Duration,
         publisher: &Pub,
-    ) -> Poll<Result<server::InitialPacket, WorkerError>>
+    ) -> Poll<Result<InitialPacket, WorkerError>>
     where
         Pub: EndpointPublisher,
     {
@@ -552,6 +588,23 @@ impl WorkerState {
                     error,
                 })?;
 
+            match super::tls::is_client_hello(recv_buffer.peek()) {
+                Some(true) => {
+                    publisher.on_acceptor_tcp_tls_started(event::builder::AcceptorTcpTlsStarted {
+                        remote_address,
+                        sojourn_time,
+                    });
+                    return Ok(InitialPacket::Tls).into();
+                }
+                Some(false) => {
+                    // In principle can stop trying to parse, but it's very cheap to do, so just
+                    // fallthrough here.
+                }
+                None => {
+                    // Don't know yet, so keep looping.
+                }
+            }
+
             match server::InitialPacket::peek(recv_buffer, 16) {
                 Ok(packet) => {
                     publisher.on_acceptor_tcp_packet_received(
@@ -565,7 +618,7 @@ impl WorkerState {
                             sojourn_time,
                         },
                     );
-                    return Ok(packet).into();
+                    return Ok(InitialPacket::Dc(packet)).into();
                 }
                 Err(err) => {
                     if matches!(err, DecoderError::UnexpectedEof(_)) && res > 0 {
@@ -621,7 +674,7 @@ impl SocketBehavior {
         cx: &mut task::Context,
         event_data: &SocketEventData,
         publisher: &Pub,
-    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
+    ) -> Poll<Result<(), WorkerError>>
     where
         Pub: EndpointPublisher,
     {
@@ -635,7 +688,7 @@ impl SocketBehavior {
                         blocked_count: event_data.blocked_count,
                         sojourn_time: event_data.sojourn_time,
                     });
-                    Poll::Ready(Ok(ControlFlow::Continue(())))
+                    Poll::Ready(Ok(()))
                 }
                 Err(err) => {
                     debug!("Error sending message to socket {:?}", err);
@@ -709,7 +762,7 @@ where
         queue_time: Timestamp,
         now: Timestamp,
         publisher: &Pub,
-    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
+    ) -> Poll<Result<WorkerOutput, WorkerError>>
     where
         Pub: EndpointPublisher,
     {
@@ -753,7 +806,10 @@ where
                 }
                 WorkerState::Sending { future, event_data } => {
                     match Self::poll_send(future, cx, event_data, publisher) {
-                        Poll::Ready(result) => return Poll::Ready(result),
+                        Poll::Ready(Ok(())) => {
+                            return Poll::Ready(Ok(WorkerOutput::RecordSojournTime))
+                        }
+                        Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
                         Poll::Pending => {
                             event_data.blocked_count += 1;
                             return Poll::Pending;
@@ -793,7 +849,20 @@ where
                 return Poll::Pending;
             };
 
-            let initial_packet = res?;
+            let initial_packet = match res {
+                Ok(InitialPacket::Dc(p)) => p,
+                Ok(InitialPacket::Tls) => {
+                    return Err(WorkerError {
+                        source: event::builder::AcceptorTcpIoErrorSource::Remote,
+                        error: std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "TLS not supported in UDS server",
+                        ),
+                    })
+                    .into()
+                }
+                Err(e) => return Err(e).into(),
+            };
 
             let (socket, remote_address) = stream.take().unwrap();
 
@@ -891,7 +960,8 @@ where
             };
 
             match Self::poll_send(&mut future, cx, &event_data, publisher) {
-                Poll::Ready(result) => return Poll::Ready(result),
+                Poll::Ready(Ok(())) => return Poll::Ready(Ok(WorkerOutput::RecordSojournTime)),
+                Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
                 Poll::Pending => {
                     event_data.blocked_count += 1;
                     *state = WorkerState::Sending { future, event_data };

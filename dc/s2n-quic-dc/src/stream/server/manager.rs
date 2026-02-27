@@ -1,6 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! dcQUIC stream server forwarding accepted streams over Unix Domain Sockets.
+//!
+//! This can be used when a single host has many application processes and wants to share the
+//! dcQUIC credential state across them. Right now, only dcQUIC streams over TCP are supported.
+
 use crate::{
     event,
     stream::{
