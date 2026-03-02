@@ -178,6 +178,12 @@ impl<Config: endpoint::Config> Normal<'_, Config> {
         // complete as soon as possible
         self.dc_manager.on_transmit(context);
 
+        // MtuProbingComplete frame should be sent in Normal packets along with other frames such as ACKs, NewConnectionId, and etc.
+        self.path_manager
+            .active_path_mut()
+            .mtu_controller
+            .on_transmit(context);
+
         let _ = self.crypto_stream.tx.on_transmit((), context);
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2

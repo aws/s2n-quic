@@ -943,11 +943,13 @@ impl transmission::Provider for Controller {
     /// written by this method to be in its own connection transmission.
     #[inline]
     fn on_transmit<W: transmission::Writer>(&mut self, context: &mut W) {
-        // Send MtuProbingComplete frame if needed and DC is enabled
-        if self.needs_to_send_completion {
-            let frame = frame::MtuProbingComplete::new(self.plpmtu);
-            if context.write_frame(&frame).is_some() {
-                self.needs_to_send_completion = false;
+        // MtuProbingComplete should be sent in Normal mode, instead of MtuProbing mode so it can be coalesced with other frames.
+        if !context.transmission_mode().is_mtu_probing() {
+            if self.needs_to_send_completion {
+                let frame = frame::MtuProbingComplete::new(self.plpmtu);
+                if context.write_frame(&frame).is_some() {
+                    self.needs_to_send_completion = false;
+                }
             }
             return;
         }
