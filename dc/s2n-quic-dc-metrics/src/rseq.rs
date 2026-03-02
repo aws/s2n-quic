@@ -9,7 +9,7 @@ use std::{
     ptr::NonNull,
     sync::{
         atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering},
-        Mutex,
+        Mutex, MutexGuard,
     },
 };
 
@@ -247,6 +247,10 @@ impl<T: Absorb> Channels<T> {
 
         *page.length.get_mut() = 0;
         self.empty_pages.push(page);
+    }
+
+    pub(crate) fn lock_aggregate(&self) -> MutexGuard<'_, Vec<T>> {
+        self.aggregate.lock().expect("propagate panic")
     }
 
     #[cfg(not(target_os = "linux"))]
