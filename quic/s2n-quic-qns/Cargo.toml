@@ -22,7 +22,7 @@ futures = "0.3"
 http = "1.0"
 humansize = "2"
 lru = "0.16"
-rand = "0.9"
+rand = "0.10"
 s2n-codec = { path = "../../common/s2n-codec" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-h3 = { path = "../s2n-quic-h3" }

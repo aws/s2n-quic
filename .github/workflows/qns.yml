@@ -20,7 +20,7 @@ env:
   # up with the changes, though.
   INTEROP_RUNNER_REF: bda2d276de79cd016e4d90fd57ff2d863b05abe5
   # This should be updated when updating wesleyrosenblum/quic-network-simulator
-  NETWORK_SIMULATOR_REF: sha256:e102cb0e4b9457f510faf4ca888b4f7f6211aa109b68bfaaa1aa639059fcfc96
+  NETWORK_SIMULATOR_REF: sha256:8057abbab7a8b382df2504ee7d1a899637eff39148b9cff5b4682580155e6f96
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
   WIRESHARK_VERSION: 4.4.2
   CDN: https://dnglbrstg7yg.cloudfront.net
@@ -110,7 +110,7 @@ jobs:
           mkdir -p s2n-quic-qns
           cp target/${{ matrix.mode }}/s2n-quic-qns s2n-quic-qns/s2n-quic-qns-${{ matrix.mode }}
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: s2n-quic-qns-${{ matrix.mode }}
           path: s2n-quic-qns/
@@ -125,12 +125,12 @@ jobs:
         with:
           path: s2n-quic
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: s2n-quic-qns-debug
           path: s2n-quic-qns/
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: s2n-quic-qns-release
           path: s2n-quic-qns/
@@ -197,6 +197,7 @@ jobs:
         run: |
           # enable IPv6 support
           sudo modprobe ip6table_filter
+          mkdir -p results
           python3 run.py --client ${{ matrix.client }} --server ${{ matrix.server }} --json results/result.json --debug --log-dir results/logs
           mkdir -p results/logs
 
@@ -229,7 +230,7 @@ jobs:
                 $from
           done
 
-      - uses: aws-actions/configure-aws-credentials@v5.1.1
+      - uses: aws-actions/configure-aws-credentials@v6.0.0
         if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -250,7 +251,7 @@ jobs:
             aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
           fi
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
           path: quic-interop-runner/results/result.json
@@ -266,7 +267,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           path: results/
 
@@ -327,7 +328,7 @@ jobs:
             results/**/result.json > \
               web/logs/latest/result.json
 
-      - uses: aws-actions/configure-aws-credentials@v5.1.1
+      - uses: aws-actions/configure-aws-credentials@v6.0.0
         if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -374,7 +375,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: s2n-quic-qns-debug
 
@@ -424,7 +425,7 @@ jobs:
         with:
           crate: ultraman
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: s2n-quic-qns-release
           path: target/release/
@@ -459,7 +460,7 @@ jobs:
           zip perf.zip **/*.script
           rm -rf **/*.script
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: perf-results-${{ matrix.server }}-${{ matrix.client }}
           path: target/perf/results
@@ -471,11 +472,11 @@ jobs:
       - uses: actions/checkout@v6
 
       # add any additional perf tests here
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: perf-results-s2n-quic-s2n-quic
           path: perf-results/
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: perf-results-s2n-quic-null-s2n-quic-null
           path: perf-results/
@@ -485,7 +486,7 @@ jobs:
           cd perf-results
           tree -H "." -T "Performance Results" --noreport --charset utf-8 > index.html
 
-      - uses: aws-actions/configure-aws-credentials@v5.1.1
+      - uses: aws-actions/configure-aws-credentials@v6.0.0
         if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -530,7 +531,7 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup override set stable
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: s2n-quic-qns-debug
 
@@ -581,7 +582,7 @@ jobs:
     if: always() && needs.retry-failures.result == 'skipped'
     needs: [retry-failures, env, s2n-quic-qns, interop, interop-report, h3spec, perf, perf-report, attack]
     steps:
-      - uses: aws-actions/configure-aws-credentials@v5.1.1
+      - uses: aws-actions/configure-aws-credentials@v6.0.0
         if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole

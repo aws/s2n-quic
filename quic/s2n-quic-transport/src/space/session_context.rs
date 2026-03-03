@@ -41,11 +41,23 @@ use s2n_quic_core::{
         parameters::{
             ActiveConnectionIdLimit, ClientTransportParameters, DatagramLimits,
             DcSupportedVersions, InitialFlowControlLimits, InitialSourceConnectionId, MaxAckDelay,
-            ServerTransportParameters, TransportParameter as _,
+            MtuProbingCompleteSupport, ServerTransportParameters, TransportParameter as _,
         },
         Error,
     },
 };
+
+/// Holds parsed transport parameters from a peer
+struct PeerTransportParams {
+    flow_control_limits: InitialFlowControlLimits,
+    active_connection_id_limit: ActiveConnectionIdLimit,
+    datagram_limits: DatagramLimits,
+    max_ack_delay: MaxAckDelay,
+    dc_version: Option<dc::Version>,
+    /// The peer is both prepared to receive MtuProbingComplete frame and will send the frame if the local side indicates
+    /// it supports MtuProbingComplete frame via transport parameter.
+    mtu_probing_complete_support: MtuProbingCompleteSupport,
+}
 
 pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
     pub now: Timestamp,
@@ -77,16 +89,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'
     fn on_server_params(
         &mut self,
         decoder: DecoderBuffer,
-    ) -> Result<
-        (
-            InitialFlowControlLimits,
-            ActiveConnectionIdLimit,
-            DatagramLimits,
-            MaxAckDelay,
-            Option<dc::Version>,
-        ),
-        transport::Error,
-    > {
+    ) -> Result<PeerTransportParams, transport::Error> {
         debug_assert!(Config::ENDPOINT_TYPE.is_client());
 
         let (peer_parameters, remaining) =
@@ -209,29 +212,21 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'
             None
         };
 
-        Ok((
-            initial_flow_control_limits,
+        Ok(PeerTransportParams {
+            flow_control_limits: initial_flow_control_limits,
             active_connection_id_limit,
             datagram_limits,
-            peer_parameters.max_ack_delay,
+            max_ack_delay: peer_parameters.max_ack_delay,
             dc_version,
-        ))
+            mtu_probing_complete_support: peer_parameters.mtu_probing_complete_support,
+        })
     }
 
     // This is called by the server
     fn on_client_params(
         &mut self,
         decoder: DecoderBuffer,
-    ) -> Result<
-        (
-            InitialFlowControlLimits,
-            ActiveConnectionIdLimit,
-            DatagramLimits,
-            MaxAckDelay,
-            Option<dc::Version>,
-        ),
-        transport::Error,
-    > {
+    ) -> Result<PeerTransportParams, transport::Error> {
         debug_assert!(Config::ENDPOINT_TYPE.is_server());
 
         let (peer_parameters, remaining) =
@@ -275,13 +270,14 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'
             None
         };
 
-        Ok((
-            initial_flow_control_limits,
+        Ok(PeerTransportParams {
+            flow_control_limits: initial_flow_control_limits,
             active_connection_id_limit,
             datagram_limits,
-            peer_parameters.max_ack_delay,
+            max_ack_delay: peer_parameters.max_ack_delay,
             dc_version,
-        ))
+            mtu_probing_complete_support: peer_parameters.mtu_probing_complete_support,
+        })
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9000#section-7.3
@@ -408,13 +404,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         // Parse transport parameters
         let param_decoder = DecoderBuffer::new(application_parameters.transport_parameters);
-        let (
-            peer_flow_control_limits,
-            active_connection_id_limit,
-            datagram_limits,
-            max_ack_delay,
-            dc_version,
-        ) = match Config::ENDPOINT_TYPE {
+        let peer_params = match Config::ENDPOINT_TYPE {
             endpoint::Type::Client => self.on_server_params(param_decoder)?,
             endpoint::Type::Server => self.on_client_params(param_decoder)?,
         };
@@ -430,13 +420,13 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             .on_post_handshake(&info, &mut updatable_limits);
 
         self.local_id_registry
-            .set_active_connection_id_limit(active_connection_id_limit.as_u64());
+            .set_active_connection_id_limit(peer_params.active_connection_id_limit.as_u64());
 
         let stream_manager = <Config::StreamManager as stream::Manager>::new(
             self.limits,
             Config::ENDPOINT_TYPE,
             self.limits.initial_flow_control_limits(),
-            peer_flow_control_limits,
+            peer_params.flow_control_limits,
             self.path_manager.active_path().rtt_estimator.min_rtt(),
         );
 
@@ -450,22 +440,24 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.limits.max_keep_alive_period(),
         );
 
-        let conn_info =
-            ConnectionInfo::new(datagram_limits.max_datagram_payload, self.waker.clone());
+        let conn_info = ConnectionInfo::new(
+            peer_params.datagram_limits.max_datagram_payload,
+            self.waker.clone(),
+        );
         let (datagram_sender, datagram_receiver) = self.datagram.create_connection(&conn_info);
         let datagram_manager = datagram::Manager::new(
             datagram_sender,
             datagram_receiver,
-            datagram_limits.max_datagram_payload,
+            peer_params.datagram_limits.max_datagram_payload,
         );
 
-        let dc_manager = if let Some(dc_version) = dc_version {
+        let dc_manager = if let Some(dc_version) = peer_params.dc_version {
             let application_params = dc::ApplicationParams::new(
                 self.path_manager
                     .active_path()
                     .mtu_controller
                     .max_datagram_size() as u16,
-                &peer_flow_control_limits,
+                &peer_params.flow_control_limits,
                 self.limits,
             );
             let remote_address = self.path_manager.active_path().remote_address().0;
@@ -482,7 +474,13 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.publisher
                 .on_dc_path_created(DcPathCreated { path: &dc_path });
 
-            if self.dc.mtu_probing_complete_support() {
+            // Only enable MtuProbingComplete if both local DC endpoint has MTU probing complete support enabled
+            // and peer indicates they support receiving MtuProbingComplete frames via transport parameter
+            let peer_supports_mtu_probing_complete = matches!(
+                peer_params.mtu_probing_complete_support,
+                MtuProbingCompleteSupport::Enabled
+            );
+            if self.dc.mtu_probing_complete_support() && peer_supports_mtu_probing_complete {
                 self.path_manager
                     .active_path_mut()
                     .mtu_controller
@@ -502,7 +500,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
         self.path_manager
             .active_path_mut()
             .rtt_estimator
-            .on_max_ack_delay(max_ack_delay);
+            .on_max_ack_delay(peer_params.max_ack_delay);
 
         let cipher_suite = key.cipher_suite().into_event();
         *self.application = Some(Box::new(ApplicationSpace::new(

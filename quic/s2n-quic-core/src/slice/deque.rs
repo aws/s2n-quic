@@ -245,7 +245,7 @@ pub fn make_contiguous<T>(slice: &mut [T], head_out: &mut usize, len: usize) {
 unsafe fn copy<T>(slice: &mut [T], src: usize, dst: usize, len: usize) {
     debug_assert!(
         dst + len <= slice.len(),
-        "cpy dst={} src={} len={} cap={}",
+        "copy dst={} src={} len={} cap={}",
         dst,
         src,
         len,
@@ -253,7 +253,7 @@ unsafe fn copy<T>(slice: &mut [T], src: usize, dst: usize, len: usize) {
     );
     debug_assert!(
         src + len <= slice.len(),
-        "cpy dst={} src={} len={} cap={}",
+        "copy dst={} src={} len={} cap={}",
         dst,
         src,
         len,

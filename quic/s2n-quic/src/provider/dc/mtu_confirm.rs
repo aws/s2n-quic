@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Connection;
+use cfg_if::cfg_if;
 use s2n_quic_core::{
     ensure,
     event::{
@@ -9,7 +10,7 @@ use s2n_quic_core::{
         api::{ConnectionInfo, ConnectionMeta, MtuUpdated, Subscriber},
     },
 };
-use std::io;
+use std::time::Duration;
 use tokio::sync::watch;
 
 /// `event::Subscriber` used for ensuring an s2n-quic client or server negotiating dc
@@ -17,17 +18,21 @@ use tokio::sync::watch;
 pub struct MtuConfirmComplete;
 
 impl MtuConfirmComplete {
-    /// Blocks the task until the provided connection has either completed MTU probing or closed
-    /// Returns whether the peer supports sending MtuProbingComplete frames
-    pub async fn wait_ready(conn: &mut Connection) -> io::Result<bool> {
+    /// Blocks the task until the provided connection has either completed MTU probing or closed.
+    ///
+    /// If the peer doesn't support MtuProbingComplete, waits 1 second after local MTU probing
+    /// completes to allow the peer to finish their probing.
+    pub async fn wait_ready(conn: &mut Connection) {
         let (mut receiver, peer_will_send) = conn
+            // FIXME: We need to follow up on making this code either wait for peer_will_send_completion to be initialized or check that it was updated.
+            // https://github.com/aws/s2n-quic/issues/2957
             .query_event_context_mut(|context: &mut MtuConfirmContext| {
                 (
                     context.sender.subscribe(),
                     context.peer_will_send_completion,
                 )
             })
-            .map_err(io::Error::other)?;
+            .expect("connection context isn't properly set");
 
         loop {
             let ready = {
@@ -43,11 +48,30 @@ impl MtuConfirmComplete {
             };
 
             if ready {
-                return Ok(peer_will_send);
+                // Peer didn't indicate they would send MtuProbingComplete.
+                // Wait 1 second to allow the peer to finish their MTU probing.
+                if !peer_will_send {
+                    // s2n-quic tests are using bach/tokio runtime, while it's only using tokio runtime in production
+                    cfg_if!(
+                        if #[cfg(any(test, feature = "unstable-provider-io-testing"))] {
+                            // We might be running in cfg(test) with a real tokio runtime, not against the bach provider.
+                            // Hence, we use Handle::try_current to test if a tokio runtime has been started.
+                            if tokio::runtime::Handle::try_current().is_err() {
+                                crate::provider::io::testing::time::delay(Duration::from_secs(1)).await;
+                            } else {
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                            }
+                        } else {
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                        }
+                    );
+                }
+                return;
             }
 
             if receiver.changed().await.is_err() {
-                return Err(io::Error::other("never reached terminal state"));
+                // If the peer closes the connection, we return immediately since there's no point waiting.
+                return;
             }
         }
     }
@@ -134,6 +158,15 @@ impl Subscriber for MtuConfirmComplete {
     ) {
         let state = *context.sender.borrow();
         ensure!(!state.is_ready());
+
+        // Log if peer indicated they would send MtuProbingComplete but never did
+        #[cfg(feature = "provider-event-tracing")]
+        if context.peer_will_send_completion && !state.remote_ready {
+            tracing::warn!(
+                local_ready = state.local_ready,
+                "peer indicated MtuProbingComplete support but closed connection before sending it"
+            );
+        }
 
         // The connection closed before MTU probing completed
         // Force both to complete to unblock any waiting tasks

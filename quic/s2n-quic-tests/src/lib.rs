@@ -1,6 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use rand::{
+    rand_core::{Rng, SeedableRng, TryRng},
+    rngs::ChaCha8Rng,
+    RngExt,
+};
 use s2n_quic::{
     client::Connect,
     provider::{
@@ -11,8 +16,6 @@ use s2n_quic::{
     Client, Server,
 };
 use s2n_quic_core::{crypto::tls::testing::certificates, havoc, stream::testing::Data};
-
-use rand::{Rng, RngCore};
 use std::net::SocketAddr;
 
 pub mod recorder;
@@ -281,21 +284,20 @@ pub fn build_client(handle: &Handle, network_env: Model, with_blocklist: bool) -
 }
 
 pub struct Random {
-    inner: rand_chacha::ChaCha8Rng,
+    inner: ChaCha8Rng,
 }
 
 impl Random {
     pub fn with_seed(seed: u64) -> Self {
-        use rand::SeedableRng;
         Self {
-            inner: rand_chacha::ChaCha8Rng::seed_from_u64(seed),
+            inner: ChaCha8Rng::seed_from_u64(seed),
         }
     }
 }
 
 impl havoc::Random for Random {
     fn fill(&mut self, bytes: &mut [u8]) {
-        self.fill_bytes(bytes);
+        Rng::fill_bytes(&mut self.inner, bytes);
     }
 
     fn gen_range(&mut self, range: std::ops::Range<u64>) -> u64 {
@@ -303,17 +305,20 @@ impl havoc::Random for Random {
     }
 }
 
-impl RngCore for Random {
-    fn fill_bytes(&mut self, dest: &mut [u8]) {
-        self.inner.fill_bytes(dest)
+impl TryRng for Random {
+    type Error = core::convert::Infallible;
+
+    fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        Ok(Rng::next_u32(&mut self.inner))
     }
 
-    fn next_u32(&mut self) -> u32 {
-        self.inner.next_u32()
+    fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+        Ok(Rng::next_u64(&mut self.inner))
     }
 
-    fn next_u64(&mut self) -> u64 {
-        self.inner.next_u64()
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Self::Error> {
+        Rng::fill_bytes(&mut self.inner, dest);
+        Ok(())
     }
 }
 
@@ -329,11 +334,11 @@ impl s2n_quic::provider::random::Provider for Random {
 
 impl s2n_quic::provider::random::Generator for Random {
     fn public_random_fill(&mut self, dest: &mut [u8]) {
-        self.fill_bytes(dest);
+        Rng::fill_bytes(self, dest);
     }
 
     fn private_random_fill(&mut self, dest: &mut [u8]) {
-        self.fill_bytes(dest);
+        Rng::fill_bytes(self, dest);
     }
 }
 

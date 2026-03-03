@@ -4,12 +4,12 @@
 use crate::{
     credentials::Credentials,
     crypto::seal,
-    event,
-    event::ConnectionPublisher,
+    event::{self, ConnectionPublisher},
     packet::stream::{self, encoder},
     stream::{
         packet_number,
         send::{application::transmission, error::Error, flow, path},
+        tls::S2nTlsConnection,
         TransportFeatures,
     },
 };
@@ -49,6 +49,7 @@ impl State {
         packet_number: &packet_number::Counter,
         encrypt_key: &E,
         credentials: &Credentials,
+        s2n_connection: &Option<S2nTlsConnection>,
         stream_id: &stream::Id,
         source_queue_id: Option<VarInt>,
         clock: &Clk,
@@ -75,6 +76,10 @@ impl State {
             "attempted to acquire more credits than what is buffered"
         );
         let mut reader = reader.with_read_limit(credits.len);
+
+        if let Some(s2n) = s2n_connection {
+            return s2n.write(message, &mut reader, credits.is_fin);
+        }
 
         let max_header_len = self.max_header_len();
 

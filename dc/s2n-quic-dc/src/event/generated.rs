@@ -584,8 +584,11 @@ pub mod api {
         #[doc = " parsing the packet)"]
         Remote {},
         #[non_exhaustive]
-        #[doc = " Something in the local application state was wrong (e.g., missing credentials)."]
+        #[doc = " Something in the local application state was wrong."]
         Local {},
+        #[non_exhaustive]
+        #[doc = " Unknown path secret for remote stream."]
+        UnknownPathSecret {},
         #[non_exhaustive]
         #[doc = " Something went wrong that we didn't expect to happen."]
         #[doc = " This is used for failures that aren't expected to relate to dcQUIC state at all."]
@@ -624,8 +627,13 @@ pub mod api {
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("SYSTEM\0"),
+                name: aggregate::info::Str::new("UNKNOWN_PATH_SECRET\0"),
                 id: 6usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("SYSTEM\0"),
+                id: 7usize,
             }
             .build(),
         ];
@@ -638,7 +646,8 @@ pub mod api {
                 Self::Recv { .. } => 3usize,
                 Self::Remote { .. } => 4usize,
                 Self::Local { .. } => 5usize,
-                Self::System { .. } => 6usize,
+                Self::UnknownPathSecret { .. } => 6usize,
+                Self::System { .. } => 7usize,
             }
         }
     }
@@ -1229,12 +1238,14 @@ pub mod api {
     #[doc = " Currently only emitted in cases where dcQUIC owns the TCP connect too."]
     pub struct StreamConnectError {
         pub reason: StreamTcpConnectErrorReason,
+        pub latency: core::time::Duration,
     }
     #[cfg(any(test, feature = "testing"))]
     impl crate::event::snapshot::Fmt for StreamConnectError {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("StreamConnectError");
             fmt.field("reason", &self.reason);
+            fmt.field("latency", &self.latency);
             fmt.finish()
         }
     }
@@ -1599,8 +1610,19 @@ pub mod api {
         #[non_exhaustive]
         #[doc = " When the connect future is dropped prior to returning any result."]
         #[doc = ""]
-        #[doc = " Usually indicates a timeout in the application."]
-        Aborted {},
+        #[doc = " This means the TCP connect succeeded, but the handshake hasn't yet by the time the connect"]
+        #[doc = " future was dropped."]
+        AbortedPendingHandshake {},
+        #[non_exhaustive]
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " The handshake succeeded (or wasn't needed), but the TCP connect hasn't yet finished."]
+        AbortedPendingConnect {},
+        #[non_exhaustive]
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " Neither the TCP connect or handshake have finished yet."]
+        AbortedPendingBoth {},
     }
     impl aggregate::AsVariant for StreamTcpConnectErrorReason {
         const VARIANTS: &'static [aggregate::info::Variant] = &[
@@ -1615,8 +1637,18 @@ pub mod api {
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("ABORTED\0"),
+                name: aggregate::info::Str::new("ABORTED_PENDING_HANDSHAKE\0"),
                 id: 2usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("ABORTED_PENDING_CONNECT\0"),
+                id: 3usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("ABORTED_PENDING_BOTH\0"),
+                id: 4usize,
             }
             .build(),
         ];
@@ -1625,7 +1657,9 @@ pub mod api {
             match self {
                 Self::TcpConnect { .. } => 0usize,
                 Self::Handshake { .. } => 1usize,
-                Self::Aborted { .. } => 2usize,
+                Self::AbortedPendingHandshake { .. } => 2usize,
+                Self::AbortedPendingConnect { .. } => 3usize,
+                Self::AbortedPendingBoth { .. } => 4usize,
             }
         }
     }
@@ -1650,6 +1684,23 @@ pub mod api {
     }
     impl<'a> Event for EndpointInitialized<'a> {
         const NAME: &'static str = "endpoint:initialized";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Emitted when the DC handshake confirmation or MTU probing times out"]
+    pub struct DcConnectionTimeout<'a> {
+        pub peer_address: SocketAddress<'a>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for DcConnectionTimeout<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("DcConnectionTimeout");
+            fmt.field("peer_address", &self.peer_address);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for DcConnectionTimeout<'a> {
+        const NAME: &'static str = "dc:connection_timeout";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2284,8 +2335,10 @@ pub mod api {
         pub address_entries_initial_utilization: f32,
         #[doc = " The number of handshake requests that are pending after the cleaning cycle"]
         pub handshake_requests: usize,
-        #[doc = " The number of handshake requests that were retired in the cycle"]
-        pub handshake_requests_retired: usize,
+        #[doc = " The number of handshake requests that were skipped in the cycle due to running out of time"]
+        #[doc = " (other background handshakes took too long to complete, and so were postponed to the next"]
+        #[doc = " cleaner cycle)."]
+        pub handshake_requests_skipped: usize,
         #[doc = " How long we kept the handshake lock held (this blocks completing handshakes)."]
         pub handshake_lock_duration: core::time::Duration,
         #[doc = " Total duration of a cycle."]
@@ -2324,8 +2377,8 @@ pub mod api {
             );
             fmt.field("handshake_requests", &self.handshake_requests);
             fmt.field(
-                "handshake_requests_retired",
-                &self.handshake_requests_retired,
+                "handshake_requests_skipped",
+                &self.handshake_requests_skipped,
             );
             fmt.field("handshake_lock_duration", &self.handshake_lock_duration);
             fmt.field("duration", &self.duration);
@@ -2984,8 +3037,8 @@ pub mod tracing {
             event: &api::StreamConnectError,
         ) {
             let parent = self.parent(meta);
-            let api::StreamConnectError { reason } = event;
-            tracing :: event ! (target : "stream_connect_error" , parent : parent , tracing :: Level :: DEBUG , { reason = tracing :: field :: debug (reason) });
+            let api::StreamConnectError { reason, latency } = event;
+            tracing :: event ! (target : "stream_connect_error" , parent : parent , tracing :: Level :: DEBUG , { reason = tracing :: field :: debug (reason) , latency = tracing :: field :: debug (latency) });
         }
         #[inline]
         fn on_stream_packet_transmitted(
@@ -3185,6 +3238,16 @@ pub mod tracing {
                 udp,
             } = event;
             tracing :: event ! (target : "endpoint_initialized" , parent : parent , tracing :: Level :: DEBUG , { acceptor_addr = tracing :: field :: debug (acceptor_addr) , handshake_addr = tracing :: field :: debug (handshake_addr) , tcp = tracing :: field :: debug (tcp) , udp = tracing :: field :: debug (udp) });
+        }
+        #[inline]
+        fn on_dc_connection_timeout(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::DcConnectionTimeout,
+        ) {
+            let parent = self.parent(meta);
+            let api::DcConnectionTimeout { peer_address } = event;
+            tracing :: event ! (target : "dc_connection_timeout" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) });
         }
         #[inline]
         fn on_path_secret_map_initialized(
@@ -3583,11 +3646,11 @@ pub mod tracing {
                 address_entries_utilization,
                 address_entries_initial_utilization,
                 handshake_requests,
-                handshake_requests_retired,
+                handshake_requests_skipped,
                 handshake_lock_duration,
                 duration,
             } = event;
-            tracing :: event ! (target : "path_secret_map_cleaner_cycled" , parent : parent , tracing :: Level :: DEBUG , { id_entries = tracing :: field :: debug (id_entries) , id_entries_retired = tracing :: field :: debug (id_entries_retired) , id_entries_active = tracing :: field :: debug (id_entries_active) , id_entries_active_utilization = tracing :: field :: debug (id_entries_active_utilization) , id_entries_utilization = tracing :: field :: debug (id_entries_utilization) , id_entries_initial_utilization = tracing :: field :: debug (id_entries_initial_utilization) , address_entries = tracing :: field :: debug (address_entries) , address_entries_active = tracing :: field :: debug (address_entries_active) , address_entries_active_utilization = tracing :: field :: debug (address_entries_active_utilization) , address_entries_retired = tracing :: field :: debug (address_entries_retired) , address_entries_utilization = tracing :: field :: debug (address_entries_utilization) , address_entries_initial_utilization = tracing :: field :: debug (address_entries_initial_utilization) , handshake_requests = tracing :: field :: debug (handshake_requests) , handshake_requests_retired = tracing :: field :: debug (handshake_requests_retired) , handshake_lock_duration = tracing :: field :: debug (handshake_lock_duration) , duration = tracing :: field :: debug (duration) });
+            tracing :: event ! (target : "path_secret_map_cleaner_cycled" , parent : parent , tracing :: Level :: DEBUG , { id_entries = tracing :: field :: debug (id_entries) , id_entries_retired = tracing :: field :: debug (id_entries_retired) , id_entries_active = tracing :: field :: debug (id_entries_active) , id_entries_active_utilization = tracing :: field :: debug (id_entries_active_utilization) , id_entries_utilization = tracing :: field :: debug (id_entries_utilization) , id_entries_initial_utilization = tracing :: field :: debug (id_entries_initial_utilization) , address_entries = tracing :: field :: debug (address_entries) , address_entries_active = tracing :: field :: debug (address_entries_active) , address_entries_active_utilization = tracing :: field :: debug (address_entries_active_utilization) , address_entries_retired = tracing :: field :: debug (address_entries_retired) , address_entries_utilization = tracing :: field :: debug (address_entries_utilization) , address_entries_initial_utilization = tracing :: field :: debug (address_entries_initial_utilization) , handshake_requests = tracing :: field :: debug (handshake_requests) , handshake_requests_skipped = tracing :: field :: debug (handshake_requests_skipped) , handshake_lock_duration = tracing :: field :: debug (handshake_lock_duration) , duration = tracing :: field :: debug (duration) });
         }
         #[inline]
         fn on_path_secret_map_id_write_lock(
@@ -4183,8 +4246,10 @@ pub mod builder {
         #[doc = " Something within dcQUIC failed related to the remote state or network contents (e.g.,"]
         #[doc = " parsing the packet)"]
         Remote,
-        #[doc = " Something in the local application state was wrong (e.g., missing credentials)."]
+        #[doc = " Something in the local application state was wrong."]
         Local,
+        #[doc = " Unknown path secret for remote stream."]
+        UnknownPathSecret,
         #[doc = " Something went wrong that we didn't expect to happen."]
         #[doc = " This is used for failures that aren't expected to relate to dcQUIC state at all."]
         System,
@@ -4200,6 +4265,7 @@ pub mod builder {
                 Self::Recv => Recv {},
                 Self::Remote => Remote {},
                 Self::Local => Local {},
+                Self::UnknownPathSecret => UnknownPathSecret {},
                 Self::System => System {},
             }
         }
@@ -4733,13 +4799,15 @@ pub mod builder {
     #[doc = " Currently only emitted in cases where dcQUIC owns the TCP connect too."]
     pub struct StreamConnectError {
         pub reason: StreamTcpConnectErrorReason,
+        pub latency: core::time::Duration,
     }
     impl IntoEvent<api::StreamConnectError> for StreamConnectError {
         #[inline]
         fn into_event(self) -> api::StreamConnectError {
-            let StreamConnectError { reason } = self;
+            let StreamConnectError { reason, latency } = self;
             api::StreamConnectError {
                 reason: reason.into_event(),
+                latency: latency.into_event(),
             }
         }
     }
@@ -5092,8 +5160,17 @@ pub mod builder {
         Handshake,
         #[doc = " When the connect future is dropped prior to returning any result."]
         #[doc = ""]
-        #[doc = " Usually indicates a timeout in the application."]
-        Aborted,
+        #[doc = " This means the TCP connect succeeded, but the handshake hasn't yet by the time the connect"]
+        #[doc = " future was dropped."]
+        AbortedPendingHandshake,
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " The handshake succeeded (or wasn't needed), but the TCP connect hasn't yet finished."]
+        AbortedPendingConnect,
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " Neither the TCP connect or handshake have finished yet."]
+        AbortedPendingBoth,
     }
     impl IntoEvent<api::StreamTcpConnectErrorReason> for StreamTcpConnectErrorReason {
         #[inline]
@@ -5102,7 +5179,9 @@ pub mod builder {
             match self {
                 Self::TcpConnect => TcpConnect {},
                 Self::Handshake => Handshake {},
-                Self::Aborted => Aborted {},
+                Self::AbortedPendingHandshake => AbortedPendingHandshake {},
+                Self::AbortedPendingConnect => AbortedPendingConnect {},
+                Self::AbortedPendingBoth => AbortedPendingBoth {},
             }
         }
     }
@@ -5127,6 +5206,20 @@ pub mod builder {
                 handshake_addr: handshake_addr.into_event(),
                 tcp: tcp.into_event(),
                 udp: udp.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when the DC handshake confirmation or MTU probing times out"]
+    pub struct DcConnectionTimeout<'a> {
+        pub peer_address: SocketAddress<'a>,
+    }
+    impl<'a> IntoEvent<api::DcConnectionTimeout<'a>> for DcConnectionTimeout<'a> {
+        #[inline]
+        fn into_event(self) -> api::DcConnectionTimeout<'a> {
+            let DcConnectionTimeout { peer_address } = self;
+            api::DcConnectionTimeout {
+                peer_address: peer_address.into_event(),
             }
         }
     }
@@ -5768,8 +5861,10 @@ pub mod builder {
         pub address_entries_initial_utilization: f32,
         #[doc = " The number of handshake requests that are pending after the cleaning cycle"]
         pub handshake_requests: usize,
-        #[doc = " The number of handshake requests that were retired in the cycle"]
-        pub handshake_requests_retired: usize,
+        #[doc = " The number of handshake requests that were skipped in the cycle due to running out of time"]
+        #[doc = " (other background handshakes took too long to complete, and so were postponed to the next"]
+        #[doc = " cleaner cycle)."]
+        pub handshake_requests_skipped: usize,
         #[doc = " How long we kept the handshake lock held (this blocks completing handshakes)."]
         pub handshake_lock_duration: core::time::Duration,
         #[doc = " Total duration of a cycle."]
@@ -5792,7 +5887,7 @@ pub mod builder {
                 address_entries_utilization,
                 address_entries_initial_utilization,
                 handshake_requests,
-                handshake_requests_retired,
+                handshake_requests_skipped,
                 handshake_lock_duration,
                 duration,
             } = self;
@@ -5811,7 +5906,7 @@ pub mod builder {
                 address_entries_initial_utilization: address_entries_initial_utilization
                     .into_event(),
                 handshake_requests: handshake_requests.into_event(),
-                handshake_requests_retired: handshake_requests_retired.into_event(),
+                handshake_requests_skipped: handshake_requests_skipped.into_event(),
                 handshake_lock_duration: handshake_lock_duration.into_event(),
                 duration: duration.into_event(),
             }
@@ -6517,6 +6612,16 @@ mod traits {
             &self,
             meta: &api::EndpointMeta,
             event: &api::EndpointInitialized,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `DcConnectionTimeout` event is triggered"]
+        #[inline]
+        fn on_dc_connection_timeout(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::DcConnectionTimeout,
         ) {
             let _ = meta;
             let _ = event;
@@ -7378,6 +7483,14 @@ mod traits {
             self.as_ref().on_endpoint_initialized(meta, event);
         }
         #[inline]
+        fn on_dc_connection_timeout(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::DcConnectionTimeout,
+        ) {
+            self.as_ref().on_dc_connection_timeout(meta, event);
+        }
+        #[inline]
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -8215,6 +8328,15 @@ mod traits {
             (self.1).on_endpoint_initialized(meta, event);
         }
         #[inline]
+        fn on_dc_connection_timeout(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::DcConnectionTimeout,
+        ) {
+            (self.0).on_dc_connection_timeout(meta, event);
+            (self.1).on_dc_connection_timeout(meta, event);
+        }
+        #[inline]
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -8588,6 +8710,8 @@ mod traits {
         fn on_stream_connect_error(&self, event: builder::StreamConnectError);
         #[doc = "Publishes a `EndpointInitialized` event to the publisher's subscriber"]
         fn on_endpoint_initialized(&self, event: builder::EndpointInitialized);
+        #[doc = "Publishes a `DcConnectionTimeout` event to the publisher's subscriber"]
+        fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout);
         #[doc = "Publishes a `PathSecretMapInitialized` event to the publisher's subscriber"]
         fn on_path_secret_map_initialized(&self, event: builder::PathSecretMapInitialized);
         #[doc = "Publishes a `PathSecretMapUninitialized` event to the publisher's subscriber"]
@@ -8882,6 +9006,12 @@ mod traits {
         fn on_endpoint_initialized(&self, event: builder::EndpointInitialized) {
             let event = event.into_event();
             self.subscriber.on_endpoint_initialized(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout) {
+            let event = event.into_event();
+            self.subscriber.on_dc_connection_timeout(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -9600,6 +9730,7 @@ pub mod testing {
             pub stream_connect: AtomicU64,
             pub stream_connect_error: AtomicU64,
             pub endpoint_initialized: AtomicU64,
+            pub dc_connection_timeout: AtomicU64,
             pub path_secret_map_initialized: AtomicU64,
             pub path_secret_map_uninitialized: AtomicU64,
             pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -9688,6 +9819,7 @@ pub mod testing {
                     stream_connect: AtomicU64::new(0),
                     stream_connect_error: AtomicU64::new(0),
                     endpoint_initialized: AtomicU64::new(0),
+                    dc_connection_timeout: AtomicU64::new(0),
                     path_secret_map_initialized: AtomicU64::new(0),
                     path_secret_map_uninitialized: AtomicU64::new(0),
                     path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -10002,6 +10134,17 @@ pub mod testing {
                 event: &api::EndpointInitialized,
             ) {
                 self.endpoint_initialized.fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_dc_connection_timeout(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::DcConnectionTimeout,
+            ) {
+                self.dc_connection_timeout.fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 let out = format!("{meta:?} {event:?}");
@@ -10459,6 +10602,7 @@ pub mod testing {
         pub stream_sender_errored: AtomicU64,
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
+        pub dc_connection_timeout: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
         pub path_secret_map_uninitialized: AtomicU64,
         pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -10579,6 +10723,7 @@ pub mod testing {
                 stream_sender_errored: AtomicU64::new(0),
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
+                dc_connection_timeout: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
                 path_secret_map_uninitialized: AtomicU64::new(0),
                 path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -11356,6 +11501,17 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
+        fn on_dc_connection_timeout(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::DcConnectionTimeout,
+        ) {
+            self.dc_connection_timeout.fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -11807,6 +11963,7 @@ pub mod testing {
         pub stream_sender_errored: AtomicU64,
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
+        pub dc_connection_timeout: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
         pub path_secret_map_uninitialized: AtomicU64,
         pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -11917,6 +12074,7 @@ pub mod testing {
                 stream_sender_errored: AtomicU64::new(0),
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
+                dc_connection_timeout: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
                 path_secret_map_uninitialized: AtomicU64::new(0),
                 path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -12138,6 +12296,13 @@ pub mod testing {
         }
         fn on_endpoint_initialized(&self, event: builder::EndpointInitialized) {
             self.endpoint_initialized.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout) {
+            self.dc_connection_timeout.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             let out = format!("{event:?}");

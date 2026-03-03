@@ -9,6 +9,7 @@ use crate::{
     stream::{
         recv::shared as recv,
         send::{application, shared as send},
+        tls::S2nTlsConnection,
     },
 };
 use core::{
@@ -209,6 +210,7 @@ where
     pub last_peer_activity: AtomicU64,
     pub closed_halves: AtomicU8,
     pub subscriber: Subscriber<Sub>,
+    pub s2n_connection: Option<S2nTlsConnection>,
     pub clock: Clk,
 }
 

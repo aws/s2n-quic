@@ -324,6 +324,9 @@ enum MaybeBoolCounter {
 pub struct StreamConnectError {
     #[nominal_counter("reason")]
     reason: StreamTcpConnectErrorReason,
+
+    #[timer("latency")]
+    latency: core::time::Duration,
 }
 
 /// Note that there's no guarantee of a particular reason if multiple reasons ~simultaneously
@@ -337,8 +340,19 @@ pub enum StreamTcpConnectErrorReason {
 
     /// When the connect future is dropped prior to returning any result.
     ///
-    /// Usually indicates a timeout in the application.
-    Aborted,
+    /// This means the TCP connect succeeded, but the handshake hasn't yet by the time the connect
+    /// future was dropped.
+    AbortedPendingHandshake,
+
+    /// When the connect future is dropped prior to returning any result.
+    ///
+    /// The handshake succeeded (or wasn't needed), but the TCP connect hasn't yet finished.
+    AbortedPendingConnect,
+
+    /// When the connect future is dropped prior to returning any result.
+    ///
+    /// Neither the TCP connect or handshake have finished yet.
+    AbortedPendingBoth,
 }
 
 #[event("stream:packet_transmitted")]

@@ -3,6 +3,7 @@
 
 use crate::{
     clock,
+    credentials::Id,
     event::{self, ConnectionPublisher},
     msg,
     stream::{
@@ -84,6 +85,11 @@ where
     #[inline]
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.0.sockets.write_application().local_addr()
+    }
+
+    #[inline]
+    pub fn path_secret_id(&self) -> &Id {
+        &self.0.shared.credentials().id
     }
 
     #[inline]
@@ -261,7 +267,7 @@ where
             &mut batch,
             max_segments,
             &self.shared.sender.segment_alloc,
-            |message, buf| {
+            |output, buf| {
                 self.shared.crypto.seal_with(
                     |sealer| {
                         // push packets for transmission into our queue
@@ -272,10 +278,11 @@ where
                             &self.shared.sender.packet_number,
                             sealer,
                             self.shared.credentials(),
+                            &self.shared.s2n_connection,
                             &stream_id,
                             local_queue_id,
                             &clock::Cached::new(&self.shared.clock),
-                            message,
+                            output,
                             &features,
                             &self.shared.publisher(),
                         )

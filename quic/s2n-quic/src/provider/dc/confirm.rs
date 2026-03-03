@@ -23,7 +23,7 @@ impl ConfirmComplete {
     pub async fn wait_ready(conn: &mut Connection) -> io::Result<()> {
         let mut receiver = conn
             .query_event_context_mut(|context: &mut ConfirmContext| context.sender.subscribe())
-            .map_err(io::Error::other)?;
+            .expect("connection context isn't properly set");
 
         loop {
             match &*receiver.borrow_and_update() {

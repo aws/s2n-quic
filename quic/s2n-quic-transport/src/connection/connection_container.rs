@@ -740,7 +740,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         self.connector_receiver.close();
 
         // drain the connector_receiver queue
-        while let Ok(Some(request)) = self.connector_receiver.try_next() {
+        while let Ok(request) = self.connector_receiver.try_recv() {
             if request
                 .sender
                 .send(Err(connection::Error::endpoint_closing()))

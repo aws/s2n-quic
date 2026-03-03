@@ -27,6 +27,7 @@ fn create_stream_client() -> (ClientTokio<ClientProvider, NoopSubscriber>, Map) 
     let client_map = Map::new(
         Signer::new(b"default"),
         100,
+        false,
         StdClock::default(),
         test_event_subscriber.clone(),
     );
@@ -60,6 +61,7 @@ async fn create_handshake_server() -> ServerProvider {
     let manager_handshake_map = Map::new(
         Signer::new(b"default"),
         1,
+        false,
         StdClock::default(),
         test_event_subscriber.clone(),
     );
