@@ -97,9 +97,9 @@ where
         socket: super::LazyBoundStream,
         remote_address: s2n_quic_core::inet::SocketAddress,
         buffer: crate::msg::recv::Message,
-        kernel_start_time: Timestamp,
+        kernel_accept_time: Timestamp,
     ) {
-        match self.spawn_inner(socket, remote_address, buffer, kernel_start_time) {
+        match self.spawn_inner(socket, remote_address, buffer, kernel_accept_time) {
             Ok(()) => {}
             Err(error) => {
                 self.env
@@ -111,7 +111,7 @@ where
                                 .env
                                 .clock()
                                 .get_time()
-                                .saturating_duration_since(kernel_start_time),
+                                .saturating_duration_since(kernel_accept_time),
                             error: &error.into(),
                         },
                     );
@@ -124,7 +124,7 @@ where
         socket: super::LazyBoundStream,
         remote_addr: s2n_quic_core::inet::SocketAddress,
         buffer: crate::msg::recv::Message,
-        kernel_start_time: Timestamp,
+        kernel_accept_time: Timestamp,
     ) -> Result<(), s2n_tls::error::Error> {
         let mut conn = s2n_tls::connection::Connection::new_server();
         conn.set_config(self.config.clone())?;
@@ -148,7 +148,7 @@ where
                 &env,
                 map,
                 flavor,
-                kernel_start_time,
+                kernel_accept_time,
             )
             .await
             {
@@ -159,7 +159,7 @@ where
                             sojourn_time: env
                                 .clock()
                                 .get_time()
-                                .saturating_duration_since(kernel_start_time),
+                                .saturating_duration_since(kernel_accept_time),
                             error: &error,
                         },
                     );
@@ -178,9 +178,11 @@ async fn accept_conn<Sub: event::Subscriber + Clone>(
     env: &Environment<Sub>,
     map: secret::Map,
     flavor: accept::Flavor,
-    kernel_start_time: Timestamp,
+    kernel_accept_time: Timestamp,
 ) -> std::io::Result<()> {
     let socket = match socket {
+        // Rebind the stream into the local runtime. This avoids epoll events on the socket
+        // readiness needing to wake the original acceptor runtime and then wake up this runtime.
         super::LazyBoundStream::Tokio(tcp_stream) => TcpStream::from_std(tcp_stream.into_std()?)?,
         super::LazyBoundStream::Std(tcp_stream) => TcpStream::from_std(tcp_stream)?,
         super::LazyBoundStream::TempEmpty => unreachable!(),
@@ -216,7 +218,7 @@ async fn accept_conn<Sub: event::Subscriber + Clone>(
                 sojourn_time: env
                     .clock()
                     .get_time()
-                    .saturating_duration_since(kernel_start_time),
+                    .saturating_duration_since(kernel_accept_time),
             });
     }
 
