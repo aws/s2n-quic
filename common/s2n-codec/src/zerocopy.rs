@@ -1,11 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::{
-    cmp::Ordering,
-    fmt,
-    hash::{Hash, Hasher},
-};
+use core::{cmp::Ordering, fmt, hash::Hash};
 pub use zerocopy::*;
 
 #[cfg(feature = "generator")]
@@ -182,6 +178,9 @@ macro_rules! zerocopy_network_integer {
             Copy,
             Default,
             PartialEq,
+            PartialOrd,
+            Ord,
+            Hash,
             Eq,
             Immutable,
             $crate::zerocopy::FromBytes,
@@ -233,30 +232,10 @@ macro_rules! zerocopy_network_integer {
             }
         }
 
-        impl PartialOrd for $name {
-            #[inline]
-            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-                Some(self.cmp(other))
-            }
-        }
-
         impl PartialOrd<$native> for $name {
             #[inline]
             fn partial_cmp(&self, other: &$native) -> Option<Ordering> {
                 Some(self.get().cmp(other))
-            }
-        }
-
-        impl Ord for $name {
-            #[inline]
-            fn cmp(&self, other: &Self) -> Ordering {
-                self.get_be().cmp(&other.get_be())
-            }
-        }
-
-        impl Hash for $name {
-            fn hash<H: Hasher>(&self, state: &mut H) {
-                self.get().hash(state);
             }
         }
 
