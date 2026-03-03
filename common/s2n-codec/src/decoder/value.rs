@@ -10,8 +10,7 @@ use crate::{
     DecoderError,
 };
 use byteorder::{ByteOrder, NetworkEndian};
-use core::marker::PhantomData;
-use core::mem::size_of;
+use core::{marker::PhantomData, mem::size_of};
 use zerocopy::{FromBytes, Immutable, Unaligned};
 
 pub trait DecoderValue<'a>: Sized {
