@@ -135,7 +135,7 @@ jobs:
           name: s2n-quic-qns-release
           path: s2n-quic-qns/
 
-      - uses: docker/setup-docker-action@v4
+      - uses: docker/setup-docker-action@v5
         with: 
           version: version=v26.1.3
 
