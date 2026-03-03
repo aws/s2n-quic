@@ -181,6 +181,8 @@ macro_rules! zerocopy_network_integer {
             Clone,
             Copy,
             Default,
+            PartialOrd,
+            PartialEq,
             Eq,
             Immutable,
             $crate::zerocopy::FromBytes,
@@ -194,8 +196,9 @@ macro_rules! zerocopy_network_integer {
             pub const ZERO: Self = Self(::zerocopy::byteorder::$name::ZERO);
 
             #[inline(always)]
-            pub fn new(value: $native) -> Self {
-                value.into()
+            pub const fn new(value: $native) -> Self {
+                let zerocopy_int = ::zerocopy::byteorder::$name::<NetworkEndian>::new(value);
+                $name(zerocopy_int)
             }
 
             #[inline(always)]
@@ -224,24 +227,10 @@ macro_rules! zerocopy_network_integer {
             }
         }
 
-        impl PartialEq for $name {
-            #[inline]
-            fn eq(&self, other: &Self) -> bool {
-                self.cmp(other) == Ordering::Equal
-            }
-        }
-
         impl PartialEq<$native> for $name {
             #[inline]
             fn eq(&self, other: &$native) -> bool {
-                self.partial_cmp(other) == Some(Ordering::Equal)
-            }
-        }
-
-        impl PartialOrd for $name {
-            #[inline]
-            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-                Some(self.cmp(other))
+                self.get() == *other
             }
         }
 
