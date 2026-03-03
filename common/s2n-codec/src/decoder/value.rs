@@ -273,140 +273,90 @@ mod tests {
     use super::*;
     use crate::DecoderBuffer;
 
-    // === [u8; N] tests ===
-
     #[test]
-    fn array_decode_exact() {
-        let buf = DecoderBuffer::new(&[1, 2, 3, 4]);
-        let (val, remaining) = buf.decode::<[u8; 4]>().unwrap();
-        assert_eq!(val, [1, 2, 3, 4]);
-        assert!(remaining.is_empty());
-    }
-
-    #[test]
-    fn array_decode_with_remaining() {
+    fn array_decode() {
         let buf = DecoderBuffer::new(&[1, 2, 3, 4, 5]);
         let (val, remaining) = buf.decode::<[u8; 3]>().unwrap();
         assert_eq!(val, [1, 2, 3]);
         assert_eq!(remaining.into_less_safe_slice(), &[4, 5]);
-    }
 
-    #[test]
-    fn array_decode_zero_length() {
         let buf = DecoderBuffer::new(&[]);
         let (val, remaining) = buf.decode::<[u8; 0]>().unwrap();
-        assert_eq!(val, [0u8; 0]);
+        assert_eq!(val, []);
         assert!(remaining.is_empty());
+
+        // error: insufficient data
+        assert!(DecoderBuffer::new(&[1, 2]).decode::<[u8; 4]>().is_err());
     }
 
     #[test]
-    fn array_decode_too_short() {
-        let buf = DecoderBuffer::new(&[1, 2]);
-        assert!(buf.decode::<[u8; 4]>().is_err());
-    }
-
-    // === &[u8; N] tests ===
-
-    #[test]
-    fn ref_array_decode_exact() {
-        let data = [10, 20, 30];
-        let buf = DecoderBuffer::new(&data);
+    fn ref_array_decode() {
+        let buf = DecoderBuffer::new(&[1, 2, 3, 4, 5]);
         let (val, remaining) = buf.decode::<&[u8; 3]>().unwrap();
-        assert_eq!(val, &[10, 20, 30]);
+        assert_eq!(val, &[1, 2, 3]);
+        assert_eq!(remaining.into_less_safe_slice(), &[4, 5]);
+
+        let buf = DecoderBuffer::new(&[]);
+        let (val, remaining) = buf.decode::<&[u8; 0]>().unwrap();
+        assert_eq!(val, &[]);
         assert!(remaining.is_empty());
+
+        // error: insufficient data
+        assert!(DecoderBuffer::new(&[1, 2]).decode::<&[u8; 4]>().is_err());
     }
 
     #[test]
-    fn ref_array_decode_with_remaining() {
-        let data = [1, 2, 3, 4, 5];
-        let buf = DecoderBuffer::new(&data);
-        let (val, remaining) = buf.decode::<&[u8; 2]>().unwrap();
-        assert_eq!(val, &[1, 2]);
-        assert_eq!(remaining.into_less_safe_slice(), &[3, 4, 5]);
-    }
-
-    #[test]
-    fn ref_array_decode_too_short() {
-        let buf = DecoderBuffer::new(&[1]);
-        assert!(buf.decode::<&[u8; 4]>().is_err());
-    }
-
-    // === PrefixedBlob tests ===
-
-    #[test]
-    fn prefixed_blob_u8_decode() {
-        // length=3, then 3 bytes of data
-        let data = [3, 0xAA, 0xBB, 0xCC];
-        let buf = DecoderBuffer::new(&data);
+    fn prefixed_blob_decode() {
+        // u8 length prefix
+        let buf = DecoderBuffer::new(&[3, 0xAA, 0xBB, 0xCC]);
         let (blob, remaining) = buf.decode::<PrefixedBlob<u8>>().unwrap();
         assert_eq!(blob.blob, &[0xAA, 0xBB, 0xCC]);
         assert!(remaining.is_empty());
-    }
 
-    #[test]
-    fn prefixed_blob_with_trailing_data() {
-        let data = [2, 0x01, 0x02, 0xFF];
+        // u16 big-endian length = 256 (0x01, 0x00) — verifies endianness
+        let mut data = vec![0x01, 0x00];
+        data.extend(core::iter::repeat(0xFFu8).take(256));
         let buf = DecoderBuffer::new(&data);
-        let (blob, remaining) = buf.decode::<PrefixedBlob<u8>>().unwrap();
-        assert_eq!(blob.blob, &[0x01, 0x02]);
-        assert_eq!(remaining.into_less_safe_slice(), &[0xFF]);
-    }
-
-    #[test]
-    fn prefixed_blob_empty() {
-        let data = [0u8]; // length=0
-        let buf = DecoderBuffer::new(&data);
-        let (blob, remaining) = buf.decode::<PrefixedBlob<u8>>().unwrap();
-        assert!(blob.blob.is_empty());
+        let (blob, remaining) = buf.decode::<PrefixedBlob<u16>>().unwrap();
+        assert_eq!(blob.blob.len(), 256);
         assert!(remaining.is_empty());
+
+        // errors: length exceeds data, missing/truncated length prefix
+        assert!(DecoderBuffer::new(&[5, 0x01, 0x02])
+            .decode::<PrefixedBlob<u8>>()
+            .is_err());
+        assert!(DecoderBuffer::new(&[0x01, 0x00, 0xAA])
+            .decode::<PrefixedBlob<u16>>()
+            .is_err());
+        assert!(DecoderBuffer::new(&[0x01])
+            .decode::<PrefixedBlob<u16>>()
+            .is_err());
     }
 
     #[test]
-    fn prefixed_blob_length_exceeds_data() {
-        let data = [5, 0x01, 0x02]; // claims 5 bytes but only 2 available
-        let buf = DecoderBuffer::new(&data);
-        assert!(buf.decode::<PrefixedBlob<u8>>().is_err());
-    }
-
-    #[test]
-    fn prefixed_blob_missing_length() {
-        let buf = DecoderBuffer::new(&[]);
-        assert!(buf.decode::<PrefixedBlob<u8>>().is_err());
-    }
-
-    // === PrefixedList tests ===
-
-    #[test]
-    fn prefixed_list_u8_elements() {
-        // length=3, then 3 u8 elements
-        let data = [3, 10, 20, 30];
-        let buf = DecoderBuffer::new(&data);
+    fn prefixed_list_decode() {
+        // u8 length prefix, u8 elements
+        let buf = DecoderBuffer::new(&[3, 10, 20, 30]);
         let (list, remaining) = buf.decode::<PrefixedList<u8, u8>>().unwrap();
         assert_eq!(list.list, &[10, 20, 30]);
         assert!(remaining.is_empty());
-    }
 
-    #[test]
-    fn prefixed_list_empty() {
-        let data = [0u8]; // length=0
-        let buf = DecoderBuffer::new(&data);
-        let (list, remaining) = buf.decode::<PrefixedList<u8, u8>>().unwrap();
-        assert!(list.list.is_empty());
+        // u16 length prefix, u16 big-endian elements — verifies endianness of both
+        let buf = DecoderBuffer::new(&[0x00, 0x04, 0x01, 0x02, 0x03, 0x04]);
+        let (list, remaining) = buf
+            .decode::<PrefixedList<u16, zerocopy::network_endian::U16>>()
+            .unwrap();
+        assert_eq!(list.list.len(), 2);
+        assert_eq!(list.list[0].get(), 0x0102);
+        assert_eq!(list.list[1].get(), 0x0304);
         assert!(remaining.is_empty());
-    }
 
-    #[test]
-    fn prefixed_list_insufficient_data() {
-        let data = [5, 1, 2]; // claims 5 bytes but only 2 available
-        let buf = DecoderBuffer::new(&data);
-        assert!(buf.decode::<PrefixedList<u8, u8>>().is_err());
-    }
-
-    #[test]
-    fn prefixed_list_misaligned_length_errors() {
-        // 3 bytes can't be evenly divided into 3-byte elements
-        let data = [4, 0x01, 0x02, 0x03, 0x04];
-        let buf = DecoderBuffer::new(&data);
-        assert!(buf.decode::<PrefixedList<u8, [u8; 3]>>().is_err());
+        // errors: insufficient data
+        assert!(DecoderBuffer::new(&[5, 1, 2])
+            .decode::<PrefixedList<u8, u8>>()
+            .is_err());
+        assert!(DecoderBuffer::new(&[0x00, 0x03, 0x01, 0x02, 0x03])
+            .decode::<PrefixedList<u16, zerocopy::network_endian::U16>>()
+            .is_err());
     }
 }
