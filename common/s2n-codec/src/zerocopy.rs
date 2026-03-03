@@ -181,7 +181,6 @@ macro_rules! zerocopy_network_integer {
             Clone,
             Copy,
             Default,
-            PartialOrd,
             PartialEq,
             Eq,
             Immutable,
@@ -231,6 +230,13 @@ macro_rules! zerocopy_network_integer {
             #[inline]
             fn eq(&self, other: &$native) -> bool {
                 self.get() == *other
+            }
+        }
+
+        impl PartialOrd for $name {
+            #[inline]
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                Some(self.cmp(other))
             }
         }
 
