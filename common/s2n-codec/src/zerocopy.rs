@@ -229,7 +229,7 @@ macro_rules! zerocopy_network_integer {
         impl PartialEq<$native> for $name {
             #[inline]
             fn eq(&self, other: &$native) -> bool {
-                self.get() == *other
+                self.partial_cmp(other) == Some(Ordering::Equal)
             }
         }
 
