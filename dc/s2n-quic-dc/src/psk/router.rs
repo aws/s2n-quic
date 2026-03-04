@@ -56,34 +56,14 @@ mod test {
         let sender = UdpSocket::bind("127.0.0.1:0").await?;
         let target_addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
 
-        // Test packet A: Initial packet with DCID length = 8
-        // Should route to socket 1
-        // Format: [header byte, version (4 bytes), dcid_len, ...]
-        let packet_a = {
-            let mut p = vec![0u8; 32];
-            p[0] = 0xC0; // Initial packet (first 4 bits = 1100)
-            p[1..5].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]); // version
-            p[5] = 0x08; // DCID length = 8
-            p
-        };
+        // Test packet A: The EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET is a client hello Initial packet with a DCID length of eight.
+        let packet_a = s2n_quic_core::crypto::initial::EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET;
 
-        // Test packet B: Handshake packet
-        // Should route to socket 0
-        let packet_b = {
-            let mut p = vec![0u8; 32];
-            p[0] = 0xE0; // Handshake packet first four bits are 1110
-            p
-        };
+        // Test packet B: example retry packet.
+        let packet_b = s2n_quic_core::crypto::retry::example::PACKET;
 
-        // Test packet C: Initial packet but DCID length != 8
-        // Should route to socket 0
-        let packet_c = {
-            let mut p = vec![0u8; 32];
-            p[0] = 0xC0; // Initial packet (first 4 bits = 1100)
-            p[1..5].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]); // version
-            p[5] = 0x10; // DCID length = 16
-            p
-        };
+        // Test packet C: The EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET packet. Its DCID length != 8
+        let packet_c = s2n_quic_core::crypto::initial::EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET;
 
         // Send packets
         sender.send_to(&packet_a, target_addr).await?;
@@ -91,7 +71,7 @@ mod test {
         sender.send_to(&packet_c, target_addr).await?;
 
         // Receive and verify routing
-        let mut buf_socket1 = [0u8; 1024];
+        let mut buf_socket1 = [0u8; 1200];
         let mut buf_packet1_socket0 = [0u8; 1024];
         let mut buf_packet2_socket0 = [0u8; 1024];
 
@@ -124,17 +104,11 @@ mod test {
 
         // Check that one packet matches packet_b (Handshake: header = 0xE0)
         let has_packet_b = received_packets.iter().any(|p| p[..] == packet_b[..]);
-        assert!(
-            has_packet_b,
-            "Socket 1 should receive packet_b (Handshake packet with header 0xE0)"
-        );
+        assert!(has_packet_b);
 
         // Check that one packet matches packet_c (Initial with DCID len = 16)
         let has_packet_c = received_packets.iter().any(|p| p[..] == packet_c[..]);
-        assert!(
-            has_packet_c,
-            "Socket 1 should receive packet_c (Initial packet with DCID len=16)"
-        );
+        assert!(has_packet_c);
 
         // Socket 0 should not have any more packets
         let recv_result = tokio::time::timeout(
