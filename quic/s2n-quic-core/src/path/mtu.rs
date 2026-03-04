@@ -938,13 +938,17 @@ impl timer::Provider for Controller {
 impl transmission::Provider for Controller {
     /// Queries the component for any outgoing frames that need to get sent
     ///
+    /// When called in Normal mode, this method writes the MtuProbingComplete frame
+    /// which can be coalesced with other frames in the packet.
+    ///
+    /// When called in MtuProbing mode, this method writes MTU probing packets.
     /// This method assumes that no other data (other than the packet header) has been written
     /// to the supplied `WriteContext`. This necessitates the caller ensuring the probe packet
     /// written by this method to be in its own connection transmission.
     #[inline]
     fn on_transmit<W: transmission::Writer>(&mut self, context: &mut W) {
         // MtuProbingComplete should be sent in Normal mode, instead of MtuProbing mode so it can be coalesced with other frames.
-        if !context.transmission_mode().is_mtu_probing() {
+        if context.transmission_mode().is_normal() {
             if self.needs_to_send_completion {
                 let frame = frame::MtuProbingComplete::new(self.plpmtu);
                 if context.write_frame(&frame).is_some() {

@@ -1059,5 +1059,6 @@ fn on_transmit() {
         }),
         write_context.frame_buffer.pop_front().unwrap().as_frame()
     );
+    assert!(write_context.frame_buffer.is_empty());
     assert_eq!(State::Searching(packet_number, now), controller.state);
 }

@@ -178,7 +178,10 @@ impl<Config: endpoint::Config> Normal<'_, Config> {
         // complete as soon as possible
         self.dc_manager.on_transmit(context);
 
-        // MtuProbingComplete frame should be sent in Normal packets along with other frames such as ACKs, NewConnectionId, and etc.
+        // The mtu_controller's on_transmit is also called in MtuProbing mode for MTU
+        // discovery probes. This call handles transmission of the MTU_PROBING_COMPLETE
+        // frame, which needs to be sent in Normal mode so it can be coalesced with
+        // other frames.
         self.path_manager
             .active_path_mut()
             .mtu_controller
@@ -213,6 +216,10 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Normal<'_, C
         self.recovery_manager.transmission_interest(query)?;
         self.path_manager
             .active_path()
+            .transmission_interest(query)?;
+        self.path_manager
+            .active_path()
+            .mtu_controller
             .transmission_interest(query)?;
         self.ping.transmission_interest(query)?;
         self.dc_manager.transmission_interest(query)?;
