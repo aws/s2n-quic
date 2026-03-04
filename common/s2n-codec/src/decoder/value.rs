@@ -197,10 +197,7 @@ pub struct PrefixedBlob<'a, L> {
 
 impl<'a, L: Into<usize> + DecoderValue<'a>> DecoderValue<'a> for PrefixedBlob<'a, L> {
     fn decode(bytes: DecoderBuffer<'a>) -> DecoderBufferResult<'a, Self> {
-        let (length, buffer): (L, DecoderBuffer) = bytes.decode()?;
-        let length: usize = length.into();
-
-        let (blob, buffer) = buffer.decode_slice(length)?;
+        let (blob, remaining) = bytes.decode_slice_with_len_prefix::<L>()?;
         let blob = blob.into_less_safe_slice();
 
         let value = Self {
@@ -208,7 +205,7 @@ impl<'a, L: Into<usize> + DecoderValue<'a>> DecoderValue<'a> for PrefixedBlob<'a
             phantom_length: PhantomData,
         };
 
-        Ok((value, buffer))
+        Ok((value, remaining))
     }
 }
 
@@ -229,9 +226,7 @@ impl<'a, L: Into<usize> + DecoderValue<'a>, T: FromBytes + Immutable + Unaligned
     for PrefixedList<'a, L, T>
 {
     fn decode(bytes: DecoderBuffer<'a>) -> DecoderBufferResult<'a, Self> {
-        let (length, buffer): (L, DecoderBuffer) = bytes.decode()?;
-        let length: usize = length.into();
-        let (blob, buffer) = buffer.decode_slice(length)?;
+        let (blob, remaining) = bytes.decode_slice_with_len_prefix::<L>()?;
         let blob = blob.into_less_safe_slice();
         let list = FromBytes::ref_from_bytes(blob).map_err(|_| {
             DecoderError::InvariantViolation("blob length is not a multiple of element size")
@@ -242,7 +237,7 @@ impl<'a, L: Into<usize> + DecoderValue<'a>, T: FromBytes + Immutable + Unaligned
             phantom_length: PhantomData,
         };
 
-        Ok((value, buffer))
+        Ok((value, remaining))
     }
 }
 
@@ -315,7 +310,7 @@ mod tests {
 
         // u16 big-endian length = 256 (0x01, 0x00) — verifies endianness
         let mut data = vec![0x01, 0x00];
-        data.extend(core::iter::repeat(0xFFu8).take(256));
+        data.extend(core::iter::repeat_n(0xFFu8, 256));
         let buf = DecoderBuffer::new(&data);
         let (blob, remaining) = buf.decode::<PrefixedBlob<u16>>().unwrap();
         assert_eq!(blob.blob.len(), 256);

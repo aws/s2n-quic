@@ -436,8 +436,7 @@ pub enum DecoderError {
     InvariantViolation(&'static str), // TODO replace with a &'static Invariant
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for DecoderError {}
+impl core::error::Error for DecoderError {}
 
 use core::fmt;
 impl fmt::Display for DecoderError {
