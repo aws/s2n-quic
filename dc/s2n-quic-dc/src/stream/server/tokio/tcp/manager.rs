@@ -270,7 +270,7 @@ where
         };
 
         match res {
-            Ok(ControlFlow::Continue(())) => {
+            Ok(WorkerOutput::RecordSojournTime) => {
                 let now = clock.get_time();
                 // update the accept_time estimate
                 self.sojourn_time.update_rtt(
@@ -281,7 +281,10 @@ where
                     PacketNumberSpace::ApplicationData,
                 );
             }
-            Ok(ControlFlow::Break(())) => {
+            Ok(WorkerOutput::Continue) => {
+                // no-op
+            }
+            Ok(WorkerOutput::Exit) => {
                 cf = ControlFlow::Break(());
             }
             Err(err) => publisher.on_acceptor_tcp_io_error(event::builder::AcceptorTcpIoError {
@@ -376,6 +379,22 @@ pub struct WorkerError {
     pub source: AcceptorTcpIoErrorSource,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum WorkerOutput {
+    /// Worker finished, and we should record how long it took to process this stream to update our
+    /// eviction times.
+    RecordSojournTime,
+
+    /// Worker finished, and sojourn time should not be recorded. This is used for accepted TLS
+    /// streams, which are dispatched to a separate runtime for actual processing. That runtime
+    /// manages its own resources and so we don't track the sojourn times here.
+    Continue,
+
+    /// The worker found state that means we need to shutdown the acceptor as a whole. Currently
+    /// this means the application queue receiver was dropped.
+    Exit,
+}
+
 pub(crate) trait Worker {
     type Context;
     type ConnectionContext;
@@ -399,7 +418,7 @@ pub(crate) trait Worker {
         cx: &mut Self::Context,
         publisher: &Pub,
         clock: &C,
-    ) -> Poll<Result<ControlFlow<()>, WorkerError>>
+    ) -> Poll<Result<WorkerOutput, WorkerError>>
     where
         Pub: EndpointPublisher,
         C: Clock;

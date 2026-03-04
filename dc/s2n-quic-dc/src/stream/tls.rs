@@ -19,10 +19,13 @@
 
 use s2n_quic_core::{
     buffer::{reader::Incremental, writer::Storage as _, Writer as _},
-    time::Timestamp,
+    event::IntoEvent,
+    inet::ExplicitCongestionNotification,
+    time::{Clock, Timestamp},
     varint::VarInt,
 };
 use std::{
+    cell::UnsafeCell,
     io,
     sync::{Arc, Mutex},
     task::Poll,
@@ -30,7 +33,14 @@ use std::{
 };
 use tokio::net::TcpStream;
 
-use crate::stream::socket::{application::Single, Application};
+use crate::{
+    msg,
+    stream::{
+        environment::{tokio::Environment, Environment as _},
+        recv,
+        socket::{application::Single, Application},
+    },
+};
 
 pub struct S2nTlsConnection {
     socket: Arc<Single<TcpStream>>,
@@ -61,13 +71,17 @@ impl S2nTlsConnection {
         })
     }
 
-    pub(crate) async fn negotiate(&mut self) -> io::Result<()> {
+    pub(crate) async fn negotiate(
+        &mut self,
+        mut initial_read_buffer: Option<crate::msg::recv::Message>,
+    ) -> io::Result<()> {
         std::future::poll_fn(|cx| -> Poll<io::Result<()>> {
             let connection = &mut self.connection.get_mut().unwrap().0;
 
             let context = NegotiateContext {
                 socket: &self.socket,
                 waker: cx.waker(),
+                initial_read_buffer: initial_read_buffer.as_mut(),
             };
 
             let mut connection = CallbackResetGuard {
@@ -78,16 +92,34 @@ impl S2nTlsConnection {
 
             connection.set_receive_callback(Some(recv_direct_cb))?;
             connection.set_send_callback(Some(send_direct_cb))?;
+            connection.set_waker(Some(cx.waker()))?;
 
             let mut connection = connection.set_context(&context);
 
             let res = match connection.poll_negotiate() {
-                Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
+                Poll::Ready(Ok(_)) => {
+                    drop(connection);
+
+                    // No trailing bytes allowed. The connection when initially accepted shouldn't
+                    // have any additional records after the ClientHello -- such records require
+                    // the server to have responded with something, which can only happen after
+                    // ClientHello is read by s2n-tls here. If there is extra data that is treated
+                    // as an error and the connection is closed.
+                    if let Some(buffer) = &mut initial_read_buffer {
+                        if !buffer.is_empty() {
+                            let e = io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                "received data pre-handshake",
+                            );
+                            return Poll::Ready(Err(e));
+                        }
+                    }
+
+                    Poll::Ready(Ok(()))
+                }
                 Poll::Ready(Err(e)) => Poll::Ready(Err(e.into())),
                 Poll::Pending => Poll::Pending,
             };
-
-            drop(connection);
 
             res
         })
@@ -245,6 +277,7 @@ impl S2nTlsConnection {
 struct NegotiateContext<'a> {
     socket: &'a Single<TcpStream>,
     waker: &'a std::task::Waker,
+    initial_read_buffer: Option<&'a mut crate::msg::recv::Message>,
 }
 
 /// The function should return the number of bytes received, or set errno and return an error code < 0.
@@ -254,7 +287,7 @@ unsafe extern "C" fn recv_direct_cb<'a>(
     buf: *mut u8,
     len: u32,
 ) -> i32 {
-    let ctx = ctx.cast::<NegotiateContext<'a>>().as_ref::<'a>().unwrap();
+    let ctx = ctx.cast::<NegotiateContext<'a>>().as_mut::<'a>().unwrap();
 
     let mut cx = std::task::Context::from_waker(ctx.waker);
 
@@ -262,8 +295,21 @@ unsafe extern "C" fn recv_direct_cb<'a>(
     // uninit-compatible socket read API. In practice the buffer isn't read from but this is
     // potential undefined behavior.
     let buf = std::slice::from_raw_parts_mut(buf, len as usize);
-    let buf = std::io::IoSliceMut::new(buf);
 
+    // Consume from the initial read buffer before we read from the socket.
+    if let Some(initial_read_buffer) = ctx.initial_read_buffer.as_mut() {
+        let peeked = initial_read_buffer.peek();
+
+        let consumed = std::cmp::min(buf.len(), peeked.len());
+        buf[..consumed].copy_from_slice(&peeked[..consumed]);
+        initial_read_buffer.consume(consumed);
+
+        if consumed > 0 {
+            return consumed as i32;
+        }
+    }
+
+    let buf = std::io::IoSliceMut::new(buf);
     let mut addr = Default::default();
     let mut cmsg = Default::default();
 
@@ -500,3 +546,137 @@ impl Drop for CallbackResetGuard<'_> {
         }
     }
 }
+
+pub(crate) fn build_stream<Sub>(
+    addr: std::net::SocketAddr,
+    socket: Arc<Single<TcpStream>>,
+    s2n_connection: crate::stream::tls::S2nTlsConnection,
+    env: &Environment<Sub>,
+    // FIXME: Do we really need the map for this?
+    map: &crate::path::secret::Map,
+    endpoint_type: s2n_quic_core::endpoint::Type,
+) -> io::Result<crate::stream::application::Builder<Sub>>
+where
+    Sub: crate::event::Subscriber + Clone,
+{
+    // The handshake is complete at this point, so the stream should be considered open. Eventually
+    // at this point we'll want to export the TLS keys from the connection and add those into the
+    // state below. Right now though we're continuing to use s2n-tls for maintaining relevant
+    // state.
+
+    // if the ip isn't known, then ask the socket to resolve it for us
+    let peer_addr = if addr.ip().is_unspecified() {
+        socket.0.peer_addr()?
+    } else {
+        addr
+    };
+
+    let stream_id = crate::packet::stream::Id {
+        queue_id: VarInt::ZERO,
+        is_reliable: true,
+        is_bidirectional: true,
+    };
+
+    let params = s2n_quic_core::dc::ApplicationParams::new(
+        1 << 14,
+        &Default::default(),
+        &Default::default(),
+    );
+
+    let meta = crate::event::api::ConnectionMeta {
+        id: 0, // TODO use an actual connection ID
+        timestamp: env.clock().get_time().into_event(),
+    };
+    let info = crate::event::api::ConnectionInfo {};
+
+    let subscriber = env.subscriber().clone();
+    let subscriber_ctx = subscriber.create_connection_context(&meta, &info);
+
+    // Fake up a secret -- this will need some reworking to store the keys in the TLS state
+    // probably?
+    let mut secret = [0; 32];
+    aws_lc_rs::rand::fill(&mut secret).unwrap();
+    let secret = crate::path::secret::schedule::Secret::new(
+        crate::path::secret::schedule::Ciphersuite::AES_GCM_128_SHA256,
+        s2n_quic_core::dc::SUPPORTED_VERSIONS[0],
+        endpoint_type,
+        &secret,
+    );
+
+    let common = {
+        let application = crate::stream::send::application::state::State { is_reliable: true };
+
+        let fixed = crate::stream::shared::FixedValues {
+            remote_ip: UnsafeCell::new(peer_addr.ip().into()),
+            application: UnsafeCell::new(application),
+            credentials: UnsafeCell::new(crate::credentials::Credentials {
+                id: crate::credentials::Id::from([1; 16]),
+                key_id: VarInt::ZERO,
+            }),
+        };
+
+        crate::stream::shared::Common {
+            clock: env.clock().clone(),
+            gso: env.gso(),
+            remote_port: peer_addr.port().into(),
+            remote_queue_id: stream_id.queue_id.as_u64().into(),
+            local_queue_id: u64::MAX.into(),
+            last_peer_activity: Default::default(),
+            fixed,
+            closed_halves: 0u8.into(),
+            subscriber: crate::stream::shared::Subscriber {
+                subscriber,
+                context: subscriber_ctx,
+            },
+            s2n_connection: Some(s2n_connection),
+        }
+    };
+
+    let pair = crate::path::secret::map::ApplicationPair::new(
+        &secret,
+        VarInt::ZERO,
+        crate::path::secret::schedule::Initiator::Local,
+        // Not currently actually using these credentials.
+        crate::path::secret::map::Dedup::disabled(),
+    );
+    let shared = Arc::new(crate::stream::shared::Shared {
+        receiver: crate::stream::recv::shared::State::new(
+            stream_id,
+            &params,
+            crate::stream::TransportFeatures::TCP,
+            crate::stream::recv::shared::RecvBuffer::A(recv::buffer::Local::new(
+                // FIXME: Maybe use a larger buffer fitting the TLS record size (14kb)?
+                msg::recv::Message::new(9000),
+                None,
+            )),
+            endpoint_type,
+            &env.clock(),
+        ),
+        sender: crate::stream::send::shared::State::new(
+            crate::stream::send::flow::non_blocking::State::new(VarInt::MAX),
+            crate::stream::send::path::Info {
+                max_datagram_size: params.max_datagram_size(),
+                send_quantum: 10,
+                ecn: ExplicitCongestionNotification::Ect0,
+                next_expected_control_packet: VarInt::ZERO,
+            },
+            None,
+        ),
+        crypto: crate::stream::shared::Crypto::new(pair.sealer, pair.opener, None, map),
+        common,
+    });
+
+    let read = crate::stream::recv::application::Builder::new(endpoint_type, env.reader_rt());
+    let write = crate::stream::send::application::Builder::new(env.writer_rt());
+
+    Ok(crate::stream::application::Builder {
+        read,
+        write,
+        shared,
+        sockets: Box::new(socket),
+        queue_time: env.clock().get_time(),
+    })
+}
+
+#[cfg(test)]
+mod test;

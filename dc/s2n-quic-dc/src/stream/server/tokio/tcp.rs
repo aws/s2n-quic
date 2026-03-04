@@ -18,6 +18,7 @@ use tracing::debug;
 mod fresh;
 mod lazy;
 mod manager;
+pub mod tls;
 pub mod worker;
 
 pub(crate) use lazy::LazyBoundStream;

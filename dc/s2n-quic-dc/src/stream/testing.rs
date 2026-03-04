@@ -838,7 +838,7 @@ pub mod server {
                         let local_addr = socket.local_addr().unwrap();
                         let socket = ::tokio::io::unix::AsyncFd::new(socket).unwrap();
                         let channel_behavior =
-                            stream_server::tokio::tcp::worker::DefaultBehavior::new(&sender);
+                            stream_server::tokio::tcp::worker::DefaultBehavior::new(&sender, None);
 
                         let acceptor = stream_server::tokio::tcp::Acceptor::new(
                             0,
