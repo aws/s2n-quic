@@ -44,7 +44,7 @@ use crate::{
 
 pub struct S2nTlsConnection {
     socket: Arc<Single<TcpStream>>,
-    connection: Mutex<(s2n_tls::connection::Connection, ReadState)>,
+    connection: Mutex<(Conn, ReadState)>,
 }
 
 struct ReadState {
@@ -52,12 +52,30 @@ struct ReadState {
     buffer: bytes::BytesMut,
 }
 
+pub type Conn = Box<dyn AsMut<s2n_tls::connection::Connection> + Send>;
+
+pub trait ConnectionBuilder: Send + Sync {
+    fn build_connection(&self, mode: s2n_tls::enums::Mode) -> Result<Conn, s2n_tls::error::Error>;
+}
+
+impl<B> ConnectionBuilder for B
+where
+    B: s2n_tls::connection::Builder + Send + Sync,
+    B::Output: Send + 'static,
+{
+    fn build_connection(&self, mode: s2n_tls::enums::Mode) -> Result<Conn, s2n_tls::error::Error> {
+        Ok(Box::new(self.build_connection(mode)?))
+    }
+}
+
 impl S2nTlsConnection {
     pub fn from_connection(
         socket: Arc<Single<TcpStream>>,
-        mut connection: s2n_tls::connection::Connection,
+        mut connection: Conn,
     ) -> io::Result<Self> {
-        connection.set_blinding(s2n_tls::enums::Blinding::SelfService)?;
+        (*connection)
+            .as_mut()
+            .set_blinding(s2n_tls::enums::Blinding::SelfService)?;
 
         Ok(S2nTlsConnection {
             socket,
@@ -85,7 +103,7 @@ impl S2nTlsConnection {
             };
 
             let mut connection = CallbackResetGuard {
-                conn: connection,
+                conn: (**connection).as_mut(),
                 reset_write: true,
                 reset_read: true,
             };
@@ -138,7 +156,7 @@ impl S2nTlsConnection {
     {
         let mut guard = self.connection.lock().unwrap();
         let conn = CallbackResetGuard {
-            conn: &mut guard.0,
+            conn: (*guard.0).as_mut(),
             reset_write: true,
             reset_read: false,
         };
@@ -201,7 +219,7 @@ impl S2nTlsConnection {
         let mut guard = self.connection.lock().unwrap();
         let (conn, read_state) = &mut *guard;
         let conn = CallbackResetGuard {
-            conn,
+            conn: (**conn).as_mut(),
             reset_write: false,
             reset_read: true,
         };

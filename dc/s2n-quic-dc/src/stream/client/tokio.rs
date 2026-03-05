@@ -241,7 +241,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         &self,
         addr: SocketAddr,
         server_name: Name,
-        config: &s2n_tls::config::Config,
+        config: &impl crate::stream::TlsConnectionBuilder,
     ) -> io::Result<Stream<S>> {
         let stream = client::connect_tls(
             addr,
@@ -655,7 +655,7 @@ fn recv_buffer() -> recv::shared::RecvBuffer {
 pub async fn connect_tls<Sub>(
     addr: SocketAddr,
     server_name: Name,
-    config: &s2n_tls::config::Config,
+    config: &impl crate::stream::TlsConnectionBuilder,
     env: &Environment<Sub>,
     linger: Option<Duration>,
     // FIXME: Do we really need the map for this?
@@ -674,9 +674,8 @@ where
         let _ = socket.set_linger(linger);
     }
 
-    use s2n_tls::connection::Builder as _;
     let mut connection = config.build_connection(s2n_tls::enums::Mode::Client)?;
-    connection.set_server_name(&server_name)?;
+    (*connection).as_mut().set_server_name(&server_name)?;
 
     let socket = Arc::new(crate::stream::socket::application::Single(socket));
     let mut connection =

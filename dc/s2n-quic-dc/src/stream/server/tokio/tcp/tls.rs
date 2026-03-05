@@ -22,13 +22,12 @@ use crate::{
     stream::environment::{tokio::Environment, Environment as _},
 };
 use s2n_quic_core::time::{Clock as _, Timestamp};
-use s2n_tls::config::Config as S2nConfig;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 
 pub struct Builder {
     pub rt: Arc<tokio::runtime::Runtime>,
-    pub config: S2nConfig,
+    pub config: Arc<dyn TlsConnectionBuilder>,
 }
 
 impl Builder {
@@ -52,7 +51,7 @@ where
     Sub: event::Subscriber + Clone,
 {
     rt: Option<Arc<tokio::runtime::Runtime>>,
-    config: S2nConfig,
+    config: Arc<dyn TlsConnectionBuilder>,
     sender: accept::Sender<Sub>,
     env: Environment<Sub>,
     map: secret::Map,
@@ -74,9 +73,9 @@ impl<Sub> TlsServer<Sub>
 where
     Sub: event::Subscriber + Clone,
 {
-    pub fn new(
+    fn new(
         rt: Arc<tokio::runtime::Runtime>,
-        config: S2nConfig,
+        config: Arc<dyn TlsConnectionBuilder>,
         sender: accept::Sender<Sub>,
         env: Environment<Sub>,
         map: secret::Map,
@@ -126,9 +125,7 @@ where
         buffer: crate::msg::recv::Message,
         kernel_accept_time: Timestamp,
     ) -> Result<(), s2n_tls::error::Error> {
-        let mut conn = s2n_tls::connection::Connection::new_server();
-        conn.set_config(self.config.clone())?;
-        conn.set_blinding(s2n_tls::enums::Blinding::SelfService)?;
+        let conn = self.config.build_connection(s2n_tls::enums::Mode::Server)?;
 
         // Rather than cloning we can keep accessing them from `self` if we used poll-like
         // workers...
@@ -173,7 +170,7 @@ async fn accept_conn<Sub: event::Subscriber + Clone>(
     socket: super::LazyBoundStream,
     remote_addr: s2n_quic_core::inet::SocketAddress,
     buffer: crate::msg::recv::Message,
-    conn: s2n_tls::connection::Connection,
+    conn: crate::stream::TlsConnection,
     sender: accept::Sender<Sub>,
     env: &Environment<Sub>,
     map: secret::Map,

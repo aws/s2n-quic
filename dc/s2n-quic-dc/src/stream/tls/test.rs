@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::Arc;
+
 use crate::{
     stream::client::tokio::Client,
     testing::{NoopSubscriber, TestTlsProvider},
@@ -390,7 +392,7 @@ impl crate::stream::server::tokio::Handshake for DummyHandshake {
                     .build()
                     .unwrap(),
             ),
-            config: server_config(),
+            config: Arc::new(server_config()),
         })
     }
 }
