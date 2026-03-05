@@ -179,34 +179,22 @@ where
                 kernel_accept_time,
             );
 
-            match tokio::time::timeout(timeout, fut).await {
-                Ok(Ok(())) => {}
-                Err(tokio::time::error::Elapsed { .. }) => {
-                    env.endpoint_publisher()
-                        .on_acceptor_tcp_tls_stream_rejected(
-                            event::builder::AcceptorTcpTlsStreamRejected {
-                                remote_address: &remote_addr,
-                                sojourn_time: env
-                                    .clock()
-                                    .get_time()
-                                    .saturating_duration_since(kernel_accept_time),
-                                error: &std::io::Error::from(std::io::ErrorKind::TimedOut),
-                            },
-                        );
-                }
-                Ok(Err(error)) => {
-                    env.endpoint_publisher()
-                        .on_acceptor_tcp_tls_stream_rejected(
-                            event::builder::AcceptorTcpTlsStreamRejected {
-                                remote_address: &remote_addr,
-                                sojourn_time: env
-                                    .clock()
-                                    .get_time()
-                                    .saturating_duration_since(kernel_accept_time),
-                                error: &error,
-                            },
-                        );
-                }
+            let result = tokio::time::timeout(timeout, fut)
+                .await
+                .unwrap_or_else(|_| Err(std::io::Error::from(std::io::ErrorKind::TimedOut)));
+
+            if let Err(error) = result {
+                env.endpoint_publisher()
+                    .on_acceptor_tcp_tls_stream_rejected(
+                        event::builder::AcceptorTcpTlsStreamRejected {
+                            remote_address: &remote_addr,
+                            sojourn_time: env
+                                .clock()
+                                .get_time()
+                                .saturating_duration_since(kernel_accept_time),
+                            error: &error,
+                        },
+                    );
             }
         });
         Ok(())
