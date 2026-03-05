@@ -43,6 +43,8 @@ struct PacketSent {
     #[measure("bytes", Bytes)]
     #[counter("bytes.total", Bytes)]
     packet_len: usize,
+    #[nominal_counter("transmission_mode")]
+    transmission_mode: TransmissionMode,
 }
 
 #[event("transport:packet_received")]

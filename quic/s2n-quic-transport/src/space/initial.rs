@@ -235,6 +235,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
                     context.publisher.quic_version(),
                 ),
                 packet_len: outcome.bytes_sent,
+                transmission_mode: context.transmission_mode.into_event(),
             });
 
         Ok((outcome, buffer))
@@ -306,6 +307,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
                     context.publisher.quic_version(),
                 ),
                 packet_len: outcome.bytes_sent,
+                transmission_mode: transmission::Mode::Normal.into_event(),
             });
 
         Ok((outcome, buffer))
