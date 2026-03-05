@@ -19,18 +19,25 @@ use crate::{
     event,
     event::EndpointPublisher,
     path::secret,
-    stream::environment::{tokio::Environment, Environment as _},
+    stream::{
+        environment::{tokio::Environment, Environment as _},
+        TlsConnectionBuilder,
+    },
 };
 use s2n_quic_core::time::{Clock as _, Timestamp};
 use std::sync::Arc;
 use tokio::net::TcpStream;
 
 pub struct Builder {
-    pub rt: Arc<tokio::runtime::Runtime>,
-    pub config: Arc<dyn TlsConnectionBuilder>,
+    rt: Arc<tokio::runtime::Runtime>,
+    config: Arc<dyn TlsConnectionBuilder>,
 }
 
 impl Builder {
+    pub fn new(rt: Arc<tokio::runtime::Runtime>, config: Arc<dyn TlsConnectionBuilder>) -> Self {
+        Self { rt, config }
+    }
+
     pub(crate) fn build<Sub>(
         self,
         sender: accept::Sender<Sub>,
