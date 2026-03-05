@@ -158,15 +158,14 @@ where
     ) -> Result<(), s2n_tls::error::Error> {
         let conn = self.config.build_connection(s2n_tls::enums::Mode::Server)?;
 
-        // Rather than cloning we can keep accessing them from `self` if we used poll-like
-        // workers...
+        // FIXME: Rather than cloning we can keep accessing them from `self` if we used poll-like
+        // workers. This would also let us constrain concurrency and prioritize handshakes
+        // (LIFO/FIFO/etc) more intelligently.
         let sender = self.sender.clone();
         let env = self.env.clone();
         let map = self.map.clone();
         let flavor = self.accept_flavor;
         let timeout = self.timeout;
-        // We should be tracking the spawned tasks and aborting them if they take too long to avoid
-        // building up resources, similar to the worker implementation (via sojourn times or so)...
         self.rt.as_ref().unwrap().spawn(async move {
             let fut = accept_conn(
                 socket,
