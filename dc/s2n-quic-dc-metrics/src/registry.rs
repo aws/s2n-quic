@@ -33,7 +33,7 @@ pub(crate) struct RegistryInner {
 }
 
 impl RegistryInner {
-    pub fn try_take_current_metrics_line(&mut self) -> Option<String> {
+    pub fn try_take_current_metrics_line(&mut self, include_sparse: bool) -> Option<String> {
         if !self.is_open {
             return None;
         }
@@ -47,8 +47,8 @@ impl RegistryInner {
         let mut first = true;
         for (key, value) in self.metrics.iter_mut() {
             let v = match value {
-                MetricValue::Counter(c) => c.take_current(),
-                MetricValue::Summary(s) => s.take_current(),
+                MetricValue::Counter(c) => c.take_current(include_sparse),
+                MetricValue::Summary(s) => s.take_current(include_sparse),
                 MetricValue::BoolCounter(b) => b.take_current(),
                 MetricValue::ValueList(c) => c.take_current(),
             };
@@ -264,7 +264,26 @@ impl Registry {
         self.inner
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .try_take_current_metrics_line()
+            .try_take_current_metrics_line(true)
+    }
+
+    /// Computes and returns the latest metrics line (or None if the registry has been closed).
+    ///
+    /// This function, unlike the non `_sparse` variants, supports omitting registered providers
+    /// that don't currently have any values to report. This avoids skewing collected data by
+    /// polluting with zeros, but does mean that aggregation systems which timeout metrics not
+    /// being emitted may lose track of metrics as a result, or it may make it harder to ensure
+    /// alarms fire if they're misconfigured (i.e., treating missing data as breaching).
+    ///
+    /// Depending on the deployment, different strategies for setting `include_sparse` may make
+    /// sense. For example, it might be best to only include sparse metrics from one host (if the
+    /// fleet is large) or with some low probability, depending on frequency of calls and
+    /// sparseness support in the underlying data store.
+    pub fn try_take_current_metrics_line_sparse(&self, include_sparse: bool) -> Option<String> {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .try_take_current_metrics_line(include_sparse)
     }
 
     /// Returns `true` if the registry is open
