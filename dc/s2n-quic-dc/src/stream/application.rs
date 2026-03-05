@@ -220,6 +220,10 @@ where
     pub fn into_split(self) -> (Reader<Sub>, Writer<Sub>) {
         (self.read, self.write)
     }
+
+    pub fn query_event_context<C: 'static, R>(&self, query: impl FnOnce(&C) -> R) -> Option<R> {
+        self.read.query_event_context(query)
+    }
 }
 
 #[cfg(feature = "tokio")]
