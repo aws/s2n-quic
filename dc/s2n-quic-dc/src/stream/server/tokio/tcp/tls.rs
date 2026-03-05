@@ -25,17 +25,30 @@ use crate::{
     },
 };
 use s2n_quic_core::time::{Clock as _, Timestamp};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tokio::net::TcpStream;
 
 pub struct Builder {
     rt: Arc<tokio::runtime::Runtime>,
     config: Arc<dyn TlsConnectionBuilder>,
+    timeout: Duration,
 }
 
 impl Builder {
     pub fn new(rt: Arc<tokio::runtime::Runtime>, config: Arc<dyn TlsConnectionBuilder>) -> Self {
-        Self { rt, config }
+        Self {
+            rt,
+            config,
+            timeout: Duration::from_secs(1),
+        }
+    }
+
+    /// Set a timeout for negotiating incoming TLS handshakes.
+    ///
+    /// After this timeout elapses, the stream is closed.
+    pub fn with_negotiate_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
     }
 
     pub(crate) fn build<Sub>(
@@ -48,7 +61,15 @@ impl Builder {
     where
         Sub: event::Subscriber + Clone,
     {
-        TlsServer::new(self.rt, self.config, sender, env, map, accept_flavor)
+        TlsServer::new(
+            self.rt,
+            self.config,
+            sender,
+            env,
+            map,
+            accept_flavor,
+            self.timeout,
+        )
     }
 }
 
@@ -63,6 +84,7 @@ where
     env: Environment<Sub>,
     map: secret::Map,
     accept_flavor: accept::Flavor,
+    timeout: std::time::Duration,
 }
 
 impl<Sub> Drop for TlsServer<Sub>
@@ -87,6 +109,7 @@ where
         env: Environment<Sub>,
         map: secret::Map,
         accept_flavor: accept::Flavor,
+        timeout: Duration,
     ) -> Self {
         TlsServer {
             rt: Some(rt),
@@ -95,6 +118,7 @@ where
             env,
             map,
             accept_flavor,
+            timeout,
         }
     }
 
@@ -140,10 +164,11 @@ where
         let env = self.env.clone();
         let map = self.map.clone();
         let flavor = self.accept_flavor;
+        let timeout = self.timeout;
         // We should be tracking the spawned tasks and aborting them if they take too long to avoid
         // building up resources, similar to the worker implementation (via sojourn times or so)...
         self.rt.as_ref().unwrap().spawn(async move {
-            if let Err(error) = accept_conn(
+            let fut = accept_conn(
                 socket,
                 remote_addr,
                 buffer,
@@ -153,20 +178,36 @@ where
                 map,
                 flavor,
                 kernel_accept_time,
-            )
-            .await
-            {
-                env.endpoint_publisher()
-                    .on_acceptor_tcp_tls_stream_rejected(
-                        event::builder::AcceptorTcpTlsStreamRejected {
-                            remote_address: &remote_addr,
-                            sojourn_time: env
-                                .clock()
-                                .get_time()
-                                .saturating_duration_since(kernel_accept_time),
-                            error: &error,
-                        },
-                    );
+            );
+
+            match tokio::time::timeout(timeout, fut).await {
+                Ok(Ok(())) => {}
+                Err(tokio::time::error::Elapsed { .. }) => {
+                    env.endpoint_publisher()
+                        .on_acceptor_tcp_tls_stream_rejected(
+                            event::builder::AcceptorTcpTlsStreamRejected {
+                                remote_address: &remote_addr,
+                                sojourn_time: env
+                                    .clock()
+                                    .get_time()
+                                    .saturating_duration_since(kernel_accept_time),
+                                error: &std::io::Error::from(std::io::ErrorKind::TimedOut),
+                            },
+                        );
+                }
+                Ok(Err(error)) => {
+                    env.endpoint_publisher()
+                        .on_acceptor_tcp_tls_stream_rejected(
+                            event::builder::AcceptorTcpTlsStreamRejected {
+                                remote_address: &remote_addr,
+                                sojourn_time: env
+                                    .clock()
+                                    .get_time()
+                                    .saturating_duration_since(kernel_accept_time),
+                                error: &error,
+                            },
+                        );
+                }
             }
         });
         Ok(())
