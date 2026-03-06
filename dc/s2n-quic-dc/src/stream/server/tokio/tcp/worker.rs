@@ -480,9 +480,7 @@ where
                 let creds = stream_builder.shared.credentials();
                 let credential_id = &*creds.id;
                 let stream_id = creds.key_id.as_u64();
-                let now = clock.get_time();
-                let sojourn_time = now.saturating_duration_since(queue_time);
-                stream_builder.app_queue_time = Some(now);
+                let sojourn_time = clock.get_time().saturating_duration_since(queue_time);
                 publisher.on_acceptor_tcp_stream_enqueued(
                     event::builder::AcceptorTcpStreamEnqueued {
                         remote_address,

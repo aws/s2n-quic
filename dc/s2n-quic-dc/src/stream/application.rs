@@ -43,7 +43,7 @@ where
             let now = self.shared.common.clock.get_time();
             let total_sojourn_time = now.saturating_duration_since(self.kernel_start_time);
             let queue_sojourn_time =
-                now.saturating_duration_since(self.app_queue_time.expect("server builder"));
+                now.saturating_duration_since(self.app_queue_time.expect("set by accept_stream"));
 
             self.shared
                 .endpoint_publisher(now)
