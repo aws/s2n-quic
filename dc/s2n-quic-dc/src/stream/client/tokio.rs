@@ -665,6 +665,7 @@ where
     Sub: event::Subscriber + Clone,
 {
     let socket = TcpStream::connect(addr).await?;
+    let kernel_start_time = env.clock().get_time();
 
     // Make sure TCP_NODELAY is set
     let _ = socket.set_nodelay(true);
@@ -689,6 +690,7 @@ where
     // state.
 
     crate::stream::tls::build_stream(
+        kernel_start_time,
         addr,
         socket,
         connection,

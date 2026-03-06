@@ -231,7 +231,8 @@ async fn accept_conn<Sub: event::Subscriber + Clone>(
     // state below. Right now though we're continuing to use s2n-tls for maintaining relevant
     // state.
 
-    let stream_builder = crate::stream::tls::build_stream(
+    let mut stream_builder = crate::stream::tls::build_stream(
+        kernel_accept_time,
         remote_addr.into(),
         socket,
         connection,
@@ -244,6 +245,7 @@ async fn accept_conn<Sub: event::Subscriber + Clone>(
         let remote_address: s2n_quic_core::inet::SocketAddress =
             stream_builder.shared.remote_addr();
         let remote_address = &remote_address;
+        stream_builder.app_queue_time = Some(env.clock().get_time());
         env.endpoint_publisher()
             .on_acceptor_tcp_tls_stream_enqueued(event::builder::AcceptorTcpTlsStreamEnqueued {
                 remote_address,

@@ -566,6 +566,7 @@ impl Drop for CallbackResetGuard<'_> {
 }
 
 pub(crate) fn build_stream<Sub>(
+    kernel_start_time: Timestamp,
     addr: std::net::SocketAddr,
     socket: Arc<Single<TcpStream>>,
     s2n_connection: crate::stream::tls::S2nTlsConnection,
@@ -692,7 +693,8 @@ where
         write,
         shared,
         sockets: Box::new(socket),
-        queue_time: env.clock().get_time(),
+        kernel_start_time,
+        app_queue_time: None,
     })
 }
 

@@ -109,7 +109,7 @@ pub fn derive_stream_credentials(
 
 #[inline]
 pub fn accept_stream<Env, P>(
-    now: Timestamp,
+    kernel_start_time: Timestamp,
     env: &Env,
     peer: P,
     packet: &server::InitialPacket,
@@ -138,7 +138,7 @@ where
     let subscriber = env.subscriber().clone();
 
     let res = build_stream(
-        now,
+        kernel_start_time,
         env,
         peer,
         stream_id,
@@ -151,7 +151,10 @@ where
     );
 
     match res {
-        Ok(stream) => Ok(stream),
+        Ok(mut stream) => {
+            stream.app_queue_time = Some(env.clock().get_time());
+            Ok(stream)
+        }
         Err(error) => {
             let error = AcceptError {
                 secret_control,
@@ -164,7 +167,7 @@ where
 
 #[inline]
 fn build_stream<Env, P>(
-    now: Timestamp,
+    kernel_start_time: Timestamp,
     env: &Env,
     peer: P,
     stream_id: packet::stream::Id,
@@ -191,7 +194,7 @@ where
         features,
         recv_buffer,
         endpoint_type,
-        &now,
+        &env.clock(),
     );
 
     let writer = {
@@ -373,7 +376,8 @@ where
         write,
         shared,
         sockets: sockets.application,
-        queue_time: now,
+        kernel_start_time,
+        app_queue_time: None,
     };
 
     Ok(stream)
