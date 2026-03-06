@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::Arc;
+
 use crate::{
     stream::client::tokio::Client,
     testing::{NoopSubscriber, TestTlsProvider},
@@ -88,6 +90,15 @@ async fn dc_server(
         .with_address("127.0.0.1:0".parse().unwrap())
         .with_udp(false)
         .with_tcp(true)
+        .with_tls(crate::stream::server::tokio::tcp::tls::Builder::new(
+            std::sync::Arc::new(
+                tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap(),
+            ),
+            Arc::new(server_config()),
+        ))
         .build(handshake, crate::event::tracing::Subscriber::default())
         .unwrap()
 }
@@ -380,18 +391,6 @@ impl crate::stream::server::tokio::Handshake for DummyHandshake {
 
     fn map(&self) -> &crate::path::secret::Map {
         self.hs.map()
-    }
-
-    fn server_tls(&self) -> Option<crate::stream::server::tokio::tcp::tls::Builder> {
-        Some(crate::stream::server::tokio::tcp::tls::Builder {
-            rt: std::sync::Arc::new(
-                tokio::runtime::Builder::new_multi_thread()
-                    .enable_all()
-                    .build()
-                    .unwrap(),
-            ),
-            config: server_config(),
-        })
     }
 }
 

@@ -19,19 +19,38 @@ use crate::{
     event,
     event::EndpointPublisher,
     path::secret,
-    stream::environment::{tokio::Environment, Environment as _},
+    stream::{
+        environment::{tokio::Environment, Environment as _},
+        TlsConnectionBuilder,
+    },
 };
 use s2n_quic_core::time::{Clock as _, Timestamp};
-use s2n_tls::config::Config as S2nConfig;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tokio::net::TcpStream;
 
 pub struct Builder {
-    pub rt: Arc<tokio::runtime::Runtime>,
-    pub config: S2nConfig,
+    rt: Arc<tokio::runtime::Runtime>,
+    config: Arc<dyn TlsConnectionBuilder>,
+    timeout: Duration,
 }
 
 impl Builder {
+    pub fn new(rt: Arc<tokio::runtime::Runtime>, config: Arc<dyn TlsConnectionBuilder>) -> Self {
+        Self {
+            rt,
+            config,
+            timeout: Duration::from_secs(1),
+        }
+    }
+
+    /// Set a timeout for negotiating incoming TLS handshakes.
+    ///
+    /// After this timeout elapses, the stream is closed.
+    pub fn with_negotiate_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
     pub(crate) fn build<Sub>(
         self,
         sender: accept::Sender<Sub>,
@@ -42,7 +61,15 @@ impl Builder {
     where
         Sub: event::Subscriber + Clone,
     {
-        TlsServer::new(self.rt, self.config, sender, env, map, accept_flavor)
+        TlsServer::new(
+            self.rt,
+            self.config,
+            sender,
+            env,
+            map,
+            accept_flavor,
+            self.timeout,
+        )
     }
 }
 
@@ -52,11 +79,12 @@ where
     Sub: event::Subscriber + Clone,
 {
     rt: Option<Arc<tokio::runtime::Runtime>>,
-    config: S2nConfig,
+    config: Arc<dyn TlsConnectionBuilder>,
     sender: accept::Sender<Sub>,
     env: Environment<Sub>,
     map: secret::Map,
     accept_flavor: accept::Flavor,
+    timeout: std::time::Duration,
 }
 
 impl<Sub> Drop for TlsServer<Sub>
@@ -74,13 +102,14 @@ impl<Sub> TlsServer<Sub>
 where
     Sub: event::Subscriber + Clone,
 {
-    pub fn new(
+    fn new(
         rt: Arc<tokio::runtime::Runtime>,
-        config: S2nConfig,
+        config: Arc<dyn TlsConnectionBuilder>,
         sender: accept::Sender<Sub>,
         env: Environment<Sub>,
         map: secret::Map,
         accept_flavor: accept::Flavor,
+        timeout: Duration,
     ) -> Self {
         TlsServer {
             rt: Some(rt),
@@ -89,6 +118,7 @@ where
             env,
             map,
             accept_flavor,
+            timeout,
         }
     }
 
@@ -126,20 +156,18 @@ where
         buffer: crate::msg::recv::Message,
         kernel_accept_time: Timestamp,
     ) -> Result<(), s2n_tls::error::Error> {
-        let mut conn = s2n_tls::connection::Connection::new_server();
-        conn.set_config(self.config.clone())?;
-        conn.set_blinding(s2n_tls::enums::Blinding::SelfService)?;
+        let conn = self.config.build_connection(s2n_tls::enums::Mode::Server)?;
 
-        // Rather than cloning we can keep accessing them from `self` if we used poll-like
-        // workers...
+        // FIXME: Rather than cloning we can keep accessing them from `self` if we used poll-like
+        // workers. This would also let us constrain concurrency and prioritize handshakes
+        // (LIFO/FIFO/etc) more intelligently.
         let sender = self.sender.clone();
         let env = self.env.clone();
         let map = self.map.clone();
         let flavor = self.accept_flavor;
-        // We should be tracking the spawned tasks and aborting them if they take too long to avoid
-        // building up resources, similar to the worker implementation (via sojourn times or so)...
+        let timeout = self.timeout;
         self.rt.as_ref().unwrap().spawn(async move {
-            if let Err(error) = accept_conn(
+            let fut = accept_conn(
                 socket,
                 remote_addr,
                 buffer,
@@ -149,9 +177,13 @@ where
                 map,
                 flavor,
                 kernel_accept_time,
-            )
-            .await
-            {
+            );
+
+            let result = tokio::time::timeout(timeout, fut)
+                .await
+                .unwrap_or_else(|_| Err(std::io::Error::from(std::io::ErrorKind::TimedOut)));
+
+            if let Err(error) = result {
                 env.endpoint_publisher()
                     .on_acceptor_tcp_tls_stream_rejected(
                         event::builder::AcceptorTcpTlsStreamRejected {
@@ -173,7 +205,7 @@ async fn accept_conn<Sub: event::Subscriber + Clone>(
     socket: super::LazyBoundStream,
     remote_addr: s2n_quic_core::inet::SocketAddress,
     buffer: crate::msg::recv::Message,
-    conn: s2n_tls::connection::Connection,
+    conn: crate::stream::TlsConnection,
     sender: accept::Sender<Sub>,
     env: &Environment<Sub>,
     map: secret::Map,
