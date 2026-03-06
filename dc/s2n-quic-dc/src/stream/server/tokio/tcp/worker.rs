@@ -452,7 +452,7 @@ where
                 recv_buffer,
             };
 
-            let mut stream_builder = match endpoint::accept_stream(
+            let stream_builder = match endpoint::accept_stream(
                 clock.get_time(),
                 &context.env,
                 peer,
