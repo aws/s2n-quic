@@ -100,6 +100,18 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Server<H, S> {
 
     #[inline]
     pub async fn accept(&self) -> io::Result<(crate::stream::application::Stream<S>, SocketAddr)> {
+        let (stream, _info, addr) = accept::accept(&self.streams, &self.stats).await?;
+        Ok((stream, addr))
+    }
+
+    #[inline]
+    pub async fn accept_with_info(
+        &self,
+    ) -> io::Result<(
+        crate::stream::application::Stream<S>,
+        crate::stream::application::AcceptInfo,
+        SocketAddr,
+    )> {
         accept::accept(&self.streams, &self.stats).await
     }
 
