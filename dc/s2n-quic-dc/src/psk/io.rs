@@ -590,7 +590,10 @@ mod tests {
         tls::Provider,
     };
     use s2n_quic_core::time::StdClock;
-    use std::{sync::atomic::AtomicU64, time::Instant};
+    use std::{
+        sync::atomic::{AtomicBool, AtomicU64},
+        time::Instant,
+    };
     use tokio_util::sync::DropGuard;
 
     /// A test limiter that closes all incoming connections immediately
@@ -785,6 +788,20 @@ mod tests {
         );
     }
 
+    /// Synchronization state for coordinating the flood thread with the server event loop.
+    ///
+    /// When the server first receives a client hello on socket 0, it unparks the flood
+    /// thread and then spins until the flood confirms it has started sending. This
+    /// guarantees the flood is actively running before the handshake continues.
+    struct FloodSync {
+        /// Handle to the flood thread so the event loop can unpark it.
+        flood_thread: std::thread::Thread,
+        /// Set to true by the flood thread once it has sent its first packet.
+        flood_started: Arc<AtomicBool>,
+        /// Ensures the blocking logic only triggers once (on the first socket 0 event).
+        triggered: AtomicBool,
+    }
+
     /// A combined test subscriber that captures:
     /// - Per-socket rx packet counts via `PlatformRxSocketStats` (endpoint-level)
     /// - Per-connection packet sent and non-initial packets received (connection-level)
@@ -796,6 +813,8 @@ mod tests {
         packets_sent: Arc<AtomicU64>,
         /// Non-Initial packets received
         non_initial_packets_received: Arc<AtomicU64>,
+        /// Optional flood synchronization; only used by the load test.
+        flood_sync: Option<Arc<FloodSync>>,
     }
 
     impl TestStatsSubscriber {
@@ -834,6 +853,20 @@ mod tests {
         ) {
             if let Some(counter) = self.socket_counts.get(event.id) {
                 counter.fetch_add(event.count as u64, Ordering::Relaxed);
+            }
+
+            // On the first socket 0 event (real client hello received), wake the flood
+            // thread and block until it confirms it has started sending.
+            if event.id == 0 {
+                if let Some(ref sync) = self.flood_sync {
+                    if !sync.triggered.swap(true, Ordering::SeqCst) {
+                        sync.flood_thread.unpark();
+
+                        while !sync.flood_started.load(Ordering::SeqCst) {
+                            std::hint::spin_loop();
+                        }
+                    }
+                }
             }
         }
 
@@ -878,13 +911,76 @@ mod tests {
 
     /// Verifies that under a flood of fake client hello packets, a real dcQUIC client
     /// can still complete a handshake successfully.
+    ///
+    /// The test uses a synchronization mechanism to guarantee the flood is actively
+    /// running before the server continues processing the real handshake:
+    /// 1. The client sends its real Client Hello.
+    /// 2. When the server event loop first receives it on socket 0, the subscriber
+    ///    unparks the flood thread and blocks until the flood confirms it has started.
+    /// 3. The flood thread (a separate OS thread) sends its first packet, signals
+    ///    readiness, then continues flooding.
+    /// 4. The server event loop unblocks and processes the handshake under active load.
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn dc_server_packet_filtering_load_test() {
         init_tracing();
 
         let tls = TestTlsProvider {};
-        let server_stats = TestStatsSubscriber::new();
+
+        // The flood_started flag is shared between the subscriber and the flood thread.
+        // The flood thread sets it to true after sending its first packet.
+        let flood_started = Arc::new(AtomicBool::new(false));
+
+        // Spawn the flood thread. It parks itself immediately and waits to be unparked
+        // by the server subscriber when the first client hello arrives.
+        let flood_cancel = Arc::new(AtomicBool::new(false));
+        let flood_count = Arc::new(AtomicU64::new(0));
+
+        // We need the server address before spawning the flood thread, but we also need
+        // the flood thread handle before creating the subscriber. Solve this with a
+        // channel: the test sends the server address to the flood thread after binding.
+        let (addr_tx, addr_rx) = std::sync::mpsc::channel::<SocketAddr>();
+
+        let flood_thread = {
+            let flood_started = flood_started.clone();
+            let flood_cancel = flood_cancel.clone();
+            let flood_count = flood_count.clone();
+
+            std::thread::spawn(move || {
+                // Park until the server subscriber unparks us after receiving the
+                // real client hello.
+                std::thread::park();
+
+                let server_addr: std::net::SocketAddr = addr_rx.recv().unwrap();
+                let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+
+                let packet =
+                    s2n_quic_core::crypto::initial::EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET;
+
+                // Send the first packet, then signal that the flood has started.
+                sender.send_to(&packet, server_addr).unwrap();
+                flood_count.fetch_add(1, Ordering::Relaxed);
+                flood_started.store(true, Ordering::SeqCst);
+
+                // Continue flooding until cancelled.
+                while !flood_cancel.load(Ordering::Relaxed) {
+                    if sender.send_to(&packet, server_addr).is_ok() {
+                        flood_count.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            })
+        };
+
+        let flood_sync = Arc::new(FloodSync {
+            flood_thread: flood_thread.thread().clone(),
+            flood_started: flood_started.clone(),
+            triggered: AtomicBool::new(false),
+        });
+
+        let server_stats = TestStatsSubscriber {
+            flood_sync: Some(flood_sync),
+            ..TestStatsSubscriber::new()
+        };
 
         let server_map = Map::new(
             Signer::new(b"default"),
@@ -908,8 +1004,9 @@ mod tests {
 
         let server_addr = server_addr_rx.await.unwrap().unwrap();
 
-        // Create the real client *before* starting the flood so its Client Hello
-        // is the first packet queued to socket 0.
+        // Send the server address to the flood thread so it knows where to send.
+        addr_tx.send(server_addr).unwrap();
+
         let noop_subscriber = NoopSubscriber {};
         let client_stats = TestStatsSubscriber::new();
         let client_map = Map::new(
@@ -940,6 +1037,8 @@ mod tests {
         .unwrap();
 
         // Spawn the handshake so the Client Hello is sent immediately.
+        // When the server receives it, the subscriber will unpark the flood thread
+        // and block until the flood is actively sending.
         let handshake_handle = tokio::spawn({
             let client = client.clone();
             async move {
@@ -949,42 +1048,15 @@ mod tests {
             }
         });
 
-        // Now start the flood — the real Client Hello is already in-flight.
-        let flood_cancel = tokio_util::sync::CancellationToken::new();
-        let flood_cancel_clone = flood_cancel.clone();
-        let flood_count = Arc::new(AtomicU64::new(0));
-        let flood_count_clone = flood_count.clone();
-
-        let flood_task = tokio::spawn(async move {
-            let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-
-            // The EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET is a client hello Initial packet with a DCID length of eight.
-            // Its header is c300000001088394c8f03e5157080000449e00000002.
-            let packet = s2n_quic_core::crypto::initial::EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET;
-
-            loop {
-                tokio::select! {
-                    _ = flood_cancel_clone.cancelled() => break,
-                    result = sender.send_to(&packet, server_addr) => {
-                        if result.is_ok() {
-                            flood_count_clone.fetch_add(1, Ordering::Relaxed);
-                        }
-                        // Yield to allow other tasks to run, but keep flooding fast
-                        tokio::task::yield_now().await;
-                    }
-                }
-            }
-        });
-
         // Await the handshake result (the handshake continuation packets flow
         // through socket 1, which is not affected by the flood on socket 0).
         let handshake_result = handshake_handle.await.expect("handshake task panicked");
 
-        // Stop the flood and collect stats
-        flood_cancel.cancel();
-        let _ = flood_task.await;
+        // Stop the flood and wait for the thread to finish.
+        flood_cancel.store(true, Ordering::Relaxed);
+        flood_thread.join().expect("flood thread panicked");
 
-        // Wait briefly for events to propagate
+        // Wait briefly for events to propagate.
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let total_flood_packets = flood_count.load(Ordering::Relaxed);
@@ -1004,23 +1076,23 @@ mod tests {
             server_non_initial_received,
         );
 
-        // The handshake should complete successfully despite the flood
+        // The handshake should complete successfully despite the flood.
         assert!(handshake_result.is_ok());
 
-        // The client must have sent at least one packet (the Client Hello Initial)
+        // The client must have sent at least one packet (the Client Hello Initial).
         assert!(
             client_packets_sent > 0,
             "Client should have sent at least one packet, got 0"
         );
 
         // Socket 0 should have received client hello packets (flood + real client's Initial),
-        // confirming the router correctly separated traffic
+        // confirming the router correctly separated traffic.
         assert!(
             socket_0_count > 0,
             "Socket 0 should receive client hello packets (flood + real), got 0"
         );
 
-        // Socket 1 should have received non-client-hello packets from the real handshake
+        // Socket 1 should have received non-client-hello packets from the real handshake.
         assert!(
             socket_1_count > 0,
             "Socket 1 should receive non-client-hello handshake packets, got 0"
