@@ -150,6 +150,7 @@ impl connection::Trait for TestConnection {
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedInitial,
+        _packet_len: usize,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
@@ -182,6 +183,7 @@ impl connection::Trait for TestConnection {
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedHandshake,
+        _packet_len: usize,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
@@ -198,6 +200,7 @@ impl connection::Trait for TestConnection {
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedShort,
+        _packet_len: usize,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
@@ -214,6 +217,7 @@ impl connection::Trait for TestConnection {
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedVersionNegotiation,
+        _packet_len: usize,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
@@ -226,6 +230,7 @@ impl connection::Trait for TestConnection {
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedZeroRtt,
+        _packet_len: usize,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
@@ -238,6 +243,7 @@ impl connection::Trait for TestConnection {
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedRetry,
+        _packet_len: usize,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError> {

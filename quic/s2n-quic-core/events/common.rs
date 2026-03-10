@@ -318,7 +318,9 @@ impl IntoEvent<builder::EcnCounts> for crate::frame::ack::EcnCounts {
 
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#A.7
 enum Frame {
-    Padding,
+    Padding {
+        len: u16,
+    },
     Ping,
     Ack {
         ecn_counts: Option<EcnCounts>,
@@ -389,7 +391,9 @@ enum Frame {
 impl IntoEvent<builder::Frame> for &crate::frame::Padding {
     #[inline]
     fn into_event(self) -> builder::Frame {
-        builder::Frame::Padding {}
+        builder::Frame::Padding {
+            len: self.length as u16,
+        }
     }
 }
 

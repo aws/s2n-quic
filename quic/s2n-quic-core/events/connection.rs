@@ -51,6 +51,9 @@ struct PacketSent {
 struct PacketReceived {
     #[nominal_counter("kind")]
     packet_header: PacketHeader,
+    #[measure("bytes", Bytes)]
+    #[counter("bytes.total", Bytes)]
+    packet_len: usize,
 }
 
 #[event("connectivity:active_path_updated")]

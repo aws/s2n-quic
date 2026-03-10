@@ -128,6 +128,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
+        packet_len: usize,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
@@ -156,6 +157,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
+        packet_len: usize,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
@@ -170,6 +172,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
+        packet_len: usize,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
@@ -184,6 +187,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedVersionNegotiation,
+        packet_len: usize,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError>;
@@ -194,6 +198,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedZeroRtt,
+        packet_len: usize,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError>;
@@ -204,6 +209,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedRetry,
+        packet_len: usize,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), ProcessingError>;
@@ -232,6 +238,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedPacket,
+        packet_len: usize,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
@@ -294,6 +301,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 datagram,
                 path_id,
                 packet,
+                packet_len,
                 random_generator,
                 subscriber,
                 packet_interceptor,
@@ -305,6 +313,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 datagram,
                 path_id,
                 packet,
+                packet_len,
                 subscriber,
                 packet_interceptor,
             ),
@@ -312,6 +321,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 datagram,
                 path_id,
                 packet,
+                packet_len,
                 random_generator,
                 subscriber,
                 packet_interceptor,
@@ -323,6 +333,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 datagram,
                 path_id,
                 packet,
+                packet_len,
                 subscriber,
                 packet_interceptor,
             ),
@@ -330,6 +341,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 datagram,
                 path_id,
                 packet,
+                packet_len,
                 random_generator,
                 subscriber,
                 packet_interceptor,
@@ -337,9 +349,14 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 dc_endpoint,
                 connection_limits_endpoint,
             ),
-            ProtectedPacket::Retry(packet) => {
-                self.handle_retry_packet(datagram, path_id, packet, subscriber, packet_interceptor)
-            }
+            ProtectedPacket::Retry(packet) => self.handle_retry_packet(
+                datagram,
+                path_id,
+                packet,
+                packet_len,
+                subscriber,
+                packet_interceptor,
+            ),
         };
 
         match result {
@@ -415,6 +432,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         let connection_info = ConnectionInfo::new(&remote_address);
 
         while !payload.is_empty() {
+            let payload_len_before = payload.len();
             let packet = if let Ok((packet, remaining)) =
                 ProtectedPacket::decode(payload, &connection_info, connection_id_validator)
             {
@@ -440,10 +458,13 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 break;
             };
 
+            let packet_len = payload_len_before - payload.len();
+
             let result = self.handle_packet(
                 datagram,
                 path_id,
                 packet,
+                packet_len,
                 random_generator,
                 subscriber,
                 packet_interceptor,
