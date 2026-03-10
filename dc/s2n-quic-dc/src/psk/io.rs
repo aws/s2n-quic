@@ -62,25 +62,20 @@ impl Server {
         subscriber: Subscriber,
         builder: server::Builder<Event>,
     ) -> Result<Self, Error> {
-        let socket_for_client_hello_packets = syscall::bind_udp(addr, false, false, false)?;
+        let socket_for_other_packets = syscall::bind_udp(addr, false, false, false)?;
 
         // Acquire the bound address with a port assigned
-        let bound_addr = socket_for_client_hello_packets
-            .local_addr()?
-            .as_socket()
-            .unwrap();
+        let bound_addr = socket_for_other_packets.local_addr()?.as_socket().unwrap();
 
-        socket_for_client_hello_packets
-            .set_reuse_port(true)
-            .unwrap();
+        socket_for_other_packets.set_reuse_port(true).unwrap();
 
-        let socket_for_other_packets = syscall::bind_udp(bound_addr, false, true, false)?;
+        let socket_for_client_hello_packets = syscall::bind_udp(bound_addr, false, true, false)?;
 
         // Attach ROUTER to both sockets for packet filtering
         #[cfg(target_os = "linux")]
         {
-            router::ROUTER.attach(&socket_for_client_hello_packets)?;
             router::ROUTER.attach(&socket_for_other_packets)?;
+            router::ROUTER.attach(&socket_for_client_hello_packets)?;
         }
 
         let io = s2n_quic::provider::io::default::Builder::default()
@@ -914,7 +909,7 @@ mod tests {
         let server_addr = server_addr_rx.await.unwrap().unwrap();
 
         // Create the real client *before* starting the flood so its Client Hello
-        // is the first packet queued to socket 1.
+        // is the first packet queued to socket 0.
         let noop_subscriber = NoopSubscriber {};
         let client_stats = TestStatsSubscriber::new();
         let client_map = Map::new(
@@ -982,7 +977,7 @@ mod tests {
         });
 
         // Await the handshake result (the handshake continuation packets flow
-        // through socket 0, which is not affected by the flood on socket 1).
+        // through socket 1, which is not affected by the flood on socket 0).
         let handshake_result = handshake_handle.await.expect("handshake task panicked");
 
         // Stop the flood and collect stats
@@ -1000,7 +995,7 @@ mod tests {
         let server_non_initial_received = server_stats.non_initial_received();
 
         tracing::info!(
-            "Flood packets sent: {}, Socket 0 (non-CH) rx: {}, Socket 1 (CH) rx: {}, \
+            "Flood packets sent: {}, Socket 0 (CH) rx: {}, Socket 1 (non-CH) rx: {}, \
              Client packets sent: {}, Server non-initial packets received: {}",
             total_flood_packets,
             socket_0_count,
@@ -1018,17 +1013,17 @@ mod tests {
             "Client should have sent at least one packet, got 0"
         );
 
-        // Socket 0 should have received non-client-hello packets from the real handshake,
+        // Socket 0 should have received client hello packets (flood + real client's Initial),
         // confirming the router correctly separated traffic
         assert!(
             socket_0_count > 0,
-            "Socket 0 should receive non-client-hello handshake packets, got 0"
+            "Socket 0 should receive client hello packets (flood + real), got 0"
         );
 
-        // Socket 1 should have received packets (flood + real client's Initial)
+        // Socket 1 should have received non-client-hello packets from the real handshake
         assert!(
             socket_1_count > 0,
-            "Socket 1 should receive client hello packets (flood + real), got 0"
+            "Socket 1 should receive non-client-hello handshake packets, got 0"
         );
     }
 }
