@@ -27,7 +27,7 @@ pub mod shared;
 pub mod socket;
 pub(crate) mod tls;
 
-pub use tls::{Conn as TlsConnection, ConnectionBuilder as TlsConnectionBuilder};
+pub use tls::{CertificateChain, Conn as TlsConnection, ConnectionBuilder as TlsConnectionBuilder};
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;

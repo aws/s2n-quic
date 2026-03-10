@@ -194,6 +194,10 @@ where
             Err(_) => None,
         }
     }
+
+    pub fn peer_cert_chain(&self) -> Option<&crate::stream::tls::CertificateChain> {
+        self.0.shared.s2n_connection.as_ref()?.peer_cert_chain()
+    }
 }
 
 impl<Sub> Inner<Sub>
