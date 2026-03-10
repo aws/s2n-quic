@@ -534,6 +534,76 @@ fn mtu_blackhole() {
     ));
 }
 
+//= https://www.rfc-editor.org/rfc/rfc8899#section-3
+//= type=test
+//# Probe loss recovery: It is RECOMMENDED to use probe packets that
+//# do not carry any user data that would require retransmission if
+//# lost.
+// Verify that MTU probe packets only contain PING and PADDING frames
+#[test]
+fn mtu_probe_only_ping_and_padding_test() {
+    let model = Model::default();
+    let rtt = Duration::from_millis(100);
+    let max_mtu = 9001;
+    let packet_sent_subscriber = recorder::PacketSent::new();
+    let frame_sent_subscriber = recorder::FrameSent::new();
+    let packet_sent_events = packet_sent_subscriber.events();
+    let frame_sent_events = frame_sent_subscriber.events();
+
+    model.set_delay(rtt / 2);
+    model.set_max_udp_payload(max_mtu);
+
+    test(model.clone(), |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().with_max_mtu(max_mtu).build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event((
+                (tracing_events(true, model.clone()), packet_sent_subscriber),
+                frame_sent_subscriber,
+            ))?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+        let client = Client::builder()
+            .with_io(handle.builder().with_max_mtu(max_mtu).build()?)?
+            .with_tls(certificates::CERT_PEM)?
+            .with_event(tracing_events(true, model.clone()))?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+        let addr = start_server(server)?;
+        // we need a large payload to allow for multiple rounds of MTU probing
+        start_client(client, addr, Data::new(10_000_000))?;
+        Ok(addr)
+    })
+    .unwrap();
+
+    let packets = packet_sent_events.lock().unwrap();
+    let frames = frame_sent_events.lock().unwrap();
+
+    // Collect packet headers of MTU probing packets
+    let mtu_probe_headers: std::collections::HashSet<events::PacketHeader> = packets
+        .iter()
+        .filter(|p| {
+            matches!(
+                p.transmission_mode,
+                events::TransmissionMode::MtuProbing { .. }
+            )
+        })
+        .map(|p| p.packet_header.clone())
+        .collect();
+
+    assert!(!mtu_probe_headers.is_empty());
+
+    // Every frame in an MTU probing packet should be PING or PADDING
+    for frame_event in frames.iter() {
+        if mtu_probe_headers.contains(&frame_event.packet_header) {
+            assert!(matches!(
+                frame_event.frame,
+                events::Frame::Ping { .. } | events::Frame::Padding { .. }
+            ));
+        }
+    }
+}
+
 // ensure the server enforces the minimum MTU for all initial packets
 #[test]
 fn minimum_initial_packet() {

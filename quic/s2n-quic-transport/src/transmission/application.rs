@@ -178,6 +178,15 @@ impl<Config: endpoint::Config> Normal<'_, Config> {
         // complete as soon as possible
         self.dc_manager.on_transmit(context);
 
+        // The mtu_controller's on_transmit is also called in MtuProbing mode for MTU
+        // discovery probes. This call handles transmission of the MTU_PROBING_COMPLETE
+        // frame, which needs to be sent in Normal mode so it can be coalesced with
+        // other frames.
+        self.path_manager
+            .active_path_mut()
+            .mtu_controller
+            .on_transmit(context);
+
         let _ = self.crypto_stream.tx.on_transmit((), context);
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2
@@ -207,6 +216,10 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Normal<'_, C
         self.recovery_manager.transmission_interest(query)?;
         self.path_manager
             .active_path()
+            .transmission_interest(query)?;
+        self.path_manager
+            .active_path()
+            .mtu_controller
             .transmission_interest(query)?;
         self.ping.transmission_interest(query)?;
         self.dc_manager.transmission_interest(query)?;

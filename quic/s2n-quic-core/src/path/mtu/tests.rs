@@ -946,6 +946,56 @@ fn on_transmit_not_mtu_probing() {
     assert_eq!(State::SearchComplete, controller.state);
 }
 
+/// MtuProbingComplete frame should be sent in Normal mode
+#[test]
+fn on_transmit_mtu_probing_complete_in_normal_mode() {
+    let mut controller = new_controller(1500);
+    controller.state = State::SearchComplete;
+    controller.needs_to_send_completion = true;
+    controller.plpmtu = 1472;
+    let mut frame_buffer = OutgoingFrameBuffer::new();
+    let mut write_context = MockWriteContext::new(
+        now(),
+        &mut frame_buffer,
+        transmission::Constraint::None,
+        transmission::Mode::Normal,
+        endpoint::Type::Server,
+    );
+
+    controller.on_transmit(&mut write_context);
+
+    // The MtuProbingComplete frame should have been written
+    assert_eq!(
+        Frame::MtuProbingComplete(frame::MtuProbingComplete::new(1472)),
+        write_context.frame_buffer.pop_front().unwrap().as_frame()
+    );
+    assert!(!controller.needs_to_send_completion);
+    assert_eq!(State::SearchComplete, controller.state);
+}
+
+/// MtuProbingComplete frame should NOT be sent in MtuProbing mode
+#[test]
+fn on_transmit_mtu_probing_complete_in_mtu_probing_mode() {
+    let mut controller = new_controller(1500);
+    controller.state = State::SearchComplete;
+    controller.needs_to_send_completion = true;
+    let mut frame_buffer = OutgoingFrameBuffer::new();
+    let mut write_context = MockWriteContext::new(
+        now(),
+        &mut frame_buffer,
+        transmission::Constraint::None,
+        transmission::Mode::MtuProbing,
+        endpoint::Type::Server,
+    );
+
+    controller.on_transmit(&mut write_context);
+
+    // MtuProbingComplete frame shouldn't be sent in MtuProbing mode
+    assert!(frame_buffer.is_empty());
+    assert!(controller.needs_to_send_completion);
+    assert_eq!(State::SearchComplete, controller.state);
+}
+
 #[test]
 fn on_transmit_no_capacity() {
     let mut controller = new_controller(1500);
@@ -1009,5 +1059,6 @@ fn on_transmit() {
         }),
         write_context.frame_buffer.pop_front().unwrap().as_frame()
     );
+    assert!(write_context.frame_buffer.is_empty());
     assert_eq!(State::Searching(packet_number, now), controller.state);
 }
