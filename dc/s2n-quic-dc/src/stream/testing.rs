@@ -607,7 +607,9 @@ impl Server {
     }
 
     pub async fn accept(&self) -> io::Result<(Stream, SocketAddr)> {
-        stream_server::accept::accept(&self.receiver, &self.stats).await
+        let (stream, _info, addr) =
+            stream_server::accept::accept(&self.receiver, &self.stats).await?;
+        Ok((stream, addr))
     }
 
     pub fn subscriber(&self) -> Arc<testing::Subscriber> {

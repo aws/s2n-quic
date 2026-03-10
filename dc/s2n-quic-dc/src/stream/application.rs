@@ -27,38 +27,54 @@ pub struct Builder<Sub: event::Subscriber> {
     pub app_queue_time: Option<Timestamp>,
 }
 
+/// Carries timestamps of events before the stream is returned to the application in accept().
+#[non_exhaustive]
+pub struct AcceptInfo {
+    /// How long the stream spent inside the dcQUIC acceptor before being enqueued for the
+    /// application.
+    pub dc_quic_accept_time: Duration,
+    /// How long the stream spent enqueued for the application.
+    pub app_queue_sojourn_time: Duration,
+}
+
 impl<Sub> Builder<Sub>
 where
     Sub: event::Subscriber,
 {
     /// Builds the stream and emits an event indicating that the stream was built
     #[inline]
-    pub(crate) fn accept(self) -> io::Result<(Stream<Sub>, Duration)> {
-        let sojourn_time = {
-            let remote_address = self.shared.remote_addr();
-            let remote_address = &remote_address;
-            let creds = self.shared.credentials();
-            let credential_id = &*creds.id;
-            let stream_id = creds.key_id.as_u64();
-            let now = self.shared.common.clock.get_time();
-            let total_sojourn_time = now.saturating_duration_since(self.kernel_start_time);
-            let queue_sojourn_time =
-                now.saturating_duration_since(self.app_queue_time.expect("set by accept_stream"));
+    pub(crate) fn accept(self) -> io::Result<(Stream<Sub>, AcceptInfo)> {
+        let kernel_start_time = self.kernel_start_time;
+        let app_queue_time = self.app_queue_time.expect("set by accept_stream");
+        let remote_address = self.shared.remote_addr();
+        let remote_address = &remote_address;
+        let creds = self.shared.credentials();
+        let credential_id = &*creds.id;
+        let stream_id = creds.key_id.as_u64();
+        let now = self.shared.common.clock.get_time();
+        let total_sojourn_time = now.saturating_duration_since(self.kernel_start_time);
+        let queue_sojourn_time = now.saturating_duration_since(app_queue_time);
 
-            self.shared
-                .endpoint_publisher(now)
-                .on_acceptor_stream_dequeued(event::builder::AcceptorStreamDequeued {
-                    remote_address,
-                    credential_id,
-                    stream_id,
-                    sojourn_time: total_sojourn_time,
-                    queue_sojourn_time,
-                });
+        self.shared
+            .endpoint_publisher(now)
+            .on_acceptor_stream_dequeued(event::builder::AcceptorStreamDequeued {
+                remote_address,
+                credential_id,
+                stream_id,
+                sojourn_time: total_sojourn_time,
+                queue_sojourn_time,
+            });
 
-            queue_sojourn_time
-        };
-
-        self.build().map(|stream| (stream, sojourn_time))
+        self.build().map(|stream| {
+            (
+                stream,
+                AcceptInfo {
+                    dc_quic_accept_time: app_queue_time
+                        .saturating_duration_since(kernel_start_time),
+                    app_queue_sojourn_time: now.saturating_duration_since(app_queue_time),
+                },
+            )
+        })
     }
 
     #[inline]
