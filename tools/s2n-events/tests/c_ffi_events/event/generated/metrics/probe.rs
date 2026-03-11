@@ -9,6 +9,11 @@ use crate::event::metrics::aggregate::{
     self, info, BoolRecorder, Info, NominalRecorder, Recorder as MetricRecorder,
 };
 use s2n_quic_core::probe::define;
+mod id {
+    pub const BYTE_ARRAY_EVENT: usize = 0usize;
+    pub const ENUM_EVENT: usize = BYTE_ARRAY_EVENT + 1;
+    pub const COUNT_EVENT: usize = ENUM_EVENT + 1;
+}
 mod counter {
     #![allow(non_snake_case)]
     use super::*;
@@ -17,9 +22,9 @@ mod counter {
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
             match info.id {
-                0usize => Self(byte_array_event),
-                1usize => Self(enum_event),
-                2usize => Self(count_event),
+                id::BYTE_ARRAY_EVENT => Self(byte_array_event),
+                id::ENUM_EVENT => Self(enum_event),
+                id::COUNT_EVENT => Self(count_event),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }

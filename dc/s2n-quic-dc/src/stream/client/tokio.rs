@@ -664,8 +664,31 @@ pub async fn connect_tls<Sub>(
 where
     Sub: event::Subscriber + Clone,
 {
-    let socket = TcpStream::connect(addr).await?;
+    let start = env.clock().get_time();
+    // This emits the error event in case this future gets dropped.
+    let mut guard = DropGuard {
+        env,
+        reason: Some(StreamTcpConnectErrorReason::AbortedPendingBoth),
+        start,
+    };
+
+    let connected = TcpStream::connect(addr).await;
     let kernel_start_time = env.clock().get_time();
+    env.endpoint_publisher_with_time(kernel_start_time)
+        .on_stream_tcp_connect(event::builder::StreamTcpConnect {
+            error: connected.is_err(),
+            latency: kernel_start_time.saturating_duration_since(start),
+        });
+    let socket = match connected {
+        Ok(v) => {
+            guard.reason = Some(StreamTcpConnectErrorReason::AbortedPendingHandshake);
+            v
+        }
+        Err(e) => {
+            guard.reason = Some(StreamTcpConnectErrorReason::TcpConnect);
+            return Err(e);
+        }
+    };
 
     // Make sure TCP_NODELAY is set
     let _ = socket.set_nodelay(true);
@@ -682,7 +705,22 @@ where
     let mut connection =
         crate::stream::tls::S2nTlsConnection::from_connection(socket.clone(), connection)?;
 
-    connection.negotiate(None).await?;
+    let res = connection.negotiate(None).await;
+
+    let negotiate_end = env.clock().get_time();
+
+    env.endpoint_publisher_with_time(negotiate_end)
+        .on_stream_tls_connect(event::builder::StreamTlsConnect {
+            error: res.is_err(),
+            tcp_latency: kernel_start_time.saturating_duration_since(start),
+            tls_latency: negotiate_end.saturating_duration_since(kernel_start_time),
+        });
+
+    // Return if negotiation failed.
+    res?;
+
+    // Successful
+    guard.reason = None;
 
     // The handshake is complete at this point, so the stream should be considered open. Eventually
     // at this point we'll want to export the TLS keys from the connection and add those into the
