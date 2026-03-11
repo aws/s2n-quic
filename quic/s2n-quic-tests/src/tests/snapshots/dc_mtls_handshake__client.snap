@@ -1,0 +1,84 @@
+---
+source: quic/s2n-quic-core/src/event/snapshot.rs
+input_file: quic/s2n-quic-tests/src/tests/dc.rs
+---
+ milli.micro | datagrams (D) contain packets (P) which contain frames (F)
+
+
+   0.1      > D len=1200
+   0.1      >   P Initial(0) len=1200
+   0.1      >     F Initial(0) CRYPTO(off=0, len=290)
+   0.1      >     F Initial(0) PADDING(len=870)
+
+ 100.       < D len=1200
+ 100.       <   P Initial(0) len=200
+ 100.       <     F Initial(0) ACK
+ 100.       <     F Initial(0) CRYPTO(off=0, len=130)
+ 100.       <   P Handshake(0) len=1010
+ 100.       <     F Handshake(0) CRYPTO(off=0, len=950)
+ 100.       < D len=160
+ 100.       <   P Handshake(1) len=160
+ 100.       <     F Handshake(1) CRYPTO(off=950, len=100)
+ 100.       > D len=1200
+ 100.       >   P Initial(1) len=80
+ 100.       >     F Initial(1) ACK
+ 100.       >     F Initial(1) PADDING(len=20)
+ 100.       >   P Handshake(0) len=980
+ 100.       >     F Handshake(0) ACK
+ 100.       >     F Handshake(0) CRYPTO(off=0, len=910)
+ 100.       >   P OneRtt(0) len=150
+ 100.       >     F OneRtt(0) DC_STATELESS_RESET_TOKENS
+ 100.       >     F OneRtt(0) PADDING(len=100)
+
+ 200.       < D len=1480
+ 200.       <   P OneRtt(0) len=1480
+ 200.       <     F OneRtt(0) PING
+ 200.       <     F OneRtt(0) PADDING(len=1440)
+ 200.       < D len=180
+ 200.       <   P OneRtt(1) len=180
+ 200.       <     F OneRtt(1) ACK
+ 200.       <     F OneRtt(1) HANDSHAKE_DONE
+ 200.       <     F OneRtt(1) DC_STATELESS_RESET_TOKENS
+ 200.       | dc_state_changed=Complete
+ 200.       <     F OneRtt(1) NEW_CONNECTION_ID
+ 200.       <     F OneRtt(1) NEW_CONNECTION_ID
+ 200.       <     F OneRtt(1) NEW_CONNECTION_ID
+ 200.       > D len=1480
+ 200.       >   P OneRtt(1) len=1480
+ 200.       >     F OneRtt(1) PING
+ 200.       >     F OneRtt(1) PADDING(len=1440)
+ 200.       > D len=160
+ 200.       >   P OneRtt(2) len=160
+ 200.       >     F OneRtt(2) ACK
+ 200.       >     F OneRtt(2) NEW_CONNECTION_ID
+ 200.       >     F OneRtt(2) NEW_CONNECTION_ID
+ 200.       >     F OneRtt(2) NEW_CONNECTION_ID
+ 200.       >     F OneRtt(2) RETIRE_CONNECTION_ID
+
+ 300.       < D len=60
+ 300.       <   P OneRtt(2) len=60
+ 300.       <     F OneRtt(2) MTU_PROBING_COMPLETE(mtu=1472)
+ 300.       <     F OneRtt(2) PADDING(len=20)
+ 300.       < D len=60
+ 300.       <   P OneRtt(3) len=60
+ 300.       <     F OneRtt(3) ACK
+ 300.       <     F OneRtt(3) RETIRE_CONNECTION_ID
+ 300.       <     F OneRtt(3) PADDING(len=10)
+ 300.       > D len=60
+ 300.       >   P OneRtt(3) len=60
+ 300.       >     F OneRtt(3) MTU_PROBING_COMPLETE(mtu=1472)
+ 300.       >     F OneRtt(3) PADDING(len=20)
+
+ 325.       > D len=60
+ 325.       >   P OneRtt(4) len=60
+ 325.       >     F OneRtt(4) ACK
+ 325.       >     F OneRtt(4) PADDING(len=10)
+
+ 400.       > D len=60
+ 400.       >   P OneRtt(5) len=60
+ 400.       >     F OneRtt(5) CONNECTION_CLOSE
+ 400.       >     F OneRtt(5) PADDING(len=20)
+
+ 400.       < D len=60
+ 400.       <   P OneRtt(4) len=60
+ 400.       <     F OneRtt(4) CONNECTION_CLOSE
