@@ -483,6 +483,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let remote_address = header.path.remote_address();
         let connection_info = ConnectionInfo::new(&remote_address);
+        let buffer_len = buffer.len();
         let (packet, remaining) = if let Ok((packet, remaining)) = ProtectedPacket::decode(
             buffer,
             &connection_info,
@@ -627,6 +628,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     &datagram,
                     path_id,
                     packet,
+                    buffer_len - remaining.len(),
                     endpoint_context.random_generator,
                     endpoint_context.event_subscriber,
                     endpoint_context.packet_interceptor,

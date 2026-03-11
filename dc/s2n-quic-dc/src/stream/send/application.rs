@@ -178,6 +178,22 @@ where
     pub fn shutdown(&mut self) -> io::Result<()> {
         self.0.shutdown(ShutdownType::Explicit)
     }
+
+    pub fn query_event_context<C: 'static, R>(&self, query: impl FnOnce(&C) -> R) -> Option<R> {
+        let ctxt = &self.0.shared.common.subscriber.context;
+        let mut query = s2n_quic_core::query::Once::new(query);
+        Sub::query(ctxt, &mut query);
+        let res: Result<_, _> = query.into();
+        match res {
+            Ok(r) => Some(r),
+            // ConnectionLockPoisoned is not used except by s2n-quic infrastructure, so it's not
+            // reachable here.
+            Err(s2n_quic_core::query::Error::ConnectionLockPoisoned) => unreachable!(),
+            Err(s2n_quic_core::query::Error::ContextTypeMismatch) => None,
+            // unreachable in practice, needed due to #[non_exhaustive]
+            Err(_) => None,
+        }
+    }
 }
 
 impl<Sub> Inner<Sub>
@@ -267,7 +283,7 @@ where
             &mut batch,
             max_segments,
             &self.shared.sender.segment_alloc,
-            |message, buf| {
+            |output, buf| {
                 self.shared.crypto.seal_with(
                     |sealer| {
                         // push packets for transmission into our queue
@@ -278,10 +294,11 @@ where
                             &self.shared.sender.packet_number,
                             sealer,
                             self.shared.credentials(),
+                            &self.shared.s2n_connection,
                             &stream_id,
                             local_queue_id,
                             &clock::Cached::new(&self.shared.clock),
-                            message,
+                            output,
                             &features,
                             &self.shared.publisher(),
                         )

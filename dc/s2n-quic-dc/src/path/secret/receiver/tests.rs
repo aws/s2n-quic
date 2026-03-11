@@ -4,7 +4,7 @@
 use super::*;
 use crate::credentials::Id;
 use bolero::{check, ValueGenerator};
-use rand::{seq::SliceRandom, Rng, SeedableRng};
+use rand::{seq::SliceRandom, RngExt, SeedableRng};
 use std::collections::{binary_heap::PeekMut, BinaryHeap, HashSet};
 
 #[test]

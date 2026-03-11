@@ -65,6 +65,21 @@ macro_rules! impl_buffer {
             }
 
             doc_comment! {
+                "Decode a value of type `T` from a buffer that is exactly the length of `T`."
+                ""
+                "Returns an error if any data remains.";
+                #[inline]
+                pub fn decode_exact<T: $value<'a>>(self) -> Result<T, DecoderError> {
+                    let (value, remaining) = T::$value_call(self)?;
+                    if !remaining.is_empty() {
+                        Err(DecoderError::UnexpectedBytes(remaining.len()))
+                    } else {
+                        Ok(value)
+                    }
+                }
+            }
+
+            doc_comment! {
                 "Decode a slice prefixed by type `Length`, splitting the data from the"
                 "current buffer."
 
@@ -421,6 +436,8 @@ pub enum DecoderError {
     InvariantViolation(&'static str), // TODO replace with a &'static Invariant
 }
 
+impl core::error::Error for DecoderError {}
+
 use core::fmt;
 impl fmt::Display for DecoderError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -463,4 +480,64 @@ macro_rules! decoder_invariant {
             );
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // === decode_exact tests ===
+
+    #[test]
+    fn decode_exact_success() {
+        let buf = DecoderBuffer::new(&[0, 42]);
+        let val: u16 = buf.decode_exact().unwrap();
+        assert_eq!(val, 42);
+    }
+
+    #[test]
+    fn decode_exact_trailing_bytes_error() {
+        let buf = DecoderBuffer::new(&[1, 2, 3]);
+        assert!(buf.decode_exact::<u8>().is_err());
+    }
+
+    #[test]
+    fn decode_exact_too_short_error() {
+        let buf = DecoderBuffer::new(&[1]);
+        assert!(buf.decode_exact::<u32>().is_err());
+    }
+
+    #[test]
+    fn decode_exact_empty_buffer_error() {
+        let buf = DecoderBuffer::new(&[]);
+        assert!(buf.decode_exact::<u8>().is_err());
+    }
+
+    // === DecoderError as std::error::Error ===
+
+    #[test]
+    fn decoder_error_implements_std_error() {
+        fn takes_error(_: &dyn std::error::Error) {}
+        let err = DecoderError::UnexpectedEof(0);
+        takes_error(&err);
+    }
+
+    #[test]
+    fn decoder_error_display() {
+        let err = DecoderError::UnexpectedEof(5);
+        assert_eq!(format!("{err}"), "unexpected eof: 5");
+
+        let err = DecoderError::UnexpectedBytes(3);
+        assert_eq!(format!("{err}"), "unexpected bytes: 3");
+
+        let err = DecoderError::InvariantViolation("bad");
+        assert_eq!(format!("{err}"), "bad");
+    }
+
+    #[test]
+    fn decoder_error_in_box_dyn() -> Result<(), Box<dyn std::error::Error>> {
+        let buf = DecoderBuffer::new(&[0, 1]);
+        let _: u16 = buf.decode_exact()?;
+        Ok(())
+    }
 }

@@ -362,9 +362,6 @@ jobs:
           # We got a few globals that aren't cleaned up. Need to
           # determine if we should reenable this in the future.
           ASAN_OPTIONS: detect_leaks=false
-        # ASAN adds significant overhead that slows down each test, causing QUIC retransmissions during the handshake. Skip
-        # client_hello_routed_to_socket_zero since it asserts exact per-socket packet
-        # counts that are inflated by these retransmissions.
         run: |
           cargo test \
             -Zbuild-std \
@@ -845,24 +842,6 @@ jobs:
           ./scripts/typos --format json | tee /tmp/typos.json | jq -rs '.[] | "::error file=\(.path),line=\(.line_num),col=\(.byte_offset)::\(.typo) should be \"" + (.corrections // [] | join("\" or \"") + "\"")'
           cat /tmp/typos.json
           ! grep -q '[^[:space:]]' /tmp/typos.json
-
-  validate-pr-title:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: PR Conventional Commit Validation
-        id: cc_check
-        if: github.event_name == 'pull_request_target'
-        uses: ytanikin/pr-conventional-commits@1.5.1
-        with:
-          task_types: '["feat","fix","docs","test","ci","refactor","perf","chore","revert","build"]'
-          add_label: 'false'
-      - name: Failure case
-        if: github.event_name == 'pull_request_target' && steps.cc_check.outcome != 'success'
-        run: |
-          echo "Make sure the PR title/commit follows https://www.conventionalcommits.org/"
-          exit 1
-
 
   kani:
     runs-on: ubuntu-latest

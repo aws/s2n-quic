@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use lru::LruCache;
-use rand::{Rng as _, RngCore};
+use rand::Rng as _;
 use s2n_codec::encoder::scatter;
 use s2n_quic_core::{
     event::api::Subject,
@@ -43,7 +43,7 @@ impl havoc::Random for Random {
             return start;
         }
 
-        rand::rng().random_range(start..end)
+        rand::random_range(start..end)
     }
 }
 

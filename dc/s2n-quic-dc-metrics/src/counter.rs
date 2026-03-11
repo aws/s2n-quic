@@ -52,16 +52,30 @@ impl Counter {
         }
     }
 
-    #[track_caller]
     pub fn increment(&self, count: u64) {
-        assert!(count <= u32::MAX as u64);
+        // If we get a particularly large count, directly serialize it into the underlying
+        // aggregate. We expect this to be rare, so acquiring the lock across all counters should
+        // be relatively cheap.
+        //
+        // It's possible to shift the exact threshold if we wanted to (e.g., by reducing the
+        // counter index bits, or having a more complicated serialization scheme), but we don't
+        // expect this to matter much in practice. If the event recorded is this large there's
+        // probably a good deal of compute needed to produce it in the first place.
+        if count > (u32::MAX as u64) {
+            self.channels.lock_aggregate()[self.counter as usize].value += count;
+            return;
+        }
         self.channels
             .send_event(((self.counter as u64) << 32) | count);
     }
 
-    pub(crate) fn take_current(&self) -> Option<String> {
+    pub(crate) fn take_current(&self, include_sparse: bool) -> Option<String> {
         let value = self.channels.get_mut(self.counter, std::mem::take);
-        Some(format!("{}", value.value))
+        if value.value == 0 && !include_sparse {
+            None
+        } else {
+            Some(format!("{}", value.value))
+        }
     }
 }
 
@@ -75,4 +89,45 @@ fn basic() {
     b.increment(9);
 
     assert_eq!(registry.take_current_metrics_line(), "a=5,b=9");
+}
+
+#[test]
+fn check_u64_max() {
+    let registry = crate::Registry::new();
+    let a = registry.register_counter(String::from("a"), None);
+    let b = registry.register_counter(String::from("b"), None);
+
+    a.increment(u64::MAX);
+    b.increment(u32::MAX as u64);
+
+    assert_eq!(
+        registry.take_current_metrics_line(),
+        format!("a={},b={}", u64::MAX, u32::MAX)
+    );
+}
+
+#[test]
+fn sparse_skipped() {
+    let registry = crate::Registry::new();
+    let counter = registry.register_counter(String::from("a"), None);
+    assert_eq!(
+        registry
+            .try_take_current_metrics_line_sparse(false)
+            .unwrap(),
+        ""
+    );
+
+    counter.increment(1);
+
+    assert_eq!(
+        registry
+            .try_take_current_metrics_line_sparse(false)
+            .unwrap(),
+        "a=1"
+    );
+
+    assert_eq!(
+        registry.try_take_current_metrics_line_sparse(true).unwrap(),
+        "a=0"
+    );
 }

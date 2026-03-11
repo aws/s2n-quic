@@ -14,8 +14,7 @@ publish = false
 bach = "0.1.0"
 bytes = { version = "1", default-features = false }
 futures = { version = "0.3", default-features = false, features = ["std"] }
-rand = "0.9"
-rand_chacha = "0.9"
+rand = { version = "0.10", features = ["chacha"] }
 s2n-codec = { path = "../../common/s2n-codec" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["branch-tracing", "event-tracing", "probe-tracing", "testing"] }
 s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "unstable-provider-io-testing", "unstable-provider-dc", "unstable-provider-packet-interceptor", "unstable-provider-random", "unstable-offload-tls"] }
@@ -29,7 +28,7 @@ zerocopy = { version = "0.8", features = ["derive"] }
 # quiche does not currently build on 32-bit platforms
 # see https://github.com/cloudflare/quiche/issues/2097
 [target.'cfg(not(target_arch = "x86"))'.dependencies]
-quiche = "0.25"
+quiche = "0.26"
 
 # s2n-tls is required by ch_callback_server_local_address_test and doesn't build on Windows
 [target.'cfg(not(target_os = "windows"))'.dependencies]

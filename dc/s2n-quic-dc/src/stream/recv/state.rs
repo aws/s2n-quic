@@ -49,7 +49,7 @@ pub struct State {
     control_packet_number: u64,
     stream_ack: ack::Space,
     recovery_ack: ack::Space,
-    state: Receiver,
+    pub(crate) state: Receiver,
     idle_timer: Timer,
     idle_timeout: Duration,
     // maintains a stable tick timer to avoid timer churn in the platform timer

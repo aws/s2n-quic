@@ -112,21 +112,25 @@ impl Summary {
         self.record_value(duration.as_nanos() as u64);
     }
 
-    pub fn take_current(&self) -> Option<String> {
-        Some(self.channels.get_mut(self.idx, |hist| {
-            let res = format(&hist.value, self.display_unit);
+    pub fn take_current(&self, include_sparse: bool) -> Option<String> {
+        self.channels.get_mut(self.idx, |hist| {
+            let res = format(&hist.value, self.display_unit, include_sparse)?;
             hist.value.as_mut_slice().fill(0);
-            res
-        }))
+            Some(res)
+        })
     }
 }
 
-fn format(hist: &[u64; BUCKETS], display_unit: Unit) -> String {
+fn format(hist: &[u64; BUCKETS], display_unit: Unit, include_sparse: bool) -> Option<String> {
     let mut f = String::new();
     // Shouldn't be capable of overflowing -- u64 counter generally cannot overflow.
     let total_count = hist.iter().sum::<u64>();
     if total_count == 0 {
-        f.push('0');
+        if include_sparse {
+            f.push('0');
+        } else {
+            return None;
+        }
     } else {
         let quantiles = [
             0.0f64, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 0.999, 1.0,
@@ -190,7 +194,7 @@ fn format(hist: &[u64; BUCKETS], display_unit: Unit) -> String {
 
     write!(f, "{}", display_unit.pmet_str()).unwrap();
 
-    f
+    Some(f)
 }
 
 const CONFIG: bucket::Config = bucket::Config::new(7, 64);
@@ -343,6 +347,32 @@ mod test {
         assert_eq!(
             registry.take_current_metrics_line(),
             "a=18410715276690587647*1"
+        );
+    }
+
+    #[test]
+    fn sparse_skipped() {
+        let registry = crate::Registry::new();
+        let summary = registry.register_summary(String::from("a"), None, Unit::Byte);
+        assert_eq!(
+            registry
+                .try_take_current_metrics_line_sparse(false)
+                .unwrap(),
+            ""
+        );
+
+        summary.record_value(1);
+
+        assert_eq!(
+            registry
+                .try_take_current_metrics_line_sparse(false)
+                .unwrap(),
+            "a=1*1 B"
+        );
+
+        assert_eq!(
+            registry.try_take_current_metrics_line_sparse(true).unwrap(),
+            "a=0 B"
         );
     }
 

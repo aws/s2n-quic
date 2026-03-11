@@ -52,7 +52,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// impl connection_id::Generator for MyConnectionIdFormat {
         ///     fn generate(&mut self, _conn_info: &connection_id::ConnectionInfo) -> connection_id::LocalId {
         ///         let mut id = [0u8; 16];
-        ///         rand::thread_rng().fill_bytes(&mut id);
+        ///         rand::rng().fill_bytes(&mut id);
         ///         connection_id::LocalId::try_from_bytes(&id[..]).unwrap()
         ///     }
         /// }

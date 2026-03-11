@@ -31,6 +31,12 @@ where
             write!(output, "{}", (callback)()).unwrap();
         }
 
+        // Nothing written yet, so we should treat this list as empty rather than producing
+        // malformed output (e.g., unit without a metric value).
+        if output.is_empty() {
+            return None;
+        }
+
         output.push_str(self.1.pmet_str());
         Some(output)
     }

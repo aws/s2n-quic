@@ -6,7 +6,7 @@ use super::router;
 use super::{client, server};
 use crate::path::secret;
 use cfg_if::cfg_if;
-use rand::Rng;
+use rand::RngExt;
 use s2n_quic::{
     provider::{
         dc::{ConfirmComplete, MtuConfirmComplete},

@@ -198,6 +198,74 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Emitted when a TLS ClientHello has been recognized on the TCP stream"]
+    pub struct AcceptorTcpTlsStarted<'a> {
+        #[doc = " The address of the packet's sender"]
+        pub remote_address: SocketAddress<'a>,
+        #[doc = " The amount of time the TCP stream spent in the queue so far"]
+        pub sojourn_time: core::time::Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for AcceptorTcpTlsStarted<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AcceptorTcpTlsStarted");
+            fmt.field("remote_address", &self.remote_address);
+            fmt.field("sojourn_time", &self.sojourn_time);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for AcceptorTcpTlsStarted<'a> {
+        const NAME: &'static str = "acceptor:tcp:tls_started";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Emitted when a TLS stream is enqueued to the application accept queue"]
+    pub struct AcceptorTcpTlsStreamEnqueued<'a> {
+        #[doc = " The address of the packet's sender"]
+        pub remote_address: SocketAddress<'a>,
+        #[doc = " The amount of time the TCP stream spent on handshaking before enqueuing to the application"]
+        #[doc = " since being accepted from the kernel"]
+        pub sojourn_time: core::time::Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for AcceptorTcpTlsStreamEnqueued<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AcceptorTcpTlsStreamEnqueued");
+            fmt.field("remote_address", &self.remote_address);
+            fmt.field("sojourn_time", &self.sojourn_time);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for AcceptorTcpTlsStreamEnqueued<'a> {
+        const NAME: &'static str = "acceptor:tcp:tls_stream_enqueued";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Emitted when a TLS stream is rejected"]
+    pub struct AcceptorTcpTlsStreamRejected<'a> {
+        #[doc = " The address of the packet's sender"]
+        pub remote_address: SocketAddress<'a>,
+        #[doc = " The amount of time the TCP stream spent on handshaking before being rejected"]
+        #[doc = " since being accepted from the kernel"]
+        pub sojourn_time: core::time::Duration,
+        #[doc = " The error encountered"]
+        pub error: &'a std::io::Error,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for AcceptorTcpTlsStreamRejected<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AcceptorTcpTlsStreamRejected");
+            fmt.field("remote_address", &self.remote_address);
+            fmt.field("sojourn_time", &self.sojourn_time);
+            fmt.field("error", &self.error);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for AcceptorTcpTlsStreamRejected<'a> {
+        const NAME: &'static str = "acceptor:tcp:tls_stream_rejected";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Emitted when the TCP acceptor received an invalid initial packet"]
     pub struct AcceptorTcpPacketDropped<'a> {
         #[doc = " The address of the packet's sender"]
@@ -515,9 +583,11 @@ pub mod api {
         pub credential_id: &'a [u8],
         #[doc = " The ID of the stream"]
         pub stream_id: u64,
-        #[doc = " The amount of time that the stream spent in the accept queue before"]
-        #[doc = " being dequeued"]
+        #[doc = " The amount of time that the stream spent in dcQUIC before being dequeued"]
         pub sojourn_time: core::time::Duration,
+        #[doc = " The amount of time that the stream spent in the queue to the application before being"]
+        #[doc = " dequeued"]
+        pub queue_sojourn_time: core::time::Duration,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for AcceptorStreamDequeued<'a> {
@@ -527,6 +597,7 @@ pub mod api {
             fmt.field("credential_id", &"[HIDDEN]");
             fmt.field("stream_id", &self.stream_id);
             fmt.field("sojourn_time", &self.sojourn_time);
+            fmt.field("queue_sojourn_time", &self.queue_sojourn_time);
             fmt.finish()
         }
     }
@@ -584,8 +655,11 @@ pub mod api {
         #[doc = " parsing the packet)"]
         Remote {},
         #[non_exhaustive]
-        #[doc = " Something in the local application state was wrong (e.g., missing credentials)."]
+        #[doc = " Something in the local application state was wrong."]
         Local {},
+        #[non_exhaustive]
+        #[doc = " Unknown path secret for remote stream."]
+        UnknownPathSecret {},
         #[non_exhaustive]
         #[doc = " Something went wrong that we didn't expect to happen."]
         #[doc = " This is used for failures that aren't expected to relate to dcQUIC state at all."]
@@ -624,8 +698,13 @@ pub mod api {
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("SYSTEM\0"),
+                name: aggregate::info::Str::new("UNKNOWN_PATH_SECRET\0"),
                 id: 6usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("SYSTEM\0"),
+                id: 7usize,
             }
             .build(),
         ];
@@ -638,7 +717,8 @@ pub mod api {
                 Self::Recv { .. } => 3usize,
                 Self::Remote { .. } => 4usize,
                 Self::Local { .. } => 5usize,
-                Self::System { .. } => 6usize,
+                Self::UnknownPathSecret { .. } => 6usize,
+                Self::System { .. } => 7usize,
             }
         }
     }
@@ -2557,6 +2637,46 @@ pub mod tracing {
             tracing :: event ! (target : "acceptor_tcp_packet_received" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , payload_len = tracing :: field :: debug (payload_len) , is_fin = tracing :: field :: debug (is_fin) , is_fin_known = tracing :: field :: debug (is_fin_known) , sojourn_time = tracing :: field :: debug (sojourn_time) });
         }
         #[inline]
+        fn on_acceptor_tcp_tls_started(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStarted,
+        ) {
+            let parent = self.parent(meta);
+            let api::AcceptorTcpTlsStarted {
+                remote_address,
+                sojourn_time,
+            } = event;
+            tracing :: event ! (target : "acceptor_tcp_tls_started" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , sojourn_time = tracing :: field :: debug (sojourn_time) });
+        }
+        #[inline]
+        fn on_acceptor_tcp_tls_stream_enqueued(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStreamEnqueued,
+        ) {
+            let parent = self.parent(meta);
+            let api::AcceptorTcpTlsStreamEnqueued {
+                remote_address,
+                sojourn_time,
+            } = event;
+            tracing :: event ! (target : "acceptor_tcp_tls_stream_enqueued" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , sojourn_time = tracing :: field :: debug (sojourn_time) });
+        }
+        #[inline]
+        fn on_acceptor_tcp_tls_stream_rejected(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStreamRejected,
+        ) {
+            let parent = self.parent(meta);
+            let api::AcceptorTcpTlsStreamRejected {
+                remote_address,
+                sojourn_time,
+                error,
+            } = event;
+            tracing :: event ! (target : "acceptor_tcp_tls_stream_rejected" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , sojourn_time = tracing :: field :: debug (sojourn_time) , error = tracing :: field :: debug (error) });
+        }
+        #[inline]
         fn on_acceptor_tcp_packet_dropped(
             &self,
             meta: &api::EndpointMeta,
@@ -2735,8 +2855,9 @@ pub mod tracing {
                 credential_id,
                 stream_id,
                 sojourn_time,
+                queue_sojourn_time,
             } = event;
-            tracing :: event ! (target : "acceptor_stream_dequeued" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , sojourn_time = tracing :: field :: debug (sojourn_time) });
+            tracing :: event ! (target : "acceptor_stream_dequeued" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , sojourn_time = tracing :: field :: debug (sojourn_time) , queue_sojourn_time = tracing :: field :: debug (queue_sojourn_time) });
         }
         #[inline]
         fn on_stream_write_flushed(
@@ -3858,6 +3979,75 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Emitted when a TLS ClientHello has been recognized on the TCP stream"]
+    pub struct AcceptorTcpTlsStarted<'a> {
+        #[doc = " The address of the packet's sender"]
+        pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        #[doc = " The amount of time the TCP stream spent in the queue so far"]
+        pub sojourn_time: core::time::Duration,
+    }
+    impl<'a> IntoEvent<api::AcceptorTcpTlsStarted<'a>> for AcceptorTcpTlsStarted<'a> {
+        #[inline]
+        fn into_event(self) -> api::AcceptorTcpTlsStarted<'a> {
+            let AcceptorTcpTlsStarted {
+                remote_address,
+                sojourn_time,
+            } = self;
+            api::AcceptorTcpTlsStarted {
+                remote_address: remote_address.into_event(),
+                sojourn_time: sojourn_time.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when a TLS stream is enqueued to the application accept queue"]
+    pub struct AcceptorTcpTlsStreamEnqueued<'a> {
+        #[doc = " The address of the packet's sender"]
+        pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        #[doc = " The amount of time the TCP stream spent on handshaking before enqueuing to the application"]
+        #[doc = " since being accepted from the kernel"]
+        pub sojourn_time: core::time::Duration,
+    }
+    impl<'a> IntoEvent<api::AcceptorTcpTlsStreamEnqueued<'a>> for AcceptorTcpTlsStreamEnqueued<'a> {
+        #[inline]
+        fn into_event(self) -> api::AcceptorTcpTlsStreamEnqueued<'a> {
+            let AcceptorTcpTlsStreamEnqueued {
+                remote_address,
+                sojourn_time,
+            } = self;
+            api::AcceptorTcpTlsStreamEnqueued {
+                remote_address: remote_address.into_event(),
+                sojourn_time: sojourn_time.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when a TLS stream is rejected"]
+    pub struct AcceptorTcpTlsStreamRejected<'a> {
+        #[doc = " The address of the packet's sender"]
+        pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        #[doc = " The amount of time the TCP stream spent on handshaking before being rejected"]
+        #[doc = " since being accepted from the kernel"]
+        pub sojourn_time: core::time::Duration,
+        #[doc = " The error encountered"]
+        pub error: &'a std::io::Error,
+    }
+    impl<'a> IntoEvent<api::AcceptorTcpTlsStreamRejected<'a>> for AcceptorTcpTlsStreamRejected<'a> {
+        #[inline]
+        fn into_event(self) -> api::AcceptorTcpTlsStreamRejected<'a> {
+            let AcceptorTcpTlsStreamRejected {
+                remote_address,
+                sojourn_time,
+                error,
+            } = self;
+            api::AcceptorTcpTlsStreamRejected {
+                remote_address: remote_address.into_event(),
+                sojourn_time: sojourn_time.into_event(),
+                error: error.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Emitted when the TCP acceptor received an invalid initial packet"]
     pub struct AcceptorTcpPacketDropped<'a> {
         #[doc = " The address of the packet's sender"]
@@ -4186,9 +4376,11 @@ pub mod builder {
         pub credential_id: &'a [u8],
         #[doc = " The ID of the stream"]
         pub stream_id: u64,
-        #[doc = " The amount of time that the stream spent in the accept queue before"]
-        #[doc = " being dequeued"]
+        #[doc = " The amount of time that the stream spent in dcQUIC before being dequeued"]
         pub sojourn_time: core::time::Duration,
+        #[doc = " The amount of time that the stream spent in the queue to the application before being"]
+        #[doc = " dequeued"]
+        pub queue_sojourn_time: core::time::Duration,
     }
     impl<'a> IntoEvent<api::AcceptorStreamDequeued<'a>> for AcceptorStreamDequeued<'a> {
         #[inline]
@@ -4198,12 +4390,14 @@ pub mod builder {
                 credential_id,
                 stream_id,
                 sojourn_time,
+                queue_sojourn_time,
             } = self;
             api::AcceptorStreamDequeued {
                 remote_address: remote_address.into_event(),
                 credential_id: credential_id.into_event(),
                 stream_id: stream_id.into_event(),
                 sojourn_time: sojourn_time.into_event(),
+                queue_sojourn_time: queue_sojourn_time.into_event(),
             }
         }
     }
@@ -4237,8 +4431,10 @@ pub mod builder {
         #[doc = " Something within dcQUIC failed related to the remote state or network contents (e.g.,"]
         #[doc = " parsing the packet)"]
         Remote,
-        #[doc = " Something in the local application state was wrong (e.g., missing credentials)."]
+        #[doc = " Something in the local application state was wrong."]
         Local,
+        #[doc = " Unknown path secret for remote stream."]
+        UnknownPathSecret,
         #[doc = " Something went wrong that we didn't expect to happen."]
         #[doc = " This is used for failures that aren't expected to relate to dcQUIC state at all."]
         System,
@@ -4254,6 +4450,7 @@ pub mod builder {
                 Self::Recv => Recv {},
                 Self::Remote => Remote {},
                 Self::Local => Local {},
+                Self::UnknownPathSecret => UnknownPathSecret {},
                 Self::System => System {},
             }
         }
@@ -6058,6 +6255,36 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `AcceptorTcpTlsStarted` event is triggered"]
+        #[inline]
+        fn on_acceptor_tcp_tls_started(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStarted,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `AcceptorTcpTlsStreamEnqueued` event is triggered"]
+        #[inline]
+        fn on_acceptor_tcp_tls_stream_enqueued(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStreamEnqueued,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `AcceptorTcpTlsStreamRejected` event is triggered"]
+        #[inline]
+        fn on_acceptor_tcp_tls_stream_rejected(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStreamRejected,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `AcceptorTcpPacketDropped` event is triggered"]
         #[inline]
         fn on_acceptor_tcp_packet_dropped(
@@ -7036,6 +7263,32 @@ mod traits {
             self.as_ref().on_acceptor_tcp_packet_received(meta, event);
         }
         #[inline]
+        fn on_acceptor_tcp_tls_started(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStarted,
+        ) {
+            self.as_ref().on_acceptor_tcp_tls_started(meta, event);
+        }
+        #[inline]
+        fn on_acceptor_tcp_tls_stream_enqueued(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStreamEnqueued,
+        ) {
+            self.as_ref()
+                .on_acceptor_tcp_tls_stream_enqueued(meta, event);
+        }
+        #[inline]
+        fn on_acceptor_tcp_tls_stream_rejected(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStreamRejected,
+        ) {
+            self.as_ref()
+                .on_acceptor_tcp_tls_stream_rejected(meta, event);
+        }
+        #[inline]
         fn on_acceptor_tcp_packet_dropped(
             &self,
             meta: &api::EndpointMeta,
@@ -7851,6 +8104,33 @@ mod traits {
             (self.1).on_acceptor_tcp_packet_received(meta, event);
         }
         #[inline]
+        fn on_acceptor_tcp_tls_started(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStarted,
+        ) {
+            (self.0).on_acceptor_tcp_tls_started(meta, event);
+            (self.1).on_acceptor_tcp_tls_started(meta, event);
+        }
+        #[inline]
+        fn on_acceptor_tcp_tls_stream_enqueued(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStreamEnqueued,
+        ) {
+            (self.0).on_acceptor_tcp_tls_stream_enqueued(meta, event);
+            (self.1).on_acceptor_tcp_tls_stream_enqueued(meta, event);
+        }
+        #[inline]
+        fn on_acceptor_tcp_tls_stream_rejected(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStreamRejected,
+        ) {
+            (self.0).on_acceptor_tcp_tls_stream_rejected(meta, event);
+            (self.1).on_acceptor_tcp_tls_stream_rejected(meta, event);
+        }
+        #[inline]
         fn on_acceptor_tcp_packet_dropped(
             &self,
             meta: &api::EndpointMeta,
@@ -8664,6 +8944,12 @@ mod traits {
         fn on_acceptor_tcp_stream_replaced(&self, event: builder::AcceptorTcpStreamReplaced);
         #[doc = "Publishes a `AcceptorTcpPacketReceived` event to the publisher's subscriber"]
         fn on_acceptor_tcp_packet_received(&self, event: builder::AcceptorTcpPacketReceived);
+        #[doc = "Publishes a `AcceptorTcpTlsStarted` event to the publisher's subscriber"]
+        fn on_acceptor_tcp_tls_started(&self, event: builder::AcceptorTcpTlsStarted);
+        #[doc = "Publishes a `AcceptorTcpTlsStreamEnqueued` event to the publisher's subscriber"]
+        fn on_acceptor_tcp_tls_stream_enqueued(&self, event: builder::AcceptorTcpTlsStreamEnqueued);
+        #[doc = "Publishes a `AcceptorTcpTlsStreamRejected` event to the publisher's subscriber"]
+        fn on_acceptor_tcp_tls_stream_rejected(&self, event: builder::AcceptorTcpTlsStreamRejected);
         #[doc = "Publishes a `AcceptorTcpPacketDropped` event to the publisher's subscriber"]
         fn on_acceptor_tcp_packet_dropped(&self, event: builder::AcceptorTcpPacketDropped);
         #[doc = "Publishes a `AcceptorTcpStreamEnqueued` event to the publisher's subscriber"]
@@ -8882,6 +9168,33 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_acceptor_tcp_packet_received(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_acceptor_tcp_tls_started(&self, event: builder::AcceptorTcpTlsStarted) {
+            let event = event.into_event();
+            self.subscriber
+                .on_acceptor_tcp_tls_started(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_acceptor_tcp_tls_stream_enqueued(
+            &self,
+            event: builder::AcceptorTcpTlsStreamEnqueued,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_acceptor_tcp_tls_stream_enqueued(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_acceptor_tcp_tls_stream_rejected(
+            &self,
+            event: builder::AcceptorTcpTlsStreamRejected,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_acceptor_tcp_tls_stream_rejected(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -9701,6 +10014,9 @@ pub mod testing {
             pub acceptor_tcp_stream_dropped: AtomicU64,
             pub acceptor_tcp_stream_replaced: AtomicU64,
             pub acceptor_tcp_packet_received: AtomicU64,
+            pub acceptor_tcp_tls_started: AtomicU64,
+            pub acceptor_tcp_tls_stream_enqueued: AtomicU64,
+            pub acceptor_tcp_tls_stream_rejected: AtomicU64,
             pub acceptor_tcp_packet_dropped: AtomicU64,
             pub acceptor_tcp_stream_enqueued: AtomicU64,
             pub acceptor_tcp_io_error: AtomicU64,
@@ -9790,6 +10106,9 @@ pub mod testing {
                     acceptor_tcp_stream_dropped: AtomicU64::new(0),
                     acceptor_tcp_stream_replaced: AtomicU64::new(0),
                     acceptor_tcp_packet_received: AtomicU64::new(0),
+                    acceptor_tcp_tls_started: AtomicU64::new(0),
+                    acceptor_tcp_tls_stream_enqueued: AtomicU64::new(0),
+                    acceptor_tcp_tls_stream_rejected: AtomicU64::new(0),
                     acceptor_tcp_packet_dropped: AtomicU64::new(0),
                     acceptor_tcp_stream_enqueued: AtomicU64::new(0),
                     acceptor_tcp_io_error: AtomicU64::new(0),
@@ -9929,6 +10248,42 @@ pub mod testing {
                 event: &api::AcceptorTcpPacketReceived,
             ) {
                 self.acceptor_tcp_packet_received
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_acceptor_tcp_tls_started(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::AcceptorTcpTlsStarted,
+            ) {
+                self.acceptor_tcp_tls_started
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_acceptor_tcp_tls_stream_enqueued(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::AcceptorTcpTlsStreamEnqueued,
+            ) {
+                self.acceptor_tcp_tls_stream_enqueued
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_acceptor_tcp_tls_stream_rejected(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::AcceptorTcpTlsStreamRejected,
+            ) {
+                self.acceptor_tcp_tls_stream_rejected
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -10541,6 +10896,9 @@ pub mod testing {
         pub acceptor_tcp_stream_dropped: AtomicU64,
         pub acceptor_tcp_stream_replaced: AtomicU64,
         pub acceptor_tcp_packet_received: AtomicU64,
+        pub acceptor_tcp_tls_started: AtomicU64,
+        pub acceptor_tcp_tls_stream_enqueued: AtomicU64,
+        pub acceptor_tcp_tls_stream_rejected: AtomicU64,
         pub acceptor_tcp_packet_dropped: AtomicU64,
         pub acceptor_tcp_stream_enqueued: AtomicU64,
         pub acceptor_tcp_io_error: AtomicU64,
@@ -10662,6 +11020,9 @@ pub mod testing {
                 acceptor_tcp_stream_dropped: AtomicU64::new(0),
                 acceptor_tcp_stream_replaced: AtomicU64::new(0),
                 acceptor_tcp_packet_received: AtomicU64::new(0),
+                acceptor_tcp_tls_started: AtomicU64::new(0),
+                acceptor_tcp_tls_stream_enqueued: AtomicU64::new(0),
+                acceptor_tcp_tls_stream_rejected: AtomicU64::new(0),
                 acceptor_tcp_packet_dropped: AtomicU64::new(0),
                 acceptor_tcp_stream_enqueued: AtomicU64::new(0),
                 acceptor_tcp_io_error: AtomicU64::new(0),
@@ -10833,6 +11194,42 @@ pub mod testing {
             event: &api::AcceptorTcpPacketReceived,
         ) {
             self.acceptor_tcp_packet_received
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_tcp_tls_started(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStarted,
+        ) {
+            self.acceptor_tcp_tls_started
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_tcp_tls_stream_enqueued(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStreamEnqueued,
+        ) {
+            self.acceptor_tcp_tls_stream_enqueued
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_tcp_tls_stream_rejected(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpTlsStreamRejected,
+        ) {
+            self.acceptor_tcp_tls_stream_rejected
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -11902,6 +12299,9 @@ pub mod testing {
         pub acceptor_tcp_stream_dropped: AtomicU64,
         pub acceptor_tcp_stream_replaced: AtomicU64,
         pub acceptor_tcp_packet_received: AtomicU64,
+        pub acceptor_tcp_tls_started: AtomicU64,
+        pub acceptor_tcp_tls_stream_enqueued: AtomicU64,
+        pub acceptor_tcp_tls_stream_rejected: AtomicU64,
         pub acceptor_tcp_packet_dropped: AtomicU64,
         pub acceptor_tcp_stream_enqueued: AtomicU64,
         pub acceptor_tcp_io_error: AtomicU64,
@@ -12013,6 +12413,9 @@ pub mod testing {
                 acceptor_tcp_stream_dropped: AtomicU64::new(0),
                 acceptor_tcp_stream_replaced: AtomicU64::new(0),
                 acceptor_tcp_packet_received: AtomicU64::new(0),
+                acceptor_tcp_tls_started: AtomicU64::new(0),
+                acceptor_tcp_tls_stream_enqueued: AtomicU64::new(0),
+                acceptor_tcp_tls_stream_rejected: AtomicU64::new(0),
                 acceptor_tcp_packet_dropped: AtomicU64::new(0),
                 acceptor_tcp_stream_enqueued: AtomicU64::new(0),
                 acceptor_tcp_io_error: AtomicU64::new(0),
@@ -12155,6 +12558,36 @@ pub mod testing {
         }
         fn on_acceptor_tcp_packet_received(&self, event: builder::AcceptorTcpPacketReceived) {
             self.acceptor_tcp_packet_received
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_tcp_tls_started(&self, event: builder::AcceptorTcpTlsStarted) {
+            self.acceptor_tcp_tls_started
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_tcp_tls_stream_enqueued(
+            &self,
+            event: builder::AcceptorTcpTlsStreamEnqueued,
+        ) {
+            self.acceptor_tcp_tls_stream_enqueued
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_tcp_tls_stream_rejected(
+            &self,
+            event: builder::AcceptorTcpTlsStreamRejected,
+        ) {
+            self.acceptor_tcp_tls_stream_rejected
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);

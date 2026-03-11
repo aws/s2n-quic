@@ -19,7 +19,7 @@ use crate::{
 };
 use s2n_quic::server::Name;
 use s2n_quic_core::time::{Clock, Timestamp};
-use std::{io, net::SocketAddr, time::Duration};
+use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::net::TcpStream;
 
 pub mod rpc {
@@ -230,6 +230,28 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         let mut stream =
             client::connect_tcp(handshake, acceptor_addr, &self.env, self.linger).await?;
         Self::write_prelude(&mut stream).await?;
+        Ok(stream)
+    }
+
+    /// Connects using the TLS over TCP transport layer.
+    ///
+    /// Note that the handshake and acceptor addresses must be the same for TLS.
+    #[inline]
+    pub async fn connect_tls(
+        &self,
+        addr: SocketAddr,
+        server_name: Name,
+        config: &impl crate::stream::TlsConnectionBuilder,
+    ) -> io::Result<Stream<S>> {
+        let stream = client::connect_tls(
+            addr,
+            server_name,
+            config,
+            &self.env,
+            self.linger,
+            self.handshake.map(),
+        )
+        .await?;
         Ok(stream)
     }
 
@@ -626,4 +648,55 @@ fn recv_buffer() -> recv::shared::RecvBuffer {
     // TODO replace this with a parameter once everything is in place
     let recv_buffer = recv::buffer::Local::new(msg::recv::Message::new(9000), None);
     Either::A(recv_buffer)
+}
+
+/// Connects and negotiated TLS 1.3
+#[inline]
+pub async fn connect_tls<Sub>(
+    addr: SocketAddr,
+    server_name: Name,
+    config: &impl crate::stream::TlsConnectionBuilder,
+    env: &Environment<Sub>,
+    linger: Option<Duration>,
+    // FIXME: Do we really need the map for this?
+    map: &crate::path::secret::Map,
+) -> io::Result<Stream<Sub>>
+where
+    Sub: event::Subscriber + Clone,
+{
+    let socket = TcpStream::connect(addr).await?;
+    let kernel_start_time = env.clock().get_time();
+
+    // Make sure TCP_NODELAY is set
+    let _ = socket.set_nodelay(true);
+
+    if linger.is_some() {
+        #[allow(deprecated)]
+        let _ = socket.set_linger(linger);
+    }
+
+    let mut connection = config.build_connection(s2n_tls::enums::Mode::Client)?;
+    (*connection).as_mut().set_server_name(&server_name)?;
+
+    let socket = Arc::new(crate::stream::socket::application::Single(socket));
+    let mut connection =
+        crate::stream::tls::S2nTlsConnection::from_connection(socket.clone(), connection)?;
+
+    connection.negotiate(None).await?;
+
+    // The handshake is complete at this point, so the stream should be considered open. Eventually
+    // at this point we'll want to export the TLS keys from the connection and add those into the
+    // state below. Right now though we're continuing to use s2n-tls for maintaining relevant
+    // state.
+
+    crate::stream::tls::build_stream(
+        kernel_start_time,
+        addr,
+        socket,
+        connection,
+        env,
+        map,
+        s2n_quic_core::endpoint::Type::Client,
+    )?
+    .build()
 }
