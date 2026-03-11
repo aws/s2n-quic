@@ -16,46 +16,31 @@ use tokio::{io, net::UdpSocket};
 
 pub async fn rx<S: Into<std::net::UdpSocket>>(
     socket: S,
+    rx_low: Option<S>,
     producer: ring::Producer<Message>,
     cooldown: Cooldown,
     stats: stats::Sender,
 ) -> io::Result<()> {
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
-
     let socket = UdpSocket::from_std(socket).unwrap();
-    let result = task::Receiver::new(producer, socket, None, cooldown, stats, None).await;
-    if let Some(err) = result {
-        Err(err)
+
+    let (rx_low, stats_low) = if let Some(low) = rx_low {
+        let low = low.into();
+        low.set_nonblocking(true).unwrap();
+        let low = UdpSocket::from_std(low).unwrap();
+        (Some(low), Some(stats.clone().with_socket_index(0)))
     } else {
-        Ok(())
-    }
-}
+        (None, None)
+    };
 
-pub async fn priority_rx<S: Into<std::net::UdpSocket>>(
-    socket_0: S,
-    socket_1: S,
-    producer: ring::Producer<Message>,
-    cooldown: Cooldown,
-    stats: stats::Sender,
-) -> io::Result<()> {
-    let socket_0 = socket_0.into();
-    socket_0.set_nonblocking(true).unwrap();
-    let socket_0 = UdpSocket::from_std(socket_0).unwrap();
+    let stats = if rx_low.is_some() {
+        stats.with_socket_index(1)
+    } else {
+        stats
+    };
 
-    let socket_1 = socket_1.into();
-    socket_1.set_nonblocking(true).unwrap();
-    let socket_1 = UdpSocket::from_std(socket_1).unwrap();
-
-    let result = rx::Receiver::new(
-        producer,
-        socket_1,
-        Some(socket_0),
-        cooldown,
-        stats.clone().with_socket_index(1),
-        Some(stats.with_socket_index(0)),
-    )
-    .await;
+    let result = task::Receiver::new(producer, socket, rx_low, cooldown, stats, stats_low).await;
     if let Some(err) = result {
         Err(err)
     } else {

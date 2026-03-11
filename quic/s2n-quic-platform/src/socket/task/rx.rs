@@ -150,7 +150,7 @@ where
                     Err(err) => return Some(err).into(),
                 }
 
-                // High-priority socket is pending — try low-priority socket
+                // High-priority socket is pending, then try low-priority socket
                 let entries = this.ring.data();
                 let stats_low = this.stats_low.as_ref().unwrap();
 
@@ -176,7 +176,6 @@ where
                 }
             }
         } else {
-            // Normal mode: single socket (original behavior)
             while !events.take_blocked() {
                 match this.poll_ring(u32::MAX, cx) {
                     Poll::Ready(Ok(_)) => {}

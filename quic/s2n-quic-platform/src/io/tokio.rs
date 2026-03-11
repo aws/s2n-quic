@@ -224,7 +224,6 @@ impl Io {
                 && rx_socket_list.len() == 2;
 
             if use_priority_rx {
-                // Priority path: one ring buffer, one PriorityReceiver task
                 let (producer, consumer) = socket::ring::pair(entries, payload_len);
                 consumers.push(consumer);
 
@@ -233,15 +232,14 @@ impl Io {
                 let socket_0 = iter.next().unwrap();
                 let socket_1 = iter.next().unwrap();
 
-                handle.spawn(task::priority_rx(
-                    socket_0,
+                handle.spawn(task::rx(
                     socket_1,
+                    Some(socket_0),
                     producer,
                     rx_cooldown,
                     stats_sender.clone(),
                 ));
             } else {
-                // Existing path: one task + ring buffer per socket
                 for (idx, socket) in rx_socket_list.into_iter().enumerate() {
                     let (producer, consumer) = socket::ring::pair(entries, payload_len);
                     consumers.push(consumer);
@@ -249,6 +247,7 @@ impl Io {
                     // spawn a task that actually reads from the socket into the ring buffer
                     handle.spawn(task::rx(
                         socket,
+                        None,
                         producer,
                         rx_cooldown.clone(),
                         stats_sender.clone().with_socket_index(idx),

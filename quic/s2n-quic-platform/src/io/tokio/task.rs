@@ -10,11 +10,11 @@ mod unix;
 
 cfg_if::cfg_if! {
     if #[cfg(s2n_quic_platform_socket_mmsg)] {
-        pub use mmsg::{priority_rx, rx, tx};
+        pub use mmsg::{rx, tx};
     } else if #[cfg(s2n_quic_platform_socket_msg)] {
-        pub use msg::{priority_rx, rx, tx};
+        pub use msg::{rx, tx};
     } else {
-        pub use simple::{priority_rx, rx, tx};
+        pub use simple::{rx, tx};
     }
 }
 
@@ -32,21 +32,12 @@ macro_rules! libc_msg {
 
             pub async fn rx<S: Into<std::net::UdpSocket>>(
                 socket: S,
+                rx_low: Option<S>,
                 producer: ring::Producer<Message>,
                 cooldown: Cooldown,
                 stats: stats::Sender,
             ) -> std::io::Result<()> {
-                unix::rx(socket, producer, cooldown, stats).await
-            }
-
-            pub async fn priority_rx<S: Into<std::net::UdpSocket>>(
-                socket_0: S,
-                socket_1: S,
-                producer: ring::Producer<Message>,
-                cooldown: Cooldown,
-                stats: stats::Sender,
-            ) -> std::io::Result<()> {
-                unix::priority_rx(socket_0, socket_1, producer, cooldown, stats).await
+                unix::rx(socket, rx_low, producer, cooldown, stats).await
             }
 
             pub async fn tx<S: Into<std::net::UdpSocket>>(
