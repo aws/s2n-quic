@@ -222,7 +222,11 @@ mod id {
     pub const STREAM_TCP_CONNECT: usize = STREAM_DECRYPT_PACKET__REQUIRED_APPLICATION_BUFFER + 1;
     pub const STREAM_TCP_CONNECT__ERROR: usize = STREAM_TCP_CONNECT + 1;
     pub const STREAM_TCP_CONNECT__TCP_LATENCY: usize = STREAM_TCP_CONNECT__ERROR + 1;
-    pub const STREAM_CONNECT: usize = STREAM_TCP_CONNECT__TCP_LATENCY + 1;
+    pub const STREAM_TLS_CONNECT: usize = STREAM_TCP_CONNECT__TCP_LATENCY + 1;
+    pub const STREAM_TLS_CONNECT__ERROR: usize = STREAM_TLS_CONNECT + 1;
+    pub const STREAM_TLS_CONNECT__TCP_LATENCY: usize = STREAM_TLS_CONNECT__ERROR + 1;
+    pub const STREAM_TLS_CONNECT__TLS_LATENCY: usize = STREAM_TLS_CONNECT__TCP_LATENCY + 1;
+    pub const STREAM_CONNECT: usize = STREAM_TLS_CONNECT__TLS_LATENCY + 1;
     pub const STREAM_CONNECT__ERROR: usize = STREAM_CONNECT + 1;
     pub const STREAM_CONNECT__TCP: usize = STREAM_CONNECT__ERROR + 1;
     pub const STREAM_CONNECT__HANDSHAKE: usize = STREAM_CONNECT__TCP + 1;
@@ -543,6 +547,7 @@ mod counter {
                 id::STREAM_READ_SOCKET_ERRORED => Self(stream_read_socket_errored),
                 id::STREAM_DECRYPT_PACKET => Self(stream_decrypt_packet),
                 id::STREAM_TCP_CONNECT => Self(stream_tcp_connect),
+                id::STREAM_TLS_CONNECT => Self(stream_tls_connect),
                 id::STREAM_CONNECT => Self(stream_connect),
                 id::STREAM_CONNECT_ERROR => Self(stream_connect_error),
                 id::STREAM_PACKET_TRANSMITTED => Self(stream_packet_transmitted),
@@ -739,6 +744,8 @@ mod counter {
             fn stream_decrypt_packet(value: u64);
             # [link_name = s2n_quic_dc__event__counter__stream_tcp_connect]
             fn stream_tcp_connect(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_tls_connect]
+            fn stream_tls_connect(value: u64);
             # [link_name = s2n_quic_dc__event__counter__stream_connect]
             fn stream_connect(value: u64);
             # [link_name = s2n_quic_dc__event__counter__stream_connect_error]
@@ -884,6 +891,7 @@ mod counter {
                         Self(stream_decrypt_packet__decrypted_in_place)
                     }
                     id::STREAM_TCP_CONNECT__ERROR => Self(stream_tcp_connect__error),
+                    id::STREAM_TLS_CONNECT__ERROR => Self(stream_tls_connect__error),
                     id::STREAM_CONNECT__ERROR => Self(stream_connect__error),
                     id::STREAM_PACKET_TRANSMITTED__RETRANSMISSION => {
                         Self(stream_packet_transmitted__retransmission)
@@ -942,6 +950,8 @@ mod counter {
                 fn stream_decrypt_packet__decrypted_in_place(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__stream_tcp_connect__error]
                 fn stream_tcp_connect__error(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__stream_tls_connect__error]
+                fn stream_tls_connect__error(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__stream_connect__error]
                 fn stream_connect__error(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__stream_packet_transmitted__retransmission]
@@ -1928,6 +1938,8 @@ mod timer {
                 id::STREAM_READ_ERRORED__LATENCY => Self(stream_read_errored__latency),
                 id::STREAM_READ_SHUTDOWN__LATENCY => Self(stream_read_shutdown__latency),
                 id::STREAM_TCP_CONNECT__TCP_LATENCY => Self(stream_tcp_connect__tcp_latency),
+                id::STREAM_TLS_CONNECT__TCP_LATENCY => Self(stream_tls_connect__tcp_latency),
+                id::STREAM_TLS_CONNECT__TLS_LATENCY => Self(stream_tls_connect__tls_latency),
                 id::STREAM_CONNECT_ERROR__LATENCY => Self(stream_connect_error__latency),
                 _ => unreachable!("invalid info: {info:?}"),
             }
@@ -1990,6 +2002,10 @@ mod timer {
             fn stream_read_shutdown__latency(value: core::time::Duration);
             # [link_name = s2n_quic_dc__event__timer__stream_tcp_connect__tcp_latency]
             fn stream_tcp_connect__tcp_latency(value: core::time::Duration);
+            # [link_name = s2n_quic_dc__event__timer__stream_tls_connect__tcp_latency]
+            fn stream_tls_connect__tcp_latency(value: core::time::Duration);
+            # [link_name = s2n_quic_dc__event__timer__stream_tls_connect__tls_latency]
+            fn stream_tls_connect__tls_latency(value: core::time::Duration);
             # [link_name = s2n_quic_dc__event__timer__stream_connect_error__latency]
             fn stream_connect_error__latency(value: core::time::Duration);
         }

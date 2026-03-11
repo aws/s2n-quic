@@ -1283,6 +1283,27 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Tracks TLS stream establishment."]
+    pub struct StreamTlsConnect {
+        pub error: bool,
+        pub tcp_latency: core::time::Duration,
+        pub tls_latency: core::time::Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamTlsConnect {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamTlsConnect");
+            fmt.field("error", &self.error);
+            fmt.field("tcp_latency", &self.tcp_latency);
+            fmt.field("tls_latency", &self.tls_latency);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamTlsConnect {
+        const NAME: &'static str = "stream:tls_connect";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Tracks stream connect where dcQUIC owns the TCP connect()."]
     pub struct StreamConnect {
         pub error: bool,
@@ -3133,6 +3154,16 @@ pub mod tracing {
             tracing :: event ! (target : "stream_tcp_connect" , parent : parent , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) , latency = tracing :: field :: debug (latency) });
         }
         #[inline]
+        fn on_stream_tls_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTlsConnect) {
+            let parent = self.parent(meta);
+            let api::StreamTlsConnect {
+                error,
+                tcp_latency,
+                tls_latency,
+            } = event;
+            tracing :: event ! (target : "stream_tls_connect" , parent : parent , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) , tcp_latency = tracing :: field :: debug (tcp_latency) , tls_latency = tracing :: field :: debug (tls_latency) });
+        }
+        #[inline]
         fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
             let parent = self.parent(meta);
             let api::StreamConnect {
@@ -4957,6 +4988,28 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Tracks TLS stream establishment."]
+    pub struct StreamTlsConnect {
+        pub error: bool,
+        pub tcp_latency: core::time::Duration,
+        pub tls_latency: core::time::Duration,
+    }
+    impl IntoEvent<api::StreamTlsConnect> for StreamTlsConnect {
+        #[inline]
+        fn into_event(self) -> api::StreamTlsConnect {
+            let StreamTlsConnect {
+                error,
+                tcp_latency,
+                tls_latency,
+            } = self;
+            api::StreamTlsConnect {
+                error: error.into_event(),
+                tcp_latency: tcp_latency.into_event(),
+                tls_latency: tls_latency.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Tracks stream connect where dcQUIC owns the TCP connect()."]
     pub struct StreamConnect {
         pub error: bool,
@@ -6661,6 +6714,12 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `StreamTlsConnect` event is triggered"]
+        #[inline]
+        fn on_stream_tls_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTlsConnect) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `StreamConnect` event is triggered"]
         #[inline]
         fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
@@ -7588,6 +7647,10 @@ mod traits {
             self.as_ref().on_stream_tcp_connect(meta, event);
         }
         #[inline]
+        fn on_stream_tls_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTlsConnect) {
+            self.as_ref().on_stream_tls_connect(meta, event);
+        }
+        #[inline]
         fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
             self.as_ref().on_stream_connect(meta, event);
         }
@@ -8453,6 +8516,11 @@ mod traits {
             (self.1).on_stream_tcp_connect(meta, event);
         }
         #[inline]
+        fn on_stream_tls_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTlsConnect) {
+            (self.0).on_stream_tls_connect(meta, event);
+            (self.1).on_stream_tls_connect(meta, event);
+        }
+        #[inline]
         fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
             (self.0).on_stream_connect(meta, event);
             (self.1).on_stream_connect(meta, event);
@@ -8978,6 +9046,8 @@ mod traits {
         fn on_acceptor_stream_dequeued(&self, event: builder::AcceptorStreamDequeued);
         #[doc = "Publishes a `StreamTcpConnect` event to the publisher's subscriber"]
         fn on_stream_tcp_connect(&self, event: builder::StreamTcpConnect);
+        #[doc = "Publishes a `StreamTlsConnect` event to the publisher's subscriber"]
+        fn on_stream_tls_connect(&self, event: builder::StreamTlsConnect);
         #[doc = "Publishes a `StreamConnect` event to the publisher's subscriber"]
         fn on_stream_connect(&self, event: builder::StreamConnect);
         #[doc = "Publishes a `StreamConnectError` event to the publisher's subscriber"]
@@ -9289,6 +9359,12 @@ mod traits {
         fn on_stream_tcp_connect(&self, event: builder::StreamTcpConnect) {
             let event = event.into_event();
             self.subscriber.on_stream_tcp_connect(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_tls_connect(&self, event: builder::StreamTlsConnect) {
+            let event = event.into_event();
+            self.subscriber.on_stream_tls_connect(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -10031,6 +10107,7 @@ pub mod testing {
             pub acceptor_stream_pruned: AtomicU64,
             pub acceptor_stream_dequeued: AtomicU64,
             pub stream_tcp_connect: AtomicU64,
+            pub stream_tls_connect: AtomicU64,
             pub stream_connect: AtomicU64,
             pub stream_connect_error: AtomicU64,
             pub endpoint_initialized: AtomicU64,
@@ -10123,6 +10200,7 @@ pub mod testing {
                     acceptor_stream_pruned: AtomicU64::new(0),
                     acceptor_stream_dequeued: AtomicU64::new(0),
                     stream_tcp_connect: AtomicU64::new(0),
+                    stream_tls_connect: AtomicU64::new(0),
                     stream_connect: AtomicU64::new(0),
                     stream_connect_error: AtomicU64::new(0),
                     endpoint_initialized: AtomicU64::new(0),
@@ -10448,6 +10526,17 @@ pub mod testing {
                 event: &api::StreamTcpConnect,
             ) {
                 self.stream_tcp_connect.fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_stream_tls_connect(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::StreamTlsConnect,
+            ) {
+                self.stream_tls_connect.fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 let out = format!("{meta:?} {event:?}");
@@ -10933,6 +11022,7 @@ pub mod testing {
         pub stream_read_socket_errored: AtomicU64,
         pub stream_decrypt_packet: AtomicU64,
         pub stream_tcp_connect: AtomicU64,
+        pub stream_tls_connect: AtomicU64,
         pub stream_connect: AtomicU64,
         pub stream_connect_error: AtomicU64,
         pub stream_packet_transmitted: AtomicU64,
@@ -11057,6 +11147,7 @@ pub mod testing {
                 stream_read_socket_errored: AtomicU64::new(0),
                 stream_decrypt_packet: AtomicU64::new(0),
                 stream_tcp_connect: AtomicU64::new(0),
+                stream_tls_connect: AtomicU64::new(0),
                 stream_connect: AtomicU64::new(0),
                 stream_connect_error: AtomicU64::new(0),
                 stream_packet_transmitted: AtomicU64::new(0),
@@ -11678,6 +11769,13 @@ pub mod testing {
         }
         fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
             self.stream_tcp_connect.fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_stream_tls_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTlsConnect) {
+            self.stream_tls_connect.fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
             let out = format!("{meta:?} {event:?}");
@@ -12336,6 +12434,7 @@ pub mod testing {
         pub stream_read_socket_errored: AtomicU64,
         pub stream_decrypt_packet: AtomicU64,
         pub stream_tcp_connect: AtomicU64,
+        pub stream_tls_connect: AtomicU64,
         pub stream_connect: AtomicU64,
         pub stream_connect_error: AtomicU64,
         pub stream_packet_transmitted: AtomicU64,
@@ -12450,6 +12549,7 @@ pub mod testing {
                 stream_read_socket_errored: AtomicU64::new(0),
                 stream_decrypt_packet: AtomicU64::new(0),
                 stream_tcp_connect: AtomicU64::new(0),
+                stream_tls_connect: AtomicU64::new(0),
                 stream_connect: AtomicU64::new(0),
                 stream_connect_error: AtomicU64::new(0),
                 stream_packet_transmitted: AtomicU64::new(0),
@@ -12696,6 +12796,13 @@ pub mod testing {
         }
         fn on_stream_tcp_connect(&self, event: builder::StreamTcpConnect) {
             self.stream_tcp_connect.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_stream_tls_connect(&self, event: builder::StreamTlsConnect) {
+            self.stream_tls_connect.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             let out = format!("{event:?}");
