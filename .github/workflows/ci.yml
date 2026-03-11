@@ -369,8 +369,7 @@ jobs:
           cargo test \
             -Zbuild-std \
             --target x86_64-unknown-linux-gnu \
-            --workspace \
-            -- --skip client_hello_routed_test
+            --workspace
 
   fips:
     runs-on: ubuntu-latest
