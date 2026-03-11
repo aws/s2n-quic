@@ -20,6 +20,7 @@ pub struct Builder {
     pub(super) reuse_address: bool,
     pub(super) reuse_port: bool,
     pub(super) only_v6: bool,
+    pub(super) dc_mode: bool,
 }
 
 impl Builder {
@@ -224,6 +225,17 @@ impl Builder {
     pub fn with_reuse_address(mut self, enabled: bool) -> io::Result<Self> {
         self.reuse_address = enabled;
         Ok(self)
+    }
+
+    /// Enables DC mode for priority-based RX socket scheduling.
+    ///
+    /// When enabled, the IO layer will use a single priority-based RX task that
+    /// drains non-initial packets before reading Client Hello packets, rather than
+    /// spawning independent tasks per RX socket.
+    #[must_use]
+    pub fn with_dc_mode(mut self, enabled: bool) -> Self {
+        self.dc_mode = enabled;
+        self
     }
 
     /// Enables the port reuse (SO_REUSEPORT) socket option

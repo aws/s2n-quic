@@ -24,7 +24,38 @@ pub async fn rx<S: Into<std::net::UdpSocket>>(
     socket.set_nonblocking(true).unwrap();
 
     let socket = UdpSocket::from_std(socket).unwrap();
-    let result = task::Receiver::new(producer, socket, cooldown, stats).await;
+    let result = task::Receiver::new(producer, socket, None, cooldown, stats, None).await;
+    if let Some(err) = result {
+        Err(err)
+    } else {
+        Ok(())
+    }
+}
+
+pub async fn priority_rx<S: Into<std::net::UdpSocket>>(
+    socket_0: S,
+    socket_1: S,
+    producer: ring::Producer<Message>,
+    cooldown: Cooldown,
+    stats: stats::Sender,
+) -> io::Result<()> {
+    let socket_0 = socket_0.into();
+    socket_0.set_nonblocking(true).unwrap();
+    let socket_0 = UdpSocket::from_std(socket_0).unwrap();
+
+    let socket_1 = socket_1.into();
+    socket_1.set_nonblocking(true).unwrap();
+    let socket_1 = UdpSocket::from_std(socket_1).unwrap();
+
+    let result = rx::Receiver::new(
+        producer,
+        socket_1,
+        Some(socket_0),
+        cooldown,
+        stats.clone().with_socket_index(1),
+        Some(stats.with_socket_index(0)),
+    )
+    .await;
     if let Some(err) = result {
         Err(err)
     } else {

@@ -60,6 +60,7 @@ impl Io {
             reuse_address,
             reuse_port,
             only_v6,
+            dc_mode,
         } = self.builder;
 
         let clock = Clock::default();
@@ -217,17 +218,42 @@ impl Io {
             // complete
             let rx_cooldown = cooldown("RX");
 
-            for (idx, socket) in rx_socket_list.into_iter().enumerate() {
+            // Determine if we should use priority scheduling
+            let use_priority_rx = dc_mode
+                && parse_env::<usize>("S2N_QUIC_UNSTABLE_RX_SOCKET_COUNT").is_none()
+                && rx_socket_list.len() == 2;
+
+            if use_priority_rx {
+                // Priority path: one ring buffer, one PriorityReceiver task
                 let (producer, consumer) = socket::ring::pair(entries, payload_len);
                 consumers.push(consumer);
 
-                // spawn a task that actually reads from the socket into the ring buffer
-                handle.spawn(task::rx(
-                    socket,
+                // socket_0 = Client Hello (low priority), socket_1 = non-initial (high priority)
+                let mut iter = rx_socket_list.into_iter();
+                let socket_0 = iter.next().unwrap();
+                let socket_1 = iter.next().unwrap();
+
+                handle.spawn(task::priority_rx(
+                    socket_0,
+                    socket_1,
                     producer,
-                    rx_cooldown.clone(),
-                    stats_sender.clone().with_socket_index(idx),
+                    rx_cooldown,
+                    stats_sender.clone(),
                 ));
+            } else {
+                // Existing path: one task + ring buffer per socket
+                for (idx, socket) in rx_socket_list.into_iter().enumerate() {
+                    let (producer, consumer) = socket::ring::pair(entries, payload_len);
+                    consumers.push(consumer);
+
+                    // spawn a task that actually reads from the socket into the ring buffer
+                    handle.spawn(task::rx(
+                        socket,
+                        producer,
+                        rx_cooldown.clone(),
+                        stats_sender.clone().with_socket_index(idx),
+                    ));
+                }
             }
 
             // construct the RX side for the endpoint event loop
