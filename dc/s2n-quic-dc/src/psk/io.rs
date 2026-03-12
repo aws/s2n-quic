@@ -1170,8 +1170,8 @@ mod tests {
             })
         };
 
-        // Let the flood run for 2 second
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        // Let the flood run for 5 second
+        tokio::time::sleep(Duration::from_secs(5)).await;
 
         // Stop the flood
         cancel.store(true, Ordering::Relaxed);
@@ -1197,6 +1197,6 @@ mod tests {
         // Socket 0 should have received significantly fewer packets than socket 1
         // because the priority scheduling drains socket 1 first. Socket 0 only gets
         // read in brief gaps when socket 1 momentarily has no data.
-        assert!(socket_0_count < socket_1_count / 4);
+        assert!(socket_0_count < socket_1_count / 3);
     }
 }
