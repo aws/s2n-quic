@@ -137,6 +137,29 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
         self
     }
 
+    /// Sets the period we wait before allowing new handshakes with the same peer (by IP:port),
+    /// after a failed handshake.
+    ///
+    /// This is the upper bound, the jitter is randomized between 1 second and the upper bound.
+    /// Setting this to [`Duration::ZERO`] will immediately allow new handshakes after failure.
+    ///
+    /// This defaults to 2 minutes.
+    pub fn with_error_jitter(mut self, period: Duration) -> Self {
+        self.handshake_queue.error_jitter = period;
+        self
+    }
+
+    /// When enabled, handshake callers will wait for the deduplication entry to be removed
+    /// before returning. This is useful for benchmarking where each iteration needs a fresh
+    /// handshake without dedup interference.
+    ///
+    /// Defaults to `false`.
+    #[doc(hidden)]
+    pub fn with_await_dedup_removal(mut self, await_dedup_removal: bool) -> Self {
+        self.handshake_queue.await_dedup_removal = await_dedup_removal;
+        self
+    }
+
     /// Bind the client to the given address.
     ///
     /// Typically the address provided can use an ephemeral port.
