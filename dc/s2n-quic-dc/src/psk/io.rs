@@ -1158,15 +1158,20 @@ mod tests {
                 let packet_socket0 =
                     s2n_quic_core::crypto::initial::EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET;
                 while !cancel.load(Ordering::Relaxed) {
-                    let _ = sender.send_to(&packet_socket1, server_addr);
+                    // Send 10 packets to socket 1 for every 1 to socket 0.
+                    // This creates a natural backlog on socket 1,
+                    // ensuring the priority scheduling has a clear effect.
+                    for _ in 0..10 {
+                        let _ = sender.send_to(&packet_socket1, server_addr);
+                    }
                     let _ = sender.send_to(&packet_socket0, server_addr);
-                    count.fetch_add(2, Ordering::Relaxed);
+                    count.fetch_add(11, Ordering::Relaxed);
                 }
             })
         };
 
-        // Let the flood run for 1 second
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        // Let the flood run for 2 second
+        tokio::time::sleep(Duration::from_secs(2)).await;
 
         // Stop the flood
         cancel.store(true, Ordering::Relaxed);
