@@ -31,7 +31,7 @@ pub struct Receiver<T: Message, S: Socket<T>> {
     /// Primary socket (high priority in DC mode, only socket in normal mode)
     rx: S,
     /// Optional low-priority socket for DC priority scheduling (Client Hello packets)
-    rx_low: Option<S>,
+    socket_low: Option<S>,
     ring_cooldown: Cooldown,
     io_cooldown: Cooldown,
     stats: stats::Sender,
@@ -47,13 +47,13 @@ where
 {
     /// Creates a new Receiver.
     ///
-    /// If `rx_low` and `stats_low` are provided, the receiver operates in priority mode:
-    /// `rx` is the high-priority socket (drained first), `rx_low` is the low-priority socket.
+    /// If `socket_low` and `stats_low` are provided, the receiver operates in priority mode:
+    /// `rx` is the high-priority socket (drained first), `socket_low` is the low-priority socket.
     #[inline]
     pub fn new(
         ring: Producer<T>,
         rx: S,
-        rx_low: Option<S>,
+        socket_low: Option<S>,
         cooldown: Cooldown,
         stats: stats::Sender,
         stats_low: Option<stats::Sender>,
@@ -61,7 +61,7 @@ where
         Self {
             ring,
             rx,
-            rx_low,
+            socket_low,
             ring_cooldown: cooldown.clone(),
             io_cooldown: cooldown,
             stats,
@@ -119,7 +119,7 @@ where
         let mut events = Events::default();
         let mut pending_wake = false;
 
-        if this.rx_low.is_some() {
+        if this.socket_low.is_some() {
             // Priority mode: drain high-priority socket first, then low-priority
             loop {
                 match this.poll_ring(u32::MAX, cx) {
@@ -155,7 +155,7 @@ where
                 let stats_low = this.stats_low.as_ref().unwrap();
 
                 match this
-                    .rx_low
+                    .socket_low
                     .as_mut()
                     .unwrap()
                     .recv(cx, entries, &mut events, stats_low)

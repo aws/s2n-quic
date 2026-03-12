@@ -32,12 +32,12 @@ macro_rules! libc_msg {
 
             pub async fn rx<S: Into<std::net::UdpSocket>>(
                 socket: S,
-                rx_low: Option<S>,
+                socket_low: Option<S>,
                 producer: ring::Producer<Message>,
                 cooldown: Cooldown,
                 stats: stats::Sender,
             ) -> std::io::Result<()> {
-                unix::rx(socket, rx_low, producer, cooldown, stats).await
+                unix::rx(socket, socket_low, producer, cooldown, stats).await
             }
 
             pub async fn tx<S: Into<std::net::UdpSocket>>(

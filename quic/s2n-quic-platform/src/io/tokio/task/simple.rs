@@ -16,7 +16,7 @@ use tokio::{io, net::UdpSocket};
 
 pub async fn rx<S: Into<std::net::UdpSocket>>(
     socket: S,
-    rx_low: Option<S>,
+    socket_low: Option<S>,
     producer: ring::Producer<Message>,
     cooldown: Cooldown,
     stats: stats::Sender,
@@ -25,7 +25,7 @@ pub async fn rx<S: Into<std::net::UdpSocket>>(
     socket.set_nonblocking(true).unwrap();
     let socket = UdpSocket::from_std(socket).unwrap();
 
-    let (rx_low, stats_low) = if let Some(low) = rx_low {
+    let (socket_low, stats_low) = if let Some(low) = socket_low {
         let low = low.into();
         low.set_nonblocking(true).unwrap();
         let low = UdpSocket::from_std(low).unwrap();
@@ -34,13 +34,14 @@ pub async fn rx<S: Into<std::net::UdpSocket>>(
         (None, None)
     };
 
-    let stats = if rx_low.is_some() {
+    let stats = if socket_low.is_some() {
         stats.with_socket_index(1)
     } else {
         stats
     };
 
-    let result = task::Receiver::new(producer, socket, rx_low, cooldown, stats, stats_low).await;
+    let result =
+        task::Receiver::new(producer, socket, socket_low, cooldown, stats, stats_low).await;
     if let Some(err) = result {
         Err(err)
     } else {

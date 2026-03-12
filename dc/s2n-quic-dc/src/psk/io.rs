@@ -74,8 +74,8 @@ impl Server {
         // Attach ROUTER to both sockets for packet filtering
         #[cfg(target_os = "linux")]
         {
-            router::ROUTER.attach(&socket_for_other_packets)?;
             router::ROUTER.attach(&socket_for_client_hello_packets)?;
+            router::ROUTER.attach(&socket_for_other_packets)?;
         }
 
         let io = s2n_quic::provider::io::default::Builder::default()
