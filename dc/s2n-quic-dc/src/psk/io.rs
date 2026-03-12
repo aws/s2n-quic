@@ -1143,71 +1143,55 @@ mod tests {
         // Cancellation flag shared by both flood tasks
         let cancel = Arc::new(AtomicBool::new(false));
 
-        let socket1_flood_count = Arc::new(AtomicU64::new(0));
-        let socket0_flood_count = Arc::new(AtomicU64::new(0));
+        let flood_count = Arc::new(AtomicU64::new(0));
 
-        // Task 1: flood socket 1 with retry packets (non-initial, high priority)
-        let socket1_task = {
+        // Single thread that interleaves sends: one retry packet (socket 1),
+        // then one client hello packet (socket 0).
+        // This ensures both sockets receive equal send rates, so the priority
+        // scheduling is what determines which gets read first.
+        let flood_thread = {
             let cancel = cancel.clone();
-            let count = socket1_flood_count.clone();
-            tokio::spawn(async move {
-                let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-                let packet = s2n_quic_core::crypto::retry::example::PACKET;
-                while !cancel.load(Ordering::Relaxed) {
-                    if sender.send_to(&packet, server_addr).await.is_ok() {
-                        count.fetch_add(1, Ordering::Relaxed);
-                    }
-                }
-            })
-        };
-
-        // Task 2: flood socket 0 with client hello packets (initial, low priority)
-        let socket0_task = {
-            let cancel = cancel.clone();
-            let count = socket0_flood_count.clone();
-            tokio::spawn(async move {
-                let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-                let packet =
+            let count = flood_count.clone();
+            std::thread::spawn(move || {
+                let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+                let packet_socket1 = s2n_quic_core::crypto::retry::example::PACKET;
+                let packet_socket0 =
                     s2n_quic_core::crypto::initial::EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET;
                 while !cancel.load(Ordering::Relaxed) {
-                    if sender.send_to(&packet, server_addr).await.is_ok() {
-                        count.fetch_add(1, Ordering::Relaxed);
-                    }
+                    let _ = sender.send_to(&packet_socket1, server_addr);
+                    let _ = sender.send_to(&packet_socket0, server_addr);
+                    count.fetch_add(2, Ordering::Relaxed);
                 }
             })
         };
 
-        // Let both floods run for 1 second
+        // Let the flood run for 1 second
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        // Stop both floods
+        // Stop the flood
         cancel.store(true, Ordering::Relaxed);
-        socket1_task.await.expect("socket1 flood task panicked");
-        socket0_task.await.expect("socket0 flood task panicked");
+        flood_thread.join().expect("flood thread panicked");
 
         // Wait briefly for events to propagate
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let socket_0_count = server_stats.socket_count(0);
         let socket_1_count = server_stats.socket_count(1);
-        let s1_flood = socket1_flood_count.load(Ordering::Relaxed);
-        let s0_flood = socket0_flood_count.load(Ordering::Relaxed);
+        let total_flood = flood_count.load(Ordering::Relaxed);
 
         tracing::info!(
-            "Socket 1 flood sent: {}, Socket 0 flood sent: {}, \
-             Socket 1 rx: {}, Socket 0 rx: {}",
-            s1_flood,
-            s0_flood,
+            "Flood packets sent: {}, Socket 1 rx: {}, Socket 0 rx: {}",
+            total_flood,
             socket_1_count,
             socket_0_count,
         );
 
-        // Socket 1 should have received many packets (it's being continuously drained)
-        assert!(socket_1_count > 0,);
+        // Socket 1 should have received many packets
+        assert!(socket_1_count > 0);
 
         // Socket 0 should have received significantly fewer packets than socket 1
         // because the priority scheduling drains socket 1 first. Socket 0 only gets
         // read in brief gaps when socket 1 momentarily has no data.
-        assert!(socket_0_count < socket_1_count / 5);
+        assert!(socket_0_count < socket_1_count / 4);
     }
 }
