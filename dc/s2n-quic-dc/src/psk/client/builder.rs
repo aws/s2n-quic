@@ -25,6 +25,8 @@ pub struct Builder<
     pub(crate) max_idle_timeout: Duration,
     pub(crate) pto_jitter_percentage: u8,
     pub(crate) success_jitter: Duration,
+    pub(crate) error_jitter: Duration,
+    pub(crate) await_dedup_removal: bool,
 }
 
 impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
@@ -36,6 +38,8 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
             max_idle_timeout: DEFAULT_IDLE_TIMEOUT,
             pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
             success_jitter: Duration::from_secs(60),
+            error_jitter: Duration::from_secs(120),
+            await_dedup_removal: false,
         }
     }
 }
@@ -53,6 +57,8 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             max_idle_timeout: self.max_idle_timeout,
             pto_jitter_percentage: self.pto_jitter_percentage,
             success_jitter: self.success_jitter,
+            error_jitter: self.error_jitter,
+            await_dedup_removal: self.await_dedup_removal,
         }
     }
 
@@ -100,6 +106,29 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
     /// This defaults to 1 minute.
     pub fn with_success_jitter(mut self, period: Duration) -> Self {
         self.success_jitter = period;
+        self
+    }
+
+    /// Sets the period we wait before allowing new handshakes with the same peer (by IP:port),
+    /// after a failed handshake.
+    ///
+    /// This is the upper bound, the jitter is randomized between 1 second and the upper bound.
+    /// Setting this to [`Duration::ZERO`] will immediately allow new handshakes after failure.
+    ///
+    /// This defaults to 2 minutes.
+    pub fn with_error_jitter(mut self, period: Duration) -> Self {
+        self.error_jitter = period;
+        self
+    }
+
+    /// When enabled, handshake callers will wait for the deduplication entry to be removed
+    /// before returning. This is useful for benchmarking where each iteration needs a fresh
+    /// handshake without dedup interference.
+    ///
+    /// Defaults to `false`.
+    #[doc(hidden)]
+    pub fn with_await_dedup_removal(mut self, await_dedup_removal: bool) -> Self {
+        self.await_dedup_removal = await_dedup_removal;
         self
     }
 
