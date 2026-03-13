@@ -112,6 +112,11 @@ impl Summary {
         self.record_value(duration.as_nanos() as u64);
     }
 
+    pub fn record_float(&self, value: f64) {
+        assert!(matches!(self.display_unit, Unit::Percent | Unit::Float));
+        self.record_value(logging_util_float_to_integer(value));
+    }
+
     pub fn take_current(&self, include_sparse: bool) -> Option<String> {
         self.channels.get_mut(self.idx, |hist| {
             let res = format(&hist.value, self.display_unit, include_sparse)?;
@@ -171,13 +176,13 @@ fn format(hist: &[u64; BUCKETS], display_unit: Unit, include_sparse: bool) -> Op
                     since_last_write = 0;
 
                     let formatted_value = match display_unit {
-                        Unit::Count | Unit::Byte | Unit::Percent => new_value,
+                        Unit::Count | Unit::Byte | Unit::Percent | Unit::Float => new_value,
                         Unit::Microsecond => Duration::from_nanos(new_value).as_micros() as u64,
                         Unit::Second => Duration::from_nanos(new_value).as_secs(),
                     };
 
                     match display_unit {
-                        Unit::Percent => {
+                        Unit::Percent | Unit::Float => {
                             let formatted_value = logging_util_integer_to_float(formatted_value);
                             write!(f, "{formatted_value:.3}*{count}").unwrap();
                         }
@@ -217,6 +222,11 @@ impl SummaryInner {
             Unit::Microsecond | Unit::Second
         ));
         self.record_value(duration.as_nanos() as u64);
+    }
+
+    pub fn record_float(&self, value: f64) {
+        assert!(matches!(self.display_unit, Unit::Percent | Unit::Float));
+        self.record_value(logging_util_float_to_integer(value));
     }
 
     pub fn record_value(&self, value: u64) {
@@ -276,13 +286,13 @@ impl SummaryInner {
                         since_last_write = 0;
 
                         let formatted_value = match self.display_unit {
-                            Unit::Count | Unit::Byte | Unit::Percent => new_value,
+                            Unit::Count | Unit::Byte | Unit::Percent | Unit::Float => new_value,
                             Unit::Microsecond => Duration::from_nanos(new_value).as_micros() as u64,
                             Unit::Second => Duration::from_nanos(new_value).as_secs(),
                         };
 
                         match self.display_unit {
-                            Unit::Percent => {
+                            Unit::Percent | Unit::Float => {
                                 let formatted_value =
                                     logging_util_integer_to_float(formatted_value);
                                 write!(f, "{formatted_value:.3}*{count}").unwrap();
@@ -373,6 +383,36 @@ mod test {
         assert_eq!(
             registry.try_take_current_metrics_line_sparse(true).unwrap(),
             "a=0 B"
+        );
+    }
+
+    #[test]
+    fn percent_roundtrip() {
+        let registry = crate::Registry::new();
+        let summary = registry.register_summary(String::from("a"), None, Unit::Percent);
+
+        summary.record_float(100.0);
+        summary.record_float(0.5);
+        summary.record_float(99.999);
+
+        assert_eq!(
+            registry.take_current_metrics_line(),
+            "a=0.500*1+100.095*2 %"
+        );
+    }
+
+    #[test]
+    fn float_roundtrip() {
+        let registry = crate::Registry::new();
+        let summary = registry.register_summary(String::from("a"), None, Unit::Float);
+
+        summary.record_float(1.234);
+        summary.record_float(0.001);
+        summary.record_float(42.0);
+
+        assert_eq!(
+            registry.take_current_metrics_line(),
+            "a=0.001*1+1.235*1+42.111*1"
         );
     }
 

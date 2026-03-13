@@ -1121,7 +1121,7 @@ static INFO: &[Info; 171usize] = &[
     info::Builder {
         id: id::PACING_RATE_UPDATED__PACING_GAIN,
         name: Str::new("pacing_rate_updated.pacing_gain\0"),
-        units: Units::None,
+        units: Units::Float,
     }
     .build(),
     info::Builder {
