@@ -17,7 +17,7 @@ use s2n_quic_dc::{
 use s2n_quic_dc_metrics::{Registry, Unit};
 use std::{
     net::Ipv4Addr,
-    sync::Arc,
+    sync::{Arc, Barrier},
     time::{Duration, Instant},
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -101,13 +101,16 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let server_name: s2n_quic::server::Name = "localhost".into();
 
+    let num_groups = concurrency.div_ceil(5);
+    let barrier = Arc::new(Barrier::new(num_groups + 1));
+
     // A redirect socket sits between a client <-> redirect <-> server.
     //
     // Clients can only handshake with up to 5 *distinct* server addresses, so having the redirect
     // in the middle allows us to treat the single server as many different servers. Each client we
     // spin up gets a set of 5 redirect sockets which we read/write from to get to the actual
     // server.
-    for _ in 0..concurrency.div_ceil(5) {
+    for _ in 0..num_groups {
         let tls = (certificates::CERT_PEM, certificates::KEY_PEM);
         let sub = s2n_quic::provider::event::disabled::Subscriber;
 
@@ -170,6 +173,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         let metrics = metrics.clone();
         let server_name = server_name.clone();
+        let barrier = barrier.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -178,6 +182,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
             rt.block_on(async move {
                 let mut futs = tokio::task::JoinSet::new();
+                let mut first = true;
                 loop {
                     let start = Instant::now();
                     for addr in addrs.iter().copied() {
@@ -190,10 +195,20 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     while let Some(Ok(res)) = futs.join_next().await {
                         metrics.record(res.is_ok(), start.elapsed());
                     }
+                    if first {
+                        first = false;
+                        barrier.wait();
+                    }
                 }
             });
         });
     }
+
+    barrier.wait();
+
+    // Skip the first metrics line (warmup)
+    std::thread::sleep(Duration::from_secs(1));
+    let _ = registry.take_current_metrics_line();
 
     loop {
         std::thread::sleep(Duration::from_secs(1));
