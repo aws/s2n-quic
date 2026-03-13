@@ -1162,9 +1162,9 @@ mod tests {
                     // This creates a natural backlog on socket 1,
                     // ensuring the priority scheduling has a clear effect.
                     for _ in 0..10 {
-                        let _ = sender.send_to(&packet_socket1, server_addr);
+                        sender.send_to(&packet_socket1, server_addr).unwrap();
                     }
-                    let _ = sender.send_to(&packet_socket0, server_addr);
+                    sender.send_to(&packet_socket0, server_addr).unwrap();
                     count.fetch_add(11, Ordering::Relaxed);
                 }
             })
