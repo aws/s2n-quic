@@ -193,7 +193,9 @@ mod id {
     pub const PLATFORM_RX__ERRORS__DROPPED: usize = PLATFORM_RX__ERRORS__DROPPED__TOTAL + 1;
     pub const PLATFORM_RX_ERROR: usize = PLATFORM_RX__ERRORS__DROPPED + 1;
     pub const PLATFORM_FEATURE_CONFIGURED: usize = PLATFORM_RX_ERROR + 1;
-    pub const PLATFORM_EVENT_LOOP_WAKEUP: usize = PLATFORM_FEATURE_CONFIGURED + 1;
+    pub const PLATFORM_RX_SOCKET_STATS: usize = PLATFORM_FEATURE_CONFIGURED + 1;
+    pub const PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL: usize = PLATFORM_RX_SOCKET_STATS + 1;
+    pub const PLATFORM_EVENT_LOOP_WAKEUP: usize = PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL + 1;
     pub const PLATFORM_EVENT_LOOP_SLEEP: usize = PLATFORM_EVENT_LOOP_WAKEUP + 1;
     pub const PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION: usize = PLATFORM_EVENT_LOOP_SLEEP + 1;
     pub const PLATFORM_EVENT_LOOP_STARTED: usize =
@@ -291,7 +293,11 @@ mod id {
         COUNTERS_PLATFORM_RX__ERRORS__TOTAL + 1;
     pub const COUNTERS_PLATFORM_RX_ERROR: usize = COUNTERS_PLATFORM_RX__ERRORS__DROPPED__TOTAL + 1;
     pub const COUNTERS_PLATFORM_FEATURE_CONFIGURED: usize = COUNTERS_PLATFORM_RX_ERROR + 1;
-    pub const COUNTERS_PLATFORM_EVENT_LOOP_WAKEUP: usize = COUNTERS_PLATFORM_FEATURE_CONFIGURED + 1;
+    pub const COUNTERS_PLATFORM_RX_SOCKET_STATS: usize = COUNTERS_PLATFORM_FEATURE_CONFIGURED + 1;
+    pub const COUNTERS_PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL: usize =
+        COUNTERS_PLATFORM_RX_SOCKET_STATS + 1;
+    pub const COUNTERS_PLATFORM_EVENT_LOOP_WAKEUP: usize =
+        COUNTERS_PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL + 1;
     pub const COUNTERS_PLATFORM_EVENT_LOOP_SLEEP: usize = COUNTERS_PLATFORM_EVENT_LOOP_WAKEUP + 1;
     pub const COUNTERS_PLATFORM_EVENT_LOOP_STARTED: usize = COUNTERS_PLATFORM_EVENT_LOOP_SLEEP + 1;
     pub const BOOL_COUNTERS_PACKET_LOST__IS_MTU_PROBE: usize = 0usize;
@@ -445,7 +451,7 @@ mod id {
         TIMERS_CONNECTION_CLOSED__LATENCY + 1;
     pub const NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY: usize = 0usize;
 }
-static INFO: &[Info; 171usize] = &[
+static INFO: &[Info; 173usize] = &[
     info::Builder {
         id: id::APPLICATION_PROTOCOL_INFORMATION,
         name: Str::new("application_protocol_information\0"),
@@ -1449,6 +1455,18 @@ static INFO: &[Info; 171usize] = &[
     }
     .build(),
     info::Builder {
+        id: id::PLATFORM_RX_SOCKET_STATS,
+        name: Str::new("platform_rx_socket_stats\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL,
+        name: Str::new("platform_rx_socket_stats.packets.total\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
         id: id::PLATFORM_EVENT_LOOP_WAKEUP,
         name: Str::new("platform_event_loop_wakeup\0"),
         units: Units::None,
@@ -1480,7 +1498,7 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 82usize]>,
+    counters: Box<[R::Counter; 84usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 3usize]>,
     #[allow(dead_code)]
@@ -1515,7 +1533,7 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(82usize);
+        let mut counters = Vec::with_capacity(84usize);
         let mut bool_counters = Vec::with_capacity(3usize);
         let mut nominal_counters = Vec::with_capacity(30usize);
         let mut nominal_counter_offsets = Vec::with_capacity(30usize);
@@ -1605,6 +1623,9 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::PLATFORM_RX__ERRORS__DROPPED__TOTAL]));
         counters.push(registry.register_counter(&INFO[id::PLATFORM_RX_ERROR]));
         counters.push(registry.register_counter(&INFO[id::PLATFORM_FEATURE_CONFIGURED]));
+        counters.push(registry.register_counter(&INFO[id::PLATFORM_RX_SOCKET_STATS]));
+        counters
+            .push(registry.register_counter(&INFO[id::PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL]));
         counters.push(registry.register_counter(&INFO[id::PLATFORM_EVENT_LOOP_WAKEUP]));
         counters.push(registry.register_counter(&INFO[id::PLATFORM_EVENT_LOOP_SLEEP]));
         counters.push(registry.register_counter(&INFO[id::PLATFORM_EVENT_LOOP_STARTED]));
@@ -2260,6 +2281,12 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_PLATFORM_RX_ERROR => (&INFO[id::PLATFORM_RX_ERROR], entry),
                 id::COUNTERS_PLATFORM_FEATURE_CONFIGURED => {
                     (&INFO[id::PLATFORM_FEATURE_CONFIGURED], entry)
+                }
+                id::COUNTERS_PLATFORM_RX_SOCKET_STATS => {
+                    (&INFO[id::PLATFORM_RX_SOCKET_STATS], entry)
+                }
+                id::COUNTERS_PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL => {
+                    (&INFO[id::PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL], entry)
                 }
                 id::COUNTERS_PLATFORM_EVENT_LOOP_WAKEUP => {
                     (&INFO[id::PLATFORM_EVENT_LOOP_WAKEUP], entry)
@@ -4316,6 +4343,27 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::PLATFORM_FEATURE_CONFIGURED,
             id::COUNTERS_PLATFORM_FEATURE_CONFIGURED,
             1usize,
+        );
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_platform_rx_socket_stats(
+        &mut self,
+        meta: &api::EndpointMeta,
+        event: &api::PlatformRxSocketStats,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::PLATFORM_RX_SOCKET_STATS,
+            id::COUNTERS_PLATFORM_RX_SOCKET_STATS,
+            1usize,
+        );
+        self.count(
+            id::PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL,
+            id::COUNTERS_PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL,
+            event.count,
         );
         let _ = event;
         let _ = meta;

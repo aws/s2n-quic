@@ -26,7 +26,7 @@ pub async fn rx(
     producer: ring::Producer<Message>,
     stats: stats::Sender,
 ) -> io::Result<()> {
-    let result = task::Receiver::new(producer, socket, Default::default(), stats).await;
+    let result = task::Receiver::new(producer, socket, None, Default::default(), stats, None).await;
     if let Some(err) = result {
         Err(err)
     } else {
