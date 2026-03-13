@@ -874,6 +874,10 @@ pub mod api {
         InvalidMtuConfiguration {
             #[doc = " MTU configuration for the endpoint"]
             endpoint_mtu_config: MtuConfig,
+            #[doc = " The connection-specific MTU configuration that was invalid"]
+            conn_mtu_config: MtuConfig,
+            #[doc = " The remote address that caused the MTU configuration error"]
+            remote_addr: crate::inet::SocketAddress,
         },
         #[non_exhaustive]
         #[doc = " The Destination Connection Id is unknown and does not map to a Connection."]
@@ -3359,6 +3363,12 @@ pub mod api {
             }
         }
     }
+    impl IntoEvent<crate::inet::SocketAddress> for &crate::inet::SocketAddress {
+        #[inline]
+        fn into_event(self) -> crate::inet::SocketAddress {
+            *self
+        }
+    }
     impl IntoEvent<builder::DuplicatePacketError> for crate::packet::number::SlidingWindowError {
         #[inline]
         fn into_event(self) -> builder::DuplicatePacketError {
@@ -5234,6 +5244,10 @@ pub mod builder {
         InvalidMtuConfiguration {
             #[doc = " MTU configuration for the endpoint"]
             endpoint_mtu_config: MtuConfig,
+            #[doc = " The connection-specific MTU configuration that was invalid"]
+            conn_mtu_config: MtuConfig,
+            #[doc = " The remote address that caused the MTU configuration error"]
+            remote_addr: crate::inet::SocketAddress,
         },
         #[doc = " The Destination Connection Id is unknown and does not map to a Connection."]
         #[doc = ""]
@@ -5271,8 +5285,12 @@ pub mod builder {
                 Self::InvalidSourceConnectionId => InvalidSourceConnectionId {},
                 Self::InvalidMtuConfiguration {
                     endpoint_mtu_config,
+                    conn_mtu_config,
+                    remote_addr,
                 } => InvalidMtuConfiguration {
                     endpoint_mtu_config: endpoint_mtu_config.into_event(),
+                    conn_mtu_config: conn_mtu_config.into_event(),
+                    remote_addr: remote_addr.into_event(),
                 },
                 Self::UnknownDestinationConnectionId => UnknownDestinationConnectionId {},
                 Self::RejectedConnectionAttempt => RejectedConnectionAttempt {},
