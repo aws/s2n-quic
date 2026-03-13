@@ -1,0 +1,92 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-14.2.1"
+
+# Handling of ICMP Messages by PMTUD
+#
+#    PMTUD [RFC1191] [RFC8201] relies on reception of ICMP messages (that
+#    is, IPv6 Packet Too Big (PTB) messages) that indicate when an IP
+#    packet is dropped because it is larger than the local router MTU.
+#    DPLPMTUD can also optionally use these messages.  This use of ICMP
+#    messages is potentially vulnerable to attacks by entities that cannot
+#    observe packets but might successfully guess the addresses used on
+#    the path.  These attacks could reduce the PMTU to a bandwidth-
+#    inefficient value.
+# 
+#    An endpoint MUST ignore an ICMP message that claims the PMTU has
+#    decreased below QUIC's smallest allowed maximum datagram size.
+# 
+#    The requirements for generating ICMP [RFC1812] [RFC4443] state that
+#    the quoted packet should contain as much of the original packet as
+#    possible without exceeding the minimum MTU for the IP version.  The
+#    size of the quoted packet can actually be smaller, or the information
+#    unintelligible, as described in Section 1.1 of [DPLPMTUD].
+# 
+#    QUIC endpoints using PMTUD SHOULD validate ICMP messages to protect
+#    from packet injection as specified in [RFC8201] and Section 5.2 of
+#    [RFC8085].  This validation SHOULD use the quoted packet supplied in
+#    the payload of an ICMP message to associate the message with a
+#    corresponding transport connection (see Section 4.6.1 of [DPLPMTUD]).
+#    ICMP message validation MUST include matching IP addresses and UDP
+#    ports [RFC8085] and, when possible, connection IDs to an active QUIC
+#    session.  The endpoint SHOULD ignore all ICMP messages that fail
+#    validation.
+# 
+#    An endpoint MUST NOT increase the PMTU based on ICMP messages; see
+#    Item 6 in Section 3 of [DPLPMTUD].  Any reduction in QUIC's maximum
+#    datagram size in response to ICMP messages MAY be provisional until
+#    QUIC's loss detection algorithm determines that the quoted packet has
+#    actually been lost.
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST ignore an ICMP message that claims the PMTU has
+decreased below QUIC's smallest allowed maximum datagram size.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+QUIC endpoints using PMTUD SHOULD validate ICMP messages to protect
+from packet injection as specified in [RFC8201] and Section 5.2 of
+[RFC8085].
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+This validation SHOULD use the quoted packet supplied in
+the payload of an ICMP message to associate the message with a
+corresponding transport connection (see Section 4.6.1 of [DPLPMTUD]).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+ICMP message validation MUST include matching IP addresses and UDP
+ports [RFC8085] and, when possible, connection IDs to an active QUIC
+session.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The endpoint SHOULD ignore all ICMP messages that fail
+validation.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST NOT increase the PMTU based on ICMP messages; see
+Item 6 in Section 3 of [DPLPMTUD].
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Any reduction in QUIC's maximum
+datagram size in response to ICMP messages MAY be provisional until
+QUIC's loss detection algorithm determines that the quoted packet has
+actually been lost.
+'''
+
