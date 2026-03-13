@@ -760,6 +760,7 @@ fn rseq_init() -> NonNull<Rseq> {
     rseq_ptr
 }
 
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 fn dlsym(symbol: &CStr) -> std::io::Result<*mut std::ffi::c_void> {
     unsafe {
         // clear previous errors
@@ -778,6 +779,7 @@ fn dlsym(symbol: &CStr) -> std::io::Result<*mut std::ffi::c_void> {
     }
 }
 
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 fn thread_plus_offset(offset: libc::ptrdiff_t) -> *mut std::ffi::c_void {
     let output: *mut std::ffi::c_void;
     // As far as I can tell, both of these should work in the most general case.
@@ -795,12 +797,18 @@ fn thread_plus_offset(offset: libc::ptrdiff_t) -> *mut std::ffi::c_void {
     output.wrapping_offset(offset)
 }
 
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 fn from_libc() -> std::io::Result<*mut Rseq> {
     let _size = dlsym(c"__rseq_size")?.cast::<u32>();
     let offset = dlsym(c"__rseq_offset")?.cast::<libc::ptrdiff_t>(); // ptrdiff_t
     let _flags = dlsym(c"__rseq_flags")?.cast::<u32>();
 
     Ok(thread_plus_offset(unsafe { offset.read() }).cast())
+}
+
+#[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
+fn from_libc() -> std::io::Result<*mut Rseq> {
+    return Err(std::io::Error::from(std::io::ErrorKind::Unsupported));
 }
 
 #[allow(clippy::needless_return)]
