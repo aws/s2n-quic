@@ -42,9 +42,14 @@ use crate::{
     },
 };
 
+mod cert_chain;
+
+pub use cert_chain::CertificateChain;
+
 pub struct S2nTlsConnection {
     socket: Arc<Single<TcpStream>>,
     connection: Mutex<(Conn, ReadState)>,
+    cert_chain: Option<CertificateChain>,
 }
 
 struct ReadState {
@@ -86,6 +91,7 @@ impl S2nTlsConnection {
                     buffer: bytes::BytesMut::with_capacity(8192),
                 },
             )),
+            cert_chain: None,
         })
     }
 
@@ -94,7 +100,7 @@ impl S2nTlsConnection {
         mut initial_read_buffer: Option<crate::msg::recv::Message>,
     ) -> io::Result<()> {
         std::future::poll_fn(|cx| -> Poll<io::Result<()>> {
-            let connection = &mut self.connection.get_mut().unwrap().0;
+            let s2n_connection = &mut self.connection.get_mut().unwrap().0;
 
             let context = NegotiateContext {
                 socket: &self.socket,
@@ -103,7 +109,7 @@ impl S2nTlsConnection {
             };
 
             let mut connection = CallbackResetGuard {
-                conn: (**connection).as_mut(),
+                conn: (**s2n_connection).as_mut(),
                 reset_write: true,
                 reset_read: true,
             };
@@ -132,6 +138,10 @@ impl S2nTlsConnection {
                             return Poll::Ready(Err(e));
                         }
                     }
+
+                    self.cert_chain = Some(CertificateChain::new(
+                        (**s2n_connection).as_mut().peer_cert_chain()?,
+                    )?);
 
                     Poll::Ready(Ok(()))
                 }
@@ -285,6 +295,10 @@ impl S2nTlsConnection {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn peer_cert_chain(&self) -> Option<&CertificateChain> {
+        self.cert_chain.as_ref()
     }
 }
 

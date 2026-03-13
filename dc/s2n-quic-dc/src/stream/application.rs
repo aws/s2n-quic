@@ -177,6 +177,15 @@ where
         self.read.path_secret_id()
     }
 
+    /// Returns the validated peer certificate chain, if available.
+    ///
+    /// Currently this is only available for TLS streams, but in the future it may be opt-in
+    /// exposed for dcQUIC streams (at the cost of memory usage).
+    #[inline]
+    pub fn peer_cert_chain(&self) -> Option<&crate::stream::tls::CertificateChain> {
+        self.read.peer_cert_chain()
+    }
+
     #[inline]
     pub fn protocol(&self) -> socket::Protocol {
         self.read.protocol()

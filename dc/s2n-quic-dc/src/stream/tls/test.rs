@@ -161,6 +161,10 @@ async fn check_server(message: &[u8]) {
     let acceptor_addr = server.acceptor_addr().unwrap();
     tokio::spawn(async move {
         while let Ok((mut stream, _)) = server.accept().await {
+            if let Some(chain) = stream.peer_cert_chain() {
+                assert_eq!(chain.iter_der().count(), 1);
+            }
+
             tracing::info!("server accepted stream!");
             let mut buffer = vec![];
             stream.read_to_end(&mut buffer).await.unwrap();
@@ -182,6 +186,9 @@ async fn check_server(message: &[u8]) {
         )
         .await
         .unwrap();
+
+    assert_eq!(stream.peer_cert_chain().unwrap().iter_der().count(), 1);
+
     let (mut reader, mut writer) = stream.into_split();
 
     writer.write_all_from(&mut &message[..]).await.unwrap();
@@ -204,6 +211,9 @@ async fn check_server(message: &[u8]) {
         )
         .await
         .unwrap();
+
+    assert!(stream.peer_cert_chain().is_none());
+
     let (mut reader, mut writer) = stream.into_split();
 
     writer.write_all_from(&mut &message[..]).await.unwrap();
