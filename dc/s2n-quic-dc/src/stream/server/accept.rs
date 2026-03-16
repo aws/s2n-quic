@@ -4,7 +4,7 @@
 use crate::{
     event,
     stream::{
-        application::{Builder as StreamBuilder, Stream},
+        application::{AcceptInfo, Builder as StreamBuilder, Stream},
         server::stats,
     },
     sync::mpmc as channel,
@@ -37,7 +37,7 @@ where
 pub async fn accept<Sub>(
     streams: &Receiver<Sub>,
     stats: &stats::Sender,
-) -> io::Result<(Stream<Sub>, SocketAddr)>
+) -> io::Result<(Stream<Sub>, AcceptInfo, SocketAddr)>
 where
     Sub: event::Subscriber,
 {
@@ -49,10 +49,10 @@ where
     })?;
 
     // build the stream inside the application context
-    let (stream, sojourn_time) = stream.accept()?;
-    stats.send(sojourn_time);
+    let (stream, info) = stream.accept()?;
+    stats.send(info.app_queue_sojourn_time);
 
     let remote_addr = stream.peer_addr()?;
 
-    Ok((stream, remote_addr))
+    Ok((stream, info, remote_addr))
 }

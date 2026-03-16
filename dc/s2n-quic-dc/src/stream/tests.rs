@@ -4,6 +4,7 @@
 use super::{testing, Protocol};
 
 mod accept_queue;
+mod api;
 mod behavior;
 /// A set of tests ensuring we support a large number of peers.
 #[cfg(future)] // TODO remove this since they're quite expensive

@@ -13,6 +13,7 @@ struct AcceptorTcpStarted<'a> {
     local_address: SocketAddress<'a>,
 
     /// The backlog size
+    #[measure("backlog")]
     backlog: usize,
 }
 
@@ -139,6 +140,51 @@ struct AcceptorTcpPacketReceived<'a> {
     /// the initial packet
     #[timer("sojourn_time")]
     sojourn_time: core::time::Duration,
+}
+
+/// Emitted when a TLS ClientHello has been recognized on the TCP stream
+#[event("acceptor:tcp:tls_started")]
+#[subject(endpoint)]
+struct AcceptorTcpTlsStarted<'a> {
+    /// The address of the packet's sender
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    remote_address: SocketAddress<'a>,
+
+    /// The amount of time the TCP stream spent in the queue so far
+    #[timer("sojourn_time")]
+    sojourn_time: core::time::Duration,
+}
+
+/// Emitted when a TLS stream is enqueued to the application accept queue
+#[event("acceptor:tcp:tls_stream_enqueued")]
+#[subject(endpoint)]
+struct AcceptorTcpTlsStreamEnqueued<'a> {
+    /// The address of the packet's sender
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    remote_address: SocketAddress<'a>,
+
+    /// The amount of time the TCP stream spent on handshaking before enqueuing to the application
+    /// since being accepted from the kernel
+    #[timer("sojourn_time")]
+    sojourn_time: core::time::Duration,
+}
+
+/// Emitted when a TLS stream is rejected
+#[event("acceptor:tcp:tls_stream_rejected")]
+#[subject(endpoint)]
+struct AcceptorTcpTlsStreamRejected<'a> {
+    /// The address of the packet's sender
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    remote_address: SocketAddress<'a>,
+
+    /// The amount of time the TCP stream spent on handshaking before being rejected
+    /// since being accepted from the kernel
+    #[timer("sojourn_time")]
+    sojourn_time: core::time::Duration,
+
+    /// The error encountered
+    #[builder(&'a std::io::Error)]
+    error: &'a std::io::Error,
 }
 
 /// Emitted when the TCP acceptor received an invalid initial packet
@@ -407,10 +453,14 @@ struct AcceptorStreamDequeued<'a> {
     /// The ID of the stream
     stream_id: u64,
 
-    /// The amount of time that the stream spent in the accept queue before
-    /// being dequeued
+    /// The amount of time that the stream spent in dcQUIC before being dequeued
     #[timer("sojourn_time")]
     sojourn_time: core::time::Duration,
+
+    /// The amount of time that the stream spent in the queue to the application before being
+    /// dequeued
+    #[timer("queue_sojourn_time")]
+    queue_sojourn_time: core::time::Duration,
 }
 
 enum AcceptorPacketDropReason {

@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Stream server supporting dcQUIC streams over UDP, TCP, including forwarding over UDS.
+
 use crate::{
     event,
     path::secret,
@@ -64,6 +66,7 @@ pub struct Server<H: Handshake + Clone, S: event::Subscriber + Clone> {
     env: Environment<S>,
     #[allow(dead_code)]
     acceptor_rt: runtime::Shared<S>,
+    tls: Option<tcp::tls::TlsServer<S>>,
 }
 
 impl<H: Handshake + Clone, S: event::Subscriber + Clone> Server<H, S> {
@@ -97,6 +100,18 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Server<H, S> {
 
     #[inline]
     pub async fn accept(&self) -> io::Result<(crate::stream::application::Stream<S>, SocketAddr)> {
+        let (stream, _info, addr) = accept::accept(&self.streams, &self.stats).await?;
+        Ok((stream, addr))
+    }
+
+    #[inline]
+    pub async fn accept_with_info(
+        &self,
+    ) -> io::Result<(
+        crate::stream::application::Stream<S>,
+        crate::stream::application::AcceptInfo,
+        SocketAddr,
+    )> {
         accept::accept(&self.streams, &self.stats).await
     }
 
@@ -127,6 +142,7 @@ pub struct Builder {
     send_buffer: Option<usize>,
     recv_buffer: Option<usize>,
     reuse_addr: Option<bool>,
+    tls: Option<tcp::tls::Builder>,
 }
 
 impl Default for Builder {
@@ -144,6 +160,7 @@ impl Default for Builder {
             send_buffer: None,
             recv_buffer: None,
             reuse_addr: None,
+            tls: None,
         }
     }
 }
@@ -230,6 +247,11 @@ impl Builder {
     common_builder_methods!();
     manager_builder_methods!();
 
+    pub fn with_tls(mut self, tls: tcp::tls::Builder) -> Self {
+        self.tls = Some(tls);
+        self
+    }
+
     pub fn build<H: Handshake + Clone, S: event::Subscriber + Clone>(
         mut self,
         handshake: H,
@@ -312,6 +334,14 @@ impl Builder {
         }
 
         let mut server = Server {
+            tls: self.tls.map(|t| {
+                t.build(
+                    stream_sender.clone(),
+                    env.clone(),
+                    handshake.map().clone(),
+                    self.accept_flavor,
+                )
+            }),
             streams: stream_receiver,
             local_addr: self.acceptor_addr,
             handshake,
@@ -505,7 +535,8 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
 
         let socket = tokio::io::unix::AsyncFd::new(socket)?;
         let id = self.id();
-        let channel_behavior = tcp::worker::DefaultBehavior::new(&self.stream_sender);
+        let channel_behavior =
+            tcp::worker::DefaultBehavior::new(&self.stream_sender, self.server.tls.clone());
         let acceptor = tcp::Acceptor::new(
             id,
             socket,

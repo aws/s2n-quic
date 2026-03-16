@@ -294,6 +294,22 @@ pub struct StreamTcpConnect {
     latency: core::time::Duration,
 }
 
+/// Tracks TLS stream establishment.
+#[event("stream:tls_connect")]
+#[subject(endpoint)]
+pub struct StreamTlsConnect {
+    #[bool_counter("error")]
+    error: bool,
+
+    // Does not include errors (otherwise we'd need to incorrectly emit zeros on tls_latency).
+    #[timer("tcp_latency")]
+    tcp_latency: core::time::Duration,
+
+    // This includes the error latencies.
+    #[timer("tls_latency")]
+    tls_latency: core::time::Duration,
+}
+
 /// Tracks stream connect where dcQUIC owns the TCP connect().
 #[event("stream:connect")]
 #[subject(endpoint)]

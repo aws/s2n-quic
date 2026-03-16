@@ -11,6 +11,7 @@ pub enum Units {
     Bytes,
     Duration,
     Percent,
+    Float,
 }
 
 impl Units {
@@ -20,6 +21,7 @@ impl Units {
             Units::Bytes => Str::new("bytes\0"),
             Units::Duration => Str::new("duration\0"),
             Units::Percent => Str::new("percent\0"),
+            Units::Float => Str::new("float\0"),
         }
     }
 }

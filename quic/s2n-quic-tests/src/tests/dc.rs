@@ -17,9 +17,10 @@ use s2n_quic_core::{
     event::{
         api::{
             ConnectionMeta, DatagramDropReason, DcState, EndpointDatagramDropped, EndpointMeta,
-            MtuUpdated, Subject,
+            Frame, MtuUpdated, PacketHeader, Subject,
         },
         metrics::aggregate,
+        snapshot::Location,
         Timestamp,
     },
     frame::ConnectionClose,
@@ -37,6 +38,12 @@ const SERVER_TOKENS: [stateless_reset::Token; 1] = [TEST_TOKEN_1];
 const CLIENT_TOKENS: [stateless_reset::Token; 1] = [TEST_TOKEN_2];
 const SERVER_CLOSE_ERROR_CODE: VarInt = VarInt::from_u8(111);
 const CLIENT_CLOSE_ERROR_CODE: VarInt = VarInt::from_u8(222);
+
+// s2n-tls randomness is not stubbed out to be deterministic, so we need to adjust packet lengths
+// to avoid random test failures. We want to avoid stubbing the lengths out entirely because part
+// of the goal of the snapshots is to have those lengths in the log, so we avoid redacting the
+// length entirely.
+const LEN_FACTOR: u16 = 10;
 
 // Client                                                                    Server
 //
@@ -120,7 +127,19 @@ fn dc_mtls_handshake_self_test() -> Result<()> {
         .with_tls(client_tls)?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
-    self_test(server, client, true, None, None, true)?;
+    self_test_inner(
+        server,
+        client,
+        true,
+        None,
+        None,
+        true,
+        None,
+        (
+            PacketSnapshot::named_snapshot("dc_mtls_handshake__server"),
+            PacketSnapshot::named_snapshot("dc_mtls_handshake__client"),
+        ),
+    )?;
 
     Ok(())
 }
@@ -628,7 +647,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     expected_server_error: Option<connection::Error>,
     with_blocklist: bool,
 ) -> Result<(DcRecorder, DcRecorder)> {
-    self_test_with_mtu(
+    self_test_inner(
         server,
         client,
         client_has_dc,
@@ -636,6 +655,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
         expected_server_error,
         with_blocklist,
         None,
+        (PacketSnapshot::new(), PacketSnapshot::new()),
     )
 }
 
@@ -648,6 +668,29 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
     expected_server_error: Option<connection::Error>,
     with_blocklist: bool,
     max_mtu: Option<u16>,
+) -> Result<(DcRecorder, DcRecorder)> {
+    self_test_inner(
+        server,
+        client,
+        client_has_dc,
+        expected_client_error,
+        expected_server_error,
+        with_blocklist,
+        max_mtu,
+        (PacketSnapshot::new(), PacketSnapshot::new()),
+    )
+}
+
+#[track_caller]
+fn self_test_inner<S: ServerProviders, C: ClientProviders>(
+    server: server::Builder<S>,
+    client: client::Builder<C>,
+    client_has_dc: bool,
+    expected_client_error: Option<connection::Error>,
+    expected_server_error: Option<connection::Error>,
+    with_blocklist: bool,
+    max_mtu: Option<u16>,
+    packet_snapshots: (PacketSnapshot, PacketSnapshot),
 ) -> Result<(DcRecorder, DcRecorder)> {
     let model = Model::default();
     let rtt = Duration::from_millis(100);
@@ -662,6 +705,8 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
     let client_subscriber = DcRecorder::new();
     let client_events = client_subscriber.clone();
 
+    let (server_packet_snapshot, client_packet_snapshot) = packet_snapshots;
+
     test(model.clone(), |handle| {
         let metrics = aggregate::testing::Registry::snapshot();
 
@@ -671,7 +716,10 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
                 metrics.subscriber("server"),
             ),
             (
-                tracing_events(with_blocklist, model.clone()),
+                (
+                    tracing_events(with_blocklist, model.clone()),
+                    server_packet_snapshot,
+                ),
                 server_subscriber,
             ),
         );
@@ -720,7 +768,10 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
                 metrics.subscriber("client"),
             ),
             (
-                tracing_events(with_blocklist, model.clone()),
+                (
+                    tracing_events(with_blocklist, model.clone()),
+                    client_packet_snapshot,
+                ),
                 client_subscriber,
             ),
         );
@@ -999,6 +1050,248 @@ impl events::Subscriber for DcRecorder {
     ) {
         let mut buffer = context.peer_mtu_probing_complete_support.lock().unwrap();
         *buffer = Some(event.transport_parameters.mtu_probing_complete_support);
+    }
+}
+
+fn fmt_packet_header(h: &PacketHeader) -> String {
+    match h {
+        PacketHeader::Initial { number, .. } => format!("Initial({})", number),
+        PacketHeader::Handshake { number, .. } => format!("Handshake({})", number),
+        PacketHeader::ZeroRtt { number, .. } => format!("ZeroRtt({})", number),
+        PacketHeader::OneRtt { number, .. } => format!("OneRtt({})", number),
+        PacketHeader::Retry { .. } => "Retry".into(),
+        PacketHeader::VersionNegotiation { .. } => "VersionNegotiation".into(),
+        PacketHeader::StatelessReset { .. } => "StatelessReset".into(),
+        _ => format!("{h:?}"),
+    }
+}
+
+fn fmt_frame(f: &Frame) -> String {
+    match f {
+        Frame::Padding { len, .. } => format!("PADDING(len={})", len.next_multiple_of(LEN_FACTOR)),
+        Frame::Ping { .. } => "PING".into(),
+        Frame::Ack { .. } => "ACK".into(),
+        Frame::Crypto { offset, len, .. } => format!(
+            "CRYPTO(off={}, len={})",
+            // Round crypto frames to avoid s2n-tls randomness from breaking snapshots.
+            offset.next_multiple_of(LEN_FACTOR.into()),
+            len.next_multiple_of(LEN_FACTOR)
+        ),
+        Frame::Stream {
+            id, offset, len, ..
+        } => format!("STREAM(id={id}, off={offset}, len={len})"),
+        Frame::HandshakeDone { .. } => "HANDSHAKE_DONE".into(),
+        Frame::DcStatelessResetTokens { .. } => "DC_STATELESS_RESET_TOKENS".into(),
+        Frame::MtuProbingComplete { mtu, .. } => format!("MTU_PROBING_COMPLETE(mtu={mtu})"),
+        Frame::NewConnectionId { .. } => "NEW_CONNECTION_ID".into(),
+        Frame::RetireConnectionId { .. } => "RETIRE_CONNECTION_ID".into(),
+        Frame::ConnectionClose { .. } => "CONNECTION_CLOSE".into(),
+        Frame::MaxData { value, .. } => format!("MAX_DATA({})", value),
+        Frame::MaxStreamData { id, value, .. } => format!("MAX_STREAM_DATA(id={id}, {})", value),
+        Frame::MaxStreams { value, .. } => format!("MAX_STREAMS({})", value),
+        Frame::ResetStream { id, .. } => format!("RESET_STREAM(id={id})"),
+        Frame::StopSending { id, .. } => format!("STOP_SENDING(id={id})"),
+        Frame::NewToken { .. } => "NEW_TOKEN".into(),
+        Frame::DataBlocked { .. } => "DATA_BLOCKED".into(),
+        Frame::StreamDataBlocked { .. } => "STREAM_DATA_BLOCKED".into(),
+        Frame::StreamsBlocked { .. } => "STREAMS_BLOCKED".into(),
+        Frame::PathChallenge { .. } => "PATH_CHALLENGE".into(),
+        Frame::PathResponse { .. } => "PATH_RESPONSE".into(),
+        Frame::Datagram { len, .. } => format!("DATAGRAM(len={len})"),
+        _ => format!("{f:?}"),
+    }
+}
+
+/// Subscriber that records packet-level events for snapshot testing.
+///
+/// Records datagram sent/received, packet sent/received, and frame sent/received
+/// events, then writes a snapshot on drop. Send events are buffered so that
+/// `datagram_sent` appears above its constituent packets and frames.
+struct PacketSnapshot {
+    location: Option<Location>,
+    output: Vec<String>,
+    send_buffer: Vec<String>,
+    frame_buffer: Vec<String>,
+}
+
+fn snapshot_header() -> Vec<String> {
+    vec![
+        " milli.micro | datagrams (D) contain packets (P) which contain frames (F)".into(),
+        String::new(),
+    ]
+}
+
+impl PacketSnapshot {
+    fn new() -> Self {
+        Self {
+            location: None,
+            output: snapshot_header(),
+            send_buffer: Default::default(),
+            frame_buffer: Default::default(),
+        }
+    }
+
+    #[track_caller]
+    fn named_snapshot(name: impl core::fmt::Display) -> Self {
+        Self {
+            location: Some(Location::new(name)),
+            output: snapshot_header(),
+            send_buffer: Default::default(),
+            frame_buffer: Default::default(),
+        }
+    }
+
+    fn push(&mut self, line: String) {
+        self.output.push(line);
+    }
+
+    fn flush_packet(&mut self, packet_line: String) {
+        self.send_buffer.push(packet_line);
+        self.send_buffer.append(&mut self.frame_buffer);
+    }
+
+    fn flush_send_buffer(&mut self, datagram_line: String) {
+        self.output.push(datagram_line);
+        self.output.append(&mut self.send_buffer);
+    }
+}
+
+impl Drop for PacketSnapshot {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            return;
+        }
+        if let Some(location) = self.location.as_ref() {
+            location.snapshot_log(&self.output);
+        }
+    }
+}
+
+fn fmt_time(d: Duration) -> String {
+    let total_micros = d.as_micros() as u64;
+    let millis = total_micros / 1000;
+    let micros = total_micros % 1000;
+    if micros == 0 {
+        format!("{millis:>4}.      ")
+    } else {
+        format!("{millis:>4}.{micros:<3}   ")
+    }
+}
+
+impl events::Subscriber for PacketSnapshot {
+    type ConnectionContext = ();
+
+    fn create_connection_context(
+        &mut self,
+        _meta: &events::ConnectionMeta,
+        _info: &events::ConnectionInfo,
+    ) -> Self::ConnectionContext {
+    }
+
+    fn on_datagram_sent(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::DatagramSent,
+    ) {
+        let line = format!(
+            "{} > D len={}",
+            fmt_time(meta.timestamp.duration_since_start()),
+            event.len.next_multiple_of(LEN_FACTOR),
+        );
+        self.flush_send_buffer(line);
+    }
+
+    fn on_datagram_received(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::DatagramReceived,
+    ) {
+        self.push(format!(
+            "{} < D len={}",
+            fmt_time(meta.timestamp.duration_since_start()),
+            event.len.next_multiple_of(LEN_FACTOR),
+        ));
+    }
+
+    fn on_packet_sent(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::PacketSent,
+    ) {
+        let line = format!(
+            "{} >   P {} len={}",
+            fmt_time(meta.timestamp.duration_since_start()),
+            fmt_packet_header(&event.packet_header),
+            event.packet_len.next_multiple_of(LEN_FACTOR.into()),
+        );
+        self.flush_packet(line);
+    }
+
+    fn on_packet_received(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::PacketReceived,
+    ) {
+        self.push(format!(
+            "{} <   P {} len={}",
+            fmt_time(meta.timestamp.duration_since_start()),
+            fmt_packet_header(&event.packet_header),
+            event.packet_len.next_multiple_of(LEN_FACTOR.into()),
+        ));
+    }
+
+    fn on_frame_sent(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::FrameSent,
+    ) {
+        self.frame_buffer.push(format!(
+            "{} >     F {} {}",
+            fmt_time(meta.timestamp.duration_since_start()),
+            fmt_packet_header(&event.packet_header),
+            fmt_frame(&event.frame),
+        ));
+    }
+
+    fn on_frame_received(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::FrameReceived,
+    ) {
+        self.push(format!(
+            "{} <     F {} {}",
+            fmt_time(meta.timestamp.duration_since_start()),
+            fmt_packet_header(&event.packet_header),
+            fmt_frame(&event.frame),
+        ));
+    }
+
+    fn on_dc_state_changed(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        event: &events::DcStateChanged,
+    ) {
+        if matches!(event.state, DcState::Complete { .. }) {
+            self.push(format!(
+                "{} | dc_state_changed=Complete",
+                fmt_time(meta.timestamp.duration_since_start()),
+            ));
+        }
+    }
+
+    fn on_platform_event_loop_sleep(
+        &mut self,
+        _meta: &events::EndpointMeta,
+        _event: &events::PlatformEventLoopSleep,
+    ) {
+        self.output.push(String::new());
     }
 }
 

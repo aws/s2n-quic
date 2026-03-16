@@ -12,21 +12,29 @@ use crate::event::{
         AsVariant, BoolRecorder, Info, Metric, NominalRecorder, Recorder, Registry, Units,
     },
 };
+mod id {
+    pub const BYTE_ARRAY_EVENT: usize = 0usize;
+    pub const ENUM_EVENT: usize = BYTE_ARRAY_EVENT + 1;
+    pub const COUNT_EVENT: usize = ENUM_EVENT + 1;
+    pub const COUNTERS_BYTE_ARRAY_EVENT: usize = 0usize;
+    pub const COUNTERS_ENUM_EVENT: usize = COUNTERS_BYTE_ARRAY_EVENT + 1;
+    pub const COUNTERS_COUNT_EVENT: usize = COUNTERS_ENUM_EVENT + 1;
+}
 static INFO: &[Info; 3usize] = &[
     info::Builder {
-        id: 0usize,
+        id: id::BYTE_ARRAY_EVENT,
         name: Str::new("byte_array_event\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 1usize,
+        id: id::ENUM_EVENT,
         name: Str::new("enum_event\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 2usize,
+        id: id::COUNT_EVENT,
         name: Str::new("count_event\0"),
         units: Units::None,
     }
@@ -83,9 +91,9 @@ impl<R: Registry> Subscriber<R> {
         let mut timers = Vec::with_capacity(0usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
         let mut nominal_timer_offsets = Vec::with_capacity(0usize);
-        counters.push(registry.register_counter(&INFO[0usize]));
-        counters.push(registry.register_counter(&INFO[1usize]));
-        counters.push(registry.register_counter(&INFO[2usize]));
+        counters.push(registry.register_counter(&INFO[id::BYTE_ARRAY_EVENT]));
+        counters.push(registry.register_counter(&INFO[id::ENUM_EVENT]));
+        counters.push(registry.register_counter(&INFO[id::COUNT_EVENT]));
         {
             #[allow(unused_imports)]
             use api::*;
@@ -124,9 +132,9 @@ impl<R: Registry> Subscriber<R> {
             .iter()
             .enumerate()
             .map(|(idx, entry)| match idx {
-                0usize => (&INFO[0usize], entry),
-                1usize => (&INFO[1usize], entry),
-                2usize => (&INFO[2usize], entry),
+                id::COUNTERS_BYTE_ARRAY_EVENT => (&INFO[id::BYTE_ARRAY_EVENT], entry),
+                id::COUNTERS_ENUM_EVENT => (&INFO[id::ENUM_EVENT], entry),
+                id::COUNTERS_COUNT_EVENT => (&INFO[id::COUNT_EVENT], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -237,7 +245,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(0usize, 0usize, 1usize);
+        self.count(id::BYTE_ARRAY_EVENT, id::COUNTERS_BYTE_ARRAY_EVENT, 1usize);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -251,7 +259,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(1usize, 1usize, 1usize);
+        self.count(id::ENUM_EVENT, id::COUNTERS_ENUM_EVENT, 1usize);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -260,7 +268,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     fn on_count_event(&mut self, meta: &api::EndpointMeta, event: &api::CountEvent) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(2usize, 2usize, 1usize);
+        self.count(id::COUNT_EVENT, id::COUNTERS_COUNT_EVENT, 1usize);
         let _ = event;
         let _ = meta;
     }

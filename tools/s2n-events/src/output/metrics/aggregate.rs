@@ -147,7 +147,10 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             let units = measure.unit.as_ref().unwrap_or(&units_none);
             let info = &info.push(&name, units);
             let id = measures.push(info, None);
-            let ctx_name = Ident::new(&format!("ctr_{id}"), Span::call_site());
+            let ctx_name = Ident::new(
+                &format!("ctr_{}", id.name.replace("__", "_")),
+                Span::call_site(),
+            );
 
             context_fields.extend(quote!(
                 #ctx_name: #counter_type,
@@ -238,7 +241,10 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
                 let units = measure.unit.as_ref().unwrap_or(&units_none);
                 let info = &info.push(&name, units);
                 let id = measures.push(info, None);
-                let ctx_name = Ident::new(&format!("ctr_{id}"), Span::call_site());
+                let ctx_name = Ident::new(
+                    &format!("ctr_{}", id.name.replace("__", "_")),
+                    Span::call_site(),
+                );
 
                 let value = quote!(event.#field_name.as_u64());
                 let counter_increment = output.config.counter_increment_by(value);
@@ -333,6 +339,14 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
     let nominal_timers_probes = nominal_timers.probe();
     let nominal_timers_len = nominal_timers.len;
     let info_len = info.len;
+    let info_consts = &info.consts;
+    let counters_consts = &counters.consts;
+    let bool_counters_consts = &bool_counters.consts;
+    let nominal_counters_consts = &nominal_counters.consts;
+    let measures_consts = &measures.consts;
+    let gauges_consts = &gauges.consts;
+    let timers_consts = &timers.consts;
+    let nominal_timers_consts = &nominal_timers.consts;
     let mut imports = output.config.imports();
 
     if !output.feature_alloc.is_empty() {
@@ -358,6 +372,17 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             api,
             self
         };
+
+        mod id {
+            #info_consts
+            #counters_consts
+            #bool_counters_consts
+            #nominal_counters_consts
+            #measures_consts
+            #gauges_consts
+            #timers_consts
+            #nominal_timers_consts
+        }
 
         static INFO: &[Info; #info_len] = &[#info];
 
@@ -565,6 +590,10 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             info
         };
 
+        mod id {
+            #info_consts
+        }
+
         mod counter {
             #counters_probes
 
@@ -669,28 +698,40 @@ fn metrics_iter_with_unit<'a>(
 struct InfoList {
     len: usize,
     entries: TokenStream,
+    consts: TokenStream,
+    prev_const: Option<Ident>,
 }
 
 impl InfoList {
     pub fn push(&mut self, name: impl AsRef<str>, units: &Ident) -> Info {
-        let id = self.len;
         self.len += 1;
 
         let name = name.as_ref();
         let name_t = new_str(name);
+        let const_name = name.replace('.', "__").to_uppercase();
+        let const_ident = Ident::new(&const_name, Span::call_site());
 
-        let entry = quote!(
+        if let Some(prev) = &self.prev_const {
+            self.consts.extend(quote!(
+                pub const #const_ident: usize = #prev + 1;
+            ));
+        } else {
+            self.consts.extend(quote!(
+                pub const #const_ident: usize = 0usize;
+            ));
+        }
+        self.prev_const = Some(const_ident.clone());
+
+        self.entries.extend(quote!(
             info::Builder {
-                id: #id,
+                id: id::#const_ident,
                 name: #name_t,
                 units: Units::#units,
             }.build(),
-        );
-
-        self.entries.extend(entry);
+        ));
 
         Info {
-            idx: id,
+            const_ident: const_ident.clone(),
             name: name.replace('.', "__"),
         }
     }
@@ -702,15 +743,16 @@ impl ToTokens for InfoList {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Info {
-    idx: usize,
+    const_ident: Ident,
     name: String,
 }
 
 impl ToTokens for Info {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        self.idx.to_tokens(tokens);
+        let ident = &self.const_ident;
+        tokens.extend(quote!(id::#ident));
     }
 }
 
@@ -732,6 +774,9 @@ struct Registry {
     registry_type: RegistryType,
     metric_ty: TokenStream,
     as_metric: TokenStream,
+    consts: TokenStream,
+    const_prefix: String,
+    prev_const: Option<Ident>,
 }
 
 impl Registry {
@@ -742,6 +787,7 @@ impl Registry {
         metric_ty: TokenStream,
         as_metric: TokenStream,
     ) -> Self {
+        let const_prefix = dest.to_string().to_uppercase();
         Self {
             len: 0,
             dest,
@@ -754,6 +800,9 @@ impl Registry {
             registry_type: RegistryType::Basic,
             metric_ty,
             as_metric,
+            consts: quote!(),
+            const_prefix,
+            prev_const: None,
         }
     }
 
@@ -875,8 +924,7 @@ impl Registry {
         }
     }
 
-    pub fn push(&mut self, info: &Info, field_ty: Option<&syn::Type>) -> usize {
-        let id = self.len;
+    pub fn push(&mut self, info: &Info, field_ty: Option<&syn::Type>) -> Info {
         self.len += 1;
 
         let dest = &self.dest;
@@ -888,9 +936,24 @@ impl Registry {
             Span::call_site(),
         );
 
-        let info_id = info.idx;
+        let const_ident = Ident::new(
+            &format!("{}_{}", self.const_prefix, info.name.to_uppercase()),
+            Span::call_site(),
+        );
+        if let Some(prev) = &self.prev_const {
+            self.consts.extend(quote!(
+                pub const #const_ident: usize = #prev + 1;
+            ));
+        } else {
+            self.consts.extend(quote!(
+                pub const #const_ident: usize = 0usize;
+            ));
+        }
+        self.prev_const = Some(const_ident.clone());
+
+        let info_const = &info.const_ident;
         self.probe_new.extend(quote!(
-            #info_id => Self(#probe),
+            id::#info_const => Self(#probe),
         ));
 
         let metric_ty = &self.metric_ty;
@@ -898,11 +961,11 @@ impl Registry {
         match &self.registry_type {
             RegistryType::Basic | RegistryType::BoolCounter => {
                 self.init.extend(quote!(
-                    #dest.push(registry.#register(&INFO[#info]));
+                    #dest.push(registry.#register(&INFO[id::#info_const]));
                 ));
 
                 self.entries.extend(quote!(
-                    #id => (&INFO[#info], entry),
+                    id::#const_ident => (&INFO[id::#info_const], entry),
                 ));
 
                 self.probe_defs.extend(quote!(
@@ -928,7 +991,7 @@ impl Registry {
                     let mut count = 0;
 
                     for variant in #variants.iter() {
-                        #dest.push(registry.#register(&INFO[#info], variant));
+                        #dest.push(registry.#register(&INFO[id::#info_const], variant));
                         count += 1;
                     }
                     debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -936,11 +999,11 @@ impl Registry {
                 }));
 
                 self.entries.extend(quote!(
-                    #id => {
+                    id::#const_ident => {
                         let offset = *entry;
                         let variants = #variants;
                         let entries = &self.#dest[offset..offset + variants.len()];
-                        (&INFO[#info], entries, variants)
+                        (&INFO[id::#info_const], entries, variants)
                     }
                 ));
 
@@ -951,7 +1014,10 @@ impl Registry {
             }
         }
 
-        id
+        Info {
+            const_ident,
+            name: info.name.clone(),
+        }
     }
 }
 

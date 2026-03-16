@@ -178,6 +178,26 @@ where
     pub fn shutdown(&mut self) -> io::Result<()> {
         self.0.shutdown(ShutdownType::Explicit)
     }
+
+    pub fn query_event_context<C: 'static, R>(&self, query: impl FnOnce(&C) -> R) -> Option<R> {
+        let ctxt = &self.0.shared.common.subscriber.context;
+        let mut query = s2n_quic_core::query::Once::new(query);
+        Sub::query(ctxt, &mut query);
+        let res: Result<_, _> = query.into();
+        match res {
+            Ok(r) => Some(r),
+            // ConnectionLockPoisoned is not used except by s2n-quic infrastructure, so it's not
+            // reachable here.
+            Err(s2n_quic_core::query::Error::ConnectionLockPoisoned) => unreachable!(),
+            Err(s2n_quic_core::query::Error::ContextTypeMismatch) => None,
+            // unreachable in practice, needed due to #[non_exhaustive]
+            Err(_) => None,
+        }
+    }
+
+    pub fn peer_cert_chain(&self) -> Option<&crate::stream::tls::CertificateChain> {
+        self.0.shared.s2n_connection.as_ref()?.peer_cert_chain()
+    }
 }
 
 impl<Sub> Inner<Sub>

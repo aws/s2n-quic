@@ -27,6 +27,7 @@ pub enum Unit {
     Byte,
     Second,
     Percent,
+    Float,
 }
 
 impl Unit {
@@ -37,6 +38,7 @@ impl Unit {
             Unit::Microsecond => " us",
             Unit::Byte => " B",
             Unit::Second => " s",
+            Unit::Float => "",
         }
     }
 }

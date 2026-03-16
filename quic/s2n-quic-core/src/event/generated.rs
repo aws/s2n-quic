@@ -358,7 +358,7 @@ pub mod api {
     #[non_exhaustive]
     pub enum Frame {
         #[non_exhaustive]
-        Padding {},
+        Padding { len: u16 },
         #[non_exhaustive]
         Ping {},
         #[non_exhaustive]
@@ -1952,12 +1952,14 @@ pub mod api {
     #[doc = " Packet was received by a connection"]
     pub struct PacketReceived {
         pub packet_header: PacketHeader,
+        pub packet_len: usize,
     }
     #[cfg(any(test, feature = "testing"))]
     impl crate::event::snapshot::Fmt for PacketReceived {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("PacketReceived");
             fmt.field("packet_header", &self.packet_header);
+            fmt.field("packet_len", &self.packet_len);
             fmt.finish()
         }
     }
@@ -3432,7 +3434,9 @@ pub mod api {
     impl IntoEvent<builder::Frame> for &crate::frame::Padding {
         #[inline]
         fn into_event(self) -> builder::Frame {
-            builder::Frame::Padding {}
+            builder::Frame::Padding {
+                len: self.length as u16,
+            }
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::Ping {
@@ -3867,8 +3871,11 @@ pub mod tracing {
             event: &api::PacketReceived,
         ) {
             let id = context.id();
-            let api::PacketReceived { packet_header } = event;
-            tracing :: event ! (target : "packet_received" , parent : id , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) });
+            let api::PacketReceived {
+                packet_header,
+                packet_len,
+            } = event;
+            tracing :: event ! (target : "packet_received" , parent : id , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) , packet_len = tracing :: field :: debug (packet_len) });
         }
         #[inline]
         fn on_active_path_updated(
@@ -4966,7 +4973,9 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum Frame {
-        Padding,
+        Padding {
+            len: u16,
+        },
         Ping,
         Ack {
             ecn_counts: Option<EcnCounts>,
@@ -5038,7 +5047,9 @@ pub mod builder {
         fn into_event(self) -> api::Frame {
             use api::Frame::*;
             match self {
-                Self::Padding => Padding {},
+                Self::Padding { len } => Padding {
+                    len: len.into_event(),
+                },
                 Self::Ping => Ping {},
                 Self::Ack {
                     ecn_counts,
@@ -5900,13 +5911,18 @@ pub mod builder {
     #[doc = " Packet was received by a connection"]
     pub struct PacketReceived {
         pub packet_header: PacketHeader,
+        pub packet_len: usize,
     }
     impl IntoEvent<api::PacketReceived> for PacketReceived {
         #[inline]
         fn into_event(self) -> api::PacketReceived {
-            let PacketReceived { packet_header } = self;
+            let PacketReceived {
+                packet_header,
+                packet_len,
+            } = self;
             api::PacketReceived {
                 packet_header: packet_header.into_event(),
+                packet_len: packet_len.into_event(),
             }
         }
     }

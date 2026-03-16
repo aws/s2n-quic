@@ -1270,6 +1270,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
+        packet_len: usize,
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
@@ -1306,6 +1307,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     packet.packet_number,
                     packet.version,
                 ),
+                packet_len,
             });
 
             self.handle_cleartext_initial_packet(
@@ -1429,6 +1431,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
+        packet_len: usize,
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
@@ -1482,6 +1485,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     packet.packet_number,
                     packet.version,
                 ),
+                packet_len,
             });
 
             let processed_packet = space.handle_cleartext_payload(
@@ -1546,6 +1550,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
+        packet_len: usize,
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
@@ -1612,6 +1617,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     packet.packet_number,
                     publisher.quic_version(),
                 ),
+                packet_len,
             });
 
             // Connection Ids are issued to the peer after the handshake is
@@ -1674,6 +1680,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         path_id: path::Id,
         _packet: ProtectedVersionNegotiation,
+        packet_len: usize,
         subscriber: &mut Config::EventSubscriber,
         _packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
@@ -1681,6 +1688,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         publisher.on_packet_received(event::builder::PacketReceived {
             packet_header: event::builder::PacketHeader::VersionNegotiation {},
+            packet_len,
         });
         //= https://www.rfc-editor.org/rfc/rfc9000#section-6.2
         //= type=TODO
@@ -1733,6 +1741,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedZeroRtt,
+        packet_len: usize,
         subscriber: &mut Config::EventSubscriber,
         _packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
@@ -1744,6 +1753,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 number: 0,
                 version: publisher.quic_version(),
             },
+            packet_len,
         });
         //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
         //= type=TODO
@@ -1762,6 +1772,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedRetry,
+        packet_len: usize,
         subscriber: &mut Config::EventSubscriber,
         _packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
@@ -1780,6 +1791,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             packet_header: event::builder::PacketHeader::Retry {
                 version: publisher.quic_version(),
             },
+            packet_len,
         });
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.2

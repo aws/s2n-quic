@@ -69,9 +69,13 @@ impl Counter {
             .send_event(((self.counter as u64) << 32) | count);
     }
 
-    pub(crate) fn take_current(&self) -> Option<String> {
+    pub(crate) fn take_current(&self, include_sparse: bool) -> Option<String> {
         let value = self.channels.get_mut(self.counter, std::mem::take);
-        Some(format!("{}", value.value))
+        if value.value == 0 && !include_sparse {
+            None
+        } else {
+            Some(format!("{}", value.value))
+        }
     }
 }
 
@@ -99,5 +103,31 @@ fn check_u64_max() {
     assert_eq!(
         registry.take_current_metrics_line(),
         format!("a={},b={}", u64::MAX, u32::MAX)
+    );
+}
+
+#[test]
+fn sparse_skipped() {
+    let registry = crate::Registry::new();
+    let counter = registry.register_counter(String::from("a"), None);
+    assert_eq!(
+        registry
+            .try_take_current_metrics_line_sparse(false)
+            .unwrap(),
+        ""
+    );
+
+    counter.increment(1);
+
+    assert_eq!(
+        registry
+            .try_take_current_metrics_line_sparse(false)
+            .unwrap(),
+        "a=1"
+    );
+
+    assert_eq!(
+        registry.try_take_current_metrics_line_sparse(true).unwrap(),
+        "a=0"
     );
 }
