@@ -1103,9 +1103,9 @@ mod tests {
     /// Verifies that socket 1 (non-initial, high priority) is drained before socket 0
     /// (client hello, low priority) under concurrent load.
     ///
-    /// Two flood threads send packets simultaneously:
-    /// - Thread 1 sends retry packets (routed to socket 1, high priority)
-    /// - Thread 2 sends client hello packets (routed to socket 0, low priority)
+    /// One thread sends packets simultaneously:
+    /// The thread sends retry packets (routed to socket 1, high priority)
+    /// and sends client hello packets (routed to socket 0, low priority).
     ///
     /// Because the priority scheduling drains socket 1 first, socket 0 should receive
     /// much fewer packets while socket 1 is being continuously fed.

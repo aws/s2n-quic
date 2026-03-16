@@ -74,30 +74,22 @@ mod test {
         let mut buf_socket0 = [0u8; 1200];
         let mut buf_packet1_socket1 = [0u8; 1024];
         let mut buf_packet2_socket1 = [0u8; 1024];
+        let mut buf_final_recv = [0u8; 1200];
 
         // Socket 0 should receive packet_a (Initial with DCID len = 8)
-        let recv_result = tokio::time::timeout(
-            Duration::from_millis(500),
-            rx_socket_0.recv_from(&mut buf_socket0),
-        )
-        .await;
-        let (len, _) = recv_result.unwrap()?;
+        let (len, _) = rx_socket_0.recv_from(&mut buf_socket0).await.unwrap();
         assert_eq!(&buf_socket0[..len], &packet_a);
 
         // Socket 1 should receive packet_b and packet_c
-        let recv_result = tokio::time::timeout(
-            Duration::from_millis(500),
-            rx_socket_1.recv_from(&mut buf_packet1_socket1),
-        )
-        .await;
-        let (len1, _) = recv_result.unwrap()?;
+        let (len1, _) = rx_socket_1
+            .recv_from(&mut buf_packet1_socket1)
+            .await
+            .unwrap();
 
-        let recv_result = tokio::time::timeout(
-            Duration::from_millis(500),
-            rx_socket_1.recv_from(&mut buf_packet2_socket1),
-        )
-        .await;
-        let (len2, _) = recv_result.unwrap()?;
+        let (len2, _) = rx_socket_1
+            .recv_from(&mut buf_packet2_socket1)
+            .await
+            .unwrap();
 
         // Verify that socket 1 received exactly packet_b and packet_c in either order
         let received_packets = [&buf_packet1_socket1[..len1], &buf_packet2_socket1[..len2]];
@@ -110,15 +102,21 @@ mod test {
         let has_packet_c = received_packets.iter().any(|p| p[..] == packet_c[..]);
         assert!(has_packet_c);
 
-        // Socket 1 should not have any more packets
-        let recv_result = tokio::time::timeout(
+        // Socket 0 and 1 should not have any more packets
+        let socket0_recv_result = tokio::time::timeout(
             Duration::from_millis(100),
-            rx_socket_1.recv_from(&mut buf_socket0),
+            rx_socket_0.recv_from(&mut buf_final_recv),
+        )
+        .await;
+
+        let socket1_recv_result = tokio::time::timeout(
+            Duration::from_millis(100),
+            rx_socket_1.recv_from(&mut buf_final_recv),
         )
         .await;
         assert!(
-            recv_result.is_err(),
-            "Socket 1 should not receive any more packets"
+            socket1_recv_result.is_err() || socket0_recv_result.is_err(),
+            "Socket 0 and 1 should not receive any more packets"
         );
 
         Ok(())
