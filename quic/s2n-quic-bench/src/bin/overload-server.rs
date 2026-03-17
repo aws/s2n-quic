@@ -62,6 +62,37 @@ impl Metrics {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
+mod mtls {
+    use super::*;
+    use s2n_quic::provider::tls;
+
+    type Error = Box<dyn std::error::Error + Send + Sync>;
+
+    pub fn build_client_mtls_provider(ca_cert: &str) -> Result<tls::default::Client, Error> {
+        let tls = tls::default::Client::builder()
+            .with_certificate(ca_cert)?
+            .with_client_identity(
+                certificates::MTLS_CLIENT_CERT,
+                certificates::MTLS_CLIENT_KEY,
+            )?
+            .build()?;
+        Ok(tls)
+    }
+
+    pub fn build_server_mtls_provider(ca_cert: &str) -> Result<tls::default::Server, Error> {
+        let tls = tls::default::Server::builder()
+            .with_certificate(
+                certificates::MTLS_SERVER_CERT,
+                certificates::MTLS_SERVER_KEY,
+            )?
+            .with_client_authentication()?
+            .with_trusted_certificate(ca_cert)?
+            .build()?;
+        Ok(tls)
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_env("S2N_LOG"))
@@ -72,12 +103,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Args { concurrency } = Args::parse();
     println!("Starting benchmark with {concurrency} clients");
 
-    // Use (&str, &str) which implements s2n_quic::provider::tls::Provider
-    let tls = (certificates::CERT_PEM, certificates::KEY_PEM);
     let sub = s2n_quic::provider::event::disabled::Subscriber;
 
     let server = server::Provider::builder()
-        .start_blocking("127.0.0.1:0".parse().unwrap(), tls, sub, new_map(500))
+        .start_blocking(
+            "127.0.0.1:0".parse().unwrap(),
+            mtls::build_server_mtls_provider(certificates::MTLS_CA_CERT)?,
+            sub,
+            new_map(500),
+        )
         .unwrap();
 
     let registry = Registry::new();
@@ -111,7 +145,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // spin up gets a set of 5 redirect sockets which we read/write from to get to the actual
     // server.
     for _ in 0..num_groups {
-        let tls = (certificates::CERT_PEM, certificates::KEY_PEM);
         let sub = s2n_quic::provider::event::disabled::Subscriber;
 
         let client = client::Provider::builder()
@@ -121,7 +154,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .start(
                 "127.0.0.1:0".parse().unwrap(),
                 new_map(10),
-                tls,
+                mtls::build_client_mtls_provider(certificates::MTLS_CA_CERT).unwrap(),
                 sub,
                 server_name.clone(),
             )?;
