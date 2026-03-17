@@ -52,6 +52,20 @@ impl Sender {
     pub fn recv(&self) -> &Stats {
         &self.0.recv
     }
+
+    /// Records that packets were received on a socket in priority mode.
+    ///
+    /// `is_prioritized` indicates whether the packets came from the prioritized
+    /// socket (`true`) or the regular rx socket (`false`).
+    #[inline]
+    pub fn on_recv_socket_packets(&self, is_prioritized: bool, count: usize) {
+        let counter = if is_prioritized {
+            &self.0.prioritized_rx[1]
+        } else {
+            &self.0.prioritized_rx[0]
+        };
+        counter.fetch_add(count as u64, Ordering::Relaxed);
+    }
 }
 
 pub struct Receiver {
@@ -84,6 +98,17 @@ impl event_loop::Stats for Receiver {
             },
             |publisher, metrics| publisher.on_platform_rx(metrics.into()),
         );
+
+        // Emit per-socket rx stats for priority mode
+        for (idx, counter) in self.state.prioritized_rx.iter().enumerate() {
+            let count = counter.swap(0, Ordering::Relaxed);
+            if count > 0 {
+                publisher.on_platform_rx_socket_stats(event::builder::PlatformRxSocketStats {
+                    is_prioritized: idx == 1,
+                    count: count as usize,
+                });
+            }
+        }
     }
 }
 
@@ -91,6 +116,8 @@ impl event_loop::Stats for Receiver {
 struct State {
     send: Stats,
     recv: Stats,
+    /// Per-socket packet counts for priority mode: [regular, prioritized]
+    prioritized_rx: [AtomicU64; 2],
 }
 
 pub struct Stats {

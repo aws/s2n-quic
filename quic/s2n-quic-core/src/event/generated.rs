@@ -3055,6 +3055,27 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Emitted for each receive socket with per-socket packet counts"]
+    pub struct PlatformRxSocketStats {
+        #[doc = " Whether this socket is the prioritized socket"]
+        pub is_prioritized: bool,
+        #[doc = " The number of packets received on this socket since the last event"]
+        pub count: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PlatformRxSocketStats {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PlatformRxSocketStats");
+            fmt.field("is_prioritized", &self.is_prioritized);
+            fmt.field("count", &self.count);
+            fmt.finish()
+        }
+    }
+    impl Event for PlatformRxSocketStats {
+        const NAME: &'static str = "platform:rx_socket";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct PlatformEventLoopWakeup {
         pub timeout_expired: bool,
         pub rx_ready: bool,
@@ -4510,6 +4531,19 @@ pub mod tracing {
             let parent = self.parent(meta);
             let api::PlatformFeatureConfigured { configuration } = event;
             tracing :: event ! (target : "platform_feature_configured" , parent : parent , tracing :: Level :: DEBUG , { configuration = tracing :: field :: debug (configuration) });
+        }
+        #[inline]
+        fn on_platform_rx_socket_stats(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformRxSocketStats,
+        ) {
+            let parent = self.parent(meta);
+            let api::PlatformRxSocketStats {
+                is_prioritized,
+                count,
+            } = event;
+            tracing :: event ! (target : "platform_rx_socket_stats" , parent : parent , tracing :: Level :: DEBUG , { is_prioritized = tracing :: field :: debug (is_prioritized) , count = tracing :: field :: debug (count) });
         }
         #[inline]
         fn on_platform_event_loop_wakeup(
@@ -6918,6 +6952,27 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Emitted for each receive socket with per-socket packet counts"]
+    pub struct PlatformRxSocketStats {
+        #[doc = " Whether this socket is the prioritized socket"]
+        pub is_prioritized: bool,
+        #[doc = " The number of packets received on this socket since the last event"]
+        pub count: usize,
+    }
+    impl IntoEvent<api::PlatformRxSocketStats> for PlatformRxSocketStats {
+        #[inline]
+        fn into_event(self) -> api::PlatformRxSocketStats {
+            let PlatformRxSocketStats {
+                is_prioritized,
+                count,
+            } = self;
+            api::PlatformRxSocketStats {
+                is_prioritized: is_prioritized.into_event(),
+                count: count.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct PlatformEventLoopWakeup {
         pub timeout_expired: bool,
         pub rx_ready: bool,
@@ -7864,6 +7919,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `PlatformRxSocketStats` event is triggered"]
+        #[inline]
+        fn on_platform_rx_socket_stats(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformRxSocketStats,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `PlatformEventLoopWakeup` event is triggered"]
         #[inline]
         fn on_platform_event_loop_wakeup(
@@ -8585,6 +8650,15 @@ mod traits {
             (self.1).on_platform_feature_configured(meta, event);
         }
         #[inline]
+        fn on_platform_rx_socket_stats(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformRxSocketStats,
+        ) {
+            (self.0).on_platform_rx_socket_stats(meta, event);
+            (self.1).on_platform_rx_socket_stats(meta, event);
+        }
+        #[inline]
         fn on_platform_event_loop_wakeup(
             &mut self,
             meta: &api::EndpointMeta,
@@ -8680,6 +8754,8 @@ mod traits {
         fn on_platform_rx_error(&mut self, event: builder::PlatformRxError);
         #[doc = "Publishes a `PlatformFeatureConfigured` event to the publisher's subscriber"]
         fn on_platform_feature_configured(&mut self, event: builder::PlatformFeatureConfigured);
+        #[doc = "Publishes a `PlatformRxSocketStats` event to the publisher's subscriber"]
+        fn on_platform_rx_socket_stats(&mut self, event: builder::PlatformRxSocketStats);
         #[doc = "Publishes a `PlatformEventLoopWakeup` event to the publisher's subscriber"]
         fn on_platform_event_loop_wakeup(&mut self, event: builder::PlatformEventLoopWakeup);
         #[doc = "Publishes a `PlatformEventLoopSleep` event to the publisher's subscriber"]
@@ -8806,6 +8882,13 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_platform_feature_configured(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_platform_rx_socket_stats(&mut self, event: builder::PlatformRxSocketStats) {
+            let event = event.into_event();
+            self.subscriber
+                .on_platform_rx_socket_stats(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -9467,6 +9550,7 @@ pub mod testing {
             pub platform_rx: u64,
             pub platform_rx_error: u64,
             pub platform_feature_configured: u64,
+            pub platform_rx_socket_stats: u64,
             pub platform_event_loop_wakeup: u64,
             pub platform_event_loop_sleep: u64,
             pub platform_event_loop_started: u64,
@@ -9514,6 +9598,7 @@ pub mod testing {
                     platform_rx: 0,
                     platform_rx_error: 0,
                     platform_feature_configured: 0,
+                    platform_rx_socket_stats: 0,
                     platform_event_loop_wakeup: 0,
                     platform_event_loop_sleep: 0,
                     platform_event_loop_started: 0,
@@ -9663,6 +9748,17 @@ pub mod testing {
                 let out = format!("{meta:?} {event:?}");
                 self.output.push(out);
             }
+            fn on_platform_rx_socket_stats(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::PlatformRxSocketStats,
+            ) {
+                self.platform_rx_socket_stats += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
             fn on_platform_event_loop_wakeup(
                 &mut self,
                 meta: &api::EndpointMeta,
@@ -9764,6 +9860,7 @@ pub mod testing {
         pub platform_rx: u64,
         pub platform_rx_error: u64,
         pub platform_feature_configured: u64,
+        pub platform_rx_socket_stats: u64,
         pub platform_event_loop_wakeup: u64,
         pub platform_event_loop_sleep: u64,
         pub platform_event_loop_started: u64,
@@ -9860,6 +9957,7 @@ pub mod testing {
                 platform_rx: 0,
                 platform_rx_error: 0,
                 platform_feature_configured: 0,
+                platform_rx_socket_stats: 0,
                 platform_event_loop_wakeup: 0,
                 platform_event_loop_sleep: 0,
                 platform_event_loop_started: 0,
@@ -10688,6 +10786,17 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.push(out);
         }
+        fn on_platform_rx_socket_stats(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformRxSocketStats,
+        ) {
+            self.platform_rx_socket_stats += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.push(out);
+        }
         fn on_platform_event_loop_wakeup(
             &mut self,
             meta: &api::EndpointMeta,
@@ -10788,6 +10897,7 @@ pub mod testing {
         pub platform_rx: u64,
         pub platform_rx_error: u64,
         pub platform_feature_configured: u64,
+        pub platform_rx_socket_stats: u64,
         pub platform_event_loop_wakeup: u64,
         pub platform_event_loop_sleep: u64,
         pub platform_event_loop_started: u64,
@@ -10874,6 +10984,7 @@ pub mod testing {
                 platform_rx: 0,
                 platform_rx_error: 0,
                 platform_feature_configured: 0,
+                platform_rx_socket_stats: 0,
                 platform_event_loop_wakeup: 0,
                 platform_event_loop_sleep: 0,
                 platform_event_loop_started: 0,
@@ -10973,6 +11084,13 @@ pub mod testing {
         }
         fn on_platform_feature_configured(&mut self, event: builder::PlatformFeatureConfigured) {
             self.platform_feature_configured += 1;
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.push(out);
+        }
+        fn on_platform_rx_socket_stats(&mut self, event: builder::PlatformRxSocketStats) {
+            self.platform_rx_socket_stats += 1;
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             let out = format!("{event:?}");

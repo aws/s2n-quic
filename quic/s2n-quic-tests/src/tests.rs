@@ -72,3 +72,6 @@ mod dc;
 mod fips;
 #[cfg(not(target_os = "windows"))]
 mod mtls;
+// This test uses real OS sockets, which conflicts with bach's simulated time scope on Windows.
+#[cfg(not(target_os = "windows"))]
+mod prioritized_socket;

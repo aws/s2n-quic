@@ -60,6 +60,7 @@ impl Io {
             reuse_address,
             reuse_port,
             only_v6,
+            prioritized_socket,
         } = self.builder;
 
         let clock = Clock::default();
@@ -118,6 +119,9 @@ impl Io {
 
         if let Some(size) = socket_recv_buffer_size {
             rx_socket.set_recv_buffer_size(size)?;
+            if let Some(ref ps) = prioritized_socket {
+                ps.set_recv_buffer_size(size)?;
+            }
         }
 
         let mut mtu_config = mtu_config_builder
@@ -150,7 +154,11 @@ impl Io {
         });
 
         // Configure the socket with GRO
-        let gro_enabled = gro_enabled.unwrap_or(true) && syscall::configure_gro(&rx_socket);
+        let gro_enabled = gro_enabled.unwrap_or(true)
+            && syscall::configure_gro(&rx_socket)
+            && prioritized_socket
+                .as_ref()
+                .is_none_or(syscall::configure_gro);
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::Gro {
@@ -162,7 +170,12 @@ impl Io {
         syscall::configure_pktinfo(&rx_socket);
 
         // Configure TOS/ECN
-        let tos_enabled = syscall::configure_tos(&rx_socket);
+        let mut tos_enabled = syscall::configure_tos(&rx_socket);
+
+        if let Some(ref ps) = prioritized_socket {
+            syscall::configure_pktinfo(ps);
+            tos_enabled |= syscall::configure_tos(ps);
+        }
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::Ecn {
@@ -193,33 +206,50 @@ impl Io {
 
             let mut consumers = vec![];
 
-            let rx_socket_count = parse_env("S2N_QUIC_UNSTABLE_RX_SOCKET_COUNT").unwrap_or(1);
-
             // configure the number of self-wakes before "cooling down" and waiting for epoll to
             // complete
             let rx_cooldown = cooldown("RX");
 
-            for idx in 0usize..rx_socket_count {
+            if let Some(prioritized_socket) = prioritized_socket {
+                // Priority mode: the prioritized socket is drained first,
+                // then the rx_socket is read.
                 let (producer, consumer) = socket::ring::pair(entries, payload_len);
                 consumers.push(consumer);
 
-                // spawn a task that actually reads from the socket into the ring buffer
-                if idx + 1 == rx_socket_count {
-                    handle.spawn(task::rx(
-                        rx_socket,
-                        producer,
-                        rx_cooldown,
-                        stats_sender.clone(),
-                    ));
-                    break;
-                } else {
-                    let rx_socket = rx_socket.try_clone()?;
-                    handle.spawn(task::rx(
-                        rx_socket,
-                        producer,
-                        rx_cooldown.clone(),
-                        stats_sender.clone(),
-                    ));
+                handle.spawn(task::rx(
+                    prioritized_socket,
+                    Some(rx_socket),
+                    producer,
+                    rx_cooldown,
+                    stats_sender.clone(),
+                ));
+            } else {
+                let rx_socket_count = parse_env("S2N_QUIC_UNSTABLE_RX_SOCKET_COUNT").unwrap_or(1);
+
+                for idx in 0usize..rx_socket_count {
+                    let (producer, consumer) = socket::ring::pair(entries, payload_len);
+                    consumers.push(consumer);
+
+                    // spawn a task that actually reads from the socket into the ring buffer
+                    if idx + 1 == rx_socket_count {
+                        handle.spawn(task::rx(
+                            rx_socket,
+                            None,
+                            producer,
+                            rx_cooldown,
+                            stats_sender.clone(),
+                        ));
+                        break;
+                    } else {
+                        let rx_socket = rx_socket.try_clone()?;
+                        handle.spawn(task::rx(
+                            rx_socket,
+                            None,
+                            producer,
+                            rx_cooldown.clone(),
+                            stats_sender.clone(),
+                        ));
+                    }
                 }
             }
 
