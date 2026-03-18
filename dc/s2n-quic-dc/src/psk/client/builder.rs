@@ -4,7 +4,8 @@
 use crate::{
     path::secret,
     psk::io::{
-        Result, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_DATA, DEFAULT_MTU, DEFAULT_PTO_JITTER_PERCENTAGE,
+        HandshakeQueueConfig, Result, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_DATA, DEFAULT_MTU,
+        DEFAULT_PTO_JITTER_PERCENTAGE,
     },
 };
 use s2n_quic::{
@@ -24,7 +25,7 @@ pub struct Builder<
     pub(crate) mtu: u16,
     pub(crate) max_idle_timeout: Duration,
     pub(crate) pto_jitter_percentage: u8,
-    pub(crate) success_jitter: Duration,
+    pub(crate) handshake_queue: HandshakeQueueConfig,
 }
 
 impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
@@ -35,7 +36,7 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
             mtu: DEFAULT_MTU,
             max_idle_timeout: DEFAULT_IDLE_TIMEOUT,
             pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
-            success_jitter: Duration::from_secs(60),
+            handshake_queue: Default::default(),
         }
     }
 }
@@ -52,7 +53,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             mtu: self.mtu,
             max_idle_timeout: self.max_idle_timeout,
             pto_jitter_percentage: self.pto_jitter_percentage,
-            success_jitter: self.success_jitter,
+            handshake_queue: self.handshake_queue,
         }
     }
 
@@ -99,7 +100,40 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
     ///
     /// This defaults to 1 minute.
     pub fn with_success_jitter(mut self, period: Duration) -> Self {
-        self.success_jitter = period;
+        self.handshake_queue.success_jitter = period;
+        self
+    }
+
+    /// Sets the maximum number of TLS handshakes that can be started concurrently.
+    ///
+    /// TLS handshakes are CPU-intensive (~1ms each), so limiting concurrency prevents
+    /// stalling the endpoint and keeps baseline latency proportional to this value.
+    /// For example, a limit of 5 translates to roughly 5ms average handshake latency.
+    ///
+    /// The default value is 5.
+    ///
+    /// # Stability
+    ///
+    /// This API is unstable and may change behavior or be removed in future releases.
+    #[doc(hidden)]
+    pub fn with_handshake_start_limit(mut self, limit: usize) -> Self {
+        self.handshake_queue.start_limit = limit;
+        self
+    }
+
+    /// Sets the maximum number of in-flight handshake connections.
+    ///
+    /// This bounds the total number of open handshake connections, limiting the amount
+    /// of concurrent packet transmit/receive work within the QUIC endpoint.
+    ///
+    /// The default value is 750.
+    ///
+    /// # Stability
+    ///
+    /// This API is unstable and may change behavior or be removed in future releases.
+    #[doc(hidden)]
+    pub fn with_handshake_inflight_limit(mut self, limit: usize) -> Self {
+        self.handshake_queue.inflight_limit = limit;
         self
     }
 
