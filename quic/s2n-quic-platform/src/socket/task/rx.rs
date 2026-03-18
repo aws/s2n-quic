@@ -115,9 +115,8 @@ where
         let mut events = Events::default();
         let mut pending_wake = false;
 
-        if this.socket_low.is_some() {
-            // Priority mode: drain high-priority socket first, then low-priority
-            loop {
+        macro_rules! poll_ring {
+            () => {
                 match this.poll_ring(u32::MAX, cx) {
                     Poll::Ready(Ok(_)) => {}
                     Poll::Ready(Err(_)) => return None.into(),
@@ -128,44 +127,43 @@ where
                         return Poll::Pending;
                     }
                 }
+            };
+        }
 
+        macro_rules! drain_socket {
+            ($socket:expr $(, $on_recv:expr)?) => {{
                 let entries = this.ring.data();
-
-                // Try the high-priority socket first
-                match this.rx.recv(cx, entries, &mut events, &this.stats) {
+                match $socket.recv(cx, entries, &mut events, &this.stats) {
                     Ok(_) => {
                         let count = events.take_count() as u32;
                         if count > 0 {
-                            this.stats.on_recv_socket_packets(true, count as usize);
+                            $( this.stats.on_recv_socket_packets($on_recv, count as usize); )?
                             this.ring.release_no_wake(count);
                             this.io_cooldown.on_ready();
                             pending_wake = true;
-                            // Keep draining high-priority socket
-                            continue;
                         }
+                        Ok(count)
                     }
+                    Err(err) => Err(err),
+                }
+            }};
+        }
+
+        if this.socket_low.is_some() {
+            // Priority mode: drain high-priority socket first, then low-priority
+            loop {
+                poll_ring!();
+
+                // Try the high-priority socket first
+                match drain_socket!(&mut this.rx, true) {
+                    Ok(count) if count > 0 => continue,
                     Err(err) => return Some(err).into(),
+                    _ => {}
                 }
 
                 // High-priority socket is pending, then try low-priority socket
-                let entries = this.ring.data();
-
-                match this
-                    .socket_low
-                    .as_mut()
-                    .unwrap()
-                    .recv(cx, entries, &mut events, &this.stats)
-                {
-                    Ok(_) => {
-                        let count = events.take_count() as u32;
-                        if count > 0 {
-                            this.stats.on_recv_socket_packets(false, count as usize);
-                            this.ring.release_no_wake(count);
-                            this.io_cooldown.on_ready();
-                            pending_wake = true;
-                        }
-                    }
-                    Err(err) => return Some(err).into(),
+                if let Err(err) = drain_socket!(this.socket_low.as_mut().unwrap(), false) {
+                    return Some(err).into();
                 }
 
                 if events.take_blocked() {
@@ -174,29 +172,10 @@ where
             }
         } else {
             while !events.take_blocked() {
-                match this.poll_ring(u32::MAX, cx) {
-                    Poll::Ready(Ok(_)) => {}
-                    Poll::Ready(Err(_)) => return None.into(),
-                    Poll::Pending => {
-                        if pending_wake {
-                            this.ring.wake();
-                        }
-                        return Poll::Pending;
-                    }
-                }
+                poll_ring!();
 
-                let entries = this.ring.data();
-
-                match this.rx.recv(cx, entries, &mut events, &this.stats) {
-                    Ok(_) => {
-                        let count = events.take_count() as u32;
-                        if count > 0 {
-                            this.ring.release_no_wake(count);
-                            this.io_cooldown.on_ready();
-                            pending_wake = true;
-                        }
-                    }
-                    Err(err) => return Some(err).into(),
+                if let Err(err) = drain_socket!(&mut this.rx) {
+                    return Some(err).into();
                 }
             }
         }
