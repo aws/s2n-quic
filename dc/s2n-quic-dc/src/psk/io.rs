@@ -226,7 +226,7 @@ impl Client {
         Ok(Self {
             client,
             map: map.clone(),
-            queue: Arc::new(HandshakeQueue::new(builder.success_jitter)),
+            queue: Arc::new(HandshakeQueue::new(builder.handshake_queue)),
         })
     }
 
@@ -265,6 +265,33 @@ struct Entry {
 struct HandshakeQueueInner {
     table: hashbrown::HashTable<Arc<Entry>>,
 }
+pub(crate) struct HandshakeQueueConfig {
+    /// Upper bound on the jitter delay after a successful handshake before allowing
+    /// another handshake with the same peer.
+    pub(crate) success_jitter: Duration,
+    /// Maximum number of TLS handshakes that can be started concurrently.
+    ///
+    /// TLS handshakes have high CPU cost (~1ms) which stalls out the endpoint, so we
+    /// don't want too many to build up at the same time since that increases baseline
+    /// latency ~linearly. For example, 5 translates to ~5ms avg handshake latency.
+    pub(crate) start_limit: usize,
+    /// Maximum number of in-flight handshake connections.
+    ///
+    /// Keeping this bounded helps avoid unbounded work ongoing in s2n-quic (which
+    /// implies unbounded packet transmit/receive work).
+    pub(crate) inflight_limit: usize,
+}
+
+impl Default for HandshakeQueueConfig {
+    fn default() -> Self {
+        Self {
+            success_jitter: Duration::from_secs(60),
+            start_limit: 5,
+            inflight_limit: 750,
+        }
+    }
+}
+
 struct HandshakeQueue {
     inner: Mutex<HandshakeQueueInner>,
     limiter_start: Semaphore,
@@ -274,24 +301,11 @@ struct HandshakeQueue {
 }
 
 impl HandshakeQueue {
-    fn new(success_jitter: Duration) -> Self {
+    fn new(config: HandshakeQueueConfig) -> Self {
         HandshakeQueue {
-            // The "start" limiter bounds TLS handshake concurrency.
-            //
-            // TLS handshakes have high CPU cost (~1ms) which stalls out the endpoint, we don't
-            // want too many of those to build up at the same time since that stalls out the
-            // endpoint, increasing our baseline latency ~linearly with increases here. For
-            // example, 5 here translates to 5ms avg handshake latency in our benchmarks. Lowering
-            // it to 2-3 reduces our latencies to the expected 2-3ms (now hitting lowest possible
-            // cost for the CPU work needed for a handshake).
-            limiter_start: Semaphore::new(5),
-            // The inflight limiter bounds the total number of connections we have open. Keeping
-            // that bounded helps avoid unbounded work ongoing in s2n-quic (which implies unbounded
-            // packet transmit/receive work), and helps our benchmarks exercise the maximum
-            // concurrency within s2n-quic. We haven't found a particular stress test for which is
-            // meaningful yet though.
-            limiter_inflight: Arc::new(Semaphore::new(750)),
-            success_jitter,
+            limiter_start: Semaphore::new(config.start_limit),
+            limiter_inflight: Arc::new(Semaphore::new(config.inflight_limit)),
+            success_jitter: config.success_jitter,
             inner: Default::default(),
             hasher: Default::default(),
         }
@@ -740,7 +754,10 @@ mod tests {
 
     #[test]
     fn alloc_entry_increments() {
-        let queue = HandshakeQueue::new(Duration::ZERO);
+        let queue = HandshakeQueue::new(HandshakeQueueConfig {
+            success_jitter: Duration::ZERO,
+            ..Default::default()
+        });
         let peer_a = "127.0.0.1:3333".parse().unwrap();
         assert_eq!(
             queue

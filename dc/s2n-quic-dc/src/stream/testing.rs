@@ -138,6 +138,10 @@ macro_rules! dcquic_context {
             pub fn protocol(&self) -> Protocol {
                 self.0.protocol
             }
+
+            pub fn is_plaintext(&self) -> bool {
+                false
+            }
         }
     };
 }
@@ -316,6 +320,10 @@ pub mod tcp {
 
         pub fn protocol(&self) -> Protocol {
             Protocol::Tcp
+        }
+
+        pub fn is_plaintext(&self) -> bool {
+            true
         }
     }
 }

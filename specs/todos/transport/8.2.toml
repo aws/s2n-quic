@@ -1,3 +1,4 @@
+
 [[TODO]]
 target = "https://www.rfc-editor.org/rfc/rfc9000#section-8.2.1"
 tracking-issue = "409"
@@ -32,16 +33,6 @@ feature = "Client connection migration"
 quote = '''
 An endpoint MUST expand datagrams that contain a PATH_RESPONSE frame
 to at least the smallest allowed maximum datagram size of 1200 bytes.
-'''
-
-[[TODO]]
-target = "https://www.rfc-editor.org/rfc/rfc9000#section-8.2.1"
-tracking-issue = "411"
-feature = "Connection migration"
-quote = '''
-An endpoint SHOULD NOT probe a new path with packets containing a
-PATH_CHALLENGE frame more frequently than it would send an Initial
-packet.
 '''
 
 [[TODO]]
