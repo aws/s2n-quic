@@ -92,15 +92,11 @@ async fn prioritized_socket_scheduling_test() {
         let count = flood_count.clone();
         std::thread::spawn(move || {
             let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-            // Use real QUIC packet formats: retry for the prioritized socket,
-            // client initial for the low-priority socket
-            let packet_high = s2n_quic_core::crypto::retry::example::PACKET;
-            let packet_low =
-                s2n_quic_core::crypto::initial::EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET;
+            let packet = s2n_quic_core::crypto::initial::EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET;
             while !cancel.load(Ordering::Relaxed) {
                 // Send 1:1 ratio to both sockets
-                let _ = sender.send_to(&packet_high, high_addr);
-                let _ = sender.send_to(&packet_low, low_addr);
+                let _ = sender.send_to(&packet, high_addr);
+                let _ = sender.send_to(&packet, low_addr);
                 count.fetch_add(2, Ordering::Relaxed);
             }
         })
