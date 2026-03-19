@@ -10,9 +10,16 @@ use crate::event::metrics::aggregate::{
 };
 use s2n_quic_core::probe::define;
 mod id {
-    pub const BYTE_ARRAY_EVENT: usize = 0usize;
-    pub const ENUM_EVENT: usize = BYTE_ARRAY_EVENT + 1;
-    pub const COUNT_EVENT: usize = ENUM_EVENT + 1;
+    #[allow(non_camel_case_types)]
+    #[allow(clippy::upper_case_acronyms)]
+    enum InfoId {
+        BYTE_ARRAY_EVENT,
+        ENUM_EVENT,
+        COUNT_EVENT,
+    }
+    pub const BYTE_ARRAY_EVENT: usize = InfoId::BYTE_ARRAY_EVENT as usize;
+    pub const ENUM_EVENT: usize = InfoId::ENUM_EVENT as usize;
+    pub const COUNT_EVENT: usize = InfoId::COUNT_EVENT as usize;
 }
 mod counter {
     #![allow(non_snake_case)]
