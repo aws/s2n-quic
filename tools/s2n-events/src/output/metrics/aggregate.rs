@@ -5,12 +5,27 @@ use crate::{
     parser::{File, Metric, MetricNoUnit, Subject},
     Output,
 };
+use heck::ToUpperCamelCase;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
 
 fn new_str(value: impl AsRef<str>) -> TokenStream {
     let value_c = format!("{}\0", value.as_ref());
     quote!(Str::new(#value_c))
+}
+
+fn enum_definition(enum_ident: &Ident, names: &[Ident]) -> TokenStream {
+    if names.is_empty() {
+        return quote!();
+    }
+    quote!(
+        #[allow(non_camel_case_types)]
+        #[allow(clippy::upper_case_acronyms)]
+        enum #enum_ident {
+            #(#names),*
+        }
+        #(pub const #names: usize = #enum_ident::#names as usize;)*
+    )
 }
 
 pub fn emit(output: &Output, files: &[File]) -> TokenStream {
@@ -339,14 +354,18 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
     let nominal_timers_probes = nominal_timers.probe();
     let nominal_timers_len = nominal_timers.len;
     let info_len = info.len;
-    let info_consts = &info.consts;
-    let counters_consts = &counters.consts;
-    let bool_counters_consts = &bool_counters.consts;
-    let nominal_counters_consts = &nominal_counters.consts;
-    let measures_consts = &measures.consts;
-    let gauges_consts = &gauges.consts;
-    let timers_consts = &timers.consts;
-    let nominal_timers_consts = &nominal_timers.consts;
+    let info_ident = Ident::new("InfoId", Span::call_site());
+    let info_consts = enum_definition(&info_ident, &info.const_names);
+    let counters_consts = enum_definition(&counters.enum_ident, &counters.const_names);
+    let bool_counters_consts =
+        enum_definition(&bool_counters.enum_ident, &bool_counters.const_names);
+    let nominal_counters_consts =
+        enum_definition(&nominal_counters.enum_ident, &nominal_counters.const_names);
+    let measures_consts = enum_definition(&measures.enum_ident, &measures.const_names);
+    let gauges_consts = enum_definition(&gauges.enum_ident, &gauges.const_names);
+    let timers_consts = enum_definition(&timers.enum_ident, &timers.const_names);
+    let nominal_timers_consts =
+        enum_definition(&nominal_timers.enum_ident, &nominal_timers.const_names);
     let mut imports = output.config.imports();
 
     if !output.feature_alloc.is_empty() {
@@ -698,8 +717,7 @@ fn metrics_iter_with_unit<'a>(
 struct InfoList {
     len: usize,
     entries: TokenStream,
-    consts: TokenStream,
-    prev_const: Option<Ident>,
+    const_names: Vec<Ident>,
 }
 
 impl InfoList {
@@ -711,16 +729,7 @@ impl InfoList {
         let const_name = name.replace('.', "__").to_uppercase();
         let const_ident = Ident::new(&const_name, Span::call_site());
 
-        if let Some(prev) = &self.prev_const {
-            self.consts.extend(quote!(
-                pub const #const_ident: usize = #prev + 1;
-            ));
-        } else {
-            self.consts.extend(quote!(
-                pub const #const_ident: usize = 0usize;
-            ));
-        }
-        self.prev_const = Some(const_ident.clone());
+        self.const_names.push(const_ident.clone());
 
         self.entries.extend(quote!(
             info::Builder {
@@ -774,9 +783,9 @@ struct Registry {
     registry_type: RegistryType,
     metric_ty: TokenStream,
     as_metric: TokenStream,
-    consts: TokenStream,
+    const_names: Vec<Ident>,
     const_prefix: String,
-    prev_const: Option<Ident>,
+    enum_ident: Ident,
 }
 
 impl Registry {
@@ -788,6 +797,7 @@ impl Registry {
         as_metric: TokenStream,
     ) -> Self {
         let const_prefix = dest.to_string().to_uppercase();
+        let enum_ident = Ident::new(&const_prefix.to_upper_camel_case(), Span::call_site());
         Self {
             len: 0,
             dest,
@@ -800,9 +810,9 @@ impl Registry {
             registry_type: RegistryType::Basic,
             metric_ty,
             as_metric,
-            consts: quote!(),
+            const_names: Vec::new(),
             const_prefix,
-            prev_const: None,
+            enum_ident,
         }
     }
 
@@ -940,16 +950,7 @@ impl Registry {
             &format!("{}_{}", self.const_prefix, info.name.to_uppercase()),
             Span::call_site(),
         );
-        if let Some(prev) = &self.prev_const {
-            self.consts.extend(quote!(
-                pub const #const_ident: usize = #prev + 1;
-            ));
-        } else {
-            self.consts.extend(quote!(
-                pub const #const_ident: usize = 0usize;
-            ));
-        }
-        self.prev_const = Some(const_ident.clone());
+        self.const_names.push(const_ident.clone());
 
         let info_const = &info.const_ident;
         self.probe_new.extend(quote!(
