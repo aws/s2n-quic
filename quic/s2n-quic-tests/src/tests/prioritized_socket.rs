@@ -47,12 +47,10 @@ impl event::Subscriber for StatsSubscriber {
 /// Verifies that the prioritized socket is drained before the other socket
 /// under concurrent load on both sockets.
 ///
-/// Two sockets are bound to different ports. A real s2n-quic Server is started
-/// with one as the rx socket and the other as the prioritized socket. A flood
-/// thread sends packets to both ports.
-///
-/// The priority scheduling should cause the prioritized socket to receive
-/// significantly more packets than the other.
+/// A small internal receive buffer is used so the ring buffer becomes the
+/// bottleneck. When both sockets have data, the scheduling determines which
+/// socket fills the limited ring space. Since the high-priority socket is
+/// always drained first, it should receive significantly more packets.
 #[tokio::test]
 async fn prioritized_socket_scheduling_test() {
     let socket_low = syscall::bind_udp("127.0.0.1:0", false, false, false).unwrap();
@@ -65,10 +63,15 @@ async fn prioritized_socket_scheduling_test() {
 
     let stats = StatsSubscriber::default();
 
+    // Use a small internal receive buffer (ring buffer) so it becomes the
+    // bottleneck. This forces contention between the two sockets for ring
+    // space, making the priority scheduling observable.
     let io = s2n_quic::provider::io::tokio::Builder::default()
         .with_rx_socket(socket_low.into())
         .unwrap()
         .with_prioritized_socket(socket_high.into())
+        .unwrap()
+        .with_internal_recv_buffer_size(4096)
         .unwrap()
         .build()
         .unwrap();
@@ -83,7 +86,7 @@ async fn prioritized_socket_scheduling_test() {
         .start()
         .unwrap();
 
-    // Flood both sockets from a separate thread
+    // Flood both sockets equally from a separate thread
     let cancel = Arc::new(AtomicBool::new(false));
     let flood_count = Arc::new(AtomicU64::new(0));
 
@@ -127,8 +130,8 @@ async fn prioritized_socket_scheduling_test() {
     // The prioritized socket (index 1) should have received many packets
     assert!(socket_1_count > 0);
 
-    // Even with a 1:1 send ratio, the prioritized socket should receive more
-    // packets because the priority scheduling drains it first. The low-priority
-    // socket only gets read when the prioritized socket momentarily has no data.
+    // With a 1:1 send ratio and a small ring buffer, the priority scheduling
+    // causes the high-priority socket to fill the ring first, leaving little
+    // room for the low-priority socket.
     assert!(socket_1_count > socket_0_count * 2);
 }

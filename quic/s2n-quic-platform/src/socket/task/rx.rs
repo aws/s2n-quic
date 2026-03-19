@@ -150,22 +150,27 @@ where
         }
 
         if this.socket_low.is_some() {
-            // Priority mode: drain high-priority socket first, then low-priority
+            // Priority mode: drain high-priority socket completely, then allow
+            // the low-priority socket a single drain before looping back.
             loop {
-                poll_ring!();
+                // Drain the high-priority socket until it is blocked.
+                while !events.take_blocked() {
+                    poll_ring!();
 
-                // Try the high-priority socket first
-                match drain_socket!(&mut this.rx, true) {
-                    Ok(count) if count > 0 => continue,
-                    Err(err) => return Some(err).into(),
-                    _ => {}
+                    if let Err(err) = drain_socket!(&mut this.rx, true) {
+                        return Some(err).into();
+                    }
                 }
 
-                // High-priority socket is pending, then try low-priority socket
+                // High-priority socket is blocked. Give the low-priority socket one drain call.
+                poll_ring!();
+
                 if let Err(err) = drain_socket!(this.socket_low.as_mut().unwrap(), false) {
                     return Some(err).into();
                 }
 
+                // If the low-priority socket is also blocked, we're done.
+                // Otherwise loop back to drain the high-priority socket again.
                 if events.take_blocked() {
                     break;
                 }
