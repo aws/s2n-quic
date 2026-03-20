@@ -29,7 +29,7 @@ S2N_QUIC = "s2n-quic"
 logger = logging.getLogger(__name__)
 
 
-def fetch_results(n_commits: int, out_dir: str) -> str:
+def fetch_results(n_commits: int, out_dir: str) -> None:
     """Download interop results for the last n_commits on main."""
     os.makedirs(out_dir, exist_ok=True)
 
@@ -50,8 +50,6 @@ def fetch_results(n_commits: int, out_dir: str) -> str:
             # Create empty file so we don't retry on subsequent runs
             with open(path, "w"):
                 pass
-
-    return out_dir
 
 
 def collect_stats(
