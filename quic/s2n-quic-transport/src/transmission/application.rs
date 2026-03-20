@@ -178,10 +178,8 @@ impl<Config: endpoint::Config> Normal<'_, Config> {
         // complete as soon as possible
         self.dc_manager.on_transmit(context);
 
-        // The mtu_controller's on_transmit is also called in MtuProbing mode for MTU
-        // discovery probes. This call handles transmission of the MTU_PROBING_COMPLETE
-        // frame, which needs to be sent in Normal mode so it can be coalesced with
-        // other frames.
+        // Transmit the MtuProbingComplete frame if needed. MTU probe packets
+        // are handled separately in MtuProbing mode via on_transmit_probe.
         self.path_manager
             .active_path_mut()
             .mtu_controller
@@ -234,7 +232,7 @@ pub struct MtuProbe<'a> {
 impl MtuProbe<'_> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if context.transmission_constraint().can_transmit() {
-            self.mtu_controller.on_transmit(context)
+            self.mtu_controller.on_transmit_probe(context)
         }
     }
 }

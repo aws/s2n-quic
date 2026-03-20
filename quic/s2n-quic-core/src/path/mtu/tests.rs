@@ -897,7 +897,7 @@ fn on_packet_loss_initial_mtu_configured() {
 //# acknowledged PL (e.g., SCTP), DPLPMTUD SHOULD NOT continue to
 //# generate PLPMTU probes in this state.
 #[test]
-fn on_transmit_search_not_requested() {
+fn on_transmit_probe_search_not_requested() {
     let mut controller = new_controller(1500);
     controller.state = State::SearchComplete;
     let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -909,13 +909,15 @@ fn on_transmit_search_not_requested() {
         endpoint::Type::Server,
     );
 
-    controller.on_transmit(&mut write_context);
+    controller.on_transmit_probe(&mut write_context);
     assert!(frame_buffer.is_empty());
     assert_eq!(State::SearchComplete, controller.state);
 }
 
 #[test]
 fn on_transmit_not_mtu_probing() {
+    // When SearchRequested but on_transmit is called (Normal mode),
+    // nothing should be written since on_transmit only handles completion
     let mut controller = new_controller(1500);
     controller.state = State::SearchRequested;
     let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -931,6 +933,7 @@ fn on_transmit_not_mtu_probing() {
     assert!(frame_buffer.is_empty());
     assert_eq!(State::SearchRequested, controller.state);
 
+    // When SearchComplete without needs_to_send_completion, nothing should be written
     controller.state = State::SearchComplete;
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut write_context = MockWriteContext::new(
@@ -973,12 +976,15 @@ fn on_transmit_mtu_probing_complete_in_normal_mode() {
     assert_eq!(State::SearchComplete, controller.state);
 }
 
-/// MtuProbingComplete frame should NOT be sent in MtuProbing mode
+/// MtuProbingComplete frame is sent by on_transmit regardless of mode,
+/// since on_transmit now only handles completion. The caller is responsible
+/// for only calling on_transmit in Normal mode.
 #[test]
-fn on_transmit_mtu_probing_complete_in_mtu_probing_mode() {
+fn on_transmit_mtu_probing_complete_always_sent() {
     let mut controller = new_controller(1500);
     controller.state = State::SearchComplete;
     controller.needs_to_send_completion = true;
+    controller.plpmtu = 1472;
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut write_context = MockWriteContext::new(
         now(),
@@ -990,14 +996,17 @@ fn on_transmit_mtu_probing_complete_in_mtu_probing_mode() {
 
     controller.on_transmit(&mut write_context);
 
-    // MtuProbingComplete frame shouldn't be sent in MtuProbing mode
-    assert!(frame_buffer.is_empty());
-    assert!(controller.needs_to_send_completion);
+    // MtuProbingComplete frame is now sent regardless of mode
+    assert_eq!(
+        Frame::MtuProbingComplete(frame::MtuProbingComplete::new(1472)),
+        write_context.frame_buffer.pop_front().unwrap().as_frame()
+    );
+    assert!(!controller.needs_to_send_completion);
     assert_eq!(State::SearchComplete, controller.state);
 }
 
 #[test]
-fn on_transmit_no_capacity() {
+fn on_transmit_probe_no_capacity() {
     let mut controller = new_controller(1500);
     controller.state = State::SearchRequested;
     let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -1010,7 +1019,7 @@ fn on_transmit_no_capacity() {
         endpoint::Type::Server,
     );
 
-    controller.on_transmit(&mut write_context);
+    controller.on_transmit_probe(&mut write_context);
     assert!(frame_buffer.is_empty());
     assert_eq!(State::SearchComplete, controller.state);
 }
@@ -1032,7 +1041,7 @@ fn on_transmit_no_capacity() {
 //# DPLPMTUD MAY choose to use only one of these methods to simplify the
 //# implementation.
 #[test]
-fn on_transmit() {
+fn on_transmit_probe() {
     let mut controller = new_controller(1500);
     controller.state = State::SearchRequested;
     let now = now();
@@ -1047,7 +1056,7 @@ fn on_transmit() {
     );
     let packet_number = write_context.packet_number();
 
-    controller.on_transmit(&mut write_context);
+    controller.on_transmit_probe(&mut write_context);
     assert_eq!(0, write_context.remaining_capacity());
     assert_eq!(
         Frame::Ping(frame::Ping),
