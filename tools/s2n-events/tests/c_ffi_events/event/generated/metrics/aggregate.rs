@@ -13,12 +13,26 @@ use crate::event::{
     },
 };
 mod id {
-    pub const BYTE_ARRAY_EVENT: usize = 0usize;
-    pub const ENUM_EVENT: usize = BYTE_ARRAY_EVENT + 1;
-    pub const COUNT_EVENT: usize = ENUM_EVENT + 1;
-    pub const COUNTERS_BYTE_ARRAY_EVENT: usize = 0usize;
-    pub const COUNTERS_ENUM_EVENT: usize = COUNTERS_BYTE_ARRAY_EVENT + 1;
-    pub const COUNTERS_COUNT_EVENT: usize = COUNTERS_ENUM_EVENT + 1;
+    #[allow(non_camel_case_types)]
+    #[allow(clippy::upper_case_acronyms)]
+    enum InfoId {
+        BYTE_ARRAY_EVENT,
+        ENUM_EVENT,
+        COUNT_EVENT,
+    }
+    pub const BYTE_ARRAY_EVENT: usize = InfoId::BYTE_ARRAY_EVENT as usize;
+    pub const ENUM_EVENT: usize = InfoId::ENUM_EVENT as usize;
+    pub const COUNT_EVENT: usize = InfoId::COUNT_EVENT as usize;
+    #[allow(non_camel_case_types)]
+    #[allow(clippy::upper_case_acronyms)]
+    enum Counters {
+        COUNTERS_BYTE_ARRAY_EVENT,
+        COUNTERS_ENUM_EVENT,
+        COUNTERS_COUNT_EVENT,
+    }
+    pub const COUNTERS_BYTE_ARRAY_EVENT: usize = Counters::COUNTERS_BYTE_ARRAY_EVENT as usize;
+    pub const COUNTERS_ENUM_EVENT: usize = Counters::COUNTERS_ENUM_EVENT as usize;
+    pub const COUNTERS_COUNT_EVENT: usize = Counters::COUNTERS_COUNT_EVENT as usize;
 }
 static INFO: &[Info; 3usize] = &[
     info::Builder {

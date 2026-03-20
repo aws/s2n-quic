@@ -1375,7 +1375,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             //= tracking-issue=336
             //# Invalid packets that lack strong integrity protection, such as
             //# Initial, Retry, or Version Negotiation, MAY be discarded.
-            // Attempt to validate some of the enclosed frames?
 
             //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
             //= type=TODO
@@ -1762,7 +1761,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# number of these packets in anticipation of a late-arriving Initial
         //# packet.
 
-        // TODO
         Ok(())
     }
 
@@ -1850,6 +1848,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# of packets that have accidentally been corrupted by the network, and
         //# only an entity that observes an Initial packet can send a valid Retry
         //# packet.
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.2
+        //# Clients MUST discard Retry packets that have a Retry Integrity Tag
+        //# that cannot be validated; see Section 5.8 of [QUIC-TLS].
         if let Err(error) = packet
             .validate::<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::RetryKey, _, _>(
                 &initial_cid,

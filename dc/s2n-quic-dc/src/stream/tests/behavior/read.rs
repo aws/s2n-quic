@@ -96,3 +96,71 @@ async fn multiple_empty_read_test() {
         }
     }
 }
+
+/// Q: What happens when the application reads from a stream that is closed without authentication?
+///
+/// A: Secure protocols detect unclean shutdown and return an error.
+#[tokio::test]
+async fn stream_closed_without_authentication() {
+    let context = Context::new().await;
+    let (mut client, server) = context.pair().await;
+
+    // drop server via panic.
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        // Move server into the closure.
+        let _s = server;
+        panic!("expected panic to test unclean shutdown");
+    }));
+
+    tokio::time::sleep(Duration::from_millis(1)).await;
+
+    let res =
+        tokio::time::timeout(core::time::Duration::from_millis(5), client.read(&mut [])).await;
+
+    let res = res.expect("operation should not time out");
+
+    // TCP streams close cleanly on Drop, even if panicking.
+    if context.is_plaintext() {
+        assert_eq!(res.unwrap(), 0);
+        return;
+    }
+
+    let err = res.unwrap_err();
+
+    if context.protocol().is_tcp() {
+        assert_eq!(err.kind(), std::io::ErrorKind::UnexpectedEof, "{:?}", err);
+        assert!(
+            matches!(
+                err.get_ref()
+                    .expect("has inner")
+                    .downcast_ref::<crate::stream::recv::Error>()
+                    .unwrap()
+                    .kind,
+                crate::stream::recv::ErrorKind::TruncatedTransport
+            ),
+            "{:?}",
+            err
+        );
+    } else {
+        // FIXME: Should this match the dcQUIC over TCP branch?
+        assert_eq!(err.kind(), std::io::ErrorKind::ConnectionReset, "{:?}", err);
+        let crate::stream::recv::ErrorKind::ApplicationError { error } = err
+            .get_ref()
+            .expect("has inner")
+            .downcast_ref::<crate::stream::recv::Error>()
+            .unwrap()
+            .kind
+        else {
+            panic!("unexpected error: {:?}", err);
+        };
+        // This indicates a panic, see dc/s2n-quic-dc/src/stream/send/worker.rs.
+        assert_eq!(
+            *error,
+            crate::stream::shared::ShutdownKind::Panicking
+                .error_code()
+                .unwrap() as u64,
+            "{:?}",
+            err
+        );
+    }
+}
