@@ -244,7 +244,10 @@ impl transmission::interest::Provider for MtuProbe<'_> {
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        self.mtu_controller.transmission_interest(query)
+        if self.mtu_controller.probe_needed() {
+            query.on_new_data()?;
+        }
+        Ok(())
     }
 }
 

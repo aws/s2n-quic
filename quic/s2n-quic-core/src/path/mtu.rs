@@ -924,6 +924,12 @@ impl Controller {
             self.pmtu_raise_timer.set(timestamp);
         }
     }
+
+    /// Returns `true` when the controller wants to send an MTU probe packet.
+    #[inline]
+    pub fn probe_needed(&self) -> bool {
+        self.state == State::SearchRequested
+    }
 }
 
 impl timer::Provider for Controller {
@@ -1009,15 +1015,8 @@ impl transmission::interest::Provider for Controller {
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        match self.state {
-            State::SearchRequested => query.on_new_data()?,
-            State::SearchComplete => {
-                // Indicate interest if we need to send the MtuProbingComplete frame
-                if self.needs_to_send_completion {
-                    query.on_new_data()?
-                }
-            }
-            _ => {}
+        if self.needs_to_send_completion {
+            query.on_new_data()?;
         }
 
         Ok(())
