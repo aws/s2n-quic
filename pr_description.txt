@@ -1,0 +1,216 @@
+### Description of changes:
+
+This PR updates the interop required checks based on the last 50 interop reports. All additions have a 100% pass rate across all analyzed reports.
+
+### New required checks:
+
+**amplificationlimit**:
+- go-x-net (client)
+- go-x-net (server)
+- haproxy (server)
+- msquic (client)
+- msquic (server)
+- nginx (server)
+- quinn (client)
+- quinn (server)
+
+**blackhole**:
+- go-x-net (client)
+- go-x-net (server)
+- haproxy (server)
+- kwik (server)
+- msquic (client)
+- msquic (server)
+- mvfst (client)
+- mvfst (server)
+- nginx (server)
+- quinn (client)
+- quinn (server)
+
+**chacha20**:
+- lsquic (client)
+- msquic (client)
+- quinn (client)
+
+**ecn**:
+- lsquic (server)
+- neqo (server)
+- picoquic (server)
+- quinn (client)
+- quinn (server)
+
+**handshake**:
+- go-x-net (client)
+- go-x-net (server)
+- kwik (server)
+- msquic (client)
+- msquic (server)
+- mvfst (client)
+- nginx (server)
+- quinn (client)
+- quinn (server)
+
+**handshakecorruption**:
+- neqo (server)
+- ngtcp2 (client)
+- ngtcp2 (server)
+- picoquic (client)
+- picoquic (server)
+
+**handshakeloss**:
+- neqo (server)
+- nginx (server)
+- ngtcp2 (client)
+- ngtcp2 (server)
+- picoquic (client)
+- picoquic (server)
+- quic-go (client)
+
+**http3**:
+- aioquic (server)
+- chrome (client)
+- haproxy (server)
+- kwik (server)
+- lsquic (client)
+- lsquic (server)
+- mvfst (client)
+- mvfst (server)
+- neqo (client)
+- neqo (server)
+- nginx (server)
+- ngtcp2 (client)
+- ngtcp2 (server)
+- picoquic (client)
+- quic-go (client)
+- quic-go (server)
+- quiche (server)
+- quinn (client)
+- quinn (server)
+- s2n-quic (client)
+- s2n-quic (server)
+- s2n-quic-rustls (client)
+- s2n-quic-rustls (server)
+
+**ipv6**:
+- go-x-net (client)
+- go-x-net (server)
+- haproxy (server)
+- kwik (server)
+- msquic (client)
+- msquic (server)
+- nginx (server)
+- quinn (client)
+- quinn (server)
+
+**keyupdate**:
+- aioquic (client)
+- go-x-net (client)
+- msquic (client)
+- quinn (client)
+
+**longrtt**:
+- go-x-net (client)
+- go-x-net (server)
+- haproxy (server)
+- kwik (server)
+- msquic (client)
+- msquic (server)
+- mvfst (client)
+- nginx (server)
+- quinn (client)
+- quinn (server)
+
+**multiplexing**:
+- go-x-net (client)
+- go-x-net (server)
+- msquic (client)
+- msquic (server)
+- nginx (server)
+- quinn (client)
+- quinn (server)
+
+**rebind-addr**:
+- aioquic (client)
+- go-x-net (client)
+- lsquic (server)
+- msquic (client)
+- mvfst (client)
+- mvfst (server)
+- neqo (server)
+- ngtcp2 (client)
+- picoquic (server)
+- quic-go (server)
+- quinn (client)
+- quinn (server)
+
+**rebind-port**:
+- aioquic (client)
+- aioquic (server)
+- go-x-net (client)
+- msquic (client)
+- mvfst (client)
+- mvfst (server)
+- neqo (client)
+- neqo (server)
+- picoquic (server)
+- quic-go (server)
+- quinn (client)
+- quinn (server)
+
+**resumption**:
+- haproxy (server)
+- msquic (client)
+- msquic (server)
+- nginx (server)
+- quinn (client)
+- quinn (server)
+
+**retry**:
+- haproxy (server)
+- kwik (server)
+- msquic (client)
+- msquic (server)
+- nginx (server)
+- quinn (client)
+- quinn (server)
+
+**transfer**:
+- go-x-net (client)
+- go-x-net (server)
+- haproxy (server)
+- kwik (server)
+- msquic (client)
+- msquic (server)
+- nginx (server)
+- quinn (client)
+- quinn (server)
+
+**transfercorruption**:
+- go-x-net (client)
+- go-x-net (server)
+- haproxy (server)
+- kwik (server)
+- msquic (client)
+- msquic (server)
+- mvfst (client)
+- mvfst (server)
+- nginx (server)
+- quinn (client)
+- quinn (server)
+
+**transferloss**:
+- go-x-net (client)
+- go-x-net (server)
+- haproxy (server)
+- kwik (server)
+- msquic (client)
+- msquic (server)
+- mvfst (client)
+- mvfst (server)
+- nginx (server)
+- quinn (client)
+- quinn (server)
+
+### Testing:
+
+All entries added have passed 100% of the interop runs in the last 50 reports on main. No existing entries were removed.
