@@ -55,7 +55,15 @@ def fetch_results(n_commits: int, out_dir: str) -> None:
 def collect_stats(
     results_dir: str,
 ) -> dict[tuple[str, str, str], list[int]]:
-    """Parse all result files and collect pass/total stats per (test, impl, role)."""
+    """Parse all result files and collect pass/total stats per (test, impl, role).
+
+    Returns a dict mapping (test, impl, role) to [passed, total], e.g.:
+        {
+            ("handshake", "quic-go", "client"): [48, 48],
+            ("retry", "picoquic", "server"): [47, 48],
+            ("http3", "s2n-quic", "client"): [48, 48],
+        }
+    """
     stats: dict[tuple[str, str, str], list[int]] = defaultdict(lambda: [0, 0])
 
     for filename in sorted(os.listdir(results_dir)):
