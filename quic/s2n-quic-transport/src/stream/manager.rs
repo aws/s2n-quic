@@ -966,7 +966,7 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
         //= type=TODO
         //= tracking-issue=244
         //= feature=Stream concurrency
-        Ok(()) // TODO: Implement me
+        Ok(())
     }
 
     fn on_max_streams(&mut self, frame: &MaxStreams) -> Result<(), transport::Error> {
