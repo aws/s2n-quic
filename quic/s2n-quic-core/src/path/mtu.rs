@@ -910,6 +910,32 @@ impl Controller {
         MtuResult::MtuUpdated(self.plpmtu)
     }
 
+    /// Arm the PMTU Raise Timer if there is still room to increase the
+    /// MTU before hitting the max plpmtu
+    #[inline]
+    fn arm_pmtu_raise_timer(&mut self, timestamp: Timestamp) {
+        // Reset the max_probe_size to the max_udp_payload to allow for larger probe sizes
+        self.max_probe_size = self.max_udp_payload;
+        self.update_probed_size();
+
+        if self.is_next_probe_size_above_threshold() {
+            // There is still some room to try a larger MTU again,
+            // so arm the pmtu raise timer
+            self.pmtu_raise_timer.set(timestamp);
+        }
+    }
+}
+
+impl timer::Provider for Controller {
+    #[inline]
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.pmtu_raise_timer.timers(query)?;
+
+        Ok(())
+    }
+}
+
+impl Controller {
     /// Returns `true` when the controller wants to send an MTU probe packet.
     #[inline]
     pub fn probe_needed(&self) -> bool {
@@ -963,30 +989,6 @@ impl Controller {
             self.probe_count += 1;
             self.state = State::Searching(packet_number, context.current_time());
         }
-    }
-
-    /// Arm the PMTU Raise Timer if there is still room to increase the
-    /// MTU before hitting the max plpmtu
-    #[inline]
-    fn arm_pmtu_raise_timer(&mut self, timestamp: Timestamp) {
-        // Reset the max_probe_size to the max_udp_payload to allow for larger probe sizes
-        self.max_probe_size = self.max_udp_payload;
-        self.update_probed_size();
-
-        if self.is_next_probe_size_above_threshold() {
-            // There is still some room to try a larger MTU again,
-            // so arm the pmtu raise timer
-            self.pmtu_raise_timer.set(timestamp);
-        }
-    }
-}
-
-impl timer::Provider for Controller {
-    #[inline]
-    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
-        self.pmtu_raise_timer.timers(query)?;
-
-        Ok(())
     }
 }
 
