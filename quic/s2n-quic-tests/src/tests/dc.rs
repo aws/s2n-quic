@@ -373,12 +373,12 @@ fn mtu_probing_complete_frame_exchange_test() -> Result<()> {
 }
 
 #[test]
-fn mtu_porbing_complete_server_only_test() -> Result<()> {
+fn mtu_probing_complete_server_only_test() -> Result<()> {
     mtu_probing_complete_asymmetric_support_test(true, false)
 }
 
 #[test]
-fn mtu_porbing_complete_client_only_test() -> Result<()> {
+fn mtu_probing_complete_client_only_test() -> Result<()> {
     mtu_probing_complete_asymmetric_support_test(false, true)
 }
 

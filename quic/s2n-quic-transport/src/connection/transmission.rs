@@ -186,7 +186,20 @@ impl<Config: endpoint::Config> tx::Message for ConnectionTransmission<'_, '_, Co
                 if !needs_padding {
                     // There is no Initial packet, so no padding is needed
                     None
-                } else if has_transmission(space_manager.application(), transmission_constraint) {
+                } else if has_transmission(space_manager.application(), transmission_constraint)
+                    // TODO: https://github.com/aws/s2n-quic/issues/3013
+                    // The mtu_controller lives on the path rather than the ApplicationSpace,
+                    // so its transmission interest is not reflected in
+                    // ApplicationSpace::transmission_interest(). We check it separately here
+                    // to ensure that frames like MtuProbingComplete can be coalesced into the
+                    // same datagram rather than being sent in a separate packet.
+                    || (space_manager.application().is_some()
+                        && self
+                            .context
+                            .path()
+                            .mtu_controller
+                            .can_transmit(transmission_constraint))
+                {
                     Some(PacketNumberSpace::ApplicationData)
                 } else if has_transmission(space_manager.handshake(), transmission_constraint) {
                     Some(PacketNumberSpace::Handshake)

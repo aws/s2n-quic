@@ -897,7 +897,7 @@ fn on_packet_loss_initial_mtu_configured() {
 //# acknowledged PL (e.g., SCTP), DPLPMTUD SHOULD NOT continue to
 //# generate PLPMTU probes in this state.
 #[test]
-fn on_transmit_search_not_requested() {
+fn on_transmit_probe_search_not_requested() {
     let mut controller = new_controller(1500);
     controller.state = State::SearchComplete;
     let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -909,13 +909,15 @@ fn on_transmit_search_not_requested() {
         endpoint::Type::Server,
     );
 
-    controller.on_transmit(&mut write_context);
+    controller.on_transmit_probe(&mut write_context);
     assert!(frame_buffer.is_empty());
     assert_eq!(State::SearchComplete, controller.state);
 }
 
 #[test]
 fn on_transmit_not_mtu_probing() {
+    // When SearchRequested but on_transmit is called (Normal mode),
+    // nothing should be written since on_transmit only handles completion
     let mut controller = new_controller(1500);
     controller.state = State::SearchRequested;
     let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -931,6 +933,7 @@ fn on_transmit_not_mtu_probing() {
     assert!(frame_buffer.is_empty());
     assert_eq!(State::SearchRequested, controller.state);
 
+    // When SearchComplete without needs_to_send_completion, nothing should be written
     controller.state = State::SearchComplete;
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut write_context = MockWriteContext::new(
@@ -946,8 +949,61 @@ fn on_transmit_not_mtu_probing() {
     assert_eq!(State::SearchComplete, controller.state);
 }
 
+/// MtuProbingComplete frame should be sent in Normal mode
 #[test]
-fn on_transmit_no_capacity() {
+fn on_transmit_mtu_probing_complete_in_normal_mode() {
+    let mut controller = new_controller(1500);
+    controller.state = State::SearchComplete;
+    controller.needs_to_send_completion = true;
+    controller.plpmtu = 1472;
+    let mut frame_buffer = OutgoingFrameBuffer::new();
+    let mut write_context = MockWriteContext::new(
+        now(),
+        &mut frame_buffer,
+        transmission::Constraint::None,
+        transmission::Mode::Normal,
+        endpoint::Type::Server,
+    );
+
+    controller.on_transmit(&mut write_context);
+
+    // The MtuProbingComplete frame should have been written
+    assert_eq!(
+        Frame::MtuProbingComplete(frame::MtuProbingComplete::new(1472)),
+        write_context.frame_buffer.pop_front().unwrap().as_frame()
+    );
+    assert!(!controller.needs_to_send_completion);
+    assert_eq!(State::SearchComplete, controller.state);
+}
+
+/// Calling on_transmit in MtuProbing mode should be a no-op,
+/// since on_transmit is not meant for probing. MTU probes are
+/// handled by on_transmit_probe instead.
+#[test]
+fn on_transmit_ignored_in_mtu_probing_mode() {
+    let mut controller = new_controller(1500);
+    controller.state = State::SearchComplete;
+    controller.needs_to_send_completion = true;
+    controller.plpmtu = 1472;
+    let mut frame_buffer = OutgoingFrameBuffer::new();
+    let mut write_context = MockWriteContext::new(
+        now(),
+        &mut frame_buffer,
+        transmission::Constraint::None,
+        transmission::Mode::MtuProbing,
+        endpoint::Type::Server,
+    );
+
+    controller.on_transmit(&mut write_context);
+
+    // on_transmit should early-return in MtuProbing mode, so nothing is written
+    assert!(write_context.frame_buffer.is_empty());
+    // needs_to_send_completion should remain true since nothing was sent
+    assert!(controller.needs_to_send_completion);
+}
+
+#[test]
+fn on_transmit_probe_no_capacity() {
     let mut controller = new_controller(1500);
     controller.state = State::SearchRequested;
     let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -960,7 +1016,7 @@ fn on_transmit_no_capacity() {
         endpoint::Type::Server,
     );
 
-    controller.on_transmit(&mut write_context);
+    controller.on_transmit_probe(&mut write_context);
     assert!(frame_buffer.is_empty());
     assert_eq!(State::SearchComplete, controller.state);
 }
@@ -982,7 +1038,7 @@ fn on_transmit_no_capacity() {
 //# DPLPMTUD MAY choose to use only one of these methods to simplify the
 //# implementation.
 #[test]
-fn on_transmit() {
+fn on_transmit_probe() {
     let mut controller = new_controller(1500);
     controller.state = State::SearchRequested;
     let now = now();
@@ -997,7 +1053,7 @@ fn on_transmit() {
     );
     let packet_number = write_context.packet_number();
 
-    controller.on_transmit(&mut write_context);
+    controller.on_transmit_probe(&mut write_context);
     assert_eq!(0, write_context.remaining_capacity());
     assert_eq!(
         Frame::Ping(frame::Ping),
@@ -1009,5 +1065,6 @@ fn on_transmit() {
         }),
         write_context.frame_buffer.pop_front().unwrap().as_frame()
     );
+    assert!(write_context.frame_buffer.is_empty());
     assert_eq!(State::Searching(packet_number, now), controller.state);
 }

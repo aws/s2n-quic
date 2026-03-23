@@ -906,7 +906,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         .path_manager
                         .active_path()
                         .mtu_controller
-                        .can_transmit(self.path_manager.active_path().transmission_constraint())
+                        .probe_needed()
                     && queue
                         .push(ConnectionTransmission {
                             context: transmission_context!(
