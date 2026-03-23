@@ -11,7 +11,7 @@ autobenches = false
 
 [dependencies]
 futures-util = "0.3.26"
-histogram = "0.11.3"
+histogram = "1.0.0"
 pin-project-lite = "0.2.9"
 tokio = { version = "1.25.0", default-features = false, features = ["rt", "rt-multi-thread", "net", "time"] }
 chrono = { version = "0.4.39", default-features = false, features = ["std", "now"] }
