@@ -949,6 +949,8 @@ impl Controller {
     /// so the caller must ensure the probe packet is in its own connection transmission.
     #[inline]
     pub fn on_transmit_probe<W: transmission::Writer>(&mut self, context: &mut W) {
+        ensure!(context.transmission_mode().is_mtu_probing());
+
         //= https://www.rfc-editor.org/rfc/rfc8899#section-5.2
         //# When used with an acknowledged PL (e.g., SCTP), DPLPMTUD SHOULD NOT continue to
         //# generate PLPMTU probes in this state.
@@ -999,6 +1001,8 @@ impl transmission::Provider for Controller {
     /// transmitted separately via `on_transmit_probe`.
     #[inline]
     fn on_transmit<W: transmission::Writer>(&mut self, context: &mut W) {
+        ensure!(!context.transmission_mode().is_mtu_probing());
+
         if self.needs_to_send_completion {
             let frame = frame::MtuProbingComplete::new(self.plpmtu);
             if context.write_frame(&frame).is_some() {

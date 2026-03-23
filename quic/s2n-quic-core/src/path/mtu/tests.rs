@@ -976,11 +976,11 @@ fn on_transmit_mtu_probing_complete_in_normal_mode() {
     assert_eq!(State::SearchComplete, controller.state);
 }
 
-/// MtuProbingComplete frame is sent by on_transmit regardless of mode,
-/// since on_transmit now only handles completion. The caller is responsible
-/// for only calling on_transmit in Normal mode.
+/// Calling on_transmit in MtuProbing mode should be a no-op,
+/// since on_transmit is not meant for probing. MTU probes are
+/// handled by on_transmit_probe instead.
 #[test]
-fn on_transmit_mtu_probing_complete_always_sent() {
+fn on_transmit_ignored_in_mtu_probing_mode() {
     let mut controller = new_controller(1500);
     controller.state = State::SearchComplete;
     controller.needs_to_send_completion = true;
@@ -996,13 +996,10 @@ fn on_transmit_mtu_probing_complete_always_sent() {
 
     controller.on_transmit(&mut write_context);
 
-    // MtuProbingComplete frame is now sent regardless of mode
-    assert_eq!(
-        Frame::MtuProbingComplete(frame::MtuProbingComplete::new(1472)),
-        write_context.frame_buffer.pop_front().unwrap().as_frame()
-    );
-    assert!(!controller.needs_to_send_completion);
-    assert_eq!(State::SearchComplete, controller.state);
+    // on_transmit should early-return in MtuProbing mode, so nothing is written
+    assert!(write_context.frame_buffer.is_empty());
+    // needs_to_send_completion should remain true since nothing was sent
+    assert!(controller.needs_to_send_completion);
 }
 
 #[test]
