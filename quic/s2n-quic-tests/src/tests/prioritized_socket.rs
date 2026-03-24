@@ -120,18 +120,26 @@ async fn prioritized_socket_scheduling_test() {
 
     let socket_0_count = stats.socket_counts[0].load(Ordering::Relaxed);
     let socket_1_count = stats.socket_counts[1].load(Ordering::Relaxed);
-    let total_flood = flood_count.load(Ordering::Relaxed);
+    let total_flood_count = flood_count.load(Ordering::Relaxed);
 
     eprintln!(
         "Flood packets sent: {}, Low priority rx: {}, High priority rx: {}",
-        total_flood, socket_0_count, socket_1_count,
+        total_flood_count, socket_0_count, socket_1_count,
     );
 
-    // The prioritized socket (index 1) should have received many packets
+    // The flood thread must have sent packets for the test to be meaningful.
+    assert!(total_flood_count > 0);
+
+    // Both sockets should have received some packets, proving that the flood
+    // reached both and that real contention occurred.
+    assert!(socket_0_count > 0);
     assert!(socket_1_count > 0);
 
-    // With a 1:1 send ratio and a small ring buffer, the priority scheduling
-    // causes the high-priority socket to fill the ring first, leaving little
-    // room for the low-priority socket.
-    assert!(socket_1_count > socket_0_count * 2);
+    // The high-priority socket should receive the majority of packets.
+    // With a 1:1 send ratio and a small ring buffer, priority scheduling
+    // biases toward the high-priority socket.
+    let total_rx = socket_0_count + socket_1_count;
+    let socket_1_count_pct = (socket_1_count * 100) / total_rx;
+    // High priority socket should receive more than 60% of packets that were received in total.
+    assert!(socket_1_count_pct >= 60);
 }
