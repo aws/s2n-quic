@@ -20,6 +20,7 @@ pub struct Builder {
     pub(super) reuse_address: bool,
     pub(super) reuse_port: bool,
     pub(super) only_v6: bool,
+    pub(super) prioritized_socket: Option<socket2::Socket>,
 }
 
 impl Builder {
@@ -222,6 +223,17 @@ impl Builder {
     /// Enables the address reuse (SO_REUSEADDR) socket option
     pub fn with_reuse_address(mut self, enabled: bool) -> io::Result<Self> {
         self.reuse_address = enabled;
+        Ok(self)
+    }
+
+    /// Sets a prioritized receive socket for priority-based RX scheduling.
+    ///
+    /// When provided, the IO layer will drain this socket before reading from the
+    /// rx socket.
+    ///
+    /// The `S2N_QUIC_UNSTABLE_RX_SOCKET_COUNT` env var is ignored when this is set.
+    pub fn with_prioritized_socket(mut self, socket: std::net::UdpSocket) -> io::Result<Self> {
+        self.prioritized_socket = Some(socket.into());
         Ok(self)
     }
 

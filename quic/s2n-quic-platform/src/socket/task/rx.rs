@@ -28,8 +28,10 @@ pub trait Socket<T: Message> {
 
 pub struct Receiver<T: Message, S: Socket<T>> {
     ring: Producer<T>,
-    /// Implementation of a socket that fills free slots in the ring buffer
+    /// Primary socket (high priority in priority mode, only socket in normal mode)
     rx: S,
+    /// Optional low-priority socket for priority scheduling
+    socket_low: Option<S>,
     ring_cooldown: Cooldown,
     io_cooldown: Cooldown,
     stats: stats::Sender,
@@ -41,11 +43,22 @@ where
     T: Message + Unpin,
     S: Socket<T> + Unpin,
 {
+    /// Creates a new Receiver.
+    ///
+    /// If `socket_low` is provided, the receiver operates in priority mode:
+    /// `rx` is the high-priority socket (drained first), `socket_low` is the low-priority socket.
     #[inline]
-    pub fn new(ring: Producer<T>, rx: S, cooldown: Cooldown, stats: stats::Sender) -> Self {
+    pub fn new(
+        ring: Producer<T>,
+        rx: S,
+        socket_low: Option<S>,
+        cooldown: Cooldown,
+        stats: stats::Sender,
+    ) -> Self {
         Self {
             ring,
             rx,
+            socket_low,
             ring_cooldown: cooldown.clone(),
             io_cooldown: cooldown,
             stats,
@@ -100,36 +113,75 @@ where
         }
 
         let mut events = Events::default();
-
         let mut pending_wake = false;
 
-        while !events.take_blocked() {
-            match this.poll_ring(u32::MAX, cx) {
-                Poll::Ready(Ok(_)) => {}
-                Poll::Ready(Err(_)) => return None.into(),
-                Poll::Pending => {
-                    if pending_wake {
-                        this.ring.wake();
+        macro_rules! poll_ring {
+            () => {
+                match this.poll_ring(u32::MAX, cx) {
+                    Poll::Ready(Ok(_)) => {}
+                    Poll::Ready(Err(_)) => return None.into(),
+                    Poll::Pending => {
+                        if pending_wake {
+                            this.ring.wake();
+                        }
+                        return Poll::Pending;
                     }
-                    return Poll::Pending;
+                }
+            };
+        }
+
+        macro_rules! drain_socket {
+            ($socket:expr $(, $on_recv:expr)?) => {{
+                let entries = this.ring.data();
+                match $socket.recv(cx, entries, &mut events, &this.stats) {
+                    Ok(_) => {
+                        let count = events.take_count() as u32;
+                        if count > 0 {
+                            $( this.stats.on_recv_socket_packets($on_recv, count as usize); )?
+                            this.ring.release_no_wake(count);
+                            this.io_cooldown.on_ready();
+                            pending_wake = true;
+                        }
+                        Ok(count)
+                    }
+                    Err(err) => Err(err),
+                }
+            }};
+        }
+
+        if this.socket_low.is_some() {
+            // Priority mode: drain high-priority socket completely, then allow
+            // the low-priority socket a single drain before looping back.
+            loop {
+                // Drain the high-priority socket until it is blocked.
+                while !events.take_blocked() {
+                    poll_ring!();
+
+                    if let Err(err) = drain_socket!(&mut this.rx, true) {
+                        return Some(err).into();
+                    }
+                }
+
+                // High-priority socket is blocked. Give the low-priority socket one drain call.
+                poll_ring!();
+
+                if let Err(err) = drain_socket!(this.socket_low.as_mut().unwrap(), false) {
+                    return Some(err).into();
+                }
+
+                // If the low-priority socket is also blocked, we're done.
+                // Otherwise loop back to drain the high-priority socket again.
+                if events.take_blocked() {
+                    break;
                 }
             }
+        } else {
+            while !events.take_blocked() {
+                poll_ring!();
 
-            let entries = this.ring.data();
-
-            // perform the recv syscall
-            match this.rx.recv(cx, entries, &mut events, &this.stats) {
-                Ok(_) => {
-                    // increment the number of received messages
-                    let count = events.take_count() as u32;
-
-                    if count > 0 {
-                        this.ring.release_no_wake(count);
-                        this.io_cooldown.on_ready();
-                        pending_wake = true;
-                    }
+                if let Err(err) = drain_socket!(&mut this.rx) {
+                    return Some(err).into();
                 }
-                Err(err) => return Some(err).into(),
             }
         }
 

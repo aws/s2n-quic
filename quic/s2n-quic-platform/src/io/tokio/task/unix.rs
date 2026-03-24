@@ -16,15 +16,25 @@ use tokio::io::unix::AsyncFd;
 
 pub async fn rx<S: Into<std::net::UdpSocket>, M: UnixMessage + Unpin>(
     socket: S,
+    socket_low: Option<S>,
     producer: ring::Producer<M>,
     cooldown: Cooldown,
     stats: stats::Sender,
 ) -> io::Result<()> {
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
-
     let socket = AsyncFd::new(socket).unwrap();
-    let result = rx::Receiver::new(producer, socket, cooldown, stats).await;
+
+    let socket_low = if let Some(low) = socket_low {
+        let low = low.into();
+        low.set_nonblocking(true).unwrap();
+        let low = AsyncFd::new(low).unwrap();
+        Some(low)
+    } else {
+        None
+    };
+
+    let result = rx::Receiver::new(producer, socket, socket_low, cooldown, stats).await;
     if let Some(err) = result {
         Err(err)
     } else {

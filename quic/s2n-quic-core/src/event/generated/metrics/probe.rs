@@ -183,6 +183,8 @@ mod id {
         PLATFORM_RX__ERRORS__DROPPED,
         PLATFORM_RX_ERROR,
         PLATFORM_FEATURE_CONFIGURED,
+        PLATFORM_RX_SOCKET_STATS,
+        PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL,
         PLATFORM_EVENT_LOOP_WAKEUP,
         PLATFORM_EVENT_LOOP_SLEEP,
         PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION,
@@ -407,6 +409,9 @@ mod id {
     pub const PLATFORM_RX__ERRORS__DROPPED: usize = InfoId::PLATFORM_RX__ERRORS__DROPPED as usize;
     pub const PLATFORM_RX_ERROR: usize = InfoId::PLATFORM_RX_ERROR as usize;
     pub const PLATFORM_FEATURE_CONFIGURED: usize = InfoId::PLATFORM_FEATURE_CONFIGURED as usize;
+    pub const PLATFORM_RX_SOCKET_STATS: usize = InfoId::PLATFORM_RX_SOCKET_STATS as usize;
+    pub const PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL: usize =
+        InfoId::PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL as usize;
     pub const PLATFORM_EVENT_LOOP_WAKEUP: usize = InfoId::PLATFORM_EVENT_LOOP_WAKEUP as usize;
     pub const PLATFORM_EVENT_LOOP_SLEEP: usize = InfoId::PLATFORM_EVENT_LOOP_SLEEP as usize;
     pub const PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION: usize =
@@ -512,6 +517,10 @@ mod counter {
                 }
                 id::PLATFORM_RX_ERROR => Self(platform_rx_error),
                 id::PLATFORM_FEATURE_CONFIGURED => Self(platform_feature_configured),
+                id::PLATFORM_RX_SOCKET_STATS => Self(platform_rx_socket_stats),
+                id::PLATFORM_RX_SOCKET_STATS__PACKETS__TOTAL => {
+                    Self(platform_rx_socket_stats__packets__total)
+                }
                 id::PLATFORM_EVENT_LOOP_WAKEUP => Self(platform_event_loop_wakeup),
                 id::PLATFORM_EVENT_LOOP_SLEEP => Self(platform_event_loop_sleep),
                 id::PLATFORM_EVENT_LOOP_STARTED => Self(platform_event_loop_started),
@@ -684,6 +693,10 @@ mod counter {
             fn platform_rx_error(value: u64);
             # [link_name = s2n_quic__event__counter__platform_feature_configured]
             fn platform_feature_configured(value: u64);
+            # [link_name = s2n_quic__event__counter__platform_rx_socket_stats]
+            fn platform_rx_socket_stats(value: u64);
+            # [link_name = s2n_quic__event__counter__platform_rx_socket_stats__packets__total]
+            fn platform_rx_socket_stats__packets__total(value: u64);
             # [link_name = s2n_quic__event__counter__platform_event_loop_wakeup]
             fn platform_event_loop_wakeup(value: u64);
             # [link_name = s2n_quic__event__counter__platform_event_loop_sleep]
