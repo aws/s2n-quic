@@ -25,6 +25,7 @@ mod id {
         PACKET_SENT__KIND,
         PACKET_SENT__BYTES__TOTAL,
         PACKET_SENT__BYTES,
+        PACKET_SENT__TRANSMISSION_MODE,
         PACKET_RECEIVED,
         PACKET_RECEIVED__KIND,
         PACKET_RECEIVED__BYTES__TOTAL,
@@ -200,6 +201,8 @@ mod id {
     pub const PACKET_SENT__KIND: usize = InfoId::PACKET_SENT__KIND as usize;
     pub const PACKET_SENT__BYTES__TOTAL: usize = InfoId::PACKET_SENT__BYTES__TOTAL as usize;
     pub const PACKET_SENT__BYTES: usize = InfoId::PACKET_SENT__BYTES as usize;
+    pub const PACKET_SENT__TRANSMISSION_MODE: usize =
+        InfoId::PACKET_SENT__TRANSMISSION_MODE as usize;
     pub const PACKET_RECEIVED: usize = InfoId::PACKET_RECEIVED as usize;
     pub const PACKET_RECEIVED__KIND: usize = InfoId::PACKET_RECEIVED__KIND as usize;
     pub const PACKET_RECEIVED__BYTES__TOTAL: usize = InfoId::PACKET_RECEIVED__BYTES__TOTAL as usize;
@@ -650,6 +653,7 @@ mod id {
     #[allow(clippy::upper_case_acronyms)]
     enum NominalCounters {
         NOMINAL_COUNTERS_PACKET_SENT__KIND,
+        NOMINAL_COUNTERS_PACKET_SENT__TRANSMISSION_MODE,
         NOMINAL_COUNTERS_PACKET_RECEIVED__KIND,
         NOMINAL_COUNTERS_FRAME_SENT__PACKET,
         NOMINAL_COUNTERS_FRAME_SENT__FRAME,
@@ -682,6 +686,8 @@ mod id {
     }
     pub const NOMINAL_COUNTERS_PACKET_SENT__KIND: usize =
         NominalCounters::NOMINAL_COUNTERS_PACKET_SENT__KIND as usize;
+    pub const NOMINAL_COUNTERS_PACKET_SENT__TRANSMISSION_MODE: usize =
+        NominalCounters::NOMINAL_COUNTERS_PACKET_SENT__TRANSMISSION_MODE as usize;
     pub const NOMINAL_COUNTERS_PACKET_RECEIVED__KIND: usize =
         NominalCounters::NOMINAL_COUNTERS_PACKET_RECEIVED__KIND as usize;
     pub const NOMINAL_COUNTERS_FRAME_SENT__PACKET: usize =
@@ -916,7 +922,7 @@ mod id {
     pub const NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY: usize =
         NominalTimers::NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY as usize;
 }
-static INFO: &[Info; 173usize] = &[
+static INFO: &[Info; 174usize] = &[
     info::Builder {
         id: id::APPLICATION_PROTOCOL_INFORMATION,
         name: Str::new("application_protocol_information\0"),
@@ -963,6 +969,12 @@ static INFO: &[Info; 173usize] = &[
         id: id::PACKET_SENT__BYTES,
         name: Str::new("packet_sent.bytes\0"),
         units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: id::PACKET_SENT__TRANSMISSION_MODE,
+        name: Str::new("packet_sent.transmission_mode\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
@@ -1969,7 +1981,7 @@ pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
     nominal_counters: Box<[R::NominalCounter]>,
     #[allow(dead_code)]
-    nominal_counter_offsets: Box<[usize; 30usize]>,
+    nominal_counter_offsets: Box<[usize; 31usize]>,
     #[allow(dead_code)]
     measures: Box<[R::Measure; 40usize]>,
     #[allow(dead_code)]
@@ -2000,8 +2012,8 @@ impl<R: Registry> Subscriber<R> {
     pub fn new(registry: R) -> Self {
         let mut counters = Vec::with_capacity(84usize);
         let mut bool_counters = Vec::with_capacity(3usize);
-        let mut nominal_counters = Vec::with_capacity(30usize);
-        let mut nominal_counter_offsets = Vec::with_capacity(30usize);
+        let mut nominal_counters = Vec::with_capacity(31usize);
+        let mut nominal_counter_offsets = Vec::with_capacity(31usize);
         let mut measures = Vec::with_capacity(40usize);
         let mut gauges = Vec::with_capacity(0usize);
         let mut timers = Vec::with_capacity(15usize);
@@ -2108,6 +2120,19 @@ impl<R: Registry> Subscriber<R> {
                     nominal_counters.push(
                         registry.register_nominal_counter(&INFO[id::PACKET_SENT__KIND], variant),
                     );
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <TransmissionMode as AsVariant>::VARIANTS.iter() {
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::PACKET_SENT__TRANSMISSION_MODE],
+                        variant,
+                    ));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -2815,6 +2840,12 @@ impl<R: Registry> Subscriber<R> {
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
                     (&INFO[id::PACKET_SENT__KIND], entries, variants)
                 }
+                id::NOMINAL_COUNTERS_PACKET_SENT__TRANSMISSION_MODE => {
+                    let offset = *entry;
+                    let variants = <TransmissionMode as AsVariant>::VARIANTS;
+                    let entries = &self.nominal_counters[offset..offset + variants.len()];
+                    (&INFO[id::PACKET_SENT__TRANSMISSION_MODE], entries, variants)
+                }
                 id::NOMINAL_COUNTERS_PACKET_RECEIVED__KIND => {
                     let offset = *entry;
                     let variants = <PacketHeader as AsVariant>::VARIANTS;
@@ -3335,6 +3366,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::PACKET_SENT__BYTES,
             id::MEASURES_PACKET_SENT__BYTES,
             event.packet_len,
+        );
+        self.count_nominal(
+            id::PACKET_SENT__TRANSMISSION_MODE,
+            id::NOMINAL_COUNTERS_PACKET_SENT__TRANSMISSION_MODE,
+            &event.transmission_mode,
         );
         let _ = context;
         let _ = meta;

@@ -57,28 +57,21 @@ input_file: quic/s2n-quic-tests/src/tests/dc.rs
 
  300.       < D len=60
  300.       <   P OneRtt(2) len=60
+ 300.       <     F OneRtt(2) ACK
  300.       <     F OneRtt(2) MTU_PROBING_COMPLETE(mtu=1472)
- 300.       <     F OneRtt(2) PADDING(len=20)
- 300.       < D len=60
- 300.       <   P OneRtt(3) len=60
- 300.       <     F OneRtt(3) ACK
- 300.       <     F OneRtt(3) RETIRE_CONNECTION_ID
- 300.       <     F OneRtt(3) PADDING(len=10)
+ 300.       <     F OneRtt(2) RETIRE_CONNECTION_ID
+ 300.       <     F OneRtt(2) PADDING(len=10)
  300.       > D len=60
  300.       >   P OneRtt(3) len=60
+ 300.       >     F OneRtt(3) ACK
  300.       >     F OneRtt(3) MTU_PROBING_COMPLETE(mtu=1472)
- 300.       >     F OneRtt(3) PADDING(len=20)
-
- 325.       > D len=60
- 325.       >   P OneRtt(4) len=60
- 325.       >     F OneRtt(4) ACK
- 325.       >     F OneRtt(4) PADDING(len=10)
+ 300.       >     F OneRtt(3) PADDING(len=10)
 
  400.       > D len=60
- 400.       >   P OneRtt(5) len=60
- 400.       >     F OneRtt(5) CONNECTION_CLOSE
- 400.       >     F OneRtt(5) PADDING(len=20)
+ 400.       >   P OneRtt(4) len=60
+ 400.       >     F OneRtt(4) CONNECTION_CLOSE
+ 400.       >     F OneRtt(4) PADDING(len=20)
 
  400.       < D len=60
- 400.       <   P OneRtt(4) len=60
- 400.       <     F OneRtt(4) CONNECTION_CLOSE
+ 400.       <   P OneRtt(3) len=60
+ 400.       <     F OneRtt(3) CONNECTION_CLOSE

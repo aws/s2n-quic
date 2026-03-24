@@ -1,0 +1,56 @@
+name: interop-required
+
+on:
+  workflow_run:
+    workflows: ["qns"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-required:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 100
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Check for new required entries
+        id: check
+        run: |
+          python3 .github/interop/update_required.py \
+            --commits 50 \
+            --dry-run \
+            2>${{ runner.temp }}/check_stderr.txt || true
+
+          if grep -q "Found .* new entries" ${{ runner.temp }}/check_stderr.txt; then
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update required.json
+        if: steps.check.outputs.has_updates == 'true'
+        run: |
+          python3 .github/interop/update_required.py \
+            --commits 50 \
+            --pr-description > ${{ runner.temp }}/pr_description.txt
+
+      - name: Create pull request
+        if: steps.check.outputs.has_updates == 'true'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          commit-message: "chore(interop): update required interop checks"
+          title: "chore(interop): update required interop checks"
+          body-path: ${{ runner.temp }}/pr_description.txt
+          branch: interop/update-required
+          delete-branch: true
+          labels: ci

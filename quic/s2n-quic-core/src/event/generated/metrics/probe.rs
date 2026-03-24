@@ -23,6 +23,7 @@ mod id {
         PACKET_SENT__KIND,
         PACKET_SENT__BYTES__TOTAL,
         PACKET_SENT__BYTES,
+        PACKET_SENT__TRANSMISSION_MODE,
         PACKET_RECEIVED,
         PACKET_RECEIVED__KIND,
         PACKET_RECEIVED__BYTES__TOTAL,
@@ -198,6 +199,8 @@ mod id {
     pub const PACKET_SENT__KIND: usize = InfoId::PACKET_SENT__KIND as usize;
     pub const PACKET_SENT__BYTES__TOTAL: usize = InfoId::PACKET_SENT__BYTES__TOTAL as usize;
     pub const PACKET_SENT__BYTES: usize = InfoId::PACKET_SENT__BYTES as usize;
+    pub const PACKET_SENT__TRANSMISSION_MODE: usize =
+        InfoId::PACKET_SENT__TRANSMISSION_MODE as usize;
     pub const PACKET_RECEIVED: usize = InfoId::PACKET_RECEIVED as usize;
     pub const PACKET_RECEIVED__KIND: usize = InfoId::PACKET_RECEIVED__KIND as usize;
     pub const PACKET_RECEIVED__BYTES__TOTAL: usize = InfoId::PACKET_RECEIVED__BYTES__TOTAL as usize;
@@ -743,6 +746,7 @@ mod counter {
             pub(crate) fn new(info: &'static Info, _variant: &'static info::Variant) -> Self {
                 match info.id {
                     id::PACKET_SENT__KIND => Self(packet_sent__kind),
+                    id::PACKET_SENT__TRANSMISSION_MODE => Self(packet_sent__transmission_mode),
                     id::PACKET_RECEIVED__KIND => Self(packet_received__kind),
                     id::FRAME_SENT__PACKET => Self(frame_sent__packet),
                     id::FRAME_SENT__FRAME => Self(frame_sent__frame),
@@ -800,6 +804,12 @@ mod counter {
             extern "probe" {
                 # [link_name = s2n_quic__event__counter__nominal__packet_sent__kind]
                 fn packet_sent__kind(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic__event__counter__nominal__packet_sent__transmission_mode]
+                fn packet_sent__transmission_mode(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
                 # [link_name = s2n_quic__event__counter__nominal__packet_received__kind]
                 fn packet_received__kind(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__frame_sent__packet]

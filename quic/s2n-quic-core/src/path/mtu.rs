@@ -935,29 +935,26 @@ impl timer::Provider for Controller {
     }
 }
 
-impl transmission::Provider for Controller {
-    /// Queries the component for any outgoing frames that need to get sent
-    ///
-    /// This method assumes that no other data (other than the packet header) has been written
-    /// to the supplied `WriteContext`. This necessitates the caller ensuring the probe packet
-    /// written by this method to be in its own connection transmission.
+impl Controller {
+    /// Returns `true` when the controller wants to send an MTU probe packet.
     #[inline]
-    fn on_transmit<W: transmission::Writer>(&mut self, context: &mut W) {
-        // Send MtuProbingComplete frame if needed and DC is enabled
-        if self.needs_to_send_completion {
-            let frame = frame::MtuProbingComplete::new(self.plpmtu);
-            if context.write_frame(&frame).is_some() {
-                self.needs_to_send_completion = false;
-            }
-            return;
-        }
+    pub fn probe_needed(&self) -> bool {
+        self.state == State::SearchRequested
+    }
+
+    /// Transmits an MTU probe packet (PING + PADDING).
+    ///
+    /// This should only be called in `MtuProbing` mode. It assumes no other data
+    /// (other than the packet header) has been written to the supplied context,
+    /// so the caller must ensure the probe packet is in its own connection transmission.
+    #[inline]
+    pub fn on_transmit_probe<W: transmission::Writer>(&mut self, context: &mut W) {
+        ensure!(context.transmission_mode().is_mtu_probing());
 
         //= https://www.rfc-editor.org/rfc/rfc8899#section-5.2
         //# When used with an acknowledged PL (e.g., SCTP), DPLPMTUD SHOULD NOT continue to
         //# generate PLPMTU probes in this state.
         ensure!(self.state == State::SearchRequested);
-
-        ensure!(context.transmission_mode().is_mtu_probing());
 
         // Each packet contains overhead in the form of a packet header and an authentication tag.
         // This overhead contributes to the overall size of the packet, so the payload we write
@@ -997,21 +994,32 @@ impl transmission::Provider for Controller {
     }
 }
 
+impl transmission::Provider for Controller {
+    /// Transmits the `MtuProbingComplete` frame.
+    ///
+    /// This only handles the completion notification. MTU probe packets are
+    /// transmitted separately via `on_transmit_probe`.
+    #[inline]
+    fn on_transmit<W: transmission::Writer>(&mut self, context: &mut W) {
+        ensure!(!context.transmission_mode().is_mtu_probing());
+
+        if self.needs_to_send_completion {
+            let frame = frame::MtuProbingComplete::new(self.plpmtu);
+            if context.write_frame(&frame).is_some() {
+                self.needs_to_send_completion = false;
+            }
+        }
+    }
+}
+
 impl transmission::interest::Provider for Controller {
     #[inline]
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        match self.state {
-            State::SearchRequested => query.on_new_data()?,
-            State::SearchComplete => {
-                // Indicate interest if we need to send the MtuProbingComplete frame
-                if self.needs_to_send_completion {
-                    query.on_new_data()?
-                }
-            }
-            _ => {}
+        if self.needs_to_send_completion {
+            query.on_new_data()?;
         }
 
         Ok(())

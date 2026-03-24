@@ -1011,7 +1011,7 @@ fn process_new_acked_packets_call_on_mtu_update() {
     context
         .path_mut()
         .mtu_controller
-        .on_transmit(&mut write_context);
+        .on_transmit_probe(&mut write_context);
 
     // Send the MTU probe
     manager.on_packet_sent(
