@@ -38,7 +38,7 @@ impl Filesystem for OsFilesystem {
         };
         entries
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().map_or(false, |t| t.is_file()))
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
             .map(|e| e.path())
             .collect()
     }
@@ -314,10 +314,6 @@ mod test {
     struct MockFilesystem(Arc<Mutex<BTreeMap<PathBuf, MutexBuf>>>);
 
     impl MockFilesystem {
-        fn new() -> Self {
-            Self::default()
-        }
-
         #[track_caller]
         fn assert_opened(&self, path: impl AsRef<Path>) -> MutexBuf {
             let key = path.as_ref();
