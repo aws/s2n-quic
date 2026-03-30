@@ -25,6 +25,11 @@ tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zerocopy = { version = "0.8", features = ["derive"] }
 
+# Previous versions (crates.io, renamed) for cross-version compatibility testing
+s2n-quic-prev = { package = "s2n-quic", version = "=1.74.0", features = ["provider-event-tracing", "unstable-provider-io-testing", "unstable-provider-dc", "unstable-provider-packet-interceptor", "unstable-provider-random", "unstable-offload-tls", "unstable_resumption"] }
+s2n-quic-core-prev = { package = "s2n-quic-core", version = "=0.74.0", features = ["branch-tracing", "event-tracing", "probe-tracing", "testing"] }
+s2n-codec-prev = { package = "s2n-codec", version = "=0.74.0" }
+
 # quiche does not currently build on 32-bit platforms
 # see https://github.com/cloudflare/quiche/issues/2097
 [target.'cfg(not(target_arch = "x86"))'.dependencies]
@@ -36,3 +41,4 @@ s2n-tls = "0.3.31"
 
 [target.'cfg(unix)'.dependencies]
 s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-s2n", "unstable-provider-io-testing", "unstable-provider-dc", "unstable-provider-packet-interceptor", "unstable-provider-random", "unstable-offload-tls", "unstable_client_hello"] }
+s2n-quic-prev = { package = "s2n-quic", version = "=1.74.0", features = ["provider-event-tracing", "provider-tls-s2n", "unstable-provider-io-testing", "unstable-provider-dc", "unstable-provider-packet-interceptor", "unstable-provider-random", "unstable-offload-tls", "unstable_client_hello", "unstable_resumption"] }
