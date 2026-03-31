@@ -177,7 +177,6 @@ fn test_cancelled_task_does_not_panic() {
     let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60));
 
     state.push(SocketAddr::from(([127, 0, 0, 1], 4000)));
-    state.adjust_post_refill();
 
     // Return a handle to a task that we immediately abort, simulating runtime shutdown
     let handle = state.runtime.handle().clone();
