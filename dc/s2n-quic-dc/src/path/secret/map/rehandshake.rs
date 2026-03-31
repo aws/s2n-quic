@@ -146,7 +146,11 @@ impl RehandshakeState {
 
             if let Some(handle) = request_handshake(entry.unmap().into()) {
                 let wrapped = self.runtime.spawn(async move {
-                    handle.await.expect("propagate panic");
+                    if let Err(err) = handle.await {
+                        if let Ok(panic) = err.try_into_panic() {
+                            std::panic::resume_unwind(panic);
+                        }
+                    }
                     drop(permit);
                 });
                 handles.push(wrapped);
@@ -157,7 +161,11 @@ impl RehandshakeState {
 
         // Wait for all tasks to complete
         for handle in handles {
-            self.runtime.block_on(handle).expect("propagate panic");
+            if let Err(err) = self.runtime.block_on(handle) {
+                if let Ok(panic) = err.try_into_panic() {
+                    std::panic::resume_unwind(panic);
+                }
+            }
         }
 
         to_select
