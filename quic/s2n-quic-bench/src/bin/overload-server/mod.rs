@@ -71,6 +71,7 @@ mod mtls {
 
     pub fn build_client_mtls_provider(ca_cert: &str) -> Result<tls::default::Client, Error> {
         let tls = tls::default::Client::builder()
+            .with_empty_trust_store()?
             .with_certificate(ca_cert)?
             .with_client_identity(
                 certificates::MTLS_CLIENT_CERT,
@@ -82,6 +83,7 @@ mod mtls {
 
     pub fn build_server_mtls_provider(ca_cert: &str) -> Result<tls::default::Server, Error> {
         let tls = tls::default::Server::builder()
+            .with_empty_trust_store()?
             .with_certificate(
                 certificates::MTLS_SERVER_CERT,
                 certificates::MTLS_SERVER_KEY,
