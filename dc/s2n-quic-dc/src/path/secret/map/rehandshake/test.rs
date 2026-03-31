@@ -173,6 +173,24 @@ fn test_keeps_unscheduled_in_queue() {
 }
 
 #[test]
+fn test_cancelled_task_does_not_panic() {
+    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60));
+
+    state.push(SocketAddr::from(([127, 0, 0, 1], 4000)));
+    state.adjust_post_refill();
+
+    // Return a handle to a task that we immediately abort, simulating runtime shutdown
+    let handle = state.runtime.handle().clone();
+    state.next_rehandshake_batch(1, |_addr| {
+        let h = handle.spawn(async {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+        h.abort();
+        Some(h)
+    });
+}
+
+#[test]
 fn test_tail_handshake_scheduling() {
     // Use a long rehandshake period so tail handshake logic is used
     let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(3600));
