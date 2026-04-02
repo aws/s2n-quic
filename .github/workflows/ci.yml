@@ -279,7 +279,7 @@ jobs:
             target: native
             env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE=""
             # s2n-quic-dc requires platform features
-            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics
+            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics --exclude s2n-quic-bench
           - rust: stable
             os: ubuntu-latest
             target: native
