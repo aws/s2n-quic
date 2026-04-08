@@ -106,8 +106,15 @@ pub trait TlsSession: Send {
 
     fn cipher_suite(&self) -> CipherSuite;
 
+    // The peer's verified cert chain.
     #[cfg(feature = "alloc")]
     fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, ChainError>;
+
+    // This is the unverified client cert chain.
+    //
+    // https://docs.rs/s2n-tls/latest/s2n_tls/connection/struct.Connection.html#method.client_cert_chain_bytes
+    #[cfg(feature = "alloc")]
+    fn client_cert_chain_der(&self) -> Result<Option<Vec<u8>>, ChainError>;
 }
 
 #[cfg(feature = "alloc")]

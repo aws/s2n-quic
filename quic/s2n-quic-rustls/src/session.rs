@@ -73,6 +73,11 @@ impl tls::TlsSession for Session {
             .map(|v| v.to_vec())
             .collect())
     }
+
+    fn client_cert_chain_der(&self) -> Result<Option<Vec<u8>>, tls::ChainError> {
+        // As far as I can tell, rustls doesn't support retrieving unverified cert chains.
+        Err(tls::ChainError::failure())
+    }
 }
 
 impl fmt::Debug for Session {
