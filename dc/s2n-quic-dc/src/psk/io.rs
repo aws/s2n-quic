@@ -212,6 +212,7 @@ impl Client {
             .with_data_window(builder.data_window)?
             .with_bidirectional_local_data_window(builder.data_window)?
             .with_bidirectional_remote_data_window(builder.data_window)?
+            .with_pto_jitter_percentage(builder.pto_jitter_percentage)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
