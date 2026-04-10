@@ -80,6 +80,7 @@ impl Server {
             // After the connection is established we increase the data window to the configured value
             .with_bidirectional_local_data_window(builder.data_window)?
             .with_bidirectional_remote_data_window(initial_max_data)?
+            .with_pto_jitter_percentage(builder.pto_jitter_percentage)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
@@ -212,6 +213,7 @@ impl Client {
             .with_data_window(builder.data_window)?
             .with_bidirectional_local_data_window(builder.data_window)?
             .with_bidirectional_remote_data_window(builder.data_window)?
+            .with_pto_jitter_percentage(builder.pto_jitter_percentage)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
