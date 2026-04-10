@@ -50,7 +50,7 @@ s2n-quic-core = { version = "=0.77.0", path = "../../quic/s2n-quic-core", defaul
 s2n-quic-platform = { version = "=0.77.0", path = "../../quic/s2n-quic-platform" }
 s2n-tls = "0.3"
 slotmap = "1"
-hashbrown = "0.16"
+hashbrown = "0.17"
 thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["sync"] }
 tokio-util = "0.7"
