@@ -107,8 +107,8 @@ macro_rules! impl_cipher_suite {
                 fn zeroize(&mut self) {
                     self.iv.zeroize();
                     self.key.zeroize();
-                    // Note: `self.secret` (hkdf::Prk) is intentionally not zeroized here.
-                    // aws-lc-rs's Prk implements Drop and zeroizes its own key material:
+                    // Note: `self.secret` (hkdf::Prk) zeroizes its own key material
+                    // via the Drop impl in aws_lc_rs::hkdf::Prk:
                     // https://github.com/aws/aws-lc-rs/blob/main/aws-lc-rs/src/hkdf.rs
                 }
             }
