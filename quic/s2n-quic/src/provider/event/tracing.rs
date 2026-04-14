@@ -1,6 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Event output includes QUIC protocol fields such as stateless reset tokens.
+//! Applications should ensure appropriate access controls on log output.
+
 pub use s2n_quic_core::event::tracing::Subscriber;
 
 #[derive(Debug, Default)]
