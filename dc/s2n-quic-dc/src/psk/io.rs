@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#[cfg(target_os = "linux")]
+use super::router;
 use super::{client, server};
 use crate::path::secret;
 use cfg_if::cfg_if;
@@ -14,6 +16,7 @@ use s2n_quic::{
     server::Name,
 };
 use s2n_quic_core::inet::SocketAddress;
+use s2n_quic_platform::syscall;
 use std::{
     hash::BuildHasher,
     io,
@@ -59,8 +62,30 @@ impl Server {
         subscriber: Subscriber,
         builder: server::Builder<Event>,
     ) -> Result<Self, Error> {
+        let socket_for_non_client_hello_packets = syscall::bind_udp(addr, false, false, false)?;
+
+        // Acquire the bound address with a port assigned
+        let bound_addr = socket_for_non_client_hello_packets
+            .local_addr()?
+            .as_socket()
+            .unwrap();
+
+        socket_for_non_client_hello_packets
+            .set_reuse_port(true)
+            .unwrap();
+
+        let socket_for_client_hello_packets = syscall::bind_udp(bound_addr, false, true, false)?;
+
+        // Attach sockets to the ROUTER for packet filtering purpose
+        #[cfg(target_os = "linux")]
+        {
+            router::ROUTER.attach(&socket_for_client_hello_packets)?;
+            router::ROUTER.attach(&socket_for_non_client_hello_packets)?;
+        }
+
         let io = s2n_quic::provider::io::default::Builder::default()
-            .with_receive_address(addr)?
+            .with_rx_socket(socket_for_client_hello_packets.into())?
+            .with_prioritized_socket(socket_for_non_client_hello_packets.into())?
             .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
             .with_initial_mtu(builder.mtu)?
             .with_max_mtu(builder.mtu)?
@@ -586,7 +611,10 @@ mod tests {
         tls::Provider,
     };
     use s2n_quic_core::time::StdClock;
-    use std::time::Instant;
+    use std::{
+        sync::atomic::{AtomicBool, AtomicU64},
+        time::Instant,
+    };
     use tokio_util::sync::DropGuard;
 
     /// A test limiter that closes all incoming connections immediately
@@ -782,5 +810,263 @@ mod tests {
                 .load(Ordering::Relaxed),
             1
         );
+    }
+
+    /// Synchronization state for coordinating the flood thread with the server event loop.
+    ///
+    /// When the server first receives a client hello on the non-prioritized socket,
+    /// it unparks the flood thread and then spins until the flood confirms it has
+    /// started sending. This guarantees the flood is actively running before the
+    /// handshake continues.
+    struct FloodSync {
+        flood_thread: std::thread::Thread,
+        flood_started: Arc<AtomicBool>,
+        triggered: AtomicBool,
+    }
+
+    /// A combined test subscriber that captures:
+    /// - Per-socket rx packet counts via `PlatformRxSocketStats` (endpoint-level)
+    /// - Per-connection packet sent and non-initial packets received (connection-level)
+    #[derive(Clone, Default)]
+    struct TestStatsSubscriber {
+        /// Accumulated per-socket rx packet counts: [non_prioritized, prioritized]
+        socket_counts: Arc<[AtomicU64; 2]>,
+        packets_sent: Arc<AtomicU64>,
+        non_initial_packets_received: Arc<AtomicU64>,
+        flood_sync: Option<Arc<FloodSync>>,
+    }
+
+    impl TestStatsSubscriber {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn socket_count(&self, is_prioritized: bool) -> u64 {
+            let idx = if is_prioritized { 1 } else { 0 };
+            self.socket_counts[idx].load(Ordering::Relaxed)
+        }
+
+        fn sent(&self) -> u64 {
+            self.packets_sent.load(Ordering::Relaxed)
+        }
+
+        fn non_initial_received(&self) -> u64 {
+            self.non_initial_packets_received.load(Ordering::Relaxed)
+        }
+    }
+
+    impl s2n_quic_core::event::Subscriber for TestStatsSubscriber {
+        type ConnectionContext = TestStatsSubscriber;
+
+        fn create_connection_context(
+            &mut self,
+            _meta: &s2n_quic_core::event::api::ConnectionMeta,
+            _info: &s2n_quic_core::event::api::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+            self.clone()
+        }
+
+        fn on_platform_rx_socket_stats(
+            &mut self,
+            _meta: &s2n_quic_core::event::api::EndpointMeta,
+            event: &s2n_quic_core::event::api::PlatformRxSocketStats,
+        ) {
+            let idx = if event.is_prioritized { 1 } else { 0 };
+            self.socket_counts[idx].fetch_add(event.count as u64, Ordering::Relaxed);
+
+            // On the first non-prioritized socket event (real client hello received),
+            // wake the flood thread and block until it confirms it has started sending.
+            if !event.is_prioritized {
+                if let Some(ref sync) = self.flood_sync {
+                    if !sync.triggered.swap(true, Ordering::SeqCst) {
+                        sync.flood_thread.unpark();
+
+                        while !sync.flood_started.load(Ordering::SeqCst) {
+                            std::hint::spin_loop();
+                        }
+                    }
+                }
+            }
+        }
+
+        fn on_packet_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &s2n_quic_core::event::api::ConnectionMeta,
+            _event: &s2n_quic_core::event::api::PacketSent,
+        ) {
+            context.packets_sent.fetch_add(1, Ordering::Relaxed);
+        }
+
+        fn on_packet_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &s2n_quic_core::event::api::ConnectionMeta,
+            event: &s2n_quic_core::event::api::PacketReceived,
+        ) {
+            if !matches!(
+                event.packet_header,
+                s2n_quic_core::event::api::PacketHeader::Initial { .. }
+            ) {
+                context
+                    .non_initial_packets_received
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
+
+    impl crate::event::Subscriber for TestStatsSubscriber {
+        type ConnectionContext = ();
+
+        fn create_connection_context(
+            &self,
+            _meta: &crate::event::api::ConnectionMeta,
+            _info: &crate::event::api::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+        }
+    }
+
+    /// Verifies that under a flood of fake client hello packets, a real dcQUIC client
+    /// can still complete a handshake successfully.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn dc_server_packet_filtering_load_test() {
+        init_tracing();
+
+        let tls = TestTlsProvider {};
+
+        let flood_started = Arc::new(AtomicBool::new(false));
+        let flood_cancel = Arc::new(AtomicBool::new(false));
+        let flood_count = Arc::new(AtomicU64::new(0));
+
+        let (addr_tx, addr_rx) = std::sync::mpsc::channel::<SocketAddr>();
+
+        let flood_thread = {
+            let flood_started = flood_started.clone();
+            let flood_cancel = flood_cancel.clone();
+            let flood_count = flood_count.clone();
+
+            std::thread::spawn(move || {
+                std::thread::park();
+
+                let server_addr: std::net::SocketAddr = addr_rx.recv().unwrap();
+                let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+
+                let packet =
+                    s2n_quic_core::crypto::initial::EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET;
+
+                sender.send_to(&packet, server_addr).unwrap();
+                flood_count.fetch_add(1, Ordering::Relaxed);
+                flood_started.store(true, Ordering::SeqCst);
+
+                while !flood_cancel.load(Ordering::Relaxed) {
+                    if sender.send_to(&packet, server_addr).is_ok() {
+                        flood_count.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            })
+        };
+
+        let flood_sync = Arc::new(FloodSync {
+            flood_thread: flood_thread.thread().clone(),
+            flood_started: flood_started.clone(),
+            triggered: AtomicBool::new(false),
+        });
+
+        let server_stats = TestStatsSubscriber {
+            flood_sync: Some(flood_sync),
+            ..TestStatsSubscriber::new()
+        };
+
+        let server_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            server_stats.clone(),
+        );
+
+        let server_builder = crate::psk::server::Builder::default();
+        let (server_addr_rx, _server_guard) = crate::psk::server::Provider::setup(
+            "127.0.0.1:0".parse().unwrap(),
+            server_map.clone(),
+            tls.clone(),
+            (
+                server_stats.clone(),
+                s2n_quic::provider::event::tracing::Subscriber::default(),
+            ),
+            server_builder,
+        );
+
+        let server_addr = server_addr_rx.await.unwrap().unwrap();
+
+        addr_tx.send(server_addr).unwrap();
+
+        let noop_subscriber = NoopSubscriber {};
+        let client_stats = TestStatsSubscriber::new();
+        let client_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            noop_subscriber.clone(),
+        );
+
+        let client = Client::bind::<
+            <TestTlsProvider as Provider>::Client,
+            (
+                TestStatsSubscriber,
+                s2n_quic::provider::event::tracing::Subscriber,
+            ),
+            s2n_quic::provider::event::default::Subscriber,
+        >(
+            "0.0.0.0:0".parse().unwrap(),
+            client_map,
+            tls.start_client().unwrap(),
+            (
+                client_stats.clone(),
+                s2n_quic::provider::event::tracing::Subscriber::default(),
+            ),
+            crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
+        )
+        .unwrap();
+
+        let handshake_handle = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .connect(server_addr, HandshakeReason::User, "localhost".into())
+                    .await
+            }
+        });
+
+        let handshake_result = handshake_handle.await.expect("handshake task panicked");
+
+        flood_cancel.store(true, Ordering::Relaxed);
+        flood_thread.join().expect("flood thread panicked");
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let total_flood_packets = flood_count.load(Ordering::Relaxed);
+        let socket_ch_count = server_stats.socket_count(false);
+        let socket_other_count = server_stats.socket_count(true);
+        let client_packets_sent = client_stats.sent();
+        let server_non_initial_received = server_stats.non_initial_received();
+
+        tracing::info!(
+            "Flood packets sent: {}, CH socket rx: {}, Other socket rx: {}, \
+             Client packets sent: {}, Server non-initial packets received: {}",
+            total_flood_packets,
+            socket_ch_count,
+            socket_other_count,
+            client_packets_sent,
+            server_non_initial_received,
+        );
+
+        // The handshake should succeed even when the server is flooded with example client hello packets
+        assert!(handshake_result.is_ok());
+        assert!(client_packets_sent > 0);
+        assert!(socket_ch_count > 0);
+        assert!(socket_other_count > 0);
     }
 }
