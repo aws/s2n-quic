@@ -398,7 +398,9 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         if self.is_duplicate(packet_number, path_id, path, publisher) {
             return Err(ProcessingError::Other);
         }
-
+// If decryption failed but the packet was also a duplicate,
+// the duplicate check above takes precedence and the decrypt error
+// is intentionally discarded.
         let decrypted = decrypted?;
         Ok(decrypted)
     }
