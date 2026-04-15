@@ -408,12 +408,9 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
                 });
             })?;
 
-        if self.is_duplicate(packet.packet_number, path_id, path, publisher) {
-            return Err(ProcessingError::Other);
-        }
-
+        let packet_number = packet.packet_number;
         let packet_header =
-            event::builder::PacketHeader::new(packet.packet_number, publisher.quic_version());
+            event::builder::PacketHeader::new(packet_number, publisher.quic_version());
         let decrypted = packet.decrypt(&self.key).inspect_err(|_err| {
             publisher.on_packet_dropped(event::builder::PacketDropped {
                 reason: event::builder::PacketDropReason::DecryptionFailed {
@@ -421,7 +418,24 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
                     path: path_event!(path, path_id),
                 },
             });
-        })?;
+        });
+
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-9.5
+        //# For authentication to be
+        //# free from side channels, the entire process of header protection
+        //# removal, packet number recovery, and packet protection removal MUST
+        //# be applied together without timing and other side channels.
+
+        // We perform decryption prior to checking for duplicate to avoid short-circuiting
+        // and maintain constant-time operation.
+        if self.is_duplicate(packet_number, path_id, path, publisher) {
+            return Err(ProcessingError::Other);
+        }
+
+        // If decryption failed but the packet was also a duplicate,
+        // the duplicate check above takes precedence and the decrypt error
+        // is intentionally discarded.
+        let decrypted = decrypted?;
 
         if Config::ENDPOINT_TYPE.is_client() && !decrypted.token.is_empty() {
             //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.2
