@@ -843,7 +843,8 @@
     ],
     "kwik": [],
     "lsquic": [
-      "client"
+      "client",
+      "server"
     ],
     "msquic": [
       "client"
