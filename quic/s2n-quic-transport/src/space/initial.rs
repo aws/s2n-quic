@@ -432,6 +432,9 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             return Err(ProcessingError::Other);
         }
 
+        // If decryption failed but the packet was also a duplicate,
+        // the duplicate check above takes precedence and the decrypt error
+        // is intentionally discarded.
         let decrypted = decrypted?;
 
         if Config::ENDPOINT_TYPE.is_client() && !decrypted.token.is_empty() {
