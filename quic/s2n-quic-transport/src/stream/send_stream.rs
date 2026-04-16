@@ -621,13 +621,14 @@ impl SendStream {
                 }
             }
             SendStreamState::ResetSent(error_code)
-                if self.reset_sync.on_packet_ack(ack_set).is_ready() => {
-                    // A reset had been acknowledged. Enter the terminal state.
-                    self.state = SendStreamState::ResetAcknowledged(error_code);
+                if self.reset_sync.on_packet_ack(ack_set).is_ready() =>
+            {
+                // A reset had been acknowledged. Enter the terminal state.
+                self.state = SendStreamState::ResetAcknowledged(error_code);
 
-                    // notify the waiter that the stream is finalized
-                    should_wake = true;
-                }
+                // notify the waiter that the stream is finalized
+                should_wake = true;
+            }
             _ => {}
         }
 
