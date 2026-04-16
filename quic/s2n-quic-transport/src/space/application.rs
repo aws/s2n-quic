@@ -486,14 +486,14 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         );
 
         match self.skip_counter {
-            Some(skip_counter) if skip_counter == 0 => {
-                if self.tx_packet_numbers.should_skip_packet_number() {
-                    Self::arm_skip_counter(
-                        &mut self.skip_counter,
-                        path_manager.active_path(),
-                        random_generator,
-                    );
-                }
+            Some(skip_counter)
+                if skip_counter == 0 && self.tx_packet_numbers.should_skip_packet_number() =>
+            {
+                Self::arm_skip_counter(
+                    &mut self.skip_counter,
+                    path_manager.active_path(),
+                    random_generator,
+                );
             }
             None => Self::arm_skip_counter(
                 &mut self.skip_counter,
