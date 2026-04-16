@@ -72,10 +72,7 @@ async fn run_impl(
                 spawn(
                     async move {
                         let mut data = vec![0; 1 << 17];
-                        loop {
-                            let Ok(len) = stream.read(&mut data).await else {
-                                break;
-                            };
+                        while let Ok(len) = stream.read(&mut data).await {
                             if len == 0 {
                                 break;
                             }
