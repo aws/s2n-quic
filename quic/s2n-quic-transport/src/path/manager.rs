@@ -800,13 +800,6 @@ impl<Config: endpoint::Config> Manager<Config> {
                     //# When an endpoint has no validated path on which to send packets, it
                     //# MAY discard connection state.
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000#section-9
-                    //= type=TODO
-                    //= tracking-issue=713
-                    //# An endpoint capable of connection
-                    //# migration MAY wait for a new path to become available before
-                    //# discarding connection state.
-
                     //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3.2
                     //# If an endpoint has no state about the last validated peer address, it
                     //# MUST close the connection silently by discarding all connection
