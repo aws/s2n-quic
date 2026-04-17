@@ -1,0 +1,11 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-9"
+
+[[exception]]
+quote = '''
+An endpoint capable of connection
+migration MAY wait for a new path to become available before
+discarding connection state.
+'''
+reason = '''
+We will not implement this optional functionality until there is a demonstrated need.
+'''
