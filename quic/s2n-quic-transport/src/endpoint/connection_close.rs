@@ -152,9 +152,9 @@ impl<Path: path::Handle> Transmission<Path> {
         //# Initial packet containing a CONNECTION_CLOSE frame with error code
         //# CONNECTION_REFUSED.
 
-        // We need to ensure that the packet is at least 22 bytes longer than the the minimum connection ID length,
+        // We need to ensure that the packet is at least 22 bytes longer than the minimum connection ID length,
         // that it requests the peer to include in its packets
-        // Hewnce, we need to use a reason that's more than 15 bytes to ensure the packet will be sent.
+        // Hence, we need to use a reason that's more than 15 bytes to ensure the packet will be sent.
         let connection_close = ConnectionClose {
             error_code: transport::Error::CONNECTION_REFUSED.code.as_varint(),
             frame_type: Some(VarInt::ZERO),

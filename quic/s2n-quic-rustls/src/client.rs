@@ -25,7 +25,7 @@ pub struct Client {
 impl Client {
     /// Build a Client using a custom [rustls::ClientConfig]
     ///
-    /// In addition to necessary configuration, the applications is responsible for correctly
+    /// In addition to necessary configuration, the application is responsible for correctly
     /// setting:
     /// - QUIC compliant application_protocol
     /// - QUIC compliant TLS protocol version

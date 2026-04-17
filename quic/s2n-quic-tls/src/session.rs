@@ -155,7 +155,7 @@ impl tls::Session for Session {
 
         unsafe {
             // Safety: the callback struct must live as long as the callbacks are
-            // set on on the connection
+            // set on the connection
             callback.set(&mut self.connection);
         }
 
@@ -209,7 +209,7 @@ impl tls::Session for Session {
 
         unsafe {
             // Safety: the callback struct must live as long as the callbacks are
-            // set on on the connection
+            // set on the connection
             callback.set(&mut self.connection);
         }
 

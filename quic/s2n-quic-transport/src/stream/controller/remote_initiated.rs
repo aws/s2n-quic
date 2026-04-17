@@ -156,7 +156,7 @@ impl RemoteInitiated {
 
         let refill = VarInt::new(refill).unwrap_or(VarInt::MAX);
 
-        // `synced_closed_streams` subtracts `self.max_local_limit` to get the the number of streams
+        // `synced_closed_streams` subtracts `self.max_local_limit` to get the number of streams
         // that have actually been communicated as closed so we need to add it back to the total
         // here
         let max_streams = synced_closed_streams

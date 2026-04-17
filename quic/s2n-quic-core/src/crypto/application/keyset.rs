@@ -106,7 +106,7 @@ impl<K: OneRttKey> KeySet<K> {
         self.key_derivation_timer.is_armed()
     }
 
-    /// Passes the key for the the requested phase to a callback function. Integrity limits are
+    /// Passes the key for the requested phase to a callback function. Integrity limits are
     /// enforced.
     ///
     /// Returns the decrypted packet and generation if the key phase was rotated.

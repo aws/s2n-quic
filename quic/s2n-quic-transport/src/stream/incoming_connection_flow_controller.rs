@@ -15,7 +15,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-/// Writes `MAX_DATA` frames based on the connections flow control window.
+/// Writes `MAX_DATA` frames based on the connection's flow control window.
 #[derive(Default, Debug)]
 pub(super) struct MaxDataToFrameWriter {}
 
