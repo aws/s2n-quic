@@ -112,7 +112,7 @@ impl<'a, S: StreamTrait> KeyAdapter<'a> for StreamTreeAdapter<S> {
 /// This method is only safe to be called if the `StreamNode` is known to be
 /// stored inside a `Rc`.
 unsafe fn stream_node_rc_from_ref<S>(stream_node: &StreamNode<S>) -> Rc<StreamNode<S>> {
-    // In order to be able to to get a `Rc` we construct a temporary `Rc`
+    // In order to be able to get a `Rc` we construct a temporary `Rc`
     // from it using the `Rc::from_raw` API and clone the `Rc`.
     // The temporary `Rc` must be released without calling `drop`,
     // because this would decrement and thereby invalidate the refcount

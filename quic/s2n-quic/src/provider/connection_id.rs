@@ -117,7 +117,7 @@ pub mod default {
 
         /// Enables/disables rotation of the connection Id used during the handshake (default: enabled)
         ///
-        /// When enabled (the default), the connection ID used during the the handshake
+        /// When enabled (the default), the connection ID used during the handshake
         /// will be requested to be retired following confirmation of the handshake
         /// completing. This reduces linkability between information exchanged
         /// during and after the handshake.
