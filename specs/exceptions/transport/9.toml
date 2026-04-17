@@ -7,5 +7,5 @@ migration MAY wait for a new path to become available before
 discarding connection state.
 '''
 reason = '''
-We are not going to implement this unless someone request it.
+We will not implement this optional functionality until there is a demonstrated need.
 '''
