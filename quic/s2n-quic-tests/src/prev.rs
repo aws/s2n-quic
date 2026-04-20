@@ -375,3 +375,14 @@ pub fn prev_client(
         s2n_quic_core_prev::stream::testing::Data::new(10_000),
     )
 }
+
+// =============================================================================
+// Handle identity function (for compat_test! macro)
+// =============================================================================
+
+/// Returns a prev Handle from a current Handle (for cross-version server/client construction).
+pub fn as_prev_handle(
+    handle: &s2n_quic::provider::io::testing::Handle,
+) -> s2n_quic_prev::provider::io::testing::Handle {
+    to_prev_handle(handle)
+}

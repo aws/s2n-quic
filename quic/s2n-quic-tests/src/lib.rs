@@ -27,6 +27,14 @@ mod tests;
 
 pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::KEY_PEM);
 
+/// Identity function — returns the handle as-is. Used by `compat_test!` macro
+/// so test bodies can write `server_handle(handle)` and the macro swaps it
+/// to `prev::as_prev_handle` when the server is the prev version.
+#[inline]
+pub fn identity_handle(handle: &Handle) -> Handle {
+    handle.clone()
+}
+
 /// Macro that runs a test body in three version configurations:
 /// - `same_version`: both client and server use the current version
 /// - `client_ahead`: client uses current, server uses prev
@@ -55,6 +63,30 @@ macro_rules! compat_test {
             mod same_version {
                 #[allow(unused_imports)]
                 use super::super::*;
+                #[allow(unused_imports)]
+                use crate::identity_handle as server_handle;
+                #[allow(unused_imports)]
+                use crate::identity_handle as client_handle;
+                #[allow(unused_imports)]
+                use crate::tracing_events as server_tracing_events;
+                #[allow(unused_imports)]
+                use crate::tracing_events as client_tracing_events;
+                #[allow(unused_imports)]
+                use crate::Random as ServerRandom;
+                #[allow(unused_imports)]
+                use crate::Random as ClientRandom;
+                #[allow(unused_imports)]
+                use s2n_quic_core::dc::testing as server_dc;
+                #[allow(unused_imports)]
+                use s2n_quic_core::dc::testing as client_dc;
+                #[allow(unused_imports)]
+                use s2n_quic_core::stateless_reset::token::testing as server_tokens;
+                #[allow(unused_imports)]
+                use s2n_quic_core::stateless_reset::token::testing as client_tokens;
+                #[allow(unused_imports)]
+                use s2n_quic::provider::dc as server_dc_provider;
+                #[allow(unused_imports)]
+                use s2n_quic::provider::dc as client_dc_provider;
                 #[test]
                 fn run() $body
             }
@@ -62,6 +94,10 @@ macro_rules! compat_test {
             mod client_ahead {
                 #[allow(unused_imports)]
                 use super::super::*;
+                #[allow(unused_imports)]
+                use crate::prev::as_prev_handle as server_handle;
+                #[allow(unused_imports)]
+                use crate::identity_handle as client_handle;
                 // Override server-side helpers with prev versions
                 #[allow(unused_imports)]
                 use crate::prev::prev_server as server;
@@ -74,9 +110,30 @@ macro_rules! compat_test {
                 #[allow(unused_imports)]
                 use crate::prev::PrevRandom as Random;
                 #[allow(unused_imports)]
+                use crate::prev::PrevRandom as ServerRandom;
+                #[allow(unused_imports)]
+                use crate::Random as ClientRandom;
+                #[allow(unused_imports)]
                 use crate::prev::prev_tracing_events as tracing_events;
                 #[allow(unused_imports)]
+                use crate::prev::prev_tracing_events as server_tracing_events;
+                #[allow(unused_imports)]
+                use crate::tracing_events as client_tracing_events;
+                #[allow(unused_imports)]
                 use s2n_quic_prev::Server;
+                // DC: server side from prev, client side from current
+                #[allow(unused_imports)]
+                use s2n_quic_core_prev::dc::testing as server_dc;
+                #[allow(unused_imports)]
+                use s2n_quic_core::dc::testing as client_dc;
+                #[allow(unused_imports)]
+                use s2n_quic_core_prev::stateless_reset::token::testing as server_tokens;
+                #[allow(unused_imports)]
+                use s2n_quic_core::stateless_reset::token::testing as client_tokens;
+                #[allow(unused_imports)]
+                use s2n_quic_prev::provider::dc as server_dc_provider;
+                #[allow(unused_imports)]
+                use s2n_quic::provider::dc as client_dc_provider;
                 #[test]
                 fn run() $body
             }
@@ -84,6 +141,10 @@ macro_rules! compat_test {
             mod server_ahead {
                 #[allow(unused_imports)]
                 use super::super::*;
+                #[allow(unused_imports)]
+                use crate::identity_handle as server_handle;
+                #[allow(unused_imports)]
+                use crate::prev::as_prev_handle as client_handle;
                 // Override client-side helpers with prev versions
                 #[allow(unused_imports)]
                 use crate::prev::prev_client as client;
@@ -95,6 +156,27 @@ macro_rules! compat_test {
                 use s2n_quic_prev::Client;
                 #[allow(unused_imports)]
                 use s2n_quic_prev::client::Connect;
+                #[allow(unused_imports)]
+                use crate::tracing_events as server_tracing_events;
+                #[allow(unused_imports)]
+                use crate::prev::prev_tracing_events as client_tracing_events;
+                #[allow(unused_imports)]
+                use crate::Random as ServerRandom;
+                #[allow(unused_imports)]
+                use crate::prev::PrevRandom as ClientRandom;
+                // DC: server side from current, client side from prev
+                #[allow(unused_imports)]
+                use s2n_quic_core::dc::testing as server_dc;
+                #[allow(unused_imports)]
+                use s2n_quic_core_prev::dc::testing as client_dc;
+                #[allow(unused_imports)]
+                use s2n_quic_core::stateless_reset::token::testing as server_tokens;
+                #[allow(unused_imports)]
+                use s2n_quic_core_prev::stateless_reset::token::testing as client_tokens;
+                #[allow(unused_imports)]
+                use s2n_quic::provider::dc as server_dc_provider;
+                #[allow(unused_imports)]
+                use s2n_quic_prev::provider::dc as client_dc_provider;
                 #[test]
                 fn run() $body
             }

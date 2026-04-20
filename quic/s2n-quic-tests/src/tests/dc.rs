@@ -73,19 +73,55 @@ const LEN_FACTOR: u16 = 10;
 // 1-RTT[1]: ACK[1] ->
 //                            # handshake_status_updated: status=HandshakeDoneAcked
 //                                               # dc_state_changed: state=Complete
-#[test]
-fn dc_handshake_self_test() -> Result<()> {
-    let server = Server::builder()
-        .with_tls(SERVER_CERTS)?
-        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
-    let client = Client::builder()
-        .with_tls(certificates::CERT_PEM)?
-        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+compat_test!(dc_handshake_compat_test {
+    let model = Model::default();
+    let rtt = Duration::from_millis(100);
+    model.set_delay(rtt / 2);
 
-    self_test(server, client, true, None, None, true)?;
+    test(model.clone(), |handle| {
+        let mut server = Server::builder()
+            .with_io(server_handle(handle).builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_dc(server_dc::MockDcEndpoint::new(&[server_tokens::TEST_TOKEN_1]))?
+            .with_event((
+                server_dc_provider::ConfirmComplete,
+                server_tracing_events(true, model.clone()),
+            ))?
+            .with_random(ServerRandom::with_seed(456))?
+            .start()?;
 
-    Ok(())
-}
+        let addr = server.local_addr()?;
+        spawn(async move {
+            if let Some(mut conn) = server.accept().await {
+                server_dc_provider::ConfirmComplete::wait_ready(&mut conn)
+                    .await
+                    .expect("server DC handshake failed");
+            }
+        });
+
+        let client = Client::builder()
+            .with_io(client_handle(handle).builder().build().unwrap())?
+            .with_tls(certificates::CERT_PEM)?
+            .with_dc(client_dc::MockDcEndpoint::new(&[client_tokens::TEST_TOKEN_2]))?
+            .with_event((
+                client_dc_provider::ConfirmComplete,
+                client_tracing_events(true, model.clone()),
+            ))?
+            .with_random(ClientRandom::with_seed(456))?
+            .start()?;
+
+        primary::spawn(async move {
+            let connect = Connect::new(addr).with_server_name("localhost");
+            let mut conn = client.connect(connect).await.unwrap();
+            client_dc_provider::ConfirmComplete::wait_ready(&mut conn)
+                .await
+                .expect("client DC handshake failed");
+        });
+
+        Ok(addr)
+    })
+    .unwrap();
+});
 
 // Client                                                                    Server
 //
