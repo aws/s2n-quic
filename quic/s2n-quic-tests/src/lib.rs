@@ -18,11 +18,89 @@ use s2n_quic::{
 use s2n_quic_core::{crypto::tls::testing::certificates, havoc, stream::testing::Data};
 use std::net::SocketAddr;
 
+#[cfg(test)]
+mod io_compat_test;
+pub mod prev;
 pub mod recorder;
 #[cfg(test)]
 mod tests;
 
 pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::KEY_PEM);
+
+/// Macro that runs a test body in three version configurations:
+/// - `same_version`: both client and server use the current version
+/// - `client_ahead`: client uses current, server uses prev
+/// - `server_ahead`: server uses current, client uses prev
+///
+/// The test body should use unqualified names like `server()`, `client()`,
+/// `Server::builder()`, `Client::builder()`, `SERVER_CERTS`, `Random`,
+/// `tracing_events()`, `start_server()`, `start_client()`, `Data`, etc.
+/// The macro swaps which version those names resolve to.
+///
+/// Usage:
+/// ```ignore
+/// compat_test!(client_server_test {
+///     let model = Model::default();
+///     test(model.clone(), |handle| {
+///         let addr = server(handle, model.clone())?;
+///         client(handle, addr, model.clone(), true)?;
+///         Ok(addr)
+///     }).unwrap();
+/// });
+/// ```
+#[macro_export]
+macro_rules! compat_test {
+    ($name:ident $body:block) => {
+        mod $name {
+            mod same_version {
+                #[allow(unused_imports)]
+                use super::super::*;
+                #[test]
+                fn run() $body
+            }
+
+            mod client_ahead {
+                #[allow(unused_imports)]
+                use super::super::*;
+                // Override server-side helpers with prev versions
+                #[allow(unused_imports)]
+                use crate::prev::prev_server as server;
+                #[allow(unused_imports)]
+                use crate::prev::prev_build_server as build_server;
+                #[allow(unused_imports)]
+                use crate::prev::prev_start_server as start_server;
+                #[allow(unused_imports)]
+                use crate::prev::PREV_SERVER_CERTS as SERVER_CERTS;
+                #[allow(unused_imports)]
+                use crate::prev::PrevRandom as Random;
+                #[allow(unused_imports)]
+                use crate::prev::prev_tracing_events as tracing_events;
+                #[allow(unused_imports)]
+                use s2n_quic_prev::Server;
+                #[test]
+                fn run() $body
+            }
+
+            mod server_ahead {
+                #[allow(unused_imports)]
+                use super::super::*;
+                // Override client-side helpers with prev versions
+                #[allow(unused_imports)]
+                use crate::prev::prev_client as client;
+                #[allow(unused_imports)]
+                use crate::prev::prev_build_client as build_client;
+                #[allow(unused_imports)]
+                use crate::prev::prev_start_client as start_client;
+                #[allow(unused_imports)]
+                use s2n_quic_prev::Client;
+                #[allow(unused_imports)]
+                use s2n_quic_prev::client::Connect;
+                #[test]
+                fn run() $body
+            }
+        }
+    };
+}
 
 /// A subscriber that panics when a blocklisted event is encountered
 pub struct BlocklistSubscriber {

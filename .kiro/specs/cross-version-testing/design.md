@@ -63,6 +63,32 @@ Note: `s2n-quic-platform` and `s2n-quic-transport` may not need prev versions if
 
 Both versions share the same underlying `bach` simulator, which is version-independent.
 
+### IO Compatibility: Handle Transmute Bridge
+
+Both versions depend on `s2n-quic-platform`, which depends on `bach` for the simulated network. Since both platform crates use `bach = "0.1.0"`, Cargo resolves them to the same `bach` crate. This means `bach::executor::Handle` is the same type in both versions.
+
+However, the platform `Handle` type wraps `bach::executor::Handle` + `network::Buffers` with **private fields**, so we cannot construct a prev `Handle` directly. The solution is a two-part approach:
+
+1. **`Handle::new()` constructor** (added to the current platform crate): Exposes a public constructor `Handle::new(executor, buffers)` and accessors `Handle::executor()`, `Handle::buffers()`. Once this ships, future prev versions will have this constructor available, eliminating the need for unsafe code.
+
+2. **Transmute bridge** (for prev versions that predate the constructor): Since both `Handle` types have identical memory layout (`bach::executor::Handle` + `network::Buffers`), we use `std::mem::transmute` on a cloned handle. Compile-time assertions verify size and alignment match. The clone is critical — it properly increments `Arc` reference counts before the transmute.
+
+```rust
+pub fn to_prev_handle(handle: &Handle) -> prev_io::Handle {
+    const _: () = assert!(
+        std::mem::size_of::<Handle>() == std::mem::size_of::<prev_io::Handle>(),
+        "Handle size mismatch between current and prev versions"
+    );
+    const _: () = assert!(
+        std::mem::align_of::<Handle>() == std::mem::align_of::<prev_io::Handle>(),
+        "Handle alignment mismatch between current and prev versions"
+    );
+    unsafe { std::mem::transmute(handle.clone()) }
+}
+```
+
+**Bach version divergence risk**: If `bach` bumps to a new major version, the current and prev platform crates could resolve to different bach versions. The compile-time size/alignment assertions would catch this immediately. Since `bach` has historically stayed at `0.1.0` and is controlled by the same team, this is a manageable risk. The `Handle::new()` constructor eliminates this risk entirely for future version pairs.
+
 ### How the Macro Works
 
 The key insight is that the macro can **swap the imports** rather than swap function pointers. The test body is pasted three times, each time with different `use` statements that control which version's `Client`, `Server`, and helper functions are in scope.

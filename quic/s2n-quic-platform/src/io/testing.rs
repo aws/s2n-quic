@@ -212,6 +212,24 @@ pub struct Handle {
 }
 
 impl Handle {
+    /// Creates a Handle from an executor handle and network buffers.
+    ///
+    /// This is primarily used for cross-version testing where a Handle
+    /// needs to be constructed from shared bach executor state.
+    pub fn new(executor: executor::Handle, buffers: network::Buffers) -> Self {
+        Self { executor, buffers }
+    }
+
+    /// Returns a reference to the executor handle.
+    pub fn executor(&self) -> &executor::Handle {
+        &self.executor
+    }
+
+    /// Returns a reference to the network buffers.
+    pub fn buffers(&self) -> &network::Buffers {
+        &self.buffers
+    }
+
     pub fn builder(&self) -> Builder {
         Builder {
             handle: self.clone(),

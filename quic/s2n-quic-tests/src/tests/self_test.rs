@@ -6,8 +6,7 @@
 use super::*;
 
 /// Simple end-to-end test
-#[test]
-fn client_server_test() {
+compat_test!(client_server_test {
     let model = Model::default();
     test(model.clone(), |handle| {
         let addr = server(handle, model.clone())?;
@@ -15,7 +14,7 @@ fn client_server_test() {
         Ok(addr)
     })
     .unwrap();
-}
+});
 
 /// Showing that the TxRecorder is working
 #[test]

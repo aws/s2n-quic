@@ -25,18 +25,31 @@ fn blackhole(model: Model, blackhole_duration: Duration) {
     .unwrap();
 }
 
-#[test]
-fn blackhole_success_test() {
+compat_test!(blackhole_success_test {
     let model = Model::default();
 
     let network_delay = Duration::from_millis(1000);
     model.set_delay(network_delay);
 
-    // setting the blackhole time to `network_delay / 2` causes the connection to
-    // succeed
     let blackhole_duration = network_delay / 2;
-    blackhole(model, blackhole_duration);
-}
+
+    test(model.clone(), |handle| {
+        let model_for_spawn = model.clone();
+        spawn(async move {
+            loop {
+                delay(blackhole_duration).await;
+                model_for_spawn.set_drop_rate(1.0);
+                delay(blackhole_duration).await;
+                model_for_spawn.set_drop_rate(0.0);
+            }
+        });
+
+        let addr = server(handle, model.clone())?;
+        client(handle, addr, model.clone(), true)?;
+        Ok(addr)
+    })
+    .unwrap();
+});
 
 #[test]
 #[should_panic]
