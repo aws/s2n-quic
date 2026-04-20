@@ -19,8 +19,7 @@ use super::*;
 /// is dead-locked and will timeout.
 ///
 /// See https://github.com/aws/s2n-quic/issues/1464
-#[test]
-fn local_stream_open_notify_test() {
+compat_test!(local_stream_open_notify_test {
     let model = Model::default();
     test(model.clone(), |handle| {
         let mut server = build_server(handle, model.clone())?;
@@ -59,4 +58,4 @@ fn local_stream_open_notify_test() {
         Ok(())
     })
     .unwrap();
-}
+});

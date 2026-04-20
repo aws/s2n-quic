@@ -7,8 +7,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 /// Ensures tokio `AsyncRead` implementation functions properly
 ///
 /// See https://github.com/aws/s2n-quic/issues/1427
-#[test]
-fn tokio_read_exact_test() {
+compat_test!(tokio_read_exact_test {
     let model = Model::default();
     test(model.clone(), |handle| {
         let server_addr = server(handle, model.clone())?;
@@ -64,4 +63,4 @@ fn tokio_read_exact_test() {
         Ok(())
     })
     .unwrap();
-}
+});
