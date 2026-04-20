@@ -122,7 +122,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionNode<C, L> {
     /// This method is only safe to be called if the `ConnectionNode` is known to be
     /// stored inside a `Arc`.
     unsafe fn arc_from_ref(&self) -> Arc<Self> {
-        // In order to be able to to get a `Arc` we construct a temporary `Arc`
+        // In order to be able to get a `Arc` we construct a temporary `Arc`
         // from it using the `Arc::from_raw` API and clone the `Arc`.
         // The temporary `Arc` must be released without calling `drop`,
         // because this would decrement and thereby invalidate the refcount

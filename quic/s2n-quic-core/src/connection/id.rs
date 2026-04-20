@@ -393,7 +393,7 @@ pub trait Generator {
         None
     }
 
-    /// If true (default), the connection ID used during the the handshake
+    /// If true (default), the connection ID used during the handshake
     /// will be requested to be retired following confirmation of the handshake
     /// completing. This reduces linkability between information exchanged
     /// during and after the handshake.

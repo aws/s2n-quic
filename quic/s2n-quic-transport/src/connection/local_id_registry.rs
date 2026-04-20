@@ -86,7 +86,7 @@ pub struct LocalIdRegistry {
     transmission_interest: Memo<transmission::Interest, RegisteredIds>,
     /// Memoized query to track the number of active CIDs
     active_id_count: Memo<u8, RegisteredIds>,
-    /// If true, the connection ID used during the the handshake will be requested
+    /// If true, the connection ID used during the handshake will be requested
     /// to be retired following confirmation of the handshake completing.
     rotate_handshake_connection_id: bool,
 }

@@ -67,7 +67,7 @@ pub mod slowloris {
         /// Implement `on_supervisor_timeout` to define what action should be taken on the connection
         /// when the `supervisor_timeout` expires. For this example, the connection will be closed
         /// immediately (`supervisor::Outcome::ImmediateClose`) if the number of open connections
-        /// is greater than `CONNECTION_COUNT_THRESHOLD` and the the throughput of the connection
+        /// is greater than `CONNECTION_COUNT_THRESHOLD` and the throughput of the connection
         /// since the last `supervisor_timeout` has dropped below `MIN_THROUGHPUT`.
         fn on_supervisor_timeout(
             &mut self,

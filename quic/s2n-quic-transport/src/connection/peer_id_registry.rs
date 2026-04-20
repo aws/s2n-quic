@@ -65,7 +65,7 @@ pub struct PeerIdRegistry {
     ack_interest: Memo<bool, RegisteredIds>,
     /// Memoized query to track if there is any transmission interest
     transmission_interest: Memo<transmission::Interest, RegisteredIds>,
-    /// If true, the connection ID used during the the handshake will be retired
+    /// If true, the connection ID used during the handshake will be retired
     /// when the peer sends a NEW_CONNECTION_ID frame.
     rotate_handshake_connection_id: bool,
 }

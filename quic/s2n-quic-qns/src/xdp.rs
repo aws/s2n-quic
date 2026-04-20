@@ -263,7 +263,7 @@ impl Xdp {
             }
 
             // we want this future to go until the end of the program so we can keep the BPF
-            // program active on the the NIC.
+            // program active on the NIC.
             core::future::pending::<()>().await;
 
             // retain the bpf program for the duration of execution

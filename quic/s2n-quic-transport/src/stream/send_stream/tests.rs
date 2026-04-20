@@ -358,7 +358,7 @@ fn can_not_enqueue_data_if_max_buffer_size_has_been_reached() {
         &[
             // Checks that we can enqueue more than the maximum buffer size,
             // as long as we are below the flow control window. We subtract 2
-            // in the second instruction so that even the the third instruction
+            // in the second instruction so that even the third instruction
             // would not cause us a rejection based on the flow control size.
             Instruction::EnqueueData(VarInt::from_u32(0), MAX_BUFFER_SIZE - 1, true),
             Instruction::EnqueueData(
@@ -486,7 +486,7 @@ fn multiple_stream_frames_are_sent_in_a_packet() {
         &[
             // Checks that we can enqueue more than the maximum buffer size,
             // as long as we are below the flow control window. We subtract 2
-            // in the second instruction so that even the the third instruction
+            // in the second instruction so that even the third instruction
             // would not cause us a rejection based on the flow control size.
             Instruction::EnqueueData(VarInt::from_u32(0), MAX_BUFFER_SIZE - 1, true),
             Instruction::EnqueueData(

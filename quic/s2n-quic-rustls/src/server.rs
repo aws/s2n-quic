@@ -24,7 +24,7 @@ pub struct Server {
 impl Server {
     /// Build a Server using a custom [rustls::ServerConfig]
     ///
-    /// In addition to necessary configuration, the applications is responsible for correctly
+    /// In addition to necessary configuration, the application is responsible for correctly
     /// setting:
     /// - QUIC compliant application_protocol
     /// - QUIC compliant TLS protocol version

@@ -166,7 +166,7 @@ impl ValueToFrameWriter<application::Error> for StopSendingToFrameWriter {
 }
 
 /// A composite flow controller for receiving data.
-/// The flow controller manages the Streams individual window as well as the
+/// The flow controller manages the Stream's individual window as well as the
 /// connection flow control window.
 #[derive(Debug)]
 pub(super) struct ReceiveStreamFlowController {
@@ -204,10 +204,10 @@ impl ReceiveStreamFlowController {
 
     /// Asserts that the flow control window up to the given offset is available
     ///
-    /// This checks the Streams individual flow control limit as well as the
-    /// connections flow control limit.
-    /// For the connections limit the method will acquire the necessary remaining
-    /// limit from the connections flow controller.
+    /// This checks the Stream's individual flow control limit as well as the
+    /// connection's flow control limit.
+    /// For the connection's limit the method will acquire the necessary remaining
+    /// limit from the connection's flow controller.
     fn acquire_window_up_to(
         &mut self,
         offset: VarInt,
@@ -648,7 +648,7 @@ impl ReceiveStream {
             }
             ReceiveStreamState::Receiving | ReceiveStreamState::Stopping { .. } => {
                 if let Some(actual_size) = actual_size {
-                    // We have to acquire the flow control credits up up to the
+                    // We have to acquire the flow control credits up to the
                     // offset which the peer indicates as the end of the Stream.
                     // This is necessary since the peer will have reserved credits
                     // up to this offset, and we need to send the necessary
