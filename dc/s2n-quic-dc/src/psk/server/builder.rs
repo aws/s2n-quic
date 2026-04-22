@@ -15,7 +15,6 @@ use super::Provider;
 pub struct Builder<
     Event: s2n_quic::provider::event::Subscriber = s2n_quic::provider::event::default::Subscriber,
 > {
-    #[allow(dead_code)]
     pub(crate) event_subscriber: Event,
     pub(crate) data_window: u64,
     pub(crate) initial_data_window: Option<u64>,

@@ -91,7 +91,7 @@ impl Server {
                     let server = server
                         .with_limits(connection_limits)?
                         .with_dc(map.clone())?
-                        .with_event(event)?
+                        .with_event((event, builder.event_subscriber))?
                         .with_tls(tls_materials_provider)?;
                     if let Some(limiter) = builder.endpoint_limits {
                         server.with_endpoint_limits(limiter)?.start()?
@@ -103,7 +103,7 @@ impl Server {
                 let server = server
                     .with_limits(connection_limits)?
                     .with_dc(map.clone())?
-                    .with_event(event)?
+                    .with_event((event, builder.event_subscriber))?
                     .with_tls(tls_materials_provider)?
                     .start()?;
             }
@@ -221,7 +221,7 @@ impl Client {
         let client = client
             .with_limits(connection_limits)?
             .with_dc(map.clone())?
-            .with_event(event)?
+            .with_event((event, builder.event_subscriber))?
             .with_tls(tls_materials_provider)?
             .start()?;
 
