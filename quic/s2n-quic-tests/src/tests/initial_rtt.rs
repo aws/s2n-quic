@@ -7,8 +7,11 @@ use s2n_quic_core::{
     recovery::{DEFAULT_INITIAL_RTT, MIN_RTT},
 };
 
-/// This test demonstrates that setting initial RTT to smaller values than the default
-/// results in more PTO packets being sent based on the smaller initial value.
+// This test demonstrates that setting initial RTT to smaller values than the default
+// results in more PTO packets being sent based on the smaller initial value.
+//
+// Note: This test is client-only (no server) and uses version-specific Limits,
+// so it is not wrapped in compat_test!.
 #[test]
 fn set_initial_rtt() {
     let pto_count = test_with_initial_rtt(DEFAULT_INITIAL_RTT);

@@ -55,12 +55,8 @@ fn rotate_handshake_test(
 #[test]
 fn server_enabled_client_enabled() {
     let (server_events, client_events) = rotate_handshake_test(true, true);
-
-    // Both server and client request to retire the handshake CID
     assert_retire_prior_to(&server_events, 1);
     assert_retire_prior_to(&client_events, 1);
-
-    // Both server and client retire the handshake CID as requested
     assert_retire_connection_id_count(&server_events, 1);
     assert_retire_connection_id_count(&client_events, 1);
 }
@@ -68,13 +64,8 @@ fn server_enabled_client_enabled() {
 #[test]
 fn server_enabled_client_disabled() {
     let (server_events, client_events) = rotate_handshake_test(true, false);
-
-    // Only the server requests to retire the handshake CID
     assert_retire_prior_to(&server_events, 1);
     assert_retire_prior_to(&client_events, 0);
-
-    // The client retires the handshake CID as requested.
-    // The server still retires the handshake CID because it had rotate_handshake_connection_id enabled
     assert_retire_connection_id_count(&server_events, 1);
     assert_retire_connection_id_count(&client_events, 1);
 }
@@ -82,13 +73,8 @@ fn server_enabled_client_disabled() {
 #[test]
 fn server_disabled_client_enabled() {
     let (server_events, client_events) = rotate_handshake_test(false, true);
-
-    // Only the client requests to retire the handshake CID
     assert_retire_prior_to(&server_events, 0);
     assert_retire_prior_to(&client_events, 1);
-
-    // The server retires the handshake CID as requested.
-    // The client still retires the handshake CID because it had rotate_handshake_connection_id enabled
     assert_retire_connection_id_count(&server_events, 1);
     assert_retire_connection_id_count(&client_events, 1);
 }
@@ -96,12 +82,8 @@ fn server_disabled_client_enabled() {
 #[test]
 fn server_disabled_client_disabled() {
     let (server_events, client_events) = rotate_handshake_test(false, false);
-
-    // Neither server nor client requests to retire the handshake CID
     assert_retire_prior_to(&server_events, 0);
     assert_retire_prior_to(&client_events, 0);
-
-    // No connection IDs are retired
     assert_retire_connection_id_count(&server_events, 0);
     assert_retire_connection_id_count(&client_events, 0);
 }

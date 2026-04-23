@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use s2n_quic_core::connection::limits::{
-    ConnectionInfo, HandshakeInfo, Limiter, Limits, UpdatableLimits,
-};
 
-#[test]
-fn connection_limits() {
+compat_test!(connection_limits {
+    use server_core::connection::limits::{
+        ConnectionInfo, HandshakeInfo, Limiter, Limits, UpdatableLimits,
+    };
+
     struct LimitsProvider;
     impl Limiter for LimitsProvider {
         fn on_connection(&mut self, info: &ConnectionInfo) -> Limits {
@@ -32,23 +32,23 @@ fn connection_limits() {
     let model = Model::default();
     test(model.clone(), |handle| {
         let server = Server::builder()
-            .with_io(handle.builder().build()?)?
-            .with_event(tracing_events(true, model.clone()))?
+            .with_io(server_handle(handle).builder().build()?)?
+            .with_event(server_tracing_events(true, model.clone()))?
             .with_tls(SERVER_CERTS)?
-            .with_event(tracing_events(true, model.clone()))?
+            .with_event(server_tracing_events(true, model.clone()))?
             .with_limits(LimitsProvider)?
             .start()?;
 
         let client = Client::builder()
-            .with_io(handle.builder().build().unwrap())?
-            .with_event(tracing_events(true, model.clone()))?
+            .with_io(client_handle(handle).builder().build().unwrap())?
+            .with_event(client_tracing_events(true, model.clone()))?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(tracing_events(true, model.clone()))?
+            .with_event(client_tracing_events(true, model.clone()))?
             .start()?;
         let addr = start_server(server)?;
-        start_client(client, addr, Data::new(1000))?;
+        start_client(client, addr, client_core::stream::testing::Data::new(1000))?;
 
         Ok(addr)
     })
     .unwrap();
-}
+});

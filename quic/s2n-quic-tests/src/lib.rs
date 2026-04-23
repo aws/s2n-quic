@@ -87,6 +87,23 @@ macro_rules! compat_test {
                 use s2n_quic::provider::dc as server_dc_provider;
                 #[allow(unused_imports)]
                 use s2n_quic::provider::dc as client_dc_provider;
+                // Provider aliases for version-specific builder types
+                #[allow(unused_imports)]
+                use s2n_quic::provider as server_provider;
+                #[allow(unused_imports)]
+                use s2n_quic::provider as client_provider;
+                #[allow(unused_imports)]
+                use s2n_quic_core as server_core;
+                #[allow(unused_imports)]
+                use s2n_quic_core as client_core;
+                #[allow(unused_imports)]
+                use s2n_quic_core::crypto::tls::testing::certificates as server_certificates;
+                #[allow(unused_imports)]
+                use s2n_quic_core::crypto::tls::testing::certificates as client_certificates;
+                #[allow(unused_imports)]
+                use crate::recorder::current as server_recorder;
+                #[allow(unused_imports)]
+                use crate::recorder::current as client_recorder;
                 #[test]
                 fn run() $body
             }
@@ -134,6 +151,23 @@ macro_rules! compat_test {
                 use s2n_quic_prev::provider::dc as server_dc_provider;
                 #[allow(unused_imports)]
                 use s2n_quic::provider::dc as client_dc_provider;
+                // Provider aliases: server from prev, client from current
+                #[allow(unused_imports)]
+                use s2n_quic_prev::provider as server_provider;
+                #[allow(unused_imports)]
+                use s2n_quic::provider as client_provider;
+                #[allow(unused_imports)]
+                use s2n_quic_core_prev as server_core;
+                #[allow(unused_imports)]
+                use s2n_quic_core as client_core;
+                #[allow(unused_imports)]
+                use s2n_quic_core_prev::crypto::tls::testing::certificates as server_certificates;
+                #[allow(unused_imports)]
+                use s2n_quic_core::crypto::tls::testing::certificates as client_certificates;
+                #[allow(unused_imports)]
+                use crate::recorder::prev as server_recorder;
+                #[allow(unused_imports)]
+                use crate::recorder::current as client_recorder;
                 #[test]
                 fn run() $body
             }
@@ -177,6 +211,23 @@ macro_rules! compat_test {
                 use s2n_quic::provider::dc as server_dc_provider;
                 #[allow(unused_imports)]
                 use s2n_quic_prev::provider::dc as client_dc_provider;
+                // Provider aliases: server from current, client from prev
+                #[allow(unused_imports)]
+                use s2n_quic::provider as server_provider;
+                #[allow(unused_imports)]
+                use s2n_quic_prev::provider as client_provider;
+                #[allow(unused_imports)]
+                use s2n_quic_core as server_core;
+                #[allow(unused_imports)]
+                use s2n_quic_core_prev as client_core;
+                #[allow(unused_imports)]
+                use s2n_quic_core::crypto::tls::testing::certificates as server_certificates;
+                #[allow(unused_imports)]
+                use s2n_quic_core_prev::crypto::tls::testing::certificates as client_certificates;
+                #[allow(unused_imports)]
+                use crate::recorder::current as server_recorder;
+                #[allow(unused_imports)]
+                use crate::recorder::prev as client_recorder;
                 #[test]
                 fn run() $body
             }

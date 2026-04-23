@@ -3,32 +3,29 @@
 
 use super::*;
 
-/// Ensures PTO backoff is reset once per space discard
-///
-/// See https://github.com/aws/s2n-quic/pull/1717
-#[test]
-fn increasing_pto_count_under_loss() {
+// Ensures PTO backoff is reset once per space discard
+//
+// See https://github.com/aws/s2n-quic/pull/1717
+compat_test!(increasing_pto_count_under_loss {
     let delay_time = Duration::from_millis(10);
 
     let model = Model::default();
     model.set_delay(delay_time);
-    let subscriber = recorder::Pto::new();
+    let subscriber = client_recorder::Pto::new();
     let pto_events = subscriber.events();
 
     test(model.clone(), |handle| {
         let model_for_spawn = model.clone();
         spawn(async move {
-            // allow for 1 RTT worth of data and then drop all packet after
-            // the client gets an initial ACK from the server
             delay(delay_time * 2).await;
             model_for_spawn.set_drop_rate(1.0);
         });
 
         let mut server = Server::builder()
-            .with_io(handle.builder().build()?)?
+            .with_io(server_handle(handle).builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event(tracing_events(true, model.clone()))?
-            .with_random(Random::with_seed(456))?
+            .with_event(server_tracing_events(true, model.clone()))?
+            .with_random(ServerRandom::with_seed(456))?
             .start()?;
 
         let addr = server.local_addr()?;
@@ -40,10 +37,10 @@ fn increasing_pto_count_under_loss() {
         });
 
         let client = Client::builder()
-            .with_io(handle.builder().build().unwrap())?
-            .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(true, model.clone()), subscriber))?
-            .with_random(Random::with_seed(456))?
+            .with_io(client_handle(handle).builder().build().unwrap())?
+            .with_tls(client_certificates::CERT_PEM)?
+            .with_event((client_tracing_events(true, model.clone()), subscriber))?
+            .with_random(ClientRandom::with_seed(456))?
             .start()?;
 
         primary::spawn(async move {
@@ -60,25 +57,20 @@ fn increasing_pto_count_under_loss() {
 
     let mut pto_events = pto_events.lock().unwrap();
 
-    // assert that sufficient recovery events were captured
     let pto_len = pto_events.len();
     assert!(pto_len > 10);
-    // the last recovery event is fired after we discard the handshake space so ignore it
     pto_events.truncate(pto_len - 1);
 
     let pto_count: u32 = *pto_events
         .iter()
         .reduce(|prev, new| {
-            // assert that the value is monotonically increasing
             assert!(new >= prev, "prev_value {prev}, new_value {new}");
             new
         })
         .unwrap();
 
-    // assert that the final pto_count increased to some large value over the
-    // duration of the test
     assert!(
         pto_count > 5,
         "delay: {delay_time:?}. pto_count: {pto_count}"
     );
-}
+});
