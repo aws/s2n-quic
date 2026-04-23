@@ -271,6 +271,9 @@ pub(crate) struct HandshakeQueueConfig {
     /// Upper bound on the jitter delay after a successful handshake before allowing
     /// another handshake with the same peer.
     pub(crate) success_jitter: Duration,
+    /// Upper bound on the jitter delay after a failed handshake before allowing
+    /// another handshake with the same peer.
+    pub(crate) error_jitter: Duration,
     /// Maximum number of TLS handshakes that can be started concurrently.
     ///
     /// TLS handshakes have high CPU cost (~1ms) which stalls out the endpoint, so we
@@ -282,14 +285,17 @@ pub(crate) struct HandshakeQueueConfig {
     /// Keeping this bounded helps avoid unbounded work ongoing in s2n-quic (which
     /// implies unbounded packet transmit/receive work).
     pub(crate) inflight_limit: usize,
+    pub(crate) await_dedup_removal: bool,
 }
 
 impl Default for HandshakeQueueConfig {
     fn default() -> Self {
         Self {
             success_jitter: Duration::from_secs(60),
+            error_jitter: Duration::from_secs(120),
             start_limit: 5,
             inflight_limit: 750,
+            await_dedup_removal: false,
         }
     }
 }
@@ -299,15 +305,32 @@ struct HandshakeQueue {
     limiter_start: Semaphore,
     limiter_inflight: Arc<Semaphore>,
     success_jitter: Duration,
+    error_jitter: Duration,
+    await_dedup_removal: bool,
     hasher: std::collections::hash_map::RandomState,
 }
 
 impl HandshakeQueue {
     fn new(config: HandshakeQueueConfig) -> Self {
         HandshakeQueue {
+            // The "start" limiter bounds TLS handshake concurrency.
+            //
+            // TLS handshakes have high CPU cost (~1ms) which stalls out the endpoint, we don't
+            // want too many of those to build up at the same time since that stalls out the
+            // endpoint, increasing our baseline latency ~linearly with increases here. For
+            // example, 5 here translates to 5ms avg handshake latency in our benchmarks. Lowering
+            // it to 2-3 reduces our latencies to the expected 2-3ms (now hitting lowest possible
+            // cost for the CPU work needed for a handshake).
             limiter_start: Semaphore::new(config.start_limit),
+            // The inflight limiter bounds the total number of connections we have open. Keeping
+            // that bounded helps avoid unbounded work ongoing in s2n-quic (which implies unbounded
+            // packet transmit/receive work), and helps our benchmarks exercise the maximum
+            // concurrency within s2n-quic. We haven't found a particular stress test for which is
+            // meaningful yet though.
             limiter_inflight: Arc::new(Semaphore::new(config.inflight_limit)),
             success_jitter: config.success_jitter,
+            error_jitter: config.error_jitter,
+            await_dedup_removal: config.await_dedup_removal,
             inner: Default::default(),
             hasher: Default::default(),
         }
@@ -449,7 +472,7 @@ impl HandshakeQueue {
             // This task also owns pruning our de-duplication tracking.
             let this = self.clone();
             let map_clone = map.clone();
-            tokio::spawn(async move {
+            let cleanup = tokio::spawn(async move {
                 // Use the same deadline for MTU probing - any remaining time from the 10s budget
                 if tokio::time::timeout_at(
                     deadline,
@@ -485,6 +508,10 @@ impl HandshakeQueue {
                 this.remove_entry(&entry);
             });
 
+            if self.await_dedup_removal {
+                let _ = cleanup.await;
+            }
+
             Ok::<_, io::Error>(())
         };
 
@@ -498,31 +525,38 @@ impl HandshakeQueue {
                     // eventually, but keeping it for parity for now.
                     tracing::error!("handshake with {peer} failed: {e}");
 
-                    let this = self.clone();
-                    tokio::spawn(async move {
-                        // Delay deleting the entry by a random time, up to 2 minutes.
-                        //
-                        // This avoids aggressively reconnecting to a given peer if handshakes
-                        // fail (instead we keep returning the cached error). This is good both for
-                        // fast failure (e.g., certificate issues) and for slow errors (timeouts).
-                        // In the first case, it's very unlikely the issue will be fixed within
-                        // seconds, so backing off is natural to keep aggregate handshake volume
-                        // more bounded. For the latter, backing off avoids generating undue load
-                        // on the network or server. The specific duration is not chosen
-                        // with any particular rationale, mostly intended to be a relatively small
-                        // amount (to avoid significantly extending recovery times if the server
-                        // was temporarily overloaded) while still significantly reducing handshake
-                        // volume (>60x for fast-failing handshakes and >10x for timeouts).
-                        let duration = {
-                            let mut rng = rand::rng();
-                            rng.random_range(1000..120_000)
-                        };
-                        tokio::time::sleep(Duration::from_millis(duration)).await;
+                    // Delay deleting the entry by a random time, up to 2 minutes.
+                    //
+                    // This avoids aggressively reconnecting to a given peer if handshakes
+                    // fail (instead we keep returning the cached error). This is good both for
+                    // fast failure (e.g., certificate issues) and for slow errors (timeouts).
+                    // In the first case, it's very unlikely the issue will be fixed within
+                    // seconds, so backing off is natural to keep aggregate handshake volume
+                    // more bounded. For the latter, backing off avoids generating undue load
+                    // on the network or server. The specific duration is not chosen
+                    // with any particular rationale, mostly intended to be a relatively small
+                    // amount (to avoid significantly extending recovery times if the server
+                    // was temporarily overloaded) while still significantly reducing handshake
+                    // volume (>60x for fast-failing handshakes and >10x for timeouts).
+                    if self.error_jitter.is_zero() {
+                        self.remove_entry(&entry3);
+                    } else {
+                        let this = self.clone();
+                        let error_jitter = self.error_jitter;
+                        let cleanup = tokio::spawn(async move {
+                            let duration = {
+                                let mut rng = rand::rng();
+                                let min = 1000.min(error_jitter.as_millis() as u64);
+                                rng.random_range(min..=error_jitter.as_millis() as u64)
+                            };
+                            tokio::time::sleep(Duration::from_millis(duration)).await;
+                            this.remove_entry(&entry3);
+                        });
 
-                        // If the handshake fails, we also remove the entry from the map.
-                        // This permits another handshake to start for the same peer.
-                        this.remove_entry(&entry3);
-                    });
+                        if self.await_dedup_removal {
+                            let _ = cleanup.await;
+                        }
+                    }
 
                     Err(HandshakeFailed(e))
                 } else {
