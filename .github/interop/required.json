@@ -557,6 +557,7 @@
     ],
     "mvfst": [],
     "neqo": [
+      "client",
       "server"
     ],
     "ngtcp2": [
@@ -606,6 +607,7 @@
     "msquic": [],
     "mvfst": [],
     "neqo": [
+      "client",
       "server"
     ],
     "ngtcp2": [
@@ -699,6 +701,7 @@
     "msquic": [],
     "mvfst": [],
     "neqo": [
+      "client",
       "server"
     ],
     "ngtcp2": [
