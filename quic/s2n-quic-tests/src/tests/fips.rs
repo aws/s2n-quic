@@ -2,61 +2,63 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use s2n_quic::provider::tls::default::{self as tls, security};
 
-fn test_policy(policy: &security::Policy) {
+compat_test!(default_fips_test {
+    use server_provider::tls::default as server_tls;
+    use client_provider::tls::default as client_tls;
+
     let model = Model::default();
 
+    // TODO switch this to `default_fips` when the policy supports TLS 1.3
+    //      see https://github.com/aws/s2n-quic/issues/2247
+    let server_policy =
+        server_tls::security::Policy::from_version("20230317").unwrap();
+    let client_policy =
+        client_tls::security::Policy::from_version("20230317").unwrap();
+
     test(model.clone(), |handle| {
-        let server = tls::Server::from_loader({
-            let mut builder = tls::config::Config::builder();
+        let server = server_tls::Server::from_loader({
+            let mut builder = server_tls::config::Config::builder();
             builder
                 .enable_quic()?
                 .set_application_protocol_preference(["h3"])?
-                .set_security_policy(policy)?
+                .set_security_policy(&server_policy)?
                 .load_pem(
-                    certificates::CERT_PEM.as_bytes(),
-                    certificates::KEY_PEM.as_bytes(),
+                    server_certificates::CERT_PEM.as_bytes(),
+                    server_certificates::KEY_PEM.as_bytes(),
                 )?;
 
             builder.build()?
         });
 
         let server = Server::builder()
-            .with_io(handle.builder().build()?)?
+            .with_io(server_handle(handle).builder().build()?)?
             .with_tls(server)?
-            .with_event(tracing_events(true, model.clone()))?
-            .with_random(Random::with_seed(456))?
+            .with_event(server_tracing_events(true, model.clone()))?
+            .with_random(ServerRandom::with_seed(456))?
             .start()?;
 
-        let client = tls::Client::from_loader({
-            let mut builder = tls::config::Config::builder();
+        let client = client_tls::Client::from_loader({
+            let mut builder = client_tls::config::Config::builder();
             builder
                 .enable_quic()?
                 .set_application_protocol_preference(["h3"])?
-                .set_security_policy(policy)?
-                .trust_pem(certificates::CERT_PEM.as_bytes())?;
+                .set_security_policy(&client_policy)?
+                .trust_pem(client_certificates::CERT_PEM.as_bytes())?;
 
             builder.build()?
         });
 
         let client = Client::builder()
-            .with_io(handle.builder().build()?)?
+            .with_io(client_handle(handle).builder().build()?)?
             .with_tls(client)?
-            .with_event(tracing_events(true, model.clone()))?
-            .with_random(Random::with_seed(456))?
+            .with_event(client_tracing_events(true, model.clone()))?
+            .with_random(ClientRandom::with_seed(456))?
             .start()?;
 
         let addr = start_server(server)?;
-        start_client(client, addr, Data::new(1000))?;
+        start_client(client, addr, client_core::stream::testing::Data::new(1000))?;
         Ok(addr)
     })
     .unwrap();
-}
-
-#[test]
-fn default_fips_test() {
-    // TODO switch this to `default_fips` when the policy supports TLS 1.3
-    //      see https://github.com/aws/s2n-quic/issues/2247
-    test_policy(&security::Policy::from_version("20230317").unwrap());
-}
+});

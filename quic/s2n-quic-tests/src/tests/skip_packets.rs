@@ -14,22 +14,21 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-#[test]
-fn optimistic_ack_mitigation() {
+compat_test!(optimistic_ack_mitigation {
     let model = Model::default();
     model.set_delay(Duration::from_millis(50));
     const LEN: usize = 1_000_000;
 
-    let server_subscriber = recorder::PacketSkipped::new();
+    let server_subscriber = server_recorder::PacketSkipped::new();
     let server_events = server_subscriber.events();
-    let client_subscriber = recorder::PacketSkipped::new();
+    let client_subscriber = client_recorder::PacketSkipped::new();
     let client_events = server_subscriber.events();
     test(model.clone(), |handle| {
         let mut server = Server::builder()
-            .with_io(handle.builder().build()?)?
+            .with_io(server_handle(handle).builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(true, model.clone()), server_subscriber))?
-            .with_random(Random::with_seed(456))?
+            .with_event((server_tracing_events(true, model.clone()), server_subscriber))?
+            .with_random(ServerRandom::with_seed(456))?
             .start()?;
 
         let addr = server.local_addr()?;
@@ -41,10 +40,10 @@ fn optimistic_ack_mitigation() {
         });
 
         let client = Client::builder()
-            .with_io(handle.builder().build().unwrap())?
-            .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(true, model.clone()), client_subscriber))?
-            .with_random(Random::with_seed(456))?
+            .with_io(client_handle(handle).builder().build().unwrap())?
+            .with_tls(client_certificates::CERT_PEM)?
+            .with_event((client_tracing_events(true, model.clone()), client_subscriber))?
+            .with_random(ClientRandom::with_seed(456))?
             .start()?;
 
         primary::spawn(async move {
@@ -70,7 +69,7 @@ fn optimistic_ack_mitigation() {
         .filter(|reason| {
             matches!(
                 reason,
-                events::PacketSkipReason::OptimisticAckMitigation { .. }
+                server_core::event::api::PacketSkipReason::OptimisticAckMitigation { .. }
             )
         })
         .count();
@@ -79,9 +78,11 @@ fn optimistic_ack_mitigation() {
         .unwrap()
         .iter()
         .filter(|reason| {
+            // client_events is actually cloned from server_subscriber.events() in the
+            // original code, so it uses the server's event type
             matches!(
                 reason,
-                events::PacketSkipReason::OptimisticAckMitigation { .. }
+                server_core::event::api::PacketSkipReason::OptimisticAckMitigation { .. }
             )
         })
         .count();
@@ -93,13 +94,12 @@ fn optimistic_ack_mitigation() {
     // unrelated changes. The important thing is that both numbers are non-zero.
     assert_eq!(server_skip_count, 5);
     assert_eq!(client_skip_count, 5);
-}
+});
 
-// Mimic an Optimistic Ack attack and confirm the connection is closed with
-// the appropriate error.
-//
-// Use the SkipSubscriber to record the skipped packet_number and then use
-// the SkipInterceptor to inject an ACK for that packet.
+// NOTE: detect_optimistic_ack uses SkipSubscriber and SkipInterceptor which implement
+// version-specific traits (s2n_quic_core::event::Subscriber, s2n_quic_core::packet::interceptor::Interceptor).
+// These cannot be trivially converted to compat_test! since the trait impls are tied to the
+// current version's types.
 #[test]
 fn detect_optimistic_ack() {
     let model = Model::default();

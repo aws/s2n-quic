@@ -51,6 +51,9 @@ compat_test!(blackhole_success_test {
     .unwrap();
 });
 
+// NOTE: blackhole_failure_test uses the local `blackhole` fn which calls
+// crate-level `server`/`client` (current version only). The `#[should_panic]`
+// attribute is not compatible with compat_test! expansion, so this stays as-is.
 #[test]
 #[should_panic]
 fn blackhole_failure_test() {

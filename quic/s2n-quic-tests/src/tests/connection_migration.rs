@@ -9,6 +9,9 @@ use s2n_quic_core::{
     path::{LocalAddress, RemoteAddress},
 };
 
+// NOTE: run_test uses io::Socket and on_socket which are version-specific IO testing
+// infrastructure. The rebind tests (ip_rebind_test, port_rebind_test, ip_and_port_rebind_test)
+// use this function and cannot be trivially converted to compat_test!.
 fn run_test<F>(mut on_rebind: F)
 where
     F: FnMut(SocketAddr) -> SocketAddr + Send + 'static,
@@ -103,6 +106,9 @@ where
 
 /// Ensures that a client that changes its port immediately after
 /// sending a handshake packet that completes the handshake succeeds.
+///
+/// NOTE: Uses RebindPortBeforeLastHandshakePacket interceptor which implements
+/// version-specific Interceptor trait, so this stays as a plain #[test].
 #[test]
 fn rebind_after_handshake_confirmed() {
     let model = Model::default();
@@ -358,15 +364,11 @@ fn pto_backoff_exceeding_max_value_closes_connection() {
 
             // Client receive will error when PTO overflows
             primary::spawn(async move {
-                // Use this loop to capture PtoOverflow errors
                 loop {
                     match recv.receive().await {
                         Ok(Some(chunk)) => {
                             recv_data.receive(&[chunk]);
                         }
-                        // The test will not branch into this block.
-                        // PTO will overflow while client is receiving data.
-                        // That error will be captured by the Err block.
                         Ok(None) => {
                             break;
                         }

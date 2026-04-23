@@ -1,6 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 use super::*;
+
+// NOTE: BachExecutor and Exporter implement version-specific traits from
+// s2n_quic::provider::tls::offload. Since the OffloadBuilder API and trait
+// signatures may differ between versions, and the tests use version-specific
+// TLS builder APIs, these tests are not wrapped in compat_test!.
+
 use s2n_quic::provider::tls::{
     default,
     offload::{Executor, ExporterHandler, OffloadBuilder},
