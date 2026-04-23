@@ -104,6 +104,12 @@ macro_rules! compat_test {
                 use crate::recorder::current as server_recorder;
                 #[allow(unused_imports)]
                 use crate::recorder::current as client_recorder;
+                #[allow(unused_imports)]
+                #[cfg(not(target_os = "windows"))]
+                use crate::build_server_mtls_provider as server_build_mtls_provider;
+                #[allow(unused_imports)]
+                #[cfg(not(target_os = "windows"))]
+                use crate::build_client_mtls_provider as client_build_mtls_provider;
                 #[test]
                 fn run() $body
             }
@@ -168,6 +174,12 @@ macro_rules! compat_test {
                 use crate::recorder::prev as server_recorder;
                 #[allow(unused_imports)]
                 use crate::recorder::current as client_recorder;
+                #[allow(unused_imports)]
+                #[cfg(not(target_os = "windows"))]
+                use crate::prev::prev_build_server_mtls_provider as server_build_mtls_provider;
+                #[allow(unused_imports)]
+                #[cfg(not(target_os = "windows"))]
+                use crate::build_client_mtls_provider as client_build_mtls_provider;
                 #[test]
                 fn run() $body
             }
@@ -228,6 +240,12 @@ macro_rules! compat_test {
                 use crate::recorder::current as server_recorder;
                 #[allow(unused_imports)]
                 use crate::recorder::prev as client_recorder;
+                #[allow(unused_imports)]
+                #[cfg(not(target_os = "windows"))]
+                use crate::build_server_mtls_provider as server_build_mtls_provider;
+                #[allow(unused_imports)]
+                #[cfg(not(target_os = "windows"))]
+                use crate::prev::prev_build_client_mtls_provider as client_build_mtls_provider;
                 #[test]
                 fn run() $body
             }

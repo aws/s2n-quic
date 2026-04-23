@@ -386,3 +386,41 @@ pub fn as_prev_handle(
 ) -> s2n_quic_prev::provider::io::testing::Handle {
     to_prev_handle(handle)
 }
+
+// =============================================================================
+// Previous version mTLS helpers
+// =============================================================================
+
+#[cfg(not(target_os = "windows"))]
+pub mod prev_mtls {
+    use s2n_quic_core_prev::crypto::tls::testing::certificates as prev_certificates;
+    use s2n_quic_prev::provider::tls;
+
+    type Result<T = (), E = Box<dyn 'static + std::error::Error>> = core::result::Result<T, E>;
+
+    pub fn prev_build_client_mtls_provider(ca_cert: &str) -> Result<tls::default::Client> {
+        let tls = tls::default::Client::builder()
+            .with_certificate(ca_cert)?
+            .with_client_identity(
+                prev_certificates::MTLS_CLIENT_CERT,
+                prev_certificates::MTLS_CLIENT_KEY,
+            )?
+            .build()?;
+        Ok(tls)
+    }
+
+    pub fn prev_build_server_mtls_provider(ca_cert: &str) -> Result<tls::default::Server> {
+        let tls = tls::default::Server::builder()
+            .with_certificate(
+                prev_certificates::MTLS_SERVER_CERT,
+                prev_certificates::MTLS_SERVER_KEY,
+            )?
+            .with_client_authentication()?
+            .with_trusted_certificate(ca_cert)?
+            .build()?;
+        Ok(tls)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub use prev_mtls::*;
