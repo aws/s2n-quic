@@ -15,7 +15,10 @@ use std::net::ToSocketAddrs;
 
 /// This test ensures the PTO timer in the Handshake space is armed even
 /// when the client does not otherwise receive or send any handshake
-/// packets
+/// packets.
+///
+/// NOTE: Uses DropHandshakeTx interceptor (implements version-specific Interceptor trait)
+/// on the server, so this stays as a plain #[test].
 #[test]
 fn handshake_pto_timer_is_armed() {
     let model = Model::default();
@@ -97,13 +100,12 @@ fn handshake_pto_timer_is_armed() {
 }
 
 /// Test that configuring PTO jitter results in PTOs sent at different timestamps
-#[test]
-fn pto_jitter() {
+compat_test!(pto_jitter {
     let model = Model::default();
-    let pto_subscriber = recorder::Pto::new();
-    let pto_subscriber_jitter = recorder::Pto::new();
-    let datagram_sent_subscriber = DatagramSentTime::new();
-    let datagram_sent_subscriber_jitter = DatagramSentTime::new();
+    let pto_subscriber = client_recorder::Pto::new();
+    let pto_subscriber_jitter = client_recorder::Pto::new();
+    let datagram_sent_subscriber = client_recorder::DatagramSentTime::new();
+    let datagram_sent_subscriber_jitter = client_recorder::DatagramSentTime::new();
     let pto_events = pto_subscriber.events();
     let pto_events_jitter = pto_subscriber_jitter.events();
     let datagram_sent_events = datagram_sent_subscriber.events();
@@ -116,13 +118,14 @@ fn pto_jitter() {
         let addr = "127.0.0.1:443".to_socket_addrs()?.next().unwrap();
 
         // Allow the handshake to go on for longer to allow for more PTO probes to be sent
-        let limits = Limits::new().with_max_handshake_duration(Duration::from_secs(70))?;
+        let limits = client_provider::limits::Limits::new()
+            .with_max_handshake_duration(Duration::from_secs(70))?;
         let client_no_jitter = Client::builder()
-            .with_io(handle.builder().build().unwrap())?
-            .with_tls(certificates::CERT_PEM)?
+            .with_io(client_handle(handle).builder().build().unwrap())?
+            .with_tls(client_certificates::CERT_PEM)?
             .with_limits(limits)?
             .with_event((
-                (tracing_events(true, model.clone()), pto_subscriber),
+                (client_tracing_events(true, model.clone()), pto_subscriber),
                 datagram_sent_subscriber,
             ))?
             .start()?;
@@ -133,18 +136,18 @@ fn pto_jitter() {
         });
 
         // Configure 50% jitter
-        let limits = Limits::new()
+        let limits = client_provider::limits::Limits::new()
             .with_pto_jitter_percentage(50)?
             .with_max_handshake_duration(Duration::from_secs(70))?;
         let client_with_jitter = Client::builder()
-            .with_io(handle.builder().build().unwrap())?
-            .with_tls(certificates::CERT_PEM)?
+            .with_io(client_handle(handle).builder().build().unwrap())?
+            .with_tls(client_certificates::CERT_PEM)?
             .with_limits(limits)?
             .with_event((
-                (tracing_events(true, model.clone()), pto_subscriber_jitter),
+                (client_tracing_events(true, model.clone()), pto_subscriber_jitter),
                 datagram_sent_subscriber_jitter,
             ))?
-            .with_random(Random::with_seed(123))?
+            .with_random(ClientRandom::with_seed(123))?
             .start()?;
 
         primary::spawn(async move {
@@ -205,7 +208,7 @@ fn pto_jitter() {
         assert!(time_since_last_jittered >= min_expected_jittered);
         assert!(time_since_last_jittered <= max_expected_jittered);
     }
-}
+});
 
 /// Drops all outgoing handshake packets
 struct DropHandshakeTx;
@@ -221,44 +224,5 @@ impl Interceptor for DropHandshakeTx {
         if packet.number.space().is_handshake() {
             payload.clear();
         }
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct DatagramSentTime {
-    pub events: Arc<Mutex<Vec<Duration>>>,
-}
-
-impl DatagramSentTime {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn events(&self) -> Arc<Mutex<Vec<Duration>>> {
-        self.events.clone()
-    }
-}
-impl events::Subscriber for DatagramSentTime {
-    type ConnectionContext = DatagramSentTime;
-
-    fn create_connection_context(
-        &mut self,
-        _meta: &events::ConnectionMeta,
-        _info: &events::ConnectionInfo,
-    ) -> Self::ConnectionContext {
-        self.clone()
-    }
-
-    fn on_datagram_sent(
-        &mut self,
-        context: &mut Self::ConnectionContext,
-        meta: &ConnectionMeta,
-        _event: &events::DatagramSent,
-    ) {
-        context
-            .events
-            .lock()
-            .unwrap()
-            .push(meta.timestamp.duration_since_start());
     }
 }

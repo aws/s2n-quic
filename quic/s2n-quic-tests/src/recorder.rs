@@ -4,6 +4,7 @@
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 /// Version-independent enum for packet drop reasons.
@@ -87,6 +88,52 @@ macro_rules! define_recorders {
                             let store = $store;
                             let mut buffer = context.events.lock().unwrap();
                             store(event, &mut buffer);
+                        }
+                    }
+                };
+                // Variant that passes meta to the store closure
+                (with_meta, $sub:ident, $event:ident, $method:ident, $storage:ty, $store:expr) => {
+                    #[derive(Clone, Default)]
+                    pub struct $sub {
+                        pub events: Arc<Mutex<Vec<$storage>>>,
+                    }
+
+                    #[allow(dead_code)]
+                    impl $sub {
+                        pub fn new() -> Self {
+                            Self::default()
+                        }
+
+                        pub fn events(&self) -> Arc<Mutex<Vec<$storage>>> {
+                            self.events.clone()
+                        }
+
+                        pub fn any<F: FnMut(&$storage) -> bool>(&self, f: F) -> bool {
+                            let events = self.events.lock().unwrap();
+                            events.iter().any(f)
+                        }
+                    }
+
+                    impl events::Subscriber for $sub {
+                        type ConnectionContext = $sub;
+
+                        fn create_connection_context(
+                            &mut self,
+                            _meta: &events::ConnectionMeta,
+                            _info: &events::ConnectionInfo,
+                        ) -> Self::ConnectionContext {
+                            self.clone()
+                        }
+
+                        fn $method(
+                            &mut self,
+                            context: &mut Self::ConnectionContext,
+                            meta: &events::ConnectionMeta,
+                            event: &events::$event,
+                        ) {
+                            let store = $store;
+                            let mut buffer = context.events.lock().unwrap();
+                            store(meta, event, &mut buffer);
                         }
                     }
                 };
@@ -240,6 +287,19 @@ macro_rules! define_recorders {
                  storage: &mut Vec<SocketAddr>| {
                     let addr = event.remote_addr.to_string().parse().unwrap();
                     storage.push(addr);
+                }
+            );
+
+            event_recorder!(
+                with_meta,
+                DatagramSentTime,
+                DatagramSent,
+                on_datagram_sent,
+                Duration,
+                |meta: &events::ConnectionMeta,
+                 _event: &events::DatagramSent,
+                 storage: &mut Vec<Duration>| {
+                    storage.push(meta.timestamp.duration_since_start());
                 }
             );
         }
