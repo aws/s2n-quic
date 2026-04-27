@@ -290,6 +290,16 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
             match session_info.session.poll(&mut context)? {
                 Poll::Ready(_success) => {
+                    if let Some(context) = self.tls_context.take() {
+                        if let Ok(inner) = context.downcast::<(s2n_quic_core::stateless_reset::Token, Box<dyn Any + Send>)>() {
+                            let (token, context) = *inner;
+                            self.application
+                                .as_mut()
+                                .unwrap()
+                                .dc_manager
+                                .on_token(context, token, publisher);
+                        }
+                    }
                     if session_info.session.should_discard_session() {
                         self.discard_session();
                     }

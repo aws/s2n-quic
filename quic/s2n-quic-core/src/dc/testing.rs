@@ -110,6 +110,10 @@ impl dc::Path for MockDcPath {
     fn on_mtu_updated(&mut self, mtu: u16) {
         self.mtu = mtu
     }
+
+    fn on_secret(&mut self, secret: Box<dyn std::any::Any + Send + 'static>) {
+        todo!()
+    }
 }
 
 #[allow(clippy::declare_interior_mutable_const)]
