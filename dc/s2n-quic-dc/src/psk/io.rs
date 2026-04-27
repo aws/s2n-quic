@@ -129,7 +129,7 @@ impl Server {
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
         let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(8)
+            .worker_threads(builder.thread_offload_count)
             .enable_all()
             .build()?;
 

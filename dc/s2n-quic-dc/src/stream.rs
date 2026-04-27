@@ -7,6 +7,8 @@ use core::time::Duration;
 pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 /// The maximum length of a single packet written to a stream
 pub const MAX_DATAGRAM_SIZE: usize = 1 << 15; // 32k
+/// Number of threads used to make progress on the QUIC handshake
+pub const DEFAULT_THREAD_COUNT: usize = 1;
 
 pub use crate::stream::socket::Protocol;
 
