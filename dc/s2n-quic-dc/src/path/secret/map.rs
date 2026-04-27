@@ -20,7 +20,7 @@ use tokio::task::JoinHandle;
 
 mod cleaner;
 mod entry;
-mod handshake;
+pub mod handshake;
 mod peer;
 mod rehandshake;
 mod size_of;
@@ -59,7 +59,7 @@ pub(crate) use status::Dedup;
 /// maximum rate (corresponding to no false positives in replay prevention for 15 seconds).
 #[derive(Clone)]
 pub struct Map {
-    store: Arc<dyn Store>,
+    pub(crate) store: Arc<dyn Store>,
 }
 
 impl fmt::Debug for Map {

@@ -59,6 +59,8 @@ pub trait Path: 'static + Send {
 
     /// Called when the MTU has been updated for the path
     fn on_mtu_updated(&mut self, mtu: u16);
+
+    fn on_secret(&mut self, secret: Box<dyn std::any::Any + Send + 'static>);
 }
 
 impl<P: Path> Path for Option<P> {
@@ -95,6 +97,12 @@ impl<P: Path> Path for Option<P> {
     fn on_mtu_updated(&mut self, max_datagram_size: u16) {
         if let Some(path) = self {
             path.on_mtu_updated(max_datagram_size)
+        }
+    }
+
+    fn on_secret(&mut self, secret: Box<dyn std::any::Any + Send + 'static>) {
+        if let Some(path) = self {
+            path.on_secret(secret)
         }
     }
 }

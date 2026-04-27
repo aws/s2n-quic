@@ -26,7 +26,10 @@ pub trait ExporterHandler {
         session: &impl TlsSession,
         e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Option<Box<dyn Any + Send>>;
-    fn on_tls_exporter_ready(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
+    fn on_tls_exporter_ready(
+        &self,
+        session: &impl TlsSession,
+    ) -> Option<Result<Box<dyn Any + Send>, crate::transport::Error>>;
 }
 
 // Most people don't need the TlsSession so we ignore these callbacks by default
@@ -42,7 +45,7 @@ impl ExporterHandler for () {
     fn on_tls_exporter_ready(
         &self,
         _session: &impl TlsSession,
-    ) -> Option<Box<dyn std::any::Any + Send>> {
+    ) -> Option<Result<Box<dyn Any + Send>, crate::transport::Error>> {
         None
     }
 }
@@ -380,6 +383,8 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
         client_params: tls::ApplicationParameters,
         server_params: &mut alloc::vec::Vec<u8>,
     ) -> Result<(), crate::transport::Error> {
+        let dc_quic_params: [u8; 6] = [128, 220, 0, 0, 1, 0];
+        server_params.append(&mut dc_quic_params.to_vec());
         match self.send_to_quic.push(Request::ClientParams(
             client_params.transport_parameters.to_vec(),
             server_params.to_vec(),
@@ -495,7 +500,8 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
         &mut self,
         session: &impl TlsSession,
     ) -> Result<(), crate::transport::Error> {
-        if let Some(context) = self.exporter_handler.on_tls_exporter_ready(session) {
+        if let Some(result) = self.exporter_handler.on_tls_exporter_ready(session) {
+            let context = result?;
             match self.send_to_quic.push(Request::TlsContext(context)) {
                 Ok(_) => (),
                 Err(_) => self.error = Some(SLICE_ERROR),
