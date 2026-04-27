@@ -6,6 +6,7 @@ use crate::{
     psk::io::{
         Result, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_DATA, DEFAULT_MTU, DEFAULT_PTO_JITTER_PERCENTAGE,
     },
+    stream::DEFAULT_THREAD_COUNT,
 };
 use s2n_quic::provider::{event::Subscriber as Sub, tls::Provider as Prov};
 use std::{net::SocketAddr, time::Duration};
@@ -23,6 +24,7 @@ pub struct Builder<
     pub(crate) pto_jitter_percentage: u8,
     #[cfg(any(test, feature = "testing"))]
     pub(crate) endpoint_limits: Option<TestEndpointLimiter>,
+    pub(crate) thread_offload_count: usize,
 }
 
 /// A wrapper type for test endpoint limiters
@@ -52,6 +54,7 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
             pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
             #[cfg(any(test, feature = "testing"))]
             endpoint_limits: None,
+            thread_offload_count: DEFAULT_THREAD_COUNT,
         }
     }
 }
@@ -71,6 +74,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             pto_jitter_percentage: self.pto_jitter_percentage,
             #[cfg(any(test, feature = "testing"))]
             endpoint_limits: self.endpoint_limits,
+            thread_offload_count: self.thread_offload_count,
         }
     }
 
@@ -128,6 +132,16 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
     /// - 1-50%: Applies random jitter within ±percentage of base PTO
     pub fn with_pto_jitter_percentage(mut self, pto_jitter_percentage: u8) -> Self {
         self.pto_jitter_percentage = pto_jitter_percentage;
+        self
+    }
+
+    /// Controls the number of threads used to process incoming QUIC handshakes (default: 1)
+    ///
+    /// dc-quic offloads the QUIC handshake work to a separate thread outside of the main event loop
+    /// in order to avoid head of line blocking. Increase the thread count for better TPS in the case
+    /// of many clients trying to handshake with the server.
+    pub fn with_thread_count(mut self, count: usize) -> Self {
+        self.thread_offload_count = count;
         self
     }
 
