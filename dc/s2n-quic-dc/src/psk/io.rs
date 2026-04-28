@@ -5,6 +5,7 @@ use super::{client, server};
 use crate::path::secret;
 use cfg_if::cfg_if;
 use rand::RngExt;
+use s2n_codec::DecoderBuffer;
 use s2n_quic::{
     provider::{
         dc::{ConfirmComplete, MtuConfirmComplete},
@@ -13,7 +14,11 @@ use s2n_quic::{
     },
     server::Name,
 };
-use s2n_quic_core::{endpoint::Type, inet::SocketAddress};
+use s2n_quic_core::{
+    endpoint::Type,
+    inet::SocketAddress,
+    transport::parameters::{ClientTransportParameters, TransportParameter},
+};
 use std::{
     any::Any,
     hash::BuildHasher,
@@ -85,6 +90,41 @@ impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
             Err(e) => Err(e),
         };
         Some(result)
+    }
+
+    fn on_client_application_params(
+        &mut self,
+        client_params: s2n_quic_core::crypto::tls::ApplicationParameters,
+        server_params: &mut Vec<u8>,
+    ) -> Option<std::result::Result<(), s2n_quic_core::transport::Error>> {
+        let param_decoder = DecoderBuffer::new(client_params.transport_parameters);
+        match <ClientTransportParameters as s2n_codec::DecoderValue>::decode(param_decoder).map_err(
+            |_| {
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-7.4
+                //# An endpoint SHOULD treat receipt of
+                //# duplicate transport parameters as a connection error of type
+                //# TRANSPORT_PARAMETER_ERROR.
+                s2n_quic_core::transport::Error::TRANSPORT_PARAMETER_ERROR
+                    .with_reason("Invalid transport parameters")
+            },
+        ) {
+            Ok((client_params, remaining)) => {
+                debug_assert_eq!(remaining.len(), 0);
+
+                if let Some(selected_version) =
+                    s2n_quic_core::dc::select_version(client_params.dc_supported_versions)
+                {
+                    s2n_quic_core::transport::parameters::DcSupportedVersions::for_server(
+                        selected_version,
+                    )
+                    .append_to_buffer(server_params);
+                }
+                return Some(Ok(()));
+            }
+            Err(e) => Some(e),
+        };
+
+        Some(Ok(()))
     }
 }
 

@@ -4,12 +4,14 @@
 use super::*;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic::{
-    client,
-    client::ClientProviders,
+    client::{self, ClientProviders},
     connection,
-    provider::{dc, io::testing::Result},
-    server,
-    server::ServerProviders,
+    provider::{
+        dc,
+        io::testing::Result,
+        tls::offload::{Executor, ExporterHandler, OffloadBuilder},
+    },
+    server::{self, ServerProviders},
 };
 use s2n_quic_core::{
     crypto::tls,
@@ -634,6 +636,34 @@ fn dc_possible_secret_control_packet(
             DatagramDropReason::UnknownDestinationConnectionId { .. }
         ));
     }
+
+    Ok(())
+}
+
+#[test]
+fn dc_mtls_handshake_with_server_offloading_test() -> Result<()> {
+    let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let server_endpoint = OffloadBuilder::new()
+        .with_endpoint(server_tls)
+        .with_executor(BachExecutor)
+        .with_exporter(Exporter {
+            stateless_reset_tokens: CLIENT_TOKENS.to_vec(),
+        })
+        .build();
+    let server = Server::builder()
+        .with_tls(server_endpoint)?
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let client = Client::builder()
+        .with_tls(client_tls)?
+        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
+
+    // with_blocklist is false because of this issue: https://github.com/aws/s2n-quic/issues/2601.
+    // Packet loss is expected because the client sends the last Handshake message packet along with
+    // the first OneRTT packet in the same datagram. With offloading enabled the OneRtt packet is
+    // dropped while the Handshake packet is being processed.
+    self_test(server, client, true, None, None, false)?;
 
     Ok(())
 }
@@ -1319,5 +1349,48 @@ impl Interceptor for RandomShort {
         }
 
         DecoderBufferMut::new(payload)
+    }
+}
+
+struct BachExecutor;
+impl Executor for BachExecutor {
+    fn spawn(&self, task: impl core::future::Future<Output = ()> + Send + 'static) {
+        bach::spawn(task);
+    }
+}
+#[derive(Clone)]
+struct Exporter {
+    stateless_reset_tokens: Vec<stateless_reset::Token>,
+}
+impl ExporterHandler for Exporter {
+    fn on_tls_handshake_failed(
+        &self,
+        _session: &impl s2n_quic_core::crypto::tls::TlsSession,
+        _e: &(dyn core::error::Error + Send + Sync + 'static),
+    ) -> Option<Box<dyn std::any::Any + Send>> {
+        None
+    }
+
+    fn on_tls_exporter_ready(
+        &self,
+        _session: &impl s2n_quic_core::crypto::tls::TlsSession,
+    ) -> Option<Result<Box<dyn std::any::Any + Send>, s2n_quic_core::transport::Error>> {
+        // This test doesn't actually use the dc-quic secret, so we construct a fake one and pass
+        // it back through so that the downcast works correctly.
+        let secret_box: Box<dyn std::any::Any + Send> = Box::new(0);
+        Some(Ok(Box::new((
+            self.stateless_reset_tokens.clone()[0],
+            secret_box,
+        ))))
+    }
+
+    fn on_client_application_params(
+        &mut self,
+        _client_params: tls::ApplicationParameters,
+        server_params: &mut Vec<u8>,
+    ) -> Option<std::result::Result<(), s2n_quic_core::transport::Error>> {
+        let dc_quic_params: [u8; 6] = [128, 220, 0, 0, 1, 0];
+        server_params.append(&mut dc_quic_params.to_vec());
+        Some(Ok(()))
     }
 }
