@@ -451,3 +451,80 @@ async fn test_dedup_check() {
     // FIXME should the server be sending a control packet on ReplayDefinitelyDetected?
     assert_eq!(error.kind(), std::io::ErrorKind::ConnectionReset);
 }
+
+/// Regression test: the UDS recv buffer must have enough capacity for packets
+/// larger than the initial payload forwarded by the manager. Previously,
+/// `new_from_packet` allocated a buffer sized exactly to the initial payload,
+/// causing subsequent large packets to trigger a false EOF ("truncated stream").
+#[tokio::test]
+async fn test_large_payload_through_shared_cache() {
+    init_tracing();
+
+    let test_event_subscriber = NoopSubscriber {};
+    let unix_socket_path = PathBuf::from("/tmp/large_payload.sock");
+
+    let (stream_client, _) = create_stream_client();
+    let handshake_server = create_handshake_server().await;
+
+    let handshake_addr = handshake_server.local_addr();
+    stream_client
+        .handshake_with(handshake_addr, server_name())
+        .await
+        .unwrap();
+
+    let app_server = create_application_server(&unix_socket_path, test_event_subscriber.clone());
+
+    let manager_server = manager::Server::<ServerProvider, NoopSubscriber>::builder()
+        .with_address("127.0.0.1:0".parse().unwrap())
+        .with_protocol(Protocol::Tcp)
+        .with_udp(false)
+        .with_workers(NonZeroUsize::new(1).unwrap())
+        .with_socket_path(&unix_socket_path)
+        .build(handshake_server.clone(), test_event_subscriber)
+        .unwrap();
+
+    let acceptor_addr = manager_server.acceptor_addr().unwrap();
+
+    let connection_result = tokio::try_join!(
+        stream_client.connect(handshake_addr, acceptor_addr, server_name()),
+        async {
+            tokio::time::timeout(Duration::from_secs(5), app_server.accept())
+                .await
+                .unwrap()
+        }
+    );
+
+    let (mut client_stream, server_result) = connection_result.unwrap();
+    let (mut server_stream, _addr) = server_result;
+
+    // Send a large payload from client to server. The server's UDS recv buffer
+    // was previously sized to the initial payload (~few hundred bytes), causing
+    // a false EOF when reading larger subsequent packets.
+    let large_message = vec![42u8; crate::stream::MAX_DATAGRAM_SIZE];
+
+    let data_exchange_result = tokio::try_join!(
+        async {
+            let mut message_slice = &large_message[..];
+            client_stream.write_from(&mut message_slice).await?;
+            Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+        },
+        async {
+            let mut buffer: Vec<u8> = Vec::new();
+            let bytes_read = server_stream.read_into(&mut buffer).await?;
+            assert_eq!(
+                bytes_read,
+                large_message.len(),
+                "Server should receive all {} bytes",
+                large_message.len()
+            );
+            assert_eq!(buffer[..bytes_read], large_message[..]);
+            Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+        }
+    );
+
+    assert!(
+        data_exchange_result.is_ok(),
+        "Large payload exchange should succeed: {:?}",
+        data_exchange_result.err()
+    );
+}

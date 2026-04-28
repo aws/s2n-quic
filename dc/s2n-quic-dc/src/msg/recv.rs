@@ -45,6 +45,13 @@ impl Message {
     }
 
     pub fn new_from_packet(bytes: Vec<u8>, addr: std::net::SocketAddr) -> Self {
+        let mut bytes = bytes;
+        // ensure the buffer has enough capacity for subsequent recv calls,
+        // matching the capacity used by `new()`
+        let min_capacity = u16::MAX as usize;
+        if bytes.capacity() < min_capacity {
+            bytes.reserve(min_capacity - bytes.len());
+        }
         let buffer = Buffer::from(bytes);
         Self {
             addr: Addr::new(addr.into()),
