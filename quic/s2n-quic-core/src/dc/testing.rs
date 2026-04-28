@@ -111,8 +111,9 @@ impl dc::Path for MockDcPath {
         self.mtu = mtu
     }
 
-    fn on_secret(&mut self, secret: Box<dyn std::any::Any + Send + 'static>) {
-        todo!()
+    fn on_secret(&mut self, _secret: Box<dyn std::any::Any + Send + 'static>) {
+        debug_assert_eq!(0, self.on_path_secrets_ready_count);
+        self.on_path_secrets_ready_count += 1;
     }
 }
 
