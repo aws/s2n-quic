@@ -66,7 +66,7 @@ pub trait Path: 'static + Send {
     ///
     /// The boxed type is a PathSecrets struct. This callback is only triggered
     /// if offloading is enabled for this endpoint.
-    fn on_secret(&mut self, secret: Box<dyn std::any::Any + Send + 'static>);
+    fn on_secret(&mut self, secret: alloc::boxed::Box<dyn core::any::Any + Send + 'static>);
 }
 
 impl<P: Path> Path for Option<P> {
@@ -106,7 +106,7 @@ impl<P: Path> Path for Option<P> {
         }
     }
 
-    fn on_secret(&mut self, secret: Box<dyn std::any::Any + Send + 'static>) {
+    fn on_secret(&mut self, secret: alloc::boxed::Box<dyn core::any::Any + Send + 'static>) {
         if let Some(path) = self {
             path.on_secret(secret)
         }
