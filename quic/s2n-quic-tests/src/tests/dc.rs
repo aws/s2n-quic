@@ -909,9 +909,8 @@ fn self_test_inner<S: ServerProviders, C: ClientProviders>(
 
     // Server completes in 2.5 RTTs measured from the start of the test, since it takes .5 RTT
     // for the Initial from the client to reach the server.
-    // In the case of offloading, server is dc-complete in 3.5 RTTs since the client's Stateless Reset
-    // token packet is dropped due to this issue: https://github.com/aws/s2n-quic/issues/2601.
-
+    // In the case of offloading, server is dc-complete in 3.5 RTTs since the client's first
+    // Stateless Reset packet is dropped due to this issue: https://github.com/aws/s2n-quic/issues/2601.
     if offload {
         assert_eq!(
             rtt.mul_f64(3.5),
