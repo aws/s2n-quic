@@ -5,6 +5,7 @@
       "server"
     ],
     "kwik": [
+      "client",
       "server"
     ],
     "lsquic": [
@@ -71,6 +72,7 @@
       "server"
     ],
     "kwik": [
+      "client",
       "server"
     ],
     "lsquic": [
@@ -137,6 +139,7 @@
       "server"
     ],
     "kwik": [
+      "client",
       "server"
     ],
     "lsquic": [
@@ -148,7 +151,8 @@
       "server"
     ],
     "mvfst": [
-      "client"
+      "client",
+      "server"
     ],
     "neqo": [
       "client",
@@ -200,6 +204,7 @@
       "server"
     ],
     "kwik": [
+      "client",
       "server"
     ],
     "lsquic": [
@@ -264,7 +269,9 @@
     "aioquic": [
       "client"
     ],
-    "kwik": [],
+    "kwik": [
+      "client"
+    ],
     "lsquic": [
       "client"
     ],
@@ -413,6 +420,7 @@
       "server"
     ],
     "kwik": [
+      "client",
       "server"
     ],
     "lsquic": [
@@ -475,7 +483,9 @@
     "aioquic": [
       "client"
     ],
-    "kwik": [],
+    "kwik": [
+      "client"
+    ],
     "lsquic": [],
     "msquic": [
       "client"
@@ -545,6 +555,7 @@
       "server"
     ],
     "kwik": [
+      "client",
       "server"
     ],
     "lsquic": [
@@ -730,6 +741,7 @@
       "server"
     ],
     "kwik": [
+      "client",
       "server"
     ],
     "lsquic": [
@@ -793,7 +805,9 @@
       "client",
       "server"
     ],
-    "kwik": [],
+    "kwik": [
+      "client"
+    ],
     "lsquic": [
       "client",
       "server"
@@ -844,7 +858,9 @@
       "client",
       "server"
     ],
-    "kwik": [],
+    "kwik": [
+      "client"
+    ],
     "lsquic": [
       "client",
       "server"
@@ -910,7 +926,9 @@
       "client",
       "server"
     ],
-    "kwik": [],
+    "kwik": [
+      "client"
+    ],
     "lsquic": [
       "client",
       "server"
@@ -964,6 +982,7 @@
       "server"
     ],
     "kwik": [
+      "client",
       "server"
     ],
     "lsquic": [
@@ -991,6 +1010,7 @@
       "server"
     ],
     "quiche": [
+      "client",
       "server"
     ],
     "s2n-quic": [
