@@ -60,6 +60,12 @@ pub trait Path: 'static + Send {
     /// Called when the MTU has been updated for the path
     fn on_mtu_updated(&mut self, mtu: u16);
 
+    /// Called when TLS handshake is complete and either an error occurred
+    /// or the TLS handshake was successful and the dc-quic secret is
+    /// can be stored in the map.
+    ///
+    /// The boxed type is a PathSecrets struct. This callback is only triggered
+    /// if offloading is enabled for this endpoint.
     fn on_secret(&mut self, secret: Box<dyn std::any::Any + Send + 'static>);
 }
 

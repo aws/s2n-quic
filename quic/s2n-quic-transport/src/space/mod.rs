@@ -297,7 +297,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                                 .as_mut()
                                 .unwrap()
                                 .dc_manager
-                                .on_token(context, token, publisher);
+                                .on_token(context, token, publisher)?;
                         }
                     }
                     if session_info.session.should_discard_session() {

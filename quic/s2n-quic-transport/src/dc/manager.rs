@@ -117,15 +117,19 @@ impl<Config: endpoint::Config> Manager<Config> {
         context: Box<dyn Any + Send>,
         token: stateless_reset::Token,
         publisher: &mut Pub,
-    ) {
+    ) -> Result<(), transport::Error> {
         self.path.on_secret(context);
-        self.state.on_path_secrets_ready().unwrap();
+        ensure!(
+            self.state.on_path_secrets_ready().is_ok(),
+            Err(transport::Error::INTERNAL_ERROR)
+        );
         self.stateless_reset_token_sync = Flag::new(DcStatelessResetTokenWriter {
             tokens: vec![token],
         });
         publisher.on_dc_state_changed(DcStateChanged {
             state: DcState::PathSecretsReady,
         });
+        Ok(())
     }
 
     /// Called when the TLS session has indicated path secrets are ready
