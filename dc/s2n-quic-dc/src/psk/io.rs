@@ -66,10 +66,11 @@ struct DCExporter {
 impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
     fn on_tls_handshake_failed(
         &self,
-        session: &impl s2n_quic_core::crypto::tls::TlsSession,
-        e: &(dyn core::error::Error + Send + Sync + 'static),
+        _session: &impl s2n_quic_core::crypto::tls::TlsSession,
+        _e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Option<Box<dyn std::any::Any + Send>> {
-        todo!()
+        // TODO: Not sure if we need to be doing anything with these errors
+        None
     }
 
     fn on_tls_exporter_ready(

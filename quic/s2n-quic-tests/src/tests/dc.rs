@@ -673,6 +673,54 @@ fn dc_mtls_handshake_with_server_offloading_test() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn dc_mtls_handshake_auth_failure_with_server_offloading_test() -> Result<()> {
+    let server_tls = build_server_mtls_provider(certificates::UNTRUSTED_CERT_PEM)?;
+    let server_endpoint = OffloadBuilder::new()
+        .with_endpoint(server_tls)
+        .with_executor(BachExecutor)
+        .with_exporter(Exporter {
+            stateless_reset_tokens: CLIENT_TOKENS.to_vec(),
+        })
+        .build();
+    let server = Server::builder()
+        .with_tls(server_endpoint)?
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let client = Client::builder()
+        .with_tls(client_tls)?
+        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
+
+    // convert from a ConnectionClose frame so the initiator is `Remote`
+    let expected_client_error = ConnectionClose {
+        error_code: transport::Error::crypto_error(tls::Error::HANDSHAKE_FAILURE.code)
+            .code
+            .as_u64()
+            .try_into()
+            .unwrap(),
+        frame_type: Some(VarInt::ZERO),
+        reason: None,
+    }
+    .into();
+
+    // with_blocklist is false because of this issue: https://github.com/aws/s2n-quic/issues/2601.
+    // Packet loss is expected because the client sends the last Handshake message packet along with
+    // the first OneRTT packet in the same datagram. With offloading enabled the OneRtt packet is
+    // dropped while the Handshake packet is being processed.
+    self_test(
+        server,
+        client,
+        true,
+        Some(expected_client_error),
+        None,
+        false,
+        true,
+    )?;
+
+    Ok(())
+}
+
 #[track_caller]
 fn self_test<S: ServerProviders, C: ClientProviders>(
     server: server::Builder<S>,
