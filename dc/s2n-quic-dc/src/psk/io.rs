@@ -59,7 +59,7 @@ impl s2n_quic::provider::tls::offload::Executor for TokioExecutor {
 }
 #[derive(Clone)]
 struct DCExporter {
-    pub map: secret::Map,
+    map: secret::Map,
     dc_version: u32,
     endpoint_type: s2n_quic_core::endpoint::Type,
 }
@@ -122,10 +122,8 @@ impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
                 }
                 return Some(Ok(()));
             }
-            Err(e) => Some(e),
+            Err(e) => return Some(Err(e)),
         };
-
-        Some(Ok(()))
     }
 }
 
