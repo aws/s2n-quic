@@ -196,10 +196,12 @@ impl super::Recorder for Recorder {
             | ("count", "packet_sent.bytes.total")
             | ("count", "packet_received.bytes.total")
             | ("measure", "recovery_metrics.bytes_in_flight")
+            | ("count", "packet_lost.bytes.total")
             | ("measure", "datagram_sent.bytes")
             | ("measure", "datagram_received.bytes")
             | ("measure", "packet_sent.bytes")
-            | ("measure", "packet_received.bytes") => {
+            | ("measure", "packet_received.bytes")
+            | ("measure", "packet_lost.bytes") => {
                 return self
                     .0
                     .push(format_args!("{prefix}#{name}=[REDACTED]{units}"));
