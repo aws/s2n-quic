@@ -85,7 +85,7 @@ where
 
         let remote_address = tcp_stream.peer_addr()?;
         let mut buffer =
-            Message::new_from_packet(decoded_packet.payload().to_vec().clone(), remote_address);
+            Message::new_from_packet(decoded_packet.payload().to_vec(), remote_address);
 
         let initial_packet = match server::InitialPacket::peek(&mut buffer, 16) {
             Ok(packet) => packet,
