@@ -190,6 +190,8 @@ impl super::Recorder for Recorder {
         };
 
         // redact certain metrics for the snapshot
+        // packet_lost bytes only needs to be redacted due to this issue: https://github.com/aws/s2n-quic/issues/2601.
+        // Once this is fixed the redaction can be removed.
         match (prefix, name.as_ref()) {
             ("count", "datagram_received.bytes.total")
             | ("count", "datagram_sent.bytes.total")
