@@ -84,7 +84,7 @@ fn dc_handshake_self_test() -> Result<()> {
         .with_tls(certificates::CERT_PEM)?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
-    self_test(server, client, true, None, None, true)?;
+    self_test(server, client, true, None, None, true, false)?;
 
     Ok(())
 }
@@ -141,6 +141,7 @@ fn dc_mtls_handshake_self_test() -> Result<()> {
             PacketSnapshot::named_snapshot("dc_mtls_handshake__server"),
             PacketSnapshot::named_snapshot("dc_mtls_handshake__client"),
         ),
+        false,
     )?;
 
     Ok(())
@@ -177,6 +178,7 @@ fn dc_mtls_handshake_auth_failure_self_test() -> Result<()> {
         Some(expected_client_error),
         None,
         true,
+        false,
     )?;
 
     Ok(())
@@ -221,6 +223,7 @@ fn dc_mtls_handshake_server_not_supported_self_test() -> Result<()> {
         )),
         Some(expected_server_error),
         true,
+        false,
     )?;
 
     Ok(())
@@ -270,6 +273,7 @@ fn dc_mtls_handshake_client_not_supported_self_test() -> Result<()> {
             "peer does not support specified dc versions",
         )),
         true,
+        false,
     )?;
 
     Ok(())
@@ -297,7 +301,7 @@ fn mtu_probing_complete_frame_exchange_test() -> Result<()> {
         .with_tls(client_tls)?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
-    let (client_events, server_events) = self_test(server, client, true, None, None, true)?;
+    let (client_events, server_events) = self_test(server, client, true, None, None, true, false)?;
 
     // Verify that client received MtuProbingComplete from server
     let client_mtu_complete_events = client_events
@@ -404,7 +408,7 @@ fn mtu_probing_complete_asymmetric_support_test(
     )?;
 
     let (client_events, server_events) =
-        self_test_with_mtu(server, client, true, None, None, false, None)?;
+        self_test_with_mtu(server, client, true, None, None, false, None, false)?;
 
     // Verify that client did NOT receive MtuProbingComplete from server
     let client_mtu_complete_events = client_events
@@ -505,7 +509,7 @@ fn mtu_probing_complete_frame_exchange_jumbo_mtu_test() -> Result<()> {
 
     // Use 9000 byte MTU for jumbo frames
     let (client_events, server_events) =
-        self_test_with_mtu(server, client, true, None, None, true, Some(9000))?;
+        self_test_with_mtu(server, client, true, None, None, true, Some(9000), false)?;
 
     let expected_mtu = 8972;
 
@@ -612,7 +616,8 @@ fn dc_possible_secret_control_packet(
         .with_dc(dc_endpoint)?
         .with_packet_interceptor(RandomShort::default())?;
 
-    let (client_events, _server_events) = self_test(server, client, true, None, None, false)?;
+    let (client_events, _server_events) =
+        self_test(server, client, true, None, None, false, false)?;
 
     assert_eq!(
         1,
@@ -663,7 +668,7 @@ fn dc_mtls_handshake_with_server_offloading_test() -> Result<()> {
     // Packet loss is expected because the client sends the last Handshake message packet along with
     // the first OneRTT packet in the same datagram. With offloading enabled the OneRtt packet is
     // dropped while the Handshake packet is being processed.
-    self_test(server, client, true, None, None, false)?;
+    self_test(server, client, true, None, None, false, true)?;
 
     Ok(())
 }
@@ -676,6 +681,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     expected_client_error: Option<connection::Error>,
     expected_server_error: Option<connection::Error>,
     with_blocklist: bool,
+    offload: bool,
 ) -> Result<(DcRecorder, DcRecorder)> {
     self_test_inner(
         server,
@@ -686,6 +692,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
         with_blocklist,
         None,
         (PacketSnapshot::new(), PacketSnapshot::new()),
+        offload,
     )
 }
 
@@ -698,6 +705,7 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
     expected_server_error: Option<connection::Error>,
     with_blocklist: bool,
     max_mtu: Option<u16>,
+    offload: bool,
 ) -> Result<(DcRecorder, DcRecorder)> {
     self_test_inner(
         server,
@@ -708,6 +716,7 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
         with_blocklist,
         max_mtu,
         (PacketSnapshot::new(), PacketSnapshot::new()),
+        offload,
     )
 }
 
@@ -721,6 +730,7 @@ fn self_test_inner<S: ServerProviders, C: ClientProviders>(
     with_blocklist: bool,
     max_mtu: Option<u16>,
     packet_snapshots: (PacketSnapshot, PacketSnapshot),
+    offload: bool,
 ) -> Result<(DcRecorder, DcRecorder)> {
     let model = Model::default();
     let rtt = Duration::from_millis(100);
@@ -898,19 +908,37 @@ fn self_test_inner<S: ServerProviders, C: ClientProviders>(
     );
 
     // Server completes in 2.5 RTTs measured from the start of the test, since it takes .5 RTT
-    // for the Initial from the client to reach the server
-    assert_eq!(
-        rtt.mul_f32(2.5),
-        server_dc_state_changed_events[2]
-            .timestamp
-            .duration_since_start()
-    );
-    assert_eq!(
-        rtt * 2,
-        client_dc_state_changed_events[2]
-            .timestamp
-            .duration_since_start()
-    );
+    // for the Initial from the client to reach the server.
+    // In the case of offloading, server is dc-complete in 3.5 RTTs since the client's Stateless Reset
+    // token packet is dropped due to this issue: https://github.com/aws/s2n-quic/issues/2601.
+
+    if offload {
+        assert_eq!(
+            rtt.mul_f64(3.5),
+            server_dc_state_changed_events[2]
+                .timestamp
+                .duration_since_start()
+        );
+        assert_eq!(
+            rtt * 3,
+            client_dc_state_changed_events[2]
+                .timestamp
+                .duration_since_start()
+        );
+    } else {
+        assert_eq!(
+            rtt.mul_f32(2.5),
+            server_dc_state_changed_events[2]
+                .timestamp
+                .duration_since_start()
+        );
+        assert_eq!(
+            rtt * 2,
+            client_dc_state_changed_events[2]
+                .timestamp
+                .duration_since_start()
+        );
+    }
 
     let client_mtu_events = client_events.mtu_updated_events.lock().unwrap().clone();
     let server_mtu_events = server_events.mtu_updated_events.lock().unwrap().clone();
