@@ -184,3 +184,22 @@ async fn half_close_read_test() {
     let len = client.read(&mut buffer).await.unwrap();
     assert_eq!(len, 0);
 }
+
+/// Q: What happens when the client writes a payload equal to the maximum datagram size (32KB)?
+///
+/// A: The server receives the full payload
+#[tokio::test]
+async fn large_write_test() {
+    let context = Context::new().await;
+    let (mut client, mut server) = context.pair().await;
+
+    let large_message = vec![42u8; crate::stream::MAX_DATAGRAM_SIZE];
+
+    client.write_all(&large_message).await.unwrap();
+    client.shutdown().await.unwrap();
+
+    let mut buffer = vec![];
+    server.read_to_end(&mut buffer).await.unwrap();
+
+    assert_eq!(buffer, large_message);
+}
