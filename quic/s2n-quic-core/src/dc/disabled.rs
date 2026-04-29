@@ -57,7 +57,7 @@ impl Path for () {
         unimplemented!()
     }
 
-    fn on_secret(&mut self, _secret: Box<dyn std::any::Any + Send + 'static>) {
+    fn on_secret(&mut self, _secret: alloc::boxed::Box<dyn core::any::Any + Send + 'static>) {
         unimplemented!()
     }
 }
