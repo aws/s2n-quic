@@ -122,6 +122,66 @@ impl dc::Path for HandshakingPath {
     fn on_mtu_updated(&mut self, mtu: u16) {
         self.inner.lock().on_mtu_updated(mtu);
     }
+
+    fn on_secret(&mut self, secret: Box<dyn std::any::Any + Send + 'static>) {
+        self.inner.lock().on_secret(secret);
+    }
+}
+
+#[derive(Default)]
+pub struct PathSecrets {
+    secret: Option<schedule::Secret>,
+    application_data: Option<ApplicationData>,
+    error: Option<Box<dyn Error + Send + Sync>>,
+}
+
+pub fn on_path_secrets_ready(
+    dc_version: u32,
+    endpoint_type: endpoint::Type,
+    map: &Map,
+    session: &impl s2n_quic_core::crypto::tls::TlsSession,
+) -> Result<(PathSecrets, s2n_quic_core::stateless_reset::Token), s2n_quic_core::transport::Error> {
+    let mut path_secrets = PathSecrets::default();
+    match map.store.application_data(session) {
+        Ok(application_data) => {
+            path_secrets.application_data = application_data;
+        }
+        Err(err) => {
+            path_secrets.error = Some(err.inner);
+            return Err(s2n_quic_core::transport::Error::APPLICATION_ERROR.with_reason(err.msg));
+        }
+    };
+
+    let mut material = Zeroizing::new([0; TLS_EXPORTER_LENGTH]);
+    session
+        .tls_exporter(
+            TLS_EXPORTER_LABEL.as_bytes(),
+            TLS_EXPORTER_CONTEXT.as_bytes(),
+            &mut *material,
+        )
+        .map_err(|_| {
+            s2n_quic_core::transport::Error::INTERNAL_ERROR.with_reason("tls exporter failed")
+        })?;
+
+    let cipher_suite = match session.cipher_suite() {
+        s2n_quic_core::crypto::tls::CipherSuite::TLS_AES_128_GCM_SHA256 => {
+            schedule::Ciphersuite::AES_GCM_128_SHA256
+        }
+        s2n_quic_core::crypto::tls::CipherSuite::TLS_AES_256_GCM_SHA384 => {
+            schedule::Ciphersuite::AES_GCM_256_SHA384
+        }
+        _ => {
+            return Err(s2n_quic_core::transport::Error::INTERNAL_ERROR
+                .with_reason("unsupported ciphersuite"))
+        }
+    };
+
+    let secret = schedule::Secret::new(cipher_suite, dc_version, endpoint_type, &material);
+
+    let stateless_reset = map.store.signer().sign(secret.id());
+    path_secrets.secret = Some(secret);
+
+    Ok((path_secrets, stateless_reset.into()))
 }
 
 impl HandshakingPathInner {
@@ -129,47 +189,14 @@ impl HandshakingPathInner {
         &mut self,
         session: &impl s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
-        match self.map.store.application_data(session) {
-            Ok(application_data) => {
-                self.application_data = application_data;
-            }
-            Err(err) => {
-                self.error = Some(err.inner);
-                return Err(s2n_quic_core::transport::Error::APPLICATION_ERROR.with_reason(err.msg));
-            }
-        };
+        let (path_secrets, token) =
+            on_path_secrets_ready(self.dc_version, self.endpoint_type, &self.map, session)?;
 
-        let mut material = Zeroizing::new([0; TLS_EXPORTER_LENGTH]);
-        session
-            .tls_exporter(
-                TLS_EXPORTER_LABEL.as_bytes(),
-                TLS_EXPORTER_CONTEXT.as_bytes(),
-                &mut *material,
-            )
-            .map_err(|_| {
-                s2n_quic_core::transport::Error::INTERNAL_ERROR.with_reason("tls exporter failed")
-            })?;
+        self.secret = path_secrets.secret;
+        self.application_data = path_secrets.application_data;
+        self.error = path_secrets.error;
 
-        let cipher_suite = match session.cipher_suite() {
-            s2n_quic_core::crypto::tls::CipherSuite::TLS_AES_128_GCM_SHA256 => {
-                schedule::Ciphersuite::AES_GCM_128_SHA256
-            }
-            s2n_quic_core::crypto::tls::CipherSuite::TLS_AES_256_GCM_SHA384 => {
-                schedule::Ciphersuite::AES_GCM_256_SHA384
-            }
-            _ => {
-                return Err(s2n_quic_core::transport::Error::INTERNAL_ERROR
-                    .with_reason("unsupported ciphersuite"))
-            }
-        };
-
-        let secret =
-            schedule::Secret::new(cipher_suite, self.dc_version, self.endpoint_type, &material);
-
-        let stateless_reset = self.map.store.signer().sign(secret.id());
-        self.secret = Some(secret);
-
-        Ok(vec![stateless_reset.into()])
+        Ok(vec![token])
     }
 
     fn on_peer_stateless_reset_tokens<'a>(
@@ -214,6 +241,14 @@ impl HandshakingPathInner {
     fn on_mtu_updated(&mut self, mtu: u16) {
         if let Some(entry) = self.entry.as_ref() {
             entry.update_max_datagram_size(mtu);
+        }
+    }
+
+    fn on_secret(&mut self, secret: Box<dyn std::any::Any + Send + 'static>) {
+        if let Ok(path_secrets) = secret.downcast::<PathSecrets>() {
+            self.application_data = path_secrets.application_data;
+            self.error = path_secrets.error;
+            self.secret = path_secrets.secret;
         }
     }
 }

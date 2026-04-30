@@ -3,7 +3,7 @@
 use crate::{
     application,
     crypto::{
-        tls::{self, ConnectionInfo, NamedGroup, TlsSession},
+        tls::{self, ApplicationParameters, ConnectionInfo, NamedGroup, TlsSession},
         CryptoSuite,
     },
     sync::spsc::{channel, Receiver, SendSlice, Sender},
@@ -19,14 +19,22 @@ pub trait Executor {
     fn spawn(&self, task: impl Future<Output = ()> + Send + 'static);
 }
 
-/// Allows access to the TlsSession on handshake failure and when the exporter secret is ready.
+/// Allows access to TLS handshake details for user configuration.
 pub trait ExporterHandler {
     fn on_tls_handshake_failed(
         &self,
         session: &impl TlsSession,
         e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Option<Box<dyn Any + Send>>;
-    fn on_tls_exporter_ready(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
+    fn on_tls_exporter_ready(
+        &self,
+        session: &impl TlsSession,
+    ) -> Option<Result<Box<dyn Any + Send>, crate::transport::Error>>;
+    fn on_client_application_params(
+        &mut self,
+        client_params: ApplicationParameters,
+        server_params: &mut alloc::vec::Vec<u8>,
+    ) -> Option<Result<(), crate::transport::Error>>;
 }
 
 // Most people don't need the TlsSession so we ignore these callbacks by default
@@ -42,7 +50,15 @@ impl ExporterHandler for () {
     fn on_tls_exporter_ready(
         &self,
         _session: &impl TlsSession,
-    ) -> Option<Box<dyn std::any::Any + Send>> {
+    ) -> Option<Result<Box<dyn Any + Send>, crate::transport::Error>> {
+        None
+    }
+
+    fn on_client_application_params(
+        &mut self,
+        _client_params: ApplicationParameters,
+        _server_params: &mut alloc::vec::Vec<u8>,
+    ) -> Option<Result<(), crate::transport::Error>> {
         None
     }
 }
@@ -236,13 +252,6 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                                 context.on_server_name(server_name)?
                             }
                             Request::SendInitial(bytes) => context.send_initial(bytes),
-                            Request::ClientParams(client_params, mut server_params) => context
-                                .on_client_application_params(
-                                    tls::ApplicationParameters {
-                                        transport_parameters: &client_params,
-                                    },
-                                    &mut server_params,
-                                )?,
                             Request::ApplicationProtocol(bytes) => {
                                 context.on_application_protocol(bytes)?;
                             }
@@ -380,12 +389,11 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
         client_params: tls::ApplicationParameters,
         server_params: &mut alloc::vec::Vec<u8>,
     ) -> Result<(), crate::transport::Error> {
-        match self.send_to_quic.push(Request::ClientParams(
-            client_params.transport_parameters.to_vec(),
-            server_params.to_vec(),
-        )) {
-            Ok(_) => return Ok(()),
-            Err(_) => self.error = Some(SLICE_ERROR),
+        if let Some(result) = self
+            .exporter_handler
+            .on_client_application_params(client_params, server_params)
+        {
+            result?
         }
         Ok(())
     }
@@ -495,7 +503,8 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
         &mut self,
         session: &impl TlsSession,
     ) -> Result<(), crate::transport::Error> {
-        if let Some(context) = self.exporter_handler.on_tls_exporter_ready(session) {
+        if let Some(result) = self.exporter_handler.on_tls_exporter_ready(session) {
+            let context = result?;
             match self.send_to_quic.push(Request::TlsContext(context)) {
                 Ok(_) => (),
                 Err(_) => self.error = Some(SLICE_ERROR),
@@ -600,7 +609,6 @@ enum Request<S: CryptoSuite> {
     ),
     ServerName(crate::application::ServerName),
     SendInitial(bytes::Bytes),
-    ClientParams(Vec<u8>, Vec<u8>),
     HandshakeKeys(
         <S as CryptoSuite>::HandshakeKey,
         <S as CryptoSuite>::HandshakeHeaderKey,
@@ -632,7 +640,6 @@ impl<S: CryptoSuite> alloc::fmt::Debug for Request<S> {
         match self {
             Request::ServerName(_) => write!(f, "ServerName"),
             Request::SendInitial(_) => write!(f, "SendInitial"),
-            Request::ClientParams(_, _) => write!(f, "ClientParams"),
             Request::HandshakeKeys(_, _) => write!(f, "HandshakeKeys"),
             Request::SendHandshake(_) => write!(f, "SendHandshake"),
             Request::ApplicationProtocol(_) => write!(f, "ApplicationProtocol"),

@@ -5,6 +5,7 @@ use super::{client, server};
 use crate::path::secret;
 use cfg_if::cfg_if;
 use rand::RngExt;
+use s2n_codec::DecoderBuffer;
 use s2n_quic::{
     provider::{
         dc::{ConfirmComplete, MtuConfirmComplete},
@@ -13,8 +14,13 @@ use s2n_quic::{
     },
     server::Name,
 };
-use s2n_quic_core::inet::SocketAddress;
+use s2n_quic_core::{
+    endpoint::Type,
+    inet::SocketAddress,
+    transport::parameters::{ClientTransportParameters, TransportParameter},
+};
 use std::{
+    any::Any,
     hash::BuildHasher,
     io,
     net::SocketAddr,
@@ -24,7 +30,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::{sync::Semaphore, time::Instant as TokioInstant};
+use tokio::{runtime::Runtime, sync::Semaphore, time::Instant as TokioInstant};
 
 pub use crate::stream::DEFAULT_IDLE_TIMEOUT;
 pub const DEFAULT_MAX_DATA: u64 = 1u64 << 25;
@@ -42,6 +48,85 @@ const BUFFER_SIZE: usize = 16 * 1024;
 pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 pub type Result<T = (), E = Error> = core::result::Result<T, E>;
+
+struct TokioExecutor {
+    runtime: Runtime,
+}
+impl s2n_quic::provider::tls::offload::Executor for TokioExecutor {
+    fn spawn(&self, task: impl core::future::Future<Output = ()> + Send + 'static) {
+        self.runtime.spawn(task);
+    }
+}
+#[derive(Clone)]
+struct DCExporter {
+    map: secret::Map,
+    dc_version: u32,
+    endpoint_type: s2n_quic_core::endpoint::Type,
+}
+impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
+    fn on_tls_handshake_failed(
+        &self,
+        _session: &impl s2n_quic_core::crypto::tls::TlsSession,
+        _e: &(dyn core::error::Error + Send + Sync + 'static),
+    ) -> Option<Box<dyn std::any::Any + Send>> {
+        // TODO: Not sure if we need to be doing anything with these errors
+        None
+    }
+
+    fn on_tls_exporter_ready(
+        &self,
+        session: &impl s2n_quic_core::crypto::tls::TlsSession,
+    ) -> Option<Result<Box<dyn Any + Send>, s2n_quic_core::transport::Error>> {
+        let result = match crate::path::secret::map::handshake::on_path_secrets_ready(
+            self.dc_version,
+            self.endpoint_type,
+            &self.map,
+            session,
+        ) {
+            Ok((path_secret, stateless_reset)) => {
+                let secret_box: Box<dyn Any + Send> = Box::new(path_secret);
+                let pair: Box<dyn Any + Send> = Box::new((stateless_reset, secret_box));
+                Ok(pair)
+            }
+            Err(e) => Err(e),
+        };
+        Some(result)
+    }
+
+    fn on_client_application_params(
+        &mut self,
+        client_params: s2n_quic_core::crypto::tls::ApplicationParameters,
+        server_params: &mut Vec<u8>,
+    ) -> Option<std::result::Result<(), s2n_quic_core::transport::Error>> {
+        let param_decoder = DecoderBuffer::new(client_params.transport_parameters);
+        let result =
+            match <ClientTransportParameters as s2n_codec::DecoderValue>::decode(param_decoder)
+                .map_err(|_| {
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-7.4
+                    //# An endpoint SHOULD treat receipt of
+                    //# duplicate transport parameters as a connection error of type
+                    //# TRANSPORT_PARAMETER_ERROR.
+                    s2n_quic_core::transport::Error::TRANSPORT_PARAMETER_ERROR
+                        .with_reason("Invalid transport parameters")
+                }) {
+                Ok((client_params, remaining)) => {
+                    debug_assert_eq!(remaining.len(), 0);
+
+                    if let Some(selected_version) =
+                        s2n_quic_core::dc::select_version(client_params.dc_supported_versions)
+                    {
+                        s2n_quic_core::transport::parameters::DcSupportedVersions::for_server(
+                            selected_version,
+                        )
+                        .append_to_buffer(server_params);
+                    }
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            };
+        Some(result)
+    }
+}
 
 pub struct Server {
     server: s2n_quic::Server,
@@ -83,6 +168,21 @@ impl Server {
             .with_pto_jitter_percentage(builder.pto_jitter_percentage)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(builder.thread_offload_count)
+            .enable_all()
+            .build()?;
+
+        let tls = s2n_quic::provider::tls::offload::OffloadBuilder::new()
+            .with_endpoint(tls_materials_provider)
+            .with_exporter(DCExporter {
+                dc_version: 0,
+                endpoint_type: Type::Server,
+                map: map.clone(),
+            })
+            .with_executor(TokioExecutor { runtime })
+            .build();
+
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
         cfg_if!(
@@ -92,7 +192,7 @@ impl Server {
                         .with_limits(connection_limits)?
                         .with_dc(map.clone())?
                         .with_event((event, builder.event_subscriber))?
-                        .with_tls(tls_materials_provider)?;
+                        .with_tls(tls)?;
                     if let Some(limiter) = builder.endpoint_limits {
                         server.with_endpoint_limits(limiter)?.start()?
                     } else {
@@ -104,7 +204,7 @@ impl Server {
                     .with_limits(connection_limits)?
                     .with_dc(map.clone())?
                     .with_event((event, builder.event_subscriber))?
-                    .with_tls(tls_materials_provider)?
+                    .with_tls(tls)?
                     .start()?;
             }
         );
