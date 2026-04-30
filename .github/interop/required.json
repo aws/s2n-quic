@@ -613,7 +613,9 @@
   },
   "handshakeloss": {
     "aioquic": [],
-    "kwik": [],
+    "kwik": [
+      "client"
+    ],
     "lsquic": [],
     "msquic": [],
     "mvfst": [],
@@ -639,7 +641,10 @@
       "client",
       "server"
     ],
-    "xquic": []
+    "xquic": [],
+    "haproxy": [
+      "server"
+    ]
   },
   "transferloss": {
     "aioquic": [
