@@ -1558,6 +1558,152 @@ where
 /// - CCA state for congestion control
 /// - PacketNumberMap for tracking sent packets
 /// - Next packet number counter (per-path)
+/// PTO (Probe Timeout) state for tail loss recovery
+pub struct Pto {
+    /// PTO backoff exponent (starts at INITIAL_PTO_BACKOFF)
+    pub backoff: u32,
+    /// Target time for the next PTO probe (None = not scheduled)
+    pub target_time: Option<crate::clock::precision::Timestamp>,
+    /// Set to true when the PTO timer needs to be recalculated and updated
+    pub needs_update: bool,
+    /// Intrusive list links for PTO wheel
+    pub links: crate::intrusive_queue::Links,
+}
+
+impl Default for Pto {
+    fn default() -> Self {
+        Self {
+            backoff: s2n_quic_core::path::INITIAL_PTO_BACKOFF,
+            target_time: None,
+            needs_update: false,
+            links: crate::intrusive_queue::Links::new(),
+        }
+    }
+}
+
+impl Pto {
+    /// Returns true if we have inflight packets that need PTO protection
+    pub fn has_inflight_packets(
+        packet_map: &s2n_quic_core::packet::number::Map<
+            crate::intrusive_queue::Entry<crate::packet::datagram::partial::PartialDatagram>,
+        >,
+    ) -> bool {
+        !packet_map.is_empty()
+    }
+
+    /// Called when a new ack-eliciting packet is sent
+    pub fn on_packet_sent(&mut self) {
+        // Mark that we need to update the PTO timer (new tail packet)
+        self.needs_update = true;
+    }
+
+    /// Called when we receive an ACK
+    pub fn on_ack_received(&mut self, has_remaining_inflight: bool) {
+        // Reset backoff on forward progress
+        self.backoff = s2n_quic_core::path::INITIAL_PTO_BACKOFF;
+
+        if has_remaining_inflight {
+            // We still have packets in flight, mark for update
+            self.needs_update = true;
+        } else {
+            // No more packets in flight, cancel PTO
+            self.target_time = None;
+            self.needs_update = false;
+        }
+    }
+
+    /// Called when the PTO timer fires. Returns true if we should send a probe.
+    pub fn on_timeout(
+        &mut self,
+        now: crate::clock::precision::Timestamp,
+        rtt_estimator: &s2n_quic_core::recovery::RttEstimator,
+        has_inflight: bool,
+    ) -> bool {
+        // If we need an update, recalculate the target time and reinsert
+        if self.needs_update {
+            self.needs_update = false;
+            if has_inflight {
+                self.update_target(now, rtt_estimator);
+                // Don't send probe yet, just reschedule
+                return false;
+            } else {
+                // No inflight packets, cancel PTO
+                self.target_time = None;
+                return false;
+            }
+        }
+
+        // This is an actual PTO timeout - send probe and backoff
+        self.backoff = self.backoff.saturating_mul(2).min(16); // Cap at 16
+
+        // Schedule next PTO
+        if has_inflight {
+            self.update_target(now, rtt_estimator);
+        } else {
+            self.target_time = None;
+        }
+
+        true
+    }
+
+    /// Calculate and set the target time for the next PTO
+    fn update_target(
+        &mut self,
+        now: crate::clock::precision::Timestamp,
+        rtt_estimator: &s2n_quic_core::recovery::RttEstimator,
+    ) {
+        use s2n_quic_core::packet::number::PacketNumberSpace;
+        let mut pto_period = rtt_estimator.pto_period(self.backoff, PacketNumberSpace::Initial);
+
+        // Minimum 2ms to avoid premature triggers due to timestamp rounding
+        pto_period = pto_period.max(core::time::Duration::from_millis(2));
+
+        self.target_time = Some(now + pto_period);
+    }
+}
+
+/// Adapter for using `Rc<RefCell<PathContext<S>>>` in the PTO timing wheel
+///
+/// This adapter allows the wheel to work directly with Rc pointers, avoiding
+/// any additional allocations. The links are stored in `PathContext.pto.links`.
+pub struct PtoAdapter<S>(core::marker::PhantomData<S>);
+
+impl<S> crate::intrusive_queue::Adapter for PtoAdapter<S> {
+    type Value = std::cell::RefCell<PathContext<S>>;
+    type Target = std::cell::RefCell<PathContext<S>>;
+    type Pointer = std::rc::Rc<std::cell::RefCell<PathContext<S>>>;
+
+    unsafe fn links(value: *mut Self::Value) -> *mut crate::intrusive_queue::Links {
+        core::ptr::addr_of_mut!((*value).borrow_mut().pto.links)
+    }
+
+    unsafe fn target(value: *mut Self::Value) -> *mut Self::Target {
+        value
+    }
+
+    fn as_ptr(ptr: &Self::Pointer) -> *const Self::Value {
+        &**ptr
+    }
+
+    fn into_raw(ptr: Self::Pointer) -> *mut Self::Value {
+        std::rc::Rc::into_raw(ptr) as *mut Self::Value
+    }
+
+    unsafe fn from_raw(ptr: *mut Self::Value) -> Self::Pointer {
+        std::rc::Rc::from_raw(ptr)
+    }
+}
+
+impl<S> crate::clock::wheel::WheelAdapter for PtoAdapter<S> {
+    unsafe fn target_time(value: *const Self::Value) -> Option<crate::clock::precision::Timestamp> {
+        (*value).borrow().pto.target_time
+    }
+
+    unsafe fn set_target_time(value: *mut Self::Value, time: crate::clock::precision::Timestamp) {
+        (*value).borrow_mut().pto.target_time = Some(time);
+    }
+}
+
 pub struct PathContext<Sealer> {
     /// The path secret entry
     pub path_secret_entry: Arc<crate::path::secret::map::Entry>,
@@ -1575,6 +1721,8 @@ pub struct PathContext<Sealer> {
     pub packet_number_map: s2n_quic_core::packet::number::Map<
         crate::intrusive_queue::Entry<crate::packet::datagram::partial::PartialDatagram>,
     >,
+    /// PTO state for tail loss recovery
+    pub pto: Pto,
 }
 
 /// A batch with its resolved path context
@@ -1923,6 +2071,9 @@ where
 
             packet_number += VarInt::from_u8(1);
         }
+
+        // Mark PTO for update after sending packets (new tail)
+        ctx.pto.on_packet_sent();
 
         Poll::Ready(Some(batch))
     }

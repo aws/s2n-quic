@@ -9,11 +9,11 @@
 use crate::intrusive_queue;
 use std::{cell::UnsafeCell, rc::Rc, task::Poll};
 
-struct Shared<T> {
-    queue: UnsafeCell<intrusive_queue::Queue<T>>,
+struct Shared<A: intrusive_queue::Adapter> {
+    queue: UnsafeCell<intrusive_queue::List<A>>,
 }
 
-impl<T> Shared<T> {
+impl<A: intrusive_queue::Adapter> Shared<A> {
     #[inline(always)]
     fn is_alive(self: &Rc<Self>) -> bool {
         // Sender and receiver both hold a reference
@@ -21,9 +21,16 @@ impl<T> Shared<T> {
     }
 }
 
-pub fn new<T>() -> (Sender<T>, Receiver<T>) {
+pub fn new<T>() -> (
+    Sender<intrusive_queue::EntryAdapter<T>>,
+    Receiver<intrusive_queue::EntryAdapter<T>>,
+) {
+    new_with_adapter::<intrusive_queue::EntryAdapter<T>>()
+}
+
+pub fn new_with_adapter<A: intrusive_queue::Adapter>() -> (Sender<A>, Receiver<A>) {
     let shared = Rc::new(Shared {
-        queue: UnsafeCell::new(intrusive_queue::Queue::new()),
+        queue: UnsafeCell::new(intrusive_queue::List::new()),
     });
     (
         Sender {
@@ -33,13 +40,13 @@ pub fn new<T>() -> (Sender<T>, Receiver<T>) {
     )
 }
 
-pub struct Sender<T> {
-    shared: Rc<Shared<T>>,
+pub struct Sender<A: intrusive_queue::Adapter> {
+    shared: Rc<Shared<A>>,
 }
 
-impl<T> super::super::UnboundedSender<intrusive_queue::Entry<T>> for Sender<T> {
+impl<A: intrusive_queue::Adapter> super::super::UnboundedSender<A::Pointer> for Sender<A> {
     #[inline(always)]
-    fn send(&mut self, value: intrusive_queue::Entry<T>) -> Result<(), intrusive_queue::Entry<T>> {
+    fn send(&mut self, value: A::Pointer) -> Result<(), A::Pointer> {
         if !self.shared.is_alive() {
             return Err(value);
         }
@@ -54,12 +61,12 @@ impl<T> super::super::UnboundedSender<intrusive_queue::Entry<T>> for Sender<T> {
     }
 }
 
-impl<T> super::super::Sender<intrusive_queue::Entry<T>> for Sender<T> {
+impl<A: intrusive_queue::Adapter> super::super::Sender<A::Pointer> for Sender<A> {
     #[inline(always)]
     fn poll_send(
         &mut self,
         _cx: &mut core::task::Context<'_>,
-        value: &mut core::mem::MaybeUninit<intrusive_queue::Entry<T>>,
+        value: &mut core::mem::MaybeUninit<A::Pointer>,
     ) -> Poll<Result<(), ()>> {
         if !self.shared.is_alive() {
             return Poll::Ready(Err(()));
@@ -76,77 +83,79 @@ impl<T> super::super::Sender<intrusive_queue::Entry<T>> for Sender<T> {
     }
 }
 
-impl<T> Sender<T> {
-    /// Send a batch of entries by appending them to the queue.
-    ///
-    /// This is more efficient than sending entries one at a time.
+impl<A: intrusive_queue::Adapter> Sender<A> {
+    /// Convert this sender into a list-based sender
+    pub fn into_list_sender(self) -> ListSender<A> {
+        ListSender { sender: self }
+    }
+}
+
+/// List-based sender that sends batches of items
+pub struct ListSender<A: intrusive_queue::Adapter> {
+    sender: Sender<A>,
+}
+
+impl<A: intrusive_queue::Adapter> super::super::UnboundedSender<intrusive_queue::List<A>>
+    for ListSender<A>
+{
     #[inline(always)]
-    pub fn send_batch(
-        &mut self,
-        mut batch: intrusive_queue::Queue<T>,
-    ) -> Result<(), intrusive_queue::Queue<T>> {
-        if batch.is_empty() {
+    fn send(&mut self, mut list: intrusive_queue::List<A>) -> Result<(), intrusive_queue::List<A>> {
+        if list.is_empty() {
             return Ok(());
         }
 
-        if !self.shared.is_alive() {
-            return Err(batch);
+        if !self.sender.shared.is_alive() {
+            return Err(list);
         }
 
         unsafe {
             // SAFETY: the Shared struct is non-Send and we have exclusive access through &mut
-            let queue = &mut *self.shared.queue.get();
-            queue.append(&mut batch);
+            let queue = &mut *self.sender.shared.queue.get();
+            queue.append(&mut list);
         }
 
         Ok(())
     }
 }
 
-impl<T> super::super::UnboundedSender<intrusive_queue::Queue<T>> for Sender<T> {
-    #[inline(always)]
-    fn send(
-        &mut self,
-        batch: intrusive_queue::Queue<T>,
-    ) -> Result<(), intrusive_queue::Queue<T>> {
-        self.send_batch(batch)
-    }
-}
-
-impl<T> super::super::Sender<intrusive_queue::Queue<T>> for Sender<T> {
+impl<A: intrusive_queue::Adapter> super::super::Sender<intrusive_queue::List<A>> for ListSender<A> {
     #[inline(always)]
     fn poll_send(
         &mut self,
         _cx: &mut core::task::Context<'_>,
-        value: &mut core::mem::MaybeUninit<intrusive_queue::Queue<T>>,
+        value: &mut core::mem::MaybeUninit<intrusive_queue::List<A>>,
     ) -> Poll<Result<(), ()>> {
-        let batch = unsafe { value.assume_init_read() };
+        let list = unsafe { value.assume_init_read() };
 
-        if batch.is_empty() {
+        if list.is_empty() {
             return Poll::Ready(Ok(()));
         }
 
-        match self.send_batch(batch) {
+        match <Self as super::super::UnboundedSender<intrusive_queue::List<A>>>::send(self, list) {
             Ok(()) => Poll::Ready(Ok(())),
-            Err(returned_batch) => {
-                // Put the batch back and signal closed
-                value.write(returned_batch);
+            Err(returned_list) => {
+                // Put the list back and signal closed
+                value.write(returned_list);
                 Poll::Ready(Err(()))
             }
         }
     }
 }
 
-pub struct Receiver<T> {
-    shared: Rc<Shared<T>>,
+pub struct Receiver<A: intrusive_queue::Adapter> {
+    shared: Rc<Shared<A>>,
 }
 
-impl<T> super::super::Receiver<intrusive_queue::Entry<T>> for Receiver<T> {
+impl<A: intrusive_queue::Adapter> Receiver<A> {
+    /// Convert this receiver into a list-based receiver
+    pub fn into_list_receiver(self) -> ListReceiver<A> {
+        ListReceiver { receiver: self }
+    }
+}
+
+impl<A: intrusive_queue::Adapter> super::super::Receiver<A::Pointer> for Receiver<A> {
     #[inline(always)]
-    fn poll_recv(
-        &mut self,
-        _cx: &mut core::task::Context<'_>,
-    ) -> Poll<Option<intrusive_queue::Entry<T>>> {
+    fn poll_recv(&mut self, _cx: &mut core::task::Context<'_>) -> Poll<Option<A::Pointer>> {
         unsafe {
             // SAFETY: the Shared struct is non-Send and we have exclusive access through &mut
             let queue = &mut *self.shared.queue.get();
@@ -167,24 +176,31 @@ impl<T> super::super::Receiver<intrusive_queue::Entry<T>> for Receiver<T> {
     fn on_consumed(&mut self, _bytes: u64) {}
 }
 
-impl<T> super::super::Receiver<intrusive_queue::Queue<T>> for Receiver<T> {
+/// List-based receiver that receives batches of items
+pub struct ListReceiver<A: intrusive_queue::Adapter> {
+    receiver: Receiver<A>,
+}
+
+impl<A: intrusive_queue::Adapter> super::super::Receiver<intrusive_queue::List<A>>
+    for ListReceiver<A>
+{
     #[inline(always)]
     fn poll_recv(
         &mut self,
         _cx: &mut core::task::Context<'_>,
-    ) -> Poll<Option<intrusive_queue::Queue<T>>> {
+    ) -> Poll<Option<intrusive_queue::List<A>>> {
         unsafe {
             // SAFETY: the Shared struct is non-Send and we have exclusive access through &mut
-            let queue = &mut *self.shared.queue.get();
+            let queue = &mut *self.receiver.shared.queue.get();
 
             if !queue.is_empty() {
-                // Drain all available entries into a batch
-                let batch = core::mem::take(queue);
-                return Poll::Ready(Some(batch));
+                // Drain all available entries into a list
+                let list = core::mem::take(queue);
+                return Poll::Ready(Some(list));
             }
         }
 
-        if !self.shared.is_alive() {
+        if !self.receiver.shared.is_alive() {
             return Poll::Ready(None);
         }
 

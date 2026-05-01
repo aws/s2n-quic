@@ -351,7 +351,7 @@ fn fuzz_oracle_comparison() {
                 Wheel::new(&channel, clock.timer());
 
             let start_tick =
-                Wheel::<EntryAdapter<TestEntry>, ClockTimer, &TestChannel, 1>::timestamp_to_tick(start);
+                timestamp_to_tick(start, 1);
 
             // Oracle: BTreeMap<tick, Vec<meta>> preserves insertion order per tick
             let mut oracle: BTreeMap<u64, Vec<u16>> = BTreeMap::new();
@@ -394,7 +394,7 @@ fn fuzz_oracle_comparison() {
 
             while current_tick <= end_tick && !oracle.is_empty() {
                 let current_time =
-                    Wheel::<EntryAdapter<TestEntry>, ClockTimer, &TestChannel, 1>::tick_to_timestamp(current_tick);
+                    tick_to_timestamp(current_tick, 1);
 
                 // Update timer to current time
                 wheel.timer.now = current_time;

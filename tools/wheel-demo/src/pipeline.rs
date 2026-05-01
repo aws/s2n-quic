@@ -9,6 +9,7 @@
 //!
 //! This module provides shared pipeline building blocks.
 
+use bytes::Bytes;
 use core::time::Duration;
 use s2n_codec::{Encoder as _, EncoderBuffer};
 use s2n_quic_core::{
@@ -19,7 +20,7 @@ use s2n_quic_core::{
 use s2n_quic_core::frame::ack::EcnCounts;
 use s2n_quic_dc::{
     busy_poll::clock::Timer as BusyPollClock,
-    clock::{precision::Clock as _, tokio::Clock as TokioClock},
+    clock::{precision::Clock as _, tokio::Clock as TokioClock, wheel::Wheel},
     congestion,
     credentials::{self, Credentials},
     datagram::batch::Batch,
@@ -36,7 +37,6 @@ use s2n_quic_dc::{
         pool::{self, descriptor},
         rate::Rate,
         recv::router::Router,
-        send::wheel::Wheel,
     },
     stream::socket::{BusyPoll, Gso, Options, ReusePort},
 };
@@ -164,6 +164,33 @@ pub fn create_test_map(
     map
 }
 
+// ── PTO Probe Generation ───────────────────────────────────────────────────
+
+/// Generate a PING control packet for PTO probe
+///
+/// TODO: Piggyback any pending ACK frames with the PING to save a separate control
+/// packet transmission. This would require:
+/// - Looking up the peer state from the shared_peer_cache by credentials
+/// - Checking if peer_state.should_transmit()
+/// - Encoding both the ACK and PING frames into the same control packet
+/// - Marking the ACK as transmitted in the peer state
+fn generate_pto_probe(
+    context: &socket::channel::PathContext<s2n_quic_dc::crypto::awslc::seal::Application>,
+    peer_addr: SocketAddr,
+) -> PartialDatagram {
+    use s2n_quic_core::frame;
+
+    // PING frame
+    let control_data = const { Bytes::from_static(const { &[frame::Ping.tag()] }) }.into();
+
+    // Create control packet with PING
+    PartialDatagram::new_control(
+        RoutingInfo::None,
+        control_data,
+        context.path_secret_entry.clone(),
+    )
+}
+
 // ── Control Packet Processing ──────────────────────────────────────────────
 
 /// Process control frames in a control packet and update send state
@@ -196,6 +223,13 @@ fn process_control_frames<Clk, Rand>(
         };
 
         match frame {
+            frame::Frame::Padding(_) => {
+                // Padding frames are ignored
+            }
+            frame::Frame::Ping(_) => {
+                // PING frames are implicitly ACKed by their reception
+                // No further action needed here
+            }
             frame::Frame::Ack(ack) => {
                 // Process ACK ranges - remove ACKed packets and track metadata
                 ack_delay = ack_delay.min(ack.ack_delay());
@@ -260,6 +294,11 @@ fn process_control_frames<Clk, Rand>(
             );
         }
     }
+
+    // Update PTO state after ACK processing
+    let has_remaining_inflight =
+        socket::channel::Pto::has_inflight_packets(&context.packet_number_map);
+    context.pto.on_ack_received(has_remaining_inflight);
 }
 
 /// Process ACK ranges and remove ACKed packets from the packet number map
@@ -864,6 +903,7 @@ impl SocketPathContexts {
             cca,
             rtt_estimator,
             packet_number_map,
+            pto: socket::channel::Pto::default(),
         };
 
         let context = Rc::new(RefCell::new(context));
@@ -1062,7 +1102,7 @@ where
 
     // Create the timing wheel that wraps the input receiver
     let wheel_timer = clock.timer();
-    let wheel: Wheel<Batch, _, _, 1> = Wheel::new(wheel_input_rx, wheel_timer);
+    let wheel: Wheel<_, _, _, 1> = Wheel::new(wheel_input_rx, wheel_timer);
 
     // Spawn wheel ticker + distributor on busy poll worker 0
     busy_poll[0].spawn_local({
@@ -1072,10 +1112,10 @@ where
             // Task 1: Pump wheel output into a channel for distribution
             let (wheel_output_tx, wheel_output_rx) = intrusive_queue::unsync::new();
 
-            spawner.spawn(channel::pump(wheel, wheel_output_tx));
+            spawner.spawn(channel::pump(wheel, wheel_output_tx.into_list_sender()));
 
             // Task 2: Overall bandwidth limiter + round robin distributor
-            let wheel_rx = FlattenQueue::new(wheel_output_rx);
+            let wheel_rx = FlattenQueue::new(wheel_output_rx.into_list_receiver());
             let wheel_rx = Paced::new(wheel_rx, clock.clone(), overall_send_rate);
             let wheel_rx = Reporter::new(wheel_rx, clock.clone(), true);
 
@@ -1161,8 +1201,22 @@ where
                 Rc::new(RefCell::new(HashMap::new()));
 
             // Create channels for ACKed and lost packets (shared across control worker)
-            let (mut acked_tx, acked_rx) = channel::intrusive_queue::unsync::new();
-            let (mut lost_tx, lost_rx) = channel::intrusive_queue::unsync::new();
+            let (acked_tx, acked_rx) = channel::intrusive_queue::unsync::new();
+            let mut acked_tx = acked_tx.into_list_sender();
+            let acked_rx = acked_rx.into_list_receiver();
+            let (lost_tx, lost_rx) = channel::intrusive_queue::unsync::new();
+            let mut lost_tx = lost_tx.into_list_sender();
+            let lost_rx = lost_rx.into_list_receiver();
+
+            // Create channel for PTO wheel input (using PtoAdapter)
+            let (pto_wheel_tx, pto_wheel_rx) = channel::intrusive_queue::unsync::new_with_adapter::<
+                channel::PtoAdapter<s2n_quic_dc::crypto::awslc::seal::Application>,
+            >();
+
+            // Create PTO timing wheel (1µs granularity)
+            let pto_wheel_timer = clock.timer();
+            let pto_wheel: Wheel<_, _, _, 1> =
+                Wheel::new(pto_wheel_rx.into_list_receiver(), pto_wheel_timer);
 
             // Spawn ACKed packet handler with batched completion notifications
             spawner.spawn({
