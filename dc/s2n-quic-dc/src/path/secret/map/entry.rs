@@ -155,6 +155,32 @@ impl Entry {
         ))
     }
 
+    /// Create a deterministic entry for cross-process testing.
+    ///
+    /// Uses a fixed secret so client and server can communicate.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn fake_deterministic(
+        peer: SocketAddr,
+        endpoint_type: s2n_quic_core::endpoint::Type,
+    ) -> Arc<Entry> {
+        let secret = [42; 32];
+
+        Arc::new(Entry::new(
+            peer,
+            schedule::Secret::new(
+                schedule::Ciphersuite::AES_GCM_128_SHA256,
+                dc::SUPPORTED_VERSIONS[0],
+                endpoint_type,
+                &secret,
+            ),
+            sender::State::new([0; control::TAG_LEN]),
+            receiver::State::new(),
+            dc::testing::TEST_APPLICATION_PARAMS,
+            dc::testing::TEST_REHANDSHAKE_PERIOD,
+            None,
+        ))
+    }
+
     pub fn peer(&self) -> &SocketAddr {
         &self.peer
     }
@@ -236,6 +262,17 @@ impl Entry {
         };
         let sealer = self.secret.application_sealer(key_id);
         let sealer = seal::Once::new(sealer);
+
+        (sealer, credentials)
+    }
+
+    pub fn reusable_sealer(&self) -> (crate::crypto::awslc::seal::Application, Credentials) {
+        let key_id = self.sender.next_key_id();
+        let credentials = Credentials {
+            id: *self.secret.id(),
+            key_id,
+        };
+        let sealer = self.secret.application_sealer(key_id);
 
         (sealer, credentials)
     }

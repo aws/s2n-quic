@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-mod ack;
+pub mod ack;
 pub mod application;
 pub(crate) mod buffer;
 pub mod dispatch;

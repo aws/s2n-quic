@@ -129,12 +129,13 @@ pub fn send<T>(
     addr: &Addr,
     ecn: ExplicitCongestionNotification,
     buffer: &[IoSlice],
+    segment_size: Option<u16>,
     flags: Flags,
 ) -> io::Result<usize>
 where
     T: AsRawFd,
 {
-    send_msghdr(addr, ecn, buffer, |msghdr| {
+    send_msghdr(addr, ecn, buffer, segment_size, |msghdr| {
         libc_call(|| unsafe { libc::sendmsg(fd.as_raw_fd(), msghdr, flags) as _ })
     })
 }
@@ -145,6 +146,7 @@ fn send_msghdr(
     addr: &Addr,
     ecn: ExplicitCongestionNotification,
     segments: &[IoSlice],
+    segment_size: Option<u16>,
     exec: impl FnOnce(&libc::msghdr) -> io::Result<usize>,
 ) -> io::Result<usize> {
     debug_assert!(!segments.is_empty());
@@ -164,8 +166,17 @@ fn send_msghdr(
         let _ = cmsg.encode_ecn(ecn, &addr.get());
     }
 
-    if segments.len() > 1 {
-        let _ = cmsg.encode_gso(segments[0].len() as _);
+    // If segment_size is explicitly provided, use it
+    // Otherwise, infer from the first segment when there are multiple segments
+    // Filter out 0, which means there's only a single segment
+    if let Some(size) = segment_size {
+        // If the segment size is 0, we don't need to encode GSO
+        if size > 0 {
+            let _ = cmsg.encode_gso(size);
+        }
+    } else if segments.len() > 1 {
+        let size  = segments[0].len() as u16;
+        let _ = cmsg.encode_gso(size);
     }
 
     if !cmsg.is_empty() {

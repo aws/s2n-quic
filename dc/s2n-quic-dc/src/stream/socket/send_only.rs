@@ -69,7 +69,7 @@ where
         );
 
         loop {
-            match udp::send(&self.0, addr, ecn, buffer, libc::MSG_DONTWAIT) {
+            match udp::send(&self.0, addr, ecn, buffer, None, libc::MSG_DONTWAIT) {
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {
                     // try the operation again if we were interrupted
                     continue;

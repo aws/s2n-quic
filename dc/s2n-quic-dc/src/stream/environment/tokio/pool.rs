@@ -8,7 +8,6 @@ use crate::{
     socket::{
         pool::{self, Pool as Packets},
         recv::{router::Router, udp},
-        send,
     },
     stream::{
         self,
@@ -20,7 +19,7 @@ use crate::{
         load_balance::PickTwo,
         recv::dispatch::{Allocator as Queues, Control, Stream},
         server::{accept, udp::Acceptor},
-        socket::{application::Single, BusyPoll, Events, Gso, SendOnly, Tracing},
+        socket::{application::Single, BusyPoll, Events, SendOnly, Tracing},
     },
 };
 use s2n_quic_platform::socket::options::{Options, ReusePort};
@@ -44,6 +43,15 @@ struct PoolSocket {
     worker: WorkerSendSocket,
     application: Box<[ApplicationSendSocket]>,
     recv_queue: Mutex<Queues>,
+    // Channel receiver for wheel to read transmissions from (taken on first use)
+    #[allow(dead_code)] // TODO: use this when implementing new wheel architecture
+    wheel_rx: Mutex<
+        Option<
+            crate::socket::channel::intrusive_queue::sync::Receiver<
+                crate::stream::send::state::transmission::Transmission,
+            >,
+        >,
+    >,
 }
 
 macro_rules! spawn_span {
@@ -64,16 +72,18 @@ impl PoolSocket {
         let socket = Arc::new(socket);
         let local_addr = socket.local_addr().unwrap();
 
-        let create_socket = || {
-            let wheel = send::wheel::Wheel::new();
-            let socket = stream::socket::Wheel::new(wheel, local_addr.into());
-            Tracing(socket)
-        };
+        // Create a channel for transmissions from streams to wheel
+        let (tx, rx) = crate::socket::channel::intrusive_queue::sync::new();
+        let worker_socket = stream::socket::Wheel::new(tx, local_addr.into());
+        let worker = Arc::new(Tracing(worker_socket));
 
-        let worker = Arc::new(create_socket());
-
+        // Create channels for application sockets (higher priorities)
         let application = (0..config.priority_levels)
-            .map(|_| Arc::new(Single(create_socket())))
+            .map(|_| {
+                // For now, share the same channel as worker
+                // TODO: create separate channels per priority level
+                Arc::new(Single(Tracing(worker.0.clone())))
+            })
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
@@ -82,28 +92,27 @@ impl PoolSocket {
             application,
             socket,
             recv_queue,
+            wheel_rx: Mutex::new(Some(rx)),
         }
     }
 
     fn create_send_socket_worker(
         &self,
-        config: &Config,
-        env: &Environment<impl event::Subscriber + Clone>,
-        clock: impl crate::clock::precision::Clock + Clone,
-        idle: impl send::udp::Idle,
+        _config: &Config,
+        _env: &Environment<impl event::Subscriber + Clone>,
+        _clock: impl crate::clock::precision::Clock + Clone + 'static,
     ) -> impl core::future::Future<Output = ()> + Send + 'static {
-        let socket = Tracing(Gso(SendOnly(self.socket.clone()), env.gso.clone()));
-        let socket = Events::new(socket, env.subscriber.clone(), env.clock());
-
-        let mut wheels = vec![send::wheel::Wheel::clone(&self.worker)];
-
-        for application in &self.application {
-            wheels.push(send::wheel::Wheel::clone(application));
-        }
-
-        let rate = config.rate();
-
-        send::udp::non_blocking(socket, wheels, clock, rate, idle)
+        // TODO: Implement new channel-based wheel architecture
+        // The implementation needs to:
+        // 1. Take the receiver from self.wheel_rx
+        // 2. Create a Wheel that reads from the channel
+        // 3. Pump the wheel output into a channel
+        // 4. Pass the channel receiver to send::udp::non_blocking
+        // 5. Poll both the pump and sender tasks concurrently
+        //
+        // Current blocker: HRTB lifetime issue with Weak<dyn Notify>
+        // See: https://github.com/rust-lang/rust/issues/...
+        async move { todo!("implement new wheel-based send worker") }
     }
 
     fn spawn_non_blocking_send_worker(
@@ -112,7 +121,7 @@ impl PoolSocket {
         env: &Environment<impl event::Subscriber + Clone>,
     ) {
         let clock = env.clock();
-        let task = self.create_send_socket_worker(config, env, clock, send::udp::WakerIdle);
+        let task = self.create_send_socket_worker(config, env, clock);
         let span = tracing::trace_span!("send_socket_worker");
         spawn_span!(span, task, |task| {
             env.writer_rt.spawn(task);
@@ -141,8 +150,8 @@ impl PoolSocket {
         env: &Environment<impl event::Subscriber + Clone>,
         handle: &crate::busy_poll::Handle,
     ) {
-        let timer = crate::busy_poll::clock::Timer::new(env.clock());
-        let task = self.create_send_socket_worker(config, env, timer, send::udp::BusyPollIdle);
+        let clock = crate::busy_poll::clock::Timer::new(env.clock());
+        let task = self.create_send_socket_worker(config, env, clock);
         let span = tracing::trace_span!("send_socket_worker");
         spawn_span!(span, task, |task| {
             handle.spawn_with_priority(task, config.flow_priority);
@@ -158,7 +167,8 @@ impl PoolSocket {
         handle: &crate::busy_poll::Handle,
     ) {
         let socket = BusyPoll(self.socket.clone());
-        let socket = Events::new(socket, env.subscriber.clone(), env.clock());
+        let clock = env.clock();
+        let socket = Events::new(socket, env.subscriber.clone(), clock);
         let task = udp::non_blocking(socket, alloc, router);
         let span = tracing::trace_span!("recv_socket_worker");
         spawn_span!(span, task, |task| {

@@ -245,13 +245,10 @@ impl State {
 
     pub fn alloc_transmission(
         &self,
-        batch_size: usize,
         packet_space: crate::packet::stream::PacketSpace,
     ) -> transmission::Entry {
         let completion_queue = || unsafe { self.completion_handle.load() };
-        let mut entry = self
-            .transmission_queue
-            .alloc_entry(batch_size, completion_queue);
+        let mut entry = self.transmission_queue.alloc_entry(completion_queue);
         entry.meta.packet_space = packet_space;
         entry.meta.half = shared::Half::Read;
         entry

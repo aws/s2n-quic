@@ -126,7 +126,13 @@ where
             "cannot send packet to unspecified port"
         );
 
-        udp::send(&self.0, addr, ecn, buffer, Default::default())
+        let res = udp::send(&self.0, addr, ecn, buffer, None, Default::default());
+
+        if let Err(error) = &res {
+            tracing::warn!(%error, "socket try_send error");
+        }
+
+        res
     }
 
     #[inline]
@@ -150,7 +156,7 @@ where
             "cannot send packet to unspecified port"
         );
 
-        let res = udp::send(&self.0, addr, ecn, buffer, Default::default());
+        let res = udp::send(&self.0, addr, ecn, buffer, None, Default::default());
 
         match res {
             Ok(len) => return Ok(len).into(),

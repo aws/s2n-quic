@@ -12,6 +12,18 @@ pub trait Clock: Send + Sync + 'static {
 pub trait Timer: Send + 'static {
     fn now(&self) -> Timestamp;
     fn sleep_until(&mut self, target: Timestamp) -> impl core::future::Future<Output = ()> + Send;
+
+    /// Poll to see if the timer has expired.
+    fn poll_ready(&mut self, cx: &mut core::task::Context) -> core::task::Poll<()>;
+
+    /// Update the timer target.
+    fn update(&mut self, target: Timestamp);
+
+    /// Cancel the timer.
+    fn cancel(&mut self);
+
+    /// Check if the timer is armed (has a target).
+    fn is_armed(&self) -> bool;
 }
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
@@ -102,5 +114,24 @@ impl Timer for crate::clock::Timer {
         let target = std::time::Duration::from_nanos(target.nanos);
         let target = unsafe { s2n_quic_core::time::Timestamp::from_duration(target) };
         self.sleep(target).await;
+    }
+
+    fn poll_ready(&mut self, cx: &mut core::task::Context) -> core::task::Poll<()> {
+        <Self as s2n_quic_core::time::clock::Timer>::poll_ready(self, cx)
+    }
+
+    fn update(&mut self, target: Timestamp) {
+        let core_target = std::time::Duration::from_nanos(target.nanos);
+        let core_target = unsafe { s2n_quic_core::time::Timestamp::from_duration(core_target) };
+        <Self as s2n_quic_core::time::clock::Timer>::update(self, core_target);
+    }
+
+    fn cancel(&mut self) {
+        self.cancel();
+    }
+
+    fn is_armed(&self) -> bool {
+        use s2n_quic_core::time::timer::Provider;
+        Provider::is_armed(self)
     }
 }

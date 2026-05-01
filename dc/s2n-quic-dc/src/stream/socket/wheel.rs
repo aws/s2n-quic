@@ -4,7 +4,7 @@
 use super::{handle::Transmission, Protocol, Socket, TransportFeatures};
 use crate::{
     msg::{addr::Addr, cmsg},
-    socket::send::wheel::DEFAULT_GRANULARITY_US,
+    socket::channel::intrusive_queue,
     stream::send::state::transmission,
 };
 use core::task::{Context, Poll};
@@ -12,31 +12,29 @@ use s2n_quic_core::inet::ExplicitCongestionNotification;
 use std::{
     io::{self, IoSlice, IoSliceMut},
     net::SocketAddr,
-    ops,
 };
 
+/// A Socket implementation that sends transmissions into an intrusive queue channel.
+///
+/// This is the producer side - it implements `Socket` and allows streams to send
+/// transmissions via `send_transmission` and `send_transmission_batch`. The consumer
+/// side receives these transmissions from a channel and feeds them into a timing wheel.
 #[derive(Clone)]
-pub struct Wheel<const GRANULARITY_US: u64 = DEFAULT_GRANULARITY_US> {
-    wheel: transmission::Wheel<GRANULARITY_US>,
+pub struct Wheel {
+    sender: intrusive_queue::sync::Sender<transmission::Transmission>,
     local_addr: SocketAddr,
 }
 
-impl<const GRANULARITY_US: u64> Wheel<GRANULARITY_US> {
-    pub fn new(wheel: transmission::Wheel<GRANULARITY_US>, local_addr: SocketAddr) -> Self {
-        Self { wheel, local_addr }
+impl Wheel {
+    pub fn new(
+        sender: intrusive_queue::sync::Sender<transmission::Transmission>,
+        local_addr: SocketAddr,
+    ) -> Self {
+        Self { sender, local_addr }
     }
 }
 
-impl<const GRANULARITY_US: u64> ops::Deref for Wheel<GRANULARITY_US> {
-    type Target = transmission::Wheel<GRANULARITY_US>;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.wheel
-    }
-}
-
-impl<const GRANULARITY_US: u64> Socket for Wheel<GRANULARITY_US> {
+impl Socket for Wheel {
     #[inline]
     fn local_addr(&self) -> io::Result<SocketAddr> {
         Ok(self.local_addr)
@@ -69,13 +67,13 @@ impl<const GRANULARITY_US: u64> Socket for Wheel<GRANULARITY_US> {
     }
 
     #[inline]
-    fn send_transmission(&self, msg: Transmission) {
-        self.wheel.insert(msg);
+    fn send_transmission(&self, entry: Transmission) {
+        let _ = self.sender.send_entry(entry);
     }
 
     #[inline]
     fn send_transmission_batch(&self, batch: transmission::EntryQueue) {
-        self.wheel.insert_batch(batch);
+        let _ = self.sender.send_batch(batch);
     }
 
     #[inline]

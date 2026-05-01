@@ -13,17 +13,26 @@ use s2n_quic_dc::{
     path::secret::{self, stateless_reset::Signer},
     psk,
 };
-use std::{io, net::SocketAddr, path::PathBuf};
+use std::{io, net::SocketAddr, path::PathBuf, sync::OnceLock};
 
 pub type Subscriber = (
+    crate::stats::Subscriber,
     s2n_quic_dc::event::tracing::Subscriber,
-    diagnostic::Subscriber,
+    // NOTE: diagnostic::Subscriber buffers all events in memory for every stream.
+    // This causes massive memory leaks during load testing with thousands of streams.
+    // Only enable for debugging specific stream errors.
+    // diagnostic::Subscriber,
 );
 
-pub fn subscriber(trace_dir: &PathBuf) -> Subscriber {
+pub fn subscriber(_trace_dir: &PathBuf) -> Subscriber {
+    static STATS: OnceLock<crate::stats::Subscriber> = OnceLock::new();
+
     (
+        STATS
+            .get_or_init(|| crate::stats::Subscriber::spawn(std::time::Duration::from_secs(1)))
+            .clone(),
         s2n_quic_dc::event::tracing::Subscriber::default(),
-        diagnostic::Subscriber::new(trace_dir.clone()),
+        // diagnostic::Subscriber::new(trace_dir.clone()),
     )
 }
 

@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use clap::Args;
 use serde::Deserialize;
 use std::{collections::HashMap, path::PathBuf};
-use xshell::{cmd, Shell};
+use xshell::{Shell, cmd};
 
 #[derive(Args)]
 pub struct Analyze {

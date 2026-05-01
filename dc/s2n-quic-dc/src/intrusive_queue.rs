@@ -52,6 +52,12 @@ impl<T: Default> Default for Entry<T> {
     }
 }
 
+impl<T> From<T> for Entry<T> {
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
+
 impl<T> Entry<T> {
     /// Create a new entry with the given value
     pub fn new(value: T) -> Self {
@@ -92,6 +98,18 @@ impl<T> DerefMut for Entry<T> {
     }
 }
 
+impl<T: crate::socket::channel::ByteCost> crate::socket::channel::ByteCost for Entry<T> {
+    fn byte_cost(&self) -> u64 {
+        (**self).byte_cost()
+    }
+}
+
+impl<T: crate::socket::channel::Sendable> crate::socket::channel::Sendable for Entry<T> {
+    fn send<S: crate::socket::send::Socket>(&mut self, socket: &S) -> std::io::Result<()> {
+        (**self).send(socket)
+    }
+}
+
 /// An intrusive FIFO queue
 ///
 /// This is a doubly-linked list where elements are pushed to the back
@@ -104,6 +122,12 @@ pub struct Queue<T> {
 
 unsafe impl<T: Send> Send for Queue<T> {}
 unsafe impl<T: Sync> Sync for Queue<T> {}
+
+impl<T: fmt::Debug> fmt::Debug for Queue<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
 
 impl<T> Queue<T> {
     /// Create a new empty queue
@@ -123,6 +147,16 @@ impl<T> Queue<T> {
     /// Returns the number of entries in the queue
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    /// Peek at the first entry without removing it
+    pub fn front(&self) -> Option<&T> {
+        self.head.map(|head| unsafe { &(*head.as_ptr()).value })
+    }
+
+    /// Peek at the last entry without removing it
+    pub fn back(&self) -> Option<&T> {
+        self.tail.map(|tail| unsafe { &(*tail.as_ptr()).value })
     }
 
     /// Push an entry to the back of the queue
@@ -287,6 +321,20 @@ impl<T> Queue<T> {
             _phantom: std::marker::PhantomData,
         }
     }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+        IterMut {
+            next: self.head,
+            len: self.len,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    pub fn drain(&mut self) -> IntoIter<T> {
+        IntoIter {
+            queue: core::mem::replace(self, Queue::new()),
+        }
+    }
 }
 
 impl<T> Default for Queue<T> {
@@ -324,6 +372,67 @@ impl<'a, T> Iterator for Iter<'a, T> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         let len = self.len;
         (len, Some(len))
+    }
+}
+
+pub struct IterMut<'a, T> {
+    next: Option<Link<T>>,
+    len: usize,
+    _phantom: std::marker::PhantomData<&'a mut T>,
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.next.take()?;
+        unsafe {
+            let inner = &mut *current.as_ptr();
+            self.next = inner.next;
+            self.len -= 1;
+            Some(&mut inner.value)
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len;
+        (len, Some(len))
+    }
+}
+
+impl<T> IntoIterator for Queue<T> {
+    type Item = Entry<T>;
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter { queue: self }
+    }
+}
+
+pub struct IntoIter<T> {
+    queue: Queue<T>,
+}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = Entry<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.queue.pop_front()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.queue.len();
+        (len, Some(len))
+    }
+}
+
+impl<T> FromIterator<Entry<T>> for Queue<T> {
+    fn from_iter<I: IntoIterator<Item = Entry<T>>>(iter: I) -> Self {
+        let mut queue = Queue::new();
+        for item in iter {
+            queue.push_back(item);
+        }
+        queue
     }
 }
 
@@ -394,6 +503,7 @@ mod tests {
     }
 
     #[test]
+
     fn test_into_value() {
         let mut queue = Queue::new();
 

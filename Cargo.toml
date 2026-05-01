@@ -1,9 +1,9 @@
 [workspace]
-members = ["common/s2n-*", "quic/s2n-*", "dc/s2n-*"]
+members = ["common/s2n-*", "quic/s2n-*", "dc/s2n-*", "tools/dc-tester", "tools/wheel-demo", "xtask"]
 default-members = ["common/s2n-*", "quic/s2n-*"]
 resolver = "2"
 # don't include any workspaces outside of the main project
-exclude = ["examples", "tools", "xtask"]
+exclude = ["examples", "tools/event-generator", "tools/memory-report", "tools/s2n-events", "tools/udp-attack", "tools/xdp"]
 
 [profile.release-debug]
 inherits = "dev"

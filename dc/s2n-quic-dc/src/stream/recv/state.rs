@@ -612,6 +612,14 @@ impl State {
         if let Some(largest_delivered_control_packet) =
             next_expected_control_packet.checked_sub(VarInt::from_u8(1))
         {
+            tracing::debug!(
+                next_expected_control_packet = next_expected_control_packet.as_u64(),
+                largest_delivered = largest_delivered_control_packet.as_u64(),
+                stream_intervals = self.transmission.stream_ack.interval_len(),
+                recovery_intervals = self.transmission.recovery_ack.interval_len(),
+                "Processing next_expected_control_packet from peer"
+            );
+
             self.transmission
                 .on_largest_delivered_packet(largest_delivered_control_packet);
             self.max_data
@@ -647,7 +655,7 @@ impl State {
         // TODO should we pull this from somewhere
 
         // we want to make sure ACKs get through so use the minimum packet length for QUIC
-        1200
+        7000
     }
 
     #[inline]
@@ -887,8 +895,7 @@ impl State {
                     source_queue_id,
                     Some(stream_id),
                     packet_number,
-                    VarInt::ZERO,
-                    &mut &[][..],
+                    Default::default(),
                     encoding_size,
                     &frame,
                     key,
@@ -961,8 +968,7 @@ impl State {
                 source_queue_id,
                 Some(stream_id),
                 packet_number,
-                VarInt::ZERO,
-                &mut &[][..],
+                Default::default(),
                 encoding_size,
                 &frame,
                 control_key,

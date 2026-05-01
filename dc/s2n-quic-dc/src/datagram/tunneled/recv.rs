@@ -15,7 +15,7 @@ pub use decoder::Packet;
 pub struct Endpoint {}
 
 impl Endpoint {
-    pub fn parse<'a>(&self, payload: &'a mut [u8]) -> Option<(Packet<'a>, &'a mut [u8])> {
+    pub fn parse<'a>(&self, payload: &'a mut [u8]) -> Option<(Packet<&'a mut [u8]>, &'a mut [u8])> {
         let buffer = DecoderBufferMut::new(payload);
         let (packet, buffer) = Packet::decode(buffer, TagValidator, 16).ok()?;
         let buffer = buffer.into_less_safe_slice();
@@ -28,10 +28,10 @@ struct TagValidator;
 impl decoder::Validator for TagValidator {
     #[inline]
     fn validate_tag(&mut self, tag: Tag) -> Result<(), DecoderError> {
-        decoder_invariant!(!tag.ack_eliciting(), "expected tunnelled datagram");
+        decoder_invariant!(!tag.has_routing_info(), "expected tunnelled datagram");
         decoder_invariant!(
-            !tag.has_application_header(),
-            "application headers currently unsupported"
+            !tag.payload_encrypted(),
+            "partial encryption currently unsupported"
         );
         Ok(())
     }
@@ -48,7 +48,7 @@ impl<K: open::Application> Receiver<K> {
 
     pub fn recv_into(
         &mut self,
-        packet: &Packet,
+        packet: &Packet<&mut [u8]>,
         payload_out: &mut UninitSlice,
     ) -> Result<(), Error> {
         debug_assert_eq!(packet.payload().len(), payload_out.len());
@@ -73,7 +73,7 @@ pub struct SeenFilter {
 
 impl SeenFilter {
     #[inline]
-    pub fn on_packet(&mut self, packet: &Packet) -> Result<(), SlidingWindowError> {
+    pub fn on_packet(&mut self, packet: &Packet<&mut [u8]>) -> Result<(), SlidingWindowError> {
         let packet_number =
             PacketNumberSpace::ApplicationData.new_packet_number(packet.packet_number());
         self.window.insert(packet_number)

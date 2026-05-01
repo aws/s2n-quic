@@ -107,6 +107,11 @@ impl<T> Queue<T> {
         ensure!(inner.has_receiver, Err(Error::Unallocated(value)));
 
         let prev = if inner.capacity == inner.queue.len() {
+            tracing::error!(
+                capacity = inner.capacity,
+                queue_len = inner.queue.len(),
+                "recv queue at capacity, dropping oldest packet"
+            );
             inner.queue.pop_front()
         } else {
             None
@@ -128,6 +133,11 @@ impl<T> Queue<T> {
         };
 
         let prev = if inner.capacity == inner.queue.len() {
+            tracing::error!(
+                capacity = inner.capacity,
+                queue_len = inner.queue.len(),
+                "recv queue at capacity, dropping oldest packet"
+            );
             inner.queue.pop_front()
         } else {
             None

@@ -147,6 +147,7 @@ pub struct State {
     max_datagram_size: u16,
     max_sent_segment_size: u16,
     is_reliable: bool,
+    retransmission_bytes_in_flight: u32,
     fin: fin::Fin,
     keep_alive: keep_alive::KeepAlive,
     retransmissions: BinaryHeap<retransmission::Segment>,
@@ -204,6 +205,7 @@ impl State {
             max_datagram_size,
             max_sent_segment_size: 0,
             is_reliable: stream_id.is_reliable,
+            retransmission_bytes_in_flight: 0,
             fin: Default::default(),
             retransmissions: Default::default(),
             keep_alive: Default::default(),
@@ -251,16 +253,25 @@ impl State {
         state::Sender::Send
     }
 
-    fn cca_offset(&self) -> VarInt {
-        let mut extra_window = self
-            .cca
-            .congestion_window()
-            .saturating_sub(self.cca.bytes_in_flight());
+    const BBR: bool = false;
+    const WINDOW: u32 = 625_000_000 * 2;
 
-        // only give CCA credits to the application if we were able to retransmit everything considered lost
-        if !self.retransmissions.is_empty() {
-            extra_window = 0;
-        }
+    fn cca_offset(&self) -> VarInt {
+        let extra_window = if Self::BBR {
+            let mut extra_window = self
+                .cca
+                .congestion_window()
+                .saturating_sub(self.cca.bytes_in_flight());
+
+            // only give CCA credits to the application if we were able to retransmit everything considered lost
+            if !self.retransmissions.is_empty() {
+                extra_window = 0;
+            }
+
+            extra_window
+        } else {
+            Self::WINDOW - self.cca.bytes_in_flight()
+        };
 
         self.max_data.max_sent_offset() + extra_window as usize
     }
@@ -274,7 +285,7 @@ impl State {
         // proportionally — coordinating memory usage without explicit signaling.
         let window = self
             .buffer_budget
-            .window(self.cca.bandwidth(), &self.rtt_estimator);
+            .window(self.bandwidth(), &self.rtt_estimator);
         let remaining_window = window.saturating_sub(self.cca.bytes_in_flight() as u64);
         self.max_data
             .max_sent_offset()
@@ -288,7 +299,11 @@ impl State {
     }
 
     pub fn bandwidth(&self) -> Bandwidth {
-        self.cca.bandwidth()
+        if Self::BBR {
+            self.cca.bandwidth()
+        } else {
+            Bandwidth::new(Self::WINDOW as _, core::time::Duration::from_secs(1))
+        }
     }
 
     pub fn keep_alive(&mut self, enabled: bool, clock: &impl Clock) {
@@ -305,7 +320,7 @@ impl State {
         &mut self,
         control_key: &C,
         ecn: ExplicitCongestionNotification,
-        packet: &mut packet::control::decoder::Packet,
+        packet: &mut packet::control::decoder::Packet<&mut [u8]>,
         random: &mut dyn random::Generator,
         clock: &Clk,
         transmission_queue: &transmission::Queue,
@@ -343,7 +358,7 @@ impl State {
         &mut self,
         control_key: &C,
         _ecn: ExplicitCongestionNotification,
-        packet: &mut packet::control::decoder::Packet,
+        packet: &mut packet::control::decoder::Packet<&mut [u8]>,
         random: &mut dyn random::Generator,
         clock: &Clk,
         transmission_queue: &transmission::Queue,
@@ -381,9 +396,18 @@ impl State {
 
         // raise our next expected control packet
         {
+            let old = self.next_expected_control_packet;
             let pn = packet_number.saturating_add(VarInt::from_u8(1));
             let pn = self.next_expected_control_packet.max(pn);
             self.next_expected_control_packet = pn;
+            if pn != old {
+                tracing::debug!(
+                    old_next_expected = old.as_u64(),
+                    new_next_expected = pn.as_u64(),
+                    control_packet_number = packet_number.as_u64(),
+                    "Updated next_expected_control_packet after receiving control packet"
+                );
+            }
         }
 
         let recv_time = clock.get_time();
@@ -764,7 +788,13 @@ impl State {
         }
 
         match packet_space {
-            stream::PacketSpace::Stream => impl_loss_detection!(sent_stream_packets, |_, _| {}),
+            stream::PacketSpace::Stream => {
+                impl_loss_detection!(sent_stream_packets, |packet_number: VarInt, _packet| {
+                    // Track the highest stream PN actually declared lost
+                    self.max_stream_packet_number_lost =
+                        self.max_stream_packet_number_lost.max(packet_number);
+                })
+            }
             stream::PacketSpace::Recovery => {
                 impl_loss_detection!(
                     sent_recovery_packets,
@@ -1142,9 +1172,9 @@ impl State {
 
         if let stream::PacketSpace::Recovery = packet_space {
             let packet_number = PacketNumberSpace::Initial.new_packet_number(packet_number);
-            let max_stream_packet_number_lost = self
-                .max_stream_packet_number_lost
-                .max(self.max_stream_packet_number + 1);
+            // Capture the highest lost stream PN at recovery creation time.
+            // This is already updated by detect_lost_packets when stream packets are lost.
+            let max_stream_packet_number_lost = self.max_stream_packet_number_lost;
 
             #[cfg(debug_assertions)]
             let _ = self.pending_retransmissions.remove(info.range());
@@ -1159,6 +1189,11 @@ impl State {
             {
                 panic!("application packet numbers should be transmitted in order {packet_number:?}: {info:?} - {:?}", self.sent_recovery_packets);
             }
+
+            // Decrement retransmission bytes in flight now that it's been sent
+            self.retransmission_bytes_in_flight = self
+                .retransmission_bytes_in_flight
+                .saturating_sub(info.payload_len as u32);
 
             self.sent_recovery_packets.insert(
                 packet_number,
@@ -1412,6 +1447,15 @@ impl State {
                 continue;
             }
 
+            // Limit retransmission bytes in flight to avoid flooding the send wheel.
+            // Allow up to 5x max_datagram_size worth of retransmissions in the wheel.
+            let max_retransmission_bytes = self.max_datagram_size as u32 * 5;
+            ensure!(
+                self.retransmission_bytes_in_flight + retransmission.payload_len as u32
+                    <= max_retransmission_bytes,
+                break
+            );
+
             // If the CCA is requesting fast retransmission we can bypass the CWND check
             if !self.cca.requires_fast_retransmission() {
                 // make sure we fit in the current congestion window
@@ -1512,6 +1556,9 @@ impl State {
                     self.pto.on_transmit_once();
                 }
                 self.keep_alive.on_transmit();
+
+                // Track retransmission bytes in flight
+                self.retransmission_bytes_in_flight += payload_len as u32;
 
                 packets.push(event, descriptor);
             }

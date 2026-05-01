@@ -3,6 +3,7 @@
 
 use crate::{
     credentials::{Credentials, Id},
+    crypto::awslc,
     event,
     packet::{secret_control as control, Packet},
     path::secret::{
@@ -156,6 +157,29 @@ impl Map {
         let entry = self.store.get_by_id_tracked(&id)?;
         let (sealer, credentials) = entry.uni_sealer();
         Some((sealer, credentials, entry.parameters()))
+    }
+
+    /// Get a reusable opener for the given credentials.
+    ///
+    /// This performs authentication and returns a reusable opener with the entry if valid.
+    /// If authentication fails or the credentials are unknown, `control_out` will
+    /// be populated with an appropriate error control packet to send back.
+    ///
+    /// Returns the raw AEAD opener (from awslc) that can be cached and reused.
+    /// For datagrams, this is sufficient as we don't need key updates or the
+    /// additional wrapper logic.
+    pub fn opener_for_credentials(
+        &self,
+        credentials: &Credentials,
+        queue_id: Option<VarInt>,
+        control_out: &mut Vec<u8>,
+    ) -> Option<(awslc::open::Application, Arc<Entry>)> {
+        let entry = self
+            .store
+            .pre_authentication(credentials, queue_id, control_out)?;
+        let key_id = credentials.key_id;
+        let opener = entry.secret().application_opener(key_id);
+        Some((opener, entry))
     }
 
     pub fn open_once(
@@ -346,6 +370,47 @@ impl Map {
         let receiver = super::receiver::State::new();
         let entry = Entry::fake(peer, Some(receiver));
         self.store.test_insert(entry);
+    }
+
+    /// Insert a deterministic test entry for cross-process testing.
+    ///
+    /// Uses a fixed secret so that client and server processes can
+    /// communicate with matching credentials.
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "testing"))]
+    pub fn test_insert_deterministic(
+        &self,
+        peer: SocketAddr,
+        endpoint_type: s2n_quic_core::endpoint::Type,
+    ) {
+        use crate::path::secret::{schedule, sender};
+        use s2n_quic_core::dc;
+
+        // Use a fixed deterministic secret for demo purposes
+        let secret = [42u8; 32];
+
+        let secret = schedule::Secret::new(
+            schedule::Ciphersuite::AES_GCM_128_SHA256,
+            dc::SUPPORTED_VERSIONS[0],
+            endpoint_type,
+            &secret,
+        );
+
+        let id = *secret.id();
+        let srt = self.store.signer().sign(&id);
+        let sender = sender::State::new(srt);
+
+        let entry = Entry::new(
+            peer,
+            secret,
+            sender,
+            super::receiver::State::new(),
+            dc::testing::TEST_APPLICATION_PARAMS,
+            dc::testing::TEST_REHANDSHAKE_PERIOD,
+            None,
+        );
+
+        self.store.test_insert(Arc::new(entry));
     }
 
     #[cfg(any(test, feature = "testing"))]

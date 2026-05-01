@@ -8,7 +8,7 @@ use crate::{
     path::secret::Map,
     socket::{
         pool::{self, descriptor},
-        send::udp::Rate,
+        rate::Rate,
     },
     stream::{
         environment::{Environment, Peer, SetupResult, SocketSet},

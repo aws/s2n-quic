@@ -39,7 +39,7 @@ impl<Inner: Router> Router for WithMap<Inner> {
         &mut self,
         remote_address: SocketAddress,
         ecn: ExplicitCongestionNotification,
-        packet: packet::control::decoder::Packet,
+        packet: packet::control::decoder::Packet<&mut [u8]>,
     ) {
         self.inner
             .handle_control_packet(remote_address, ecn, packet);
@@ -48,13 +48,9 @@ impl<Inner: Router> Router for WithMap<Inner> {
     #[inline]
     fn dispatch_control_packet(
         &mut self,
-        tag: packet::control::Tag,
-        id: Option<stream::Id>,
-        credentials: Credentials,
-        segment: descriptor::Filled,
+        packet: packet::control::decoder::Packet<descriptor::Filled>,
     ) {
-        self.inner
-            .dispatch_control_packet(tag, id, credentials, segment);
+        self.inner.dispatch_control_packet(packet);
     }
 
     #[inline]
@@ -108,7 +104,7 @@ impl<Inner: Router> Router for WithMap<Inner> {
         &mut self,
         remote_address: SocketAddress,
         ecn: ExplicitCongestionNotification,
-        packet: packet::datagram::decoder::Packet,
+        packet: packet::datagram::decoder::Packet<&mut [u8]>,
     ) {
         self.inner
             .handle_datagram_packet(remote_address, ecn, packet);
@@ -117,12 +113,9 @@ impl<Inner: Router> Router for WithMap<Inner> {
     #[inline]
     fn dispatch_datagram_packet(
         &mut self,
-        tag: packet::datagram::Tag,
-        credentials: Credentials,
-        segment: descriptor::Filled,
+        packet: packet::datagram::decoder::Packet<descriptor::Filled>,
     ) {
-        self.inner
-            .dispatch_datagram_packet(tag, credentials, segment);
+        self.inner.dispatch_datagram_packet(packet);
     }
 
     #[inline]

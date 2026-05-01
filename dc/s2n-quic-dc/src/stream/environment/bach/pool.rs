@@ -54,8 +54,10 @@ impl PoolSocket {
         let local_addr = socket.local_addr().unwrap();
 
         let create_socket = || {
-            let wheel = send::wheel::Wheel::new();
-            stream::socket::Wheel::new(wheel, local_addr)
+            // TODO: Reimplement with new channel-based wheel
+            // let wheel = send::wheel::Wheel::new(...);
+            // stream::socket::Wheel::new(wheel, local_addr)
+            todo!("create_socket needs channel-based wheel")
         };
 
         let worker = Arc::new(Tracing(create_socket()));
@@ -73,25 +75,27 @@ impl PoolSocket {
         }
     }
 
-    fn spawn_send_worker(&self, config: &Config, clock: Clock) {
-        let socket = Tracing(self.socket.clone());
-
-        let mut wheels = vec![send::wheel::Wheel::clone(&self.worker)];
-
-        for application in &self.application {
-            wheels.push(send::wheel::Wheel::clone(application));
-        }
-
-        let rate = config.rate();
-
-        let span = tracing::trace_span!("send_socket_worker");
-        let task = send::udp::non_blocking(socket, wheels, clock, rate, send::udp::WakerIdle);
-
-        if span.is_disabled() {
-            bach::spawn(task);
-        } else {
-            bach::spawn(task.instrument(span));
-        }
+    fn spawn_send_worker(&self, _config: &Config, _clock: Clock) {
+        // TODO: Reimplement with new channel-based wheel architecture
+        // let socket = Tracing(self.socket.clone());
+        //
+        // let mut wheels = vec![send::wheel::Wheel::clone(&self.worker)];
+        //
+        // for application in &self.application {
+        //     wheels.push(send::wheel::Wheel::clone(application));
+        // }
+        //
+        // let rate = config.rate();
+        //
+        // let span = tracing::trace_span!("send_socket_worker");
+        // let task = send::udp::non_blocking(socket, wheels, clock, rate);
+        //
+        // if span.is_disabled() {
+        //     bach::spawn(task);
+        // } else {
+        //     bach::spawn(task.instrument(span));
+        // }
+        todo!("Reimplement spawn_send_worker with new channel-based wheel")
     }
 }
 
@@ -220,7 +224,7 @@ impl Pool {
     ) {
         let idx = self.load_balancer.select(
             &self.sockets,
-            |socket| socket.application[0].len(),
+            |socket| Arc::strong_count(&socket.application[0]),
             |upper_bound| (0..upper_bound).any(),
         );
 

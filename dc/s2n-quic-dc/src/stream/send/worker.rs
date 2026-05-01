@@ -495,11 +495,7 @@ where
             &remote_address,
             max_segments,
             pool,
-            || {
-                self.shared
-                    .sender
-                    .alloc_transmission(max_segments, PacketSpace::Recovery)
-            },
+            || self.shared.sender.alloc_transmission(PacketSpace::Recovery),
             |packets| {
                 let _ = self.sender.fill_transmit_queue(
                     control_sealer,

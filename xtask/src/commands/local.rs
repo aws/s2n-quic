@@ -19,7 +19,7 @@ use tokio::{
     sync::{self, mpsc},
     task::JoinHandle,
 };
-use xshell::{cmd, Shell};
+use xshell::{Shell, cmd};
 
 #[derive(Args)]
 pub struct Local {
@@ -47,15 +47,26 @@ pub struct Local {
     #[arg(long)]
     dc_config: Option<PathBuf>,
 
+    #[arg(long)]
+    memory_dump: bool,
+
     /// Directory for diagnostic event traces (one JSON file per errored stream)
     #[arg(long, default_value = "/tmp/dc-traces")]
     trace_dir: PathBuf,
+
+    /// Kind of test to run: dc-tester or wheel-demo
+    #[arg(long, default_value = "dc-tester")]
+    kind: String,
+
+    /// Generate flamegraph profile on client node(s)
+    #[arg(long)]
+    flamegraph: bool,
 }
 
 impl Local {
     pub fn run(self, sh: &Shell) -> Result<()> {
         let mut nodes = Nodes::from_config(sh, &self.config)?;
-        let binary_dir = self.binary_dir()?;
+        let (binary_dir, binary_name) = self.binary_info()?;
 
         eprintln!("Setting up nodes...");
         std::thread::scope(|s| {
@@ -76,9 +87,10 @@ impl Local {
             for node in nodes.iter_mut() {
                 let sh = sh.clone();
                 let profile = &self.profile;
+                let kind = &self.kind;
                 handles.push(s.spawn(move || {
                     node.deploy(&sh)?;
-                    node.build(&sh, profile)?;
+                    node.build(&sh, profile, kind)?;
                     <Result<()>>::Ok(())
                 }));
             }
@@ -109,22 +121,51 @@ impl Local {
 
             let label = format!("server:{i}");
 
+            eprintln!("  {} → {} ({})", label, server_addr, node.host());
+
             let mut env_vars = HashMap::new();
             if let Some(ref log) = self.log_level {
                 env_vars.insert("S2N_LOG".to_string(), log.to_string());
             }
 
-            let (binary, config_path) =
-                node.resolve_paths(sh, &binary_dir.join("dc-tester"), &dc_config);
+            if self.memory_dump {
+                // Enable jemalloc heap profiling with dumps every 1GB and at exit
+                // Note: tikv-jemallocator uses --with-jemalloc-prefix=_rjem_ so the env var is _RJEM_MALLOC_CONF
+                env_vars.insert(
+                    "_RJEM_MALLOC_CONF".to_string(),
+                    "prof:true,lg_prof_interval:30,lg_prof_sample:21,prof_prefix:/tmp/jeprof.server"
+                        .to_string(),
+                );
+            }
 
-            let trace_dir = self.trace_dir.display().to_string();
-            let args = vec![
-                "--trace-dir".to_string(),
-                trace_dir,
-                "server".to_string(),
-                "--config".to_string(),
-                config_path,
-            ];
+            let (binary, config_path) =
+                node.resolve_paths(sh, &binary_dir.join(&binary_name), &dc_config);
+
+            let args = if self.kind == "wheel-demo" {
+                // Bind to wildcard address to accept on all interfaces
+                let bind_addr = SocketAddr::new(
+                    if server_addr.is_ipv6() {
+                        "::".parse().unwrap()
+                    } else {
+                        "0.0.0.0".parse().unwrap()
+                    },
+                    server_addr.port(),
+                );
+                vec![
+                    "server".to_string(),
+                    "--address".to_string(),
+                    bind_addr.to_string(),
+                ]
+            } else {
+                let trace_dir = self.trace_dir.display().to_string();
+                vec![
+                    "--trace-dir".to_string(),
+                    trace_dir,
+                    "server".to_string(),
+                    "--config".to_string(),
+                    config_path,
+                ]
+            };
 
             processes.push(ProcessConfig {
                 target: node.clone(),
@@ -133,38 +174,65 @@ impl Local {
                 args,
                 env_vars,
                 color,
+                flamegraph: self.flamegraph,
             });
         }
 
         // Start clients
         for i in 0..self.clients {
-            let node = &nodes[i % nodes.len()];
+            // Offset by number of servers to distribute across different nodes
+            let node = &nodes[(self.servers + i) % nodes.len()];
             let _node_base = base_port.next().unwrap();
             let color = colors.next().unwrap();
 
             let label = format!("client:{i}");
+
+            // Round-robin assign clients to servers
+            let server_addr = server_addresses[i % server_addresses.len()];
+
+            eprintln!(
+                "  {} ({}) connecting to {}",
+                label,
+                node.host(),
+                server_addr
+            );
 
             let mut env_vars = HashMap::new();
             if let Some(ref log) = self.log_level {
                 env_vars.insert("S2N_LOG".to_string(), log.to_string());
             }
 
+            if self.memory_dump {
+                // Enable jemalloc heap profiling with dumps every 1GB and at exit
+                // Note: tikv-jemallocator uses --with-jemalloc-prefix=_rjem_ so the env var is _RJEM_MALLOC_CONF
+                env_vars.insert(
+                    "_RJEM_MALLOC_CONF".to_string(),
+                    "prof:true,lg_prof_interval:30,lg_prof_sample:21,prof_prefix:/tmp/jeprof.client"
+                        .to_string(),
+                );
+            }
+
             let (binary, config_path) =
-                node.resolve_paths(sh, &binary_dir.join("dc-tester"), &dc_config);
+                node.resolve_paths(sh, &binary_dir.join(&binary_name), &dc_config);
 
-            // Round-robin assign clients to servers
-            let server_addr = server_addresses[i % server_addresses.len()];
-
-            let trace_dir = self.trace_dir.display().to_string();
-            let args = vec![
-                "--trace-dir".to_string(),
-                trace_dir,
-                "client".to_string(),
-                "--config".to_string(),
-                config_path,
-                "--server-addr".to_string(),
-                server_addr.to_string(),
-            ];
+            let args = if self.kind == "wheel-demo" {
+                vec![
+                    "client".to_string(),
+                    "--server".to_string(),
+                    server_addr.to_string(),
+                ]
+            } else {
+                let trace_dir = self.trace_dir.display().to_string();
+                vec![
+                    "--trace-dir".to_string(),
+                    trace_dir,
+                    "client".to_string(),
+                    "--config".to_string(),
+                    config_path,
+                    "--server-addr".to_string(),
+                    server_addr.to_string(),
+                ]
+            };
 
             processes.push(ProcessConfig {
                 target: node.clone(),
@@ -173,6 +241,7 @@ impl Local {
                 args,
                 env_vars,
                 color,
+                flamegraph: self.flamegraph,
             });
         }
 
@@ -180,12 +249,18 @@ impl Local {
         run_processes(sh.clone(), processes)
     }
 
-    fn binary_dir(&self) -> Result<PathBuf> {
+    fn binary_info(&self) -> Result<(PathBuf, String)> {
         let profile = &self.profile;
         let dir = if profile == "dev" { "debug" } else { profile };
-        // dc-tester is in its own workspace under tools/, so the binary
-        // goes to tools/dc-tester/target/<profile>/dc-tester
-        Ok(PathBuf::from("tools/dc-tester/target").join(dir))
+
+        let binary_name = match self.kind.as_str() {
+            "wheel-demo" => "wheel-demo",
+            _ => "dc-tester",
+        };
+
+        // Both binaries are part of the main workspace, so they go to the
+        // workspace root's target/<profile>/<binary>
+        Ok((PathBuf::from("target").join(dir), binary_name.to_string()))
     }
 }
 
@@ -196,6 +271,13 @@ enum Node {
 }
 
 impl Node {
+    fn host(&self) -> String {
+        match self {
+            Self::Local => "localhost".into(),
+            Self::Remote(node) => node.host.clone(),
+        }
+    }
+
     fn setup(&mut self, sh: &Shell) -> Result<()> {
         match self {
             Self::Local => Ok(()),
@@ -210,18 +292,54 @@ impl Node {
         }
     }
 
-    fn build(&self, sh: &Shell, profile: &str) -> Result<()> {
+    fn build(&self, sh: &Shell, profile: &str, kind: &str) -> Result<()> {
         match self {
             Self::Local => {
+                let (path_prefix, binary_name) = match kind {
+                    "wheel-demo" => ("tools/wheel-demo", "wheel-demo"),
+                    _ => ("tools/dc-tester", "dc-tester"),
+                };
+
                 cmd!(
                     sh,
-                    "cargo build --manifest-path tools/dc-tester/Cargo.toml --profile {profile}"
+                    "cargo build --manifest-path {path_prefix}/Cargo.toml --profile {profile}"
                 )
                 .run()
-                .context("Failed to build dc-tester")?;
+                .with_context(|| format!("Failed to build {}", binary_name))?;
+
+                // Set capabilities for thread priority control on Linux
+                #[cfg(target_os = "linux")]
+                {
+                    let dir = if profile == "dev" { "debug" } else { profile };
+                    let binary_path = PathBuf::from(path_prefix)
+                        .join("target")
+                        .join(dir)
+                        .join(binary_name);
+                    let binary = binary_path.display().to_string();
+
+                    // Try common locations for setcap
+                    let setcap_paths = ["/usr/sbin/setcap", "/sbin/setcap", "setcap"];
+                    let mut success = false;
+                    for setcap in setcap_paths {
+                        if let Ok(_) = cmd!(sh, "sudo {setcap} cap_sys_nice=eip {binary}")
+                            .quiet()
+                            .run()
+                        {
+                            eprintln!("Set CAP_SYS_NICE capability on {} binary", binary_name);
+                            success = true;
+                            break;
+                        }
+                    }
+                    if !success {
+                        eprintln!(
+                            "Warning: Failed to set capabilities. Thread priority scheduling will not work."
+                        );
+                    }
+                }
+
                 Ok(())
             }
-            Self::Remote(node) => node.build(sh, profile),
+            Self::Remote(node) => node.build(sh, profile, kind),
         }
     }
 
@@ -276,17 +394,42 @@ impl RemoteNode {
         let target = self.ssh_target();
         let dir = self.dir.as_path();
 
-        let mut script = String::new();
         let max_socket_buf = 200_000_000;
-        for line in [
-            &format!("mkdir -p {}", dir.display()),
-            &format!("sudo sysctl -w net.core.wmem_max={max_socket_buf}"),
-            &format!("sudo sysctl -w net.core.rmem_max={max_socket_buf}"),
-            "sudo sysctl -w net.core.netdev_budget=600",
-        ] {
-            script.push_str(line);
-            script.push('\n');
-        }
+        let script = format!(
+            r#"
+# Create working directory
+mkdir -p {dir}
+
+# Configure socket buffer sizes
+sudo sysctl -w net.core.wmem_max={max_socket_buf}
+sudo sysctl -w net.core.rmem_max={max_socket_buf}
+sudo sysctl -w net.core.netdev_budget=600
+
+# Install required packages
+command -v setcap >/dev/null 2>&1 || sudo yum install -y libcap >/dev/null 2>&1 || true
+command -v tc >/dev/null 2>&1 || sudo yum install -y iproute-tc >/dev/null 2>&1 || true
+
+# Configure qdisc to match production: mq root with fq_codel per TX queue
+# This prevents packet drops from qdisc memory limits (32MB per queue vs 32MB total)
+IFACE=$(ip route get 8.8.8.8 2>/dev/null | awk '{{ for(i=1;i<=NF;i++) if ($i == "dev") print $(i+1); }}' | head -1)
+if [ -n "$IFACE" ]; then
+    sudo tc qdisc del dev $IFACE root 2>/dev/null || true
+    sudo tc qdisc add dev $IFACE root handle 1: mq 2>/dev/null
+    for i in 1 2 3 4 5 6 7 8; do
+        sudo tc qdisc add dev $IFACE parent 1:$i fq_codel memory_limit 256Mb 2>/dev/null || true
+    done
+fi
+
+# Configure RT priority limits for the current user
+grep -q '^[^#]*rtprio' /etc/security/limits.conf || echo "$USER - rtprio 99" | sudo tee -a /etc/security/limits.conf >/dev/null
+grep -q '^[^#]*nice' /etc/security/limits.conf || echo "$USER - nice -20" | sudo tee -a /etc/security/limits.conf >/dev/null
+
+# Enable RT scheduling in user cgroup (systemd default disables this)
+echo 950000 | sudo tee /sys/fs/cgroup/cpu,cpuacct/user.slice/cpu.rt_runtime_us >/dev/null 2>&1 || true
+"#,
+            dir = dir.display(),
+            max_socket_buf = max_socket_buf
+        );
 
         cmd!(sh, "ssh {target} {script}")
             .quiet()
@@ -338,7 +481,15 @@ impl RemoteNode {
         let src = format!("{}/", workspace_root.display());
         let dest = format!("{}:{}/", node, remote_dir.display());
 
-        let rsync_args = ["--exclude=target/*", "--exclude=.git/", "-avz", &src, &dest];
+        let rsync_args = [
+            "--exclude=target/*",
+            "--exclude=.git/",
+            "--exclude=.claude",
+            "-avz",
+            "--delete",
+            &src,
+            &dest,
+        ];
 
         cmd!(sh, "rsync {rsync_args...}")
             .quiet()
@@ -348,13 +499,19 @@ impl RemoteNode {
         Ok(())
     }
 
-    fn build(&self, sh: &Shell, profile: &str) -> Result<()> {
+    fn build(&self, sh: &Shell, profile: &str, kind: &str) -> Result<()> {
         let node = self.ssh_target();
         let remote_dir = self.dir.as_path();
 
+        let (path_prefix, binary_name) = match kind {
+            "wheel-demo" => ("tools/wheel-demo", "wheel-demo"),
+            _ => ("tools/dc-tester", "dc-tester"),
+        };
+
         let build_cmd = format!(
-            "cd {} && cargo build --manifest-path tools/dc-tester/Cargo.toml --profile {profile}",
-            remote_dir.display()
+            "cd {} && cargo build --manifest-path {}/Cargo.toml --profile {profile}",
+            remote_dir.display(),
+            path_prefix
         );
 
         let shell_cmd = format!("bash --login -c {build_cmd:?}");
@@ -363,6 +520,29 @@ impl RemoteNode {
             .quiet()
             .run()
             .context("Failed to build on remote node")?;
+
+        // Set capabilities on the remote binary
+        let dir = if profile == "dev" { "debug" } else { profile };
+        let binary_path = format!("{}/target/{}/{}", remote_dir.display(), dir, binary_name);
+        let setcap_cmd = format!(
+            "sudo /usr/sbin/setcap cap_sys_nice=eip {binary_path} 2>&1 || echo 'Failed to set capabilities'"
+        );
+
+        match cmd!(sh, "ssh {node} {setcap_cmd}").read() {
+            Ok(output) => {
+                if output.contains("Failed") {
+                    eprintln!(
+                        "Warning: Failed to set capabilities on remote node: {}",
+                        output
+                    );
+                } else {
+                    eprintln!("Set capabilities on remote binary");
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to set capabilities on remote node: {}", e);
+            }
+        }
 
         Ok(())
     }
@@ -450,6 +630,7 @@ struct ProcessConfig {
     args: Vec<String>,
     env_vars: HashMap<String, String>,
     color: Color,
+    flamegraph: bool,
 }
 
 fn colors() -> impl Iterator<Item = Color> {
@@ -548,6 +729,24 @@ async fn spawn_process(
                 remote_cmd.push_str(&format!("export {}='{}'; ", key, value));
             }
             remote_cmd.push_str(&format!("cd {}; ", remote.dir.display()));
+
+            // Wrap with perf if flamegraph is enabled
+            if config.flamegraph {
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                let perf_out = format!(
+                    "/tmp/perf-{}-{}.data",
+                    config.label.replace(':', "-"),
+                    timestamp
+                );
+                remote_cmd.push_str(&format!(
+                    "perf record -F 999 --call-graph dwarf -o {} -- ",
+                    perf_out
+                ));
+            }
+
             remote_cmd.push_str(&format!("{}", config.binary.display()));
             for arg in &config.args {
                 remote_cmd.push_str(&format!(" '{}'", arg));

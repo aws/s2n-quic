@@ -5,15 +5,14 @@ use crate::{
     credentials,
     credentials::Credentials,
     crypto::seal,
-    packet::{datagram::Tag, WireVersion},
+    packet::{datagram::Tag, RoutingInfo, WireVersion},
 };
-use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
-use s2n_quic_core::{assume, buffer, varint::VarInt};
+use s2n_codec::{Encoder, EncoderBuffer};
+use s2n_quic_core::{assume, buffer};
 
 #[inline(always)]
 pub fn estimate_len(
     _packet_number: super::PacketNumber,
-    next_expected_control_packet: Option<super::PacketNumber>,
     app_header_len: super::HeaderLen,
     payload_len: super::PayloadLen,
     crypto_tag_len: usize,
@@ -36,11 +35,6 @@ pub fn estimate_len(
     encoder.write_repeated(8, 0); // packet number
     encoder.write_repeated(8, 0); // payload len
 
-    if let Some(_packet_number) = next_expected_control_packet {
-        encoder.write_repeated(8, 0); // next expected control packet
-        encoder.write_repeated(8, 0); // control_data_len
-    }
-
     if app_header_len_usize > 0 {
         encoder.write_repeated(8, 0); // application header len
         encoder.write_repeated(app_header_len_usize, 0); // application data
@@ -55,14 +49,13 @@ pub fn estimate_len(
 }
 
 #[inline(always)]
-pub fn encode<H, CD, P, C>(
+pub fn encode<H, P, C>(
     mut encoder: EncoderBuffer,
     source_control_port: u16,
+    routing_info: RoutingInfo,
     packet_number: Option<super::PacketNumber>,
-    next_expected_control_packet: Option<super::PacketNumber>,
     header_len: super::HeaderLen,
     header: &mut H,
-    control_data: &CD,
     payload_len: super::PayloadLen,
     payload: &mut P,
     crypto: &C,
@@ -71,13 +64,12 @@ pub fn encode<H, CD, P, C>(
 where
     H: buffer::reader::Storage<Error = core::convert::Infallible>,
     P: buffer::reader::Storage<Error = core::convert::Infallible>,
-    CD: EncoderValue,
     C: seal::Application,
 {
     let mut tag = super::Tag::default();
-    tag.set_is_connected(packet_number.is_some());
-    tag.set_has_application_header(header_len != super::HeaderLen::ZERO);
-    tag.set_ack_eliciting(next_expected_control_packet.is_some());
+    tag.set_has_routing_info(!matches!(routing_info, RoutingInfo::None));
+    tag.set_has_packet_number(packet_number.is_some());
+    tag.set_payload_encrypted(header_len != super::HeaderLen::ZERO);
     tag.set_key_phase(crypto.key_phase());
     encoder.encode(&tag);
 
@@ -93,27 +85,21 @@ where
 
     encoder.encode(&source_control_port);
 
-    if tag.is_connected() || tag.ack_eliciting() {
+    if let Some(packet_number) = packet_number {
         unsafe {
             assume!(encoder.remaining_capacity() >= 8);
-            encoder.encode(&packet_number.unwrap());
+            encoder.encode(&packet_number);
         }
+    }
+
+    // Encode routing info if present
+    if tag.has_routing_info() {
+        encoder.encode(&routing_info);
     }
 
     unsafe {
         assume!(encoder.remaining_capacity() >= 8);
         encoder.encode(&payload_len);
-    }
-
-    if let Some(packet_number) = next_expected_control_packet {
-        unsafe {
-            assume!(encoder.remaining_capacity() >= 8);
-            encoder.encode(&packet_number);
-        }
-
-        // FIXME: Is this right way to convert? Should we take control_data_len?
-        encoder
-            .encode(&VarInt::new(control_data.encoding_size() as u64).expect("control data fits"));
     }
 
     if !header.buffer_is_empty() {
@@ -124,10 +110,6 @@ where
         encoder.write_sized(header_len_usize, |mut dest| {
             let _: Result<(), core::convert::Infallible> = header.copy_into(&mut dest);
         });
-    }
-
-    if next_expected_control_packet.is_some() {
-        encoder.encode(control_data);
     }
 
     let payload_offset = encoder.len();

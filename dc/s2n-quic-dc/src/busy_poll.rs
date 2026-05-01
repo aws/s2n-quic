@@ -6,9 +6,11 @@ use std::{
     fmt,
     future::Future,
     ops,
+    panic::Location,
     pin::Pin,
     sync::{Arc, Weak},
     task::Context,
+    time::Instant,
 };
 
 pub mod clock;
@@ -64,6 +66,7 @@ impl Handle {
         (handle, runner)
     }
 
+    #[track_caller]
     pub fn spawn<F>(&self, task: F)
     where
         F: Future<Output = ()> + Send + 'static,
@@ -71,16 +74,14 @@ impl Handle {
         self.spawn_with_priority(task, None);
     }
 
+    #[track_caller]
     pub fn spawn_with_priority<F>(&self, task: F, priority: Option<u8>)
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        let priority = priority.unwrap_or(128);
-        // Wrap the Send future in a Send factory
-        self.state.lock().spawns.push(Spawn::new(move || Task {
-            task: Box::pin(task),
-            priority,
-        }));
+        self.spawn_local(move |mut spawner| {
+            spawner.spawn_with_priority(task, priority);
+        });
     }
 
     /// Spawns a non-Send future by passing a Send function that will be called
@@ -90,21 +91,38 @@ impl Handle {
     /// that are polled entirely on the busy-poll thread.
     pub fn spawn_local<F>(&self, f: F)
     where
-        F: FnOnce() -> Pin<Box<dyn Future<Output = ()> + 'static>> + Send + 'static,
+        F: FnOnce(Spawner) + Send + 'static,
     {
-        self.spawn_local_with_priority(f, None);
+        self.state.lock().spawns.push(Spawn::new(f));
+    }
+}
+
+pub struct Spawner<'a> {
+    tasks: &'a mut Tasks,
+}
+
+impl<'a> Spawner<'a> {
+    #[track_caller]
+    pub fn spawn<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + 'static,
+    {
+        self.spawn_with_priority(future, None);
     }
 
-    /// Like `spawn_local` but with an explicit priority.
-    pub fn spawn_local_with_priority<F>(&self, f: F, priority: Option<u8>)
+    #[track_caller]
+    pub fn spawn_with_priority<F>(&mut self, future: F, priority: Option<u8>)
     where
-        F: FnOnce() -> Pin<Box<dyn Future<Output = ()> + 'static>> + Send + 'static,
+        F: Future<Output = ()> + 'static,
     {
         let priority = priority.unwrap_or(128);
-        self.state.lock().spawns.push(Spawn::new(move || Task {
-            task: f(),
+        let task = Task {
+            task: Box::pin(future),
             priority,
-        }));
+            location: Location::caller(),
+        };
+
+        self.tasks.spawn(task);
     }
 }
 
@@ -114,18 +132,18 @@ struct State {
 
 /// A `Send` factory that produces a (possibly `!Send`) `Task` on the runner thread.
 struct Spawn {
-    factory: Box<dyn FnOnce() -> Task + Send>,
+    factory: Box<dyn FnOnce(Spawner) + Send>,
 }
 
 impl Spawn {
-    fn new(f: impl FnOnce() -> Task + Send + 'static) -> Self {
+    fn new(f: impl FnOnce(Spawner) + Send + 'static) -> Self {
         Self {
             factory: Box::new(f),
         }
     }
 
-    fn into_task(self) -> Task {
-        (self.factory)()
+    fn into_tasks(self, tasks: &mut Tasks) {
+        (self.factory)(Spawner { tasks })
     }
 }
 
@@ -133,6 +151,7 @@ impl Spawn {
 struct Task {
     task: Pin<Box<dyn Future<Output = ()> + 'static>>,
     priority: u8,
+    location: &'static Location<'static>,
 }
 
 #[must_use]
@@ -159,7 +178,11 @@ impl Runner {
         let _guard = AbortOnPanic;
 
         loop {
-            const ITERATIONS: usize = if cfg!(debug_assertions) { 10 } else { 100 };
+            const ITERATIONS: usize = if cfg!(debug_assertions) {
+                10
+            } else {
+                1_000_000
+            };
 
             for _ in 0..ITERATIONS {
                 tasks.poll(&mut cx);
@@ -185,7 +208,7 @@ impl Runner {
             }
 
             for spawn in spawns.drain(..) {
-                tasks.spawn(spawn.into_task());
+                spawn.into_tasks(&mut tasks);
             }
 
             tasks.after_spawn();
@@ -235,12 +258,25 @@ impl Tasks {
     }
 
     fn poll(&mut self, cx: &mut Context) {
+        const SLOW_POLL_THRESHOLD: std::time::Duration = std::time::Duration::from_millis(2);
+
         for (idx, slot) in self.slots.iter_mut().enumerate() {
             if let Some(task) = slot {
+                let start = Instant::now();
                 if task.task.as_mut().poll(cx).is_ready() {
                     eprintln!("task {idx} done");
                     *slot = None;
                     self.free.push(idx);
+                } else {
+                    let duration = start.elapsed();
+                    if duration > SLOW_POLL_THRESHOLD {
+                        tracing::warn!(
+                            task_idx = idx,
+                            ?duration,
+                            location = %task.location,
+                            "slow task poll detected"
+                        );
+                    }
                 }
             }
         }

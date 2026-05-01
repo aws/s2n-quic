@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
-[workspace]
-members = ["."]
-
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-mimalloc = { version = "0.1", default-features = false }
+libc = "0.2"
+tikv-jemallocator = { version = "0.6", features = ["profiling"] }
+tikv-jemalloc-ctl = { version = "0.6", features = ["profiling", "stats"] }
+tikv-jemalloc-sys = { version = "0.6", features = ["profiling"] }
 s2n-quic = { path = "../../quic/s2n-quic", features = ["unstable-provider-dc", "unstable-provider-random"] }
 s2n-quic-dc = { path = "../../dc/s2n-quic-dc", features = ["tokio"] }
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
@@ -18,7 +18,3 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
-
-[profile.release-debug]
-inherits = "dev"
-opt-level = 3

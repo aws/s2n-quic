@@ -10,32 +10,59 @@ use std::{collections::VecDeque, io::IoSlice, ops::RangeBounds};
 
 pub type Entry<Info, Meta, Completion> = queue::Entry<Transmission<Info, Meta, Completion>>;
 
-pub trait Meta {
-    type Info;
-
-    fn span(&self, descriptors: &[(descriptor::Filled, Self::Info)]) -> impl Sized + 'static;
-}
-
 #[derive(Debug)]
 pub struct Transmission<Info, Meta, Completion> {
-    pub descriptors: Vec<(descriptor::Filled, Info)>,
+    pub descriptors: crate::intrusive_queue::Queue<(descriptor::Filled, Info)>,
     pub total_len: u16,
     pub meta: Meta,
     pub transmission_time: Option<precision::Timestamp>,
     pub completion: Completion,
 }
 
+impl<Info, Meta, Completion> crate::socket::send::wheel::Scheduled
+    for Transmission<Info, Meta, Completion>
+{
+    fn transmission_time(&self) -> Option<precision::Timestamp> {
+        self.transmission_time
+    }
+
+    fn set_transmission_time(&mut self, time: precision::Timestamp) {
+        self.transmission_time = Some(time);
+    }
+}
+
+impl<Info, Meta, Completion> crate::socket::channel::ByteCost for Transmission<Info, Meta, Completion> {
+    fn byte_cost(&self) -> u64 {
+        self.total_len as u64
+    }
+}
+
+impl<Info, M, C> crate::socket::channel::Sendable for Transmission<Info, M, C>
+where
+    C: Completion<Info, M>,
+{
+    fn send<S: crate::socket::send::Socket>(
+        &mut self,
+        socket: &S,
+    ) -> std::io::Result<()> {
+        self.send_with(|addr, ecn, ioslices| {
+            // Get segment size from first descriptor
+            let segment_len = ioslices.first().map(|s| s.len()).unwrap_or(0) as u16;
+
+            socket.send_msg(addr, ioslices, segment_len, ecn)?;
+            Ok(())
+        })
+    }
+}
+
 impl<Info, M, C> Transmission<Info, M, C>
 where
-    M: Meta<Info = Info>,
     C: Completion<Info, M>,
 {
     pub fn send_with<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&Addr, ExplicitCongestionNotification, &[IoSlice]) -> R,
     {
-        let _span = self.meta.span(&self.descriptors);
-
         debug_assert!(!self.descriptors.is_empty());
         debug_assert!(self.descriptors.len() <= msg::segment::MAX_COUNT);
 
@@ -44,7 +71,7 @@ where
 
         let first = &self
             .descriptors
-            .first()
+            .front()
             .expect("missing first descriptor")
             .0;
         let addr = first.remote_address();
@@ -136,14 +163,14 @@ impl<Info, Meta, Completion> Builder<Info, Meta, Completion> {
                 can_push &= (batch.entry.total_len as usize + descriptor.len() as usize)
                     <= msg::segment::MAX_TOTAL as usize;
 
-                if let Some((first, _)) = batch.entry.descriptors.first() {
+                if let Some((first, _)) = batch.entry.descriptors.front() {
                     // We can push as long as our current message isn't greater than the segment size
                     can_push &= first.len() >= descriptor.len();
 
                     can_push &= first.remote_address() == descriptor.remote_address();
                     can_push &= first.ecn() == descriptor.ecn();
 
-                    let (last, _) = batch.entry.descriptors.last().unwrap();
+                    let (last, _) = batch.entry.descriptors.back().unwrap();
 
                     // We can push as long as the last message isn't undersized
                     can_push &= first.len() == last.len();
@@ -162,7 +189,10 @@ impl<Info, Meta, Completion> Builder<Info, Meta, Completion> {
         };
 
         batch.entry.total_len += descriptor.len();
-        batch.entry.descriptors.push((descriptor, info));
+        batch
+            .entry
+            .descriptors
+            .push_back(queue::Entry::new((descriptor, info)));
         // use the last provided meta value
         batch.entry.meta = meta;
 

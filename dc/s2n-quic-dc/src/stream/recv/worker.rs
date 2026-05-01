@@ -29,7 +29,9 @@ const INITIAL_TIMEOUT: Duration = Duration::from_millis(2);
 
 /// Maximum number of ACK packets that the recv worker can have in flight at any time.
 /// This prevents the receiver from overwhelming the send queue with unbounded ACKs.
-const MAX_INFLIGHT_ACKS: usize = 2;
+/// With many streams (e.g., 250), even a modest per-stream limit can aggregate to
+/// significant bandwidth consumption. Keep this low to prevent ACK bloat.
+const MAX_INFLIGHT_ACKS: usize = 4;
 
 mod waiting {
     use s2n_quic_core::state::{event, is};
@@ -518,6 +520,12 @@ where
 
         // Only transmit the last two packets we have pending
         if count > 2 {
+            tracing::warn!(
+                discarded_ack_packets = count - 2,
+                kept_ack_packets = 2,
+                inflight_acks = self.inflight_acks,
+                "ACK buffer overflow - discarding old ACKs"
+            );
             self.transmission_buffer.clear_head(count - 2);
             debug_assert_eq!(self.transmission_buffer.len(), 2);
         }
@@ -525,6 +533,12 @@ where
         let capacity = MAX_INFLIGHT_ACKS.saturating_sub(self.inflight_acks);
 
         if capacity == 0 {
+            tracing::trace!(
+                inflight_acks = self.inflight_acks,
+                max_inflight = MAX_INFLIGHT_ACKS,
+                pending_acks = self.transmission_buffer.len(),
+                "ACK send blocked - MAX_INFLIGHT_ACKS reached"
+            );
             return Poll::Ready(Ok(()));
         }
 
@@ -613,7 +627,7 @@ where
         let transmission_alloc = || {
             self.shared
                 .receiver
-                .alloc_transmission(max_segments, PacketSpace::Recovery)
+                .alloc_transmission(PacketSpace::Recovery)
         };
 
         self.buffer.push_segment(

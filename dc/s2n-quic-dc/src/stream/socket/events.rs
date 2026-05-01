@@ -165,7 +165,7 @@ impl<S: Socket, Sub: event::Subscriber, Clk: Clock> Socket for Events<S, Sub, Cl
     fn send_transmission(&self, msg: Transmission) {
         let info = msg
             .descriptors
-            .first()
+            .front()
             .map(|(desc, _)| (desc.remote_address().get(), desc.len()));
         let buffer_size = msg.total_len;
         let segment_count = msg.descriptors.len() as u16;

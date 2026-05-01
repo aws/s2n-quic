@@ -11,10 +11,10 @@ address = "[::]:4433"
 # Each workload defines a traffic pattern
 [[client.workloads]]
 name = "small-rpc"
-workers = 50000
-request_size = 1024  # 1 KiB
-response_size = 1024 # 1 KiB
-request_delay_ms = 0 # no delay - continuous
+workers = 1
+request_size = 1024          # 1 KiB
+response_size = 102400000000 # 1 KiB
+request_delay_ms = 0         # no delay - continuous
 
 # [[client.workloads]]
 # name = "large-rpc"

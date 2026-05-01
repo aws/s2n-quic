@@ -433,6 +433,22 @@ impl Filled {
     }
 }
 
+impl core::ops::Deref for Filled {
+    type Target = [u8];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.payload()
+    }
+}
+
+impl core::ops::DerefMut for Filled {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.payload_mut()
+    }
+}
+
 impl Filled {
     /// Creates a deep copy of this filled descriptor by allocating a new buffer
     /// and copying the payload bytes. This is safe because the copy gets its own
@@ -529,6 +545,73 @@ impl Segments {
     }
 }
 
+impl crate::socket::channel::ByteCost for Segments {
+    fn byte_cost(&self) -> u64 {
+        self.descriptor.len() as u64
+    }
+}
+
+impl crate::socket::channel::Sendable for Segments {
+    fn send<S: crate::socket::send::Socket>(&mut self, socket: &S) -> std::io::Result<()> {
+        let payload = self.descriptor.payload();
+        let ioslice = IoSlice::new(payload);
+
+        socket.send_msg(
+            self.descriptor.remote_address(),
+            &[ioslice],
+            self.segment_len,
+            self.descriptor.ecn(),
+        )?;
+        Ok(())
+    }
+}
+
+impl Segments {
+    /// Returns an iterator over segment sizes without consuming the Segments
+    pub fn sizes(&self) -> SegmentSizesIter {
+        SegmentSizesIter {
+            remaining_len: self.descriptor.len(),
+            segment_len: self.segment_len,
+        }
+    }
+}
+
+/// Iterator over segment sizes
+pub struct SegmentSizesIter {
+    remaining_len: u16,
+    segment_len: u16,
+}
+
+impl Iterator for SegmentSizesIter {
+    type Item = u16;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        // If no remaining length, we're done
+        if self.remaining_len == 0 {
+            return None;
+        }
+
+        // If segment_len is 0, return entire remaining length
+        if self.segment_len == 0 {
+            let size = self.remaining_len;
+            self.remaining_len = 0;
+            return Some(size);
+        }
+
+        // If remaining exceeds segment length, return one segment
+        if self.remaining_len > self.segment_len {
+            self.remaining_len -= self.segment_len;
+            return Some(self.segment_len);
+        }
+
+        // Return the last segment (smaller than segment_len)
+        let size = self.remaining_len;
+        self.remaining_len = 0;
+        Some(size)
+    }
+}
+
 impl IntoIterator for Segments {
     type Item = Filled;
     type IntoIter = SegmentsIter;
@@ -549,6 +632,16 @@ impl IntoIterator for Segments {
 pub struct SegmentsIter {
     descriptor: Option<Filled>,
     segment_len: u16,
+}
+
+impl SegmentsIter {
+    /// Creates an empty iterator that yields no segments.
+    pub const fn empty() -> Self {
+        Self {
+            descriptor: None,
+            segment_len: 0,
+        }
+    }
 }
 
 impl Iterator for SegmentsIter {

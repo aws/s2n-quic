@@ -15,6 +15,10 @@ pub trait Completion<Info, Meta>: Sized {
     type Completer: Completer<Info, Meta, Self>;
 
     fn upgrade(&self) -> Option<Self::Completer>;
+
+    /// Check if the receiver is still alive without upgrading.
+    /// Returns true if the receiver is still listening for completions.
+    fn is_alive(&self) -> bool;
 }
 
 impl<Info, Meta> Completion<Info, Meta> for () {
@@ -22,6 +26,10 @@ impl<Info, Meta> Completion<Info, Meta> for () {
 
     fn upgrade(&self) -> Option<Self::Completer> {
         Some(())
+    }
+
+    fn is_alive(&self) -> bool {
+        true
     }
 }
 
@@ -62,11 +70,10 @@ where
     #[inline]
     pub fn alloc_entry(
         &self,
-        batch_size: usize,
         completion_queue: impl FnOnce() -> Completion,
     ) -> Entry<Info, Meta, Completion> {
         let transmission = Transmission {
-            descriptors: Vec::with_capacity(batch_size),
+            descriptors: Default::default(),
             total_len: 0,
             meta: Default::default(),
             transmission_time: None,
@@ -101,10 +108,10 @@ where
             while let Some(mut transmission) = remaining.pop_front() {
                 {
                     let transmission = &mut *transmission;
-                    let descriptors = transmission.descriptors.drain(..);
+                    let descriptors = core::mem::take(&mut transmission.descriptors);
                     let transmission_time = transmission.transmission_time.unwrap();
                     let meta = &transmission.meta;
-                    for (segment, info) in descriptors {
+                    for (segment, info) in descriptors.into_iter().map(|d| d.into_inner()) {
                         on_transmission(CompleteTransmission {
                             info,
                             segment,

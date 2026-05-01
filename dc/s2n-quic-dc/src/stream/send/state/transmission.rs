@@ -26,6 +26,10 @@ impl completion::Completion<PacketInfo, Meta> for Completion {
     fn upgrade(&self) -> Option<Self::Completer> {
         Weak::upgrade(self)
     }
+
+    fn is_alive(&self) -> bool {
+        self.strong_count() > 0
+    }
 }
 
 impl completion::Completer<PacketInfo, Meta, Completion> for std::sync::Arc<dyn Notify> {
@@ -39,12 +43,6 @@ pub type Entry = send::transmission::Entry<PacketInfo, Meta, Completion>;
 pub type Transmission = send::transmission::Transmission<PacketInfo, Meta, Completion>;
 
 pub type Builder = send::transmission::Builder<PacketInfo, Meta, Completion>;
-
-pub type Wheel<const GRANULARITY_US: u64> =
-    send::wheel::Wheel<PacketInfo, Meta, Completion, GRANULARITY_US>;
-
-pub type Ticker<const GRANULARITY_US: u64> =
-    send::wheel::Ticker<PacketInfo, Meta, Completion, GRANULARITY_US>;
 
 /// An intrusive queue of transmission entries, used for batch submission.
 pub type EntryQueue =
@@ -99,18 +97,6 @@ impl Default for Meta {
             span: SenderSpan::default(),
         }
     }
-}
-
-impl crate::socket::send::transmission::Meta for Meta {
-    type Info = PacketInfo;
-
-    #[cfg(debug_assertions)]
-    fn span(&self, transmissions: &[(descriptor::Filled, PacketInfo)]) -> impl Sized + 'static {
-        tracing::warn_span!(parent: &self.span.span, "transmission", ?self.packet_space, ?transmissions).entered()
-    }
-
-    #[cfg(not(debug_assertions))]
-    fn span(&self, _transmissions: &[(descriptor::Filled, PacketInfo)]) -> impl Sized + 'static {}
 }
 
 bitflags! {

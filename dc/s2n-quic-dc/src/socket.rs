@@ -13,7 +13,9 @@ pub use bpf::Pair;
 #[cfg(not(target_os = "linux"))]
 pub use pair::Pair;
 
+pub mod channel;
 pub mod pool;
+pub mod rate;
 pub mod recv;
 pub mod send;
 

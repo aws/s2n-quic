@@ -26,7 +26,7 @@ pub use with_map::WithMap;
 pub use zero_router::ZeroRouter;
 
 /// Routes incoming packet segments to the appropriate destination
-pub trait Router: 'static {
+pub trait Router {
     /// Wraps `self` in a router that intercepts secret control messages and forwards
     /// them to the provided [`secret::Map`].
     #[inline]
@@ -75,40 +75,49 @@ pub trait Router: 'static {
                 }
 
                 match packet {
-                    packet::Packet::Control(packet) => {
-                        let tag = packet.tag();
-                        let stream_id = packet.stream_id().copied();
-                        let credentials = *packet.credentials();
+                    packet::Packet::Control(control_packet) => {
+                        let tag = control_packet.tag();
+                        let stream_id = control_packet.stream_id().copied();
+                        let credentials = *control_packet.credentials();
 
                         #[cfg(debug_assertions)]
                         let _span = tracing::info_span!("recv::control", peer_addr = %remote_address, flow_id = %credentials).entered();
 
                         tracing::trace!(?tag, ?stream_id, %credentials, "parsed_control_packet");
-                        self.handle_control_packet(remote_address, ecn, packet);
-                        self.dispatch_control_packet(tag, stream_id, credentials, segment);
+                        let meta = *control_packet.meta();
+                        self.handle_control_packet(remote_address, ecn, control_packet);
+
+                        // Convert packet storage from &mut [u8] to Filled
+                        let packet = meta.with_storage(segment).expect("storage should be valid");
+                        self.dispatch_control_packet(packet);
                     }
-                    packet::Packet::Stream(packet) => {
-                        let tag = packet.tag();
-                        let stream_id = *packet.stream_id();
-                        let credentials = *packet.credentials();
+                    packet::Packet::Stream(stream_packet) => {
+                        let tag = stream_packet.tag();
+                        let stream_id = *stream_packet.stream_id();
+                        let credentials = *stream_packet.credentials();
 
                         #[cfg(debug_assertions)]
                         let _span = tracing::info_span!("recv::stream", peer_addr = %remote_address, flow_id = %credentials).entered();
 
                         tracing::trace!(?tag, ?stream_id, %credentials, "parsed_stream_packet");
-                        self.handle_stream_packet(remote_address, ecn, packet);
+
+                        self.handle_stream_packet(remote_address, ecn, stream_packet);
                         self.dispatch_stream_packet(tag, stream_id, credentials, segment);
                     }
-                    packet::Packet::Datagram(packet) => {
-                        let tag = packet.tag();
-                        let credentials = *packet.credentials();
+                    packet::Packet::Datagram(datagram_packet) => {
+                        let tag = datagram_packet.tag();
+                        let credentials = *datagram_packet.credentials();
 
                         #[cfg(debug_assertions)]
                         let _span = tracing::info_span!("recv::datagram", peer_addr = %remote_address, flow_id = %credentials).entered();
 
                         tracing::trace!(?tag, %credentials, "parsed_datagram_packet");
-                        self.handle_datagram_packet(remote_address, ecn, packet);
-                        self.dispatch_datagram_packet(tag, credentials, segment);
+                        let meta = *datagram_packet.meta();
+                        self.handle_datagram_packet(remote_address, ecn, datagram_packet);
+
+                        // Convert packet storage from &mut [u8] to Filled
+                        let packet = meta.with_storage(segment).expect("storage should be valid");
+                        self.dispatch_datagram_packet(packet);
                     }
                     packet::Packet::FlowReset(packet) => {
                         let tag = packet.tag();
@@ -163,7 +172,7 @@ pub trait Router: 'static {
         &mut self,
         remote_address: SocketAddress,
         ecn: ExplicitCongestionNotification,
-        packet: packet::control::decoder::Packet,
+        packet: packet::control::decoder::Packet<&mut [u8]>,
     ) {
         let _ = ecn;
         self.on_unhandled_packet(remote_address, packet::Packet::Control(packet));
@@ -172,17 +181,15 @@ pub trait Router: 'static {
     #[inline]
     fn dispatch_control_packet(
         &mut self,
-        tag: packet::control::Tag,
-        id: Option<stream::Id>,
-        credentials: Credentials,
-        segment: descriptor::Filled,
+        packet: packet::control::decoder::Packet<descriptor::Filled>,
     ) {
+        let (meta, segment) = packet.into_parts();
         warn!(
             unhandled_packet = "control",
             router = core::any::type_name::<Self>(),
-            ?tag,
-            ?id,
-            %credentials,
+            tag = ?meta.tag(),
+            id = ?meta.stream_id(),
+            credentials = %meta.credentials(),
             remote_address = %segment.remote_address(),
             packet_len = segment.len()
         );
@@ -223,7 +230,7 @@ pub trait Router: 'static {
         &mut self,
         remote_address: SocketAddress,
         ecn: ExplicitCongestionNotification,
-        packet: packet::datagram::decoder::Packet,
+        packet: packet::datagram::decoder::Packet<&mut [u8]>,
     ) {
         let _ = ecn;
         self.on_unhandled_packet(remote_address, packet::Packet::Datagram(packet));
@@ -232,15 +239,14 @@ pub trait Router: 'static {
     #[inline]
     fn dispatch_datagram_packet(
         &mut self,
-        tag: packet::datagram::Tag,
-        credentials: Credentials,
-        segment: descriptor::Filled,
+        packet: packet::datagram::decoder::Packet<descriptor::Filled>,
     ) {
+        let (meta, segment) = packet.into_parts();
         warn!(
             unhandled_packet = "datagram",
             router = core::any::type_name::<Self>(),
-            ?tag,
-            %credentials,
+            tag = ?meta.tag(),
+            credentials = %meta.credentials(),
             remote_address = %segment.remote_address(),
             packet_len = segment.len()
         );

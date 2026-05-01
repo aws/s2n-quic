@@ -11,7 +11,7 @@ pub type PayloadLen = VarInt;
 #[macro_use]
 pub mod tag;
 pub mod wire_version;
-
+pub mod storage;
 pub mod control;
 pub mod datagram;
 pub mod secret_control;
@@ -20,6 +20,9 @@ pub mod uds;
 
 pub use tag::Tag;
 pub use wire_version::WireVersion;
+
+mod routing_info;
+pub use routing_info::RoutingInfo;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Kind {
@@ -35,8 +38,8 @@ pub enum Kind {
 #[derive(Debug)]
 pub enum Packet<'a> {
     Stream(stream::decoder::Packet<'a>),
-    Datagram(datagram::decoder::Packet<'a>),
-    Control(control::decoder::Packet<'a>),
+    Datagram(datagram::decoder::Packet<&'a mut [u8]>),
+    Control(control::decoder::Packet<&'a mut [u8]>),
     FlowReset(secret_control::flow_reset::Packet<'a>),
     StaleKey(secret_control::stale_key::Packet<'a>),
     ReplayDetected(secret_control::replay_detected::Packet<'a>),

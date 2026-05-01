@@ -28,7 +28,7 @@ macro_rules! impl_recv {
             #[allow(dead_code)]
             pub fn parse(
                 buffer: &mut [u8],
-            ) -> Option<s2n_quic_dc::packet::datagram::decoder::Packet<'_>> {
+            ) -> Option<s2n_quic_dc::packet::datagram::decoder::Packet<&mut [u8]>> {
                 let buffer = s2n_codec::DecoderBufferMut::new(buffer);
                 let (packet, _buffer) = s2n_quic_dc::packet::datagram::decoder::Packet::decode(
                     buffer,

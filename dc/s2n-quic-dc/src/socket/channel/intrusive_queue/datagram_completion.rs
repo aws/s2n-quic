@@ -1,0 +1,353 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+//! Specialized intrusive queue channel for datagram completions.
+//!
+//! This channel has two independent state bits:
+//! - `should_transmit`: Should workers transmit datagrams attached to this channel?
+//! - `receiver_alive`: Is receiver around for completion notifications?
+//!
+//! Lifecycle:
+//! - Active: Both bits set - transmit and notify
+//! - Graceful shutdown: Receiver drops normally - transmit but silently drop completions
+//! - Panic/Cancel: Receiver panics or sender.cancel() - cancel all pending transmissions
+
+use crate::intrusive_queue;
+use core::{
+    mem::ManuallyDrop,
+    sync::atomic::{AtomicU8, Ordering},
+    task::Poll,
+};
+use parking_lot::Mutex;
+use std::sync::Arc;
+
+const SHOULD_TRANSMIT: u8 = 0b01;
+const RECEIVER_ALIVE: u8 = 0b10;
+const INITIAL_STATE: u8 = SHOULD_TRANSMIT | RECEIVER_ALIVE;
+
+struct Inner<T> {
+    queue: intrusive_queue::Queue<T>,
+    recv_waker: Option<core::task::Waker>,
+}
+
+struct Shared<T> {
+    /// Bitpacked flags:
+    /// - bit 0: should_transmit
+    /// - bit 1: receiver_alive
+    flags: AtomicU8,
+    inner: Mutex<Inner<T>>,
+}
+
+pub fn new<T>() -> Receiver<T> {
+    let shared = Arc::new(Shared {
+        flags: AtomicU8::new(INITIAL_STATE),
+        inner: Mutex::new(Inner {
+            queue: intrusive_queue::Queue::new(),
+            recv_waker: None,
+        }),
+    });
+    Receiver {
+        shared: ManuallyDrop::new(shared),
+    }
+}
+
+pub struct Sender<T> {
+    shared: ManuallyDrop<Arc<Shared<T>>>,
+}
+
+impl<T> core::fmt::Debug for Sender<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Sender")
+            .field("should_transmit", &self.should_transmit())
+            .finish()
+    }
+}
+
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        Self {
+            shared: ManuallyDrop::new(Arc::clone(&self.shared)),
+        }
+    }
+}
+
+impl<T> Drop for Sender<T> {
+    fn drop(&mut self) {
+        // Check if this is the last sender (count will be 2: this sender + receiver)
+        let is_last_sender = Arc::strong_count(&self.shared) == 2;
+
+        // Wake the receiver only if this is the last sender
+        if is_last_sender {
+            let mut guard = self.shared.inner.lock();
+            let waker = core::mem::take(&mut guard.recv_waker);
+            drop(guard);
+
+            if let Some(waker) = waker {
+                waker.wake();
+            }
+        }
+
+        unsafe {
+            ManuallyDrop::drop(&mut self.shared);
+        }
+    }
+}
+
+impl<T> Sender<T> {
+    /// Returns true if workers should transmit datagrams attached to this channel.
+    #[inline]
+    pub fn should_transmit(&self) -> bool {
+        self.shared.flags.load(Ordering::Acquire) & SHOULD_TRANSMIT != 0
+    }
+
+    /// Returns a pointer address for this sender (for equality comparisons).
+    ///
+    /// This can be used to group datagrams by their completion channel.
+    #[inline]
+    pub fn queue_id(&self) -> usize {
+        Arc::as_ptr(&self.shared) as usize
+    }
+
+    /// Cancel all pending transmissions.
+    ///
+    /// Workers will drop any pending datagrams attached to this channel.
+    #[inline]
+    pub fn cancel(&self) {
+        self.shared.flags.fetch_and(!SHOULD_TRANSMIT, Ordering::Release);
+    }
+
+    /// Send a completion notification.
+    ///
+    /// If the receiver is no longer alive, the completion is silently dropped.
+    pub fn send_entry(
+        &self,
+        entry: intrusive_queue::Entry<T>,
+    ) -> Result<(), intrusive_queue::Entry<T>> {
+        let flags = self.shared.flags.load(Ordering::Acquire);
+
+        // If receiver is gone, silently drop the completion
+        if flags & RECEIVER_ALIVE == 0 {
+            return Ok(());
+        }
+
+        let mut guard = self.shared.inner.lock();
+        guard.queue.push_back(entry);
+
+        // Wake the receiver if it's waiting
+        if let Some(waker) = guard.recv_waker.take() {
+            drop(guard);
+            waker.wake();
+        }
+
+        Ok(())
+    }
+
+    /// Send a batch of completion notifications.
+    pub fn send_batch(
+        &self,
+        mut batch: intrusive_queue::Queue<T>,
+    ) -> Result<(), intrusive_queue::Queue<T>> {
+        if batch.is_empty() {
+            return Ok(());
+        }
+
+        let flags = self.shared.flags.load(Ordering::Acquire);
+
+        // If receiver is gone, silently drop all completions
+        if flags & RECEIVER_ALIVE == 0 {
+            return Ok(());
+        }
+
+        let mut guard = self.shared.inner.lock();
+        guard.queue.append(&mut batch);
+
+        // Wake the receiver if it's waiting
+        if let Some(waker) = guard.recv_waker.take() {
+            drop(guard);
+            waker.wake();
+        }
+
+        Ok(())
+    }
+}
+
+impl<T> super::super::UnboundedSender<intrusive_queue::Entry<T>> for Sender<T> {
+    fn send(&mut self, value: intrusive_queue::Entry<T>) -> Result<(), intrusive_queue::Entry<T>> {
+        self.send_entry(value)
+    }
+}
+
+impl<T> super::super::Sender<intrusive_queue::Entry<T>> for Sender<T> {
+    fn poll_send(
+        &mut self,
+        _cx: &mut core::task::Context<'_>,
+        value: &mut core::mem::MaybeUninit<intrusive_queue::Entry<T>>,
+    ) -> Poll<Result<(), ()>> {
+        let entry = unsafe { value.assume_init_read() };
+        match self.send_entry(entry) {
+            Ok(()) => Poll::Ready(Ok(())),
+            Err(_) => Poll::Ready(Err(())),
+        }
+    }
+}
+
+impl<T> super::super::UnboundedSender<intrusive_queue::Queue<T>> for Sender<T> {
+    fn send(
+        &mut self,
+        batch: intrusive_queue::Queue<T>,
+    ) -> Result<(), intrusive_queue::Queue<T>> {
+        self.send_batch(batch)
+    }
+}
+
+impl<T> super::super::Sender<intrusive_queue::Queue<T>> for Sender<T> {
+    fn poll_send(
+        &mut self,
+        _cx: &mut core::task::Context<'_>,
+        value: &mut core::mem::MaybeUninit<intrusive_queue::Queue<T>>,
+    ) -> Poll<Result<(), ()>> {
+        let batch = unsafe { value.assume_init_read() };
+
+        if batch.is_empty() {
+            return Poll::Ready(Ok(()));
+        }
+
+        match self.send_batch(batch) {
+            Ok(()) => Poll::Ready(Ok(())),
+            Err(returned_batch) => {
+                value.write(returned_batch);
+                Poll::Ready(Err(()))
+            }
+        }
+    }
+}
+
+pub struct Receiver<T> {
+    shared: ManuallyDrop<Arc<Shared<T>>>,
+}
+
+impl<T> Receiver<T> {
+    /// Creates a new sender for this receiver.
+    ///
+    /// This allows applications to create senders on-demand when they need to
+    /// send datagrams, without having to store the sender permanently.
+    #[inline]
+    pub fn sender(&self) -> Sender<T> {
+        Sender {
+            shared: ManuallyDrop::new(Arc::clone(&self.shared)),
+        }
+    }
+}
+
+impl<T> Drop for Receiver<T> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            // Panic case - cancel all transmissions
+            self.shared.flags.store(0, Ordering::Release);
+        } else {
+            // Graceful drop - just stop receiving completions
+            self.shared.flags.fetch_and(!RECEIVER_ALIVE, Ordering::Release);
+        }
+
+        unsafe {
+            ManuallyDrop::drop(&mut self.shared);
+        }
+    }
+}
+
+impl<T> super::super::Receiver<intrusive_queue::Entry<T>> for Receiver<T> {
+    fn poll_recv(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+    ) -> Poll<Option<intrusive_queue::Entry<T>>> {
+        let mut guard = self.shared.inner.lock();
+
+        if let Some(entry) = guard.queue.pop_front() {
+            return Poll::Ready(Some(entry));
+        }
+
+        // Check if all senders are gone (strong_count <= 1 means only receiver left)
+        if Arc::strong_count(&self.shared) <= 1 {
+            return Poll::Ready(None);
+        }
+
+        // Queue is empty and senders still alive - register waker
+        guard.recv_waker = Some(cx.waker().clone());
+        Poll::Pending
+    }
+
+    fn on_consumed(&mut self, _bytes: u64) {}
+}
+
+impl<T> super::super::Receiver<intrusive_queue::Queue<T>> for Receiver<T> {
+    fn poll_recv(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+    ) -> Poll<Option<intrusive_queue::Queue<T>>> {
+        let mut guard = self.shared.inner.lock();
+
+        if !guard.queue.is_empty() {
+            // Drain all available entries into a batch
+            let batch = core::mem::take(&mut guard.queue);
+            return Poll::Ready(Some(batch));
+        }
+
+        // Check if all senders are gone (strong_count <= 1 means only receiver left)
+        if Arc::strong_count(&self.shared) <= 1 {
+            return Poll::Ready(None);
+        }
+
+        // Queue is empty and senders still alive - register waker
+        guard.recv_waker = Some(cx.waker().clone());
+        Poll::Pending
+    }
+
+    fn on_consumed(&mut self, _bytes: u64) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn initial_state() {
+        let rx = new::<u32>();
+        let tx = rx.sender();
+        assert!(tx.should_transmit());
+    }
+
+    #[test]
+    fn cancel() {
+        let rx = new::<u32>();
+        let tx = rx.sender();
+        tx.cancel();
+        assert!(!tx.should_transmit());
+    }
+
+    #[test]
+    fn graceful_receiver_drop() {
+        let rx = new::<()>();
+        let tx = rx.sender();
+        assert!(tx.should_transmit());
+
+        drop(rx); // Graceful drop
+
+        // Should still transmit, but completions will be silently dropped
+        assert!(tx.should_transmit());
+
+        // Sending should succeed (silently drops)
+        assert!(tx.send_entry(intrusive_queue::Entry::new(())).is_ok());
+    }
+
+    #[test]
+    fn sender_drop_no_cancel() {
+        let rx = new::<()>();
+        let tx = rx.sender();
+        let tx2 = tx.clone();
+
+        drop(tx);
+
+        // Sender drop doesn't cancel transmissions
+        assert!(tx2.should_transmit());
+    }
+}

@@ -19,7 +19,15 @@ pub struct StreamFilter {
 impl StreamFilter {
     #[inline]
     pub fn on_packet(&mut self, packet: &Packet) -> Result<(), SlidingWindowError> {
-        let packet_number = PacketNumberSpace::Initial.new_packet_number(packet.packet_number());
+        self.on_packet_number(packet.packet_number())
+    }
+
+    /// Check and record a packet number for duplicate filtering.
+    ///
+    /// Returns Ok if the packet is new, Err if it's a duplicate.
+    #[inline]
+    pub fn on_packet_number(&mut self, packet_number: VarInt) -> Result<(), SlidingWindowError> {
+        let packet_number = PacketNumberSpace::Initial.new_packet_number(packet_number);
         self.window.insert(packet_number)
     }
 }

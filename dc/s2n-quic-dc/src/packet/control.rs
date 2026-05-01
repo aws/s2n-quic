@@ -26,7 +26,7 @@ impl fmt::Debug for Tag {
         f.debug_struct("control::Tag")
             .field("has_source_queue_id", &self.has_source_queue_id())
             .field("is_stream", &self.is_stream())
-            .field("has_application_header", &self.has_application_header())
+            .field("has_routing_info", &self.has_routing_info())
             .finish()
     }
 }
@@ -34,7 +34,7 @@ impl fmt::Debug for Tag {
 impl Tag {
     pub const HAS_SOURCE_QUEUE_ID: u8 = 0b1000;
     pub const IS_STREAM_MASK: u8 = 0b0100;
-    pub const HAS_APPLICATION_HEADER_MASK: u8 = 0b0010;
+    pub const HAS_ROUTING_INFO_MASK: u8 = 0b0010;
 
     pub const MIN: u8 = 0b0101_0000;
     pub const MAX: u8 = 0b0101_1111;
@@ -60,13 +60,13 @@ impl Tag {
     }
 
     #[inline]
-    pub fn set_has_application_header(&mut self, enabled: bool) {
-        self.0.set(Self::HAS_APPLICATION_HEADER_MASK, enabled)
+    pub fn set_has_routing_info(&mut self, enabled: bool) {
+        self.0.set(Self::HAS_ROUTING_INFO_MASK, enabled)
     }
 
     #[inline]
-    pub fn has_application_header(&self) -> bool {
-        self.0.get(Self::HAS_APPLICATION_HEADER_MASK)
+    pub fn has_routing_info(&self) -> bool {
+        self.0.get(Self::HAS_ROUTING_INFO_MASK)
     }
 
     #[inline]

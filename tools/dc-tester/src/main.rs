@@ -6,12 +6,13 @@ mod client;
 mod config;
 mod psk;
 mod server;
+mod stats;
 
 use clap::{Parser, Subcommand};
 use std::{net::SocketAddr, path::PathBuf};
 
 #[global_allocator]
-static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 #[derive(Parser)]
 #[command(name = "dc-tester")]
@@ -53,6 +54,30 @@ enum Commands {
 async fn main() -> std::io::Result<()> {
     init_tracing();
 
+    if let Ok(malloc_conf) = std::env::var("_RJEM_MALLOC_CONF") {
+        eprintln!("_RJEM_MALLOC_CONF is set: {}", malloc_conf);
+    } else {
+        eprintln!("_RJEM_MALLOC_CONF is NOT set");
+    }
+
+    // Check if profiling is actually enabled
+    match tikv_jemalloc_ctl::profiling::prof::read() {
+        Ok(enabled) => eprintln!("jemalloc profiling enabled: {}", enabled),
+        Err(e) => eprintln!("jemalloc profiling check failed: {}", e),
+    }
+    match tikv_jemalloc_ctl::profiling::prof_final::read() {
+        Ok(final_dump) => eprintln!("jemalloc prof_final: {}", final_dump),
+        Err(e) => eprintln!("jemalloc prof_final check failed: {}", e),
+    }
+    match tikv_jemalloc_ctl::profiling::lg_prof_interval::read() {
+        Ok(interval) => eprintln!(
+            "jemalloc lg_prof_interval: {} ({}MB)",
+            interval,
+            1 << (interval.max(0) - 20)
+        ),
+        Err(e) => eprintln!("jemalloc lg_prof_interval check failed: {}", e),
+    }
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -73,6 +98,9 @@ async fn main() -> std::io::Result<()> {
             config,
             server_addr,
         } => {
+            // wait for the server to boot
+            tokio::time::sleep(core::time::Duration::from_secs(1)).await;
+
             let config = if let Some(path) = config {
                 config::Config::load(&path)?
             } else {

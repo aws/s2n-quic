@@ -25,7 +25,8 @@ pub mod testing;
 pub struct Id([u8; 16]);
 
 impl Id {
-    pub(crate) fn to_hash(self) -> u64 {
+    #[doc(hidden)]
+    pub fn to_hash(self) -> u64 {
         // The ID has very high quality entropy already, so write just one half of it to keep hash
         // costs as low as possible. For the main use of the Hash impl in the fixed-size ID map
         // this translates to just directly using these bytes for the indexing.

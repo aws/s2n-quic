@@ -3,6 +3,7 @@
 
 pub mod allocator;
 pub mod busy_poll;
+pub mod byte_vec;
 pub mod clock;
 pub mod congestion;
 pub mod control;

@@ -119,7 +119,7 @@ where
         );
 
         loop {
-            match udp::send(self.get_ref(), addr, ecn, buffer, Default::default()) {
+            match udp::send(self.get_ref(), addr, ecn, buffer, None, Default::default()) {
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {
                     // try the operation again if we were interrupted
                     continue;
@@ -153,7 +153,8 @@ where
         loop {
             let mut socket = ready!(self.poll_write_ready(cx))?;
 
-            let res = socket.try_io(|fd| udp::send(fd, addr, ecn, buffer, Default::default()));
+            let res =
+                socket.try_io(|fd| udp::send(fd, addr, ecn, buffer, None, Default::default()));
 
             match res {
                 Ok(Ok(len)) => return Ok(len).into(),

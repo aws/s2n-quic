@@ -6,7 +6,7 @@ use crate::{
     socket::{pool, recv::router::Router},
     stream::socket::{fd::udp, Socket},
 };
-use std::{io, os::fd::AsRawFd, task::Poll};
+use std::{io, os::fd::AsRawFd};
 
 /// Receives a packet into a pre-allocated stack buffer and discards it.
 ///
@@ -29,6 +29,9 @@ fn blackhole_recv<S: AsRawFd>(socket: &S) {
 }
 
 /// Receives packets from a blocking [`std::net::UdpSocket`] and dispatches into the provided [`Router`]
+///
+/// Note: This function is synchronous and doesn't use the channel adapters since
+/// it operates in a blocking context. For non-blocking operation, use `non_blocking`.
 pub fn blocking<S: AsRawFd, R: Router>(socket: S, alloc: pool::Pool, mut router: R) {
     while router.is_open() {
         let Some(mut unfilled) = alloc.alloc() else {
@@ -60,68 +63,20 @@ pub fn blocking<S: AsRawFd, R: Router>(socket: S, alloc: pool::Pool, mut router:
 }
 
 /// Receives packets from a non-blocking [`std::net::UdpSocket`] and dispatches into the provided [`Router`]
-pub async fn non_blocking<S: Socket, R: Router>(socket: S, alloc: pool::Pool, mut router: R) {
-    let mut pending = None;
-    core::future::poll_fn(move |cx| {
-        let mut count = 0;
+pub async fn non_blocking<S: Socket, R: Router>(socket: S, alloc: pool::Pool, router: R) {
+    use crate::socket::channel::{
+        FlattenSegments, InspectErr, ReceiverExt, RouterAdapter, SocketReceiver, YieldAfter,
+    };
 
-        while router.is_open() {
-            let unfilled = pending.take().or_else(|| alloc.alloc());
+    // Chain the adapters: socket → SocketReceiver → InspectErr → FlattenSegments → RouterAdapter → YieldAfter
+    let rx = SocketReceiver::new(socket, alloc);
+    let rx = InspectErr::new(rx, |err| {
+        tracing::error!("socket recv error (kind={:?}): {err}", err.kind());
+    });
+    let rx = FlattenSegments::new(rx);
+    let rx = RouterAdapter::new(rx, router);
+    let rx = YieldAfter::new(rx, 10);
 
-            let Some(unfilled) = unfilled else {
-                // Allocator exhausted — we can't receive right now.
-                // TODO: apply backpressure / yield and retry
-                tracing::warn!("packet allocator exhausted on recv path");
-                return Poll::Pending;
-            };
-
-            let res = unfilled.fill_with(|addr, cmsg, buffer| {
-                match socket.poll_recv(cx, addr, cmsg, &mut [buffer]) {
-                    Poll::Pending => Err(io::ErrorKind::WouldBlock.into()),
-                    Poll::Ready(Ok(len)) => Ok(len),
-                    Poll::Ready(Err(err)) => Err(err),
-                }
-            });
-
-            match res {
-                Ok(segments) => {
-                    for segment in segments {
-                        router.on_segment(segment);
-                    }
-
-                    // poll the socket again
-                    count += 1;
-
-                    if count > 10 {
-                        cx.waker().wake_by_ref();
-                        return Poll::Pending;
-                    }
-
-                    continue;
-                }
-                Err((desc, err)) => {
-                    // put the unfilled segment back in the pool
-                    pending = Some(desc);
-
-                    let kind = err.kind();
-
-                    // if we got blocked then yield the future
-                    if kind == io::ErrorKind::WouldBlock {
-                        return Poll::Pending;
-                    }
-
-                    // if tokio is shutting down, it starts returning an `Other` error
-                    if kind == io::ErrorKind::Other {
-                        tracing::info!("worker shutting down due to: {err}");
-                        break;
-                    }
-
-                    tracing::error!("socket recv error (kind={:?}): {err}", err.kind());
-                }
-            }
-        }
-
-        Poll::Ready(())
-    })
-    .await;
+    // Drain until completion
+    rx.drain().await;
 }

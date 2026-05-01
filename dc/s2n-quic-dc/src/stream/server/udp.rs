@@ -281,18 +281,18 @@ where
         &mut self,
         _remote_address: SocketAddress,
         _ecn: ExplicitCongestionNotification,
-        _packet: crate::packet::control::decoder::Packet,
+        _packet: crate::packet::control::decoder::Packet<&mut [u8]>,
     ) {
     }
 
     #[inline]
     fn dispatch_control_packet(
         &mut self,
-        _tag: crate::packet::control::Tag,
-        _id: Option<stream::Id>,
-        credentials: Credentials,
-        segment: descriptor::Filled,
+        packet: crate::packet::control::decoder::Packet<descriptor::Filled>,
     ) {
+        let credentials = *packet.credentials();
+        let segment = packet.into_parts().1;
+
         // check to see if these credentials are associated with an active stream
         if let Some(queue_id) = self.dispatch.queue_id_for_key(&credentials) {
             tracing::trace!(%queue_id, "credential_cache_hit");

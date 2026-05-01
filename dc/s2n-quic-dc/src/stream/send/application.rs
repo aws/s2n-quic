@@ -297,11 +297,7 @@ where
             &self.shared.remote_addr(),
             max_segments,
             &self.shared.segment_alloc,
-            || {
-                self.shared
-                    .sender
-                    .alloc_transmission(max_segments, PacketSpace::Stream)
-            },
+            || self.shared.sender.alloc_transmission(PacketSpace::Stream),
             |message| {
                 self.shared.crypto.seal_with(
                     |sealer| {

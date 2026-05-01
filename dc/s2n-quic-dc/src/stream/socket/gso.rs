@@ -13,11 +13,11 @@ use std::{
 };
 
 #[derive(Clone)]
-pub struct Gso<S: Socket>(pub S, pub features::Gso);
+pub struct Gso<S>(pub S, pub features::Gso);
 
 impl<S: Socket> Gso<S> {
     #[inline(always)]
-    fn handle_send_result(
+    pub(crate) fn handle_send_result(
         &self,
         result: io::Result<usize>,
         addr: &Addr,

@@ -210,22 +210,18 @@ impl crate::socket::recv::router::Router for Dispatch {
         &mut self,
         _remote_address: SocketAddress,
         _ecn: s2n_quic_core::inet::ExplicitCongestionNotification,
-        _packet: packet::control::decoder::Packet,
+        _packet: packet::control::decoder::Packet<&mut [u8]>,
     ) {
     }
 
     #[inline]
-    fn dispatch_control_packet(
-        &mut self,
-        _tag: packet::control::Tag,
-        id: Option<packet::stream::Id>,
-        credentials: credentials::Credentials,
-        segment: desc::Filled,
-    ) {
-        let Some(id) = id else {
+    fn dispatch_control_packet(&mut self, packet: packet::control::decoder::Packet<desc::Filled>) {
+        let Some(id) = packet.stream_id().copied() else {
             return;
         };
 
+        let credentials = *packet.credentials();
+        let segment = packet.into_parts().1;
         let _ = self.send_control(id.queue_id, Some(&credentials), segment);
     }
 

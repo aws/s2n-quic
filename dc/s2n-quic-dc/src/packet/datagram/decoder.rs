@@ -3,8 +3,9 @@
 
 use crate::{
     credentials::Credentials,
-    packet::{datagram::Tag, WireVersion},
+    packet::{datagram::Tag, storage, RoutingInfo, WireVersion},
 };
+use core::{fmt, ops::Deref};
 use s2n_codec::{
     decoder_invariant, CheckedRange, DecoderBufferMut, DecoderBufferMutResult as R, DecoderError,
 };
@@ -44,42 +45,22 @@ where
     }
 }
 
-pub struct Packet<'a> {
+/// Packet metadata without any storage - all the parsed fields and ranges
+#[derive(Clone, Copy, Debug)]
+pub struct Meta {
     tag: Tag,
     wire_version: WireVersion,
     credentials: Credentials,
     source_control_port: u16,
+    routing_info: RoutingInfo,
     packet_number: PacketNumber,
-    next_expected_control_packet: Option<PacketNumber>,
-    header: &'a mut [u8],
+    header: CheckedRange,
     application_header: CheckedRange,
-    control_data: CheckedRange,
-    payload: &'a mut [u8],
-    auth_tag: &'a mut [u8],
+    payload: CheckedRange,
+    auth_tag: CheckedRange,
 }
 
-impl std::fmt::Debug for Packet<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Packet")
-            .field("tag", &self.tag)
-            .field("wire_version", &self.wire_version)
-            .field("credentials", &self.credentials)
-            .field("source_control_port", &self.source_control_port)
-            .field("packet_number", &self.packet_number)
-            .field(
-                "next_expected_control_packet",
-                &self.next_expected_control_packet,
-            )
-            .field("header", &self.header)
-            .field("application_header", &self.application_header)
-            .field("control_data", &self.control_data)
-            .field("payload_len", &self.payload.len())
-            .field("auth_tag", &self.auth_tag)
-            .finish()
-    }
-}
-
-impl Packet<'_> {
+impl Meta {
     #[inline]
     pub fn tag(&self) -> Tag {
         self.tag
@@ -101,8 +82,8 @@ impl Packet<'_> {
     }
 
     #[inline]
-    pub fn crypto_nonce(&self) -> u64 {
-        self.packet_number.as_u64()
+    pub fn routing_info(&self) -> RoutingInfo {
+        self.routing_info
     }
 
     #[inline]
@@ -111,170 +92,244 @@ impl Packet<'_> {
     }
 
     #[inline]
-    pub fn next_expected_control_packet(&self) -> Option<PacketNumber> {
-        self.next_expected_control_packet
+    pub fn crypto_nonce(&self) -> u64 {
+        self.packet_number.as_u64()
     }
 
+    /// Combine this metadata with storage to create a Packet
+    #[inline]
+    pub fn with_storage<S: storage::Bytes>(self, storage: S) -> Result<Packet<S>, (Self, S)> {
+        Packet::from_parts(self, storage)
+    }
+
+    /// Decode packet metadata and create CheckedRanges relative to a storage buffer
+    #[inline(always)]
+    pub fn decode<V: Validator>(
+        storage_buf: &DecoderBufferMut,
+        mut validator: V,
+        crypto_tag_len: usize,
+    ) -> Result<Self, DecoderError> {
+        let buffer = storage_buf.peek();
+
+        unsafe {
+            assume!(
+                crypto_tag_len >= 16,
+                "tag len needs to be at least 16 bytes"
+            );
+        }
+
+        let start_len = buffer.len();
+
+        let (tag, buffer) = buffer.decode()?;
+        validator.validate_tag(tag)?;
+
+        let (credentials, buffer) = buffer.decode()?;
+        let (wire_version, buffer) = buffer.decode()?;
+        let (source_control_port, buffer) = buffer.decode()?;
+
+        let (packet_number, buffer) = if tag.has_packet_number() {
+            buffer.decode::<VarInt>()?
+        } else {
+            (VarInt::ZERO, buffer)
+        };
+
+        // Decode routing info if present
+        let (routing_info, buffer) = if tag.has_routing_info() {
+            buffer.decode()?
+        } else {
+            (RoutingInfo::None, buffer)
+        };
+
+        let (payload_len, buffer) = buffer.decode::<VarInt>()?;
+        let payload_len = (*payload_len) as usize;
+
+        let (application_header_len, buffer) = if tag.payload_encrypted() {
+            let (application_header_len, buffer) = buffer.decode::<VarInt>()?;
+            ((*application_header_len) as usize, buffer)
+        } else {
+            (0, buffer)
+        };
+
+        // Use skip_into_range for application_header
+        let (application_header, buffer) =
+            buffer.skip_into_range(application_header_len, storage_buf)?;
+
+        // compute the total header range
+        let total_header_len = start_len - buffer.len();
+        let header = {
+            let buffer = storage_buf.peek();
+            let (header, _) = buffer.skip_into_range(total_header_len, storage_buf)?;
+            header
+        };
+
+        // Use skip_into_range for payload and auth_tag
+        let (payload, buffer) = buffer.skip_into_range(payload_len, storage_buf)?;
+        let (auth_tag, _buffer) = buffer.skip_into_range(crypto_tag_len, storage_buf)?;
+
+        Ok(Meta {
+            tag,
+            wire_version,
+            credentials,
+            source_control_port,
+            routing_info,
+            packet_number,
+            header,
+            application_header,
+            payload,
+            auth_tag,
+        })
+    }
+}
+
+pub struct Packet<S: storage::Bytes> {
+    meta: Meta,
+    storage: S,
+}
+
+impl<S: storage::Bytes> fmt::Debug for Packet<S> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("datagram::Packet")
+            .field("tag", &self.meta.tag)
+            .field("wire_version", &self.meta.wire_version)
+            .field("credentials", &self.meta.credentials)
+            .field("source_control_port", &self.meta.source_control_port)
+            .field("routing_info", &self.meta.routing_info)
+            .field("packet_number", &self.meta.packet_number)
+            .field("payload_len", &self.meta.payload.len())
+            .finish()
+    }
+}
+
+impl<S: storage::Bytes> Deref for Packet<S> {
+    type Target = Meta;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.meta
+    }
+}
+
+impl<S: storage::Bytes> Packet<S> {
     #[inline]
     pub fn application_header(&self) -> &[u8] {
-        self.application_header.get(self.header)
-    }
-
-    #[inline]
-    pub fn control_data(&self) -> &[u8] {
-        self.control_data.get(self.header)
+        let header = self.meta.header.get(&*self.storage);
+        self.meta.application_header.get(header)
     }
 
     #[inline]
     pub fn header(&self) -> &[u8] {
-        self.header
+        self.meta.header.get(&*self.storage)
     }
 
     #[inline]
     pub fn payload(&self) -> &[u8] {
-        self.payload
+        self.meta.payload.get(&*self.storage)
     }
 
     #[inline]
     pub fn payload_mut(&mut self) -> &mut [u8] {
-        self.payload
+        self.meta.payload.get_mut(&mut *self.storage)
     }
 
     #[inline]
     pub fn auth_tag(&self) -> &[u8] {
-        self.auth_tag
+        self.meta.auth_tag.get(&*self.storage)
     }
 
+    /// Decrypt the packet payload in place using the provided opener.
+    ///
+    /// This authenticates the packet and decrypts the payload in a single operation.
+    #[inline]
+    pub fn decrypt_in_place<O>(&mut self, opener: &O) -> Result<(), crate::crypto::open::Error>
+    where
+        O: crate::crypto::open::Application,
+    {
+        let key_phase = self.tag().key_phase();
+        let packet_number = self.packet_number().as_u64();
+        let header_len = self.meta.header.len();
+        let payload_len = self.meta.payload.len();
+        let auth_tag_len = self.meta.auth_tag.len();
+
+        let (header, payload_and_tag) = unsafe {
+            // SAFETY: bounds were validated during packet decoding in Meta::decode
+            let ptr = self.storage.as_mut_ptr();
+            let header = core::slice::from_raw_parts_mut(ptr, header_len);
+            let payload_and_tag =
+                core::slice::from_raw_parts_mut(ptr.add(header_len), payload_len + auth_tag_len);
+            (header, payload_and_tag)
+        };
+
+        opener.decrypt_in_place(key_phase, packet_number, header, payload_and_tag)
+    }
+
+    /// Create a packet from metadata and storage, validating that the storage is compatible
+    #[inline]
+    pub fn from_parts(meta: Meta, storage: S) -> Result<Self, (Meta, S)> {
+        // Validate storage by attempting to get the ranges
+        let _ = meta.header.get(&*storage);
+        let _ = meta.payload.get(&*storage);
+        let _ = meta.auth_tag.get(&*storage);
+
+        Ok(Self { meta, storage })
+    }
+
+    /// Extract the metadata, consuming the packet and returning both metadata and storage
+    #[inline]
+    pub fn into_parts(self) -> (Meta, S) {
+        (self.meta, self.storage)
+    }
+
+    /// Get a copy of the metadata without consuming the packet
+    #[inline]
+    pub fn meta(&self) -> &Meta {
+        &self.meta
+    }
+
+    /// Get a reference to the storage
+    #[inline]
+    pub fn storage(&self) -> &S {
+        &self.storage
+    }
+
+    /// Replace the storage with a new one, validating that it's still valid for the ranges
+    #[inline]
+    pub fn replace_storage<S2: storage::Bytes>(
+        self,
+        new_storage: S2,
+    ) -> Result<Packet<S2>, (Meta, S2)> {
+        // Validate new storage by attempting to get the ranges
+        let _ = self.meta.header.get(&*new_storage);
+        let _ = self.meta.payload.get(&*new_storage);
+        let _ = self.meta.auth_tag.get(&*new_storage);
+
+        Ok(Packet {
+            meta: self.meta,
+            storage: new_storage,
+        })
+    }
+}
+
+impl Packet<&mut [u8]> {
     #[inline(always)]
     pub fn decode<V: Validator>(
         buffer: DecoderBufferMut,
-        mut validator: V,
+        validator: V,
         crypto_tag_len: usize,
-    ) -> R<Packet> {
-        let (
-            tag,
-            wire_version,
-            credentials,
-            source_control_port,
-            packet_number,
-            next_expected_control_packet,
-            header_len,
-            total_header_len,
-            application_header_len,
-            control_data_len,
-            payload_len,
-        ) = {
-            let buffer = buffer.peek();
+    ) -> R<Self> {
+        // First, figure out how long the packet is by peeking
+        let meta = Meta::decode(&buffer, validator, crypto_tag_len)?;
+        let packet_len = meta.header.len() + meta.payload.len() + meta.auth_tag.len();
 
-            unsafe {
-                assume!(
-                    crypto_tag_len >= 16,
-                    "tag len needs to be at least 16 bytes"
-                );
-            }
+        // Now decode the full packet storage
+        let (storage_buf, buffer) = buffer.decode_slice(packet_len)?;
 
-            let start_len = buffer.len();
-
-            let (tag, buffer) = buffer.decode()?;
-            validator.validate_tag(tag)?;
-
-            let (credentials, buffer) = buffer.decode()?;
-
-            let (wire_version, buffer) = buffer.decode()?;
-
-            let (source_control_port, buffer) = buffer.decode()?;
-
-            let (packet_number, buffer) = if tag.is_connected() || tag.ack_eliciting() {
-                buffer.decode()?
-            } else {
-                (VarInt::ZERO, buffer)
-            };
-
-            let (payload_len, buffer) = buffer.decode::<VarInt>()?;
-            let payload_len = (*payload_len) as usize;
-
-            let (next_expected_control_packet, control_data_len, buffer) = if tag.ack_eliciting() {
-                let (packet_number, buffer) = buffer.decode::<VarInt>()?;
-                let (control_data_len, buffer) = buffer.decode::<VarInt>()?;
-                (Some(packet_number), (*control_data_len) as usize, buffer)
-            } else {
-                (None, 0usize, buffer)
-            };
-
-            let (application_header_len, buffer) = if tag.has_application_header() {
-                let (application_header_len, buffer) = buffer.decode::<VarInt>()?;
-                ((*application_header_len) as usize, buffer)
-            } else {
-                (0, buffer)
-            };
-
-            let header_len = start_len - buffer.len();
-
-            let buffer = buffer.skip(application_header_len)?;
-
-            let buffer = buffer.skip(control_data_len)?;
-
-            let total_header_len = start_len - buffer.len();
-
-            (
-                tag,
-                wire_version,
-                credentials,
-                source_control_port,
-                packet_number,
-                next_expected_control_packet,
-                header_len,
-                total_header_len,
-                application_header_len,
-                control_data_len,
-                payload_len,
-            )
+        let storage = unsafe {
+            // SAFETY: extend the lifetime of the buffer
+            let slice = storage_buf.into_less_safe_slice();
+            core::mem::transmute::<&mut [u8], &mut [u8]>(slice)
         };
 
-        unsafe {
-            assume!(buffer.len() >= total_header_len);
-        }
-        let (header, buffer) = buffer.decode_slice(total_header_len)?;
-
-        let (application_header, control_data) = {
-            let buffer = header.peek();
-            unsafe {
-                assume!(buffer.len() >= header_len);
-            }
-            let buffer = buffer.skip(header_len)?;
-            unsafe {
-                assume!(buffer.len() >= application_header_len);
-            }
-            let (application_header, buffer) =
-                buffer.skip_into_range(application_header_len, &header)?;
-            unsafe {
-                assume!(buffer.len() >= control_data_len);
-            }
-            let (control_data, _) = buffer.skip_into_range(control_data_len, &header)?;
-
-            (application_header, control_data)
-        };
-        let header = header.into_less_safe_slice();
-
-        let (payload, buffer) = buffer.decode_slice(payload_len)?;
-        let payload = payload.into_less_safe_slice();
-
-        let (auth_tag, buffer) = buffer.decode_slice(crypto_tag_len)?;
-        let auth_tag = auth_tag.into_less_safe_slice();
-
-        let packet = Packet {
-            tag,
-            wire_version,
-            credentials,
-            source_control_port,
-            packet_number,
-            next_expected_control_packet,
-            header,
-            application_header,
-            control_data,
-            payload,
-            auth_tag,
-        };
+        let packet = Packet { meta, storage };
 
         Ok((packet, buffer))
     }

@@ -346,8 +346,7 @@ fn check_control_parse() {
                 packet.source_queue_id,
                 packet.stream_id,
                 packet.packet_number,
-                VarInt::new(packet.application_header.buffered_len() as u64).unwrap(),
-                &mut packet.application_header,
+                Default::default(),
                 VarInt::new(packet.control_data.buffered_len() as u64).unwrap(),
                 // FIXME: Encode *real* control data, not random garbage.
                 &&packet.control_data.read_chunk(usize::MAX).unwrap()[..],
