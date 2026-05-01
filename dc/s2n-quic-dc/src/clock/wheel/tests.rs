@@ -4,7 +4,11 @@
 //! Additional tests for the hierarchical timing wheel
 
 use super::*;
-use crate::{clock::precision::Clock as _, socket::channel::Receiver as _};
+use crate::{
+    clock::precision::Clock as _,
+    intrusive_queue::{EntryAdapter, Queue},
+    socket::channel::Receiver as _,
+};
 use core::pin::pin;
 use s2n_quic_core::task::waker;
 use std::{collections::BTreeMap, time::Duration};
@@ -99,12 +103,12 @@ struct TestEntry {
     transmission_time: Option<precision::Timestamp>,
 }
 
-impl Scheduled for TestEntry {
-    fn transmission_time(&self) -> Option<precision::Timestamp> {
+impl SingleTimer for TestEntry {
+    fn target_time(&self) -> Option<precision::Timestamp> {
         self.transmission_time
     }
 
-    fn set_transmission_time(&mut self, time: precision::Timestamp) {
+    fn set_target_time(&mut self, time: precision::Timestamp) {
         self.transmission_time = Some(time);
     }
 }
@@ -125,11 +129,6 @@ impl TestChannel {
 
     fn send_batch(&self, batch: Queue<TestEntry>) {
         self.queue.lock().unwrap().push_back(batch);
-    }
-
-    fn close(&self) {
-        self.closed
-            .store(true, std::sync::atomic::Ordering::Release);
     }
 }
 
@@ -155,7 +154,8 @@ impl channel::Receiver<Queue<TestEntry>> for &TestChannel {
 fn test_immediate_transmission() {
     let clock = Clock::new(Duration::from_micros(1000));
     let channel = TestChannel::new();
-    let mut wheel: Wheel<TestEntry, ClockTimer, _, 1> = Wheel::new(&channel, clock.timer());
+    let mut wheel: Wheel<EntryAdapter<TestEntry>, ClockTimer, _, 1> =
+        Wheel::new(&channel, clock.timer());
 
     // Entry with None timestamp should bypass wheel and be immediately available
     let mut batch = Queue::new();
@@ -180,7 +180,8 @@ fn test_immediate_transmission() {
 fn test_len_tracking() {
     let clock = Clock::new(Duration::from_micros(1000));
     let channel = TestChannel::new();
-    let mut wheel: Wheel<TestEntry, ClockTimer, _, 1> = Wheel::new(&channel, clock.timer());
+    let mut wheel: Wheel<EntryAdapter<TestEntry>, ClockTimer, _, 1> =
+        Wheel::new(&channel, clock.timer());
 
     assert_eq!(wheel.len, 0);
 
@@ -200,7 +201,10 @@ fn test_len_tracking() {
 
     // Poll to insert them into wheel - should insert and check if any are ready
     let result = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)));
-    assert!(result.is_none(), "Entries should not be ready yet (they're in the future)");
+    assert!(
+        result.is_none(),
+        "Entries should not be ready yet (they're in the future)"
+    );
     assert_eq!(wheel.len, 5, "Len should be 5 after inserting");
 
     // Advance timer to future time and drain them
@@ -218,7 +222,8 @@ fn test_cascade() {
     // With GRANULARITY_US=1 and 256 slots/level, we need >256 ticks to trigger cascade
     let clock = Clock::new(Duration::from_micros(1000));
     let channel = TestChannel::new();
-    let mut wheel: Wheel<TestEntry, ClockTimer, _, 1> = Wheel::new(&channel, clock.timer());
+    let mut wheel: Wheel<EntryAdapter<TestEntry>, ClockTimer, _, 1> =
+        Wheel::new(&channel, clock.timer());
 
     // Insert entry 300 µs in future (beyond level-0's 256-slot range)
     let future_time = clock.get_time() + Duration::from_micros(300);
@@ -253,7 +258,8 @@ fn test_cascade() {
 fn test_ordering() {
     let clock = Clock::new(Duration::from_micros(1000));
     let channel = TestChannel::new();
-    let mut wheel: Wheel<TestEntry, ClockTimer, _, 1> = Wheel::new(&channel, clock.timer());
+    let mut wheel: Wheel<EntryAdapter<TestEntry>, ClockTimer, _, 1> =
+        Wheel::new(&channel, clock.timer());
 
     // Insert entries in reverse order - wheel should reorder by time
     // Start at 1 to avoid entries at current time (which are immediately ready)
@@ -298,7 +304,8 @@ fn test_ordering() {
 fn test_empty_wheel_fast_path() {
     let clock = Clock::new(Duration::from_micros(1000));
     let channel = TestChannel::new();
-    let mut wheel: Wheel<TestEntry, ClockTimer, _, 1> = Wheel::new(&channel, clock.timer());
+    let mut wheel: Wheel<EntryAdapter<TestEntry>, ClockTimer, _, 1> =
+        Wheel::new(&channel, clock.timer());
 
     // With empty wheel, advancing time should be fast (no slot scanning)
     let start_tick = wheel.current_tick;
@@ -340,11 +347,11 @@ fn fuzz_oracle_comparison() {
             };
             let clock = Clock(start);
             let channel = TestChannel::new();
-            let mut wheel: Wheel<TestEntry, ClockTimer, _, 1> =
+            let mut wheel: Wheel<EntryAdapter<TestEntry>, ClockTimer, _, 1> =
                 Wheel::new(&channel, clock.timer());
 
             let start_tick =
-                Wheel::<TestEntry, ClockTimer, &TestChannel, 1>::timestamp_to_tick(start);
+                Wheel::<EntryAdapter<TestEntry>, ClockTimer, &TestChannel, 1>::timestamp_to_tick(start);
 
             // Oracle: BTreeMap<tick, Vec<meta>> preserves insertion order per tick
             let mut oracle: BTreeMap<u64, Vec<u16>> = BTreeMap::new();
@@ -387,7 +394,7 @@ fn fuzz_oracle_comparison() {
 
             while current_tick <= end_tick && !oracle.is_empty() {
                 let current_time =
-                    Wheel::<TestEntry, ClockTimer, &TestChannel, 1>::tick_to_timestamp(current_tick);
+                    Wheel::<EntryAdapter<TestEntry>, ClockTimer, &TestChannel, 1>::tick_to_timestamp(current_tick);
 
                 // Update timer to current time
                 wheel.timer.now = current_time;

@@ -1,11 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Hierarchical Timing Wheel for packet scheduling.
+//! Hierarchical Timing Wheel for scheduling.
 //!
 //! The wheel receives entries from an inner receiver, inserts them into the
-//! appropriate time slot based on their transmission time, and yields batches
-//! of due entries as a `Receiver<Queue<T>>`.
+//! appropriate time slot based on their target time, and yields batches
+//! of due entries as a `Receiver<List<A>>`.
 //!
 //! The wheel uses 256 slots per level with a configurable base tick (default 1µs).
 //! 4 levels cover 256^4 ticks ≈ 4.29 billion µs ≈ 71.6 minutes at 1µs granularity.
@@ -13,11 +13,11 @@
 //! Each level maintains a 256-bit occupancy bitset ([u64; 4]) for O(1) next-expiry
 //! computation via `trailing_zeros`. Causal ordering is preserved: entries from the
 //! same sender are always dequeued in the order they were submitted, because the
-//! inner receiver and per-slot queues are FIFO.
+//! inner receiver and per-slot lists are FIFO.
 
 use crate::{
     clock::precision,
-    intrusive_queue::{Entry, Queue},
+    intrusive_queue::{Adapter, List},
     socket::channel,
 };
 use core::{
@@ -50,34 +50,90 @@ const LEVELS: usize = 4;
 /// Default base tick granularity in microseconds.
 pub const DEFAULT_GRANULARITY_US: u64 = 1;
 
-// ── Scheduled trait ────────────────────────────────────────────────────────
+// ── Conversion utilities ───────────────────────────────────────────────────
 
-/// Trait for entries that can be scheduled in the timing wheel.
-pub trait Scheduled {
-    /// Returns the desired transmission time, or `None` for immediate transmission.
-    fn transmission_time(&self) -> Option<precision::Timestamp>;
+/// Convert a tick count to a timestamp given a granularity.
+#[inline]
+pub const fn tick_to_timestamp(tick: u64, granularity_us: u64) -> precision::Timestamp {
+    let time = std::time::Duration::from_micros(tick * granularity_us);
+    precision::Timestamp {
+        nanos: time.as_nanos() as _,
+    }
+}
 
-    /// Sets the actual transmission time (called when the entry is yielded).
-    fn set_transmission_time(&mut self, time: precision::Timestamp);
+/// Convert a timestamp to a tick count given a granularity.
+#[inline]
+pub const fn timestamp_to_tick(timestamp: precision::Timestamp, granularity_us: u64) -> u64 {
+    let time = std::time::Duration::from_nanos(timestamp.nanos);
+    time.as_micros() as u64 / granularity_us
+}
+
+// ── WheelAdapter trait ─────────────────────────────────────────────────────
+
+/// Extension trait for adapters that can be used with the timing wheel.
+///
+/// This trait provides per-link timing information, allowing different links
+/// in the same value to have different target times.
+pub trait WheelAdapter: Adapter {
+    /// Returns the target time for this link, or `None` for immediate execution.
+    ///
+    /// # Safety
+    /// The pointer must be valid and point to an initialized Value.
+    unsafe fn target_time(value: *const Self::Value) -> Option<precision::Timestamp>;
+
+    /// Sets the actual execution time (called when the entry is yielded from the wheel).
+    ///
+    /// # Safety
+    /// The pointer must be valid and point to an initialized Value.
+    unsafe fn set_target_time(value: *mut Self::Value, time: precision::Timestamp);
+}
+
+/// Trait for types that have a single target time for wheel scheduling.
+///
+/// This is a simpler interface than `WheelAdapter` for types that only need
+/// a single timer per value.
+pub trait SingleTimer {
+    /// Returns the target time, or `None` for immediate execution.
+    fn target_time(&self) -> Option<precision::Timestamp>;
+
+    /// Sets the target time (called when the entry is yielded from the wheel).
+    fn set_target_time(&mut self, time: precision::Timestamp);
+}
+
+// Implement WheelAdapter for EntryAdapter<T> where T: SingleTimer
+impl<T: SingleTimer> WheelAdapter for crate::intrusive_queue::EntryAdapter<T> {
+    unsafe fn target_time(value: *const Self::Value) -> Option<precision::Timestamp> {
+        (*Self::target(value as *mut Self::Value)).target_time()
+    }
+
+    unsafe fn set_target_time(value: *mut Self::Value, time: precision::Timestamp) {
+        (*Self::target(value)).set_target_time(time);
+    }
 }
 
 // ── Wheel (async receiver) ─────────────────────────────────────────────────
 
-/// Hierarchical timing wheel that implements `Receiver<Queue<T>>`.
+/// Hierarchical timing wheel that implements `Receiver<List<A>>`.
 ///
-/// The wheel receives batches of entries from an inner `Receiver<Queue<T>>`,
-/// inserts them into time slots based on their transmission time, and yields
+/// The wheel receives batches of entries from an inner `Receiver<List<A>>`,
+/// inserts them into time slots based on their target time, and yields
 /// batches of due entries. It manages its own timer to wake when entries are due.
-pub struct Wheel<T, Timer, R, const GRANULARITY_US: u64 = DEFAULT_GRANULARITY_US> {
+pub struct Wheel<A, Timer, R, const GRANULARITY_US: u64 = DEFAULT_GRANULARITY_US>
+where
+    A: Adapter,
+{
     inner: R,
     timer: Timer,
-    levels: Box<[Level<T>; LEVELS]>,
+    levels: Box<[Level<A>; LEVELS]>,
     current_tick: u64,
-    pending_queue: Queue<T>,
+    pending_list: List<A>,
     len: usize,
 }
 
-impl<T, Timer, R, const GRANULARITY_US: u64> fmt::Debug for Wheel<T, Timer, R, GRANULARITY_US> {
+impl<A, Timer, R, const GRANULARITY_US: u64> fmt::Debug for Wheel<A, Timer, R, GRANULARITY_US>
+where
+    A: Adapter,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Wheel")
             .field("current_tick", &self.current_tick)
@@ -88,11 +144,11 @@ impl<T, Timer, R, const GRANULARITY_US: u64> fmt::Debug for Wheel<T, Timer, R, G
     }
 }
 
-impl<T, Timer, R, const GRANULARITY_US: u64> Wheel<T, Timer, R, GRANULARITY_US>
+impl<A, Timer, R, const GRANULARITY_US: u64> Wheel<A, Timer, R, GRANULARITY_US>
 where
-    T: Scheduled,
+    A: WheelAdapter,
     Timer: precision::Timer,
-    R: channel::Receiver<Queue<T>>,
+    R: channel::Receiver<List<A>>,
 {
     /// Create a new wheel with an inner receiver and timer.
     pub fn new(inner: R, timer: Timer) -> Self {
@@ -102,53 +158,54 @@ where
             timer,
             levels: Box::new(core::array::from_fn(|_| Level::new())),
             current_tick: initial_tick,
-            pending_queue: Queue::new(),
+            pending_list: List::new(),
             len: 0,
         }
     }
 
-    // ── Internal: Tick/Timestamp arithmetic ─────────────────────────────
+    // ── Internal: Tick/Timestamp arithmetic (convenience wrappers) ──────
 
+    #[inline]
     fn tick_to_timestamp(tick: u64) -> precision::Timestamp {
-        let time = std::time::Duration::from_micros(tick * GRANULARITY_US);
-        precision::Timestamp {
-            nanos: time.as_nanos() as _,
-        }
+        tick_to_timestamp(tick, GRANULARITY_US)
     }
 
+    #[inline]
     fn timestamp_to_tick(timestamp: precision::Timestamp) -> u64 {
-        let time = std::time::Duration::from_nanos(timestamp.nanos);
-        time.as_micros() as u64 / GRANULARITY_US
+        timestamp_to_tick(timestamp, GRANULARITY_US)
     }
 
     // ── Internal: Wheel operations ──────────────────────────────────────
 
     /// Insert a single entry into the appropriate level/slot.
-    fn insert_entry(&mut self, entry: Entry<T>) {
-        let target_tick = entry
-            .transmission_time()
-            .map(Self::timestamp_to_tick)
-            .unwrap_or(self.current_tick)
-            .max(self.current_tick);
+    fn insert_entry(&mut self, ptr: A::Pointer) {
+        let target_tick = unsafe {
+            // SAFETY: The pointer is valid since it came from the adapter.
+            let value_ptr = A::as_ptr(&ptr);
+            A::target_time(value_ptr)
+        }
+        .map(Self::timestamp_to_tick)
+        .unwrap_or(self.current_tick)
+        .max(self.current_tick);
 
         let (level, slot_idx) = Self::compute_level_and_slot(self.current_tick, target_tick);
 
-        self.levels[level].push_back(slot_idx, entry);
+        self.levels[level].push_back(slot_idx, ptr);
         self.len += 1;
     }
 
     /// Advance the virtual clock to `target_tick` and return all due entries.
-    fn tick_to(&mut self, now: precision::Timestamp) -> Queue<T> {
+    fn tick_to(&mut self, now: precision::Timestamp) -> List<A> {
         let target_tick = Self::timestamp_to_tick(now);
         let target_tick = target_tick.max(self.current_tick);
 
         // Fast path: if wheel is empty, just advance time without scanning slots
         if self.len == 0 {
             self.current_tick = target_tick;
-            return Queue::new();
+            return List::new();
         }
 
-        let mut result = Queue::new();
+        let mut result = List::new();
 
         while self.current_tick < target_tick {
             let current_slot = (self.current_tick & SLOT_MASK) as usize;
@@ -235,15 +292,18 @@ where
             let mut entries = self.levels[level].drain(slot_idx);
 
             // Iterate in reverse to preserve FIFO order
-            while let Some(entry) = entries.pop_back() {
-                let target_tick = entry
-                    .transmission_time()
-                    .map(Self::timestamp_to_tick)
-                    .unwrap_or(current_tick)
-                    .max(current_tick);
+            while let Some(ptr) = entries.pop_back() {
+                let target_tick = unsafe {
+                    // SAFETY: The pointer is valid since it came from the adapter.
+                    let value_ptr = A::as_ptr(&ptr);
+                    A::target_time(value_ptr)
+                }
+                .map(Self::timestamp_to_tick)
+                .unwrap_or(current_tick)
+                .max(current_tick);
 
                 let (new_level, new_slot) = Self::compute_level_and_slot(current_tick, target_tick);
-                self.levels[new_level].push_front(new_slot, entry);
+                self.levels[new_level].push_front(new_slot, ptr);
             }
 
             // Check if this level also wrapped and needs to cascade upward
@@ -279,8 +339,8 @@ where
     }
 
     /// Drain all remaining entries at current time (called when inner is closed).
-    fn drain_remaining(&mut self) -> Queue<T> {
-        let mut result = Queue::new();
+    fn drain_remaining(&mut self) -> List<A> {
+        let mut result = List::new();
         for level in &mut *self.levels {
             for slot_idx in 0..SLOTS_PER_LEVEL {
                 let mut queue = level.drain(slot_idx);
@@ -292,24 +352,30 @@ where
     }
 }
 
-impl<T, Timer, R, const GRANULARITY_US: u64> channel::Receiver<Queue<T>>
-    for Wheel<T, Timer, R, GRANULARITY_US>
+impl<A, Timer, R, const GRANULARITY_US: u64> channel::Receiver<List<A>>
+    for Wheel<A, Timer, R, GRANULARITY_US>
 where
-    T: Scheduled,
+    A: WheelAdapter,
     Timer: precision::Timer,
-    R: channel::Receiver<Queue<T>>,
+    R: channel::Receiver<List<A>>,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<Queue<T>>> {
+    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<List<A>>> {
         // 1. Try to drain one batch from inner receiver into the wheel
         match self.inner.poll_recv(cx) {
             Poll::Ready(Some(batch)) => {
-                // Sort entries: immediate transmission goes to pending, scheduled goes to wheel
-                for entry in batch {
-                    if entry.transmission_time().is_none() {
-                        // No timestamp = immediate transmission, skip wheel insertion
-                        self.pending_queue.push_back(entry);
+                // Sort entries: immediate execution goes to pending, scheduled goes to wheel
+                for ptr in batch {
+                    let has_target_time = unsafe {
+                        // SAFETY: The pointer is valid since it came from the adapter.
+                        let value_ptr = A::as_ptr(&ptr);
+                        A::target_time(value_ptr).is_some()
+                    };
+
+                    if !has_target_time {
+                        // No timestamp = immediate execution, skip wheel insertion
+                        self.pending_list.push_back(ptr);
                     } else {
-                        self.insert_entry(entry);
+                        self.insert_entry(ptr);
                     }
                 }
                 // Self-wake to process more batches or tick
@@ -317,14 +383,14 @@ where
             }
             Poll::Ready(None) => {
                 // Inner is closed - drain remaining entries and close
-                let mut final_queue = core::mem::take(&mut self.pending_queue);
+                let mut final_list = core::mem::take(&mut self.pending_list);
                 let mut remaining = self.drain_remaining();
-                final_queue.append(&mut remaining);
+                final_list.append(&mut remaining);
 
-                return Poll::Ready(if final_queue.is_empty() {
+                return Poll::Ready(if final_list.is_empty() {
                     None
                 } else {
-                    Some(final_queue)
+                    Some(final_list)
                 });
             }
             Poll::Pending => {
@@ -334,12 +400,12 @@ where
 
         // 2. Tick to current time and collect due entries
         let now = self.timer.now();
-        let mut queue = self.tick_to(now);
-        self.pending_queue.append(&mut queue);
+        let mut list = self.tick_to(now);
+        self.pending_list.append(&mut list);
 
         // 3. If we have entries, return them
-        if !self.pending_queue.is_empty() {
-            return Poll::Ready(Some(core::mem::take(&mut self.pending_queue)));
+        if !self.pending_list.is_empty() {
+            return Poll::Ready(Some(core::mem::take(&mut self.pending_list)));
         }
 
         // 4. No entries due yet - update timer for next expiry
@@ -367,44 +433,17 @@ where
     }
 }
 
-// ── Slot ───────────────────────────────────────────────────────────────────
-
-/// A single slot in the wheel.
-struct Slot<T> {
-    queue: Queue<T>,
-}
-
-impl<T> Slot<T> {
-    fn new() -> Self {
-        Self {
-            queue: Queue::new(),
-        }
-    }
-
-    fn push(&mut self, entry: Entry<T>) {
-        self.queue.push_back(entry);
-    }
-
-    fn push_front(&mut self, entry: Entry<T>) {
-        self.queue.push_front(entry);
-    }
-
-    fn drain(&mut self) -> Queue<T> {
-        core::mem::take(&mut self.queue)
-    }
-}
-
 // ── Level ──────────────────────────────────────────────────────────────────
 
 /// One level of the hierarchical wheel.
-struct Level<T> {
-    slots: [Slot<T>; SLOTS_PER_LEVEL],
+struct Level<A: Adapter> {
+    slots: [List<A>; SLOTS_PER_LEVEL],
     occupied: [u64; BITSET_WORDS],
 }
 
-impl<T> Level<T> {
+impl<A: Adapter> Level<A> {
     fn new() -> Self {
-        let slots = core::array::from_fn(|_| Slot::new());
+        let slots = core::array::from_fn(|_| List::new());
         Self {
             slots,
             occupied: [0; BITSET_WORDS],
@@ -426,23 +465,23 @@ impl<T> Level<T> {
     }
 
     #[inline]
-    fn push_back(&mut self, index: usize, entry: Entry<T>) {
+    fn push_back(&mut self, index: usize, ptr: A::Pointer) {
         debug_assert!(index < SLOTS_PER_LEVEL);
-        unsafe { self.slots.get_unchecked_mut(index) }.push(entry);
+        unsafe { self.slots.get_unchecked_mut(index) }.push_back(ptr);
         self.set_occupied(index);
     }
 
     #[inline]
-    fn push_front(&mut self, index: usize, entry: Entry<T>) {
+    fn push_front(&mut self, index: usize, ptr: A::Pointer) {
         debug_assert!(index < SLOTS_PER_LEVEL);
-        unsafe { self.slots.get_unchecked_mut(index) }.push_front(entry);
+        unsafe { self.slots.get_unchecked_mut(index) }.push_front(ptr);
         self.set_occupied(index);
     }
 
     #[inline]
-    fn drain(&mut self, index: usize) -> Queue<T> {
+    fn drain(&mut self, index: usize) -> List<A> {
         debug_assert!(index < SLOTS_PER_LEVEL);
-        let queue = unsafe { self.slots.get_unchecked_mut(index) }.drain();
+        let queue = core::mem::take(unsafe { self.slots.get_unchecked_mut(index) });
         self.clear_occupied(index);
         queue
     }
@@ -465,10 +504,5 @@ impl<T> Level<T> {
         }
 
         None
-    }
-
-    #[cfg(test)]
-    fn is_empty(&self) -> bool {
-        self.occupied.iter().all(|&w| w == 0)
     }
 }

@@ -4,10 +4,10 @@
 //! Batch structure for reliable datagram transmission
 
 use crate::{
-    clock::precision,
+    clock::{precision, wheel::SingleTimer},
     intrusive_queue::{Entry, Queue},
     packet::datagram::partial::PartialDatagram,
-    socket::{pool::descriptor, send::wheel::Scheduled},
+    socket::pool::descriptor,
 };
 use s2n_quic_core::varint::VarInt;
 use std::net::SocketAddr;
@@ -194,14 +194,14 @@ impl Builder {
     }
 }
 
-impl Scheduled for Batch {
+impl SingleTimer for Batch {
     #[inline]
-    fn transmission_time(&self) -> Option<precision::Timestamp> {
+    fn target_time(&self) -> Option<precision::Timestamp> {
         self.transmission_time
     }
 
     #[inline]
-    fn set_transmission_time(&mut self, time: precision::Timestamp) {
+    fn set_target_time(&mut self, time: precision::Timestamp) {
         self.transmission_time = Some(time);
     }
 }
@@ -280,10 +280,10 @@ mod tests {
     #[test]
     fn batch_scheduled() {
         let mut batch = Batch::new(None, "127.0.0.1:8080".parse().unwrap());
-        assert_eq!(batch.transmission_time(), None);
+        assert_eq!(batch.target_time(), None);
 
         let time = precision::Timestamp { nanos: 1000000 }; // 1ms in nanos
-        batch.set_transmission_time(time);
-        assert_eq!(batch.transmission_time(), Some(time));
+        batch.set_target_time(time);
+        assert_eq!(batch.target_time(), Some(time));
     }
 }

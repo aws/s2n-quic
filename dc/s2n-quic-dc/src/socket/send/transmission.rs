@@ -1,5 +1,5 @@
 use crate::{
-    clock::precision,
+    clock::{precision, wheel},
     msg::{self, addr::Addr},
     socket::{pool::descriptor, send::completion::Completion},
     sync::intrusive_queue as queue,
@@ -19,19 +19,19 @@ pub struct Transmission<Info, Meta, Completion> {
     pub completion: Completion,
 }
 
-impl<Info, Meta, Completion> crate::socket::send::wheel::Scheduled
-    for Transmission<Info, Meta, Completion>
-{
-    fn transmission_time(&self) -> Option<precision::Timestamp> {
+impl<Info, Meta, Completion> wheel::SingleTimer for Transmission<Info, Meta, Completion> {
+    fn target_time(&self) -> Option<precision::Timestamp> {
         self.transmission_time
     }
 
-    fn set_transmission_time(&mut self, time: precision::Timestamp) {
+    fn set_target_time(&mut self, time: precision::Timestamp) {
         self.transmission_time = Some(time);
     }
 }
 
-impl<Info, Meta, Completion> crate::socket::channel::ByteCost for Transmission<Info, Meta, Completion> {
+impl<Info, Meta, Completion> crate::socket::channel::ByteCost
+    for Transmission<Info, Meta, Completion>
+{
     fn byte_cost(&self) -> u64 {
         self.total_len as u64
     }
@@ -41,10 +41,7 @@ impl<Info, M, C> crate::socket::channel::Sendable for Transmission<Info, M, C>
 where
     C: Completion<Info, M>,
 {
-    fn send<S: crate::socket::send::Socket>(
-        &mut self,
-        socket: &S,
-    ) -> std::io::Result<()> {
+    fn send<S: crate::socket::send::Socket>(&mut self, socket: &S) -> std::io::Result<()> {
         self.send_with(|addr, ecn, ioslices| {
             // Get segment size from first descriptor
             let segment_len = ioslices.first().map(|s| s.len()).unwrap_or(0) as u16;

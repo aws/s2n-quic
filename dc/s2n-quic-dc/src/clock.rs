@@ -19,6 +19,7 @@ pub mod tokio;
 pub use time::clock::Cached;
 
 pub use time::Timestamp;
+pub mod wheel;
 
 use crate::either::Either;
 pub type SleepHandle = Pin<Box<dyn Sleep>>;
