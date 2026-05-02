@@ -45,8 +45,11 @@ pub async fn run(
     };
 
     // Create send and receive sockets
+    // One send socket per requested socket, but only one recv socket per busy poll worker
+    // (worker 0 is the dispatch thread, so num_recv = busy_poll.len() - 1)
     let send_sockets = crate::pipeline::create_send_sockets(num_sockets, bind_addr, disable_gso)?;
-    let recv_sockets = crate::pipeline::create_recv_sockets(num_sockets, bind_addr)?;
+    let num_recv_sockets = config.busy_poll.len().saturating_sub(1).max(1);
+    let recv_sockets = crate::pipeline::create_recv_sockets(num_recv_sockets, bind_addr)?;
 
     let counters = config.counters.clone();
     let packet_size = config.packet_size;

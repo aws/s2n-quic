@@ -70,9 +70,10 @@ pub async fn run(
         "Starting UDP receiver server"
     );
 
-    // Create receive sockets with REUSEPORT
-    let recv_sockets = crate::pipeline::create_recv_sockets(num_sockets, address)?;
-    info!(%address, "All receive sockets bound");
+    // Create one receive socket per busy poll worker (worker 0 is the dispatch thread)
+    let num_recv_sockets = config.busy_poll.len().saturating_sub(1).max(1);
+    let recv_sockets = crate::pipeline::create_recv_sockets(num_recv_sockets, address)?;
+    info!(%address, num_recv_sockets, "All receive sockets bound");
 
     // Create send sockets for ACKs
     let send_addr: SocketAddr = if address.is_ipv6() {
