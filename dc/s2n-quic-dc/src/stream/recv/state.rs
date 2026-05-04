@@ -61,6 +61,8 @@ pub struct State {
     error: Option<ErrorState>,
     fin_ack_packet_number: Option<VarInt>,
     features: TransportFeatures,
+    /// For STREAM transports, the next expected stream offset to enforce contiguity.
+    next_expected_stream_offset: VarInt,
 }
 
 impl State {
@@ -107,6 +109,7 @@ impl State {
             error: None,
             fin_ack_packet_number: None,
             features,
+            next_expected_stream_offset: VarInt::ZERO,
         }
     }
 
@@ -248,6 +251,18 @@ impl State {
                 }
                 .err())
             );
+
+            // stream offsets must be contiguous — no gaps allowed
+            let actual_offset = packet.stream_offset().as_u64();
+            let expected_offset = self.next_expected_stream_offset.as_u64();
+            ensure!(
+                actual_offset == expected_offset,
+                Err(error::Kind::OutOfOrder {
+                    expected: expected_offset,
+                    actual: actual_offset,
+                }
+                .err())
+            );
         }
 
         if self.features.is_reliable() {
@@ -376,6 +391,12 @@ impl State {
 
         // decrypt and write the packet to the provided buffer
         out_buf.read_from(&mut packet)?;
+
+        // update the expected stream offset for contiguity enforcement
+        if packet.receiver.features.is_stream() {
+            packet.receiver.next_expected_stream_offset =
+                packet.packet.stream_offset() + packet.packet.payload().len();
+        }
 
         let new = out_buf.buffered_len();
 
