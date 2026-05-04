@@ -339,6 +339,14 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ServerProviders
     );
 
+    #[cfg(any(test, feature = "unstable-provider-connection-close-formatter"))]
+    impl_provider_method!(
+        /// Sets the connection close formatter provider for the [`Server`]
+        with_connection_close_formatter,
+        connection_close_formatter,
+        ServerProviders
+    );
+
     #[cfg(any(test, feature = "unstable-provider-packet-interceptor"))]
     impl_provider_method!(
         /// Sets the packet interceptor provider for the [`Server`]
