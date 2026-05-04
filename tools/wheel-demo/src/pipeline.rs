@@ -14,10 +14,10 @@ use core::time::Duration;
 use s2n_codec::{Encoder as _, EncoderBuffer};
 use s2n_quic_core::{
     frame,
+    frame::ack::EcnCounts,
     packet::number::{PacketNumberRange, PacketNumberSpace},
     varint::VarInt,
 };
-use s2n_quic_core::frame::ack::EcnCounts;
 use s2n_quic_dc::{
     busy_poll::clock::Timer as BusyPollClock,
     clock::{precision::Clock as _, tokio::Clock as TokioClock, wheel::Wheel},
@@ -32,7 +32,7 @@ use s2n_quic_dc::{
         self,
         channel::{
             self, intrusive_queue, FlattenQueue, FlattenSegments, InspectErr, Map, Paced,
-            ReceiverExt, Reporter, RouterAdapter, SocketReceiver,
+            ReceiverExt, Reporter, RouterAdapter, SocketReceiver, UnboundedSender,
         },
         pool::{self, descriptor},
         rate::Rate,
@@ -176,7 +176,7 @@ pub fn create_test_map(
 /// - Marking the ACK as transmitted in the peer state
 fn generate_pto_probe(
     context: &socket::channel::PathContext<s2n_quic_dc::crypto::awslc::seal::Application>,
-    peer_addr: SocketAddr,
+    _peer_addr: SocketAddr,
 ) -> PartialDatagram {
     use s2n_quic_core::frame;
 
@@ -189,6 +189,64 @@ fn generate_pto_probe(
         control_data,
         context.path_secret_entry.clone(),
     )
+}
+
+type RcPathContext =
+    Rc<RefCell<socket::channel::PathContext<s2n_quic_dc::crypto::awslc::seal::Application>>>;
+
+/// Process a PTO wheel timeout for a path context
+///
+/// Returns Some(batch) if a probe should be sent, None otherwise.
+/// Reinserts into the wheel if the context still needs scheduling.
+fn process_pto_timeout<Clk, S>(
+    worker_id: usize,
+    context_rc: RcPathContext,
+    clock: &Clk,
+    pto_wheel_tx: &mut S,
+) -> Option<Entry<Batch>>
+where
+    Clk: s2n_quic_dc::clock::precision::Clock + ?Sized,
+    S: UnboundedSender<RcPathContext>,
+{
+    let mut context_ref = context_rc.borrow_mut();
+    let context = &mut *context_ref;
+    let has_inflight = socket::channel::Pto::has_inflight_packets(&context.packet_number_map);
+
+    // Check if we should actually send a probe
+    let should_send_probe = context.pto.on_timeout(has_inflight);
+
+    // Extract peer address for probe generation if needed
+    let peer_addr = *context.path_secret_entry.peer();
+
+    let probe_batch = if should_send_probe {
+        tracing::debug!(
+            worker_id,
+            credentials_id = ?context.credentials.id,
+            backoff = context.pto.backoff,
+            inflight = context.packet_number_map.iter().count(),
+            "PTO timeout - sending probe"
+        );
+
+        // Generate probe datagram (immutable borrow of context)
+        let probe_datagram = generate_pto_probe(&*context, peer_addr);
+
+        // Create a batch for the probe
+        let mut batch = Batch::new(None, peer_addr);
+        batch.datagrams.push_back(probe_datagram.into());
+
+        Some(Entry::new(batch))
+    } else {
+        None
+    };
+
+    // Reinsert if still has inflight packets (needs rescheduling)
+    if has_inflight {
+        context.pto.update_target(clock, &context.rtt_estimator);
+        drop(context_ref); // Release borrow before sending
+        let _ = pto_wheel_tx.send(context_rc);
+    }
+
+    probe_batch
 }
 
 // ── Control Packet Processing ──────────────────────────────────────────────
@@ -684,9 +742,9 @@ impl PeerState {
         // wider ACK-with-ECN frame encoding (which drops more ACK ranges to fit
         // the MTU) when the counts would all be zero anyway.
         let mtu = 1400u16;
-        let (ack_frame, encoding_size) = self
-            .ack_space
-            .encoding(VarInt::ZERO, self.ecn_counts.as_option(), mtu, clock);
+        let (ack_frame, encoding_size) =
+            self.ack_space
+                .encoding(VarInt::ZERO, self.ecn_counts.as_option(), mtu, clock);
 
         let ack_frame = ack_frame?;
 
@@ -820,10 +878,10 @@ where
 // ── Send Pipeline Components ───────────────────────────────────────────────
 
 /// Simple batch sender that drains a channel and sends to a socket
-pub async fn batch_sender<S, R>(socket: S, rx: R)
+pub async fn batch_sender<S, R, Ctx>(socket: S, rx: R)
 where
     S: socket::send::Socket,
-    R: channel::Receiver<Entry<Batch>>,
+    R: channel::Receiver<Entry<Batch<Ctx>>>,
 {
     let local_addr = socket.local_addr().unwrap();
 
@@ -904,6 +962,7 @@ impl SocketPathContexts {
             rtt_estimator,
             packet_number_map,
             pto: socket::channel::Pto::default(),
+            pending_batches: 0,
         };
 
         let context = Rc::new(RefCell::new(context));
@@ -1213,10 +1272,36 @@ where
                 channel::PtoAdapter<s2n_quic_dc::crypto::awslc::seal::Application>,
             >();
 
-            // Create PTO timing wheel (1µs granularity)
-            let pto_wheel_timer = clock.timer();
-            let pto_wheel: Wheel<_, _, _, 1> =
-                Wheel::new(pto_wheel_rx.into_list_receiver(), pto_wheel_timer);
+            // Spawn PTO wheel processor task
+            spawner.spawn({
+                let worker_id = worker.id;
+                let clock = clock.clone();
+                let wheel_input_tx = wheel_input_tx.clone();
+                let mut pto_wheel_tx = pto_wheel_tx.clone();
+                let pto_probe_counter = counters.register("pto_probe");
+
+                // Create PTO timing wheel (1µs granularity)
+                let pto_wheel_timer = clock.timer();
+                let pto_wheel: Wheel<_, _, _, 1> =
+                    Wheel::new(pto_wheel_rx.into_list_receiver(), pto_wheel_timer);
+
+                async move {
+                    // Drain expired PTO entries and generate probes
+                    let rx = channel::FlattenList::new(pto_wheel);
+                    let rx = channel::FilterMap::new(rx, move |context_rc: RcPathContext| {
+                        let probe_batch =
+                            process_pto_timeout(worker_id, context_rc, &clock, &mut pto_wheel_tx);
+                        if probe_batch.is_some() {
+                            pto_probe_counter.fetch_add(1, Ordering::Relaxed);
+                        }
+                        probe_batch
+                    });
+
+                    // Pump probe batches into the wheel for transmission
+                    channel::pump(rx, wheel_input_tx).await;
+                    tracing::info!(worker_id, "PTO wheel processor shutting down");
+                }
+            });
 
             // Spawn ACKed packet handler with batched completion notifications
             spawner.spawn({
@@ -1331,7 +1416,7 @@ where
                     let rx = channel::Timing::new(rx, "paced");
 
                     // Count batches right before socket transmission
-                    let rx = channel::Inspect::new(rx, move |batch: &Entry<Batch>| {
+                    let rx = channel::Inspect::new(rx, move |_batch: &Entry<Batch<_>>| {
                         socket_send_counter.fetch_add(1, Ordering::Relaxed);
                     });
 

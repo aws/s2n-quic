@@ -7,17 +7,17 @@
 //! The receiver drains the queue until empty, returning Pending when empty.
 
 use crate::intrusive_queue;
-use std::{cell::UnsafeCell, rc::Rc, task::Poll};
+use std::{cell::{Cell, UnsafeCell}, rc::Rc, task::Poll};
 
 struct Shared<A: intrusive_queue::Adapter> {
     queue: UnsafeCell<intrusive_queue::List<A>>,
+    is_open: Cell<bool>,
 }
 
 impl<A: intrusive_queue::Adapter> Shared<A> {
     #[inline(always)]
-    fn is_alive(self: &Rc<Self>) -> bool {
-        // Sender and receiver both hold a reference
-        Rc::strong_count(self) == 2
+    fn is_alive(&self) -> bool {
+        self.is_open.get()
     }
 }
 
@@ -31,6 +31,7 @@ pub fn new<T>() -> (
 pub fn new_with_adapter<A: intrusive_queue::Adapter>() -> (Sender<A>, Receiver<A>) {
     let shared = Rc::new(Shared {
         queue: UnsafeCell::new(intrusive_queue::List::new()),
+        is_open: Cell::new(true),
     });
     (
         Sender {
@@ -42,6 +43,14 @@ pub fn new_with_adapter<A: intrusive_queue::Adapter>() -> (Sender<A>, Receiver<A
 
 pub struct Sender<A: intrusive_queue::Adapter> {
     shared: Rc<Shared<A>>,
+}
+
+impl<A: intrusive_queue::Adapter> Clone for Sender<A> {
+    fn clone(&self) -> Self {
+        Self {
+            shared: self.shared.clone(),
+        }
+    }
 }
 
 impl<A: intrusive_queue::Adapter> super::super::UnboundedSender<A::Pointer> for Sender<A> {
@@ -144,6 +153,13 @@ impl<A: intrusive_queue::Adapter> super::super::Sender<intrusive_queue::List<A>>
 
 pub struct Receiver<A: intrusive_queue::Adapter> {
     shared: Rc<Shared<A>>,
+}
+
+impl<A: intrusive_queue::Adapter> Drop for Receiver<A> {
+    fn drop(&mut self) {
+        // Mark the channel as closed so senders can observe it
+        self.shared.is_open.set(false);
+    }
 }
 
 impl<A: intrusive_queue::Adapter> Receiver<A> {

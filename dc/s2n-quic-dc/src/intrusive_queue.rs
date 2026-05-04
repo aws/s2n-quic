@@ -26,6 +26,12 @@ impl Links {
         }
     }
 
+    /// Returns true if this entry is currently linked in a list
+    #[inline(always)]
+    pub fn is_linked(&self) -> bool {
+        self.prev.get().is_some() || self.next.get().is_some()
+    }
+
     #[inline(always)]
     fn assert_unlinked(&self) {
         if cfg!(debug_assertions) {

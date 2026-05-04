@@ -380,6 +380,59 @@ where
     }
 }
 
+/// Specialized version of `Flatten` for intrusive lists with adapters.
+/// This is useful for flattening List<A> into A::Pointer entries.
+pub struct FlattenList<A, R>
+where
+    A: crate::intrusive_queue::Adapter,
+{
+    inner: R,
+    list: crate::intrusive_queue::List<A>,
+}
+
+impl<A, R> FlattenList<A, R>
+where
+    A: crate::intrusive_queue::Adapter,
+{
+    pub fn new(inner: R) -> Self {
+        Self {
+            inner,
+            list: crate::intrusive_queue::List::new(),
+        }
+    }
+}
+
+impl<A, R> Receiver<A::Pointer> for FlattenList<A, R>
+where
+    A: crate::intrusive_queue::Adapter,
+    R: Receiver<crate::intrusive_queue::List<A>>,
+{
+    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<A::Pointer>> {
+        // Drain any buffered entries first
+        if let Some(entry) = self.list.pop_front() {
+            // Self-wake to drain more entries
+            cx.waker().wake_by_ref();
+            return Poll::Ready(Some(entry));
+        }
+
+        // Try to pull the next list from the inner receiver
+        match self.inner.poll_recv(cx) {
+            Poll::Ready(Some(list)) => {
+                self.list = list;
+                // Self-wake to process the new list
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+
+    fn on_consumed(&mut self, bytes: u64) {
+        self.inner.on_consumed(bytes);
+    }
+}
+
 /// Calls an inspect function when the inner receiver returns a value.
 ///
 /// Useful for side effects like calling `wheel.on_send()` after a flatten,
@@ -1564,6 +1617,8 @@ pub struct Pto {
     pub backoff: u32,
     /// Target time for the next PTO probe (None = not scheduled)
     pub target_time: Option<crate::clock::precision::Timestamp>,
+    /// Time when the last ack-eliciting packet was sent
+    pub last_sent_time: Option<crate::clock::precision::Timestamp>,
     /// Set to true when the PTO timer needs to be recalculated and updated
     pub needs_update: bool,
     /// Intrusive list links for PTO wheel
@@ -1575,6 +1630,7 @@ impl Default for Pto {
         Self {
             backoff: s2n_quic_core::path::INITIAL_PTO_BACKOFF,
             target_time: None,
+            last_sent_time: None,
             needs_update: false,
             links: crate::intrusive_queue::Links::new(),
         }
@@ -1592,7 +1648,9 @@ impl Pto {
     }
 
     /// Called when a new ack-eliciting packet is sent
-    pub fn on_packet_sent(&mut self) {
+    pub fn on_packet_sent(&mut self, now: crate::clock::precision::Timestamp) {
+        // Track the last send time for PTO calculation
+        self.last_sent_time = Some(now);
         // Mark that we need to update the PTO timer (new tail packet)
         self.needs_update = true;
     }
@@ -1613,43 +1671,30 @@ impl Pto {
     }
 
     /// Called when the PTO timer fires. Returns true if we should send a probe.
-    pub fn on_timeout(
-        &mut self,
-        now: crate::clock::precision::Timestamp,
-        rtt_estimator: &s2n_quic_core::recovery::RttEstimator,
-        has_inflight: bool,
-    ) -> bool {
-        // If we need an update, recalculate the target time and reinsert
+    ///
+    /// The caller must recompute target_time via update_target() before reinserting.
+    pub fn on_timeout(&mut self, has_inflight: bool) -> bool {
+        // Clear the target time - caller will recompute before reinserting
+        self.target_time = None;
+
+        // If we need an update, just reschedule without sending probe
         if self.needs_update {
             self.needs_update = false;
-            if has_inflight {
-                self.update_target(now, rtt_estimator);
-                // Don't send probe yet, just reschedule
-                return false;
-            } else {
-                // No inflight packets, cancel PTO
-                self.target_time = None;
-                return false;
-            }
+            return false;
         }
 
-        // This is an actual PTO timeout - send probe and backoff
+        // This is an actual PTO timeout - send probe and increase backoff
         self.backoff = self.backoff.saturating_mul(2).min(16); // Cap at 16
-
-        // Schedule next PTO
-        if has_inflight {
-            self.update_target(now, rtt_estimator);
-        } else {
-            self.target_time = None;
-        }
-
         true
     }
 
     /// Calculate and set the target time for the next PTO
-    fn update_target(
+    ///
+    /// Call this right before inserting into the wheel.
+    /// Uses last_sent_time as the base, falling back to clock.now() if no packets sent yet.
+    pub fn update_target<Clk: crate::clock::precision::Clock + ?Sized>(
         &mut self,
-        now: crate::clock::precision::Timestamp,
+        clock: &Clk,
         rtt_estimator: &s2n_quic_core::recovery::RttEstimator,
     ) {
         use s2n_quic_core::packet::number::PacketNumberSpace;
@@ -1658,7 +1703,10 @@ impl Pto {
         // Minimum 2ms to avoid premature triggers due to timestamp rounding
         pto_period = pto_period.max(core::time::Duration::from_millis(2));
 
-        self.target_time = Some(now + pto_period);
+        // Base the timeout on when the last packet was sent
+        // Only read clock if we don't have a last_sent_time
+        let base_time = self.last_sent_time.unwrap_or_else(|| clock.now());
+        self.target_time = Some(base_time + pto_period);
     }
 }
 
@@ -1704,6 +1752,7 @@ impl<S> crate::clock::wheel::WheelAdapter for PtoAdapter<S> {
     }
 }
 
+#[repr(C)]
 pub struct PathContext<Sealer> {
     /// The path secret entry
     pub path_secret_entry: Arc<crate::path::secret::map::Entry>,
@@ -1723,113 +1772,11 @@ pub struct PathContext<Sealer> {
     >,
     /// PTO state for tail loss recovery
     pub pto: Pto,
-}
-
-/// A batch with its resolved path context
-///
-/// Wraps a batch with its PathContext for encoding and tracking. The PathContext
-/// is Rc<RefCell<>> to allow mutation of packet numbers and CCA state.
-pub struct PathBatch<Sealer> {
-    pub context: Rc<RefCell<PathContext<Sealer>>>,
-    pub batch: crate::intrusive_queue::Entry<crate::datagram::batch::Batch>,
-}
-
-impl<Sealer> PathBatch<Sealer>
-where
-    Sealer: crate::crypto::seal::Application,
-{
-    pub fn encode(
-        &mut self,
-        unfilled: descriptor::Unfilled,
-        source_control_port: u16,
-        source_sender_id: VarInt,
-    ) {
-        let Self { context, batch } = self;
-
-        // Borrow context for the entire encoding operation
-        let mut ctx = context.borrow_mut();
-        let ctx = &mut *ctx;
-
-        // Get references to sealer and credentials
-        let sealer = &ctx.sealer;
-        let credentials = &ctx.credentials;
-
-        let mut segment_size = 0;
-
-        // Encode all datagrams into the descriptor
-        let result = unfilled.fill_with(|addr, _cmsg, mut payload| {
-            let mut offset = 0usize;
-            let mut watermark = 0usize;
-            let mut packet_number = ctx.next_packet_number;
-
-            // If the batch contains probes then we need to cause a gap for an immediate ACK
-            if batch.meta.is_probe {
-                packet_number += 5;
-            }
-
-            // Store starting packet number in batch metadata for registration phase
-            batch.meta.starting_packet_number = Some(packet_number);
-
-            for dgram in batch.datagrams.iter_mut() {
-                // Estimate segment size from first datagram if not set
-                if segment_size == 0 {
-                    segment_size = dgram.estimate_encoded_len(16);
-                }
-
-                // Zero out any padding bytes between packets
-                if offset > watermark {
-                    payload[watermark..offset].fill(0);
-                }
-
-                // Create encoder buffer for this transmission
-                let buf = &mut payload[offset..];
-                let encoder_buf = s2n_codec::EncoderBuffer::new(buf);
-
-                // Encode the transmission (datagram or control packet)
-                let encoded_len = dgram.encode(
-                    encoder_buf,
-                    source_control_port,
-                    source_sender_id,
-                    packet_number,
-                    sealer,
-                    credentials,
-                );
-
-                watermark = offset + encoded_len;
-                packet_number += 1;
-
-                // Move offset to the next segment boundary for GSO
-                // We need uniform segment sizes for GSO to work correctly
-                offset += segment_size;
-            }
-
-            // Update context with new packet number
-            ctx.next_packet_number = packet_number;
-
-            // Set remote address
-            addr.set(batch.meta.peer_addr.into());
-
-            <Result<_, core::convert::Infallible>>::Ok(watermark)
-        });
-
-        let segments = result.expect("fill_with doesn't fail");
-
-        // Store encoded data in batch
-        let filled = segments.take_filled();
-        batch.encoded = Some(descriptor::Segments::new(filled, segment_size as u16));
-    }
-}
-
-impl<Sealer> ByteCost for PathBatch<Sealer> {
-    fn byte_cost(&self) -> u64 {
-        self.batch.byte_cost()
-    }
-}
-
-impl<Sealer: crate::crypto::seal::Application> Sendable for PathBatch<Sealer> {
-    fn send<S: crate::socket::send::Socket>(&mut self, socket: &S) -> std::io::Result<()> {
-        self.batch.send(socket)
-    }
+    /// Number of pending batches in the pipeline for this path
+    ///
+    /// Incremented when a batch starts being processed, decremented when finished.
+    /// Used to determine if CCA should signal "has_more_app_data".
+    pub pending_batches: u32,
 }
 
 /// Trait for resolving PathContext from PathSecretEntry
@@ -1865,8 +1812,12 @@ impl<R, Resolver, ErrorSender> PathResolver<R, Resolver, ErrorSender> {
     }
 }
 
-impl<R, Resolver, ErrorSender> Receiver<PathBatch<Resolver::Sealer>>
-    for PathResolver<R, Resolver, ErrorSender>
+impl<R, Resolver, ErrorSender>
+    Receiver<
+        crate::intrusive_queue::Entry<
+            crate::datagram::batch::Batch<Rc<RefCell<PathContext<Resolver::Sealer>>>>,
+        >,
+    > for PathResolver<R, Resolver, ErrorSender>
 where
     R: Receiver<crate::intrusive_queue::Entry<crate::datagram::batch::Batch>>,
     Resolver: PathContextResolver,
@@ -1875,7 +1826,13 @@ where
     fn poll_recv(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Option<PathBatch<Resolver::Sealer>>> {
+    ) -> Poll<
+        Option<
+            crate::intrusive_queue::Entry<
+                crate::datagram::batch::Batch<Rc<RefCell<PathContext<Resolver::Sealer>>>>,
+            >,
+        >,
+    > {
         let Some(mut batch) = ready!(self.inner.poll_recv(cx)) else {
             return Poll::Ready(None);
         };
@@ -1900,7 +1857,13 @@ where
             return Poll::Pending;
         };
 
-        Poll::Ready(Some(PathBatch { context, batch }))
+        // Increment pending_batches counter
+        context.borrow_mut().pending_batches += 1;
+
+        // Attach the context to the batch, making it !Send
+        let batch = batch.with_context(context);
+
+        Poll::Ready(Some(batch))
     }
 
     fn on_consumed(&mut self, bytes: u64) {
@@ -1938,13 +1901,31 @@ impl<R> Encoder<R> {
     }
 }
 
-impl<R, Sealer> Receiver<PathBatch<Sealer>> for Encoder<R>
+impl<R, Sealer>
+    Receiver<
+        crate::intrusive_queue::Entry<
+            crate::datagram::batch::Batch<Rc<RefCell<PathContext<Sealer>>>>,
+        >,
+    > for Encoder<R>
 where
-    R: Receiver<PathBatch<Sealer>>,
+    R: Receiver<
+        crate::intrusive_queue::Entry<
+            crate::datagram::batch::Batch<Rc<RefCell<PathContext<Sealer>>>>,
+        >,
+    >,
     Sealer: crate::crypto::seal::Application,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<PathBatch<Sealer>>> {
-        let Some(mut path_batch) = ready!(self.inner.poll_recv(cx)) else {
+    fn poll_recv(
+        &mut self,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<
+        Option<
+            crate::intrusive_queue::Entry<
+                crate::datagram::batch::Batch<Rc<RefCell<PathContext<Sealer>>>>,
+            >,
+        >,
+    > {
+        let Some(mut batch) = ready!(self.inner.poll_recv(cx)) else {
             return Poll::Ready(None);
         };
 
@@ -1953,9 +1934,9 @@ where
             return Poll::Pending;
         };
 
-        path_batch.encode(unfilled, self.source_control_port, self.source_sender_id);
+        batch.encode(unfilled, self.source_control_port, self.source_sender_id);
 
-        Poll::Ready(Some(path_batch))
+        Poll::Ready(Some(batch))
     }
 
     fn on_consumed(&mut self, bytes: u64) {
@@ -1986,22 +1967,37 @@ impl<R, Clk, Sealer> PacketRegistrar<R, Clk, Sealer> {
     }
 }
 
-impl<R, Clk, Sealer> Receiver<crate::intrusive_queue::Entry<crate::datagram::batch::Batch>>
-    for PacketRegistrar<R, Clk, Sealer>
+impl<R, Clk, Sealer>
+    Receiver<
+        crate::intrusive_queue::Entry<
+            crate::datagram::batch::Batch<Rc<RefCell<PathContext<Sealer>>>>,
+        >,
+    > for PacketRegistrar<R, Clk, Sealer>
 where
-    R: Receiver<PathBatch<Sealer>>,
-    Clk: s2n_quic_core::time::Clock,
+    R: Receiver<
+        crate::intrusive_queue::Entry<
+            crate::datagram::batch::Batch<Rc<RefCell<PathContext<Sealer>>>>,
+        >,
+    >,
+    Clk: crate::clock::precision::Clock,
     Sealer: crate::crypto::seal::Application,
 {
     fn poll_recv(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Option<crate::intrusive_queue::Entry<crate::datagram::batch::Batch>>> {
-        let Some(path_batch) = ready!(self.inner.poll_recv(cx)) else {
+    ) -> Poll<
+        Option<
+            crate::intrusive_queue::Entry<
+                crate::datagram::batch::Batch<Rc<RefCell<PathContext<Sealer>>>>,
+            >,
+        >,
+    > {
+        let Some(mut batch_entry) = ready!(self.inner.poll_recv(cx)) else {
             return Poll::Ready(None);
         };
 
-        let PathBatch { context, mut batch } = path_batch;
+        // Deref Entry to Batch to enable disjoint borrows
+        let batch = &mut *batch_entry;
 
         // TODO: Move CCA notification to BEFORE transmission, not after
         // The CCA should be consulted before sending to:
@@ -2013,11 +2009,14 @@ where
         // Current implementation notifies CCA after encoding but before actual socket send,
         // which doesn't respect CWND limits or proper pacing delays.
 
-        // Get current time for CCA
-        let now = self.clock.get_time();
+        // Get current time for CCA and PTO
+        let now = self.clock.now();
 
-        // Check if there's more app data based on Rc count (>2 means other batches waiting)
-        let has_more_app_data = Rc::strong_count(&context) > 2;
+        // Store a reference to context (can now borrow disjoint fields)
+        let context = &batch.context;
+
+        // Check if there's more app data based on pending batch count
+        let has_more_app_data = context.borrow().pending_batches > 1;
 
         // Get starting packet number from batch metadata
         let Some(starting_pn) = batch.meta.starting_packet_number else {
@@ -2034,46 +2033,115 @@ where
         };
         let segment_sizes = segments.sizes();
 
-        // Borrow context to register packets
-        let mut ctx = context.borrow_mut();
-        let ctx = &mut *ctx;
-        let mut packet_number = starting_pn;
-
-        // Iterate over segment sizes and datagrams together
-        for (packet_size, mut datagram_entry) in
-            segment_sizes.into_iter().zip(batch.datagrams.drain())
         {
-            // Notify CCA about the sent packet
-            let cc_info =
-                ctx.cca
-                    .on_packet_sent(now, packet_size, has_more_app_data, &ctx.rtt_estimator);
+            // Borrow context to register packets (disjoint from batch.datagrams)
+            let mut ctx = context.borrow_mut();
+            let ctx = &mut *ctx;
+            let mut packet_number = starting_pn;
 
-            // Store packet_info on the PartialDatagram
-            let transmission_info = TransmissionInfo {
-                cc_info,
-                time_sent: now,
-                sent_bytes: packet_size,
-            };
-            datagram_entry.transmission_info = Some(transmission_info);
-
-            // For control packets, clear the payload to save memory
-            // Control packets (like ACKs) are ephemeral and don't need retransmission
-            if let crate::packet::datagram::partial::PacketType::Control { control_data } =
-                &mut datagram_entry.packet_type
+            // Iterate over segment sizes and datagrams together
+            for (packet_size, mut datagram_entry) in
+                segment_sizes.into_iter().zip(batch.datagrams.drain())
             {
-                control_data.clear();
+                // Notify CCA about the sent packet
+                let cc_info = ctx.cca.on_packet_sent(
+                    now.into(),
+                    packet_size,
+                    has_more_app_data,
+                    &ctx.rtt_estimator,
+                );
+
+                // Store packet_info on the PartialDatagram
+                let transmission_info = TransmissionInfo {
+                    cc_info,
+                    time_sent: now.into(),
+                    sent_bytes: packet_size,
+                };
+                datagram_entry.transmission_info = Some(transmission_info);
+
+                // For control packets, clear the payload to save memory
+                // Control packets (like ACKs) are ephemeral and don't need retransmission
+                if let crate::packet::datagram::partial::PacketType::Control { control_data } =
+                    &mut datagram_entry.packet_type
+                {
+                    control_data.clear();
+                }
+
+                // Convert packet number to PacketNumber type and register in map
+                let pn = s2n_quic_core::packet::number::PacketNumberSpace::Initial
+                    .new_packet_number(packet_number);
+                ctx.packet_number_map.insert(pn, datagram_entry);
+
+                packet_number += VarInt::from_u8(1);
             }
 
-            // Convert packet number to PacketNumber type and register in map
-            let pn = s2n_quic_core::packet::number::PacketNumberSpace::Initial
-                .new_packet_number(packet_number);
-            ctx.packet_number_map.insert(pn, datagram_entry);
+            // Mark PTO for update after sending packets (new tail)
+            ctx.pto.on_packet_sent(now);
 
-            packet_number += VarInt::from_u8(1);
+            // Decrement pending_batches counter
+            ctx.pending_batches -= 1;
         }
 
-        // Mark PTO for update after sending packets (new tail)
-        ctx.pto.on_packet_sent();
+        Poll::Ready(Some(batch_entry))
+    }
+
+    fn on_consumed(&mut self, bytes: u64) {
+        self.inner.on_consumed(bytes);
+    }
+}
+
+// ── PTO Wheel Injector ─────────────────────────────────────────────────────
+
+/// Adapter that injects PathContext into PTO wheel after packet registration
+pub struct PtoWheelInjector<R, Sealer, PtoTx> {
+    inner: R,
+    pto_wheel_tx: PtoTx,
+    _phantom: PhantomData<Sealer>,
+}
+
+impl<R, Sealer, PtoTx> PtoWheelInjector<R, Sealer, PtoTx> {
+    pub fn new(inner: R, pto_wheel_tx: PtoTx) -> Self {
+        Self {
+            inner,
+            pto_wheel_tx,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<R, Sealer, PtoTx> Receiver<crate::intrusive_queue::Entry<crate::datagram::batch::Batch>>
+    for PtoWheelInjector<R, Sealer, PtoTx>
+where
+    R: Receiver<
+        crate::intrusive_queue::Entry<
+            crate::datagram::batch::Batch<Rc<RefCell<PathContext<Sealer>>>>,
+        >,
+    >,
+    Sealer: crate::crypto::seal::Application,
+    PtoTx: UnboundedSender<std::rc::Rc<std::cell::RefCell<PathContext<Sealer>>>>,
+{
+    fn poll_recv(
+        &mut self,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<Option<crate::intrusive_queue::Entry<crate::datagram::batch::Batch>>> {
+        let Some(batch_with_context) = ready!(self.inner.poll_recv(cx)) else {
+            return Poll::Ready(None);
+        };
+
+        // Split the batch and context
+        let (batch, context) = batch_with_context.into_parts();
+
+        // Check if context needs to be inserted into PTO wheel
+        // Only insert if:
+        // 1. PTO needs update (packets were sent), AND
+        // 2. Context is not already linked in the wheel
+        {
+            let ctx = context.borrow();
+            if ctx.pto.needs_update && !ctx.pto.links.is_linked() {
+                drop(ctx);
+                let _ = self.pto_wheel_tx.send(context.clone());
+            }
+        }
 
         Poll::Ready(Some(batch))
     }

@@ -12,6 +12,18 @@ use crate::{
 use s2n_quic_core::varint::VarInt;
 use std::net::SocketAddr;
 
+/// Placeholder type for batches without an attached context (Send)
+///
+/// Holds a dangling NonNull so it's the same size as Rc<T> and matches its non-null
+/// invariant for safe transmutation.
+#[derive(Copy, Clone)]
+pub struct NoContext(std::ptr::NonNull<()>);
+
+// SAFETY: NoContext is just a dangling pointer used for size/alignment.
+// It never dereferences the pointer, so it's safe to send between threads.
+unsafe impl Send for NoContext {}
+unsafe impl Sync for NoContext {}
+
 /// A batch of partial datagrams ready for transmission
 ///
 /// Flows through the instance-wide wheel, sorted by transmission time.
@@ -26,7 +38,11 @@ use std::net::SocketAddr;
 ///    - Gets sealer/credentials from path_secret_entry
 ///    - Encodes into GSO segments in storage buffer
 /// 5. **Send step**: Transmits encoded bytes from storage
-pub struct Batch {
+///
+/// The `Ctx` parameter is NoContext by default (Send), or Rc<RefCell<PathContext>>
+/// when attached to a worker-local path context (!Send).
+#[repr(C)]
+pub struct Batch<Ctx = NoContext> {
     /// Intrusive queue of partial datagrams
     pub datagrams: Queue<PartialDatagram>,
     /// Transmission time (1us intervals per sender)
@@ -35,9 +51,11 @@ pub struct Batch {
     pub meta: Meta,
     /// Storage field for fully-encoded packets with GSO segment size
     pub encoded: Option<descriptor::Segments>,
+    /// Optional path context (NoContext when Send, Rc when !Send)
+    pub context: Ctx,
 }
 
-impl Batch {
+impl Batch<NoContext> {
     /// Creates a new batch with the given transmission time
     #[inline]
     pub fn new(transmission_time: Option<precision::Timestamp>, peer_addr: SocketAddr) -> Self {
@@ -51,9 +69,12 @@ impl Batch {
                 is_probe: false,
             },
             encoded: None,
+            context: NoContext(std::ptr::NonNull::dangling()),
         }
     }
+}
 
+impl<Ctx> Batch<Ctx> {
     /// Pushes a datagram into this batch
     ///
     /// Updates total_bytes metadata.
@@ -77,6 +98,93 @@ impl Batch {
     #[inline]
     pub fn len(&self) -> usize {
         self.datagrams.len()
+    }
+}
+
+impl<Sealer> Batch<std::rc::Rc<std::cell::RefCell<crate::socket::channel::PathContext<Sealer>>>>
+where
+    Sealer: crate::crypto::seal::Application,
+{
+    /// Encode this batch into the provided descriptor
+    pub fn encode(
+        &mut self,
+        unfilled: descriptor::Unfilled,
+        source_control_port: u16,
+        source_sender_id: VarInt,
+    ) {
+        use s2n_codec::EncoderBuffer;
+
+        // Borrow context for the entire encoding operation
+        let mut ctx = self.context.borrow_mut();
+        let ctx = &mut *ctx;
+
+        // Get references to sealer and credentials
+        let sealer = &ctx.sealer;
+        let credentials = &ctx.credentials;
+
+        let mut segment_size = 0;
+
+        // Encode all datagrams into the descriptor
+        let result = unfilled.fill_with(|addr, _cmsg, mut payload| {
+            let mut offset = 0usize;
+            let mut watermark = 0usize;
+            let mut packet_number = ctx.next_packet_number;
+
+            // If the batch contains probes then we need to cause a gap for an immediate ACK
+            if self.meta.is_probe {
+                packet_number += 5;
+            }
+
+            // Store starting packet number in batch metadata for registration phase
+            self.meta.starting_packet_number = Some(packet_number);
+
+            for dgram in self.datagrams.iter_mut() {
+                // Estimate segment size from first datagram if not set
+                if segment_size == 0 {
+                    segment_size = dgram.estimate_encoded_len(16);
+                }
+
+                // Zero out any padding bytes between packets
+                if offset > watermark {
+                    payload[watermark..offset].fill(0);
+                }
+
+                // Create encoder buffer for this transmission
+                let buf = &mut payload[offset..];
+                let encoder_buf = EncoderBuffer::new(buf);
+
+                // Encode the transmission (datagram or control packet)
+                let encoded_len = dgram.encode(
+                    encoder_buf,
+                    source_control_port,
+                    source_sender_id,
+                    packet_number,
+                    sealer,
+                    credentials,
+                );
+
+                watermark = offset + encoded_len;
+                packet_number += 1;
+
+                // Move offset to the next segment boundary for GSO
+                // We need uniform segment sizes for GSO to work correctly
+                offset += segment_size;
+            }
+
+            // Update context with new packet number
+            ctx.next_packet_number = packet_number;
+
+            // Set remote address
+            addr.set(self.meta.peer_addr.into());
+
+            <Result<_, core::convert::Infallible>>::Ok(watermark)
+        });
+
+        let segments = result.expect("fill_with doesn't fail");
+
+        // Store encoded data in batch
+        let filled = segments.take_filled();
+        self.encoded = Some(descriptor::Segments::new(filled, segment_size as u16));
     }
 }
 
@@ -194,7 +302,7 @@ impl Builder {
     }
 }
 
-impl SingleTimer for Batch {
+impl<Ctx> SingleTimer for Batch<Ctx> {
     #[inline]
     fn target_time(&self) -> Option<precision::Timestamp> {
         self.transmission_time
@@ -206,7 +314,7 @@ impl SingleTimer for Batch {
     }
 }
 
-impl crate::socket::channel::ByteCost for Batch {
+impl<Ctx> crate::socket::channel::ByteCost for Batch<Ctx> {
     fn byte_cost(&self) -> u64 {
         self.meta.total_bytes as u64
     }
@@ -221,7 +329,7 @@ impl crate::socket::channel::ByteCost for Batch {
 // 5. Stores encoded bytes in Batch.encoded field
 // 6. Sendable impl just transmits from Batch.encoded storage
 
-impl crate::socket::channel::Sendable for Batch {
+impl<Ctx> crate::socket::channel::Sendable for Batch<Ctx> {
     fn send<S: crate::socket::send::Socket>(&mut self, socket: &S) -> std::io::Result<()> {
         self.encoded
             .as_mut()
@@ -285,5 +393,79 @@ mod tests {
         let time = precision::Timestamp { nanos: 1000000 }; // 1ms in nanos
         batch.set_target_time(time);
         assert_eq!(batch.target_time(), Some(time));
+    }
+}
+
+// ── Context Attachment ──────────────────────────────────────────────────────
+
+// Compile-time assertions to verify Batch<NoContext> and Batch<Rc<T>> are layout-compatible
+const _: () = {
+    use core::mem::{align_of, offset_of, size_of};
+
+    // Use a concrete type for Rc since we can't use generics in const
+    type RcType = std::rc::Rc<std::cell::RefCell<()>>;
+
+    const fn assert_layout_compatible() {
+        // NoContext must have the same size and alignment as Rc<T>
+        assert!(size_of::<NoContext>() == size_of::<RcType>());
+        assert!(align_of::<NoContext>() == align_of::<RcType>());
+
+        // Batch<NoContext> and Batch<Rc<T>> must have the same size and alignment
+        assert!(size_of::<Batch<NoContext>>() == size_of::<Batch<RcType>>());
+        assert!(align_of::<Batch<NoContext>>() == align_of::<Batch<RcType>>());
+
+        // All fields before 'context' must have the same offset
+        assert!(offset_of!(Batch<NoContext>, datagrams) == offset_of!(Batch<RcType>, datagrams));
+        assert!(offset_of!(Batch<NoContext>, transmission_time) == offset_of!(Batch<RcType>, transmission_time));
+        assert!(offset_of!(Batch<NoContext>, meta) == offset_of!(Batch<RcType>, meta));
+        assert!(offset_of!(Batch<NoContext>, encoded) == offset_of!(Batch<RcType>, encoded));
+
+        // The context field itself must be at the same offset
+        assert!(offset_of!(Batch<NoContext>, context) == offset_of!(Batch<RcType>, context));
+    }
+
+    assert_layout_compatible();
+};
+
+impl Entry<Batch<NoContext>> {
+    /// Attach a context to this batch, converting it to a worker-local batch
+    ///
+    /// # Safety
+    /// This transmutes Entry<Batch<NoContext>> into Entry<Batch<Rc<T>>>.
+    /// The batch becomes !Send and must stay on the worker thread.
+    pub fn with_context<T>(mut self, context: std::rc::Rc<T>) -> Entry<Batch<std::rc::Rc<T>>> {
+        unsafe {
+            // SAFETY: Transmute Rc<T> directly to NoContext to copy its internal pointer
+            // representation (NonNull<RcBox<T>>) without affecting reference counts.
+            // Note: Rc::into_raw() cannot be used here as it returns a pointer to T,
+            // but we need to preserve the pointer to RcBox<T> that Rc contains internally.
+            self.context = std::mem::transmute(context);
+
+            // Now transmute the entire Entry - the context field contains valid Rc bits
+            std::mem::transmute(self)
+        }
+    }
+}
+
+impl<T> Entry<Batch<std::rc::Rc<T>>> {
+    /// Split this batch back into a Send batch and its context
+    ///
+    /// # Safety
+    /// This transmutes Entry<Batch<Rc<T>>> back into Entry<Batch<NoContext>>.
+    /// After this call, the batch is Send again.
+    pub fn into_parts(mut self) -> (Entry<Batch<NoContext>>, std::rc::Rc<T>) {
+        unsafe {
+            // Extract the Rc<T> by transmuting directly from the context field
+            // This preserves the internal RcBox pointer correctly
+            let context: std::rc::Rc<T> = std::mem::transmute_copy(&self.context);
+
+            // Transmute self to NoContext version first (avoids creating invalid Rc)
+            let mut batch: Entry<Batch<NoContext>> = std::mem::transmute(self);
+
+            // Now write the dangling pointer (safe because batch.context is NoContext now)
+            batch.context = NoContext(std::ptr::NonNull::dangling());
+
+            (batch, context)
+        }
     }
 }

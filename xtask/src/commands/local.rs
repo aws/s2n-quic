@@ -109,6 +109,13 @@ impl Local {
             .dc_config
             .unwrap_or_else(|| PathBuf::from("tools/dc-tester/etc/config.example.toml"));
 
+        let mut base_env = HashMap::new();
+        for name in ["RUST_BACKTRACE"] {
+            if let Ok(val) = std::env::var(name) {
+                base_env.insert(name.to_string(), val);
+            }
+        }
+
         // Start servers
         for i in 0..self.servers {
             let node = &nodes[i % nodes.len()];
@@ -123,7 +130,7 @@ impl Local {
 
             eprintln!("  {} → {} ({})", label, server_addr, node.host());
 
-            let mut env_vars = HashMap::new();
+            let mut env_vars = base_env.clone();
             if let Some(ref log) = self.log_level {
                 env_vars.insert("S2N_LOG".to_string(), log.to_string());
             }
@@ -197,7 +204,7 @@ impl Local {
                 server_addr
             );
 
-            let mut env_vars = HashMap::new();
+            let mut env_vars = base_env.clone();
             if let Some(ref log) = self.log_level {
                 env_vars.insert("S2N_LOG".to_string(), log.to_string());
             }
@@ -755,7 +762,7 @@ async fn spawn_process(
             cmd.arg(remote_cmd)
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
-                .stderr(Stdio::null())
+                .stderr(Stdio::piped())
                 .kill_on_drop(true);
 
             cmd.spawn()
