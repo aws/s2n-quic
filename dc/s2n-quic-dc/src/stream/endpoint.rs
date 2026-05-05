@@ -125,9 +125,18 @@ where
     }
 
     // use the client's `source_queue_id`, if specified, inheriting the rest from the client
-    let stream_id = packet.stream_id
+    let Some(stream_id) = packet
+        .stream_id
         .with_queue_id(packet.source_queue_id.unwrap_or(VarInt::ZERO))
-        .expect("queue_id exceeds encoding limit");
+    else {
+        return Err(AcceptError {
+            secret_control,
+            error: io::Error::new(
+                io::ErrorKind::InvalidData,
+                "queue_id exceeds encoding limit",
+            ),
+        });
+    };
 
     let subscriber = env.subscriber().clone();
 
