@@ -390,7 +390,15 @@ impl State {
         let initial = out_buf.buffered_len();
 
         // decrypt and write the packet to the provided buffer
-        out_buf.read_from(&mut packet)?;
+        if let Err(e) = out_buf.read_from(&mut packet) {
+            // Ensure the packet is authentic before resetting the stream
+            //
+            // Note that this may reset the stream regardless (depending on stream type), but it
+            // ensures that we reset with the right error code (e.g., crypto error vs invalid fin).
+            let _ = packet.read_chunk(0)?;
+
+            return Err(e.into());
+        }
 
         // update the expected stream offset for contiguity enforcement
         if packet.receiver.features.is_stream() {

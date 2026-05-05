@@ -880,3 +880,170 @@ fn udp_conflicting_final_offset_on_overlap_rejected() {
         "expected InvalidFin for conflicting final_offset on overlap, got {err:?}"
     );
 }
+
+/// A forged UDP datagram with an unauthenticated `final_offset` shouldn't
+/// be acted on as it should fail AEAD verification.
+#[test]
+fn ignores_forged_final_offset() {
+    use s2n_quic_core::buffer::reader::Storage as _;
+
+    let mut h = UdpHarness::new();
+
+    // Step 1: legitimate sender transmits 10 bytes at offset 0
+    let mut pkt = h.encode_packet_at_offset(0, 0, b"0123456789", false);
+    h.feed(&mut pkt).unwrap();
+
+    // Advance reassembler so start_offset=10
+    let _ = h.out_buf.read_chunk(10).unwrap();
+
+    // Step 2: attacker forges a packet with final_offset=0 (< received=10),
+    // corrupted AEAD tag (attacker has no key material)
+    let mut forged = h.encode_packet_with_final_offset(1, 0, b"", 0);
+    // Corrupt the auth tag to simulate attacker without key material
+    let tag_start = forged.len() - 16;
+    forged[tag_start..].fill(0xAB);
+
+    let err = h.feed(&mut forged).unwrap_err();
+
+    // A correct implementation must reject via Crypto error (non-fatal)
+    // since the packet has a garbage AEAD tag and should never be trusted.
+    assert!(
+        matches!(err, recv::ErrorKind::Crypto(_)),
+        "forged packet should be rejected by AEAD, not trusted pre-auth; got {err:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Pre-authentication exploitation: packets examined before AEAD
+// ---------------------------------------------------------------------------
+
+/// A forged packet at exactly the reassembler cursor (no skip needed) with a
+/// conflicting final_offset must be rejected by AEAD, not by InvalidFin.
+///
+/// This tests the case where skip_until early-returns (offset == current_offset)
+/// and handle_reader_fin would see the unauthenticated final_offset.
+#[test]
+fn udp_forged_conflicting_fin_at_cursor_rejected_by_aead() {
+    use s2n_quic_core::buffer::reader::Storage as _;
+
+    let mut h = UdpHarness::new();
+
+    // Establish final_offset=50 with a legitimate packet
+    let mut pkt = h.encode_packet_with_final_offset(0, 0, b"0123456789", 50);
+    h.feed(&mut pkt).unwrap();
+
+    // Advance reassembler so start_offset=10
+    let _ = h.out_buf.read_chunk(10).unwrap();
+    assert_eq!(h.out_buf.consumed_len(), 10);
+
+    // Forged packet at offset 10 (exactly at cursor), with conflicting final_offset=20.
+    // skip_until unconditionally authenticates via read_chunk(0) before any early return,
+    // so the forged AEAD tag is detected before handle_reader_fin sees final_offset.
+    let mut forged = h.encode_packet_with_final_offset(1, 10, b"XXXXXXXXXX", 20);
+    let tag_start = forged.len() - 16;
+    forged[tag_start..].fill(0x00);
+
+    let err = h.feed(&mut forged).unwrap_err();
+    assert!(
+        matches!(err, recv::ErrorKind::Crypto(_)),
+        "forged packet at cursor should be rejected by AEAD, not trusted pre-auth; got {err:?}"
+    );
+    assert_eq!(
+        h.out_buf.final_size(),
+        Some(50),
+        "final_size must remain unchanged after forged packet"
+    );
+}
+
+/// A forged packet at exactly the cursor with final_offset < max_recv_offset
+/// must be rejected by AEAD, not by InvalidFin.
+#[test]
+fn udp_forged_regressed_fin_at_cursor_rejected_by_aead() {
+    use s2n_quic_core::buffer::reader::Storage as _;
+
+    let mut h = UdpHarness::new();
+
+    // Send 20 bytes (no fin) to establish max_recv_offset=20
+    let mut pkt = h.encode_packet_at_offset(0, 0, b"01234567890123456789", false);
+    h.feed(&mut pkt).unwrap();
+
+    // Advance reassembler so start_offset=20
+    let _ = h.out_buf.read_chunk(20).unwrap();
+
+    // Forged packet at offset 20 (at cursor), with final_offset=5 (< max_recv_offset=20).
+    // This would trigger InvalidFin via the max_recv_offset check if AEAD isn't forced.
+    let mut forged = h.encode_packet_with_final_offset(1, 20, b"YYYYY", 5);
+    let tag_start = forged.len() - 16;
+    forged[tag_start..].fill(0x00);
+
+    let err = h.feed(&mut forged).unwrap_err();
+    assert!(
+        matches!(err, recv::ErrorKind::Crypto(_)),
+        "forged packet should be rejected by AEAD, not InvalidFin; got {err:?}"
+    );
+    assert_eq!(
+        h.out_buf.final_size(),
+        None,
+        "final_size must not be set by forged packet"
+    );
+}
+
+/// A forged empty-payload packet at the cursor with a conflicting final_offset
+/// must be rejected by AEAD.
+///
+/// Empty payloads are interesting because write_reader_impl's empty-buffer path
+/// calls read_chunk(0) which triggers AEAD, but handle_reader_fin runs first.
+#[test]
+fn udp_forged_empty_payload_conflicting_fin_at_cursor_rejected_by_aead() {
+    use s2n_quic_core::buffer::reader::Storage as _;
+
+    let mut h = UdpHarness::new();
+
+    // Establish final_offset=30
+    let mut pkt = h.encode_packet_with_final_offset(0, 0, b"0123456789", 30);
+    h.feed(&mut pkt).unwrap();
+
+    let _ = h.out_buf.read_chunk(10).unwrap();
+
+    // Forged empty packet at offset 10 with final_offset=99 (conflicts with 30), bad AEAD
+    let mut forged = h.encode_packet_with_final_offset(1, 10, b"", 99);
+    let tag_start = forged.len() - 16;
+    forged[tag_start..].fill(0x00);
+
+    let err = h.feed(&mut forged).unwrap_err();
+    assert!(
+        matches!(err, recv::ErrorKind::Crypto(_)),
+        "forged empty packet should be rejected by AEAD; got {err:?}"
+    );
+    assert_eq!(h.out_buf.final_size(), Some(30));
+}
+
+/// A forged packet that exceeds max_recv_offset (new data beyond existing final_size)
+/// must be rejected by AEAD.
+///
+/// This tests the (None, Some(expected)) arm of handle_reader_fin where
+/// expected < buffered_offset.
+#[test]
+fn udp_forged_payload_exceeds_final_size_rejected_by_aead() {
+    use s2n_quic_core::buffer::reader::Storage as _;
+
+    let mut h = UdpHarness::new();
+
+    // Establish final_offset=10 with a FIN packet
+    let mut pkt = h.encode_packet_at_offset(0, 0, b"0123456789", true);
+    h.feed(&mut pkt).unwrap();
+
+    let _ = h.out_buf.read_chunk(10).unwrap();
+
+    // Forged packet at offset 10 with 5 more bytes (no fin), bad AEAD.
+    // buffered_offset = 10 + 5 = 15 > final_size(10) → InvalidFin if unchecked.
+    let mut forged = h.encode_packet_at_offset(1, 10, b"ZZZZZ", false);
+    let tag_start = forged.len() - 16;
+    forged[tag_start..].fill(0x00);
+
+    let err = h.feed(&mut forged).unwrap_err();
+    assert!(
+        matches!(err, recv::ErrorKind::Crypto(_)),
+        "forged packet exceeding final_size should be rejected by AEAD; got {err:?}"
+    );
+}
