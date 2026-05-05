@@ -236,7 +236,10 @@ impl Provider for UntrustedClientProvider {
         let client = s2n_quic_tls_prov::Client::builder()
             .with_application_protocols(["h3"].iter())?
             .with_certificate(certificates::CERT_PEM)?
-            .with_client_identity(certificates::UNTRUSTED_CERT_PEM, certificates::UNTRUSTED_KEY_PEM)?
+            .with_client_identity(
+                certificates::UNTRUSTED_CERT_PEM,
+                certificates::UNTRUSTED_KEY_PEM,
+            )?
             .build()?;
         Ok(client)
     }
