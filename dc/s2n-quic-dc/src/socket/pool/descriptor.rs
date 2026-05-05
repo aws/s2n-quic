@@ -554,14 +554,18 @@ impl crate::socket::channel::ByteCost for Segments {
 impl crate::socket::channel::Sendable for Segments {
     fn send<S: crate::socket::send::Socket>(&mut self, socket: &S) -> std::io::Result<()> {
         let payload = self.descriptor.payload();
+        let len = payload.len();
         let ioslice = IoSlice::new(payload);
 
-        socket.send_msg(
+        let actual = socket.send_msg(
             self.descriptor.remote_address(),
             &[ioslice],
             self.segment_len,
             self.descriptor.ecn(),
         )?;
+
+        debug_assert_eq!(len, actual);
+
         Ok(())
     }
 }

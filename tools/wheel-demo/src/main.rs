@@ -31,11 +31,11 @@ struct Cli {
     per_socket_bandwidth: f64,
 
     /// Number of UDP sockets to use (defaults to CPU count)
-    #[arg(short = 'n', long, global = true)]
-    sockets: Option<usize>,
+    #[arg(short = 'n', long, default_value = "64")]
+    sockets: usize,
 
     /// Packet size in bytes (segment size for GSO)
-    #[arg(long, default_value = "1350", global = true)]
+    #[arg(long, default_value = "8900", global = true)]
     packet_size: u16,
 
     /// Disable GSO (Generic Segmentation Offload)
@@ -65,11 +65,7 @@ async fn main() -> std::io::Result<()> {
 
     let cli = Cli::parse();
 
-    let num_sockets = cli.sockets.unwrap_or_else(|| {
-        std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(1)
-    });
+    let num_sockets = cli.sockets;
 
     // Create shared pipeline infrastructure
     let tokio_clock = TokioClock::default();
@@ -81,7 +77,7 @@ async fn main() -> std::io::Result<()> {
 
     let (path_secret_map, endpoint_addr, is_server) = match &cli.command {
         Commands::Server { address } => {
-            let client_addr = "127.0.0.1:0".parse().unwrap();
+            let client_addr = "10.2.62.243:0".parse().unwrap();
             (
                 pipeline::create_test_map(client_addr, s2n_quic_core::endpoint::Type::Server),
                 *address,
@@ -95,6 +91,11 @@ async fn main() -> std::io::Result<()> {
         ),
     };
 
+    let gso = s2n_quic_platform::features::Gso::default();
+    if cli.disable_gso {
+        gso.disable();
+    }
+
     let config = pipeline::PipelineConfig {
         packet_size: cli.packet_size,
         overall_send_rate: Rate::new(cli.bandwidth),
@@ -105,12 +106,13 @@ async fn main() -> std::io::Result<()> {
         recv_pool,
         counters,
         path_secret_map,
+        gso,
     };
 
     if is_server {
-        server::run(endpoint_addr, num_sockets, cli.disable_gso, config).await
+        server::run(endpoint_addr, num_sockets, config).await
     } else {
-        client::run(endpoint_addr, num_sockets, cli.disable_gso, config).await
+        client::run(endpoint_addr, num_sockets, config).await
     }
 }
 

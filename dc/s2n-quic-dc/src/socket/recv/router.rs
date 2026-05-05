@@ -80,8 +80,8 @@ pub trait Router {
                         let stream_id = control_packet.stream_id().copied();
                         let credentials = *control_packet.credentials();
 
-                        #[cfg(debug_assertions)]
-                        let _span = tracing::info_span!("recv::control", peer_addr = %remote_address, flow_id = %credentials).entered();
+                        // #[cfg(debug_assertions)]
+                        // let _span = tracing::info_span!("recv::control", peer_addr = %remote_address, flow_id = %credentials).entered();
 
                         tracing::trace!(?tag, ?stream_id, %credentials, "parsed_control_packet");
                         let meta = *control_packet.meta();
@@ -96,8 +96,8 @@ pub trait Router {
                         let stream_id = *stream_packet.stream_id();
                         let credentials = *stream_packet.credentials();
 
-                        #[cfg(debug_assertions)]
-                        let _span = tracing::info_span!("recv::stream", peer_addr = %remote_address, flow_id = %credentials).entered();
+                        // #[cfg(debug_assertions)]
+                        // let _span = tracing::info_span!("recv::stream", peer_addr = %remote_address, flow_id = %credentials).entered();
 
                         tracing::trace!(?tag, ?stream_id, %credentials, "parsed_stream_packet");
 
@@ -108,8 +108,8 @@ pub trait Router {
                         let tag = datagram_packet.tag();
                         let credentials = *datagram_packet.credentials();
 
-                        #[cfg(debug_assertions)]
-                        let _span = tracing::info_span!("recv::datagram", peer_addr = %remote_address, flow_id = %credentials).entered();
+                        // #[cfg(debug_assertions)]
+                        // let _span = tracing::info_span!("recv::datagram", peer_addr = %remote_address, flow_id = %credentials).entered();
 
                         tracing::trace!(?tag, %credentials, "parsed_datagram_packet");
                         let meta = *datagram_packet.meta();
@@ -125,8 +125,8 @@ pub trait Router {
                         let credentials = *packet.credentials();
                         let trigger = packet.trigger();
 
-                        #[cfg(debug_assertions)]
-                        let _span = tracing::info_span!("recv::flow_reset", peer_addr = %remote_address, flow_id = %credentials).entered();
+                        // #[cfg(debug_assertions)]
+                        // let _span = tracing::info_span!("recv::flow_reset", peer_addr = %remote_address, flow_id = %credentials).entered();
 
                         tracing::trace!(?tag, ?queue_id, %credentials, ?trigger, "parsed_flow_reset_packet");
                         self.handle_flow_reset_packet(remote_address, ecn, packet);

@@ -17,7 +17,7 @@ use std::net::SocketAddr;
 /// Holds a dangling NonNull so it's the same size as Rc<T> and matches its non-null
 /// invariant for safe transmutation.
 #[derive(Copy, Clone)]
-pub struct NoContext(std::ptr::NonNull<()>);
+pub struct NoContext(#[allow(dead_code)] std::ptr::NonNull<()>);
 
 // SAFETY: NoContext is just a dangling pointer used for size/alignment.
 // It never dereferences the pointer, so it's safe to send between threads.
@@ -416,7 +416,10 @@ const _: () = {
 
         // All fields before 'context' must have the same offset
         assert!(offset_of!(Batch<NoContext>, datagrams) == offset_of!(Batch<RcType>, datagrams));
-        assert!(offset_of!(Batch<NoContext>, transmission_time) == offset_of!(Batch<RcType>, transmission_time));
+        assert!(
+            offset_of!(Batch<NoContext>, transmission_time)
+                == offset_of!(Batch<RcType>, transmission_time)
+        );
         assert!(offset_of!(Batch<NoContext>, meta) == offset_of!(Batch<RcType>, meta));
         assert!(offset_of!(Batch<NoContext>, encoded) == offset_of!(Batch<RcType>, encoded));
 

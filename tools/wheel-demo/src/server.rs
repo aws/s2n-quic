@@ -60,7 +60,6 @@ use tracing::info;
 pub async fn run(
     address: SocketAddr,
     num_sockets: usize,
-    disable_gso: bool,
     config: crate::pipeline::PipelineConfig<'_>,
 ) -> io::Result<()> {
     info!(
@@ -81,7 +80,7 @@ pub async fn run(
     } else {
         "0.0.0.0:0".parse().unwrap()
     };
-    let send_sockets = crate::pipeline::create_send_sockets(num_sockets, send_addr, disable_gso)?;
+    let send_sockets = crate::pipeline::create_send_sockets(num_sockets, send_addr, config.gso.clone())?;
 
     // Set up the bidirectional pipeline
     let _pipeline = crate::pipeline::setup_pipeline(config, send_sockets, recv_sockets, || {

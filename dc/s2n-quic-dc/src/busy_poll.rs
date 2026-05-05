@@ -262,21 +262,21 @@ impl Tasks {
 
         for (idx, slot) in self.slots.iter_mut().enumerate() {
             if let Some(task) = slot {
-                let start = Instant::now();
+                // let start = Instant::now();
                 if task.task.as_mut().poll(cx).is_ready() {
                     eprintln!("task {idx} done");
                     *slot = None;
                     self.free.push(idx);
                 } else {
-                    let duration = start.elapsed();
-                    if duration > SLOW_POLL_THRESHOLD {
-                        tracing::warn!(
-                            task_idx = idx,
-                            ?duration,
-                            location = %task.location,
-                            "slow task poll detected"
-                        );
-                    }
+                    // let duration = start.elapsed();
+                    // if duration > SLOW_POLL_THRESHOLD {
+                    // tracing::warn!(
+                    // task_idx = idx,
+                    // ?duration,
+                    // location = %task.location,
+                    // "slow task poll detected"
+                    // );
+                    // }
                 }
             }
         }

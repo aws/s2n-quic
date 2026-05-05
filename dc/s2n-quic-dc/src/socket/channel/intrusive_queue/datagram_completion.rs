@@ -113,7 +113,9 @@ impl<T> Sender<T> {
     /// Workers will drop any pending datagrams attached to this channel.
     #[inline]
     pub fn cancel(&self) {
-        self.shared.flags.fetch_and(!SHOULD_TRANSMIT, Ordering::Release);
+        self.shared
+            .flags
+            .fetch_and(!SHOULD_TRANSMIT, Ordering::Release);
     }
 
     /// Send a completion notification.
@@ -192,10 +194,7 @@ impl<T> super::super::Sender<intrusive_queue::Entry<T>> for Sender<T> {
 }
 
 impl<T> super::super::UnboundedSender<intrusive_queue::Queue<T>> for Sender<T> {
-    fn send(
-        &mut self,
-        batch: intrusive_queue::Queue<T>,
-    ) -> Result<(), intrusive_queue::Queue<T>> {
+    fn send(&mut self, batch: intrusive_queue::Queue<T>) -> Result<(), intrusive_queue::Queue<T>> {
         self.send_batch(batch)
     }
 }
@@ -246,7 +245,9 @@ impl<T> Drop for Receiver<T> {
             self.shared.flags.store(0, Ordering::Release);
         } else {
             // Graceful drop - just stop receiving completions
-            self.shared.flags.fetch_and(!RECEIVER_ALIVE, Ordering::Release);
+            self.shared
+                .flags
+                .fetch_and(!RECEIVER_ALIVE, Ordering::Release);
         }
 
         unsafe {
@@ -264,11 +265,6 @@ impl<T> super::super::Receiver<intrusive_queue::Entry<T>> for Receiver<T> {
 
         if let Some(entry) = guard.queue.pop_front() {
             return Poll::Ready(Some(entry));
-        }
-
-        // Check if all senders are gone (strong_count <= 1 means only receiver left)
-        if Arc::strong_count(&self.shared) <= 1 {
-            return Poll::Ready(None);
         }
 
         // Queue is empty and senders still alive - register waker
@@ -290,11 +286,6 @@ impl<T> super::super::Receiver<intrusive_queue::Queue<T>> for Receiver<T> {
             // Drain all available entries into a batch
             let batch = core::mem::take(&mut guard.queue);
             return Poll::Ready(Some(batch));
-        }
-
-        // Check if all senders are gone (strong_count <= 1 means only receiver left)
-        if Arc::strong_count(&self.shared) <= 1 {
-            return Poll::Ready(None);
         }
 
         // Queue is empty and senders still alive - register waker

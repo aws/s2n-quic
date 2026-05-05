@@ -7,11 +7,12 @@ use s2n_quic_core::varint::VarInt;
 use s2n_quic_dc::{
     byte_vec::ByteVec,
     datagram::batch::Batch,
-    intrusive_queue::Queue,
+    intrusive_queue::{List, Queue},
     packet::{datagram::partial::PartialDatagram, RoutingInfo},
     path::secret::map::Entry as PathSecretEntry,
     socket::channel,
 };
+use s2n_quic_platform::features;
 use std::{
     io,
     net::SocketAddr,
@@ -24,7 +25,6 @@ use tracing::info;
 pub async fn run(
     server: SocketAddr,
     num_sockets: usize,
-    disable_gso: bool,
     config: crate::pipeline::PipelineConfig<'_>,
 ) -> io::Result<()> {
     info!(
@@ -33,7 +33,7 @@ pub async fn run(
         per_socket_bandwidth = ?config.per_socket_send_rate,
         num_sockets,
         packet_size = config.packet_size,
-        disable_gso,
+        max_segments_per_batch = config.gso.max_segments(),
         "Starting UDP sender client"
     );
 
@@ -47,12 +47,14 @@ pub async fn run(
     // Create send and receive sockets
     // One send socket per requested socket, but only one recv socket per busy poll worker
     // (worker 0 is the dispatch thread, so num_recv = busy_poll.len() - 1)
-    let send_sockets = crate::pipeline::create_send_sockets(num_sockets, bind_addr, disable_gso)?;
+    let send_sockets =
+        crate::pipeline::create_send_sockets(num_sockets, bind_addr, config.gso.clone())?;
     let num_recv_sockets = config.busy_poll.len().saturating_sub(1).max(1);
     let recv_sockets = crate::pipeline::create_recv_sockets(num_recv_sockets, bind_addr)?;
 
     let counters = config.counters.clone();
     let packet_size = config.packet_size;
+    let gso = config.gso.clone();
 
     // Set up the bidirectional pipeline
     let pipeline = crate::pipeline::setup_pipeline(config, send_sockets, recv_sockets, || {
@@ -62,8 +64,8 @@ pub async fn run(
     let wheel_input_tx = pipeline.wheel_input_tx;
 
     // Spawn datagram generators on tokio runtime
-    let num_generators = 8;
-    let max_inflight = 10000; // Backpressure limit
+    let num_generators = 2;
+    let max_inflight = 1000; // Backpressure limit
 
     // Create deterministic path secret entry for all datagrams
     // This must match the server's deterministic entry
@@ -76,6 +78,7 @@ pub async fn run(
         let wheel_tx = wheel_input_tx.clone();
         let path_secret_entry = path_secret_entry.clone();
         let counters = counters.clone();
+        let gso = gso.clone();
         tokio::spawn(async move {
             let mut generator = Generator::new(
                 wheel_tx,
@@ -84,6 +87,7 @@ pub async fn run(
                 max_inflight,
                 path_secret_entry,
                 counters,
+                gso,
             );
             info!(generator_id = gen_id, "Starting datagram generator");
             generator.run().await;
@@ -109,7 +113,7 @@ struct Generator {
     inflight: usize,
     max_inflight: usize,
     path_secret_entry: Arc<PathSecretEntry>,
-    // Stats
+    gso: features::Gso,
     counters: CounterRegistry,
 }
 
@@ -121,6 +125,7 @@ impl Generator {
         max_inflight: usize,
         path_secret_entry: Arc<PathSecretEntry>,
         counters: CounterRegistry,
+        gso: features::Gso,
     ) -> Self {
         let completion_rx = channel::intrusive_queue::datagram_completion::new();
         Self {
@@ -132,6 +137,7 @@ impl Generator {
             inflight: 0,
             max_inflight,
             path_secret_entry,
+            gso,
             counters,
         }
     }
@@ -153,7 +159,7 @@ impl Generator {
                         }
                         std::task::Poll::Ready(None) => {
                             // Channel closed, should not happen
-                            break;
+                            panic!("completion channel closed");
                         }
                         std::task::Poll::Pending => {
                             // Waker is now registered
@@ -165,35 +171,57 @@ impl Generator {
                 completed_counter.fetch_add(completed as _, Ordering::Relaxed);
 
                 // Generate datagram batches until hitting max_inflight
-                const DATAGRAMS_PER_BATCH: usize = 10;
+                let max_segments_per_batch = self.gso.max_segments();
 
-                loop {
+                let mut submitted = 0;
+                let mut batches = List::new();
+                for _ in 0..100 {
                     // Create one datagram batch (multiple datagrams to same peer)
-                    let mut dgram_batch = Batch::new(None, self.server_addr);
+                    let mut builder =
+                        s2n_quic_dc::datagram::batch::Builder::new(None, self.server_addr);
 
                     // Fill the batch with datagrams
                     while self.inflight < self.max_inflight
-                        && dgram_batch.len() < DATAGRAMS_PER_BATCH
+                        && builder.len() < max_segments_per_batch
                     {
                         let datagram = self.generate_datagram();
-                        dgram_batch.push(datagram.into());
-                        self.inflight += 1;
-                        generated_counter.fetch_add(1, Ordering::Relaxed);
+                        match builder.try_push(datagram.into()) {
+                            Ok(()) => {
+                                self.inflight += 1;
+                                submitted += 1;
+                            }
+                            Err(_datagram) => {
+                                // Batch is full, stop adding to this batch
+                                break;
+                            }
+                        }
                     }
 
                     // Submit this datagram batch to the wheel
-                    if !dgram_batch.is_empty() {
-                        let _ = self.wheel_tx.send_entry(dgram_batch.into());
+                    if !builder.is_empty() {
+                        batches.push_back(builder.finish().into());
                     }
 
                     // Check if we should continue generating more batches
                     if self.inflight >= self.max_inflight {
                         // Hit limit, wait for completions
-                        cx.waker().wake_by_ref();
-                        return std::task::Poll::Pending;
+                        break;
                     }
                     // Otherwise loop to generate another batch
                 }
+
+                if !batches.is_empty() {
+                    let _ = self.wheel_tx.send_batch(batches);
+                }
+
+                if submitted > 0 {
+                    generated_counter.fetch_add(submitted, Ordering::Relaxed);
+                }
+
+                if self.inflight < self.max_inflight {
+                    cx.waker().wake_by_ref();
+                }
+                std::task::Poll::Pending
             })
             .await;
         }
@@ -209,8 +237,7 @@ impl Generator {
         let copy_len = pn_bytes.len().min(payload_data.len());
         payload_data[..copy_len].copy_from_slice(&pn_bytes[..copy_len]);
 
-        let mut payload = ByteVec::new();
-        payload.push_back(Bytes::from(payload_data));
+        let payload = Bytes::from(payload_data).into();
 
         // Get completion sender for this datagram
         let completion_sender = Some(self.completion_rx.sender());

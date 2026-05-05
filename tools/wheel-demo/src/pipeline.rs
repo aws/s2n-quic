@@ -32,7 +32,7 @@ use s2n_quic_dc::{
         self,
         channel::{
             self, intrusive_queue, FlattenQueue, FlattenSegments, InspectErr, Map, Paced,
-            ReceiverExt, Reporter, RouterAdapter, SocketReceiver, UnboundedSender,
+            ReceiverExt, RouterAdapter, SocketReceiver, UnboundedSender,
         },
         pool::{self, descriptor},
         rate::Rate,
@@ -53,6 +53,109 @@ use std::{
     },
 };
 use tracing::info;
+
+// ── Worker-Socket Channel ──────────────────────────────────────────────────
+
+/// A specialized channel for distributing batches to sockets within a worker.
+///
+/// This uses a single sync channel per worker that feeds multiple unsync channels
+/// per socket, minimizing lock contention. The sender locks once to push to the
+/// appropriate socket queue, and the worker-local receiver locks once to swap out
+/// all queues for local dispatch.
+mod worker_socket_channel {
+    use s2n_quic_dc::{datagram::batch::Batch, intrusive_queue::Queue};
+    use std::sync::{Arc, Mutex};
+
+    /// Shared state for a worker's socket queues
+    struct WorkerQueues {
+        /// One queue per socket on this worker
+        queues: Mutex<Vec<Queue<Batch>>>,
+    }
+
+    /// Sender that targets a specific socket within a worker
+    #[derive(Clone)]
+    pub struct Sender {
+        /// Index of the target socket within the worker
+        socket_idx: usize,
+        /// Shared queues for this worker
+        queues: Arc<WorkerQueues>,
+    }
+
+    impl Sender {
+        /// Send a batch to the target socket queue
+        pub fn send_entry(&self, entry: s2n_quic_dc::intrusive_queue::Entry<Batch>) {
+            let mut queues = self.queues.queues.lock().unwrap();
+            queues[self.socket_idx].push_back(entry);
+        }
+    }
+
+    impl s2n_quic_dc::socket::channel::Sender<s2n_quic_dc::intrusive_queue::Entry<Batch>> for Sender {
+        fn poll_send(
+            &mut self,
+            _cx: &mut core::task::Context<'_>,
+            value: &mut core::mem::MaybeUninit<s2n_quic_dc::intrusive_queue::Entry<Batch>>,
+        ) -> core::task::Poll<Result<(), ()>> {
+            // SAFETY: We take ownership and replace with uninitialized memory
+            let entry = unsafe { value.as_ptr().read() };
+            self.send_entry(entry);
+            core::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    /// Receiver that collects from all socket queues for this worker
+    #[derive(Clone)]
+    pub struct Receiver {
+        /// Shared queues for this worker
+        queues: Arc<WorkerQueues>,
+        /// Number of sockets
+        num_sockets: usize,
+    }
+
+    impl Receiver {
+        /// Drain all socket queues and send to their respective local channels
+        ///
+        /// This performs a single lock to grab all pending batches for all sockets,
+        /// then dispatches them to the provided unsync senders inline.
+        pub fn drain_to<S>(&self, senders: &mut [S])
+        where
+            S: s2n_quic_dc::socket::channel::UnboundedSender<Queue<Batch>>,
+        {
+            debug_assert_eq!(senders.len(), self.num_sockets);
+
+            let mut queues = self.queues.queues.lock().unwrap();
+            for (queue, sender) in queues.iter_mut().zip(senders.iter_mut()) {
+                if !queue.is_empty() {
+                    let mut swapped = Queue::new();
+                    core::mem::swap(queue, &mut swapped);
+                    let _ = sender.send(swapped);
+                }
+            }
+        }
+    }
+
+    /// Create a worker-socket channel with the given number of sockets
+    ///
+    /// Returns (senders, receiver) where senders[i] sends to socket i
+    pub fn new(num_sockets: usize) -> (Vec<Sender>, Receiver) {
+        let queues = Arc::new(WorkerQueues {
+            queues: Mutex::new((0..num_sockets).map(|_| Queue::new()).collect()),
+        });
+
+        let senders = (0..num_sockets)
+            .map(|socket_idx| Sender {
+                socket_idx,
+                queues: queues.clone(),
+            })
+            .collect();
+
+        let receiver = Receiver {
+            queues,
+            num_sockets,
+        };
+
+        (senders, receiver)
+    }
+}
 
 // ── Instrumentation ────────────────────────────────────────────────────────
 
@@ -102,11 +205,29 @@ impl CounterRegistry {
                 // Sort by label for consistent output
                 stats.sort_by_key(|(label, _)| *label);
 
-                // Filter non-zero and format as a single line
+                // Filter non-zero and format, converting byte counters to bps with appropriate prefix
                 let non_zero: Vec<String> = stats
                     .into_iter()
                     .filter(|(_, count)| *count > 0)
-                    .map(|(label, count)| format!("{}={}", label, count))
+                    .map(|(label, count)| {
+                        // Check if this is a byte counter (ends with ":bytes")
+                        if label.ends_with(":bytes") {
+                            let mut rate = count as f64 * 8.0; // Convert to bits
+                            let prefixes = [("G", 1e9), ("M", 1e6), ("K", 1e3)];
+                            let mut prefix = "";
+                            for (p, divisor) in prefixes {
+                                if rate >= divisor {
+                                    rate /= divisor;
+                                    prefix = p;
+                                    break;
+                                }
+                            }
+                            let label_without_suffix = label.trim_end_matches(":bytes");
+                            format!("{}={:.2}{}bps", label_without_suffix, rate, prefix)
+                        } else {
+                            format!("{}={}", label, count)
+                        }
+                    })
                     .collect();
 
                 if !non_zero.is_empty() {
@@ -232,7 +353,7 @@ where
 
         // Create a batch for the probe
         let mut batch = Batch::new(None, peer_addr);
-        batch.datagrams.push_back(probe_datagram.into());
+        batch.push(probe_datagram.into());
 
         Some(Entry::new(batch))
     } else {
@@ -829,6 +950,7 @@ fn assert_receiver<T>(_r: &impl channel::Receiver<T>) {}
 struct ChannelRouter<D, C> {
     datagram_tx: D,
     control_tx: C,
+    decode_error_counter: Arc<AtomicU64>,
 }
 
 impl<D, C> Router for ChannelRouter<D, C>
@@ -872,6 +994,21 @@ where
         _ecn: s2n_quic_core::inet::ExplicitCongestionNotification,
         _packet: packet::control::decoder::Packet<&mut [u8]>,
     ) {
+    }
+
+    fn on_decode_error(
+        &mut self,
+        error: s2n_codec::DecoderError,
+        remote_address: s2n_quic_core::inet::SocketAddress,
+        segment: descriptor::Filled,
+    ) {
+        self.decode_error_counter.fetch_add(1, Ordering::Relaxed);
+        tracing::debug!(
+            ?error,
+            %remote_address,
+            packet_len = segment.len(),
+            "failed to decode packet"
+        );
     }
 }
 
@@ -1001,19 +1138,14 @@ impl socket::channel::PathContextResolver for SimplePathContextResolver {
 pub fn create_send_sockets(
     num_sockets: usize,
     bind_addr: SocketAddr,
-    disable_gso: bool,
+    gso: features::Gso,
 ) -> io::Result<Vec<Gso<BusyPoll<std::net::UdpSocket>>>> {
-    let gso = features::Gso::default();
-    if disable_gso {
-        gso.disable();
-    }
-
     let mut sockets = Vec::with_capacity(num_sockets);
     for _ in 0..num_sockets {
         let mut opts = Options::default();
         opts.addr = bind_addr;
         opts.blocking = false;
-        opts.send_buffer = Some(20 * 1024 * 1024); // 20MB per socket
+        opts.send_buffer = Some(200 * 1024 * 1024); // 200MB per socket
         opts.recv_buffer = Some(0);
         let socket = opts.build_udp()?;
 
@@ -1036,8 +1168,10 @@ pub fn create_recv_sockets(
     // First socket - binds the address (will get ephemeral port if port is 0)
     let mut opts = Options::default();
     opts.addr = bind_addr;
-    opts.reuse_address = true;
-    opts.reuse_port = ReusePort::AfterBind;
+    if num_sockets > 1 {
+        opts.reuse_address = true;
+        opts.reuse_port = ReusePort::AfterBind;
+    }
     opts.gro = true;
     opts.blocking = false;
     opts.recv_buffer = Some(200 * 1024 * 1024);
@@ -1050,6 +1184,7 @@ pub fn create_recv_sockets(
         // Get the actual bound address from the first socket
         let bound_addr = sockets[0].0.local_addr()?;
 
+        assert_ne!(bound_addr.port(), 0);
         opts.reuse_port = ReusePort::BeforeBind;
 
         // Remaining sockets share the same port
@@ -1066,6 +1201,8 @@ pub fn create_recv_sockets(
 pub struct Pipeline {
     /// Input sender for the wheel (producers send batches here)
     pub wheel_input_tx: intrusive_queue::sync::Sender<Batch>,
+    /// GSO configuration (for querying max segments)
+    pub gso: features::Gso,
 }
 
 pub struct PipelineConfig<'a> {
@@ -1079,12 +1216,13 @@ pub struct PipelineConfig<'a> {
     pub counters: CounterRegistry,
     /// Path secret map for looking up crypto state by credentials
     pub path_secret_map: s2n_quic_dc::path::secret::map::Map,
+    /// GSO configuration for max segments per batch
+    pub gso: features::Gso,
 }
 
 struct SendSocketInfo<S> {
     sender_id: usize,
     socket: S,
-    batch_rx: intrusive_queue::sync::Receiver<Batch>,
 }
 
 struct RecvSocketInfo<S> {
@@ -1132,6 +1270,7 @@ where
         recv_pool,
         path_secret_map,
         counters,
+        gso,
     } = config;
 
     let num_send_sockets = send_sockets.len();
@@ -1146,15 +1285,8 @@ where
         .map(|addr| addr.port())
         .unwrap_or(0);
 
-    // Create intrusive queue channels for socket senders (need Send to cross thread boundaries)
-    let mut socket_senders = Vec::with_capacity(num_send_sockets);
-    let mut socket_receivers = Vec::with_capacity(num_send_sockets);
-
-    for _ in 0..num_send_sockets {
-        let (tx, rx) = intrusive_queue::sync::new();
-        socket_senders.push(tx);
-        socket_receivers.push(rx);
-    }
+    // Group send sockets, recv sockets, and worker channels by busy poll worker
+    let num_workers = busy_poll.len() - 1;
 
     // Create channel for wheel input from generators
     let (wheel_input_tx, wheel_input_rx) = intrusive_queue::sync::new();
@@ -1163,38 +1295,20 @@ where
     let wheel_timer = clock.timer();
     let wheel: Wheel<_, _, _, 1> = Wheel::new(wheel_input_rx, wheel_timer);
 
-    // Spawn wheel ticker + distributor on busy poll worker 0
-    busy_poll[0].spawn_local({
-        let clock = clock.clone();
-        let socket_senders = socket_senders.clone();
-        move |mut spawner| {
-            // Task 1: Pump wheel output into a channel for distribution
-            let (wheel_output_tx, wheel_output_rx) = intrusive_queue::unsync::new();
-
-            spawner.spawn(channel::pump(wheel, wheel_output_tx.into_list_sender()));
-
-            // Task 2: Overall bandwidth limiter + round robin distributor
-            let wheel_rx = FlattenQueue::new(wheel_output_rx.into_list_receiver());
-            let wheel_rx = Paced::new(wheel_rx, clock.clone(), overall_send_rate);
-            let wheel_rx = Reporter::new(wheel_rx, clock.clone(), true);
-
-            spawner.spawn(channel::round_robin(wheel_rx, socket_senders));
-            info!("Finished spawning wheel tasks");
-        }
-    });
-
     // Create error channel for failed batches
     let (error_tx, error_rx) = intrusive_queue::sync::new();
 
     let path_idle_timeout = Duration::from_secs(60);
 
-    // Group send sockets, recv sockets, and worker channels by busy poll worker
-    let num_workers = busy_poll.len() - 1;
-
     // Create worker channels (one datagram and one control channel per worker)
     let mut workers = Vec::with_capacity(num_workers);
     let mut datagram_receiver_tx = Vec::with_capacity(num_workers);
     let mut control_packet_tx = Vec::with_capacity(num_workers);
+
+    // Also create per-worker socket channel infrastructure
+    let mut worker_socket_senders = Vec::with_capacity(num_workers);
+    let mut worker_socket_receivers = Vec::with_capacity(num_workers);
+
     for id in 0..num_workers {
         let (datagram_tx, datagram_rx) = intrusive_queue::sync::new();
         let (control_tx, control_rx) = intrusive_queue::sync::new();
@@ -1212,20 +1326,61 @@ where
     // Build sender_id to worker_id mapping (for control packet routing)
     let mut sender_id_to_worker = Vec::with_capacity(num_send_sockets);
 
-    // Distribute send sockets across workers
-    for (sender_id, (socket, batch_rx)) in
-        send_sockets.into_iter().zip(socket_receivers).enumerate()
-    {
+    // Distribute send sockets across workers and create their socket channels
+    for (sender_id, socket) in send_sockets.into_iter().enumerate() {
         let worker_idx = sender_id % num_workers;
         sender_id_to_worker.push(worker_idx);
-        workers[worker_idx].send_sockets.push(SendSocketInfo {
-            sender_id,
-            socket,
-            batch_rx,
-        });
+        workers[worker_idx]
+            .send_sockets
+            .push(SendSocketInfo { sender_id, socket });
+    }
+
+    // Create worker-socket channels after we know socket counts per worker
+    for worker in &workers {
+        let num_sockets = worker.send_sockets.len();
+        let (senders, receiver) = worker_socket_channel::new(num_sockets);
+        worker_socket_senders.push(senders);
+        worker_socket_receivers.push(receiver);
+    }
+
+    // Build a flat list of senders for the wheel distributor, maintaining sender_id order
+    let mut flat_socket_senders = Vec::with_capacity(num_send_sockets);
+    for sender_id in 0..num_send_sockets {
+        let worker_idx = sender_id_to_worker[sender_id];
+        let socket_idx_in_worker = workers[worker_idx]
+            .send_sockets
+            .iter()
+            .position(|s| s.sender_id == sender_id)
+            .unwrap();
+        flat_socket_senders.push(worker_socket_senders[worker_idx][socket_idx_in_worker].clone());
     }
 
     let sender_id_to_worker = Arc::new(sender_id_to_worker);
+
+    // Spawn wheel ticker + distributor on busy poll worker 0
+    busy_poll[0].spawn_local({
+        let clock = clock.clone();
+        let socket_senders = flat_socket_senders;
+        move |mut spawner| {
+            info!("Starting wheel worker on busy_poll[0]");
+
+            // Task 1: Pump wheel output into a channel for distribution
+            let (wheel_output_tx, wheel_output_rx) = intrusive_queue::unsync::new();
+
+            spawner.spawn(async move {
+                channel::pump(wheel, wheel_output_tx.into_list_sender()).await;
+                info!("Wheel pump task shutting down");
+            });
+
+            // Task 2: Overall bandwidth limiter + round robin distributor
+            let rx = FlattenQueue::new(wheel_output_rx.into_list_receiver());
+
+            let rx = Paced::new(rx, clock.clone(), overall_send_rate);
+
+            spawner.spawn(channel::round_robin(rx, socket_senders));
+            info!("Finished spawning wheel tasks");
+        }
+    });
 
     // Distribute recv sockets across workers
     for (socket_id, socket) in recv_sockets.into_iter().enumerate() {
@@ -1236,7 +1391,7 @@ where
     }
 
     // Spawn all tasks for each busy poll worker
-    for worker in workers.into_iter() {
+    for (worker, worker_tx_receiver) in workers.into_iter().zip(worker_socket_receivers) {
         let busy_worker_idx = 1 + worker.id;
         let clock = clock.clone();
         let send_pool = send_pool.clone();
@@ -1358,13 +1513,34 @@ where
                 }
             });
 
+            // Create unsync channels for each socket on this worker
+            let mut socket_batch_senders = Vec::with_capacity(worker.send_sockets.len());
+            let mut socket_batch_receivers = Vec::with_capacity(worker.send_sockets.len());
+
+            for _ in 0..worker.send_sockets.len() {
+                let (tx, rx) = intrusive_queue::unsync::new();
+                socket_batch_senders.push(tx.into_list_sender());
+                socket_batch_receivers.push(rx.into_list_receiver());
+            }
+
+            // Spawn worker dispatcher task that drains from sync channel to unsync channels
+            {
+                let mut socket_senders = socket_batch_senders;
+
+                spawner.spawn(core::future::poll_fn(move |cx| {
+                    // Single lock to drain all socket queues and dispatch to unsync channels
+                    worker_tx_receiver.drain_to(&mut socket_senders);
+
+                    cx.waker().wake_by_ref();
+                    core::task::Poll::Pending
+                }));
+            }
+
             // Spawn send socket tasks for each socket on this worker
-            for socket_info in worker.send_sockets {
-                let SendSocketInfo {
-                    sender_id,
-                    socket,
-                    batch_rx,
-                } = socket_info;
+            for (socket_info, batch_rx) in
+                worker.send_sockets.into_iter().zip(socket_batch_receivers)
+            {
+                let SendSocketInfo { sender_id, socket } = socket_info;
 
                 // Create per-socket path contexts
                 let socket_contexts = Rc::new(SocketPathContexts::new(packet_size));
@@ -1377,7 +1553,6 @@ where
                 let error_tx = error_tx.clone();
                 let pool = send_pool.clone();
                 let clock = clock.clone();
-                let socket_send_counter = counters.register("socket_send");
                 let local_addr = socket.local_addr().unwrap();
                 let source_sender_id = VarInt::new(sender_id as u64).unwrap();
 
@@ -1409,19 +1584,25 @@ where
                 });
 
                 // Task 2: Channel -> Socket
-                spawner.spawn(async move {
-                    let rx = paced_rx;
+                spawner.spawn({
+                    let tx_counter = counters.register("socket.tx");
+                    let tx_bytes_counter = counters.register("socket.tx:bytes");
+                    async move {
+                        let rx = paced_rx;
 
-                    let rx = Paced::new(rx, clock.clone(), per_socket_send_rate);
-                    let rx = channel::Timing::new(rx, "paced");
+                        let rx = Paced::new(rx, clock.clone(), per_socket_send_rate);
+                        let rx = channel::Timing::new(rx, "paced");
 
-                    // Count batches right before socket transmission
-                    let rx = channel::Inspect::new(rx, move |_batch: &Entry<Batch<_>>| {
-                        socket_send_counter.fetch_add(1, Ordering::Relaxed);
-                    });
+                        // Count bytes right before socket transmission
+                        let rx = channel::Inspect::new(rx, move |batch: &Entry<Batch<_>>| {
+                            use channel::ByteCost;
+                            tx_counter.fetch_add(1, Ordering::Relaxed);
+                            tx_bytes_counter.fetch_add(batch.byte_cost(), Ordering::Relaxed);
+                        });
 
-                    batch_sender(socket, rx).await;
-                    info!(sender_id, ?local_addr, "Socket sender shutting down");
+                        batch_sender(socket, rx).await;
+                        info!(sender_id, ?local_addr, "Socket sender shutting down");
+                    }
                 });
             }
 
@@ -1664,7 +1845,7 @@ where
                             // Create a batch for the ACK control packet
                             let mut batch =
                                 s2n_quic_dc::datagram::batch::Batch::new(None, peer_addr.into());
-                            batch.datagrams.push_back(ack_packet.into());
+                            batch.push(ack_packet.into());
 
                             Ok(Entry::new(batch))
                         }
@@ -1700,24 +1881,37 @@ where
                 let local_addr = socket.local_addr().unwrap();
 
                 // Spawn socket receiver task
-                spawner.spawn(async move {
-                    // Build the receive pipeline
-                    let socket_rx = SocketReceiver::new(socket, recv_pool);
-                    let socket_rx = InspectErr::new(socket_rx, |err| {
-                        tracing::warn!(socket_id, %err, "Socket recv error");
-                    });
-                    let segments_rx = FlattenSegments::new(socket_rx);
-                    let segments_rx = Reporter::new(segments_rx, clock.clone(), false);
+                spawner.spawn({
+                    let recv_counter = counters.register("socket.rx");
+                    let recv_bytes_counter = counters.register("socket.rx:bytes");
+                    let decode_error_counter = counters.register("decode_error");
+                    async move {
+                        // Build the receive pipeline
+                        let rx = SocketReceiver::new(socket, recv_pool);
+                        // let rx = Paced::new(rx, clock.clone(), overall_send_rate);
 
-                    let router = ChannelRouter {
-                        datagram_tx,
-                        control_tx,
-                    };
-                    let pipeline = RouterAdapter::new(segments_rx, router);
+                        let rx = InspectErr::new(rx, |err| {
+                            tracing::warn!(socket_id, %err, "Socket recv error");
+                        });
+                        let rx = FlattenSegments::new(rx);
 
-                    pipeline.drain().await;
+                        // Track received bytes
+                        let rx = channel::Inspect::new(rx, move |segment: &descriptor::Filled| {
+                            recv_counter.fetch_add(1, Ordering::Relaxed);
+                            recv_bytes_counter.fetch_add(segment.len() as u64, Ordering::Relaxed);
+                        });
 
-                    info!(socket_id, ?local_addr, "Socket receiver shutting down");
+                        let router = ChannelRouter {
+                            datagram_tx,
+                            control_tx,
+                            decode_error_counter,
+                        };
+                        let pipeline = RouterAdapter::new(rx, router);
+
+                        pipeline.drain().await;
+
+                        info!(socket_id, ?local_addr, "Socket receiver shutting down");
+                    }
                 });
 
                 // Spawn datagram router task
@@ -1805,8 +1999,27 @@ where
         });
     }
 
-    // TODO: Spawn error handler to deal with failed batches
-    drop(error_rx);
+    // Spawn error handler to track failed batches
+    tokio::spawn({
+        let error_counter = counters.register("path_resolve_error");
+        async move {
+            let rx = error_rx;
+            let rx = channel::Map::new(rx, move |batch: Entry<Batch>| {
+                error_counter.fetch_add(1, Ordering::Relaxed);
+                tracing::warn!(
+                    peer_addr = ?batch.meta.peer_addr,
+                    total_bytes = batch.meta.total_bytes,
+                    num_datagrams = batch.datagrams.len(),
+                    "Batch failed path resolution"
+                );
+            });
+            rx.drain().await;
+            tracing::info!("Error handler shutting down");
+        }
+    });
 
-    Pipeline { wheel_input_tx }
+    Pipeline {
+        wheel_input_tx,
+        gso,
+    }
 }

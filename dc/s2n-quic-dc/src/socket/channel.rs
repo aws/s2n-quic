@@ -195,11 +195,17 @@ pub trait ReceiverExt<T>: Receiver<T> + Sized {
     where
         Self: Receiver<()>,
     {
-        async move {
-            while <Self as Receiver<()>>::recv(&mut self).await.is_some() {
-                // Just drain
+        core::future::poll_fn(move |cx| {
+            match self.poll_recv(cx) {
+                Poll::Pending => Poll::Pending,
+                Poll::Ready(None) => Poll::Ready(()),
+                Poll::Ready(Some(())) => {
+                    // Self-wake to process the next item
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                }
             }
-        }
+        })
     }
 
     /// Wraps the receiver with a debug adapter that logs received values.
@@ -355,23 +361,25 @@ where
         &mut self,
         cx: &mut task::Context<'_>,
     ) -> Poll<Option<crate::intrusive_queue::Entry<T>>> {
-        // Drain any buffered entries first
-        if let Some(entry) = self.queue.pop_front() {
-            // Self-wake to drain more entries
-            cx.waker().wake_by_ref();
-            return Poll::Ready(Some(entry));
-        }
-
-        // Try to pull the next queue from the inner receiver
-        match self.inner.poll_recv(cx) {
-            Poll::Ready(Some(queue)) => {
-                self.queue = queue;
-                // Self-wake to process the new queue
-                cx.waker().wake_by_ref();
-                Poll::Pending
+        loop {
+            // Drain any buffered entries first
+            if let Some(entry) = self.queue.pop_front() {
+                return Poll::Ready(Some(entry));
             }
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Pending => Poll::Pending,
+
+            // Try to pull the next queue from the inner receiver
+            match self.inner.poll_recv(cx) {
+                Poll::Ready(Some(queue)) => {
+                    if queue.is_empty() {
+                        // Self-wake to process the new queue
+                        cx.waker().wake_by_ref();
+                        return Poll::Pending;
+                    }
+                    self.queue = queue;
+                }
+                Poll::Ready(None) => return Poll::Ready(None),
+                Poll::Pending => return Poll::Pending,
+            }
         }
     }
 
@@ -1176,7 +1184,7 @@ where
     R: Receiver<crate::intrusive_queue::Entry<crate::packet::datagram::partial::PartialDatagram>>,
 {
     fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<()>> {
-        for _ in 0..5 {
+        for _ in 0..10 {
             match self.inner.poll_recv(cx) {
                 Poll::Ready(Some(mut entry)) => {
                     let bytes = Self::entry_bytes(&entry);
@@ -1189,8 +1197,7 @@ where
                         (Some(current), Some(new)) if current.queue_id() == new.queue_id() => {
                             self.current_batch_bytes += bytes;
                             self.current_batch.push_back(entry);
-                            // Put the sender back since we're keeping the same batch
-                            self.current_sender = Some(new);
+                            // Don't change the sender, since it matches the previous one
                         }
                         // Different sender or first entry - flush and start new batch
                         (_, Some(new_sender)) => {
@@ -2043,6 +2050,14 @@ where
             for (packet_size, mut datagram_entry) in
                 segment_sizes.into_iter().zip(batch.datagrams.drain())
             {
+                // TODO store control packets once we start ACKing them
+                if matches!(
+                    datagram_entry.packet_type,
+                    crate::packet::datagram::partial::PacketType::Control { .. }
+                ) {
+                    continue;
+                }
+
                 // Notify CCA about the sent packet
                 let cc_info = ctx.cca.on_packet_sent(
                     now.into(),
@@ -2175,13 +2190,13 @@ where
     R: Receiver<T>,
 {
     fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<T>> {
-        let start = std::time::Instant::now();
+        // let start = std::time::Instant::now();
         let result = self.inner.poll_recv(cx);
-        let elapsed = start.elapsed();
+        // let elapsed = start.elapsed();
 
-        if elapsed.as_millis() > 1 {
-            tracing::warn!(label = self.label, ?elapsed, "slow poll_recv detected");
-        }
+        // if elapsed.as_millis() > 1 {
+        // tracing::warn!(label = self.label, ?elapsed, "slow poll_recv detected");
+        // }
 
         result
     }
