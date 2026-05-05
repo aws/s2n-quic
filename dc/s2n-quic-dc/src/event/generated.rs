@@ -1638,6 +1638,23 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Emitted when a handshake packet is rejected due to an invalid field value"]
+    pub struct StreamHandshakePacketRejected {
+        pub reason: StreamHandshakePacketRejectedReason,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamHandshakePacketRejected {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamHandshakePacketRejected");
+            fmt.field("reason", &self.reason);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamHandshakePacketRejected {
+        const NAME: &'static str = "stream:handshake_packet_rejected";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct ConnectionClosed {}
     #[cfg(any(test, feature = "testing"))]
     impl crate::event::snapshot::Fmt for ConnectionClosed {
@@ -1752,6 +1769,27 @@ pub mod api {
                 Self::AbortedPendingHandshake { .. } => 2usize,
                 Self::AbortedPendingConnect { .. } => 3usize,
                 Self::AbortedPendingBoth { .. } => 4usize,
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub enum StreamHandshakePacketRejectedReason {
+        #[non_exhaustive]
+        #[doc = " The queue_id exceeds the maximum encodable value"]
+        InvalidQueueId {},
+    }
+    impl aggregate::AsVariant for StreamHandshakePacketRejectedReason {
+        const VARIANTS: &'static [aggregate::info::Variant] =
+            &[aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("INVALID_QUEUE_ID\0"),
+                id: 0usize,
+            }
+            .build()];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::InvalidQueueId { .. } => 0usize,
             }
         }
     }
@@ -3355,6 +3393,17 @@ pub mod tracing {
             let id = context.id();
             let api::StreamSenderErrored { error, source } = event;
             tracing :: event ! (target : "stream_sender_errored" , parent : id , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) , source = tracing :: field :: debug (source) });
+        }
+        #[inline]
+        fn on_stream_handshake_packet_rejected(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamHandshakePacketRejected,
+        ) {
+            let id = context.id();
+            let api::StreamHandshakePacketRejected { reason } = event;
+            tracing :: event ! (target : "stream_handshake_packet_rejected" , parent : id , tracing :: Level :: DEBUG , { reason = tracing :: field :: debug (reason) });
         }
         #[inline]
         fn on_connection_closed(
@@ -5361,6 +5410,20 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Emitted when a handshake packet is rejected due to an invalid field value"]
+    pub struct StreamHandshakePacketRejected {
+        pub reason: StreamHandshakePacketRejectedReason,
+    }
+    impl IntoEvent<api::StreamHandshakePacketRejected> for StreamHandshakePacketRejected {
+        #[inline]
+        fn into_event(self) -> api::StreamHandshakePacketRejected {
+            let StreamHandshakePacketRejected { reason } = self;
+            api::StreamHandshakePacketRejected {
+                reason: reason.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct ConnectionClosed {}
     impl IntoEvent<api::ConnectionClosed> for ConnectionClosed {
         #[inline]
@@ -5420,6 +5483,20 @@ pub mod builder {
                 Self::AbortedPendingHandshake => AbortedPendingHandshake {},
                 Self::AbortedPendingConnect => AbortedPendingConnect {},
                 Self::AbortedPendingBoth => AbortedPendingBoth {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub enum StreamHandshakePacketRejectedReason {
+        #[doc = " The queue_id exceeds the maximum encodable value"]
+        InvalidQueueId,
+    }
+    impl IntoEvent<api::StreamHandshakePacketRejectedReason> for StreamHandshakePacketRejectedReason {
+        #[inline]
+        fn into_event(self) -> api::StreamHandshakePacketRejectedReason {
+            use api::StreamHandshakePacketRejectedReason::*;
+            match self {
+                Self::InvalidQueueId => InvalidQueueId {},
             }
         }
     }
@@ -6868,6 +6945,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `StreamHandshakePacketRejected` event is triggered"]
+        #[inline]
+        fn on_stream_handshake_packet_rejected(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamHandshakePacketRejected,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `ConnectionClosed` event is triggered"]
         #[inline]
         fn on_connection_closed(
@@ -7770,6 +7859,16 @@ mod traits {
             self.as_ref().on_stream_sender_errored(context, meta, event);
         }
         #[inline]
+        fn on_stream_handshake_packet_rejected(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamHandshakePacketRejected,
+        ) {
+            self.as_ref()
+                .on_stream_handshake_packet_rejected(context, meta, event);
+        }
+        #[inline]
         fn on_connection_closed(
             &self,
             context: &Self::ConnectionContext,
@@ -8643,6 +8742,16 @@ mod traits {
         ) {
             (self.0).on_stream_sender_errored(&context.0, meta, event);
             (self.1).on_stream_sender_errored(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_handshake_packet_rejected(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamHandshakePacketRejected,
+        ) {
+            (self.0).on_stream_handshake_packet_rejected(&context.0, meta, event);
+            (self.1).on_stream_handshake_packet_rejected(&context.1, meta, event);
         }
         #[inline]
         fn on_connection_closed(
@@ -9727,6 +9836,11 @@ mod traits {
         fn on_stream_receiver_errored(&self, event: builder::StreamReceiverErrored);
         #[doc = "Publishes a `StreamSenderErrored` event to the publisher's subscriber"]
         fn on_stream_sender_errored(&self, event: builder::StreamSenderErrored);
+        #[doc = "Publishes a `StreamHandshakePacketRejected` event to the publisher's subscriber"]
+        fn on_stream_handshake_packet_rejected(
+            &self,
+            event: builder::StreamHandshakePacketRejected,
+        );
         #[doc = "Publishes a `ConnectionClosed` event to the publisher's subscriber"]
         fn on_connection_closed(&self, event: builder::ConnectionClosed);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
@@ -10049,6 +10163,18 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_stream_sender_errored(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_handshake_packet_rejected(
+            &self,
+            event: builder::StreamHandshakePacketRejected,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_handshake_packet_rejected(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -11036,6 +11162,7 @@ pub mod testing {
         pub stream_control_packet_received: AtomicU64,
         pub stream_receiver_errored: AtomicU64,
         pub stream_sender_errored: AtomicU64,
+        pub stream_handshake_packet_rejected: AtomicU64,
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub dc_connection_timeout: AtomicU64,
@@ -11161,6 +11288,7 @@ pub mod testing {
                 stream_control_packet_received: AtomicU64::new(0),
                 stream_receiver_errored: AtomicU64::new(0),
                 stream_sender_errored: AtomicU64::new(0),
+                stream_handshake_packet_rejected: AtomicU64::new(0),
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 dc_connection_timeout: AtomicU64::new(0),
@@ -11959,6 +12087,21 @@ pub mod testing {
                 self.output.lock().unwrap().push(out);
             }
         }
+        fn on_stream_handshake_packet_rejected(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamHandshakePacketRejected,
+        ) {
+            self.stream_handshake_packet_rejected
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
         fn on_connection_closed(
             &self,
             _context: &Self::ConnectionContext,
@@ -12448,6 +12591,7 @@ pub mod testing {
         pub stream_control_packet_received: AtomicU64,
         pub stream_receiver_errored: AtomicU64,
         pub stream_sender_errored: AtomicU64,
+        pub stream_handshake_packet_rejected: AtomicU64,
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub dc_connection_timeout: AtomicU64,
@@ -12563,6 +12707,7 @@ pub mod testing {
                 stream_control_packet_received: AtomicU64::new(0),
                 stream_receiver_errored: AtomicU64::new(0),
                 stream_sender_errored: AtomicU64::new(0),
+                stream_handshake_packet_rejected: AtomicU64::new(0),
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 dc_connection_timeout: AtomicU64::new(0),
@@ -13428,6 +13573,19 @@ pub mod testing {
         }
         fn on_stream_sender_errored(&self, event: builder::StreamSenderErrored) {
             self.stream_sender_errored.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_handshake_packet_rejected(
+            &self,
+            event: builder::StreamHandshakePacketRejected,
+        ) {
+            self.stream_handshake_packet_rejected
+                .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);

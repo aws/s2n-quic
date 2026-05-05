@@ -105,6 +105,13 @@ where
                             .store(server_queue_id.as_u64(), Ordering::Relaxed);
 
                         let _ = handshake.on_observation_finished();
+                    } else {
+                        use event::ConnectionPublisher as _;
+                        self.common.publisher().on_stream_handshake_packet_rejected(
+                            event::builder::StreamHandshakePacketRejected {
+                                reason: event::builder::StreamHandshakePacketRejectedReason::InvalidQueueId,
+                            },
+                        );
                     }
                 }
             }

@@ -230,6 +230,9 @@ mod id {
         STREAM_CONTROL_PACKET_RECEIVED__AUTHENTICATED,
         STREAM_RECEIVER_ERRORED,
         STREAM_SENDER_ERRORED,
+        STREAM_HANDSHAKE_PACKET_REJECTED,
+        STREAM_HANDSHAKE_PACKET_REJECTED__CONN,
+        STREAM_HANDSHAKE_PACKET_REJECTED__REASON,
         CONNECTION_CLOSED,
         ENDPOINT_INITIALIZED,
         ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL,
@@ -685,6 +688,12 @@ mod id {
         InfoId::STREAM_CONTROL_PACKET_RECEIVED__AUTHENTICATED as usize;
     pub const STREAM_RECEIVER_ERRORED: usize = InfoId::STREAM_RECEIVER_ERRORED as usize;
     pub const STREAM_SENDER_ERRORED: usize = InfoId::STREAM_SENDER_ERRORED as usize;
+    pub const STREAM_HANDSHAKE_PACKET_REJECTED: usize =
+        InfoId::STREAM_HANDSHAKE_PACKET_REJECTED as usize;
+    pub const STREAM_HANDSHAKE_PACKET_REJECTED__CONN: usize =
+        InfoId::STREAM_HANDSHAKE_PACKET_REJECTED__CONN as usize;
+    pub const STREAM_HANDSHAKE_PACKET_REJECTED__REASON: usize =
+        InfoId::STREAM_HANDSHAKE_PACKET_REJECTED__REASON as usize;
     pub const CONNECTION_CLOSED: usize = InfoId::CONNECTION_CLOSED as usize;
     pub const ENDPOINT_INITIALIZED: usize = InfoId::ENDPOINT_INITIALIZED as usize;
     pub const ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL: usize =
@@ -966,6 +975,7 @@ mod counter {
                 id::STREAM_CONTROL_PACKET_RECEIVED => Self(stream_control_packet_received),
                 id::STREAM_RECEIVER_ERRORED => Self(stream_receiver_errored),
                 id::STREAM_SENDER_ERRORED => Self(stream_sender_errored),
+                id::STREAM_HANDSHAKE_PACKET_REJECTED => Self(stream_handshake_packet_rejected),
                 id::CONNECTION_CLOSED => Self(connection_closed),
                 id::ENDPOINT_INITIALIZED => Self(endpoint_initialized),
                 id::DC_CONNECTION_TIMEOUT => Self(dc_connection_timeout),
@@ -1169,6 +1179,8 @@ mod counter {
             fn stream_receiver_errored(value: u64);
             # [link_name = s2n_quic_dc__event__counter__stream_sender_errored]
             fn stream_sender_errored(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_handshake_packet_rejected]
+            fn stream_handshake_packet_rejected(value: u64);
             # [link_name = s2n_quic_dc__event__counter__connection_closed]
             fn connection_closed(value: u64);
             # [link_name = s2n_quic_dc__event__counter__endpoint_initialized]
@@ -1384,6 +1396,9 @@ mod counter {
                     id::STREAM_CONNECT__TCP => Self(stream_connect__tcp),
                     id::STREAM_CONNECT__HANDSHAKE => Self(stream_connect__handshake),
                     id::STREAM_CONNECT_ERROR__REASON => Self(stream_connect_error__reason),
+                    id::STREAM_HANDSHAKE_PACKET_REJECTED__REASON => {
+                        Self(stream_handshake_packet_rejected__reason)
+                    }
                     id::ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL => {
                         Self(endpoint_initialized__acceptor__protocol)
                     }
@@ -1514,6 +1529,12 @@ mod counter {
                 fn stream_connect__handshake(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic_dc__event__counter__nominal__stream_connect_error__reason]
                 fn stream_connect_error__reason(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic_dc__event__counter__nominal__stream_handshake_packet_rejected__reason]
+                fn stream_handshake_packet_rejected__reason(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
                 # [link_name = s2n_quic_dc__event__counter__nominal__endpoint_initialized__acceptor__protocol]
                 fn endpoint_initialized__acceptor__protocol(
                     value: u64,
@@ -1898,6 +1919,9 @@ mod measure {
                 id::STREAM_CONTROL_PACKET_RECEIVED__CONTROL_DATA_LEN => {
                     Self(stream_control_packet_received__control_data_len)
                 }
+                id::STREAM_HANDSHAKE_PACKET_REJECTED__CONN => {
+                    Self(stream_handshake_packet_rejected__conn)
+                }
                 id::PATH_SECRET_MAP_INITIALIZED__CAPACITY => {
                     Self(path_secret_map_initialized__capacity)
                 }
@@ -2184,6 +2208,8 @@ mod measure {
             fn stream_control_packet_received__packet_len(value: u64);
             # [link_name = s2n_quic_dc__event__measure__stream_control_packet_received__control_data_len]
             fn stream_control_packet_received__control_data_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_handshake_packet_rejected__conn]
+            fn stream_handshake_packet_rejected__conn(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_initialized__capacity]
             fn path_secret_map_initialized__capacity(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_uninitialized__capacity]

@@ -57,6 +57,7 @@ pub struct Context<R: Recorder> {
     stream_control_packet_received: AtomicU64,
     stream_receiver_errored: AtomicU64,
     stream_sender_errored: AtomicU64,
+    stream_handshake_packet_rejected: AtomicU64,
     connection_closed: AtomicU64,
 }
 impl<R: Recorder> Context<R> {
@@ -110,6 +111,7 @@ where
             stream_control_packet_received: AtomicU64::new(0),
             stream_receiver_errored: AtomicU64::new(0),
             stream_sender_errored: AtomicU64::new(0),
+            stream_handshake_packet_rejected: AtomicU64::new(0),
             connection_closed: AtomicU64::new(0),
         }
     }
@@ -499,6 +501,19 @@ where
             .on_stream_sender_errored(&context.recorder, meta, event);
     }
     #[inline]
+    fn on_stream_handshake_packet_rejected(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamHandshakePacketRejected,
+    ) {
+        context
+            .stream_handshake_packet_rejected
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_handshake_packet_rejected(&context.recorder, meta, event);
+    }
+    #[inline]
     fn on_connection_closed(
         &self,
         context: &Self::ConnectionContext,
@@ -637,6 +652,11 @@ impl<R: Recorder> Drop for Context<R> {
         self.recorder.increment_counter(
             "stream_sender_errored",
             self.stream_sender_errored.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_handshake_packet_rejected",
+            self.stream_handshake_packet_rejected
+                .load(Ordering::Relaxed) as _,
         );
         self.recorder.increment_counter(
             "connection_closed",

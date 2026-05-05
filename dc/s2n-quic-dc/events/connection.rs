@@ -579,6 +579,19 @@ pub struct StreamSenderErrored {
     source: s2n_quic_core::endpoint::Location,
 }
 
+/// Emitted when a handshake packet is rejected due to an invalid field value
+#[event("stream:handshake_packet_rejected")]
+#[measure_counter("conn")]
+pub struct StreamHandshakePacketRejected {
+    #[nominal_counter("reason")]
+    reason: StreamHandshakePacketRejectedReason,
+}
+
+pub enum StreamHandshakePacketRejectedReason {
+    /// The queue_id exceeds the maximum encodable value
+    InvalidQueueId,
+}
+
 // NOTE - This event MUST come last, since connection-level aggregation depends on it
 #[event("connection:closed")]
 // #[checkpoint("latency")]
