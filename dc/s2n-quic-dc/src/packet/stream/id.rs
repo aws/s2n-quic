@@ -165,3 +165,143 @@ impl EncoderValue for Id {
         self.into_varint().encode(encoder)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use s2n_codec::{DecoderBuffer, EncoderBuffer};
+
+    const MAX_VALID: VarInt = unsafe { VarInt::new_unchecked(MAX_QUEUE_ID - 1) };
+    const TOO_LARGE: VarInt = unsafe { VarInt::new_unchecked(MAX_QUEUE_ID) };
+
+    #[test]
+    fn normal_rejects_at_boundary() {
+        assert!(Id::normal(MAX_VALID).is_some());
+        assert!(Id::normal(TOO_LARGE).is_none());
+    }
+
+    #[test]
+    fn unreliable_unidirectional_rejects_at_boundary() {
+        assert!(Id::unreliable_unidirectional(MAX_VALID).is_some());
+        assert!(Id::unreliable_unidirectional(TOO_LARGE).is_none());
+    }
+
+    #[test]
+    fn with_queue_id_rejects_at_boundary() {
+        let id = Id::normal(VarInt::ZERO).unwrap();
+        assert!(id.with_queue_id(MAX_VALID).is_some());
+        assert!(id.with_queue_id(TOO_LARGE).is_none());
+    }
+
+    #[test]
+    fn with_queue_id_preserves_flags() {
+        let id = Id::unreliable_unidirectional(VarInt::from_u8(1)).unwrap();
+        let updated = id.with_queue_id(VarInt::from_u8(2)).unwrap();
+        assert_eq!(updated.queue_id(), VarInt::from_u8(2));
+        assert!(!updated.is_reliable);
+        assert!(!updated.is_bidirectional);
+    }
+
+    #[test]
+    fn normal_sets_flags() {
+        let id = Id::normal(VarInt::from_u8(5)).unwrap();
+        assert!(id.is_reliable);
+        assert!(id.is_bidirectional);
+        assert_eq!(id.queue_id(), VarInt::from_u8(5));
+    }
+
+    #[test]
+    fn unreliable_unidirectional_clears_flags() {
+        let id = Id::unreliable_unidirectional(VarInt::from_u8(5)).unwrap();
+        assert!(!id.is_reliable);
+        assert!(!id.is_bidirectional);
+    }
+
+    #[test]
+    fn round_trip_varint() {
+        for queue_id in [0u64, 1, 100, MAX_QUEUE_ID - 1] {
+            let qid = VarInt::new(queue_id).unwrap();
+            for (reliable, bidirectional) in
+                [(true, true), (false, false), (true, false), (false, true)]
+            {
+                let id = Id::normal(qid).unwrap();
+                let id = if reliable {
+                    id.reliable()
+                } else {
+                    Id {
+                        is_reliable: false,
+                        ..id
+                    }
+                };
+                let id = if bidirectional {
+                    id.bidirectional()
+                } else {
+                    Id {
+                        is_bidirectional: false,
+                        ..id
+                    }
+                };
+
+                let v = id.into_varint();
+                let recovered = Id::from_varint(v).unwrap();
+                assert_eq!(id, recovered);
+            }
+        }
+    }
+
+    #[test]
+    fn round_trip_encode_decode() {
+        for queue_id in [0u64, 1, 42, MAX_QUEUE_ID - 1] {
+            let qid = VarInt::new(queue_id).unwrap();
+            let id = Id::normal(qid).unwrap();
+
+            let mut buf = [0u8; 16];
+            let len = {
+                let mut encoder = EncoderBuffer::new(&mut buf);
+                id.encode(&mut encoder);
+                encoder.len()
+            };
+
+            let decoder = DecoderBuffer::new(&buf[..len]);
+            let (decoded, _) = decoder.decode::<Id>().unwrap();
+            assert_eq!(id, decoded);
+        }
+    }
+
+    #[test]
+    fn from_varint_boundary() {
+        // The largest encoded value whose queue_id is still valid
+        let max_valid_encoded = VarInt::new((MAX_QUEUE_ID - 1) << 2 | 0b11).unwrap();
+        assert!(Id::from_varint(max_valid_encoded).is_some());
+
+        // One above the valid range (if representable as a VarInt)
+        if let Ok(over) = VarInt::new(MAX_QUEUE_ID << 2) {
+            assert!(Id::from_varint(over).is_none());
+        }
+    }
+
+    #[test]
+    fn zero_is_valid() {
+        let id = Id::normal(VarInt::ZERO).unwrap();
+        assert_eq!(id.queue_id(), VarInt::ZERO);
+    }
+
+    #[test]
+    fn bolero_round_trip() {
+        bolero::check!().with_type::<Id>().for_each(|id| {
+            let v = id.into_varint();
+            let recovered = Id::from_varint(v).unwrap();
+            assert_eq!(*id, recovered);
+
+            let mut buf = [0u8; 16];
+            let len = {
+                let mut encoder = EncoderBuffer::new(&mut buf);
+                id.encode(&mut encoder);
+                encoder.len()
+            };
+            let decoder = DecoderBuffer::new(&buf[..len]);
+            let (decoded, _) = decoder.decode::<Id>().unwrap();
+            assert_eq!(*id, decoded);
+        });
+    }
+}
