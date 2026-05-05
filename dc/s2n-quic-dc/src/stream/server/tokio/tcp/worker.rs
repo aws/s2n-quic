@@ -30,7 +30,7 @@ use s2n_quic_core::{
     time::{Clock, Timestamp},
 };
 use std::{future::Future, io, os::fd::OwnedFd, path::Path};
-use tracing::debug;
+use tracing::{debug, error};
 
 pub struct Context<Sub>
 where
@@ -506,8 +506,8 @@ where
                     }
                     WorkerOutput::RecordSojournTime
                 }
-                Err(_err) => {
-                    debug!("application accept queue dropped; shutting down");
+                Err(err) => {
+                    error!("application accept queue dropped; shutting down: {err:?}");
                     WorkerOutput::Exit
                 }
             }));
