@@ -2,8 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::fmt;
-use s2n_codec::{decoder_value, Encoder, EncoderValue};
+use s2n_codec::{decoder_value, DecoderError, Encoder, EncoderValue};
 use s2n_quic_core::{probe, varint::VarInt};
+
+/// The maximum queue_id that can be encoded without data loss.
+///
+/// The wire encoding is `(queue_id << 2) | flags`, which must fit in a 62-bit VarInt.
+/// Therefore queue_id must be strictly less than 2^60.
+const MAX_QUEUE_ID: u64 = 1 << 60;
+
+pub const IS_RELIABLE_MASK: u64 = 0b10;
+pub const IS_BIDIRECTIONAL_MASK: u64 = 0b01;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 #[cfg_attr(
@@ -11,8 +20,9 @@ use s2n_quic_core::{probe, varint::VarInt};
     derive(bolero_generator::TypeGenerator)
 )]
 pub struct Id {
+    // Private to preserve invariant (MAX_QUEUE_ID).
     #[cfg_attr(any(feature = "testing", test), generator(Self::GENERATOR))]
-    pub queue_id: VarInt,
+    queue_id: VarInt,
     pub is_reliable: bool,
     pub is_bidirectional: bool,
 }
@@ -45,7 +55,50 @@ impl probe::Arg for Id {
 impl Id {
     #[cfg(any(feature = "testing", test))]
     const GENERATOR: core::ops::Range<VarInt> =
-        VarInt::ZERO..unsafe { VarInt::new_unchecked(1 << 60) };
+        VarInt::ZERO..unsafe { VarInt::new_unchecked(MAX_QUEUE_ID) };
+
+    /// Creates a reliable, bidirectional Id.
+    /// Returns `None` if `queue_id` cannot be encoded.
+    #[inline]
+    pub fn normal(queue_id: VarInt) -> Option<Self> {
+        if *queue_id >= MAX_QUEUE_ID {
+            return None;
+        }
+        Some(Self {
+            queue_id,
+            is_reliable: true,
+            is_bidirectional: true,
+        })
+    }
+
+    /// Creates an unreliable, unidirectional Id.
+    /// Returns `None` if `queue_id` cannot be encoded.
+    #[inline]
+    pub fn unreliable_unidirectional(queue_id: VarInt) -> Option<Self> {
+        if *queue_id >= MAX_QUEUE_ID {
+            return None;
+        }
+        Some(Self {
+            queue_id,
+            is_reliable: false,
+            is_bidirectional: false,
+        })
+    }
+
+    /// Returns a copy with a different queue_id.
+    /// Returns `None` if `queue_id` cannot be encoded.
+    #[inline]
+    pub fn with_queue_id(self, queue_id: VarInt) -> Option<Self> {
+        if *queue_id >= MAX_QUEUE_ID {
+            return None;
+        }
+        Some(Self { queue_id, ..self })
+    }
+
+    #[inline]
+    pub fn queue_id(&self) -> VarInt {
+        self.queue_id
+    }
 
     #[inline]
     pub fn bidirectional(mut self) -> Self {
@@ -61,7 +114,9 @@ impl Id {
 
     #[inline]
     pub fn into_varint(self) -> VarInt {
-        let key_id = *self.queue_id;
+        let queue_id = *self.queue_id;
+        // Enforced by construction.
+        debug_assert!(queue_id < MAX_QUEUE_ID);
         let is_reliable = if self.is_reliable {
             IS_RELIABLE_MASK
         } else {
@@ -72,34 +127,34 @@ impl Id {
         } else {
             0b00
         };
-        // FIXME: We may need to clamp key IDs at 2^60 or move reliable/bidirectional out of the ID
-        // entirely, or not use a VarInt.
-        //
-        // This will panic at runtime when the key ID reaches 2^60th.
-        let value = (key_id << 2) | is_reliable | is_bidirectional;
+        let value = (queue_id << 2) | is_reliable | is_bidirectional;
         VarInt::new(value).unwrap()
     }
 
     #[inline]
-    pub fn from_varint(value: VarInt) -> Self {
+    fn from_varint(value: VarInt) -> Option<Self> {
+        let queue_id = *value >> 2;
+        if queue_id >= MAX_QUEUE_ID {
+            return None;
+        }
         let is_reliable = *value & IS_RELIABLE_MASK == IS_RELIABLE_MASK;
         let is_bidirectional = *value & IS_BIDIRECTIONAL_MASK == IS_BIDIRECTIONAL_MASK;
-        Self {
-            queue_id: VarInt::new(*value >> 2).unwrap(),
+        Some(Self {
+            queue_id: VarInt::new(queue_id).unwrap(),
             is_reliable,
             is_bidirectional,
-        }
+        })
     }
 }
-
-pub const IS_RELIABLE_MASK: u64 = 0b10;
-pub const IS_BIDIRECTIONAL_MASK: u64 = 0b01;
 
 decoder_value!(
     impl<'a> Id {
         fn decode(buffer: Buffer) -> Result<Self> {
             let (value, buffer) = buffer.decode::<VarInt>()?;
-            Ok((Self::from_varint(value), buffer))
+            let id = Self::from_varint(value).ok_or(DecoderError::InvariantViolation(
+                "stream ID queue_id exceeds maximum",
+            ))?;
+            Ok((id, buffer))
         }
     }
 );

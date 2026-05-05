@@ -144,11 +144,8 @@ where
     pub fn stream_id(&self) -> stream::Id {
         let queue_id = self.remote_queue_id.load(Ordering::Relaxed);
         // TODO support alternative modes
-        stream::Id {
-            queue_id: unsafe { VarInt::new_unchecked(queue_id) },
-            is_reliable: true,
-            is_bidirectional: true,
-        }
+        stream::Id::normal(unsafe { VarInt::new_unchecked(queue_id) })
+            .expect("queue_id exceeds encoding limit")
     }
 
     #[inline]

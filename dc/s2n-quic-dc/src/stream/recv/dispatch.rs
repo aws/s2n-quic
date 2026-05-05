@@ -207,7 +207,7 @@ impl crate::socket::recv::router::Router for Dispatch {
             return;
         };
 
-        let _ = self.send_control(id.queue_id, segment);
+        let _ = self.send_control(id.queue_id(), segment);
     }
 
     /// implement this so we don't get warnings about not handling it
@@ -228,7 +228,7 @@ impl crate::socket::recv::router::Router for Dispatch {
         _credentials: credentials::Credentials,
         segment: desc::Filled,
     ) {
-        let _ = self.send_stream(id.queue_id, segment);
+        let _ = self.send_stream(id.queue_id(), segment);
     }
 
     /// implement this so we don't get warnings about not handling it
