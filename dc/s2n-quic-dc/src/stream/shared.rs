@@ -99,10 +99,13 @@ where
 
                 // transition to steady state once the server provided its chosen `queue_id`
                 if let Some(server_queue_id) = remote_queue_id {
-                    self.remote_queue_id
-                        .store(server_queue_id.as_u64(), Ordering::Relaxed);
+                    // only accept queue_ids that can be encoded in a stream Id
+                    if stream::Id::normal(server_queue_id).is_some() {
+                        self.remote_queue_id
+                            .store(server_queue_id.as_u64(), Ordering::Relaxed);
 
-                    let _ = handshake.on_observation_finished();
+                        let _ = handshake.on_observation_finished();
+                    }
                 }
             }
             handshake::State::ServerQueueIdObserved => {
