@@ -89,6 +89,7 @@ impl Server {
             if #[cfg(any(test, feature = "testing"))] {
                 let server = {
                     let server = server
+                        .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
                         .with_limits(connection_limits)?
                         .with_dc(map.clone())?
                         .with_event((event, builder.event_subscriber))?
@@ -101,6 +102,7 @@ impl Server {
                 };
             } else {
                 let server = server
+                    .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
                     .with_limits(connection_limits)?
                     .with_dc(map.clone())?
                     .with_event((event, builder.event_subscriber))?
@@ -219,6 +221,7 @@ impl Client {
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
         let client = client
+            .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
             .with_limits(connection_limits)?
             .with_dc(map.clone())?
             .with_event((event, builder.event_subscriber))?
