@@ -3,7 +3,6 @@
 
 use super::{client, server};
 use crate::path::secret;
-use cfg_if::cfg_if;
 use rand::RngExt;
 use s2n_codec::DecoderBuffer;
 use s2n_quic::{
@@ -42,6 +41,9 @@ pub const DEFAULT_MTU: u16 = DEFAULT_BASE_MTU;
 /// Jitter PTO probes by 33% to prevent synchronized timeouts across multiple connections
 pub const DEFAULT_PTO_JITTER_PERCENTAGE: u8 = 33;
 const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(1);
+const DC_QUIC_VERSION: u32 = 0;
+/// Number of threads used to make progress on the TLS handshake
+pub const DEFAULT_THREAD_COUNT: usize = 0;
 
 const BUFFER_SIZE: usize = 16 * 1024;
 
@@ -99,32 +101,28 @@ impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
         server_params: &mut Vec<u8>,
     ) -> Option<std::result::Result<(), s2n_quic_core::transport::Error>> {
         let param_decoder = DecoderBuffer::new(client_params.transport_parameters);
-        let result =
-            match <ClientTransportParameters as s2n_codec::DecoderValue>::decode(param_decoder)
-                .map_err(|_| {
-                    //= https://www.rfc-editor.org/rfc/rfc9000#section-7.4
-                    //# An endpoint SHOULD treat receipt of
-                    //# duplicate transport parameters as a connection error of type
-                    //# TRANSPORT_PARAMETER_ERROR.
-                    s2n_quic_core::transport::Error::TRANSPORT_PARAMETER_ERROR
-                        .with_reason("Invalid transport parameters")
-                }) {
-                Ok((client_params, remaining)) => {
-                    debug_assert_eq!(remaining.len(), 0);
+        let Ok((client_params, remaining)) =
+            <ClientTransportParameters as s2n_codec::DecoderValue>::decode(param_decoder)
+        else {
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-7.4
+            //# An endpoint SHOULD treat receipt of
+            //# duplicate transport parameters as a connection error of type
+            //# TRANSPORT_PARAMETER_ERROR.
+            return Some(Err(
+                s2n_quic_core::transport::Error::TRANSPORT_PARAMETER_ERROR
+                    .with_reason("Invalid transport parameters"),
+            ));
+        };
 
-                    if let Some(selected_version) =
-                        s2n_quic_core::dc::select_version(client_params.dc_supported_versions)
-                    {
-                        s2n_quic_core::transport::parameters::DcSupportedVersions::for_server(
-                            selected_version,
-                        )
-                        .append_to_buffer(server_params);
-                    }
-                    Ok(())
-                }
-                Err(e) => Err(e),
-            };
-        Some(result)
+        debug_assert_eq!(remaining.len(), 0);
+
+        if let Some(selected_version) =
+            s2n_quic_core::dc::select_version(client_params.dc_supported_versions)
+        {
+            s2n_quic_core::transport::parameters::DcSupportedVersions::for_server(selected_version)
+                .append_to_buffer(server_params);
+        };
+        Some(Ok(()))
     }
 }
 
@@ -152,8 +150,6 @@ impl Server {
             .with_internal_recv_buffer_size(BUFFER_SIZE)?
             .build()?;
 
-        let server = s2n_quic::Server::builder().with_io(io)?;
-
         let initial_max_data = builder.initial_data_window.unwrap_or_else(|| {
             // default to only receive 10 packet worth before the application accepts the connection
             builder.mtu as u64 * 10
@@ -168,48 +164,52 @@ impl Server {
             .with_pto_jitter_percentage(builder.pto_jitter_percentage)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(builder.thread_offload_count)
-            .enable_all()
-            .build()?;
-
-        let tls = s2n_quic::provider::tls::offload::OffloadBuilder::new()
-            .with_endpoint(tls_materials_provider)
-            .with_exporter(DCExporter {
-                dc_version: 0,
-                endpoint_type: Type::Server,
-                map: map.clone(),
-            })
-            .with_executor(TokioExecutor { runtime })
-            .build();
-
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
-        cfg_if!(
-            if #[cfg(any(test, feature = "testing"))] {
-                let server = {
-                    let server = server
-                        .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
-                        .with_limits(connection_limits)?
-                        .with_dc(map.clone())?
-                        .with_event((event, builder.event_subscriber))?
-                        .with_tls(tls)?;
-                    if let Some(limiter) = builder.endpoint_limits {
-                        server.with_endpoint_limits(limiter)?.start()?
-                    } else {
-                        server.start()?
-                    }
-                };
-            } else {
-                let server = server
+        macro_rules! build_and_start {
+            ($tls:expr) => {{
+                let s = s2n_quic::Server::builder()
+                    .with_io(io)?
                     .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
                     .with_limits(connection_limits)?
                     .with_dc(map.clone())?
                     .with_event((event, builder.event_subscriber))?
-                    .with_tls(tls)?
-                    .start()?;
-            }
-        );
+                    .with_tls($tls)?;
+                #[cfg(any(test, feature = "testing"))]
+                let started = if let Some(limiter) = builder.endpoint_limits {
+                    s.with_endpoint_limits(limiter)?.start()?
+                } else {
+                    s.start()?
+                };
+                #[cfg(not(any(test, feature = "testing")))]
+                let started = s.start()?;
+                started
+            }};
+        }
+
+        let server = if builder.thread_offload_count > 0 {
+            // Hs=handshake, o=offload, s=server
+            let thread_name = format!("hsos-{}", builder.thread_offload_count);
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .thread_name(thread_name)
+                .worker_threads(builder.thread_offload_count)
+                .enable_all()
+                .build()?;
+
+            let tls = s2n_quic::provider::tls::offload::OffloadBuilder::new()
+                .with_endpoint(tls_materials_provider)
+                .with_exporter(DCExporter {
+                    dc_version: DC_QUIC_VERSION,
+                    endpoint_type: Type::Server,
+                    map: map.clone(),
+                })
+                .with_executor(TokioExecutor { runtime })
+                .build();
+
+            build_and_start!(tls)
+        } else {
+            build_and_start!(tls_materials_provider)
+        };
 
         Ok(Self { server })
     }

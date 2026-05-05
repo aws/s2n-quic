@@ -5,8 +5,8 @@ use crate::{
     path::secret,
     psk::io::{
         Result, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_DATA, DEFAULT_MTU, DEFAULT_PTO_JITTER_PERCENTAGE,
+        DEFAULT_THREAD_COUNT,
     },
-    stream::DEFAULT_THREAD_COUNT,
 };
 use s2n_quic::provider::{event::Subscriber as Sub, tls::Provider as Prov};
 use std::{net::SocketAddr, time::Duration};
@@ -135,11 +135,11 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
         self
     }
 
-    /// Controls the number of threads used to process incoming QUIC handshakes (default: 1)
+    /// Controls the number of extra threads used to process incoming TLS handshakes (default: off)
     ///
-    /// dc-quic offloads the QUIC handshake work to a separate thread outside of the main event loop
-    /// in order to avoid head of line blocking. Increase the thread count for better TPS in the case
-    /// of many clients trying to handshake with the server.
+    /// dc-quic can offload the TLS handshake work to separate threads outside of the main event loop
+    /// in order to avoid blocking the event loop. Increase the thread count for better TPS
+    /// in the case of many clients trying to handshake with the server.
     pub fn with_thread_count(mut self, count: usize) -> Self {
         self.thread_offload_count = count;
         self

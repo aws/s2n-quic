@@ -304,7 +304,8 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                             Err(context) => {
                                 // If the downcast failed then the context didn't originate from dc-quic.
                                 // Put it back so the user can access it later.
-                                self.tls_context = Some(context);},
+                                self.tls_context = Some(context);
+                            },
                         }
                     }
                     if session_info.session.should_discard_session() {
