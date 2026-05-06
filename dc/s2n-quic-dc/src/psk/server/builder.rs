@@ -135,11 +135,13 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
         self
     }
 
-    /// Controls the number of extra threads used to process incoming TLS handshakes (default: off)
+    /// Controls the number of extra threads used to process incoming TLS handshakes
     ///
     /// dc-quic can offload the TLS handshake work to separate threads outside of the main event loop
     /// in order to avoid blocking the event loop. Increase the thread count for better TPS
     /// in the case of many clients trying to handshake with the server.
+    /// - 0: Offloading not enabled
+    /// - 1+: One extra thread performing offload from primary event loop
     pub fn with_thread_count(mut self, count: usize) -> Self {
         self.thread_offload_count = count;
         self

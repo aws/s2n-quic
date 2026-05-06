@@ -183,10 +183,9 @@ impl Server {
         }
 
         let server = if builder.thread_offload_count > 0 {
-            // Hs=handshake, o=offload, s=server
-            let thread_name = format!("hsos-{}", builder.thread_offload_count);
             let runtime = tokio::runtime::Builder::new_multi_thread()
-                .thread_name(thread_name)
+                // Hs=handshake, s=server, offload
+                .thread_name("hs-s-offload")
                 .worker_threads(builder.thread_offload_count)
                 .enable_all()
                 .build()?;
