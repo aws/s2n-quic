@@ -137,7 +137,12 @@ pub struct PathSecret {
     token: s2n_quic_core::stateless_reset::Token,
 }
 
-type PathSecretRes = Result<PathSecret, Box<dyn Error + Send + Sync>>;
+pub struct PathSecretErr {
+    error: s2n_quic_core::transport::Error,
+    application_err: Option<Box<dyn Error + Send + Sync>>,
+}
+
+type PathSecretRes = Result<PathSecret, PathSecretErr>;
 
 pub fn on_path_secrets_ready(
     dc_version: u32,
@@ -147,7 +152,12 @@ pub fn on_path_secrets_ready(
 ) -> PathSecretRes {
     let application_data = match map.store.application_data(session) {
         Ok(application_data) => application_data,
-        Err(e) => return Err(e.inner),
+        Err(err) => {
+            return Err(PathSecretErr {
+                error: s2n_quic_core::transport::Error::APPLICATION_ERROR.with_reason(err.msg),
+                application_err: Some(err.inner),
+            });
+        }
     };
 
     let mut material = Zeroizing::new([0; TLS_EXPORTER_LENGTH]);
@@ -157,8 +167,10 @@ pub fn on_path_secrets_ready(
             TLS_EXPORTER_CONTEXT.as_bytes(),
             &mut *material,
         )
-        .map_err(|_| {
-            s2n_quic_core::transport::Error::INTERNAL_ERROR.with_reason("tls exporter failed")
+        .map_err(|_| PathSecretErr {
+            error: s2n_quic_core::transport::Error::INTERNAL_ERROR
+                .with_reason("tls exporter failed"),
+            application_err: None,
         })?;
 
     let cipher_suite = match session.cipher_suite() {
@@ -169,10 +181,11 @@ pub fn on_path_secrets_ready(
             schedule::Ciphersuite::AES_GCM_256_SHA384
         }
         _ => {
-            return Err(Box::new(
-                s2n_quic_core::transport::Error::INTERNAL_ERROR
+            return Err(PathSecretErr {
+                error: s2n_quic_core::transport::Error::INTERNAL_ERROR
                     .with_reason("unsupported ciphersuite"),
-            ))
+                application_err: None,
+            })
         }
     };
 
@@ -199,8 +212,8 @@ impl HandshakingPathInner {
                 Ok(vec![path_secret.token])
             }
             Err(e) => {
-                self.error = Some(e);
-                Err(s2n_quic_core::transport::Error::INTERNAL_ERROR)
+                self.error = e.application_err;
+                Err(e.error)
             }
         }
     }
@@ -262,8 +275,8 @@ impl HandshakingPathInner {
                     Ok(vec![path_secret.token])
                 }
                 Err(e) => {
-                    self.error = Some(e);
-                    Err(s2n_quic_core::transport::Error::INTERNAL_ERROR)
+                    self.error = e.application_err;
+                    Err(e.error)
                 }
             }
         } else {
