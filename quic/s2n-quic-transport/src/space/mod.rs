@@ -18,7 +18,6 @@ use core::{
     task::{Poll, Waker},
 };
 use s2n_codec::DecoderBufferMut;
-use s2n_quic_core::dc::Endpoint;
 use s2n_quic_core::{
     application::ServerName,
     connection::{limits::Limits, InitialId, PeerId},
@@ -26,6 +25,7 @@ use s2n_quic_core::{
         tls::{self, Session},
         CryptoSuite, Key,
     },
+    dc::Endpoint,
     event::{self, IntoEvent},
     frame::{
         ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
