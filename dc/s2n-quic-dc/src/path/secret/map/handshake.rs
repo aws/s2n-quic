@@ -10,7 +10,6 @@ use parking_lot::Mutex;
 use s2n_quic_core::{
     dc::{self, ApplicationParams, DatagramInfo},
     endpoint, ensure, event,
-    stateless_reset::Token,
 };
 use std::{error::Error, net::SocketAddr, sync::Arc};
 use zeroize::Zeroizing;
