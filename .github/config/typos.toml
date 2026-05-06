@@ -11,6 +11,8 @@ check-filename = true
 controllen = "controllen"
 # ECN Capable Transport
 ect = "ect"
+# inline assembly operand constraint
+inout = "inout"
 # num_rational uses "numer" as short for "numerator"
 numer = "numer"
 # Packet number
