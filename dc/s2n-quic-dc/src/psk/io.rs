@@ -712,7 +712,7 @@ mod tests {
 
     impl TestSetup {
         /// Creates a test setup with an optional endpoint limiter for the server
-        async fn new<L>(endpoint_limits: Option<L>) -> Self
+        async fn new<L>(endpoint_limits: Option<L>, server_builder: server::Builder) -> Self
         where
             L: s2n_quic::provider::endpoint_limits::Limiter + Send + Sync + 'static,
         {
@@ -729,7 +729,6 @@ mod tests {
                 subscriber.clone(),
             );
 
-            let server_builder = crate::psk::server::Builder::default();
             let (server_addr_rx, server_guard) = if let Some(limiter) = endpoint_limits {
                 crate::psk::server::Provider::setup(
                     "127.0.0.1:0".parse().unwrap(),
@@ -789,7 +788,8 @@ mod tests {
     /// - If entry still exists (1-second delay active): cleanup is still sleeping
     #[tokio::test]
     async fn mtu_probing_complete_no_delay_test() {
-        let setup = TestSetup::new::<CloseAllConnectionsLimiter>(None).await;
+        let server_builder = crate::psk::server::Builder::default();
+        let setup = TestSetup::new::<CloseAllConnectionsLimiter>(None, server_builder).await;
         let server_name: s2n_quic::server::Name = "localhost".into();
 
         // First handshake
@@ -835,7 +835,8 @@ mod tests {
     /// connection close signal and returns immediately rather than blocking.
     #[tokio::test]
     async fn server_close_connection_no_delay_test() {
-        let setup = TestSetup::new(Some(CloseAllConnectionsLimiter)).await;
+        let server_builder = crate::psk::server::Builder::default();
+        let setup = TestSetup::new(Some(CloseAllConnectionsLimiter), server_builder).await;
         let server_name: s2n_quic::server::Name = "localhost".into();
 
         // Attempt to connect - the server should immediately close the connection
@@ -949,5 +950,22 @@ mod tests {
             err_msg.contains("CERTIFICATE_UNKNOWN"),
             "Expected CERTIFICATE_UNKNOWN, got: {err_msg}"
         );
+    }
+
+    /// Sanity check that a server with offloading enabled can successfully complete a dc-quic handshake
+    #[tokio::test]
+    async fn server_offloading() {
+        const TEST_THREAD_COUNT: usize = 8;
+        let server_builder =
+            crate::psk::server::Builder::default().with_thread_count(TEST_THREAD_COUNT);
+
+        let setup = TestSetup::new::<CloseAllConnectionsLimiter>(None, server_builder).await;
+        let server_name: s2n_quic::server::Name = "localhost".into();
+
+        setup
+            .client
+            .connect(setup.server_addr, HandshakeReason::User, server_name)
+            .await
+            .unwrap();
     }
 }
