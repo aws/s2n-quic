@@ -10,6 +10,7 @@ use parking_lot::Mutex;
 use s2n_quic_core::{
     dc::{self, ApplicationParams, DatagramInfo},
     endpoint, ensure, event,
+    stateless_reset::Token,
 };
 use std::{error::Error, net::SocketAddr, sync::Arc};
 use zeroize::Zeroizing;
@@ -123,33 +124,31 @@ impl dc::Path for HandshakingPath {
         self.inner.lock().on_mtu_updated(mtu);
     }
 
-    fn on_secret(&mut self, secret: Box<dyn std::any::Any + Send + 'static>) {
-        self.inner.lock().on_secret(secret);
+    fn on_secret(
+        &mut self,
+        secret: Box<dyn std::any::Any + Send + 'static>,
+    ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
+        self.inner.lock().on_secret(secret)
     }
 }
 
-#[derive(Default)]
-pub struct PathSecrets {
-    secret: Option<schedule::Secret>,
+pub struct PathSecret {
+    secret: schedule::Secret,
     application_data: Option<ApplicationData>,
-    error: Option<Box<dyn Error + Send + Sync>>,
+    token: s2n_quic_core::stateless_reset::Token,
 }
+
+type PathSecretRes = Result<PathSecret, Box<dyn Error + Send + Sync>>;
 
 pub fn on_path_secrets_ready(
     dc_version: u32,
     endpoint_type: endpoint::Type,
     map: &Map,
     session: &impl s2n_quic_core::crypto::tls::TlsSession,
-) -> Result<(PathSecrets, s2n_quic_core::stateless_reset::Token), s2n_quic_core::transport::Error> {
-    let mut path_secrets = PathSecrets::default();
-    match map.store.application_data(session) {
-        Ok(application_data) => {
-            path_secrets.application_data = application_data;
-        }
-        Err(err) => {
-            path_secrets.error = Some(err.inner);
-            return Err(s2n_quic_core::transport::Error::APPLICATION_ERROR.with_reason(err.msg));
-        }
+) -> PathSecretRes {
+    let application_data = match map.store.application_data(session) {
+        Ok(application_data) => application_data,
+        Err(e) => return Err(e.inner),
     };
 
     let mut material = Zeroizing::new([0; TLS_EXPORTER_LENGTH]);
@@ -171,17 +170,22 @@ pub fn on_path_secrets_ready(
             schedule::Ciphersuite::AES_GCM_256_SHA384
         }
         _ => {
-            return Err(s2n_quic_core::transport::Error::INTERNAL_ERROR
-                .with_reason("unsupported ciphersuite"))
+            return Err(Box::new(
+                s2n_quic_core::transport::Error::INTERNAL_ERROR
+                    .with_reason("unsupported ciphersuite"),
+            ))
         }
     };
 
     let secret = schedule::Secret::new(cipher_suite, dc_version, endpoint_type, &material);
 
-    let stateless_reset = map.store.signer().sign(secret.id());
-    path_secrets.secret = Some(secret);
-
-    Ok((path_secrets, stateless_reset.into()))
+    let token = map.store.signer().sign(secret.id());
+    let path_secret = PathSecret {
+        secret,
+        application_data,
+        token: token.into(),
+    };
+    Ok(path_secret)
 }
 
 impl HandshakingPathInner {
@@ -189,14 +193,17 @@ impl HandshakingPathInner {
         &mut self,
         session: &impl s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
-        let (path_secrets, token) =
-            on_path_secrets_ready(self.dc_version, self.endpoint_type, &self.map, session)?;
-
-        self.secret = path_secrets.secret;
-        self.application_data = path_secrets.application_data;
-        self.error = path_secrets.error;
-
-        Ok(vec![token])
+        match on_path_secrets_ready(self.dc_version, self.endpoint_type, &self.map, session) {
+            Ok(path_secret) => {
+                self.secret = Some(path_secret.secret);
+                self.application_data = path_secret.application_data;
+                Ok(vec![path_secret.token])
+            }
+            Err(e) => {
+                self.error = Some(e);
+                Err(s2n_quic_core::transport::Error::INTERNAL_ERROR)
+            }
+        }
     }
 
     fn on_peer_stateless_reset_tokens<'a>(
@@ -244,11 +251,24 @@ impl HandshakingPathInner {
         }
     }
 
-    fn on_secret(&mut self, secret: Box<dyn std::any::Any + Send + 'static>) {
-        if let Ok(path_secrets) = secret.downcast::<PathSecrets>() {
-            self.application_data = path_secrets.application_data;
-            self.error = path_secrets.error;
-            self.secret = path_secrets.secret;
+    fn on_secret(
+        &mut self,
+        secret: Box<dyn std::any::Any + Send + 'static>,
+    ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
+        if let Ok(path_secret_res) = secret.downcast::<PathSecretRes>() {
+            match *path_secret_res {
+                Ok(path_secret) => {
+                    self.application_data = path_secret.application_data;
+                    self.secret = Some(path_secret.secret);
+                    Ok(vec![path_secret.token])
+                }
+                Err(e) => {
+                    self.error = Some(e);
+                    Err(s2n_quic_core::transport::Error::INTERNAL_ERROR)
+                }
+            }
+        } else {
+            Err(s2n_quic_core::transport::Error::INTERNAL_ERROR)
         }
     }
 }

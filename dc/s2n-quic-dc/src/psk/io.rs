@@ -78,21 +78,16 @@ impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
     fn on_tls_exporter_ready(
         &self,
         session: &impl s2n_quic_core::crypto::tls::TlsSession,
-    ) -> Option<Result<Box<dyn Any + Send>, s2n_quic_core::transport::Error>> {
-        let result = match crate::path::secret::map::handshake::on_path_secrets_ready(
+    ) -> Option<Box<dyn Any + Send>> {
+        let result = crate::path::secret::map::handshake::on_path_secrets_ready(
             self.dc_version,
             self.endpoint_type,
             &self.map,
             session,
-        ) {
-            Ok((path_secret, stateless_reset)) => {
-                let secret_box: Box<dyn Any + Send> = Box::new(path_secret);
-                let pair: Box<dyn Any + Send> = Box::new((stateless_reset, secret_box));
-                Ok(pair)
-            }
-            Err(e) => Err(e),
-        };
-        Some(result)
+        );
+
+        let boxed_result: Box<dyn Any + Send> = Box::new(result);
+        Some(boxed_result)
     }
 
     fn on_client_application_params(

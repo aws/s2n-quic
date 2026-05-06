@@ -1449,14 +1449,8 @@ impl ExporterHandler for Exporter {
     fn on_tls_exporter_ready(
         &self,
         _session: &impl s2n_quic_core::crypto::tls::TlsSession,
-    ) -> Option<Result<Box<dyn std::any::Any + Send>, s2n_quic_core::transport::Error>> {
-        // This test doesn't actually use the dc-quic secret, so we construct a fake one and pass
-        // it back through so that the downcast works correctly.
-        let secret_box: Box<dyn std::any::Any + Send> = Box::new(0);
-        Some(Ok(Box::new((
-            self.stateless_reset_tokens.clone()[0],
-            secret_box,
-        ))))
+    ) -> Option<Box<dyn std::any::Any + Send>> {
+        Some(Box::new((self.stateless_reset_tokens.clone()[0],)))
     }
 
     fn on_client_application_params(

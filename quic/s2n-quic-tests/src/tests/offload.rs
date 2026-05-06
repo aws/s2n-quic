@@ -26,7 +26,7 @@ impl ExporterHandler for Exporter {
     fn on_tls_exporter_ready(
         &self,
         _session: &impl s2n_quic_core::crypto::tls::TlsSession,
-    ) -> Option<Result<Box<dyn std::any::Any + Send>, s2n_quic_core::transport::Error>> {
+    ) -> Option<Box<dyn std::any::Any + Send>> {
         None
     }
 

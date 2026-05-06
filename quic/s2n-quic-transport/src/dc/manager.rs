@@ -115,17 +115,14 @@ impl<Config: endpoint::Config> Manager<Config> {
     pub fn on_token<Pub: event::ConnectionPublisher>(
         &mut self,
         context: Box<dyn Any + Send>,
-        token: stateless_reset::Token,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        self.path.on_secret(context);
+        let token = self.path.on_secret(context)?;
         ensure!(
             self.state.on_path_secrets_ready().is_ok(),
             Err(transport::Error::INTERNAL_ERROR)
         );
-        self.stateless_reset_token_sync = Flag::new(DcStatelessResetTokenWriter {
-            tokens: vec![token],
-        });
+        self.stateless_reset_token_sync = Flag::new(DcStatelessResetTokenWriter { tokens: token });
         publisher.on_dc_state_changed(DcStateChanged {
             state: DcState::PathSecretsReady,
         });

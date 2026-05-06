@@ -111,9 +111,13 @@ impl dc::Path for MockDcPath {
         self.mtu = mtu
     }
 
-    fn on_secret(&mut self, _secret: Box<dyn std::any::Any + Send + 'static>) {
-        assert_eq!(0, self.on_path_secrets_ready_count);
+    fn on_secret(
+        &mut self,
+        _secret: Box<dyn std::any::Any + Send + 'static>,
+    ) -> Result<Vec<stateless_reset::Token>, transport::Error> {
+        debug_assert_eq!(0, self.on_path_secrets_ready_count);
         self.on_path_secrets_ready_count += 1;
+        Ok(self.stateless_reset_tokens.clone())
     }
 }
 

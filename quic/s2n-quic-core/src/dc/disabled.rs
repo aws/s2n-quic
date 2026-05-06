@@ -57,7 +57,10 @@ impl Path for () {
         unimplemented!()
     }
 
-    fn on_secret(&mut self, _secret: alloc::boxed::Box<dyn core::any::Any + Send + 'static>) {
+    fn on_secret(
+        &mut self,
+        _secret: alloc::boxed::Box<dyn core::any::Any + Send + 'static>,
+    ) -> Result<Vec<stateless_reset::Token>, transport::Error> {
         unimplemented!()
     }
 }

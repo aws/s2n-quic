@@ -18,6 +18,7 @@ use core::{
     task::{Poll, Waker},
 };
 use s2n_codec::DecoderBufferMut;
+use s2n_quic_core::dc::Endpoint;
 use s2n_quic_core::{
     application::ServerName,
     connection::{limits::Limits, InitialId, PeerId},
@@ -290,24 +291,16 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
             match session_info.session.poll(&mut context)? {
                 Poll::Ready(_success) => {
-                    if let Some(context) = self.tls_context.take() {
-                        /* Check if the context came from dc-quic + offload feature */
-                        match context.downcast::<(s2n_quic_core::stateless_reset::Token, Box<dyn Any + Send>)>() {
-                            Ok(inner) => {
-                            let (token, context) = *inner;
+                    if Config::DcEndpoint::ENABLED {
+                        if let Some(context) = self.tls_context.take() {
                             self.application
                                 .as_mut()
                                 .unwrap()
                                 .dc_manager
-                                .on_token(context, token, publisher)?;
-                        }
-                            Err(context) => {
-                                // If the downcast failed then the context didn't originate from dc-quic.
-                                // Put it back so the user can access it later.
-                                self.tls_context = Some(context);
-                            },
+                                .on_token(context, publisher)?;
                         }
                     }
+
                     if session_info.session.should_discard_session() {
                         self.discard_session();
                     }

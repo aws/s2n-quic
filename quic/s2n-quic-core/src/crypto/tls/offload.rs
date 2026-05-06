@@ -26,10 +26,7 @@ pub trait ExporterHandler {
         session: &impl TlsSession,
         e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Option<Box<dyn Any + Send>>;
-    fn on_tls_exporter_ready(
-        &self,
-        session: &impl TlsSession,
-    ) -> Option<Result<Box<dyn Any + Send>, crate::transport::Error>>;
+    fn on_tls_exporter_ready(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
     fn on_client_application_params(
         &mut self,
         client_params: ApplicationParameters,
@@ -47,10 +44,7 @@ impl ExporterHandler for () {
         None
     }
 
-    fn on_tls_exporter_ready(
-        &self,
-        _session: &impl TlsSession,
-    ) -> Option<Result<Box<dyn Any + Send>, crate::transport::Error>> {
+    fn on_tls_exporter_ready(&self, _session: &impl TlsSession) -> Option<Box<dyn Any + Send>> {
         None
     }
 
@@ -504,8 +498,7 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
         session: &impl TlsSession,
     ) -> Result<(), crate::transport::Error> {
         if let Some(result) = self.exporter_handler.on_tls_exporter_ready(session) {
-            let context = result?;
-            match self.send_to_quic.push(Request::TlsContext(context)) {
+            match self.send_to_quic.push(Request::TlsContext(result)) {
                 Ok(_) => (),
                 Err(_) => self.error = Some(SLICE_ERROR),
             }
