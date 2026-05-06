@@ -810,9 +810,7 @@
       "client",
       "server"
     ],
-    "kwik": [
-      "client"
-    ],
+    "kwik": [],
     "lsquic": [
       "client",
       "server"
@@ -863,9 +861,7 @@
       "client",
       "server"
     ],
-    "kwik": [
-      "client"
-    ],
+    "kwik": [],
     "lsquic": [
       "client",
       "server"
