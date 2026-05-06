@@ -4,7 +4,15 @@
 use s2n_quic::provider::connection_close_formatter::{ConnectionClose, Context, Formatter};
 use s2n_quic_core::{application, transport};
 
-/// A formatter that passes transport errors through for debuggability.
+/// A formatter that passes transport errors through transparently.
+///
+/// This differs from the default [`Production`](s2n_quic_core::connection::close::Production) formatter
+/// by preserving specific TLS alert codes (e.g., `CERTIFICATE_UNKNOWN`) over the wire.
+/// Unlike the [`Development`](s2n_quic_core::connection::close::Development) formatter
+/// this does clear the Reason Phrase field for early closure to remain compliant with RFC 9000.
+///
+/// This formatter is safe to use in controlled environments where both peers are
+/// generally expected to be trusted infrastructure.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TransparentTransport;
 
