@@ -71,6 +71,12 @@ impl Receiver {
             packet_data.extend_from_slice(iov_slice);
         }
 
+        // NOTE: In nix 0.31.x, cmsgs() returns Err(ENOBUFS) if MSG_CTRUNC is set
+        // (i.e., the cmsg buffer was too small). If that happens, any FDs the kernel
+        // already installed into our fd table will be leaked since we never wrap them
+        // in OwnedFd. This can only be triggered by a local sender crafting a message
+        // with more FDs than our buffer expects, so we accept the leak rather than
+        // adding unsafe raw-cmsg parsing.
         for cmsg in msg.cmsgs()? {
             if let ControlMessageOwned::ScmRights(fds) = cmsg {
                 if let Some(&fd) = fds.first() {
