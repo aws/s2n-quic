@@ -9,6 +9,8 @@
 
 set -e
 
+"$(dirname "$0")/typos"
+"$(dirname "$0")/copyright_check"
 cargo +nightly fmt --all -- --check
 cargo +stable clippy --all-features --all-targets -- -D warnings
 cargo test
