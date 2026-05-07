@@ -1314,7 +1314,7 @@ where
                                 let mut new_builder =
                                     crate::datagram::batch::Builder::new(None, peer_addr);
                                 let _ = new_builder.try_push(rejected_entry); // Should always succeed
-                                // Note: try_push automatically sets sticky sender_id if needed
+                                                                              // Note: try_push automatically sets sticky sender_id if needed
 
                                 self.current_builder = Some(new_builder);
 
@@ -1774,6 +1774,11 @@ pub struct PathContext<Sealer> {
     pub credentials: crate::credentials::Credentials,
     /// Next packet number to assign (per-path counter)
     pub next_packet_number: VarInt,
+    /// Next attempt ID for FlowInit/FlowInitValidate packets (per-sender counter)
+    ///
+    /// This is a monotonically increasing identifier used for server-side deduplication
+    /// of flow initialization attempts. Scoped to (credentials, source_sender_id).
+    pub flow_attempt_id_counter: VarInt,
     /// Congestion controller for this path
     pub cca: crate::congestion::Controller,
     /// RTT estimator for this path

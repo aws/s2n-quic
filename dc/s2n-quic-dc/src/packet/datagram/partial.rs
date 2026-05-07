@@ -244,6 +244,7 @@ impl PartialDatagram {
         packet_number: VarInt,
         sealer: &Sealer,
         credentials: &Credentials,
+        flow_attempt_id: &mut VarInt,
     ) -> usize
     where
         Sealer: crate::crypto::seal::Application,
@@ -254,7 +255,9 @@ impl PartialDatagram {
                 header,
                 payload,
             } => {
+                routing_info.set_attempt_id(flow_attempt_id);
                 let routing_info = routing_info.with_source_sender_id(source_sender_id);
+                routing_info.before_encode();
                 let header_len =
                     HeaderLen::new(header.len() as u64).expect("header length fits in VarInt");
                 let payload_len =

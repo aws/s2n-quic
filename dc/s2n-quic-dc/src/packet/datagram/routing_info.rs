@@ -213,106 +213,160 @@ impl RoutingInfo {
         }
     }
 
-    /// Update the source sender ID in routing info
+    /// Fill in the attempt ID for FlowInit and FlowInitValidate packets
     ///
-    /// For FlowInit and FlowInitValidate packets, this enforces stickiness - the sender_id
-    /// must either match the existing value or be VarInt::MAX (the sentinel value used
-    /// when the application initially submits the packet).
-    pub fn with_source_sender_id(&self, source_sender_id: VarInt) -> Self {
+    /// The attempt_id is a monotonically increasing per-sender identifier used for
+    /// deduplication on the server side. This method increments the counter if the
+    /// packet has the sentinel value (VarInt::MAX).
+    pub fn set_attempt_id(&mut self, attempt_id_counter: &mut VarInt) {
         match self {
-            Self::None => Self::None,
-            Self::FlowInit {
-                source_sender_id: existing_sender_id,
-                source_queue_id,
-                dest_acceptor_id,
-                attempt_id,
-                stream_id,
-                is_fin,
-            } => {
-                // FlowInit packets must be sticky to a specific sender_id
-                debug_assert!(
-                    *existing_sender_id == VarInt::MAX || *existing_sender_id == source_sender_id,
-                    "FlowInit sender_id mismatch: existing={:?}, new={:?}",
-                    existing_sender_id,
-                    source_sender_id
-                );
-                Self::FlowInit {
-                    source_sender_id,
-                    source_queue_id: *source_queue_id,
-                    dest_acceptor_id: *dest_acceptor_id,
-                    attempt_id: *attempt_id,
-                    stream_id: *stream_id,
-                    is_fin: *is_fin,
+            Self::FlowInit { attempt_id, .. } | Self::FlowInitValidate { attempt_id, .. } => {
+                if *attempt_id == VarInt::MAX {
+                    // Sentinel value - allocate a new attempt_id
+                    *attempt_id = *attempt_id_counter;
+                    *attempt_id_counter += 1;
                 }
+            }
+            // Other packet types don't have attempt_id
+            _ => {}
+        }
+    }
+
+    /// Validate that sentinel values have been filled before encoding
+    ///
+    /// This should be called just before encoding to ensure all required fields
+    /// have been populated. In debug builds, this will panic if sentinel values remain.
+    pub fn before_encode(&self) {
+        #[cfg(debug_assertions)]
+        match self {
+            Self::None => {}
+            Self::FlowInit {
+                source_sender_id,
+                attempt_id,
+                ..
+            } => {
+                debug_assert_ne!(
+                    *source_sender_id,
+                    VarInt::MAX,
+                    "FlowInit source_sender_id must be filled before encoding"
+                );
+                debug_assert_ne!(
+                    *attempt_id,
+                    VarInt::MAX,
+                    "FlowInit attempt_id must be filled before encoding"
+                );
             }
             Self::FlowValidateRequest {
-                source_sender_id: _,
-                dest_sender_id,
-                queue_pair,
-                attempt_id,
-                stream_id,
-            } => Self::FlowValidateRequest {
-                source_sender_id,
-                dest_sender_id: *dest_sender_id,
-                queue_pair: *queue_pair,
-                attempt_id: *attempt_id,
-                stream_id: *stream_id,
-            },
-            Self::FlowInitValidate {
-                source_sender_id: existing_sender_id,
-                queue_pair,
-                attempt_id,
-                stream_id,
+                source_sender_id, ..
             } => {
-                // FlowInitValidate packets must be sticky to a specific sender_id
-                debug_assert!(
-                    *existing_sender_id == VarInt::MAX || *existing_sender_id == source_sender_id,
-                    "FlowInitValidate sender_id mismatch: existing={:?}, new={:?}",
-                    existing_sender_id,
-                    source_sender_id
+                debug_assert_ne!(
+                    *source_sender_id,
+                    VarInt::MAX,
+                    "FlowValidateRequest source_sender_id must be filled before encoding"
                 );
-                Self::FlowInitValidate {
-                    source_sender_id,
-                    queue_pair: *queue_pair,
-                    attempt_id: *attempt_id,
-                    stream_id: *stream_id,
-                }
+            }
+            Self::FlowInitValidate {
+                source_sender_id,
+                attempt_id,
+                ..
+            } => {
+                debug_assert_ne!(
+                    *source_sender_id,
+                    VarInt::MAX,
+                    "FlowInitValidate source_sender_id must be filled before encoding"
+                );
+                debug_assert_ne!(
+                    *attempt_id,
+                    VarInt::MAX,
+                    "FlowInitValidate attempt_id must be filled before encoding"
+                );
             }
             Self::FlowData {
-                source_sender_id: _,
-                queue_pair,
-                stream_id,
-                offset,
-                is_fin,
-            } => Self::FlowData {
-                source_sender_id,
-                queue_pair: *queue_pair,
-                stream_id: *stream_id,
-                offset: *offset,
-                is_fin: *is_fin,
-            },
+                source_sender_id, ..
+            } => {
+                debug_assert_ne!(
+                    *source_sender_id,
+                    VarInt::MAX,
+                    "FlowData source_sender_id must be filled before encoding"
+                );
+            }
             Self::FlowControl {
-                source_sender_id: _,
-                queue_pair,
-                stream_id,
-            } => Self::FlowControl {
-                source_sender_id,
-                queue_pair: *queue_pair,
-                stream_id: *stream_id,
-            },
+                source_sender_id, ..
+            } => {
+                debug_assert_ne!(
+                    *source_sender_id,
+                    VarInt::MAX,
+                    "FlowControl source_sender_id must be filled before encoding"
+                );
+            }
             Self::FlowReset {
-                source_sender_id: _,
-                dest_queue_id,
-                stream_id,
-                reset_target,
-                error_code,
-            } => Self::FlowReset {
-                source_sender_id,
-                dest_queue_id: *dest_queue_id,
-                stream_id: *stream_id,
-                reset_target: *reset_target,
-                error_code: *error_code,
-            },
+                source_sender_id, ..
+            } => {
+                debug_assert_ne!(
+                    *source_sender_id,
+                    VarInt::MAX,
+                    "FlowReset source_sender_id must be filled before encoding"
+                );
+            }
+        }
+    }
+
+    /// Set the source sender ID in place (mutates self)
+    ///
+    /// For FlowInit and FlowInitValidate packets, this enforces stickiness with debug assertions.
+    fn set_source_sender_id(&mut self, new_source_sender_id: VarInt) {
+        match self {
+            Self::None => {}
+            // Sticky packets - enforce that sender_id doesn't change after first assignment
+            Self::FlowInit {
+                source_sender_id, ..
+            }
+            | Self::FlowInitValidate {
+                source_sender_id, ..
+            } => {
+                debug_assert!(
+                    *source_sender_id == VarInt::MAX || *source_sender_id == new_source_sender_id,
+                    "Sticky packet sender_id mismatch: existing={:?}, new={:?}",
+                    source_sender_id,
+                    new_source_sender_id
+                );
+                *source_sender_id = new_source_sender_id;
+            }
+            // Non-sticky packets - can change sender_id freely
+            Self::FlowValidateRequest {
+                source_sender_id, ..
+            }
+            | Self::FlowData {
+                source_sender_id, ..
+            }
+            | Self::FlowControl {
+                source_sender_id, ..
+            }
+            | Self::FlowReset {
+                source_sender_id, ..
+            } => {
+                *source_sender_id = new_source_sender_id;
+            }
+        }
+    }
+
+    /// Update the source sender ID in routing info
+    ///
+    /// For FlowInit and FlowInitValidate packets (sticky packets), this updates self in place
+    /// and returns a copy. For other packet types, returns a copy with the new sender_id.
+    pub fn with_source_sender_id(&mut self, new_source_sender_id: VarInt) -> Self {
+        // Check if this is a sticky packet type
+        let is_sticky = matches!(self, Self::FlowInit { .. } | Self::FlowInitValidate { .. });
+
+        if is_sticky {
+            // Sticky packets: update in place and return copy
+            self.set_source_sender_id(new_source_sender_id);
+            *self
+        } else {
+            // Non-sticky packets: create copy, update it, and return
+            let mut copy = *self;
+            copy.set_source_sender_id(new_source_sender_id);
+            copy
         }
     }
 }

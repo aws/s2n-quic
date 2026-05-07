@@ -3,13 +3,13 @@
 
 use clap::{Parser, Subcommand};
 use s2n_quic_dc::{
-    busy_poll::clock::Timer as BusyPollClock, clock::tokio::Clock as TokioClock, socket::rate::Rate,
+    busy_poll::clock::Timer as BusyPollClock, clock::tokio::Clock as TokioClock, pipeline,
+    socket::rate::Rate,
 };
 use std::net::SocketAddr;
 
 mod busy_poll;
 mod client;
-mod pipeline;
 mod psk;
 mod server;
 
@@ -76,7 +76,7 @@ async fn main() -> std::io::Result<()> {
     let recv_pool = s2n_quic_dc::socket::pool::Pool::new(u16::MAX);
     let counters = pipeline::CounterRegistry::new();
 
-    let (psk_provider, endpoint_addr, is_server) = match &cli.command {
+    let (psk_provider, endpoint_addr) = match &cli.command {
         Commands::Server { address } => {
             // Address is the handshake address
             // Data address will be port + 1
@@ -88,9 +88,8 @@ async fn main() -> std::io::Result<()> {
                 .await
                 .expect("Failed to create PSK server");
             (
-                pipeline::PskProvider::Server(provider),
+                psk::PskProvider::Server(provider),
                 data_addr, // Server binds data sockets to data_addr
-                true,
             )
         }
         Commands::Client { server } => {
@@ -98,9 +97,8 @@ async fn main() -> std::io::Result<()> {
             // Client will derive data address as handshake + 1
             let provider = psk::client().expect("Failed to create PSK client");
             (
-                pipeline::PskProvider::Client(provider),
+                psk::PskProvider::Client(provider),
                 *server, // Pass handshake address to client
-                false,
             )
         }
     };
@@ -122,15 +120,18 @@ async fn main() -> std::io::Result<()> {
         send_pool,
         recv_pool,
         counters,
-        psk_provider,
+        path_secret_map: psk_provider.map().clone(),
         gso,
         acceptor_registry,
     };
 
-    if is_server {
-        server::run(endpoint_addr, num_sockets, config).await
-    } else {
-        client::run(endpoint_addr, num_sockets, config).await
+    match psk_provider {
+        psk::PskProvider::Server(provider) => {
+            server::run(endpoint_addr, num_sockets, config, provider).await
+        }
+        psk::PskProvider::Client(provider) => {
+            client::run(endpoint_addr, num_sockets, config, provider).await
+        }
     }
 }
 

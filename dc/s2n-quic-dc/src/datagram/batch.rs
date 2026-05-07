@@ -146,6 +146,7 @@ where
         // Get references to sealer and credentials
         let sealer = &ctx.sealer;
         let credentials = &ctx.credentials;
+        let flow_attempt_id = &mut ctx.flow_attempt_id_counter;
 
         let mut segment_size = 0;
 
@@ -186,6 +187,7 @@ where
                     packet_number,
                     sealer,
                     credentials,
+                    flow_attempt_id,
                 );
 
                 watermark = offset + encoded_len;

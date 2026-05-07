@@ -9,16 +9,7 @@
 //!
 //! This module provides shared pipeline building blocks.
 
-use bytes::{Bytes, BytesMut};
-use core::time::Duration;
-use s2n_codec::{Encoder as _, EncoderBuffer};
-use s2n_quic_core::{
-    frame,
-    frame::ack::EcnCounts,
-    packet::number::{PacketNumberRange, PacketNumberSpace},
-    varint::VarInt,
-};
-use s2n_quic_dc::{
+use crate::{
     acceptor,
     busy_poll::clock::Timer as BusyPollClock,
     clock::{precision::Clock as _, tokio::Clock as TokioClock, wheel::Wheel},
@@ -45,6 +36,15 @@ use s2n_quic_dc::{
     },
     stream::socket::{BusyPoll, Gso, Options, ReusePort},
 };
+use bytes::{Bytes, BytesMut};
+use core::time::Duration;
+use s2n_codec::{Encoder as _, EncoderBuffer};
+use s2n_quic_core::{
+    frame,
+    frame::ack::EcnCounts,
+    packet::number::{PacketNumberRange, PacketNumberSpace},
+    varint::VarInt,
+};
 use s2n_quic_platform::features;
 use std::{
     cell::RefCell,
@@ -58,24 +58,6 @@ use std::{
     },
 };
 use tracing::info;
-
-// ── PSK Provider ───────────────────────────────────────────────────────────
-
-/// Wrapper for either client or server PSK provider
-pub enum PskProvider {
-    Client(s2n_quic_dc::psk::client::Provider),
-    Server(s2n_quic_dc::psk::server::Provider),
-}
-
-impl PskProvider {
-    /// Get the underlying path secret map
-    pub fn map(&self) -> &s2n_quic_dc::path::secret::map::Map {
-        match self {
-            PskProvider::Client(provider) => provider.map(),
-            PskProvider::Server(provider) => provider.map(),
-        }
-    }
-}
 
 // ── Flow Reset Error Codes ─────────────────────────────────────────────────
 
@@ -102,7 +84,7 @@ mod reset_error {
 /// appropriate socket queue, and the worker-local receiver locks once to swap out
 /// all queues for local dispatch.
 mod worker_socket_channel {
-    use s2n_quic_dc::{datagram::batch::Batch, intrusive_queue::Queue};
+    use crate::{datagram::batch::Batch, intrusive_queue::Queue};
     use std::sync::{Arc, Mutex};
 
     /// Shared state for a worker's socket queues
@@ -122,17 +104,17 @@ mod worker_socket_channel {
 
     impl Sender {
         /// Send a batch to the target socket queue
-        pub fn send_entry(&self, entry: s2n_quic_dc::intrusive_queue::Entry<Batch>) {
+        pub fn send_entry(&self, entry: crate::intrusive_queue::Entry<Batch>) {
             let mut queues = self.queues.queues.lock().unwrap();
             queues[self.socket_idx].push_back(entry);
         }
     }
 
-    impl s2n_quic_dc::socket::channel::Sender<s2n_quic_dc::intrusive_queue::Entry<Batch>> for Sender {
+    impl crate::socket::channel::Sender<crate::intrusive_queue::Entry<Batch>> for Sender {
         fn poll_send(
             &mut self,
             _cx: &mut core::task::Context<'_>,
-            value: &mut core::mem::MaybeUninit<s2n_quic_dc::intrusive_queue::Entry<Batch>>,
+            value: &mut core::mem::MaybeUninit<crate::intrusive_queue::Entry<Batch>>,
         ) -> core::task::Poll<Result<(), ()>> {
             // SAFETY: We take ownership and replace with uninitialized memory
             let entry = unsafe { value.as_ptr().read() };
@@ -157,7 +139,7 @@ mod worker_socket_channel {
         /// then dispatches them to the provided unsync senders inline.
         pub fn drain_to<S>(&self, senders: &mut [S])
         where
-            S: s2n_quic_dc::socket::channel::UnboundedSender<Queue<Batch>>,
+            S: crate::socket::channel::UnboundedSender<Queue<Batch>>,
         {
             debug_assert_eq!(senders.len(), self.num_sockets);
 
@@ -309,8 +291,7 @@ fn hash_credentials_and_sender(credentials: &Credentials, source_sender_id: VarI
 /// - Encoding both the ACK and PING frames into the same control packet
 /// - Marking the ACK as transmitted in the peer state
 fn generate_pto_probe(
-    context: &socket::channel::PathContext<s2n_quic_dc::crypto::awslc::seal::Application>,
-    _peer_addr: SocketAddr,
+    context: &socket::channel::PathContext<crate::crypto::awslc::seal::Application>,
 ) -> PartialDatagram {
     use s2n_quic_core::frame;
 
@@ -326,7 +307,7 @@ fn generate_pto_probe(
 }
 
 type RcPathContext =
-    Rc<RefCell<socket::channel::PathContext<s2n_quic_dc::crypto::awslc::seal::Application>>>;
+    Rc<RefCell<socket::channel::PathContext<crate::crypto::awslc::seal::Application>>>;
 
 /// Process a PTO wheel timeout for a path context
 ///
@@ -339,7 +320,7 @@ fn process_pto_timeout<Clk, S>(
     pto_wheel_tx: &mut S,
 ) -> Option<Entry<Batch>>
 where
-    Clk: s2n_quic_dc::clock::precision::Clock + ?Sized,
+    Clk: crate::clock::precision::Clock + ?Sized,
     S: UnboundedSender<RcPathContext>,
 {
     let mut context_ref = context_rc.borrow_mut();
@@ -363,7 +344,7 @@ where
         );
 
         // Generate probe datagram (immutable borrow of context)
-        let probe_datagram = generate_pto_probe(&*context, data_addr);
+        let probe_datagram = generate_pto_probe(&*context);
 
         // Create a batch for the probe
         let mut batch = Batch::new(None, data_addr);
@@ -390,7 +371,7 @@ where
 fn process_control_frames<Clk, Rand>(
     worker_id: usize,
     packet: &mut Entry<packet::control::decoder::Packet<descriptor::Filled>>,
-    context: &mut socket::channel::PathContext<s2n_quic_dc::crypto::awslc::seal::Application>,
+    context: &mut socket::channel::PathContext<crate::crypto::awslc::seal::Application>,
     acked: &mut impl channel::UnboundedSender<Queue<PartialDatagram>>,
     lost: &mut impl channel::UnboundedSender<Queue<PartialDatagram>>,
     clock: &Clk,
@@ -546,7 +527,7 @@ fn process_ack_ranges(
 
 /// Detect lost packets using QUIC loss detection algorithm and queue for retransmission
 fn detect_and_retransmit_lost_packets<Rand>(
-    context: &mut socket::channel::PathContext<s2n_quic_dc::crypto::awslc::seal::Application>,
+    context: &mut socket::channel::PathContext<crate::crypto::awslc::seal::Application>,
     max_acked_pn: VarInt,
     max_tx_time: s2n_quic_core::time::Timestamp,
     lost: &mut impl channel::UnboundedSender<Queue<PartialDatagram>>,
@@ -677,17 +658,6 @@ pub struct FlowInit {
     pub queue_control: queue::Control<StreamMsg, ControlMsg, flow::Handle>,
     /// Stream handle for the flow queue
     pub queue_stream: queue::Stream<StreamMsg, ControlMsg, flow::Handle>,
-}
-
-/// Result of flow initialization processing
-enum FlowInitResult {
-    /// Flow was successfully enqueued to acceptor, no additional response needed
-    /// (ACK will still be sent at packet layer)
-    Enqueued,
-    /// Need to send a retry request to the client
-    NeedRetry { server_queue_id: VarInt },
-    /// Need to send a reset to the client
-    NeedReset { error_code: VarInt },
 }
 
 // ── Datagram Processing ────────────────────────────────────────────────────
@@ -1442,8 +1412,8 @@ where
     if let Some(routing) = response_routing {
         let packet = PartialDatagram::new_datagram(
             routing,
-            s2n_quic_dc::byte_vec::ByteVec::new(), // No application header
-            s2n_quic_dc::byte_vec::ByteVec::new(), // No payload
+            crate::byte_vec::ByteVec::new(), // No application header
+            crate::byte_vec::ByteVec::new(), // No payload
             sender_state.path_entry.clone(),
             None, // No completion tracking
         );
@@ -1587,11 +1557,11 @@ struct SenderState {
     /// Currently we only track the latest key, which means packets with old key_ids
     /// after rotation will fail to decrypt. Need to maintain a small cache of recent
     /// openers (e.g., HashMap<VarInt, Opener>) to handle in-flight packets during rotation.
-    opener: s2n_quic_dc::crypto::awslc::open::Application,
+    opener: crate::crypto::awslc::open::Application,
     /// The key_id this opener corresponds to
     current_key_id: VarInt,
     /// ACK space for tracking received packets (spans all key_ids for this peer)
-    ack_space: s2n_quic_dc::stream::recv::ack::Space,
+    ack_space: crate::stream::recv::ack::Space,
     /// Accumulated ECN counts for received packets, reported back to the sender
     /// in each ACK frame so the sender can validate ECN support and detect congestion.
     ecn_counts: EcnCounts,
@@ -1605,7 +1575,7 @@ struct SenderState {
     attempt_dedup: AttemptDedup,
     /// Map from stream_id to allocated queue_id for this sender
     /// Shared with queue handles so they can remove entries when closed
-    flows: s2n_quic_dc::flow::Tracker,
+    flows: crate::flow::Tracker,
 }
 
 /// Simplified ACK transmission state for datagrams
@@ -1618,7 +1588,7 @@ enum AckTransmissionState {
 impl SenderState {
     fn new<Clk>(
         path_entry: Arc<PathSecretEntry>,
-        opener: s2n_quic_dc::crypto::awslc::open::Application,
+        opener: crate::crypto::awslc::open::Application,
         key_id: VarInt,
         clock: &Clk,
         idle_timeout: Duration,
@@ -1729,7 +1699,7 @@ impl SenderStateCache {
         &mut self,
         credentials: &Credentials,
         sender_id: VarInt,
-        path_secret_map: &s2n_quic_dc::path::secret::map::Map,
+        path_secret_map: &crate::path::secret::map::Map,
         clock: &Clk,
         control_out: &mut Vec<u8>,
     ) -> Option<&mut SenderState>
@@ -1877,11 +1847,7 @@ struct SocketPathContexts {
     contexts: RefCell<
         std::collections::HashMap<
             credentials::Id,
-            Rc<
-                RefCell<
-                    socket::channel::PathContext<s2n_quic_dc::crypto::awslc::seal::Application>,
-                >,
-            >,
+            Rc<RefCell<socket::channel::PathContext<crate::crypto::awslc::seal::Application>>>,
         >,
     >,
     max_datagram_size: u16,
@@ -1899,8 +1865,7 @@ impl SocketPathContexts {
     fn get_or_insert(
         &self,
         entry: &Arc<PathSecretEntry>,
-    ) -> Rc<RefCell<socket::channel::PathContext<s2n_quic_dc::crypto::awslc::seal::Application>>>
-    {
+    ) -> Rc<RefCell<socket::channel::PathContext<crate::crypto::awslc::seal::Application>>> {
         let credentials_id = *entry.id();
 
         let mut contexts = self.contexts.borrow_mut();
@@ -1925,6 +1890,7 @@ impl SocketPathContexts {
             sealer,
             credentials,
             next_packet_number: VarInt::ZERO,
+            flow_attempt_id_counter: VarInt::ZERO,
             cca,
             rtt_estimator,
             packet_number_map,
@@ -1952,7 +1918,7 @@ impl SimplePathContextResolver {
 }
 
 impl socket::channel::PathContextResolver for SimplePathContextResolver {
-    type Sealer = s2n_quic_dc::crypto::awslc::seal::Application;
+    type Sealer = crate::crypto::awslc::seal::Application;
 
     fn resolve(
         &self,
@@ -2037,21 +2003,23 @@ pub struct Pipeline {
     pub wheel_input_tx: intrusive_queue::sync::Sender<Batch>,
     /// GSO configuration (for querying max segments)
     pub gso: features::Gso,
-    /// PSK provider for handshaking
-    pub psk_provider: PskProvider,
+    /// Path secrets for the endpoint
+    pub path_secret_map: path::secret::Map,
+    /// Queue allocator for flow-based routing
+    pub queue_allocator: queue::Allocator<StreamMsg, ControlMsg, flow::Handle>,
 }
 
 pub struct PipelineConfig<'a> {
     pub packet_size: u16,
     pub overall_send_rate: Rate,
     pub per_socket_send_rate: Rate,
-    pub busy_poll: &'a s2n_quic_dc::busy_poll::Pool,
+    pub busy_poll: &'a crate::busy_poll::Pool,
     pub clock: BusyPollClock<TokioClock>,
     pub send_pool: pool::Pool,
     pub recv_pool: pool::Pool,
     pub counters: CounterRegistry,
-    /// PSK provider (contains path secret map)
-    pub psk_provider: PskProvider,
+    /// Path secrets for the endpoint
+    pub path_secret_map: path::secret::Map,
     /// GSO configuration for max segments per batch
     pub gso: features::Gso,
     /// Acceptor registry for flow initialization
@@ -2106,14 +2074,11 @@ where
         clock,
         send_pool,
         recv_pool,
-        psk_provider,
+        path_secret_map,
         counters,
         gso,
         acceptor_registry,
     } = config;
-
-    // Extract the path secret map from the PSK provider
-    let path_secret_map = psk_provider.map().clone();
 
     let num_send_sockets = send_sockets.len();
 
@@ -2302,7 +2267,7 @@ where
 
             // Create channel for PTO wheel input (using PtoAdapter)
             let (pto_wheel_tx, pto_wheel_rx) = channel::intrusive_queue::unsync::new_with_adapter::<
-                channel::PtoAdapter<s2n_quic_dc::crypto::awslc::seal::Application>,
+                channel::PtoAdapter<crate::crypto::awslc::seal::Application>,
             >();
 
             // Spawn PTO wheel processor task
@@ -2892,6 +2857,7 @@ where
     Pipeline {
         wheel_input_tx,
         gso,
-        psk_provider,
+        path_secret_map,
+        queue_allocator: allocator,
     }
 }

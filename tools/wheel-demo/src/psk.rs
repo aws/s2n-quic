@@ -14,6 +14,8 @@ use s2n_quic_dc::{
 };
 use std::{io, net::SocketAddr};
 
+pub use psk::{client::Provider as Client, server::Provider as Server};
+
 pub type Subscriber = s2n_quic_dc::event::tracing::Subscriber;
 
 pub fn subscriber() -> Subscriber {
@@ -76,4 +78,22 @@ pub fn client() -> io::Result<psk::client::Provider> {
             server_name(),
         )
         .map_err(io::Error::other)
+}
+
+// ── PSK Provider ───────────────────────────────────────────────────────────
+
+/// Wrapper for either client or server PSK provider
+pub enum PskProvider {
+    Client(s2n_quic_dc::psk::client::Provider),
+    Server(s2n_quic_dc::psk::server::Provider),
+}
+
+impl PskProvider {
+    /// Get the underlying path secret map
+    pub fn map(&self) -> &s2n_quic_dc::path::secret::map::Map {
+        match self {
+            PskProvider::Client(provider) => provider.map(),
+            PskProvider::Server(provider) => provider.map(),
+        }
+    }
 }
