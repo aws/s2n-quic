@@ -175,7 +175,7 @@ fn send_msghdr(
             let _ = cmsg.encode_gso(size);
         }
     } else if segments.len() > 1 {
-        let size  = segments[0].len() as u16;
+        let size = segments[0].len() as u16;
         let _ = cmsg.encode_gso(size);
     }
 

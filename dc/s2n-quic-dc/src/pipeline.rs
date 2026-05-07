@@ -35,6 +35,7 @@ use crate::{
         recv::router::Router,
     },
     stream::socket::{BusyPoll, Gso, Options, ReusePort},
+    stream2::LocalSpawner as _,
 };
 use bytes::{Bytes, BytesMut};
 use core::time::Duration;
@@ -2009,11 +2010,11 @@ pub struct Pipeline {
     pub queue_allocator: queue::Allocator<StreamMsg, ControlMsg, flow::Handle>,
 }
 
-pub struct PipelineConfig<'a> {
+pub struct PipelineConfig<'a, S> {
     pub packet_size: u16,
     pub overall_send_rate: Rate,
     pub per_socket_send_rate: Rate,
-    pub busy_poll: &'a crate::busy_poll::Pool,
+    pub spawner: &'a S,
     pub clock: BusyPollClock<TokioClock>,
     pub send_pool: pool::Pool,
     pub recv_pool: pool::Pool,
@@ -2055,8 +2056,8 @@ struct Worker<SendSocket, RecvSocket> {
 ///
 /// The receive path can route parsed packets back to specific send workers
 /// using the WorkerId routing info.
-pub fn setup_pipeline<SendSocket, RecvSocket, G>(
-    config: PipelineConfig,
+pub fn setup_pipeline<SendSocket, RecvSocket, G, S>(
+    config: PipelineConfig<S>,
     send_sockets: Vec<SendSocket>,
     recv_sockets: Vec<RecvSocket>,
     create_rand: impl Fn() -> G,
@@ -2065,12 +2066,13 @@ where
     SendSocket: socket::send::Socket + Send + Sync + 'static,
     RecvSocket: socket::recv::Socket + Send + 'static,
     G: random::Generator,
+    S: crate::stream2::Spawner,
 {
     let PipelineConfig {
         packet_size,
         overall_send_rate,
         per_socket_send_rate,
-        busy_poll,
+        spawner,
         clock,
         send_pool,
         recv_pool,
@@ -2096,8 +2098,8 @@ where
         .map(|addr| addr.port())
         .unwrap_or(0);
 
-    // Group send sockets, recv sockets, and worker channels by busy poll worker
-    let num_workers = busy_poll.len() - 1;
+    // Group send sockets, recv sockets, and worker channels by spawner workers
+    let num_workers = spawner.worker_count().saturating_sub(1).max(1);
 
     // Create channel for wheel input from generators
     let (wheel_input_tx, wheel_input_rx) = intrusive_queue::sync::new();
@@ -2168,12 +2170,12 @@ where
 
     let sender_id_to_worker = Arc::new(sender_id_to_worker);
 
-    // Spawn wheel ticker + distributor on busy poll worker 0
-    busy_poll[0].spawn_local({
+    // Spawn wheel ticker + distributor on worker 0
+    spawner.spawn_local(0, {
         let clock = clock.clone();
         let socket_senders = flat_socket_senders.clone();
         move |mut spawner| {
-            info!("Starting wheel worker on busy_poll[0]");
+            info!("Starting wheel worker on worker 0");
 
             // Task 1: Pump wheel output into a channel for distribution
             let (wheel_output_tx, wheel_output_rx) = intrusive_queue::unsync::new();
@@ -2242,7 +2244,7 @@ where
         let sender_id_to_worker = sender_id_to_worker.clone();
         let queue_dispatcher = queue_dispatcher.clone();
 
-        busy_poll[busy_worker_idx].spawn_local(move |mut spawner| {
+        spawner.spawn_local(busy_worker_idx, move |mut spawner| {
             // Create per-worker state
             let shared_sender_cache =
                 Rc::new(RefCell::new(SenderStateCache::new(path_idle_timeout)));

@@ -5,7 +5,10 @@ use crate::{
     credentials,
     credentials::Credentials,
     crypto::seal,
-    packet::{datagram::{RoutingInfo, Tag}, WireVersion},
+    packet::{
+        datagram::{RoutingInfo, Tag},
+        WireVersion,
+    },
 };
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{assume, buffer};

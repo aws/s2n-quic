@@ -171,10 +171,7 @@ impl<T> Sender<T> {
 }
 
 impl<T> super::super::UnboundedSender<intrusive_queue::Queue<T>> for Sender<T> {
-    fn send(
-        &mut self,
-        batch: intrusive_queue::Queue<T>,
-    ) -> Result<(), intrusive_queue::Queue<T>> {
+    fn send(&mut self, batch: intrusive_queue::Queue<T>) -> Result<(), intrusive_queue::Queue<T>> {
         self.send_batch(batch)
     }
 }

@@ -334,7 +334,9 @@ mod tests {
         let result = registry
             .dispatch_pending(acceptor_id, "reject".to_string())
             .unwrap();
-        assert!(matches!(result, PendingAction::Reject { reset_code } if reset_code == VarInt::from_u32(42)));
+        assert!(
+            matches!(result, PendingAction::Reject { reset_code } if reset_code == VarInt::from_u32(42))
+        );
     }
 
     #[tokio::test]

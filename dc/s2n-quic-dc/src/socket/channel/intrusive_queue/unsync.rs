@@ -7,7 +7,11 @@
 //! The receiver drains the queue until empty, returning Pending when empty.
 
 use crate::intrusive_queue;
-use std::{cell::{Cell, UnsafeCell}, rc::Rc, task::Poll};
+use std::{
+    cell::{Cell, UnsafeCell},
+    rc::Rc,
+    task::Poll,
+};
 
 struct Shared<A: intrusive_queue::Adapter> {
     queue: UnsafeCell<intrusive_queue::List<A>>,

@@ -5,7 +5,10 @@ use crate::{
     control,
     credentials::Credentials,
     crypto::seal,
-    packet::{self, datagram::{encoder, RoutingInfo}},
+    packet::{
+        self,
+        datagram::{encoder, RoutingInfo},
+    },
 };
 use core::sync::atomic::{AtomicU64, Ordering};
 use s2n_codec::EncoderBuffer;

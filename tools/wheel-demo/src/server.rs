@@ -174,12 +174,15 @@ impl Acceptor<s2n_quic_dc::pipeline::FlowInit> for FlowAcceptor {
     }
 }
 
-pub async fn run(
+pub async fn run<S>(
     address: SocketAddr,
     num_sockets: usize,
-    config: s2n_quic_dc::pipeline::PipelineConfig<'_>,
+    config: s2n_quic_dc::pipeline::PipelineConfig<'_, S>,
     provider: crate::psk::Server,
-) -> io::Result<()> {
+) -> io::Result<()>
+where
+    S: s2n_quic_dc::stream2::Spawner,
+{
     info!(
         %address,
         num_sockets,
@@ -195,8 +198,8 @@ pub async fn run(
         .expect("Failed to register acceptor");
     info!("Registered flow acceptor with ID 0");
 
-    // Create one receive socket per busy poll worker (worker 0 is the dispatch thread)
-    let num_recv_sockets = config.busy_poll.len().saturating_sub(1).max(1);
+    // Create one receive socket per spawner worker (worker 0 is the dispatch thread)
+    let num_recv_sockets = config.spawner.worker_count().saturating_sub(1).max(1);
     let recv_sockets = s2n_quic_dc::pipeline::create_recv_sockets(num_recv_sockets, address)?;
     info!(%address, num_recv_sockets, "All receive sockets bound");
 
@@ -210,9 +213,10 @@ pub async fn run(
         s2n_quic_dc::pipeline::create_send_sockets(num_sockets, send_addr, config.gso.clone())?;
 
     // Set up the bidirectional pipeline
-    let _pipeline = s2n_quic_dc::pipeline::setup_pipeline(config, send_sockets, recv_sockets, || {
-        s2n_quic_dc::random::Random::default()
-    });
+    let _pipeline =
+        s2n_quic_dc::pipeline::setup_pipeline(config, send_sockets, recv_sockets, || {
+            s2n_quic_dc::random::Random::default()
+        });
 
     // Keep main task alive
     std::future::pending::<()>().await;

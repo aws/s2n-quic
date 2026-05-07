@@ -10,13 +10,13 @@ pub type PayloadLen = VarInt;
 
 #[macro_use]
 pub mod tag;
-pub mod wire_version;
-pub mod storage;
 pub mod control;
 pub mod datagram;
 pub mod secret_control;
+pub mod storage;
 pub mod stream;
 pub mod uds;
+pub mod wire_version;
 
 pub use tag::Tag;
 pub use wire_version::WireVersion;

@@ -1,5 +1,5 @@
 use super::*;
-use bolero::{TypeGenerator, check};
+use bolero::{check, TypeGenerator};
 use std::io::{Read, Write};
 
 macro_rules! assert_eq_dump {

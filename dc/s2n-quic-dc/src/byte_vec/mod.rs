@@ -1,8 +1,9 @@
 use core::fmt;
 use s2n_quic_core::buffer::{
     reader::{
-        self, Storage as _,
+        self,
         storage::{Chunk, Infallible as _},
+        Storage as _,
     },
     writer::{self, Storage as _},
 };
@@ -1241,7 +1242,11 @@ macro_rules! impl_iter_traits {
             #[inline]
             fn next(&mut self) -> Option<Self::Item> {
                 let chunk = self.read_chunk_bytes(usize::MAX);
-                if chunk.is_empty() { None } else { Some(chunk) }
+                if chunk.is_empty() {
+                    None
+                } else {
+                    Some(chunk)
+                }
             }
 
             #[inline]

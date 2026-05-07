@@ -8,7 +8,7 @@ use crate::{
     packet::stream,
     socket::pool,
     stream::{
-        error::{Error as StreamError, StoredError, self},
+        error::{self, Error as StreamError, StoredError},
         recv::shared as recv,
         send::{application, shared as send},
         tls::S2nTlsConnection,

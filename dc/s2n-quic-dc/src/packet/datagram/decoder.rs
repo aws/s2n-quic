@@ -3,7 +3,10 @@
 
 use crate::{
     credentials::Credentials,
-    packet::{datagram::{RoutingInfo, Tag}, storage, WireVersion},
+    packet::{
+        datagram::{RoutingInfo, Tag},
+        storage, WireVersion,
+    },
 };
 use core::{fmt, ops::Deref};
 use s2n_codec::{

@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic_dc::pipeline::CounterRegistry;
 use bytes::Bytes;
 use s2n_quic_core::varint::VarInt;
 use s2n_quic_dc::{
@@ -11,6 +10,7 @@ use s2n_quic_dc::{
     intrusive_queue::{List, Queue},
     packet::datagram::{partial::PartialDatagram, QueuePair, RoutingInfo},
     path::secret::map::Entry as PathSecretEntry,
+    pipeline::CounterRegistry,
     socket::channel,
 };
 use s2n_quic_platform::features;
@@ -26,12 +26,15 @@ use tracing::info;
 
 // ── Main Client Entry Point ────────────────────────────────────────────────
 
-pub async fn run(
+pub async fn run<S>(
     handshake_server: SocketAddr,
     num_sockets: usize,
-    config: s2n_quic_dc::pipeline::PipelineConfig<'_>,
+    config: s2n_quic_dc::pipeline::PipelineConfig<'_, S>,
     provider: crate::psk::Client,
-) -> io::Result<()> {
+) -> io::Result<()>
+where
+    S: s2n_quic_dc::stream2::Spawner,
+{
     info!(
         handshake_server = %handshake_server,
         bandwidth = ?config.overall_send_rate,
@@ -56,21 +59,26 @@ pub async fn run(
     );
 
     // Create send and receive sockets on the data port
-    // One send socket per requested socket, but only one recv socket per busy poll worker
-    // (worker 0 is the dispatch thread, so num_recv = busy_poll.len() - 1)
-    let send_sockets =
-        s2n_quic_dc::pipeline::create_send_sockets(num_sockets, data_bind_addr, config.gso.clone())?;
-    let num_recv_sockets = config.busy_poll.len().saturating_sub(1).max(1);
-    let recv_sockets = s2n_quic_dc::pipeline::create_recv_sockets(num_recv_sockets, data_bind_addr)?;
+    // One send socket per requested socket, but only one recv socket per spawner worker
+    // (worker 0 is the dispatch thread, so num_recv = worker_count - 1)
+    let send_sockets = s2n_quic_dc::pipeline::create_send_sockets(
+        num_sockets,
+        data_bind_addr,
+        config.gso.clone(),
+    )?;
+    let num_recv_sockets = config.spawner.worker_count().saturating_sub(1).max(1);
+    let recv_sockets =
+        s2n_quic_dc::pipeline::create_recv_sockets(num_recv_sockets, data_bind_addr)?;
 
     let counters = config.counters.clone();
     let packet_size = config.packet_size;
     let gso = config.gso.clone();
 
     // Set up the bidirectional pipeline
-    let pipeline = s2n_quic_dc::pipeline::setup_pipeline(config, send_sockets, recv_sockets, || {
-        s2n_quic_dc::random::Random::default()
-    });
+    let pipeline =
+        s2n_quic_dc::pipeline::setup_pipeline(config, send_sockets, recv_sockets, || {
+            s2n_quic_dc::random::Random::default()
+        });
 
     let wheel_input_tx = pipeline.wheel_input_tx;
 
@@ -135,10 +143,16 @@ pub async fn run(
 struct Stream {
     wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
     completion_rx: channel::intrusive_queue::datagram_completion::Receiver<PartialDatagram>,
-    stream_rx:
-        flow::queue::Stream<s2n_quic_dc::pipeline::StreamMsg, s2n_quic_dc::pipeline::ControlMsg, flow::Handle>,
-    control_rx:
-        flow::queue::Control<s2n_quic_dc::pipeline::StreamMsg, s2n_quic_dc::pipeline::ControlMsg, flow::Handle>,
+    stream_rx: flow::queue::Stream<
+        s2n_quic_dc::pipeline::StreamMsg,
+        s2n_quic_dc::pipeline::ControlMsg,
+        flow::Handle,
+    >,
+    control_rx: flow::queue::Control<
+        s2n_quic_dc::pipeline::StreamMsg,
+        s2n_quic_dc::pipeline::ControlMsg,
+        flow::Handle,
+    >,
     packet_size: u16,
     offset: VarInt,
     inflight: usize,

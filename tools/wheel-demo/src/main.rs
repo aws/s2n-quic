@@ -115,7 +115,7 @@ async fn main() -> std::io::Result<()> {
         packet_size: cli.packet_size,
         overall_send_rate: Rate::new(cli.bandwidth),
         per_socket_send_rate: Rate::new(cli.per_socket_bandwidth),
-        busy_poll: &busy_poll,
+        spawner: &busy_poll,
         clock,
         send_pool,
         recv_pool,

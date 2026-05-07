@@ -24,6 +24,7 @@ pub mod random;
 pub mod recovery;
 pub mod socket;
 pub mod stream;
+pub mod stream2;
 pub mod sync;
 pub mod task;
 pub mod uds;
