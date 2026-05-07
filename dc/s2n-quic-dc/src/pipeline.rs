@@ -63,8 +63,9 @@ use tracing::info;
 // ── Flow Reset Error Codes ─────────────────────────────────────────────────
 
 /// Error codes for FlowReset packets
-mod reset_error {
+pub(crate) mod reset_error {
     use s2n_quic_core::varint::VarInt;
+    use std::fmt;
 
     /// Stream ID was reused before the previous flow completed
     pub const STREAM_ID_ERROR: VarInt = VarInt::from_u32(1);
@@ -74,6 +75,83 @@ mod reset_error {
 
     /// The queue state became stale or inconsistent during validation
     pub const STALE_STATE: VarInt = VarInt::from_u32(3);
+
+    /// Failed to decode control frames
+    pub const FRAME_DECODE_ERROR: VarInt = VarInt::from_u32(4);
+
+    /// The sender terminated abnormally (e.g., panic, crash)
+    pub const ABNORMAL_TERMINATION: VarInt = VarInt::from_u32(5);
+
+    /// Reset error codes for stream resets
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ResetError {
+        /// Stream ID was reused before the previous flow completed
+        StreamIdError,
+        /// The acceptor ID specified in FlowInit was not found
+        AcceptorNotFound,
+        /// The queue state became stale or inconsistent during validation
+        StaleState,
+        /// Failed to decode control frames
+        FrameDecodeError,
+        /// The sender terminated abnormally (e.g., panic, crash)
+        AbnormalTermination,
+        /// Unknown error code
+        Unknown(VarInt),
+    }
+
+    impl ResetError {
+        /// Convert to VarInt error code
+        pub fn as_varint(self) -> VarInt {
+            match self {
+                Self::StreamIdError => STREAM_ID_ERROR,
+                Self::AcceptorNotFound => ACCEPTOR_NOT_FOUND,
+                Self::StaleState => STALE_STATE,
+                Self::FrameDecodeError => FRAME_DECODE_ERROR,
+                Self::AbnormalTermination => ABNORMAL_TERMINATION,
+                Self::Unknown(code) => code,
+            }
+        }
+    }
+
+    impl From<VarInt> for ResetError {
+        fn from(code: VarInt) -> Self {
+            match code {
+                STREAM_ID_ERROR => Self::StreamIdError,
+                ACCEPTOR_NOT_FOUND => Self::AcceptorNotFound,
+                STALE_STATE => Self::StaleState,
+                FRAME_DECODE_ERROR => Self::FrameDecodeError,
+                ABNORMAL_TERMINATION => Self::AbnormalTermination,
+                _ => Self::Unknown(code),
+            }
+        }
+    }
+
+    impl fmt::Display for ResetError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::StreamIdError => {
+                    write!(f, "STREAM_ID_ERROR: stream ID reused before previous flow completed")
+                }
+                Self::AcceptorNotFound => {
+                    write!(f, "ACCEPTOR_NOT_FOUND: acceptor ID not found")
+                }
+                Self::StaleState => {
+                    write!(f, "STALE_STATE: queue state became stale or inconsistent")
+                }
+                Self::FrameDecodeError => {
+                    write!(f, "FRAME_DECODE_ERROR: failed to decode control frames")
+                }
+                Self::AbnormalTermination => {
+                    write!(f, "ABNORMAL_TERMINATION: sender terminated abnormally (panic/crash)")
+                }
+                Self::Unknown(code) => {
+                    write!(f, "UNKNOWN({}): unknown reset error code", code.as_u64())
+                }
+            }
+        }
+    }
+
+    impl std::error::Error for ResetError {}
 }
 
 // ── Worker-Socket Channel ──────────────────────────────────────────────────
@@ -527,6 +605,21 @@ fn process_ack_ranges(
 }
 
 /// Detect lost packets using QUIC loss detection algorithm and queue for retransmission
+///
+/// TODO: Implement retransmission attempt limits. Currently, lost packets are retransmitted
+/// indefinitely which could cause them to get stuck in the system permanently if they never
+/// get ACKed. We need to:
+/// - Track retransmission count per packet (add field to PartialDatagram or TransmissionInfo)
+/// - Set a maximum retransmission limit (e.g., 10 attempts)
+/// - When limit is reached, mark transmission as Failed(FailureReason::TransmissionError)
+/// - Send completion notification with failure status to abandon the stream
+///
+/// TODO: Handle UnknownPathSecret failure. When a packet is rejected with UnknownPathSecret,
+/// we need to:
+/// - Detect this condition (likely from a control packet or lack of ACKs)
+/// - Mark all pending transmissions for that path as Failed(FailureReason::UnknownPathSecret)
+/// - Send completion notifications so streams can abandon gracefully
+/// - Possibly send FlowReset to peer (though not for UnknownPathSecret - peer doesn't know us)
 fn detect_and_retransmit_lost_packets<Rand>(
     context: &mut socket::channel::PathContext<crate::crypto::awslc::seal::Application>,
     max_acked_pn: VarInt,
@@ -634,9 +727,8 @@ pub enum StreamMsg {
 
 /// Placeholder type for control data in flow queues
 pub enum ControlMsg {
-    /// Received after a flow has been validated
-    FlowValidated,
     Frames {
+        remote_queue_id: VarInt,
         payload: BytesMut,
     },
     Reset {
@@ -1270,7 +1362,11 @@ where
             };
 
             // Dispatch to the queue with validation
-            let entry = ControlMsg::Frames { payload: buf }.into();
+            let entry = ControlMsg::Frames {
+                remote_queue_id: queue_pair.source_queue_id,
+                payload: buf,
+            }
+            .into();
 
             match queue_dispatcher.send_control(local_queue_id, &request, entry) {
                 Ok(()) => {

@@ -24,6 +24,33 @@ use crate::{
 };
 use std::sync::Arc;
 
+/// Maximum datagram header overhead to reserve from MTU for payload capacity.
+///
+/// This is a conservative estimate assuming all VarInts take maximum space (8 bytes).
+/// Applications constructing PartialDatagrams don't know what values will be chosen
+/// by the pipeline (e.g., packet_number, source_sender_id), so we must assume worst-case.
+///
+/// Header structure:
+/// - Tag: 1 byte
+/// - Credentials ID: 16 bytes (zerocopy, fixed size)
+/// - Key ID (part of credentials): 8 bytes
+/// - Wire version: 1 byte (always ZERO = 1 byte VarInt)
+/// - Source control port: 2 bytes
+/// - Packet number: 8 bytes (max VarInt)
+/// - Routing info (FlowData with max VarInts):
+///   - Type tag: 1 byte
+///   - source_sender_id: 8 bytes
+///   - queue_pair (2 VarInts): 16 bytes
+///   - stream_id: 8 bytes
+///   - offset: 8 bytes
+///   = 41 bytes
+/// - Payload length: 8 bytes (max VarInt)
+/// - App header length: 8 bytes (conservative, may not be present)
+/// - Crypto tag: 16 bytes (AES-GCM tag size)
+///
+/// Total: 1 + 16 + 8 + 1 + 2 + 8 + 41 + 8 + 8 + 16 = 109 bytes
+pub const MAX_FLOW_DATA_HEADER_OVERHEAD: u16 = 109;
+
 /// Type of packet being transmitted
 #[derive(Clone, Debug)]
 pub enum PacketType {
@@ -410,4 +437,46 @@ mod tests {
             panic!("Expected datagram packet type");
         }
     }
+
+    #[test]
+    fn max_header_overhead_matches_estimate() {
+        use s2n_quic_core::varint::VarInt;
+
+        // Create worst-case routing info with maximum VarInts
+        let routing_info = RoutingInfo::FlowData {
+            source_sender_id: VarInt::MAX,
+            queue_pair: crate::packet::datagram::routing_info::QueuePair {
+                source_queue_id: VarInt::MAX,
+                dest_queue_id: VarInt::MAX,
+            },
+            stream_id: VarInt::MAX,
+            offset: VarInt::MAX,
+            is_fin: false,
+        };
+
+        // Use u16::MAX for header and payload lengths (will never be bigger)
+        let header_len = HeaderLen::new(u16::MAX as u64).unwrap();
+        let payload_len = PayloadLen::new(u16::MAX as u64).unwrap();
+
+        // Estimate with worst-case packet number and crypto tag
+        let estimated = super::super::encoder::estimate_len(
+            super::super::PacketNumber::MAX,
+            routing_info,
+            header_len,
+            payload_len,
+            16, // AES-GCM tag size
+        );
+
+        // The estimate minus actual payload and header should exactly match MAX_HEADER_OVERHEAD
+        let overhead = estimated - u16::MAX as usize - u16::MAX as usize;
+        assert_eq!(
+            overhead,
+            MAX_FLOW_DATA_HEADER_OVERHEAD as usize,
+            "Estimated overhead {overhead} doesn't match MAX_HEADER_OVERHEAD {MAX_FLOW_DATA_HEADER_OVERHEAD}"
+        );
+    }
+
+    // TODO: Add test that verifies the actual encode output matches estimate_len
+    // for worst-case routing info with maximum VarInts. This requires setting up
+    // crypto/sealing infrastructure.
 }

@@ -15,7 +15,7 @@
 
 // mod endpoint;
 // mod reader;
-// mod writer;
+mod writer;
 // mod flow_control;
 
 pub mod spawner;
@@ -23,4 +23,4 @@ pub mod spawner;
 // pub use endpoint::Endpoint;
 // pub use reader::Reader;
 pub use spawner::{LocalSpawner, Spawner};
-// pub use writer::Writer;
+pub use writer::Writer;

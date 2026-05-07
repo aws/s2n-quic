@@ -156,15 +156,28 @@ impl<T> Queue<T> {
     #[inline]
     pub fn poll_swap(&self, cx: &mut Context) -> Poll<Result<intrusive_queue::Queue<T>, Closed>> {
         let mut inner = self.lock()?;
+
         if inner.queue.is_empty() {
             ensure!(inner.is_open, Err(Closed).into());
-
             inner.update_waker(cx);
-
             return Poll::Pending;
         }
 
         let queue = core::mem::take(&mut inner.queue);
+        let is_open = inner.is_open;
+
+        // Always update waker since we drained everything (if still open)
+        if is_open {
+            inner.update_waker(cx);
+        }
+
+        drop(inner);
+
+        // If queue was closed, wake immediately to process the closed state
+        if !is_open {
+            cx.waker().wake_by_ref();
+        }
+
         Ok(queue).into()
     }
 

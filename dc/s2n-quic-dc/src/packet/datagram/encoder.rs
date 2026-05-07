@@ -52,7 +52,6 @@ pub fn estimate_len(
         encoder.write_repeated(app_header_len_usize, 0); // application data
     }
 
-    encoder.write_repeated(8, 0);
     encoder.write_repeated(payload_len_usize, 0);
 
     encoder.write_repeated(crypto_tag_len, 0);

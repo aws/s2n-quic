@@ -108,16 +108,6 @@ impl<T> Sender<T> {
         Arc::as_ptr(&self.shared) as usize
     }
 
-    /// Cancel all pending transmissions.
-    ///
-    /// Workers will drop any pending datagrams attached to this channel.
-    #[inline]
-    pub fn cancel(&self) {
-        self.shared
-            .flags
-            .fetch_and(!SHOULD_TRANSMIT, Ordering::Release);
-    }
-
     /// Send a completion notification.
     ///
     /// If the receiver is no longer alive, the completion is silently dropped.
@@ -236,6 +226,48 @@ impl<T> Receiver<T> {
             shared: ManuallyDrop::new(Arc::clone(&self.shared)),
         }
     }
+
+    /// Cancel all pending transmissions.
+    ///
+    /// Workers will drop any pending datagrams attached to this channel.
+    #[inline]
+    pub fn cancel(&self) {
+        self.shared
+            .flags
+            .fetch_and(!SHOULD_TRANSMIT, Ordering::Release);
+    }
+
+    /// Swap out the entire queue in one operation, always registering the waker.
+    ///
+    /// This unconventionally registers the waker even when returning data, but it's
+    /// correct because we're atomically draining the entire queue. Since the queue is
+    /// guaranteed empty after this call, we know the waker needs to be registered for
+    /// future wakeups. This avoids the need to loop calling poll_recv.
+    pub fn poll_swap(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+    ) -> Poll<Option<intrusive_queue::Queue<T>>> {
+        let mut guard = self.shared.inner.lock();
+
+        // Always register waker since we're draining everything
+        // Use will_wake to avoid cloning if it's the same waker
+        if guard
+            .recv_waker
+            .as_ref()
+            .map_or(true, |w| !w.will_wake(cx.waker()))
+        {
+            guard.recv_waker = Some(cx.waker().clone());
+        }
+
+        if !guard.queue.is_empty() {
+            // Swap out the entire queue
+            let batch = core::mem::take(&mut guard.queue);
+            Poll::Ready(Some(batch))
+        } else {
+            // Queue is empty
+            Poll::Pending
+        }
+    }
 }
 
 impl<T> Drop for Receiver<T> {
@@ -311,7 +343,7 @@ mod tests {
     fn cancel() {
         let rx = new::<u32>();
         let tx = rx.sender();
-        tx.cancel();
+        rx.cancel();
         assert!(!tx.should_transmit());
     }
 
