@@ -69,9 +69,14 @@ impl State {
         }
     }
 
-    pub fn pre_authentication(&self, _identity: &Credentials) -> Result<(), Error> {
-        // TODO: Provide more useful pre-auth checks. For now just don't bother checking this, we
-        // can always rely on the post-auth check in practice, this is just a slight optimization.
+    pub fn pre_authentication(&self, identity: &Credentials) -> Result<(), Error> {
+        // Bail if we get the max key ID. This is not practically reachable on well-behaved senders
+        // (see sender.rs for comments), and lets us always return a valid KeyId from
+        // `minimum_unseen_key_id` even with non well-behaved peers.
+        if identity.key_id == KeyId::MAX {
+            return Err(Error::Unknown);
+        }
+
         Ok(())
     }
 
@@ -83,11 +88,19 @@ impl State {
                 // state. After that just +1 consistently.
                 .wrapping_add(1),
         )
-        .unwrap()
+        .unwrap_or(
+            // Saturate if we've exhausted the key ID space. Should be unreachable in practice due
+            // to the pre_authentication check above, but avoid a panic by handling it here too.
+            KeyId::MAX,
+        )
     }
 
     /// Called after decryption has been performed
     pub fn post_authentication(&self, identity: &Credentials) -> Result<(), Error> {
+        // Duplicate since it's cheap right now, can be refined in the future.
+        // In practice callers should have already run this early in the receiving process.
+        self.pre_authentication(identity)?;
+
         let mut seen = self.seen.lock().unwrap();
 
         let key_id = *identity.key_id;

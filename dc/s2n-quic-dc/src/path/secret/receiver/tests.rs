@@ -294,6 +294,52 @@ fn unseen() {
 }
 
 #[test]
+fn pre_authentication_rejects_max_key_id() {
+    let subject = State::new();
+    let id = Id::from([0; 16]);
+    let result = subject.pre_authentication(&Credentials {
+        id,
+        key_id: KeyId::MAX,
+    });
+    assert_eq!(result, Err(Error::Unknown));
+}
+
+#[test]
+fn post_authentication_rejects_max_key_id() {
+    let subject = State::new();
+    let id = Id::from([0; 16]);
+
+    subject
+        .post_authentication(&Credentials {
+            id,
+            key_id: KeyId::new(0).unwrap(),
+        })
+        .unwrap();
+
+    let result = subject.post_authentication(&Credentials {
+        id,
+        key_id: KeyId::MAX,
+    });
+    assert_eq!(result, Err(Error::Unknown));
+}
+
+#[test]
+fn minimum_unseen_key_id_saturates_at_max() {
+    let subject = State::new();
+    let id = Id::from([0; 16]);
+
+    let near_max = *KeyId::MAX - 1;
+    subject
+        .post_authentication(&Credentials {
+            id,
+            key_id: KeyId::new(near_max).unwrap(),
+        })
+        .unwrap();
+
+    assert_eq!(subject.minimum_unseen_key_id(), KeyId::MAX);
+}
+
+#[test]
 #[cfg_attr(kani, kani::proof, kani::unwind(130), kani::solver(kissat))]
 #[cfg_attr(miri, ignore)] // this test is too expensive for miri
 fn insert_unequal() {
