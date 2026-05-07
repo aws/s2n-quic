@@ -4,6 +4,7 @@
 pub mod allocator;
 pub mod clock;
 pub mod congestion;
+pub mod connection_close;
 pub mod control;
 pub mod credentials;
 pub mod crypto;

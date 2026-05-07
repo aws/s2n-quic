@@ -89,6 +89,7 @@ impl Server {
             if #[cfg(any(test, feature = "testing"))] {
                 let server = {
                     let server = server
+                        .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
                         .with_limits(connection_limits)?
                         .with_dc(map.clone())?
                         .with_event((event, builder.event_subscriber))?
@@ -101,6 +102,7 @@ impl Server {
                 };
             } else {
                 let server = server
+                    .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
                     .with_limits(connection_limits)?
                     .with_dc(map.clone())?
                     .with_event((event, builder.event_subscriber))?
@@ -219,6 +221,7 @@ impl Client {
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
         let client = client
+            .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
             .with_limits(connection_limits)?
             .with_dc(map.clone())?
             .with_event((event, builder.event_subscriber))?
@@ -781,6 +784,69 @@ mod tests {
                 .by_reason[HandshakeReason::Periodic as usize]
                 .load(Ordering::Relaxed),
             1
+        );
+    }
+
+    #[tokio::test]
+    async fn transparent_transport_preserves_tls_error_code() {
+        use crate::testing::UntrustedClientProvider;
+
+        init_tracing();
+
+        let subscriber = NoopSubscriber {};
+        let tls = UntrustedClientProvider;
+
+        let server_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            subscriber.clone(),
+        );
+
+        let server_builder = crate::psk::server::Builder::default();
+        let (server_addr_rx, _server_guard) = crate::psk::server::Provider::setup(
+            "127.0.0.1:0".parse().unwrap(),
+            server_map,
+            tls.clone(),
+            subscriber.clone(),
+            server_builder,
+        );
+
+        let client_map = Map::new(
+            Signer::new(b"default"),
+            50_000,
+            false,
+            StdClock::default(),
+            subscriber.clone(),
+        );
+
+        let client = Client::bind::<
+            <UntrustedClientProvider as Provider>::Client,
+            NoopSubscriber,
+            s2n_quic::provider::event::default::Subscriber,
+        >(
+            "0.0.0.0:0".parse().unwrap(),
+            client_map,
+            tls.start_client().unwrap(),
+            subscriber,
+            crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
+        )
+        .unwrap();
+
+        let server_addr = server_addr_rx.await.unwrap().unwrap();
+        let server_name: s2n_quic::server::Name = "localhost".into();
+
+        let result = client
+            .connect(server_addr, HandshakeReason::User, server_name)
+            .await;
+
+        let err: io::Error = result.unwrap_err().into();
+        let err_msg = err.to_string();
+
+        assert!(
+            err_msg.contains("CERTIFICATE_UNKNOWN"),
+            "Expected CERTIFICATE_UNKNOWN, got: {err_msg}"
         );
     }
 }
