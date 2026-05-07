@@ -67,6 +67,7 @@ impl Batch<NoContext> {
                 peer_addr,
                 starting_packet_number: None,
                 is_probe: false,
+                sender_id: VarInt::MAX, // Sentinel value - can be distributed via round-robin
             },
             encoded: None,
             context: NoContext(std::ptr::NonNull::dangling()),
@@ -86,6 +87,22 @@ impl<Ctx> Batch<Ctx> {
         // TODO assert that the len is less than or equal to the existing datagrams, if any
         self.meta.total_bytes += len as u16;
         self.datagrams.push_back(datagram);
+    }
+
+    /// Sets the sticky sender_id for this batch
+    ///
+    /// Used to ensure FlowInit/FlowInitRetry packets always originate from the same sender.
+    /// Set to VarInt::MAX (default) for regular packets that can be round-robin distributed.
+    #[inline]
+    pub fn with_sender_id(mut self, sender_id: VarInt) -> Self {
+        debug_assert!(
+            self.meta.sender_id == VarInt::MAX || self.meta.sender_id == sender_id,
+            "Batch sender_id mismatch: existing={:?}, new={:?}",
+            self.meta.sender_id,
+            sender_id
+        );
+        self.meta.sender_id = sender_id;
+        self
     }
 
     /// Returns true if the batch is empty
@@ -113,6 +130,14 @@ where
         source_sender_id: VarInt,
     ) {
         use s2n_codec::EncoderBuffer;
+
+        // Verify sticky sender_id consistency
+        debug_assert!(
+            self.meta.sender_id == VarInt::MAX || self.meta.sender_id == source_sender_id,
+            "Sticky batch on wrong sender: batch sender_id={:?}, socket sender_id={:?}",
+            self.meta.sender_id,
+            source_sender_id
+        );
 
         // Borrow context for the entire encoding operation
         let mut ctx = self.context.borrow_mut();
@@ -223,6 +248,7 @@ impl Builder {
     /// - Uniform segment size (GSO requires all segments same size except last)
     /// - No segments after an undersized segment (GSO requires last segment to be final)
     /// - Destination address match
+    /// - Sticky sender_id match (for FlowInit/FlowInitRetry packets)
     pub fn try_push(
         &mut self,
         datagram: Entry<PartialDatagram>,
@@ -254,6 +280,21 @@ impl Builder {
             return Err(datagram);
         }
 
+        // Check sticky sender_id compatibility
+        // If this datagram requires a specific sender_id and the batch already has one set,
+        // they must match
+        if let Some(routing_info) = datagram.datagram_routing_info() {
+            if routing_info.requires_sticky_sender_id() {
+                if let Some(dgram_sender_id) = routing_info.source_sender_id() {
+                    if self.batch.meta.sender_id != VarInt::MAX
+                        && self.batch.meta.sender_id != dgram_sender_id
+                    {
+                        return Err(datagram);
+                    }
+                }
+            }
+        }
+
         // GSO requires uniform segment sizes (except the last segment can be smaller)
         if let Some(expected_size) = self.segment_size {
             // We already have a uniform size established
@@ -271,10 +312,34 @@ impl Builder {
             self.segment_size = Some(len.min(u16::MAX as usize) as u16);
         }
 
+        // Set sticky sender_id if this datagram requires it
+        if let Some(routing_info) = datagram.datagram_routing_info() {
+            if routing_info.requires_sticky_sender_id() {
+                if let Some(sender_id) = routing_info.source_sender_id() {
+                    self.batch.meta.sender_id = sender_id;
+                }
+            }
+        }
+
         // All constraints satisfied, add to batch
         self.batch.meta.total_bytes += len as u16;
         self.batch.datagrams.push_back(datagram);
         Ok(())
+    }
+
+    /// Sets the sticky sender_id for this batch
+    ///
+    /// Used to ensure FlowInit/FlowInitRetry packets always originate from the same sender
+    /// during retransmission.
+    #[inline]
+    pub fn set_sender_id(&mut self, sender_id: VarInt) {
+        debug_assert!(
+            self.batch.meta.sender_id == VarInt::MAX || self.batch.meta.sender_id == sender_id,
+            "Builder sender_id mismatch: existing={:?}, new={:?}",
+            self.batch.meta.sender_id,
+            sender_id
+        );
+        self.batch.meta.sender_id = sender_id;
     }
 
     /// Finishes building and returns the batch
@@ -339,7 +404,7 @@ impl<Ctx> crate::socket::channel::Sendable for Batch<Ctx> {
 }
 
 /// Metadata about a batch for socket workers
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Meta {
     /// Total bytes in all datagrams (for rate limiting)
     pub total_bytes: u16,
@@ -349,12 +414,18 @@ pub struct Meta {
     pub starting_packet_number: Option<VarInt>,
     /// Whether this batch is a probe (skips packet numbers to elicit immediate ACK)
     pub is_probe: bool,
+    /// Sticky sender ID for flow initialization packets.
+    ///
+    /// Set to VarInt::MAX (sentinel value) for regular packets that can be distributed
+    /// via round-robin. Set to a specific sender_id for FlowInit/FlowInitRetry packets
+    /// that must always originate from the same sender.
+    pub sender_id: VarInt,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{byte_vec::ByteVec, packet::RoutingInfo, path::secret::map::Entry};
+    use crate::{byte_vec::ByteVec, packet::datagram::RoutingInfo, path::secret::map::Entry};
 
     #[test]
     fn batch_creation() {

@@ -8,7 +8,7 @@ use s2n_quic_dc::{
     byte_vec::ByteVec,
     datagram::batch::Batch,
     intrusive_queue::{List, Queue},
-    packet::{datagram::partial::PartialDatagram, RoutingInfo},
+    packet::datagram::{partial::PartialDatagram, RoutingInfo},
     path::secret::map::Entry as PathSecretEntry,
     socket::channel,
 };
@@ -23,12 +23,12 @@ use tracing::info;
 // ── Main Client Entry Point ────────────────────────────────────────────────
 
 pub async fn run(
-    server: SocketAddr,
+    handshake_server: SocketAddr,
     num_sockets: usize,
     config: crate::pipeline::PipelineConfig<'_>,
 ) -> io::Result<()> {
     info!(
-        %server,
+        handshake_server = %handshake_server,
         bandwidth = ?config.overall_send_rate,
         per_socket_bandwidth = ?config.per_socket_send_rate,
         num_sockets,
@@ -37,20 +37,37 @@ pub async fn run(
         "Starting UDP sender client"
     );
 
-    // Use same address family as server
-    let bind_addr: SocketAddr = if server.is_ipv6() {
-        "[::]:0".parse().unwrap()
-    } else {
-        "0.0.0.0:0".parse().unwrap()
+    // Get the PSK client provider and determine the local handshake port
+    let psk_client = match &config.psk_provider {
+        crate::pipeline::PskProvider::Client(provider) => provider,
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Client requires PSK client provider",
+            ))
+        }
     };
 
-    // Create send and receive sockets
+    // Get the local handshake port from the PSK client
+    let handshake_local_addr = psk_client.local_addr()?;
+
+    // Data sockets should bind to handshake_port + 1
+    let mut data_bind_addr = handshake_local_addr;
+    data_bind_addr.set_port(handshake_local_addr.port() + 1);
+
+    info!(
+        handshake_local = %handshake_local_addr,
+        data_bind = %data_bind_addr,
+        "Binding data sockets"
+    );
+
+    // Create send and receive sockets on the data port
     // One send socket per requested socket, but only one recv socket per busy poll worker
     // (worker 0 is the dispatch thread, so num_recv = busy_poll.len() - 1)
     let send_sockets =
-        crate::pipeline::create_send_sockets(num_sockets, bind_addr, config.gso.clone())?;
+        crate::pipeline::create_send_sockets(num_sockets, data_bind_addr, config.gso.clone())?;
     let num_recv_sockets = config.busy_poll.len().saturating_sub(1).max(1);
-    let recv_sockets = crate::pipeline::create_recv_sockets(num_recv_sockets, bind_addr)?;
+    let recv_sockets = crate::pipeline::create_recv_sockets(num_recv_sockets, data_bind_addr)?;
 
     let counters = config.counters.clone();
     let packet_size = config.packet_size;
@@ -64,15 +81,31 @@ pub async fn run(
     let wheel_input_tx = pipeline.wheel_input_tx;
 
     // Spawn datagram generators on tokio runtime
-    let num_generators = 2;
+    let num_generators = 1;
     let max_inflight = 1000; // Backpressure limit
 
-    // Create deterministic path secret entry for all datagrams
-    // This must match the server's deterministic entry
-    let path_secret_entry =
-        PathSecretEntry::fake_deterministic(server, s2n_quic_core::endpoint::Type::Client);
-
-    tokio::time::sleep(core::time::Duration::from_secs(5)).await;
+    // Perform PSK handshake to get path secret entry
+    info!(handshake_server = %handshake_server, "Performing PSK handshake");
+    let path_secret_entry = match &pipeline.psk_provider {
+        crate::pipeline::PskProvider::Client(provider) => {
+            let (peer, _kind) = provider
+                .handshake_with_entry(handshake_server, crate::psk::server_name())
+                .await?;
+            peer.into_raw()
+        }
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Client requires PSK client provider",
+            ))
+        }
+    };
+    let data_server = path_secret_entry.data_addr();
+    info!(
+        handshake_server = %handshake_server,
+        data_server = %data_server,
+        "PSK handshake complete"
+    );
 
     for gen_id in 0..num_generators {
         let wheel_tx = wheel_input_tx.clone();
@@ -82,7 +115,6 @@ pub async fn run(
         tokio::spawn(async move {
             let mut generator = Generator::new(
                 wheel_tx,
-                server,
                 packet_size,
                 max_inflight,
                 path_secret_entry,
@@ -107,7 +139,6 @@ pub async fn run(
 struct Generator {
     wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
     completion_rx: channel::intrusive_queue::datagram_completion::Receiver<PartialDatagram>,
-    server_addr: SocketAddr,
     packet_size: u16,
     packet_number: u64,
     inflight: usize,
@@ -120,7 +151,6 @@ struct Generator {
 impl Generator {
     fn new(
         wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
-        server: SocketAddr,
         packet_size: u16,
         max_inflight: usize,
         path_secret_entry: Arc<PathSecretEntry>,
@@ -131,7 +161,6 @@ impl Generator {
         Self {
             wheel_tx,
             completion_rx,
-            server_addr: server,
             packet_size,
             packet_number: 0,
             inflight: 0,
@@ -147,7 +176,10 @@ impl Generator {
         let generated_counter = self.counters.register("app:generated");
         let completed_counter = self.counters.register("app:completed");
 
+        tracing::debug!("starting");
+
         loop {
+            tracing::debug!("loop");
             () = std::future::poll_fn(|cx| {
                 // Drain all available completion queues
                 let mut completed = 0;
@@ -177,8 +209,9 @@ impl Generator {
                 let mut batches = List::new();
                 for _ in 0..100 {
                     // Create one datagram batch (multiple datagrams to same peer)
-                    let mut builder =
-                        s2n_quic_dc::datagram::batch::Builder::new(None, self.server_addr);
+                    // Use data_addr from the path secret entry
+                    let data_addr = self.path_secret_entry.data_addr();
+                    let mut builder = s2n_quic_dc::datagram::batch::Builder::new(None, data_addr);
 
                     // Fill the batch with datagrams
                     while self.inflight < self.max_inflight
@@ -243,10 +276,15 @@ impl Generator {
         let completion_sender = Some(self.completion_rx.sender());
 
         PartialDatagram::new_datagram(
-            RoutingInfo::QueuePair {
+            RoutingInfo::FlowData {
                 source_sender_id: VarInt::ZERO,
-                source_queue_id: VarInt::ZERO,
-                dest_queue_id: VarInt::ZERO,
+                queue_pair: s2n_quic_dc::packet::datagram::QueuePair {
+                    source_queue_id: VarInt::ZERO,
+                    dest_queue_id: VarInt::ZERO,
+                },
+                stream_id: VarInt::ZERO,
+                offset: VarInt::ZERO,
+                is_fin: false,
             },
             ByteVec::new(),
             payload,

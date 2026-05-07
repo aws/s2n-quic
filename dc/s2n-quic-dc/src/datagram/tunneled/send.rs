@@ -5,7 +5,7 @@ use crate::{
     control,
     credentials::Credentials,
     crypto::seal,
-    packet::{self, datagram::encoder, RoutingInfo},
+    packet::{self, datagram::{encoder, RoutingInfo}},
 };
 use core::sync::atomic::{AtomicU64, Ordering};
 use s2n_codec::EncoderBuffer;
@@ -42,6 +42,7 @@ where
         let payload_len = packet::PayloadLen::try_from(cleartext_payload_len).ok()?;
         Some(encoder::estimate_len(
             VarInt::ZERO,
+            RoutingInfo::None, // No routing info for tunneled datagrams
             VarInt::ZERO,
             payload_len,
             E::tag_len(&self.encrypt_key),

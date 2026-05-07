@@ -10,6 +10,7 @@ use std::net::SocketAddr;
 mod busy_poll;
 mod client;
 mod pipeline;
+mod psk;
 mod server;
 
 #[global_allocator]
@@ -35,7 +36,7 @@ struct Cli {
     sockets: usize,
 
     /// Packet size in bytes (segment size for GSO)
-    #[arg(long, default_value = "8900", global = true)]
+    #[arg(long, default_value = "8192", global = true)]
     packet_size: u16,
 
     /// Disable GSO (Generic Segmentation Offload)
@@ -47,13 +48,13 @@ struct Cli {
 enum Commands {
     /// Start the UDP receiver server
     Server {
-        /// Server bind address (e.g., [::]:5000)
+        /// Server handshake address (data will use port+1, e.g., [::]:5000 for handshake, [::]:5001 for data)
         #[arg(short, long, default_value = "[::]:5000")]
         address: SocketAddr,
     },
     /// Start the UDP sender client
     Client {
-        /// Server address to send to (e.g., [::1]:5000)
+        /// Server handshake address (data will use port+1, e.g., [::1]:5000 for handshake, [::1]:5001 for data)
         #[arg(short, long, default_value = "[::1]:5000")]
         server: SocketAddr,
     },
@@ -75,26 +76,42 @@ async fn main() -> std::io::Result<()> {
     let recv_pool = s2n_quic_dc::socket::pool::Pool::new(u16::MAX);
     let counters = pipeline::CounterRegistry::new();
 
-    let (path_secret_map, endpoint_addr, is_server) = match &cli.command {
+    let (psk_provider, endpoint_addr, is_server) = match &cli.command {
         Commands::Server { address } => {
-            let client_addr = "10.2.62.243:0".parse().unwrap();
+            // Address is the handshake address
+            // Data address will be port + 1
+            let handshake_addr = *address;
+            let mut data_addr = *address;
+            data_addr.set_port(address.port() + 1);
+
+            let provider = psk::server(handshake_addr)
+                .await
+                .expect("Failed to create PSK server");
             (
-                pipeline::create_test_map(client_addr, s2n_quic_core::endpoint::Type::Server),
-                *address,
+                pipeline::PskProvider::Server(provider),
+                data_addr, // Server binds data sockets to data_addr
                 true,
             )
         }
-        Commands::Client { server } => (
-            pipeline::create_test_map(*server, s2n_quic_core::endpoint::Type::Client),
-            *server,
-            false,
-        ),
+        Commands::Client { server } => {
+            // Server address is the handshake address
+            // Client will derive data address as handshake + 1
+            let provider = psk::client().expect("Failed to create PSK client");
+            (
+                pipeline::PskProvider::Client(provider),
+                *server, // Pass handshake address to client
+                false,
+            )
+        }
     };
 
     let gso = s2n_quic_platform::features::Gso::default();
     if cli.disable_gso {
         gso.disable();
     }
+
+    // Create acceptor registry for flow initialization
+    let acceptor_registry = s2n_quic_dc::acceptor::Registry::new();
 
     let config = pipeline::PipelineConfig {
         packet_size: cli.packet_size,
@@ -105,8 +122,9 @@ async fn main() -> std::io::Result<()> {
         send_pool,
         recv_pool,
         counters,
-        path_secret_map,
+        psk_provider,
         gso,
+        acceptor_registry,
     };
 
     if is_server {

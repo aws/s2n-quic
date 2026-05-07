@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+pub mod acceptor;
 pub mod allocator;
 pub mod busy_poll;
 pub mod byte_vec;
@@ -12,6 +13,7 @@ pub mod crypto;
 pub mod datagram;
 pub mod either;
 pub mod event;
+pub mod flow;
 pub mod intrusive_queue;
 pub mod msg;
 pub mod packet;

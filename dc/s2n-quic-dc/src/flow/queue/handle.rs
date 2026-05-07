@@ -1,0 +1,225 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+use super::{
+    descriptor::Descriptor,
+    inner::{Error, Half},
+    probes,
+};
+use crate::{intrusive_queue, sync::ring_deque};
+use core::{
+    fmt,
+    task::{Context, Poll},
+};
+use s2n_quic_core::varint::VarInt;
+
+macro_rules! impl_recv {
+    ($name:ident, $field:ident, $half:expr, $type_param:ident) => {
+        pub struct $name<S: 'static, C: 'static, Key: 'static> {
+            descriptor: Descriptor<S, C, Key>,
+        }
+
+        impl<S: 'static, C: 'static, Key: 'static> $name<S, C, Key> {
+            #[inline]
+            pub(super) fn new(descriptor: Descriptor<S, C, Key>) -> Self {
+                Self { descriptor }
+            }
+
+            /// Returns the associated `queue_id` for the channel
+            ///
+            /// This can be sent to a peer, which can be used to route packets back to the channel.
+            #[inline]
+            pub fn queue_id(&self) -> VarInt {
+                unsafe { self.descriptor.queue_id() }
+            }
+
+            #[inline]
+            pub fn push(&self, value: intrusive_queue::Entry<$type_param>) {
+                unsafe {
+                    let res = self.descriptor.$field().push(value, || true);
+                    debug_assert!(res.is_ok());
+                    probes::on_send(self.descriptor.queue_id(), $half, true);
+                }
+            }
+
+            #[inline]
+            pub fn try_recv(
+                &self,
+            ) -> Result<Option<intrusive_queue::Entry<$type_param>>, ring_deque::Closed> {
+                unsafe {
+                    let value = self.descriptor.$field().pop()?;
+                    probes::on_recv(self.descriptor.queue_id(), $half, value.is_some().into());
+                    Ok(value)
+                }
+            }
+
+            #[inline]
+            pub async fn recv(
+                &self,
+            ) -> Result<intrusive_queue::Entry<$type_param>, ring_deque::Closed> {
+                core::future::poll_fn(|cx| self.poll_recv(cx)).await
+            }
+
+            #[inline]
+            pub fn poll_recv(
+                &self,
+                cx: &mut Context,
+            ) -> Poll<Result<intrusive_queue::Entry<$type_param>, ring_deque::Closed>> {
+                unsafe {
+                    match self.descriptor.$field().poll_pop(cx) {
+                        Poll::Ready(Ok(entry)) => {
+                            probes::on_recv(self.descriptor.queue_id(), $half, 1);
+                            Poll::Ready(Ok(entry))
+                        }
+                        Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
+                        Poll::Pending => {
+                            probes::on_recv(self.descriptor.queue_id(), $half, 0);
+                            Poll::Pending
+                        }
+                    }
+                }
+            }
+
+            #[inline]
+            pub fn poll_swap(
+                &self,
+                cx: &mut Context,
+            ) -> Poll<Result<intrusive_queue::Queue<$type_param>, ring_deque::Closed>> {
+                unsafe {
+                    match self.descriptor.$field().poll_swap(cx) {
+                        Poll::Ready(Ok(queue)) => {
+                            probes::on_recv(self.descriptor.queue_id(), $half, queue.len());
+                            Poll::Ready(Ok(queue))
+                        }
+                        Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
+                        Poll::Pending => {
+                            probes::on_recv(self.descriptor.queue_id(), $half, 0);
+                            Poll::Pending
+                        }
+                    }
+                }
+            }
+        }
+
+        impl<S: 'static, C: 'static, Key: 'static> fmt::Debug for $name<S, C, Key> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.debug_struct(stringify!($name))
+                    .field("queue_id", &self.queue_id())
+                    .finish()
+            }
+        }
+
+        impl<S: 'static, C: 'static, Key: 'static> Drop for $name<S, C, Key> {
+            #[inline]
+            fn drop(&mut self) {
+                unsafe {
+                    self.descriptor.drop_receiver($half);
+                }
+            }
+        }
+    };
+}
+
+impl_recv!(Control, control_queue, Half::Control, C);
+impl_recv!(Stream, stream_queue, Half::Stream, S);
+
+pub struct Sender<S: 'static, C: 'static, Key: 'static> {
+    descriptor: Descriptor<S, C, Key>,
+}
+
+impl<S: 'static, C: 'static, Key: 'static> Clone for Sender<S, C, Key> {
+    #[inline]
+    fn clone(&self) -> Self {
+        unsafe {
+            Self {
+                descriptor: self.descriptor.clone_for_sender(),
+            }
+        }
+    }
+}
+
+impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
+    #[inline]
+    pub(super) fn new(descriptor: Descriptor<S, C, Key>) -> Self {
+        Self { descriptor }
+    }
+
+    #[inline]
+    pub fn send_stream<F>(
+        &self,
+        entry: intrusive_queue::Entry<S>,
+        validate: F,
+    ) -> Result<(), Error<intrusive_queue::Entry<S>>>
+    where
+        F: FnOnce(&Key) -> bool,
+    {
+        unsafe {
+            self.descriptor
+                .stream_queue()
+                .push(entry, || validate(self.descriptor.key()))?;
+            probes::on_send(self.descriptor.queue_id(), Half::Stream, false);
+            Ok(())
+        }
+    }
+
+    #[inline]
+    pub fn send_control<F>(
+        &self,
+        entry: intrusive_queue::Entry<C>,
+        validate: F,
+    ) -> Result<(), Error<intrusive_queue::Entry<C>>>
+    where
+        F: FnOnce(&Key) -> bool,
+    {
+        unsafe {
+            self.descriptor
+                .control_queue()
+                .push(entry, || validate(self.descriptor.key()))?;
+            probes::on_send(self.descriptor.queue_id(), Half::Control, false);
+            Ok(())
+        }
+    }
+
+    /// Invokes the provided closure with a reference to the queue's key if the stream queue is allocated.
+    ///
+    /// This locks the stream queue to check if it has a receiver and accesses the key within
+    /// that lock to avoid races with queue deallocation.
+    ///
+    /// Returns Ok(R) if the stream queue is allocated, Err(()) otherwise.
+    #[inline]
+    pub fn with_key_stream<F, R>(&self, f: F) -> Result<R, ()>
+    where
+        F: FnOnce(&Key) -> R,
+    {
+        unsafe {
+            let stream_queue = self.descriptor.stream_queue();
+            stream_queue.with_key(|| f(self.descriptor.key()))
+        }
+    }
+
+    /// Invokes the provided closure with a reference to the queue's key if the control queue is allocated.
+    ///
+    /// This locks the control queue to check if it has a receiver and accesses the key within
+    /// that lock to avoid races with queue deallocation.
+    ///
+    /// Returns Ok(R) if the control queue is allocated, Err(()) otherwise.
+    #[inline]
+    pub fn with_key_control<F, R>(&self, f: F) -> Result<R, ()>
+    where
+        F: FnOnce(&Key) -> R,
+    {
+        unsafe {
+            let control_queue = self.descriptor.control_queue();
+            control_queue.with_key(|| f(self.descriptor.key()))
+        }
+    }
+}
+
+impl<S: 'static, C: 'static, Key: 'static> Drop for Sender<S, C, Key> {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            self.descriptor.drop_sender();
+        }
+    }
+}

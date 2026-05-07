@@ -50,4 +50,13 @@ impl Peer {
     pub fn map(&self) -> &Map {
         &self.map
     }
+
+    /// Consume the Peer and return the underlying Arc<Entry>.
+    ///
+    /// This is useful for low-level datagram transmission where you need
+    /// direct access to the entry for creating PartialDatagram packets.
+    #[inline]
+    pub fn into_raw(self) -> Arc<Entry> {
+        self.entry
+    }
 }

@@ -8,6 +8,9 @@ use zerocopy::{FromBytes, Unaligned};
 pub mod decoder;
 pub mod encoder;
 
+mod routing_info;
+pub use routing_info::RoutingInfo;
+
 #[derive(Clone, Copy, PartialEq, Eq, FromBytes, Unaligned)]
 #[repr(C)]
 pub struct Tag(Common);

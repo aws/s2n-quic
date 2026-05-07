@@ -5,7 +5,7 @@ use crate::{
     credentials,
     credentials::Credentials,
     crypto::seal,
-    packet::{datagram::Tag, RoutingInfo, WireVersion},
+    packet::{datagram::{RoutingInfo, Tag}, WireVersion},
 };
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{assume, buffer};
@@ -13,6 +13,7 @@ use s2n_quic_core::{assume, buffer};
 #[inline(always)]
 pub fn estimate_len(
     _packet_number: super::PacketNumber,
+    routing_info: RoutingInfo,
     app_header_len: super::HeaderLen,
     payload_len: super::PayloadLen,
     crypto_tag_len: usize,
@@ -22,7 +23,9 @@ pub fn estimate_len(
 
     let mut encoder = s2n_codec::EncoderLenEstimator::new(usize::MAX);
 
-    encoder.encode(&Tag::default());
+    let mut tag = Tag::default();
+    tag.set_has_routing_info(!matches!(routing_info, RoutingInfo::None));
+    encoder.encode(&tag);
 
     // credentials
     {
@@ -33,6 +36,12 @@ pub fn estimate_len(
     encoder.encode(&WireVersion::ZERO);
     encoder.encode(&0u16); // source control port
     encoder.write_repeated(8, 0); // packet number
+
+    // routing info
+    if tag.has_routing_info() {
+        encoder.encode(&routing_info);
+    }
+
     encoder.write_repeated(8, 0); // payload len
 
     if app_header_len_usize > 0 {

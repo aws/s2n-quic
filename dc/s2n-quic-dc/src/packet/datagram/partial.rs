@@ -17,9 +17,9 @@
 
 use s2n_quic_core::varint::VarInt;
 
-use super::{HeaderLen, PayloadLen};
+use super::{HeaderLen, PayloadLen, RoutingInfo};
 use crate::{
-    byte_vec::ByteVec, congestion, credentials::Credentials, packet::RoutingInfo,
+    byte_vec::ByteVec, congestion, credentials::Credentials,
     path::secret::map::Entry as PathSecretEntry,
 };
 use std::sync::Arc;
@@ -29,6 +29,8 @@ use std::sync::Arc;
 pub enum PacketType {
     /// Datagram packet with application header and payload
     Datagram {
+        /// Routing information for the packet
+        routing_info: RoutingInfo,
         /// Application header data (encrypted with payload if present)
         header: ByteVec,
         /// Application payload data
@@ -36,6 +38,8 @@ pub enum PacketType {
     },
     /// Control packet with control frames (e.g., ACKs)
     Control {
+        /// Routing information for control packets
+        routing_info: crate::packet::control::RoutingInfo,
         /// Encoded control frames
         control_data: ByteVec,
     },
@@ -95,10 +99,8 @@ pub struct TransmissionInfo {
 /// its lifecycle (transmission wheel, completion queue, etc.) without boxing/unboxing.
 #[derive(Clone)]
 pub struct PartialDatagram {
-    /// Type of packet and its type-specific data
+    /// Type of packet and its type-specific data (includes routing info)
     pub packet_type: PacketType,
-    /// Routing information for the packet
-    pub routing_info: RoutingInfo,
     /// Path secret entry for the destination peer
     ///
     /// Pre-computed by the application to avoid map lookups in socket workers.
@@ -116,7 +118,6 @@ impl std::fmt::Debug for PartialDatagram {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PartialDatagram")
             .field("packet_type", &self.packet_type)
-            .field("routing_info", &self.routing_info)
             .field("path_secret", self.path_secret_entry.id())
             .field("status", &self.status)
             .field("completion", &self.completion)
@@ -136,8 +137,11 @@ impl PartialDatagram {
         completion: Option<CompletionSender>,
     ) -> Self {
         Self {
-            packet_type: PacketType::Datagram { header, payload },
-            routing_info,
+            packet_type: PacketType::Datagram {
+                routing_info,
+                header,
+                payload,
+            },
             path_secret_entry,
             status: TransmissionStatus::Pending,
             completion,
@@ -148,13 +152,15 @@ impl PartialDatagram {
     /// Creates a new control packet transmission.
     #[inline]
     pub fn new_control(
-        routing_info: RoutingInfo,
+        routing_info: crate::packet::control::RoutingInfo,
         control_data: ByteVec,
         path_secret_entry: Arc<PathSecretEntry>,
     ) -> Self {
         Self {
-            packet_type: PacketType::Control { control_data },
-            routing_info,
+            packet_type: PacketType::Control {
+                routing_info,
+                control_data,
+            },
             path_secret_entry,
             status: TransmissionStatus::Pending,
             completion: None, // Control packets don't need completion notifications
@@ -165,26 +171,52 @@ impl PartialDatagram {
     /// Returns the remote address for this datagram
     #[inline]
     pub fn remote_address(&self) -> std::net::SocketAddr {
-        *self.path_secret_entry.peer()
+        self.path_secret_entry.data_addr()
+    }
+
+    /// Returns the routing info for datagram packets, or None for control packets
+    #[inline]
+    pub fn datagram_routing_info(&self) -> Option<&RoutingInfo> {
+        match &self.packet_type {
+            PacketType::Datagram { routing_info, .. } => Some(routing_info),
+            PacketType::Control { .. } => None,
+        }
+    }
+
+    /// Returns the routing info for control packets, or None for datagram packets
+    #[inline]
+    pub fn control_routing_info(&self) -> Option<&crate::packet::control::RoutingInfo> {
+        match &self.packet_type {
+            PacketType::Control { routing_info, .. } => Some(routing_info),
+            PacketType::Datagram { .. } => None,
+        }
     }
 
     /// Estimates the final encoded packet size including crypto overhead.
     #[inline]
     pub fn estimate_encoded_len(&self, crypto_tag_len: usize) -> usize {
         match &self.packet_type {
-            PacketType::Datagram { header, payload } => {
+            PacketType::Datagram {
+                routing_info,
+                header,
+                payload,
+            } => {
                 let header_len =
                     HeaderLen::new(header.len() as u64).expect("header length fits in VarInt");
                 let payload_len =
                     PayloadLen::new(payload.len() as u64).expect("payload length fits in VarInt");
                 super::encoder::estimate_len(
                     super::PacketNumber::MAX, // Placeholder, actual value assigned by worker
+                    *routing_info,
                     header_len,
                     payload_len,
                     crypto_tag_len,
                 )
             }
-            PacketType::Control { control_data } => {
+            PacketType::Control {
+                routing_info,
+                control_data,
+            } => {
                 use s2n_quic_core::varint::VarInt;
                 let control_data_len = VarInt::new(control_data.len() as u64)
                     .expect("control data length fits in VarInt");
@@ -192,7 +224,7 @@ impl PartialDatagram {
                     VarInt::MAX, // Placeholder, actual value assigned by worker
                     None,        // source_queue_id
                     None,        // stream_id
-                    self.routing_info,
+                    *routing_info,
                     control_data_len,
                     crypto_tag_len,
                 )
@@ -216,10 +248,13 @@ impl PartialDatagram {
     where
         Sealer: crate::crypto::seal::Application,
     {
-        let routing_info = self.routing_info.with_source_sender_id(source_sender_id);
-
         match &mut self.packet_type {
-            PacketType::Datagram { header, payload } => {
+            PacketType::Datagram {
+                routing_info,
+                header,
+                payload,
+            } => {
+                let routing_info = routing_info.with_source_sender_id(source_sender_id);
                 let header_len =
                     HeaderLen::new(header.len() as u64).expect("header length fits in VarInt");
                 let payload_len =
@@ -241,7 +276,11 @@ impl PartialDatagram {
                     credentials,
                 )
             }
-            PacketType::Control { control_data } => {
+            PacketType::Control {
+                routing_info,
+                control_data,
+            } => {
+                let routing_info = routing_info.with_source_sender_id(source_sender_id);
                 use s2n_quic_core::varint::VarInt;
                 let control_data_len = VarInt::new(control_data.len() as u64)
                     .expect("control data length fits in VarInt");

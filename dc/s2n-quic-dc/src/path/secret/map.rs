@@ -146,6 +146,15 @@ impl Map {
         Some(Peer::new(&entry, self))
     }
 
+    /// Get the raw entry for a peer address.
+    ///
+    /// This bypasses the Peer wrapper and returns the underlying Arc<Entry> directly.
+    /// Useful for low-level datagram transmission where you need the entry for creating
+    /// PartialDatagram packets.
+    pub fn get_raw(&self, peer: SocketAddr) -> Option<Arc<Entry>> {
+        self.store.get_by_addr_untracked(&peer)
+    }
+
     /// Retrieve a sealer by path secret ID.
     ///
     /// Generally callers should prefer to use one of the `pair` APIs; this is primarily useful for

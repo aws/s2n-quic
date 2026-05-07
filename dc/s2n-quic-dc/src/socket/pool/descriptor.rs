@@ -491,6 +491,15 @@ pub struct Segments {
     segment_len: u16,
 }
 
+impl fmt::Debug for Segments {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Segments")
+            .field("payload_len", &self.descriptor.len())
+            .field("segment_len", &self.segment_len)
+            .finish()
+    }
+}
+
 impl Segments {
     pub fn new(descriptor: Filled, segment_len: u16) -> Self {
         let segment_len = if segment_len == 0 {

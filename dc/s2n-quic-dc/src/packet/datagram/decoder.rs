@@ -3,7 +3,7 @@
 
 use crate::{
     credentials::Credentials,
-    packet::{datagram::Tag, storage, RoutingInfo, WireVersion},
+    packet::{datagram::{RoutingInfo, Tag}, storage, WireVersion},
 };
 use core::{fmt, ops::Deref};
 use s2n_codec::{
@@ -260,6 +260,86 @@ impl<S: storage::Bytes> Packet<S> {
         };
 
         opener.decrypt_in_place(key_phase, packet_number, header, payload_and_tag)
+    }
+
+    /// Returns the required buffer size for `decrypt_into`
+    ///
+    /// This is the sum of application_header.len() + payload.len()
+    #[inline]
+    pub fn decrypt_into_len(&self) -> usize {
+        self.meta.application_header.len() + self.meta.payload.len()
+    }
+
+    /// Decrypt the packet into a destination buffer, copying header + decrypting payload
+    ///
+    /// The destination buffer will contain:
+    /// - Application header (routing_info fields as encoded)
+    /// - Decrypted application payload
+    ///
+    /// This is a zero-copy operation for the encryption - the payload is decrypted directly
+    /// into the destination buffer. The header portion is copied.
+    ///
+    /// Returns the total length written (application_header.len() + payload.len())
+    ///
+    /// Use `decrypt_into_len()` to get the required buffer size.
+    #[inline]
+    pub fn decrypt_into<O>(
+        &self,
+        opener: &O,
+        dest: &mut bytes::buf::UninitSlice,
+    ) -> Result<usize, crate::crypto::open::Error>
+    where
+        O: crate::crypto::open::Application,
+    {
+        let key_phase = self.tag().key_phase();
+        let packet_number = self.packet_number().as_u64();
+
+        let application_header_len = self.meta.application_header.len();
+        let payload_len = self.meta.payload.len();
+        let auth_tag_len = self.meta.auth_tag.len();
+        let total_len = application_header_len + payload_len;
+
+        // Ensure destination buffer is large enough
+        if dest.len() < total_len {
+            return Err(crate::crypto::open::Error::UnsupportedOperation);
+        }
+
+        let header_len = self.meta.header.len();
+
+        // Get slices using same pattern as decrypt_in_place
+        let (header, payload_in, tag) = unsafe {
+            // SAFETY: bounds were validated during packet decoding in Meta::decode
+            let ptr = self.storage.as_ptr();
+            let header = core::slice::from_raw_parts(ptr, header_len);
+            let payload_in = core::slice::from_raw_parts(ptr.add(header_len), payload_len);
+            let tag = core::slice::from_raw_parts(ptr.add(header_len + payload_len), auth_tag_len);
+            (header, payload_in, tag)
+        };
+
+        // Decrypt payload directly into destination buffer after the application header
+        // Do this first so we don't waste time copying header if AEAD fails
+        opener.decrypt(
+            key_phase,
+            packet_number,
+            header,
+            payload_in,
+            tag,
+            &mut dest[application_header_len..total_len],
+        )?;
+
+        // Authentication succeeded, now copy application header to destination
+        let application_header = self.meta.application_header.get(&*self.storage);
+        unsafe {
+            // SAFETY: we already checked that dest.len() >= total_len,
+            // and application_header_len is part of total_len
+            core::ptr::copy_nonoverlapping(
+                application_header.as_ptr(),
+                dest.as_mut_ptr(),
+                application_header_len,
+            );
+        }
+
+        Ok(total_len)
     }
 
     /// Create a packet from metadata and storage, validating that the storage is compatible

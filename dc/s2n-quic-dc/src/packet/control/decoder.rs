@@ -3,7 +3,10 @@
 
 use crate::{
     credentials::Credentials,
-    packet::{control::Tag, storage, stream, RoutingInfo, WireVersion},
+    packet::{
+        control::{RoutingInfo, Tag},
+        storage, stream, WireVersion,
+    },
 };
 use core::{fmt, ops::Deref};
 use s2n_codec::{
@@ -295,7 +298,14 @@ impl<S: storage::Bytes> Packet<S> {
 
         // For control packets, the payload is empty (all data is in header)
         // We just need to verify the MAC over the header
-        opener.decrypt(key_phase, packet_number, header, &[], tag, &mut crate::crypto::UninitSlice::new(&mut []))
+        opener.decrypt(
+            key_phase,
+            packet_number,
+            header,
+            &[],
+            tag,
+            &mut crate::crypto::UninitSlice::new(&mut []),
+        )
     }
 
     /// Replace the storage with a new one, validating that it's still valid for the ranges

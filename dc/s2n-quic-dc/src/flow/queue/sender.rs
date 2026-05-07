@@ -1,0 +1,91 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+use super::{free_list, handle::Sender, inner::Error};
+use s2n_quic_core::varint::VarInt;
+use std::sync::{Arc, RwLock};
+
+pub struct State<S: 'static, C: 'static, Key: 'static> {
+    pub(super) pages: RwLock<SenderPages<S, C, Key>>,
+}
+
+impl<S: 'static, C: 'static, Key: 'static> State<S, C, Key> {
+    #[inline]
+    pub fn new(epoch: VarInt) -> Arc<Self> {
+        Arc::new(Self {
+            pages: RwLock::new(SenderPages::new(epoch)),
+        })
+    }
+}
+
+pub struct Senders<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> {
+    pub(super) state: Arc<State<S, C, Key>>,
+    pub(super) local: Vec<Arc<[Sender<S, C, Key>]>>,
+    pub(super) memory_handle: Arc<free_list::Memory<S, C, Key>>,
+    pub(super) base: VarInt,
+}
+
+impl<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> Clone
+    for Senders<S, C, Key, PAGE_SIZE>
+{
+    fn clone(&self) -> Self {
+        Self {
+            state: self.state.clone(),
+            memory_handle: self.memory_handle.clone(),
+            local: self.local.clone(),
+            base: self.base,
+        }
+    }
+}
+
+impl<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> Senders<S, C, Key, PAGE_SIZE> {
+    #[inline]
+    pub fn lookup<T, F>(&mut self, queue_id: VarInt, entry: T, f: F) -> Result<(), Error<T>>
+    where
+        F: FnOnce(&Sender<S, C, Key>, T) -> Result<(), Error<T>>,
+    {
+        let Some(queue_id) = queue_id.checked_sub(self.base) else {
+            return Err(Error::Unallocated(entry));
+        };
+        let queue_id = queue_id.as_u64() as usize;
+        let page = queue_id / PAGE_SIZE;
+        let offset = queue_id % PAGE_SIZE;
+
+        if self.local.len() <= page {
+            let Ok(senders) = self.state.pages.read() else {
+                return Err(Error::Unallocated(entry));
+            };
+
+            // the senders haven't been updated
+            if self.local.len() == senders.pages.len() {
+                return Err(Error::Unallocated(entry));
+            }
+
+            self.local
+                .extend_from_slice(&senders.pages[self.local.len()..]);
+        }
+
+        let Some(page) = self.local.get(page) else {
+            return Err(Error::Unallocated(entry));
+        };
+        let Some(sender) = page.get(offset) else {
+            return Err(Error::Unallocated(entry));
+        };
+        f(sender, entry)
+    }
+}
+
+pub(super) struct SenderPages<S: 'static, C: 'static, Key: 'static> {
+    pub(super) pages: Vec<Arc<[Sender<S, C, Key>]>>,
+    pub(super) epoch: VarInt,
+}
+
+impl<S: 'static, C: 'static, Key: 'static> SenderPages<S, C, Key> {
+    #[inline]
+    pub(super) fn new(epoch: VarInt) -> Self {
+        Self {
+            pages: Vec::with_capacity(8),
+            epoch,
+        }
+    }
+}

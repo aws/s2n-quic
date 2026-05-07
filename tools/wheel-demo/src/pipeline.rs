@@ -9,7 +9,7 @@
 //!
 //! This module provides shared pipeline building blocks.
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use core::time::Duration;
 use s2n_codec::{Encoder as _, EncoderBuffer};
 use s2n_quic_core::{
@@ -19,13 +19,18 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 use s2n_quic_dc::{
+    acceptor,
     busy_poll::clock::Timer as BusyPollClock,
     clock::{precision::Clock as _, tokio::Clock as TokioClock, wheel::Wheel},
     congestion,
     credentials::{self, Credentials},
     datagram::batch::Batch,
+    flow::{self, queue},
     intrusive_queue::{Entry, Queue},
-    packet::{self, datagram::partial::PartialDatagram, RoutingInfo},
+    packet::{
+        self,
+        datagram::{partial::PartialDatagram, QueuePair, ResetTarget, RoutingInfo},
+    },
     path::{self, secret::map::Entry as PathSecretEntry},
     random,
     socket::{
@@ -53,6 +58,40 @@ use std::{
     },
 };
 use tracing::info;
+
+// ── PSK Provider ───────────────────────────────────────────────────────────
+
+/// Wrapper for either client or server PSK provider
+pub enum PskProvider {
+    Client(s2n_quic_dc::psk::client::Provider),
+    Server(s2n_quic_dc::psk::server::Provider),
+}
+
+impl PskProvider {
+    /// Get the underlying path secret map
+    pub fn map(&self) -> &s2n_quic_dc::path::secret::map::Map {
+        match self {
+            PskProvider::Client(provider) => provider.map(),
+            PskProvider::Server(provider) => provider.map(),
+        }
+    }
+}
+
+// ── Flow Reset Error Codes ─────────────────────────────────────────────────
+
+/// Error codes for FlowReset packets
+mod reset_error {
+    use s2n_quic_core::varint::VarInt;
+
+    /// Stream ID was reused before the previous flow completed
+    pub const STREAM_ID_ERROR: VarInt = VarInt::from_u32(1);
+
+    /// The acceptor ID specified in FlowInit was not found
+    pub const ACCEPTOR_NOT_FOUND: VarInt = VarInt::from_u32(2);
+
+    /// The queue state became stale or inconsistent during validation
+    pub const STALE_STATE: VarInt = VarInt::from_u32(3);
+}
 
 // ── Worker-Socket Channel ──────────────────────────────────────────────────
 
@@ -240,49 +279,23 @@ impl CounterRegistry {
 
 // ── Testing Helpers ────────────────────────────────────────────────────────
 
-/// Fast consistent hash for routing packets by credentials
+/// Fast consistent hash for routing packets by credentials and sender
 ///
-/// Combines credentials.id (good entropy) with key_id using a mixing function
+/// Combines credentials.id (good entropy) with source_sender_id using a mixing function.
+/// Uses source_sender_id instead of key_id because it's stable across key rotations.
 #[inline]
-fn hash_credentials(credentials: &Credentials) -> u64 {
+fn hash_credentials_and_sender(credentials: &Credentials, source_sender_id: VarInt) -> u64 {
     // Start with credentials.id which has good entropy
     let mut hash = credentials.id.to_hash();
 
-    // Mix in key_id using a simple but effective mixing function
-    // This ensures different paths from the same peer distribute across workers
-    let key_id = credentials.key_id.as_u64();
-    hash ^= key_id.wrapping_mul(0x9e3779b97f4a7c15); // Golden ratio
-    hash = hash.rotate_left(32) ^ key_id;
+    // Mix in source_sender_id using a simple but effective mixing function
+    // This ensures different senders from the same peer distribute across workers
+    let sender_id = source_sender_id.as_u64();
+    hash ^= sender_id.wrapping_mul(0x9e3779b97f4a7c15); // Golden ratio
+    hash = hash.rotate_left(32) ^ sender_id;
     hash = hash.wrapping_mul(0x517cc1b727220a95);
 
     hash
-}
-
-/// Create a deterministic test path secret map for demo purposes.
-///
-/// Uses a fixed secret so client and server (in separate processes) can communicate.
-/// The endpoint_type determines whether this is the client or server side.
-pub fn create_test_map(
-    peer_addr: SocketAddr,
-    endpoint_type: s2n_quic_core::endpoint::Type,
-) -> s2n_quic_dc::path::secret::map::Map {
-    use s2n_quic_dc::{event, path::secret};
-
-    let subscriber = event::tracing::Subscriber::default();
-    let signer = secret::stateless_reset::Signer::random();
-
-    let map = secret::Map::new(
-        signer,
-        100, // capacity
-        false,
-        s2n_quic_core::time::StdClock::default(),
-        subscriber,
-    );
-
-    // Insert a deterministic test entry so client and server can communicate
-    map.test_insert_deterministic(peer_addr, endpoint_type);
-
-    map
 }
 
 // ── PTO Probe Generation ───────────────────────────────────────────────────
@@ -291,8 +304,8 @@ pub fn create_test_map(
 ///
 /// TODO: Piggyback any pending ACK frames with the PING to save a separate control
 /// packet transmission. This would require:
-/// - Looking up the peer state from the shared_peer_cache by credentials
-/// - Checking if peer_state.should_transmit()
+/// - Looking up the peer state from the shared_sender_cache by credentials
+/// - Checking if sender_state.should_transmit()
 /// - Encoding both the ACK and PING frames into the same control packet
 /// - Marking the ACK as transmitted in the peer state
 fn generate_pto_probe(
@@ -306,7 +319,7 @@ fn generate_pto_probe(
 
     // Create control packet with PING
     PartialDatagram::new_control(
-        RoutingInfo::None,
+        packet::control::RoutingInfo::None,
         control_data,
         context.path_secret_entry.clone(),
     )
@@ -336,8 +349,9 @@ where
     // Check if we should actually send a probe
     let should_send_probe = context.pto.on_timeout(has_inflight);
 
-    // Extract peer address for probe generation if needed
-    let peer_addr = *context.path_secret_entry.peer();
+    // Extract data address for probe generation if needed
+    // Control packets (including PTO probes) go to the data port, not handshake port
+    let data_addr = context.path_secret_entry.data_addr();
 
     let probe_batch = if should_send_probe {
         tracing::debug!(
@@ -349,10 +363,10 @@ where
         );
 
         // Generate probe datagram (immutable borrow of context)
-        let probe_datagram = generate_pto_probe(&*context, peer_addr);
+        let probe_datagram = generate_pto_probe(&*context, data_addr);
 
         // Create a batch for the probe
-        let mut batch = Batch::new(None, peer_addr);
+        let mut batch = Batch::new(None, data_addr);
         batch.push(probe_datagram.into());
 
         Some(Entry::new(batch))
@@ -620,6 +634,62 @@ fn detect_and_retransmit_lost_packets<Rand>(
     // }
 }
 
+// ── Flow Initialization ────────────────────────────────────────────────────
+
+/// Placeholder type for stream data in flow queues
+pub enum StreamMsg {
+    /// Received after a flow has been validated
+    FlowValidated,
+    Data {
+        offset: VarInt,
+        fin: bool,
+        payload: BytesMut,
+    },
+    Reset {
+        error_code: VarInt,
+    },
+}
+
+/// Placeholder type for control data in flow queues
+pub enum ControlMsg {
+    /// Received after a flow has been validated
+    FlowValidated,
+    Frames {
+        payload: BytesMut,
+    },
+    Reset {
+        error_code: VarInt,
+    },
+}
+
+/// Flow initialization message delivered to acceptors
+pub struct FlowInit {
+    /// Stream ID from the client (global identifier)
+    pub stream_id: VarInt,
+    /// Queue ID from the peer (for routing responses)
+    pub peer_queue_id: VarInt,
+    /// Path secret entry for encrypting packets to this peer
+    /// (use path_entry.data_addr() to get the peer's data address)
+    pub path_entry: Arc<PathSecretEntry>,
+    /// Sender for transmitting batches (shared wheel input)
+    pub wheel_tx: intrusive_queue::sync::Sender<Batch>,
+    /// Control handle for the flow queue
+    pub queue_control: queue::Control<StreamMsg, ControlMsg, flow::Handle>,
+    /// Stream handle for the flow queue
+    pub queue_stream: queue::Stream<StreamMsg, ControlMsg, flow::Handle>,
+}
+
+/// Result of flow initialization processing
+enum FlowInitResult {
+    /// Flow was successfully enqueued to acceptor, no additional response needed
+    /// (ACK will still be sent at packet layer)
+    Enqueued,
+    /// Need to send a retry request to the client
+    NeedRetry { server_queue_id: VarInt },
+    /// Need to send a reset to the client
+    NeedReset { error_code: VarInt },
+}
+
 // ── Datagram Processing ────────────────────────────────────────────────────
 
 enum ProcessError {
@@ -635,49 +705,79 @@ enum ProcessError {
         credentials: Credentials,
         packet_number: VarInt,
     },
+    MissingSenderId,
 }
 
-/// Process a received datagram packet for ACK generation.
+/// Process a received datagram packet - authenticate, deduplicate, dispatch, and generate ACK.
 ///
-/// This authenticates the packet by decrypting it, filters duplicates, and
-/// updates the peer state to generate ACKs. Returns the decrypted packet on success.
+/// This does common packet processing (decrypt, packet number dedup, ACK recording),
+/// then dispatches to type-specific handlers based on routing_info, and generates the ACK batch.
+/// Returns a batch containing the ACK packet with the correct peer address.
 fn process_datagram<Clk>(
-    mut packet: Entry<packet::datagram::decoder::Packet<descriptor::Filled>>,
-    peer_cache: &mut PeerStateCache,
+    packet: Entry<packet::datagram::decoder::Packet<descriptor::Filled>>,
+    sender_cache: &mut SenderStateCache,
     path_secret_map: &path::secret::Map,
+    acceptor_registry: &acceptor::Registry<FlowInit>,
+    wheel_tx: &intrusive_queue::sync::Sender<Batch>,
+    response_tx: &mut impl channel::UnboundedSender<Queue<PartialDatagram>>,
+    queue_dispatcher: &mut queue::Dispatch<StreamMsg, ControlMsg, flow::Handle>,
     clock: &Clk,
-) -> Result<Entry<packet::datagram::decoder::Packet<descriptor::Filled>>, ProcessError>
+) -> Result<(), ProcessError>
 where
     Clk: s2n_quic_core::time::Clock + ?Sized,
 {
     let credentials = *packet.credentials();
+    let packet_number = packet.packet_number();
+    let routing_info = packet.routing_info();
+    let idle_timeout = sender_cache.idle_timeout;
 
-    let idle_timeout = peer_cache.idle_timeout;
+    // Extract peer address for ACK routing
+    let mut peer_addr = packet.storage().remote_address().get();
+    let source_control_port = packet.meta().source_control_port();
+    if source_control_port > 0 {
+        peer_addr.set_port(source_control_port);
+    }
 
-    // Get or create peer state
+    // Extract source_sender_id for sender state lookup
+    let Some(source_sender_id) = routing_info.source_sender_id() else {
+        return Err(ProcessError::MissingSenderId);
+    };
+
+    // Get or create sender state (single lookup keyed by credentials + sender_id)
     let mut control_out = Vec::new();
-    let Some(peer_state) =
-        peer_cache.get_or_insert(&credentials, path_secret_map, clock, &mut control_out)
-    else {
+    let Some(sender_state) = sender_cache.get_or_insert(
+        &credentials,
+        source_sender_id,
+        path_secret_map,
+        clock,
+        &mut control_out,
+    ) else {
         return Err(ProcessError::PeerStateLookup {
             credentials,
             control_out,
         });
     };
 
-    let packet_number = packet.packet_number();
+    // Authenticate the packet by decrypting into a buffer
+    // Allocate buffer for application header + payload
+    let len = packet.decrypt_into_len();
+    let mut buf = bytes::BytesMut::with_capacity(len);
 
-    // First, authenticate the packet by decrypting in place
-    // This ensures we only process authentic packets
-    if packet.decrypt_in_place(&peer_state.opener).is_err() {
-        return Err(ProcessError::Decryption {
+    // Decrypt into buffer
+    let written = packet
+        .decrypt_into(&sender_state.opener, bytes::BufMut::chunk_mut(&mut buf))
+        .map_err(|_| ProcessError::Decryption {
             credentials,
             packet_number,
-        });
+        })?;
+
+    unsafe {
+        debug_assert_eq!(written, len);
+        buf.set_len(len);
     }
 
-    // Now that we know the packet is authentic, check for duplicates
-    if peer_state
+    // Check packet number deduplication
+    if sender_state
         .ack_space
         .filter
         .on_packet_number(packet_number)
@@ -689,21 +789,670 @@ where
         });
     }
 
-    // Update activity timestamp
-    peer_state.update_activity(clock, idle_timeout);
-
-    // Record the packet for ACK and track its ECN marking so we can report
-    // the cumulative ECN counts back to the sender in the next ACK frame.
+    // Update activity and ACK tracking
+    sender_state.update_activity(clock, idle_timeout);
     let ecn = packet.storage().ecn();
-    peer_state.ecn_counts.increment(ecn);
-    peer_state
+    sender_state.ecn_counts.increment(ecn);
+    sender_state
         .ack_space
         .on_packet_received(packet_number, clock.get_time());
+    sender_state.transmission_state = AckTransmissionState::Queued;
 
-    // Mark ACK as queued
-    peer_state.transmission_state = AckTransmissionState::Queued;
+    // Track response packet to send (only one per incoming packet)
+    let mut response_routing: Option<RoutingInfo> = None;
 
-    Ok(packet)
+    // Dispatch based on routing_info for type-specific processing
+    let routing_info = packet.routing_info();
+    match routing_info {
+        RoutingInfo::None => {
+            tracing::warn!("RoutingInfo::None - dropping packet");
+        }
+        RoutingInfo::FlowInit {
+            source_sender_id: _,
+            source_queue_id: peer_queue_id,
+            dest_acceptor_id: acceptor_id,
+            attempt_id,
+            stream_id,
+            is_fin,
+        } => {
+            // Check attempt_id deduplication
+            match sender_state.attempt_dedup.check_attempt_id(attempt_id) {
+                Ok(()) => {
+                    // New attempt_id, proceed with flow creation
+
+                    // Record the flow in the sender's flow map and allocate queue handles
+                    let create_queue = |handle| {
+                        // Allocate queue handles for this flow
+                        let (queue_control, queue_stream) = queue_dispatcher.alloc_or_grow(handle);
+                        // Get the allocated queue_id from the control handle
+                        let queue_id = queue_control.queue_id();
+                        (queue_id, (queue_control, queue_stream))
+                    };
+
+                    match sender_state.flows.try_register(stream_id, create_queue) {
+                        Ok((queue_control, queue_stream)) => {
+                            // Inject the payload into the stream so the application can read it
+                            if is_fin || !buf.is_empty() {
+                                queue_stream.push(
+                                    StreamMsg::Data {
+                                        offset: VarInt::ZERO,
+                                        fin: is_fin,
+                                        payload: buf,
+                                    }
+                                    .into(),
+                                );
+                            }
+
+                            let local_queue_id = queue_control.queue_id();
+
+                            // Create the FlowInit message for the acceptor
+                            let flow_init = FlowInit {
+                                stream_id,
+                                path_entry: sender_state.path_entry.clone(),
+                                peer_queue_id,
+                                wheel_tx: wheel_tx.clone(),
+                                queue_control,
+                                queue_stream,
+                            };
+
+                            // Dispatch to the acceptor
+                            match acceptor_registry.dispatch(acceptor_id, flow_init) {
+                                Ok(()) => {
+                                    tracing::info!(
+                                        attempt_id = attempt_id.as_u64(),
+                                        stream_id = stream_id.as_u64(),
+                                        acceptor_id = acceptor_id.as_u64(),
+                                        server_queue_id = local_queue_id.as_u64(),
+                                        "FlowInit accepted - dispatched to acceptor"
+                                    );
+                                }
+                                Err(acceptor::DispatchError::AcceptorNotFound) => {
+                                    tracing::warn!(
+                                        attempt_id = attempt_id.as_u64(),
+                                        stream_id = stream_id.as_u64(),
+                                        acceptor_id = acceptor_id.as_u64(),
+                                        "FlowInit rejected - acceptor not found"
+                                    );
+
+                                    response_routing = Some(RoutingInfo::FlowReset {
+                                        source_sender_id: VarInt::MAX,
+                                        dest_queue_id: peer_queue_id,
+                                        stream_id,
+                                        reset_target: ResetTarget::Both,
+                                        error_code: reset_error::ACCEPTOR_NOT_FOUND,
+                                    });
+                                }
+                                Err(acceptor::DispatchError::Reset { reset_code }) => {
+                                    tracing::info!(
+                                        attempt_id = attempt_id.as_u64(),
+                                        stream_id = stream_id.as_u64(),
+                                        acceptor_id = acceptor_id.as_u64(),
+                                        reset_code = reset_code.as_u64(),
+                                        "FlowInit rejected - acceptor requested reset"
+                                    );
+
+                                    response_routing = Some(RoutingInfo::FlowReset {
+                                        source_sender_id: VarInt::MAX,
+                                        dest_queue_id: peer_queue_id,
+                                        stream_id,
+                                        reset_target: ResetTarget::Both,
+                                        error_code: reset_code,
+                                    });
+                                }
+                            }
+                        }
+                        Err(local_queue_id) => {
+                            tracing::warn!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                local_queue_id = local_queue_id.as_u64(),
+                                "FlowInit rejected - stream_id reused by client"
+                            );
+
+                            response_routing = Some(RoutingInfo::FlowReset {
+                                source_sender_id: VarInt::MAX,
+                                dest_queue_id: peer_queue_id,
+                                stream_id,
+                                reset_target: ResetTarget::Both,
+                                error_code: reset_error::STREAM_ID_ERROR,
+                            });
+                        }
+                    }
+                }
+                Err(AttemptDedupError::Duplicate) => {
+                    // Already seen this attempt_id - silently drop
+                    tracing::trace!(
+                        attempt_id = attempt_id.as_u64(),
+                        stream_id = stream_id.as_u64(),
+                        "Duplicate FlowInit attempt_id - dropping"
+                    );
+                    // Still generate ACK below
+                }
+                Err(AttemptDedupError::TooOld) => {
+                    // Attempt ID outside window - check DashMap (medium path)
+                    let create_queue = |handle| {
+                        // Allocate queue handles for this flow
+                        let (queue_control, queue_stream) = queue_dispatcher.alloc_or_grow(handle);
+                        // Get the allocated queue_id from the control handle
+                        let queue_id = queue_control.queue_id();
+                        (queue_id, (queue_control, queue_stream))
+                    };
+
+                    match sender_state.flows.try_register(stream_id, create_queue) {
+                        Ok((queue_control, queue_stream)) => {
+                            // Not in window and not in DashMap - can't guarantee deduplication
+                            // Inject the payload into the stream so the application can read it if accepted
+                            if is_fin || !buf.is_empty() {
+                                queue_stream.push(
+                                    StreamMsg::Data {
+                                        offset: VarInt::ZERO,
+                                        fin: is_fin,
+                                        payload: buf,
+                                    }
+                                    .into(),
+                                );
+                            }
+
+                            let local_queue_id = queue_control.queue_id();
+
+                            // Create the FlowInit message for the acceptor
+                            let flow_init = FlowInit {
+                                stream_id,
+                                path_entry: sender_state.path_entry.clone(),
+                                peer_queue_id,
+                                wheel_tx: wheel_tx.clone(),
+                                queue_control,
+                                queue_stream,
+                            };
+
+                            // Dispatch as pending since we can't guarantee it's not a duplicate
+                            match acceptor_registry.dispatch_pending(acceptor_id, flow_init) {
+                                Ok(acceptor::PendingAction::Accepted) => {
+                                    tracing::info!(
+                                        attempt_id = attempt_id.as_u64(),
+                                        stream_id = stream_id.as_u64(),
+                                        acceptor_id = acceptor_id.as_u64(),
+                                        server_queue_id = local_queue_id.as_u64(),
+                                        "FlowInit accepted without retry - acceptor doesn't require dedup"
+                                    );
+                                }
+                                Ok(acceptor::PendingAction::AcceptedWithRetry) => {
+                                    tracing::debug!(
+                                        attempt_id = attempt_id.as_u64(),
+                                        stream_id = stream_id.as_u64(),
+                                        acceptor_id = acceptor_id.as_u64(),
+                                        server_queue_id = local_queue_id.as_u64(),
+                                        "FlowInit accepted with retry - requesting validation from client"
+                                    );
+
+                                    // Send FlowValidateRequest to have client confirm this queue state
+                                    let queue_pair = QueuePair {
+                                        source_queue_id: local_queue_id,
+                                        dest_queue_id: peer_queue_id,
+                                    };
+
+                                    response_routing = Some(RoutingInfo::FlowValidateRequest {
+                                        source_sender_id: VarInt::ZERO,
+                                        dest_sender_id: source_sender_id,
+                                        queue_pair,
+                                        attempt_id,
+                                        stream_id,
+                                    });
+                                }
+                                Ok(acceptor::PendingAction::Reject { reset_code }) => {
+                                    tracing::info!(
+                                        attempt_id = attempt_id.as_u64(),
+                                        stream_id = stream_id.as_u64(),
+                                        acceptor_id = acceptor_id.as_u64(),
+                                        reset_code = reset_code.as_u64(),
+                                        "FlowInit rejected - acceptor rejected pending request"
+                                    );
+
+                                    response_routing = Some(RoutingInfo::FlowReset {
+                                        source_sender_id: VarInt::MAX,
+                                        dest_queue_id: peer_queue_id,
+                                        stream_id,
+                                        reset_target: ResetTarget::Both,
+                                        error_code: reset_code,
+                                    });
+                                }
+                                Err(acceptor::DispatchError::AcceptorNotFound) => {
+                                    tracing::warn!(
+                                        attempt_id = attempt_id.as_u64(),
+                                        stream_id = stream_id.as_u64(),
+                                        acceptor_id = acceptor_id.as_u64(),
+                                        "FlowInit rejected - acceptor not found"
+                                    );
+
+                                    response_routing = Some(RoutingInfo::FlowReset {
+                                        source_sender_id: VarInt::MAX,
+                                        dest_queue_id: peer_queue_id,
+                                        stream_id,
+                                        reset_target: ResetTarget::Both,
+                                        error_code: reset_error::ACCEPTOR_NOT_FOUND,
+                                    });
+                                }
+                                Err(acceptor::DispatchError::Reset { reset_code }) => {
+                                    tracing::info!(
+                                        attempt_id = attempt_id.as_u64(),
+                                        stream_id = stream_id.as_u64(),
+                                        acceptor_id = acceptor_id.as_u64(),
+                                        reset_code = reset_code.as_u64(),
+                                        "FlowInit rejected - acceptor requested reset"
+                                    );
+
+                                    response_routing = Some(RoutingInfo::FlowReset {
+                                        source_sender_id: VarInt::MAX,
+                                        dest_queue_id: peer_queue_id,
+                                        stream_id,
+                                        reset_target: ResetTarget::Both,
+                                        error_code: reset_code,
+                                    });
+                                }
+                            }
+                        }
+                        Err(local_queue_id) => {
+                            // Flow already exists, this is a retransmission
+                            tracing::trace!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                queue_id = local_queue_id.as_u64(),
+                                "FlowInit retransmission of existing flow - dropping"
+                            );
+                            // Still generate ACK below, then return
+                        }
+                    }
+                }
+            }
+        }
+        RoutingInfo::FlowValidateRequest {
+            source_sender_id: _,
+            dest_sender_id,
+            queue_pair,
+            attempt_id,
+            stream_id,
+        } => {
+            // Client receives FlowValidateRequest from server when server cannot guarantee deduplication.
+            // We need to validate our local queue state and respond with FlowInitValidate or FlowReset.
+
+            let local_queue_id = queue_pair.dest_queue_id; // Our queue
+
+            // Create validation parameters
+            let request = flow::Request {
+                credential_id: credentials.id,
+                stream_id,
+            };
+
+            // Validate that our local stream queue has matching credentials and stream_id
+            match queue_dispatcher.validate_stream(local_queue_id, &request) {
+                Ok(()) => {
+                    // Validation passed - respond with FlowInitValidate
+                    tracing::debug!(
+                        attempt_id = attempt_id.as_u64(),
+                        stream_id = stream_id.as_u64(),
+                        dest_sender_id = dest_sender_id.as_u64(),
+                        local_queue_id = local_queue_id.as_u64(),
+                        server_queue_id = queue_pair.source_queue_id.as_u64(),
+                        "FlowValidateRequest validated - sending FlowInitValidate"
+                    );
+
+                    // Create FlowInitValidate routing info, reversing the queue pair for the response
+                    response_routing = Some(RoutingInfo::FlowInitValidate {
+                        source_sender_id: dest_sender_id, // Use the original local sender for transmission
+                        queue_pair: queue_pair.reverse(), // Reverse for response routing
+                        attempt_id,
+                        stream_id,
+                    });
+                }
+                Err(_) => {
+                    // Validation failed - client may have abandoned the stream
+                    // Send FlowReset to let server release its allocated queue_id
+                    tracing::warn!(
+                        attempt_id = attempt_id.as_u64(),
+                        stream_id = stream_id.as_u64(),
+                        local_queue_id = local_queue_id.as_u64(),
+                        "FlowValidateRequest validation failed - sending FlowReset"
+                    );
+
+                    response_routing = Some(RoutingInfo::FlowReset {
+                        source_sender_id: VarInt::MAX,
+                        dest_queue_id: queue_pair.source_queue_id, // Reset the peer's queue
+                        stream_id,
+                        reset_target: ResetTarget::Both,
+                        error_code: reset_error::STALE_STATE,
+                    });
+                }
+            }
+        }
+        RoutingInfo::FlowInitValidate {
+            source_sender_id: _,
+            queue_pair,
+            attempt_id,
+            stream_id,
+        } => {
+            // Server receives FlowInitValidate from client in response to FlowValidateRequest.
+            // We need to validate that the queue still has the correct credentials and stream_id.
+
+            let local_queue_id = queue_pair.dest_queue_id; // Our queue
+
+            // Create validation parameters
+            let request = flow::Request {
+                credential_id: credentials.id,
+                stream_id,
+            };
+
+            // Validate the queue has matching credentials and stream_id
+            match queue_dispatcher.validate_stream(local_queue_id, &request) {
+                Ok(()) => {
+                    // Flow validation succeeded - send FlowValidated message to wake up the acceptor
+                    let stream_entry = StreamMsg::FlowValidated.into();
+
+                    match queue_dispatcher.send_stream(local_queue_id, &request, stream_entry) {
+                        Ok(()) => {
+                            tracing::info!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                queue_id = local_queue_id.as_u64(),
+                                "FlowInitValidate validated successfully - FlowValidated message sent"
+                            );
+                        }
+                        Err(_) => {
+                            // Failed to send FlowValidated - queue may have been closed or unallocated
+                            // Send FlowReset to client
+                            tracing::warn!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                queue_id = local_queue_id.as_u64(),
+                                "FlowInitValidate failed to send FlowValidated message - sending FlowReset"
+                            );
+
+                            response_routing = Some(RoutingInfo::FlowReset {
+                                source_sender_id: VarInt::MAX,
+                                dest_queue_id: queue_pair.source_queue_id,
+                                stream_id,
+                                reset_target: ResetTarget::Both,
+                                error_code: reset_error::STALE_STATE,
+                            });
+                        }
+                    }
+                }
+                Err(_) => {
+                    // Validation failed - send FlowReset
+                    tracing::warn!(
+                        attempt_id = attempt_id.as_u64(),
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        "FlowInitValidate validation failed - sending FlowReset"
+                    );
+
+                    response_routing = Some(RoutingInfo::FlowReset {
+                        source_sender_id: VarInt::MAX,
+                        dest_queue_id: queue_pair.source_queue_id, // Reset the peer's queue
+                        stream_id,
+                        reset_target: ResetTarget::Both,
+                        error_code: reset_error::STALE_STATE,
+                    });
+                }
+            }
+        }
+        RoutingInfo::FlowData {
+            source_sender_id: _,
+            queue_pair,
+            stream_id,
+            offset,
+            is_fin,
+        } => {
+            // Use dest_queue_id directly from the packet for routing
+            let local_queue_id = queue_pair.dest_queue_id;
+
+            // Create validation parameters for the queue
+            let request = flow::Request {
+                credential_id: credentials.id,
+                stream_id,
+            };
+
+            // Dispatch to the queue with validation
+            let entry = StreamMsg::Data {
+                offset,
+                fin: is_fin,
+                payload: buf,
+            }
+            .into();
+
+            match queue_dispatcher.send_stream(local_queue_id, &request, entry) {
+                Ok(()) => {
+                    tracing::trace!(
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        offset = offset.as_u64(),
+                        is_fin,
+                        "FlowData dispatched to queue"
+                    );
+                }
+                Err(queue::Error::Unallocated(_)) => {
+                    tracing::warn!(
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        "FlowData for unallocated queue - sending reset"
+                    );
+
+                    response_routing = Some(RoutingInfo::FlowReset {
+                        source_sender_id: VarInt::MAX,
+                        dest_queue_id: queue_pair.source_queue_id,
+                        stream_id,
+                        reset_target: ResetTarget::Both,
+                        error_code: reset_error::STALE_STATE,
+                    });
+                }
+                Err(queue::Error::HalfClosed(_)) => {
+                    tracing::debug!(
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        "FlowData for half-closed stream - sending reset"
+                    );
+
+                    response_routing = Some(RoutingInfo::FlowReset {
+                        source_sender_id: VarInt::MAX,
+                        dest_queue_id: queue_pair.source_queue_id,
+                        stream_id,
+                        reset_target: ResetTarget::Stream,
+                        error_code: reset_error::STALE_STATE,
+                    });
+                }
+                Err(queue::Error::FullyClosed(_)) => {
+                    tracing::warn!(
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        "FlowData for fully closed queue - sending reset"
+                    );
+
+                    response_routing = Some(RoutingInfo::FlowReset {
+                        source_sender_id: VarInt::MAX,
+                        dest_queue_id: queue_pair.source_queue_id,
+                        stream_id,
+                        reset_target: ResetTarget::Both,
+                        error_code: reset_error::STALE_STATE,
+                    });
+                }
+                Err(queue::Error::PermanentlyClosed) => {
+                    tracing::trace!(
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        "FlowData for permanently closed queue - dropping"
+                    );
+                    // Don't send reset - the sender is gone so no point
+                }
+            }
+        }
+        RoutingInfo::FlowControl {
+            source_sender_id: _,
+            queue_pair,
+            stream_id,
+        } => {
+            // Use dest_queue_id directly from the packet for routing
+            let local_queue_id = queue_pair.dest_queue_id;
+
+            // Create validation parameters for the queue
+            let request = flow::Request {
+                credential_id: credentials.id,
+                stream_id,
+            };
+
+            // Dispatch to the queue with validation
+            let entry = ControlMsg::Frames { payload: buf }.into();
+
+            match queue_dispatcher.send_control(local_queue_id, &request, entry) {
+                Ok(()) => {
+                    tracing::trace!(
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        "FlowControl dispatched to queue"
+                    );
+                }
+                Err(queue::Error::Unallocated(_)) => {
+                    tracing::warn!(
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        "FlowControl for unallocated queue - sending reset"
+                    );
+
+                    response_routing = Some(RoutingInfo::FlowReset {
+                        source_sender_id: VarInt::MAX,
+                        dest_queue_id: queue_pair.source_queue_id,
+                        stream_id,
+                        reset_target: ResetTarget::Both,
+                        error_code: reset_error::STALE_STATE,
+                    });
+                }
+                Err(queue::Error::HalfClosed(_)) => {
+                    tracing::debug!(
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        "FlowControl for half-closed control - sending reset"
+                    );
+
+                    response_routing = Some(RoutingInfo::FlowReset {
+                        source_sender_id: VarInt::MAX,
+                        dest_queue_id: queue_pair.source_queue_id,
+                        stream_id,
+                        reset_target: ResetTarget::Control,
+                        error_code: reset_error::STALE_STATE,
+                    });
+                }
+                Err(queue::Error::FullyClosed(_)) => {
+                    tracing::warn!(
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        "FlowControl for fully closed queue - sending reset"
+                    );
+
+                    response_routing = Some(RoutingInfo::FlowReset {
+                        source_sender_id: VarInt::MAX,
+                        dest_queue_id: queue_pair.source_queue_id,
+                        stream_id,
+                        reset_target: ResetTarget::Both,
+                        error_code: reset_error::STALE_STATE,
+                    });
+                }
+                Err(queue::Error::PermanentlyClosed) => {
+                    tracing::trace!(
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        "FlowControl for permanently closed queue - dropping"
+                    );
+                    // Don't send reset - the sender is gone so no point
+                }
+            }
+        }
+        RoutingInfo::FlowReset {
+            source_sender_id: _,
+            dest_queue_id,
+            stream_id,
+            reset_target,
+            error_code,
+        } => {
+            // Use dest_queue_id directly from the packet for routing
+            let local_queue_id = dest_queue_id;
+
+            // Create validation parameters for the queue
+            let request = flow::Request {
+                credential_id: credentials.id,
+                stream_id,
+            };
+
+            // Send reset based on target
+            match reset_target {
+                ResetTarget::Both => {
+                    let stream_entry = StreamMsg::Reset { error_code }.into();
+                    let control_entry = ControlMsg::Reset { error_code }.into();
+                    queue_dispatcher.send_both(
+                        local_queue_id,
+                        &request,
+                        stream_entry,
+                        control_entry,
+                    );
+
+                    tracing::debug!(
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        error_code = error_code.as_u64(),
+                        "FlowReset(Both) dispatched to queue"
+                    );
+                }
+                ResetTarget::Stream => {
+                    let stream_entry = StreamMsg::Reset { error_code }.into();
+                    let _ = queue_dispatcher.send_stream(local_queue_id, &request, stream_entry);
+
+                    tracing::debug!(
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        error_code = error_code.as_u64(),
+                        "FlowReset(Stream) dispatched to queue"
+                    );
+                }
+                ResetTarget::Control => {
+                    let control_entry = ControlMsg::Reset { error_code }.into();
+                    let _ = queue_dispatcher.send_control(local_queue_id, &request, control_entry);
+
+                    tracing::debug!(
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        error_code = error_code.as_u64(),
+                        "FlowReset(Control) dispatched to queue"
+                    );
+                }
+            }
+        }
+    }
+
+    // Push response packets to channel for batching
+    let mut entries = Queue::new();
+
+    let ack_routing_info = packet::control::RoutingInfo::Sender {
+        source_sender_id: VarInt::ZERO,
+        dest_sender_id: source_sender_id,
+    };
+
+    if let Some(ack_packet) = sender_state.generate_ack_packet(clock, ack_routing_info) {
+        sender_state.transmission_state = AckTransmissionState::Idle;
+        entries.push_back(Entry::new(ack_packet));
+    }
+
+    // Send response packet if needed (FlowValidateRequest, FlowReset, etc.)
+    if let Some(routing) = response_routing {
+        let packet = PartialDatagram::new_datagram(
+            routing,
+            s2n_quic_dc::byte_vec::ByteVec::new(), // No application header
+            s2n_quic_dc::byte_vec::ByteVec::new(), // No payload
+            sender_state.path_entry.clone(),
+            None, // No completion tracking
+        );
+        entries.push_back(Entry::new(packet));
+    }
+
+    let _ = response_tx.send(entries);
+
+    Ok(())
 }
 
 enum ProcessControlError {
@@ -715,6 +1464,7 @@ enum ProcessControlError {
         credentials: Credentials,
         packet_number: VarInt,
     },
+    MissingSenderId,
 }
 
 /// Process a received control packet for ACK processing.
@@ -722,7 +1472,7 @@ enum ProcessControlError {
 /// This authenticates the packet by verifying its MAC tag.
 fn process_control<Clk>(
     packet: Entry<packet::control::decoder::Packet<descriptor::Filled>>,
-    peer_cache: &mut PeerStateCache,
+    peer_cache: &mut SenderStateCache,
     path_secret_map: &path::secret::Map,
     clock: &Clk,
 ) -> Result<Entry<packet::control::decoder::Packet<descriptor::Filled>>, ProcessControlError>
@@ -730,14 +1480,24 @@ where
     Clk: s2n_quic_core::time::Clock + ?Sized,
 {
     let credentials = *packet.credentials();
-
+    let routing_info = packet.routing_info();
     let idle_timeout = peer_cache.idle_timeout;
 
-    // Get or create peer state
+    // Extract source_sender_id for sender state lookup
+    let Some(source_sender_id) = routing_info.source_sender_id() else {
+        // Control packets without sender_id can't be processed
+        return Err(ProcessControlError::MissingSenderId);
+    };
+
+    // Get or create sender state
     let mut control_out = Vec::new();
-    let Some(peer_state) =
-        peer_cache.get_or_insert(&credentials, path_secret_map, clock, &mut control_out)
-    else {
+    let Some(sender_state) = peer_cache.get_or_insert(
+        &credentials,
+        source_sender_id,
+        path_secret_map,
+        clock,
+        &mut control_out,
+    ) else {
         return Err(ProcessControlError::PeerStateLookup {
             credentials,
             control_out,
@@ -747,7 +1507,7 @@ where
     let packet_number = packet.packet_number();
 
     // Authenticate the packet by verifying the MAC tag
-    if packet.verify(&peer_state.opener).is_err() {
+    if packet.verify(&sender_state.opener).is_err() {
         return Err(ProcessControlError::Verification {
             credentials,
             packet_number,
@@ -755,16 +1515,16 @@ where
     }
 
     // Update activity timestamp
-    peer_state.update_activity(clock, idle_timeout);
+    sender_state.update_activity(clock, idle_timeout);
 
     // Record the ECN marking from this control packet so the ACK frames we
     // send back include accurate ECN counts covering both datagram and control
     // packet types that share the same ack_space.
     let ecn = packet.storage().ecn();
-    peer_state.ecn_counts.increment(ecn);
+    sender_state.ecn_counts.increment(ecn);
 
     // Record the packet for ACK
-    peer_state
+    sender_state
         .ack_space
         .on_packet_received(packet_number, clock.get_time());
 
@@ -773,12 +1533,60 @@ where
 
 // ── Peer State Management ──────────────────────────────────────────────────
 
-/// Cached crypto state and ACK tracking for a single peer
-struct PeerState {
+/// Attempt deduplication window for tracking seen attempt_ids
+///
+/// Uses a sliding window to efficiently deduplicate FlowInit packets within
+/// a bounded memory footprint. This is the fast path for recent attempt_ids.
+struct AttemptDedup {
+    /// Sliding window for recent attempt_ids (same as packet number dedup)
+    window: s2n_quic_core::packet::number::SlidingWindow,
+}
+
+impl AttemptDedup {
+    fn new() -> Self {
+        Self {
+            window: Default::default(),
+        }
+    }
+
+    /// Check if an attempt_id has been seen before in the recent window
+    ///
+    /// Returns:
+    /// - Ok(()) if attempt_id is new and within window
+    /// - Err(AttemptDedupError::Duplicate) if already seen in window
+    /// - Err(AttemptDedupError::TooOld) if outside window (check DashMap or retry)
+    fn check_attempt_id(&mut self, attempt_id: VarInt) -> Result<(), AttemptDedupError> {
+        use s2n_quic_core::packet::number::{PacketNumberSpace, SlidingWindowError};
+
+        let packet_number = PacketNumberSpace::Initial.new_packet_number(attempt_id);
+        match self.window.insert(packet_number) {
+            Ok(()) => Ok(()),
+            Err(SlidingWindowError::TooOld) => Err(AttemptDedupError::TooOld),
+            Err(SlidingWindowError::Duplicate) => Err(AttemptDedupError::Duplicate),
+        }
+    }
+}
+
+#[derive(Debug)]
+enum AttemptDedupError {
+    /// Attempt ID already seen (duplicate)
+    Duplicate,
+    /// Attempt ID too old (outside window) - need to check DashMap or send retry
+    TooOld,
+}
+
+/// Cached crypto state and ACK tracking for a single sender
+///
+/// This is keyed by (Credentials, source_sender_id) because ACK spaces and
+/// deduplication windows are per-sender, not per-peer.
+struct SenderState {
     /// Path secret entry for this peer
     path_entry: Arc<PathSecretEntry>,
     /// Opener for decrypting datagrams from this peer
-    /// This gets updated when we see a new key_id from the same peer
+    /// TODO: Support key rotation by maintaining multiple openers indexed by key_id.
+    /// Currently we only track the latest key, which means packets with old key_ids
+    /// after rotation will fail to decrypt. Need to maintain a small cache of recent
+    /// openers (e.g., HashMap<VarInt, Opener>) to handle in-flight packets during rotation.
     opener: s2n_quic_dc::crypto::awslc::open::Application,
     /// The key_id this opener corresponds to
     current_key_id: VarInt,
@@ -793,6 +1601,11 @@ struct PeerState {
     last_activity: s2n_quic_core::time::Timestamp,
     /// Transmission state for ACKs
     transmission_state: AckTransmissionState,
+    /// Attempt deduplication window for flow initialization
+    attempt_dedup: AttemptDedup,
+    /// Map from stream_id to allocated queue_id for this sender
+    /// Shared with queue handles so they can remove entries when closed
+    flows: s2n_quic_dc::flow::Tracker,
 }
 
 /// Simplified ACK transmission state for datagrams
@@ -802,7 +1615,7 @@ enum AckTransmissionState {
     Queued,
 }
 
-impl PeerState {
+impl SenderState {
     fn new<Clk>(
         path_entry: Arc<PathSecretEntry>,
         opener: s2n_quic_dc::crypto::awslc::open::Application,
@@ -817,6 +1630,8 @@ impl PeerState {
         let mut idle_timer = s2n_quic_core::time::Timer::default();
         idle_timer.set(now + idle_timeout);
 
+        let flows = flow::Tracker::new(*path_entry.id());
+
         Self {
             path_entry,
             opener,
@@ -826,6 +1641,8 @@ impl PeerState {
             idle_timer,
             last_activity: now,
             transmission_state: AckTransmissionState::Idle,
+            attempt_dedup: AttemptDedup::new(),
+            flows,
         }
     }
 
@@ -853,7 +1670,7 @@ impl PeerState {
     fn generate_ack_packet<Clk>(
         &mut self,
         clock: &Clk,
-        routing_info: RoutingInfo,
+        routing_info: packet::control::RoutingInfo,
     ) -> Option<PartialDatagram>
     where
         Clk: s2n_quic_core::time::Clock + ?Sized,
@@ -885,18 +1702,25 @@ impl PeerState {
     }
 }
 
-/// Per-worker peer state cache
-struct PeerStateCache {
-    /// Map from credentials to peer state
-    peers: std::collections::HashMap<Credentials, PeerState>,
-    /// Idle timeout for peer states
+/// Key for sender state lookup
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct SenderKey {
+    credentials: Credentials,
+    sender_id: VarInt,
+}
+
+/// Per-worker sender state cache
+struct SenderStateCache {
+    /// Map from (credentials, sender_id) to sender state
+    senders: std::collections::HashMap<SenderKey, SenderState>,
+    /// Idle timeout for sender states
     idle_timeout: Duration,
 }
 
-impl PeerStateCache {
+impl SenderStateCache {
     fn new(idle_timeout: Duration) -> Self {
         Self {
-            peers: std::collections::HashMap::new(),
+            senders: std::collections::HashMap::new(),
             idle_timeout,
         }
     }
@@ -904,15 +1728,21 @@ impl PeerStateCache {
     fn get_or_insert<Clk>(
         &mut self,
         credentials: &Credentials,
+        sender_id: VarInt,
         path_secret_map: &s2n_quic_dc::path::secret::map::Map,
         clock: &Clk,
         control_out: &mut Vec<u8>,
-    ) -> Option<&mut PeerState>
+    ) -> Option<&mut SenderState>
     where
         Clk: s2n_quic_core::time::Clock + ?Sized,
     {
+        let key = SenderKey {
+            credentials: *credentials,
+            sender_id,
+        };
+
         // Use entry API for single hash lookup
-        Some(match self.peers.entry(*credentials) {
+        Some(match self.senders.entry(key) {
             hash_map::Entry::Occupied(entry) => entry.into_mut(),
             hash_map::Entry::Vacant(entry) => {
                 // Slow path: derive opener from map
@@ -922,7 +1752,7 @@ impl PeerStateCache {
                     control_out,
                 )?;
 
-                entry.insert(PeerState::new(
+                entry.insert(SenderState::new(
                     path_entry,
                     opener,
                     credentials.key_id,
@@ -937,7 +1767,7 @@ impl PeerStateCache {
     where
         Clk: s2n_quic_core::time::Clock + ?Sized,
     {
-        self.peers.retain(|_, state| !state.is_expired(clock));
+        self.senders.retain(|_, state| !state.is_expired(clock));
     }
 }
 
@@ -1023,8 +1853,8 @@ where
     let local_addr = socket.local_addr().unwrap();
 
     let rx = channel::SocketSender::new(rx, socket);
-    let rx = channel::InspectErr::new(rx, |(err, _entry)| {
-        tracing::warn!("socket send error: {err}");
+    let rx = channel::InspectErr::new(rx, |(error, batch)| {
+        tracing::warn!(%error, meta = ?batch.meta, segments = ?batch.encoded.as_ref(), "socket send error");
     });
 
     // Map to () after successful send
@@ -1137,10 +1967,14 @@ impl socket::channel::PathContextResolver for SimplePathContextResolver {
 /// Creates send sockets with GSO support
 pub fn create_send_sockets(
     num_sockets: usize,
-    bind_addr: SocketAddr,
+    mut bind_addr: SocketAddr,
     gso: features::Gso,
 ) -> io::Result<Vec<Gso<BusyPoll<std::net::UdpSocket>>>> {
     let mut sockets = Vec::with_capacity(num_sockets);
+
+    // Bind to the address with port 0 to get an ephemeral port
+    bind_addr.set_port(0);
+
     for _ in 0..num_sockets {
         let mut opts = Options::default();
         opts.addr = bind_addr;
@@ -1203,6 +2037,8 @@ pub struct Pipeline {
     pub wheel_input_tx: intrusive_queue::sync::Sender<Batch>,
     /// GSO configuration (for querying max segments)
     pub gso: features::Gso,
+    /// PSK provider for handshaking
+    pub psk_provider: PskProvider,
 }
 
 pub struct PipelineConfig<'a> {
@@ -1214,10 +2050,12 @@ pub struct PipelineConfig<'a> {
     pub send_pool: pool::Pool,
     pub recv_pool: pool::Pool,
     pub counters: CounterRegistry,
-    /// Path secret map for looking up crypto state by credentials
-    pub path_secret_map: s2n_quic_dc::path::secret::map::Map,
+    /// PSK provider (contains path secret map)
+    pub psk_provider: PskProvider,
     /// GSO configuration for max segments per batch
     pub gso: features::Gso,
+    /// Acceptor registry for flow initialization
+    pub acceptor_registry: acceptor::Registry<FlowInit>,
 }
 
 struct SendSocketInfo<S> {
@@ -1268,15 +2106,23 @@ where
         clock,
         send_pool,
         recv_pool,
-        path_secret_map,
+        psk_provider,
         counters,
         gso,
+        acceptor_registry,
     } = config;
+
+    // Extract the path secret map from the PSK provider
+    let path_secret_map = psk_provider.map().clone();
 
     let num_send_sockets = send_sockets.len();
 
     // Create counter registry for instrumentation
     counters.spawn_reporter(Duration::from_secs(1));
+
+    // Create queue allocator for flow-based routing
+    let allocator = queue::Allocator::<StreamMsg, ControlMsg, flow::Handle>::new();
+    let queue_dispatcher = allocator.dispatcher();
 
     // Get the control port from the first receive socket (all receive sockets share the same port with REUSEPORT)
     let source_control_port = recv_sockets
@@ -1360,7 +2206,7 @@ where
     // Spawn wheel ticker + distributor on busy poll worker 0
     busy_poll[0].spawn_local({
         let clock = clock.clone();
-        let socket_senders = flat_socket_senders;
+        let socket_senders = flat_socket_senders.clone();
         move |mut spawner| {
             info!("Starting wheel worker on busy_poll[0]");
 
@@ -1372,10 +2218,34 @@ where
                 info!("Wheel pump task shutting down");
             });
 
-            // Task 2: Overall bandwidth limiter + round robin distributor
+            // Task 2: Overall bandwidth limiter + sticky routing + round robin distributor
             let rx = FlattenQueue::new(wheel_output_rx.into_list_receiver());
-
             let rx = Paced::new(rx, clock.clone(), overall_send_rate);
+
+            // Intercept sticky batches (sender_id != MAX) and route them directly
+            let rx = channel::FilterMap::new(rx, {
+                let socket_senders = socket_senders.clone();
+                move |mut entry: Entry<Batch>| {
+                    use s2n_quic_core::varint::VarInt;
+
+                    if entry.meta.sender_id != VarInt::MAX {
+                        // Sticky routing - send directly to specific sender
+                        let target_idx = entry.meta.sender_id.as_u64() as usize;
+                        if target_idx < socket_senders.len() {
+                            let _ = socket_senders[target_idx].send_entry(entry);
+                        } else {
+                            tracing::warn!(
+                                sender_id = target_idx,
+                                num_senders = socket_senders.len(),
+                                "Sticky sender_id out of bounds"
+                            );
+                        }
+                        None // Filtered out - already routed
+                    } else {
+                        Some(entry) // Pass through to round-robin
+                    }
+                }
+            });
 
             spawner.spawn(channel::round_robin(rx, socket_senders));
             info!("Finished spawning wheel tasks");
@@ -1400,14 +2270,17 @@ where
         let control_packet_tx = control_packet_tx.clone();
         let error_tx = error_tx.clone();
         let path_secret_map = path_secret_map.clone();
+        let acceptor_registry = acceptor_registry.clone();
         let wheel_input_tx = wheel_input_tx.clone();
         let counters = counters.clone();
         let control_generator = create_rand();
         let sender_id_to_worker = sender_id_to_worker.clone();
+        let queue_dispatcher = queue_dispatcher.clone();
 
         busy_poll[busy_worker_idx].spawn_local(move |mut spawner| {
             // Create per-worker state
-            let shared_peer_cache = Rc::new(RefCell::new(PeerStateCache::new(path_idle_timeout)));
+            let shared_sender_cache =
+                Rc::new(RefCell::new(SenderStateCache::new(path_idle_timeout)));
 
             // Map sender_id to path contexts for control packet processing
             // Control worker needs to look up contexts for all sockets on this worker
@@ -1421,6 +2294,11 @@ where
             let (lost_tx, lost_rx) = channel::intrusive_queue::unsync::new();
             let mut lost_tx = lost_tx.into_list_sender();
             let lost_rx = lost_rx.into_list_receiver();
+
+            // Create channel for response packets (ACKs, FlowValidate, FlowReset, etc.)
+            let (response_tx, response_rx) = channel::intrusive_queue::unsync::new();
+            let mut response_tx = response_tx.into_list_sender();
+            let response_rx = response_rx.into_list_receiver();
 
             // Create channel for PTO wheel input (using PtoAdapter)
             let (pto_wheel_tx, pto_wheel_rx) = channel::intrusive_queue::unsync::new_with_adapter::<
@@ -1468,6 +2346,26 @@ where
                     });
                     let rx = channel::CompletionBatcher::new(rx);
                     rx.drain().await;
+                }
+            });
+
+            // Spawn response packet handler - batch ACKs and flow control responses
+            spawner.spawn({
+                let wheel_input_tx = wheel_input_tx.clone();
+                let response_counter = counters.register("response_packets");
+                let rx = response_rx;
+                async move {
+                    let rx = channel::FlattenQueue::new(rx);
+
+                    let rx = channel::Inspect::new(rx, |_entry: &Entry<PartialDatagram>| {
+                        response_counter.fetch_add(1, Ordering::Relaxed);
+                    });
+
+                    // Batch response packets by peer address for efficient transmission with GSO
+                    let rx = channel::RetransmissionBatcher::new(rx);
+
+                    // Pump response batches into the wheel for transmission
+                    channel::pump(rx, wheel_input_tx).await;
                 }
             });
 
@@ -1611,7 +2509,7 @@ where
                 let worker_id = worker.id;
                 let control_rx = worker.control_rx;
                 let path_secret_map = path_secret_map.clone();
-                let shared_peer_cache = shared_peer_cache.clone();
+                let shared_sender_cache = shared_sender_cache.clone();
                 let sender_contexts = sender_contexts.clone();
                 let clock = clock.clone();
                 let mut generator = control_generator;
@@ -1628,7 +2526,7 @@ where
                             recv_control_counter.fetch_add(1, Ordering::Relaxed);
                             process_control(
                                 packet,
-                                &mut shared_peer_cache.borrow_mut(),
+                                &mut shared_sender_cache.borrow_mut(),
                                 &path_secret_map,
                                 &clock,
                             )
@@ -1660,6 +2558,12 @@ where
                                 "Failed to verify control packet - authentication failed"
                             );
                         }
+                        ProcessControlError::MissingSenderId => {
+                            tracing::warn!(
+                                worker_id,
+                                "Control packet missing source_sender_id in routing info"
+                            );
+                        }
                     });
                     assert_receiver(&rx);
 
@@ -1668,16 +2572,15 @@ where
                         let clock = clock.clone();
                         move |mut packet| {
                             // Extract dest_sender_id from routing info
-                            let dest_sender_id = match packet.routing_info() {
-                                RoutingInfo::SenderId { sender_id } => sender_id.as_u64() as usize,
-                                _ => {
-                                    tracing::warn!(
-                                        worker_id,
-                                        "Control packet without SenderId - cannot process ACK"
-                                    );
-                                    return;
-                                }
+                            let Some(dest_sender_id) = packet.routing_info().dest_sender_id()
+                            else {
+                                tracing::warn!(
+                                    worker_id,
+                                    "Control packet without dest_sender_id - cannot process ACK"
+                                );
+                                return;
                             };
+                            let dest_sender_id = dest_sender_id.as_u64() as usize;
 
                             // Look up the socket's path contexts
                             let sender_contexts_ref = sender_contexts.borrow();
@@ -1719,9 +2622,9 @@ where
 
                             // TODO: Clear ACK ranges for packets that have been acknowledged
                             // When we receive an ACK from the peer, we should call
-                            // peer_state.ack_space.on_largest_delivered_packet(largest_delivered)
+                            // sender_state.ack_space.on_largest_delivered_packet(largest_delivered)
                             // to prevent re-sending ACKs for packets the peer has confirmed.
-                            // This requires access to shared_peer_cache here.
+                            // This requires access to shared_sender_cache here.
                         }
                     });
                     assert_receiver::<()>(&rx);
@@ -1739,26 +2642,32 @@ where
                 let clock = clock.clone();
                 let wheel_input_tx = wheel_input_tx.clone();
                 let recv_data_counter = counters.register("recv_data");
-                let sent_ack_counter = counters.register("sent_ack");
-                let ack_to_wheel_counter = counters.register("ack_to_wheel");
+                let queue_dispatcher = queue_dispatcher.clone();
 
                 spawner.spawn(async move {
                     // Process datagrams for ACK generation
                     let rx = datagram_rx;
 
-                    let rx = Map::new(rx, {
+                    let rx = channel::Map::new(rx, {
                         let recv_data_counter = recv_data_counter.clone();
-                        let shared_peer_cache = shared_peer_cache.clone();
+                        let shared_sender_cache = shared_sender_cache.clone();
                         let path_secret_map = path_secret_map.clone();
+                        let acceptor_registry = acceptor_registry.clone();
+                        let wheel_input_tx = wheel_input_tx.clone();
                         let clock = clock.clone();
+                        let mut queue_dispatcher = queue_dispatcher.clone();
                         move |packet: Entry<
                             packet::datagram::decoder::Packet<descriptor::Filled>,
                         >| {
                             recv_data_counter.fetch_add(1, Ordering::Relaxed);
                             process_datagram(
                                 packet,
-                                &mut shared_peer_cache.borrow_mut(),
+                                &mut shared_sender_cache.borrow_mut(),
                                 &path_secret_map,
+                                &acceptor_registry,
+                                &wheel_input_tx,
+                                &mut response_tx,
+                                &mut queue_dispatcher,
                                 &clock,
                             )
                         }
@@ -1798,71 +2707,17 @@ where
                                 "Duplicate packet filtered"
                             );
                         }
-                    });
-
-                    // Generate ACK packets
-                    let rx = Map::new(rx, {
-                        let shared_peer_cache = shared_peer_cache.clone();
-                        let sent_ack_counter = sent_ack_counter.clone();
-                        move |packet: Entry<
-                            packet::datagram::decoder::Packet<descriptor::Filled>,
-                        >| {
-                            let credentials = *packet.credentials();
-                            let mut peer_addr = packet.storage().remote_address().get();
-                            let source_control_port = packet.meta().source_control_port();
-                            if source_control_port > 0 {
-                                peer_addr.set_port(source_control_port);
-                            }
-
-                            let routing_info = packet.routing_info();
-                            let Some(source_sender_id) = routing_info.source_sender_id() else {
-                                return Err("packet does not include a source_sender_id");
-                            };
-
-                            // Get peer state and generate ACK
-                            let mut peer_cache_ref = shared_peer_cache.borrow_mut();
-                            let Some(peer_state) = peer_cache_ref.peers.get_mut(&credentials)
-                            else {
-                                return Err("missing credentials for peer");
-                            };
-
-                            // Generate ACK control packet with dest_sender_id for routing back
-                            let routing_info = RoutingInfo::SenderId {
-                                sender_id: source_sender_id,
-                            };
-                            let Some(ack_packet) =
-                                peer_state.generate_ack_packet(&clock, routing_info)
-                            else {
-                                return Err("ACK not needed");
-                            };
-
-                            // Mark ACK as transmitted and reset state
-                            // peer_state.ack_space.on_transmit(&clock);
-                            peer_state.transmission_state = AckTransmissionState::Idle;
-
-                            sent_ack_counter.fetch_add(1, Ordering::Relaxed);
-
-                            // Create a batch for the ACK control packet
-                            let mut batch =
-                                s2n_quic_dc::datagram::batch::Batch::new(None, peer_addr.into());
-                            batch.push(ack_packet.into());
-
-                            Ok(Entry::new(batch))
+                        ProcessError::MissingSenderId => {
+                            tracing::warn!(
+                                worker_id,
+                                "Packet missing source_sender_id in routing info"
+                            );
                         }
                     });
 
-                    let rx = InspectErr::new(rx, |err| {
-                        tracing::warn!(worker_id, err, "ACK worker error");
-                    });
+                    rx.drain().await;
 
-                    // Count ACKs right before pumping to wheel
-                    let rx = channel::Inspect::new(rx, move |_batch: &Entry<Batch>| {
-                        ack_to_wheel_counter.fetch_add(1, Ordering::Relaxed);
-                    });
-
-                    channel::pump(rx, wheel_input_tx).await;
-
-                    tracing::info!(worker_id, "ACK worker shutting down");
+                    tracing::info!(worker_id, "Datagram processor shutting down");
                 });
             }
 
@@ -1924,10 +2779,20 @@ where
                             move |packet: Entry<
                                 packet::datagram::decoder::Packet<descriptor::Filled>,
                             >| {
-                                // Route based on credentials hash for consistent routing
-                                // This ensures all packets for the same path go to the same ACK worker
+                                // Route based on (credentials, source_sender_id) hash for consistent routing
+                                // This ensures all packets from the same sender go to the same worker,
+                                // which is critical for stream_id deduplication
                                 let credentials = packet.credentials();
-                                let hash = hash_credentials(credentials);
+                                let routing_info = packet.routing_info();
+                                let Some(source_sender_id) = routing_info.source_sender_id() else {
+                                    tracing::warn!(
+                                        socket_id,
+                                        "Datagram without source_sender_id - cannot route"
+                                    );
+                                    return;
+                                };
+                                let hash =
+                                    hash_credentials_and_sender(credentials, source_sender_id);
                                 let worker_id = (hash & mask) as usize;
                                 let _ = datagram_receiver_tx[worker_id].send_entry(packet);
                             },
@@ -1942,10 +2807,20 @@ where
                             move |packet: Entry<
                                 packet::datagram::decoder::Packet<descriptor::Filled>,
                             >| {
-                                // Route based on credentials hash for consistent routing
-                                // This ensures all packets for the same path go to the same ACK worker
+                                // Route based on (credentials, source_sender_id) hash for consistent routing
+                                // This ensures all packets from the same sender go to the same worker,
+                                // which is critical for stream_id deduplication
                                 let credentials = packet.credentials();
-                                let hash = hash_credentials(credentials);
+                                let routing_info = packet.routing_info();
+                                let Some(source_sender_id) = routing_info.source_sender_id() else {
+                                    tracing::warn!(
+                                        socket_id,
+                                        "Datagram without source_sender_id - cannot route"
+                                    );
+                                    return;
+                                };
+                                let hash =
+                                    hash_credentials_and_sender(credentials, source_sender_id);
                                 let worker_id = (hash % num_workers as u64) as usize;
                                 let _ = datagram_receiver_tx[worker_id].send_entry(packet);
                             },
@@ -1964,20 +2839,16 @@ where
                             move |packet: Entry<
                                 packet::control::decoder::Packet<descriptor::Filled>,
                             >| {
-                                // Route based on SenderId in routing info
-                                let sender_id = match packet.routing_info() {
-                                    RoutingInfo::SenderId { sender_id } => {
-                                        sender_id.as_u64() as usize
-                                    }
-                                    _ => {
-                                        // No routing info, drop the packet
-                                        tracing::warn!(
-                                            socket_id,
-                                            "Control packet without SenderId routing info"
-                                        );
-                                        return;
-                                    }
+                                // Route based on dest_sender_id in routing info
+                                let Some(sender_id_varint) = packet.routing_info().dest_sender_id()
+                                else {
+                                    tracing::warn!(
+                                        socket_id,
+                                        "Control packet without dest_sender_id routing info"
+                                    );
+                                    return;
                                 };
+                                let sender_id = sender_id_varint.as_u64() as usize;
 
                                 // Look up which worker owns this sender_id
                                 let Some(&worker_id) = sender_id_to_worker.get(sender_id) else {
@@ -2021,5 +2892,6 @@ where
     Pipeline {
         wheel_input_tx,
         gso,
+        psk_provider,
     }
 }

@@ -1303,16 +1303,19 @@ where
                         match builder.try_push(entry) {
                             Ok(()) => {
                                 // Successfully added to batch, continue processing
+                                // Note: try_push automatically sets sticky sender_id if needed
                                 continue;
                             }
                             Err(rejected_entry) => {
-                                // Batch is full - flush it and create a new one
+                                // Batch is full or incompatible - flush it and create a new one
                                 let full_batch = self.flush_batch().expect("batch should exist");
 
                                 // Start new builder with the rejected datagram
                                 let mut new_builder =
                                     crate::datagram::batch::Builder::new(None, peer_addr);
                                 let _ = new_builder.try_push(rejected_entry); // Should always succeed
+                                // Note: try_push automatically sets sticky sender_id if needed
+
                                 self.current_builder = Some(new_builder);
 
                                 // Return the full batch
@@ -1323,6 +1326,8 @@ where
                         // No current builder - start a new one
                         let mut new_builder = crate::datagram::batch::Builder::new(None, peer_addr);
                         let _ = new_builder.try_push(entry);
+                        // Note: try_push automatically sets sticky sender_id if needed
+
                         self.current_builder = Some(new_builder);
                         // Continue to process more packets
                         continue;
@@ -2076,8 +2081,10 @@ where
 
                 // For control packets, clear the payload to save memory
                 // Control packets (like ACKs) are ephemeral and don't need retransmission
-                if let crate::packet::datagram::partial::PacketType::Control { control_data } =
-                    &mut datagram_entry.packet_type
+                if let crate::packet::datagram::partial::PacketType::Control {
+                    routing_info: _,
+                    control_data,
+                } = &mut datagram_entry.packet_type
                 {
                     control_data.clear();
                 }

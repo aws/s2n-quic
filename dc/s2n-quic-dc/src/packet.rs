@@ -21,9 +21,6 @@ pub mod uds;
 pub use tag::Tag;
 pub use wire_version::WireVersion;
 
-mod routing_info;
-pub use routing_info::RoutingInfo;
-
 #[derive(Clone, Copy, Debug)]
 pub enum Kind {
     Stream,

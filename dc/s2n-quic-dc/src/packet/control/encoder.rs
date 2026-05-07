@@ -4,7 +4,10 @@
 use crate::{
     credentials::Credentials,
     crypto,
-    packet::{control::Tag, stream, WireVersion},
+    packet::{
+        control::{RoutingInfo, Tag},
+        stream, WireVersion,
+    },
 };
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{assume, varint::VarInt};
@@ -15,7 +18,7 @@ pub fn estimate_len(
     _packet_number: VarInt,
     source_queue_id: Option<VarInt>,
     stream_id: Option<stream::Id>,
-    routing_info: crate::packet::RoutingInfo,
+    routing_info: RoutingInfo,
     control_data_len: VarInt,
     crypto_tag_len: usize,
 ) -> usize {
@@ -25,7 +28,7 @@ pub fn estimate_len(
     let mut tag = Tag::default();
     tag.set_has_source_queue_id(source_queue_id.is_some());
     tag.set_is_stream(stream_id.is_some());
-    tag.set_has_routing_info(!matches!(routing_info, crate::packet::RoutingInfo::None));
+    tag.set_has_routing_info(!matches!(routing_info, RoutingInfo::None));
     encoder.encode(&tag);
 
     // Credentials
@@ -69,7 +72,7 @@ pub fn encode<CD, C>(
     source_queue_id: Option<VarInt>,
     stream_id: Option<stream::Id>,
     packet_number: VarInt,
-    routing_info: crate::packet::RoutingInfo,
+    routing_info: RoutingInfo,
     control_data_len: VarInt,
     control_data: &CD,
     crypto: &C,
@@ -82,7 +85,7 @@ where
     let mut tag = Tag::default();
     tag.set_has_source_queue_id(source_queue_id.is_some());
     tag.set_is_stream(stream_id.is_some());
-    tag.set_has_routing_info(!matches!(routing_info, crate::packet::RoutingInfo::None));
+    tag.set_has_routing_info(!matches!(routing_info, RoutingInfo::None));
     encoder.encode(&tag);
 
     // encode the credentials being used
@@ -142,7 +145,7 @@ pub fn encode_with_application<CD, C>(
     source_queue_id: Option<VarInt>,
     stream_id: Option<stream::Id>,
     packet_number: VarInt,
-    routing_info: crate::packet::RoutingInfo,
+    routing_info: RoutingInfo,
     control_data_len: VarInt,
     control_data: &mut CD,
     crypto: &C,
@@ -155,7 +158,7 @@ where
     let mut tag = Tag::default();
     tag.set_has_source_queue_id(source_queue_id.is_some());
     tag.set_is_stream(stream_id.is_some());
-    tag.set_has_routing_info(!matches!(routing_info, crate::packet::RoutingInfo::None));
+    tag.set_has_routing_info(!matches!(routing_info, RoutingInfo::None));
     encoder.encode(&tag);
 
     // encode the credentials being used

@@ -185,6 +185,17 @@ impl Entry {
         &self.peer
     }
 
+    /// Returns the data endpoint address for this peer.
+    ///
+    /// TODO: This currently assumes data port = handshake port + 1.
+    /// In the future, this should be negotiated during the handshake
+    /// and stored in the Entry to avoid port assumptions.
+    pub fn data_addr(&self) -> SocketAddr {
+        let mut addr = self.peer;
+        addr.set_port(addr.port() + 1);
+        addr
+    }
+
     pub fn id(&self) -> &credentials::Id {
         self.secret.id()
     }
