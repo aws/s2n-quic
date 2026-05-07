@@ -604,11 +604,7 @@ where
         addr
     };
 
-    let stream_id = crate::packet::stream::Id {
-        queue_id: VarInt::ZERO,
-        is_reliable: true,
-        is_bidirectional: true,
-    };
+    let stream_id = crate::packet::stream::Id::normal(VarInt::ZERO).unwrap();
 
     let params = s2n_quic_core::dc::ApplicationParams::new(
         1 << 14,
@@ -652,7 +648,7 @@ where
             clock: env.clock().clone(),
             gso: env.gso(),
             remote_port: peer_addr.port().into(),
-            remote_queue_id: stream_id.queue_id.as_u64().into(),
+            remote_queue_id: stream_id.queue_id().as_u64().into(),
             local_queue_id: u64::MAX.into(),
             last_peer_activity: Default::default(),
             fixed,

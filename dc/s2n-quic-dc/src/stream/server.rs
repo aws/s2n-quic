@@ -63,11 +63,7 @@ impl InitialPacket {
                 id: credentials::Id::default(),
                 key_id: VarInt::ZERO,
             },
-            stream_id: packet::stream::Id {
-                queue_id: VarInt::ZERO,
-                is_bidirectional: false,
-                is_reliable: false,
-            },
+            stream_id: packet::stream::Id::unreliable_unidirectional(VarInt::ZERO).unwrap(),
             source_queue_id: None,
             payload_len: 0,
             is_zero_offset: false,
