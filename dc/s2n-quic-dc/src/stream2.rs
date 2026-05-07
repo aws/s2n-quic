@@ -14,13 +14,13 @@
 //! The pipeline handles retransmission, ACKs, congestion control, and reliable delivery.
 
 // mod endpoint;
-// mod reader;
+mod reader;
 mod writer;
 // mod flow_control;
 
 pub mod spawner;
 
 // pub use endpoint::Endpoint;
-// pub use reader::Reader;
+pub use reader::Reader;
 pub use spawner::{LocalSpawner, Spawner};
 pub use writer::Writer;
