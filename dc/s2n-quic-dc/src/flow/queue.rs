@@ -77,13 +77,21 @@ where
     }
 
     #[inline]
-    pub fn alloc(&self, key: K) -> Result<(Control<S, C, K>, Stream<S, C, K>), K> {
-        self.pool.alloc(key)
+    pub fn alloc(
+        &self,
+        key: K,
+        remote_queue_id: Option<VarInt>,
+    ) -> Result<(Control<S, C, K>, Stream<S, C, K>), K> {
+        self.pool.alloc(key, remote_queue_id)
     }
 
     #[inline]
-    pub fn alloc_or_grow(&mut self, key: K) -> (Control<S, C, K>, Stream<S, C, K>) {
-        self.pool.alloc_or_grow(key)
+    pub fn alloc_or_grow(
+        &mut self,
+        key: K,
+        remote_queue_id: Option<VarInt>,
+    ) -> (Control<S, C, K>, Stream<S, C, K>) {
+        self.pool.alloc_or_grow(key, remote_queue_id)
     }
 }
 
@@ -121,27 +129,36 @@ where
     K: 'static + Send + Sync + Key,
 {
     #[inline]
-    pub fn alloc(&self, key: K) -> Result<(Control<S, C, K>, Stream<S, C, K>), K> {
-        self.pool.alloc(key)
+    pub fn alloc(
+        &self,
+        key: K,
+        remote_queue_id: Option<VarInt>,
+    ) -> Result<(Control<S, C, K>, Stream<S, C, K>), K> {
+        self.pool.alloc(key, remote_queue_id)
     }
 
     #[inline]
-    pub fn alloc_or_grow(&mut self, key: K) -> (Control<S, C, K>, Stream<S, C, K>) {
-        self.pool.alloc_or_grow(key)
+    pub fn alloc_or_grow(
+        &mut self,
+        key: K,
+        remote_queue_id: Option<VarInt>,
+    ) -> (Control<S, C, K>, Stream<S, C, K>) {
+        self.pool.alloc_or_grow(key, remote_queue_id)
     }
 
     #[inline]
     pub fn send_control(
         &mut self,
-        queue_id: VarInt,
+        local_queue_id: VarInt,
+        remote_queue_id: Option<VarInt>,
         params: &K::Request,
         data: intrusive_queue::Entry<C>,
     ) -> Result<(), Error<intrusive_queue::Entry<C>>> {
-        let res = self.senders.lookup(queue_id, data, |sender, data| {
-            sender.send_control(data, |key| {
+        let res = self.senders.lookup(local_queue_id, data, |sender, data| {
+            sender.send_control(data, remote_queue_id, |key| {
                 let valid = key.validate(params);
                 if !valid {
-                    tracing::debug!(%queue_id, space = "control", "key validation failed");
+                    tracing::debug!(%local_queue_id, space = "control", "key validation failed");
                 }
                 valid
             })
@@ -149,7 +166,7 @@ where
 
         match res {
             Ok(()) => {
-                tracing::trace!(%queue_id, "send_control");
+                tracing::trace!(%local_queue_id, "send_control");
                 Ok(())
             }
             Err(Error::PermanentlyClosed) => {
@@ -157,11 +174,11 @@ where
                 Err(inner::Error::PermanentlyClosed)
             }
             Err(Error::HalfClosed(data)) => {
-                tracing::debug!(%queue_id, "control receiver closed");
+                tracing::debug!(%local_queue_id, "control receiver closed");
                 Err(inner::Error::HalfClosed(data))
             }
             Err(Error::FullyClosed(data)) => {
-                tracing::debug!(%queue_id, "control queue fully closed");
+                tracing::debug!(%local_queue_id, "control queue fully closed");
                 Err(inner::Error::FullyClosed(data))
             }
             Err(Error::Unallocated(data)) => {
@@ -174,15 +191,16 @@ where
     #[inline]
     pub fn send_stream(
         &mut self,
-        queue_id: VarInt,
+        local_queue_id: VarInt,
+        remote_queue_id: Option<VarInt>,
         params: &K::Request,
         data: intrusive_queue::Entry<S>,
     ) -> Result<(), Error<intrusive_queue::Entry<S>>> {
-        let res = self.senders.lookup(queue_id, data, |sender, data| {
-            sender.send_stream(data, |key| {
+        let res = self.senders.lookup(local_queue_id, data, |sender, data| {
+            sender.send_stream(data, remote_queue_id, |key| {
                 let valid = key.validate(params);
                 if !valid {
-                    tracing::debug!(%queue_id, space = "stream", "key validation failed");
+                    tracing::debug!(%local_queue_id, space = "stream", "key validation failed");
                 }
                 valid
             })
@@ -190,7 +208,7 @@ where
 
         match res {
             Ok(()) => {
-                tracing::trace!(%queue_id, "send_stream");
+                tracing::trace!(%local_queue_id, "send_stream");
                 Ok(())
             }
             Err(Error::PermanentlyClosed) => {
@@ -198,11 +216,11 @@ where
                 Err(inner::Error::PermanentlyClosed)
             }
             Err(Error::HalfClosed(data)) => {
-                tracing::debug!(%queue_id, "stream receiver closed");
+                tracing::debug!(%local_queue_id, "stream receiver closed");
                 Err(inner::Error::HalfClosed(data))
             }
             Err(Error::FullyClosed(data)) => {
-                tracing::debug!(%queue_id, "stream queue fully closed");
+                tracing::debug!(%local_queue_id, "stream queue fully closed");
                 Err(inner::Error::FullyClosed(data))
             }
             Err(Error::Unallocated(data)) => {
@@ -215,37 +233,41 @@ where
     #[inline]
     pub fn send_both(
         &mut self,
-        queue_id: VarInt,
+        local_queue_id: VarInt,
+        remote_queue_id: Option<VarInt>,
         params: &K::Request,
         stream_data: intrusive_queue::Entry<S>,
         control_data: intrusive_queue::Entry<C>,
     ) {
-        let _ = self.senders.lookup(queue_id, (), |sender, ()| {
+        let _ = self.senders.lookup(local_queue_id, (), |sender, ()| {
             let validate = |key: &K| {
                 let valid = key.validate(params);
                 if !valid {
-                    tracing::debug!(%queue_id, "key validation failed");
+                    tracing::debug!(%local_queue_id, "key validation failed");
                 }
                 valid
             };
 
-            // Send to both queues
-            let _ = sender.send_stream(stream_data, &validate);
-            let _ = sender.send_control(control_data, &validate);
+            let _ = sender.send_stream(stream_data, remote_queue_id, &validate);
+            let _ = sender.send_control(control_data, remote_queue_id, &validate);
 
             Ok(())
         });
 
-        tracing::trace!(%queue_id, "send_both");
+        tracing::trace!(%local_queue_id, "send_both");
     }
 
     /// Validates the queue's key against the provided parameters by checking the stream queue.
     ///
     /// Returns Ok(()) if the stream queue is allocated and validation succeeds, Err(()) otherwise.
     #[inline]
-    pub fn validate_stream(&mut self, queue_id: VarInt, params: &K::Request) -> Result<(), ()> {
+    pub fn validate_stream(
+        &mut self,
+        local_queue_id: VarInt,
+        params: &K::Request,
+    ) -> Result<(), ()> {
         self.senders
-            .lookup(queue_id, (), |sender, ()| {
+            .lookup(local_queue_id, (), |sender, ()| {
                 sender
                     .with_key_stream(|key| key.validate(params))
                     .map_err(|_| inner::Error::Unallocated(()))?;

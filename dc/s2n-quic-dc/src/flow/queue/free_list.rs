@@ -7,6 +7,7 @@ use super::{
     pool::Region,
     probes,
 };
+use s2n_quic_core::varint::VarInt;
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
@@ -52,7 +53,11 @@ impl<S: 'static, C: 'static, Key: 'static> FreeVec<S, C, Key> {
     }
 
     #[inline]
-    pub fn alloc(&self, key: Key) -> Result<(Control<S, C, Key>, Stream<S, C, Key>), Key> {
+    pub fn alloc(
+        &self,
+        key: Key,
+        remote_queue_id: Option<VarInt>,
+    ) -> Result<(Control<S, C, Key>, Stream<S, C, Key>), Key> {
         let mut inner = self.inner.lock().unwrap();
         let Some(descriptor) = inner.descriptors.pop_front() else {
             return Err(key);
@@ -71,7 +76,7 @@ impl<S: 'static, C: 'static, Key: 'static> FreeVec<S, C, Key> {
         unsafe {
             // SAFETY: the descriptor is only owned by the free list
             descriptor.init_key(key);
-            let (control, stream) = descriptor.into_receiver_pair();
+            let (control, stream) = descriptor.into_receiver_pair(remote_queue_id);
             Ok((Control::new(control), Stream::new(stream)))
         }
     }

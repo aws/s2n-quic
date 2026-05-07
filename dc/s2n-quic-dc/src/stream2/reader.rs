@@ -18,6 +18,74 @@
 //! periodically sending MAX_DATA frames to increase the sender's window. The initial window
 //! is advertised during flow establishment.
 
+// TODOs:
+//
+// Correctness:
+//
+// * poll_stream_rx processes all messages in the queue but short-circuits on Reset/error.
+//   Messages after the Reset in the same queue batch are silently dropped. This is probably
+//   fine (reset is terminal), but any data messages preceding the reset in the queue should
+//   still be written to the reassembler before we transition to Reset. Currently they are,
+//   since we iterate in order and break on Reset, but if the queue ordering isn't guaranteed
+//   this could lose data.
+//
+// * maybe_send_max_data uses consumed_len as the basis for the threshold check, but
+//   consumed_len only advances when contiguous data is copied out. If the application reads
+//   slowly while data arrives out-of-order, we could buffer large amounts in the reassembler
+//   without ever sending MAX_DATA, which is correct (don't open the window for more data we
+//   can't consume), but it means the sender will stall even though the reassembler has room.
+//   We should consider whether buffered (non-contiguous) data should contribute to the
+//   threshold.
+//
+// * No cap on reassembler memory. The Reassembler can buffer up to remote_max_data worth of
+//   out-of-order data. If the window is large (6-7 MiB) and all of it arrives out-of-order,
+//   the reassembler holds it all. This is by design but should be monitored — the actual
+//   memory bound is the window size.
+//
+// Flow control:
+//
+// * Auto-tune window_size based on application drain rate. Currently fixed. If the
+//   application drains slowly, shrink the window to reduce buffering. If it drains quickly,
+//   grow the window to avoid sender stalls. This is the Reader-side analog of the Writer's
+//   local budget auto-tuning.
+//
+// * Consider using completion notifications for MAX_DATA frames to provide backpressure and
+//   limit the number of inflight MAX_DATA updates. This would also allow waking the
+//   application when a new MAX_DATA is actually sent (vs queued).
+//
+// * The threshold for sending MAX_DATA (`consumed >= current_max - window/2`) can fire
+//   repeatedly on every read once crossed. Each call to maybe_send_max_data recalculates and
+//   may send another update even if consumed hasn't advanced since the last one. The fix is
+//   to only send when the new MAX_DATA would actually increase the advertised value.
+//
+// Performance:
+//
+// * Use buffer::duplex::Interposer to bypass the reassembler on the hot path. When a
+//   datagram arrives at the head offset and the application buffer has remaining capacity,
+//   the Interposer writes directly into the application buffer and calls skip() on the
+//   reassembler to advance its cursor. This avoids a copy through the reassembler for the
+//   common in-order case. The existing stream implementation does this in recv/shared.rs.
+//   To integrate: poll_stream_rx needs access to the application buffer, and the write path
+//   should use `Interposer::new(app_buf, &mut self.reassembler)` as the Writer target for
+//   write_reader. Out-of-order data still goes into the reassembler as usual.
+//
+// * poll_read_into calls poll_stream_rx and then tries to copy out. If poll_stream_rx
+//   returns Pending and the reassembler already has buffered data, we still try to copy
+//   (which is fine). But if poll_stream_rx returns an error, we return the error immediately
+//   without first draining any already-buffered contiguous data. On Reset, this may discard
+//   data that was already reliably delivered and buffered.
+//
+// Observability:
+//
+// * No mechanism to expose reassembler buffering stats (gaps, buffered bytes, etc.) to the
+//   application or metrics layer. Could be useful for diagnosing throughput issues.
+//
+// Testing:
+//
+// * Deterministic tests using bach for: out-of-order reassembly, FIN handling with gaps,
+//   MAX_DATA generation and pacing, reset mid-stream, drop semantics (STOP_SENDING), and
+//   interaction between slow application reads and flow control.
+
 use crate::{
     byte_vec::ByteVec,
     datagram::batch::Batch,
@@ -59,10 +127,6 @@ struct Inner {
     path_secret_entry: Arc<PathSecretEntry>,
     /// Stream identifier
     stream_id: VarInt,
-    /// Local queue ID for routing
-    local_queue_id: VarInt,
-    /// Remote queue ID for routing control frames
-    remote_queue_id: VarInt,
     /// Reassembly buffer for out-of-order data
     reassembler: Reassembler,
     /// Remote flow control: maximum offset we've advertised to the sender
@@ -106,8 +170,6 @@ impl Reader {
         wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
         path_secret_entry: Arc<PathSecretEntry>,
         stream_id: VarInt,
-        local_queue_id: VarInt,
-        remote_queue_id: VarInt,
         stream_rx: flow::queue::Stream<StreamMsg, crate::pipeline::ControlMsg, flow::Handle>,
     ) -> Self {
         let parameters = path_secret_entry.parameters();
@@ -119,8 +181,6 @@ impl Reader {
             stream_rx,
             path_secret_entry,
             stream_id,
-            local_queue_id,
-            remote_queue_id,
             reassembler: Reassembler::new(),
             remote_max_data,
             window_size,
@@ -134,8 +194,6 @@ impl Reader {
         wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
         path_secret_entry: Arc<PathSecretEntry>,
         stream_id: VarInt,
-        local_queue_id: VarInt,
-        remote_queue_id: VarInt,
         stream_rx: flow::queue::Stream<StreamMsg, crate::pipeline::ControlMsg, flow::Handle>,
     ) -> Self {
         let parameters = path_secret_entry.parameters();
@@ -147,8 +205,6 @@ impl Reader {
             stream_rx,
             path_secret_entry,
             stream_id,
-            local_queue_id,
-            remote_queue_id,
             reassembler: Reassembler::new(),
             remote_max_data,
             window_size,
@@ -275,7 +331,10 @@ impl Inner {
                                         crate::pipeline::reset_error::FRAME_DECODE_ERROR;
                                     self.reset_error_code = Some(error_code);
                                     self.status.on_reset().ok();
-                                    let _ = self.send_reset_packet(error_code);
+                                    let _ = self.send_reset_packet(
+                                        error_code,
+                                        crate::packet::datagram::ResetTarget::Both,
+                                    );
                                     let reset_error: ResetError = error_code.into();
                                     return Poll::Ready(Err(io::Error::new(
                                         io::ErrorKind::InvalidData,
@@ -295,7 +354,10 @@ impl Inner {
                                 let error_code = crate::pipeline::reset_error::FRAME_DECODE_ERROR;
                                 self.reset_error_code = Some(error_code);
                                 self.status.on_reset().ok();
-                                let _ = self.send_reset_packet(error_code);
+                                let _ = self.send_reset_packet(
+                                    error_code,
+                                    crate::packet::datagram::ResetTarget::Both,
+                                );
                                 let reset_error: ResetError = error_code.into();
                                 return Poll::Ready(Err(io::Error::new(
                                     io::ErrorKind::InvalidData,
@@ -369,6 +431,11 @@ impl Inner {
         use s2n_codec::EncoderValue;
         use s2n_quic_core::frame::MaxData;
 
+        let Some(remote_queue_id) = self.stream_rx.remote_queue_id() else {
+            // Can't send MAX_DATA before we know the peer's queue ID
+            return Ok(());
+        };
+
         let data_addr = self.path_secret_entry.data_addr();
         let mut builder = crate::datagram::batch::Builder::new(None, data_addr);
 
@@ -381,15 +448,15 @@ impl Inner {
             RoutingInfo::FlowControl {
                 source_sender_id: VarInt::MAX,
                 queue_pair: QueuePair {
-                    source_queue_id: self.local_queue_id,
-                    dest_queue_id: self.remote_queue_id,
+                    source_queue_id: self.stream_rx.queue_id(),
+                    dest_queue_id: remote_queue_id,
                 },
                 stream_id: self.stream_id,
             },
             control_data,
             ByteVec::new(),
             self.path_secret_entry.clone(),
-            None, // No completion notification needed for control frames
+            None,
         );
 
         builder
@@ -411,16 +478,25 @@ impl Inner {
     }
 
     /// Send a reset packet to the peer
-    fn send_reset_packet(&mut self, error_code: VarInt) -> io::Result<()> {
+    fn send_reset_packet(
+        &mut self,
+        error_code: VarInt,
+        reset_target: crate::packet::datagram::ResetTarget,
+    ) -> io::Result<()> {
+        let Some(remote_queue_id) = self.stream_rx.remote_queue_id() else {
+            // Can't send reset before we know the peer's queue ID
+            return Ok(());
+        };
+
         let data_addr = self.path_secret_entry.data_addr();
         let mut builder = crate::datagram::batch::Builder::new(None, data_addr);
 
         let reset_packet = PartialDatagram::new_datagram(
             RoutingInfo::FlowReset {
                 source_sender_id: VarInt::MAX,
-                dest_queue_id: self.remote_queue_id,
+                dest_queue_id: remote_queue_id,
                 stream_id: self.stream_id,
-                reset_target: crate::packet::datagram::ResetTarget::Both,
+                reset_target,
                 error_code,
             },
             ByteVec::new(),
@@ -441,10 +517,41 @@ impl Inner {
         debug!(
             stream_id = self.stream_id.as_u64(),
             error_code = error_code.as_u64(),
+            reset_target = ?reset_target,
             "Sent FlowReset"
         );
 
         Ok(())
+    }
+}
+
+impl Drop for Reader {
+    fn drop(&mut self) {
+        // If we're panicking, send FlowReset with ABNORMAL_TERMINATION to reset both halves
+        if std::thread::panicking() {
+            let error_code = crate::pipeline::reset_error::ABNORMAL_TERMINATION;
+            let _ = self
+                .0
+                .send_reset_packet(error_code, crate::packet::datagram::ResetTarget::Both);
+            debug!(
+                stream_id = self.0.stream_id.as_u64(),
+                "Reader dropped during panic - sent FlowReset"
+            );
+        } else {
+            // Normal drop - only send STOP_SENDING if we haven't received all data yet
+            // If is_writing_complete() is true, the sender has sent FIN and likely gone away
+            // This resets only the Stream half (peer's sender)
+            if !self.0.reassembler.is_writing_complete() && !self.0.status.is_reset() {
+                let error_code = crate::pipeline::reset_error::STOP_SENDING;
+                let _ = self
+                    .0
+                    .send_reset_packet(error_code, crate::packet::datagram::ResetTarget::Stream);
+                debug!(
+                    stream_id = self.0.stream_id.as_u64(),
+                    "Reader dropped before FIN received - sent STOP_SENDING"
+                );
+            }
+        }
     }
 }
 

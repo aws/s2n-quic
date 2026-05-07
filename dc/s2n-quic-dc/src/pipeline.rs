@@ -82,6 +82,12 @@ pub(crate) mod reset_error {
     /// The sender terminated abnormally (e.g., panic, crash)
     pub const ABNORMAL_TERMINATION: VarInt = VarInt::from_u32(5);
 
+    /// The receiver no longer wants to receive data
+    pub const STOP_SENDING: VarInt = VarInt::from_u32(6);
+
+    /// Retransmissions exhausted after repeated transmission failures
+    pub const RETRANSMISSIONS_EXHAUSTED: VarInt = VarInt::from_u32(7);
+
     /// Reset error codes for stream resets
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum ResetError {
@@ -95,6 +101,10 @@ pub(crate) mod reset_error {
         FrameDecodeError,
         /// The sender terminated abnormally (e.g., panic, crash)
         AbnormalTermination,
+        /// The receiver no longer wants to receive data
+        StopSending,
+        /// Retransmissions exhausted after repeated transmission failures
+        RetransmissionsExhausted,
         /// Unknown error code
         Unknown(VarInt),
     }
@@ -108,6 +118,8 @@ pub(crate) mod reset_error {
                 Self::StaleState => STALE_STATE,
                 Self::FrameDecodeError => FRAME_DECODE_ERROR,
                 Self::AbnormalTermination => ABNORMAL_TERMINATION,
+                Self::StopSending => STOP_SENDING,
+                Self::RetransmissionsExhausted => RETRANSMISSIONS_EXHAUSTED,
                 Self::Unknown(code) => code,
             }
         }
@@ -121,6 +133,8 @@ pub(crate) mod reset_error {
                 STALE_STATE => Self::StaleState,
                 FRAME_DECODE_ERROR => Self::FrameDecodeError,
                 ABNORMAL_TERMINATION => Self::AbnormalTermination,
+                STOP_SENDING => Self::StopSending,
+                RETRANSMISSIONS_EXHAUSTED => Self::RetransmissionsExhausted,
                 _ => Self::Unknown(code),
             }
         }
@@ -130,7 +144,10 @@ pub(crate) mod reset_error {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
                 Self::StreamIdError => {
-                    write!(f, "STREAM_ID_ERROR: stream ID reused before previous flow completed")
+                    write!(
+                        f,
+                        "STREAM_ID_ERROR: stream ID reused before previous flow completed"
+                    )
                 }
                 Self::AcceptorNotFound => {
                     write!(f, "ACCEPTOR_NOT_FOUND: acceptor ID not found")
@@ -142,7 +159,16 @@ pub(crate) mod reset_error {
                     write!(f, "FRAME_DECODE_ERROR: failed to decode control frames")
                 }
                 Self::AbnormalTermination => {
-                    write!(f, "ABNORMAL_TERMINATION: sender terminated abnormally (panic/crash)")
+                    write!(
+                        f,
+                        "ABNORMAL_TERMINATION: sender terminated abnormally (panic/crash)"
+                    )
+                }
+                Self::StopSending => {
+                    write!(f, "STOP_SENDING: receiver no longer wants to receive data")
+                }
+                Self::RetransmissionsExhausted => {
+                    write!(f, "RETRANSMISSIONS_EXHAUSTED: retransmissions exhausted after repeated transmission failures")
                 }
                 Self::Unknown(code) => {
                     write!(f, "UNKNOWN({}): unknown reset error code", code.as_u64())
@@ -727,13 +753,8 @@ pub enum StreamMsg {
 
 /// Placeholder type for control data in flow queues
 pub enum ControlMsg {
-    Frames {
-        remote_queue_id: VarInt,
-        payload: BytesMut,
-    },
-    Reset {
-        error_code: VarInt,
-    },
+    Frames { payload: BytesMut },
+    Reset { error_code: VarInt },
 }
 
 /// Flow initialization message delivered to acceptors
@@ -885,9 +906,9 @@ where
 
                     // Record the flow in the sender's flow map and allocate queue handles
                     let create_queue = |handle| {
-                        // Allocate queue handles for this flow
-                        let (queue_control, queue_stream) = queue_dispatcher.alloc_or_grow(handle);
-                        // Get the allocated queue_id from the control handle
+                        // Server-side allocation knows the remote queue ID from FlowInit
+                        let (queue_control, queue_stream) =
+                            queue_dispatcher.alloc_or_grow(handle, Some(peer_queue_id));
                         let queue_id = queue_control.queue_id();
                         (queue_id, (queue_control, queue_stream))
                     };
@@ -994,9 +1015,9 @@ where
                 Err(AttemptDedupError::TooOld) => {
                     // Attempt ID outside window - check DashMap (medium path)
                     let create_queue = |handle| {
-                        // Allocate queue handles for this flow
-                        let (queue_control, queue_stream) = queue_dispatcher.alloc_or_grow(handle);
-                        // Get the allocated queue_id from the control handle
+                        // Server-side allocation knows the remote queue ID from FlowInit
+                        let (queue_control, queue_stream) =
+                            queue_dispatcher.alloc_or_grow(handle, Some(peer_queue_id));
                         let queue_id = queue_control.queue_id();
                         (queue_id, (queue_control, queue_stream))
                     };
@@ -1210,7 +1231,12 @@ where
                     // Flow validation succeeded - send FlowValidated message to wake up the acceptor
                     let stream_entry = StreamMsg::FlowValidated.into();
 
-                    match queue_dispatcher.send_stream(local_queue_id, &request, stream_entry) {
+                    match queue_dispatcher.send_stream(
+                        local_queue_id,
+                        Some(queue_pair.source_queue_id),
+                        &request,
+                        stream_entry,
+                    ) {
                         Ok(()) => {
                             tracing::info!(
                                 attempt_id = attempt_id.as_u64(),
@@ -1282,7 +1308,12 @@ where
             }
             .into();
 
-            match queue_dispatcher.send_stream(local_queue_id, &request, entry) {
+            match queue_dispatcher.send_stream(
+                local_queue_id,
+                Some(queue_pair.source_queue_id),
+                &request,
+                entry,
+            ) {
                 Ok(()) => {
                     tracing::trace!(
                         stream_id = stream_id.as_u64(),
@@ -1362,13 +1393,14 @@ where
             };
 
             // Dispatch to the queue with validation
-            let entry = ControlMsg::Frames {
-                remote_queue_id: queue_pair.source_queue_id,
-                payload: buf,
-            }
-            .into();
+            let entry = ControlMsg::Frames { payload: buf }.into();
 
-            match queue_dispatcher.send_control(local_queue_id, &request, entry) {
+            match queue_dispatcher.send_control(
+                local_queue_id,
+                Some(queue_pair.source_queue_id),
+                &request,
+                entry,
+            ) {
                 Ok(()) => {
                     tracing::trace!(
                         stream_id = stream_id.as_u64(),
@@ -1447,13 +1479,14 @@ where
                 stream_id,
             };
 
-            // Send reset based on target
+            // Send reset based on target — FlowReset doesn't carry the sender's queue ID
             match reset_target {
                 ResetTarget::Both => {
                     let stream_entry = StreamMsg::Reset { error_code }.into();
                     let control_entry = ControlMsg::Reset { error_code }.into();
                     queue_dispatcher.send_both(
                         local_queue_id,
+                        None,
                         &request,
                         stream_entry,
                         control_entry,
@@ -1468,7 +1501,8 @@ where
                 }
                 ResetTarget::Stream => {
                     let stream_entry = StreamMsg::Reset { error_code }.into();
-                    let _ = queue_dispatcher.send_stream(local_queue_id, &request, stream_entry);
+                    let _ =
+                        queue_dispatcher.send_stream(local_queue_id, None, &request, stream_entry);
 
                     tracing::debug!(
                         stream_id = stream_id.as_u64(),
@@ -1479,7 +1513,12 @@ where
                 }
                 ResetTarget::Control => {
                     let control_entry = ControlMsg::Reset { error_code }.into();
-                    let _ = queue_dispatcher.send_control(local_queue_id, &request, control_entry);
+                    let _ = queue_dispatcher.send_control(
+                        local_queue_id,
+                        None,
+                        &request,
+                        control_entry,
+                    );
 
                     tracing::debug!(
                         stream_id = stream_id.as_u64(),

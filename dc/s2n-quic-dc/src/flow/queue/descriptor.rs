@@ -13,7 +13,7 @@ use std::{
     mem::MaybeUninit,
     ptr::NonNull,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -88,6 +88,31 @@ impl<S: 'static, C: 'static, Key: 'static> Descriptor<S, C, Key> {
         self.inner().id
     }
 
+    /// Returns the peer's queue ID, or `None` if not yet observed.
+    ///
+    /// # Safety
+    ///
+    /// The caller needs to guarantee the [`Descriptor`] is still allocated.
+    #[inline]
+    pub unsafe fn remote_queue_id(&self) -> Option<VarInt> {
+        let v = self.inner().remote_queue_id.load(Ordering::Relaxed);
+        VarInt::new(v).ok()
+    }
+
+    /// Stores the peer's queue ID with a relaxed store.
+    ///
+    /// Should only be called once per flow — guarded by the `HAS_OBSERVED` flag in the queue.
+    ///
+    /// # Safety
+    ///
+    /// The caller needs to guarantee the [`Descriptor`] is still allocated.
+    #[inline]
+    pub unsafe fn set_remote_queue_id(&self, id: VarInt) {
+        self.inner()
+            .remote_queue_id
+            .store(id.as_u64(), Ordering::Relaxed);
+    }
+
     #[inline]
     pub unsafe fn key(&self) -> &Key {
         (*self.inner().key.get()).assume_init_ref()
@@ -127,12 +152,27 @@ impl<S: 'static, C: 'static, Key: 'static> Descriptor<S, C, Key> {
     /// # Safety
     ///
     /// * The [`Descriptor`] needs to be marked as free of receivers
+    ///
+    /// If `remote_queue_id` is `Some`, the value is stored immediately and both queue
+    /// halves are marked as already observed (no dispatcher-side store needed).
     #[inline]
-    pub unsafe fn into_receiver_pair(self) -> (Self, Self) {
+    pub unsafe fn into_receiver_pair(self, remote_queue_id: Option<VarInt>) -> (Self, Self) {
         let inner = self.inner();
 
+        let has_remote_queue_id = remote_queue_id.is_some();
+        if let Some(id) = remote_queue_id {
+            inner.remote_queue_id.store(id.as_u64(), Ordering::Relaxed);
+        } else {
+            inner
+                .remote_queue_id
+                .store(REMOTE_QUEUE_ID_UNKNOWN, Ordering::Relaxed);
+        }
+
         // open the queues back up for receiving
-        inner.stream.open_receivers(&inner.control).unwrap();
+        inner
+            .stream
+            .open_receivers(&inner.control, has_remote_queue_id)
+            .unwrap();
 
         probes::on_receiver_open(inner.id);
 
@@ -203,8 +243,14 @@ impl<S: 'static, C: 'static, Key: 'static> Descriptor<S, C, Key> {
 unsafe impl<S: Send, C: Send, Key: Send> Send for Descriptor<S, C, Key> {}
 unsafe impl<S: Sync, C: Sync, Key: Sync> Sync for Descriptor<S, C, Key> {}
 
+/// Sentinel value indicating the remote queue ID is not yet known.
+const REMOTE_QUEUE_ID_UNKNOWN: u64 = u64::MAX;
+
 pub(super) struct DescriptorInner<S, C, Key> {
     id: VarInt,
+    /// The peer's queue ID, written once by the dispatcher on first observation.
+    /// Initialized to `u64::MAX` (unknown) and set via a relaxed store.
+    remote_queue_id: AtomicU64,
     key: UnsafeCell<MaybeUninit<Key>>,
     stream: Queue<S>,
     control: Queue<C>,
@@ -219,6 +265,7 @@ impl<S, C, Key> DescriptorInner<S, C, Key> {
         let control = Queue::new(Half::Control);
         Self {
             id,
+            remote_queue_id: AtomicU64::new(REMOTE_QUEUE_ID_UNKNOWN),
             key: UnsafeCell::new(MaybeUninit::uninit()),
             stream,
             control,

@@ -68,14 +68,22 @@ where
     }
 
     #[inline]
-    pub fn alloc(&self, key: Key) -> Result<(Control<S, C, Key>, Stream<S, C, Key>), Key> {
-        self.free.alloc(key)
+    pub fn alloc(
+        &self,
+        key: Key,
+        remote_queue_id: Option<VarInt>,
+    ) -> Result<(Control<S, C, Key>, Stream<S, C, Key>), Key> {
+        self.free.alloc(key, remote_queue_id)
     }
 
     #[inline]
-    pub fn alloc_or_grow(&mut self, mut key: Key) -> (Control<S, C, Key>, Stream<S, C, Key>) {
+    pub fn alloc_or_grow(
+        &mut self,
+        mut key: Key,
+        remote_queue_id: Option<VarInt>,
+    ) -> (Control<S, C, Key>, Stream<S, C, Key>) {
         loop {
-            match self.alloc(key) {
+            match self.alloc(key, remote_queue_id) {
                 Ok(descriptor) => return descriptor,
                 Err(k) => {
                     key = k;

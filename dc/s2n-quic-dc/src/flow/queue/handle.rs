@@ -33,10 +33,16 @@ macro_rules! impl_recv {
                 unsafe { self.descriptor.queue_id() }
             }
 
+            /// Returns the peer's queue ID, or `None` if not yet observed from a packet.
+            #[inline]
+            pub fn remote_queue_id(&self) -> Option<VarInt> {
+                unsafe { self.descriptor.remote_queue_id() }
+            }
+
             #[inline]
             pub fn push(&self, value: intrusive_queue::Entry<$type_param>) {
                 unsafe {
-                    let res = self.descriptor.$field().push(value, || true);
+                    let res = self.descriptor.$field().push(value, false, || true);
                     debug_assert!(res.is_ok());
                     probes::on_send(self.descriptor.queue_id(), $half, true);
                 }
@@ -148,15 +154,23 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
     pub fn send_stream<F>(
         &self,
         entry: intrusive_queue::Entry<S>,
+        remote_queue_id: Option<VarInt>,
         validate: F,
     ) -> Result<(), Error<intrusive_queue::Entry<S>>>
     where
         F: FnOnce(&Key) -> bool,
     {
         unsafe {
-            self.descriptor
-                .stream_queue()
-                .push(entry, || validate(self.descriptor.key()))?;
+            let first =
+                self.descriptor
+                    .stream_queue()
+                    .push(entry, remote_queue_id.is_some(), || {
+                        validate(self.descriptor.key())
+                    })?;
+            if first {
+                self.descriptor
+                    .set_remote_queue_id(remote_queue_id.unwrap());
+            }
             probes::on_send(self.descriptor.queue_id(), Half::Stream, false);
             Ok(())
         }
@@ -166,15 +180,23 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
     pub fn send_control<F>(
         &self,
         entry: intrusive_queue::Entry<C>,
+        remote_queue_id: Option<VarInt>,
         validate: F,
     ) -> Result<(), Error<intrusive_queue::Entry<C>>>
     where
         F: FnOnce(&Key) -> bool,
     {
         unsafe {
-            self.descriptor
-                .control_queue()
-                .push(entry, || validate(self.descriptor.key()))?;
+            let first =
+                self.descriptor
+                    .control_queue()
+                    .push(entry, remote_queue_id.is_some(), || {
+                        validate(self.descriptor.key())
+                    })?;
+            if first {
+                self.descriptor
+                    .set_remote_queue_id(remote_queue_id.unwrap());
+            }
             probes::on_send(self.descriptor.queue_id(), Half::Control, false);
             Ok(())
         }

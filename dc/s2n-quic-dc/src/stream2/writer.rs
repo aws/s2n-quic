@@ -27,6 +27,56 @@
 //!
 //! The Drop implementation checks `std::thread::panicking()` to distinguish between these cases.
 
+// TODOs:
+//
+// Correctness:
+//
+// * send_data does not transition status to FinSent when it sends the final datagram with
+//   is_fin=true. This means a subsequent write won't get BrokenPipe, and the Drop impl will
+//   try to send FIN again (double-FIN). poll_write_from needs to call on_send_fin() after
+//   send_data returns when the FIN was actually sent.
+//
+// * VarInt overflow in next_offset: adding payload_len to next_offset could overflow VarInt
+//   (max 2^62-1) on extremely large streams. Should return an error instead of panicking.
+//
+// * poll_completions processes failures with "last one wins" semantics — if a batch has
+//   both Acknowledged and Failed completions, only the last failure is reported. First
+//   failure should take precedence since it represents the earliest delivery problem.
+//
+// Flow control:
+//
+// * Auto-tune max_inflight_bytes based on completion queue delivery rate. Currently using a
+//   fixed budget. If completions arrive quickly, grow the budget to keep the pipe full. If
+//   slow, shrink to avoid buffering data that doesn't contribute to throughput. Similar in
+//   spirit to recv_budget in the existing streams.
+//
+// Performance:
+//
+// * Pace out batch transmissions at 1us interval — right now we're passing `None` to the
+//   batch builder. We also need to remember the last transmission time so we don't go
+//   backward if we do another burst.
+//
+// * GSO segment count check (`current_builder.len() >= max_segments`) may not match
+//   try_push's actual capacity logic. Consider unifying these checks or just relying on
+//   the try_push fallback.
+//
+// Observability:
+//
+// * No mechanism to report FIN acknowledgment to the application. After sending FIN, the
+//   Writer relies on the pipeline to deliver it but has no poll_shutdown_complete or
+//   similar. Currently by design (see Completion Channel Semantics), but limits the
+//   application's ability to confirm graceful close.
+//
+// * No idle timeout detection at the stream level. If the peer disappears silently, the
+//   Writer only learns about it when a completion eventually fails (PeerDead/TransmissionError).
+//   The gap between the peer dying and the Writer finding out could be large.
+//
+// Testing:
+//
+// * Deterministic tests using bach for: flow control stalls and recovery, FIN delivery,
+//   early data with FlowInit, completion failure handling, panic-drop behavior, and
+//   multi-stream contention on shared pipeline resources.
+
 use crate::{
     byte_vec::ByteVec,
     datagram::batch::Batch,
@@ -81,10 +131,6 @@ struct Inner {
     stream_id: VarInt,
     /// Acceptor ID for server routing
     acceptor_id: VarInt,
-    /// Local queue ID for routing
-    local_queue_id: VarInt,
-    /// Remote queue ID (set after flow establishment)
-    remote_queue_id: Option<VarInt>,
     /// Next byte offset to send
     next_offset: VarInt,
     /// Number of bytes currently in flight (not yet acknowledged)
@@ -145,7 +191,6 @@ impl Writer {
         gso: features::Gso,
         stream_id: VarInt,
         acceptor_id: VarInt,
-        local_queue_id: VarInt,
         control_rx: flow::queue::Control<
             crate::pipeline::StreamMsg,
             crate::pipeline::ControlMsg,
@@ -169,8 +214,6 @@ impl Writer {
             gso,
             stream_id,
             acceptor_id,
-            local_queue_id,
-            remote_queue_id: None,
             next_offset: VarInt::ZERO,
             inflight_bytes: 0,
             max_inflight_bytes,
@@ -189,8 +232,6 @@ impl Writer {
         path_secret_entry: Arc<PathSecretEntry>,
         gso: features::Gso,
         stream_id: VarInt,
-        local_queue_id: VarInt,
-        remote_queue_id: VarInt,
         control_rx: flow::queue::Control<
             crate::pipeline::StreamMsg,
             crate::pipeline::ControlMsg,
@@ -213,8 +254,6 @@ impl Writer {
             gso,
             stream_id,
             acceptor_id: VarInt::ZERO, // Not used on server side
-            local_queue_id,
-            remote_queue_id: Some(remote_queue_id),
             next_offset: VarInt::ZERO,
             inflight_bytes: 0,
             max_inflight_bytes,
@@ -378,18 +417,18 @@ impl Inner {
     }
 
     /// Send a reset packet to the peer
-    fn send_reset_packet(&mut self, error_code: VarInt) -> io::Result<()> {
-        // Only send reset if we have a remote queue ID (flow established or server-side)
-        let remote_queue_id = match self.remote_queue_id {
-            Some(id) => id,
-            None => {
-                // Can't send reset before flow is established
-                debug!(
-                    stream_id = self.stream_id.as_u64(),
-                    "Cannot send reset before flow established"
-                );
-                return Ok(());
-            }
+    fn send_reset_packet(
+        &mut self,
+        error_code: VarInt,
+        reset_target: crate::packet::datagram::ResetTarget,
+    ) -> io::Result<()> {
+        let Some(remote_queue_id) = self.control_rx.remote_queue_id() else {
+            // Can't send reset before flow is established
+            debug!(
+                stream_id = self.stream_id.as_u64(),
+                "Cannot send reset before flow established"
+            );
+            return Ok(());
         };
 
         let data_addr = self.path_secret_entry.data_addr();
@@ -401,7 +440,7 @@ impl Inner {
                 source_sender_id: VarInt::MAX,
                 dest_queue_id: remote_queue_id,
                 stream_id: self.stream_id,
-                reset_target: crate::packet::datagram::ResetTarget::Both,
+                reset_target,
                 error_code,
             },
             ByteVec::new(), // Empty header
@@ -422,6 +461,7 @@ impl Inner {
         debug!(
             stream_id = self.stream_id.as_u64(),
             error_code = error_code.as_u64(),
+            reset_target = ?reset_target,
             "Sent FlowReset"
         );
 
@@ -443,9 +483,10 @@ impl Inner {
             let mut builder = crate::datagram::batch::Builder::new(None, data_addr);
 
             let queue_pair = QueuePair {
-                source_queue_id: self.local_queue_id,
+                source_queue_id: self.control_rx.queue_id(),
                 dest_queue_id: self
-                    .remote_queue_id
+                    .control_rx
+                    .remote_queue_id()
                     .expect("remote_queue_id must be set when Open"),
             };
 
@@ -563,8 +604,12 @@ impl Inner {
                         }
                         FailureReason::TransmissionError => {
                             // Attempt to send reset to peer before giving up
-                            let error_code = crate::pipeline::reset_error::STALE_STATE;
-                            let _ = self.send_reset_packet(error_code);
+                            let error_code =
+                                crate::pipeline::reset_error::RETRANSMISSIONS_EXHAUSTED;
+                            let _ = self.send_reset_packet(
+                                error_code,
+                                crate::packet::datagram::ResetTarget::Both,
+                            );
                             self.status.on_shutdown().ok();
                             Err(io::Error::new(
                                 io::ErrorKind::BrokenPipe,
@@ -601,10 +646,7 @@ impl Inner {
                 // Process all control messages in the queue
                 for msg in queue {
                     match msg.into_inner() {
-                        ControlMsg::Frames {
-                            mut payload,
-                            remote_queue_id,
-                        } => {
+                        ControlMsg::Frames { mut payload } => {
                             // Parse control frames - if this fails, send reset to peer
                             if self.handle_control_frames(&mut payload).is_err() {
                                 let error_code = crate::pipeline::reset_error::FRAME_DECODE_ERROR;
@@ -612,7 +654,10 @@ impl Inner {
                                 self.status.on_shutdown().ok();
 
                                 // Send reset to peer
-                                let _ = self.send_reset_packet(error_code);
+                                let _ = self.send_reset_packet(
+                                    error_code,
+                                    crate::packet::datagram::ResetTarget::Both,
+                                );
 
                                 let reset_error: ResetError = error_code.into();
                                 return Poll::Ready(Err(io::Error::new(
@@ -621,18 +666,10 @@ impl Inner {
                                 )));
                             }
 
-                            // Update remote_queue_id if this is the first time we're seeing it
-                            if let Some(prev) = self.remote_queue_id.as_ref() {
-                                if prev != &remote_queue_id {
-                                    tracing::warn!(%prev, %remote_queue_id, "Remote queue ID changed");
-                                }
-                            } else if self.status.on_flow_established().is_ok() {
-                                self.remote_queue_id = Some(remote_queue_id);
-                                debug!(
-                                    stream_id = self.stream_id.as_u64(),
-                                    remote_queue_id = remote_queue_id.as_u64(),
-                                    "Flow established"
-                                );
+                            // Transition to Open once we receive the first control message
+                            // (the descriptor already has the remote_queue_id from the dispatcher)
+                            if self.status.on_flow_established().is_ok() {
+                                debug!(stream_id = self.stream_id.as_u64(), "Flow established");
                             }
                         }
                         ControlMsg::Reset { error_code } => {
@@ -711,7 +748,7 @@ impl Inner {
         let flow_init = PartialDatagram::new_datagram(
             RoutingInfo::FlowInit {
                 source_sender_id: VarInt::MAX,
-                source_queue_id: self.local_queue_id,
+                source_queue_id: self.control_rx.queue_id(),
                 dest_acceptor_id: self.acceptor_id,
                 attempt_id: VarInt::MAX,
                 stream_id: self.stream_id,
@@ -855,9 +892,10 @@ impl Inner {
 
             // Create FlowData datagram
             let queue_pair = QueuePair {
-                source_queue_id: self.local_queue_id,
+                source_queue_id: self.control_rx.queue_id(),
                 dest_queue_id: self
-                    .remote_queue_id
+                    .control_rx
+                    .remote_queue_id()
                     .expect("remote_queue_id must be set when Open"),
             };
 
@@ -940,20 +978,14 @@ impl Drop for Writer {
             // Cancel pending transmissions so they don't get sent
             self.0.completion_rx.cancel();
 
-            // Send FlowReset to peer if we have a remote_queue_id (flow established)
-            if let Some(_remote_queue_id) = self.0.remote_queue_id {
-                let error_code = crate::pipeline::reset_error::ABNORMAL_TERMINATION;
-                let _ = self.0.send_reset_packet(error_code);
-                debug!(
-                    stream_id = self.0.stream_id.as_u64(),
-                    "Writer dropped during panic - sent FlowReset and cancelled transmissions"
-                );
-            } else {
-                debug!(
-                    stream_id = self.0.stream_id.as_u64(),
-                    "Writer dropped during panic before flow established - cancelled transmissions"
-                );
-            }
+            let error_code = crate::pipeline::reset_error::ABNORMAL_TERMINATION;
+            let _ = self
+                .0
+                .send_reset_packet(error_code, crate::packet::datagram::ResetTarget::Both);
+            debug!(
+                stream_id = self.0.stream_id.as_u64(),
+                "Writer dropped during panic - sent FlowReset and cancelled transmissions"
+            );
         } else {
             // Normal drop - graceful shutdown
             let _ = self.shutdown();

@@ -22,23 +22,31 @@ Everything lives in dc/s2n-quic-dc/src/stream2/. We'll have separate files for s
 
 Both halves of the stream should be mostly independent once opened, similar to what we have now. They'll be different structs with their own concerns. The Writer doesn't need to know about reassembly, and the Reader doesn't need to know about fragmentation.
 
-## Application Endpoint Handle
+## Application Interface: Pipeline, Client, Server
 
-The application interface will be built around an endpoint handle that encapsulates the pipeline and all necessary infrastructure. Applications shouldn't have to pass around pipeline references or manage low-level details.
+The application interface is split into three structs with distinct responsibilities.
 
-A client and server in the same process share the same pipeline. The endpoint configuration takes a client PSK provider (required) and an optional server PSK provider (if the process wants to accept incoming connections). This ensures symmetric send and receive capabilities on a single pipeline instance.
+The Pipeline is the shared infrastructure handle. It owns the wheel workers, path secret map, flow queue allocator, and channel endpoints. Construction starts the workers immediately — there is no separate start step. The Pipeline is wrapped in Arc so it can be shared freely. There is exactly one Pipeline per process (or per test harness). Construction takes configuration for the path secret map, socket bindings, and worker count. The Pipeline is the thing that actually does I/O and runs the reliability protocol.
 
-The endpoint handle provides connect() for clients and acceptor registration for servers. Both server and client eventually return Writer and Reader pairs.
+The Client is constructed from a clone of the Arc<Pipeline>. It provides connect(addr, acceptor_id) which returns a (Writer, Reader) pair. The Client itself is cheap — it's just a reference to the shared pipeline plus any client-specific configuration (like the PSK provider for outbound connections). Multiple Client instances can coexist pointing at the same Pipeline if needed, though typically there's one.
+
+The Server is also constructed from a clone of the Arc<Pipeline>. It acts as an acceptor registry that multiplexes different stream types or services on a single pipeline. The Server holds the server-side PSK provider for validating inbound connections. There are two modes for registering acceptors, serving different use cases.
+
+The first mode is a channel acceptor. The application calls register_acceptor(acceptor_id) and gets back an async receiver that yields (Writer, Reader) pairs. The application task polls this receiver, typically in a loop, and spawns a handler task for each accepted stream. This matches the interface used by existing streams and gives the application full control over how streams are handled. The downside is the wake-receive-spawn hop: the pipeline wakes the accept task, the accept task reads from the queue, then spawns a handler into the runtime. For high-connection-rate workloads this extra hop adds latency and contention on the accept queue.
+
+The second mode is a handler acceptor. The application registers a trait implementation directly with the server at a given acceptor ID. When a new inbound flow arrives for that acceptor, the pipeline invokes the handler's accept method immediately, passing it the Writer and Reader. The handler is responsible for spawning whatever work it needs. This eliminates the intermediary accept task entirely — the pipeline goes straight from receiving FlowInit to spawning the application's handler logic. For the common case where acceptance just means "spawn a task to drive this stream," this avoids unnecessary waking and queueing. The handler trait takes a runtime handle at registration time so it can spawn into the appropriate executor.
+
+A process that only makes outbound connections creates a Pipeline and a Client. A process that only accepts connections creates a Pipeline and a Server. A process that does both creates a Pipeline, a Client, and a Server — all sharing the same underlying pipeline workers and path secret map.
 
 ## Flow Initialization
 
-The existing streams have a connect method that does the handshake. We'll keep that pattern. On the client side, connect() will be called on the endpoint handle with a peer address and acceptor ID. It returns a Writer and Reader pair.
+The existing streams have a connect method that does the handshake. We'll keep that pattern. On the client side, connect() is called on the Client with a peer address and acceptor ID. It returns a Writer and Reader pair.
 
 The key optimization is lazy flow initialization. When connect() is called, we allocate the local queues using the flow queue allocator, but we don't send the FlowInit packet yet. The Writer and Reader are created and returned immediately.
 
 When the application does its first write, that's when we send the FlowInit packet. We can even include early data in that first packet. This saves a round trip for short-lived flows.
 
-The FlowInit packet has routing info that tells the server which acceptor to deliver it to, what the client's queue ID is, and what stream ID we're using. The server receives this through the acceptor registry, which spawns a handler task that creates its own Reader and Writer halves.
+The FlowInit packet has routing info that tells the server which acceptor to deliver it to, what the client's queue ID is, and what stream ID we're using. The Server's acceptor registry routes it to the appropriate acceptor — either queuing the (Writer, Reader) pair on the channel for a channel acceptor, or invoking the handler trait's accept method directly for a handler acceptor.
 
 The server sends back a FlowControl packet to indicate that the flow has been accepted by the application. This may or may not contain a MAX_DATA frame yet which would set the next window of data that can be sent from the client. When the client Writer receives this acknowledgment, it marks the flow as established and can proceed with sending data packets, assuming the MAX_DATA value provides enough credits.
 
@@ -126,7 +134,7 @@ Getting bach working is part of the critical path for today because we need to b
 
 Stream2 integrates with the pipeline infrastructure in several ways. It uses the flow queue allocator to create queues for each stream. It submits datagrams via the wheel input channel. It receives completion notifications via the datagram completion receiver. And it receives incoming data via the flow queue stream channel.
 
-On the server side, stream2 integrates with the acceptor registry. We register a stream2-specific acceptor with a known acceptor ID. When a FlowInit arrives with that acceptor ID, the registry routes it to our acceptor, which spawns a handler task that creates the Reader and Writer halves and pushes them to an accept queue for the application.
+On the server side, the Server registers acceptors with the pipeline's acceptor registry. When a FlowInit arrives for a registered acceptor ID, the pipeline constructs the Reader and Writer halves and either pushes them to the channel (channel acceptor mode) or invokes the handler trait directly (handler acceptor mode). In both cases, the pipeline handles flow validation and queue allocation before the application ever sees the stream.
 
 The path secret entry provides the MTU and cryptographic material. The wheel handles pacing and sends to sockets. The pipeline handles retransmission and ACKs. Stream2 just sits on top of all this and presents a simple byte stream abstraction.
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{intrusive_queue, sync::ring_deque::Closed};
+use bitflags::bitflags;
 use core::{
     fmt,
     ops::ControlFlow,
@@ -9,6 +10,27 @@ use core::{
 };
 use s2n_quic_core::ensure;
 use std::sync::Mutex;
+
+bitflags! {
+    /// Packed state flags for a queue half, stored in a single byte.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    struct Flags: u8 {
+        /// The sender side is still alive and may push entries.
+        ///
+        /// If this is not set, the sender is permanently gone and will not open again.
+        const IS_OPEN = 0b0001;
+        /// A receiver handle exists for this queue half.
+        ///
+        /// If this is not set, the receiver has dropped its handle and it has released it
+        /// back into the descriptor pool.
+        const HAS_RECEIVER = 0b0010;
+        /// At least one message has been successfully pushed since allocation.
+        ///
+        /// Used to trigger a one-time relaxed store of the remote queue ID in
+        /// the descriptor — after this is set the dispatcher skips the write.
+        const HAS_OBSERVED = 0b0100;
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error<T> {
@@ -47,8 +69,7 @@ impl<T> From<Closed> for Error<T> {
 
 struct Inner<T> {
     queue: intrusive_queue::Queue<T>,
-    is_open: bool,
-    has_receiver: bool,
+    flags: Flags,
     waker: Option<Waker>,
 }
 
@@ -58,7 +79,6 @@ impl<T> Inner<T> {
     }
 
     fn update_waker(&mut self, cx: &mut Context) {
-        // Only clone waker if it's different from the current one
         if let Some(ref waker) = self.waker {
             if !waker.will_wake(cx.waker()) {
                 self.waker = Some(cx.waker().clone());
@@ -73,8 +93,7 @@ impl<T> fmt::Debug for Inner<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Inner")
             .field("is_empty", &self.queue.is_empty())
-            .field("is_open", &self.is_open)
-            .field("has_receiver", &self.has_receiver)
+            .field("flags", &self.flags)
             .field("has_waker", &self.waker.is_some())
             .finish()
     }
@@ -92,8 +111,7 @@ impl<T> Queue<T> {
         Self {
             inner: Mutex::new(Inner {
                 queue: intrusive_queue::Queue::new(),
-                is_open: true,
-                has_receiver: false,
+                flags: Flags::IS_OPEN,
                 waker: None,
             }),
             #[cfg(debug_assertions)]
@@ -101,22 +119,37 @@ impl<T> Queue<T> {
         }
     }
 
+    /// Push an entry into the queue.
+    ///
+    /// `observe` indicates whether this push should count as a first observation
+    /// (caller has a remote queue ID to store). Returns `Ok(true)` if this push
+    /// transitioned the queue to "observed" for the first time — the caller should
+    /// then perform the one-time store of the remote queue ID on the descriptor.
     #[inline]
     pub fn push<F>(
         &self,
         entry: intrusive_queue::Entry<T>,
+        observe: bool,
         validate: F,
-    ) -> Result<(), Error<intrusive_queue::Entry<T>>>
+    ) -> Result<bool, Error<intrusive_queue::Entry<T>>>
     where
         F: FnOnce() -> bool,
     {
         let mut inner = self.lock()?;
-        // check if the queue is permanently closed (sender dropped)
-        ensure!(inner.is_open, Err(Error::PermanentlyClosed));
-        // check if this half has a receiver
-        ensure!(inner.has_receiver, Err(Error::HalfClosed(entry)));
-        // validate key inside the lock - if this fails, the entire flow is invalid
+        ensure!(
+            inner.flags.contains(Flags::IS_OPEN),
+            Err(Error::PermanentlyClosed)
+        );
+        ensure!(
+            inner.flags.contains(Flags::HAS_RECEIVER),
+            Err(Error::HalfClosed(entry))
+        );
         ensure!(validate(), Err(Error::FullyClosed(entry)));
+
+        let first_observation = observe && !inner.flags.contains(Flags::HAS_OBSERVED);
+        if first_observation {
+            inner.flags.insert(Flags::HAS_OBSERVED);
+        }
 
         inner.queue.push_back(entry);
         let waker = inner.take_waker();
@@ -125,7 +158,7 @@ impl<T> Queue<T> {
             waker.wake();
         }
 
-        Ok(())
+        Ok(first_observation)
     }
 
     #[inline]
@@ -135,7 +168,7 @@ impl<T> Queue<T> {
             return Ok(Some(entry));
         }
 
-        ensure!(inner.is_open, Err(Closed));
+        ensure!(inner.flags.contains(Flags::IS_OPEN), Err(Closed));
         Ok(None)
     }
 
@@ -146,7 +179,7 @@ impl<T> Queue<T> {
             return Ok(entry).into();
         }
 
-        ensure!(inner.is_open, Err(Closed).into());
+        ensure!(inner.flags.contains(Flags::IS_OPEN), Err(Closed).into());
 
         inner.update_waker(cx);
 
@@ -158,13 +191,13 @@ impl<T> Queue<T> {
         let mut inner = self.lock()?;
 
         if inner.queue.is_empty() {
-            ensure!(inner.is_open, Err(Closed).into());
+            ensure!(inner.flags.contains(Flags::IS_OPEN), Err(Closed).into());
             inner.update_waker(cx);
             return Poll::Pending;
         }
 
         let queue = core::mem::take(&mut inner.queue);
-        let is_open = inner.is_open;
+        let is_open = inner.flags.contains(Flags::IS_OPEN);
 
         // Always update waker since we drained everything (if still open)
         if is_open {
@@ -181,8 +214,16 @@ impl<T> Queue<T> {
         Ok(queue).into()
     }
 
+    /// Opens both receiver halves for this queue pair.
+    ///
+    /// If `has_remote_queue_id` is true, both halves are marked as already observed so
+    /// the dispatcher will skip the one-time remote queue ID store (it was set at alloc time).
     #[inline]
-    pub fn open_receivers<C>(&self, control: &Queue<C>) -> Result<(), Closed> {
+    pub fn open_receivers<C>(
+        &self,
+        control: &Queue<C>,
+        has_remote_queue_id: bool,
+    ) -> Result<(), Closed> {
         #[cfg(debug_assertions)]
         {
             assert_eq!(self.half, Half::Stream);
@@ -197,17 +238,22 @@ impl<T> Queue<T> {
             return Err(Closed);
         };
 
-        // make sure the stream hasn't been permanently closed
-        ensure!(stream_inner.is_open, Err(Closed));
-        ensure!(control_inner.is_open, Err(Closed));
+        ensure!(stream_inner.flags.contains(Flags::IS_OPEN), Err(Closed));
+        ensure!(control_inner.flags.contains(Flags::IS_OPEN), Err(Closed));
 
         debug_assert!(
-            !stream_inner.has_receiver && !control_inner.has_receiver,
+            !stream_inner.flags.contains(Flags::HAS_RECEIVER)
+                && !control_inner.flags.contains(Flags::HAS_RECEIVER),
             "receiver already open!\n stream: {stream_inner:?}\ncontrol: {control_inner:?}"
         );
 
-        stream_inner.has_receiver = true;
-        control_inner.has_receiver = true;
+        let mut open_flags = Flags::HAS_RECEIVER;
+        if has_remote_queue_id {
+            open_flags |= Flags::HAS_OBSERVED;
+        }
+
+        stream_inner.flags.insert(open_flags);
+        control_inner.flags.insert(open_flags);
 
         Ok(())
     }
@@ -246,16 +292,19 @@ impl<T> Queue<T> {
         other: std::sync::MutexGuard<'_, Inner<Other>>,
     ) -> ControlFlow<()> {
         debug_assert!(
-            closing.has_receiver,
+            closing.flags.contains(Flags::HAS_RECEIVER),
             "receiver already closed:\n{closing:?}\nother: {other:?}"
         );
 
         // observe the other half receiver status before dropping the `other` lock
-        let has_other_receiver = other.has_receiver;
+        let has_other_receiver = other.flags.contains(Flags::HAS_RECEIVER);
         drop(other);
 
         let waker = closing.take_waker();
-        closing.has_receiver = false;
+        // Clear both HAS_RECEIVER and HAS_OBSERVED so recycled descriptors get fresh state
+        closing
+            .flags
+            .remove(Flags::HAS_RECEIVER | Flags::HAS_OBSERVED);
         // take the queue items out of the lock to avoid mutex poisoning.
         // note that most of the time this should be empty, which would be a no-op
         let queue = core::mem::take(&mut closing.queue);
@@ -280,8 +329,7 @@ impl<T> Queue<T> {
         let Ok(mut inner) = self.lock() else {
             return;
         };
-        inner.is_open = false;
-        // Leave the remaining items in the queue in case the receiver wants them.
+        inner.flags.remove(Flags::IS_OPEN);
 
         // Notify the receiver that the queue is now closed
         let waker = inner.take_waker();
@@ -302,7 +350,7 @@ impl<T> Queue<T> {
         let inner = self.lock().map_err(|_| ())?;
 
         // Check if the queue has a receiver (is allocated)
-        if !inner.has_receiver {
+        if !inner.flags.contains(Flags::HAS_RECEIVER) {
             return Err(());
         }
 
