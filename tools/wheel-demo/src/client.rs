@@ -10,7 +10,7 @@ use s2n_quic_dc::{
     intrusive_queue::{List, Queue},
     packet::datagram::{partial::PartialDatagram, QueuePair, RoutingInfo},
     path::secret::map::Entry as PathSecretEntry,
-    pipeline::CounterRegistry,
+    stream2::endpoint::CounterRegistry,
     socket::channel,
 };
 use s2n_quic_platform::features;
@@ -29,7 +29,7 @@ use tracing::info;
 pub async fn run<S>(
     handshake_server: SocketAddr,
     num_sockets: usize,
-    config: s2n_quic_dc::pipeline::PipelineConfig<'_, S>,
+    config: s2n_quic_dc::stream2::endpoint::EndpointConfig<'_, S>,
     provider: crate::psk::Client,
 ) -> io::Result<()>
 where
@@ -61,14 +61,14 @@ where
     // Create send and receive sockets on the data port
     // One send socket per requested socket, but only one recv socket per spawner worker
     // (worker 0 is the dispatch thread, so num_recv = worker_count - 1)
-    let send_sockets = s2n_quic_dc::pipeline::create_send_sockets(
+    let send_sockets = s2n_quic_dc::stream2::endpoint::create_send_sockets(
         num_sockets,
         data_bind_addr,
         config.gso.clone(),
     )?;
     let num_recv_sockets = config.spawner.worker_count().saturating_sub(1).max(1);
     let recv_sockets =
-        s2n_quic_dc::pipeline::create_recv_sockets(num_recv_sockets, data_bind_addr)?;
+        s2n_quic_dc::stream2::endpoint::create_recv_sockets(num_recv_sockets, data_bind_addr)?;
 
     let counters = config.counters.clone();
     let packet_size = config.packet_size;
@@ -76,7 +76,7 @@ where
 
     // Set up the bidirectional pipeline
     let pipeline =
-        s2n_quic_dc::pipeline::setup_pipeline(config, send_sockets, recv_sockets, || {
+        s2n_quic_dc::stream2::endpoint::setup_endpoint(config, send_sockets, recv_sockets, || {
             s2n_quic_dc::random::Random::default()
         });
 
@@ -144,13 +144,13 @@ struct Stream {
     wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
     completion_rx: channel::intrusive_queue::datagram_completion::Receiver<PartialDatagram>,
     stream_rx: flow::queue::Stream<
-        s2n_quic_dc::pipeline::StreamMsg,
-        s2n_quic_dc::pipeline::ControlMsg,
+        s2n_quic_dc::stream2::endpoint::StreamMsg,
+        s2n_quic_dc::stream2::endpoint::ControlMsg,
         flow::Handle,
     >,
     control_rx: flow::queue::Control<
-        s2n_quic_dc::pipeline::StreamMsg,
-        s2n_quic_dc::pipeline::ControlMsg,
+        s2n_quic_dc::stream2::endpoint::StreamMsg,
+        s2n_quic_dc::stream2::endpoint::ControlMsg,
         flow::Handle,
     >,
     packet_size: u16,
@@ -175,13 +175,13 @@ impl Stream {
         stream_id: VarInt,
         local_queue_id: VarInt,
         control_rx: flow::queue::Control<
-            s2n_quic_dc::pipeline::StreamMsg,
-            s2n_quic_dc::pipeline::ControlMsg,
+            s2n_quic_dc::stream2::endpoint::StreamMsg,
+            s2n_quic_dc::stream2::endpoint::ControlMsg,
             flow::Handle,
         >,
         stream_rx: flow::queue::Stream<
-            s2n_quic_dc::pipeline::StreamMsg,
-            s2n_quic_dc::pipeline::ControlMsg,
+            s2n_quic_dc::stream2::endpoint::StreamMsg,
+            s2n_quic_dc::stream2::endpoint::ControlMsg,
             flow::Handle,
         >,
     ) -> Self {
@@ -383,8 +383,8 @@ struct Generator {
     gso: features::Gso,
     counters: CounterRegistry,
     flow_allocator: flow::queue::Allocator<
-        s2n_quic_dc::pipeline::StreamMsg,
-        s2n_quic_dc::pipeline::ControlMsg,
+        s2n_quic_dc::stream2::endpoint::StreamMsg,
+        s2n_quic_dc::stream2::endpoint::ControlMsg,
         flow::Handle,
     >,
     stream_id_counter: Arc<AtomicU64>,
@@ -399,8 +399,8 @@ impl Generator {
         counters: CounterRegistry,
         gso: features::Gso,
         flow_allocator: flow::queue::Allocator<
-            s2n_quic_dc::pipeline::StreamMsg,
-            s2n_quic_dc::pipeline::ControlMsg,
+            s2n_quic_dc::stream2::endpoint::StreamMsg,
+            s2n_quic_dc::stream2::endpoint::ControlMsg,
             flow::Handle,
         >,
         stream_id_counter: Arc<AtomicU64>,
@@ -429,7 +429,7 @@ impl Generator {
         let handle = flow::Handle::client(stream_id, self.path_secret_entry.clone());
 
         // Allocate queue for this flow
-        let (queue_control, queue_stream) = self.flow_allocator.alloc_or_grow(handle);
+        let (queue_control, queue_stream) = self.flow_allocator.alloc_or_grow(handle, None);
         let local_queue_id = queue_control.queue_id();
 
         info!(

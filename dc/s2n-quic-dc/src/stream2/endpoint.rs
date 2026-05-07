@@ -88,6 +88,9 @@ pub(crate) mod reset_error {
     /// Retransmissions exhausted after repeated transmission failures
     pub const RETRANSMISSIONS_EXHAUSTED: VarInt = VarInt::from_u32(7);
 
+    /// Server accept queue overflowed - stream was dropped before the application could handle it
+    pub const SERVER_BUSY: VarInt = VarInt::from_u32(8);
+
     /// Reset error codes for stream resets
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum ResetError {
@@ -105,6 +108,8 @@ pub(crate) mod reset_error {
         StopSending,
         /// Retransmissions exhausted after repeated transmission failures
         RetransmissionsExhausted,
+        /// Server accept queue overflowed
+        ServerBusy,
         /// Unknown error code
         Unknown(VarInt),
     }
@@ -120,6 +125,7 @@ pub(crate) mod reset_error {
                 Self::AbnormalTermination => ABNORMAL_TERMINATION,
                 Self::StopSending => STOP_SENDING,
                 Self::RetransmissionsExhausted => RETRANSMISSIONS_EXHAUSTED,
+                Self::ServerBusy => SERVER_BUSY,
                 Self::Unknown(code) => code,
             }
         }
@@ -135,6 +141,7 @@ pub(crate) mod reset_error {
                 ABNORMAL_TERMINATION => Self::AbnormalTermination,
                 STOP_SENDING => Self::StopSending,
                 RETRANSMISSIONS_EXHAUSTED => Self::RetransmissionsExhausted,
+                SERVER_BUSY => Self::ServerBusy,
                 _ => Self::Unknown(code),
             }
         }
@@ -169,6 +176,9 @@ pub(crate) mod reset_error {
                 }
                 Self::RetransmissionsExhausted => {
                     write!(f, "RETRANSMISSIONS_EXHAUSTED: retransmissions exhausted after repeated transmission failures")
+                }
+                Self::ServerBusy => {
+                    write!(f, "SERVER_BUSY: server accept queue overflowed")
                 }
                 Self::Unknown(code) => {
                     write!(f, "UNKNOWN({}): unknown reset error code", code.as_u64())
@@ -2133,8 +2143,8 @@ pub fn create_recv_sockets(
     Ok(sockets)
 }
 
-/// Complete bidirectional pipeline setup
-pub struct Pipeline {
+/// Complete bidirectional pipeline setup - the shared infrastructure for a process
+pub struct Endpoint {
     /// Input sender for the wheel (producers send batches here)
     pub wheel_input_tx: intrusive_queue::sync::Sender<Batch>,
     /// GSO configuration (for querying max segments)
@@ -2143,9 +2153,13 @@ pub struct Pipeline {
     pub path_secret_map: path::secret::Map,
     /// Queue allocator for flow-based routing
     pub queue_allocator: queue::Allocator<StreamMsg, ControlMsg, flow::Handle>,
+    /// Acceptor registry for flow initialization
+    pub acceptor_registry: acceptor::Registry<FlowInit>,
+    /// Endpoint-wide stream ID counter
+    pub next_stream_id: std::sync::atomic::AtomicU64,
 }
 
-pub struct PipelineConfig<'a, S> {
+pub struct EndpointConfig<'a, S> {
     pub packet_size: u16,
     pub overall_send_rate: Rate,
     pub per_socket_send_rate: Rate,
@@ -2191,19 +2205,19 @@ struct Worker<SendSocket, RecvSocket> {
 ///
 /// The receive path can route parsed packets back to specific send workers
 /// using the WorkerId routing info.
-pub fn setup_pipeline<SendSocket, RecvSocket, G, S>(
-    config: PipelineConfig<S>,
+pub fn setup_endpoint<SendSocket, RecvSocket, G, S>(
+    config: EndpointConfig<S>,
     send_sockets: Vec<SendSocket>,
     recv_sockets: Vec<RecvSocket>,
     create_rand: impl Fn() -> G,
-) -> Pipeline
+) -> Endpoint
 where
     SendSocket: socket::send::Socket + Send + Sync + 'static,
     RecvSocket: socket::recv::Socket + Send + 'static,
     G: random::Generator,
     S: crate::stream2::Spawner,
 {
-    let PipelineConfig {
+    let EndpointConfig {
         packet_size,
         overall_send_rate,
         per_socket_send_rate,
@@ -2246,6 +2260,9 @@ where
     // Create error channel for failed batches
     let (error_tx, error_rx) = intrusive_queue::sync::new();
 
+    // TODO: Read idle timeout from `PathSecretEntry::idle_timeout()` and use it to evict
+    // stale sender/receiver states. Currently we hardcode 60s and only reset the timer on
+    // activity, but never actually remove entries when the timer fires.
     let path_idle_timeout = Duration::from_secs(60);
 
     // Create worker channels (one datagram and one control channel per worker)
@@ -2991,10 +3008,12 @@ where
         }
     });
 
-    Pipeline {
+    Endpoint {
         wheel_input_tx,
         gso,
         path_secret_map,
         queue_allocator: allocator,
+        acceptor_registry,
+        next_stream_id: std::sync::atomic::AtomicU64::new(0),
     }
 }

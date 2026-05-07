@@ -92,7 +92,7 @@ use crate::{
     flow,
     packet::datagram::{partial::PartialDatagram, QueuePair, RoutingInfo},
     path::secret::map::Entry as PathSecretEntry,
-    pipeline::{reset_error::ResetError, StreamMsg},
+    stream2::endpoint::{reset_error::ResetError, StreamMsg},
     socket::channel,
 };
 use s2n_quic_core::{
@@ -122,7 +122,7 @@ struct Inner {
     /// Channel to send batches to the wheel for control messages
     wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
     /// Stream-side channel for receiving data from the pipeline
-    stream_rx: flow::queue::Stream<StreamMsg, crate::pipeline::ControlMsg, flow::Handle>,
+    stream_rx: flow::queue::Stream<StreamMsg, crate::stream2::endpoint::ControlMsg, flow::Handle>,
     /// Path secret entry providing MTU and crypto material
     path_secret_entry: Arc<PathSecretEntry>,
     /// Stream identifier
@@ -141,6 +141,8 @@ struct Inner {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Status {
+    /// Awaiting client validation (server-side pending streams)
+    PendingValidation,
     /// Flow is open for reads
     #[default]
     Open,
@@ -151,14 +153,17 @@ enum Status {
 }
 
 impl Status {
+    is!(is_pending_validation, PendingValidation);
     is!(is_open, Open);
     is!(is_reset, Reset);
     is!(is_complete, Complete);
     is!(is_terminal, Reset | Complete);
 
     event! {
+        /// Transition to Open when validation completes
+        on_validated(PendingValidation => Open);
         /// Transition to Reset when reset received
-        on_reset(Open => Reset);
+        on_reset(PendingValidation | Open => Reset);
         /// Transition to Complete when all data consumed
         on_complete(Open => Complete);
     }
@@ -170,7 +175,7 @@ impl Reader {
         wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
         path_secret_entry: Arc<PathSecretEntry>,
         stream_id: VarInt,
-        stream_rx: flow::queue::Stream<StreamMsg, crate::pipeline::ControlMsg, flow::Handle>,
+        stream_rx: flow::queue::Stream<StreamMsg, crate::stream2::endpoint::ControlMsg, flow::Handle>,
     ) -> Self {
         let parameters = path_secret_entry.parameters();
         let window_size = parameters.local_recv_max_data.as_u64();
@@ -189,12 +194,12 @@ impl Reader {
         }))
     }
 
-    /// Create a new Reader for a server connection
+    /// Create a new Reader for a validated server connection
     pub(crate) fn new_server(
         wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
         path_secret_entry: Arc<PathSecretEntry>,
         stream_id: VarInt,
-        stream_rx: flow::queue::Stream<StreamMsg, crate::pipeline::ControlMsg, flow::Handle>,
+        stream_rx: flow::queue::Stream<StreamMsg, crate::stream2::endpoint::ControlMsg, flow::Handle>,
     ) -> Self {
         let parameters = path_secret_entry.parameters();
         let window_size = parameters.local_recv_max_data.as_u64();
@@ -208,9 +213,58 @@ impl Reader {
             reassembler: Reassembler::new(),
             remote_max_data,
             window_size,
-            status: Status::Open, // Server starts Open - validation happened in acceptor
+            status: Status::Open,
             reset_error_code: None,
         }))
+    }
+
+    /// Create a new Reader for a server connection pending validation
+    ///
+    /// The stream buffers incoming data but reads will block until `validate()` completes.
+    pub(crate) fn new_server_pending(
+        wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
+        path_secret_entry: Arc<PathSecretEntry>,
+        stream_id: VarInt,
+        stream_rx: flow::queue::Stream<StreamMsg, crate::stream2::endpoint::ControlMsg, flow::Handle>,
+    ) -> Self {
+        let parameters = path_secret_entry.parameters();
+        let window_size = parameters.local_recv_max_data.as_u64();
+        let remote_max_data = parameters.remote_max_data;
+
+        Self(Box::new(Inner {
+            wheel_tx,
+            stream_rx,
+            path_secret_entry,
+            stream_id,
+            reassembler: Reassembler::new(),
+            remote_max_data,
+            window_size,
+            status: Status::PendingValidation,
+            reset_error_code: None,
+        }))
+    }
+
+    /// Wait for the stream to be validated by the client
+    ///
+    /// For streams that were already validated (confirmed non-duplicate), this is a no-op.
+    /// For pending streams, this polls for the FlowValidated message from the pipeline.
+    /// The application should wrap this in its own timeout.
+    pub async fn validate(&mut self) -> io::Result<()> {
+        core::future::poll_fn(|cx| self.0.poll_validate(cx)).await
+    }
+
+    /// Send a FlowReset to the peer for both halves and transition to terminal state.
+    ///
+    /// No-op if already in a terminal state. After this call, the Reader's Drop will not
+    /// send anything additional.
+    pub(crate) fn send_reset(&mut self, error_code: VarInt) {
+        if self.0.status.is_terminal() {
+            return;
+        }
+        let _ = self
+            .0
+            .send_reset_packet(error_code, crate::packet::datagram::ResetTarget::Both);
+        self.0.status.on_reset().ok();
     }
 
     /// Read data into a buffer
@@ -233,10 +287,36 @@ impl Reader {
 }
 
 impl Inner {
+    fn poll_validate(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
+        if !self.status.is_pending_validation() {
+            return Poll::Ready(Ok(()));
+        }
+
+        // Poll for FlowValidated (or Reset/error)
+        match self.poll_stream_rx(cx)? {
+            Poll::Ready(()) => {
+                if self.status.is_pending_validation() {
+                    Poll::Pending
+                } else {
+                    Poll::Ready(Ok(()))
+                }
+            }
+            Poll::Pending => Poll::Pending,
+        }
+    }
+
     fn poll_read_into<S>(&mut self, cx: &mut Context, buf: &mut S) -> Poll<io::Result<usize>>
     where
         S: buffer::writer::Storage,
     {
+        // Must validate before reading
+        if self.status.is_pending_validation() {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "stream not yet validated - call validate() first",
+            )));
+        }
+
         // Check if we're in a terminal state
         if self.status.is_reset() {
             if let Some(error_code) = self.reset_error_code {
@@ -328,7 +408,7 @@ impl Inner {
                                         "Invalid storage/fin combination"
                                     );
                                     let error_code =
-                                        crate::pipeline::reset_error::FRAME_DECODE_ERROR;
+                                        crate::stream2::endpoint::reset_error::FRAME_DECODE_ERROR;
                                     self.reset_error_code = Some(error_code);
                                     self.status.on_reset().ok();
                                     let _ = self.send_reset_packet(
@@ -351,7 +431,7 @@ impl Inner {
                                     "Failed to write to reassembler"
                                 );
                                 // Protocol error - send reset
-                                let error_code = crate::pipeline::reset_error::FRAME_DECODE_ERROR;
+                                let error_code = crate::stream2::endpoint::reset_error::FRAME_DECODE_ERROR;
                                 self.reset_error_code = Some(error_code);
                                 self.status.on_reset().ok();
                                 let _ = self.send_reset_packet(
@@ -366,12 +446,14 @@ impl Inner {
                             }
                         }
                         StreamMsg::FlowValidated => {
-                            // Flow validation happens in the acceptor before the Reader is
-                            // constructed. We should never receive this message.
-                            debug!(
-                                stream_id = self.stream_id.as_u64(),
-                                "Unexpected FlowValidated message"
-                            );
+                            if self.status.on_validated().is_ok() {
+                                debug!(stream_id = self.stream_id.as_u64(), "Flow validated");
+                            } else {
+                                debug!(
+                                    stream_id = self.stream_id.as_u64(),
+                                    "FlowValidated received in unexpected state"
+                                );
+                            }
                         }
                         StreamMsg::Reset { error_code } => {
                             debug!(
@@ -529,7 +611,7 @@ impl Drop for Reader {
     fn drop(&mut self) {
         // If we're panicking, send FlowReset with ABNORMAL_TERMINATION to reset both halves
         if std::thread::panicking() {
-            let error_code = crate::pipeline::reset_error::ABNORMAL_TERMINATION;
+            let error_code = crate::stream2::endpoint::reset_error::ABNORMAL_TERMINATION;
             let _ = self
                 .0
                 .send_reset_packet(error_code, crate::packet::datagram::ResetTarget::Both);
@@ -542,7 +624,7 @@ impl Drop for Reader {
             // If is_writing_complete() is true, the sender has sent FIN and likely gone away
             // This resets only the Stream half (peer's sender)
             if !self.0.reassembler.is_writing_complete() && !self.0.status.is_reset() {
-                let error_code = crate::pipeline::reset_error::STOP_SENDING;
+                let error_code = crate::stream2::endpoint::reset_error::STOP_SENDING;
                 let _ = self
                     .0
                     .send_reset_packet(error_code, crate::packet::datagram::ResetTarget::Stream);

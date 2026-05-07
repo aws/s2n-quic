@@ -18,7 +18,6 @@ pub mod intrusive_queue;
 pub mod msg;
 pub mod packet;
 pub mod path;
-pub mod pipeline;
 pub mod psk;
 pub mod random;
 pub mod recovery;

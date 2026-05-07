@@ -90,7 +90,7 @@ use crate::{
         },
     },
     path::secret::map::Entry as PathSecretEntry,
-    pipeline::{reset_error::ResetError, ControlMsg},
+    stream2::endpoint::{reset_error::ResetError, ControlMsg},
     socket::channel,
 };
 use s2n_quic_core::{
@@ -120,7 +120,7 @@ struct Inner {
     completion_rx: channel::intrusive_queue::datagram_completion::Receiver<PartialDatagram>,
     /// Control-side channel for receiving MAX_DATA frames
     control_rx:
-        flow::queue::Control<crate::pipeline::StreamMsg, crate::pipeline::ControlMsg, flow::Handle>,
+        flow::queue::Control<crate::stream2::endpoint::StreamMsg, crate::stream2::endpoint::ControlMsg, flow::Handle>,
     /// Path secret entry providing MTU and crypto material
     path_secret_entry: Arc<PathSecretEntry>,
     /// Cached packet size (MTU) for fragmentation
@@ -192,8 +192,8 @@ impl Writer {
         stream_id: VarInt,
         acceptor_id: VarInt,
         control_rx: flow::queue::Control<
-            crate::pipeline::StreamMsg,
-            crate::pipeline::ControlMsg,
+            crate::stream2::endpoint::StreamMsg,
+            crate::stream2::endpoint::ControlMsg,
             flow::Handle,
         >,
     ) -> Self {
@@ -233,8 +233,8 @@ impl Writer {
         gso: features::Gso,
         stream_id: VarInt,
         control_rx: flow::queue::Control<
-            crate::pipeline::StreamMsg,
-            crate::pipeline::ControlMsg,
+            crate::stream2::endpoint::StreamMsg,
+            crate::stream2::endpoint::ControlMsg,
             flow::Handle,
         >,
     ) -> Self {
@@ -330,6 +330,15 @@ impl Writer {
     /// This sends FIN if it hasn't been sent yet.
     pub fn shutdown(&mut self) -> io::Result<()> {
         self.0.shutdown()
+    }
+
+    /// Force the writer into its terminal state without sending anything on the wire.
+    ///
+    /// Used when a single reset has already been sent for both halves (e.g., accept queue
+    /// overflow). The Drop impl becomes a no-op after this.
+    pub(crate) fn force_shutdown(&mut self) {
+        self.0.completion_rx.cancel();
+        self.0.status.on_shutdown().ok();
     }
 }
 
@@ -605,7 +614,7 @@ impl Inner {
                         FailureReason::TransmissionError => {
                             // Attempt to send reset to peer before giving up
                             let error_code =
-                                crate::pipeline::reset_error::RETRANSMISSIONS_EXHAUSTED;
+                                crate::stream2::endpoint::reset_error::RETRANSMISSIONS_EXHAUSTED;
                             let _ = self.send_reset_packet(
                                 error_code,
                                 crate::packet::datagram::ResetTarget::Both,
@@ -649,7 +658,7 @@ impl Inner {
                         ControlMsg::Frames { mut payload } => {
                             // Parse control frames - if this fails, send reset to peer
                             if self.handle_control_frames(&mut payload).is_err() {
-                                let error_code = crate::pipeline::reset_error::FRAME_DECODE_ERROR;
+                                let error_code = crate::stream2::endpoint::reset_error::FRAME_DECODE_ERROR;
                                 self.reset_error_code = Some(error_code);
                                 self.status.on_shutdown().ok();
 
@@ -978,7 +987,7 @@ impl Drop for Writer {
             // Cancel pending transmissions so they don't get sent
             self.0.completion_rx.cancel();
 
-            let error_code = crate::pipeline::reset_error::ABNORMAL_TERMINATION;
+            let error_code = crate::stream2::endpoint::reset_error::ABNORMAL_TERMINATION;
             let _ = self
                 .0
                 .send_reset_packet(error_code, crate::packet::datagram::ResetTarget::Both);

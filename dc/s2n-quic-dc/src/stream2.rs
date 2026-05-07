@@ -12,15 +12,26 @@
 //! - Flow control: Managing local and remote flow control windows
 //!
 //! The pipeline handles retransmission, ACKs, congestion control, and reliable delivery.
+//!
+//! ## Application Interface
+//!
+//! - `Endpoint` (in endpoint module): Shared infrastructure for the process (wheel workers,
+//!   path secret map, queue allocator). Wrapped in Arc and shared by Client and Server.
+//! - `Client`: Makes outbound connections via `connect(addr, acceptor_id) -> Stream`.
+//! - `Server`: Accepts inbound connections via channel or handler acceptor modes.
+//! - `Stream`: Bidirectional stream with `split()` to get independent Reader/Writer halves.
 
-// mod endpoint;
+pub mod client;
+pub mod endpoint;
 mod reader;
-mod writer;
-// mod flow_control;
-
+pub mod server;
 pub mod spawner;
+mod stream;
+mod writer;
 
-// pub use endpoint::Endpoint;
+pub use client::Client;
 pub use reader::Reader;
+pub use server::Server;
 pub use spawner::{LocalSpawner, Spawner};
+pub use stream::Stream;
 pub use writer::Writer;

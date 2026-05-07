@@ -39,7 +39,8 @@ pub use entry::Entry;
 use store::Store;
 
 pub use entry::{
-    ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, ControlPair,
+    pack_data_port_and_idle_timeout, ApplicationData, ApplicationDataError, ApplicationPair,
+    Bidirectional, ControlPair,
 };
 pub use handshake::HandshakingPath;
 pub use peer::Peer;
@@ -62,6 +63,14 @@ pub(crate) use status::Dedup;
 pub struct Map {
     store: Arc<dyn Store>,
 }
+
+impl PartialEq for Map {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.store, &other.store)
+    }
+}
+
+impl Eq for Map {}
 
 impl fmt::Debug for Map {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

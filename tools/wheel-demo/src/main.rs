@@ -111,7 +111,7 @@ async fn main() -> std::io::Result<()> {
     // Create acceptor registry for flow initialization
     let acceptor_registry = s2n_quic_dc::acceptor::Registry::new();
 
-    let config = pipeline::PipelineConfig {
+    let config = pipeline::EndpointConfig {
         packet_size: cli.packet_size,
         overall_send_rate: Rate::new(cli.bandwidth),
         per_socket_send_rate: Rate::new(cli.per_socket_bandwidth),

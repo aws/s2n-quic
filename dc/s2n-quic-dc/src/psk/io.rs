@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{client, server};
-use crate::path::secret;
+use crate::path::secret::{self, map::pack_data_port_and_idle_timeout};
 use cfg_if::cfg_if;
 use rand::RngExt;
 use s2n_quic::{
@@ -74,8 +74,12 @@ impl Server {
             builder.mtu as u64 * 10
         });
 
+        // FIXME: We pack the data port into the max_idle_timeout transport parameter.
+        // See `entry::pack_data_port_and_idle_timeout` for the encoding.
+        let idle_timeout_for_tp = encode_idle_timeout(builder.data_port, builder.max_idle_timeout);
+
         let connection_limits = s2n_quic::provider::limits::Limits::new()
-            .with_max_idle_timeout(builder.max_idle_timeout)?
+            .with_max_idle_timeout(idle_timeout_for_tp)?
             .with_data_window(initial_max_data)?
             // After the connection is established we increase the data window to the configured value
             .with_bidirectional_local_data_window(builder.data_window)?
@@ -207,8 +211,12 @@ impl Client {
 
         let client = s2n_quic::Client::builder().with_io(io)?;
 
+        // FIXME: We pack the data port into the max_idle_timeout transport parameter.
+        // See `entry::pack_data_port_and_idle_timeout` for the encoding.
+        let idle_timeout_for_tp = encode_idle_timeout(builder.data_port, builder.max_idle_timeout);
+
         let connection_limits = s2n_quic::provider::limits::Limits::new()
-            .with_max_idle_timeout(builder.max_idle_timeout)?
+            .with_max_idle_timeout(idle_timeout_for_tp)?
             .with_data_window(builder.data_window)?
             .with_bidirectional_local_data_window(builder.data_window)?
             .with_bidirectional_remote_data_window(builder.data_window)?
@@ -556,6 +564,17 @@ const REASON_COUNT: usize = 3;
 pub struct ConnectionContext {
     pub limiter_latency: Duration,
     pub reason_counts: [(HandshakeReason, usize); REASON_COUNT],
+}
+
+/// FIXME: Always encodes the idle timeout in the packed format: upper 16 bits = data port,
+/// lower 16 bits = idle timeout in seconds. If no data port is set, port 0 is encoded (which
+/// the decoder treats as "not specified" and falls back to peer + 1).
+/// See `entry::pack_data_port_and_idle_timeout`.
+fn encode_idle_timeout(data_port: Option<u16>, idle_timeout: Duration) -> Duration {
+    let port = data_port.unwrap_or(0);
+    let packed =
+        pack_data_port_and_idle_timeout(port, idle_timeout).map_or(1u64, |v| v.get() as u64);
+    Duration::from_millis(packed)
 }
 
 #[cfg(test)]

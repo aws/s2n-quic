@@ -177,7 +177,7 @@ impl Acceptor<s2n_quic_dc::pipeline::FlowInit> for FlowAcceptor {
 pub async fn run<S>(
     address: SocketAddr,
     num_sockets: usize,
-    config: s2n_quic_dc::pipeline::PipelineConfig<'_, S>,
+    config: s2n_quic_dc::pipeline::EndpointConfig<'_, S>,
     provider: crate::psk::Server,
 ) -> io::Result<()>
 where
@@ -214,7 +214,7 @@ where
 
     // Set up the bidirectional pipeline
     let _pipeline =
-        s2n_quic_dc::pipeline::setup_pipeline(config, send_sockets, recv_sockets, || {
+        s2n_quic_dc::pipeline::setup_endpoint(config, send_sockets, recv_sockets, || {
             s2n_quic_dc::random::Random::default()
         });
 

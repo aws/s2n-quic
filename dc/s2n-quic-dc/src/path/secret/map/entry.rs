@@ -187,13 +187,30 @@ impl Entry {
 
     /// Returns the data endpoint address for this peer.
     ///
-    /// TODO: This currently assumes data port = handshake port + 1.
-    /// In the future, this should be negotiated during the handshake
-    /// and stored in the Entry to avoid port assumptions.
+    /// FIXME: This abuses `max_idle_timeout` to smuggle the peer's data port through
+    /// ApplicationParams without modifying s2n-quic-core. The field is packed as:
+    ///   upper 16 bits = data port, lower 16 bits = idle timeout in seconds.
+    /// The proper fix is to add a dedicated transport parameter for the data port.
     pub fn data_addr(&self) -> SocketAddr {
         let mut addr = self.peer;
-        addr.set_port(addr.port() + 1);
+        let port = self
+            .parameters
+            .max_idle_timeout
+            .map(|v| (v.get() >> 16) as u16)
+            .unwrap_or(0);
+        // port 0 means "not specified" - fall back to handshake port + 1
+        addr.set_port(if port == 0 { addr.port() + 1 } else { port });
         addr
+    }
+
+    /// FIXME: See `data_addr` - idle timeout is packed in the lower 16 bits of
+    /// `max_idle_timeout` as seconds.
+    pub fn idle_timeout(&self) -> Duration {
+        self.parameters
+            .max_idle_timeout
+            .map_or(Duration::from_secs(60), |v| {
+                Duration::from_secs((v.get() & 0xFFFF) as u64)
+            })
     }
 
     pub fn id(&self) -> &credentials::Id {
@@ -359,8 +376,20 @@ impl Entry {
         }
     }
 
+    /// Returns the application params with `max_idle_timeout` decoded back to a proper
+    /// timeout value (masking off the packed data port from the upper 16 bits).
     pub fn parameters(&self) -> dc::ApplicationParams {
-        self.parameters.clone()
+        let mut params = self.parameters.clone();
+        // FIXME: Undo the port packing so callers see milliseconds, not the raw packed value
+        params.max_idle_timeout = self
+            .parameters
+            .max_idle_timeout
+            .and_then(|v| {
+                let secs = (v.get() & 0xFFFF) as u32;
+                let millis = secs.saturating_mul(1000);
+                std::num::NonZeroU32::new(millis)
+            });
+        params
     }
 
     pub fn update_max_datagram_size(&self, mtu: u16) {
@@ -455,6 +484,20 @@ impl ApplicationPair {
 
         Self { sealer, opener }
     }
+}
+
+/// FIXME: Packs a data port and idle timeout (seconds) into the `max_idle_timeout` field
+/// of `ApplicationParams`. This is a temporary hack until a dedicated transport parameter
+/// is added to s2n-quic-core for exchanging the data port.
+///
+/// Layout: upper 16 bits = data port, lower 16 bits = idle timeout in seconds.
+pub fn pack_data_port_and_idle_timeout(
+    data_port: u16,
+    idle_timeout: Duration,
+) -> Option<std::num::NonZeroU32> {
+    let timeout_secs = idle_timeout.as_secs().max(1).min(u16::MAX as u64) as u32;
+    let packed = (data_port as u32) << 16 | timeout_secs;
+    std::num::NonZeroU32::new(packed)
 }
 
 pub struct ControlPair {

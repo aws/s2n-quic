@@ -21,6 +21,7 @@ pub struct Builder<
     pub(crate) initial_data_window: Option<u64>,
     pub(crate) mtu: u16,
     pub(crate) max_idle_timeout: Duration,
+    pub(crate) data_port: Option<u16>,
     pub(crate) pto_jitter_percentage: u8,
     #[cfg(any(test, feature = "testing"))]
     pub(crate) endpoint_limits: Option<TestEndpointLimiter>,
@@ -50,6 +51,7 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
             initial_data_window: None,
             mtu: DEFAULT_MTU,
             max_idle_timeout: DEFAULT_IDLE_TIMEOUT,
+            data_port: None,
             pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
             #[cfg(any(test, feature = "testing"))]
             endpoint_limits: None,
@@ -69,6 +71,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             initial_data_window: self.initial_data_window,
             mtu: self.mtu,
             max_idle_timeout: self.max_idle_timeout,
+            data_port: self.data_port,
             pto_jitter_percentage: self.pto_jitter_percentage,
             #[cfg(any(test, feature = "testing"))]
             endpoint_limits: self.endpoint_limits,
@@ -114,6 +117,13 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
     /// timeout.
     pub fn with_max_idle_timeout(mut self, max_idle_timeout: Duration) -> Self {
         self.max_idle_timeout = max_idle_timeout;
+        self
+    }
+
+    /// FIXME: Hack - sets the local data port to advertise to the peer via the
+    /// `max_idle_timeout` transport parameter. See `entry::pack_data_port_and_idle_timeout`.
+    pub fn with_data_port(mut self, port: u16) -> Self {
+        self.data_port = Some(port);
         self
     }
 
