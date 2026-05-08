@@ -1758,6 +1758,7 @@ where
             };
 
             // Dispatch to the queue with validation
+            let payload_len = buf.len();
             let entry = StreamMsg::Data {
                 offset,
                 fin: is_fin,
@@ -1776,7 +1777,9 @@ where
                     tracing::trace!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
+                        packet_number = packet_number.as_u64(),
                         offset = offset.as_u64(),
+                        payload_len,
                         is_fin,
                         "FlowData dispatched to queue"
                     );
@@ -1802,6 +1805,10 @@ where
                     tracing::debug!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
+                        packet_number = packet_number.as_u64(),
+                        offset = offset.as_u64(),
+                        is_fin,
+                        payload_len,
                         "FlowData for half-closed stream - sending reset"
                     );
 
@@ -1855,6 +1862,7 @@ where
             };
 
             // Dispatch to the queue with validation
+            let payload_len = buf.len();
             let entry = ControlMsg::Frames { payload: buf }.into();
 
             match queue_dispatcher.send_control(
@@ -1868,6 +1876,8 @@ where
                     tracing::trace!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
+                        packet_number = packet_number.as_u64(),
+                        payload_len,
                         "FlowControl dispatched to queue"
                     );
                 }
@@ -1892,6 +1902,8 @@ where
                     tracing::debug!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
+                        packet_number = packet_number.as_u64(),
+                        payload_len,
                         "FlowControl for half-closed control - sending reset"
                     );
 

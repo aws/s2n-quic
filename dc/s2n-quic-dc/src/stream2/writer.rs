@@ -31,11 +31,6 @@
 //
 // Correctness:
 //
-// * send_data does not transition status to FinSent when it sends the final datagram with
-//   is_fin=true. This means a subsequent write won't get BrokenPipe, and the Drop impl will
-//   try to send FIN again (double-FIN). poll_write_from needs to call on_send_fin() after
-//   send_data returns when the FIN was actually sent.
-//
 // * VarInt overflow in next_offset: adding payload_len to next_offset could overflow VarInt
 //   (max 2^62-1) on extremely large streams. Should return an error instead of panicking.
 //
@@ -978,6 +973,10 @@ impl Inner {
                 "Sending FlowData"
             );
 
+            if include_fin {
+                self.status.on_send_fin().ok();
+            }
+
             // Clear need_fin_packet flag after sending it
             need_fin_packet = false;
         }
@@ -1000,6 +999,15 @@ impl Inner {
 
 impl Drop for Writer {
     fn drop(&mut self) {
+        debug!(
+            stream_id = self.0.stream_id.as_u64(),
+            status = ?self.0.status,
+            next_offset = self.0.next_offset.as_u64(),
+            inflight_bytes = self.0.inflight_bytes,
+            remote_max_data = self.0.remote_max_data.as_u64(),
+            "Writer dropping"
+        );
+
         // If we're panicking, we need to:
         // 1. Send FlowReset to peer so they know we crashed
         // 2. Cancel all pending transmissions so they don't get sent

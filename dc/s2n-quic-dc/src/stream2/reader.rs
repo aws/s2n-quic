@@ -359,6 +359,12 @@ impl Inner {
         self.maybe_send_max_data()?;
 
         if self.reassembler.is_reading_complete() {
+            debug!(
+                stream_id = self.stream_id.as_u64(),
+                final_size = ?self.reassembler.final_size(),
+                consumed_len = self.reassembler.consumed_len(),
+                "Reader complete - all data consumed"
+            );
             self.status.on_complete().ok();
             return Poll::Ready(Ok(bytes_read));
         }
@@ -625,6 +631,17 @@ impl Inner {
 
 impl Drop for Reader {
     fn drop(&mut self) {
+        debug!(
+            stream_id = self.0.stream_id.as_u64(),
+            status = ?self.0.status,
+            final_size = ?self.0.reassembler.final_size(),
+            consumed_len = self.0.reassembler.consumed_len(),
+            total_received_len = self.0.reassembler.total_received_len(),
+            is_writing_complete = self.0.reassembler.is_writing_complete(),
+            is_reading_complete = self.0.reassembler.is_reading_complete(),
+            "Reader dropping"
+        );
+
         // If we're panicking, send FlowReset with ABNORMAL_TERMINATION to reset both halves
         if std::thread::panicking() {
             let error_code = crate::stream2::endpoint::reset_error::ABNORMAL_TERMINATION;
