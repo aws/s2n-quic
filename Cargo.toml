@@ -1,5 +1,5 @@
 [workspace]
-members = ["common/s2n-*", "quic/s2n-*", "dc/s2n-*", "tools/dc-tester", "tools/wheel-demo", "xtask"]
+members = ["common/s2n-*", "quic/s2n-*", "dc/s2n-*", "tools/dc-tester", "xtask"]
 default-members = ["common/s2n-*", "quic/s2n-*"]
 resolver = "2"
 # don't include any workspaces outside of the main project

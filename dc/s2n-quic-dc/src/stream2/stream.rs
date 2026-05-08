@@ -1,10 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    stream2::endpoint::reset_error::ResetError,
-    stream2::{Reader, Writer},
-};
+use crate::stream2::{endpoint::reset_error::ResetError, Reader, Writer};
 use s2n_quic_core::buffer;
 use std::io;
 

@@ -399,6 +399,62 @@ fn hash_id_and_sender(id: &credentials::Id, sender_id: VarInt) -> u64 {
     hash
 }
 
+// ── Sender Routing ────────────────────────────────────────────────────────
+
+trait SenderRoute: Clone + Copy + Send + 'static {
+    fn new(count: usize) -> Self;
+    fn route(&self, hash: u64) -> usize;
+
+    #[inline]
+    fn sender_id(&self, credentials_id: &credentials::Id, source_sender_id: VarInt) -> VarInt {
+        let hash = hash_id_and_sender(credentials_id, source_sender_id);
+        unsafe { VarInt::new_unchecked(self.route(hash) as u64) }
+    }
+
+    #[inline]
+    fn worker_id(&self, credentials: &Credentials, source_sender_id: VarInt) -> usize {
+        let hash = hash_credentials_and_sender(credentials, source_sender_id);
+        self.route(hash)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PowerOfTwoRoute {
+    mask: u64,
+}
+
+impl SenderRoute for PowerOfTwoRoute {
+    fn new(count: usize) -> Self {
+        debug_assert!(count.is_power_of_two());
+        Self {
+            mask: (count - 1) as u64,
+        }
+    }
+
+    #[inline]
+    fn route(&self, hash: u64) -> usize {
+        (hash & self.mask) as usize
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ModuloRoute {
+    divisor: u64,
+}
+
+impl SenderRoute for ModuloRoute {
+    fn new(count: usize) -> Self {
+        Self {
+            divisor: count as u64,
+        }
+    }
+
+    #[inline]
+    fn route(&self, hash: u64) -> usize {
+        (hash % self.divisor) as usize
+    }
+}
+
 // ── PTO Probe Generation ───────────────────────────────────────────────────
 
 /// Generate a PING control packet for PTO probe
@@ -812,7 +868,7 @@ enum ProcessError {
 /// This does common packet processing (decrypt, packet number dedup, ACK recording),
 /// then dispatches to type-specific handlers based on routing_info, and generates the ACK batch.
 /// Returns a batch containing the ACK packet with the correct peer address.
-fn process_datagram<Clk>(
+fn process_datagram<Clk, R: SenderRoute>(
     packet: Entry<packet::datagram::decoder::Packet<descriptor::Filled>>,
     sender_cache: &mut SenderStateCache,
     path_secret_map: &path::secret::Map,
@@ -821,7 +877,7 @@ fn process_datagram<Clk>(
     response_tx: &mut impl channel::UnboundedSender<Queue<PartialDatagram>>,
     queue_dispatcher: &mut queue::Dispatch<StreamMsg, ControlMsg, flow::Handle>,
     clock: &Clk,
-    num_send_sockets: usize,
+    sender_id_route: R,
 ) -> Result<(), ProcessError>
 where
     Clk: s2n_quic_core::time::Clock + ?Sized,
@@ -1550,10 +1606,7 @@ where
     // Push response packets to channel for batching
     let mut entries = Queue::new();
 
-    let local_sender_id = {
-        let hash = hash_id_and_sender(&credentials.id, source_sender_id);
-        VarInt::new(hash % num_send_sockets as u64).unwrap()
-    };
+    let local_sender_id = sender_id_route.sender_id(&credentials.id, source_sender_id);
     let ack_routing_info = packet::control::RoutingInfo::Sender {
         source_sender_id: local_sender_id,
         dest_sender_id: source_sender_id,
@@ -2236,6 +2289,54 @@ where
     G: random::Generator,
     S: crate::stream2::Spawner,
 {
+    let num_workers = config.spawner.worker_count().saturating_sub(1).max(1);
+    let num_send_sockets = send_sockets.len();
+
+    match (
+        num_workers.is_power_of_two(),
+        num_send_sockets.is_power_of_two(),
+    ) {
+        (true, true) => setup_endpoint_inner::<_, _, _, _, PowerOfTwoRoute, PowerOfTwoRoute>(
+            config,
+            send_sockets,
+            recv_sockets,
+            create_rand,
+        ),
+        (true, false) => setup_endpoint_inner::<_, _, _, _, PowerOfTwoRoute, ModuloRoute>(
+            config,
+            send_sockets,
+            recv_sockets,
+            create_rand,
+        ),
+        (false, true) => setup_endpoint_inner::<_, _, _, _, ModuloRoute, PowerOfTwoRoute>(
+            config,
+            send_sockets,
+            recv_sockets,
+            create_rand,
+        ),
+        (false, false) => setup_endpoint_inner::<_, _, _, _, ModuloRoute, ModuloRoute>(
+            config,
+            send_sockets,
+            recv_sockets,
+            create_rand,
+        ),
+    }
+}
+
+fn setup_endpoint_inner<SendSocket, RecvSocket, G, S, WorkerRoute, SenderIdRoute>(
+    config: EndpointConfig<S>,
+    send_sockets: Vec<SendSocket>,
+    recv_sockets: Vec<RecvSocket>,
+    create_rand: impl Fn() -> G,
+) -> Endpoint
+where
+    SendSocket: socket::send::Socket + Send + Sync + 'static,
+    RecvSocket: socket::recv::Socket + Send + 'static,
+    G: random::Generator,
+    S: crate::stream2::Spawner,
+    WorkerRoute: SenderRoute,
+    SenderIdRoute: SenderRoute,
+{
     let EndpointConfig {
         overall_send_rate,
         per_socket_send_rate,
@@ -2250,6 +2351,7 @@ where
     } = config;
 
     let num_send_sockets = send_sockets.len();
+    let sender_id_route = SenderIdRoute::new(num_send_sockets);
 
     // Create counter registry for instrumentation
     counters.spawn_reporter(Duration::from_secs(1));
@@ -2267,6 +2369,7 @@ where
 
     // Group send sockets, recv sockets, and worker channels by spawner workers
     let num_workers = spawner.worker_count().saturating_sub(1).max(1);
+    let worker_route = WorkerRoute::new(num_workers);
 
     // Create channel for wheel input from generators
     let (wheel_input_tx, wheel_input_rx) = intrusive_queue::sync::new();
@@ -2857,7 +2960,7 @@ where
                                 &mut response_tx,
                                 &mut queue_dispatcher,
                                 &clock,
-                                num_send_sockets,
+                                sender_id_route,
                             )
                         }
                     });
@@ -2959,102 +3062,54 @@ where
                 });
 
                 // Spawn datagram router task
-                let num_workers = datagram_receiver_tx.len();
-                if num_workers.is_power_of_two() {
-                    let mask = (num_workers - 1) as u64;
-                    spawner.spawn(async move {
-                        let rx = Map::new(
-                            datagram_rx,
-                            move |packet: Entry<
-                                packet::datagram::decoder::Packet<descriptor::Filled>,
-                            >| {
-                                // Route based on (credentials, source_sender_id) hash for consistent routing
-                                // This ensures all packets from the same sender go to the same worker,
-                                // which is critical for stream_id deduplication
-                                let credentials = packet.credentials();
-                                let routing_info = packet.routing_info();
-                                let Some(source_sender_id) = routing_info.source_sender_id() else {
-                                    tracing::warn!(
-                                        socket_id,
-                                        "Datagram without source_sender_id - cannot route"
-                                    );
-                                    return;
-                                };
-                                let hash =
-                                    hash_credentials_and_sender(credentials, source_sender_id);
-                                let worker_id = (hash & mask) as usize;
-                                let _ = datagram_receiver_tx[worker_id].send_entry(packet);
-                            },
-                        );
-                        rx.drain().await;
-                        tracing::info!(socket_id, "Datagram router shutting down");
-                    });
-                } else {
-                    spawner.spawn(async move {
-                        let rx = Map::new(
-                            datagram_rx,
-                            move |packet: Entry<
-                                packet::datagram::decoder::Packet<descriptor::Filled>,
-                            >| {
-                                // Route based on (credentials, source_sender_id) hash for consistent routing
-                                // This ensures all packets from the same sender go to the same worker,
-                                // which is critical for stream_id deduplication
-                                let credentials = packet.credentials();
-                                let routing_info = packet.routing_info();
-                                let Some(source_sender_id) = routing_info.source_sender_id() else {
-                                    tracing::warn!(
-                                        socket_id,
-                                        "Datagram without source_sender_id - cannot route"
-                                    );
-                                    return;
-                                };
-                                let hash =
-                                    hash_credentials_and_sender(credentials, source_sender_id);
-                                let worker_id = (hash % num_workers as u64) as usize;
-                                let _ = datagram_receiver_tx[worker_id].send_entry(packet);
-                            },
-                        );
-                        rx.drain().await;
-                        tracing::info!(socket_id, "Datagram router shutting down");
-                    });
-                }
+                spawner.spawn(async move {
+                    let rx = Map::new(
+                        datagram_rx,
+                        move |packet: Entry<
+                            packet::datagram::decoder::Packet<descriptor::Filled>,
+                        >| {
+                            let credentials = packet.credentials();
+                            let routing_info = packet.routing_info();
+                            let Some(source_sender_id) = routing_info.source_sender_id() else {
+                                tracing::warn!(
+                                    socket_id,
+                                    "Datagram without source_sender_id - cannot route"
+                                );
+                                return;
+                            };
+                            let worker_id = worker_route.worker_id(credentials, source_sender_id);
+                            let _ = datagram_receiver_tx[worker_id].send_entry(packet);
+                        },
+                    );
+                    rx.drain().await;
+                    tracing::info!(socket_id, "Datagram router shutting down");
+                });
 
                 // Spawn control packet router task
-                //
-                // Routes by remote sender hash (same as datagrams) so that
-                // verification and ACK recording happen on the same worker
-                // that handles datagrams from this peer.
-                spawner.spawn({
-                    async move {
-                        let rx = Map::new(
-                            control_rx,
-                            move |packet: Entry<
-                                packet::control::decoder::Packet<descriptor::Filled>,
-                            >| {
-                                // Route by (credentials, source_sender_id) — same hash as datagrams
-                                let credentials = packet.credentials();
-                                let Some(source_sender_id) =
-                                    packet.routing_info().source_sender_id()
-                                else {
-                                    tracing::warn!(
-                                        socket_id,
-                                        "Control packet without source_sender_id routing info"
-                                    );
-                                    return;
-                                };
-                                let hash =
-                                    hash_credentials_and_sender(credentials, source_sender_id);
-                                let worker_id = (hash % num_workers as u64) as usize;
-
-                                let Some(sender) = control_packet_tx.get(worker_id) else {
-                                    return;
-                                };
-                                let _ = sender.send_entry(packet);
-                            },
-                        );
-                        rx.drain().await;
-                        tracing::info!(socket_id, "Control router shutting down");
-                    }
+                spawner.spawn(async move {
+                    let rx = Map::new(
+                        control_rx,
+                        move |packet: Entry<
+                            packet::control::decoder::Packet<descriptor::Filled>,
+                        >| {
+                            let credentials = packet.credentials();
+                            let Some(source_sender_id) = packet.routing_info().source_sender_id()
+                            else {
+                                tracing::warn!(
+                                    socket_id,
+                                    "Control packet without source_sender_id routing info"
+                                );
+                                return;
+                            };
+                            let worker_id = worker_route.worker_id(credentials, source_sender_id);
+                            let Some(sender) = control_packet_tx.get(worker_id) else {
+                                return;
+                            };
+                            let _ = sender.send_entry(packet);
+                        },
+                    );
+                    rx.drain().await;
+                    tracing::info!(socket_id, "Control router shutting down");
                 });
             }
         });

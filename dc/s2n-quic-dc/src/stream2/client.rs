@@ -12,9 +12,11 @@
 
 use crate::{
     flow::{self, queue},
-    stream2::endpoint::{ControlMsg, Endpoint, StreamMsg},
     psk,
-    stream2::Stream,
+    stream2::{
+        endpoint::{ControlMsg, Endpoint, StreamMsg},
+        Stream,
+    },
 };
 use s2n_quic::server::Name;
 use s2n_quic_core::varint::VarInt;

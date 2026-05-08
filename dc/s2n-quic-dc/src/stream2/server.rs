@@ -15,8 +15,10 @@
 
 use crate::{
     acceptor,
-    stream2::endpoint::{Endpoint, FlowInit},
-    stream2::{Reader, Stream, Writer},
+    stream2::{
+        endpoint::{Endpoint, FlowInit},
+        Reader, Stream, Writer,
+    },
     sync::mpmc,
 };
 use s2n_quic_core::varint::VarInt;

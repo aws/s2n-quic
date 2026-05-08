@@ -221,9 +221,7 @@ impl PartialDatagram {
 
     /// Returns the mutable routing info for control packets
     #[inline]
-    pub fn control_routing_info_mut(
-        &mut self,
-    ) -> Option<&mut crate::packet::control::RoutingInfo> {
+    pub fn control_routing_info_mut(&mut self) -> Option<&mut crate::packet::control::RoutingInfo> {
         match &mut self.packet_type {
             PacketType::Control { routing_info, .. } => Some(routing_info),
             PacketType::Datagram { .. } => None,

@@ -7,10 +7,7 @@ use std::{io, net::SocketAddr, sync::Arc};
 use tokio::io::AsyncReadExt as _;
 use tracing::{error, info};
 
-pub async fn run(
-    endpoint: Arc<Endpoint>,
-    address: SocketAddr,
-) -> io::Result<()> {
+pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()> {
     info!("Starting stream2 RPC test server");
 
     let data_port = endpoint.data_port;
