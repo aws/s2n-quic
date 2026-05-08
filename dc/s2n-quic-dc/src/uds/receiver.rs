@@ -71,6 +71,12 @@ impl Receiver {
             packet_data.extend_from_slice(iov_slice);
         }
 
+        // NOTE: In nix 0.31.x, cmsgs() returns Err(ENOBUFS) if MSG_CTRUNC is set
+        // (i.e., the cmsg buffer was too small). If that happens, any FDs the kernel
+        // already installed into our fd table will be leaked since we never wrap them
+        // in OwnedFd. This can only be triggered by a local sender crafting a message
+        // with more FDs than our buffer expects, so we accept the leak rather than
+        // adding unsafe raw-cmsg parsing.
         for cmsg in msg.cmsgs()? {
             if let ControlMessageOwned::ScmRights(fds) = cmsg {
                 if let Some(&fd) = fds.first() {
@@ -94,7 +100,13 @@ impl Receiver {
 
 impl Drop for Receiver {
     fn drop(&mut self) {
-        let _ = unlink(&self.socket_path);
+        // Only unlink if we are the last one to drop.
+        //
+        // Note that there's no race condition as we have unique ownership of the Arc - it's never
+        // actually cloned outside of Receiver today.
+        if Arc::strong_count(&self.socket_fd) == 1 {
+            let _ = unlink(&self.socket_path);
+        }
     }
 }
 
@@ -150,5 +162,43 @@ mod tests {
         }
 
         tokio::fs::remove_file(file_path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_drop_clone_does_not_unlink_socket() {
+        let receiver_path = Path::new("/tmp/receiver_clone_drop.sock");
+        let _ = std::fs::remove_file(receiver_path);
+
+        let receiver = Receiver::new(receiver_path).unwrap();
+        assert!(receiver_path.exists());
+
+        let clone = receiver.clone();
+        drop(clone);
+
+        assert!(
+            receiver_path.exists(),
+            "socket path was unlinked when a clone was dropped"
+        );
+
+        // The original should still be functional
+        let sender = Sender::new(receiver_path).unwrap();
+        let file = std::fs::File::open("/dev/null").unwrap();
+        let send_future = SendMsg::new(sender, b"ping".to_vec(), OwnedFd::from(file));
+
+        let result = tokio::try_join!(
+            async {
+                timeout(Duration::from_secs(2), receiver.receive_msg())
+                    .await
+                    .unwrap()
+            },
+            send_future
+        );
+        assert!(result.is_ok());
+
+        drop(receiver);
+        assert!(
+            !receiver_path.exists(),
+            "socket path was not unlinked after last receiver dropped"
+        );
     }
 }
