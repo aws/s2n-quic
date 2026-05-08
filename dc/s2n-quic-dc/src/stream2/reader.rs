@@ -486,6 +486,15 @@ impl Inner {
     /// backpressure and limit the number of inflight updates. This would also allow
     /// waking the application when it's time to send a new frame.
     fn maybe_send_max_data(&mut self) -> io::Result<()> {
+        // If the peer has already sent a FIN and we've advertised enough window to
+        // cover the final offset, there is no point sending further MAX_DATA updates —
+        // the sender will never need additional credit.
+        if let Some(final_size) = self.reassembler.final_size() {
+            if self.remote_max_data.as_u64() >= final_size {
+                return Ok(());
+            }
+        }
+
         // Calculate how much budget has been consumed from the reassembler
         let consumed = self.reassembler.consumed_len();
         let current_max = self.remote_max_data.as_u64();
