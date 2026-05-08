@@ -191,20 +191,30 @@ pub trait Sendable: ByteCost {
 
 pub trait ReceiverExt<T>: Receiver<T> + Sized {
     /// Drains the receiver until it returns `None`.
-    fn drain(mut self) -> impl core::future::Future<Output = ()>
+    fn drain(self) -> impl core::future::Future<Output = ()>
     where
         Self: Receiver<()>,
     {
+        self.drain_budgeted(None)
+    }
+
+    /// Drain the receiver, processing up to `budget` items per poll before yielding.
+    /// `None` means process one item per poll.
+    fn drain_budgeted(mut self, budget: Option<usize>) -> impl core::future::Future<Output = ()>
+    where
+        Self: Receiver<()>,
+    {
+        let budget = budget.unwrap_or(1);
         core::future::poll_fn(move |cx| {
-            match self.poll_recv(cx) {
-                Poll::Pending => Poll::Pending,
-                Poll::Ready(None) => Poll::Ready(()),
-                Poll::Ready(Some(())) => {
-                    // Self-wake to process the next item
-                    cx.waker().wake_by_ref();
-                    Poll::Pending
+            for _ in 0..budget {
+                match self.poll_recv(cx) {
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(None) => return Poll::Ready(()),
+                    Poll::Ready(Some(())) => {}
                 }
             }
+            cx.waker().wake_by_ref();
+            Poll::Pending
         })
     }
 
@@ -739,25 +749,38 @@ where
 /// push-based channel.
 ///
 /// Returns when either the receiver or sender closes.
+/// Transfers items from a receiver to a sender, yielding after each item.
 pub async fn pump<T, R, S>(rx: R, tx: S)
 where
     R: Receiver<T>,
     S: Sender<T>,
 {
-    Pump {
+    pump_budgeted(rx, tx, None).await;
+}
+
+/// Transfers items from a receiver to a sender, yielding after `budget` items
+/// are transferred in a single poll. `None` means transfer one item per poll.
+pub async fn pump_budgeted<T, R, S>(rx: R, tx: S, budget: Option<usize>)
+where
+    R: Receiver<T>,
+    S: Sender<T>,
+{
+    BudgetedPump {
         rx,
         tx,
         value: None,
+        budget: budget.unwrap_or(1),
     }
     .await;
 
-    struct Pump<T, R, S> {
+    struct BudgetedPump<T, R, S> {
         rx: R,
         tx: S,
         value: Option<core::mem::MaybeUninit<T>>,
+        budget: usize,
     }
 
-    impl<T, R, S> Future for Pump<T, R, S>
+    impl<T, R, S> Future for BudgetedPump<T, R, S>
     where
         R: Receiver<T>,
         S: Sender<T>,
@@ -770,28 +793,35 @@ where
         ) -> Poll<Self::Output> {
             let this = unsafe { self.get_unchecked_mut() };
 
-            if this.value.is_none() {
-                match ready!(this.rx.poll_recv(cx)) {
-                    Some(value) => {
-                        this.value = Some(MaybeUninit::new(value));
-                        cx.waker().wake_by_ref();
+            for _ in 0..this.budget {
+                if this.value.is_none() {
+                    match this.rx.poll_recv(cx) {
+                        Poll::Ready(Some(value)) => {
+                            this.value = Some(MaybeUninit::new(value));
+                        }
+                        Poll::Ready(None) => {
+                            return Poll::Ready(());
+                        }
+                        Poll::Pending => {
+                            return Poll::Pending;
+                        }
                     }
-                    None => {
-                        return Poll::Ready(());
+                }
+
+                if let Some(v) = this.value.as_mut() {
+                    match this.tx.poll_send(cx, v) {
+                        Poll::Ready(Ok(())) => {
+                            this.value = None;
+                        }
+                        Poll::Ready(Err(())) => return Poll::Ready(()),
+                        Poll::Pending => {
+                            return Poll::Pending;
+                        }
                     }
                 }
             }
 
-            if let Some(v) = this.value.as_mut() {
-                match ready!(this.tx.poll_send(cx, v)) {
-                    Ok(()) => {
-                        this.value = None;
-                        cx.waker().wake_by_ref();
-                    }
-                    Err(()) => return Poll::Ready(()),
-                }
-            }
-
+            cx.waker().wake_by_ref();
             Poll::Pending
         }
     }

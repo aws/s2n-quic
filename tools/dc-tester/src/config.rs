@@ -37,6 +37,10 @@ pub struct EndpointConfig {
     /// Per-socket bandwidth limit in Gbps
     #[serde(default = "EndpointConfig::default_per_socket_bandwidth")]
     pub per_socket_bandwidth: f64,
+
+    /// Emit per-socket queue metrics (`q.send.{id}`) instead of a single aggregate
+    #[serde(default)]
+    pub verbose_socket_metrics: bool,
 }
 
 impl EndpointConfig {
@@ -64,6 +68,7 @@ impl Default for EndpointConfig {
             send_sockets: Self::default_send_sockets(),
             bandwidth: Self::default_bandwidth(),
             per_socket_bandwidth: Self::default_per_socket_bandwidth(),
+            verbose_socket_metrics: false,
         }
     }
 }

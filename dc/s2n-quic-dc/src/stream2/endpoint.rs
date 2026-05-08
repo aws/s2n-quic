@@ -29,7 +29,7 @@ use crate::{
     socket::{
         self,
         channel::{
-            self, intrusive_queue, FlattenQueue, FlattenSegments, InspectErr, Map, Paced,
+            self, intrusive_queue, FlattenSegments, InspectErr, Map, Paced,
             ReceiverExt, RouterAdapter, SocketReceiver, UnboundedSender,
         },
         pool::{self, descriptor},
@@ -56,7 +56,7 @@ use std::{
     net::SocketAddr,
     rc::Rc,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicI64, AtomicU64, Ordering},
         Arc, Mutex,
     },
 };
@@ -300,29 +300,158 @@ mod worker_socket_channel {
 /// Shared counter registry for tracking pipeline metrics
 #[derive(Clone, Default)]
 pub struct CounterRegistry {
-    counters: Arc<Mutex<HashMap<&'static str, Arc<AtomicU64>>>>,
+    metrics: Arc<Mutex<HashMap<&'static str, Metric>>>,
+}
+
+#[derive(Clone)]
+enum Metric {
+    Counter(Arc<AtomicU64>),
+    Gauge(Arc<AtomicI64>),
+    Queue {
+        enqueue: Arc<AtomicU64>,
+        drain: Arc<AtomicU64>,
+        depth: Arc<AtomicI64>,
+    },
+}
+
+impl Metric {
+    fn format(&self, label: &'static str) -> Option<String> {
+        match self {
+            Metric::Counter(v) => {
+                let count = v.swap(0, Ordering::Relaxed);
+                if count == 0 {
+                    return None;
+                }
+                if label.ends_with(":bytes") {
+                    let mut rate = count as f64 * 8.0;
+                    let prefixes = [("G", 1e9), ("M", 1e6), ("K", 1e3)];
+                    let mut prefix = "";
+                    for (p, divisor) in prefixes {
+                        if rate >= divisor {
+                            rate /= divisor;
+                            prefix = p;
+                            break;
+                        }
+                    }
+                    let label_without_suffix = label.trim_end_matches(":bytes");
+                    Some(format!("{}={:.2}{}bps", label_without_suffix, rate, prefix))
+                } else {
+                    Some(format!("{}={}", label, count))
+                }
+            }
+            Metric::Gauge(v) => {
+                let depth = v.load(Ordering::Relaxed);
+                if depth == 0 {
+                    return None;
+                }
+                Some(format!("{}={}", label, depth))
+            }
+            Metric::Queue {
+                enqueue,
+                drain,
+                depth,
+            } => {
+                let enq = enqueue.swap(0, Ordering::Relaxed);
+                let drn = drain.swap(0, Ordering::Relaxed);
+                let dep = depth.load(Ordering::Relaxed);
+                if enq == 0 && drn == 0 && dep == 0 {
+                    return None;
+                }
+                if dep == 0 {
+                    Some(format!("{label}={enq}/{drn}"))
+                } else {
+                    Some(format!("{label}={enq}/{drn}({dep})"))
+                }
+            }
+        }
+    }
 }
 
 impl CounterRegistry {
     pub fn new() -> Self {
         Self {
-            counters: Arc::new(Mutex::new(HashMap::new())),
+            metrics: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
     /// Register a counter with the given label, returning a handle to increment it
     pub fn register(&self, label: &'static str) -> Counter {
-        let mut counters = self.counters.lock().unwrap();
-        let inner = counters
-            .entry(label)
-            .or_insert_with(|| Arc::new(AtomicU64::new(0)))
-            .clone();
+        let mut metrics = self.metrics.lock().unwrap();
+        let inner = match metrics.entry(label) {
+            std::collections::hash_map::Entry::Occupied(e) => match e.get() {
+                Metric::Counter(v) => v.clone(),
+                _ => panic!("label {label:?} already registered as a different metric type"),
+            },
+            std::collections::hash_map::Entry::Vacant(e) => {
+                let v = Arc::new(AtomicU64::new(0));
+                e.insert(Metric::Counter(v.clone()));
+                v
+            }
+        };
         Counter::new(inner)
     }
 
-    /// Spawn a task that periodically logs all counters in a single line
+    /// Register a queue gauge that tracks both throughput and current depth.
+    ///
+    /// Register a queue metric that tracks enqueue rate, drain rate, and depth.
+    ///
+    /// Formats as `label=enqueue/drain(depth)` in log output. When depth is 0,
+    /// the parenthetical is omitted: `label=enqueue/drain`.
+    pub fn register_queue_gauge(&self, label: &'static str) -> QueueGauge {
+        let mut metrics = self.metrics.lock().unwrap();
+        match metrics.entry(label) {
+            std::collections::hash_map::Entry::Occupied(e) => match e.get() {
+                Metric::Queue {
+                    enqueue,
+                    drain,
+                    depth,
+                } => QueueGauge {
+                    throughput: Counter::new(enqueue.clone()),
+                    drain: Counter::new(drain.clone()),
+                    depth: Gauge(depth.clone()),
+                },
+                _ => panic!("label {label:?} already registered as a different metric type"),
+            },
+            std::collections::hash_map::Entry::Vacant(e) => {
+                let enqueue = Arc::new(AtomicU64::new(0));
+                let drain = Arc::new(AtomicU64::new(0));
+                let depth = Arc::new(AtomicI64::new(0));
+                e.insert(Metric::Queue {
+                    enqueue: enqueue.clone(),
+                    drain: drain.clone(),
+                    depth: depth.clone(),
+                });
+                QueueGauge {
+                    throughput: Counter::new(enqueue),
+                    drain: Counter::new(drain),
+                    depth: Gauge(depth),
+                }
+            }
+        }
+    }
+
+    /// Register a gauge with the given label, returning a handle to add/sub.
+    ///
+    /// Gauges track a current value that is never reset by the reporter.
+    pub fn register_gauge(&self, label: &'static str) -> Gauge {
+        let mut metrics = self.metrics.lock().unwrap();
+        let inner = match metrics.entry(label) {
+            std::collections::hash_map::Entry::Occupied(e) => match e.get() {
+                Metric::Gauge(v) => v.clone(),
+                _ => panic!("label {label:?} already registered as a different metric type"),
+            },
+            std::collections::hash_map::Entry::Vacant(e) => {
+                let v = Arc::new(AtomicI64::new(0));
+                e.insert(Metric::Gauge(v.clone()));
+                v
+            }
+        };
+        Gauge(inner)
+    }
+
+    /// Spawn a task that periodically logs all metrics in a single sorted line
     pub fn spawn_reporter(&self, interval: Duration) {
-        let counters = self.counters.clone();
+        let metrics = self.metrics.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(interval);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -330,47 +459,21 @@ impl CounterRegistry {
             loop {
                 interval.tick().await;
 
-                let counters = counters.lock().unwrap();
-                if counters.is_empty() {
+                let metrics = metrics.lock().unwrap();
+                if metrics.is_empty() {
                     continue;
                 }
 
-                // Collect and reset all counters
-                let mut stats: Vec<(&'static str, u64)> = counters
-                    .iter()
-                    .map(|(label, counter)| (*label, counter.swap(0, Ordering::Relaxed)))
-                    .collect();
+                let mut labels: Vec<&'static str> = metrics.keys().copied().collect();
+                labels.sort();
 
-                // Sort by label for consistent output
-                stats.sort_by_key(|(label, _)| *label);
-
-                // Filter non-zero and format, converting byte counters to bps with appropriate prefix
-                let non_zero: Vec<String> = stats
+                let parts: Vec<String> = labels
                     .into_iter()
-                    .filter(|(_, count)| *count > 0)
-                    .map(|(label, count)| {
-                        // Check if this is a byte counter (ends with ":bytes")
-                        if label.ends_with(":bytes") {
-                            let mut rate = count as f64 * 8.0; // Convert to bits
-                            let prefixes = [("G", 1e9), ("M", 1e6), ("K", 1e3)];
-                            let mut prefix = "";
-                            for (p, divisor) in prefixes {
-                                if rate >= divisor {
-                                    rate /= divisor;
-                                    prefix = p;
-                                    break;
-                                }
-                            }
-                            let label_without_suffix = label.trim_end_matches(":bytes");
-                            format!("{}={:.2}{}bps", label_without_suffix, rate, prefix)
-                        } else {
-                            format!("{}={}", label, count)
-                        }
-                    })
+                    .filter_map(|label| metrics[label].format(label))
                     .collect();
 
-                if !non_zero.is_empty() {
-                    tracing::info!("{}", non_zero.join(" "));
+                if !parts.is_empty() {
+                    tracing::info!("{}", parts.join(" "));
                 }
             }
         });
@@ -398,6 +501,94 @@ impl core::ops::AddAssign<u64> for Counter {
     #[inline]
     fn add_assign(&mut self, rhs: u64) {
         self.add(rhs);
+    }
+}
+
+#[derive(Clone)]
+pub struct Gauge(Arc<AtomicI64>);
+
+impl Gauge {
+    #[inline]
+    pub fn add(&self, v: i64) {
+        self.0.fetch_add(v, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub fn sub(&self, v: i64) {
+        self.0.fetch_sub(v, Ordering::Relaxed);
+    }
+}
+
+/// Tracks enqueue rate, dequeue rate, and current depth for a queue.
+#[derive(Clone)]
+pub struct QueueGauge {
+    pub throughput: Counter,
+    pub drain: Counter,
+    pub depth: Gauge,
+}
+
+impl QueueGauge {
+    #[inline]
+    pub fn enqueue(&self, count: u64) {
+        self.throughput.add(count);
+        self.depth.add(count as i64);
+    }
+
+    #[inline]
+    pub fn dequeue(&self) {
+        self.drain.add(1);
+        self.depth.sub(1);
+    }
+}
+
+/// Like `FlattenQueue`, but tracks throughput and current queue depth via a `QueueGauge`.
+pub struct GaugedQueue<T, R> {
+    inner: R,
+    queue: crate::intrusive_queue::Queue<T>,
+    gauge: QueueGauge,
+}
+
+impl<T, R> GaugedQueue<T, R> {
+    pub fn new(inner: R, gauge: QueueGauge) -> Self {
+        Self {
+            inner,
+            queue: Default::default(),
+            gauge,
+        }
+    }
+}
+
+impl<T, R> channel::Receiver<crate::intrusive_queue::Entry<T>> for GaugedQueue<T, R>
+where
+    R: channel::Receiver<crate::intrusive_queue::Queue<T>>,
+{
+    fn poll_recv(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Option<crate::intrusive_queue::Entry<T>>> {
+        loop {
+            if let Some(entry) = self.queue.pop_front() {
+                self.gauge.dequeue();
+                return core::task::Poll::Ready(Some(entry));
+            }
+
+            match self.inner.poll_recv(cx) {
+                core::task::Poll::Ready(Some(queue)) => {
+                    if queue.is_empty() {
+                        cx.waker().wake_by_ref();
+                        return core::task::Poll::Pending;
+                    }
+                    self.gauge.enqueue(queue.len() as u64);
+                    self.queue = queue;
+                }
+                core::task::Poll::Ready(None) => return core::task::Poll::Ready(None),
+                core::task::Poll::Pending => return core::task::Poll::Pending,
+            }
+        }
+    }
+
+    fn on_consumed(&mut self, bytes: u64) {
+        self.inner.on_consumed(bytes);
     }
 }
 
@@ -888,6 +1079,157 @@ enum ProcessError {
     MissingSenderId,
 }
 
+#[derive(Clone)]
+struct ProcessDatagramCounters {
+    rx_none: Counter,
+    rx_init: Counter,
+    rx_validate: Counter,
+    rx_init_validate: Counter,
+    rx_data: Counter,
+    rx_control: Counter,
+    rx_reset: Counter,
+
+    rx_init_dup: Counter,
+    rx_init_too_old: Counter,
+    rx_init_retx: Counter,
+    rx_init_accepted: Counter,
+    rx_init_accepted_retry: Counter,
+    rx_init_reject: Counter,
+    rx_init_no_acceptor: Counter,
+    rx_init_acceptor_reset: Counter,
+
+    rx_validate_ok: Counter,
+    rx_validate_failed: Counter,
+    rx_init_validate_ok: Counter,
+    rx_init_validate_validation_failed: Counter,
+    rx_init_validate_dispatch_failed: Counter,
+
+    rx_data_ok: Counter,
+    rx_data_unallocated: Counter,
+    rx_data_half_closed: Counter,
+    rx_data_fully_closed: Counter,
+    rx_data_perm_closed: Counter,
+
+    rx_control_ok: Counter,
+    rx_control_unallocated: Counter,
+    rx_control_half_closed: Counter,
+    rx_control_fully_closed: Counter,
+    rx_control_perm_closed: Counter,
+
+    rx_reset_both: Counter,
+    rx_reset_stream: Counter,
+    rx_reset_control: Counter,
+
+    tx_validate: Counter,
+    tx_init_validate: Counter,
+    tx_reset: Counter,
+    tx_reset_both: Counter,
+    tx_reset_stream: Counter,
+    tx_reset_control: Counter,
+
+    resp_ack_only: Counter,
+    resp_ack_and_routing: Counter,
+    resp_routing_only: Counter,
+    resp_suppressed: Counter,
+    resp_entries: Counter,
+
+    flow_accepted: Counter,
+    flow_pending: Counter,
+}
+
+impl ProcessDatagramCounters {
+    fn new(counters: &CounterRegistry) -> Self {
+        Self {
+            rx_none: counters.register("!rx.none"),
+            rx_init: counters.register("rx.init"),
+            rx_validate: counters.register("rx.validate"),
+            rx_init_validate: counters.register("rx.init_validate"),
+            rx_data: counters.register("rx.data"),
+            rx_control: counters.register("rx.control"),
+            rx_reset: counters.register("rx.reset"),
+
+            rx_init_dup: counters.register("!rx.init.dup"),
+            rx_init_too_old: counters.register("!rx.init.too_old"),
+            rx_init_retx: counters.register("rx.init.retx"),
+            rx_init_accepted: counters.register("rx.init.accepted"),
+            rx_init_accepted_retry: counters.register("rx.init.accepted_retry"),
+            rx_init_reject: counters.register("!rx.init.reject"),
+            rx_init_no_acceptor: counters.register("!rx.init.no_acceptor"),
+            rx_init_acceptor_reset: counters.register("!rx.init.acceptor_reset"),
+
+            rx_validate_ok: counters.register("rx.validate.ok"),
+            rx_validate_failed: counters.register("!rx.validate.failed"),
+            rx_init_validate_ok: counters.register("rx.init_validate.ok"),
+            rx_init_validate_validation_failed: counters
+                .register("!rx.init_validate.validation_failed"),
+            rx_init_validate_dispatch_failed: counters
+                .register("!rx.init_validate.dispatch_failed"),
+
+            rx_data_ok: counters.register("rx.data.ok"),
+            rx_data_unallocated: counters.register("!rx.data.unallocated"),
+            rx_data_half_closed: counters.register("!rx.data.half_closed"),
+            rx_data_fully_closed: counters.register("!rx.data.fully_closed"),
+            rx_data_perm_closed: counters.register("rx.data.perm_closed"),
+
+            rx_control_ok: counters.register("rx.control.ok"),
+            rx_control_unallocated: counters.register("!rx.control.unallocated"),
+            rx_control_half_closed: counters.register("!rx.control.half_closed"),
+            rx_control_fully_closed: counters.register("!rx.control.fully_closed"),
+            rx_control_perm_closed: counters.register("rx.control.perm_closed"),
+
+            rx_reset_both: counters.register("rx.reset.both"),
+            rx_reset_stream: counters.register("rx.reset.stream"),
+            rx_reset_control: counters.register("rx.reset.control"),
+
+            tx_validate: counters.register("tx.validate"),
+            tx_init_validate: counters.register("tx.init_validate"),
+            tx_reset: counters.register("tx.reset"),
+            tx_reset_both: counters.register("tx.reset.both"),
+            tx_reset_stream: counters.register("tx.reset.stream"),
+            tx_reset_control: counters.register("tx.reset.control"),
+
+            resp_ack_only: counters.register("resp.ack_only"),
+            resp_ack_and_routing: counters.register("resp.ack+routing"),
+            resp_routing_only: counters.register("resp.routing_only"),
+            resp_suppressed: counters.register("resp.suppressed"),
+            resp_entries: counters.register("resp.entries"),
+
+            flow_accepted: counters.register("flow.accepted"),
+            flow_pending: counters.register("flow.pending"),
+        }
+    }
+
+    #[inline]
+    fn on_received_routing(&self, routing_info: &RoutingInfo) {
+        match routing_info {
+            RoutingInfo::None => self.rx_none.add(1),
+            RoutingInfo::FlowInit { .. } => self.rx_init.add(1),
+            RoutingInfo::FlowValidateRequest { .. } => self.rx_validate.add(1),
+            RoutingInfo::FlowInitValidate { .. } => self.rx_init_validate.add(1),
+            RoutingInfo::FlowData { .. } => self.rx_data.add(1),
+            RoutingInfo::FlowControl { .. } => self.rx_control.add(1),
+            RoutingInfo::FlowReset { .. } => self.rx_reset.add(1),
+        };
+    }
+
+    #[inline]
+    fn on_sent_routing(&self, routing_info: &RoutingInfo) {
+        match routing_info {
+            RoutingInfo::FlowValidateRequest { .. } => self.tx_validate.add(1),
+            RoutingInfo::FlowInitValidate { .. } => self.tx_init_validate.add(1),
+            RoutingInfo::FlowReset { reset_target, .. } => {
+                self.tx_reset.add(1);
+                match reset_target {
+                    ResetTarget::Both => self.tx_reset_both.add(1),
+                    ResetTarget::Stream => self.tx_reset_stream.add(1),
+                    ResetTarget::Control => self.tx_reset_control.add(1),
+                };
+            }
+            _ => {}
+        };
+    }
+}
+
 /// Process a received datagram packet - authenticate, deduplicate, dispatch, and generate ACK.
 ///
 /// This does common packet processing (decrypt, packet number dedup, ACK recording),
@@ -903,8 +1245,7 @@ fn process_datagram<Clk, R: SenderRoute>(
     queue_dispatcher: &mut queue::Dispatch<StreamMsg, ControlMsg, flow::Handle>,
     clock: &Clk,
     sender_id_route: R,
-    flows_accepted: &Counter,
-    flows_pending: &Counter,
+    counters: &ProcessDatagramCounters,
 ) -> Result<(), ProcessError>
 where
     Clk: s2n_quic_core::time::Clock + ?Sized,
@@ -986,6 +1327,7 @@ where
 
     // Dispatch based on routing_info for type-specific processing
     let routing_info = packet.routing_info();
+    counters.on_received_routing(&routing_info);
     match routing_info {
         RoutingInfo::None => {
             tracing::warn!("RoutingInfo::None - dropping packet");
@@ -1041,7 +1383,7 @@ where
                             // Dispatch to the acceptor
                             match acceptor_registry.dispatch(acceptor_id, flow_init) {
                                 Ok(()) => {
-                                    flows_accepted.add(1);
+                                    counters.flow_accepted.add(1);
                                     tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
@@ -1104,6 +1446,7 @@ where
                     }
                 }
                 Err(AttemptDedupError::Duplicate) => {
+                    counters.rx_init_dup.add(1);
                     // Already seen this attempt_id - silently drop
                     tracing::trace!(
                         attempt_id = attempt_id.as_u64(),
@@ -1113,6 +1456,7 @@ where
                     // Still generate ACK below
                 }
                 Err(AttemptDedupError::TooOld) => {
+                    counters.rx_init_too_old.add(1);
                     // Attempt ID outside window - check DashMap (medium path)
                     let create_queue = |handle| {
                         // Server-side allocation knows the remote queue ID from FlowInit
@@ -1152,7 +1496,8 @@ where
                             // Dispatch as pending since we can't guarantee it's not a duplicate
                             match acceptor_registry.dispatch_pending(acceptor_id, flow_init) {
                                 Ok(acceptor::PendingAction::Accepted) => {
-                                    flows_accepted.add(1);
+                                    counters.rx_init_accepted.add(1);
+                                    counters.flow_accepted.add(1);
                                     tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
@@ -1162,7 +1507,8 @@ where
                                     );
                                 }
                                 Ok(acceptor::PendingAction::AcceptedWithRetry) => {
-                                    flows_pending.add(1);
+                                    counters.rx_init_accepted_retry.add(1);
+                                    counters.flow_pending.add(1);
                                     tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
@@ -1186,6 +1532,7 @@ where
                                     });
                                 }
                                 Ok(acceptor::PendingAction::Reject { reset_code }) => {
+                                    counters.rx_init_reject.add(1);
                                     tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
@@ -1203,6 +1550,7 @@ where
                                     });
                                 }
                                 Err(acceptor::DispatchError::AcceptorNotFound) => {
+                                    counters.rx_init_no_acceptor.add(1);
                                     tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
@@ -1219,6 +1567,7 @@ where
                                     });
                                 }
                                 Err(acceptor::DispatchError::Reset { reset_code }) => {
+                                    counters.rx_init_acceptor_reset.add(1);
                                     tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
@@ -1238,6 +1587,7 @@ where
                             }
                         }
                         Err(local_queue_id) => {
+                            counters.rx_init_retx.add(1);
                             // Flow already exists, this is a retransmission
                             tracing::trace!(
                                 attempt_id = attempt_id.as_u64(),
@@ -1272,6 +1622,7 @@ where
             // Validate that our local stream queue has matching credentials and stream_id
             match queue_dispatcher.validate_stream(local_queue_id, &request) {
                 Ok(()) => {
+                    counters.rx_validate_ok.add(1);
                     // Validation passed - respond with FlowInitValidate
                     tracing::debug!(
                         attempt_id = attempt_id.as_u64(),
@@ -1291,6 +1642,7 @@ where
                     });
                 }
                 Err(_) => {
+                    counters.rx_validate_failed.add(1);
                     // Validation failed - client may have abandoned the stream
                     // Send FlowReset to let server release its allocated queue_id
                     tracing::warn!(
@@ -1330,6 +1682,7 @@ where
             // Validate the queue has matching credentials and stream_id
             match queue_dispatcher.validate_stream(local_queue_id, &request) {
                 Ok(()) => {
+                    counters.rx_init_validate_ok.add(1);
                     // Flow validation succeeded - send FlowValidated message to wake up the acceptor
                     let stream_entry = StreamMsg::FlowValidated.into();
 
@@ -1348,6 +1701,7 @@ where
                             );
                         }
                         Err(_) => {
+                            counters.rx_init_validate_dispatch_failed.add(1);
                             // Failed to send FlowValidated - queue may have been closed or unallocated
                             // Send FlowReset to client
                             tracing::warn!(
@@ -1368,6 +1722,7 @@ where
                     }
                 }
                 Err(_) => {
+                    counters.rx_init_validate_validation_failed.add(1);
                     // Validation failed - send FlowReset
                     tracing::warn!(
                         attempt_id = attempt_id.as_u64(),
@@ -1417,6 +1772,7 @@ where
                 entry,
             ) {
                 Ok(()) => {
+                    counters.rx_data_ok.add(1);
                     tracing::trace!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
@@ -1426,6 +1782,7 @@ where
                     );
                 }
                 Err(queue::Error::Unallocated(_)) => {
+                    counters.rx_data_unallocated.add(1);
                     tracing::warn!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
@@ -1441,6 +1798,7 @@ where
                     });
                 }
                 Err(queue::Error::HalfClosed(_)) => {
+                    counters.rx_data_half_closed.add(1);
                     tracing::debug!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
@@ -1456,6 +1814,7 @@ where
                     });
                 }
                 Err(queue::Error::FullyClosed(_)) => {
+                    counters.rx_data_fully_closed.add(1);
                     tracing::debug!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
@@ -1471,6 +1830,7 @@ where
                     });
                 }
                 Err(queue::Error::PermanentlyClosed) => {
+                    counters.rx_data_perm_closed.add(1);
                     tracing::trace!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
@@ -1504,6 +1864,7 @@ where
                 entry,
             ) {
                 Ok(()) => {
+                    counters.rx_control_ok.add(1);
                     tracing::trace!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
@@ -1511,6 +1872,7 @@ where
                     );
                 }
                 Err(queue::Error::Unallocated(_)) => {
+                    counters.rx_control_unallocated.add(1);
                     tracing::debug!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
@@ -1526,6 +1888,7 @@ where
                     });
                 }
                 Err(queue::Error::HalfClosed(_)) => {
+                    counters.rx_control_half_closed.add(1);
                     tracing::debug!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
@@ -1541,6 +1904,7 @@ where
                     });
                 }
                 Err(queue::Error::FullyClosed(_)) => {
+                    counters.rx_control_fully_closed.add(1);
                     tracing::debug!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
@@ -1556,6 +1920,7 @@ where
                     });
                 }
                 Err(queue::Error::PermanentlyClosed) => {
+                    counters.rx_control_perm_closed.add(1);
                     tracing::trace!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
@@ -1584,6 +1949,7 @@ where
             // Send reset based on target — FlowReset doesn't carry the sender's queue ID
             match reset_target {
                 ResetTarget::Both => {
+                    counters.rx_reset_both.add(1);
                     let stream_entry = StreamMsg::Reset { error_code }.into();
                     let control_entry = ControlMsg::Reset { error_code }.into();
                     queue_dispatcher.send_both(
@@ -1602,6 +1968,7 @@ where
                     );
                 }
                 ResetTarget::Stream => {
+                    counters.rx_reset_stream.add(1);
                     let stream_entry = StreamMsg::Reset { error_code }.into();
                     let _ =
                         queue_dispatcher.send_stream(local_queue_id, None, &request, stream_entry);
@@ -1614,6 +1981,7 @@ where
                     );
                 }
                 ResetTarget::Control => {
+                    counters.rx_reset_control.add(1);
                     let control_entry = ControlMsg::Reset { error_code }.into();
                     let _ = queue_dispatcher.send_control(
                         local_queue_id,
@@ -1642,13 +2010,17 @@ where
         dest_sender_id: source_sender_id,
     };
 
-    if let Some(ack_packet) = sender_state.generate_ack_packet(clock, ack_routing_info) {
+    let has_ack = if let Some(ack_packet) = sender_state.generate_ack_packet(clock, ack_routing_info) {
         sender_state.transmission_state = AckTransmissionState::Idle;
         entries.push_back(Entry::new(ack_packet));
-    }
+        true
+    } else {
+        false
+    };
 
     // Send response packet if needed (FlowValidateRequest, FlowReset, etc.)
-    if let Some(mut routing) = response_routing {
+    let has_routing = if let Some(mut routing) = response_routing {
+        counters.on_sent_routing(&routing);
         routing.set_source_sender_id(local_sender_id);
         let packet = PartialDatagram::new_datagram(
             routing,
@@ -1658,6 +2030,25 @@ where
             None, // No completion tracking
         );
         entries.push_back(Entry::new(packet));
+        true
+    } else {
+        false
+    };
+
+    match (has_ack, has_routing) {
+        (true, false) => {
+            counters.resp_ack_only.add(1);
+            counters.resp_entries.add(1);
+        }
+        (true, true) => {
+            counters.resp_ack_and_routing.add(1);
+            counters.resp_entries.add(2);
+        }
+        (false, true) => {
+            counters.resp_routing_only.add(1);
+            counters.resp_entries.add(1);
+        }
+        (false, false) => counters.resp_suppressed.add(1),
     }
 
     let _ = response_tx.send(entries);
@@ -2273,6 +2664,8 @@ pub struct EndpointConfig<'a, S> {
     pub gso: features::Gso,
     /// Acceptor registry for flow initialization
     pub acceptor_registry: acceptor::Registry<FlowInit>,
+    /// When true, emit per-socket queue metrics (`q.send.{id}`) in addition to the aggregate
+    pub verbose_socket_metrics: bool,
 }
 
 struct SendSocketInfo<S> {
@@ -2378,6 +2771,7 @@ where
         counters,
         gso,
         acceptor_registry,
+        verbose_socket_metrics,
     } = config;
 
     let num_send_sockets = send_sockets.len();
@@ -2478,23 +2872,28 @@ where
         let clock = clock.clone();
         let socket_senders = flat_socket_senders.clone();
         let wheel_input_rx = wheel_input_rx;
+        let counters = counters.clone();
         move |mut spawner| {
             info!("Starting wheel worker on worker 0");
 
             let mut priority_output_txs = Vec::with_capacity(BatchPriority::LEVELS);
             let mut priority_output_rxs = Vec::with_capacity(BatchPriority::LEVELS);
 
-            for _ in 0..BatchPriority::LEVELS {
+            for i in 0..BatchPriority::LEVELS {
                 let (priority_output_tx, priority_output_rx) = intrusive_queue::unsync::new();
                 priority_output_txs.push(priority_output_tx);
+                let gauge = counters.register_queue_gauge(
+                    Box::leak(format!("q.priority.{i}").into_boxed_str()),
+                );
                 priority_output_rxs
-                    .push(FlattenQueue::new(priority_output_rx.into_list_receiver()));
+                    .push(GaugedQueue::new(priority_output_rx.into_list_receiver(), gauge));
             }
 
             let wheel_timer = clock.timer();
             let wheel: Wheel<_, _, _, 1> = Wheel::new(wheel_input_rx, wheel_timer);
+            let wheel_gauge = counters.register_queue_gauge("q.wheel");
             spawner.spawn(async move {
-                let rx = FlattenQueue::new(wheel);
+                let rx = GaugedQueue::new(wheel, wheel_gauge);
                 let rx = channel::Map::new(rx, move |entry: Entry<Batch>| {
                     // Route each wheel output batch into a dedicated priority lane. The
                     // downstream `channel::Priority` receiver polls these outputs in order.
@@ -2608,7 +3007,7 @@ where
                 let clock = clock.clone();
                 let wheel_input_tx = wheel_input_tx.clone();
                 let mut pto_wheel_tx = pto_wheel_tx.clone();
-                let pto_probe_counter = counters.register("pto_probe");
+                let pto_probe_counter = counters.register("pkt.pto");
 
                 // Create PTO timing wheel (1µs granularity)
                 let pto_wheel_timer = clock.timer();
@@ -2635,12 +3034,9 @@ where
 
             // Spawn ACKed packet handler with batched completion notifications
             spawner.spawn({
-                let acked_counter = counters.register("acked_packets");
+                let ack_gauge = counters.register_queue_gauge("q.ack");
                 async move {
-                    let rx = channel::FlattenQueue::new(acked_rx);
-                    let rx = channel::Inspect::new(rx, |_entry: &Entry<PartialDatagram>| {
-                        acked_counter.add(1);
-                    });
+                    let rx = GaugedQueue::new(acked_rx, ack_gauge);
                     let rx = channel::CompletionBatcher::new(rx);
                     rx.drain().await;
                 }
@@ -2649,42 +3045,40 @@ where
             // Spawn response packet handler - batch ACKs and flow control responses
             spawner.spawn({
                 let wheel_input_tx = wheel_input_tx.clone();
-                let response_counter = counters.register("response_packets");
+                let response_gauge = counters.register_queue_gauge("q.response");
                 let rx = response_rx;
                 async move {
-                    let rx = channel::FlattenQueue::new(rx);
-
-                    let rx = channel::Inspect::new(rx, |_entry: &Entry<PartialDatagram>| {
-                        response_counter.add(1);
-                    });
+                    let rx = GaugedQueue::new(rx, response_gauge);
 
                     // Batch response packets by peer address for efficient transmission with GSO
                     let rx = channel::RetransmissionBatcher::new(rx);
 
-                    // Pump response batches into the wheel for transmission
-                    channel::pump(rx, wheel_input_tx).await;
+                    // Pump response batches into the wheel for transmission.
+                    // Budget allows draining multiple batches per poll to keep up with
+                    // the datagram processor which generates responses synchronously.
+                    channel::pump_budgeted(rx, wheel_input_tx, Some(64)).await;
                 }
             });
 
             // Spawn lost packet handler - batch and retransmit
             spawner.spawn({
                 let wheel_input_tx = wheel_input_tx.clone();
-                let lost_datagrams_counter = counters.register("lost_datagrams");
-                let lost_control_counter = counters.register("lost_control");
+                let lost_gauge = counters.register_queue_gauge("!q.lost");
+                let lost_dgm_counter = counters.register("!pkt.lost.dgm");
+                let lost_ctl_counter = counters.register("!pkt.lost.ctl");
                 async move {
-                    // Flatten queues of lost packets into individual entries
-                    let rx = channel::FlattenQueue::new(lost_rx);
+                    let rx = GaugedQueue::new(lost_rx, lost_gauge);
 
                     // Filter out control packets - they don't need retransmission
                     let rx =
                         channel::FilterMap::new(rx, |entry: Entry<PartialDatagram>| {
                             match entry.packet_type {
                                 packet::datagram::partial::PacketType::Datagram { .. } => {
-                                    lost_datagrams_counter.add(1);
+                                    lost_dgm_counter.add(1);
                                     Some(entry)
                                 }
                                 packet::datagram::partial::PacketType::Control { .. } => {
-                                    lost_control_counter.add(1);
+                                    lost_ctl_counter.add(1);
                                     tracing::trace!("Skipping control packet retransmission");
                                     None
                                 }
@@ -2757,9 +3151,16 @@ where
                 // Task 1: Encoder + PacketRegistrar + Paced -> pump to channel
                 spawner.spawn({
                     let clock = clock.clone();
+                    let send_gauge = if verbose_socket_metrics {
+                        counters.register_queue_gauge(
+                            Box::leak(format!("q.send.{sender_id}").into_boxed_str()),
+                        )
+                    } else {
+                        counters.register_queue_gauge("q.send")
+                    };
                     async move {
                         // Build the channel adapter pipeline with timing instrumentation
-                        let rx = FlattenQueue::new(batch_rx);
+                        let rx = GaugedQueue::new(batch_rx, send_gauge);
                         let rx = channel::Timing::new(rx, "flatten");
 
                         let resolver = SimplePathContextResolver::new(socket_contexts);
@@ -2813,13 +3214,15 @@ where
                 let path_secret_map = path_secret_map.clone();
                 let shared_sender_cache = shared_sender_cache.clone();
                 let clock = clock.clone();
-                let recv_control_counter = counters.register("recv_control");
+                let recv_control_counter = counters.register("rx.control_pkt");
                 let verified_control_tx = verified_control_tx.clone();
                 let sender_id_to_worker = sender_id_to_worker.clone();
+                let control_input_gauge = counters.register_queue_gauge("q.control");
 
                 spawner.spawn(async move {
                     // Verify and record in ACK space
-                    let rx = Map::new(control_rx, {
+                    let rx = GaugedQueue::new(control_rx, control_input_gauge);
+                    let rx = Map::new(rx, {
                         let clock = clock.clone();
                         let recv_control_counter = recv_control_counter.clone();
                         move |packet: Entry<
@@ -2891,7 +3294,7 @@ where
                         let _ = sender.send_entry(packet);
                     });
 
-                    rx.drain().await;
+                    rx.drain_budgeted(Some(64)).await;
                     tracing::info!(worker_id, "Control verification worker shutting down");
                 });
             }
@@ -2906,10 +3309,12 @@ where
                 let sender_contexts = sender_contexts.clone();
                 let clock = clock.clone();
                 let mut generator = control_generator;
+                let verified_control_gauge = counters.register_queue_gauge("q.verified_control");
 
                 spawner.spawn(async move {
                     // Process ACK frames and update send state using sender_contexts
-                    let rx = Map::new(verified_control_rx, {
+                    let rx = GaugedQueue::new(verified_control_rx, verified_control_gauge);
+                    let rx = Map::new(rx, {
                         let clock = clock.clone();
                         move |mut packet: Entry<
                             packet::control::decoder::Packet<descriptor::Filled>,
@@ -2984,24 +3389,23 @@ where
                 let path_secret_map = path_secret_map.clone();
                 let clock = clock.clone();
                 let wheel_input_tx = wheel_input_tx.clone();
-                let recv_data_counter = counters.register("recv_data");
-                let flows_accepted = counters.register("flows.accepted");
-                let flows_pending = counters.register("flows.pending");
+                let recv_data_counter = counters.register("rx.data_pkt");
+                let process_datagram_counters = ProcessDatagramCounters::new(&counters);
                 let queue_dispatcher = queue_dispatcher.clone();
+                let datagram_input_gauge = counters.register_queue_gauge("q.datagram");
 
                 spawner.spawn(async move {
                     // Process datagrams for ACK generation
-                    let rx = datagram_rx;
+                    let rx = GaugedQueue::new(datagram_rx, datagram_input_gauge);
 
                     let rx = channel::Map::new(rx, {
                         let recv_data_counter = recv_data_counter.clone();
-                        let flows_accepted = flows_accepted.clone();
-                        let flows_pending = flows_pending.clone();
                         let shared_sender_cache = shared_sender_cache.clone();
                         let path_secret_map = path_secret_map.clone();
                         let acceptor_registry = acceptor_registry.clone();
                         let wheel_input_tx = wheel_input_tx.clone();
                         let clock = clock.clone();
+                        let process_datagram_counters = process_datagram_counters.clone();
                         let mut queue_dispatcher = queue_dispatcher.clone();
                         move |packet: Entry<
                             packet::datagram::decoder::Packet<descriptor::Filled>,
@@ -3017,8 +3421,7 @@ where
                                 &mut queue_dispatcher,
                                 &clock,
                                 sender_id_route,
-                                &flows_accepted,
-                                &flows_pending,
+                                &process_datagram_counters,
                             )
                         }
                     });
@@ -3065,7 +3468,7 @@ where
                         }
                     });
 
-                    rx.drain().await;
+                    rx.drain_budgeted(Some(64)).await;
 
                     tracing::info!(worker_id, "Datagram processor shutting down");
                 });
@@ -3089,7 +3492,7 @@ where
                 spawner.spawn({
                     let recv_counter = counters.register("socket.rx");
                     let recv_bytes_counter = counters.register("socket.rx:bytes");
-                    let decode_error_counter = counters.register("decode_error");
+                    let decode_error_counter = counters.register("!rx.decode_err");
                     async move {
                         // Build the receive pipeline
                         let rx = SocketReceiver::new(socket, recv_pool);
@@ -3176,7 +3579,7 @@ where
     // Spawn error handler to track failed batches
     // TODO make this not tokio
     tokio::spawn({
-        let error_counter = counters.register("path_resolve_error");
+        let error_counter = counters.register("!tx.path_err");
         async move {
             let rx = error_rx;
             let rx = channel::Map::new(rx, move |batch: Entry<Batch>| {

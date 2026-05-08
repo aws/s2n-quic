@@ -69,6 +69,7 @@ pub fn create(
         path_secret_map: map,
         gso,
         acceptor_registry,
+        verbose_socket_metrics: config.verbose_socket_metrics,
     };
 
     let inner = endpoint::setup_endpoint(endpoint_config, send_sockets, recv_sockets, || {
