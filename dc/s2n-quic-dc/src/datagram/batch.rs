@@ -285,15 +285,12 @@ impl Builder {
         // Check sticky sender_id compatibility
         // If this datagram requires a specific sender_id and the batch already has one set,
         // they must match
-        if let Some(routing_info) = datagram.datagram_routing_info() {
-            if routing_info.requires_sticky_sender_id() {
-                if let Some(dgram_sender_id) = routing_info.source_sender_id() {
-                    if self.batch.meta.sender_id != VarInt::MAX
-                        && self.batch.meta.sender_id != dgram_sender_id
-                    {
-                        return Err(datagram);
-                    }
-                }
+        let sticky_sender_id = datagram.sticky_sender_id();
+        if let Some(dgram_sender_id) = sticky_sender_id {
+            if self.batch.meta.sender_id != VarInt::MAX
+                && self.batch.meta.sender_id != dgram_sender_id
+            {
+                return Err(datagram);
             }
         }
 
@@ -315,12 +312,8 @@ impl Builder {
         }
 
         // Set sticky sender_id if this datagram requires it
-        if let Some(routing_info) = datagram.datagram_routing_info() {
-            if routing_info.requires_sticky_sender_id() {
-                if let Some(sender_id) = routing_info.source_sender_id() {
-                    self.batch.meta.sender_id = sender_id;
-                }
-            }
+        if let Some(sender_id) = sticky_sender_id {
+            self.batch.meta.sender_id = sender_id;
         }
 
         // All constraints satisfied, add to batch

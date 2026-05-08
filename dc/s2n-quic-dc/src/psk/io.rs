@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{client, server};
-use crate::path::secret::{self, map::pack_data_port_and_idle_timeout};
+use crate::path::secret;
 use cfg_if::cfg_if;
 use rand::RngExt;
 use s2n_quic::{
@@ -74,12 +74,8 @@ impl Server {
             builder.mtu as u64 * 10
         });
 
-        // FIXME: We pack the data port into the max_idle_timeout transport parameter.
-        // See `entry::pack_data_port_and_idle_timeout` for the encoding.
-        let idle_timeout_for_tp = encode_idle_timeout(builder.data_port, builder.max_idle_timeout);
-
         let connection_limits = s2n_quic::provider::limits::Limits::new()
-            .with_max_idle_timeout(idle_timeout_for_tp)?
+            .with_max_idle_timeout(builder.max_idle_timeout)?
             .with_data_window(initial_max_data)?
             // After the connection is established we increase the data window to the configured value
             .with_bidirectional_local_data_window(builder.data_window)?
@@ -133,6 +129,8 @@ pub(super) async fn server<
     subscriber: Subscriber,
     on_ready: tokio::sync::oneshot::Sender<Result<SocketAddr, Error>>,
 ) {
+    let local_data_port = builder.data_port.unwrap_or(0);
+
     let mut server = match Server::bind::<Provider, Subscriber, Event>(
         address,
         map.clone(),
@@ -159,19 +157,61 @@ pub(super) async fn server<
             //
             // A 10 second timeout is specified to avoid spawned tasks piling up when the
             // ConnectionClose from the client is lost. This timeout covers both the dc handshake
-            // confirmation and MTU probing completion.
-            let result = tokio::time::timeout(Duration::from_secs(10), async {
-                // FIXME: add more logging information if the subscriber is not registered with the endpoint.
-                if ConfirmComplete::wait_ready(&mut connection).await.is_ok() {
-                    MtuConfirmComplete::wait_ready(&mut connection).await;
-                }
-            })
-            .await;
+            // confirmation, port exchange, and MTU probing completion.
+            let deadline = TokioInstant::now() + Duration::from_secs(10);
 
-            // Emit event if timeout occurred
-            if result.is_err() {
-                if let Ok(peer_address) = connection.remote_addr() {
-                    map_clone.on_dc_connection_timeout(&peer_address);
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+            let initial_exchange = async {
+                let stream = connection.accept_bidirectional_stream().await?;
+
+                let port_exchange = async move {
+                    let Some(mut stream) = stream else {
+                        return Err(io::ErrorKind::ConnectionAborted.into());
+                    };
+
+                    let mut buf = [0u8; 2];
+                    stream.read_exact(&mut buf).await?;
+                    let peer_data_port = u16::from_be_bytes(buf);
+
+                    stream.write_all(&local_data_port.to_be_bytes()).await?;
+                    stream.finish()?;
+
+                    io::Result::Ok(peer_data_port)
+                };
+
+                let confirm = ConfirmComplete::wait_ready(&mut connection);
+
+                tokio::try_join!(confirm, port_exchange)
+            };
+
+            match tokio::time::timeout_at(deadline, initial_exchange).await {
+                Ok(Ok(((), peer_data_port))) => {
+                    // TODO: The port exchange should be replaced with a proper transport
+                    // parameter or DC handshake integration.
+                    if let Ok(peer_address) = connection.remote_addr() {
+                        if let Some(entry) = map_clone.get_raw(peer_address) {
+                            entry.set_peer_data_port(peer_data_port);
+                        }
+                    }
+
+                    let _ = tokio::time::timeout_at(
+                        deadline,
+                        MtuConfirmComplete::wait_ready(&mut connection),
+                    )
+                    .await;
+                }
+                Ok(Err(e)) => {
+                    tracing::debug!(
+                        "failed to establish DC connection with {:?}: {:?}",
+                        address,
+                        e
+                    );
+                }
+                Err(_) => {
+                    if let Ok(peer_address) = connection.remote_addr() {
+                        map_clone.on_dc_connection_timeout(&peer_address);
+                    }
                 }
             }
         });
@@ -183,6 +223,7 @@ pub struct Client {
     client: s2n_quic::Client,
     map: secret::Map,
     queue: Arc<HandshakeQueue>,
+    data_port: u16,
 }
 
 impl Client {
@@ -211,12 +252,8 @@ impl Client {
 
         let client = s2n_quic::Client::builder().with_io(io)?;
 
-        // FIXME: We pack the data port into the max_idle_timeout transport parameter.
-        // See `entry::pack_data_port_and_idle_timeout` for the encoding.
-        let idle_timeout_for_tp = encode_idle_timeout(builder.data_port, builder.max_idle_timeout);
-
         let connection_limits = s2n_quic::provider::limits::Limits::new()
-            .with_max_idle_timeout(idle_timeout_for_tp)?
+            .with_max_idle_timeout(builder.max_idle_timeout)?
             .with_data_window(builder.data_window)?
             .with_bidirectional_local_data_window(builder.data_window)?
             .with_bidirectional_remote_data_window(builder.data_window)?
@@ -235,6 +272,7 @@ impl Client {
             client,
             map: map.clone(),
             queue: Arc::new(HandshakeQueue::new(builder.success_jitter)),
+            data_port: builder.data_port.unwrap_or(0),
         })
     }
 
@@ -246,7 +284,14 @@ impl Client {
     ) -> Result<(), HandshakeFailed> {
         self.queue
             .clone()
-            .handshake(&self.client, &self.map, peer, reason, server_name)
+            .handshake(
+                &self.client,
+                &self.map,
+                peer,
+                reason,
+                server_name,
+                self.data_port,
+            )
             .await
     }
 }
@@ -370,6 +415,7 @@ impl HandshakeQueue {
         peer: SocketAddr,
         reason: HandshakeReason,
         server_name: Name,
+        local_data_port: u16,
     ) -> Result<(), HandshakeFailed> {
         let entry = self.allocate_entry(peer, reason);
         let entry2 = entry.clone();
@@ -405,30 +451,46 @@ impl HandshakeQueue {
 
             let mut connection = attempt.await?;
 
-            // A 10 second deadline is used to bound both ConfirmComplete and MtuConfirmComplete
-            // wait operations, avoiding unbounded waits if the server is slow or unresponsive.
+            // A 10 second deadline is used to bound ConfirmComplete, port exchange, and
+            // MtuConfirmComplete, avoiding unbounded waits if the peer is slow.
             let deadline = TokioInstant::now() + Duration::from_secs(10);
 
-            // We need to wait for confirmation that the dcQUIC handshake is complete.
-            // TODO: This will not be needed if https://github.com/aws/s2n-quic/issues/2273 is addressed
-            match tokio::time::timeout_at(deadline, ConfirmComplete::wait_ready(&mut connection))
-                .await
-            {
-                Ok(Ok(())) => {
-                    // ConfirmComplete succeeded within the deadline - continue
+            let port_exchange = {
+                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+                let mut stream = connection.open_bidirectional_stream().await?;
+
+                async move {
+                    stream.write_all(&local_data_port.to_be_bytes()).await?;
+                    stream.finish()?;
+
+                    let mut buf = [0u8; 2];
+                    stream.read_exact(&mut buf).await?;
+                    io::Result::Ok(u16::from_be_bytes(buf))
                 }
-                Ok(Err(e)) => {
-                    // ConfirmComplete::wait_ready failed. We should treat the handshake as failed.
-                    return Err(e);
-                }
-                Err(_elapsed) => {
-                    // Handshake timeout occurred. We should treat the handshake as failed.
-                    return Err(io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        "ConfirmComplete handshake timeout",
-                    ));
-                }
-            }
+            };
+
+            let confirm_result = ConfirmComplete::wait_ready(&mut connection);
+
+            // Run DC handshake confirmation and data port exchange in parallel.
+            // The port exchange opens a bidirectional stream where each side sends
+            // its data port as 2 big-endian bytes so the peer knows where to send datagrams.
+            let (confirm_result, port_result) = tokio::time::timeout_at(deadline, async move {
+                tokio::join!(confirm_result, port_exchange,)
+            })
+            .await
+            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "handshake timeout"))?;
+
+            confirm_result?;
+            let peer_data_port = port_result?;
+
+            // TODO: The port exchange should be replaced with a proper transport parameter
+            // or integrated into the DC handshake itself. Using map.get_raw here is safe
+            // because the HandshakeQueue deduplicates concurrent handshakes for the same
+            // peer, so the entry in the map is the one we just created above.
+            map.get_raw(peer)
+                .unwrap()
+                .set_peer_data_port(peer_data_port);
 
             // Don't wait for the connection to fully close, just wait until dc.complete to
             // drop the permit.
@@ -564,17 +626,6 @@ const REASON_COUNT: usize = 3;
 pub struct ConnectionContext {
     pub limiter_latency: Duration,
     pub reason_counts: [(HandshakeReason, usize); REASON_COUNT],
-}
-
-/// FIXME: Always encodes the idle timeout in the packed format: upper 16 bits = data port,
-/// lower 16 bits = idle timeout in seconds. If no data port is set, port 0 is encoded (which
-/// the decoder treats as "not specified" and falls back to peer + 1).
-/// See `entry::pack_data_port_and_idle_timeout`.
-fn encode_idle_timeout(data_port: Option<u16>, idle_timeout: Duration) -> Duration {
-    let port = data_port.unwrap_or(0);
-    let packed =
-        pack_data_port_and_idle_timeout(port, idle_timeout).map_or(1u64, |v| v.get() as u64);
-    Duration::from_millis(packed)
 }
 
 #[cfg(test)]

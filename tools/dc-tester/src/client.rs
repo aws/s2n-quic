@@ -2,26 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::config::{ClientConfig, WorkloadConfig};
-use s2n_quic_core::{buffer::Reader as _, stream::testing::Data};
-use s2n_quic_dc::{psk, stream::socket};
-use std::{io, net::SocketAddr, path::PathBuf, time::Duration};
-use tokio::io::AsyncWriteExt;
+use s2n_quic_core::{buffer::Reader as _, stream::testing::Data, varint::VarInt};
+use s2n_quic_dc::stream2::endpoint::Endpoint;
+use std::{io, net::SocketAddr, sync::Arc, time::Duration};
+use tokio::io::AsyncWriteExt as _;
 use tracing::{info, warn};
 
-type Subscriber = crate::psk::Subscriber;
-type Client = s2n_quic_dc::stream::client::tokio::Client<psk::client::Provider, Subscriber>;
-
 pub async fn run(
+    endpoint: Arc<Endpoint>,
     config: ClientConfig,
-    acceptor_addr: SocketAddr,
-    handshake_addr: SocketAddr,
-    trace_dir: &PathBuf,
+    server_addr: SocketAddr,
 ) -> io::Result<()> {
     info!(
         workload_count = config.workloads.len(),
-        %acceptor_addr,
-        %handshake_addr,
-        "Starting RPC test client"
+        %server_addr,
+        "Starting stream2 RPC test client"
     );
 
     if config.workloads.is_empty() {
@@ -29,21 +24,16 @@ pub async fn run(
         return Ok(());
     }
 
-    let handshake = crate::psk::client(trace_dir)?;
+    let data_port = endpoint.data_port;
 
-    let subscriber = crate::psk::subscriber(trace_dir);
-    let stats = subscriber.0.clone();
+    // Create PSK client provider with data_port
+    let handshake = crate::psk::client(data_port, endpoint.path_secret_map.clone())?;
 
-    let client: Client =
-        s2n_quic_dc::stream::client::tokio::Client::<psk::client::Provider, Subscriber>::builder()
-            .with_default_protocol(socket::Protocol::Udp)
-            .with_send_buffer(200 * 1024 * 1024)
-            .with_recv_buffer(200 * 1024 * 1024)
-            .with_send_socket_workers(crate::busy_poll::send_pool().into())
-            .with_recv_socket_workers(crate::busy_poll::recv_pool().into())
-            .build(handshake, subscriber)?;
-
+    // Create stream2 client
     let server_name = crate::psk::server_name();
+    let client = s2n_quic_dc::stream2::Client::new(endpoint, handshake, server_name);
+
+    let stats = crate::stats::Subscriber::spawn(std::time::Duration::from_secs(1));
 
     let mut handles = Vec::new();
 
@@ -55,21 +45,11 @@ pub async fn run(
         );
 
         for worker_id in 0..workload.workers {
-            let client = client.clone();
+            let mut client = client.clone();
             let workload = workload.clone();
             let stats = stats.clone();
-            let server_name = server_name.clone();
             let handle = tokio::spawn(async move {
-                run_worker(
-                    client,
-                    acceptor_addr,
-                    handshake_addr,
-                    server_name,
-                    workload,
-                    worker_id,
-                    stats,
-                )
-                .await
+                run_worker(&mut client, server_addr, workload, worker_id, stats).await
             });
             handles.push(handle);
         }
@@ -84,10 +64,8 @@ pub async fn run(
 }
 
 async fn run_worker(
-    client: Client,
-    acceptor_addr: SocketAddr,
-    handshake_addr: SocketAddr,
-    server_name: s2n_quic::server::Name,
+    client: &mut s2n_quic_dc::stream2::Client,
+    server_addr: SocketAddr,
     workload: WorkloadConfig,
     worker_id: usize,
     stats: crate::stats::Subscriber,
@@ -100,29 +78,21 @@ async fn run_worker(
 
     loop {
         stats.start_request();
-        let (bytes_sent, bytes_received, is_error) = match execute_request(
-            &client,
-            acceptor_addr,
-            handshake_addr,
-            server_name.clone(),
-            &workload,
-        )
-        .await
-        {
-            Ok((sent, received)) => (sent, received, false),
-            Err(e) => {
-                tracing::error!(
-                    workload = %workload.name,
-                    worker_id,
-                    error = %e,
-                    "Request failed"
-                );
-                (0, 0, true)
-            }
-        };
+        let (bytes_sent, bytes_received, is_error) =
+            match execute_request(client, server_addr, &workload).await {
+                Ok((sent, received)) => (sent, received, false),
+                Err(e) => {
+                    tracing::error!(
+                        workload = %workload.name,
+                        worker_id,
+                        error = %e,
+                        "Request failed"
+                    );
+                    (0, 0, true)
+                }
+            };
         stats.finish_request(bytes_sent, bytes_received, is_error);
 
-        // Delay before next request if configured
         if let Some(delay) = delay {
             tokio::time::sleep(delay).await;
         }
@@ -130,16 +100,13 @@ async fn run_worker(
 }
 
 async fn execute_request(
-    client: &Client,
-    acceptor_addr: SocketAddr,
-    handshake_addr: SocketAddr,
-    server_name: s2n_quic::server::Name,
+    client: &mut s2n_quic_dc::stream2::Client,
+    server_addr: SocketAddr,
     workload: &WorkloadConfig,
 ) -> io::Result<(u64, u64)> {
-    // Connect to the server
-    let mut stream = client
-        .connect(handshake_addr, acceptor_addr, server_name)
-        .await?;
+    // Connect to the server — handshake address is used to obtain/cache path secrets,
+    // data address is derived from the path secret entry
+    let mut stream = client.connect(server_addr, VarInt::ZERO).await?;
 
     // Write the 8-byte response size header
     stream.write_u64(workload.response_size).await?;

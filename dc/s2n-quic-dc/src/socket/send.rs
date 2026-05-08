@@ -3,7 +3,9 @@
 
 pub mod completion;
 mod socket;
+pub mod tracing;
 pub mod transmission;
 pub mod udp;
 
 pub use socket::Socket;
+pub use self::tracing::Tracing;

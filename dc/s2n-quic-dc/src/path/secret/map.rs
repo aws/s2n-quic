@@ -39,8 +39,7 @@ pub use entry::Entry;
 use store::Store;
 
 pub use entry::{
-    pack_data_port_and_idle_timeout, ApplicationData, ApplicationDataError, ApplicationPair,
-    Bidirectional, ControlPair,
+    ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, ControlPair,
 };
 pub use handshake::HandshakingPath;
 pub use peer::Peer;

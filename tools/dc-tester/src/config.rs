@@ -5,14 +5,67 @@ use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, path::Path};
 
 /// Root configuration for the RPC tester
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    #[serde(default)]
+    pub endpoint: EndpointConfig,
+
     #[serde(default)]
     pub server: ServerConfig,
 
     #[serde(default)]
     pub client: ClientConfig,
+}
+
+/// Shared endpoint configuration (applies to both client and server)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EndpointConfig {
+    /// Number of busy poll workers for the endpoint pipeline
+    #[serde(default = "EndpointConfig::default_workers")]
+    pub workers: usize,
+
+    /// Number of send sockets
+    #[serde(default = "EndpointConfig::default_send_sockets")]
+    pub send_sockets: usize,
+
+    /// Overall bandwidth limit in Gbps
+    #[serde(default = "EndpointConfig::default_bandwidth")]
+    pub bandwidth: f64,
+
+    /// Per-socket bandwidth limit in Gbps
+    #[serde(default = "EndpointConfig::default_per_socket_bandwidth")]
+    pub per_socket_bandwidth: f64,
+}
+
+impl EndpointConfig {
+    fn default_workers() -> usize {
+        9
+    }
+
+    fn default_send_sockets() -> usize {
+        64
+    }
+
+    fn default_bandwidth() -> f64 {
+        25.0
+    }
+
+    fn default_per_socket_bandwidth() -> f64 {
+        5.0
+    }
+}
+
+impl Default for EndpointConfig {
+    fn default() -> Self {
+        Self {
+            workers: Self::default_workers(),
+            send_sockets: Self::default_send_sockets(),
+            bandwidth: Self::default_bandwidth(),
+            per_socket_bandwidth: Self::default_per_socket_bandwidth(),
+        }
+    }
 }
 
 impl Config {
@@ -28,7 +81,8 @@ impl Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServerConfig {
-    /// Address to listen on (both acceptor and handshake)
+    /// The server's address — clients use this to connect.
+    /// Data routing is discovered automatically.
     #[serde(default = "ServerConfig::default_address")]
     pub address: SocketAddr,
 }
@@ -36,12 +90,6 @@ pub struct ServerConfig {
 impl ServerConfig {
     fn default_address() -> SocketAddr {
         "[::]:4433".parse().unwrap()
-    }
-
-    pub fn handshake_addr(&self) -> SocketAddr {
-        let mut addr = self.address;
-        addr.set_port(addr.port() - 1);
-        addr
     }
 }
 

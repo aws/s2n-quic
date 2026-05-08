@@ -92,8 +92,8 @@ use crate::{
     flow,
     packet::datagram::{partial::PartialDatagram, QueuePair, RoutingInfo},
     path::secret::map::Entry as PathSecretEntry,
-    stream2::endpoint::{reset_error::ResetError, StreamMsg},
     socket::channel,
+    stream2::endpoint::{reset_error::ResetError, StreamMsg},
 };
 use s2n_quic_core::{
     buffer::{
@@ -141,7 +141,8 @@ struct Inner {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Status {
-    /// Awaiting client validation (server-side pending streams)
+    /// Server-only: awaiting client validation before releasing credits.
+    /// Buffers incoming data but blocks reads until validation completes.
     PendingValidation,
     /// Flow is open for reads
     #[default]
@@ -175,35 +176,15 @@ impl Reader {
         wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
         path_secret_entry: Arc<PathSecretEntry>,
         stream_id: VarInt,
-        stream_rx: flow::queue::Stream<StreamMsg, crate::stream2::endpoint::ControlMsg, flow::Handle>,
+        stream_rx: flow::queue::Stream<
+            StreamMsg,
+            crate::stream2::endpoint::ControlMsg,
+            flow::Handle,
+        >,
     ) -> Self {
         let parameters = path_secret_entry.parameters();
-        let window_size = parameters.local_recv_max_data.as_u64();
-        let remote_max_data = parameters.remote_max_data;
-
-        Self(Box::new(Inner {
-            wheel_tx,
-            stream_rx,
-            path_secret_entry,
-            stream_id,
-            reassembler: Reassembler::new(),
-            remote_max_data,
-            window_size,
-            status: Status::Open, // Client starts Open after connect
-            reset_error_code: None,
-        }))
-    }
-
-    /// Create a new Reader for a validated server connection
-    pub(crate) fn new_server(
-        wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
-        path_secret_entry: Arc<PathSecretEntry>,
-        stream_id: VarInt,
-        stream_rx: flow::queue::Stream<StreamMsg, crate::stream2::endpoint::ControlMsg, flow::Handle>,
-    ) -> Self {
-        let parameters = path_secret_entry.parameters();
-        let window_size = parameters.local_recv_max_data.as_u64();
-        let remote_max_data = parameters.remote_max_data;
+        let remote_max_data = parameters.local_recv_max_data;
+        let window_size = remote_max_data.as_u64();
 
         Self(Box::new(Inner {
             wheel_tx,
@@ -218,18 +199,19 @@ impl Reader {
         }))
     }
 
-    /// Create a new Reader for a server connection pending validation
-    ///
-    /// The stream buffers incoming data but reads will block until `validate()` completes.
-    pub(crate) fn new_server_pending(
+    /// Create a new Reader for a validated server connection
+    pub(crate) fn new_server(
         wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
         path_secret_entry: Arc<PathSecretEntry>,
         stream_id: VarInt,
-        stream_rx: flow::queue::Stream<StreamMsg, crate::stream2::endpoint::ControlMsg, flow::Handle>,
+        stream_rx: flow::queue::Stream<
+            StreamMsg,
+            crate::stream2::endpoint::ControlMsg,
+            flow::Handle,
+        >,
     ) -> Self {
         let parameters = path_secret_entry.parameters();
         let window_size = parameters.local_recv_max_data.as_u64();
-        let remote_max_data = parameters.remote_max_data;
 
         Self(Box::new(Inner {
             wheel_tx,
@@ -237,7 +219,36 @@ impl Reader {
             path_secret_entry,
             stream_id,
             reassembler: Reassembler::new(),
-            remote_max_data,
+            remote_max_data: VarInt::ZERO,
+            window_size,
+            status: Status::Open,
+            reset_error_code: None,
+        }))
+    }
+
+    /// Create a new Reader for a server connection pending validation
+    ///
+    /// The stream buffers incoming data but blocks reads until `validate()` completes.
+    pub(crate) fn new_server_pending(
+        wheel_tx: channel::intrusive_queue::sync::Sender<Batch>,
+        path_secret_entry: Arc<PathSecretEntry>,
+        stream_id: VarInt,
+        stream_rx: flow::queue::Stream<
+            StreamMsg,
+            crate::stream2::endpoint::ControlMsg,
+            flow::Handle,
+        >,
+    ) -> Self {
+        let parameters = path_secret_entry.parameters();
+        let window_size = parameters.local_recv_max_data.as_u64();
+
+        Self(Box::new(Inner {
+            wheel_tx,
+            stream_rx,
+            path_secret_entry,
+            stream_id,
+            reassembler: Reassembler::new(),
+            remote_max_data: VarInt::ZERO,
             window_size,
             status: Status::PendingValidation,
             reset_error_code: None,
@@ -330,44 +341,30 @@ impl Inner {
         }
 
         if self.status.is_complete() {
-            // EOF
             return Poll::Ready(Ok(0));
         }
 
         // Process incoming messages to fill the reassembler
         let _ = self.poll_stream_rx(cx)?;
 
-        // Try to read from the reassembler
-        let initial_capacity = buf.remaining_capacity();
-        if initial_capacity == 0 {
-            return Poll::Ready(Ok(0));
-        }
-
         // Copy from reassembler into destination buffer
-        if !self.reassembler.is_empty() {
-            let bytes_read = {
-                let mut tracker = buf.track_write();
-                self.reassembler.infallible_copy_into(&mut tracker);
-                tracker.written_len()
-            };
+        let bytes_read = if buf.remaining_capacity() > 0 {
+            let mut tracker = buf.track_write();
+            self.reassembler.infallible_copy_into(&mut tracker);
+            tracker.written_len()
+        } else {
+            0
+        };
 
-            if bytes_read > 0 {
-                // Check if we should send a MAX_DATA update based on consumed offset
-                self.maybe_send_max_data()?;
+        self.maybe_send_max_data()?;
 
-                // Check if we've reached completion
-                if self.reassembler.is_reading_complete() {
-                    self.status.on_complete().ok();
-                }
-
-                return Poll::Ready(Ok(bytes_read));
-            }
-        }
-
-        // No data available right now
         if self.reassembler.is_reading_complete() {
             self.status.on_complete().ok();
-            Poll::Ready(Ok(0))
+            return Poll::Ready(Ok(bytes_read));
+        }
+
+        if bytes_read > 0 {
+            Poll::Ready(Ok(bytes_read))
         } else {
             Poll::Pending
         }
@@ -431,7 +428,8 @@ impl Inner {
                                     "Failed to write to reassembler"
                                 );
                                 // Protocol error - send reset
-                                let error_code = crate::stream2::endpoint::reset_error::FRAME_DECODE_ERROR;
+                                let error_code =
+                                    crate::stream2::endpoint::reset_error::FRAME_DECODE_ERROR;
                                 self.reset_error_code = Some(error_code);
                                 self.status.on_reset().ok();
                                 let _ = self.send_reset_packet(
@@ -503,6 +501,15 @@ impl Inner {
 
             self.send_max_data(new_max_data)?;
             self.remote_max_data = new_max_data;
+        } else {
+            tracing::trace!(
+                stream_id = self.stream_id.as_u64(),
+                consumed,
+                current_max,
+                threshold,
+                window_size = self.window_size,
+                "maybe_send_max_data: below threshold, not sending"
+            );
         }
 
         Ok(())

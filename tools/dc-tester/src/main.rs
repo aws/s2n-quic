@@ -4,6 +4,7 @@
 mod busy_poll;
 mod client;
 mod config;
+mod endpoint;
 mod psk;
 mod server;
 mod stats;
@@ -34,7 +35,7 @@ enum Commands {
         #[arg(short, long)]
         config: Option<PathBuf>,
 
-        /// Override the server bind address
+        /// Override the server address
         #[arg(short, long)]
         address: Option<SocketAddr>,
     },
@@ -44,7 +45,7 @@ enum Commands {
         #[arg(short, long)]
         config: Option<PathBuf>,
 
-        /// Server acceptor address to connect to (e.g., [::1]:4433)
+        /// Server address to connect to (e.g., [::1]:4433)
         #[arg(short, long)]
         server_addr: Option<SocketAddr>,
     },
@@ -60,7 +61,6 @@ async fn main() -> std::io::Result<()> {
         eprintln!("_RJEM_MALLOC_CONF is NOT set");
     }
 
-    // Check if profiling is actually enabled
     match tikv_jemalloc_ctl::profiling::prof::read() {
         Ok(enabled) => eprintln!("jemalloc profiling enabled: {}", enabled),
         Err(e) => eprintln!("jemalloc profiling check failed: {}", e),
@@ -70,56 +70,43 @@ async fn main() -> std::io::Result<()> {
         Err(e) => eprintln!("jemalloc prof_final check failed: {}", e),
     }
     match tikv_jemalloc_ctl::profiling::lg_prof_interval::read() {
-        Ok(interval) => eprintln!(
-            "jemalloc lg_prof_interval: {} ({}MB)",
-            interval,
-            1 << (interval.max(0) - 20)
-        ),
+        Ok(interval) => {
+            let mb = interval
+                .checked_sub(20)
+                .and_then(|v| 1u64.checked_shl(v as u32))
+                .unwrap_or(0);
+            eprintln!("jemalloc lg_prof_interval: {} ({}MB)", interval, mb);
+        }
         Err(e) => eprintln!("jemalloc lg_prof_interval check failed: {}", e),
     }
 
     let cli = Cli::parse();
 
-    match cli.command {
-        Commands::Server { config, address } => {
-            let mut config = if let Some(path) = config {
-                config::Config::load(&path)?.server
+    let config = match &cli.command {
+        Commands::Server { config, .. } | Commands::Client { config, .. } => {
+            if let Some(path) = config {
+                config::Config::load(path)?
             } else {
-                config::ServerConfig::default()
-            };
-
-            if let Some(addr) = address {
-                config.address = addr;
+                config::Config::default()
             }
-
-            server::run(config, &cli.trace_dir).await
         }
-        Commands::Client {
-            config,
-            server_addr,
-        } => {
+    };
+
+    let spawner = busy_poll::create_pool(config.endpoint.workers);
+    let data_bind: SocketAddr = "[::]:0".parse().unwrap();
+    let endpoint = endpoint::create(&config.endpoint, data_bind, &spawner)?;
+
+    match cli.command {
+        Commands::Server { address, .. } => {
+            let server_addr = address.unwrap_or(config.server.address);
+            server::run(endpoint, server_addr).await
+        }
+        Commands::Client { server_addr, .. } => {
             // wait for the server to boot
             tokio::time::sleep(core::time::Duration::from_secs(1)).await;
 
-            let config = if let Some(path) = config {
-                config::Config::load(&path)?
-            } else {
-                config::Config {
-                    server: config::ServerConfig::default(),
-                    client: config::ClientConfig::default(),
-                }
-            };
-
-            let (acceptor_addr, handshake_addr) = if let Some(addr) = server_addr {
-                let mut handshake = addr;
-                handshake.set_port(addr.port() - 1);
-                (addr, handshake)
-            } else {
-                let server_addr = config.server.address;
-                (server_addr, config.server.handshake_addr())
-            };
-
-            client::run(config.client, acceptor_addr, handshake_addr, &cli.trace_dir).await
+            let server_addr = server_addr.unwrap_or(config.server.address);
+            client::run(endpoint, config.client, server_addr).await
         }
     }
 }

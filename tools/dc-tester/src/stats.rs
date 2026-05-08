@@ -194,14 +194,14 @@ impl Subscriber {
             inner: Arc::new(StatsInner::new()),
         };
 
-        let inner = subscriber.inner.clone();
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(interval);
-            loop {
-                tick.tick().await;
-                inner.report();
-            }
-        });
+        // let inner = subscriber.inner.clone();
+        // tokio::spawn(async move {
+        //     let mut tick = tokio::time::interval(interval);
+        //     loop {
+        //         tick.tick().await;
+        //         inner.report();
+        //     }
+        // });
 
         subscriber
     }

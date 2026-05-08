@@ -120,8 +120,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
         self
     }
 
-    /// FIXME: Hack - sets the local data port to advertise to the peer via the
-    /// `max_idle_timeout` transport parameter. See `entry::pack_data_port_and_idle_timeout`.
+    /// Sets the local data port to advertise to the peer via post-handshake port exchange.
     pub fn with_data_port(mut self, port: u16) -> Self {
         self.data_port = Some(port);
         self

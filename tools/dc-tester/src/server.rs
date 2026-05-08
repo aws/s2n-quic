@@ -1,47 +1,43 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::config::ServerConfig;
-use s2n_quic_core::stream::testing::Data;
-use s2n_quic_dc::psk;
-use std::{io, path::PathBuf};
-use tokio::io::AsyncReadExt;
+use s2n_quic_core::{stream::testing::Data, varint::VarInt};
+use s2n_quic_dc::stream2::endpoint::Endpoint;
+use std::{io, net::SocketAddr, sync::Arc};
+use tokio::io::AsyncReadExt as _;
 use tracing::{error, info};
 
-type Subscriber = crate::psk::Subscriber;
-type Server = s2n_quic_dc::stream::server::tokio::Server<psk::server::Provider, Subscriber>;
+pub async fn run(
+    endpoint: Arc<Endpoint>,
+    address: SocketAddr,
+) -> io::Result<()> {
+    info!("Starting stream2 RPC test server");
 
-pub async fn run(config: ServerConfig, trace_dir: &PathBuf) -> io::Result<()> {
-    info!("Starting RPC test server");
+    let data_port = endpoint.data_port;
 
-    // Handshake (QUIC) address uses port - 1 to avoid conflict with the acceptor port
-    let mut handshake_bind = config.address;
-    handshake_bind.set_port(config.address.port() - 1);
-    let handshake = crate::psk::server(handshake_bind, trace_dir).await?;
+    // Create PSK server provider — address is the well-known server address,
+    // data_port is advertised to peers so they know where to send data
+    let handshake =
+        crate::psk::server(address, data_port, endpoint.path_secret_map.clone()).await?;
 
-    let subscriber = crate::psk::subscriber(trace_dir);
-    let stats = subscriber.0.clone();
+    // Create stream2 server
+    let server = s2n_quic_dc::stream2::Server::new(endpoint, handshake);
 
-    let server: Server =
-        s2n_quic_dc::stream::server::tokio::Server::<psk::server::Provider, Subscriber>::builder()
-            .with_address(config.address)
-            .with_send_buffer(200 * 1024 * 1024)
-            .with_recv_buffer(200 * 1024 * 1024)
-            .with_send_socket_workers(crate::busy_poll::send_pool().into())
-            .with_recv_socket_workers(crate::busy_poll::recv_pool().into())
-            .build(handshake, subscriber)?;
-
-    let acceptor_addr = server.acceptor_addr()?;
-    let handshake_addr = server.handshake_addr()?;
+    // Register channel acceptor with ID 0
+    let accept_rx = server.register_acceptor_channel(VarInt::ZERO, 1024)?;
 
     info!(
-        %acceptor_addr,
-        %handshake_addr,
+        %address,
+        data_port,
         "Server listening"
     );
 
+    let stats = crate::stats::Subscriber::spawn(std::time::Duration::from_secs(1));
+
     loop {
-        let (stream, peer_addr) = server.accept().await?;
+        let stream = accept_rx.recv_front().await.map_err(|_| {
+            io::Error::new(io::ErrorKind::ConnectionAborted, "acceptor channel closed")
+        })?;
 
         let stats = stats.clone();
         tokio::spawn(async move {
@@ -49,7 +45,7 @@ pub async fn run(config: ServerConfig, trace_dir: &PathBuf) -> io::Result<()> {
             let (bytes_received, bytes_sent, is_error) = match handle_connection(stream).await {
                 Ok((recv, sent)) => (recv, sent, false),
                 Err(e) => {
-                    error!(%peer_addr, error = %e, "Error handling connection");
+                    error!(error = %e, "Error handling connection");
                     (0, 0, true)
                 }
             };
@@ -58,9 +54,7 @@ pub async fn run(config: ServerConfig, trace_dir: &PathBuf) -> io::Result<()> {
     }
 }
 
-async fn handle_connection(
-    mut stream: s2n_quic_dc::stream::application::Stream<Subscriber>,
-) -> io::Result<(u64, u64)> {
+async fn handle_connection(mut stream: s2n_quic_dc::stream2::Stream) -> io::Result<(u64, u64)> {
     // Read the 8-byte response size header
     let response_size = stream.read_u64().await?;
     let mut total_received = 8u64;

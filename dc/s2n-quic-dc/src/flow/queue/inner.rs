@@ -121,19 +121,20 @@ impl<T> Queue<T> {
 
     /// Push an entry into the queue.
     ///
-    /// `observe` indicates whether this push should count as a first observation
-    /// (caller has a remote queue ID to store). Returns `Ok(true)` if this push
-    /// transitioned the queue to "observed" for the first time — the caller should
-    /// then perform the one-time store of the remote queue ID on the descriptor.
+    /// `observe` is called inside the lock when `HAS_OBSERVED` is not yet set. If it
+    /// returns `true`, the flag is set and the caller should have performed any
+    /// side-effects (e.g. storing the remote queue ID) within the callback. This
+    /// guarantees the side-effect is visible before the receiver can pop the entry.
     #[inline]
-    pub fn push<F>(
+    pub fn push<F, O>(
         &self,
         entry: intrusive_queue::Entry<T>,
-        observe: bool,
+        observe: O,
         validate: F,
-    ) -> Result<bool, Error<intrusive_queue::Entry<T>>>
+    ) -> Result<(), Error<intrusive_queue::Entry<T>>>
     where
         F: FnOnce() -> bool,
+        O: FnOnce() -> bool,
     {
         let mut inner = self.lock()?;
         ensure!(
@@ -146,8 +147,7 @@ impl<T> Queue<T> {
         );
         ensure!(validate(), Err(Error::FullyClosed(entry)));
 
-        let first_observation = observe && !inner.flags.contains(Flags::HAS_OBSERVED);
-        if first_observation {
+        if !inner.flags.contains(Flags::HAS_OBSERVED) && observe() {
             inner.flags.insert(Flags::HAS_OBSERVED);
         }
 
@@ -158,7 +158,7 @@ impl<T> Queue<T> {
             waker.wake();
         }
 
-        Ok(first_observation)
+        Ok(())
     }
 
     #[inline]

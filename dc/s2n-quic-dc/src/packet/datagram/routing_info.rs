@@ -208,6 +208,9 @@ impl RoutingInfo {
             }
             | Self::FlowInitValidate {
                 source_sender_id, ..
+            }
+            | Self::FlowValidateRequest {
+                source_sender_id, ..
             } => *source_sender_id != VarInt::MAX,
             _ => false,
         }
@@ -314,7 +317,7 @@ impl RoutingInfo {
     /// Set the source sender ID in place (mutates self)
     ///
     /// For FlowInit and FlowInitValidate packets, this enforces stickiness with debug assertions.
-    fn set_source_sender_id(&mut self, new_source_sender_id: VarInt) {
+    pub(crate) fn set_source_sender_id(&mut self, new_source_sender_id: VarInt) {
         match self {
             Self::None => {}
             // Sticky packets - enforce that sender_id doesn't change after first assignment
@@ -322,6 +325,9 @@ impl RoutingInfo {
                 source_sender_id, ..
             }
             | Self::FlowInitValidate {
+                source_sender_id, ..
+            }
+            | Self::FlowValidateRequest {
                 source_sender_id, ..
             } => {
                 debug_assert!(
@@ -333,10 +339,7 @@ impl RoutingInfo {
                 *source_sender_id = new_source_sender_id;
             }
             // Non-sticky packets - can change sender_id freely
-            Self::FlowValidateRequest {
-                source_sender_id, ..
-            }
-            | Self::FlowData {
+            Self::FlowData {
                 source_sender_id, ..
             }
             | Self::FlowControl {

@@ -42,7 +42,7 @@ macro_rules! impl_recv {
             #[inline]
             pub fn push(&self, value: intrusive_queue::Entry<$type_param>) {
                 unsafe {
-                    let res = self.descriptor.$field().push(value, false, || true);
+                    let res = self.descriptor.$field().push(value, || false, || true);
                     debug_assert!(res.is_ok());
                     probes::on_send(self.descriptor.queue_id(), $half, true);
                 }
@@ -161,16 +161,18 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
         F: FnOnce(&Key) -> bool,
     {
         unsafe {
-            let first =
-                self.descriptor
-                    .stream_queue()
-                    .push(entry, remote_queue_id.is_some(), || {
-                        validate(self.descriptor.key())
-                    })?;
-            if first {
-                self.descriptor
-                    .set_remote_queue_id(remote_queue_id.unwrap());
-            }
+            self.descriptor.stream_queue().push(
+                entry,
+                || {
+                    if let Some(id) = remote_queue_id {
+                        self.descriptor.set_remote_queue_id(id);
+                        true
+                    } else {
+                        false
+                    }
+                },
+                || validate(self.descriptor.key()),
+            )?;
             probes::on_send(self.descriptor.queue_id(), Half::Stream, false);
             Ok(())
         }
@@ -187,16 +189,18 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
         F: FnOnce(&Key) -> bool,
     {
         unsafe {
-            let first =
-                self.descriptor
-                    .control_queue()
-                    .push(entry, remote_queue_id.is_some(), || {
-                        validate(self.descriptor.key())
-                    })?;
-            if first {
-                self.descriptor
-                    .set_remote_queue_id(remote_queue_id.unwrap());
-            }
+            self.descriptor.control_queue().push(
+                entry,
+                || {
+                    if let Some(id) = remote_queue_id {
+                        self.descriptor.set_remote_queue_id(id);
+                        true
+                    } else {
+                        false
+                    }
+                },
+                || validate(self.descriptor.key()),
+            )?;
             probes::on_send(self.descriptor.queue_id(), Half::Control, false);
             Ok(())
         }

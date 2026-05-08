@@ -90,8 +90,8 @@ use crate::{
         },
     },
     path::secret::map::Entry as PathSecretEntry,
-    stream2::endpoint::{reset_error::ResetError, ControlMsg},
     socket::channel,
+    stream2::endpoint::{reset_error::ResetError, ControlMsg},
 };
 use s2n_quic_core::{
     buffer::{self, writer::Storage},
@@ -119,8 +119,11 @@ struct Inner {
     /// Receiver for completion notifications from the pipeline
     completion_rx: channel::intrusive_queue::datagram_completion::Receiver<PartialDatagram>,
     /// Control-side channel for receiving MAX_DATA frames
-    control_rx:
-        flow::queue::Control<crate::stream2::endpoint::StreamMsg, crate::stream2::endpoint::ControlMsg, flow::Handle>,
+    control_rx: flow::queue::Control<
+        crate::stream2::endpoint::StreamMsg,
+        crate::stream2::endpoint::ControlMsg,
+        flow::Handle,
+    >,
     /// Path secret entry providing MTU and crypto material
     path_secret_entry: Arc<PathSecretEntry>,
     /// Cached packet size (MTU) for fragmentation
@@ -388,6 +391,10 @@ impl Inner {
 
         // Wait for flow establishment if still pending
         if self.status.is_flow_init_sent() {
+            tracing::trace!(
+                stream_id = self.stream_id.as_u64(),
+                "Writer blocked in FlowInitSent - waiting for remote MAX_DATA"
+            );
             return Poll::Pending; // poll_remote_budget will transition to Open
         }
 
@@ -652,13 +659,20 @@ impl Inner {
         // NOTE: `poll_swap` both drains and registers the waker in one go so no need to loop
         match self.control_rx.poll_swap(cx) {
             Poll::Ready(Ok(queue)) => {
+                tracing::debug!(
+                    stream_id = self.stream_id.as_u64(),
+                    status = ?self.status,
+                    msg_count = queue.len(),
+                    "poll_remote_budget received messages"
+                );
                 // Process all control messages in the queue
                 for msg in queue {
                     match msg.into_inner() {
                         ControlMsg::Frames { mut payload } => {
                             // Parse control frames - if this fails, send reset to peer
                             if self.handle_control_frames(&mut payload).is_err() {
-                                let error_code = crate::stream2::endpoint::reset_error::FRAME_DECODE_ERROR;
+                                let error_code =
+                                    crate::stream2::endpoint::reset_error::FRAME_DECODE_ERROR;
                                 self.reset_error_code = Some(error_code);
                                 self.status.on_shutdown().ok();
 
@@ -678,6 +692,7 @@ impl Inner {
                             // Transition to Open once we receive the first control message
                             // (the descriptor already has the remote_queue_id from the dispatcher)
                             if self.status.on_flow_established().is_ok() {
+                                debug_assert!(self.control_rx.remote_queue_id().is_some());
                                 debug!(stream_id = self.stream_id.as_u64(), "Flow established");
                             }
                         }
@@ -701,7 +716,14 @@ impl Inner {
                 io::ErrorKind::ConnectionReset,
                 "control channel closed",
             ))),
-            Poll::Pending => Poll::Pending,
+            Poll::Pending => {
+                tracing::trace!(
+                    stream_id = self.stream_id.as_u64(),
+                    status = ?self.status,
+                    "poll_remote_budget pending - no control messages"
+                );
+                Poll::Pending
+            }
         }
     }
 

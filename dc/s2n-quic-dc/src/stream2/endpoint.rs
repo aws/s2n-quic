@@ -9,6 +9,8 @@
 //!
 //! This module provides shared pipeline building blocks.
 
+pub use s2n_quic_platform::features::Gso;
+
 use crate::{
     acceptor,
     busy_poll::clock::Timer as BusyPollClock,
@@ -34,7 +36,7 @@ use crate::{
         rate::Rate,
         recv::router::Router,
     },
-    stream::socket::{BusyPoll, Gso, Options, ReusePort},
+    stream::socket::{BusyPoll, Gso as GsoSocket, Options, ReusePort},
     stream2::LocalSpawner as _,
 };
 use bytes::{Bytes, BytesMut};
@@ -382,12 +384,14 @@ impl CounterRegistry {
 /// Uses source_sender_id instead of key_id because it's stable across key rotations.
 #[inline]
 fn hash_credentials_and_sender(credentials: &Credentials, source_sender_id: VarInt) -> u64 {
-    // Start with credentials.id which has good entropy
-    let mut hash = credentials.id.to_hash();
+    hash_id_and_sender(&credentials.id, source_sender_id)
+}
 
-    // Mix in source_sender_id using a simple but effective mixing function
-    // This ensures different senders from the same peer distribute across workers
-    let sender_id = source_sender_id.as_u64();
+#[inline]
+fn hash_id_and_sender(id: &credentials::Id, sender_id: VarInt) -> u64 {
+    let mut hash = id.to_hash();
+
+    let sender_id = sender_id.as_u64();
     hash ^= sender_id.wrapping_mul(0x9e3779b97f4a7c15); // Golden ratio
     hash = hash.rotate_left(32) ^ sender_id;
     hash = hash.wrapping_mul(0x517cc1b727220a95);
@@ -629,8 +633,9 @@ fn process_ack_ranges(
                 *bytes_acked += tx_info.sent_bytes as usize;
             }
 
-            tracing::debug!(packet_number = num.as_u64(), "Packet ACKed");
+            tracing::trace!(packet_number = num.as_u64(), "Packet ACKed");
 
+            entry.status = crate::packet::datagram::partial::TransmissionStatus::Acknowledged;
             queue_range.push_back(entry);
         }
 
@@ -816,6 +821,7 @@ fn process_datagram<Clk>(
     response_tx: &mut impl channel::UnboundedSender<Queue<PartialDatagram>>,
     queue_dispatcher: &mut queue::Dispatch<StreamMsg, ControlMsg, flow::Handle>,
     clock: &Clk,
+    num_send_sockets: usize,
 ) -> Result<(), ProcessError>
 where
     Clk: s2n_quic_core::time::Clock + ?Sized,
@@ -952,7 +958,7 @@ where
                             // Dispatch to the acceptor
                             match acceptor_registry.dispatch(acceptor_id, flow_init) {
                                 Ok(()) => {
-                                    tracing::info!(
+                                    tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
                                         acceptor_id = acceptor_id.as_u64(),
@@ -977,7 +983,7 @@ where
                                     });
                                 }
                                 Err(acceptor::DispatchError::Reset { reset_code }) => {
-                                    tracing::info!(
+                                    tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
                                         acceptor_id = acceptor_id.as_u64(),
@@ -1062,7 +1068,7 @@ where
                             // Dispatch as pending since we can't guarantee it's not a duplicate
                             match acceptor_registry.dispatch_pending(acceptor_id, flow_init) {
                                 Ok(acceptor::PendingAction::Accepted) => {
-                                    tracing::info!(
+                                    tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
                                         acceptor_id = acceptor_id.as_u64(),
@@ -1086,7 +1092,7 @@ where
                                     };
 
                                     response_routing = Some(RoutingInfo::FlowValidateRequest {
-                                        source_sender_id: VarInt::ZERO,
+                                        source_sender_id: VarInt::MAX,
                                         dest_sender_id: source_sender_id,
                                         queue_pair,
                                         attempt_id,
@@ -1094,7 +1100,7 @@ where
                                     });
                                 }
                                 Ok(acceptor::PendingAction::Reject { reset_code }) => {
-                                    tracing::info!(
+                                    tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
                                         acceptor_id = acceptor_id.as_u64(),
@@ -1127,7 +1133,7 @@ where
                                     });
                                 }
                                 Err(acceptor::DispatchError::Reset { reset_code }) => {
-                                    tracing::info!(
+                                    tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
                                         acceptor_id = acceptor_id.as_u64(),
@@ -1248,7 +1254,7 @@ where
                         stream_entry,
                     ) {
                         Ok(()) => {
-                            tracing::info!(
+                            tracing::debug!(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 queue_id = local_queue_id.as_u64(),
@@ -1544,8 +1550,12 @@ where
     // Push response packets to channel for batching
     let mut entries = Queue::new();
 
+    let local_sender_id = {
+        let hash = hash_id_and_sender(&credentials.id, source_sender_id);
+        VarInt::new(hash % num_send_sockets as u64).unwrap()
+    };
     let ack_routing_info = packet::control::RoutingInfo::Sender {
-        source_sender_id: VarInt::ZERO,
+        source_sender_id: local_sender_id,
         dest_sender_id: source_sender_id,
     };
 
@@ -1555,7 +1565,8 @@ where
     }
 
     // Send response packet if needed (FlowValidateRequest, FlowReset, etc.)
-    if let Some(routing) = response_routing {
+    if let Some(mut routing) = response_routing {
+        routing.set_source_sender_id(local_sender_id);
         let packet = PartialDatagram::new_datagram(
             routing,
             crate::byte_vec::ByteVec::new(), // No application header
@@ -1693,7 +1704,7 @@ enum AttemptDedupError {
 
 /// Cached crypto state and ACK tracking for a single sender
 ///
-/// This is keyed by (Credentials, source_sender_id) because ACK spaces and
+/// This is keyed by (credentials.id, source_sender_id) because ACK spaces and
 /// deduplication windows are per-sender, not per-peer.
 struct SenderState {
     /// Path secret entry for this peer
@@ -1818,10 +1829,11 @@ impl SenderState {
     }
 }
 
-/// Key for sender state lookup
+/// Key for sender state lookup — keyed by peer identity (stable) + sender_id,
+/// NOT by full Credentials (which includes the per-packet key_id).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct SenderKey {
-    credentials: Credentials,
+    id: credentials::Id,
     sender_id: VarInt,
 }
 
@@ -1831,16 +1843,19 @@ struct SenderStateCache {
     senders: std::collections::HashMap<SenderKey, SenderState>,
     /// Idle timeout for sender states
     idle_timeout: Duration,
+    worker_id: usize,
 }
 
 impl SenderStateCache {
-    fn new(idle_timeout: Duration) -> Self {
+    fn new(idle_timeout: Duration, worker_id: usize) -> Self {
         Self {
             senders: std::collections::HashMap::new(),
             idle_timeout,
+            worker_id,
         }
     }
 
+    #[track_caller]
     fn get_or_insert<Clk>(
         &mut self,
         credentials: &Credentials,
@@ -1853,7 +1868,7 @@ impl SenderStateCache {
         Clk: s2n_quic_core::time::Clock + ?Sized,
     {
         let key = SenderKey {
-            credentials: *credentials,
+            id: credentials.id,
             sender_id,
         };
 
@@ -1862,6 +1877,7 @@ impl SenderStateCache {
             hash_map::Entry::Occupied(entry) => entry.into_mut(),
             hash_map::Entry::Vacant(entry) => {
                 // Slow path: derive opener from map
+                tracing::debug!(%credentials, %sender_id, caller = %core::panic::Location::caller(), worker_id = self.worker_id, "opener_for_credentials");
                 let (opener, path_entry) = path_secret_map.opener_for_credentials(
                     credentials,
                     None, // queue_id is None for datagrams
@@ -1967,6 +1983,7 @@ where
     R: channel::Receiver<Entry<Batch<Ctx>>>,
 {
     let local_addr = socket.local_addr().unwrap();
+    let socket = socket::send::Tracing(socket);
 
     let rx = channel::SocketSender::new(rx, socket);
     let rx = channel::InspectErr::new(rx, |(error, batch)| {
@@ -1996,14 +2013,12 @@ struct SocketPathContexts {
             Rc<RefCell<socket::channel::PathContext<crate::crypto::awslc::seal::Application>>>,
         >,
     >,
-    max_datagram_size: u16,
 }
 
 impl SocketPathContexts {
-    fn new(max_datagram_size: u16) -> Self {
+    fn new() -> Self {
         Self {
             contexts: RefCell::new(std::collections::HashMap::new()),
-            max_datagram_size,
         }
     }
 
@@ -2022,8 +2037,8 @@ impl SocketPathContexts {
         // Create new context - call reusable_sealer() only once
         let (sealer, credentials) = entry.reusable_sealer();
 
-        // Create a new CCA controller
-        let cca = congestion::Controller::new(self.max_datagram_size);
+        // Create a new CCA controller using the entry's negotiated MTU
+        let cca = congestion::Controller::new(entry.max_datagram_size());
 
         // Create a new RTT estimator
         let rtt_estimator = s2n_quic_core::recovery::RttEstimator::new(Duration::from_millis(2));
@@ -2081,7 +2096,7 @@ pub fn create_send_sockets(
     num_sockets: usize,
     mut bind_addr: SocketAddr,
     gso: features::Gso,
-) -> io::Result<Vec<Gso<BusyPoll<std::net::UdpSocket>>>> {
+) -> io::Result<Vec<GsoSocket<BusyPoll<std::net::UdpSocket>>>> {
     let mut sockets = Vec::with_capacity(num_sockets);
 
     // Bind to the address with port 0 to get an ephemeral port
@@ -2097,7 +2112,7 @@ pub fn create_send_sockets(
 
         // Wrap with busy poll support then GSO
         let socket = BusyPoll(socket);
-        let socket = Gso(socket, gso.clone());
+        let socket = GsoSocket(socket, gso.clone());
         sockets.push(socket);
     }
 
@@ -2157,10 +2172,11 @@ pub struct Endpoint {
     pub acceptor_registry: acceptor::Registry<FlowInit>,
     /// Endpoint-wide stream ID counter
     pub next_stream_id: std::sync::atomic::AtomicU64,
+    /// The port that recv sockets are bound to (advertised to peers via PSK handshake)
+    pub data_port: u16,
 }
 
 pub struct EndpointConfig<'a, S> {
-    pub packet_size: u16,
     pub overall_send_rate: Rate,
     pub per_socket_send_rate: Rate,
     pub spawner: &'a S,
@@ -2218,7 +2234,6 @@ where
     S: crate::stream2::Spawner,
 {
     let EndpointConfig {
-        packet_size,
         overall_send_rate,
         per_socket_send_rate,
         spawner,
@@ -2398,8 +2413,10 @@ where
 
         spawner.spawn_local(busy_worker_idx, move |mut spawner| {
             // Create per-worker state
-            let shared_sender_cache =
-                Rc::new(RefCell::new(SenderStateCache::new(path_idle_timeout)));
+            let shared_sender_cache = Rc::new(RefCell::new(SenderStateCache::new(
+                path_idle_timeout,
+                worker.id,
+            )));
 
             // Map sender_id to path contexts for control packet processing
             // Control worker needs to look up contexts for all sockets on this worker
@@ -2560,7 +2577,7 @@ where
                 let SendSocketInfo { sender_id, socket } = socket_info;
 
                 // Create per-socket path contexts
-                let socket_contexts = Rc::new(SocketPathContexts::new(packet_size));
+                let socket_contexts = Rc::new(SocketPathContexts::new());
 
                 // Register this socket's contexts for control packet processing
                 sender_contexts
@@ -2788,6 +2805,7 @@ where
                                 &mut response_tx,
                                 &mut queue_dispatcher,
                                 &clock,
+                                num_send_sockets,
                             )
                         }
                     });
@@ -3015,5 +3033,6 @@ where
         queue_allocator: allocator,
         acceptor_registry,
         next_stream_id: std::sync::atomic::AtomicU64::new(0),
+        data_port: source_control_port,
     }
 }

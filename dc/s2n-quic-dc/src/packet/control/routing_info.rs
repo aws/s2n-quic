@@ -64,6 +64,19 @@ impl RoutingInfo {
             },
         }
     }
+
+    /// Returns true if this control packet requires sticky sender routing.
+    ///
+    /// When source_sender_id is set to a value other than VarInt::MAX (the
+    /// sentinel for "no preference"), it indicates a precomputed target send socket.
+    pub fn requires_sticky_sender_id(&self) -> bool {
+        match self {
+            Self::Sender {
+                source_sender_id, ..
+            } => *source_sender_id != VarInt::MAX,
+            Self::None => false,
+        }
+    }
 }
 
 impl s2n_codec::EncoderValue for RoutingInfo {

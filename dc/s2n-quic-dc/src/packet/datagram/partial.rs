@@ -219,6 +219,38 @@ impl PartialDatagram {
         }
     }
 
+    /// Returns the mutable routing info for control packets
+    #[inline]
+    pub fn control_routing_info_mut(
+        &mut self,
+    ) -> Option<&mut crate::packet::control::RoutingInfo> {
+        match &mut self.packet_type {
+            PacketType::Control { routing_info, .. } => Some(routing_info),
+            PacketType::Datagram { .. } => None,
+        }
+    }
+
+    /// Returns the sticky sender_id if this datagram requires routing to a specific send socket.
+    #[inline]
+    pub fn sticky_sender_id(&self) -> Option<s2n_quic_core::varint::VarInt> {
+        match &self.packet_type {
+            PacketType::Datagram { routing_info, .. } => {
+                if routing_info.requires_sticky_sender_id() {
+                    routing_info.source_sender_id()
+                } else {
+                    None
+                }
+            }
+            PacketType::Control { routing_info, .. } => {
+                if routing_info.requires_sticky_sender_id() {
+                    routing_info.source_sender_id()
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
     /// Estimates the final encoded packet size including crypto overhead.
     #[inline]
     pub fn estimate_encoded_len(&self, crypto_tag_len: usize) -> usize {
