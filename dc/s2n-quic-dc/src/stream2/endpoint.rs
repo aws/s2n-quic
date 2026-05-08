@@ -2209,8 +2209,11 @@ struct Worker<SendSocket, RecvSocket> {
     // One datagram handler per worker
     datagram_rx:
         intrusive_queue::sync::Receiver<packet::datagram::decoder::Packet<descriptor::Filled>>,
-    // One control packet handler per worker (handles all send sockets on this worker)
+    // Phase 1: control packets routed by remote sender for verification + ACK recording
     control_rx:
+        intrusive_queue::sync::Receiver<packet::control::decoder::Packet<descriptor::Filled>>,
+    // Phase 2: verified control packets routed by dest_sender_id for ACK frame processing
+    verified_control_rx:
         intrusive_queue::sync::Receiver<packet::control::decoder::Packet<descriptor::Filled>>,
 }
 
@@ -2284,6 +2287,7 @@ where
     let mut workers = Vec::with_capacity(num_workers);
     let mut datagram_receiver_tx = Vec::with_capacity(num_workers);
     let mut control_packet_tx = Vec::with_capacity(num_workers);
+    let mut verified_control_tx = Vec::with_capacity(num_workers);
 
     // Also create per-worker socket channel infrastructure
     let mut worker_socket_senders = Vec::with_capacity(num_workers);
@@ -2292,14 +2296,17 @@ where
     for id in 0..num_workers {
         let (datagram_tx, datagram_rx) = intrusive_queue::sync::new();
         let (control_tx, control_rx) = intrusive_queue::sync::new();
+        let (verified_tx, verified_rx) = intrusive_queue::sync::new();
         datagram_receiver_tx.push(datagram_tx);
         control_packet_tx.push(control_tx);
+        verified_control_tx.push(verified_tx);
         workers.push(Worker {
             id,
             send_sockets: Vec::new(),
             recv_sockets: Vec::new(),
             datagram_rx,
             control_rx,
+            verified_control_rx: verified_rx,
         });
     }
 
@@ -2359,9 +2366,7 @@ where
             // Intercept sticky batches (sender_id != MAX) and route them directly
             let rx = channel::FilterMap::new(rx, {
                 let socket_senders = socket_senders.clone();
-                move |mut entry: Entry<Batch>| {
-                    use s2n_quic_core::varint::VarInt;
-
+                move |entry: Entry<Batch>| {
                     if entry.meta.sender_id != VarInt::MAX {
                         // Sticky routing - send directly to specific sender
                         let target_idx = entry.meta.sender_id.as_u64() as usize;
@@ -2402,6 +2407,7 @@ where
         let recv_pool = recv_pool.clone();
         let datagram_receiver_tx = datagram_receiver_tx.clone();
         let control_packet_tx = control_packet_tx.clone();
+        let verified_control_tx = verified_control_tx.clone();
         let error_tx = error_tx.clone();
         let path_secret_map = path_secret_map.clone();
         let acceptor_registry = acceptor_registry.clone();
@@ -2640,19 +2646,24 @@ where
                 });
             }
 
-            // Spawn single control worker task for all send sockets on this worker
+            // Phase 1: Verify control packets and forward to dest worker.
+            //
+            // Control packets are routed here by remote sender hash (same as datagrams),
+            // so the SenderState cache is shared with the datagram path — no duplicates.
+            // After verification and ACK recording, packets are forwarded to the worker
+            // that owns the dest_sender_id for ACK frame processing (phase 2).
             {
                 let worker_id = worker.id;
                 let control_rx = worker.control_rx;
                 let path_secret_map = path_secret_map.clone();
                 let shared_sender_cache = shared_sender_cache.clone();
-                let sender_contexts = sender_contexts.clone();
                 let clock = clock.clone();
-                let mut generator = control_generator;
                 let recv_control_counter = counters.register("recv_control");
+                let verified_control_tx = verified_control_tx.clone();
+                let sender_id_to_worker = sender_id_to_worker.clone();
 
                 spawner.spawn(async move {
-                    // Process control packets for ACK frame processing
+                    // Verify and record in ACK space
                     let rx = Map::new(control_rx, {
                         let clock = clock.clone();
                         let recv_control_counter = recv_control_counter.clone();
@@ -2703,10 +2714,51 @@ where
                     });
                     assert_receiver(&rx);
 
+                    // Forward verified packets to the worker that owns dest_sender_id
+                    let rx = Map::new(rx, move |packet| {
+                        let Some(dest_sender_id) = packet.routing_info().dest_sender_id() else {
+                            tracing::warn!(
+                                worker_id,
+                                "Verified control packet without dest_sender_id"
+                            );
+                            return;
+                        };
+                        let dest_sender_id = dest_sender_id.as_u64() as usize;
+
+                        let Some(&dest_worker) = sender_id_to_worker.get(dest_sender_id) else {
+                            tracing::warn!(worker_id, dest_sender_id, "Unknown dest_sender_id");
+                            return;
+                        };
+
+                        let Some(sender) = verified_control_tx.get(dest_worker) else {
+                            return;
+                        };
+                        let _ = sender.send_entry(packet);
+                    });
+
+                    rx.drain().await;
+                    tracing::info!(worker_id, "Control verification worker shutting down");
+                });
+            }
+
+            // Phase 2: Process ACK frames from verified control packets.
+            //
+            // These arrive routed by dest_sender_id, so we have access to the
+            // correct PathContext for the local send socket being acknowledged.
+            {
+                let worker_id = worker.id;
+                let verified_control_rx = worker.verified_control_rx;
+                let sender_contexts = sender_contexts.clone();
+                let clock = clock.clone();
+                let mut generator = control_generator;
+
+                spawner.spawn(async move {
                     // Process ACK frames and update send state using sender_contexts
-                    let rx = Map::new(rx, {
+                    let rx = Map::new(verified_control_rx, {
                         let clock = clock.clone();
-                        move |mut packet| {
+                        move |mut packet: Entry<
+                            packet::control::decoder::Packet<descriptor::Filled>,
+                        >| {
                             // Extract dest_sender_id from routing info
                             let Some(dest_sender_id) = packet.routing_info().dest_sender_id()
                             else {
@@ -2968,30 +3020,31 @@ where
                 }
 
                 // Spawn control packet router task
+                //
+                // Routes by remote sender hash (same as datagrams) so that
+                // verification and ACK recording happen on the same worker
+                // that handles datagrams from this peer.
                 spawner.spawn({
-                    let sender_id_to_worker = sender_id_to_worker.clone();
                     async move {
                         let rx = Map::new(
                             control_rx,
                             move |packet: Entry<
                                 packet::control::decoder::Packet<descriptor::Filled>,
                             >| {
-                                // Route based on dest_sender_id in routing info
-                                let Some(sender_id_varint) = packet.routing_info().dest_sender_id()
+                                // Route by (credentials, source_sender_id) — same hash as datagrams
+                                let credentials = packet.credentials();
+                                let Some(source_sender_id) =
+                                    packet.routing_info().source_sender_id()
                                 else {
                                     tracing::warn!(
                                         socket_id,
-                                        "Control packet without dest_sender_id routing info"
+                                        "Control packet without source_sender_id routing info"
                                     );
                                     return;
                                 };
-                                let sender_id = sender_id_varint.as_u64() as usize;
-
-                                // Look up which worker owns this sender_id
-                                let Some(&worker_id) = sender_id_to_worker.get(sender_id) else {
-                                    tracing::warn!(socket_id, sender_id, "Unknown sender_id");
-                                    return;
-                                };
+                                let hash =
+                                    hash_credentials_and_sender(credentials, source_sender_id);
+                                let worker_id = (hash % num_workers as u64) as usize;
 
                                 let Some(sender) = control_packet_tx.get(worker_id) else {
                                     return;
