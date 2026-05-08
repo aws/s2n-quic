@@ -51,6 +51,12 @@ impl Peer {
         &self.map
     }
 
+    /// Returns true if the peer's data port has been learned via the post-handshake exchange.
+    #[inline]
+    pub fn has_data_port(&self) -> bool {
+        self.entry.has_data_port()
+    }
+
     /// Consume the Peer and return the underlying Arc<Entry>.
     ///
     /// This is useful for low-level datagram transmission where you need

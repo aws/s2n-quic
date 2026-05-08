@@ -152,8 +152,12 @@ impl Provider {
         peer: SocketAddr,
         server_name: Name,
     ) -> std::io::Result<(secret::map::Peer, HandshakeKind)> {
-        if let Some(peer) = self.state.map.get_tracked(peer) {
-            return Ok((peer, HandshakeKind::Cached));
+        if let Some(entry) = self.state.map.get_tracked(peer) {
+            if entry.has_data_port() {
+                return Ok((entry, HandshakeKind::Cached));
+            }
+            // Entry exists but data port not yet exchanged — fall through to wait
+            // on the in-progress handshake via the dedup OnceCell.
         }
 
         // Unconditionally request a background handshake. This schedules any re-handshaking

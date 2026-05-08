@@ -205,6 +205,12 @@ impl Entry {
         addr
     }
 
+    /// Returns true if the peer's data port has been learned via the post-handshake exchange.
+    #[inline]
+    pub fn has_data_port(&self) -> bool {
+        self.peer_data_port.load(Ordering::Relaxed) != 0
+    }
+
     /// Set the peer's data port, learned from the post-handshake port exchange.
     pub fn set_peer_data_port(&self, port: u16) {
         self.peer_data_port.store(port, Ordering::Relaxed);

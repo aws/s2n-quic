@@ -565,7 +565,7 @@ impl Inner {
 
         builder
             .try_push(flow_control.into())
-            .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "batch full"))?;
+            .expect("single datagram must fit in fresh batch");
 
         let batch = builder.finish();
         self.wheel_tx
@@ -611,7 +611,7 @@ impl Inner {
 
         builder
             .try_push(reset_packet.into())
-            .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "batch full"))?;
+            .expect("single datagram must fit in fresh batch");
 
         let batch = builder.finish();
         self.wheel_tx
