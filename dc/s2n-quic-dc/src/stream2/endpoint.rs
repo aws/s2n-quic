@@ -17,7 +17,7 @@ use crate::{
     clock::{precision::Clock as _, tokio::Clock as TokioClock, wheel::Wheel},
     congestion,
     credentials::{self, Credentials},
-    datagram::batch::Batch,
+    datagram::batch::{Batch, Priority as BatchPriority},
     flow::{self, queue},
     intrusive_queue::{Entry, Queue},
     packet::{
@@ -2374,10 +2374,6 @@ where
     // Create channel for wheel input from generators
     let (wheel_input_tx, wheel_input_rx) = intrusive_queue::sync::new();
 
-    // Create the timing wheel that wraps the input receiver
-    let wheel_timer = clock.timer();
-    let wheel: Wheel<_, _, _, 1> = Wheel::new(wheel_input_rx, wheel_timer);
-
     // Create error channel for failed batches
     let (error_tx, error_rx) = intrusive_queue::sync::new();
 
@@ -2451,19 +2447,45 @@ where
     spawner.spawn_local(0, {
         let clock = clock.clone();
         let socket_senders = flat_socket_senders.clone();
+        let wheel_input_rx = wheel_input_rx;
         move |mut spawner| {
             info!("Starting wheel worker on worker 0");
 
-            // Task 1: Pump wheel output into a channel for distribution
-            let (wheel_output_tx, wheel_output_rx) = intrusive_queue::unsync::new();
+            let mut priority_output_txs = Vec::with_capacity(BatchPriority::LEVELS);
+            let mut priority_output_rxs = Vec::with_capacity(BatchPriority::LEVELS);
 
+            for _ in 0..BatchPriority::LEVELS {
+                let (priority_output_tx, priority_output_rx) = intrusive_queue::unsync::new();
+                priority_output_txs.push(priority_output_tx);
+                priority_output_rxs
+                    .push(FlattenQueue::new(priority_output_rx.into_list_receiver()));
+            }
+
+            let wheel_timer = clock.timer();
+            let wheel: Wheel<_, _, _, 1> = Wheel::new(wheel_input_rx, wheel_timer);
             spawner.spawn(async move {
-                channel::pump(wheel, wheel_output_tx.into_list_sender()).await;
-                info!("Wheel pump task shutting down");
+                let rx = FlattenQueue::new(wheel);
+                let rx = channel::Map::new(rx, move |entry: Entry<Batch>| {
+                    // Route each wheel output batch into a dedicated priority lane. The
+                    // downstream `channel::Priority` receiver polls these outputs in order.
+                    let priority_idx = entry.meta.priority.as_index();
+                    // SAFETY: batch priority is an enum with values in 0..BatchPriority::LEVELS.
+                    let priority_sender =
+                        unsafe { priority_output_txs.get_unchecked_mut(priority_idx) };
+                    if priority_sender.send(entry).is_err() {
+                        tracing::warn!(
+                            priority = priority_idx,
+                            "Priority output lane is closed; dropping batch"
+                        );
+                    }
+                });
+
+                rx.drain().await;
+                info!("Wheel priority router task shutting down");
             });
 
             // Task 2: Overall bandwidth limiter + sticky routing + round robin distributor
-            let rx = FlattenQueue::new(wheel_output_rx.into_list_receiver());
+            let rx = channel::Priority::new(priority_output_rxs);
             let rx = Paced::new(rx, clock.clone(), overall_send_rate);
 
             // Intercept sticky batches (sender_id != MAX) and route them directly

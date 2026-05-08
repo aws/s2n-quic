@@ -6,7 +6,10 @@
 use crate::{
     clock::{precision, wheel::SingleTimer},
     intrusive_queue::{Entry, Queue},
-    packet::datagram::partial::PartialDatagram,
+    packet::datagram::{
+        partial::{PacketType, PartialDatagram},
+        RoutingInfo,
+    },
     socket::pool::descriptor,
 };
 use s2n_quic_core::varint::VarInt;
@@ -23,6 +26,40 @@ pub struct NoContext(#[allow(dead_code)] std::ptr::NonNull<()>);
 // It never dereferences the pointer, so it's safe to send between threads.
 unsafe impl Send for NoContext {}
 unsafe impl Sync for NoContext {}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Priority {
+    Ack = 0,
+    FlowRetryReset = 1,
+    FlowControl = 2,
+    FlowData = 3,
+    FlowInit = 4,
+}
+
+impl Priority {
+    pub const LEVELS: usize = 5;
+
+    #[inline]
+    pub const fn as_index(self) -> usize {
+        self as usize
+    }
+
+    #[inline]
+    pub fn from_datagram(datagram: &PartialDatagram) -> Self {
+        match &datagram.packet_type {
+            PacketType::Control { .. } => Self::Ack,
+            PacketType::Datagram { routing_info, .. } => match routing_info {
+                RoutingInfo::FlowValidateRequest { .. }
+                | RoutingInfo::FlowInitValidate { .. }
+                | RoutingInfo::FlowReset { .. } => Self::FlowRetryReset,
+                RoutingInfo::FlowControl { .. } => Self::FlowControl,
+                RoutingInfo::FlowData { .. } | RoutingInfo::None => Self::FlowData,
+                RoutingInfo::FlowInit { .. } => Self::FlowInit,
+            },
+        }
+    }
+}
 
 /// A batch of partial datagrams ready for transmission
 ///
@@ -68,6 +105,7 @@ impl Batch<NoContext> {
                 starting_packet_number: None,
                 is_probe: false,
                 sender_id: VarInt::MAX, // Sentinel value - can be distributed via round-robin
+                priority: Priority::FlowInit,
             },
             encoded: None,
             context: NoContext(std::ptr::NonNull::dangling()),
@@ -81,6 +119,17 @@ impl<Ctx> Batch<Ctx> {
     /// Updates total_bytes metadata.
     #[inline]
     pub fn push(&mut self, datagram: Entry<PartialDatagram>) {
+        let datagram_priority = Priority::from_datagram(&datagram);
+        if self.datagrams.is_empty() {
+            self.meta.priority = datagram_priority;
+        } else {
+            debug_assert_eq!(
+                self.meta.priority, datagram_priority,
+                "Batch priority mismatch: existing={:?}, new={:?}",
+                self.meta.priority, datagram_priority
+            );
+        }
+
         let len = datagram.estimate_encoded_len(16);
         // TODO assert it fits into u16
         // TODO assert the total_len doesn't overflow
@@ -251,6 +300,7 @@ impl Builder {
     /// - No segments after an undersized segment (GSO requires last segment to be final)
     /// - Destination address match
     /// - Sticky sender_id match (for FlowInit/FlowInitRetry packets)
+    /// - Priority match (all datagrams in a batch must share the same priority)
     pub fn try_push(
         &mut self,
         datagram: Entry<PartialDatagram>,
@@ -260,6 +310,13 @@ impl Builder {
         // If we already added an undersized segment, we can't add more
         // GSO requires the undersized segment to be the final one
         if self.has_undersized_segment {
+            return Err(datagram);
+        }
+
+        let datagram_priority = Priority::from_datagram(&datagram);
+        if self.batch.datagrams.is_empty() {
+            self.batch.meta.priority = datagram_priority;
+        } else if self.batch.meta.priority != datagram_priority {
             return Err(datagram);
         }
 
@@ -415,12 +472,18 @@ pub struct Meta {
     /// via round-robin. Set to a specific sender_id for FlowInit/FlowInitRetry packets
     /// that must always originate from the same sender.
     pub sender_id: VarInt,
+    /// Batch transmission priority used by endpoint priority wheels.
+    pub priority: Priority,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{byte_vec::ByteVec, packet::datagram::RoutingInfo, path::secret::map::Entry};
+    use crate::{
+        byte_vec::ByteVec,
+        packet::{self, datagram::RoutingInfo},
+        path::secret::map::Entry,
+    };
 
     #[test]
     fn batch_creation() {
@@ -428,6 +491,7 @@ mod tests {
         assert!(batch.is_empty());
         assert_eq!(batch.len(), 0);
         assert_eq!(batch.meta.total_bytes, 0);
+        assert_eq!(batch.meta.priority, Priority::FlowInit);
     }
 
     #[test]
@@ -449,6 +513,7 @@ mod tests {
         batch.push(datagram.into());
         assert_eq!(batch.len(), 1);
         assert_eq!(batch.meta.total_bytes, 4); // payload only
+        assert_eq!(batch.meta.priority, Priority::FlowData);
     }
 
     #[test]
@@ -459,6 +524,33 @@ mod tests {
         let time = precision::Timestamp { nanos: 1000000 }; // 1ms in nanos
         batch.set_target_time(time);
         assert_eq!(batch.target_time(), Some(time));
+    }
+
+    #[test]
+    fn builder_rejects_priority_mismatch() {
+        let entry = Entry::fake("127.0.0.1:8080".parse().unwrap(), None);
+
+        let mut payload = ByteVec::new();
+        payload.push_back(bytes::Bytes::from_static(b"test"));
+        let datagram = PartialDatagram::new_datagram(
+            RoutingInfo::None,
+            ByteVec::new(),
+            payload,
+            entry.clone(),
+            None.into(),
+        );
+        let control = PartialDatagram::new_control(
+            packet::control::RoutingInfo::Sender {
+                source_sender_id: VarInt::from_u8(1),
+                dest_sender_id: VarInt::from_u8(2),
+            },
+            ByteVec::new(),
+            entry,
+        );
+
+        let mut builder = Builder::new(None, "127.0.0.1:8080".parse().unwrap());
+        assert!(builder.try_push(datagram.into()).is_ok());
+        assert!(builder.try_push(control.into()).is_err());
     }
 }
 
