@@ -1455,11 +1455,12 @@ impl ExporterHandler for Exporter {
 
     fn on_client_application_params(
         &mut self,
-        _client_params: tls::ApplicationParameters,
+        client_params: tls::ApplicationParameters,
         server_params: &mut Vec<u8>,
     ) -> Option<std::result::Result<(), s2n_quic_core::transport::Error>> {
-        let dc_quic_params: [u8; 6] = [128, 220, 0, 0, 1, 0];
-        server_params.append(&mut dc_quic_params.to_vec());
-        Some(Ok(()))
+        Some(s2n_quic_core::dc::append_dc_versions(
+            client_params,
+            server_params,
+        ))
     }
 }
