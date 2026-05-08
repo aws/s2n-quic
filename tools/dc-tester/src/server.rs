@@ -3,7 +3,7 @@
 
 use s2n_quic_core::{stream::testing::Data, varint::VarInt};
 use s2n_quic_dc::stream2::endpoint::Endpoint;
-use std::{io, net::SocketAddr, sync::Arc};
+use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::io::AsyncReadExt as _;
 use tracing::{error, info};
 
@@ -52,6 +52,10 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
 }
 
 async fn handle_connection(mut stream: s2n_quic_dc::stream2::Stream) -> io::Result<(u64, u64)> {
+    tokio::time::timeout(Duration::from_secs(1), stream.validate())
+        .await
+        .unwrap_or_else(|_| Err(io::ErrorKind::TimedOut.into()))?;
+
     // Read the 8-byte response size header
     let response_size = stream.read_u64().await?;
     let mut total_received = 8u64;

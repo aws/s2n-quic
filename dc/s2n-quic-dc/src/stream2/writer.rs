@@ -487,12 +487,10 @@ impl Inner {
     /// Send a standalone FIN packet
     fn send_fin_packet(&mut self) -> io::Result<()> {
         if self.status.is_init() {
-            // Haven't sent FlowInit yet - send it with FIN
-            let (_written, _is_fin) =
-                self.send_flow_init_with_early_data(&mut buffer::reader::storage::Empty, true)?;
-
-            // Note that we sent the FIN
-            self.status.on_send_fin().unwrap();
+            // Haven't sent FlowInit yet - send it with FIN.
+            // send_flow_init_with_early_data handles the on_send_fin transition internally
+            // when actual_fin is true, so we don't need to do it here.
+            self.send_flow_init_with_early_data(&mut buffer::reader::storage::Empty, true)?;
         } else if self.status.is_open() {
             // Send empty FlowData with FIN
             let data_addr = self.path_secret_entry.data_addr();

@@ -311,12 +311,13 @@ impl CounterRegistry {
     }
 
     /// Register a counter with the given label, returning a handle to increment it
-    pub fn register(&self, label: &'static str) -> Arc<AtomicU64> {
+    pub fn register(&self, label: &'static str) -> Counter {
         let mut counters = self.counters.lock().unwrap();
-        counters
+        let inner = counters
             .entry(label)
             .or_insert_with(|| Arc::new(AtomicU64::new(0)))
-            .clone()
+            .clone();
+        Counter::new(inner)
     }
 
     /// Spawn a task that periodically logs all counters in a single line
@@ -373,6 +374,30 @@ impl CounterRegistry {
                 }
             }
         });
+    }
+}
+
+#[derive(Clone)]
+pub struct Counter(Arc<AtomicU64>);
+
+impl Counter {
+    #[inline]
+    pub fn new(inner: Arc<AtomicU64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl Counter {
+    #[inline]
+    pub fn add(&self, v: u64) {
+        self.0.fetch_add(v, Ordering::Relaxed);
+    }
+}
+
+impl core::ops::AddAssign<u64> for Counter {
+    #[inline]
+    fn add_assign(&mut self, rhs: u64) {
+        self.add(rhs);
     }
 }
 
@@ -878,6 +903,8 @@ fn process_datagram<Clk, R: SenderRoute>(
     queue_dispatcher: &mut queue::Dispatch<StreamMsg, ControlMsg, flow::Handle>,
     clock: &Clk,
     sender_id_route: R,
+    flows_accepted: &Counter,
+    flows_pending: &Counter,
 ) -> Result<(), ProcessError>
 where
     Clk: s2n_quic_core::time::Clock + ?Sized,
@@ -1014,6 +1041,7 @@ where
                             // Dispatch to the acceptor
                             match acceptor_registry.dispatch(acceptor_id, flow_init) {
                                 Ok(()) => {
+                                    flows_accepted.add(1);
                                     tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
@@ -1023,7 +1051,7 @@ where
                                     );
                                 }
                                 Err(acceptor::DispatchError::AcceptorNotFound) => {
-                                    tracing::warn!(
+                                    tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
                                         acceptor_id = acceptor_id.as_u64(),
@@ -1058,7 +1086,7 @@ where
                             }
                         }
                         Err(local_queue_id) => {
-                            tracing::warn!(
+                            tracing::debug!(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 local_queue_id = local_queue_id.as_u64(),
@@ -1124,6 +1152,7 @@ where
                             // Dispatch as pending since we can't guarantee it's not a duplicate
                             match acceptor_registry.dispatch_pending(acceptor_id, flow_init) {
                                 Ok(acceptor::PendingAction::Accepted) => {
+                                    flows_accepted.add(1);
                                     tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
@@ -1133,6 +1162,7 @@ where
                                     );
                                 }
                                 Ok(acceptor::PendingAction::AcceptedWithRetry) => {
+                                    flows_pending.add(1);
                                     tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
@@ -1173,7 +1203,7 @@ where
                                     });
                                 }
                                 Err(acceptor::DispatchError::AcceptorNotFound) => {
-                                    tracing::warn!(
+                                    tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
                                         acceptor_id = acceptor_id.as_u64(),
@@ -1254,7 +1284,7 @@ where
 
                     // Create FlowInitValidate routing info, reversing the queue pair for the response
                     response_routing = Some(RoutingInfo::FlowInitValidate {
-                        source_sender_id: dest_sender_id, // Use the original local sender for transmission
+                        source_sender_id: VarInt::MAX,
                         queue_pair: queue_pair.reverse(), // Reverse for response routing
                         attempt_id,
                         stream_id,
@@ -1426,7 +1456,7 @@ where
                     });
                 }
                 Err(queue::Error::FullyClosed(_)) => {
-                    tracing::warn!(
+                    tracing::debug!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
                         "FlowData for fully closed queue - sending reset"
@@ -1481,7 +1511,7 @@ where
                     );
                 }
                 Err(queue::Error::Unallocated(_)) => {
-                    tracing::warn!(
+                    tracing::debug!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
                         "FlowControl for unallocated queue - sending reset"
@@ -1511,7 +1541,7 @@ where
                     });
                 }
                 Err(queue::Error::FullyClosed(_)) => {
-                    tracing::warn!(
+                    tracing::debug!(
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
                         "FlowControl for fully closed queue - sending reset"
@@ -1965,7 +1995,7 @@ fn assert_receiver<T>(_r: &impl channel::Receiver<T>) {}
 struct ChannelRouter<D, C> {
     datagram_tx: D,
     control_tx: C,
-    decode_error_counter: Arc<AtomicU64>,
+    decode_error_counter: Counter,
 }
 
 impl<D, C> Router for ChannelRouter<D, C>
@@ -2017,7 +2047,7 @@ where
         remote_address: s2n_quic_core::inet::SocketAddress,
         segment: descriptor::Filled,
     ) {
-        self.decode_error_counter.fetch_add(1, Ordering::Relaxed);
+        self.decode_error_counter.add(1);
         tracing::debug!(
             ?error,
             %remote_address,
@@ -2592,7 +2622,7 @@ where
                         let probe_batch =
                             process_pto_timeout(worker_id, context_rc, &clock, &mut pto_wheel_tx);
                         if probe_batch.is_some() {
-                            pto_probe_counter.fetch_add(1, Ordering::Relaxed);
+                            pto_probe_counter.add(1);
                         }
                         probe_batch
                     });
@@ -2609,7 +2639,7 @@ where
                 async move {
                     let rx = channel::FlattenQueue::new(acked_rx);
                     let rx = channel::Inspect::new(rx, |_entry: &Entry<PartialDatagram>| {
-                        acked_counter.fetch_add(1, Ordering::Relaxed);
+                        acked_counter.add(1);
                     });
                     let rx = channel::CompletionBatcher::new(rx);
                     rx.drain().await;
@@ -2625,7 +2655,7 @@ where
                     let rx = channel::FlattenQueue::new(rx);
 
                     let rx = channel::Inspect::new(rx, |_entry: &Entry<PartialDatagram>| {
-                        response_counter.fetch_add(1, Ordering::Relaxed);
+                        response_counter.add(1);
                     });
 
                     // Batch response packets by peer address for efficient transmission with GSO
@@ -2650,11 +2680,11 @@ where
                         channel::FilterMap::new(rx, |entry: Entry<PartialDatagram>| {
                             match entry.packet_type {
                                 packet::datagram::partial::PacketType::Datagram { .. } => {
-                                    lost_datagrams_counter.fetch_add(1, Ordering::Relaxed);
+                                    lost_datagrams_counter.add(1);
                                     Some(entry)
                                 }
                                 packet::datagram::partial::PacketType::Control { .. } => {
-                                    lost_control_counter.fetch_add(1, Ordering::Relaxed);
+                                    lost_control_counter.add(1);
                                     tracing::trace!("Skipping control packet retransmission");
                                     None
                                 }
@@ -2761,8 +2791,8 @@ where
                         // Count bytes right before socket transmission
                         let rx = channel::Inspect::new(rx, move |batch: &Entry<Batch<_>>| {
                             use channel::ByteCost;
-                            tx_counter.fetch_add(1, Ordering::Relaxed);
-                            tx_bytes_counter.fetch_add(batch.byte_cost(), Ordering::Relaxed);
+                            tx_counter.add(1);
+                            tx_bytes_counter.add(batch.byte_cost());
                         });
 
                         batch_sender(socket, rx).await;
@@ -2795,7 +2825,7 @@ where
                         move |packet: Entry<
                             packet::control::decoder::Packet<descriptor::Filled>,
                         >| {
-                            recv_control_counter.fetch_add(1, Ordering::Relaxed);
+                            recv_control_counter.add(1);
                             process_control(
                                 packet,
                                 &mut shared_sender_cache.borrow_mut(),
@@ -2955,6 +2985,8 @@ where
                 let clock = clock.clone();
                 let wheel_input_tx = wheel_input_tx.clone();
                 let recv_data_counter = counters.register("recv_data");
+                let flows_accepted = counters.register("flows.accepted");
+                let flows_pending = counters.register("flows.pending");
                 let queue_dispatcher = queue_dispatcher.clone();
 
                 spawner.spawn(async move {
@@ -2963,6 +2995,8 @@ where
 
                     let rx = channel::Map::new(rx, {
                         let recv_data_counter = recv_data_counter.clone();
+                        let flows_accepted = flows_accepted.clone();
+                        let flows_pending = flows_pending.clone();
                         let shared_sender_cache = shared_sender_cache.clone();
                         let path_secret_map = path_secret_map.clone();
                         let acceptor_registry = acceptor_registry.clone();
@@ -2972,7 +3006,7 @@ where
                         move |packet: Entry<
                             packet::datagram::decoder::Packet<descriptor::Filled>,
                         >| {
-                            recv_data_counter.fetch_add(1, Ordering::Relaxed);
+                            recv_data_counter.add(1);
                             process_datagram(
                                 packet,
                                 &mut shared_sender_cache.borrow_mut(),
@@ -2983,6 +3017,8 @@ where
                                 &mut queue_dispatcher,
                                 &clock,
                                 sender_id_route,
+                                &flows_accepted,
+                                &flows_pending,
                             )
                         }
                     });
@@ -3066,8 +3102,8 @@ where
 
                         // Track received bytes
                         let rx = channel::Inspect::new(rx, move |segment: &descriptor::Filled| {
-                            recv_counter.fetch_add(1, Ordering::Relaxed);
-                            recv_bytes_counter.fetch_add(segment.len() as u64, Ordering::Relaxed);
+                            recv_counter.add(1);
+                            recv_bytes_counter.add(segment.len() as u64);
                         });
 
                         let router = ChannelRouter {
@@ -3138,12 +3174,13 @@ where
     }
 
     // Spawn error handler to track failed batches
+    // TODO make this not tokio
     tokio::spawn({
         let error_counter = counters.register("path_resolve_error");
         async move {
             let rx = error_rx;
             let rx = channel::Map::new(rx, move |batch: Entry<Batch>| {
-                error_counter.fetch_add(1, Ordering::Relaxed);
+                error_counter.add(1);
                 tracing::warn!(
                     peer_addr = ?batch.meta.peer_addr,
                     total_bytes = batch.meta.total_bytes,
