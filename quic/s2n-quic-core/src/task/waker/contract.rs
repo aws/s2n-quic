@@ -1,10 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use alloc::{sync::Arc, task::Wake};
+use crate::sync::primitive::{Arc, AtomicU64, Ordering};
 use core::{
-    sync::atomic::{AtomicBool, Ordering},
-    task::{Context, Poll, Waker},
+    fmt,
+    task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
 /// Checks that if a function returns [`Poll::Pending`], then the function called [`Waker::clone`],
@@ -16,21 +16,45 @@ pub struct Contract {
 
 struct State {
     inner: Waker,
-    wake_called: AtomicBool,
+    clone_count: AtomicU64,
+    drop_count: AtomicU64,
+    wake_count: AtomicU64,
+    wake_by_ref_count: AtomicU64,
 }
 
-impl Wake for State {
-    #[inline]
-    fn wake(self: Arc<Self>) {
-        Wake::wake_by_ref(&self)
-    }
-
-    #[inline]
-    fn wake_by_ref(self: &Arc<Self>) {
-        self.wake_called.store(true, Ordering::Release);
-        self.inner.wake_by_ref();
-    }
+unsafe fn contract_clone(data: *const ()) -> RawWaker {
+    let state_ptr = data as *const State;
+    Arc::increment_strong_count(state_ptr);
+    (*state_ptr).clone_count.fetch_add(1, Ordering::Release);
+    RawWaker::new(data, &VTABLE)
 }
+
+unsafe fn contract_wake(data: *const ()) {
+    let arc = Arc::from_raw(data as *const State);
+    arc.wake_count.fetch_add(1, Ordering::Release);
+    arc.inner.wake_by_ref();
+    arc.drop_count.fetch_add(1, Ordering::Release);
+    // arc drops here, decrementing strong count
+}
+
+unsafe fn contract_wake_by_ref(data: *const ()) {
+    let state = &*(data as *const State);
+    state.wake_by_ref_count.fetch_add(1, Ordering::Release);
+    state.inner.wake_by_ref();
+}
+
+unsafe fn contract_drop(data: *const ()) {
+    let arc = Arc::from_raw(data as *const State);
+    arc.drop_count.fetch_add(1, Ordering::Release);
+    // arc drops here, decrementing strong count
+}
+
+static VTABLE: RawWakerVTable = RawWakerVTable::new(
+    contract_clone,
+    contract_wake,
+    contract_wake_by_ref,
+    contract_drop,
+);
 
 impl Contract {
     /// Wraps a [`Context`] in the contract checker
@@ -38,10 +62,18 @@ impl Contract {
     pub fn new(cx: &mut Context) -> Self {
         let state = State {
             inner: cx.waker().clone(),
-            wake_called: AtomicBool::new(false),
+            clone_count: AtomicU64::new(0),
+            drop_count: AtomicU64::new(0),
+            wake_count: AtomicU64::new(0),
+            wake_by_ref_count: AtomicU64::new(0),
         };
         let state = Arc::new(state);
-        let waker = Waker::from(state.clone());
+        // Clone the Arc and convert to raw pointer for the waker.
+        // This "leaks" one strong count into the raw pointer, which
+        // contract_drop will reclaim via Arc::from_raw.
+        let ptr = Arc::into_raw(state.clone()) as *const ();
+        let raw = RawWaker::new(ptr, &VTABLE);
+        let waker = unsafe { Waker::from_raw(raw) };
         Self { state, waker }
     }
 
@@ -54,21 +86,36 @@ impl Contract {
     /// Checks the state of the waker based on the provided `outcome`
     #[inline]
     #[track_caller]
-    pub fn check_outcome<T>(self, outcome: &Poll<T>) {
+    pub fn check_outcome<T, C: fmt::Debug>(self, outcome: &Poll<T>, context: Option<&C>) {
         if outcome.is_ready() {
             return;
         }
 
-        let strong_count = Arc::strong_count(&self.state);
-        let is_cloned = strong_count > 2; // 1 for `state`, one for our owned `waker`
-        let wake_called = self.state.wake_called.load(Ordering::Acquire);
+        let clone_count = self.state.clone_count.load(Ordering::Acquire);
+        let drop_count = self.state.drop_count.load(Ordering::Acquire);
+        let wake_count = self.state.wake_count.load(Ordering::Acquire);
+        let wake_by_ref_count = self.state.wake_by_ref_count.load(Ordering::Acquire);
+
+        let live_clones = clone_count.saturating_sub(drop_count);
+        let is_cloned = live_clones > 0;
+        let wake_called = (wake_count + wake_by_ref_count) > 0;
 
         let is_ok = is_cloned || wake_called;
-
-        assert!(
-            is_ok,
-            "strong_count = {strong_count}; is_cloned = {is_cloned}; wake_called = {wake_called}"
-        );
+        if let Some(context) = context {
+            assert!(
+                is_ok,
+                "clone_count = {clone_count}; drop_count = {drop_count}; \
+                 wake_count = {wake_count}; wake_by_ref_count = {wake_by_ref_count}; \
+                 live_clones = {live_clones}; contract_context = {context:?}"
+            );
+        } else {
+            assert!(
+                is_ok,
+                "clone_count = {clone_count}; drop_count = {drop_count}; \
+                 wake_count = {wake_count}; wake_by_ref_count = {wake_by_ref_count}; \
+                 live_clones = {live_clones}"
+            );
+        }
     }
 }
 
@@ -77,10 +124,27 @@ impl Contract {
 #[inline(always)]
 #[track_caller]
 pub fn assert_contract<F: FnOnce(&mut Context) -> Poll<R>, R>(cx: &mut Context, f: F) -> Poll<R> {
+    assert_contract_with_context::<_, _, ()>(cx, |cx| (f(cx), None))
+}
+
+/// Checks that if a function returns [`Poll::Pending`], then the function called [`Waker::clone`],
+/// [`Waker::wake`], or [`Waker::wake_by_ref`] on the [`Context`]'s [`Waker`].
+///
+/// Includes optional `context` in panic output when the contract is violated.
+#[inline(always)]
+#[track_caller]
+pub fn assert_contract_with_context<
+    F: FnOnce(&mut Context) -> (Poll<R>, Option<C>),
+    R,
+    C: fmt::Debug,
+>(
+    cx: &mut Context,
+    f: F,
+) -> Poll<R> {
     let contract = Contract::new(cx);
     let mut cx = contract.context();
-    let outcome = f(&mut cx);
-    contract.check_outcome(&outcome);
+    let (outcome, context) = f(&mut cx);
+    contract.check_outcome(&outcome, context.as_ref());
     outcome
 }
 
@@ -94,17 +158,36 @@ pub fn debug_assert_contract<F: FnOnce(&mut Context) -> Poll<R>, R>(
     cx: &mut Context,
     f: F,
 ) -> Poll<R> {
+    debug_assert_contract_with_context::<_, _, ()>(cx, |cx| (f(cx), None))
+}
+
+/// Checks that if a function returns [`Poll::Pending`], then the function called [`Waker::clone`],
+/// [`Waker::wake`], or [`Waker::wake_by_ref`] on the [`Context`]'s [`Waker`].
+///
+/// Includes optional `context` in panic output when the contract is violated.
+///
+/// This is only enabled with `debug_assertions`.
+#[inline(always)]
+#[track_caller]
+pub fn debug_assert_contract_with_context<
+    F: FnOnce(&mut Context) -> (Poll<R>, Option<C>),
+    R,
+    C: fmt::Debug,
+>(
+    cx: &mut Context,
+    f: F,
+) -> Poll<R> {
     #[cfg(debug_assertions)]
-    return assert_contract(cx, f);
+    return assert_contract_with_context(cx, f);
 
     #[cfg(not(debug_assertions))]
-    return f(cx);
+    return f(cx).0;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::task::waker;
+    use crate::{task::waker, testing::loom};
 
     #[test]
     fn correct_test() {
@@ -143,5 +226,43 @@ mod tests {
 
         // the contract is violated if we return Pending without doing anything
         let _ = assert_contract(&mut cx, |_cx| Poll::<()>::Pending);
+    }
+
+    /// Verifies the contract checker is correct under concurrent wake-and-check.
+    ///
+    /// Models the interaction between a poller (which clones the waker into a queue
+    /// and then checks the contract) and a pusher (which takes the waker from the
+    /// queue and calls wake, consuming it).
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn loom_concurrent_wake_and_check() {
+        use loom::sync::{Arc, Mutex};
+
+        loom::model(|| {
+            // Shared slot: poller stores a waker clone, pusher takes and wakes it
+            let slot: Arc<Mutex<Option<Waker>>> = Arc::new(Mutex::new(None));
+
+            // Thread A (poller): stores waker via assert_contract, returns Pending
+            let poller_slot = slot.clone();
+            let poller = loom::thread::spawn(move || {
+                let noop = waker::noop();
+                let mut cx = Context::from_waker(&noop);
+                let _ = assert_contract_with_context::<_, (), ()>(&mut cx, |cx| {
+                    *poller_slot.lock().unwrap() = Some(cx.waker().clone());
+                    (Poll::<()>::Pending, None)
+                });
+            });
+
+            // Thread B (pusher): takes and wakes (simulating push -> take_waker -> wake)
+            let pusher_slot = slot.clone();
+            let pusher = loom::thread::spawn(move || {
+                if let Some(waker) = pusher_slot.lock().unwrap().take() {
+                    waker.wake();
+                }
+            });
+
+            poller.join().unwrap();
+            pusher.join().unwrap();
+        });
     }
 }
