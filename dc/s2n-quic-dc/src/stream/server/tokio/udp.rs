@@ -21,7 +21,7 @@ use crate::{
 use core::ops::ControlFlow;
 use s2n_quic_core::{inet::SocketAddress, time::Clock};
 use std::io;
-use tracing::error;
+use tracing::debug;
 
 pub struct Acceptor<S, Sub>
 where
@@ -196,8 +196,8 @@ where
 
                 Ok(ControlFlow::Continue(()))
             }
-            Err(err) => {
-                error!("application accept queue dropped; shutting down: {err:?}");
+            Err(_undelivered_stream) => {
+                debug!("application accept queue dropped; shutting down");
                 Ok(ControlFlow::Break(()))
             }
         }
