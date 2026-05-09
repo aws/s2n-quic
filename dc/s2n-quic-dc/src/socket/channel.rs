@@ -1813,6 +1813,8 @@ pub struct PathContext<Sealer> {
     pub cca: crate::congestion::Controller,
     /// RTT estimator for this path
     pub rtt_estimator: s2n_quic_core::recovery::RttEstimator,
+    /// Gauge tracking inflight packets in the packet_number_map
+    pub inflight_gauge: crate::stream2::endpoint::QueueGauge,
     /// Packet number map for tracking sent packets
     pub packet_number_map: s2n_quic_core::packet::number::Map<
         crate::intrusive_queue::Entry<crate::packet::datagram::partial::PartialDatagram>,
@@ -2128,6 +2130,7 @@ where
                 let pn = s2n_quic_core::packet::number::PacketNumberSpace::Initial
                     .new_packet_number(packet_number);
                 ctx.packet_number_map.insert(pn, datagram_entry);
+                ctx.inflight_gauge.enqueue(1);
 
                 packet_number += VarInt::from_u8(1);
             }

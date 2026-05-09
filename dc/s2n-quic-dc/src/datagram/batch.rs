@@ -55,7 +55,14 @@ impl Priority {
                 | RoutingInfo::FlowReset { .. } => Self::FlowRetryReset,
                 RoutingInfo::FlowControl { .. } => Self::FlowControl,
                 RoutingInfo::FlowData { .. } | RoutingInfo::None => Self::FlowData,
-                RoutingInfo::FlowInit { .. } => Self::FlowInit,
+                RoutingInfo::FlowInit { attempt_id, .. } => {
+                    if *attempt_id != VarInt::MAX {
+                        // Already been through the encoder — this is a retransmission
+                        Self::FlowRetryReset
+                    } else {
+                        Self::FlowInit
+                    }
+                }
             },
         }
     }

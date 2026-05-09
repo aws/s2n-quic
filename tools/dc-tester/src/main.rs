@@ -5,6 +5,7 @@ mod busy_poll;
 mod client;
 mod config;
 mod endpoint;
+mod net_stats;
 mod psk;
 mod server;
 mod stats;
@@ -91,6 +92,8 @@ async fn main() -> std::io::Result<()> {
             }
         }
     };
+
+    net_stats::spawn();
 
     let spawner = busy_poll::create_pool(config.endpoint.workers);
     let data_bind: SocketAddr = "[::]:0".parse().unwrap();

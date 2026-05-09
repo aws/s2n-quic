@@ -800,7 +800,7 @@ fn process_control_frames<Clk, Rand>(
                 ack_delay = ack_delay.min(ack.ack_delay());
                 process_ack_ranges(
                     &ack,
-                    &mut context.packet_number_map,
+                    context,
                     &mut max_acked_pn,
                     &mut max_acked_tx_time,
                     &mut bytes_acked,
@@ -869,13 +869,17 @@ fn process_control_frames<Clk, Rand>(
 /// Process ACK ranges and remove ACKed packets from the packet number map
 fn process_ack_ranges(
     ack: &frame::Ack<impl frame::ack::AckRanges>,
-    packet_number_map: &mut s2n_quic_core::packet::number::Map<Entry<PartialDatagram>>,
+    context: &mut socket::channel::PathContext<crate::crypto::awslc::seal::Application>,
     max_acked_pn: &mut Option<VarInt>,
     max_acked_tx_time: &mut Option<s2n_quic_core::time::Timestamp>,
     bytes_acked: &mut usize,
     cca_args: &mut Option<(s2n_quic_core::time::Timestamp, congestion::PacketInfo)>,
     acked: &mut impl channel::UnboundedSender<Queue<PartialDatagram>>,
 ) {
+    // Use the ACK frame's largest_acknowledged as the authoritative max PN.
+    // This is correct even if the packet was already removed from the map by a prior ACK.
+    *max_acked_pn = (*max_acked_pn).max(Some(ack.largest_acknowledged()));
+
     // Process each ACK range
     let mut queue = Queue::new();
     for range in ack.ack_ranges() {
@@ -885,9 +889,8 @@ fn process_ack_ranges(
 
         // Remove ACKed packets from the packet number map
         let mut queue_range = Queue::new();
-        for (num, mut entry) in packet_number_map.remove_range(range) {
-            let num_varint = unsafe { VarInt::new_unchecked(num.as_u64()) };
-            *max_acked_pn = (*max_acked_pn).max(Some(num_varint));
+        for (num, mut entry) in context.packet_number_map.remove_range(range) {
+            context.inflight_gauge.dequeue();
 
             // Extract transmission metadata
             if let Some(tx_info) = entry.transmission_info.take() {
@@ -971,6 +974,8 @@ fn detect_and_retransmit_lost_packets<Rand>(
         let range = PacketNumberRange::new(lost_min, lost_max);
         let mut lost_count = 0usize;
         for (num, mut entry) in context.packet_number_map.remove_range(range) {
+            context.inflight_gauge.dequeue();
+
             // Update CCA for packet loss
             let tx_info = entry.transmission_info.take().unwrap();
 
@@ -2499,12 +2504,14 @@ struct SocketPathContexts {
             Rc<RefCell<socket::channel::PathContext<crate::crypto::awslc::seal::Application>>>,
         >,
     >,
+    inflight_gauge: QueueGauge,
 }
 
 impl SocketPathContexts {
-    fn new() -> Self {
+    fn new(inflight_gauge: QueueGauge) -> Self {
         Self {
             contexts: RefCell::new(std::collections::HashMap::new()),
+            inflight_gauge,
         }
     }
 
@@ -2540,6 +2547,7 @@ impl SocketPathContexts {
             flow_attempt_id_counter: VarInt::ZERO,
             cca,
             rtt_estimator,
+            inflight_gauge: self.inflight_gauge.clone(),
             packet_number_map,
             pto: socket::channel::Pto::default(),
             pending_batches: 0,
@@ -2848,9 +2856,13 @@ where
     // Build sender_id to worker_id mapping (for control packet routing)
     let mut sender_id_to_worker = Vec::with_capacity(num_send_sockets);
 
-    // Distribute send sockets across workers and create their socket channels
+    // Split workers: first half handles send sockets, second half handles recv sockets.
+    // This prevents send-side encoding/pacing from starving recv socket draining.
+    let num_send_workers = num_workers / 2;
+
+    // Distribute send sockets across the first half of workers
     for (sender_id, socket) in send_sockets.into_iter().enumerate() {
-        let worker_idx = sender_id % num_workers;
+        let worker_idx = sender_id % num_send_workers;
         sender_id_to_worker.push(worker_idx);
         workers[worker_idx]
             .send_sockets
@@ -2957,9 +2969,9 @@ where
         }
     });
 
-    // Distribute recv sockets across workers
+    // Distribute recv sockets across the second half of workers
     for (socket_id, socket) in recv_sockets.into_iter().enumerate() {
-        let worker_idx = socket_id % num_workers;
+        let worker_idx = num_send_workers + (socket_id % (num_workers - num_send_workers));
         workers[worker_idx]
             .recv_sockets
             .push(RecvSocketInfo { socket_id, socket });
@@ -3144,7 +3156,8 @@ where
                 let SendSocketInfo { sender_id, socket } = socket_info;
 
                 // Create per-socket path contexts
-                let socket_contexts = Rc::new(SocketPathContexts::new());
+                let inflight_gauge = counters.register_queue_gauge("q.inflight");
+                let socket_contexts = Rc::new(SocketPathContexts::new(inflight_gauge));
 
                 // Register this socket's contexts for control packet processing
                 sender_contexts
@@ -3389,7 +3402,7 @@ where
                     });
                     assert_receiver::<()>(&rx);
 
-                    rx.drain().await;
+                    rx.drain_budgeted(Some(64)).await;
                     tracing::info!(worker_id, "Control worker shutting down");
                 });
             }
