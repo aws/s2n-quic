@@ -10,6 +10,8 @@
 //! Flow initialization is lazy: connect() allocates local queues and returns immediately.
 //! The Writer sends FlowInit on the first write, potentially with early data.
 
+pub mod rpc;
+
 use crate::{
     flow::{self, queue},
     psk,
@@ -96,5 +98,21 @@ impl Client {
         );
 
         Ok(Stream::new(reader, writer))
+    }
+
+    /// Perform an RPC over a new stream: send the request and collect the response
+    pub async fn rpc<Req, Res>(
+        &mut self,
+        peer: SocketAddr,
+        acceptor_id: VarInt,
+        request: Req,
+        response: Res,
+    ) -> io::Result<Res::Output>
+    where
+        Req: rpc::Request,
+        Res: rpc::Response,
+    {
+        let stream = self.connect(peer, acceptor_id).await?;
+        rpc::from_stream(stream, request, response).await
     }
 }
