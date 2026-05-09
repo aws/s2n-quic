@@ -110,6 +110,14 @@ pub enum RoutingInfo {
         /// Reason for rejection
         error_code: VarInt,
     },
+    /// Identifies the source sender for aggregated frame packets.
+    ///
+    /// Used when a packet contains multiple frames from different streams that share
+    /// only the source sender identity. Per-frame routing metadata (including ACK frames
+    /// with their dest_sender_id) is encoded in the application header region.
+    SenderId {
+        source_sender_id: VarInt,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -170,6 +178,8 @@ impl RoutingInfo {
     const FLOW_INIT_WITH_FIN_TYPE: u8 = 8;
     const FLOW_RESET_STREAM_TYPE: u8 = 9;
     const FLOW_RESET_CONTROL_TYPE: u8 = 10;
+    const SENDER_ID_TYPE: u8 = 11;
+    const SENDER_PAIR_TYPE: u8 = 12;
 
     /// Get the source sender ID for data packets (used for ACK routing)
     pub fn source_sender_id(&self) -> Option<VarInt> {
@@ -191,6 +201,9 @@ impl RoutingInfo {
                 source_sender_id, ..
             } => Some(*source_sender_id),
             Self::FlowReset {
+                source_sender_id, ..
+            } => Some(*source_sender_id),
+            Self::SenderId {
                 source_sender_id, ..
             } => Some(*source_sender_id),
         }
@@ -311,6 +324,15 @@ impl RoutingInfo {
                     "FlowReset source_sender_id must be filled before encoding"
                 );
             }
+            Self::SenderId {
+                source_sender_id, ..
+            } => {
+                debug_assert_ne!(
+                    *source_sender_id,
+                    VarInt::MAX,
+                    "SenderId source_sender_id must be filled before encoding"
+                );
+            }
         }
     }
 
@@ -346,6 +368,9 @@ impl RoutingInfo {
                 source_sender_id, ..
             }
             | Self::FlowReset {
+                source_sender_id, ..
+            }
+            | Self::SenderId {
                 source_sender_id, ..
             } => {
                 *source_sender_id = new_source_sender_id;
@@ -473,6 +498,10 @@ impl s2n_codec::EncoderValue for RoutingInfo {
                 encoder.encode(stream_id);
                 encoder.encode(error_code);
             }
+            Self::SenderId { source_sender_id } => {
+                encoder.encode(&Self::SENDER_ID_TYPE);
+                encoder.encode(source_sender_id);
+            }
         }
     }
 }
@@ -581,6 +610,11 @@ impl<'a> s2n_codec::DecoderValue<'a> for RoutingInfo {
                     reset_target,
                     error_code,
                 };
+                Ok((header, buffer))
+            }
+            Self::SENDER_ID_TYPE => {
+                let (source_sender_id, buffer) = buffer.decode()?;
+                let header = Self::SenderId { source_sender_id };
                 Ok((header, buffer))
             }
             _ => {

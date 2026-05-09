@@ -29,8 +29,8 @@ use crate::{
     socket::{
         self,
         channel::{
-            self, intrusive_queue, FlattenSegments, InspectErr, Map, Paced,
-            ReceiverExt, RouterAdapter, SocketReceiver, UnboundedSender,
+            self, intrusive_queue, FlattenSegments, InspectErr, Map, Paced, ReceiverExt,
+            RouterAdapter, SocketReceiver, UnboundedSender,
         },
         pool::{self, descriptor},
         rate::Rate,
@@ -55,10 +55,7 @@ use std::{
     io,
     net::SocketAddr,
     rc::Rc,
-    sync::{
-        atomic::{AtomicI64, AtomicU64, Ordering},
-        Arc, Mutex,
-    },
+    sync::Arc,
 };
 use tracing::info;
 
@@ -297,300 +294,7 @@ mod worker_socket_channel {
 
 // ── Instrumentation ────────────────────────────────────────────────────────
 
-/// Shared counter registry for tracking pipeline metrics
-#[derive(Clone, Default)]
-pub struct CounterRegistry {
-    metrics: Arc<Mutex<HashMap<&'static str, Metric>>>,
-}
-
-#[derive(Clone)]
-enum Metric {
-    Counter(Arc<AtomicU64>),
-    Gauge(Arc<AtomicI64>),
-    Queue {
-        enqueue: Arc<AtomicU64>,
-        drain: Arc<AtomicU64>,
-        depth: Arc<AtomicI64>,
-    },
-}
-
-impl Metric {
-    fn format(&self, label: &'static str) -> Option<String> {
-        match self {
-            Metric::Counter(v) => {
-                let count = v.swap(0, Ordering::Relaxed);
-                if count == 0 {
-                    return None;
-                }
-                if label.ends_with(":bytes") {
-                    let mut rate = count as f64 * 8.0;
-                    let prefixes = [("G", 1e9), ("M", 1e6), ("K", 1e3)];
-                    let mut prefix = "";
-                    for (p, divisor) in prefixes {
-                        if rate >= divisor {
-                            rate /= divisor;
-                            prefix = p;
-                            break;
-                        }
-                    }
-                    let label_without_suffix = label.trim_end_matches(":bytes");
-                    Some(format!("{}={:.2}{}bps", label_without_suffix, rate, prefix))
-                } else {
-                    Some(format!("{}={}", label, count))
-                }
-            }
-            Metric::Gauge(v) => {
-                let depth = v.load(Ordering::Relaxed);
-                if depth == 0 {
-                    return None;
-                }
-                Some(format!("{}={}", label, depth))
-            }
-            Metric::Queue {
-                enqueue,
-                drain,
-                depth,
-            } => {
-                let enq = enqueue.swap(0, Ordering::Relaxed);
-                let drn = drain.swap(0, Ordering::Relaxed);
-                let dep = depth.load(Ordering::Relaxed);
-                if enq == 0 && drn == 0 && dep == 0 {
-                    return None;
-                }
-                if dep == 0 {
-                    Some(format!("{label}={enq}/{drn}"))
-                } else {
-                    Some(format!("{label}={enq}/{drn}({dep})"))
-                }
-            }
-        }
-    }
-}
-
-impl CounterRegistry {
-    pub fn new() -> Self {
-        Self {
-            metrics: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-
-    /// Register a counter with the given label, returning a handle to increment it
-    pub fn register(&self, label: &'static str) -> Counter {
-        let mut metrics = self.metrics.lock().unwrap();
-        let inner = match metrics.entry(label) {
-            std::collections::hash_map::Entry::Occupied(e) => match e.get() {
-                Metric::Counter(v) => v.clone(),
-                _ => panic!("label {label:?} already registered as a different metric type"),
-            },
-            std::collections::hash_map::Entry::Vacant(e) => {
-                let v = Arc::new(AtomicU64::new(0));
-                e.insert(Metric::Counter(v.clone()));
-                v
-            }
-        };
-        Counter::new(inner)
-    }
-
-    /// Register a queue gauge that tracks both throughput and current depth.
-    ///
-    /// Register a queue metric that tracks enqueue rate, drain rate, and depth.
-    ///
-    /// Formats as `label=enqueue/drain(depth)` in log output. When depth is 0,
-    /// the parenthetical is omitted: `label=enqueue/drain`.
-    pub fn register_queue_gauge(&self, label: &'static str) -> QueueGauge {
-        let mut metrics = self.metrics.lock().unwrap();
-        match metrics.entry(label) {
-            std::collections::hash_map::Entry::Occupied(e) => match e.get() {
-                Metric::Queue {
-                    enqueue,
-                    drain,
-                    depth,
-                } => QueueGauge {
-                    throughput: Counter::new(enqueue.clone()),
-                    drain: Counter::new(drain.clone()),
-                    depth: Gauge(depth.clone()),
-                },
-                _ => panic!("label {label:?} already registered as a different metric type"),
-            },
-            std::collections::hash_map::Entry::Vacant(e) => {
-                let enqueue = Arc::new(AtomicU64::new(0));
-                let drain = Arc::new(AtomicU64::new(0));
-                let depth = Arc::new(AtomicI64::new(0));
-                e.insert(Metric::Queue {
-                    enqueue: enqueue.clone(),
-                    drain: drain.clone(),
-                    depth: depth.clone(),
-                });
-                QueueGauge {
-                    throughput: Counter::new(enqueue),
-                    drain: Counter::new(drain),
-                    depth: Gauge(depth),
-                }
-            }
-        }
-    }
-
-    /// Register a gauge with the given label, returning a handle to add/sub.
-    ///
-    /// Gauges track a current value that is never reset by the reporter.
-    pub fn register_gauge(&self, label: &'static str) -> Gauge {
-        let mut metrics = self.metrics.lock().unwrap();
-        let inner = match metrics.entry(label) {
-            std::collections::hash_map::Entry::Occupied(e) => match e.get() {
-                Metric::Gauge(v) => v.clone(),
-                _ => panic!("label {label:?} already registered as a different metric type"),
-            },
-            std::collections::hash_map::Entry::Vacant(e) => {
-                let v = Arc::new(AtomicI64::new(0));
-                e.insert(Metric::Gauge(v.clone()));
-                v
-            }
-        };
-        Gauge(inner)
-    }
-
-    /// Spawn a task that periodically logs all metrics in a single sorted line
-    pub fn spawn_reporter(&self, interval: Duration) {
-        let metrics = self.metrics.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(interval);
-            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
-            loop {
-                interval.tick().await;
-
-                let metrics = metrics.lock().unwrap();
-                if metrics.is_empty() {
-                    continue;
-                }
-
-                let mut labels: Vec<&'static str> = metrics.keys().copied().collect();
-                labels.sort();
-
-                let parts: Vec<String> = labels
-                    .into_iter()
-                    .filter_map(|label| metrics[label].format(label))
-                    .collect();
-
-                if !parts.is_empty() {
-                    tracing::info!("{}", parts.join(" "));
-                }
-            }
-        });
-    }
-}
-
-#[derive(Clone)]
-pub struct Counter(Arc<AtomicU64>);
-
-impl Counter {
-    #[inline]
-    pub fn new(inner: Arc<AtomicU64>) -> Self {
-        Self(inner)
-    }
-}
-
-impl Counter {
-    #[inline]
-    pub fn add(&self, v: u64) {
-        self.0.fetch_add(v, Ordering::Relaxed);
-    }
-}
-
-impl core::ops::AddAssign<u64> for Counter {
-    #[inline]
-    fn add_assign(&mut self, rhs: u64) {
-        self.add(rhs);
-    }
-}
-
-#[derive(Clone)]
-pub struct Gauge(Arc<AtomicI64>);
-
-impl Gauge {
-    #[inline]
-    pub fn add(&self, v: i64) {
-        self.0.fetch_add(v, Ordering::Relaxed);
-    }
-
-    #[inline]
-    pub fn sub(&self, v: i64) {
-        self.0.fetch_sub(v, Ordering::Relaxed);
-    }
-}
-
-/// Tracks enqueue rate, dequeue rate, and current depth for a queue.
-#[derive(Clone)]
-pub struct QueueGauge {
-    pub throughput: Counter,
-    pub drain: Counter,
-    pub depth: Gauge,
-}
-
-impl QueueGauge {
-    #[inline]
-    pub fn enqueue(&self, count: u64) {
-        self.throughput.add(count);
-        self.depth.add(count as i64);
-    }
-
-    #[inline]
-    pub fn dequeue(&self) {
-        self.drain.add(1);
-        self.depth.sub(1);
-    }
-}
-
-/// Like `FlattenQueue`, but tracks throughput and current queue depth via a `QueueGauge`.
-pub struct GaugedQueue<T, R> {
-    inner: R,
-    queue: crate::intrusive_queue::Queue<T>,
-    gauge: QueueGauge,
-}
-
-impl<T, R> GaugedQueue<T, R> {
-    pub fn new(inner: R, gauge: QueueGauge) -> Self {
-        Self {
-            inner,
-            queue: Default::default(),
-            gauge,
-        }
-    }
-}
-
-impl<T, R> channel::Receiver<crate::intrusive_queue::Entry<T>> for GaugedQueue<T, R>
-where
-    R: channel::Receiver<crate::intrusive_queue::Queue<T>>,
-{
-    fn poll_recv(
-        &mut self,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Option<crate::intrusive_queue::Entry<T>>> {
-        loop {
-            if let Some(entry) = self.queue.pop_front() {
-                self.gauge.dequeue();
-                return core::task::Poll::Ready(Some(entry));
-            }
-
-            match self.inner.poll_recv(cx) {
-                core::task::Poll::Ready(Some(queue)) => {
-                    if queue.is_empty() {
-                        cx.waker().wake_by_ref();
-                        return core::task::Poll::Pending;
-                    }
-                    self.gauge.enqueue(queue.len() as u64);
-                    self.queue = queue;
-                }
-                core::task::Poll::Ready(None) => return core::task::Poll::Ready(None),
-                core::task::Poll::Pending => return core::task::Poll::Pending,
-            }
-        }
-    }
-
-    fn on_consumed(&mut self, bytes: u64) {
-        self.inner.on_consumed(bytes);
-    }
-}
+pub use crate::counter::{Counter, Gauge, GaugedQueue, QueueGauge, Registry as CounterRegistry};
 
 // ── Testing Helpers ────────────────────────────────────────────────────────
 
@@ -1214,6 +918,7 @@ impl ProcessDatagramCounters {
             RoutingInfo::FlowData { .. } => self.rx_data.add(1),
             RoutingInfo::FlowControl { .. } => self.rx_control.add(1),
             RoutingInfo::FlowReset { .. } => self.rx_reset.add(1),
+            RoutingInfo::SenderId { .. } => {}
         };
     }
 
@@ -2016,6 +1721,9 @@ where
                 }
             }
         }
+        RoutingInfo::SenderId { .. } => {
+            // Aggregated frame packets are handled by stream3, not stream2
+        }
     }
 
     // Push response packets to channel for batching
@@ -2027,13 +1735,14 @@ where
         dest_sender_id: source_sender_id,
     };
 
-    let has_ack = if let Some(ack_packet) = sender_state.generate_ack_packet(clock, ack_routing_info) {
-        sender_state.transmission_state = AckTransmissionState::Idle;
-        entries.push_back(Entry::new(ack_packet));
-        true
-    } else {
-        false
-    };
+    let has_ack =
+        if let Some(ack_packet) = sender_state.generate_ack_packet(clock, ack_routing_info) {
+            sender_state.transmission_state = AckTransmissionState::Idle;
+            entries.push_back(Entry::new(ack_packet));
+            true
+        } else {
+            false
+        };
 
     // Send response packet if needed (FlowValidateRequest, FlowReset, etc.)
     let has_routing = if let Some(mut routing) = response_routing {
@@ -2906,11 +2615,12 @@ where
             for i in 0..BatchPriority::LEVELS {
                 let (priority_output_tx, priority_output_rx) = intrusive_queue::unsync::new();
                 priority_output_txs.push(priority_output_tx);
-                let gauge = counters.register_queue_gauge(
-                    Box::leak(format!("q.priority.{i}").into_boxed_str()),
-                );
-                priority_output_rxs
-                    .push(GaugedQueue::new(priority_output_rx.into_list_receiver(), gauge));
+                let gauge = counters
+                    .register_queue_gauge(Box::leak(format!("q.priority.{i}").into_boxed_str()));
+                priority_output_rxs.push(GaugedQueue::new(
+                    priority_output_rx.into_list_receiver(),
+                    gauge,
+                ));
             }
 
             let wheel_timer = clock.timer();
@@ -3177,9 +2887,9 @@ where
                 spawner.spawn({
                     let clock = clock.clone();
                     let send_gauge = if verbose_socket_metrics {
-                        counters.register_queue_gauge(
-                            Box::leak(format!("q.send.{sender_id}").into_boxed_str()),
-                        )
+                        counters.register_queue_gauge(Box::leak(
+                            format!("q.send.{sender_id}").into_boxed_str(),
+                        ))
                     } else {
                         counters.register_queue_gauge("q.send")
                     };

@@ -1814,7 +1814,7 @@ pub struct PathContext<Sealer> {
     /// RTT estimator for this path
     pub rtt_estimator: s2n_quic_core::recovery::RttEstimator,
     /// Gauge tracking inflight packets in the packet_number_map
-    pub inflight_gauge: crate::stream2::endpoint::QueueGauge,
+    pub inflight_gauge: crate::counter::QueueGauge,
     /// Packet number map for tracking sent packets
     pub packet_number_map: s2n_quic_core::packet::number::Map<
         crate::intrusive_queue::Entry<crate::packet::datagram::partial::PartialDatagram>,

@@ -5,13 +5,18 @@
 
 use super::*;
 use crate::{
-    clock::precision::Clock as _,
+    clock::{
+        precision::Clock as _,
+        testing::{Clock, Timer as ClockTimer},
+    },
     intrusive_queue::{EntryAdapter, Queue},
     socket::channel::Receiver as _,
 };
 use core::pin::pin;
 use s2n_quic_core::task::waker;
 use std::{collections::BTreeMap, time::Duration};
+
+type TestWheel<'a> = Wheel<EntryAdapter<TestEntry>, ClockTimer, &'a TestChannel, 1>;
 
 // ── Test utilities ─────────────────────────────────────────────────────
 
@@ -24,76 +29,6 @@ fn poll_once<F: core::future::Future>(future: F) -> Option<F::Output> {
     match future.as_mut().poll(&mut cx) {
         core::task::Poll::Ready(output) => Some(output),
         core::task::Poll::Pending => None,
-    }
-}
-
-// ── Test infrastructure ────────────────────────────────────────────────
-
-#[derive(Clone)]
-struct Clock(precision::Timestamp);
-
-impl precision::Clock for Clock {
-    type Timer = ClockTimer;
-
-    fn now(&self) -> precision::Timestamp {
-        self.0
-    }
-
-    fn timer(&self) -> ClockTimer {
-        ClockTimer {
-            now: self.0,
-            target: None,
-        }
-    }
-}
-
-struct ClockTimer {
-    now: precision::Timestamp,
-    target: Option<precision::Timestamp>,
-}
-
-impl precision::Timer for ClockTimer {
-    fn now(&self) -> precision::Timestamp {
-        self.now
-    }
-
-    async fn sleep_until(&mut self, target: precision::Timestamp) {
-        self.update(target);
-        core::future::pending::<()>().await;
-    }
-
-    fn poll_ready(&mut self, _cx: &mut core::task::Context) -> core::task::Poll<()> {
-        if let Some(target) = self.target {
-            if self.now >= target {
-                self.cancel();
-                return core::task::Poll::Ready(());
-            }
-        }
-        core::task::Poll::Pending
-    }
-
-    fn update(&mut self, target: precision::Timestamp) {
-        self.target = Some(target);
-    }
-
-    fn cancel(&mut self) {
-        self.target = None;
-    }
-
-    fn is_armed(&self) -> bool {
-        self.target.is_some()
-    }
-}
-
-impl Clock {
-    fn new(start: Duration) -> Self {
-        Self(precision::Timestamp {
-            nanos: start.as_nanos() as u64,
-        })
-    }
-
-    fn get_time(&self) -> precision::Timestamp {
-        self.0
     }
 }
 
@@ -154,8 +89,7 @@ impl channel::Receiver<Queue<TestEntry>> for &TestChannel {
 fn test_immediate_transmission() {
     let clock = Clock::new(Duration::from_micros(1000));
     let channel = TestChannel::new();
-    let mut wheel: Wheel<EntryAdapter<TestEntry>, ClockTimer, _, 1> =
-        Wheel::new(&channel, clock.timer());
+    let mut wheel: TestWheel = Wheel::new(&channel, clock.timer());
 
     // Entry with None timestamp should bypass wheel and be immediately available
     let mut batch = Queue::new();
@@ -180,8 +114,7 @@ fn test_immediate_transmission() {
 fn test_len_tracking() {
     let clock = Clock::new(Duration::from_micros(1000));
     let channel = TestChannel::new();
-    let mut wheel: Wheel<EntryAdapter<TestEntry>, ClockTimer, _, 1> =
-        Wheel::new(&channel, clock.timer());
+    let mut wheel: TestWheel = Wheel::new(&channel, clock.timer());
 
     assert_eq!(wheel.len, 0);
 
@@ -208,7 +141,7 @@ fn test_len_tracking() {
     assert_eq!(wheel.len, 5, "Len should be 5 after inserting");
 
     // Advance timer to future time and drain them
-    wheel.timer.now = future_time;
+    clock.set(future_time);
     let mut queue = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)))
         .unwrap()
         .unwrap();
@@ -222,8 +155,7 @@ fn test_cascade() {
     // With GRANULARITY_US=1 and 256 slots/level, we need >256 ticks to trigger cascade
     let clock = Clock::new(Duration::from_micros(1000));
     let channel = TestChannel::new();
-    let mut wheel: Wheel<EntryAdapter<TestEntry>, ClockTimer, _, 1> =
-        Wheel::new(&channel, clock.timer());
+    let mut wheel: TestWheel = Wheel::new(&channel, clock.timer());
 
     // Insert entry 300 µs in future (beyond level-0's 256-slot range)
     let future_time = clock.get_time() + Duration::from_micros(300);
@@ -241,12 +173,12 @@ fn test_cascade() {
     let _ = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)));
 
     // Advance timer to 256 ticks - should still be pending (in level 1)
-    wheel.timer.now = clock.get_time() + Duration::from_micros(256);
+    clock.advance(Duration::from_micros(256));
     let result = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)));
     assert!(result.is_none(), "Entry should not be ready yet");
 
     // Advance to target time - should get the entry after cascade
-    wheel.timer.now = future_time;
+    clock.set(future_time);
     let mut queue = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)))
         .unwrap()
         .unwrap();
@@ -258,8 +190,7 @@ fn test_cascade() {
 fn test_ordering() {
     let clock = Clock::new(Duration::from_micros(1000));
     let channel = TestChannel::new();
-    let mut wheel: Wheel<EntryAdapter<TestEntry>, ClockTimer, _, 1> =
-        Wheel::new(&channel, clock.timer());
+    let mut wheel: TestWheel = Wheel::new(&channel, clock.timer());
 
     // Insert entries in reverse order - wheel should reorder by time
     // Start at 1 to avoid entries at current time (which are immediately ready)
@@ -279,7 +210,7 @@ fn test_ordering() {
     let _ = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)));
 
     // Advance timer to drain all
-    wheel.timer.now = clock.get_time() + Duration::from_micros(100);
+    clock.advance(Duration::from_micros(100));
 
     let mut queue = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)))
         .unwrap()
@@ -304,14 +235,13 @@ fn test_ordering() {
 fn test_empty_wheel_fast_path() {
     let clock = Clock::new(Duration::from_micros(1000));
     let channel = TestChannel::new();
-    let mut wheel: Wheel<EntryAdapter<TestEntry>, ClockTimer, _, 1> =
-        Wheel::new(&channel, clock.timer());
+    let mut wheel: TestWheel = Wheel::new(&channel, clock.timer());
 
     // With empty wheel, advancing time should be fast (no slot scanning)
     let start_tick = wheel.current_tick;
 
     // Advance timer by 1000 ticks
-    wheel.timer.now = clock.get_time() + Duration::from_micros(1000);
+    clock.advance(Duration::from_micros(1000));
 
     // Poll should handle the time advance efficiently
     let result = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)));
@@ -345,9 +275,9 @@ fn fuzz_oracle_comparison() {
             let start = precision::Timestamp {
                 nanos: Duration::from_micros(base_us).as_nanos() as u64,
             };
-            let clock = Clock(start);
+            let clock = Clock::new(Duration::from_micros(base_us));
             let channel = TestChannel::new();
-            let mut wheel: Wheel<EntryAdapter<TestEntry>, ClockTimer, _, 1> =
+            let mut wheel: TestWheel =
                 Wheel::new(&channel, clock.timer());
 
             let start_tick =
@@ -397,7 +327,7 @@ fn fuzz_oracle_comparison() {
                     tick_to_timestamp(current_tick, 1);
 
                 // Update timer to current time
-                wheel.timer.now = current_time;
+                clock.set(current_time);
 
                 // Poll to get entries
                 let poll_result =
