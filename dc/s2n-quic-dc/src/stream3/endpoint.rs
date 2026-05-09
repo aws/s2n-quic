@@ -18,14 +18,13 @@ pub(crate) mod worker;
 
 use crate::{
     acceptor,
-    socket::channel::intrusive_queue,
-    stream3::{frame::Frame, Stream},
+    stream3::{frame::{Frame, SubmissionSender}, Stream},
 };
 use std::sync::atomic::AtomicU64;
 
 pub struct Endpoint {
     /// Frame submission channel (writers submit Queue<Frame> here)
-    pub frame_tx: intrusive_queue::sync::Sender<Frame>,
+    pub frame_tx: SubmissionSender,
     /// Path secret map (shared with PSK providers)
     pub path_secret_map: crate::path::secret::Map,
     /// Queue allocator for flow queues

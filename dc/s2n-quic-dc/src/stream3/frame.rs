@@ -34,6 +34,10 @@ pub type CompletionSender = datagram_completion::Sender<Frame>;
 /// Completion channel receiver typed on Frame.
 pub type CompletionReceiver = datagram_completion::Receiver<Frame>;
 
+/// Submission channel sender typed on Frame.
+pub type SubmissionSender =
+    crate::socket::channel::intrusive_queue::sharded::Sender<crate::intrusive_queue::EntryAdapter<Frame>>;
+
 /// Create a new completion channel for Frames.
 pub fn completion_channel() -> CompletionReceiver {
     datagram_completion::new()

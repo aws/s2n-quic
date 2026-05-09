@@ -77,18 +77,18 @@
 
 use crate::{
     byte_vec::ByteVec,
+    intrusive_queue::Queue,
     packet::{
         control,
         datagram::{partial::MAX_FLOW_DATA_HEADER_OVERHEAD, QueuePair, ResetTarget},
     },
     path::secret::map::Entry as PathSecretEntry,
-    socket::channel,
     stream3::{
         endpoint::{
             msg,
             reset_error::{self, ResetError},
         },
-        frame::{self, Frame, Header, DEFAULT_TTL},
+        frame::{self, Frame, Header, SubmissionSender, DEFAULT_TTL},
     },
 };
 use s2n_quic_core::{
@@ -109,7 +109,7 @@ pub struct Writer(Box<Inner>);
 
 struct Inner {
     /// Channel to submit frames to the wheel
-    frame_tx: channel::intrusive_queue::sync::Sender<Frame>,
+    frame_tx: SubmissionSender,
     /// Receiver for completion notifications from the pipeline
     completion_rx: frame::CompletionReceiver,
     /// Control-side channel for receiving MAX_DATA frames
@@ -169,7 +169,7 @@ impl Status {
 
 impl Writer {
     pub(crate) fn new_client(
-        frame_tx: channel::intrusive_queue::sync::Sender<Frame>,
+        frame_tx: SubmissionSender,
         path_secret_entry: Arc<PathSecretEntry>,
         stream_id: VarInt,
         acceptor_id: VarInt,
@@ -200,7 +200,7 @@ impl Writer {
     }
 
     pub(crate) fn new_server(
-        frame_tx: channel::intrusive_queue::sync::Sender<Frame>,
+        frame_tx: SubmissionSender,
         path_secret_entry: Arc<PathSecretEntry>,
         stream_id: VarInt,
         control_rx: msg::queue::Control,
@@ -392,9 +392,7 @@ impl Inner {
             transmission_time: None,
         };
 
-        self.frame_tx
-            .send_entry(frame.into())
-            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))?;
+        self.send_frame(frame)?;
 
         debug!(
             stream_id = self.stream_id.as_u64(),
@@ -434,9 +432,7 @@ impl Inner {
                 transmission_time: None,
             };
 
-            self.frame_tx
-                .send_entry(frame.into())
-                .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))?;
+            self.send_frame(frame)?;
 
             debug!(stream_id = self.stream_id.as_u64(), "Sent FIN");
             self.status.on_send_fin().unwrap();
@@ -648,9 +644,7 @@ impl Inner {
             transmission_time: None,
         };
 
-        self.frame_tx
-            .send_entry(frame.into())
-            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))?;
+        self.send_frame(frame)?;
 
         self.status.on_send_flow_init().unwrap();
 
@@ -769,9 +763,7 @@ impl Inner {
                 transmission_time: None,
             };
 
-            self.frame_tx
-                .send_entry(frame.into())
-                .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))?;
+            self.send_frame(frame)?;
 
             self.next_offset += payload_len;
             self.inflight_bytes += payload_len as u64;
@@ -793,6 +785,14 @@ impl Inner {
         }
 
         Ok(written)
+    }
+
+    fn send_frame(&mut self, frame: Frame) -> io::Result<()> {
+        let mut batch = Queue::new();
+        batch.push_back(frame.into());
+        self.frame_tx
+            .send_batch(batch)
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))
     }
 }
 

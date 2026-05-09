@@ -88,6 +88,7 @@
 
 use crate::{
     byte_vec::ByteVec,
+    intrusive_queue::Queue,
     packet::datagram::{QueuePair, ResetTarget},
     path::secret::map::Entry as PathSecretEntry,
     stream3::{
@@ -95,7 +96,7 @@ use crate::{
             msg,
             reset_error::{self, ResetError},
         },
-        frame::{self, Frame, Header, DEFAULT_TTL},
+        frame::{self, Frame, Header, SubmissionSender, DEFAULT_TTL},
     },
 };
 use s2n_codec::EncoderValue;
@@ -123,7 +124,7 @@ pub struct Reader(Box<Inner>);
 
 struct Inner {
     /// Channel to submit frames to the wheel
-    frame_tx: crate::socket::channel::intrusive_queue::sync::Sender<Frame>,
+    frame_tx: SubmissionSender,
     /// Stream-side channel for receiving data from the pipeline
     stream_rx: msg::queue::Stream,
     /// Path secret entry providing MTU and crypto material
@@ -171,7 +172,7 @@ impl Status {
 
 impl Reader {
     pub(crate) fn new_client(
-        frame_tx: crate::socket::channel::intrusive_queue::sync::Sender<Frame>,
+        frame_tx: SubmissionSender,
         path_secret_entry: Arc<PathSecretEntry>,
         stream_id: VarInt,
         stream_rx: msg::queue::Stream,
@@ -194,7 +195,7 @@ impl Reader {
     }
 
     pub(crate) fn new_server(
-        frame_tx: crate::socket::channel::intrusive_queue::sync::Sender<Frame>,
+        frame_tx: SubmissionSender,
         path_secret_entry: Arc<PathSecretEntry>,
         stream_id: VarInt,
         stream_rx: msg::queue::Stream,
@@ -216,7 +217,7 @@ impl Reader {
     }
 
     pub(crate) fn new_server_pending(
-        frame_tx: crate::socket::channel::intrusive_queue::sync::Sender<Frame>,
+        frame_tx: SubmissionSender,
         path_secret_entry: Arc<PathSecretEntry>,
         stream_id: VarInt,
         stream_rx: msg::queue::Stream,
@@ -482,9 +483,7 @@ impl Inner {
             transmission_time: None,
         };
 
-        self.frame_tx
-            .send_entry(frame.into())
-            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))?;
+        self.send_frame(frame)?;
 
         trace!(
             stream_id = self.stream_id.as_u64(),
@@ -520,9 +519,7 @@ impl Inner {
             transmission_time: None,
         };
 
-        self.frame_tx
-            .send_entry(frame.into())
-            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))?;
+        self.send_frame(frame)?;
 
         debug!(
             stream_id = self.stream_id.as_u64(),
@@ -532,6 +529,14 @@ impl Inner {
         );
 
         Ok(())
+    }
+
+    fn send_frame(&mut self, frame: Frame) -> io::Result<()> {
+        let mut batch = Queue::new();
+        batch.push_back(frame.into());
+        self.frame_tx
+            .send_batch(batch)
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))
     }
 }
 
