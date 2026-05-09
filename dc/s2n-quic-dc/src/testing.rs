@@ -14,6 +14,55 @@ pub use bach::{ext, rand};
 
 use s2n_quic::provider::tls::default as s2n_quic_tls_prov;
 
+#[cfg(all(test, not(loom)))]
+pub mod loom {
+    pub use std::{sync, thread};
+
+    pub mod future {
+        use core::{
+            future::Future,
+            task::{Context, Poll},
+        };
+        use std::sync::Arc;
+
+        pub fn block_on<F: Future>(future: F) -> F::Output {
+            struct ThreadWaker(std::thread::Thread);
+
+            impl std::task::Wake for ThreadWaker {
+                fn wake(self: Arc<Self>) {
+                    self.0.unpark();
+                }
+
+                fn wake_by_ref(self: &Arc<Self>) {
+                    self.0.unpark();
+                }
+            }
+
+            let mut future = std::pin::pin!(future);
+            let waker = std::task::Waker::from(Arc::new(ThreadWaker(std::thread::current())));
+            let mut cx = Context::from_waker(&waker);
+
+            loop {
+                match future.as_mut().poll(&mut cx) {
+                    Poll::Ready(output) => return output,
+                    Poll::Pending => std::thread::park(),
+                }
+            }
+        }
+    }
+
+    pub mod hint {
+        pub use core::hint::spin_loop;
+    }
+
+    pub fn model<F: 'static + FnOnce() -> R, R>(f: F) -> R {
+        f()
+    }
+}
+
+#[cfg(all(test, loom))]
+pub use loom;
+
 pub static SNI: OnceLock<Name> = OnceLock::new();
 
 #[doc(hidden)]

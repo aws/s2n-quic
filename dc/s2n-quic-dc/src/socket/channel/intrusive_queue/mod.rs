@@ -7,5 +7,6 @@
 //! The sender can always push to the queue, and the receiver drains until empty.
 
 pub mod datagram_completion;
+pub mod sharded;
 pub mod sync;
 pub mod unsync;

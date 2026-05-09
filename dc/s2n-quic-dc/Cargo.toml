@@ -67,6 +67,9 @@ s2n-quic-platform = { path = "../../quic/s2n-quic-platform", features = ["testin
 tokio = { version = "1", features = ["full", "test-util"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+[target.'cfg(loom)'.dev-dependencies]
+loom = { version = "0.7", features = ["checkpoint", "futures"] }
+
 [lints.rust.unexpected_cfgs]
 level = "warn"
-check-cfg = ['cfg(future)', 'cfg(fuzzing)', 'cfg(kani)', 'cfg(todo)']
+check-cfg = ['cfg(future)', 'cfg(fuzzing)', 'cfg(kani)', 'cfg(loom)', 'cfg(todo)']
