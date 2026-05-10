@@ -21,7 +21,7 @@ use crate::{
     path::secret::map::Entry as PathSecretEntry,
     socket::channel::intrusive_queue::datagram_completion,
 };
-use s2n_codec::{Encoder, EncoderValue};
+use s2n_codec::{decoder_invariant, Encoder, EncoderValue};
 use s2n_quic_core::varint::VarInt;
 use std::sync::Arc;
 
@@ -258,6 +258,113 @@ impl EncoderValue for Header {
             Self::Control { dest_sender_id } => {
                 encoder.encode(&Self::CONTROL_TYPE);
                 encoder.encode(dest_sender_id);
+            }
+        }
+    }
+}
+
+impl<'a> s2n_codec::DecoderValue<'a> for Header {
+    #[inline]
+    fn decode(buffer: s2n_codec::DecoderBuffer<'a>) -> s2n_codec::DecoderBufferResult<'a, Self> {
+        let (tag, buffer) = buffer.decode::<u8>()?;
+
+        match tag {
+            Self::FLOW_INIT_TYPE | Self::FLOW_INIT_WITH_FIN_TYPE => {
+                let (source_queue_id, buffer) = buffer.decode()?;
+                let (dest_acceptor_id, buffer) = buffer.decode()?;
+                let (attempt_id, buffer) = buffer.decode()?;
+                let (stream_id, buffer) = buffer.decode()?;
+                let is_fin = tag == Self::FLOW_INIT_WITH_FIN_TYPE;
+                Ok((
+                    Self::FlowInit {
+                        source_queue_id,
+                        dest_acceptor_id,
+                        attempt_id,
+                        stream_id,
+                        is_fin,
+                    },
+                    buffer,
+                ))
+            }
+            Self::FLOW_VALIDATE_REQUEST_TYPE => {
+                let (dest_sender_id, buffer) = buffer.decode()?;
+                let (queue_pair, buffer) = buffer.decode()?;
+                let (attempt_id, buffer) = buffer.decode()?;
+                let (stream_id, buffer) = buffer.decode()?;
+                Ok((
+                    Self::FlowValidateRequest {
+                        dest_sender_id,
+                        queue_pair,
+                        attempt_id,
+                        stream_id,
+                    },
+                    buffer,
+                ))
+            }
+            Self::FLOW_INIT_VALIDATE_TYPE => {
+                let (queue_pair, buffer) = buffer.decode()?;
+                let (attempt_id, buffer) = buffer.decode()?;
+                let (stream_id, buffer) = buffer.decode()?;
+                Ok((
+                    Self::FlowInitValidate {
+                        queue_pair,
+                        attempt_id,
+                        stream_id,
+                    },
+                    buffer,
+                ))
+            }
+            Self::FLOW_DATA_NO_FIN_TYPE | Self::FLOW_DATA_WITH_FIN_TYPE => {
+                let (queue_pair, buffer) = buffer.decode()?;
+                let (stream_id, buffer) = buffer.decode()?;
+                let (offset, buffer) = buffer.decode()?;
+                let is_fin = tag == Self::FLOW_DATA_WITH_FIN_TYPE;
+                Ok((
+                    Self::FlowData {
+                        queue_pair,
+                        stream_id,
+                        offset,
+                        is_fin,
+                    },
+                    buffer,
+                ))
+            }
+            Self::FLOW_CONTROL_TYPE => {
+                let (queue_pair, buffer) = buffer.decode()?;
+                let (stream_id, buffer) = buffer.decode()?;
+                Ok((Self::FlowControl { queue_pair, stream_id }, buffer))
+            }
+            Self::FLOW_RESET_BOTH_TYPE
+            | Self::FLOW_RESET_STREAM_TYPE
+            | Self::FLOW_RESET_CONTROL_TYPE => {
+                let reset_target = match tag {
+                    Self::FLOW_RESET_BOTH_TYPE => ResetTarget::Both,
+                    Self::FLOW_RESET_STREAM_TYPE => ResetTarget::Stream,
+                    Self::FLOW_RESET_CONTROL_TYPE => ResetTarget::Control,
+                    _ => unreachable!(),
+                };
+                let (dest_queue_id, buffer) = buffer.decode()?;
+                let (stream_id, buffer) = buffer.decode()?;
+                let (error_code, buffer) = buffer.decode()?;
+                Ok((
+                    Self::FlowReset {
+                        dest_queue_id,
+                        stream_id,
+                        reset_target,
+                        error_code,
+                    },
+                    buffer,
+                ))
+            }
+            Self::CONTROL_TYPE => {
+                let (dest_sender_id, buffer) = buffer.decode()?;
+                Ok((Self::Control { dest_sender_id }, buffer))
+            }
+            _ => {
+                decoder_invariant!(false, "unknown frame header type");
+                Err(s2n_codec::DecoderError::InvariantViolation(
+                    "unknown frame header type",
+                ))
             }
         }
     }

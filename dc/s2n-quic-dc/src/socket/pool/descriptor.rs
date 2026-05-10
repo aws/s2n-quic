@@ -449,6 +449,52 @@ impl core::ops::DerefMut for Filled {
     }
 }
 
+impl s2n_quic_core::buffer::reader::Storage for Filled {
+    type Error = core::convert::Infallible;
+
+    #[inline]
+    fn buffered_len(&self) -> usize {
+        self.len() as usize
+    }
+
+    #[inline]
+    fn buffer_is_empty(&self) -> bool {
+        self.is_empty()
+    }
+
+    #[inline]
+    fn read_chunk(
+        &mut self,
+        watermark: usize,
+    ) -> Result<s2n_quic_core::buffer::reader::storage::Chunk<'_>, Self::Error> {
+        use s2n_quic_core::buffer::reader::storage::Chunk;
+        let len = (self.len() as usize).min(watermark);
+        if len == 0 {
+            return Ok(Chunk::empty());
+        }
+        // SAFETY: The descriptor's backing allocation is ref-counted and will not be
+        // freed while `self` is alive.  `advance` only updates bookkeeping (offset/len)
+        // and does not move or invalidate the underlying memory.  The returned slice
+        // is valid for the exclusive-borrow lifetime of `self` because the backing
+        // allocation lives at least as long as `self`.
+        let slice: &[u8] =
+            unsafe { core::slice::from_raw_parts(self.payload().as_ptr(), len) };
+        self.advance(len as u16);
+        Ok(slice.into())
+    }
+
+    #[inline]
+    fn partial_copy_into<Dest>(
+        &mut self,
+        dest: &mut Dest,
+    ) -> Result<s2n_quic_core::buffer::reader::storage::Chunk<'_>, Self::Error>
+    where
+        Dest: s2n_quic_core::buffer::writer::Storage + ?Sized,
+    {
+        self.read_chunk(dest.remaining_capacity())
+    }
+}
+
 impl Filled {
     /// Creates a deep copy of this filled descriptor by allocating a new buffer
     /// and copying the payload bytes. This is safe because the copy gets its own

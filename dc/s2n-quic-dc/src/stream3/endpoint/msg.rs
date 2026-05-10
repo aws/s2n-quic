@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use bytes::BytesMut;
+use crate::socket::pool::descriptor;
 use s2n_quic_core::varint::VarInt;
 
 pub enum Stream {
@@ -9,7 +9,7 @@ pub enum Stream {
     Data {
         offset: VarInt,
         fin: bool,
-        payload: BytesMut,
+        payload: descriptor::Filled,
     },
     Reset {
         error_code: VarInt,
@@ -17,7 +17,7 @@ pub enum Stream {
 }
 
 pub enum Control {
-    Frames { payload: BytesMut },
+    Frames { payload: descriptor::Filled },
     Reset { error_code: VarInt },
 }
 

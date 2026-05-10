@@ -539,7 +539,7 @@ impl Inner {
                 for msg in queue {
                     match msg.into_inner() {
                         msg::Control::Frames { mut payload } => {
-                            if self.handle_control_frames(&mut payload).is_err() {
+                            if self.handle_control_frames(&mut *payload).is_err() {
                                 let error_code = reset_error::FRAME_DECODE_ERROR;
                                 self.reset_error_code = Some(error_code);
                                 self.status.on_shutdown().ok();

@@ -6,6 +6,7 @@
 pub(crate) mod ack;
 pub(crate) mod assemble;
 pub(crate) mod counters;
+pub(crate) mod decode;
 pub(crate) mod dispatch;
 pub(crate) mod inflight;
 pub(crate) mod msg;

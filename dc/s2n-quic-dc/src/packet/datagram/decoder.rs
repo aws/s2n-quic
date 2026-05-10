@@ -99,6 +99,20 @@ impl Meta {
         self.packet_number.as_u64()
     }
 
+    /// Returns the length of the outer packet header (everything before the application header).
+    ///
+    /// The `application_header` range is always decoded from *within* the `header` buffer
+    /// (see `Meta::decode`), so `application_header.len() <= header.len()` is a structural
+    /// invariant of every successfully decoded packet.
+    #[inline]
+    pub fn outer_header_len(&self) -> usize {
+        debug_assert!(
+            self.application_header.len() <= self.header.len(),
+            "application_header must be a sub-range of header"
+        );
+        self.header.len() - self.application_header.len()
+    }
+
     /// Combine this metadata with storage to create a Packet
     #[inline]
     pub fn with_storage<S: storage::Bytes>(self, storage: S) -> Result<Packet<S>, (Self, S)> {

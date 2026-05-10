@@ -860,4 +860,271 @@ mod tests {
                 assert_eq!(context.pending.len(), oracle.remaining_frames);
             });
     }
+
+    #[test]
+    fn encode_decode_round_trip() {
+        use crate::stream3::endpoint::decode;
+        use s2n_quic_core::endpoint;
+
+        // Use fake_deterministic so sealer (Client) and opener (Server) share the
+        // same underlying secret and therefore the same derived application key.
+        let sealer_entry = PathSecretEntry::fake_deterministic(
+            "127.0.0.1:8080".parse().unwrap(),
+            endpoint::Type::Client,
+        );
+        let opener_entry = PathSecretEntry::fake_deterministic(
+            "127.0.0.1:8080".parse().unwrap(),
+            endpoint::Type::Server,
+        );
+        sealer_entry.update_max_datagram_size(1500);
+
+        let registry = Registry::new();
+        let gauge = registry.register_queue_gauge("test.inflight");
+        let mut context = Context::new(&sealer_entry, gauge);
+
+        let key_id = context.credentials.key_id;
+        let opener = opener_entry.secret().application_opener(key_id);
+
+        let input_frames = vec![
+            FrameInput {
+                header: Header::FlowData {
+                    queue_pair: crate::packet::datagram::QueuePair {
+                        source_queue_id: VarInt::from_u8(1),
+                        dest_queue_id: VarInt::from_u8(2),
+                    },
+                    stream_id: VarInt::from_u8(42),
+                    offset: VarInt::ZERO,
+                    is_fin: false,
+                },
+                payload: b"hello world".to_vec(),
+            },
+            FrameInput {
+                header: Header::FlowReset {
+                    dest_queue_id: VarInt::from_u8(3),
+                    stream_id: VarInt::from_u8(10),
+                    reset_target: ResetTarget::Both,
+                    error_code: VarInt::from_u8(1),
+                },
+                payload: vec![],
+            },
+            FrameInput {
+                header: Header::FlowData {
+                    queue_pair: crate::packet::datagram::QueuePair {
+                        source_queue_id: VarInt::from_u8(4),
+                        dest_queue_id: VarInt::from_u8(5),
+                    },
+                    stream_id: VarInt::from_u8(20),
+                    offset: VarInt::from_u8(11),
+                    is_fin: true,
+                },
+                payload: b"fin frame".to_vec(),
+            },
+        ];
+
+        for frame in &input_frames {
+            context.push_frame(to_frame(frame, &sealer_entry));
+        }
+
+        let mut buf = vec![0u8; 65536];
+        let mut header_buf = Vec::new();
+        let tag_len = crate::crypto::seal::Application::tag_len(&context.sealer);
+        let encoded_len = encode_segment(
+            &mut buf,
+            443, // source_control_port
+            VarInt::from_u8(7), // source_sender_id
+            context.next_packet_number,
+            &context.sealer,
+            &context.credentials,
+            &mut context.flow_attempt_id_counter,
+            &context.pending,
+            &mut header_buf,
+        );
+        assert!(encoded_len > 0, "must encode at least something");
+
+        // Decode the packet
+        let decode_buf = s2n_codec::DecoderBufferMut::new(&mut buf[..encoded_len]);
+        let (mut packet, _) =
+            crate::packet::datagram::decoder::Packet::decode(decode_buf, (), tag_len)
+                .expect("packet must decode cleanly");
+
+        assert!(
+            matches!(
+                packet.routing_info(),
+                crate::packet::datagram::RoutingInfo::SenderId { .. }
+            ),
+            "multi-frame packets use SenderId routing"
+        );
+
+        // Decrypt in place
+        packet
+            .decrypt_in_place(&opener)
+            .expect("decryption must succeed with matching key pair");
+
+        // Decode the frame metadata; pair each (header, payload_len) with the
+        // corresponding payload bytes from the decrypted payload region.
+        let app_header = packet.application_header();
+        let payload_bytes = packet.payload();
+        let decoded_frames: Vec<_> = {
+            let mut offset = 0usize;
+            let mut result = Vec::new();
+            for item in decode::decode_frames(app_header) {
+                let (header, payload_len) = item.expect("frame metadata must decode");
+                result.push((header, &payload_bytes[offset..offset + payload_len]));
+                offset += payload_len;
+            }
+            assert_eq!(offset, payload_bytes.len(), "all payload bytes must be consumed");
+            result
+        };
+
+        assert_eq!(
+            decoded_frames.len(),
+            input_frames.len(),
+            "decoded frame count must match"
+        );
+
+        for (i, ((header, payload), original)) in
+            decoded_frames.iter().zip(input_frames.iter()).enumerate()
+        {
+            assert_eq!(*header, original.header, "frame[{i}] header mismatch");
+            let expected_payload = if original.header.has_payload_length() {
+                &original.payload[..]
+            } else {
+                &[][..]
+            };
+            assert_eq!(*payload, expected_payload, "frame[{i}] payload mismatch");
+        }
+    }
+
+    #[test]
+    fn encode_decode_fuzz_round_trip() {
+        use crate::stream3::endpoint::decode;
+        use s2n_quic_core::endpoint;
+
+        check!()
+            .with_type::<HarnessInput>()
+            .with_test_time(Duration::from_secs(10))
+            .for_each(|input| {
+                let sealer_entry = PathSecretEntry::fake_deterministic(
+                    "127.0.0.1:8080".parse().unwrap(),
+                    endpoint::Type::Client,
+                );
+                let opener_entry = PathSecretEntry::fake_deterministic(
+                    "127.0.0.1:8080".parse().unwrap(),
+                    endpoint::Type::Server,
+                );
+                sealer_entry.update_max_datagram_size(input.mtu);
+
+                let registry = Registry::new();
+                let gauge = registry.register_queue_gauge("test.inflight");
+                let context = Context::new(&sealer_entry, gauge);
+
+                let key_id = context.credentials.key_id;
+                let opener = opener_entry.secret().application_opener(key_id);
+                let tag_len = crate::crypto::seal::Application::tag_len(&context.sealer);
+
+                // Simulate the assembler: pick frames that fit together in one packet.
+                let mut packet_inputs: Vec<&FrameInput> = Vec::new();
+                let mut meta = MetadataEstimate::new(VarInt::ZERO);
+                for frame in &input.frames {
+                    if !is_frame_encodable(
+                        frame,
+                        input.source_sender_id,
+                        input.source_control_port,
+                        &context.credentials,
+                        input.mtu,
+                    ) {
+                        continue;
+                    }
+                    let next_meta = meta.with_frame_parts(&frame.header, payload_len(frame));
+                    let est = next_meta.estimate_packet_len(
+                        input.source_sender_id,
+                        input.source_control_port,
+                        context.next_packet_number,
+                        &context.credentials,
+                        tag_len,
+                    );
+                    if est > input.mtu as usize {
+                        break;
+                    }
+                    meta = next_meta;
+                    packet_inputs.push(frame);
+                    if est == input.mtu as usize {
+                        break;
+                    }
+                }
+
+                if packet_inputs.is_empty() {
+                    return;
+                }
+
+                // Build a queue of exactly the frames that fit in one packet.
+                let mut packet_frames = Queue::new();
+                for f in &packet_inputs {
+                    packet_frames.push_back(to_frame(f, &sealer_entry));
+                }
+
+                let mut buf = vec![0u8; 65536];
+                let mut header_buf = Vec::new();
+                let mut flow_attempt_id = VarInt::ZERO;
+
+                let encoded_len = encode_segment(
+                    &mut buf,
+                    input.source_control_port,
+                    input.source_sender_id,
+                    context.next_packet_number,
+                    &context.sealer,
+                    &context.credentials,
+                    &mut flow_attempt_id,
+                    &packet_frames,
+                    &mut header_buf,
+                );
+
+                if encoded_len == 0 {
+                    return;
+                }
+
+                // Decode the outer datagram packet
+                let decode_buf = s2n_codec::DecoderBufferMut::new(&mut buf[..encoded_len]);
+                let (mut packet, _) =
+                    crate::packet::datagram::decoder::Packet::decode(decode_buf, (), tag_len)
+                        .expect("encoded packet must decode");
+
+                // Decrypt in place
+                packet
+                    .decrypt_in_place(&opener)
+                    .expect("decrypt must succeed with matched key pair");
+
+                // Decode the frame metadata region
+                let app_header = packet.application_header();
+                let payload_bytes = packet.payload();
+                let decoded: Vec<_> = {
+                    let mut offset = 0usize;
+                    let mut result = Vec::new();
+                    for item in decode::decode_frames(app_header) {
+                        let (header, payload_len) = item.expect("frame metadata must decode after decryption");
+                        result.push((header, &payload_bytes[offset..offset + payload_len]));
+                        offset += payload_len;
+                    }
+                    assert_eq!(offset, payload_bytes.len(), "all payload bytes must be consumed");
+                    result
+                };
+
+                // Verify frames match
+                assert_eq!(
+                    decoded.len(),
+                    packet_inputs.len(),
+                    "decoded frame count must match"
+                );
+
+                for (i, ((header, payload), orig)) in decoded.iter().zip(packet_inputs.iter()).enumerate() {
+                    assert_eq!(*header, orig.header, "frame[{i}] header mismatch");
+                    let exp_payload = if orig.header.has_payload_length() {
+                        &orig.payload[..]
+                    } else {
+                        &[][..]
+                    };
+                    assert_eq!(*payload, exp_payload, "frame[{i}] payload mismatch");
+                }
+            });
+    }
 }
