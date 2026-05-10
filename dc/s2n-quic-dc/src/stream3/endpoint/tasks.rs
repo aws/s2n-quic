@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    intrusive_queue::{Entry, Queue},
     path::secret::map::Entry as PathSecretEntry,
     socket::channel::{ByteCost, Receiver, Sender},
+    stream3::frame::Frame,
 };
 use core::{
     future::poll_fn,
@@ -30,6 +32,172 @@ impl PathSecretMapEntry for crate::stream3::frame::Frame {
     #[inline]
     fn path_secret_entry(&self) -> &Arc<PathSecretEntry> {
         &self.path_secret_entry
+    }
+}
+
+/// Conservative packet-level overhead estimate for stream3 frame batches.
+///
+/// Uses the same upper-bound constant as datagram partials so batching leaves room for packet
+/// fields that are added later by workers (credentials, packet number, routing, tag, etc).
+const MAX_FRAME_BATCH_PACKET_OVERHEAD: u64 =
+    crate::packet::datagram::partial::MAX_FLOW_DATA_HEADER_OVERHEAD as u64;
+const BATCH_FRAMES_POLL_BUDGET: usize = 10;
+
+/// A queue of frames grouped for a single path-secret entry.
+///
+/// This wrapper keeps the queue byte-cost estimate and path-secret entry so it can be routed
+/// through `pick_two`.
+pub struct FrameBatch {
+    queue: Queue<Frame>,
+    path_secret_entry: Arc<PathSecretEntry>,
+    byte_cost: u64,
+}
+
+impl FrameBatch {
+    #[inline]
+    fn new(first: Entry<Frame>) -> Self {
+        let path_secret_entry = first.path_secret_entry.clone();
+        let byte_cost = MAX_FRAME_BATCH_PACKET_OVERHEAD.saturating_add(first.byte_cost());
+        let mut queue = Queue::new();
+        queue.push_back(first);
+
+        Self {
+            queue,
+            path_secret_entry,
+            byte_cost,
+        }
+    }
+
+    #[inline]
+    fn push_with_cost(&mut self, frame: Entry<Frame>, frame_cost: u64) {
+        self.byte_cost = self.byte_cost.saturating_add(frame_cost);
+        self.queue.push_back(frame);
+    }
+
+    /// Returns the number of frames currently buffered in this batch.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
+    /// Returns true when this batch contains no frames.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    /// Borrows the underlying intrusive queue of frames.
+    #[inline]
+    pub fn queue(&self) -> &Queue<Frame> {
+        &self.queue
+    }
+
+    /// Consumes the batch and returns the underlying frame queue.
+    #[inline]
+    pub fn into_queue(self) -> Queue<Frame> {
+        self.queue
+    }
+}
+
+impl From<FrameBatch> for Queue<Frame> {
+    #[inline]
+    fn from(value: FrameBatch) -> Self {
+        value.into_queue()
+    }
+}
+
+impl ByteCost for FrameBatch {
+    #[inline]
+    fn byte_cost(&self) -> u64 {
+        self.byte_cost
+    }
+}
+
+impl PathSecretMapEntry for FrameBatch {
+    #[inline]
+    fn path_secret_entry(&self) -> &Arc<PathSecretEntry> {
+        &self.path_secret_entry
+    }
+}
+
+/// Receiver combinator that batches consecutive frame entries by path-secret entry and byte budget.
+///
+/// Batches target roughly one datagram (`path_secret_entry.max_datagram_size()`) while accounting
+/// for frame metadata and conservative packet overhead. A batch always contains at least one frame.
+pub struct BatchFramesByPathSecret<R> {
+    inner: R,
+    buffered: Option<Entry<Frame>>,
+}
+
+impl<R> BatchFramesByPathSecret<R>
+where
+    R: Receiver<Entry<Frame>>,
+{
+    #[inline]
+    pub fn new(inner: R) -> Self {
+        Self {
+            inner,
+            buffered: None,
+        }
+    }
+
+    #[inline]
+    fn take_first(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<Entry<Frame>>> {
+        if let Some(frame) = self.buffered.take() {
+            return Poll::Ready(Some(frame));
+        }
+
+        self.inner.poll_recv(cx)
+    }
+}
+
+impl<R> Receiver<FrameBatch> for BatchFramesByPathSecret<R>
+where
+    R: Receiver<Entry<Frame>>,
+{
+    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<FrameBatch>> {
+        let Some(first) = (match self.take_first(cx) {
+            Poll::Ready(frame) => frame,
+            Poll::Pending => return Poll::Pending,
+        }) else {
+            return Poll::Ready(None);
+        };
+
+        let target_bytes = first.path_secret_entry.max_datagram_size() as u64;
+        let mut batch = FrameBatch::new(first);
+
+        // Keep poll work bounded and return the current batch so the executor can make progress.
+        for _ in 0..BATCH_FRAMES_POLL_BUDGET {
+            if batch.byte_cost() >= target_bytes {
+                break;
+            }
+
+            match self.inner.poll_recv(cx) {
+                Poll::Ready(Some(frame_entry)) => {
+                    if !Arc::ptr_eq(batch.path_secret_entry(), frame_entry.path_secret_entry()) {
+                        self.buffered = Some(frame_entry);
+                        break;
+                    }
+
+                    let frame_cost = frame_entry.byte_cost();
+                    let next_cost = batch.byte_cost().saturating_add(frame_cost);
+                    if next_cost > target_bytes {
+                        self.buffered = Some(frame_entry);
+                        break;
+                    }
+
+                    batch.push_with_cost(frame_entry, frame_cost);
+                }
+                Poll::Ready(None) | Poll::Pending => break,
+            }
+        }
+
+        Poll::Ready(Some(batch))
+    }
+
+    #[inline]
+    fn on_consumed(&mut self, bytes: u64) {
+        self.inner.on_consumed(bytes);
     }
 }
 
@@ -118,8 +286,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::path::secret::map::Entry as PathSecretEntry;
+    use crate::{
+        byte_vec::ByteVec,
+        path::secret::map::Entry as PathSecretEntry,
+        stream3::frame::{Header, TransmissionStatus, DEFAULT_TTL},
+    };
+    use bytes::Bytes;
     use core::{future::Future, mem::MaybeUninit, task::Poll};
+    use s2n_quic_core::varint::VarInt;
     use std::{
         collections::VecDeque,
         sync::{
@@ -199,6 +373,21 @@ mod tests {
         }
     }
 
+    struct TestFrameReceiver {
+        values: VecDeque<Entry<Frame>>,
+        consumed: u64,
+    }
+
+    impl Receiver<Entry<Frame>> for TestFrameReceiver {
+        fn poll_recv(&mut self, _cx: &mut task::Context<'_>) -> Poll<Option<Entry<Frame>>> {
+            Poll::Ready(self.values.pop_front())
+        }
+
+        fn on_consumed(&mut self, bytes: u64) {
+            self.consumed += bytes;
+        }
+    }
+
     fn test_path_secret_entry() -> Arc<PathSecretEntry> {
         let peer = "127.0.0.1:4433"
             .parse()
@@ -215,6 +404,26 @@ mod tests {
             byte_cost: 123,
             drop_counter,
         }
+    }
+
+    fn new_test_frame(path_secret_entry: Arc<PathSecretEntry>, payload_len: usize) -> Entry<Frame> {
+        let mut payload = ByteVec::new();
+        if payload_len > 0 {
+            payload.push_back(Bytes::from(vec![0u8; payload_len]));
+        }
+
+        Entry::new(Frame {
+            header: Header::Control {
+                dest_sender_id: VarInt::from_u8(1),
+            },
+            source_sender_id: VarInt::MAX,
+            payload,
+            path_secret_entry,
+            completion: None,
+            status: TransmissionStatus::Pending,
+            ttl: DEFAULT_TTL,
+            transmission_time: None,
+        })
     }
 
     fn with_noop_context<R>(f: impl FnOnce(&mut task::Context<'_>) -> R) -> R {
@@ -307,5 +516,91 @@ mod tests {
         let result = with_noop_context(|cx| fut.as_mut().poll(cx));
         assert_eq!(result, Poll::Ready(()));
         assert_eq!(drop_counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn batch_frames_groups_by_same_path_secret() {
+        let path_a = test_path_secret_entry();
+        let path_b = test_path_secret_entry();
+        path_a.update_max_datagram_size(4_096);
+        path_b.update_max_datagram_size(4_096);
+
+        let rx = TestFrameReceiver {
+            values: VecDeque::from([
+                new_test_frame(path_a.clone(), 16),
+                new_test_frame(path_a.clone(), 16),
+                new_test_frame(path_b.clone(), 16),
+            ]),
+            consumed: 0,
+        };
+        let mut batcher = BatchFramesByPathSecret::new(rx);
+
+        let first = with_noop_context(|cx| batcher.poll_recv(cx));
+        let Poll::Ready(Some(first)) = first else {
+            panic!("expected first batch");
+        };
+        assert_eq!(first.len(), 2);
+        assert!(Arc::ptr_eq(first.path_secret_entry(), &path_a));
+
+        let second = with_noop_context(|cx| batcher.poll_recv(cx));
+        let Poll::Ready(Some(second)) = second else {
+            panic!("expected second batch");
+        };
+        assert_eq!(second.len(), 1);
+        assert!(Arc::ptr_eq(second.path_secret_entry(), &path_b));
+    }
+
+    #[test]
+    fn batch_frames_enforces_datagram_byte_budget() {
+        let path = test_path_secret_entry();
+        path.update_max_datagram_size(220);
+
+        let rx = TestFrameReceiver {
+            values: VecDeque::from([
+                new_test_frame(path.clone(), 70),
+                new_test_frame(path.clone(), 70),
+                new_test_frame(path.clone(), 70),
+            ]),
+            consumed: 0,
+        };
+        let mut batcher = BatchFramesByPathSecret::new(rx);
+
+        let first = with_noop_context(|cx| batcher.poll_recv(cx));
+        let Poll::Ready(Some(first)) = first else {
+            panic!("expected first batch");
+        };
+        assert_eq!(first.len(), 1);
+        assert!(first.byte_cost() <= 220);
+        let frame_cost = first
+            .queue()
+            .peek_front()
+            .expect("batch must contain the first frame")
+            .byte_cost();
+        assert!(first.byte_cost().saturating_add(frame_cost) > 220);
+
+        let second = with_noop_context(|cx| batcher.poll_recv(cx));
+        let Poll::Ready(Some(second)) = second else {
+            panic!("expected second batch");
+        };
+        assert_eq!(second.len(), 1);
+
+        let third = with_noop_context(|cx| batcher.poll_recv(cx));
+        let Poll::Ready(Some(third)) = third else {
+            panic!("expected third batch");
+        };
+        assert_eq!(third.len(), 1);
+    }
+
+    #[test]
+    fn batch_frames_forwards_on_consumed() {
+        let path = test_path_secret_entry();
+        let rx = TestFrameReceiver {
+            values: VecDeque::from([new_test_frame(path, 0)]),
+            consumed: 0,
+        };
+        let mut batcher = BatchFramesByPathSecret::new(rx);
+
+        batcher.on_consumed(321);
+        assert_eq!(batcher.inner.consumed, 321);
     }
 }
