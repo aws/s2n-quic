@@ -38,6 +38,19 @@ pub type CompletionReceiver = datagram_completion::Receiver<Frame>;
 pub type SubmissionSender =
     crate::socket::channel::intrusive_queue::sharded::Sender<crate::intrusive_queue::EntryAdapter<Frame>>;
 
+/// Submission channel receiver typed on Frame.
+pub type SubmissionReceiver =
+    crate::socket::channel::intrusive_queue::sharded::Receiver<crate::intrusive_queue::EntryAdapter<Frame>>;
+
+/// Creates a new frame submission channel.
+///
+/// `shard_count` must be a power of two. More shards reduce contention between concurrent senders
+/// at the cost of receiver bookkeeping. A good default is the number of workers rounded up to the
+/// next power of two, multiplied by a small constant (e.g. 4).
+pub fn submission_channel(shard_count: usize) -> (SubmissionSender, SubmissionReceiver) {
+    crate::socket::channel::intrusive_queue::sharded::new::<Frame>(shard_count)
+}
+
 /// Create a new completion channel for Frames.
 pub fn completion_channel() -> CompletionReceiver {
     datagram_completion::new()

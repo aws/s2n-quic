@@ -4,20 +4,19 @@
 //! Send-safe sharded intrusive queue channel for normal async runtimes.
 //!
 //! The sender has no backpressure - it can always push lists to one of the shards. The receiver
-//! drains one shard at a time, returning the entire list. Receivers are expected to register their
-//! waker immediately after channel creation and before cloning or exposing senders.
+//! drains one shard at a time, returning the entire list. The receiver waker is stored in an
+//! [`AtomicWaker`] so it can be registered at any time, including after senders have been cloned
+//! or moved to other threads.
 
 use crate::intrusive_queue;
-use core::{
-    cell::UnsafeCell,
-    task::{Poll, Waker},
-};
-use sync::{lock, Arc, AtomicBool, AtomicU64, AtomicUsize, Mutex, Ordering};
+use atomic_waker::AtomicWaker;
+use core::task::Poll;
+use sync::{lock, Arc, AtomicU64, AtomicUsize, Mutex, Ordering};
 
 #[cfg(all(loom, test))]
 mod sync {
     pub use loom::sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
         Arc, Mutex, MutexGuard,
     };
 
@@ -29,7 +28,7 @@ mod sync {
 
 #[cfg(not(all(loom, test)))]
 mod sync {
-    pub use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+    pub use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
     pub use parking_lot::{Mutex, MutexGuard};
     pub use std::sync::Arc;
 
@@ -50,20 +49,12 @@ struct Shared<A: intrusive_queue::Adapter> {
     sender_stride: usize,
     shard_mask: usize,
     occupancy: Box<[AtomicU64]>,
-    waker_registered: AtomicBool,
-    // Initialized to a noop waker and updated by the receiver before senders are exposed.
-    recv_waker: UnsafeCell<Waker>,
+    /// Waker for the receiver task. Uses `AtomicWaker` so it can be registered at any time,
+    /// even after senders have been cloned or sent to other threads. This removes the requirement
+    /// from earlier designs that `Receiver::register` had to be called before any sender clone.
+    recv_waker: AtomicWaker,
     shards: Box<[Mutex<Shard<A>>]>,
 }
-
-// SAFETY: `recv_waker` is initialized to a noop waker and only mutated by the receiver before
-// senders are exposed. Senders only read it to wake the receiver. This makes shared references safe.
-// The type is also safe to send between threads because all fields are `Send` under `A::Pointer:
-// Send`; the waker cell is moved with `Shared`. Callers must not clone or expose senders before
-// calling `Receiver::register`, ensuring waker mutation completes before senders can concurrently
-// read it.
-unsafe impl<A: intrusive_queue::Adapter> Sync for Shared<A> where A::Pointer: Send {}
-unsafe impl<A: intrusive_queue::Adapter> Send for Shared<A> where A::Pointer: Send {}
 
 impl<A: intrusive_queue::Adapter> Shared<A> {
     #[inline(always)]
@@ -91,9 +82,7 @@ impl<A: intrusive_queue::Adapter> Shared<A> {
 
     #[inline(always)]
     fn wake_receiver(&self) {
-        // SAFETY: The receiver initializes the waker before senders are exposed. Senders only read
-        // the waker after that point.
-        unsafe { (&*self.recv_waker.get()).wake_by_ref() };
+        self.recv_waker.wake();
     }
 }
 
@@ -148,8 +137,7 @@ pub fn new_with_adapter<A: intrusive_queue::Adapter>(
         sender_stride,
         shard_mask: shard_count - 1,
         occupancy,
-        waker_registered: AtomicBool::new(false),
-        recv_waker: UnsafeCell::new(s2n_quic_core::task::waker::noop()),
+        recv_waker: AtomicWaker::new(),
         shards,
     });
 
@@ -203,11 +191,6 @@ impl<A: intrusive_queue::Adapter> Sender<A> {
         &mut self,
         mut list: intrusive_queue::List<A>,
     ) -> Result<(), intrusive_queue::List<A>> {
-        debug_assert!(
-            self.shared.waker_registered.load(Ordering::Acquire),
-            "receiver waker must be registered before exposing senders"
-        );
-
         if list.is_empty() {
             return Ok(());
         }
@@ -277,16 +260,12 @@ impl<A: intrusive_queue::Adapter> Drop for Receiver<A> {
 impl<A: intrusive_queue::Adapter> Receiver<A> {
     /// Registers the receiver waker.
     ///
-    /// This channel expects the receiver to register immediately after channel creation, before any
-    /// sender is cloned or exposed to another thread.
-    pub fn register(&self, waker: &Waker) {
-        // SAFETY: callers must complete registration before cloning or exposing senders. After
-        // that point, senders may concurrently read the waker.
-        unsafe {
-            let old_waker = core::mem::replace(&mut *self.shared.recv_waker.get(), waker.clone());
-            drop(old_waker);
-        }
-        self.shared.waker_registered.store(true, Ordering::Release);
+    /// Uses [`AtomicWaker`] internally, so this may be called at any time — including after senders
+    /// have been cloned or moved to other threads — without violating memory-safety. Callers
+    /// should still register as early as possible (e.g. on first task poll) so that sends that
+    /// arrive before registration are not missed.
+    pub fn register(&self, waker: &core::task::Waker) {
+        self.shared.recv_waker.register(waker);
     }
 
     #[inline(always)]
@@ -390,10 +369,12 @@ impl<A: intrusive_queue::Adapter> super::super::Receiver<intrusive_queue::List<A
     #[inline(always)]
     fn poll_recv(
         &mut self,
-        // The receiver waker is registered explicitly before senders are exposed; the channel
-        // trait still requires a context parameter here.
-        _cx: &mut core::task::Context<'_>,
+        cx: &mut core::task::Context<'_>,
     ) -> Poll<Option<intrusive_queue::List<A>>> {
+        // Register the waker before checking for items so we cannot miss a concurrent send
+        // between the occupancy check and returning Poll::Pending.
+        self.shared.recv_waker.register(cx.waker());
+
         if let TryRecv::Ready(list) = self.try_recv() {
             return Poll::Ready(Some(list));
         }
