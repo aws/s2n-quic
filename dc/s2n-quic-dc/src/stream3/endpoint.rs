@@ -15,11 +15,12 @@ pub(crate) mod reset_error;
 pub(crate) mod routing;
 pub(crate) mod send;
 pub(crate) mod socket;
+pub(crate) mod tasks;
 pub(crate) mod worker;
 
 use crate::{
     acceptor,
-    stream3::{frame::{Frame, SubmissionSender}, Stream},
+    stream3::{frame::SubmissionSender, Stream},
 };
 use std::sync::atomic::AtomicU64;
 
