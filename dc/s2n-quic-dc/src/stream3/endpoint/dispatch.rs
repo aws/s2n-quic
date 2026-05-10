@@ -48,6 +48,9 @@ pub(crate) enum Error {
         packet_number: VarInt,
     },
     MissingSenderId,
+    UnsupportedRoutingInfo {
+        routing_info: RoutingInfo,
+    },
 }
 
 /// Process a received datagram packet.
@@ -62,6 +65,7 @@ pub(crate) fn process<Clk>(
     acceptor_registry: &acceptor::Registry<Stream>,
     frame_tx: &SubmissionSender,
     response_tx: &mut impl channel::UnboundedSender<Queue<Frame>>,
+    sender_tx: &mut impl channel::UnboundedSender<msg::Sender>,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     clock: &Clk,
     counters: &counters::Dispatch,
@@ -74,8 +78,18 @@ where
     let routing_info = packet.routing_info();
     let idle_timeout = recv_cache.idle_timeout;
 
-    let Some(source_sender_id) = routing_info.source_sender_id() else {
-        return Err(Error::MissingSenderId);
+    let source_sender_id = match routing_info {
+        RoutingInfo::SenderId { source_sender_id } => source_sender_id,
+        RoutingInfo::None => return Err(Error::MissingSenderId),
+        _ => {
+            tracing::warn!(
+                %credentials,
+                packet_number = packet_number.as_u64(),
+                ?routing_info,
+                "rejecting legacy datagram routing info; expected SenderId"
+            );
+            return Err(Error::UnsupportedRoutingInfo { routing_info });
+        }
     };
 
     // Get or create peer receive state
@@ -150,193 +164,70 @@ where
 
     let mut response_frames = Queue::new();
 
-    match routing_info {
-        RoutingInfo::None => {
-            counters.rx_none.add(1);
-        }
-        RoutingInfo::FlowInit {
-            source_sender_id,
-            source_queue_id: peer_queue_id,
-            dest_acceptor_id: acceptor_id,
-            attempt_id,
-            stream_id,
-            is_fin,
-        } => {
-            counters.rx_init.add(1);
-            handle_flow_init(
-                peer,
-                &credentials,
-                source_sender_id,
-                peer_queue_id,
-                acceptor_id,
-                attempt_id,
-                stream_id,
-                is_fin,
-                payload_storage,
-                acceptor_registry,
-                frame_tx,
-                queue_dispatcher,
-                counters,
-                &mut response_frames,
-            );
-        }
-        RoutingInfo::FlowValidateRequest {
-            source_sender_id: _,
-            dest_sender_id,
-            queue_pair,
-            attempt_id,
-            stream_id,
-        } => {
-            counters.rx_validate.add(1);
-            handle_flow_validate_request(
-                &peer.path_entry,
-                &credentials,
-                dest_sender_id,
-                queue_pair,
-                attempt_id,
-                stream_id,
-                queue_dispatcher,
-                counters,
-                &mut response_frames,
-            );
-        }
-        RoutingInfo::FlowInitValidate {
-            source_sender_id: _,
-            queue_pair,
-            attempt_id,
-            stream_id,
-        } => {
-            counters.rx_init_validate.add(1);
-            handle_flow_init_validate(
-                &credentials,
-                queue_pair,
-                attempt_id,
-                stream_id,
-                queue_dispatcher,
-                counters,
-                &mut response_frames,
-            );
-        }
-        RoutingInfo::FlowData {
-            source_sender_id: _,
-            queue_pair,
-            stream_id,
-            offset,
-            is_fin,
-        } => {
-            counters.rx_data.add(1);
-            handle_flow_data(
-                &credentials,
-                queue_pair,
-                stream_id,
-                offset,
-                is_fin,
-                payload_storage,
-                queue_dispatcher,
-                counters,
-                &mut response_frames,
-            );
-        }
-        RoutingInfo::FlowControl {
-            source_sender_id: _,
-            queue_pair,
-            stream_id,
-        } => {
-            counters.rx_control.add(1);
-            handle_flow_control(
-                &credentials,
-                queue_pair,
-                stream_id,
-                payload_storage,
-                queue_dispatcher,
-                counters,
-                &mut response_frames,
-            );
-        }
-        RoutingInfo::FlowReset {
-            source_sender_id: _,
-            dest_queue_id,
-            stream_id,
-            reset_target,
-            error_code,
-        } => {
-            counters.rx_reset.add(1);
-            handle_flow_reset(
-                &credentials,
-                dest_queue_id,
-                stream_id,
-                reset_target,
-                error_code,
-                queue_dispatcher,
-                counters,
-            );
-        }
-        RoutingInfo::SenderId { source_sender_id } => {
-            // Multi-frame packet: `app_header_desc` contains the per-frame metadata
-            // (Header type tag + optional payload_len VarInt) and `payload_storage`
-            // contains the concatenated, decrypted frame payloads.
-            //
-            // We borrow the application header bytes from `app_header_desc`.  Splitting
-            // `payload_storage` does not conflict with this borrow because the two
-            // descriptors are independent (they share the same underlying allocation but
-            // have separate offset/len bookkeeping).
-            let app_header_slice: &[u8] = app_header_desc.payload();
+    // Multi-frame packet: `app_header_desc` contains the per-frame metadata
+    // (Header type tag + optional payload_len VarInt) and `payload_storage`
+    // contains the concatenated, decrypted frame payloads.
+    //
+    // We borrow the application header bytes from `app_header_desc`.  Splitting
+    // `payload_storage` does not conflict with this borrow because the two
+    // descriptors are independent (they share the same underlying allocation but
+    // have separate offset/len bookkeeping).
+    let app_header_slice: &[u8] = app_header_desc.payload();
 
-            for result in decode::decode_frames(app_header_slice) {
-                match result {
-                    Ok((header, frame_payload_len)) => {
-                        counters.on_received_frame(&header);
-                        // Validate that the claimed payload length fits within the
-                        // remaining descriptor storage before casting to u16.
-                        if frame_payload_len > payload_storage.len() as usize {
-                            tracing::warn!(
-                                %credentials,
-                                packet_number = packet_number.as_u64(),
-                                frame_payload_len,
-                                remaining = payload_storage.len(),
-                                "frame payload length exceeds remaining packet payload"
-                            );
-                            break;
-                        }
-                        // Split the frame's payload out of the shared descriptor.
-                        // This is O(1): it increments the ref-count and adjusts offsets.
-                        // The cast is safe because we verified frame_payload_len <= u16::MAX
-                        // above (payload_storage.len() is u16-bounded).
-                        let frame_payload = payload_storage.split_to(frame_payload_len as u16);
-                        dispatch_decoded_frame(
-                            header,
-                            source_sender_id,
-                            frame_payload,
-                            peer,
-                            &credentials,
-                            acceptor_registry,
-                            frame_tx,
-                            queue_dispatcher,
-                            counters,
-                            &mut response_frames,
-                        );
-                    }
-                    Err(err) => {
-                        tracing::warn!(
-                            %credentials,
-                            packet_number = packet_number.as_u64(),
-                            ?err,
-                            "failed to decode multi-frame packet metadata"
-                        );
-                        break;
-                    }
+    for result in decode::decode_frames(app_header_slice) {
+        match result {
+            Ok((header, frame_payload_len)) => {
+                counters.on_received_frame(&header);
+                // Validate that the claimed payload length fits within the
+                // remaining descriptor storage before casting to u16.
+                if frame_payload_len > payload_storage.len() as usize {
+                    tracing::warn!(
+                        %credentials,
+                        packet_number = packet_number.as_u64(),
+                        frame_payload_len,
+                        remaining = payload_storage.len(),
+                        "frame payload length exceeds remaining packet payload"
+                    );
+                    break;
                 }
+                // Split the frame's payload out of the shared descriptor.
+                // This is O(1): it increments the ref-count and adjusts offsets.
+                // The cast is safe because we verified frame_payload_len <= u16::MAX
+                // above (payload_storage.len() is u16-bounded).
+                let frame_payload = payload_storage.split_to(frame_payload_len as u16);
+                dispatch_decoded_frame(
+                    header,
+                    source_sender_id,
+                    frame_payload,
+                    peer,
+                    &credentials,
+                    acceptor_registry,
+                    frame_tx,
+                    queue_dispatcher,
+                    sender_tx,
+                    counters,
+                    &mut response_frames,
+                );
             }
-
-            if !payload_storage.is_empty() {
+            Err(err) => {
                 tracing::warn!(
                     %credentials,
                     packet_number = packet_number.as_u64(),
-                    remaining = payload_storage.len(),
-                    "multi-frame packet has unconsumed payload bytes"
+                    ?err,
+                    "failed to decode multi-frame packet metadata"
                 );
+                break;
             }
         }
+    }
+
+    if !payload_storage.is_empty() {
+        tracing::warn!(
+            %credentials,
+            packet_number = packet_number.as_u64(),
+            remaining = payload_storage.len(),
+            "multi-frame packet has unconsumed payload bytes"
+        );
     }
 
     let _ = response_tx.send(response_frames);
@@ -360,6 +251,7 @@ fn dispatch_decoded_frame(
     acceptor_registry: &acceptor::Registry<Stream>,
     frame_tx: &SubmissionSender,
     queue_dispatcher: &mut msg::queue::Dispatcher,
+    sender_tx: &mut impl channel::UnboundedSender<msg::Sender>,
     counters: &counters::Dispatch,
     response_frames: &mut Queue<Frame>,
 ) {
@@ -412,6 +304,7 @@ fn dispatch_decoded_frame(
             stream_id,
         } => {
             handle_flow_init_validate(
+                &peer.path_entry,
                 credentials,
                 queue_pair,
                 attempt_id,
@@ -428,6 +321,7 @@ fn dispatch_decoded_frame(
             is_fin,
         } => {
             handle_flow_data(
+                &peer.path_entry,
                 credentials,
                 queue_pair,
                 stream_id,
@@ -441,6 +335,7 @@ fn dispatch_decoded_frame(
         }
         Header::FlowControl { queue_pair, stream_id } => {
             handle_flow_control(
+                &peer.path_entry,
                 credentials,
                 queue_pair,
                 stream_id,
@@ -466,13 +361,19 @@ fn dispatch_decoded_frame(
                 counters,
             );
         }
-        Header::Control { .. } => {
-            // ACK frames carried in multi-frame packets.
-            // TODO: route ACK control frames to the appropriate sender context.
-            tracing::trace!(
-                stream_id = ?credentials.id,
-                "Control frame in multi-frame packet (unhandled)"
-            );
+        Header::Control { dest_sender_id } => {
+            let message = msg::Sender::Ack {
+                local_sender_id: dest_sender_id,
+                payload,
+            };
+            if sender_tx.send(message).is_err() {
+                tracing::warn!(
+                    %credentials,
+                    source_sender_id = source_sender_id.as_u64(),
+                    dest_sender_id = dest_sender_id.as_u64(),
+                    "dropping ACK sender message; sender queue is closed"
+                );
+            }
         }
     }
 }
@@ -737,11 +638,31 @@ fn push_reset_frame(
     stream_id: VarInt,
     error_code: VarInt,
 ) {
+    push_reset_frame_with_target(
+        response_frames,
+        counters,
+        path_secret_entry,
+        dest_queue_id,
+        stream_id,
+        ResetTarget::Both,
+        error_code,
+    );
+}
+
+fn push_reset_frame_with_target(
+    response_frames: &mut Queue<Frame>,
+    counters: &counters::Dispatch,
+    path_secret_entry: &std::sync::Arc<PathSecretEntry>,
+    dest_queue_id: VarInt,
+    stream_id: VarInt,
+    reset_target: ResetTarget,
+    error_code: VarInt,
+) {
     let frame = Frame {
         header: Header::FlowReset {
             dest_queue_id,
             stream_id,
-            reset_target: ResetTarget::Both,
+            reset_target,
             error_code,
         },
         source_sender_id: UNSET_SOURCE_SENDER_ID,
@@ -864,6 +785,7 @@ fn handle_flow_validate_request(
 // ── FlowInitValidate ──────────────────────────────────────────────────────
 
 fn handle_flow_init_validate(
+    path_secret_entry: &std::sync::Arc<PathSecretEntry>,
     credentials: &Credentials,
     queue_pair: QueuePair,
     attempt_id: VarInt,
@@ -902,9 +824,17 @@ fn handle_flow_init_validate(
                     tracing::warn!(
                         attempt_id = attempt_id.as_u64(),
                         stream_id = stream_id.as_u64(),
-                        "FlowInitValidate failed to send FlowValidated"
+                        queue_id = local_queue_id.as_u64(),
+                        "FlowInitValidate failed to send FlowValidated - sending reset"
                     );
-                    // TODO: emit FlowReset response frame
+                    push_reset_frame(
+                        response_frames,
+                        counters,
+                        path_secret_entry,
+                        queue_pair.source_queue_id,
+                        stream_id,
+                        reset_error::STALE_STATE,
+                    );
                 }
             }
         }
@@ -913,9 +843,17 @@ fn handle_flow_init_validate(
             tracing::warn!(
                 attempt_id = attempt_id.as_u64(),
                 stream_id = stream_id.as_u64(),
-                "FlowInitValidate validation failed"
+                queue_id = local_queue_id.as_u64(),
+                "FlowInitValidate validation failed - sending reset"
             );
-            // TODO: emit FlowReset response frame
+            push_reset_frame(
+                response_frames,
+                counters,
+                path_secret_entry,
+                queue_pair.source_queue_id,
+                stream_id,
+                reset_error::STALE_STATE,
+            );
         }
     }
 }
@@ -923,6 +861,7 @@ fn handle_flow_init_validate(
 // ── FlowData ──────────────────────────────────────────────────────────────
 
 fn handle_flow_data(
+    path_secret_entry: &std::sync::Arc<PathSecretEntry>,
     credentials: &Credentials,
     queue_pair: QueuePair,
     stream_id: VarInt,
@@ -970,27 +909,50 @@ fn handle_flow_data(
             tracing::warn!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "FlowData for unallocated queue"
+                "FlowData for unallocated queue - sending reset"
             );
-            // TODO: emit FlowReset response frame
+            push_reset_frame(
+                response_frames,
+                counters,
+                path_secret_entry,
+                queue_pair.source_queue_id,
+                stream_id,
+                reset_error::STALE_STATE,
+            );
         }
         Err(flow::queue::Error::HalfClosed(_)) => {
             counters.rx_data_half_closed.add(1);
             tracing::debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "FlowData for half-closed stream"
+                "FlowData for half-closed stream - sending reset"
             );
-            // TODO: emit FlowReset(Stream) response frame
+            push_reset_frame_with_target(
+                response_frames,
+                counters,
+                path_secret_entry,
+                queue_pair.source_queue_id,
+                stream_id,
+                ResetTarget::Stream,
+                reset_error::STALE_STATE,
+            );
         }
         Err(flow::queue::Error::FullyClosed(_)) => {
             counters.rx_data_fully_closed.add(1);
             tracing::debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "FlowData for fully closed queue"
+                "FlowData for fully closed queue - sending reset"
             );
-            // TODO: emit FlowReset(Both) response frame
+            push_reset_frame_with_target(
+                response_frames,
+                counters,
+                path_secret_entry,
+                queue_pair.source_queue_id,
+                stream_id,
+                ResetTarget::Both,
+                reset_error::STALE_STATE,
+            );
         }
         Err(flow::queue::Error::PermanentlyClosed) => {
             counters.rx_data_perm_closed.add(1);
@@ -1006,6 +968,7 @@ fn handle_flow_data(
 // ── FlowControl ───────────────────────────────────────────────────────────
 
 fn handle_flow_control(
+    path_secret_entry: &std::sync::Arc<PathSecretEntry>,
     credentials: &Credentials,
     queue_pair: QueuePair,
     stream_id: VarInt,
@@ -1044,27 +1007,51 @@ fn handle_flow_control(
             tracing::debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "FlowControl for unallocated queue"
+                "FlowControl for unallocated queue - sending reset"
             );
-            // TODO: emit FlowReset(Both) response frame
+            push_reset_frame_with_target(
+                response_frames,
+                counters,
+                path_secret_entry,
+                queue_pair.source_queue_id,
+                stream_id,
+                ResetTarget::Both,
+                reset_error::STALE_STATE,
+            );
         }
         Err(flow::queue::Error::HalfClosed(_)) => {
             counters.rx_control_half_closed.add(1);
             tracing::debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "FlowControl for half-closed control"
+                "FlowControl for half-closed control queue - sending reset"
             );
-            // TODO: emit FlowReset(Control) response frame
+            push_reset_frame_with_target(
+                response_frames,
+                counters,
+                path_secret_entry,
+                queue_pair.source_queue_id,
+                stream_id,
+                ResetTarget::Control,
+                reset_error::STALE_STATE,
+            );
         }
         Err(flow::queue::Error::FullyClosed(_)) => {
             counters.rx_control_fully_closed.add(1);
             tracing::debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "FlowControl for fully closed queue"
+                "FlowControl for fully closed queue - sending reset"
             );
-            // TODO: emit FlowReset(Both) response frame
+            push_reset_frame_with_target(
+                response_frames,
+                counters,
+                path_secret_entry,
+                queue_pair.source_queue_id,
+                stream_id,
+                ResetTarget::Both,
+                reset_error::STALE_STATE,
+            );
         }
         Err(flow::queue::Error::PermanentlyClosed) => {
             counters.rx_control_perm_closed.add(1);

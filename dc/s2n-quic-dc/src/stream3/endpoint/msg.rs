@@ -21,6 +21,13 @@ pub enum Control {
     Reset { error_code: VarInt },
 }
 
+pub enum Sender {
+    Ack {
+        local_sender_id: VarInt,
+        payload: descriptor::Filled,
+    },
+}
+
 pub mod queue {
     use crate::flow;
 
