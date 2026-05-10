@@ -51,30 +51,42 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
     }
 }
 
-async fn handle_connection(mut stream: s2n_quic_dc::stream2::Stream) -> io::Result<(u64, u64)> {
-    tokio::time::timeout(Duration::from_secs(1), stream.validate())
+async fn handle_connection(stream: s2n_quic_dc::stream2::Stream) -> io::Result<(u64, u64)> {
+    let (mut reader, mut writer) = stream.into_split();
+
+    tokio::time::timeout(Duration::from_secs(1), reader.validate())
         .await
         .unwrap_or_else(|_| Err(io::ErrorKind::TimedOut.into()))?;
 
-    // Read the 8-byte response size header
-    let response_size = stream.read_u64().await?;
-    let mut total_received = 8u64;
+    // Read the 8-byte response size header (required by the send half to know how many bytes to write)
+    let response_size = reader.read_u64().await?;
 
-    // Read and validate the rest of the request body using Data
-    let mut receiver = Data::new(u64::MAX);
-    loop {
-        let n = stream.read_into(&mut receiver).await?;
-        if n == 0 {
-            break;
+    // Read the remaining request body and write the response concurrently so both
+    // halves are exercised at the same time, covering more half-close code paths.
+    let recv = async move {
+        let mut total_received = 8u64;
+        let mut receiver = Data::new(u64::MAX);
+        loop {
+            let n = reader.read_into(&mut receiver).await?;
+            if n == 0 {
+                break;
+            }
+            total_received += n as u64;
         }
-        total_received += n as u64;
-    }
+        // reader drops here; if the request wasn't fully drained, drop sends STOP_SENDING
+        io::Result::Ok(total_received)
+    };
 
-    // Generate and send response data using Data
-    let mut response = Data::new(response_size);
-    while !response.is_finished() {
-        stream.write_from_fin(&mut response).await?;
-    }
+    let send = async move {
+        // write_from_fin transmits FIN on the final chunk; writer drop calls shutdown()
+        // as a fallback if FIN hasn't been sent yet (e.g. empty response)
+        let mut response = Data::new(response_size);
+        while !response.is_finished() {
+            writer.write_from_fin(&mut response).await?;
+        }
+        io::Result::Ok(response_size)
+    };
 
-    Ok((total_received, response_size))
+    let (total_received, bytes_sent) = tokio::try_join!(recv, send)?;
+    Ok((total_received, bytes_sent))
 }

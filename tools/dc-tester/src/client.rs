@@ -106,35 +106,49 @@ async fn execute_request(
 ) -> io::Result<(u64, u64)> {
     // Connect to the server — handshake address is used to obtain/cache path secrets,
     // data address is derived from the path secret entry
-    let mut stream = client.connect(server_addr, VarInt::ZERO).await?;
+    let stream = client.connect(server_addr, VarInt::ZERO).await?;
+    let (mut reader, mut writer) = stream.into_split();
 
-    // Write the 8-byte response size header
-    stream.write_u64(workload.response_size).await?;
+    let request_size = workload.request_size;
+    let response_size = workload.response_size;
 
-    // Write request body using Data
-    let mut request = Data::new(workload.request_size);
-    while !request.is_finished() {
-        stream.write_from_fin(&mut request).await?;
-    }
+    // Send the request concurrently with receiving the response so both halves
+    // are exercised at the same time, covering more half-close code paths.
+    let send = async move {
+        // Write the 8-byte response size header
+        writer.write_u64(response_size).await?;
 
-    let bytes_sent = 8 + workload.request_size;
-
-    // Read and validate response using Data
-    let mut response = Data::new(workload.response_size);
-    loop {
-        let n = stream.read_into(&mut response).await?;
-        if n == 0 {
-            break;
+        // write_from_fin transmits FIN on the final chunk; writer drop calls shutdown()
+        // as a fallback if FIN hasn't been sent yet (e.g. empty body)
+        let mut request = Data::new(request_size);
+        while !request.is_finished() {
+            writer.write_from_fin(&mut request).await?;
         }
-    }
 
-    if !response.is_finished() {
-        return Err(io::Error::other(format!(
-            "response was not fully received: expected {} bytes, got {} bytes",
-            workload.response_size,
-            response.current_offset()
-        )));
-    }
+        io::Result::Ok(8 + request_size)
+    };
 
-    Ok((bytes_sent, workload.response_size))
+    let recv = async move {
+        // Read and validate response using Data
+        let mut response = Data::new(response_size);
+        loop {
+            let n = reader.read_into(&mut response).await?;
+            if n == 0 {
+                break;
+            }
+        }
+
+        if !response.is_finished() {
+            return Err(io::Error::other(format!(
+                "response was not fully received: expected {} bytes, got {} bytes",
+                response_size,
+                response.current_offset()
+            )));
+        }
+
+        io::Result::Ok(response_size)
+    };
+
+    let (bytes_sent, bytes_received) = tokio::try_join!(send, recv)?;
+    Ok((bytes_sent, bytes_received))
 }
