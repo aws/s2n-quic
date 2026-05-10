@@ -60,15 +60,6 @@
 //
 // Performance:
 //
-// * Use buffer::duplex::Interposer to bypass the reassembler on the hot path. When a
-//   datagram arrives at the head offset and the application buffer has remaining capacity,
-//   the Interposer writes directly into the application buffer and calls skip() on the
-//   reassembler to advance its cursor. This avoids a copy through the reassembler for the
-//   common in-order case. The existing stream implementation does this in recv/shared.rs.
-//   To integrate: poll_stream_rx needs access to the application buffer, and the write path
-//   should use `Interposer::new(app_buf, &mut self.reassembler)` as the Writer target for
-//   write_reader. Out-of-order data still goes into the reassembler as usual.
-//
 // * poll_read_into calls poll_stream_rx and then tries to copy out. If poll_stream_rx
 //   returns Pending and the reassembler already has buffered data, we still try to copy
 //   (which is fine). But if poll_stream_rx returns an error, we return the error immediately
@@ -103,8 +94,11 @@ use s2n_codec::EncoderValue;
 use s2n_quic_core::{
     buffer::{
         self,
+        duplex::Interposer,
         reader::{storage::Infallible as _, Incremental},
         reassembler::Reassembler,
+        writer::Storage as _,
+        writer::Writer as _,
     },
     frame::MaxData,
     ready,
@@ -271,7 +265,8 @@ impl Inner {
             return Poll::Ready(Ok(()));
         }
 
-        match self.poll_stream_rx(cx)? {
+        let mut app_buf = buffer::writer::storage::Empty;
+        match self.poll_stream_rx(cx, &mut app_buf)? {
             Poll::Ready(()) => {
                 if self.status.is_pending_validation() {
                     Poll::Pending
@@ -287,7 +282,8 @@ impl Inner {
     where
         S: buffer::writer::Storage,
     {
-        let _ = self.poll_stream_rx(cx)?;
+        let mut tracker = buf.track_write();
+        let _ = self.poll_stream_rx(cx, &mut tracker)?;
 
         if self.status.is_pending_validation() {
             return Poll::Ready(Err(io::Error::new(
@@ -307,17 +303,11 @@ impl Inner {
             return Poll::Ready(Err(io::ErrorKind::ConnectionReset.into()));
         }
 
-        if self.status.is_complete() {
-            return Poll::Ready(Ok(0));
+        if tracker.has_remaining_capacity() {
+            self.reassembler.infallible_copy_into(&mut tracker);
         }
 
-        let bytes_read = if buf.remaining_capacity() > 0 {
-            let mut tracker = buf.track_write();
-            self.reassembler.infallible_copy_into(&mut tracker);
-            tracker.written_len()
-        } else {
-            0
-        };
+        let bytes_read = tracker.written_len();
 
         self.maybe_send_max_data()?;
 
@@ -339,7 +329,12 @@ impl Inner {
         }
     }
 
-    fn poll_stream_rx(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
+    fn poll_stream_rx<S>(&mut self, cx: &mut Context, app_buf: &mut S) -> Poll<io::Result<()>>
+    where
+        S: buffer::writer::Storage + ?Sized,
+    {
+        let interpose = !self.status.is_pending_validation();
+
         match self.stream_rx.poll_swap(cx) {
             Poll::Ready(Ok(queue)) => {
                 for msg in queue {
@@ -370,7 +365,9 @@ impl Inner {
                                 }
                             };
 
-                            if let Err(err) = self.reassembler.write_reader(&mut reader) {
+                            if let Err(err) =
+                                write_data_reader(&mut self.reassembler, &mut reader, app_buf, interpose)
+                            {
                                 debug!(
                                     stream_id = self.stream_id.as_u64(),
                                     ?err,
@@ -540,6 +537,25 @@ impl Inner {
     }
 }
 
+#[inline]
+fn write_data_reader<S, R>(
+    reassembler: &mut Reassembler,
+    reader: &mut R,
+    app_buf: &mut S,
+    interpose: bool,
+) -> Result<(), buffer::Error<R::Error>>
+where
+    S: buffer::writer::Storage + ?Sized,
+    R: buffer::reader::Reader + ?Sized,
+{
+    if interpose && reassembler.is_empty() {
+        let mut interposer = Interposer::new(app_buf, reassembler);
+        interposer.read_from(reader)
+    } else {
+        reassembler.write_reader(reader)
+    }
+}
+
 impl Drop for Reader {
     fn drop(&mut self) {
         debug!(
@@ -581,5 +597,132 @@ impl tokio::io::AsyncRead for Reader {
         let mut buf = buffer::writer::storage::BufMut::new(buf);
         ready!(self.poll_read_into(cx, &mut buf))?;
         Poll::Ready(Ok(()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{msg, write_data_reader, Reader};
+    use crate::{
+        flow,
+        path::secret::map::Entry as PathSecretEntry,
+        socket::pool::{self, descriptor},
+        stream3::frame::{Frame, SubmissionSender},
+    };
+    use core::{convert::Infallible, task::Poll};
+    use s2n_quic_core::{
+        buffer::Reassembler,
+        endpoint,
+        stream::testing::Data,
+        task::waker,
+        varint::VarInt,
+    };
+    use std::{io, net::SocketAddr};
+
+    fn test_frame_tx() -> SubmissionSender {
+        let (frame_tx, frame_rx) =
+            crate::socket::channel::intrusive_queue::sharded::new::<Frame>(1);
+        let waker = waker::noop();
+        frame_rx.register(&waker);
+        frame_tx
+    }
+
+    fn filled_payload(data: &[u8]) -> descriptor::Filled {
+        let pool = pool::Pool::new(data.len().try_into().unwrap());
+        let unfilled = pool.alloc().unwrap();
+        let segments = unfilled
+            .fill_with(|_addr, _cmsg, mut payload| {
+                payload[..data.len()].copy_from_slice(data);
+                Result::<_, Infallible>::Ok(data.len())
+            })
+            .unwrap();
+        segments.take_filled()
+    }
+
+    fn test_reader(msg: msg::Stream) -> Reader {
+        let stream_id = VarInt::from_u8(1);
+        let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
+        let path_secret_entry = PathSecretEntry::fake_deterministic(peer, endpoint::Type::Client);
+        let handle = flow::Handle::client(stream_id, path_secret_entry.clone());
+        let allocator = msg::queue::Allocator::new();
+        let (_control, stream_rx) = allocator
+            .alloc(handle, Some(VarInt::from_u8(2)))
+            .expect("queue alloc should succeed");
+        stream_rx.push(msg.into());
+
+        Reader::new_client(test_frame_tx(), path_secret_entry, stream_id, stream_rx)
+    }
+
+    #[test]
+    fn write_data_reader_bypasses_reassembler_for_in_order_data() {
+        let mut reassembler = Reassembler::new();
+        let mut reader = Data::new(8);
+        let mut app_buf: Vec<u8> = Vec::new();
+
+        write_data_reader(&mut reassembler, &mut reader, &mut app_buf, true).unwrap();
+
+        assert_eq!(app_buf, Data::send_one_at(0, 8));
+        assert_eq!(reassembler.consumed_len(), 8);
+        assert_eq!(reassembler.final_size(), Some(8));
+        assert!(reassembler.is_empty());
+        assert!(reassembler.is_reading_complete());
+    }
+
+    #[test]
+    fn write_data_reader_keeps_out_of_order_data_in_reassembler() {
+        let mut reassembler = Reassembler::new();
+        let mut reader = Data::new(8);
+        let mut app_buf: Vec<u8> = Vec::new();
+
+        reader.seek_forward(4);
+        write_data_reader(&mut reassembler, &mut reader, &mut app_buf, true).unwrap();
+
+        assert!(app_buf.is_empty());
+        assert_eq!(reassembler.consumed_len(), 0);
+        assert_eq!(reassembler.total_received_len(), 0);
+        assert!(reassembler.is_empty());
+        assert!(!reassembler.is_reading_complete());
+
+        reassembler.write_at(0u32.into(), &Data::send_one_at(0, 4)).unwrap();
+        assert_eq!(reassembler.len(), 8);
+    }
+
+    #[test]
+    fn write_data_reader_does_not_interpose_when_reassembler_has_head_data() {
+        let mut reassembler = Reassembler::new();
+        let mut reader = Data::new(8);
+        let mut app_buf: Vec<u8> = Vec::new();
+
+        reassembler.write_at(0u32.into(), &Data::send_one_at(0, 4)).unwrap();
+        reader.seek_forward(4);
+
+        write_data_reader(&mut reassembler, &mut reader, &mut app_buf, true).unwrap();
+
+        assert!(app_buf.is_empty());
+        assert_eq!(reassembler.len(), 8);
+        assert_eq!(reassembler.total_received_len(), 8);
+        assert!(!reassembler.is_empty());
+    }
+
+    #[test]
+    fn poll_read_into_counts_direct_interposer_writes() -> io::Result<()> {
+        let expected = Data::send_one_at(0, 8);
+        let mut reader = test_reader(msg::Stream::Data {
+            offset: VarInt::ZERO,
+            fin: true,
+            payload: filled_payload(&expected),
+        });
+        let waker = waker::noop();
+        let mut cx = core::task::Context::from_waker(&waker);
+        let mut out = Vec::new();
+
+        match reader.poll_read_into(&mut cx, &mut out) {
+            Poll::Ready(Ok(len)) => assert_eq!(len, 8),
+            other => panic!("unexpected first poll result: {other:?}"),
+        }
+        assert_eq!(out, expected);
+        assert!(reader.0.status.is_complete());
+
+        Ok(())
     }
 }
