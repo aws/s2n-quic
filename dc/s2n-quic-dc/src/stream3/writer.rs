@@ -34,10 +34,6 @@
 // * VarInt overflow in next_offset: adding payload_len to next_offset could overflow VarInt
 //   (max 2^62-1) on extremely large streams. Should return an error instead of panicking.
 //
-// * poll_completions processes failures with "last one wins" semantics — if a queue has
-//   both Acknowledged and Failed completions, only the last failure is reported. First
-//   failure should take precedence since it represents the earliest delivery problem.
-//
 // Flow control:
 //
 // * Auto-tune max_inflight_bytes based on completion queue delivery rate. Currently using a
@@ -455,7 +451,7 @@ impl Inner {
                             freed_bytes += completed.payload.len() as u64;
                         }
                         TransmissionStatus::Failed(reason) => {
-                            failure = Some(reason);
+                            failure.get_or_insert(reason);
                             freed_bytes += completed.payload.len() as u64;
 
                             debug!(
@@ -854,5 +850,177 @@ impl tokio::io::AsyncWrite for Writer {
 
     fn is_write_vectored(&self) -> bool {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        flow,
+        socket::channel::{self, Receiver as _},
+    };
+    use bytes::Bytes;
+
+    fn new_test_inner() -> (
+        Inner,
+        channel::intrusive_queue::sharded::Receiver<crate::intrusive_queue::EntryAdapter<Frame>>,
+    ) {
+        let (frame_tx, frame_rx) = channel::intrusive_queue::sharded::new::<Frame>(1);
+        let waker = s2n_quic_core::task::waker::noop();
+        frame_rx.register(&waker);
+
+        let path_secret_entry = PathSecretEntry::fake("127.0.0.1:8080".parse().unwrap(), None);
+        let stream_id = VarInt::from_u8(42);
+        let handle = flow::Handle::client(stream_id, path_secret_entry.clone());
+        let mut allocator = msg::queue::Allocator::new();
+        let (control_rx, _stream_rx) = allocator.alloc_or_grow(handle, Some(VarInt::from_u8(7)));
+
+        let inner = Inner {
+            frame_tx,
+            completion_rx: frame::completion_channel(),
+            control_rx,
+            path_secret_entry,
+            packet_size: 1200,
+            stream_id,
+            acceptor_id: VarInt::ZERO,
+            next_offset: VarInt::ZERO,
+            inflight_bytes: 0,
+            max_inflight_bytes: 4096,
+            remote_max_data: VarInt::from_u16(4096),
+            status: Status::Open,
+            reset_error_code: None,
+        };
+
+        (inner, frame_rx)
+    }
+
+    fn completed_frame(
+        path_secret_entry: Arc<PathSecretEntry>,
+        stream_id: VarInt,
+        payload_len: usize,
+        status: frame::TransmissionStatus,
+    ) -> Frame {
+        let mut payload = ByteVec::new();
+        if payload_len > 0 {
+            payload.push_back(Bytes::from(vec![0; payload_len]));
+        }
+
+        Frame {
+            source_sender_id: VarInt::MAX,
+            header: Header::FlowData {
+                queue_pair: QueuePair {
+                    source_queue_id: VarInt::from_u8(1),
+                    dest_queue_id: VarInt::from_u8(2),
+                },
+                stream_id,
+                offset: VarInt::ZERO,
+                is_fin: false,
+            },
+            payload,
+            path_secret_entry,
+            completion: None,
+            status,
+            ttl: DEFAULT_TTL,
+            transmission_time: None,
+        }
+    }
+
+    fn send_completions(inner: &Inner, completions: impl IntoIterator<Item = Frame>) {
+        let mut queue = Queue::new();
+        for completion in completions {
+            queue.push_back(completion.into());
+        }
+        inner.completion_rx.sender().send_batch(queue).unwrap();
+    }
+
+    fn noop_cx() -> core::task::Context<'static> {
+        let waker = Box::leak(Box::new(s2n_quic_core::task::waker::noop()));
+        core::task::Context::from_waker(waker)
+    }
+
+    #[test]
+    fn poll_completions_prefers_first_failure_and_skips_later_reset() {
+        let (mut inner, mut frame_rx) = new_test_inner();
+        inner.inflight_bytes = 23;
+
+        send_completions(
+            &inner,
+            [
+                completed_frame(
+                    inner.path_secret_entry.clone(),
+                    inner.stream_id,
+                    5,
+                    frame::TransmissionStatus::Acknowledged,
+                ),
+                completed_frame(
+                    inner.path_secret_entry.clone(),
+                    inner.stream_id,
+                    7,
+                    frame::TransmissionStatus::Failed(frame::FailureReason::UnknownPathSecret),
+                ),
+                completed_frame(
+                    inner.path_secret_entry.clone(),
+                    inner.stream_id,
+                    11,
+                    frame::TransmissionStatus::Failed(frame::FailureReason::TransmissionError),
+                ),
+            ],
+        );
+
+        let mut cx = noop_cx();
+        let err = inner.poll_completions(&mut cx).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionRefused);
+        assert_eq!(inner.inflight_bytes, 0);
+        assert!(inner.status.is_shutdown());
+        assert!(matches!(frame_rx.poll_recv(&mut cx), Poll::Pending));
+    }
+
+    #[test]
+    fn poll_completions_keeps_first_transmission_error() {
+        let (mut inner, mut frame_rx) = new_test_inner();
+        inner.inflight_bytes = 18;
+
+        send_completions(
+            &inner,
+            [
+                completed_frame(
+                    inner.path_secret_entry.clone(),
+                    inner.stream_id,
+                    7,
+                    frame::TransmissionStatus::Failed(frame::FailureReason::TransmissionError),
+                ),
+                completed_frame(
+                    inner.path_secret_entry.clone(),
+                    inner.stream_id,
+                    11,
+                    frame::TransmissionStatus::Failed(frame::FailureReason::PeerDead),
+                ),
+            ],
+        );
+
+        let mut cx = noop_cx();
+        let err = inner.poll_completions(&mut cx).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+        assert_eq!(inner.inflight_bytes, 0);
+        assert!(inner.status.is_shutdown());
+
+        let sent = match frame_rx.poll_recv(&mut cx) {
+            Poll::Ready(Some(sent)) => sent,
+            other => panic!("expected reset frame, got {other:?}"),
+        };
+
+        let sent = sent.iter().collect::<Vec<_>>();
+        assert_eq!(sent.len(), 1);
+        assert!(matches!(
+            sent[0].header,
+            Header::FlowReset {
+                error_code,
+                reset_target: ResetTarget::Both,
+                ..
+            } if error_code == reset_error::RETRANSMISSIONS_EXHAUSTED
+        ));
     }
 }
