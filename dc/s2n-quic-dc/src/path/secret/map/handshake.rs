@@ -186,8 +186,9 @@ impl HandshakingPathInner {
         );
 
         let receiver = receiver::State::new();
+        let socket_sender_count = self.map.store.socket_sender_count();
 
-        let entry = Entry::new(
+        let entry = Entry::new_with_socket_senders(
             self.peer,
             self.secret
                 .take()
@@ -197,6 +198,7 @@ impl HandshakingPathInner {
             self.parameters.clone(),
             self.map.store.rehandshake_period(),
             self.application_data.take(),
+            socket_sender_count,
         );
         let entry = Arc::new(entry);
         self.entry = Some(entry.clone());

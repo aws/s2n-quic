@@ -17,7 +17,12 @@ use crate::{
     stream::TransportFeatures,
 };
 use s2n_codec::EncoderBuffer;
-use s2n_quic_core::{dc, varint::VarInt};
+use s2n_quic_core::{
+    dc,
+    recovery::bandwidth::Bandwidth,
+    time::Timestamp,
+    varint::VarInt,
+};
 use std::{
     any::Any,
     net::SocketAddr,
@@ -61,6 +66,8 @@ pub struct Entry {
     /// The peer's data port, exchanged after the handshake completes.
     /// 0 means not yet learned.
     peer_data_port: AtomicU16,
+    /// Next scheduled transmission timestamp per socket sender, encoded as microseconds.
+    next_transmission_by_sender: Box<[AtomicU64]>,
 }
 
 impl SizeOf for Entry {
@@ -77,6 +84,7 @@ impl SizeOf for Entry {
             application_data,
             next_connection,
             peer_data_port,
+            next_transmission_by_sender,
         } = self;
         creation_time.size()
             + peer.size()
@@ -89,6 +97,8 @@ impl SizeOf for Entry {
             + application_data.size()
             + next_connection.size()
             + peer_data_port.size()
+            + std::mem::size_of::<Box<[AtomicU64]>>()
+            + next_transmission_by_sender.len() * std::mem::size_of::<AtomicU64>()
     }
 }
 
@@ -119,6 +129,29 @@ impl Entry {
         _: Duration,
         application_data: Option<ApplicationData>,
     ) -> Self {
+        Self::new_with_socket_senders(
+            peer,
+            secret,
+            sender,
+            receiver,
+            parameters,
+            Duration::ZERO,
+            application_data,
+            0,
+        )
+    }
+
+    pub fn new_with_socket_senders(
+        peer: SocketAddr,
+        secret: schedule::Secret,
+        sender: sender::State,
+        receiver: receiver::State,
+        parameters: dc::ApplicationParams,
+        // FIXME: remove unused parameter
+        _: Duration,
+        application_data: Option<ApplicationData>,
+        socket_sender_count: usize,
+    ) -> Self {
         // clamp max datagram size to a well-known value
         parameters
             .max_datagram_size
@@ -136,6 +169,7 @@ impl Entry {
             application_data,
             next_connection: AtomicU64::new(0),
             peer_data_port: AtomicU16::new(0),
+            next_transmission_by_sender: Self::init_sender_schedule(socket_sender_count),
         }
     }
 
@@ -214,6 +248,102 @@ impl Entry {
     /// Set the peer's data port, learned from the post-handshake port exchange.
     pub fn set_peer_data_port(&self, port: u16) {
         self.peer_data_port.store(port, Ordering::Relaxed);
+    }
+
+    fn sender_index(&self, sender_idx: usize) -> Option<usize> {
+        let len = self.next_transmission_by_sender.len();
+        if len == 0 {
+            None
+        } else {
+            Some(sender_idx % len)
+        }
+    }
+
+    fn sender_schedule_micros(ts: Timestamp) -> u64 {
+        // SAFETY: `Timestamp` values in this crate are monotonic and treated as non-negative.
+        let micros = unsafe { ts.as_duration().as_micros() };
+        micros.min(u64::MAX as u128) as u64
+    }
+
+    fn init_sender_schedule(socket_sender_count: usize) -> Box<[AtomicU64]> {
+        (0..socket_sender_count)
+            .map(|_| AtomicU64::new(0))
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
+
+    fn transmission_delay(queued_bytes: usize, bandwidth: Bandwidth) -> Duration {
+        if queued_bytes == 0 {
+            return Duration::ZERO;
+        }
+
+        let queued_bytes = u64::try_from(queued_bytes).unwrap_or(u64::MAX);
+        <u64 as core::ops::Div<Bandwidth>>::div(queued_bytes, bandwidth)
+    }
+
+    #[inline]
+    pub fn socket_sender_count(&self) -> usize {
+        self.next_transmission_by_sender.len()
+    }
+
+    #[inline]
+    pub fn sender_next_transmission_micros(&self, sender_idx: usize) -> u64 {
+        let Some(sender_idx) = self.sender_index(sender_idx) else {
+            return 0;
+        };
+        self.next_transmission_by_sender[sender_idx].load(Ordering::Acquire)
+    }
+
+    pub fn update_sender_next_transmission_time(
+        &self,
+        sender_idx: usize,
+        now: Timestamp,
+        queued_bytes: usize,
+        bandwidth: Bandwidth,
+    ) -> Timestamp {
+        let Some(sender_idx) = self.sender_index(sender_idx) else {
+            return now;
+        };
+        let delay = Self::transmission_delay(queued_bytes, bandwidth);
+        let next = now + delay;
+        let next_micros = Self::sender_schedule_micros(next);
+        self.next_transmission_by_sender[sender_idx].store(next_micros, Ordering::Release);
+        next
+    }
+
+    pub fn pick_sender_by_next_transmission(
+        &self,
+        random_fn: impl Fn(usize) -> usize,
+    ) -> usize {
+        let len = self.next_transmission_by_sender.len();
+        if len == 0 {
+            // No sender sockets are configured yet; callers treat 0 as the default route index.
+            return 0;
+        }
+
+        if len == 1 {
+            return 0;
+        }
+
+        let idx1 = random_fn(len) % len;
+        let idx2 = if len == 2 {
+            idx1 ^ 1
+        } else {
+            let mut idx2 = random_fn(len - 1) % (len - 1);
+            if idx2 >= idx1 {
+                idx2 += 1;
+            }
+            idx2
+        };
+
+        let time1 = self.next_transmission_by_sender[idx1].load(Ordering::Acquire);
+        let time2 = self.next_transmission_by_sender[idx2].load(Ordering::Acquire);
+
+        if time1 <= time2 {
+            idx1
+        } else {
+            idx2
+        }
     }
 
     pub fn idle_timeout(&self) -> Duration {

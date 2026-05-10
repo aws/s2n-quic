@@ -2,6 +2,31 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use crate::packet::secret_control as control;
+use crate::path::secret::{receiver, schedule, sender};
+use s2n_quic_core::time::Timestamp;
+use std::time::Duration;
+
+fn test_entry_with_senders(sender_count: usize) -> Entry {
+    let peer = (std::net::Ipv4Addr::LOCALHOST, 4433).into();
+    let secret = schedule::Secret::new(
+        schedule::Ciphersuite::AES_GCM_128_SHA256,
+        s2n_quic_core::dc::SUPPORTED_VERSIONS[0],
+        s2n_quic_core::endpoint::Type::Client,
+        &[7u8; 32],
+    );
+
+    Entry::new_with_socket_senders(
+        peer,
+        secret,
+        sender::State::new([0; control::TAG_LEN]),
+        receiver::State::new(),
+        s2n_quic_core::dc::testing::TEST_APPLICATION_PARAMS,
+        Duration::from_secs(1),
+        None,
+        sender_count,
+    )
+}
 
 #[test]
 fn entry_size() {
@@ -15,7 +40,48 @@ fn entry_size() {
     if should_check {
         assert_eq!(
             Entry::fake((std::net::Ipv4Addr::LOCALHOST, 0).into(), None).size(),
-            307
+            // Includes per-entry sender scheduling storage metadata (Box<[AtomicU64]>).
+            323
         );
     }
+}
+
+#[test]
+fn allocates_sender_schedule_slots() {
+    let entry = test_entry_with_senders(4);
+    assert_eq!(entry.socket_sender_count(), 4);
+}
+
+#[test]
+fn empty_sender_schedule_is_supported() {
+    let entry = test_entry_with_senders(0);
+    assert_eq!(entry.socket_sender_count(), 0);
+    assert_eq!(entry.sender_next_transmission_micros(0), 0);
+    assert_eq!(entry.pick_sender_by_next_transmission(|_| 0), 0);
+}
+
+#[test]
+fn picks_sender_with_lower_next_transmission() {
+    let entry = test_entry_with_senders(2);
+    // SAFETY: this uses a non-negative test duration, which satisfies Timestamp invariants.
+    let now = unsafe { Timestamp::from_duration(Duration::from_micros(10)) };
+
+    entry.update_sender_next_transmission_time(
+        0,
+        now,
+        4_000,
+        s2n_quic_core::recovery::bandwidth::Bandwidth::new(1_000, Duration::from_millis(1)),
+    );
+    entry.update_sender_next_transmission_time(
+        1,
+        now,
+        2_000,
+        s2n_quic_core::recovery::bandwidth::Bandwidth::new(1_000, Duration::from_millis(1)),
+    );
+
+    let picked = entry.pick_sender_by_next_transmission(|upper_bound| upper_bound - 1);
+    assert_eq!(picked, 1);
+
+    let picked = entry.pick_sender_by_next_transmission(|_| 0);
+    assert_eq!(picked, 1);
 }

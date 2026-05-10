@@ -22,7 +22,10 @@ use std::{
     hash::BuildHasher,
     mem::ManuallyDrop,
     net::SocketAddr,
-    sync::{Arc, Mutex, RwLock, Weak},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex, RwLock, Weak,
+    },
     time::Duration,
 };
 use tokio::task::JoinHandle;
@@ -378,6 +381,7 @@ where
 {
     // This is in number of entries.
     max_capacity: usize,
+    socket_sender_count: AtomicUsize,
 
     // Determines if path secret is evicted upon receiving an UnknownPathSecret packet.
     should_evict_on_unknown_path_secret: bool,
@@ -514,6 +518,7 @@ where
         let mut state = Self {
             // This is around 500MB with current entry size.
             max_capacity: capacity,
+            socket_sender_count: AtomicUsize::new(0),
             should_evict_on_unknown_path_secret,
             rehandshake_period,
             peers: Default::default(),
@@ -694,6 +699,14 @@ where
 
     fn secrets_capacity(&self) -> usize {
         self.max_capacity
+    }
+
+    fn socket_sender_count(&self) -> usize {
+        self.socket_sender_count.load(Ordering::Acquire)
+    }
+
+    fn set_socket_sender_count(&self, count: usize) {
+        self.socket_sender_count.store(count, Ordering::Release);
     }
 
     fn should_evict_on_unknown_path_secret(&self) -> bool {

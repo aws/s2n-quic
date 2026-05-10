@@ -21,6 +21,10 @@ pub trait Store: 'static + Send + Sync {
 
     fn secrets_capacity(&self) -> usize;
 
+    fn socket_sender_count(&self) -> usize;
+
+    fn set_socket_sender_count(&self, count: usize);
+
     fn should_evict_on_unknown_path_secret(&self) -> bool;
 
     fn drop_state(&self);

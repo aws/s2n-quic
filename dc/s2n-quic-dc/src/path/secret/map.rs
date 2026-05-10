@@ -121,6 +121,14 @@ impl Map {
         self.store.secrets_capacity()
     }
 
+    pub fn socket_sender_count(&self) -> usize {
+        self.store.socket_sender_count()
+    }
+
+    pub fn set_socket_sender_count(&self, count: usize) {
+        self.store.set_socket_sender_count(count);
+    }
+
     pub fn drop_state(&self) {
         self.store.drop_state();
     }
