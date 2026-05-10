@@ -19,7 +19,7 @@ use crate::{
     datagram::batch::Priority,
     packet::datagram::{QueuePair, ResetTarget},
     path::secret::map::Entry as PathSecretEntry,
-    socket::channel::intrusive_queue::datagram_completion,
+    socket::channel::{intrusive_queue::datagram_completion, ByteCost},
 };
 use s2n_codec::{decoder_invariant, Encoder, EncoderValue};
 use s2n_quic_core::varint::VarInt;
@@ -168,6 +168,27 @@ impl Header {
             | Self::FlowInitValidate { .. }
             | Self::FlowValidateRequest { .. }
             => false,
+        }
+    }
+
+    /// Returns the number of bytes this header occupies in the application header region,
+    /// including the optional payload-length varint when [`has_payload_length`] is true.
+    ///
+    /// This is the single canonical implementation of the frame-metadata size calculation.
+    /// `assemble::frame_metadata_len` delegates here so both callers operate on the same
+    /// assumptions. Debug builds assert that header variants without a payload-length field
+    /// always receive an empty payload.
+    #[inline]
+    pub fn metadata_len(&self, payload_len: usize) -> usize {
+        if self.has_payload_length() {
+            let payload_len_varint = VarInt::try_from(payload_len as u64).unwrap_or(VarInt::ZERO);
+            self.encoding_size() + payload_len_varint.encoding_size()
+        } else {
+            debug_assert_eq!(
+                payload_len, 0,
+                "frames without payload_length must have zero payload"
+            );
+            self.encoding_size()
         }
     }
 }
@@ -439,6 +460,19 @@ impl Frame {
         self.completion
             .as_ref()
             .map_or(true, |c| c.should_transmit())
+    }
+}
+
+impl ByteCost for Frame {
+    /// Returns the total wire cost of this frame: payload bytes plus the header metadata
+    /// (type tag, routing fields, and optional payload-length varint).
+    ///
+    /// Used by `send::Context::pending_bytes` to track in-queue load without traversal,
+    /// and by the pick-two load balancer via `publish_next_transmission_time`.
+    #[inline]
+    fn byte_cost(&self) -> u64 {
+        let payload_len = self.payload.len();
+        (payload_len + self.header.metadata_len(payload_len)) as u64
     }
 }
 

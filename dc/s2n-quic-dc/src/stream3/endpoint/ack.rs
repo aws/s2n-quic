@@ -112,6 +112,9 @@ pub(crate) fn process_ack<Clk, Rand>(
             random,
             now,
         );
+
+        // Publish updated load estimate: the CCA bandwidth sample has changed.
+        context.publish_next_transmission_time(now);
     }
 
     // Run loss detection

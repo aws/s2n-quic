@@ -100,7 +100,7 @@ where
             let mut packet_frames = Queue::new();
             let mut metadata = MetadataEstimate::new(context.flow_attempt_id_counter);
 
-            while let Some(frame) = context.pending.pop_front() {
+            while let Some(frame) = context.pop_pending() {
                 if !frame.should_transmit() {
                     cancelled_queue.push_back(frame);
                     continue;
@@ -116,7 +116,7 @@ where
                 );
 
                 if estimated_len > max_segment_len {
-                    context.pending.push_front(frame);
+                    context.push_front_pending(frame);
                     break;
                 }
 
@@ -209,11 +209,17 @@ where
     let segments = result.expect("fill_with closure is infallible");
 
     if segments_written == 0 {
+        // Frames may have been drained (e.g. all cancelled); publish the updated
+        // pending-byte count so the load-balancer sees the reduced queue.
+        context.publish_next_transmission_time(time_sent);
         return None;
     }
 
     // Update PTO
     context.pto.on_packet_sent(now);
+
+    // Publish updated load estimate: both pending queue and CCA state may have changed.
+    context.publish_next_transmission_time(time_sent);
 
     header_buf.clear();
 
@@ -357,13 +363,7 @@ fn encode_frame_metadata(
 
 #[inline]
 fn frame_metadata_len(header: &crate::stream3::frame::Header, payload_len: usize) -> usize {
-    if header.has_payload_length() {
-        let payload_len = VarInt::try_from(payload_len as u64).unwrap_or(VarInt::ZERO);
-        header.encoding_size() + payload_len.encoding_size()
-    } else {
-        debug_assert_payload_length_invariant(payload_len);
-        header.encoding_size()
-    }
+    header.metadata_len(payload_len)
 }
 
 #[inline]
@@ -579,7 +579,7 @@ mod tests {
         entry.update_max_datagram_size(mtu);
         let registry = Registry::new();
         let gauge = registry.register_queue_gauge("test.inflight");
-        (Context::new(&entry, gauge), entry)
+        (Context::new(&entry, gauge, 0), entry)
     }
 
     fn make_gso(max_segments: usize) -> Gso {
@@ -880,7 +880,7 @@ mod tests {
 
         let registry = Registry::new();
         let gauge = registry.register_queue_gauge("test.inflight");
-        let mut context = Context::new(&sealer_entry, gauge);
+        let mut context = Context::new(&sealer_entry, gauge, 0);
 
         let key_id = context.credentials.key_id;
         let opener = opener_entry.secret().application_opener(key_id);
@@ -936,7 +936,7 @@ mod tests {
             &context.sealer,
             &context.credentials,
             &mut context.flow_attempt_id_counter,
-            &context.pending,
+            context.pending.as_queue(),
             &mut header_buf,
         );
         assert!(encoded_len > 0, "must encode at least something");
@@ -1016,7 +1016,7 @@ mod tests {
 
                 let registry = Registry::new();
                 let gauge = registry.register_queue_gauge("test.inflight");
-                let context = Context::new(&sealer_entry, gauge);
+                let context = Context::new(&sealer_entry, gauge, 0);
 
                 let key_id = context.credentials.key_id;
                 let opener = opener_entry.secret().application_opener(key_id);

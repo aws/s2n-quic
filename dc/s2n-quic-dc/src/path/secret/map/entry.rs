@@ -196,6 +196,37 @@ impl Entry {
         ))
     }
 
+    /// Like [`fake`] but pre-allocates `socket_sender_count` sender slots so
+    /// `update_sender_next_transmission_time` / `pick_sender_by_next_transmission`
+    /// can be exercised in unit tests.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn fake_with_socket_senders(
+        peer: SocketAddr,
+        receiver: Option<receiver::State>,
+        socket_sender_count: usize,
+    ) -> Arc<Entry> {
+        let receiver = receiver.unwrap_or_default();
+
+        let mut secret = [0; 32];
+        aws_lc_rs::rand::fill(&mut secret).unwrap();
+
+        Arc::new(Entry::new_with_socket_senders(
+            peer,
+            schedule::Secret::new(
+                schedule::Ciphersuite::AES_GCM_128_SHA256,
+                dc::SUPPORTED_VERSIONS[0],
+                s2n_quic_core::endpoint::Type::Client,
+                &secret,
+            ),
+            sender::State::new([0; control::TAG_LEN]),
+            receiver,
+            dc::testing::TEST_APPLICATION_PARAMS,
+            dc::testing::TEST_REHANDSHAKE_PERIOD,
+            None,
+            socket_sender_count,
+        ))
+    }
+
     /// Create a deterministic entry for cross-process testing.
     ///
     /// Uses a fixed secret so client and server can communicate.

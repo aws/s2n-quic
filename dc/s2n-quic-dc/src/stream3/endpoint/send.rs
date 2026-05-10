@@ -21,6 +21,7 @@ use crate::{
     credentials::{self, Credentials},
     intrusive_queue::{self, Queue},
     path::secret::map::Entry as PathSecretEntry,
+    socket::channel::ByteCost,
     stream3::{endpoint::inflight, frame::Frame},
 };
 use core::time::Duration;
@@ -29,6 +30,89 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+
+/// Pending frame queue with an integrated wire-cost counter.
+///
+/// This struct ensures that `byte_cost` always mirrors the true accumulated
+/// [`ByteCost`] of every frame in the queue. All mutations (push/pop) go through
+/// this type, so callers cannot accidentally desync the counter.
+pub(crate) struct PendingFrames {
+    queue: Queue<Frame>,
+    /// Accumulated wire cost of all frames currently in the queue.
+    ///
+    /// Wire cost = payload bytes + header metadata bytes (type tag + routing
+    /// varints + optional payload-length varint) for every frame.
+    byte_cost: usize,
+}
+
+impl PendingFrames {
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            queue: Queue::new(),
+            byte_cost: 0,
+        }
+    }
+
+    /// Push a frame onto the back of the queue, updating the cost counter.
+    #[inline]
+    pub fn push_back(&mut self, frame: intrusive_queue::Entry<Frame>) {
+        self.byte_cost += frame.byte_cost() as usize;
+        self.queue.push_back(frame);
+    }
+
+    /// Push a frame onto the front of the queue, updating the cost counter.
+    ///
+    /// Only call this with a frame that was just removed via [`pop_front`] — for
+    /// example when a frame does not fit in the current segment and must be
+    /// returned for the next assembly round. Calling this with a frame that was
+    /// *not* previously popped will double-count its wire cost.
+    #[inline]
+    pub fn push_front(&mut self, frame: intrusive_queue::Entry<Frame>) {
+        self.byte_cost += frame.byte_cost() as usize;
+        self.queue.push_front(frame);
+    }
+
+    /// Remove the next frame from the front of the queue, updating the cost counter.
+    #[inline]
+    pub fn pop_front(&mut self) -> Option<intrusive_queue::Entry<Frame>> {
+        let frame = self.queue.pop_front()?;
+        let cost = frame.byte_cost() as usize;
+        debug_assert!(
+            self.byte_cost >= cost,
+            "byte_cost underflow: counter={} frame_cost={}",
+            self.byte_cost,
+            cost
+        );
+        self.byte_cost = self.byte_cost.saturating_sub(cost);
+        Some(frame)
+    }
+
+    /// Returns `true` if the queue contains no frames.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    /// Returns the number of frames in the queue.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
+    /// Returns the accumulated wire cost of all frames currently in the queue.
+    #[inline]
+    pub fn byte_cost(&self) -> usize {
+        self.byte_cost
+    }
+
+    /// Returns a shared reference to the inner queue for read-only operations
+    /// (e.g. iteration during segment encoding).
+    #[inline]
+    pub fn as_queue(&self) -> &Queue<Frame> {
+        &self.queue
+    }
+}
 
 /// Per-peer send state, one per (credentials_id, send_socket) pair.
 ///
@@ -47,8 +131,13 @@ pub(crate) struct Context {
     pub rtt_estimator: RttEstimator,
     pub inflight: inflight::Map,
     pub pto: Pto,
-    /// Frames waiting to be assembled into packets
-    pub pending: Queue<Frame>,
+    /// Frames waiting to be assembled into packets, with integrated wire-cost tracking.
+    pub pending: PendingFrames,
+    /// Index of this socket in the path secret entry's `next_transmission_by_sender` array.
+    ///
+    /// Used by `publish_next_transmission_time` to write the correct slot so the
+    /// load-balancer pick-two logic has up-to-date per-socket load information.
+    pub sender_idx: usize,
     /// Intrusive links and target time for the transmission pacing wheel
     pub tx_wheel: WheelLinks,
     /// Intrusive links and target time for the PTO (probe timeout) wheel
@@ -58,7 +147,11 @@ pub(crate) struct Context {
 }
 
 impl Context {
-    pub fn new(entry: &Arc<PathSecretEntry>, inflight_gauge: QueueGauge) -> Self {
+    pub fn new(
+        entry: &Arc<PathSecretEntry>,
+        inflight_gauge: QueueGauge,
+        sender_idx: usize,
+    ) -> Self {
         let (sealer, credentials) = entry.reusable_sealer();
         let cca = congestion::Controller::new(entry.max_datagram_size());
         let rtt_estimator = RttEstimator::new(Duration::from_millis(2));
@@ -74,16 +167,49 @@ impl Context {
             rtt_estimator,
             inflight,
             pto: Pto::default(),
-            pending: Queue::new(),
+            pending: PendingFrames::new(),
+            sender_idx,
             tx_wheel: WheelLinks::new(),
             pto_wheel: WheelLinks::new(),
             idle_wheel: WheelLinks::new(),
         }
     }
 
+    /// Push a frame onto the pending queue.
     #[inline]
     pub fn push_frame(&mut self, frame: intrusive_queue::Entry<Frame>) {
         self.pending.push_back(frame);
+    }
+
+    /// Pop the next frame from the pending queue.
+    #[inline]
+    pub fn pop_pending(&mut self) -> Option<intrusive_queue::Entry<Frame>> {
+        self.pending.pop_front()
+    }
+
+    /// Push a frame back to the front of the pending queue.
+    ///
+    /// Only call this with a frame just removed via [`pop_pending`].
+    #[inline]
+    pub fn push_front_pending(&mut self, frame: intrusive_queue::Entry<Frame>) {
+        self.pending.push_front(frame);
+    }
+
+    /// Publish the estimated next transmission time to the path secret entry.
+    ///
+    /// Derives the estimate from the current pending wire cost and the CCA bandwidth
+    /// sample, then stores it in the path-secret entry so the load-balancer
+    /// (`pick_sender_by_next_transmission`) can compare per-socket load.
+    ///
+    /// Call this whenever the pending queue or CCA state changes.
+    #[inline]
+    pub fn publish_next_transmission_time(&self, now: s2n_quic_core::time::Timestamp) {
+        self.path_secret_entry.update_sender_next_transmission_time(
+            self.sender_idx,
+            now,
+            self.pending.byte_cost(),
+            self.cca.bandwidth(),
+        );
     }
 
     #[inline]
@@ -254,13 +380,15 @@ impl Pto {
 pub(crate) struct Cache {
     contexts: HashMap<credentials::Id, Rc<RefCell<Context>>>,
     inflight_gauge: QueueGauge,
+    sender_idx: usize,
 }
 
 impl Cache {
-    pub fn new(inflight_gauge: QueueGauge) -> Self {
+    pub fn new(inflight_gauge: QueueGauge, sender_idx: usize) -> Self {
         Self {
             contexts: HashMap::new(),
             inflight_gauge,
+            sender_idx,
         }
     }
 
@@ -273,6 +401,7 @@ impl Cache {
                 Rc::new(RefCell::new(Context::new(
                     entry,
                     self.inflight_gauge.clone(),
+                    self.sender_idx,
                 )))
             })
             .clone()
@@ -359,7 +488,7 @@ mod tests {
         let entry = PathSecretEntry::fake("127.0.0.1:8080".parse().unwrap(), None);
         let registry = crate::counter::Registry::new();
         let gauge = registry.register_queue_gauge("test.inflight");
-        Rc::new(RefCell::new(Context::new(&entry, gauge)))
+        Rc::new(RefCell::new(Context::new(&entry, gauge, 0)))
     }
 
     // ── Tests ─────────────────────────────────────────────────────────────
@@ -592,5 +721,130 @@ mod tests {
         assert_eq!(result.len(), 1);
         let popped = result.pop_front().unwrap();
         assert!(Rc::ptr_eq(&popped, &ctx3));
+    }
+
+    // ── pending_bytes tracking tests ──────────────────────────────────────
+
+    fn make_frame(payload_len: usize) -> intrusive_queue::Entry<Frame> {
+        use crate::{
+            byte_vec::ByteVec,
+            packet::datagram::QueuePair,
+            path::secret::map::Entry as PathSecretEntry,
+            stream3::frame::{Frame, Header, TransmissionStatus, DEFAULT_TTL},
+        };
+        use bytes::Bytes;
+
+        let entry = PathSecretEntry::fake("127.0.0.1:8080".parse().unwrap(), None);
+        let mut payload = ByteVec::new();
+        if payload_len > 0 {
+            payload.push_back(Bytes::from(vec![0u8; payload_len]));
+        }
+        Frame {
+            header: Header::FlowData {
+                queue_pair: QueuePair {
+                    source_queue_id: VarInt::ZERO,
+                    dest_queue_id: VarInt::ZERO,
+                },
+                stream_id: VarInt::ZERO,
+                offset: VarInt::ZERO,
+                is_fin: false,
+            },
+            source_sender_id: VarInt::MAX,
+            payload,
+            path_secret_entry: entry,
+            completion: None,
+            status: TransmissionStatus::default(),
+            ttl: DEFAULT_TTL,
+            transmission_time: None,
+        }
+        .into()
+    }
+
+    #[test]
+    fn pending_bytes_tracks_push_and_pop() {
+        use crate::socket::channel::ByteCost as _;
+
+        let ctx = make_context();
+        let mut ctx = ctx.borrow_mut();
+
+        assert_eq!(ctx.pending.byte_cost(), 0);
+
+        let frame1 = make_frame(100);
+        let cost1 = frame1.byte_cost() as usize;
+        ctx.push_frame(frame1);
+        assert_eq!(ctx.pending.byte_cost(), cost1);
+
+        let frame2 = make_frame(200);
+        let cost2 = frame2.byte_cost() as usize;
+        ctx.push_frame(frame2);
+        assert_eq!(ctx.pending.byte_cost(), cost1 + cost2);
+
+        let frame = ctx.pop_pending().unwrap();
+        assert_eq!(frame.payload_len(), 100);
+        assert_eq!(ctx.pending.byte_cost(), cost2);
+
+        let frame = ctx.pop_pending().unwrap();
+        assert_eq!(frame.payload_len(), 200);
+        assert_eq!(ctx.pending.byte_cost(), 0);
+
+        assert!(ctx.pop_pending().is_none());
+        assert_eq!(ctx.pending.byte_cost(), 0);
+    }
+
+    #[test]
+    fn pending_bytes_tracks_push_front() {
+        use crate::socket::channel::ByteCost as _;
+
+        let ctx = make_context();
+        let mut ctx = ctx.borrow_mut();
+
+        let frame = make_frame(100);
+        let cost = frame.byte_cost() as usize;
+        ctx.push_frame(frame);
+        assert_eq!(ctx.pending.byte_cost(), cost);
+
+        // Pop then push back (simulates "doesn't fit" path in assemble)
+        let frame = ctx.pop_pending().unwrap();
+        assert_eq!(ctx.pending.byte_cost(), 0);
+
+        ctx.push_front_pending(frame);
+        assert_eq!(ctx.pending.byte_cost(), cost);
+    }
+
+    #[test]
+    fn publish_next_transmission_time_stores_to_path_entry() {
+        use crate::path::secret::map::Entry as PathSecretEntry;
+
+        // Create an entry with one sender slot so the atomic array is populated.
+        let entry = PathSecretEntry::fake_with_socket_senders(
+            "127.0.0.1:8080".parse().unwrap(),
+            None,
+            1,
+        );
+
+        let registry = crate::counter::Registry::new();
+        let gauge = registry.register_queue_gauge("test.inflight");
+        let mut ctx = Context::new(&entry, gauge, 0);
+
+        // Initial value should be zero.
+        assert_eq!(entry.sender_next_transmission_micros(0), 0);
+
+        // Push some payload bytes so pending_bytes > 0.
+        ctx.push_frame(make_frame(1000));
+
+        // Build a timestamp from a known duration.
+        // SAFETY: the duration is positive (5 000 µs) and well within the range of
+        // representable Timestamp values (u64 microseconds from process start).
+        let now = unsafe {
+            s2n_quic_core::time::Timestamp::from_duration(Duration::from_micros(5_000))
+        };
+        ctx.publish_next_transmission_time(now);
+
+        // With non-zero pending bytes the published time should be >= now (5000µs).
+        let published = entry.sender_next_transmission_micros(0);
+        assert!(
+            published >= 5_000,
+            "published micros {published} should be >= now (5000µs)"
+        );
     }
 }
