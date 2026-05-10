@@ -592,3 +592,201 @@ fn paced_allows_burst() {
         .spawn();
     });
 }
+
+
+// ── GaugedSender / GaugedReceiver tests ───────────────────────────────────
+
+mod gauged {
+    use super::*;
+    use crate::counter::Registry;
+
+    fn make_gauge() -> (crate::counter::QueueGauge, Registry) {
+        let reg = Registry::new();
+        let gauge = reg.register_queue_gauge("test");
+        (gauge, reg)
+    }
+
+    fn gauge_depth(gauge: &crate::counter::QueueGauge) -> i64 {
+        gauge.depth.get()
+    }
+
+    // Alias the channel-specific intrusive_queue::sync module to avoid
+    // shadowing by the crate-level `use crate::{intrusive_queue, ...}` import.
+    use crate::socket::channel::intrusive_queue::sync as iq_sync;
+
+    #[test]
+    fn batch_len_single_entry() {
+        let e = crate::intrusive_queue::Entry::new(42u32);
+        assert_eq!(e.batch_len(), 1);
+    }
+
+    #[test]
+    fn batch_len_queue() {
+        let mut q = crate::intrusive_queue::Queue::<u32>::new();
+        assert_eq!(q.batch_len(), 0);
+        q.push_back(crate::intrusive_queue::Entry::new(1u32));
+        q.push_back(crate::intrusive_queue::Entry::new(2u32));
+        q.push_back(crate::intrusive_queue::Entry::new(3u32));
+        assert_eq!(q.batch_len(), 3);
+    }
+
+    #[test]
+    fn batch_len_vecdeque() {
+        let mut v: std::collections::VecDeque<u32> = std::collections::VecDeque::new();
+        assert_eq!(v.batch_len(), 0);
+        v.push_back(1);
+        v.push_back(2);
+        assert_eq!(v.batch_len(), 2);
+    }
+
+    #[test]
+    fn gauged_sender_unbounded_increments_depth_on_send() {
+        // intrusive_queue::sync::Sender<T> implements UnboundedSender<Entry<T>>
+        let (gauge, _reg) = make_gauge();
+        let (inner_tx, _rx) = iq_sync::new::<u32>();
+
+        let mut tx: GaugedSender<_, crate::intrusive_queue::Entry<u32>> =
+            GaugedSender::new(inner_tx, gauge.clone());
+
+        assert_eq!(gauge_depth(&gauge), 0);
+        <GaugedSender<_, _> as UnboundedSender<_>>::send(
+            &mut tx,
+            crate::intrusive_queue::Entry::new(10u32),
+        )
+        .unwrap();
+        assert_eq!(gauge_depth(&gauge), 1);
+        <GaugedSender<_, _> as UnboundedSender<_>>::send(
+            &mut tx,
+            crate::intrusive_queue::Entry::new(20u32),
+        )
+        .unwrap();
+        assert_eq!(gauge_depth(&gauge), 2);
+    }
+
+    #[test]
+    fn gauged_sender_unbounded_does_not_increment_on_closed_channel() {
+        let (gauge, _reg) = make_gauge();
+        let (inner_tx, rx) = iq_sync::new::<u32>();
+        drop(rx);
+
+        let mut tx: GaugedSender<_, crate::intrusive_queue::Entry<u32>> =
+            GaugedSender::new(inner_tx, gauge.clone());
+
+        let result = <GaugedSender<_, _> as UnboundedSender<_>>::send(
+            &mut tx,
+            crate::intrusive_queue::Entry::new(42u32),
+        );
+        assert!(result.is_err(), "send should fail on closed channel");
+        assert_eq!(gauge_depth(&gauge), 0, "depth must not increase on failure");
+    }
+
+    #[test]
+    fn gauged_sender_batch_counts_queue_len() {
+        // Sending a Queue<T> with 3 items should increment depth by 3
+        let (gauge, _reg) = make_gauge();
+        let (inner_tx, _rx) = iq_sync::new::<u32>();
+
+        let mut tx: GaugedSender<_, crate::intrusive_queue::Queue<u32>> =
+            GaugedSender::new(inner_tx, gauge.clone());
+
+        assert_eq!(gauge_depth(&gauge), 0);
+
+        let mut batch = crate::intrusive_queue::Queue::new();
+        batch.push_back(crate::intrusive_queue::Entry::new(1u32));
+        batch.push_back(crate::intrusive_queue::Entry::new(2u32));
+        batch.push_back(crate::intrusive_queue::Entry::new(3u32));
+        <GaugedSender<_, _> as UnboundedSender<_>>::send(&mut tx, batch).unwrap();
+
+        assert_eq!(gauge_depth(&gauge), 3);
+    }
+
+    #[test]
+    fn gauged_receiver_single_item_decrements_depth_by_one() {
+        let (gauge, _reg) = make_gauge();
+        let (inner_tx, inner_rx) = iq_sync::new::<u32>();
+
+        // Pre-populate gauge depth to simulate earlier enqueues
+        gauge.enqueue(2);
+        inner_tx
+            .send_entry(crate::intrusive_queue::Entry::new(1u32))
+            .unwrap();
+        inner_tx
+            .send_entry(crate::intrusive_queue::Entry::new(2u32))
+            .unwrap();
+
+        let mut rx: GaugedReceiver<_, crate::intrusive_queue::Entry<u32>> =
+            GaugedReceiver::new(inner_rx, gauge.clone());
+
+        let mut cx = noop_cx();
+
+        assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
+        assert_eq!(gauge_depth(&gauge), 1);
+
+        assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
+        assert_eq!(gauge_depth(&gauge), 0);
+    }
+
+    #[test]
+    fn gauged_sender_and_receiver_paired_track_depth() {
+        let (gauge, _reg) = make_gauge();
+        let (inner_tx, inner_rx) = iq_sync::new::<u32>();
+
+        let mut tx: GaugedSender<_, crate::intrusive_queue::Entry<u32>> =
+            GaugedSender::new(inner_tx, gauge.clone());
+        let mut rx: GaugedReceiver<_, crate::intrusive_queue::Entry<u32>> =
+            GaugedReceiver::new(inner_rx, gauge.clone());
+
+        let mut cx = noop_cx();
+
+        <GaugedSender<_, _> as UnboundedSender<_>>::send(
+            &mut tx,
+            crate::intrusive_queue::Entry::new(1u32),
+        )
+        .unwrap();
+        <GaugedSender<_, _> as UnboundedSender<_>>::send(
+            &mut tx,
+            crate::intrusive_queue::Entry::new(2u32),
+        )
+        .unwrap();
+        assert_eq!(gauge_depth(&gauge), 2);
+
+        assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
+        assert_eq!(gauge_depth(&gauge), 1);
+
+        <GaugedSender<_, _> as UnboundedSender<_>>::send(
+            &mut tx,
+            crate::intrusive_queue::Entry::new(3u32),
+        )
+        .unwrap();
+        assert_eq!(gauge_depth(&gauge), 2);
+
+        assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
+        assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
+        assert_eq!(gauge_depth(&gauge), 0);
+    }
+
+    #[test]
+    fn gauged_receiver_batch_decrements_by_batch_len() {
+        // GaugedReceiver<Receiver<Queue<T>>, Queue<T>> decrements depth by queue.len()
+        let (gauge, _reg) = make_gauge();
+        let (inner_tx, inner_rx) = iq_sync::new::<u32>();
+
+        // Pre-fill gauge depth to match the batch we will send
+        gauge.enqueue(4);
+
+        let mut rx: GaugedReceiver<_, crate::intrusive_queue::Queue<u32>> =
+            GaugedReceiver::new(inner_rx, gauge.clone());
+
+        let mut cx = noop_cx();
+
+        let mut batch = crate::intrusive_queue::Queue::new();
+        for i in 0..4u32 {
+            batch.push_back(crate::intrusive_queue::Entry::new(i));
+        }
+        inner_tx.send_batch(batch).unwrap();
+
+        // Receiving the batch decrements depth by 4 (the batch_len)
+        assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
+        assert_eq!(gauge_depth(&gauge), 0);
+    }
+}

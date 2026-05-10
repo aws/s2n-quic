@@ -2304,3 +2304,163 @@ where
         self.inner.on_consumed(bytes);
     }
 }
+
+// ── BatchLen trait ─────────────────────────────────────────────────────────
+
+/// Returns the number of logical items a channel message represents.
+///
+/// Implement this trait on types used as channel messages so that
+/// [`GaugedSender`] and [`GaugedReceiver`] can correctly update the
+/// queue-depth metric for both single-item and batch sends/receives.
+///
+/// # Examples
+///
+/// * A single entry (e.g. `Entry<T>`) should return `1`.
+/// * A batch container (e.g. `Queue<T>` or `List<A>`) should return the
+///   number of entries it contains.
+pub trait BatchLen {
+    fn batch_len(&self) -> u64;
+}
+
+/// Single intrusive-queue entries always count as one item.
+impl<T> BatchLen for crate::intrusive_queue::Entry<T> {
+    #[inline]
+    fn batch_len(&self) -> u64 {
+        1
+    }
+}
+
+/// An intrusive `List<A>` (including the `Queue<T>` type alias) counts as the
+/// number of entries it holds.
+impl<A: crate::intrusive_queue::Adapter> BatchLen for crate::intrusive_queue::List<A> {
+    #[inline]
+    fn batch_len(&self) -> u64 {
+        self.len() as u64
+    }
+}
+
+/// A `VecDeque<T>` counts as the number of elements it holds.
+impl<T> BatchLen for std::collections::VecDeque<T> {
+    #[inline]
+    fn batch_len(&self) -> u64 {
+        self.len() as u64
+    }
+}
+
+// ── GaugedSender ───────────────────────────────────────────────────────────
+
+/// Wraps a sender and records enqueue metrics for every successful send.
+///
+/// Associates a [`crate::counter::QueueGauge`] with the sender. Each time
+/// a value is successfully enqueued the gauge is incremented by the item
+/// count reported by [`BatchLen::batch_len`], so both single-item and batch
+/// sends produce accurate queue-depth readings.
+///
+/// Works with any type implementing [`UnboundedSender`] or [`Sender`].
+pub struct GaugedSender<S, T> {
+    inner: S,
+    gauge: crate::counter::QueueGauge,
+    _phantom: PhantomData<T>,
+}
+
+impl<S, T> GaugedSender<S, T> {
+    pub fn new(inner: S, gauge: crate::counter::QueueGauge) -> Self {
+        Self {
+            inner,
+            gauge,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<T, S> UnboundedSender<T> for GaugedSender<S, T>
+where
+    T: BatchLen,
+    S: UnboundedSender<T>,
+{
+    #[inline]
+    fn send(&mut self, value: T) -> Result<(), T> {
+        let count = value.batch_len();
+        match self.inner.send(value) {
+            Ok(()) => {
+                self.gauge.enqueue(count);
+                Ok(())
+            }
+            Err(v) => Err(v),
+        }
+    }
+}
+
+impl<T, S> Sender<T> for GaugedSender<S, T>
+where
+    T: BatchLen,
+    S: Sender<T>,
+{
+    #[inline]
+    fn poll_send(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        value: &mut core::mem::MaybeUninit<T>,
+    ) -> Poll<Result<(), ()>> {
+        // SAFETY: The `Sender` trait contract requires callers to pass an initialized
+        // `MaybeUninit<T>` to `poll_send`.  We read it here only to compute the batch
+        // size before forwarding to the inner sender, which consumes/moves the value.
+        let count = unsafe { value.assume_init_ref() }.batch_len();
+        match self.inner.poll_send(cx, value) {
+            Poll::Ready(Ok(())) => {
+                self.gauge.enqueue(count);
+                Poll::Ready(Ok(()))
+            }
+            other => other,
+        }
+    }
+}
+
+// ── GaugedReceiver ─────────────────────────────────────────────────────────
+
+/// Wraps a receiver and records dequeue metrics for every value received.
+///
+/// Associates a [`crate::counter::QueueGauge`] with the receiver.  Each time
+/// `poll_recv` returns `Ready(Some(value))` the gauge is decremented by the
+/// item count reported by [`BatchLen::batch_len`], so both single-item and
+/// batch receives produce accurate queue-depth readings.
+///
+/// Pair with a [`GaugedSender`] that shares the same `QueueGauge` to get
+/// a live view of channel build-up from both ends.
+pub struct GaugedReceiver<R, T> {
+    inner: R,
+    gauge: crate::counter::QueueGauge,
+    _phantom: PhantomData<T>,
+}
+
+impl<R, T> GaugedReceiver<R, T> {
+    pub fn new(inner: R, gauge: crate::counter::QueueGauge) -> Self {
+        Self {
+            inner,
+            gauge,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<T, R> Receiver<T> for GaugedReceiver<R, T>
+where
+    T: BatchLen,
+    R: Receiver<T>,
+{
+    #[inline]
+    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<T>> {
+        match self.inner.poll_recv(cx) {
+            Poll::Ready(Some(value)) => {
+                self.gauge.dequeue_n(value.batch_len());
+                Poll::Ready(Some(value))
+            }
+            other => other,
+        }
+    }
+
+    #[inline]
+    fn on_consumed(&mut self, bytes: u64) {
+        self.inner.on_consumed(bytes);
+    }
+}
