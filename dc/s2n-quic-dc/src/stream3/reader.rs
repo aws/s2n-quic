@@ -287,6 +287,8 @@ impl Inner {
     where
         S: buffer::writer::Storage,
     {
+        let _ = self.poll_stream_rx(cx)?;
+
         if self.status.is_pending_validation() {
             return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -308,8 +310,6 @@ impl Inner {
         if self.status.is_complete() {
             return Poll::Ready(Ok(0));
         }
-
-        let _ = self.poll_stream_rx(cx)?;
 
         let bytes_read = if buf.remaining_capacity() > 0 {
             let mut tracker = buf.track_write();

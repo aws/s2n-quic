@@ -8,6 +8,7 @@
 //! and dispatch each frame to its appropriate handler based on the frame header type.
 
 use crate::{
+    byte_vec::ByteVec,
     acceptor,
     credentials::Credentials,
     flow,
@@ -17,6 +18,7 @@ use crate::{
         datagram::{QueuePair, ResetTarget, RoutingInfo},
     },
     path::secret::Map as PathSecretMap,
+    path::secret::map::Entry as PathSecretEntry,
     socket::{channel, pool::descriptor},
     stream3::{
         endpoint::{
@@ -24,12 +26,14 @@ use crate::{
             recv::{self, AckState, AttemptDedupError},
             reset_error,
         },
-        frame::{Frame, SubmissionSender},
-        Stream,
+        frame::{Frame, Header, SubmissionSender, DEFAULT_TTL},
+        Reader, Stream, Writer,
     },
 };
 use bytes::BytesMut;
 use s2n_quic_core::varint::VarInt;
+
+const UNSET_SOURCE_SENDER_ID: VarInt = VarInt::MAX;
 
 pub(crate) enum Error {
     PeerStateLookup {
@@ -139,7 +143,7 @@ where
             counters.rx_none.add(1);
         }
         RoutingInfo::FlowInit {
-            source_sender_id: _,
+            source_sender_id,
             source_queue_id: peer_queue_id,
             dest_acceptor_id: acceptor_id,
             attempt_id,
@@ -150,6 +154,7 @@ where
             handle_flow_init(
                 peer,
                 &credentials,
+                source_sender_id,
                 peer_queue_id,
                 acceptor_id,
                 attempt_id,
@@ -172,6 +177,7 @@ where
         } => {
             counters.rx_validate.add(1);
             handle_flow_validate_request(
+                &peer.path_entry,
                 &credentials,
                 dest_sender_id,
                 queue_pair,
@@ -268,6 +274,7 @@ where
 fn handle_flow_init(
     peer: &mut recv::Context,
     credentials: &Credentials,
+    source_sender_id: VarInt,
     peer_queue_id: VarInt,
     acceptor_id: VarInt,
     attempt_id: VarInt,
@@ -280,15 +287,305 @@ fn handle_flow_init(
     counters: &counters::Dispatch,
     response_frames: &mut Queue<Frame>,
 ) {
-    // TODO: port FlowInit handling (attempt dedup, queue allocation, acceptor dispatch)
-    // This is the largest handler — will be filled in next pass.
+    let create_queue = |handle| {
+        let (queue_control, queue_stream) = queue_dispatcher.alloc_or_grow(handle, Some(peer_queue_id));
+        (queue_control.queue_id(), (queue_control, queue_stream))
+    };
+
+    let mut initial_payload = Some(buf);
+    let mut create_stream = |queue_control: msg::queue::Control,
+                             queue_stream: msg::queue::Stream,
+                             pending_validation: bool| {
+        let payload = initial_payload.take().unwrap_or_else(|| {
+            tracing::error!(
+                attempt_id = attempt_id.as_u64(),
+                stream_id = stream_id.as_u64(),
+                "create_stream called more than once for FlowInit"
+            );
+            BytesMut::new()
+        });
+        if is_fin || !payload.is_empty() {
+            queue_stream.push(
+                msg::Stream::Data {
+                    offset: VarInt::ZERO,
+                    fin: is_fin,
+                    payload,
+                }
+                .into(),
+            );
+        }
+
+        let local_queue_id = queue_control.queue_id();
+        let writer = Writer::new_server(frame_tx.clone(), peer.path_entry.clone(), stream_id, queue_control);
+        let reader = if pending_validation {
+            Reader::new_server_pending(frame_tx.clone(), peer.path_entry.clone(), stream_id, queue_stream)
+        } else {
+            Reader::new_server(frame_tx.clone(), peer.path_entry.clone(), stream_id, queue_stream)
+        };
+
+        (local_queue_id, Stream::new(reader, writer))
+    };
+
+    match peer.attempt_dedup.check_attempt_id(attempt_id) {
+        Ok(()) => match peer.flows.try_register(stream_id, create_queue) {
+            Ok((queue_control, queue_stream)) => {
+                let (local_queue_id, stream) = create_stream(queue_control, queue_stream, false);
+
+                match acceptor_registry.dispatch(acceptor_id, stream) {
+                    Ok(()) => {
+                        counters.flow_accepted.add(1);
+                        tracing::debug!(
+                            attempt_id = attempt_id.as_u64(),
+                            stream_id = stream_id.as_u64(),
+                            acceptor_id = acceptor_id.as_u64(),
+                            server_queue_id = local_queue_id.as_u64(),
+                            "FlowInit accepted - dispatched to acceptor"
+                        );
+                    }
+                    Err(acceptor::DispatchError::AcceptorNotFound) => {
+                        tracing::debug!(
+                            attempt_id = attempt_id.as_u64(),
+                            stream_id = stream_id.as_u64(),
+                            acceptor_id = acceptor_id.as_u64(),
+                            "FlowInit rejected - acceptor not found"
+                        );
+                        push_reset_frame(
+                            response_frames,
+                            counters,
+                            &peer.path_entry,
+                            peer_queue_id,
+                            stream_id,
+                            reset_error::ACCEPTOR_NOT_FOUND,
+                        );
+                    }
+                    Err(acceptor::DispatchError::Reset { reset_code }) => {
+                        tracing::debug!(
+                            attempt_id = attempt_id.as_u64(),
+                            stream_id = stream_id.as_u64(),
+                            acceptor_id = acceptor_id.as_u64(),
+                            reset_code = reset_code.as_u64(),
+                            "FlowInit rejected - acceptor requested reset"
+                        );
+                        push_reset_frame(
+                            response_frames,
+                            counters,
+                            &peer.path_entry,
+                            peer_queue_id,
+                            stream_id,
+                            reset_code,
+                        );
+                    }
+                }
+            }
+            Err(local_queue_id) => {
+                tracing::debug!(
+                    attempt_id = attempt_id.as_u64(),
+                    stream_id = stream_id.as_u64(),
+                    local_queue_id = local_queue_id.as_u64(),
+                    "FlowInit rejected - stream_id reused by client"
+                );
+                push_reset_frame(
+                    response_frames,
+                    counters,
+                    &peer.path_entry,
+                    peer_queue_id,
+                    stream_id,
+                    reset_error::STREAM_ID_ERROR,
+                );
+            }
+        },
+        Err(AttemptDedupError::Duplicate) => {
+            counters.rx_init_dup.add(1);
+            tracing::trace!(
+                attempt_id = attempt_id.as_u64(),
+                stream_id = stream_id.as_u64(),
+                "Duplicate FlowInit attempt_id - dropping"
+            );
+        }
+        Err(AttemptDedupError::TooOld) => {
+            counters.rx_init_too_old.add(1);
+
+            match peer.flows.try_register(stream_id, create_queue) {
+                Ok((queue_control, queue_stream)) => {
+                    let (local_queue_id, stream) = create_stream(queue_control, queue_stream, true);
+                    match acceptor_registry.dispatch_pending(acceptor_id, stream) {
+                        Ok(acceptor::PendingAction::Accepted) => {
+                            counters.rx_init_accepted.add(1);
+                            counters.flow_accepted.add(1);
+                            let request = flow::Request {
+                                credential_id: credentials.id,
+                                stream_id,
+                            };
+                            let stream_entry = msg::Stream::FlowValidated.into();
+                            let _ = queue_dispatcher.send_stream(
+                                local_queue_id,
+                                Some(peer_queue_id),
+                                &request,
+                                stream_entry,
+                            );
+                            tracing::debug!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                acceptor_id = acceptor_id.as_u64(),
+                                server_queue_id = local_queue_id.as_u64(),
+                                "FlowInit accepted without retry - acceptor doesn't require dedup"
+                            );
+                        }
+                        Ok(acceptor::PendingAction::AcceptedWithRetry) => {
+                            counters.rx_init_accepted_retry.add(1);
+                            counters.flow_pending.add(1);
+                            tracing::debug!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                acceptor_id = acceptor_id.as_u64(),
+                                server_queue_id = local_queue_id.as_u64(),
+                                "FlowInit accepted with retry - requesting validation from client"
+                            );
+                            push_validate_request_frame(
+                                response_frames,
+                                counters,
+                                &peer.path_entry,
+                                source_sender_id,
+                                local_queue_id,
+                                peer_queue_id,
+                                attempt_id,
+                                stream_id,
+                            );
+                        }
+                        Ok(acceptor::PendingAction::Reject { reset_code }) => {
+                            counters.rx_init_reject.add(1);
+                            tracing::debug!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                acceptor_id = acceptor_id.as_u64(),
+                                reset_code = reset_code.as_u64(),
+                                "FlowInit rejected - acceptor rejected pending request"
+                            );
+                            push_reset_frame(
+                                response_frames,
+                                counters,
+                                &peer.path_entry,
+                                peer_queue_id,
+                                stream_id,
+                                reset_code,
+                            );
+                        }
+                        Err(acceptor::DispatchError::AcceptorNotFound) => {
+                            counters.rx_init_no_acceptor.add(1);
+                            tracing::debug!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                acceptor_id = acceptor_id.as_u64(),
+                                "FlowInit rejected - acceptor not found"
+                            );
+                            push_reset_frame(
+                                response_frames,
+                                counters,
+                                &peer.path_entry,
+                                peer_queue_id,
+                                stream_id,
+                                reset_error::ACCEPTOR_NOT_FOUND,
+                            );
+                        }
+                        Err(acceptor::DispatchError::Reset { reset_code }) => {
+                            counters.rx_init_acceptor_reset.add(1);
+                            tracing::debug!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                acceptor_id = acceptor_id.as_u64(),
+                                reset_code = reset_code.as_u64(),
+                                "FlowInit rejected - acceptor requested reset"
+                            );
+                            push_reset_frame(
+                                response_frames,
+                                counters,
+                                &peer.path_entry,
+                                peer_queue_id,
+                                stream_id,
+                                reset_code,
+                            );
+                        }
+                    }
+                }
+                Err(local_queue_id) => {
+                    counters.rx_init_retx.add(1);
+                    tracing::trace!(
+                        attempt_id = attempt_id.as_u64(),
+                        stream_id = stream_id.as_u64(),
+                        queue_id = local_queue_id.as_u64(),
+                        "FlowInit retransmission of existing flow - dropping"
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn push_reset_frame(
+    response_frames: &mut Queue<Frame>,
+    counters: &counters::Dispatch,
+    path_secret_entry: &std::sync::Arc<PathSecretEntry>,
+    dest_queue_id: VarInt,
+    stream_id: VarInt,
+    error_code: VarInt,
+) {
+    let frame = Frame {
+        header: Header::FlowReset {
+            dest_queue_id,
+            stream_id,
+            reset_target: ResetTarget::Both,
+            error_code,
+        },
+        source_sender_id: UNSET_SOURCE_SENDER_ID,
+        payload: ByteVec::new(),
+        path_secret_entry: path_secret_entry.clone(),
+        completion: None,
+        status: Default::default(),
+        ttl: DEFAULT_TTL,
+        transmission_time: None,
+    };
+    counters.on_sent_frame(&frame.header);
+    response_frames.push_back(frame.into());
+}
+
+fn push_validate_request_frame(
+    response_frames: &mut Queue<Frame>,
+    counters: &counters::Dispatch,
+    path_secret_entry: &std::sync::Arc<PathSecretEntry>,
+    dest_sender_id: VarInt,
+    source_queue_id: VarInt,
+    dest_queue_id: VarInt,
+    attempt_id: VarInt,
+    stream_id: VarInt,
+) {
+    let frame = Frame {
+        header: Header::FlowValidateRequest {
+            dest_sender_id,
+            queue_pair: QueuePair {
+                source_queue_id,
+                dest_queue_id,
+            },
+            attempt_id,
+            stream_id,
+        },
+        source_sender_id: UNSET_SOURCE_SENDER_ID,
+        payload: ByteVec::new(),
+        path_secret_entry: path_secret_entry.clone(),
+        completion: None,
+        status: Default::default(),
+        ttl: DEFAULT_TTL,
+        transmission_time: None,
+    };
+    counters.on_sent_frame(&frame.header);
+    response_frames.push_back(frame.into());
 }
 
 // ── FlowValidateRequest ───────────────────────────────────────────────────
 
 fn handle_flow_validate_request(
+    path_secret_entry: &std::sync::Arc<PathSecretEntry>,
     credentials: &Credentials,
-    dest_sender_id: VarInt,
+    _dest_sender_id: VarInt,
     queue_pair: QueuePair,
     attempt_id: VarInt,
     stream_id: VarInt,
@@ -311,7 +608,22 @@ fn handle_flow_validate_request(
                 stream_id = stream_id.as_u64(),
                 "FlowValidateRequest validated"
             );
-            // TODO: emit FlowInitValidate response frame
+            let frame = Frame {
+                header: Header::FlowInitValidate {
+                    queue_pair: queue_pair.reverse(),
+                    attempt_id,
+                    stream_id,
+                },
+                source_sender_id: UNSET_SOURCE_SENDER_ID,
+                payload: ByteVec::new(),
+                path_secret_entry: path_secret_entry.clone(),
+                completion: None,
+                status: Default::default(),
+                ttl: DEFAULT_TTL,
+                transmission_time: None,
+            };
+            counters.on_sent_frame(&frame.header);
+            response_frames.push_back(frame.into());
         }
         Err(_) => {
             counters.rx_validate_failed.add(1);
@@ -320,7 +632,23 @@ fn handle_flow_validate_request(
                 stream_id = stream_id.as_u64(),
                 "FlowValidateRequest validation failed"
             );
-            // TODO: emit FlowReset response frame
+            let frame = Frame {
+                header: Header::FlowReset {
+                    dest_queue_id: queue_pair.source_queue_id,
+                    stream_id,
+                    reset_target: ResetTarget::Both,
+                    error_code: reset_error::STALE_STATE,
+                },
+                source_sender_id: UNSET_SOURCE_SENDER_ID,
+                payload: ByteVec::new(),
+                path_secret_entry: path_secret_entry.clone(),
+                completion: None,
+                status: Default::default(),
+                ttl: DEFAULT_TTL,
+                transmission_time: None,
+            };
+            counters.on_sent_frame(&frame.header);
+            response_frames.push_back(frame.into());
         }
     }
 }
