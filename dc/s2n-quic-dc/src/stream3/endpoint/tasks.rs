@@ -549,30 +549,89 @@ pub async fn packet_dispatch_task<PacketRx, AckTx, Clk>(
     AckTx: crate::socket::channel::UnboundedSender<crate::stream3::endpoint::msg::Sender>,
     Clk: s2n_quic_core::time::Clock + crate::clock::precision::Clock,
 {
-    use crate::socket::channel::{Map, ReceiverExt as _};
+    use crate::socket::channel::{InspectErr, Map, ReceiverExt as _};
     use crate::stream3::endpoint::dispatch;
 
     // Response frames (ACKs sent back to peers) re-enter via the same submission channel.
     // TODO: route responses through a dedicated channel + RetransmissionBatcher (see above).
-    let mut response_tx = frame_tx.clone();
-    let mut ack_sender = ack_sender;
-    let mut queue_dispatcher = queue_dispatcher;
+    let rx = Map::new(packet_rx, {
+        let mut response_tx = frame_tx.clone();
+        let mut ack_sender = ack_sender;
+        let mut queue_dispatcher = queue_dispatcher;
+        let counters = counters.clone();
 
-    let rx = Map::new(packet_rx, move |packet| {
-        let _ = dispatch::process(
-            packet,
-            &mut recv_cache.borrow_mut(),
-            &path_secret_map,
-            &acceptor_registry,
-            &frame_tx,
-            &mut response_tx,
-            &mut ack_sender,
-            &mut queue_dispatcher,
-            &clock,
-            &counters,
-        );
+        move |packet| {
+            counters.rx_data_pkt.add(1);
+            dispatch::process(
+                packet,
+                &mut recv_cache.borrow_mut(),
+                &path_secret_map,
+                &acceptor_registry,
+                &frame_tx,
+                &mut response_tx,
+                &mut ack_sender,
+                &mut queue_dispatcher,
+                &clock,
+                &counters,
+            )
+        }
+    });
+    let rx = InspectErr::new(rx, {
+        let counters = counters;
+        move |err| on_packet_dispatch_error(&counters, err)
     });
     rx.drain_budgeted(Some(budget)).await;
+}
+
+fn on_packet_dispatch_error(
+    counters: &crate::stream3::endpoint::counters::Dispatch,
+    err: crate::stream3::endpoint::dispatch::Error,
+) {
+    use crate::stream3::endpoint::dispatch;
+
+    match err {
+        dispatch::Error::PeerStateLookup {
+            credentials,
+            control_out,
+        } => {
+            counters.rx_process_err_peer_lookup.add(1);
+            tracing::warn!(
+                ?credentials,
+                control_out_len = control_out.len(),
+                "failed to get or create peer state"
+            );
+        }
+        dispatch::Error::Decryption {
+            credentials,
+            packet_number,
+        } => {
+            counters.rx_process_err_decryption.add(1);
+            tracing::debug!(
+                ?credentials,
+                pn = packet_number.as_u64(),
+                "failed to decrypt packet - authentication failed"
+            );
+        }
+        dispatch::Error::Duplicate {
+            credentials,
+            packet_number,
+        } => {
+            counters.rx_process_err_duplicate.add(1);
+            tracing::trace!(
+                ?credentials,
+                pn = packet_number.as_u64(),
+                "duplicate packet filtered"
+            );
+        }
+        dispatch::Error::MissingSenderId => {
+            counters.rx_process_err_missing_sender_id.add(1);
+            tracing::warn!("packet missing routing info; expected SenderId");
+        }
+        dispatch::Error::UnsupportedRoutingInfo { routing_info } => {
+            counters.rx_process_err_unsupported_routing.add(1);
+            tracing::warn!(?routing_info, "unsupported datagram routing info");
+        }
+    }
 }
 
 #[cfg(test)]

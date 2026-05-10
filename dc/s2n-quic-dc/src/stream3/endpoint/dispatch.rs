@@ -81,15 +81,7 @@ where
     let source_sender_id = match routing_info {
         RoutingInfo::SenderId { source_sender_id } => source_sender_id,
         RoutingInfo::None => return Err(Error::MissingSenderId),
-        _ => {
-            tracing::warn!(
-                %credentials,
-                packet_number = packet_number.as_u64(),
-                ?routing_info,
-                "rejecting legacy datagram routing info; expected SenderId"
-            );
-            return Err(Error::UnsupportedRoutingInfo { routing_info });
-        }
+        _ => return Err(Error::UnsupportedRoutingInfo { routing_info }),
     };
 
     // Get or create peer receive state

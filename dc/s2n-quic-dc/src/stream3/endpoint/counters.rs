@@ -10,6 +10,7 @@ use crate::{
 /// Counters for the datagram processing pipeline.
 #[derive(Clone)]
 pub(crate) struct Dispatch {
+    pub rx_data_pkt: Counter,
     pub rx_none: Counter,
     pub rx_init: Counter,
     pub rx_validate: Counter,
@@ -58,11 +59,18 @@ pub(crate) struct Dispatch {
 
     pub flow_accepted: Counter,
     pub flow_pending: Counter,
+
+    pub rx_process_err_peer_lookup: Counter,
+    pub rx_process_err_decryption: Counter,
+    pub rx_process_err_duplicate: Counter,
+    pub rx_process_err_missing_sender_id: Counter,
+    pub rx_process_err_unsupported_routing: Counter,
 }
 
 impl Dispatch {
     pub fn new(counters: &Registry) -> Self {
         Self {
+            rx_data_pkt: counters.register("rx.data_pkt"),
             rx_none: counters.register("!rx.none"),
             rx_init: counters.register("rx.init"),
             rx_validate: counters.register("rx.validate"),
@@ -113,6 +121,14 @@ impl Dispatch {
 
             flow_accepted: counters.register("flow.accepted"),
             flow_pending: counters.register("flow.pending"),
+
+            rx_process_err_peer_lookup: counters.register("!rx.process.err.peer_lookup"),
+            rx_process_err_decryption: counters.register("!rx.process.err.decrypt"),
+            rx_process_err_duplicate: counters.register("!rx.process.err.duplicate"),
+            rx_process_err_missing_sender_id: counters
+                .register("!rx.process.err.missing_sender_id"),
+            rx_process_err_unsupported_routing: counters
+                .register("!rx.process.err.unsupported_routing"),
         }
     }
 
