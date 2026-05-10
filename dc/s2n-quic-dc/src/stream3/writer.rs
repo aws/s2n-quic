@@ -29,11 +29,6 @@
 
 // TODOs:
 //
-// Correctness:
-//
-// * VarInt overflow in next_offset: adding payload_len to next_offset could overflow VarInt
-//   (max 2^62-1) on extremely large streams. Should return an error instead of panicking.
-//
 // Flow control:
 //
 // * Auto-tune max_inflight_bytes based on completion queue delivery rate. Currently using a
@@ -621,7 +616,7 @@ impl Inner {
     where
         S: buffer::reader::storage::Infallible,
     {
-        let (payload, bytes_read, actual_fin) = self.prepare_early_data(buf, is_fin);
+        let (payload, bytes_read, actual_fin) = self.prepare_early_data(buf, is_fin)?;
 
         let frame = Frame {
             source_sender_id: VarInt::MAX,
@@ -658,20 +653,30 @@ impl Inner {
         Ok((bytes_read, actual_fin))
     }
 
-    fn prepare_early_data<S>(&mut self, buf: &mut S, is_fin: bool) -> (ByteVec, usize, bool)
+    fn prepare_early_data<S>(
+        &mut self,
+        buf: &mut S,
+        is_fin: bool,
+    ) -> io::Result<(ByteVec, usize, bool)>
     where
         S: buffer::reader::storage::Infallible,
     {
         if is_fin && buf.buffer_is_empty() {
-            return (ByteVec::new(), 0, true);
+            return Ok((ByteVec::new(), 0, true));
         }
 
         if buf.buffer_is_empty() {
-            return (ByteVec::new(), 0, false);
+            return Ok((ByteVec::new(), 0, false));
+        }
+
+        if self.remaining_offset_capacity() == 0 {
+            return Err(offset_overflow_error());
         }
 
         let mtu = self.packet_size as usize;
-        let chunk_len = mtu.min(buf.buffered_len());
+        let chunk_len = mtu
+            .min(buf.buffered_len())
+            .min(self.remaining_offset_capacity());
 
         let mut payload = ByteVec::new();
         {
@@ -681,12 +686,11 @@ impl Inner {
 
         let bytes_read = payload.len();
 
-        self.next_offset += bytes_read;
-        self.inflight_bytes += bytes_read as u64;
+        self.advance_offset(bytes_read)?;
 
         let actual_is_fin = is_fin && buf.buffer_is_empty();
 
-        (payload, bytes_read, actual_is_fin)
+        Ok((payload, bytes_read, actual_is_fin))
     }
 
     fn min_send_budget(&self) -> u64 {
@@ -713,6 +717,14 @@ impl Inner {
                 break;
             }
 
+            let remaining_offset_capacity = self.remaining_offset_capacity();
+            if !need_fin_packet && remaining_offset_capacity == 0 {
+                if written == 0 {
+                    return Err(offset_overflow_error());
+                }
+                break;
+            }
+
             let available = self.min_send_budget();
             if !need_fin_packet && available == 0 {
                 break;
@@ -721,7 +733,9 @@ impl Inner {
             let chunk_len = if need_fin_packet {
                 0
             } else {
-                mtu.min(buf.buffered_len()).min(available as usize)
+                mtu.min(buf.buffered_len())
+                    .min(available as usize)
+                    .min(remaining_offset_capacity)
             };
 
             let mut payload = ByteVec::new();
@@ -761,8 +775,7 @@ impl Inner {
 
             self.send_frame(frame)?;
 
-            self.next_offset += payload_len;
-            self.inflight_bytes += payload_len as u64;
+            self.advance_offset(payload_len)?;
             written += payload_len;
 
             trace!(
@@ -781,6 +794,23 @@ impl Inner {
         }
 
         Ok(written)
+    }
+
+    fn remaining_offset_capacity(&self) -> usize {
+        let remaining = VarInt::MAX
+            .as_u64()
+            .saturating_sub(self.next_offset.as_u64());
+
+        usize::try_from(remaining).unwrap_or(usize::MAX)
+    }
+
+    fn advance_offset(&mut self, payload_len: usize) -> io::Result<()> {
+        self.next_offset = self
+            .next_offset
+            .checked_add_usize(payload_len)
+            .ok_or_else(offset_overflow_error)?;
+        self.inflight_bytes += payload_len as u64;
+        Ok(())
     }
 
     fn send_frame(&mut self, frame: Frame) -> io::Result<()> {
@@ -816,6 +846,10 @@ impl Drop for Writer {
             let _ = self.shutdown();
         }
     }
+}
+
+fn offset_overflow_error() -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, "stream offset overflow")
 }
 
 #[cfg(feature = "tokio")]
@@ -1019,8 +1053,95 @@ mod tests {
             Header::FlowReset {
                 error_code,
                 reset_target: ResetTarget::Both,
-                ..
+            ..
             } if error_code == reset_error::RETRANSMISSIONS_EXHAUSTED
         ));
+    }
+
+    #[test]
+    fn prepare_early_data_returns_error_before_consuming_on_offset_overflow() {
+        let (mut inner, _) = new_test_inner();
+        inner.next_offset = VarInt::MAX;
+
+        let mut buf = &b"x"[..];
+        let err = inner.prepare_early_data(&mut buf, false).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(buf, b"x");
+        assert_eq!(inner.inflight_bytes, 0);
+        assert_eq!(inner.next_offset, VarInt::MAX);
+    }
+
+    #[test]
+    fn send_data_allows_fin_at_varint_max() {
+        let (mut inner, mut frame_rx) = new_test_inner();
+        inner.next_offset = VarInt::MAX;
+
+        let mut buf = buffer::reader::storage::Empty;
+        let written = inner.send_data(&mut buf, true).unwrap();
+
+        assert_eq!(written, 0);
+        assert!(inner.status.is_fin_sent());
+        assert_eq!(inner.next_offset, VarInt::MAX);
+
+        let mut cx = noop_cx();
+        let sent = match frame_rx.poll_recv(&mut cx) {
+            Poll::Ready(Some(sent)) => sent,
+            other => panic!("expected FIN frame, got {other:?}"),
+        };
+
+        let sent = sent.iter().collect::<Vec<_>>();
+        assert_eq!(sent.len(), 1);
+        assert!(matches!(
+            sent[0].header,
+            Header::FlowData {
+                offset,
+                is_fin: true,
+                ..
+            } if offset == VarInt::MAX
+        ));
+    }
+
+    #[test]
+    fn send_data_caps_payload_at_varint_max() {
+        let (mut inner, mut frame_rx) = new_test_inner();
+        inner.next_offset = VarInt::MAX - VarInt::from_u8(1);
+        inner.remote_max_data = VarInt::MAX;
+
+        let mut buf = &b"xy"[..];
+        let written = inner.send_data(&mut buf, false).unwrap();
+
+        assert_eq!(written, 1);
+        assert_eq!(buf, b"y");
+        assert_eq!(inner.inflight_bytes, 1);
+        assert_eq!(inner.next_offset, VarInt::MAX);
+
+        let mut cx = noop_cx();
+        let sent = match frame_rx.poll_recv(&mut cx) {
+            Poll::Ready(Some(sent)) => sent,
+            other => panic!("expected data frame, got {other:?}"),
+        };
+
+        let sent = sent.iter().collect::<Vec<_>>();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].payload.len(), 1);
+    }
+
+    #[test]
+    fn send_data_returns_error_before_consuming_when_offset_is_max() {
+        let (mut inner, mut frame_rx) = new_test_inner();
+        inner.next_offset = VarInt::MAX;
+        inner.remote_max_data = VarInt::MAX;
+
+        let mut buf = &b"x"[..];
+        let err = inner.send_data(&mut buf, false).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(buf, b"x");
+        assert_eq!(inner.next_offset, VarInt::MAX);
+        assert_eq!(inner.inflight_bytes, 0);
+
+        let mut cx = noop_cx();
+        assert!(matches!(frame_rx.poll_recv(&mut cx), Poll::Pending));
     }
 }
