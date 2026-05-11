@@ -30,6 +30,7 @@ use crate::{
         Reader, Stream, Writer,
     },
 };
+use bytes::BytesMut;
 use s2n_quic_core::varint::VarInt;
 
 const UNSET_SOURCE_SENDER_ID: VarInt = VarInt::MAX;
@@ -59,7 +60,7 @@ pub(crate) enum Error {
 /// dispatches each frame in the packet to its type-specific handler. Response frames
 /// (ACKs, FlowValidateRequest, FlowReset) are emitted to `response_tx`.
 pub(crate) fn process<Clk>(
-    mut packet: Entry<packet::datagram::decoder::Packet<descriptor::Filled>>,
+    packet: Entry<packet::datagram::decoder::Packet<descriptor::Filled>>,
     recv_cache: &mut recv::Cache,
     path_secret_map: &PathSecretMap,
     acceptor_registry: &acceptor::Registry<Stream>,
@@ -99,22 +100,38 @@ where
         });
     };
 
-    // Collect information about the packet layout before decryption and before
-    // consuming the packet with into_parts().
-    // These lengths come directly from the packet's validated CheckedRanges and cannot
-    // underflow — if the packet decoded successfully they are internally consistent.
-    let outer_header_len = packet.outer_header_len();
-    let app_header_len = packet.application_header().len();
-    let payload_len = packet.payload().len();
+    // Collect information about the packet layout before decryption.
+    let app_header_slice: &[u8] = packet.application_header();
+    let decrypt_len = packet.decrypt_into_len();
     let ecn = packet.storage().ecn();
 
-    // Decrypt the payload in place (AAD = outer packet header, already cleartext).
-    packet
-        .decrypt_in_place(&peer.opener)
+    // Decrypt payload bytes into a BytesMut buffer.
+    let mut decrypted = BytesMut::with_capacity(decrypt_len);
+    let written = packet
+        .decrypt_into(&peer.opener, bytes::BufMut::chunk_mut(&mut decrypted))
         .map_err(|_| Error::Decryption {
             credentials,
             packet_number,
         })?;
+    if written != decrypt_len {
+        tracing::warn!(
+            %credentials,
+            packet_number = packet_number.as_u64(),
+            expected_len = decrypt_len,
+            actual_len = written,
+            "decrypt_into wrote an unexpected number of bytes"
+        );
+        return Err(Error::Decryption {
+            credentials,
+            packet_number,
+        });
+    }
+    unsafe {
+        // SAFETY: `decrypted` was allocated with `with_capacity(decrypt_len)` and `chunk_mut`
+        // exposed exactly that uninitialized region to decrypt_into, which initialized
+        // `decrypt_len` bytes. We returned early unless `written == decrypt_len`.
+        decrypted.set_len(decrypt_len);
+    }
 
     // Packet number deduplication
     if peer
@@ -136,43 +153,21 @@ where
         .on_packet_received(packet_number, clock.get_time());
     peer.ack_state = AckState::Scheduled;
 
-    // Extract the descriptor and navigate to the relevant payload regions.
-    //
-    // Storage layout after decryption:
-    //   [outer packet header (outer_header_len bytes)]
-    //   [application header (app_header_len bytes)]   ← cleartext frame metadata for SenderId
-    //   [decrypted frame payloads (payload_len bytes)]
-    //   [auth tag (tag_len bytes)]
-    //
-    // We split the storage into:
-    //   `app_header_desc`  – the application header region (empty for single-frame packets)
-    //   `payload_storage`  – the decrypted frame payloads, with auth tag removed
-    let (_, mut storage) = packet.into_inner().into_parts();
-    storage.advance(outer_header_len as u16);
-    let app_header_desc = storage.split_to(app_header_len as u16);
-    // storage now points to [payload][auth_tag]; strip the auth tag.
-    storage.truncate(payload_len as u16);
-    let mut payload_storage = storage;
+    let mut payload_storage = decrypted;
 
     let mut response_frames = Queue::new();
 
-    // Multi-frame packet: `app_header_desc` contains the per-frame metadata
+    // Multi-frame packet: `app_header_slice` contains the per-frame metadata
     // (Header type tag + optional payload_len VarInt) and `payload_storage`
     // contains the concatenated, decrypted frame payloads.
-    //
-    // We borrow the application header bytes from `app_header_desc`.  Splitting
-    // `payload_storage` does not conflict with this borrow because the two
-    // descriptors are independent (they share the same underlying allocation but
-    // have separate offset/len bookkeeping).
-    let app_header_slice: &[u8] = app_header_desc.payload();
 
     for result in decode::decode_frames(app_header_slice) {
         match result {
             Ok((header, frame_payload_len)) => {
                 counters.on_received_frame(&header);
                 // Validate that the claimed payload length fits within the
-                // remaining descriptor storage before casting to u16.
-                if frame_payload_len > payload_storage.len() as usize {
+                // remaining payload storage.
+                if frame_payload_len > payload_storage.len() {
                     tracing::warn!(
                         %credentials,
                         packet_number = packet_number.as_u64(),
@@ -182,11 +177,8 @@ where
                     );
                     break;
                 }
-                // Split the frame's payload out of the shared descriptor.
-                // This is O(1): it increments the ref-count and adjusts offsets.
-                // The cast is safe because we verified frame_payload_len <= u16::MAX
-                // above (payload_storage.len() is u16-bounded).
-                let frame_payload = payload_storage.split_to(frame_payload_len as u16);
+                // Split the frame's payload out of the shared storage.
+                let frame_payload = payload_storage.split_to(frame_payload_len);
                 dispatch_decoded_frame(
                     header,
                     source_sender_id,
@@ -237,7 +229,7 @@ where
 fn dispatch_decoded_frame(
     header: Header,
     source_sender_id: VarInt,
-    payload: descriptor::Filled,
+    payload: BytesMut,
     peer: &mut recv::Context,
     credentials: &Credentials,
     acceptor_registry: &acceptor::Registry<Stream>,
@@ -379,7 +371,7 @@ fn handle_flow_init(
     attempt_id: VarInt,
     stream_id: VarInt,
     is_fin: bool,
-    buf: descriptor::Filled,
+    buf: BytesMut,
     acceptor_registry: &acceptor::Registry<Stream>,
     frame_tx: &SubmissionSender,
     queue_dispatcher: &mut msg::queue::Dispatcher,
@@ -391,7 +383,7 @@ fn handle_flow_init(
         (queue_control.queue_id(), (queue_control, queue_stream))
     };
 
-    let mut initial_payload: Option<descriptor::Filled> = Some(buf);
+    let mut initial_payload: Option<BytesMut> = Some(buf);
     let mut create_stream = |queue_control: msg::queue::Control,
                              queue_stream: msg::queue::Stream,
                              pending_validation: bool| {
@@ -859,7 +851,7 @@ fn handle_flow_data(
     stream_id: VarInt,
     offset: VarInt,
     is_fin: bool,
-    buf: descriptor::Filled,
+    buf: BytesMut,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
     response_frames: &mut Queue<Frame>,
@@ -964,7 +956,7 @@ fn handle_flow_control(
     credentials: &Credentials,
     queue_pair: QueuePair,
     stream_id: VarInt,
-    buf: descriptor::Filled,
+    buf: BytesMut,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
     response_frames: &mut Queue<Frame>,

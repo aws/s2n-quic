@@ -606,10 +606,10 @@ mod tests {
     use crate::{
         flow,
         path::secret::map::Entry as PathSecretEntry,
-        socket::pool::{self, descriptor},
         stream3::frame::{Frame, SubmissionSender},
     };
-    use core::{convert::Infallible, task::Poll};
+    use bytes::BytesMut;
+    use core::task::Poll;
     use s2n_quic_core::{
         buffer::Reassembler,
         endpoint,
@@ -627,16 +627,8 @@ mod tests {
         frame_tx
     }
 
-    fn filled_payload(data: &[u8]) -> descriptor::Filled {
-        let pool = pool::Pool::new(data.len().try_into().unwrap());
-        let unfilled = pool.alloc().unwrap();
-        let segments = unfilled
-            .fill_with(|_addr, _cmsg, mut payload| {
-                payload[..data.len()].copy_from_slice(data);
-                Result::<_, Infallible>::Ok(data.len())
-            })
-            .unwrap();
-        segments.take_filled()
+    fn filled_payload(data: &[u8]) -> BytesMut {
+        BytesMut::from(data)
     }
 
     fn test_reader(msg: msg::Stream) -> Reader {

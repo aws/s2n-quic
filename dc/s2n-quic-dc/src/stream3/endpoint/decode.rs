@@ -22,7 +22,7 @@
 //! This module provides [`decode_frames`], a lazy iterator that parses the application
 //! header and yields `(Header, payload_len)` pairs without any heap allocation.  The
 //! caller is responsible for slicing the corresponding payload bytes from the decrypted
-//! payload region (e.g. via [`descriptor::Filled::split_to`]).
+//! payload region (e.g. via [`bytes::BytesMut::split_to`]).
 
 use crate::stream3::frame::Header;
 use s2n_codec::{DecoderBuffer, DecoderError};
@@ -35,7 +35,7 @@ use s2n_quic_core::varint::VarInt;
 /// `Ok((header, payload_len))` on success or `Err(DecoderError)` on malformed input.
 ///
 /// The caller is responsible for consuming exactly `payload_len` bytes from the
-/// corresponding payload region (e.g. via [`descriptor::Filled::split_to`]) for
+/// corresponding payload region (e.g. via [`bytes::BytesMut::split_to`]) for
 /// each yielded frame.
 ///
 /// Obtain an instance via [`decode_frames`].

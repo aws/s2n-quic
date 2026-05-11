@@ -281,22 +281,18 @@ impl<S: storage::Bytes> Packet<S> {
 
     /// Returns the required buffer size for `decrypt_into`
     ///
-    /// This is the sum of application_header.len() + payload.len()
+    /// This is the payload length.
     #[inline]
     pub fn decrypt_into_len(&self) -> usize {
-        self.meta.application_header.len() + self.meta.payload.len()
+        self.meta.payload.len()
     }
 
-    /// Decrypt the packet into a destination buffer, copying header + decrypting payload
+    /// Decrypt the packet payload into a destination buffer.
     ///
-    /// The destination buffer will contain:
-    /// - Application header (routing_info fields as encoded)
-    /// - Decrypted application payload
+    /// The destination buffer will contain only the decrypted application payload.
+    /// The application header remains available via [`Self::application_header`].
     ///
-    /// This is a zero-copy operation for the encryption - the payload is decrypted directly
-    /// into the destination buffer. The header portion is copied.
-    ///
-    /// Returns the total length written (application_header.len() + payload.len())
+    /// Returns the total payload length written (`payload.len()`).
     ///
     /// Use `decrypt_into_len()` to get the required buffer size.
     #[inline]
@@ -311,13 +307,11 @@ impl<S: storage::Bytes> Packet<S> {
         let key_phase = self.tag().key_phase();
         let packet_number = self.packet_number().as_u64();
 
-        let application_header_len = self.meta.application_header.len();
         let payload_len = self.meta.payload.len();
         let auth_tag_len = self.meta.auth_tag.len();
-        let total_len = application_header_len + payload_len;
 
         // Ensure destination buffer is large enough
-        if dest.len() < total_len {
+        if dest.len() < payload_len {
             return Err(crate::crypto::open::Error::UnsupportedOperation);
         }
 
@@ -333,30 +327,16 @@ impl<S: storage::Bytes> Packet<S> {
             (header, payload_in, tag)
         };
 
-        // Decrypt payload directly into destination buffer after the application header
-        // Do this first so we don't waste time copying header if AEAD fails
+        // Decrypt payload directly into destination buffer.
         opener.decrypt(
             key_phase,
             packet_number,
             header,
             payload_in,
             tag,
-            &mut dest[application_header_len..total_len],
+            &mut dest[..payload_len],
         )?;
-
-        // Authentication succeeded, now copy application header to destination
-        let application_header = self.meta.application_header.get(&*self.storage);
-        unsafe {
-            // SAFETY: we already checked that dest.len() >= total_len,
-            // and application_header_len is part of total_len
-            core::ptr::copy_nonoverlapping(
-                application_header.as_ptr(),
-                dest.as_mut_ptr(),
-                application_header_len,
-            );
-        }
-
-        Ok(total_len)
+        Ok(payload_len)
     }
 
     /// Create a packet from metadata and storage, validating that the storage is compatible

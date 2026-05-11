@@ -992,8 +992,7 @@ where
         });
     };
 
-    // Authenticate the packet by decrypting into a buffer
-    // Allocate buffer for application header + payload
+    // Authenticate the packet by decrypting payload bytes into a buffer
     let len = packet.decrypt_into_len();
     let mut buf = bytes::BytesMut::with_capacity(len);
 
