@@ -44,14 +44,20 @@ pub(crate) trait SenderRoute: Clone + Copy + Send + 'static {
     fn new(count: usize) -> Self;
     fn route(&self, hash: u64) -> usize;
 
+    /// Returns the sender_id that should be used to send ACK packets back to the peer
     #[inline]
-    fn sender_id(&self, credentials_id: &credentials::Id, source_sender_id: VarInt) -> VarInt {
+    fn sender_id_for_ack(
+        &self,
+        credentials_id: &credentials::Id,
+        source_sender_id: VarInt,
+    ) -> VarInt {
         let hash = hash_id_and_sender(credentials_id, source_sender_id);
         unsafe { VarInt::new_unchecked(self.route(hash) as u64) }
     }
 
+    /// Returns the local worker_id that is responsible for decoding/decrypting a packet
     #[inline]
-    fn worker_id(&self, credentials: &Credentials, source_sender_id: VarInt) -> usize {
+    fn worker_id_for_recv(&self, credentials: &Credentials, source_sender_id: VarInt) -> usize {
         let hash = hash_credentials_and_sender(credentials, source_sender_id);
         self.route(hash)
     }
@@ -130,8 +136,7 @@ where
                     "sender_idx {sender_idx} out of bounds (len {})",
                     self.sender_id_to_worker.len()
                 );
-                let &worker_idx =
-                    unsafe { self.sender_id_to_worker.get_unchecked(sender_idx) };
+                let &worker_idx = unsafe { self.sender_id_to_worker.get_unchecked(sender_idx) };
                 debug_assert!(
                     worker_idx < self.senders.len(),
                     "worker_idx {worker_idx} out of bounds (len {})",

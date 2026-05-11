@@ -23,7 +23,7 @@ use crate::{
         endpoint::{
             counters, decode, msg,
             recv::{self, AckState, AttemptDedupError},
-            reset_error,
+            reset_error, routing,
         },
         frame::{Frame, Header, PriorityInput, SubmissionSender, DEFAULT_TTL},
         Reader, Stream, Writer,
@@ -58,7 +58,7 @@ pub(crate) enum Error {
 /// Authenticates (decrypt), deduplicates by packet number, updates ACK state, then
 /// dispatches each frame in the packet to its type-specific handler. Response frames
 /// (ACKs, FlowValidateRequest, FlowReset) are emitted to `response_tx`.
-pub(crate) fn process<Clk>(
+pub(crate) fn process<Clk, Route>(
     packet: Entry<packet::datagram::decoder::Packet<descriptor::Filled>>,
     recv_cache: &mut recv::Cache,
     path_secret_map: &PathSecretMap,
@@ -69,9 +69,11 @@ pub(crate) fn process<Clk>(
     queue_dispatcher: &mut msg::queue::Dispatcher,
     clock: &Clk,
     counters: &counters::Dispatch,
+    route: &Route,
 ) -> Result<(), Error>
 where
     Clk: s2n_quic_core::time::Clock + ?Sized,
+    Route: routing::SenderRoute,
 {
     let credentials = *packet.credentials();
     let packet_number = packet.packet_number();
@@ -211,6 +213,11 @@ where
             remaining = payload_storage.len(),
             "multi-frame packet has unconsumed payload bytes"
         );
+    }
+
+    // TODO batch ACKs via the ACK wheel instead of emitting one per packet
+    if let Some(ack_frame) = peer.generate_ack_frame(clock, route) {
+        response_frames.push(ack_frame.into());
     }
 
     let _ = response_tx.send(response_frames);

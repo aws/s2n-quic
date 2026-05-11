@@ -29,7 +29,7 @@ impl SendConfig {
     ///
     /// Each socket binds to an ephemeral port on the given address. Recv buffer is zeroed
     /// since these sockets don't receive.
-    pub fn create(&self) -> io::Result<Vec<GsoSocket<BusyPoll<std::net::UdpSocket>>>> {
+    pub fn create(&self) -> io::Result<Vec<GsoSocket<std::net::UdpSocket>>> {
         let mut sockets = Vec::with_capacity(self.num_sockets);
 
         let mut bind_addr = self.bind_addr;
@@ -43,12 +43,19 @@ impl SendConfig {
             opts.recv_buffer = Some(0);
             let socket = opts.build_udp()?;
 
-            let socket = BusyPoll(socket);
             let socket = GsoSocket(socket, self.gso.clone());
             sockets.push(socket);
         }
 
         Ok(sockets)
+    }
+
+    pub fn busy_poll(&self) -> io::Result<Vec<GsoSocket<BusyPoll<std::net::UdpSocket>>>> {
+        let sockets = self.create()?;
+        Ok(sockets
+            .into_iter()
+            .map(|GsoSocket(s, gso)| GsoSocket(BusyPoll(s), gso))
+            .collect())
     }
 }
 
@@ -73,7 +80,7 @@ impl RecvConfig {
     /// The first socket binds to the requested address (getting an ephemeral port if port is 0).
     /// Subsequent sockets share the same port via SO_REUSEPORT. GRO is enabled for coalescing
     /// received segments. Send buffer is zeroed since these sockets don't send.
-    pub fn create(&self) -> io::Result<Vec<BusyPoll<std::net::UdpSocket>>> {
+    pub fn create(&self) -> io::Result<Vec<std::net::UdpSocket>> {
         let mut sockets = Vec::with_capacity(self.num_sockets);
 
         let mut opts = Options::default();
@@ -87,18 +94,23 @@ impl RecvConfig {
         opts.recv_buffer = Some(self.recv_buffer);
         opts.send_buffer = Some(0);
         let first_socket = opts.build_udp()?;
-        sockets.push(BusyPoll(first_socket));
+        sockets.push(first_socket);
 
         if self.num_sockets > 1 {
-            let bound_addr = sockets[0].0.local_addr()?;
+            let bound_addr = sockets[0].local_addr()?;
             assert_ne!(bound_addr.port(), 0);
             opts.reuse_port = ReusePort::BeforeBind;
             opts.addr = bound_addr;
             for _ in 1..self.num_sockets {
-                sockets.push(BusyPoll(opts.build_udp()?));
+                sockets.push(opts.build_udp()?);
             }
         }
 
         Ok(sockets)
+    }
+
+    pub fn busy_poll(&self) -> io::Result<Vec<BusyPoll<std::net::UdpSocket>>> {
+        let sockets = self.create()?;
+        Ok(sockets.into_iter().map(BusyPoll).collect())
     }
 }

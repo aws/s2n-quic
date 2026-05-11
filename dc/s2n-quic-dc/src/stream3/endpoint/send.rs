@@ -21,7 +21,7 @@ use crate::{
     credentials::{self, Credentials},
     intrusive_queue::{self, Queue},
     path::secret::map::Entry as PathSecretEntry,
-    socket::channel::ByteCost,
+    socket::channel::{intrusive_queue::unsync, ByteCost, UnboundedSender},
     stream3::{endpoint::inflight, frame::Frame},
 };
 use core::time::Duration;
@@ -30,6 +30,9 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+
+#[cfg(test)]
+mod tests;
 
 /// Pending frame queue with an integrated wire-cost counter.
 ///
@@ -52,13 +55,6 @@ impl PendingFrames {
             queue: Queue::new(),
             byte_cost: 0,
         }
-    }
-
-    /// Push a frame onto the back of the queue, updating the cost counter.
-    #[inline]
-    pub fn push_back(&mut self, frame: intrusive_queue::Entry<Frame>) {
-        self.byte_cost += frame.byte_cost() as usize;
-        self.queue.push_back(frame);
     }
 
     /// Push a frame onto the front of the queue, updating the cost counter.
@@ -94,23 +90,18 @@ impl PendingFrames {
         self.queue.is_empty()
     }
 
-    /// Returns the number of frames in the queue.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.queue.len()
-    }
-
     /// Returns the accumulated wire cost of all frames currently in the queue.
     #[inline]
     pub fn byte_cost(&self) -> usize {
         self.byte_cost
     }
 
-    /// Returns a shared reference to the inner queue for read-only operations
-    /// (e.g. iteration during segment encoding).
+    /// Append all frames from a batch in O(1).
     #[inline]
-    pub fn as_queue(&self) -> &Queue<Frame> {
-        &self.queue
+    pub fn append_batch(&mut self, batch: super::combinator::FrameBatch) {
+        self.byte_cost += batch.byte_cost() as usize;
+        let mut queue = batch.into_queue();
+        self.queue.append(&mut queue);
     }
 }
 
@@ -119,6 +110,29 @@ pub struct WheelInterest {
     pub transmission: bool,
     pub pto: bool,
     pub idle_timeout: bool,
+}
+
+impl WheelInterest {
+    /// Route a context into the appropriate wheel sender channels based on interest flags.
+    pub fn dispatch(
+        self,
+        context: Rc<RefCell<Context>>,
+        tx_wheel_tx: &mut unsync::Sender<TxWheelAdapter>,
+        pto_wheel_tx: &mut unsync::Sender<PtoWheelAdapter>,
+        idle_wheel_tx: &mut unsync::Sender<IdleWheelAdapter>,
+    ) {
+        if self.idle_timeout {
+            let _ = UnboundedSender::send(idle_wheel_tx, context.clone());
+        }
+
+        if self.pto {
+            let _ = UnboundedSender::send(pto_wheel_tx, context.clone());
+        }
+
+        if self.transmission {
+            let _ = UnboundedSender::send(tx_wheel_tx, context);
+        }
+    }
 }
 
 /// Per-peer send state, one per (credentials_id, send_socket) pair.
@@ -182,10 +196,102 @@ impl Context {
         }
     }
 
-    /// Push a frame onto the pending queue.
-    #[inline]
-    pub fn push_frame(&mut self, frame: intrusive_queue::Entry<Frame>) {
-        self.pending.push_back(frame);
+    /// Append all frames from a batch and return wheel interest indicating which wheels
+    /// need this context inserted.
+    pub fn push_batch<Clk: precision::Clock + ?Sized>(
+        &mut self,
+        batch: super::combinator::FrameBatch,
+        clock: &Clk,
+    ) -> WheelInterest {
+        self.pending.append_batch(batch);
+        self.wheel_interest(clock)
+    }
+
+    /// Decode an ACK payload and process it against this context's inflight state.
+    ///
+    /// Each ACK frame in the payload triggers loss detection and CCA updates. Acknowledged
+    /// frames go to `acked`, retransmittable lost frames to `lost`, and cancelled/expired
+    /// frames to `cancelled`. After all frames are processed, computes and returns a single
+    /// `WheelInterest` for rescheduling.
+    pub fn process_ack_payload<Clk, Rand>(
+        &mut self,
+        payload: &mut [u8],
+        completed: &mut impl UnboundedSender<intrusive_queue::Entry<Frame>>,
+        lost: &mut impl UnboundedSender<intrusive_queue::Entry<Frame>>,
+        cancelled: &mut impl UnboundedSender<intrusive_queue::Entry<Frame>>,
+        clock: &Clk,
+        random: &mut Rand,
+    ) -> WheelInterest
+    where
+        Clk: s2n_quic_core::time::Clock + precision::Clock + ?Sized,
+        Rand: crate::random::Generator,
+    {
+        let frames_iter = crate::packet::control::decoder::ControlFramesMut::new(payload);
+
+        for frame in frames_iter {
+            let Ok(frame) = frame else {
+                tracing::debug!("failed to decode control frame in ACK payload");
+                break;
+            };
+
+            match frame {
+                s2n_quic_core::frame::FrameMut::Ack(ack_frame) => {
+                    super::ack::process_ack(
+                        &ack_frame, self, completed, lost, cancelled, clock, random,
+                    );
+                }
+                s2n_quic_core::frame::FrameMut::Padding(_)
+                | s2n_quic_core::frame::FrameMut::Ping(_) => {}
+                frame => {
+                    tracing::debug!(?frame, "unexpected control frame type in ACK payload");
+                }
+            }
+        }
+
+        self.wheel_interest(clock)
+    }
+
+    /// Compute wheel interest after a state change
+    fn wheel_interest<Clk>(&mut self, clock: &Clk) -> WheelInterest
+    where
+        Clk: precision::Clock + ?Sized,
+    {
+        let transmission = if
+        // Check we have queued packets
+        self.has_pending()
+            // Make sure we're not already linked
+            && !self.is_tx_scheduled()
+            // Check if the congestion controller is allowing a send
+            && (self.cca.requires_fast_retransmission() || !self.cca.is_congestion_limited())
+        {
+            let target = self
+                .cca
+                .earliest_departure_time()
+                .map(precision::Timestamp::from)
+                .unwrap_or_else(|| clock.now());
+            self.tx_wheel.target_time = Some(target);
+            true
+        } else {
+            false
+        };
+
+        let pto = if !self.is_pto_scheduled() {
+            self.pto.update_target(clock, &self.rtt_estimator);
+            if let Some(target) = self.pto.target_time {
+                self.pto_wheel.target_time = Some(target);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        WheelInterest {
+            transmission,
+            pto,
+            idle_timeout: false,
+        }
     }
 
     /// Pop the next frame from the pending queue.
@@ -416,438 +522,5 @@ impl Cache {
 
     pub fn get(&self, id: &credentials::Id) -> Option<Rc<RefCell<Context>>> {
         self.contexts.get(id).cloned()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        clock::{
-            precision::{self, Clock as _},
-            testing::Clock,
-            wheel::{self, Wheel},
-        },
-        intrusive_queue::List,
-        path::secret::map::Entry as PathSecretEntry,
-        socket::channel::Receiver as _,
-    };
-    use core::task::Poll;
-    use s2n_quic_core::task::waker;
-    use std::time::Duration;
-
-    // ── Test channel (feeds entries into wheel) ───────────────────────────
-
-    struct TestChannel<A: crate::intrusive_queue::Adapter> {
-        queue: std::sync::Mutex<std::collections::VecDeque<List<A>>>,
-    }
-
-    impl<A: crate::intrusive_queue::Adapter> TestChannel<A> {
-        fn new() -> Self {
-            Self {
-                queue: std::sync::Mutex::new(std::collections::VecDeque::new()),
-            }
-        }
-
-        fn send(&self, list: List<A>) {
-            self.queue.lock().unwrap().push_back(list);
-        }
-    }
-
-    impl<A: crate::intrusive_queue::Adapter> crate::socket::channel::Receiver<List<A>>
-        for &TestChannel<A>
-    {
-        fn poll_recv(&mut self, _cx: &mut core::task::Context<'_>) -> Poll<Option<List<A>>> {
-            if let Some(batch) = self.queue.lock().unwrap().pop_front() {
-                Poll::Ready(Some(batch))
-            } else {
-                Poll::Pending
-            }
-        }
-
-        fn on_consumed(&mut self, _bytes: u64) {}
-    }
-
-    fn poll_wheel<A, Timer, R>(wheel: &mut Wheel<A, Timer, R, 1>) -> Option<List<A>>
-    where
-        A: wheel::WheelAdapter,
-        Timer: precision::Timer,
-        R: crate::socket::channel::Receiver<List<A>>,
-    {
-        let waker = waker::noop();
-        let mut cx = core::task::Context::from_waker(&waker);
-        match wheel.poll_recv(&mut cx) {
-            Poll::Ready(Some(list)) => Some(list),
-            _ => None,
-        }
-    }
-
-    fn make_wheel<'a, A: wheel::WheelAdapter>(
-        channel: &'a TestChannel<A>,
-        clock: &Clock,
-    ) -> Wheel<A, crate::clock::testing::Timer, &'a TestChannel<A>, 1> {
-        Wheel::new(channel, clock.timer())
-    }
-
-    // ── Helper to build a test context ────────────────────────────────────
-
-    fn make_context() -> Rc<RefCell<Context>> {
-        let entry = PathSecretEntry::fake("127.0.0.1:8080".parse().unwrap(), None);
-        let registry = crate::counter::Registry::new();
-        let gauge = registry.register_queue_gauge("test.inflight");
-        Rc::new(RefCell::new(Context::new(&entry, gauge, 0)))
-    }
-
-    // ── Tests ─────────────────────────────────────────────────────────────
-
-    #[test]
-    fn tx_wheel_insert_and_fire() {
-        let clock = Clock::new(Duration::from_micros(1000));
-        let channel: TestChannel<TxWheelAdapter> = TestChannel::new();
-        let mut wheel = make_wheel(&channel, &clock);
-
-        let ctx = make_context();
-
-        // Set target time 10µs in the future
-        let target = clock.get_time() + Duration::from_micros(10);
-        ctx.borrow_mut().tx_wheel.target_time = Some(target);
-
-        // Insert into wheel via channel
-        let mut list = List::new();
-        list.push_back(ctx.clone());
-        channel.send(list);
-
-        // Poll to insert — should not fire yet
-        assert!(poll_wheel(&mut wheel).is_none());
-
-        // Advance time past target
-        clock.set(target);
-        let mut result = poll_wheel(&mut wheel).unwrap();
-
-        // Should get our context back
-        let popped: Rc<RefCell<Context>> = result.pop_front().unwrap();
-        assert!(Rc::ptr_eq(&popped, &ctx));
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn pto_wheel_insert_and_fire() {
-        let clock = Clock::new(Duration::from_micros(1000));
-        let channel: TestChannel<PtoWheelAdapter> = TestChannel::new();
-        let mut wheel = make_wheel(&channel, &clock);
-
-        let ctx = make_context();
-
-        // Set PTO target 50µs in the future
-        let target = clock.get_time() + Duration::from_micros(50);
-        ctx.borrow_mut().pto_wheel.target_time = Some(target);
-
-        let mut list = List::new();
-        list.push_back(ctx.clone());
-        channel.send(list);
-
-        assert!(poll_wheel(&mut wheel).is_none());
-
-        clock.set(target);
-        let mut result = poll_wheel(&mut wheel).unwrap();
-
-        let popped: Rc<RefCell<Context>> = result.pop_front().unwrap();
-        assert!(Rc::ptr_eq(&popped, &ctx));
-    }
-
-    #[test]
-    fn idle_wheel_insert_and_fire() {
-        let clock = Clock::new(Duration::from_micros(1000));
-        let channel: TestChannel<IdleWheelAdapter> = TestChannel::new();
-        let mut wheel = make_wheel(&channel, &clock);
-
-        let ctx = make_context();
-
-        // Set idle target 200µs in the future
-        let target = clock.get_time() + Duration::from_micros(200);
-        ctx.borrow_mut().idle_wheel.target_time = Some(target);
-
-        let mut list = List::new();
-        list.push_back(ctx.clone());
-        channel.send(list);
-
-        assert!(poll_wheel(&mut wheel).is_none());
-
-        clock.set(target);
-        let mut result = poll_wheel(&mut wheel).unwrap();
-
-        let popped: Rc<RefCell<Context>> = result.pop_front().unwrap();
-        assert!(Rc::ptr_eq(&popped, &ctx));
-    }
-
-    #[test]
-    fn three_wheels_are_independent() {
-        let clock = Clock::new(Duration::from_micros(1000));
-
-        let tx_channel: TestChannel<TxWheelAdapter> = TestChannel::new();
-        let pto_channel: TestChannel<PtoWheelAdapter> = TestChannel::new();
-        let idle_channel: TestChannel<IdleWheelAdapter> = TestChannel::new();
-
-        let mut tx_wheel = make_wheel(&tx_channel, &clock);
-        let mut pto_wheel = make_wheel(&pto_channel, &clock);
-        let mut idle_wheel = make_wheel(&idle_channel, &clock);
-
-        let ctx = make_context();
-
-        // Schedule same context in all three wheels at different times
-        let tx_target = clock.get_time() + Duration::from_micros(5);
-        let pto_target = clock.get_time() + Duration::from_micros(20);
-        let idle_target = clock.get_time() + Duration::from_micros(100);
-
-        {
-            let mut c = ctx.borrow_mut();
-            c.tx_wheel.target_time = Some(tx_target);
-            c.pto_wheel.target_time = Some(pto_target);
-            c.idle_wheel.target_time = Some(idle_target);
-        }
-
-        // Insert into all three wheels
-        let mut tx_list = List::new();
-        tx_list.push_back(ctx.clone());
-        tx_channel.send(tx_list);
-
-        let mut pto_list = List::new();
-        pto_list.push_back(ctx.clone());
-        pto_channel.send(pto_list);
-
-        let mut idle_list = List::new();
-        idle_list.push_back(ctx.clone());
-        idle_channel.send(idle_list);
-
-        // Insert all entries
-        assert!(poll_wheel(&mut tx_wheel).is_none());
-        assert!(poll_wheel(&mut pto_wheel).is_none());
-        assert!(poll_wheel(&mut idle_wheel).is_none());
-
-        // Advance to tx_target — only tx_wheel should fire
-        clock.set(tx_target);
-
-        assert!(poll_wheel(&mut tx_wheel).is_some());
-        assert!(poll_wheel(&mut pto_wheel).is_none());
-        assert!(poll_wheel(&mut idle_wheel).is_none());
-
-        // Advance to pto_target — only pto_wheel should fire
-        clock.set(pto_target);
-
-        assert!(poll_wheel(&mut pto_wheel).is_some());
-        assert!(poll_wheel(&mut idle_wheel).is_none());
-
-        // Advance to idle_target — idle_wheel fires
-        clock.set(idle_target);
-        assert!(poll_wheel(&mut idle_wheel).is_some());
-    }
-
-    #[test]
-    fn reinsert_after_expiry() {
-        let clock = Clock::new(Duration::from_micros(1000));
-        let channel: TestChannel<TxWheelAdapter> = TestChannel::new();
-        let mut wheel = make_wheel(&channel, &clock);
-
-        let ctx = make_context();
-
-        // First insertion at t+10µs
-        let target1 = clock.get_time() + Duration::from_micros(10);
-        ctx.borrow_mut().tx_wheel.target_time = Some(target1);
-
-        let mut list = List::new();
-        list.push_back(ctx.clone());
-        channel.send(list);
-        assert!(poll_wheel(&mut wheel).is_none());
-
-        // Fire
-        clock.set(target1);
-        let mut result = poll_wheel(&mut wheel).unwrap();
-        let _popped = result.pop_front().unwrap();
-
-        // Reinsert with new target at t+30µs
-        let target2 = clock.get_time() + Duration::from_micros(30);
-        ctx.borrow_mut().tx_wheel.target_time = Some(target2);
-
-        let mut list2 = List::new();
-        list2.push_back(ctx.clone());
-        channel.send(list2);
-        assert!(poll_wheel(&mut wheel).is_none());
-
-        // Should fire at new target
-        clock.set(target2);
-        let mut result2 = poll_wheel(&mut wheel).unwrap();
-        let popped2: Rc<RefCell<Context>> = result2.pop_front().unwrap();
-        assert!(Rc::ptr_eq(&popped2, &ctx));
-    }
-
-    #[test]
-    fn multiple_contexts_same_wheel() {
-        let clock = Clock::new(Duration::from_micros(1000));
-        let channel: TestChannel<TxWheelAdapter> = TestChannel::new();
-        let mut wheel = make_wheel(&channel, &clock);
-
-        let ctx1 = make_context();
-        let ctx2 = make_context();
-        let ctx3 = make_context();
-
-        // Schedule at different times
-        let t1 = clock.get_time() + Duration::from_micros(5);
-        let t2 = clock.get_time() + Duration::from_micros(10);
-        let t3 = clock.get_time() + Duration::from_micros(15);
-
-        ctx1.borrow_mut().tx_wheel.target_time = Some(t1);
-        ctx2.borrow_mut().tx_wheel.target_time = Some(t2);
-        ctx3.borrow_mut().tx_wheel.target_time = Some(t3);
-
-        let mut list = List::new();
-        list.push_back(ctx1.clone());
-        list.push_back(ctx2.clone());
-        list.push_back(ctx3.clone());
-        channel.send(list);
-
-        // Insert
-        assert!(poll_wheel(&mut wheel).is_none());
-
-        // Fire at t1 — only ctx1
-        clock.set(t1);
-        let mut result = poll_wheel(&mut wheel).unwrap();
-        assert_eq!(result.len(), 1);
-        let popped = result.pop_front().unwrap();
-        assert!(Rc::ptr_eq(&popped, &ctx1));
-
-        // Fire at t2 — only ctx2
-        clock.set(t2);
-        let mut result = poll_wheel(&mut wheel).unwrap();
-        assert_eq!(result.len(), 1);
-        let popped = result.pop_front().unwrap();
-        assert!(Rc::ptr_eq(&popped, &ctx2));
-
-        // Fire at t3 — only ctx3
-        clock.set(t3);
-        let mut result = poll_wheel(&mut wheel).unwrap();
-        assert_eq!(result.len(), 1);
-        let popped = result.pop_front().unwrap();
-        assert!(Rc::ptr_eq(&popped, &ctx3));
-    }
-
-    // ── pending_bytes tracking tests ──────────────────────────────────────
-
-    fn make_frame(payload_len: usize) -> intrusive_queue::Entry<Frame> {
-        use crate::{
-            byte_vec::ByteVec,
-            packet::datagram::QueuePair,
-            path::secret::map::Entry as PathSecretEntry,
-            stream3::frame::{Frame, Header, TransmissionStatus, DEFAULT_TTL},
-        };
-        use bytes::Bytes;
-
-        let entry = PathSecretEntry::fake("127.0.0.1:8080".parse().unwrap(), None);
-        let mut payload = ByteVec::new();
-        if payload_len > 0 {
-            payload.push_back(Bytes::from(vec![0u8; payload_len]));
-        }
-        Frame {
-            header: Header::FlowData {
-                queue_pair: QueuePair {
-                    source_queue_id: VarInt::ZERO,
-                    dest_queue_id: VarInt::ZERO,
-                },
-                stream_id: VarInt::ZERO,
-                offset: VarInt::ZERO,
-                is_fin: false,
-            },
-            source_sender_id: VarInt::MAX,
-            payload,
-            path_secret_entry: entry,
-            completion: None,
-            status: TransmissionStatus::default(),
-            ttl: DEFAULT_TTL,
-            transmission_time: None,
-        }
-        .into()
-    }
-
-    #[test]
-    fn pending_bytes_tracks_push_and_pop() {
-        use crate::socket::channel::ByteCost as _;
-
-        let ctx = make_context();
-        let mut ctx = ctx.borrow_mut();
-
-        assert_eq!(ctx.pending.byte_cost(), 0);
-
-        let frame1 = make_frame(100);
-        let cost1 = frame1.byte_cost() as usize;
-        ctx.push_frame(frame1);
-        assert_eq!(ctx.pending.byte_cost(), cost1);
-
-        let frame2 = make_frame(200);
-        let cost2 = frame2.byte_cost() as usize;
-        ctx.push_frame(frame2);
-        assert_eq!(ctx.pending.byte_cost(), cost1 + cost2);
-
-        let frame = ctx.pop_pending().unwrap();
-        assert_eq!(frame.payload_len(), 100);
-        assert_eq!(ctx.pending.byte_cost(), cost2);
-
-        let frame = ctx.pop_pending().unwrap();
-        assert_eq!(frame.payload_len(), 200);
-        assert_eq!(ctx.pending.byte_cost(), 0);
-
-        assert!(ctx.pop_pending().is_none());
-        assert_eq!(ctx.pending.byte_cost(), 0);
-    }
-
-    #[test]
-    fn pending_bytes_tracks_push_front() {
-        use crate::socket::channel::ByteCost as _;
-
-        let ctx = make_context();
-        let mut ctx = ctx.borrow_mut();
-
-        let frame = make_frame(100);
-        let cost = frame.byte_cost() as usize;
-        ctx.push_frame(frame);
-        assert_eq!(ctx.pending.byte_cost(), cost);
-
-        // Pop then push back (simulates "doesn't fit" path in assemble)
-        let frame = ctx.pop_pending().unwrap();
-        assert_eq!(ctx.pending.byte_cost(), 0);
-
-        ctx.push_front_pending(frame);
-        assert_eq!(ctx.pending.byte_cost(), cost);
-    }
-
-    #[test]
-    fn publish_next_transmission_time_stores_to_path_entry() {
-        use crate::path::secret::map::Entry as PathSecretEntry;
-
-        // Create an entry with one sender slot so the atomic array is populated.
-        let entry =
-            PathSecretEntry::fake_with_socket_senders("127.0.0.1:8080".parse().unwrap(), None, 1);
-
-        let registry = crate::counter::Registry::new();
-        let gauge = registry.register_queue_gauge("test.inflight");
-        let mut ctx = Context::new(&entry, gauge, 0);
-
-        // Initial value should be zero.
-        assert_eq!(entry.sender_next_transmission_micros(0), 0);
-
-        // Push some payload bytes so pending_bytes > 0.
-        ctx.push_frame(make_frame(1000));
-
-        // Build a timestamp from a known duration.
-        // SAFETY: the duration is positive (5 000 µs) and well within the range of
-        // representable Timestamp values (u64 microseconds from process start).
-        let now =
-            unsafe { s2n_quic_core::time::Timestamp::from_duration(Duration::from_micros(5_000)) };
-        ctx.publish_next_transmission_time(now);
-
-        // With non-zero pending bytes the published time should be >= now (5000µs).
-        let published = entry.sender_next_transmission_micros(0);
-        assert!(
-            published >= 5_000,
-            "published micros {published} should be >= now (5000µs)"
-        );
     }
 }

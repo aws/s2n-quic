@@ -6,7 +6,7 @@ use crate::{
     stream3::frame::{Header, TransmissionStatus, DEFAULT_TTL},
 };
 use bytes::Bytes;
-use core::{mem::MaybeUninit, task::Poll};
+use core::task::Poll;
 use s2n_quic_core::varint::VarInt;
 use std::{
     collections::VecDeque,
@@ -46,36 +46,23 @@ impl StickyRoute for TestItem {
     fn sticky_sender_idx(&self) -> Option<usize> {
         self.sticky_sender
     }
-}
 
-#[derive(Clone, Copy)]
-enum SenderBehavior {
-    Pending,
-    ReadyOk,
-    ReadyErr,
+    fn set_sender_id(&mut self, _id: usize) {}
 }
 
 struct TestSender {
-    behavior: SenderBehavior,
+    accept: bool,
     calls: usize,
 }
 
-impl Sender<TestItem> for TestSender {
-    fn poll_send(
-        &mut self,
-        _cx: &mut task::Context<'_>,
-        value: &mut MaybeUninit<TestItem>,
-    ) -> Poll<Result<(), ()>> {
+impl UnboundedSender<TestItem> for TestSender {
+    fn send(&mut self, value: TestItem) -> Result<(), TestItem> {
         self.calls += 1;
-
-        match self.behavior {
-            SenderBehavior::Pending => Poll::Pending,
-            SenderBehavior::ReadyOk => {
-                // SAFETY: successful send consumes the value.
-                unsafe { value.assume_init_drop() };
-                Poll::Ready(Ok(()))
-            }
-            SenderBehavior::ReadyErr => Poll::Ready(Err(())),
+        if self.accept {
+            drop(value);
+            Ok(())
+        } else {
+            Err(value)
         }
     }
 }
@@ -150,73 +137,57 @@ fn with_noop_context<R>(f: impl FnOnce(&mut task::Context<'_>) -> R) -> R {
 
 // ── PickTwo tests ─────────────────────────────────────────────────────────
 
+fn try_send_pick_two<Rand: FnMut(usize) -> usize>(
+    value: TestItem,
+    senders: &mut Vec<TestSender>,
+    random: &mut Rand,
+) -> Result<(), TestItem> {
+    PickTwo::<TestItem, TestReceiver<TestItem>, TestSender, Rand>::try_send_pick_two(
+        value, senders, random,
+    )
+}
+
 #[test]
-fn selected_sender_is_polled_before_alternates() {
-    let mut slot = MaybeUninit::new(new_test_item(
-        test_path_secret_entry(),
-        Arc::new(AtomicUsize::new(0)),
-    ));
+fn selected_sender_receives_item() {
+    let item = new_test_item(test_path_secret_entry(), Arc::new(AtomicUsize::new(0)));
     let mut senders = vec![
         TestSender {
-            behavior: SenderBehavior::ReadyOk,
+            accept: true,
             calls: 0,
         },
         TestSender {
-            behavior: SenderBehavior::ReadyOk,
+            accept: true,
             calls: 0,
         },
     ];
-    let result = with_noop_context(|cx| try_send_pick_two(cx, &mut slot, &mut senders, &|_| 0));
-    assert_eq!(result, Poll::Ready(true));
+    let result = try_send_pick_two(item, &mut senders, &mut |_| 0);
+    assert!(result.is_ok());
     assert_eq!(senders[0].calls, 1);
     assert_eq!(senders[1].calls, 0);
 }
 
 #[test]
-fn falls_back_to_alternate_sender_when_selected_sender_is_pending() {
-    let mut slot = MaybeUninit::new(new_test_item(
-        test_path_secret_entry(),
-        Arc::new(AtomicUsize::new(0)),
-    ));
+fn sender_error_returns_value() {
+    let drop_counter = Arc::new(AtomicUsize::new(0));
+    let item = new_test_item(test_path_secret_entry(), drop_counter.clone());
     let mut senders = vec![
         TestSender {
-            behavior: SenderBehavior::Pending,
+            accept: false,
             calls: 0,
         },
         TestSender {
-            behavior: SenderBehavior::ReadyOk,
+            accept: true,
             calls: 0,
         },
     ];
-    let result = with_noop_context(|cx| try_send_pick_two(cx, &mut slot, &mut senders, &|_| 0));
-    assert_eq!(result, Poll::Ready(true));
-    assert_eq!(senders[0].calls, 1);
-    assert_eq!(senders[1].calls, 1);
-}
-
-#[test]
-fn shuts_down_on_sender_error() {
-    let mut slot = MaybeUninit::new(new_test_item(
-        test_path_secret_entry(),
-        Arc::new(AtomicUsize::new(0)),
-    ));
-    let mut senders = vec![
-        TestSender {
-            behavior: SenderBehavior::ReadyErr,
-            calls: 0,
-        },
-        TestSender {
-            behavior: SenderBehavior::ReadyOk,
-            calls: 0,
-        },
-    ];
-    let result = with_noop_context(|cx| try_send_pick_two(cx, &mut slot, &mut senders, &|_| 0));
-    assert_eq!(result, Poll::Ready(false));
+    let result = try_send_pick_two(item, &mut senders, &mut |_| 0);
+    assert!(result.is_err());
     assert_eq!(senders[0].calls, 1);
     assert_eq!(senders[1].calls, 0);
+    assert_eq!(drop_counter.load(Ordering::Relaxed), 0);
 
-    // SAFETY: `Err` keeps the value in slot and caller must drop it.
-    unsafe { slot.assume_init_drop() };
+    drop(result);
+    assert_eq!(drop_counter.load(Ordering::Relaxed), 1);
 }
 
 #[test]
@@ -231,7 +202,7 @@ fn pick_two_drops_unsent_entry_on_shutdown() {
         consumed: 0,
     };
     let senders = vec![TestSender {
-        behavior: SenderBehavior::ReadyErr,
+        accept: false,
         calls: 0,
     }];
     let pick_two = PickTwo::new(rx, senders, |_| 0);
@@ -247,46 +218,44 @@ fn pick_two_drops_unsent_entry_on_shutdown() {
 fn sticky_sender_bypasses_pick_two() {
     let mut item = new_test_item(test_path_secret_entry(), Arc::new(AtomicUsize::new(0)));
     item.sticky_sender = Some(1);
-    let mut slot = MaybeUninit::new(item);
     let mut senders = vec![
         TestSender {
-            behavior: SenderBehavior::ReadyOk,
+            accept: true,
             calls: 0,
         },
         TestSender {
-            behavior: SenderBehavior::ReadyOk,
+            accept: true,
             calls: 0,
         },
     ];
-    // random would pick sender 0, but sticky says sender 1
-    let result = with_noop_context(|cx| try_send_pick_two(cx, &mut slot, &mut senders, &|_| 0));
-    assert_eq!(result, Poll::Ready(true));
+    let result = try_send_pick_two(item, &mut senders, &mut |_| 0);
+    assert!(result.is_ok());
     assert_eq!(senders[0].calls, 0);
     assert_eq!(senders[1].calls, 1);
 }
 
 #[test]
-fn sticky_sender_does_not_fallback_on_pending() {
-    let mut item = new_test_item(test_path_secret_entry(), Arc::new(AtomicUsize::new(0)));
+fn sticky_sender_error_returns_value() {
+    let drop_counter = Arc::new(AtomicUsize::new(0));
+    let mut item = new_test_item(test_path_secret_entry(), drop_counter.clone());
     item.sticky_sender = Some(0);
-    let mut slot = MaybeUninit::new(item);
     let mut senders = vec![
         TestSender {
-            behavior: SenderBehavior::Pending,
+            accept: false,
             calls: 0,
         },
         TestSender {
-            behavior: SenderBehavior::ReadyOk,
+            accept: true,
             calls: 0,
         },
     ];
-    let result = with_noop_context(|cx| try_send_pick_two(cx, &mut slot, &mut senders, &|_| 0));
-    assert_eq!(result, Poll::Pending);
+    let result = try_send_pick_two(item, &mut senders, &mut |_| 0);
+    assert!(result.is_err());
     assert_eq!(senders[0].calls, 1);
     assert_eq!(senders[1].calls, 0);
 
-    // SAFETY: Pending keeps the value in slot.
-    unsafe { slot.assume_init_drop() };
+    drop(result);
+    assert_eq!(drop_counter.load(Ordering::Relaxed), 1);
 }
 
 // ── BatchFramesByPathSecret tests ─────────────────────────────────────────

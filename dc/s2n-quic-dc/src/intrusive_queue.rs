@@ -661,6 +661,13 @@ impl<A: Adapter> Iterator for IntoIter<A> {
 
 pub type Queue<T> = List<EntryAdapter<T>>;
 
+impl<T> crate::socket::channel::UnboundedSender<Entry<T>> for Queue<T> {
+    fn send(&mut self, value: Entry<T>) -> Result<(), Entry<T>> {
+        self.push_back(value);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

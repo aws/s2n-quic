@@ -7,11 +7,10 @@ use crate::{
     intrusive_queue::{Entry, Queue},
     socket::{
         channel::{
-            cell,
             intrusive_queue::{self, unsync},
-            FlattenQueue, FlattenSegments, InspectErr, Map, Paced, Priority as PriorityRx,
-            Receiver, ReceiverExt as _, RouterAdapter, Sender, SocketReceiver, SocketSender,
-            UnboundedSender,
+            FlattenList, FlattenQueue, FlattenSegments, InspectErr, Map, Paced,
+            Priority as PriorityRx, Receiver, ReceiverExt as _, RouterAdapter, SocketReceiver,
+            SocketSender, UnboundedSender,
         },
         pool::descriptor,
         rate::Rate,
@@ -19,21 +18,19 @@ use crate::{
     stream2::spawner::LocalSpawner,
     stream3::{
         endpoint::{
-            self, ack,
+            self,
             combinator::{
-                Assembler, BatchFramesByPathSecret, FrameBatch, PathSecretMapEntry, PickTwo,
+                Assembler, BatchFramesByPathSecret, CompletionDispatcher, FrameBatch,
+                PathSecretMapEntry, PickTwo,
             },
             dispatch, msg, send,
-            worker::ChannelRouter,
+            Budgets,
         },
         frame::{Frame, PriorityStorage, SubmissionReceiver},
     },
 };
-use core::{
-    future::poll_fn,
-    task::{self, Poll},
-};
-use s2n_quic_core::{assume, ready, varint::VarInt};
+use core::{future::poll_fn, task::Poll};
+use s2n_quic_core::{assume, varint::VarInt};
 use std::{cell::RefCell, rc::Rc};
 
 /// Default per-poll budget for [`socket_recv_task`]: process up to this many segments before
@@ -115,7 +112,7 @@ pub fn frame_dispatch<S, Rand, Clk>(
     random: Rand,
     clock: Clk,
     overall_send_rate: Rate,
-    budget: usize,
+    budgets: Budgets,
 ) where
     S: UnboundedSender<Entry<FrameBatch>> + 'static,
     Rand: FnMut(usize) -> usize + 'static,
@@ -153,7 +150,7 @@ pub fn frame_dispatch<S, Rand, Clk>(
         let rx = PriorityRx::new(priority_batch_rxs);
         let rx = Paced::new(rx, clock, overall_send_rate);
         let rx = PickTwo::new(rx, worker_senders, random);
-        rx.drain_budgeted(Some(budget)).await;
+        rx.drain_budgeted(Some(budgets.frame_dispatch)).await;
     });
 }
 
@@ -173,8 +170,11 @@ pub fn send_worker<Socket, Clk, Rand>(
     batch_rx: impl Receiver<Queue<FrameBatch>> + 'static,
     ack_rx: impl Receiver<Queue<msg::Sender>> + 'static,
     total_sender_ids: usize,
-    send_sockets: Vec<endpoint::SendSocketParts<Socket, Clk, Rand>>,
-    budget: usize,
+    send_sockets: Vec<endpoint::SendSocketParts<Socket, Clk>>,
+    clock: Clk,
+    mut random: Rand,
+    frame_tx: crate::stream3::frame::SubmissionSender,
+    budgets: Budgets,
 ) where
     Socket: crate::socket::send::Socket + 'static,
     Clk: precision::Clock + s2n_quic_core::time::Clock + Clone + 'static,
@@ -182,10 +182,10 @@ pub fn send_worker<Socket, Clk, Rand>(
 {
     let num_sockets = send_sockets.len();
 
-    // Per-socket unsync cell: context resolver pushes FrameBatch here,
-    // per-socket assembler+send task drains it.
-    let (socket_batch_txs, socket_batch_rxs): (Vec<_>, Vec<_>) = (0..num_sockets)
-        .map(|_| cell::unsync::new::<FrameBatch>())
+    // Per-socket unsync channel: wheel drain tasks route contexts here after expiration,
+    // per-socket assembler+send task drains them.
+    let (socket_context_txs, socket_context_rxs): (Vec<_>, Vec<_>) = (0..num_sockets)
+        .map(|_| unsync::new_with_adapter::<send::TxWheelAdapter>())
         .unzip();
 
     // Map sender_idx → local socket position for this worker.
@@ -208,15 +208,18 @@ pub fn send_worker<Socket, Clk, Rand>(
     let (tx_wheel_tx, tx_wheel_rx) = unsync::new_with_adapter();
     let (pto_wheel_tx, pto_wheel_rx) = unsync::new_with_adapter();
     let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter();
+    let (completed_tx, completed_rx) = unsync::new::<Frame>();
+    let (cancelled_tx, cancelled_rx) = unsync::new::<Frame>();
 
     // Task 1: context resolver — drain batch_rx, resolve to context, push frames.
     spawner.spawn({
-        let send_caches = send_caches.clone();
-        let mut socket_batch_txs = socket_batch_txs;
+        let mut send_caches = send_caches.clone();
+        let sender_idx_to_local = sender_idx_to_local.clone();
         let rx = batch_rx;
         let mut tx_wheel_tx = tx_wheel_tx.clone();
         let mut pto_wheel_tx = pto_wheel_tx.clone();
-        let mut idle_whel_tx = idle_wheel_tx.clone();
+        let mut idle_wheel_tx = idle_wheel_tx.clone();
+        let clock = clock.clone();
         async move {
             let rx = FlattenQueue::new(rx);
             let rx = Map::new(rx, move |batch: Entry<FrameBatch>| {
@@ -254,36 +257,39 @@ pub fn send_worker<Socket, Clk, Rand>(
 
                 let wheel_interest = {
                     let mut sender = sender.borrow_mut();
-                    sender.push_batch(batch)
+                    sender.push_batch(batch.into_inner(), &clock)
                 };
 
-                if wheel_interest.transmission {
-                    let _ = UnboundedSender::send(&mut tx_wheel_tx, sender);
-                }
-
-                if wheel_interest.pto {
-                    let _ = UnboundedSender::send(&mut pto_wheel_tx, sender);
-                }
-
-                if wheel_interest.idle_timeout {
-                    let _ = UnboundedSender::send(&mut idle_wheel_tx, sender);
-                }
+                wheel_interest.dispatch(
+                    sender,
+                    &mut tx_wheel_tx,
+                    &mut pto_wheel_tx,
+                    &mut idle_wheel_tx,
+                );
             });
-            rx.drain_budgeted(Some(budget)).await;
+            rx.drain_budgeted(Some(budgets.context_resolver)).await;
         }
     });
 
-    // Task 2: ACK processor.
+    // Task 2: ACK processor — decode, update CCA/RTT, detect loss, reschedule.
     spawner.spawn({
-        let send_caches = send_caches.clone();
+        let mut send_caches = send_caches.clone();
+        let sender_idx_to_local = sender_idx_to_local.clone();
         let rx = ack_rx;
+        let mut frame_tx = frame_tx;
+        let clock = clock.clone();
+        let mut tx_wheel_tx = tx_wheel_tx;
+        let mut pto_wheel_tx = pto_wheel_tx;
+        let mut idle_wheel_tx = idle_wheel_tx;
+        let mut completed_tx = completed_tx;
+        let mut cancelled_tx = cancelled_tx;
         async move {
             let rx = FlattenQueue::new(rx);
             let rx = Map::new(rx, move |entry: Entry<msg::Sender>| {
                 let msg::Sender::Ack {
                     local_sender_id,
                     path_secret_entry,
-                    payload,
+                    mut payload,
                 } = entry.into_inner();
 
                 let sender_idx = local_sender_id.as_u64() as usize;
@@ -309,113 +315,141 @@ pub fn send_worker<Socket, Clk, Rand>(
                     }
                 };
 
-                let sender = {
-                    let mut cache = cache.borrow_mut();
-                    let cache = &mut *cache;
-                    // We don't want to create a new entry if it's gone since this is for processing acks
+                let ctx_rc = {
+                    let cache = cache.borrow();
                     cache.get(&path_secret_entry.id())
                 };
 
-                let Some(sender) = sender else {
+                let Some(ctx_rc) = ctx_rc else {
                     tracing::debug!(%sender_idx, id = %path_secret_entry.id(), "Sender state gone for ACK");
                     return;
                 };
 
-                {
-                    let context = sender.borrow_mut();
+                let mut lost_queue: Queue<Frame> = Queue::new();
 
-                    // TODO process the ack and potentially insert into the wheels if the wheel interest says so
+                let wheel_interest = {
+                    let mut ctx = ctx_rc.borrow_mut();
+                    ctx.process_ack_payload(
+                        &mut payload,
+                        &mut completed_tx,
+                        &mut lost_queue,
+                        &mut cancelled_tx,
+                        &clock,
+                        &mut random,
+                    )
+                };
+
+                if !lost_queue.is_empty() {
+                    let _ = frame_tx.send_batch(lost_queue);
                 }
+
+                wheel_interest.dispatch(
+                    ctx_rc,
+                    &mut tx_wheel_tx,
+                    &mut pto_wheel_tx,
+                    &mut idle_wheel_tx,
+                );
             });
-            rx.drain_budgeted(Some(budget)).await;
+            rx.drain_budgeted(Some(budgets.ack_processor)).await;
         }
     });
 
+    // Task 3: Completion dispatcher — batches completed frames by channel, one lock per batch.
+    spawner.spawn(async move {
+        let rx = CompletionDispatcher::new(completed_rx);
+        rx.drain_budgeted(Some(budgets.completion_acked)).await;
+    });
+
+    // Task 4: Cancelled frame drain — drops frames whose writer is already gone.
+    spawner.spawn(async move {
+        let rx = Map::new(cancelled_rx, |_entry: Entry<Frame>| {});
+        rx.drain_budgeted(Some(budgets.completion_cancelled)).await;
+    });
+
+    // Task 5: TX wheel drain — routes expired contexts to per-socket assembler channels.
+    spawner.spawn(wheel_drain(
+        tx_wheel_rx,
+        clock.timer(),
+        {
+            let sender_idx_to_local = sender_idx_to_local.clone();
+            let mut socket_context_txs = socket_context_txs;
+            move |context: Rc<RefCell<send::Context>>| {
+                let local_id = sender_idx_to_local[context.borrow().sender_idx];
+                let _ = UnboundedSender::send(&mut socket_context_txs[local_id], context);
+            }
+        },
+        budgets.tx_wheel,
+    ));
+
+    // Task 6: PTO wheel drain — fires probes for tail loss recovery.
+    spawner.spawn(wheel_drain(
+        pto_wheel_rx,
+        clock.timer(),
+        |context: Rc<RefCell<send::Context>>| {
+            // TODO fire PTO probe for this context
+            let _ = context;
+        },
+        budgets.pto_wheel,
+    ));
+
+    // Task 7: Idle wheel drain — reclaims resources for idle connections.
+    spawner.spawn(wheel_drain(
+        idle_wheel_rx,
+        clock.timer(),
+        |context: Rc<RefCell<send::Context>>| {
+            // TODO reclaim idle context resources
+            let _ = context;
+        },
+        budgets.idle_wheel,
+    ));
+
     // Per-socket assembler + send tasks.
-    for (st, batch_rx) in send_sockets.into_iter().zip(socket_batch_rxs) {
+    for (st, context_rx) in send_sockets.into_iter().zip(socket_context_rxs) {
         let source_sender_id = VarInt::new(st.sender_idx as u64).unwrap();
-        let local_idx = sender_idx_to_local[st.sender_idx];
-        let send_cache = send_caches[local_idx].clone();
 
         spawner.spawn({
             let clock = st.clock.clone();
             async move {
                 let rx = Assembler::new(
-                    batch_rx,
+                    context_rx,
                     clock,
                     source_sender_id,
                     st.source_control_port,
                     st.gso,
                     st.pool,
+                    CancelledFrameSink,
                 );
                 let rx = SocketSender::new(rx, st.socket);
                 let rx = InspectErr::new(rx, |(err, _segments)| {
                     tracing::warn!(%err, "socket send error");
                 });
                 let rx = Map::new(rx, |_segments| {});
-                rx.drain_budgeted(Some(budget)).await;
+                rx.drain_budgeted(Some(budgets.assembler)).await;
             }
         });
     }
 }
 
-// ── ACK Processing ───────────────────────────────────────────────────────────
-
-/// Decodes a single ACK entry and processes it against the send cache.
-fn process_ack_entry<Clk, Rand>(
-    entry: Entry<msg::Sender>,
-    send_cache: &mut endpoint::send::Cache,
-    clock: &Clk,
-    random: &mut Rand,
-    frame_tx: &mut crate::stream3::frame::SubmissionSender,
+/// Drains a timing wheel, yielding each expired context to the provided callback.
+///
+/// The wheel continuously polls its inner receiver (insertion channel) to keep time
+/// progressing and insert new entries. As entries expire, they are flattened and
+/// handed to `on_expire` one at a time. This runs up to `budget` items per poll.
+async fn wheel_drain<A, T, F>(
+    rx: intrusive_queue::unsync::Receiver<A>,
+    timer: T,
+    mut on_expire: F,
+    budget: usize,
 ) where
-    Clk: s2n_quic_core::time::Clock + ?Sized,
-    Rand: crate::random::Generator,
+    A: crate::clock::wheel::WheelAdapter,
+    T: precision::Timer,
+    F: FnMut(A::Pointer),
 {
-    let msg::Sender::Ack {
-        local_sender_id: _,
-        path_secret_entry,
-        mut payload,
-    } = entry.into_inner();
-
-    let ctx_rc = send_cache.get_or_insert(&path_secret_entry);
-    let frames_iter = crate::packet::control::decoder::ControlFramesMut::new(&mut payload);
-
-    let mut acked_sink = CancelledFrameSink;
-    let mut lost_queue: Queue<Frame> = Queue::new();
-    let mut lost_sink = QueueSink(&mut lost_queue);
-    let mut cancelled_sink = CancelledFrameSink;
-
-    for frame in frames_iter {
-        let Ok(frame) = frame else {
-            tracing::debug!("failed to decode control frame in ACK payload");
-            break;
-        };
-
-        match frame {
-            s2n_quic_core::frame::FrameMut::Ack(ack_frame) => {
-                let mut ctx = ctx_rc.borrow_mut();
-                ack::process_ack(
-                    &ack_frame,
-                    &mut ctx,
-                    &mut acked_sink,
-                    &mut lost_sink,
-                    &mut cancelled_sink,
-                    clock,
-                    random,
-                );
-            }
-            s2n_quic_core::frame::FrameMut::Padding(_)
-            | s2n_quic_core::frame::FrameMut::Ping(_) => {}
-            frame => {
-                tracing::debug!(?frame, "unexpected control frame type in ACK payload");
-            }
-        }
-    }
-
-    if !lost_queue.is_empty() {
-        let _ = frame_tx.send_batch(lost_queue);
-    }
+    let wheel: crate::clock::wheel::Wheel<A, T, _> =
+        crate::clock::wheel::Wheel::new(rx.into_list_receiver(), timer);
+    let rx = FlattenList::new(wheel);
+    let rx = Map::new(rx, |item| on_expire(item));
+    rx.drain_budgeted(Some(budget)).await;
 }
 
 // ── Helper Sinks ─────────────────────────────────────────────────────────────
@@ -425,16 +459,6 @@ struct CancelledFrameSink;
 
 impl UnboundedSender<Queue<Frame>> for CancelledFrameSink {
     fn send(&mut self, _value: Queue<Frame>) -> Result<(), Queue<Frame>> {
-        Ok(())
-    }
-}
-
-/// Sink that appends frames into a local queue for retransmission.
-struct QueueSink<'a>(&'a mut Queue<Frame>);
-
-impl UnboundedSender<Queue<Frame>> for QueueSink<'_> {
-    fn send(&mut self, mut value: Queue<Frame>) -> Result<(), Queue<Frame>> {
-        self.0.append(&mut value);
         Ok(())
     }
 }
@@ -462,30 +486,22 @@ impl UnboundedSender<Queue<Frame>> for QueueSink<'_> {
 ///
 /// - **Recv-side pacing** (experimental): stream2 has a commented-out `Paced` stage on the
 ///   recv side to cap ingest rate. Revisit if recv processing becomes a bottleneck.
-pub async fn socket_recv_task<Socket, Tx>(
+pub async fn socket_recv_task<Socket, R>(
     socket: Socket,
     pool: crate::socket::pool::Pool,
-    tx: Tx,
-    decode_error_counter: crate::counter::Counter,
-    budget: usize,
+    router: R,
+    budgets: Budgets,
 ) where
     Socket: crate::socket::recv::Socket,
-    Tx: UnboundedSender<
-        crate::intrusive_queue::Entry<crate::packet::datagram::decoder::Packet<descriptor::Filled>>,
-    >,
+    R: crate::socket::recv::router::Router,
 {
     let rx = SocketReceiver::new(socket, pool);
-    // SocketReceiver yields io::Result<Segments>; InspectErr logs errors and unwraps to Segments.
     let rx = InspectErr::new(rx, |err| {
         tracing::warn!(%err, "socket recv error");
     });
     let rx = FlattenSegments::new(rx);
-    let router = ChannelRouter {
-        tx,
-        decode_error_counter,
-    };
     RouterAdapter::new(rx, router)
-        .drain_budgeted(Some(budget))
+        .drain_budgeted(Some(budgets.socket_recv))
         .await;
 }
 
@@ -515,7 +531,7 @@ pub async fn socket_recv_task<Socket, Tx>(
 ///
 /// - **Queue depth metric** (`q.datagram`): stream2 wraps the input queue in `GaugedQueue`.
 ///   Add once the counter infrastructure is available per-worker.
-pub async fn packet_dispatch_task<PacketRx, AckTx, Clk>(
+pub async fn packet_dispatch_task<PacketRx, AckTx, Clk, Route>(
     packet_rx: PacketRx,
     recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
     path_secret_map: crate::path::secret::Map,
@@ -525,13 +541,15 @@ pub async fn packet_dispatch_task<PacketRx, AckTx, Clk>(
     queue_dispatcher: msg::queue::Dispatcher,
     counters: endpoint::counters::Dispatch,
     clock: Clk,
-    budget: usize,
+    route: Route,
+    budgets: Budgets,
 ) where
     PacketRx: Receiver<
         crate::intrusive_queue::Entry<crate::packet::datagram::decoder::Packet<descriptor::Filled>>,
     >,
     AckTx: UnboundedSender<msg::Sender>,
     Clk: s2n_quic_core::time::Clock + precision::Clock,
+    Route: endpoint::routing::SenderRoute,
 {
     // Response frames (ACKs sent back to peers) re-enter via the same submission channel.
     // TODO: route responses through a dedicated channel + RetransmissionBatcher (see above).
@@ -554,6 +572,7 @@ pub async fn packet_dispatch_task<PacketRx, AckTx, Clk>(
                 &mut queue_dispatcher,
                 &clock,
                 &counters,
+                &route,
             )
         }
     });
@@ -561,7 +580,7 @@ pub async fn packet_dispatch_task<PacketRx, AckTx, Clk>(
         let counters = counters;
         move |err| on_packet_dispatch_error(&counters, err)
     });
-    rx.drain_budgeted(Some(budget)).await;
+    rx.drain_budgeted(Some(budgets.packet_dispatch)).await;
 }
 
 fn on_packet_dispatch_error(counters: &endpoint::counters::Dispatch, err: dispatch::Error) {

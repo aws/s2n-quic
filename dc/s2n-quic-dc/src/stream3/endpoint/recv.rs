@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    byte_vec::ByteVec,
     clock::precision,
     credentials::{self, Credentials},
-    flow,
-    intrusive_queue,
-    packet::{self, datagram::partial::PartialDatagram},
+    flow, intrusive_queue,
     path::{self, secret::map::Entry as PathSecretEntry},
+    stream3::frame::{self, Frame, Header},
 };
 use core::time::Duration;
-use s2n_codec::{Encoder as _, EncoderBuffer};
+use s2n_codec::EncoderValue as _;
 use s2n_quic_core::{frame::ack::EcnCounts, varint::VarInt};
 use std::{
     cell::RefCell,
@@ -133,6 +133,9 @@ pub(crate) enum AttemptDedupError {
 /// deduplication windows are per-sender, not per-peer.
 pub(crate) struct Context {
     pub path_entry: Arc<PathSecretEntry>,
+    /// The remote peer's sender_id (from the packet routing info).
+    /// Used as `dest_sender_id` in outgoing ACK frames.
+    pub remote_sender_id: VarInt,
     // TODO: Support key rotation by maintaining multiple openers indexed by key_id.
     // Currently we only track the latest key, which means packets with old key_ids
     // after rotation will fail to decrypt. Need to maintain a small cache of recent
@@ -159,6 +162,7 @@ pub(crate) struct Context {
 impl Context {
     pub fn new<Clk>(
         path_entry: Arc<PathSecretEntry>,
+        remote_sender_id: VarInt,
         opener: crate::crypto::awslc::open::Application,
         key_id: VarInt,
         clock: &Clk,
@@ -175,6 +179,7 @@ impl Context {
 
         Self {
             path_entry,
+            remote_sender_id,
             opener,
             current_key_id: key_id,
             ack_space: Default::default(),
@@ -208,38 +213,41 @@ impl Context {
         self.ack_state == AckState::Scheduled
     }
 
-    /// Generate an ACK control packet for this peer.
+    /// Generate an ACK frame for submission through the frame pipeline.
     ///
-    /// Only includes ECN counts when at least one ECN-marked packet has been seen;
-    /// this avoids forcing the wider ACK-with-ECN frame encoding (which drops more
-    /// ACK ranges to fit the MTU) when the counts would all be zero anyway.
-    pub fn generate_ack_packet<Clk>(
-        &mut self,
-        clock: &Clk,
-        routing_info: packet::control::RoutingInfo,
-    ) -> Option<PartialDatagram>
+    /// Returns `None` if the ack_space has nothing to acknowledge.
+    /// Transitions ack_state from Scheduled to Idle on success.
+    pub fn generate_ack_frame<Clk, Route>(&mut self, clock: &Clk, route: &Route) -> Option<Frame>
     where
         Clk: s2n_quic_core::time::Clock + ?Sized,
+        Route: super::routing::SenderRoute,
     {
-        // TODO use the path_secret_entry.max_datagram_size() - max overhead
         let mtu = 1400u16;
-        let (ack_frame, encoding_size) =
+        let (ack_frame, _encoding_size) =
             self.ack_space
                 .encoding(VarInt::ZERO, self.ecn_counts.as_option(), mtu, clock);
 
         let ack_frame = ack_frame?;
 
-        let mut buffer = vec![0u8; encoding_size.as_u64() as usize];
-        let mut encoder_buf = EncoderBuffer::new(&mut buffer);
-        encoder_buf.encode(&ack_frame);
+        let payload: ByteVec = ack_frame.encode_to_vec().into();
 
-        let control_data = buffer.into();
+        self.ack_state = AckState::Idle;
 
-        Some(PartialDatagram::new_control(
-            routing_info,
-            control_data,
-            self.path_entry.clone(),
-        ))
+        // Consistently route through the same local sender id so RTTs are accurate
+        let local_sender_id = route.sender_id_for_ack(self.path_entry.id(), self.remote_sender_id);
+
+        Some(Frame {
+            header: Header::Control {
+                dest_sender_id: self.remote_sender_id,
+            },
+            source_sender_id: local_sender_id,
+            payload,
+            path_secret_entry: self.path_entry.clone(),
+            completion: None,
+            status: Default::default(),
+            ttl: frame::DEFAULT_TTL,
+            transmission_time: None,
+        })
     }
 }
 
@@ -248,7 +256,7 @@ impl Context {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Key {
     pub id: credentials::Id,
-    pub sender_id: VarInt,
+    pub remote_sender_id: VarInt,
 }
 
 /// Per-worker sender state cache.
@@ -271,7 +279,7 @@ impl Cache {
     pub fn get_or_insert<Clk>(
         &mut self,
         credentials: &Credentials,
-        sender_id: VarInt,
+        remote_sender_id: VarInt,
         path_secret_map: &path::secret::map::Map,
         clock: &Clk,
         control_out: &mut Vec<u8>,
@@ -281,18 +289,19 @@ impl Cache {
     {
         let key = Key {
             id: credentials.id,
-            sender_id,
+            remote_sender_id,
         };
 
         Some(match self.senders.entry(key) {
             hash_map::Entry::Occupied(entry) => entry.into_mut(),
             hash_map::Entry::Vacant(entry) => {
-                tracing::debug!(%credentials, %sender_id, caller = %core::panic::Location::caller(), worker_id = self.worker_id, "opener_for_credentials");
+                tracing::debug!(%credentials, %remote_sender_id, caller = %core::panic::Location::caller(), worker_id = self.worker_id, "opener_for_credentials");
                 let (opener, path_entry) =
                     path_secret_map.opener_for_credentials(credentials, None, control_out)?;
 
                 entry.insert(Context::new(
                     path_entry,
+                    remote_sender_id,
                     opener,
                     credentials.key_id,
                     clock,

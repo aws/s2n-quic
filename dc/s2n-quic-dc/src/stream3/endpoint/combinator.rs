@@ -8,14 +8,21 @@
 //! frame batching by peer, etc).
 
 use crate::{
+    clock::precision,
     intrusive_queue::{Entry, Queue},
     path::secret::map::Entry as PathSecretEntry,
-    socket::channel::{ByteCost, Receiver, Sender, UnboundedSender},
-    stream3::frame::Frame,
+    socket::{
+        channel::{ByteCost, Receiver, UnboundedSender},
+        pool::descriptor,
+    },
+    stream3::{endpoint::send, frame::Frame},
 };
 use core::task::{self, Poll};
 use s2n_quic_core::{ready, varint::VarInt};
-use std::{marker::PhantomData, sync::Arc};
+use std::{cell::RefCell, marker::PhantomData, rc::Rc, sync::Arc};
+
+#[cfg(test)]
+mod tests;
 
 // ── PathSecretMapEntry ────────────────────────────────────────────────────
 
@@ -95,6 +102,11 @@ impl FrameBatch {
         } else {
             None
         }
+    }
+
+    #[inline]
+    pub fn set_sender_id(&mut self, id: usize) {
+        self.sender_id = VarInt::new(id as u64).unwrap_or(VarInt::MAX);
     }
 
     /// Returns the number of frames currently buffered in this batch.
@@ -376,7 +388,7 @@ where
 /// poll. When the context is drained, it pulls the next batch from `inner`.
 ///
 /// [`assemble`]: crate::stream3::endpoint::assemble::assemble
-struct Assembler<R, Clk> {
+pub(crate) struct Assembler<R, Clk, C> {
     inner: R,
     clock: Clk,
     source_sender_id: s2n_quic_core::varint::VarInt,
@@ -384,17 +396,18 @@ struct Assembler<R, Clk> {
     gso: s2n_quic_platform::features::Gso,
     pool: crate::socket::pool::Pool,
     header_buf: Vec<u8>,
-    cancelled_tx: CancelledFrameSink,
+    cancelled_tx: C,
 }
 
-impl<R, Clk> Assembler<R, Clk> {
-    fn new(
+impl<R, Clk, C> Assembler<R, Clk, C> {
+    pub(crate) fn new(
         inner: R,
         clock: Clk,
         source_sender_id: s2n_quic_core::varint::VarInt,
         source_control_port: u16,
         gso: s2n_quic_platform::features::Gso,
         pool: crate::socket::pool::Pool,
+        cancelled_tx: C,
     ) -> Self {
         Self {
             inner,
@@ -404,20 +417,20 @@ impl<R, Clk> Assembler<R, Clk> {
             gso,
             pool,
             header_buf: Vec::new(),
-            cancelled_tx: CancelledFrameSink,
+            cancelled_tx,
         }
     }
 }
 
-impl<R, Clk> Receiver<descriptor::Segments> for Assembler<R, Clk>
+impl<R, Clk, C> Receiver<descriptor::Segments> for Assembler<R, Clk, C>
 where
     R: Receiver<Rc<RefCell<send::Context>>>,
     Clk: precision::Clock,
+    C: UnboundedSender<Queue<Frame>>,
 {
     fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<descriptor::Segments>> {
         use crate::stream3::endpoint::assemble;
 
-        // Get the next context that's ready for transmission
         let Some(context) = ready!(self.inner.poll_recv(cx)) else {
             return Poll::Ready(None);
         };
@@ -434,7 +447,7 @@ where
                 &mut self.header_buf,
                 &mut self.cancelled_tx,
             );
-            // ask the context if it want's to be inserted into any wheels
+            // ask the context if it wants to be inserted into any wheels
             let wheel_interest = todo!();
             (segments, wheel_interest)
         };
@@ -454,5 +467,88 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests;
+// ── CompletionDispatcher ─────────────────────────────────────────────────
+
+/// Receiver combinator that groups frames by completion channel and delivers each group
+/// as a single batch (one lock acquisition per channel).
+///
+/// Each `poll_recv` call consumes one frame from the upstream. If the frame belongs to the
+/// same completion channel as the current batch, it's appended. Otherwise the accumulated
+/// batch is flushed via `send_batch` and a new batch begins with the incoming frame.
+///
+/// Frames without a completion sender are silently dropped (best-effort frames).
+///
+/// The caller controls throughput via `drain_budgeted` — each returned `()` represents one
+/// frame consumed from upstream.
+pub(crate) struct CompletionDispatcher<R> {
+    inner: R,
+    batch: Queue<Frame>,
+}
+
+impl<R> CompletionDispatcher<R>
+where
+    R: Receiver<Entry<Frame>>,
+{
+    pub fn new(inner: R) -> Self {
+        Self {
+            inner,
+            batch: Queue::new(),
+        }
+    }
+
+    fn current_queue_id(&self) -> Option<usize> {
+        self.batch
+            .front()
+            .and_then(|f| f.completion.as_ref())
+            .map(|c| c.queue_id())
+    }
+
+    fn flush(&mut self) {
+        if self.batch.is_empty() {
+            return;
+        }
+        let sender = self.batch.front_mut().and_then(|f| f.completion.take());
+        let batch = core::mem::take(&mut self.batch);
+        if let Some(sender) = sender {
+            let _ = sender.send_batch(batch);
+        }
+    }
+}
+
+impl<R> Receiver<()> for CompletionDispatcher<R>
+where
+    R: Receiver<Entry<Frame>>,
+{
+    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<()>> {
+        let frame = match self.inner.poll_recv(cx) {
+            Poll::Ready(Some(frame)) => frame,
+            Poll::Ready(None) => {
+                self.flush();
+                return Poll::Ready(None);
+            }
+            Poll::Pending => {
+                self.flush();
+                return Poll::Pending;
+            }
+        };
+
+        let incoming_id = frame.completion.as_ref().map(|c| c.queue_id());
+
+        let Some(_) = incoming_id else {
+            return Poll::Ready(Some(()));
+        };
+
+        if self.current_queue_id() == incoming_id {
+            self.batch.push_back(Entry::from(frame));
+        } else {
+            self.flush();
+            self.batch.push_back(Entry::from(frame));
+        }
+
+        Poll::Ready(Some(()))
+    }
+
+    fn on_consumed(&mut self, bytes: u64) {
+        self.inner.on_consumed(bytes);
+    }
+}

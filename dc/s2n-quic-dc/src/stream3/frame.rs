@@ -166,7 +166,7 @@ impl
     }
 
     #[inline(always)]
-    fn append_to(mut self, storage: &mut PriorityStorage) {
+    fn append_to(self, storage: &mut PriorityStorage) {
         for (dst, src) in storage.0.queues.iter_mut().zip(self.queues.iter_mut()) {
             dst.append(src);
         }
