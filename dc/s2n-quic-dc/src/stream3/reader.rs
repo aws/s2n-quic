@@ -87,7 +87,7 @@ use crate::{
             msg,
             reset_error::{self, ResetError},
         },
-        frame::{self, Frame, Header, SubmissionSender, DEFAULT_TTL},
+        frame::{self, Frame, Header, PriorityInput, SubmissionSender, DEFAULT_TTL},
     },
 };
 use s2n_codec::EncoderValue;
@@ -529,10 +529,10 @@ impl Inner {
     }
 
     fn send_frame(&mut self, frame: Frame) -> io::Result<()> {
-        let mut batch = Queue::new();
-        batch.push_back(frame.into());
+        let mut input = PriorityInput::default();
+        input.push(frame.into());
         self.frame_tx
-            .send_batch(batch)
+            .send_batch(input)
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))
     }
 }
@@ -620,10 +620,7 @@ mod tests {
     use std::{io, net::SocketAddr};
 
     fn test_frame_tx() -> SubmissionSender {
-        let (frame_tx, frame_rx) =
-            crate::socket::channel::intrusive_queue::sharded::new::<Frame>(1);
-        let waker = waker::noop();
-        frame_rx.register(&waker);
+        let (frame_tx, _frame_rx) = crate::stream3::frame::submission_channel(1);
         frame_tx
     }
 

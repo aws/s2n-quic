@@ -61,17 +61,29 @@ pub struct EndpointConfig<S, C> {
     pub idle_timeout: core::time::Duration,
     /// Wall-clock source used for RTT estimation and timeouts.
     pub clock: C,
+    /// Overall bandwidth cap applied by the frame-dispatch pacing stage.
+    ///
+    /// The [`Paced`] combinator in the dispatch pipeline enforces this rate across all
+    /// send sockets combined. Set to a very high value (e.g. `Rate::new(100.0)` for
+    /// 100 Gbps) to effectively disable pacing when the network is not a bottleneck.
+    ///
+    /// [`Paced`]: crate::socket::channel::Paced
+    pub overall_send_rate: crate::socket::rate::Rate,
 }
 
 // ── Worker parts ──────────────────────────────────────────────────────────
 
 /// All the ingredients needed to spawn the frame-dispatch task on a worker.
-struct FrameDispatchParts<G> {
+struct FrameDispatchParts<G, Clk> {
     frame_rx: crate::stream3::frame::SubmissionReceiver,
     /// Senders for each send-socket's batch channel.
     batch_txs: Vec<crate::socket::channel::cell::sync::Sender<tasks::FrameBatch>>,
     /// Random generator for pick-two routing.
     rand: G,
+    /// Clock used by the pacing stage.
+    clock: Clk,
+    /// Overall bandwidth cap for the pacing stage.
+    overall_send_rate: crate::socket::rate::Rate,
 }
 
 /// All the ingredients needed to spawn a send-socket task on a worker.
@@ -124,7 +136,7 @@ struct Worker<SendSocket, RecvSocket, Clk, G, AckSnd> {
     /// Peer idle timeout — controls when `recv::Cache` entries expire.
     idle_timeout: core::time::Duration,
     /// Frame-dispatch task, assigned to exactly one worker (typically worker 0).
-    frame_dispatch: Option<FrameDispatchParts<G>>,
+    frame_dispatch: Option<FrameDispatchParts<G, Clk>>,
     /// Send socket tasks assigned to this worker.
     send_tasks: Vec<SendTaskParts<SendSocket>>,
     /// Recv + dispatch task pairs assigned to this worker.
@@ -187,7 +199,14 @@ where
                     debug_assert!(n.is_power_of_two(), "sender count must be a power of two");
                     raw & (n - 1)
                 };
-                local.spawn(tasks::frame_dispatch(fd.frame_rx, fd.batch_txs, random_fn));
+                tasks::frame_dispatch(
+                    &mut local,
+                    fd.frame_rx,
+                    fd.batch_txs,
+                    random_fn,
+                    fd.clock,
+                    fd.overall_send_rate,
+                );
             }
 
             for st in send_tasks {
@@ -319,6 +338,7 @@ where
         acceptor_registry,
         idle_timeout,
         clock,
+        overall_send_rate,
     } = config;
 
     let num_workers = spawner.worker_count().max(1);
@@ -375,6 +395,8 @@ where
         frame_rx,
         batch_txs: socket_batch_txs,
         rand: create_rand(),
+        clock: clock.clone(),
+        overall_send_rate,
     });
 
     // Distribute send sockets across workers 1..=num_send (wrapping modulo num_workers).

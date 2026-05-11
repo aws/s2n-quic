@@ -12,7 +12,7 @@ use crate::{
     acceptor,
     credentials::Credentials,
     flow,
-    intrusive_queue::{Entry, Queue},
+    intrusive_queue::Entry,
     packet::{
         self,
         datagram::{QueuePair, ResetTarget, RoutingInfo},
@@ -26,7 +26,7 @@ use crate::{
             recv::{self, AckState, AttemptDedupError},
             reset_error,
         },
-        frame::{Frame, Header, SubmissionSender, DEFAULT_TTL},
+        frame::{Frame, Header, PriorityInput, SubmissionSender, DEFAULT_TTL},
         Reader, Stream, Writer,
     },
 };
@@ -65,7 +65,7 @@ pub(crate) fn process<Clk>(
     path_secret_map: &PathSecretMap,
     acceptor_registry: &acceptor::Registry<Stream>,
     frame_tx: &SubmissionSender,
-    response_tx: &mut impl channel::UnboundedSender<Queue<Frame>>,
+    response_tx: &mut impl channel::UnboundedSender<PriorityInput>,
     sender_tx: &mut impl channel::UnboundedSender<msg::Sender>,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     clock: &Clk,
@@ -155,7 +155,7 @@ where
 
     let mut payload_storage = decrypted;
 
-    let mut response_frames = Queue::new();
+    let mut response_frames = PriorityInput::default();
 
     // Multi-frame packet: `app_header_slice` contains the per-frame metadata
     // (Header type tag + optional payload_len VarInt) and `payload_storage`
@@ -237,7 +237,7 @@ fn dispatch_decoded_frame(
     queue_dispatcher: &mut msg::queue::Dispatcher,
     sender_tx: &mut impl channel::UnboundedSender<msg::Sender>,
     counters: &counters::Dispatch,
-    response_frames: &mut Queue<Frame>,
+    response_frames: &mut PriorityInput,
 ) {
     match header {
         Header::FlowInit {
@@ -376,7 +376,7 @@ fn handle_flow_init(
     frame_tx: &SubmissionSender,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
-    response_frames: &mut Queue<Frame>,
+    response_frames: &mut PriorityInput,
 ) {
     let create_queue = |handle| {
         let (queue_control, queue_stream) = queue_dispatcher.alloc_or_grow(handle, Some(peer_queue_id));
@@ -615,7 +615,7 @@ fn handle_flow_init(
 }
 
 fn push_reset_frame(
-    response_frames: &mut Queue<Frame>,
+    response_frames: &mut PriorityInput,
     counters: &counters::Dispatch,
     path_secret_entry: &std::sync::Arc<PathSecretEntry>,
     dest_queue_id: VarInt,
@@ -634,7 +634,7 @@ fn push_reset_frame(
 }
 
 fn push_reset_frame_with_target(
-    response_frames: &mut Queue<Frame>,
+    response_frames: &mut PriorityInput,
     counters: &counters::Dispatch,
     path_secret_entry: &std::sync::Arc<PathSecretEntry>,
     dest_queue_id: VarInt,
@@ -658,11 +658,11 @@ fn push_reset_frame_with_target(
         transmission_time: None,
     };
     counters.on_sent_frame(&frame.header);
-    response_frames.push_back(frame.into());
+    response_frames.push(frame.into());
 }
 
 fn push_validate_request_frame(
-    response_frames: &mut Queue<Frame>,
+    response_frames: &mut PriorityInput,
     counters: &counters::Dispatch,
     path_secret_entry: &std::sync::Arc<PathSecretEntry>,
     dest_sender_id: VarInt,
@@ -690,7 +690,7 @@ fn push_validate_request_frame(
         transmission_time: None,
     };
     counters.on_sent_frame(&frame.header);
-    response_frames.push_back(frame.into());
+    response_frames.push(frame.into());
 }
 
 // ── FlowValidateRequest ───────────────────────────────────────────────────
@@ -704,7 +704,7 @@ fn handle_flow_validate_request(
     stream_id: VarInt,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
-    response_frames: &mut Queue<Frame>,
+    response_frames: &mut PriorityInput,
 ) {
     let local_queue_id = queue_pair.dest_queue_id;
 
@@ -736,7 +736,7 @@ fn handle_flow_validate_request(
                 transmission_time: None,
             };
             counters.on_sent_frame(&frame.header);
-            response_frames.push_back(frame.into());
+            response_frames.push(frame.into());
         }
         Err(_) => {
             counters.rx_validate_failed.add(1);
@@ -761,7 +761,7 @@ fn handle_flow_validate_request(
                 transmission_time: None,
             };
             counters.on_sent_frame(&frame.header);
-            response_frames.push_back(frame.into());
+            response_frames.push(frame.into());
         }
     }
 }
@@ -776,7 +776,7 @@ fn handle_flow_init_validate(
     stream_id: VarInt,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
-    response_frames: &mut Queue<Frame>,
+    response_frames: &mut PriorityInput,
 ) {
     let local_queue_id = queue_pair.dest_queue_id;
 
@@ -854,7 +854,7 @@ fn handle_flow_data(
     buf: BytesMut,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
-    response_frames: &mut Queue<Frame>,
+    response_frames: &mut PriorityInput,
 ) {
     let local_queue_id = queue_pair.dest_queue_id;
 
@@ -959,7 +959,7 @@ fn handle_flow_control(
     buf: BytesMut,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
-    response_frames: &mut Queue<Frame>,
+    response_frames: &mut PriorityInput,
 ) {
     let local_queue_id = queue_pair.dest_queue_id;
 

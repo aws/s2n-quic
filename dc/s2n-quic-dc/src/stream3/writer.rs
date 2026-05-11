@@ -79,7 +79,7 @@ use crate::{
             msg,
             reset_error::{self, ResetError},
         },
-        frame::{self, Frame, Header, SubmissionSender, DEFAULT_TTL},
+        frame::{self, Frame, Header, PriorityInput, SubmissionSender, DEFAULT_TTL},
     },
 };
 use s2n_quic_core::{
@@ -814,10 +814,10 @@ impl Inner {
     }
 
     fn send_frame(&mut self, frame: Frame) -> io::Result<()> {
-        let mut batch = Queue::new();
-        batch.push_back(frame.into());
+        let mut input = PriorityInput::default();
+        input.push(frame.into());
         self.frame_tx
-            .send_batch(batch)
+            .send_batch(input)
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))
     }
 }
@@ -898,11 +898,9 @@ mod tests {
 
     fn new_test_inner() -> (
         Inner,
-        channel::intrusive_queue::sharded::Receiver<crate::intrusive_queue::EntryAdapter<Frame>>,
+        crate::stream3::frame::SubmissionReceiver,
     ) {
-        let (frame_tx, frame_rx) = channel::intrusive_queue::sharded::new::<Frame>(1);
-        let waker = s2n_quic_core::task::waker::noop();
-        frame_rx.register(&waker);
+        let (frame_tx, frame_rx) = crate::stream3::frame::submission_channel(1);
 
         let path_secret_entry = PathSecretEntry::fake("127.0.0.1:8080".parse().unwrap(), None);
         let stream_id = VarInt::from_u8(42);
@@ -1008,7 +1006,11 @@ mod tests {
         assert_eq!(err.kind(), io::ErrorKind::ConnectionRefused);
         assert_eq!(inner.inflight_bytes, 0);
         assert!(inner.status.is_shutdown());
-        assert!(matches!(frame_rx.poll_recv(&mut cx), Poll::Pending));
+        let mut staging = crate::stream3::frame::PriorityStorage::default();
+        assert!(matches!(
+            frame_rx.poll_swap(&mut cx, &mut staging),
+            Poll::Pending
+        ));
     }
 
     #[test]
@@ -1041,12 +1043,13 @@ mod tests {
         assert_eq!(inner.inflight_bytes, 0);
         assert!(inner.status.is_shutdown());
 
-        let sent = match frame_rx.poll_recv(&mut cx) {
-            Poll::Ready(Some(sent)) => sent,
+        let mut staging = crate::stream3::frame::PriorityStorage::default();
+        match frame_rx.poll_swap(&mut cx, &mut staging) {
+            Poll::Ready(Some(())) => {}
             other => panic!("expected reset frame, got {other:?}"),
-        };
+        }
 
-        let sent = sent.iter().collect::<Vec<_>>();
+        let sent = staging.iter().collect::<Vec<_>>();
         assert_eq!(sent.len(), 1);
         assert!(matches!(
             sent[0].header,
@@ -1085,12 +1088,13 @@ mod tests {
         assert_eq!(inner.next_offset, VarInt::MAX);
 
         let mut cx = noop_cx();
-        let sent = match frame_rx.poll_recv(&mut cx) {
-            Poll::Ready(Some(sent)) => sent,
+        let mut staging = crate::stream3::frame::PriorityStorage::default();
+        match frame_rx.poll_swap(&mut cx, &mut staging) {
+            Poll::Ready(Some(())) => {}
             other => panic!("expected FIN frame, got {other:?}"),
-        };
+        }
 
-        let sent = sent.iter().collect::<Vec<_>>();
+        let sent = staging.iter().collect::<Vec<_>>();
         assert_eq!(sent.len(), 1);
         assert!(matches!(
             sent[0].header,
@@ -1117,12 +1121,13 @@ mod tests {
         assert_eq!(inner.next_offset, VarInt::MAX);
 
         let mut cx = noop_cx();
-        let sent = match frame_rx.poll_recv(&mut cx) {
-            Poll::Ready(Some(sent)) => sent,
+        let mut staging = crate::stream3::frame::PriorityStorage::default();
+        match frame_rx.poll_swap(&mut cx, &mut staging) {
+            Poll::Ready(Some(())) => {}
             other => panic!("expected data frame, got {other:?}"),
-        };
+        }
 
-        let sent = sent.iter().collect::<Vec<_>>();
+        let sent = staging.iter().collect::<Vec<_>>();
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].payload.len(), 1);
     }
@@ -1142,6 +1147,10 @@ mod tests {
         assert_eq!(inner.inflight_bytes, 0);
 
         let mut cx = noop_cx();
-        assert!(matches!(frame_rx.poll_recv(&mut cx), Poll::Pending));
+        let mut staging = crate::stream3::frame::PriorityStorage::default();
+        assert!(matches!(
+            frame_rx.poll_swap(&mut cx, &mut staging),
+            Poll::Pending
+        ));
     }
 }
