@@ -79,7 +79,7 @@
 
 use crate::{
     byte_vec::ByteVec,
-    intrusive_queue::Queue,
+    intrusive_queue,
     packet::datagram::{QueuePair, ResetTarget},
     path::secret::map::Entry as PathSecretEntry,
     stream3::{
@@ -87,7 +87,7 @@ use crate::{
             msg,
             reset_error::{self, ResetError},
         },
-        frame::{self, Frame, Header, PriorityInput, SubmissionSender, DEFAULT_TTL},
+        frame::{self, Frame, Header, SubmissionSender, DEFAULT_TTL},
     },
 };
 use s2n_codec::EncoderValue;
@@ -97,8 +97,7 @@ use s2n_quic_core::{
         duplex::Interposer,
         reader::{storage::Infallible as _, Incremental},
         reassembler::Reassembler,
-        writer::Storage as _,
-        writer::Writer as _,
+        writer::{Storage as _, Writer as _},
     },
     frame::MaxData,
     ready,
@@ -365,9 +364,12 @@ impl Inner {
                                 }
                             };
 
-                            if let Err(err) =
-                                write_data_reader(&mut self.reassembler, &mut reader, app_buf, interpose)
-                            {
+                            if let Err(err) = write_data_reader(
+                                &mut self.reassembler,
+                                &mut reader,
+                                app_buf,
+                                interpose,
+                            ) {
                                 debug!(
                                     stream_id = self.stream_id.as_u64(),
                                     ?err,
@@ -529,10 +531,8 @@ impl Inner {
     }
 
     fn send_frame(&mut self, frame: Frame) -> io::Result<()> {
-        let mut input = PriorityInput::default();
-        input.push(frame.into());
         self.frame_tx
-            .send_batch(input)
+            .send_batch(intrusive_queue::Entry::new(frame))
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))
     }
 }
@@ -604,18 +604,12 @@ impl tokio::io::AsyncRead for Reader {
 mod tests {
     use super::{msg, write_data_reader, Reader};
     use crate::{
-        flow,
-        path::secret::map::Entry as PathSecretEntry,
-        stream3::frame::{Frame, SubmissionSender},
+        flow, path::secret::map::Entry as PathSecretEntry, stream3::frame::SubmissionSender,
     };
     use bytes::BytesMut;
     use core::task::Poll;
     use s2n_quic_core::{
-        buffer::Reassembler,
-        endpoint,
-        stream::testing::Data,
-        task::waker,
-        varint::VarInt,
+        buffer::Reassembler, endpoint, stream::testing::Data, task::waker, varint::VarInt,
     };
     use std::{io, net::SocketAddr};
 
@@ -672,7 +666,9 @@ mod tests {
         assert!(reassembler.is_empty());
         assert!(!reassembler.is_reading_complete());
 
-        reassembler.write_at(0u32.into(), &Data::send_one_at(0, 4)).unwrap();
+        reassembler
+            .write_at(0u32.into(), &Data::send_one_at(0, 4))
+            .unwrap();
         assert_eq!(reassembler.len(), 8);
     }
 
@@ -682,7 +678,9 @@ mod tests {
         let mut reader = Data::new(8);
         let mut app_buf: Vec<u8> = Vec::new();
 
-        reassembler.write_at(0u32.into(), &Data::send_one_at(0, 4)).unwrap();
+        reassembler
+            .write_at(0u32.into(), &Data::send_one_at(0, 4))
+            .unwrap();
         reader.seek_forward(4);
 
         write_data_reader(&mut reassembler, &mut reader, &mut app_buf, true).unwrap();

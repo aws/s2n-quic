@@ -48,23 +48,36 @@ pub type CompletionReceiver = datagram_completion::Receiver<Frame>;
 /// [`push`]: PriorityInput::push
 /// [`SubmissionSender::send_batch`]: crate::socket::channel::intrusive_queue::sharded::Sender::send_batch
 pub struct PriorityInput {
-    pub queues: [Queue<Frame>; Priority::LEVELS],
+    queues: [Queue<Frame>; Priority::LEVELS],
+    len: usize,
 }
 
 impl Default for PriorityInput {
     fn default() -> Self {
         Self {
             queues: std::array::from_fn(|_| Queue::new()),
+            len: 0,
         }
     }
 }
 
 impl PriorityInput {
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
     /// Inserts `frame` into the priority bucket matching its [`Frame::priority`].
     #[inline]
     pub fn push(&mut self, frame: Entry<Frame>) {
         let idx = frame.priority().as_index();
         self.queues[idx].push_back(frame);
+        self.len += 1;
     }
 
     /// Iterates over all frames across all priority buckets, highest priority first.
@@ -94,46 +107,92 @@ impl core::fmt::Debug for PriorityInput {
 /// merges those stack queues into this Box in O([`Priority::LEVELS`]) list-append operations.
 ///
 /// [`poll_swap`]: crate::socket::channel::intrusive_queue::sharded::Receiver::poll_swap
-pub struct PriorityStorage {
-    pub queues: Box<[Queue<Frame>; Priority::LEVELS]>,
-}
+#[derive(Default)]
+pub struct PriorityStorage(Box<PriorityInput>);
 
-impl Default for PriorityStorage {
-    fn default() -> Self {
-        Self {
-            queues: Box::new(std::array::from_fn(|_| Queue::new())),
-        }
+impl PriorityStorage {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Queue<Frame>> {
+        self.0.queues.iter_mut()
     }
 }
 
-impl crate::socket::channel::intrusive_queue::sharded::Storage<
-    crate::intrusive_queue::EntryAdapter<Frame>,
-> for PriorityStorage
+impl
+    crate::socket::channel::intrusive_queue::sharded::Storage<
+        crate::intrusive_queue::EntryAdapter<Frame>,
+    > for PriorityStorage
 {
-    type Input = PriorityInput;
-
     #[inline(always)]
     fn is_empty(&self) -> bool {
-        self.queues.iter().all(Queue::is_empty)
+        self.0.is_empty()
+    }
+}
+
+impl
+    crate::socket::channel::intrusive_queue::sharded::Input<
+        crate::intrusive_queue::EntryAdapter<Frame>,
+        PriorityStorage,
+    > for PriorityInput
+{
+    #[inline(always)]
+    fn is_empty(&self) -> bool {
+        PriorityInput::is_empty(self)
     }
 
     #[inline(always)]
-    fn input_is_empty(input: &PriorityInput) -> bool {
-        input.queues.iter().all(Queue::is_empty)
-    }
-
-    #[inline(always)]
-    fn append(&mut self, other: &mut PriorityInput) {
-        for (dst, src) in self.queues.iter_mut().zip(other.queues.iter_mut()) {
+    fn append_to(mut self, storage: &mut PriorityStorage) {
+        for (dst, src) in storage.0.queues.iter_mut().zip(self.queues.iter_mut()) {
             dst.append(src);
         }
+    }
+}
+
+impl
+    crate::socket::channel::intrusive_queue::sharded::Input<
+        crate::intrusive_queue::EntryAdapter<Frame>,
+        PriorityStorage,
+    > for Entry<Frame>
+{
+    #[inline(always)]
+    fn is_empty(&self) -> bool {
+        false
+    }
+
+    #[inline(always)]
+    fn append_to(self, storage: &mut PriorityStorage) {
+        let idx = self.priority().as_index();
+        storage.0.queues[idx].push_back(self);
+    }
+}
+
+impl
+    crate::socket::channel::intrusive_queue::sharded::Input<
+        crate::intrusive_queue::EntryAdapter<Frame>,
+        PriorityStorage,
+    > for Queue<Frame>
+{
+    #[inline(always)]
+    fn is_empty(&self) -> bool {
+        Queue::is_empty(self)
+    }
+
+    #[inline(always)]
+    fn append_to(mut self, storage: &mut PriorityStorage) {
+        let Some(first) = self.front() else {
+            return;
+        };
+        let idx = first.priority().as_index();
+        debug_assert!(
+            self.iter().all(|f| f.priority().as_index() == idx),
+            "all frames in a Queue<Frame> input must share the same priority"
+        );
+        storage.0.queues[idx].append(&mut self);
     }
 }
 
 impl PriorityStorage {
     /// Iterates over all frames across all priority buckets, highest priority first.
     pub fn iter(&self) -> impl Iterator<Item = &Frame> {
-        self.queues.iter().flat_map(|q| q.iter())
+        self.0.queues.iter().flat_map(|q| q.iter())
     }
 }
 
@@ -298,8 +357,7 @@ impl Header {
             | Self::Control { .. } => true,
             Self::FlowReset { .. }
             | Self::FlowInitValidate { .. }
-            | Self::FlowValidateRequest { .. }
-            => false,
+            | Self::FlowValidateRequest { .. } => false,
         }
     }
 
@@ -485,7 +543,13 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
             Self::FLOW_CONTROL_TYPE => {
                 let (queue_pair, buffer) = buffer.decode()?;
                 let (stream_id, buffer) = buffer.decode()?;
-                Ok((Self::FlowControl { queue_pair, stream_id }, buffer))
+                Ok((
+                    Self::FlowControl {
+                        queue_pair,
+                        stream_id,
+                    },
+                    buffer,
+                ))
             }
             Self::FLOW_RESET_BOTH_TYPE
             | Self::FLOW_RESET_STREAM_TYPE

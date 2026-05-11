@@ -6,7 +6,7 @@ use crate::{
     intrusive_queue::{Entry, Queue},
     path::secret::map::Entry as PathSecretEntry,
     socket::channel::{ByteCost, Receiver, Sender},
-    stream3::frame::Frame,
+    stream3::frame::{Frame, PriorityStorage},
 };
 use core::{
     future::poll_fn,
@@ -378,13 +378,12 @@ pub fn frame_dispatch<S, Rand, Clk>(
     // Task 1 sends whole `Queue<Frame>` lists via `ListSender`; Task 2 pops individual
     // frames via the plain `Receiver`.  Both tasks run on the same worker, so Rc-based
     // (!Send) channels are correct here.
-    let mut priority_list_txs = Vec::with_capacity(Priority::LEVELS);
     let mut priority_frame_rxs = Vec::with_capacity(Priority::LEVELS);
-    for _ in 0..Priority::LEVELS {
+    let mut priority_list_txs: [_; Priority::LEVELS] = core::array::from_fn(|_| {
         let (tx, rx) = intrusive_queue::unsync::new::<Frame>();
-        priority_list_txs.push(tx.into_list_sender());
-        priority_frame_rxs.push(rx);
-    }
+        priority_frame_rxs.push(BatchFramesByPathSecret::new(rx));
+        tx.into_list_sender()
+    });
 
     // Task 1: fixed-cost priority routing.
     //
@@ -394,16 +393,16 @@ pub fn frame_dispatch<S, Rand, Clk>(
     // per-priority ListSender.  After processing one shard the task yields to the executor
     // (one shard per poll, matching the behaviour of `drain()`).
     spawner.spawn({
-        let mut staging = crate::stream3::frame::PriorityStorage::default();
+        let mut staging = PriorityStorage::default();
         poll_fn(move |cx| {
             match frame_rx.poll_swap(cx, &mut staging) {
                 task::Poll::Ready(None) => task::Poll::Ready(()),
                 task::Poll::Pending => task::Poll::Pending,
                 task::Poll::Ready(Some(())) => {
-                    for (i, queue) in staging.queues.iter_mut().enumerate() {
+                    for (queue, tx) in staging.iter_mut().zip(&mut priority_list_txs) {
                         if !queue.is_empty() {
                             let _ = crate::socket::channel::UnboundedSender::send(
-                                &mut priority_list_txs[i],
+                                tx,
                                 core::mem::take(queue),
                             );
                         }
@@ -421,11 +420,7 @@ pub fn frame_dispatch<S, Rand, Clk>(
     //
     // Pipeline: [per-priority-rx[i] → BatchFramesByPathSecret] → Priority → Paced → pick_two
     spawner.spawn(async move {
-        let batched_lanes: Vec<BatchFramesByPathSecret<_>> = priority_frame_rxs
-            .into_iter()
-            .map(BatchFramesByPathSecret::new)
-            .collect();
-        let rx = PriorityRx::new(batched_lanes);
+        let rx = PriorityRx::new(priority_frame_rxs);
         let rx = Paced::new(rx, clock, overall_send_rate);
         pick_two(rx, socket_senders, random).await;
     });
@@ -496,8 +491,7 @@ pub async fn socket_send_task<Socket, BatchRx, AckRx>(
     // For now, drain and discard all incoming batches and ACKs so that the endpoint can run
     // without panicking, and so that channels don't back up. This is intentionally a no-op
     // stub until the send path is implemented.
-    use core::future;
-    use core::task::Poll;
+    use core::{future, task::Poll};
 
     // Drain both channels with a per-poll budget so the stub does not starve other tasks.
     future::poll_fn(move |cx| {
@@ -562,10 +556,12 @@ pub async fn socket_recv_task<Socket, Tx>(
         >,
     >,
 {
-    use crate::socket::channel::{
-        FlattenSegments, InspectErr, ReceiverExt as _, RouterAdapter, SocketReceiver,
+    use crate::{
+        socket::channel::{
+            FlattenSegments, InspectErr, ReceiverExt as _, RouterAdapter, SocketReceiver,
+        },
+        stream3::endpoint::worker::ChannelRouter,
     };
-    use crate::stream3::endpoint::worker::ChannelRouter;
 
     let rx = SocketReceiver::new(socket, pool);
     // SocketReceiver yields io::Result<Segments>; InspectErr logs errors and unwraps to Segments.
@@ -577,7 +573,9 @@ pub async fn socket_recv_task<Socket, Tx>(
         tx,
         decode_error_counter,
     };
-    RouterAdapter::new(rx, router).drain_budgeted(Some(budget)).await;
+    RouterAdapter::new(rx, router)
+        .drain_budgeted(Some(budget))
+        .await;
 }
 
 /// Per-worker packet dispatch loop: decrypts, deduplicates, and dispatches received packets.
@@ -637,8 +635,10 @@ pub async fn packet_dispatch_task<PacketRx, AckTx, Clk>(
     AckTx: crate::socket::channel::UnboundedSender<crate::stream3::endpoint::msg::Sender>,
     Clk: s2n_quic_core::time::Clock + crate::clock::precision::Clock,
 {
-    use crate::socket::channel::{InspectErr, Map, ReceiverExt as _};
-    use crate::stream3::endpoint::dispatch;
+    use crate::{
+        socket::channel::{InspectErr, Map, ReceiverExt as _},
+        stream3::endpoint::dispatch,
+    };
 
     // Response frames (ACKs sent back to peers) re-enter via the same submission channel.
     // TODO: route responses through a dedicated channel + RetransmissionBatcher (see above).
@@ -944,7 +944,11 @@ mod tests {
     fn pick_two_drops_unsent_entry_on_shutdown() {
         let drop_counter = Arc::new(AtomicUsize::new(0));
         let rx = TestReceiver {
-            values: [new_test_item(test_path_secret_entry(), drop_counter.clone())].into(),
+            values: [new_test_item(
+                test_path_secret_entry(),
+                drop_counter.clone(),
+            )]
+            .into(),
             consumed: 0,
         };
         let senders = vec![TestSender {

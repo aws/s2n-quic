@@ -68,7 +68,7 @@
 
 use crate::{
     byte_vec::ByteVec,
-    intrusive_queue::Queue,
+    intrusive_queue::{Entry, Queue},
     packet::{
         control,
         datagram::{partial::MAX_FLOW_DATA_HEADER_OVERHEAD, QueuePair, ResetTarget},
@@ -79,7 +79,7 @@ use crate::{
             msg,
             reset_error::{self, ResetError},
         },
-        frame::{self, Frame, Header, PriorityInput, SubmissionSender, DEFAULT_TTL},
+        frame::{self, Frame, Header, SubmissionSender, DEFAULT_TTL},
     },
 };
 use s2n_quic_core::{
@@ -711,6 +711,7 @@ impl Inner {
         let mut written = 0;
 
         let mut need_fin_packet = is_fin && buf.buffer_is_empty();
+        let mut frames = Queue::new();
 
         loop {
             if !need_fin_packet && buf.buffer_is_empty() {
@@ -773,7 +774,7 @@ impl Inner {
                 transmission_time: None,
             };
 
-            self.send_frame(frame)?;
+            frames.push_back(frame.into());
 
             self.advance_offset(payload_len)?;
             written += payload_len;
@@ -792,6 +793,8 @@ impl Inner {
 
             need_fin_packet = false;
         }
+
+        self.send_batch(frames)?;
 
         Ok(written)
     }
@@ -814,10 +817,14 @@ impl Inner {
     }
 
     fn send_frame(&mut self, frame: Frame) -> io::Result<()> {
-        let mut input = PriorityInput::default();
-        input.push(frame.into());
         self.frame_tx
-            .send_batch(input)
+            .send_batch(Entry::new(frame))
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))
+    }
+
+    fn send_batch(&mut self, frame: Queue<Frame>) -> io::Result<()> {
+        self.frame_tx
+            .send_batch(frame)
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))
     }
 }
@@ -890,16 +897,10 @@ impl tokio::io::AsyncWrite for Writer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        flow,
-        socket::channel::{self, Receiver as _},
-    };
+    use crate::flow;
     use bytes::Bytes;
 
-    fn new_test_inner() -> (
-        Inner,
-        crate::stream3::frame::SubmissionReceiver,
-    ) {
+    fn new_test_inner() -> (Inner, crate::stream3::frame::SubmissionReceiver) {
         let (frame_tx, frame_rx) = crate::stream3::frame::submission_channel(1);
 
         let path_secret_entry = PathSecretEntry::fake("127.0.0.1:8080".parse().unwrap(), None);

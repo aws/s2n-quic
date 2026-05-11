@@ -40,31 +40,31 @@ mod sync {
 
 /// Shard-local storage used by the channel to accumulate sender input under the shard lock.
 pub trait Storage<A: intrusive_queue::Adapter>: Default {
-    type Input;
-
     fn is_empty(&self) -> bool;
+}
 
-    fn input_is_empty(input: &Self::Input) -> bool;
-
-    fn append(&mut self, other: &mut Self::Input);
+/// A value that can be appended into a particular [`Storage`] type.
+pub trait Input<A: intrusive_queue::Adapter, S: Storage<A>>: Sized {
+    fn is_empty(&self) -> bool;
+    fn append_to(self, storage: &mut S);
 }
 
 impl<A: intrusive_queue::Adapter> Storage<A> for intrusive_queue::List<A> {
-    type Input = Self;
-
     #[inline(always)]
     fn is_empty(&self) -> bool {
         self.is_empty()
     }
+}
 
+impl<A: intrusive_queue::Adapter> Input<A, intrusive_queue::List<A>> for intrusive_queue::List<A> {
     #[inline(always)]
-    fn input_is_empty(input: &Self::Input) -> bool {
-        input.is_empty()
+    fn is_empty(&self) -> bool {
+        intrusive_queue::List::is_empty(self)
     }
 
     #[inline(always)]
-    fn append(&mut self, other: &mut Self::Input) {
-        self.append(other);
+    fn append_to(mut self, storage: &mut intrusive_queue::List<A>) {
+        storage.append(&mut self);
     }
 }
 
@@ -155,9 +155,7 @@ pub fn new_with_adapter<A: intrusive_queue::Adapter>(
     new_with_adapter_and_storage::<A, intrusive_queue::List<A>>(shard_count)
 }
 
-pub fn new_with_adapter_and_storage<A, Q>(
-    shard_count: usize,
-) -> (Sender<A, Q>, Receiver<A, Q>)
+pub fn new_with_adapter_and_storage<A, Q>(shard_count: usize) -> (Sender<A, Q>, Receiver<A, Q>)
 where
     A: intrusive_queue::Adapter,
     Q: Storage<A>,
@@ -242,11 +240,8 @@ impl<A: intrusive_queue::Adapter, Q: Storage<A>> Sender<A, Q> {
         shard
     }
 
-    pub fn send_batch(
-        &mut self,
-        mut batch: Q::Input,
-    ) -> Result<(), Q::Input> {
-        if Q::input_is_empty(&batch) {
+    pub fn send_batch<I: Input<A, Q>>(&mut self, batch: I) -> Result<(), I> {
+        if batch.is_empty() {
             return Ok(());
         }
 
@@ -258,7 +253,7 @@ impl<A: intrusive_queue::Adapter, Q: Storage<A>> Sender<A, Q> {
         }
 
         let was_empty = <Q as Storage<A>>::is_empty(&queue.queue);
-        queue.queue.append(&mut batch);
+        batch.append_to(&mut queue.queue);
         drop(queue);
 
         if was_empty {
@@ -270,21 +265,29 @@ impl<A: intrusive_queue::Adapter, Q: Storage<A>> Sender<A, Q> {
     }
 }
 
-impl<A: intrusive_queue::Adapter, Q: Storage<A>> super::super::UnboundedSender<Q::Input>
-    for Sender<A, Q>
+impl<I, A, Q> super::super::UnboundedSender<I> for Sender<A, Q>
+where
+    A: intrusive_queue::Adapter,
+    Q: Storage<A>,
+    I: Input<A, Q>,
 {
     #[inline(always)]
-    fn send(&mut self, batch: Q::Input) -> Result<(), Q::Input> {
+    fn send(&mut self, batch: I) -> Result<(), I> {
         self.send_batch(batch)
     }
 }
 
-impl<A: intrusive_queue::Adapter, Q: Storage<A>> super::super::Sender<Q::Input> for Sender<A, Q> {
+impl<I, A, Q> super::super::Sender<I> for Sender<A, Q>
+where
+    A: intrusive_queue::Adapter,
+    Q: Storage<A>,
+    I: Input<A, Q>,
+{
     #[inline(always)]
     fn poll_send(
         &mut self,
         _cx: &mut core::task::Context<'_>,
-        slot: &mut core::mem::MaybeUninit<Q::Input>,
+        slot: &mut core::mem::MaybeUninit<I>,
     ) -> Poll<Result<(), ()>> {
         // SAFETY: the Sender trait requires callers to provide an initialized slot.
         let batch = unsafe { slot.assume_init_read() };
@@ -298,10 +301,7 @@ impl<A: intrusive_queue::Adapter, Q: Storage<A>> super::super::Sender<Q::Input> 
     }
 }
 
-pub struct Receiver<
-    A: intrusive_queue::Adapter,
-    Q: Storage<A> = intrusive_queue::List<A>,
-> {
+pub struct Receiver<A: intrusive_queue::Adapter, Q: Storage<A> = intrusive_queue::List<A>> {
     next_shard: usize,
     local_occupancy: Box<[u64]>,
     shared: Arc<Shared<A, Q>>,
@@ -531,24 +531,22 @@ mod tests {
     }
 
     impl Storage<intrusive_queue::EntryAdapter<u32>> for SplitQueue {
-        type Input = Queue<u32>;
-
-        // Split into two categories so the test can verify that custom shard-local storage keeps
-        // separate append targets inside a shard.
         fn is_empty(&self) -> bool {
             self.even.is_empty() && self.odd.is_empty()
         }
+    }
 
-        fn input_is_empty(input: &Self::Input) -> bool {
-            input.is_empty()
+    impl Input<intrusive_queue::EntryAdapter<u32>, SplitQueue> for Queue<u32> {
+        fn is_empty(&self) -> bool {
+            Queue::is_empty(self)
         }
 
-        fn append(&mut self, other: &mut Self::Input) {
-            while let Some(entry) = other.pop_front() {
+        fn append_to(mut self, storage: &mut SplitQueue) {
+            while let Some(entry) = self.pop_front() {
                 if *entry % 2 == 0 {
-                    self.even.push_back(entry);
+                    storage.even.push_back(entry);
                 } else {
-                    self.odd.push_back(entry);
+                    storage.odd.push_back(entry);
                 }
             }
         }
@@ -569,22 +567,22 @@ mod tests {
     }
 
     impl Storage<intrusive_queue::EntryAdapter<u32>> for VecInputSplitQueue {
-        type Input = Vec<Entry<u32>>;
-
         fn is_empty(&self) -> bool {
             self.even.is_empty() && self.odd.is_empty()
         }
+    }
 
-        fn input_is_empty(input: &Self::Input) -> bool {
-            input.is_empty()
+    impl Input<intrusive_queue::EntryAdapter<u32>, VecInputSplitQueue> for Vec<Entry<u32>> {
+        fn is_empty(&self) -> bool {
+            Vec::is_empty(self)
         }
 
-        fn append(&mut self, other: &mut Self::Input) {
-            for entry in other.drain(..) {
+        fn append_to(self, storage: &mut VecInputSplitQueue) {
+            for entry in self {
                 if *entry % 2 == 0 {
-                    self.even.push_back(entry);
+                    storage.even.push_back(entry);
                 } else {
-                    self.odd.push_back(entry);
+                    storage.odd.push_back(entry);
                 }
             }
         }
