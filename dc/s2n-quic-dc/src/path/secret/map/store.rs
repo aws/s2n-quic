@@ -157,4 +157,11 @@ pub trait Store: 'static + Send + Sync {
     fn reset_all_senders(&self);
 
     fn on_dc_connection_timeout(&self, peer_address: &SocketAddr);
+
+    fn replay_unknown_path_secrets(
+        &self,
+        entries: Vec<super::persistence::PersistedEntry>,
+        rate_pps: u32,
+        timeout: Duration,
+    ) -> super::persistence::ReplayResult;
 }
