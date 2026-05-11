@@ -3,6 +3,7 @@
 
 use super::Context;
 use core::time::Duration;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// Q: What happens when the application has an empty read buffer?
@@ -163,4 +164,82 @@ async fn stream_closed_without_authentication() {
             err
         );
     }
+}
+
+/// Q: What happens when the server uses read_exact to consume the payload but does not
+///    read the authenticated FIN frame, then panics (dropping the stream without sending
+///    the authenticated closure)?
+///
+/// A: The stream's shutdown path drains the FIN from the kernel's TCP receive buffer
+///    before closing the fd, so close() sends a clean TCP FIN rather than RST. The client
+///    observes UnexpectedEof (TruncatedTransport — no authenticated closure) rather than
+///    ConnectionReset (which would indicate the kernel sent RST due to unread data).
+#[tokio::test]
+async fn read_exact_missing_fin_no_rst() {
+    let context = Context::new().await;
+
+    // The dcQUIC over UDP transmits an explicit message on panic! drop which is translated as a
+    // ConnectionReset. For now skip the test there as a result.
+    if !context.protocol().is_tcp() {
+        return;
+    }
+
+    // Any non-zero size works: the read_done channel ensures the server's read_exact
+    // completes before the client sends the FIN frame, so payload size doesn't affect
+    // whether the FIN ends up sitting unread in the kernel recv buffer.
+    let payload_size = 16;
+
+    let (mut client, mut server) = context.pair().await;
+
+    let (read_done_tx, read_done_rx) = tokio::sync::oneshot::channel::<()>();
+
+    let client_handle = tokio::spawn(async move {
+        let payload = vec![42u8; payload_size];
+        client.write_all(&payload).await.unwrap();
+
+        // Wait for the server to consume the payload via read_exact
+        let _ = read_done_rx.await;
+
+        // Client shuts down write side — this writes the dcquic FIN frame which
+        // lands in the server's kernel recv buffer
+        client.shutdown().await.unwrap();
+
+        // Give time for the FIN frame to arrive at the server
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        // Client tries to read — should get UnexpectedEof (TruncatedTransport),
+        // not ConnectionReset (which would mean the kernel sent RST)
+        let mut buf = vec![0u8; 1];
+        let err = client.read_exact(&mut buf).await.unwrap_err();
+        assert_eq!(
+            err.kind(),
+            std::io::ErrorKind::UnexpectedEof,
+            "Expected UnexpectedEof (TruncatedTransport from drained shutdown), \
+             got {err:?} — if ConnectionReset, the drain-on-shutdown fix is broken"
+        );
+    });
+
+    let server_handle = tokio::spawn(async move {
+        // Server reads exactly the payload — does NOT consume the FIN frame
+        let mut buf = vec![0u8; payload_size];
+        server.read_exact(&mut buf).await.unwrap();
+
+        let _ = read_done_tx.send(());
+
+        // Wait for client's FIN frame to arrive in our kernel recv buffer
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        // Panic to drop the stream without sending the authenticated closure.
+        // The stream is moved into the closure so it is dropped during unwind
+        // (when std::thread::panicking() == true). This causes the writer to skip
+        // the authenticated FIN, but the reader still drains the kernel recv
+        // buffer — preventing RST.
+        let _ = catch_unwind(AssertUnwindSafe(move || {
+            let _server = server;
+            panic!("intentional panic to skip authenticated closure");
+        }));
+    });
+
+    server_handle.await.unwrap();
+    client_handle.await.unwrap();
 }
