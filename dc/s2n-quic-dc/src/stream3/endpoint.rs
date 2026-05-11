@@ -5,6 +5,7 @@
 
 pub(crate) mod ack;
 pub(crate) mod assemble;
+pub(crate) mod combinator;
 pub(crate) mod counters;
 pub(crate) mod decode;
 pub(crate) mod dispatch;
@@ -41,8 +42,35 @@ pub struct Endpoint {
 
 // ── Pipeline Setup ────────────────────────────────────────────────────────
 
+/// Per-poll budgets for each pipeline task.
+///
+/// Each budget controls how many items a task processes per executor poll before yielding.
+/// Lower values improve fairness across tasks; higher values improve throughput under load.
+#[derive(Clone, Copy, Debug)]
+pub struct Budgets {
+    /// Budget for the frame-dispatch batcher+distributor task.
+    pub frame_dispatch: usize,
+    /// Budget for the per-socket assembler+sender and ACK processor tasks.
+    pub socket_send: usize,
+    /// Budget for the per-socket recv task.
+    pub socket_recv: usize,
+    /// Budget for the per-worker packet dispatch task.
+    pub packet_dispatch: usize,
+}
+
+impl Default for Budgets {
+    fn default() -> Self {
+        Self {
+            frame_dispatch: tasks::DEFAULT_DISPATCH_BUDGET,
+            socket_send: tasks::DEFAULT_DISPATCH_BUDGET,
+            socket_recv: tasks::DEFAULT_RECV_BUDGET,
+            packet_dispatch: tasks::DEFAULT_DISPATCH_BUDGET,
+        }
+    }
+}
+
 /// Configuration for the stream3 pipeline.
-pub struct EndpointConfig<S, C> {
+pub struct Config<S, C> {
     /// Worker pool spawner.
     pub spawner: S,
     /// Buffer pool for outbound (send) packets.
@@ -69,6 +97,217 @@ pub struct EndpointConfig<S, C> {
     ///
     /// [`Paced`]: crate::socket::channel::Paced
     pub overall_send_rate: crate::socket::rate::Rate,
+    /// Per-poll budgets for each pipeline task.
+    pub budgets: Budgets,
+    /// Number of shards for the frame submission channel.
+    pub submission_shards: usize,
+}
+
+// ── setup_endpoint ────────────────────────────────────────────────────────
+
+/// Assembles the stream3 pipeline from pre-opened sockets and spawns worker tasks.
+///
+/// This is the top-level composition function. It creates all inter-task channels, builds a
+/// [`Worker`] for each spawner thread, and calls [`Worker::spawn`]. No pipeline logic lives
+/// here — every stage is implemented in the task functions in [`tasks`].
+///
+/// # Worker distribution
+///
+/// * Worker `0` runs the frame-dispatch task (routes batches to send sockets).
+/// * Send workers handle per-socket assembly and transmission (workers 1..=num_send).
+/// * Remaining workers pair a socket-recv task with a packet-dispatch task.
+///
+/// When the worker count exceeds the number of sockets, extra workers are idle. When the socket
+/// count exceeds workers, multiple sockets share a worker.
+pub fn setup_endpoint<SendSocket, RecvSocket, G, S, C>(
+    config: Config<S, C>,
+    send_sockets: Vec<SendSocket>,
+    recv_sockets: Vec<RecvSocket>,
+    create_rand: impl Fn() -> G,
+) -> Endpoint
+where
+    SendSocket: crate::socket::send::Socket + Send + 'static,
+    RecvSocket: crate::socket::recv::Socket + Send + 'static,
+    G: crate::random::Generator,
+    S: crate::stream2::Spawner,
+    C: s2n_quic_core::time::Clock + crate::clock::precision::Clock + Clone + Send + 'static,
+{
+    let num_send = send_sockets.len();
+
+    // Choose the routing implementation that best fits the socket count.
+    if num_send.is_power_of_two() {
+        setup_endpoint_inner::<_, _, _, _, _, routing::PowerOfTwoRoute>(
+            config,
+            send_sockets,
+            recv_sockets,
+            create_rand,
+        )
+    } else {
+        setup_endpoint_inner::<_, _, _, _, _, routing::ModuloRoute>(
+            config,
+            send_sockets,
+            recv_sockets,
+            create_rand,
+        )
+    }
+}
+
+fn setup_endpoint_inner<SendSocket, RecvSocket, G, S, C, SenderRoute>(
+    config: Config<S, C>,
+    send_sockets: Vec<SendSocket>,
+    recv_sockets: Vec<RecvSocket>,
+    create_rand: impl Fn() -> G,
+) -> Endpoint
+where
+    SendSocket: crate::socket::send::Socket + Send + 'static,
+    RecvSocket: crate::socket::recv::Socket + Send + 'static,
+    G: crate::random::Generator,
+    S: crate::stream2::Spawner,
+    C: s2n_quic_core::time::Clock + crate::clock::precision::Clock + Clone + Send + 'static,
+    SenderRoute: routing::SenderRoute,
+{
+    use crate::{
+        counter::Registry as CounterRegistry,
+        socket::channel::{cell, intrusive_queue},
+        stream3::frame,
+    };
+
+    let Config {
+        spawner,
+        send_pool,
+        recv_pool,
+        path_secret_map,
+        gso,
+        acceptor_registry,
+        idle_timeout,
+        clock,
+        overall_send_rate,
+        budgets,
+        submission_shards,
+    } = config;
+
+    let num_workers = spawner.worker_count().max(1);
+    let num_send = send_sockets.len();
+
+    assert!(
+        num_send.is_power_of_two(),
+        "number of sender sockets must be a power of two"
+    );
+    assert!(
+        submission_shards.is_power_of_two(),
+        "submission shard count must be a power of two"
+    );
+
+    // The port our recv sockets listen on — embedded in outbound packets so peers can ACK back.
+    let source_control_port = recv_sockets
+        .first()
+        .and_then(|s| s.local_addr().ok())
+        .map(|a| a.port())
+        .unwrap_or(0);
+
+    // Frame submission channel: all writers share one sharded sender; one dispatch task drains it.
+    let (frame_tx, frame_rx) = frame::submission_channel(submission_shards);
+
+    // Per-send-socket channels ---------------------------------------------------
+    // batch channel: pick_two routes FrameBatch items; the send task drains them.
+    // ack channel:   dispatch tasks route ACK messages; the send task processes them.
+    let (socket_batch_txs, socket_batch_rxs): (Vec<_>, Vec<_>) = (0..num_send)
+        .map(|_| cell::sync::new::<combinator::FrameBatch>())
+        .unzip();
+    let (socket_ack_txs, socket_ack_rxs): (Vec<_>, Vec<_>) = (0..num_send)
+        .map(|_| intrusive_queue::sync::new::<msg::Sender>())
+        .unzip();
+
+    let ack_sender = routing::AckSender::new(
+        socket_ack_txs
+            .into_iter()
+            .map(crate::socket::channel::EntryBoxSender::new)
+            .collect(),
+    );
+
+    // Shared flow-queue allocator and dispatch counters -------------------------
+    let queue_allocator = msg::queue::Allocator::new();
+    let queue_dispatcher = queue_allocator.dispatcher();
+    let counter_registry = CounterRegistry::default();
+    let counters = counters::Dispatch::new(&counter_registry);
+    let decode_error_counter = counters.rx_none.clone();
+
+    // Build workers -------------------------------------------------------------
+    // Pre-allocate one Worker per spawner thread.
+    let mut workers: Vec<Worker<SendSocket, RecvSocket, C, G, _>> = {
+        let mut v = Vec::with_capacity(num_workers);
+        v.extend((0..num_workers).map(|id| Worker::new(id, idle_timeout, budgets)));
+        v
+    };
+
+    // Worker 0 runs frame-dispatch.
+    workers[0].frame_dispatch = Some(FrameDispatchParts {
+        frame_rx,
+        batch_txs: socket_batch_txs,
+        rand: create_rand(),
+        clock: clock.clone(),
+        overall_send_rate,
+    });
+
+    // Distribute send sockets across workers 1..=num_send (wrapping modulo num_workers).
+    for (sender_idx, (socket, (batch_rx, ack_rx))) in send_sockets
+        .into_iter()
+        .zip(socket_batch_rxs.into_iter().zip(socket_ack_rxs.into_iter()))
+        .enumerate()
+    {
+        let worker_id = (1 + sender_idx) % num_workers;
+        let inflight_gauge = counter_registry.register_queue_gauge("send.inflight");
+        workers[worker_id].send_tasks.push(SendTaskParts {
+            socket,
+            batch_rx,
+            ack_rx,
+            sender_idx,
+            source_control_port,
+            gso: gso.clone(),
+            pool: send_pool.clone(),
+            clock: clock.clone(),
+            random: create_rand(),
+            frame_tx: frame_tx.clone(),
+            inflight_gauge,
+        });
+    }
+
+    // Distribute recv sockets + dispatch pairs across workers (wrapping modulo num_workers).
+    for (recv_idx, socket) in recv_sockets.into_iter().enumerate() {
+        let worker_id = (1 + num_send + recv_idx) % num_workers;
+
+        let (packet_tx, packet_rx) = intrusive_queue::sync::new();
+        let ack_sender = ack_sender.clone();
+
+        workers[worker_id].recv_tasks.push(RecvTaskParts {
+            socket,
+            recv_pool: recv_pool.clone(),
+            packet_tx,
+            decode_error_counter: decode_error_counter.clone(),
+            packet_rx,
+            path_secret_map: path_secret_map.clone(),
+            acceptor_registry: acceptor_registry.clone(),
+            frame_tx: frame_tx.clone(),
+            ack_sender,
+            queue_dispatcher: queue_dispatcher.clone(),
+            counters: counters.clone(),
+            clock: clock.clone(),
+        });
+    }
+
+    // Spawn all workers ---------------------------------------------------------
+    for worker in workers {
+        worker.spawn(&spawner);
+    }
+
+    Endpoint {
+        frame_tx,
+        path_secret_map,
+        queue_allocator,
+        acceptor_registry,
+        next_stream_id: AtomicU64::new(0),
+        data_port: source_control_port,
+    }
 }
 
 // ── Worker parts ──────────────────────────────────────────────────────────
@@ -77,7 +316,7 @@ pub struct EndpointConfig<S, C> {
 struct FrameDispatchParts<G, Clk> {
     frame_rx: crate::stream3::frame::SubmissionReceiver,
     /// Senders for each send-socket's batch channel.
-    batch_txs: Vec<crate::socket::channel::cell::sync::Sender<tasks::FrameBatch>>,
+    batch_txs: Vec<crate::socket::channel::cell::sync::Sender<combinator::FrameBatch>>,
     /// Random generator for pick-two routing.
     rand: G,
     /// Clock used by the pacing stage.
@@ -87,14 +326,18 @@ struct FrameDispatchParts<G, Clk> {
 }
 
 /// All the ingredients needed to spawn a send-socket task on a worker.
-struct SendTaskParts<Socket> {
+struct SendTaskParts<Socket, Clk, G> {
     socket: Socket,
-    batch_rx: crate::socket::channel::cell::sync::Receiver<tasks::FrameBatch>,
+    batch_rx: crate::socket::channel::cell::sync::Receiver<combinator::FrameBatch>,
     ack_rx: crate::socket::channel::intrusive_queue::sync::Receiver<msg::Sender>,
     sender_idx: usize,
     source_control_port: u16,
     gso: s2n_quic_platform::features::Gso,
     pool: crate::socket::pool::Pool,
+    clock: Clk,
+    random: G,
+    frame_tx: crate::stream3::frame::SubmissionSender,
+    inflight_gauge: crate::counter::QueueGauge,
 }
 
 /// All the ingredients needed to spawn a recv-socket + dispatch task pair on a worker.
@@ -135,10 +378,12 @@ struct Worker<SendSocket, RecvSocket, Clk, G, AckSnd> {
     id: usize,
     /// Peer idle timeout — controls when `recv::Cache` entries expire.
     idle_timeout: core::time::Duration,
+    /// Per-poll budgets for each pipeline task.
+    budgets: Budgets,
     /// Frame-dispatch task, assigned to exactly one worker (typically worker 0).
     frame_dispatch: Option<FrameDispatchParts<G, Clk>>,
     /// Send socket tasks assigned to this worker.
-    send_tasks: Vec<SendTaskParts<SendSocket>>,
+    send_tasks: Vec<SendTaskParts<SendSocket, Clk, G>>,
     /// Recv + dispatch task pairs assigned to this worker.
     recv_tasks: Vec<RecvTaskParts<RecvSocket, Clk, AckSnd>>,
 }
@@ -147,17 +392,15 @@ impl<SendSocket, RecvSocket, Clk, G, AckSnd> Worker<SendSocket, RecvSocket, Clk,
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
-    Clk: s2n_quic_core::time::Clock
-        + crate::clock::precision::Clock
-        + Send
-        + 'static,
-    G: crate::random::Generator,
+    Clk: s2n_quic_core::time::Clock + crate::clock::precision::Clock + Clone + Send + 'static,
+    G: crate::random::Generator + 'static,
     AckSnd: crate::socket::channel::UnboundedSender<msg::Sender> + Send + 'static,
 {
-    fn new(id: usize, idle_timeout: core::time::Duration) -> Self {
+    fn new(id: usize, idle_timeout: core::time::Duration, budgets: Budgets) -> Self {
         Self {
             id,
             idle_timeout,
+            budgets,
             frame_dispatch: None,
             send_tasks: Vec::new(),
             recv_tasks: Vec::new(),
@@ -179,6 +422,7 @@ where
         let Self {
             id,
             idle_timeout,
+            budgets,
             frame_dispatch,
             send_tasks,
             recv_tasks,
@@ -189,10 +433,10 @@ where
                 // `fd.rand` is `G: Send`, captured in this outer `Send` closure.
                 // Wrap it in `RefCell` here (inside spawn_local) so it is entirely
                 // worker-local — no cross-thread synchronisation needed.
-                let random = std::cell::RefCell::new(fd.rand);
+                let mut random = fd.rand;
                 let random_fn = move |n: usize| {
                     let mut bytes = [0u8; 8];
-                    random.borrow_mut().public_random_fill(&mut bytes);
+                    random.public_random_fill(&mut bytes);
                     let raw = u64::from_le_bytes(bytes) as usize;
                     // Sender counts are always powers of two, so we can use a cheap
                     // bitwise mask rather than a more expensive modulo operation.
@@ -206,11 +450,13 @@ where
                     random_fn,
                     fd.clock,
                     fd.overall_send_rate,
+                    budgets.frame_dispatch,
                 );
             }
 
             for st in send_tasks {
-                local.spawn(tasks::socket_send_task(
+                tasks::socket_send(
+                    &mut local,
                     st.socket,
                     st.batch_rx,
                     st.ack_rx,
@@ -218,7 +464,12 @@ where
                     st.source_control_port,
                     st.gso,
                     st.pool,
-                ));
+                    st.clock,
+                    st.random,
+                    st.frame_tx,
+                    st.inflight_gauge,
+                    budgets.socket_send,
+                );
             }
 
             // One recv::Cache per worker, shared across all dispatch tasks on this worker
@@ -233,7 +484,7 @@ where
                     rt.recv_pool,
                     rt.packet_tx,
                     rt.decode_error_counter,
-                    tasks::DEFAULT_RECV_BUDGET,
+                    budgets.socket_recv,
                 ));
                 local.spawn(tasks::packet_dispatch_task(
                     rt.packet_rx,
@@ -245,218 +496,9 @@ where
                     rt.queue_dispatcher,
                     rt.counters,
                     rt.clock,
-                    tasks::DEFAULT_DISPATCH_BUDGET,
+                    budgets.packet_dispatch,
                 ));
             }
         });
     }
 }
-
-// ── setup_endpoint ────────────────────────────────────────────────────────
-
-/// Assembles the stream3 pipeline from pre-opened sockets and spawns worker tasks.
-///
-/// This is the top-level composition function. It creates all inter-task channels, builds a
-/// [`Worker`] for each spawner thread, and calls [`Worker::spawn`]. No pipeline logic lives
-/// here — every stage is implemented in the task functions in [`tasks`].
-///
-/// # Worker distribution
-///
-/// * Worker `0` runs the frame-dispatch task (routes batches to send sockets).
-/// * Send workers handle per-socket assembly and transmission (workers 1..=num_send).
-/// * Remaining workers pair a socket-recv task with a packet-dispatch task.
-///
-/// When the worker count exceeds the number of sockets, extra workers are idle. When the socket
-/// count exceeds workers, multiple sockets share a worker.
-pub fn setup_endpoint<SendSocket, RecvSocket, G, S, C>(
-    config: EndpointConfig<S, C>,
-    send_sockets: Vec<SendSocket>,
-    recv_sockets: Vec<RecvSocket>,
-    create_rand: impl Fn() -> G,
-) -> Endpoint
-where
-    SendSocket: crate::socket::send::Socket + Send + 'static,
-    RecvSocket: crate::socket::recv::Socket + Send + 'static,
-    G: crate::random::Generator,
-    S: crate::stream2::Spawner,
-    C: s2n_quic_core::time::Clock
-        + crate::clock::precision::Clock
-        + Clone
-        + Send
-        + 'static,
-{
-    let num_send = send_sockets.len();
-
-    // Choose the routing implementation that best fits the socket count.
-    if num_send.is_power_of_two() {
-        setup_endpoint_inner::<_, _, _, _, _, routing::PowerOfTwoRoute>(
-            config,
-            send_sockets,
-            recv_sockets,
-            create_rand,
-        )
-    } else {
-        setup_endpoint_inner::<_, _, _, _, _, routing::ModuloRoute>(
-            config,
-            send_sockets,
-            recv_sockets,
-            create_rand,
-        )
-    }
-}
-
-fn setup_endpoint_inner<SendSocket, RecvSocket, G, S, C, SenderRoute>(
-    config: EndpointConfig<S, C>,
-    send_sockets: Vec<SendSocket>,
-    recv_sockets: Vec<RecvSocket>,
-    create_rand: impl Fn() -> G,
-) -> Endpoint
-where
-    SendSocket: crate::socket::send::Socket + Send + 'static,
-    RecvSocket: crate::socket::recv::Socket + Send + 'static,
-    G: crate::random::Generator,
-    S: crate::stream2::Spawner,
-    C: s2n_quic_core::time::Clock
-        + crate::clock::precision::Clock
-        + Clone
-        + Send
-        + 'static,
-    SenderRoute: routing::SenderRoute,
-{
-    use crate::{
-        counter::Registry as CounterRegistry,
-        socket::channel::{cell, intrusive_queue},
-        stream3::frame,
-    };
-
-    let EndpointConfig {
-        spawner,
-        send_pool,
-        recv_pool,
-        path_secret_map,
-        gso,
-        acceptor_registry,
-        idle_timeout,
-        clock,
-        overall_send_rate,
-    } = config;
-
-    let num_workers = spawner.worker_count().max(1);
-    let num_send = send_sockets.len();
-
-    // The port our recv sockets listen on — embedded in outbound packets so peers can ACK back.
-    let source_control_port = recv_sockets
-        .first()
-        .and_then(|s| s.local_addr().ok())
-        .map(|a| a.port())
-        .unwrap_or(0);
-
-    // Frame submission channel: all writers share one sharded sender; one dispatch task drains it.
-    let shard_count = (num_workers * 4).next_power_of_two();
-    let (frame_tx, frame_rx) = frame::submission_channel(shard_count);
-
-    // Per-send-socket channels ---------------------------------------------------
-    // batch channel: pick_two routes FrameBatch items; the send task drains them.
-    // ack channel:   dispatch tasks route ACK messages; the send task processes them.
-    let (socket_batch_txs, socket_batch_rxs): (Vec<_>, Vec<_>) = (0..num_send)
-        .map(|_| cell::sync::new::<tasks::FrameBatch>())
-        .unzip();
-    let (socket_ack_txs, socket_ack_rxs): (Vec<_>, Vec<_>) = (0..num_send)
-        .map(|_| intrusive_queue::sync::new::<msg::Sender>())
-        .unzip();
-
-    // Shared flow-queue allocator and dispatch counters -------------------------
-    let queue_allocator = msg::queue::Allocator::new();
-    let queue_dispatcher = queue_allocator.dispatcher();
-    let counter_registry = CounterRegistry::default();
-    let counters = counters::Dispatch::new(&counter_registry);
-    let decode_error_counter = counters.rx_none.clone();
-
-    // Build workers -------------------------------------------------------------
-    // Pre-allocate one Worker per spawner thread.
-    //
-    // `AckSnd` = `AckSender<EntryBoxSender<msg::Sender, intrusive_queue::sync::Sender<msg::Sender>>>`:
-    // each `socket_ack_tx` is an `UnboundedSender<Entry<msg::Sender>>`; `EntryBoxSender` converts
-    // it to `UnboundedSender<msg::Sender>` so `AckSender` only needs to route by sender id.
-    type AckSnd = routing::AckSender<
-        crate::socket::channel::EntryBoxSender<
-            msg::Sender,
-            crate::socket::channel::intrusive_queue::sync::Sender<msg::Sender>,
-        >,
-    >;
-    let mut workers: Vec<Worker<SendSocket, RecvSocket, C, G, AckSnd>> = {
-        let mut v = Vec::with_capacity(num_workers);
-        v.extend((0..num_workers).map(|id| Worker::new(id, idle_timeout)));
-        v
-    };
-
-    // Worker 0 runs frame-dispatch.
-    workers[0].frame_dispatch = Some(FrameDispatchParts {
-        frame_rx,
-        batch_txs: socket_batch_txs,
-        rand: create_rand(),
-        clock: clock.clone(),
-        overall_send_rate,
-    });
-
-    // Distribute send sockets across workers 1..=num_send (wrapping modulo num_workers).
-    for (sender_idx, (socket, (batch_rx, ack_rx))) in send_sockets
-        .into_iter()
-        .zip(socket_batch_rxs.into_iter().zip(socket_ack_rxs.into_iter()))
-        .enumerate()
-    {
-        let worker_id = (1 + sender_idx) % num_workers;
-        workers[worker_id].send_tasks.push(SendTaskParts {
-            socket,
-            batch_rx,
-            ack_rx,
-            sender_idx,
-            source_control_port,
-            gso: gso.clone(),
-            pool: send_pool.clone(),
-        });
-    }
-
-    // Distribute recv sockets + dispatch pairs across workers (wrapping modulo num_workers).
-    for (recv_idx, socket) in recv_sockets.into_iter().enumerate() {
-        let worker_id = (1 + num_send + recv_idx) % num_workers;
-
-        let (packet_tx, packet_rx) = intrusive_queue::sync::new();
-
-        workers[worker_id].recv_tasks.push(RecvTaskParts {
-            socket,
-            recv_pool: recv_pool.clone(),
-            packet_tx,
-            decode_error_counter: decode_error_counter.clone(),
-            packet_rx,
-            path_secret_map: path_secret_map.clone(),
-            acceptor_registry: acceptor_registry.clone(),
-            frame_tx: frame_tx.clone(),
-            ack_sender: routing::AckSender::new(
-                socket_ack_txs
-                    .iter()
-                    .cloned()
-                    .map(crate::socket::channel::EntryBoxSender::new)
-                    .collect(),
-            ),
-            queue_dispatcher: queue_dispatcher.clone(),
-            counters: counters.clone(),
-            clock: clock.clone(),
-        });
-    }
-
-    // Spawn all workers ---------------------------------------------------------
-    for worker in workers {
-        worker.spawn(&spawner);
-    }
-
-    Endpoint {
-        frame_tx,
-        path_secret_map,
-        queue_allocator,
-        acceptor_registry,
-        next_stream_id: AtomicU64::new(0),
-        data_port: source_control_port,
-    }
-}
-

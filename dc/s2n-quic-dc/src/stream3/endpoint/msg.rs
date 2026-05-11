@@ -1,8 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::path::secret::map::Entry as PathSecretEntry;
 use bytes::BytesMut;
 use s2n_quic_core::varint::VarInt;
+use std::sync::Arc;
 
 pub enum Stream {
     FlowValidated,
@@ -24,6 +26,7 @@ pub enum Control {
 pub enum Sender {
     Ack {
         local_sender_id: VarInt,
+        path_secret_entry: Arc<PathSecretEntry>,
         payload: BytesMut,
     },
 }

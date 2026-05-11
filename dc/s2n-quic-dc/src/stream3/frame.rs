@@ -20,7 +20,7 @@ use crate::{
     intrusive_queue::{Entry, Queue},
     packet::datagram::{QueuePair, ResetTarget},
     path::secret::map::Entry as PathSecretEntry,
-    socket::channel::{intrusive_queue::datagram_completion, ByteCost},
+    socket::channel::{intrusive_queue::datagram_completion, ByteCost, UnboundedSender},
 };
 use s2n_codec::{decoder_invariant, Encoder, EncoderValue};
 use s2n_quic_core::varint::VarInt;
@@ -96,6 +96,14 @@ impl core::fmt::Debug for PriorityInput {
     }
 }
 
+impl UnboundedSender<Entry<Frame>> for PriorityInput {
+    #[inline]
+    fn send(&mut self, value: Entry<Frame>) -> Result<(), Entry<Frame>> {
+        self.push(value);
+        Ok(())
+    }
+}
+
 /// Box-backed shard-local storage for the frame submission channel.
 ///
 /// Each shard holds one `PriorityStorage`, which is a heap-allocated array of
@@ -132,6 +140,25 @@ impl
         crate::intrusive_queue::EntryAdapter<Frame>,
         PriorityStorage,
     > for PriorityInput
+{
+    #[inline(always)]
+    fn is_empty(&self) -> bool {
+        PriorityInput::is_empty(self)
+    }
+
+    #[inline(always)]
+    fn append_to(mut self, storage: &mut PriorityStorage) {
+        for (dst, src) in storage.0.queues.iter_mut().zip(self.queues.iter_mut()) {
+            dst.append(src);
+        }
+    }
+}
+
+impl
+    crate::socket::channel::intrusive_queue::sharded::Input<
+        crate::intrusive_queue::EntryAdapter<Frame>,
+        PriorityStorage,
+    > for &mut PriorityInput
 {
     #[inline(always)]
     fn is_empty(&self) -> bool {

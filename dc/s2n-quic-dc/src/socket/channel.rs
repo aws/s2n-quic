@@ -130,6 +130,18 @@ pub struct EntryBoxSender<T, S> {
     _phantom: PhantomData<fn() -> T>,
 }
 
+impl<T, S> Clone for EntryBoxSender<T, S>
+where
+    S: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
 impl<T, S> EntryBoxSender<T, S> {
     pub fn new(inner: S) -> Self {
         Self {

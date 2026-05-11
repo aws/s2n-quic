@@ -8,8 +8,8 @@
 //! and dispatch each frame to its appropriate handler based on the frame header type.
 
 use crate::{
-    byte_vec::ByteVec,
     acceptor,
+    byte_vec::ByteVec,
     credentials::Credentials,
     flow,
     intrusive_queue::Entry,
@@ -17,8 +17,7 @@ use crate::{
         self,
         datagram::{QueuePair, ResetTarget, RoutingInfo},
     },
-    path::secret::Map as PathSecretMap,
-    path::secret::map::Entry as PathSecretEntry,
+    path::secret::{map::Entry as PathSecretEntry, Map as PathSecretMap},
     socket::{channel, pool::descriptor},
     stream3::{
         endpoint::{
@@ -317,7 +316,10 @@ fn dispatch_decoded_frame(
                 response_frames,
             );
         }
-        Header::FlowControl { queue_pair, stream_id } => {
+        Header::FlowControl {
+            queue_pair,
+            stream_id,
+        } => {
             handle_flow_control(
                 &peer.path_entry,
                 credentials,
@@ -348,6 +350,7 @@ fn dispatch_decoded_frame(
         Header::Control { dest_sender_id } => {
             let message = msg::Sender::Ack {
                 local_sender_id: dest_sender_id,
+                path_secret_entry: peer.path_entry.clone(),
                 payload,
             };
             if sender_tx.send(message).is_err() {
@@ -379,7 +382,8 @@ fn handle_flow_init(
     response_frames: &mut PriorityInput,
 ) {
     let create_queue = |handle| {
-        let (queue_control, queue_stream) = queue_dispatcher.alloc_or_grow(handle, Some(peer_queue_id));
+        let (queue_control, queue_stream) =
+            queue_dispatcher.alloc_or_grow(handle, Some(peer_queue_id));
         (queue_control.queue_id(), (queue_control, queue_stream))
     };
 
@@ -409,11 +413,26 @@ fn handle_flow_init(
         }
 
         let local_queue_id = queue_control.queue_id();
-        let writer = Writer::new_server(frame_tx.clone(), peer.path_entry.clone(), stream_id, queue_control);
+        let writer = Writer::new_server(
+            frame_tx.clone(),
+            peer.path_entry.clone(),
+            stream_id,
+            queue_control,
+        );
         let reader = if pending_validation {
-            Reader::new_server_pending(frame_tx.clone(), peer.path_entry.clone(), stream_id, queue_stream)
+            Reader::new_server_pending(
+                frame_tx.clone(),
+                peer.path_entry.clone(),
+                stream_id,
+                queue_stream,
+            )
         } else {
-            Reader::new_server(frame_tx.clone(), peer.path_entry.clone(), stream_id, queue_stream)
+            Reader::new_server(
+                frame_tx.clone(),
+                peer.path_entry.clone(),
+                stream_id,
+                queue_stream,
+            )
         };
 
         (local_queue_id, Stream::new(reader, writer))

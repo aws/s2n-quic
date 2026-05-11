@@ -105,6 +105,7 @@ impl SenderRoute for ModuloRoute {
 /// `T` is generic over the sender type so callers can wrap or transform it freely (e.g., wrap
 /// an `intrusive_queue::sync::Sender<Entry<msg::Sender>>` in
 /// [`EntryBoxSender`][crate::socket::channel::EntryBoxSender] to get a plain `UnboundedSender<msg::Sender>`).
+#[derive(Clone)]
 pub(crate) struct AckSender<T> {
     inner: Vec<T>,
 }
@@ -119,12 +120,11 @@ impl<T> crate::socket::channel::UnboundedSender<super::msg::Sender> for AckSende
 where
     T: crate::socket::channel::UnboundedSender<super::msg::Sender>,
 {
-    fn send(
-        &mut self,
-        msg: super::msg::Sender,
-    ) -> Result<(), super::msg::Sender> {
+    fn send(&mut self, msg: super::msg::Sender) -> Result<(), super::msg::Sender> {
         match &msg {
-            super::msg::Sender::Ack { local_sender_id, .. } => {
+            super::msg::Sender::Ack {
+                local_sender_id, ..
+            } => {
                 let idx = match usize::try_from(local_sender_id.as_u64()) {
                     Ok(idx) => idx,
                     // A sender ID that doesn't fit in usize cannot be a valid socket index on this
