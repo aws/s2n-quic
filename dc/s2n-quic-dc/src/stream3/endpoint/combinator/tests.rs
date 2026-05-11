@@ -396,7 +396,7 @@ fn batch_frames_tracks_sticky_sender_from_first_frame() {
         panic!("expected batch");
     };
     assert_eq!(batch.len(), 2);
-    assert_eq!(batch.sticky_sender_idx(), Some(2));
+    assert_eq!(batch.sender_id(), Some(2));
 }
 
 #[test]
@@ -418,14 +418,14 @@ fn batch_frames_breaks_on_conflicting_sticky_senders() {
         panic!("expected first batch");
     };
     assert_eq!(batch1.len(), 1);
-    assert_eq!(batch1.sticky_sender_idx(), Some(1));
+    assert_eq!(batch1.sender_id(), Some(1));
 
     let second = with_noop_context(|cx| batcher.poll_recv(cx));
     let Poll::Ready(Some(batch2)) = second else {
         panic!("expected second batch");
     };
     assert_eq!(batch2.len(), 1);
-    assert_eq!(batch2.sticky_sender_idx(), Some(2));
+    assert_eq!(batch2.sender_id(), Some(2));
 }
 
 #[test]
@@ -448,5 +448,5 @@ fn batch_frames_adopts_sticky_from_later_frame() {
         panic!("expected batch");
     };
     assert_eq!(batch.len(), 3);
-    assert_eq!(batch.sticky_sender_idx(), Some(3));
+    assert_eq!(batch.sender_id(), Some(3));
 }

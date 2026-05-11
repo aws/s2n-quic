@@ -96,23 +96,22 @@ impl SenderRoute for ModuloRoute {
 
 // ── ACK Routing ───────────────────────────────────────────────────────────
 
-/// Routes `msg::Sender` messages to the correct per-socket ACK channel.
+/// Routes `msg::Sender` messages to the correct per-worker ACK channel.
 ///
-/// The `local_sender_id` embedded in `msg::Sender::Ack` identifies which send socket's
-/// context should process this acknowledgement. `AckSender<T>` wraps one sender of type `T`
-/// per socket and dispatches based on that ID.
-///
-/// `T` is generic over the sender type so callers can wrap or transform it freely (e.g., wrap
-/// an `intrusive_queue::sync::Sender<Entry<msg::Sender>>` in
-/// [`EntryBoxSender`][crate::socket::channel::EntryBoxSender] to get a plain `UnboundedSender<msg::Sender>`).
+/// Uses `sender_id_to_worker` to map the `local_sender_id` embedded in each ACK message
+/// to the worker that owns that send socket, then forwards via the per-worker sender.
 #[derive(Clone)]
 pub(crate) struct AckSender<T> {
-    inner: Vec<T>,
+    senders: Vec<T>,
+    sender_id_to_worker: Vec<usize>,
 }
 
 impl<T> AckSender<T> {
-    pub fn new(senders: Vec<T>) -> Self {
-        Self { inner: senders }
+    pub fn new(senders: Vec<T>, sender_id_to_worker: Vec<usize>) -> Self {
+        Self {
+            senders,
+            sender_id_to_worker,
+        }
     }
 }
 
@@ -125,16 +124,21 @@ where
             super::msg::Sender::Ack {
                 local_sender_id, ..
             } => {
-                let idx = match usize::try_from(local_sender_id.as_u64()) {
-                    Ok(idx) => idx,
-                    // A sender ID that doesn't fit in usize cannot be a valid socket index on this
-                    // platform; treat it as an unroutable ACK and drop it.
-                    Err(_) => return Err(msg),
-                };
-                match self.inner.get_mut(idx) {
-                    Some(tx) => tx.send(msg),
-                    None => Err(msg),
-                }
+                let sender_idx = local_sender_id.as_u64() as usize;
+                debug_assert!(
+                    sender_idx < self.sender_id_to_worker.len(),
+                    "sender_idx {sender_idx} out of bounds (len {})",
+                    self.sender_id_to_worker.len()
+                );
+                let &worker_idx =
+                    unsafe { self.sender_id_to_worker.get_unchecked(sender_idx) };
+                debug_assert!(
+                    worker_idx < self.senders.len(),
+                    "worker_idx {worker_idx} out of bounds (len {})",
+                    self.senders.len()
+                );
+                let tx = unsafe { self.senders.get_unchecked_mut(worker_idx) };
+                tx.send(msg)
             }
         }
     }

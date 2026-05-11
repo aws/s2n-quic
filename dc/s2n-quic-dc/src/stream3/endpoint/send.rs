@@ -114,6 +114,13 @@ impl PendingFrames {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct WheelInterest {
+    pub transmission: bool,
+    pub pto: bool,
+    pub idle_timeout: bool,
+}
+
 /// Per-peer send state, one per (credentials_id, send_socket) pair.
 ///
 /// Holds crypto material, congestion control, inflight tracking, and the pending frame
@@ -816,11 +823,8 @@ mod tests {
         use crate::path::secret::map::Entry as PathSecretEntry;
 
         // Create an entry with one sender slot so the atomic array is populated.
-        let entry = PathSecretEntry::fake_with_socket_senders(
-            "127.0.0.1:8080".parse().unwrap(),
-            None,
-            1,
-        );
+        let entry =
+            PathSecretEntry::fake_with_socket_senders("127.0.0.1:8080".parse().unwrap(), None, 1);
 
         let registry = crate::counter::Registry::new();
         let gauge = registry.register_queue_gauge("test.inflight");
@@ -835,9 +839,8 @@ mod tests {
         // Build a timestamp from a known duration.
         // SAFETY: the duration is positive (5 000 µs) and well within the range of
         // representable Timestamp values (u64 microseconds from process start).
-        let now = unsafe {
-            s2n_quic_core::time::Timestamp::from_duration(Duration::from_micros(5_000))
-        };
+        let now =
+            unsafe { s2n_quic_core::time::Timestamp::from_duration(Duration::from_micros(5_000)) };
         ctx.publish_next_transmission_time(now);
 
         // With non-zero pending bytes the published time should be >= now (5000µs).

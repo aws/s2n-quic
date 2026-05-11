@@ -2,18 +2,39 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    clock::precision,
     datagram::batch::Priority,
     intrusive_queue::{Entry, Queue},
-    socket::channel::{Receiver, Sender},
+    socket::{
+        channel::{
+            cell,
+            intrusive_queue::{self, unsync},
+            FlattenQueue, FlattenSegments, InspectErr, Map, Paced, Priority as PriorityRx,
+            Receiver, ReceiverExt as _, RouterAdapter, Sender, SocketReceiver, SocketSender,
+            UnboundedSender,
+        },
+        pool::descriptor,
+        rate::Rate,
+    },
+    stream2::spawner::LocalSpawner,
     stream3::{
-        endpoint::combinator::{BatchFramesByPathSecret, FrameBatch, PathSecretMapEntry, PickTwo},
-        frame::{Frame, PriorityStorage},
+        endpoint::{
+            self, ack,
+            combinator::{
+                Assembler, BatchFramesByPathSecret, FrameBatch, PathSecretMapEntry, PickTwo,
+            },
+            dispatch, msg, send,
+            worker::ChannelRouter,
+        },
+        frame::{Frame, PriorityStorage, SubmissionReceiver},
     },
 };
 use core::{
     future::poll_fn,
     task::{self, Poll},
 };
+use s2n_quic_core::{assume, ready, varint::VarInt};
+use std::{cell::RefCell, rc::Rc};
 
 /// Default per-poll budget for [`socket_recv_task`]: process up to this many segments before
 /// yielding to the executor. Tune via the `budget` parameter if workloads differ.
@@ -88,304 +109,253 @@ pub const DEFAULT_DISPATCH_BUDGET: usize = 32;
 /// [`PriorityStorage`]: crate::stream3::frame::PriorityStorage
 /// [`PriorityInput`]: crate::stream3::frame::PriorityInput
 pub fn frame_dispatch<S, Rand, Clk>(
-    spawner: &mut impl crate::stream2::spawner::LocalSpawner,
-    mut frame_rx: crate::stream3::frame::SubmissionReceiver,
-    socket_senders: Vec<S>,
+    spawner: &mut impl LocalSpawner,
+    mut frame_rx: SubmissionReceiver,
+    worker_senders: Vec<S>,
     random: Rand,
     clock: Clk,
-    overall_send_rate: crate::socket::rate::Rate,
+    overall_send_rate: Rate,
     budget: usize,
 ) where
-    S: Sender<FrameBatch> + 'static,
+    S: UnboundedSender<Entry<FrameBatch>> + 'static,
     Rand: FnMut(usize) -> usize + 'static,
-    Clk: crate::clock::precision::Clock + 'static,
+    Clk: precision::Clock + 'static,
 {
-    use crate::socket::channel::{intrusive_queue, Paced, Priority as PriorityRx};
-
-    // Create one unbounded unsync channel per priority level.
-    // Task 1 sends whole `Queue<Frame>` lists via `ListSender`; Task 2 pops individual
-    // frames via the plain `Receiver`.  Both tasks run on the same worker, so Rc-based
-    // (!Send) channels are correct here.
-    let mut priority_frame_rxs = Vec::with_capacity(Priority::LEVELS);
+    let mut priority_batch_rxs = Vec::with_capacity(Priority::LEVELS);
     let mut priority_list_txs: [_; Priority::LEVELS] = core::array::from_fn(|_| {
         let (tx, rx) = intrusive_queue::unsync::new::<Frame>();
-        priority_frame_rxs.push(BatchFramesByPathSecret::new(rx));
+        let rx = BatchFramesByPathSecret::new(rx);
+        let rx = Map::new(rx, Entry::new);
+        priority_batch_rxs.push(rx);
         tx.into_list_sender()
     });
 
     // Task 1: fixed-cost priority routing.
-    //
-    // A persistent `staging` PriorityStorage (pre-allocated once) avoids heap allocation on
-    // the hot path.  Each poll calls `poll_swap` once to pointer-swap the next ready shard's
-    // Box into `staging`, then appends each non-empty priority queue to the matching
-    // per-priority ListSender.  After processing one shard the task yields to the executor
-    // (one shard per poll, matching the behaviour of `drain()`).
     spawner.spawn({
         let mut staging = PriorityStorage::default();
-        poll_fn(move |cx| {
-            match frame_rx.poll_swap(cx, &mut staging) {
-                task::Poll::Ready(None) => task::Poll::Ready(()),
-                task::Poll::Pending => task::Poll::Pending,
-                task::Poll::Ready(Some(())) => {
-                    for (queue, tx) in staging.iter_mut().zip(&mut priority_list_txs) {
-                        if !queue.is_empty() {
-                            let _ = crate::socket::channel::UnboundedSender::send(
-                                tx,
-                                core::mem::take(queue),
-                            );
-                        }
+        poll_fn(move |cx| match frame_rx.poll_swap(cx, &mut staging) {
+            Poll::Ready(None) => Poll::Ready(()),
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Some(())) => {
+                for (queue, tx) in staging.iter_mut().zip(&mut priority_list_txs) {
+                    if !queue.is_empty() {
+                        let _ = UnboundedSender::send(tx, core::mem::take(queue));
                     }
-                    // Yield after processing one shard to give other tasks a turn.
-                    cx.waker().wake_by_ref();
-                    task::Poll::Pending
                 }
+                cx.waker().wake_by_ref();
+                Poll::Pending
             }
         })
     });
 
-    // Task 2: batch each priority lane independently, merge in urgency order,
-    // apply pacing, then route to send sockets via PickTwo.
-    //
-    // Pipeline: [per-priority-rx[i] → BatchFramesByPathSecret] → Priority → Paced → PickTwo
+    // Task 2: batch → Entry → priority merge → pace → pick-two to workers.
     spawner.spawn(async move {
-        use crate::socket::channel::ReceiverExt as _;
-        let rx = PriorityRx::new(priority_frame_rxs);
+        let rx = PriorityRx::new(priority_batch_rxs);
         let rx = Paced::new(rx, clock, overall_send_rate);
-        let rx = PickTwo::new(rx, socket_senders, random);
+        let rx = PickTwo::new(rx, worker_senders, random);
         rx.drain_budgeted(Some(budget)).await;
     });
 }
 
-/// Spawns per-socket send tasks: assembly + socket send, and ACK processing.
+/// Spawns all send-side tasks for a worker: context resolution, ACK processing, and
+/// per-socket assembly+send.
 ///
-/// Creates two cooperating tasks on `spawner`'s worker:
+/// Pipeline:
+///   batch_rx (sync, from PickTwo)
+///     → context resolver (resolve per-peer state, push frames)
+///     → TODO: tx wheel (pacing/scheduling)
+///     → per-socket Assembler → SocketSender
 ///
-/// - **Assembler + sender** (Task 1): pulls [`FrameBatch`] items from `batch_rx`, resolves
-///   each to a per-peer [`send::Context`] via a shared cache, pushes frames onto the context's
-///   pending queue, then calls [`assemble`] in a loop to pack + encrypt frames into GSO
-///   segments. Each assembled [`Segments`] is sent through the socket via [`SocketSender`].
-///
-/// - **ACK processor** (Task 2): pulls [`msg::Sender::Ack`] messages from `ack_rx`, decodes
-///   the control frame payload, and feeds each ACK frame into [`process_ack`] which updates
-///   RTT, CCA, and runs loss detection. Lost frames are retransmitted via `frame_tx`.
-///
-/// Both tasks share a [`send::Cache`] via `Rc<RefCell<_>>` since they run on the same worker.
-///
-/// [`send::Context`]: crate::stream3::endpoint::send::Context
-/// [`assemble`]: crate::stream3::endpoint::assemble::assemble
-/// [`process_ack`]: crate::stream3::endpoint::ack::process_ack
-/// [`Segments`]: crate::socket::pool::descriptor::Segments
-/// [`SocketSender`]: crate::socket::channel::SocketSender
-///
-/// # Pipeline overview
-///
-/// ```text
-/// Task 1 (assembler + sender):
-///   batch_rx
-///     → Assembler (resolve context, push frames, assemble segments)
-///     → SocketSender (send via UDP socket)
-///     → InspectErr (log send errors)
-///     → drain_budgeted
-///
-/// Task 2 (ACK processor):
-///   ack_rx
-///     → Map (decode control frames, process_ack, retransmit lost)
-///     → drain_budgeted
-/// ```
-///
-/// # TODO: missing pipeline stages
-///
-/// - **Per-socket pacer** (`Paced`): enforces a per-socket send-rate cap after assembly
-///   and before the actual socket write, preventing burst sending.
-///
-/// - **PTO wheel injection**: when CCA schedules a probe timeout, the context's PTO deadline
-///   is registered with a per-worker `Wheel`; when the wheel fires, a probe batch is generated
-///   and pumped back into the frame submission channel.
-///
-/// - **Metrics**: `tx` packet counter, `tx:bytes` byte counter, per-socket queue depth gauge.
-pub fn socket_send<Socket, BatchRx, AckRx, Clk, Rand>(
-    spawner: &mut impl crate::stream2::spawner::LocalSpawner,
-    socket: Socket,
-    batch_rx: BatchRx,
-    ack_rx: AckRx,
-    sender_idx: usize,
-    source_control_port: u16,
-    gso: s2n_quic_platform::features::Gso,
-    pool: crate::socket::pool::Pool,
-    clock: Clk,
-    random: Rand,
-    frame_tx: crate::stream3::frame::SubmissionSender,
-    inflight_gauge: crate::counter::QueueGauge,
+///   ack_rx (sync, from recv workers)
+///     → ACK processor (loss detection, retransmission)
+pub fn send_worker<Socket, Clk, Rand>(
+    spawner: &mut impl LocalSpawner,
+    batch_rx: impl Receiver<Queue<FrameBatch>> + 'static,
+    ack_rx: impl Receiver<Queue<msg::Sender>> + 'static,
+    total_sender_ids: usize,
+    send_sockets: Vec<endpoint::SendSocketParts<Socket, Clk, Rand>>,
     budget: usize,
 ) where
     Socket: crate::socket::send::Socket + 'static,
-    BatchRx: Receiver<FrameBatch> + 'static,
-    AckRx: Receiver<Entry<crate::stream3::endpoint::msg::Sender>> + 'static,
-    Clk: crate::clock::precision::Clock + s2n_quic_core::time::Clock + Clone + 'static,
+    Clk: precision::Clock + s2n_quic_core::time::Clock + Clone + 'static,
     Rand: crate::random::Generator + 'static,
 {
-    use crate::{
-        socket::channel::{InspectErr, Map, ReceiverExt as _, SocketSender},
-        stream3::endpoint::send,
-    };
-    use s2n_quic_core::varint::VarInt;
-    use std::{cell::RefCell, rc::Rc};
+    let num_sockets = send_sockets.len();
 
-    let source_sender_id = VarInt::new(sender_idx as u64).unwrap();
-    let send_cache = Rc::new(RefCell::new(send::Cache::new(inflight_gauge, sender_idx)));
+    // Per-socket unsync cell: context resolver pushes FrameBatch here,
+    // per-socket assembler+send task drains it.
+    let (socket_batch_txs, socket_batch_rxs): (Vec<_>, Vec<_>) = (0..num_sockets)
+        .map(|_| cell::unsync::new::<FrameBatch>())
+        .unzip();
 
-    // Task 1: assemble frames into encrypted segments and send via socket.
+    // Map sender_idx → local socket position for this worker.
+    let mut sender_idx_to_local: Vec<usize> = (0..total_sender_ids).map(|_| usize::MAX).collect();
+
+    // One send::Cache per socket, shared between the context resolver and ACK processor.
+    let send_caches: Vec<Rc<RefCell<send::Cache>>> = send_sockets
+        .iter()
+        .enumerate()
+        .map(|(local_id, st)| {
+            sender_idx_to_local[st.sender_idx] = local_id;
+
+            Rc::new(RefCell::new(send::Cache::new(
+                st.inflight_gauge.clone(),
+                st.sender_idx,
+            )))
+        })
+        .collect();
+
+    let (tx_wheel_tx, tx_wheel_rx) = unsync::new_with_adapter();
+    let (pto_wheel_tx, pto_wheel_rx) = unsync::new_with_adapter();
+    let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter();
+
+    // Task 1: context resolver — drain batch_rx, resolve to context, push frames.
     spawner.spawn({
-        let send_cache = send_cache.clone();
-        let clock = clock.clone();
+        let send_caches = send_caches.clone();
+        let mut socket_batch_txs = socket_batch_txs;
+        let rx = batch_rx;
+        let mut tx_wheel_tx = tx_wheel_tx.clone();
+        let mut pto_wheel_tx = pto_wheel_tx.clone();
+        let mut idle_whel_tx = idle_wheel_tx.clone();
         async move {
-            let rx = Assembler::new(
-                batch_rx,
-                send_cache,
-                clock,
-                source_sender_id,
-                source_control_port,
-                gso,
-                pool,
-            );
-            let rx = SocketSender::new(rx, socket);
-            let rx = InspectErr::new(rx, |(err, _segments)| {
-                tracing::warn!(%err, "socket send error");
-            });
-            let rx = Map::new(rx, |_segments| {});
-            rx.drain_budgeted(Some(budget)).await;
-        }
-    });
-
-    // Task 2: decode ACK messages and drive loss recovery.
-    spawner.spawn({
-        let mut random = random;
-        let mut frame_tx = frame_tx;
-        async move {
-            let rx = Map::new(
-                ack_rx,
-                move |entry: Entry<crate::stream3::endpoint::msg::Sender>| {
-                    process_ack_entry(
-                        entry,
-                        &mut send_cache.borrow_mut(),
-                        &clock,
-                        &mut random,
-                        &mut frame_tx,
-                    );
-                },
-            );
-            rx.drain_budgeted(Some(budget)).await;
-        }
-    });
-}
-
-// ── Assembler Receiver ───────────────────────────────────────────────────────
-
-/// A [`Receiver`] adapter that resolves frame batches to per-peer contexts, pushes frames,
-/// and yields assembled [`Segments`] ready for socket transmission.
-///
-/// Internally buffers the active context between polls: after pushing a batch's frames, it
-/// calls [`assemble`] repeatedly until the CCA window fills, yielding one `Segments` per
-/// poll. When the context is drained, it pulls the next batch from `inner`.
-///
-/// [`assemble`]: crate::stream3::endpoint::assemble::assemble
-struct Assembler<R, Clk> {
-    inner: R,
-    send_cache: std::rc::Rc<std::cell::RefCell<crate::stream3::endpoint::send::Cache>>,
-    active_ctx: Option<std::rc::Rc<std::cell::RefCell<crate::stream3::endpoint::send::Context>>>,
-    clock: Clk,
-    source_sender_id: s2n_quic_core::varint::VarInt,
-    source_control_port: u16,
-    gso: s2n_quic_platform::features::Gso,
-    pool: crate::socket::pool::Pool,
-    header_buf: Vec<u8>,
-    cancelled_tx: CancelledFrameSink,
-}
-
-impl<R, Clk> Assembler<R, Clk> {
-    fn new(
-        inner: R,
-        send_cache: std::rc::Rc<std::cell::RefCell<crate::stream3::endpoint::send::Cache>>,
-        clock: Clk,
-        source_sender_id: s2n_quic_core::varint::VarInt,
-        source_control_port: u16,
-        gso: s2n_quic_platform::features::Gso,
-        pool: crate::socket::pool::Pool,
-    ) -> Self {
-        Self {
-            inner,
-            send_cache,
-            active_ctx: None,
-            clock,
-            source_sender_id,
-            source_control_port,
-            gso,
-            pool,
-            header_buf: Vec::new(),
-            cancelled_tx: CancelledFrameSink,
-        }
-    }
-}
-
-impl<R, Clk> Receiver<crate::socket::pool::descriptor::Segments> for Assembler<R, Clk>
-where
-    R: Receiver<FrameBatch>,
-    Clk: crate::clock::precision::Clock,
-{
-    fn poll_recv(
-        &mut self,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Option<crate::socket::pool::descriptor::Segments>> {
-        use crate::stream3::endpoint::assemble;
-
-        loop {
-            // Try to assemble from the active context first.
-            if let Some(ctx_rc) = &self.active_ctx {
-                let mut ctx = ctx_rc.borrow_mut();
-                if ctx.has_pending() {
-                    if let Some(segments) = assemble::assemble(
-                        &mut ctx,
-                        &self.clock,
-                        self.source_sender_id,
-                        self.source_control_port,
-                        &self.gso,
-                        &self.pool,
-                        &mut self.header_buf,
-                        &mut self.cancelled_tx,
-                    ) {
-                        return Poll::Ready(Some(segments));
+            let rx = FlattenQueue::new(rx);
+            let rx = Map::new(rx, move |batch: Entry<FrameBatch>| {
+                let Some(sender_idx) = batch.sender_id() else {
+                    unsafe {
+                        assume!(false, "batch needs an assigned sender id");
                     }
-                }
-                // Context drained (CCA full or no pending frames) — clear and pull next batch.
-                drop(ctx);
-                self.active_ctx = None;
-            }
+                };
+                let Some(local_id) = sender_idx_to_local.get(sender_idx).copied() else {
+                    unsafe {
+                        assume!(
+                            false,
+                            "sender id {} is out of range of {}",
+                            sender_idx,
+                            total_sender_ids
+                        )
+                    }
+                };
+                let Some(cache) = send_caches.get_mut(local_id) else {
+                    unsafe {
+                        assume!(
+                            false,
+                            "sender id {} is out of range of {}",
+                            sender_idx,
+                            total_sender_ids
+                        )
+                    }
+                };
 
-            // Pull the next batch from the inner receiver.
-            let Some(batch) = (match self.inner.poll_recv(cx) {
-                Poll::Ready(v) => v,
-                Poll::Pending => return Poll::Pending,
-            }) else {
-                return Poll::Ready(None);
-            };
+                let sender = {
+                    let mut cache = cache.borrow_mut();
+                    let cache = &mut *cache;
+                    cache.get_or_insert(batch.path_secret_entry())
+                };
 
-            let ctx_rc = self
-                .send_cache
-                .borrow_mut()
-                .get_or_insert(batch.path_secret_entry());
-            {
-                let mut ctx = ctx_rc.borrow_mut();
-                for frame in batch.into_queue() {
-                    ctx.push_frame(frame);
+                let wheel_interest = {
+                    let mut sender = sender.borrow_mut();
+                    sender.push_batch(batch)
+                };
+
+                if wheel_interest.transmission {
+                    let _ = UnboundedSender::send(&mut tx_wheel_tx, sender);
                 }
-            }
-            self.active_ctx = Some(ctx_rc);
-            // Loop back to attempt assembly from the newly-loaded context.
+
+                if wheel_interest.pto {
+                    let _ = UnboundedSender::send(&mut pto_wheel_tx, sender);
+                }
+
+                if wheel_interest.idle_timeout {
+                    let _ = UnboundedSender::send(&mut idle_wheel_tx, sender);
+                }
+            });
+            rx.drain_budgeted(Some(budget)).await;
         }
-    }
+    });
 
-    fn on_consumed(&mut self, bytes: u64) {
-        self.inner.on_consumed(bytes);
+    // Task 2: ACK processor.
+    spawner.spawn({
+        let send_caches = send_caches.clone();
+        let rx = ack_rx;
+        async move {
+            let rx = FlattenQueue::new(rx);
+            let rx = Map::new(rx, move |entry: Entry<msg::Sender>| {
+                let msg::Sender::Ack {
+                    local_sender_id,
+                    path_secret_entry,
+                    payload,
+                } = entry.into_inner();
+
+                let sender_idx = local_sender_id.as_u64() as usize;
+
+                let Some(local_id) = sender_idx_to_local.get(sender_idx).copied() else {
+                    unsafe {
+                        assume!(
+                            false,
+                            "sender id {} is out of range of {}",
+                            sender_idx,
+                            total_sender_ids
+                        )
+                    }
+                };
+                let Some(cache) = send_caches.get_mut(local_id) else {
+                    unsafe {
+                        assume!(
+                            false,
+                            "sender id {} is out of range of {}",
+                            sender_idx,
+                            total_sender_ids
+                        )
+                    }
+                };
+
+                let sender = {
+                    let mut cache = cache.borrow_mut();
+                    let cache = &mut *cache;
+                    // We don't want to create a new entry if it's gone since this is for processing acks
+                    cache.get(&path_secret_entry.id())
+                };
+
+                let Some(sender) = sender else {
+                    tracing::debug!(%sender_idx, id = %path_secret_entry.id(), "Sender state gone for ACK");
+                    return;
+                };
+
+                {
+                    let context = sender.borrow_mut();
+
+                    // TODO process the ack and potentially insert into the wheels if the wheel interest says so
+                }
+            });
+            rx.drain_budgeted(Some(budget)).await;
+        }
+    });
+
+    // Per-socket assembler + send tasks.
+    for (st, batch_rx) in send_sockets.into_iter().zip(socket_batch_rxs) {
+        let source_sender_id = VarInt::new(st.sender_idx as u64).unwrap();
+        let local_idx = sender_idx_to_local[st.sender_idx];
+        let send_cache = send_caches[local_idx].clone();
+
+        spawner.spawn({
+            let clock = st.clock.clone();
+            async move {
+                let rx = Assembler::new(
+                    batch_rx,
+                    clock,
+                    source_sender_id,
+                    st.source_control_port,
+                    st.gso,
+                    st.pool,
+                );
+                let rx = SocketSender::new(rx, st.socket);
+                let rx = InspectErr::new(rx, |(err, _segments)| {
+                    tracing::warn!(%err, "socket send error");
+                });
+                let rx = Map::new(rx, |_segments| {});
+                rx.drain_budgeted(Some(budget)).await;
+            }
+        });
     }
 }
 
@@ -393,8 +363,8 @@ where
 
 /// Decodes a single ACK entry and processes it against the send cache.
 fn process_ack_entry<Clk, Rand>(
-    entry: Entry<crate::stream3::endpoint::msg::Sender>,
-    send_cache: &mut crate::stream3::endpoint::send::Cache,
+    entry: Entry<msg::Sender>,
+    send_cache: &mut endpoint::send::Cache,
     clock: &Clk,
     random: &mut Rand,
     frame_tx: &mut crate::stream3::frame::SubmissionSender,
@@ -402,11 +372,6 @@ fn process_ack_entry<Clk, Rand>(
     Clk: s2n_quic_core::time::Clock + ?Sized,
     Rand: crate::random::Generator,
 {
-    use crate::{
-        intrusive_queue::Queue,
-        stream3::endpoint::{ack, msg},
-    };
-
     let msg::Sender::Ack {
         local_sender_id: _,
         path_secret_entry,
@@ -458,7 +423,7 @@ fn process_ack_entry<Clk, Rand>(
 /// Sink that drops frames (completions fire on drop).
 struct CancelledFrameSink;
 
-impl crate::socket::channel::UnboundedSender<Queue<Frame>> for CancelledFrameSink {
+impl UnboundedSender<Queue<Frame>> for CancelledFrameSink {
     fn send(&mut self, _value: Queue<Frame>) -> Result<(), Queue<Frame>> {
         Ok(())
     }
@@ -467,7 +432,7 @@ impl crate::socket::channel::UnboundedSender<Queue<Frame>> for CancelledFrameSin
 /// Sink that appends frames into a local queue for retransmission.
 struct QueueSink<'a>(&'a mut Queue<Frame>);
 
-impl crate::socket::channel::UnboundedSender<Queue<Frame>> for QueueSink<'_> {
+impl UnboundedSender<Queue<Frame>> for QueueSink<'_> {
     fn send(&mut self, mut value: Queue<Frame>) -> Result<(), Queue<Frame>> {
         self.0.append(&mut value);
         Ok(())
@@ -505,19 +470,10 @@ pub async fn socket_recv_task<Socket, Tx>(
     budget: usize,
 ) where
     Socket: crate::socket::recv::Socket,
-    Tx: crate::socket::channel::UnboundedSender<
-        crate::intrusive_queue::Entry<
-            crate::packet::datagram::decoder::Packet<crate::socket::pool::descriptor::Filled>,
-        >,
+    Tx: UnboundedSender<
+        crate::intrusive_queue::Entry<crate::packet::datagram::decoder::Packet<descriptor::Filled>>,
     >,
 {
-    use crate::{
-        socket::channel::{
-            FlattenSegments, InspectErr, ReceiverExt as _, RouterAdapter, SocketReceiver,
-        },
-        stream3::endpoint::worker::ChannelRouter,
-    };
-
     let rx = SocketReceiver::new(socket, pool);
     // SocketReceiver yields io::Result<Segments>; InspectErr logs errors and unwraps to Segments.
     let rx = InspectErr::new(rx, |err| {
@@ -561,29 +517,22 @@ pub async fn socket_recv_task<Socket, Tx>(
 ///   Add once the counter infrastructure is available per-worker.
 pub async fn packet_dispatch_task<PacketRx, AckTx, Clk>(
     packet_rx: PacketRx,
-    recv_cache: std::rc::Rc<std::cell::RefCell<crate::stream3::endpoint::recv::Cache>>,
+    recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
     path_secret_map: crate::path::secret::Map,
     acceptor_registry: crate::acceptor::Registry<crate::stream3::Stream>,
     frame_tx: crate::stream3::frame::SubmissionSender,
     ack_sender: AckTx,
-    queue_dispatcher: crate::stream3::endpoint::msg::queue::Dispatcher,
-    counters: crate::stream3::endpoint::counters::Dispatch,
+    queue_dispatcher: msg::queue::Dispatcher,
+    counters: endpoint::counters::Dispatch,
     clock: Clk,
     budget: usize,
 ) where
     PacketRx: Receiver<
-        crate::intrusive_queue::Entry<
-            crate::packet::datagram::decoder::Packet<crate::socket::pool::descriptor::Filled>,
-        >,
+        crate::intrusive_queue::Entry<crate::packet::datagram::decoder::Packet<descriptor::Filled>>,
     >,
-    AckTx: crate::socket::channel::UnboundedSender<crate::stream3::endpoint::msg::Sender>,
-    Clk: s2n_quic_core::time::Clock + crate::clock::precision::Clock,
+    AckTx: UnboundedSender<msg::Sender>,
+    Clk: s2n_quic_core::time::Clock + precision::Clock,
 {
-    use crate::{
-        socket::channel::{InspectErr, Map, ReceiverExt as _},
-        stream3::endpoint::dispatch,
-    };
-
     // Response frames (ACKs sent back to peers) re-enter via the same submission channel.
     // TODO: route responses through a dedicated channel + RetransmissionBatcher (see above).
     let rx = Map::new(packet_rx, {
@@ -615,12 +564,7 @@ pub async fn packet_dispatch_task<PacketRx, AckTx, Clk>(
     rx.drain_budgeted(Some(budget)).await;
 }
 
-fn on_packet_dispatch_error(
-    counters: &crate::stream3::endpoint::counters::Dispatch,
-    err: crate::stream3::endpoint::dispatch::Error,
-) {
-    use crate::stream3::endpoint::dispatch;
-
+fn on_packet_dispatch_error(counters: &endpoint::counters::Dispatch, err: dispatch::Error) {
     match err {
         dispatch::Error::PeerStateLookup {
             credentials,

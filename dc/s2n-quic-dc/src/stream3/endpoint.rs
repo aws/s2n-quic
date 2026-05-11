@@ -21,9 +21,14 @@ pub(crate) mod worker;
 
 use crate::{
     acceptor,
+    socket::channel::intrusive_queue::sync as sync_queue,
     stream3::{frame::SubmissionSender, Stream},
 };
 use std::sync::atomic::AtomicU64;
+
+type BatchSender = sync_queue::Sender<combinator::FrameBatch>;
+type BatchReceiver = sync_queue::Receiver<combinator::FrameBatch>;
+type AckMsgReceiver = sync_queue::Receiver<msg::Sender>;
 
 pub struct Endpoint {
     /// Frame submission channel (writers submit Queue<Frame> here)
@@ -167,9 +172,7 @@ where
     SenderRoute: routing::SenderRoute,
 {
     use crate::{
-        counter::Registry as CounterRegistry,
-        socket::channel::{cell, intrusive_queue},
-        stream3::frame,
+        counter::Registry as CounterRegistry, socket::channel::intrusive_queue, stream3::frame,
     };
 
     let Config {
@@ -208,22 +211,18 @@ where
     // Frame submission channel: all writers share one sharded sender; one dispatch task drains it.
     let (frame_tx, frame_rx) = frame::submission_channel(submission_shards);
 
-    // Per-send-socket channels ---------------------------------------------------
-    // batch channel: pick_two routes FrameBatch items; the send task drains them.
-    // ack channel:   dispatch tasks route ACK messages; the send task processes them.
-    let (socket_batch_txs, socket_batch_rxs): (Vec<_>, Vec<_>) = (0..num_send)
-        .map(|_| cell::sync::new::<combinator::FrameBatch>())
+    // Per-send-worker batch channels -----------------------------------------------
+    // PickTwo routes Entry<FrameBatch> items to workers; the context resolver task drains them.
+    // ACK channel: dispatch tasks route ACK messages to the correct send worker.
+    let num_send_workers = num_workers.min(num_send).max(1);
+    let (worker_batch_txs, worker_batch_rxs): (Vec<_>, Vec<_>) = (0..num_send_workers)
+        .map(|_| intrusive_queue::sync::new::<combinator::FrameBatch>())
         .unzip();
-    let (socket_ack_txs, socket_ack_rxs): (Vec<_>, Vec<_>) = (0..num_send)
+    let (worker_ack_txs, worker_ack_rxs): (Vec<_>, Vec<_>) = (0..num_send_workers)
         .map(|_| intrusive_queue::sync::new::<msg::Sender>())
         .unzip();
 
-    let ack_sender = routing::AckSender::new(
-        socket_ack_txs
-            .into_iter()
-            .map(crate::socket::channel::EntryBoxSender::new)
-            .collect(),
-    );
+    let mut sender_id_to_worker: Vec<usize> = Vec::with_capacity(num_send);
 
     // Shared flow-queue allocator and dispatch counters -------------------------
     let queue_allocator = msg::queue::Allocator::new();
@@ -240,27 +239,22 @@ where
         v
     };
 
-    // Worker 0 runs frame-dispatch.
+    // Worker 0 runs frame-dispatch. PickTwo targets send workers via per-worker senders.
     workers[0].frame_dispatch = Some(FrameDispatchParts {
         frame_rx,
-        batch_txs: socket_batch_txs,
+        worker_batch_txs,
         rand: create_rand(),
         clock: clock.clone(),
         overall_send_rate,
     });
 
-    // Distribute send sockets across workers 1..=num_send (wrapping modulo num_workers).
-    for (sender_idx, (socket, (batch_rx, ack_rx))) in send_sockets
-        .into_iter()
-        .zip(socket_batch_rxs.into_iter().zip(socket_ack_rxs.into_iter()))
-        .enumerate()
-    {
-        let worker_id = (1 + sender_idx) % num_workers;
+    // Distribute send sockets across send workers, and pair each worker with its batch/ack rx.
+    for (sender_idx, socket) in send_sockets.into_iter().enumerate() {
+        let worker_id = sender_idx % num_send_workers;
+        sender_id_to_worker.push(worker_id);
         let inflight_gauge = counter_registry.register_queue_gauge("send.inflight");
-        workers[worker_id].send_tasks.push(SendTaskParts {
+        workers[worker_id].send_sockets.push(SendSocketParts {
             socket,
-            batch_rx,
-            ack_rx,
             sender_idx,
             source_control_port,
             gso: gso.clone(),
@@ -272,9 +266,27 @@ where
         });
     }
 
+    // Assign per-worker batch/ack receivers to the matching send workers.
+    for (worker_id, (batch_rx, ack_rx)) in worker_batch_rxs
+        .into_iter()
+        .zip(worker_ack_rxs.into_iter())
+        .enumerate()
+    {
+        workers[worker_id].send_worker = Some(SendWorkerParts { batch_rx, ack_rx });
+    }
+
+    // Build ACK sender after socket distribution so sender_id_to_worker is populated.
+    let ack_sender = routing::AckSender::new(
+        worker_ack_txs
+            .into_iter()
+            .map(crate::socket::channel::EntryBoxSender::new)
+            .collect(),
+        sender_id_to_worker,
+    );
+
     // Distribute recv sockets + dispatch pairs across workers (wrapping modulo num_workers).
     for (recv_idx, socket) in recv_sockets.into_iter().enumerate() {
-        let worker_id = (1 + num_send + recv_idx) % num_workers;
+        let worker_id = (num_send_workers + recv_idx) % num_workers;
 
         let (packet_tx, packet_rx) = intrusive_queue::sync::new();
         let ack_sender = ack_sender.clone();
@@ -315,8 +327,8 @@ where
 /// All the ingredients needed to spawn the frame-dispatch task on a worker.
 struct FrameDispatchParts<G, Clk> {
     frame_rx: crate::stream3::frame::SubmissionReceiver,
-    /// Senders for each send-socket's batch channel.
-    batch_txs: Vec<crate::socket::channel::cell::sync::Sender<combinator::FrameBatch>>,
+    /// Per-worker senders for batch routing (PickTwo targets these).
+    worker_batch_txs: Vec<BatchSender>,
     /// Random generator for pick-two routing.
     rand: G,
     /// Clock used by the pacing stage.
@@ -325,19 +337,23 @@ struct FrameDispatchParts<G, Clk> {
     overall_send_rate: crate::socket::rate::Rate,
 }
 
-/// All the ingredients needed to spawn a send-socket task on a worker.
-struct SendTaskParts<Socket, Clk, G> {
-    socket: Socket,
-    batch_rx: crate::socket::channel::cell::sync::Receiver<combinator::FrameBatch>,
-    ack_rx: crate::socket::channel::intrusive_queue::sync::Receiver<msg::Sender>,
-    sender_idx: usize,
-    source_control_port: u16,
-    gso: s2n_quic_platform::features::Gso,
-    pool: crate::socket::pool::Pool,
-    clock: Clk,
-    random: G,
-    frame_tx: crate::stream3::frame::SubmissionSender,
-    inflight_gauge: crate::counter::QueueGauge,
+/// Per-worker state for context resolution and ACK processing.
+struct SendWorkerParts {
+    batch_rx: BatchReceiver,
+    ack_rx: AckMsgReceiver,
+}
+
+/// Per-socket ingredients for the socket send task.
+pub(crate) struct SendSocketParts<Socket, Clk, G> {
+    pub socket: Socket,
+    pub sender_idx: usize,
+    pub source_control_port: u16,
+    pub gso: s2n_quic_platform::features::Gso,
+    pub pool: crate::socket::pool::Pool,
+    pub clock: Clk,
+    pub random: G,
+    pub frame_tx: crate::stream3::frame::SubmissionSender,
+    pub inflight_gauge: crate::counter::QueueGauge,
 }
 
 /// All the ingredients needed to spawn a recv-socket + dispatch task pair on a worker.
@@ -364,26 +380,15 @@ struct RecvTaskParts<Socket, Clk, AckSnd> {
 
 // ── Worker ────────────────────────────────────────────────────────────────
 
-/// Holds all the parts needed to spawn tasks on a single worker thread.
-///
-/// After building a `Worker` for each thread, call [`Worker::spawn`] on each to hand off all
-/// its tasks to the spawner. This design makes it easy to reassign sockets or tasks across
-/// workers without restructuring the spawn logic.
-///
-/// `idle_timeout` is stored here (not in `RecvTaskParts`) because it belongs to the worker as
-/// a whole: the single `recv::Cache` is created once inside `spawn_local` as an
-/// `Rc<RefCell<recv::Cache>>` and shared across all tasks that run on this worker thread.
 struct Worker<SendSocket, RecvSocket, Clk, G, AckSnd> {
-    /// This worker's index in the spawner.
     id: usize,
-    /// Peer idle timeout — controls when `recv::Cache` entries expire.
     idle_timeout: core::time::Duration,
-    /// Per-poll budgets for each pipeline task.
     budgets: Budgets,
-    /// Frame-dispatch task, assigned to exactly one worker (typically worker 0).
     frame_dispatch: Option<FrameDispatchParts<G, Clk>>,
-    /// Send socket tasks assigned to this worker.
-    send_tasks: Vec<SendTaskParts<SendSocket, Clk, G>>,
+    /// Per-worker batch/ack receiver (one per send worker).
+    send_worker: Option<SendWorkerParts>,
+    /// Send sockets assigned to this worker.
+    send_sockets: Vec<SendSocketParts<SendSocket, Clk, G>>,
     /// Recv + dispatch task pairs assigned to this worker.
     recv_tasks: Vec<RecvTaskParts<RecvSocket, Clk, AckSnd>>,
 }
@@ -402,20 +407,12 @@ where
             idle_timeout,
             budgets,
             frame_dispatch: None,
-            send_tasks: Vec::new(),
+            send_worker: None,
+            send_sockets: Vec::new(),
             recv_tasks: Vec::new(),
         }
     }
 
-    /// Spawns all tasks for this worker via `spawner.spawn_local`.
-    ///
-    /// The random generator (`G`) is captured as `Send` in the outer closure and then wrapped
-    /// in a [`std::cell::RefCell`] inside `spawn_local`, where it is entirely worker-local.
-    /// No `Mutex` is needed.
-    ///
-    /// A single [`recv::Cache`] is created once per worker (as `Rc<RefCell<recv::Cache>>`) and
-    /// shared across all dispatch tasks. This matches stream2's `shared_sender_cache` pattern,
-    /// where the cache is accessed by multiple tasks on the same worker thread via `Rc`.
     fn spawn<S: crate::stream2::Spawner>(self, spawner: &S) {
         use crate::stream2::spawner::LocalSpawner as _;
 
@@ -424,29 +421,29 @@ where
             idle_timeout,
             budgets,
             frame_dispatch,
-            send_tasks,
+            send_worker,
+            send_sockets,
             recv_tasks,
         } = self;
 
         spawner.spawn_local(id, move |mut local| {
+            let recv_cache = std::rc::Rc::new(std::cell::RefCell::new(
+                crate::stream3::endpoint::recv::Cache::new(idle_timeout, id),
+            ));
+
             if let Some(fd) = frame_dispatch {
-                // `fd.rand` is `G: Send`, captured in this outer `Send` closure.
-                // Wrap it in `RefCell` here (inside spawn_local) so it is entirely
-                // worker-local — no cross-thread synchronisation needed.
                 let mut random = fd.rand;
                 let random_fn = move |n: usize| {
                     let mut bytes = [0u8; 8];
                     random.public_random_fill(&mut bytes);
                     let raw = u64::from_le_bytes(bytes) as usize;
-                    // Sender counts are always powers of two, so we can use a cheap
-                    // bitwise mask rather than a more expensive modulo operation.
                     debug_assert!(n.is_power_of_two(), "sender count must be a power of two");
                     raw & (n - 1)
                 };
                 tasks::frame_dispatch(
                     &mut local,
                     fd.frame_rx,
-                    fd.batch_txs,
+                    fd.worker_batch_txs,
                     random_fn,
                     fd.clock,
                     fd.overall_send_rate,
@@ -454,29 +451,15 @@ where
                 );
             }
 
-            for st in send_tasks {
-                tasks::socket_send(
+            if let Some(sw) = send_worker {
+                tasks::send_worker(
                     &mut local,
-                    st.socket,
-                    st.batch_rx,
-                    st.ack_rx,
-                    st.sender_idx,
-                    st.source_control_port,
-                    st.gso,
-                    st.pool,
-                    st.clock,
-                    st.random,
-                    st.frame_tx,
-                    st.inflight_gauge,
+                    sw.batch_rx,
+                    sw.ack_rx,
+                    send_sockets,
                     budgets.socket_send,
                 );
             }
-
-            // One recv::Cache per worker, shared across all dispatch tasks on this worker
-            // (matches stream2's Rc<RefCell<SenderStateCache>> pattern).
-            let recv_cache = std::rc::Rc::new(std::cell::RefCell::new(
-                crate::stream3::endpoint::recv::Cache::new(idle_timeout, id),
-            ));
 
             for rt in recv_tasks {
                 local.spawn(tasks::socket_recv_task(
