@@ -506,7 +506,7 @@ where
                     }
                     WorkerOutput::RecordSojournTime
                 }
-                Err(_err) => {
+                Err(_undelivered_stream) => {
                     debug!("application accept queue dropped; shutting down");
                     WorkerOutput::Exit
                 }

@@ -175,6 +175,13 @@ pub(super) async fn server<
             }
         });
     }
+
+    // accept() returning None means the s2n-quic endpoint has shut down. New
+    // path secrets will no longer be provisioned, but other components of the
+    // process (e.g. SaltyLibMetrics, the stream acceptor) may continue to
+    // appear healthy, leaving operators with no signal that handshakes are
+    // silently failing. Log loudly so this condition is observable.
+    tracing::error!("QUIC handshake server accept loop exited unexpectedly");
 }
 
 #[derive(Clone)]
