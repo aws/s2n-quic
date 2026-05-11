@@ -199,7 +199,7 @@ impl EncoderValue for ApplicationParams {
 pub fn append_dc_versions(
     client_params: crate::crypto::tls::ApplicationParameters,
     server_params: &mut alloc::vec::Vec<u8>,
-) -> std::result::Result<(), crate::transport::Error> {
+) -> Result<(), crate::transport::Error> {
     let param_decoder = s2n_codec::DecoderBuffer::new(client_params.transport_parameters);
     let (client_params, remaining) =
         <parameters::ClientTransportParameters as s2n_codec::DecoderValue>::decode(param_decoder)
