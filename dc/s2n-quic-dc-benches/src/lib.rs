@@ -5,10 +5,12 @@ use criterion::Criterion;
 
 pub mod crypto;
 pub mod datagram;
+pub mod handshake;
 pub mod streams;
 
 pub fn benchmarks(c: &mut Criterion) {
     crypto::benchmarks(c);
     datagram::benchmarks(c);
     streams::benchmarks(c);
+    handshake::benchmarks(c);
 }

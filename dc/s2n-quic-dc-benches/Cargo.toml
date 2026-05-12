@@ -7,9 +7,13 @@ publish = false
 [dependencies]
 aws-lc-rs = "1.12"
 criterion = { version = "0.8", features = ["html_reports", "async_tokio"] }
+futures = "0.3.32"
 s2n-codec = { path = "../../common/s2n-codec" }
+s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
 s2n-quic-dc = { path = "../s2n-quic-dc", features = ["testing"] }
+s2n-quic = { path = "../../quic/s2n-quic" }
 tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
 
 [[bench]]
 name = "bench"
