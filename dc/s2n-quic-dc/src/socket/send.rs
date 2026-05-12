@@ -7,5 +7,8 @@ pub mod tracing;
 pub mod transmission;
 pub mod udp;
 
+#[cfg(any(test, feature = "testing"))]
+mod bach;
+
 pub use self::tracing::Tracing;
 pub use socket::Socket;

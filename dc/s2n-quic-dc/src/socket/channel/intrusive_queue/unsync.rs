@@ -5,23 +5,60 @@
 //!
 //! The sender has no backpressure - it can always push entries to the queue.
 //! The receiver drains the queue until empty, returning Pending when empty.
+//!
+//! # Waker support
+//!
+//! The receiver stores its waker when returning `Poll::Pending`. Senders wake
+//! the receiver when they push the first item into an empty queue. This lets
+//! the channel work correctly in cooperative executors (Tokio, Bach) as well
+//! as in busy-poll runtimes (where the wake is a cheap no-op if the receiver
+//! task is already in the run queue).
 
 use crate::intrusive_queue;
 use std::{
     cell::{Cell, UnsafeCell},
     rc::Rc,
-    task::Poll,
+    task::{Poll, Waker},
 };
 
 struct Shared<A: intrusive_queue::Adapter> {
     queue: UnsafeCell<intrusive_queue::List<A>>,
     is_open: Cell<bool>,
+    /// Waker stored by the receiver task when the queue is empty.
+    ///
+    /// # Safety
+    ///
+    /// `Shared` is `!Send` (wrapped in `Rc`) so all accesses happen on the
+    /// same thread. We use `UnsafeCell` here because `Cell<Option<Waker>>`
+    /// would require `Waker: Copy`, which it is not.
+    waker: UnsafeCell<Option<Waker>>,
 }
 
 impl<A: intrusive_queue::Adapter> Shared<A> {
     #[inline(always)]
     fn is_alive(&self) -> bool {
         self.is_open.get()
+    }
+
+    /// Takes the stored receiver waker (if any) and wakes it.
+    ///
+    /// # Safety
+    ///
+    /// The caller must have exclusive access to `Shared`: `Shared` is wrapped
+    /// in `Rc` (non-`Send`), so all access must be on the same thread.
+    /// Calling this while the receiver's `poll_recv` is concurrently reading
+    /// `self.waker` via `&mut self` would be unsound.  Because `Rc` prevents
+    /// sharing across threads and Rust's borrow checker ensures `&mut Receiver`
+    /// and `&mut Sender` are not held simultaneously in safe code, this
+    /// invariant is upheld automatically.
+    #[inline(always)]
+    unsafe fn wake_receiver(&self) {
+        // SAFETY: guaranteed to be on the same thread as the receiver because
+        // `Shared` is wrapped in `Rc`.  The `&mut self` of `send` and
+        // `poll_recv` ensures the waker slot is accessed by at most one caller.
+        if let Some(waker) = (*self.waker.get()).take() {
+            waker.wake();
+        }
     }
 }
 
@@ -36,6 +73,7 @@ pub fn new_with_adapter<A: intrusive_queue::Adapter>() -> (Sender<A>, Receiver<A
     let shared = Rc::new(Shared {
         queue: UnsafeCell::new(intrusive_queue::List::new()),
         is_open: Cell::new(true),
+        waker: UnsafeCell::new(None),
     });
     (
         Sender {
@@ -68,6 +106,8 @@ impl<A: intrusive_queue::Adapter> super::super::UnboundedSender<A::Pointer> for 
             // SAFETY: the Shared struct is non-Send and we have exclusive access through &mut
             let queue = &mut *self.shared.queue.get();
             queue.push_back(value);
+            // Wake the receiver task if it registered a waker while waiting.
+            self.shared.wake_receiver();
         }
 
         Ok(())
@@ -90,6 +130,7 @@ impl<A: intrusive_queue::Adapter> super::super::Sender<A::Pointer> for Sender<A>
             let queue = &mut *self.shared.queue.get();
             let entry = value.assume_init_read();
             queue.push_back(entry);
+            self.shared.wake_receiver();
         }
 
         Poll::Ready(Ok(()))
@@ -125,6 +166,7 @@ impl<A: intrusive_queue::Adapter> super::super::UnboundedSender<intrusive_queue:
             // SAFETY: the Shared struct is non-Send and we have exclusive access through &mut
             let queue = &mut *self.sender.shared.queue.get();
             queue.append(&mut list);
+            self.sender.shared.wake_receiver();
         }
 
         Ok(())
@@ -175,7 +217,7 @@ impl<A: intrusive_queue::Adapter> Receiver<A> {
 
 impl<A: intrusive_queue::Adapter> super::super::Receiver<A::Pointer> for Receiver<A> {
     #[inline(always)]
-    fn poll_recv(&mut self, _cx: &mut core::task::Context<'_>) -> Poll<Option<A::Pointer>> {
+    fn poll_recv(&mut self, cx: &mut core::task::Context<'_>) -> Poll<Option<A::Pointer>> {
         unsafe {
             // SAFETY: the Shared struct is non-Send and we have exclusive access through &mut
             let queue = &mut *self.shared.queue.get();
@@ -189,6 +231,14 @@ impl<A: intrusive_queue::Adapter> super::super::Receiver<A::Pointer> for Receive
             return Poll::Ready(None);
         }
 
+        // Register the waker so the sender can wake us when new items arrive.
+        unsafe {
+            let waker_slot = &mut *self.shared.waker.get();
+            match waker_slot {
+                Some(w) if w.will_wake(cx.waker()) => {}
+                _ => *waker_slot = Some(cx.waker().clone()),
+            }
+        }
         Poll::Pending
     }
 
@@ -207,7 +257,7 @@ impl<A: intrusive_queue::Adapter> super::super::Receiver<intrusive_queue::List<A
     #[inline(always)]
     fn poll_recv(
         &mut self,
-        _cx: &mut core::task::Context<'_>,
+        cx: &mut core::task::Context<'_>,
     ) -> Poll<Option<intrusive_queue::List<A>>> {
         unsafe {
             // SAFETY: the Shared struct is non-Send and we have exclusive access through &mut
@@ -224,6 +274,14 @@ impl<A: intrusive_queue::Adapter> super::super::Receiver<intrusive_queue::List<A
             return Poll::Ready(None);
         }
 
+        // Register the waker so the sender can wake us when new items arrive.
+        unsafe {
+            let waker_slot = &mut *self.receiver.shared.waker.get();
+            match waker_slot {
+                Some(w) if w.will_wake(cx.waker()) => {}
+                _ => *waker_slot = Some(cx.waker().clone()),
+            }
+        }
         Poll::Pending
     }
 

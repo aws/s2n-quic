@@ -477,7 +477,10 @@ impl Map {
 
             let params = params.unwrap_or(dc::testing::TEST_APPLICATION_PARAMS);
 
-            let entry = Entry::new(
+            // Use the map's configured socket sender count so that entries
+            // created in tests have the correct sender-slot allocation.
+            let socket_sender_count = map.store.socket_sender_count();
+            let entry = Entry::new_with_socket_senders(
                 peer_addr,
                 secret,
                 sender,
@@ -485,6 +488,7 @@ impl Map {
                 params,
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
                 None,
+                socket_sender_count,
             );
             let entry = Arc::new(entry);
             map.store.test_insert(entry);
