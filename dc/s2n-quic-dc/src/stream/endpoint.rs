@@ -50,12 +50,8 @@ where
         parameters = o(parameters);
     }
 
-    let stream_id = packet::stream::Id {
-        // the client starts with routing to 0 until the server updates the value
-        queue_id: VarInt::ZERO,
-        is_reliable: true,
-        is_bidirectional: true,
-    };
+    // the client starts with routing to 0 until the server updates the value
+    let stream_id = packet::stream::Id::normal(VarInt::ZERO).unwrap();
 
     let now = env.clock().get_time();
 
@@ -128,11 +124,18 @@ where
         parameters = o(parameters);
     }
 
-    let stream_id = packet::stream::Id {
-        // use the client's `source_queue_id`, if specified
-        queue_id: packet.source_queue_id.unwrap_or(VarInt::ZERO),
-        // inherit the rest of the parameters from the client
-        ..packet.stream_id
+    // use the client's `source_queue_id`, if specified, inheriting the rest from the client
+    let Some(stream_id) = packet
+        .stream_id
+        .with_queue_id(packet.source_queue_id.unwrap_or(VarInt::ZERO))
+    else {
+        return Err(AcceptError {
+            secret_control,
+            error: io::Error::new(
+                io::ErrorKind::InvalidData,
+                "queue_id exceeds encoding limit",
+            ),
+        });
     };
 
     let subscriber = env.subscriber().clone();
@@ -255,7 +258,7 @@ where
             clock: env.clock().clone(),
             gso: env.gso(),
             remote_port: remote_addr.port().into(),
-            remote_queue_id: stream_id.queue_id.as_u64().into(),
+            remote_queue_id: stream_id.queue_id().as_u64().into(),
             local_queue_id: if let Some(id) = source_queue_id {
                 id.as_u64()
             } else {

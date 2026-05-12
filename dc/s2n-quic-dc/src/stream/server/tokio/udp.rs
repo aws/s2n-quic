@@ -196,7 +196,7 @@ where
 
                 Ok(ControlFlow::Continue(()))
             }
-            Err(_) => {
+            Err(_undelivered_stream) => {
                 debug!("application accept queue dropped; shutting down");
                 Ok(ControlFlow::Break(()))
             }

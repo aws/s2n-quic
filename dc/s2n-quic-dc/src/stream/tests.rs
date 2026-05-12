@@ -12,6 +12,7 @@ mod cardinality;
 mod deterministic;
 mod idle_timeout;
 mod key_update;
+mod recv;
 mod request_response;
 mod restart;
 mod rpc;

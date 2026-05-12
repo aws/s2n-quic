@@ -103,6 +103,51 @@ impl Cursors {
             Some(self.final_offset)
         }
     }
+
+    /// Ensures the final offset doesn't change
+    //
+    // This is intentionally on Cursors to prevent accidentally manipulating non-snapshotted state.
+    #[inline]
+    fn handle_reader_fin<R>(&mut self, reader: &mut R) -> Result<(), Error<R::Error>>
+    where
+        R: Reader + ?Sized,
+    {
+        let buffered_offset = reader
+            .current_offset()
+            .checked_add_usize(reader.buffered_len())
+            .ok_or(Error::OutOfRange)?
+            .as_u64();
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+        //# Once a final size for a stream is known, it cannot change.  If a
+        //# RESET_STREAM or STREAM frame is received indicating a change in the
+        //# final size for the stream, an endpoint SHOULD respond with an error
+        //# of type FINAL_SIZE_ERROR; see Section 11 for details on error
+        //# handling.
+        match (reader.final_offset(), self.final_size()) {
+            (Some(actual), Some(expected)) => {
+                ensure!(actual == expected, Err(Error::InvalidFin));
+            }
+            (Some(final_offset), None) => {
+                let final_offset = final_offset.as_u64();
+
+                // make sure that we didn't see any previous chunks greater than the final size
+                ensure!(self.max_recv_offset <= final_offset, Err(Error::InvalidFin));
+
+                self.final_offset = final_offset;
+            }
+            (None, Some(expected)) => {
+                // make sure the reader doesn't exceed a previously known final offset
+                ensure!(expected >= buffered_offset, Err(Error::InvalidFin));
+            }
+            (None, None) => {}
+        }
+
+        // record the maximum offset that we've seen
+        self.max_recv_offset = self.max_recv_offset.max(buffered_offset);
+
+        Ok(())
+    }
 }
 
 impl Default for Cursors {
@@ -199,7 +244,14 @@ impl Reassembler {
         // store a snapshot of the cursors in case there's an error
         let snapshot = self.cursors;
 
-        self.check_reader_fin(reader)?;
+        // Note: `handle_reader_fin` reads `reader.final_offset()` which may not be authenticated
+        // (for fallible readers). This is OK because:
+        // 1. The cursor snapshot above captures state *before* `final_offset` is recorded.
+        // 2. `write_reader_impl` will trigger any fallible processing (via `read_chunk`) for any
+        //    reader with remaining data or an empty buffer.
+        // 3. If reading fails, the snapshot is restored, rolling back any `final_offset` that
+        //    `handle_reader_fin` set.
+        self.cursors.handle_reader_fin(reader)?;
 
         if let Err(err) = self.write_reader_impl(reader) {
             use core::any::TypeId;
@@ -210,52 +262,6 @@ impl Reassembler {
         }
 
         self.invariants();
-
-        Ok(())
-    }
-
-    /// Ensures the final offset doesn't change
-    #[inline]
-    fn check_reader_fin<R>(&mut self, reader: &mut R) -> Result<(), Error<R::Error>>
-    where
-        R: Reader + ?Sized,
-    {
-        let buffered_offset = reader
-            .current_offset()
-            .checked_add_usize(reader.buffered_len())
-            .ok_or(Error::OutOfRange)?
-            .as_u64();
-
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
-        //# Once a final size for a stream is known, it cannot change.  If a
-        //# RESET_STREAM or STREAM frame is received indicating a change in the
-        //# final size for the stream, an endpoint SHOULD respond with an error
-        //# of type FINAL_SIZE_ERROR; see Section 11 for details on error
-        //# handling.
-        match (reader.final_offset(), self.final_size()) {
-            (Some(actual), Some(expected)) => {
-                ensure!(actual == expected, Err(Error::InvalidFin));
-            }
-            (Some(final_offset), None) => {
-                let final_offset = final_offset.as_u64();
-
-                // make sure that we didn't see any previous chunks greater than the final size
-                ensure!(
-                    self.cursors.max_recv_offset <= final_offset,
-                    Err(Error::InvalidFin)
-                );
-
-                self.cursors.final_offset = final_offset;
-            }
-            (None, Some(expected)) => {
-                // make sure the reader doesn't exceed a previously known final offset
-                ensure!(expected >= buffered_offset, Err(Error::InvalidFin));
-            }
-            (None, None) => {}
-        }
-
-        // record the maximum offset that we've seen
-        self.cursors.max_recv_offset = self.cursors.max_recv_offset.max(buffered_offset);
 
         Ok(())
     }

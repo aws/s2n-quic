@@ -215,6 +215,36 @@ impl Provider for TestTlsProvider {
     }
 }
 
+#[derive(Default, Clone)]
+pub struct UntrustedClientProvider;
+
+impl Provider for UntrustedClientProvider {
+    type Server = s2n_quic_tls_prov::Server;
+    type Client = s2n_quic_tls_prov::Client;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
+
+    fn start_server(self) -> Result<Self::Server, Self::Error> {
+        let server = s2n_quic_tls_prov::Server::builder()
+            .with_application_protocols(["h3"].iter())?
+            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)?
+            .with_client_authentication()?
+            .build()?;
+        Ok(server)
+    }
+
+    fn start_client(self) -> Result<Self::Client, Self::Error> {
+        let client = s2n_quic_tls_prov::Client::builder()
+            .with_application_protocols(["h3"].iter())?
+            .with_certificate(certificates::CERT_PEM)?
+            .with_client_identity(
+                certificates::UNTRUSTED_CERT_PEM,
+                certificates::UNTRUSTED_KEY_PEM,
+            )?
+            .build()?;
+        Ok(client)
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Pair {
     pub client_mtu: Option<u16>,

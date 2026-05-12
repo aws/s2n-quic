@@ -44,7 +44,7 @@ where
     ) {
         if packet
             .stream_id()
-            .is_some_and(|id| id.queue_id == VarInt::ZERO)
+            .is_some_and(|id| id.queue_id() == VarInt::ZERO)
         {
             self.zero.handle_control_packet(remote_address, ecn, packet);
         } else {
@@ -61,7 +61,7 @@ where
         credentials: Credentials,
         segment: descriptor::Filled,
     ) {
-        if id.is_some_and(|id| id.queue_id == VarInt::ZERO) {
+        if id.is_some_and(|id| id.queue_id() == VarInt::ZERO) {
             self.zero
                 .dispatch_control_packet(tag, id, credentials, segment);
         } else {
@@ -77,7 +77,7 @@ where
         ecn: ExplicitCongestionNotification,
         packet: packet::stream::decoder::Packet,
     ) {
-        if packet.stream_id().queue_id == VarInt::ZERO {
+        if packet.stream_id().queue_id() == VarInt::ZERO {
             self.zero.handle_stream_packet(remote_address, ecn, packet);
         } else {
             self.non_zero
@@ -93,7 +93,7 @@ where
         credentials: Credentials,
         segment: descriptor::Filled,
     ) {
-        if id.queue_id == VarInt::ZERO {
+        if id.queue_id() == VarInt::ZERO {
             self.zero
                 .dispatch_stream_packet(tag, id, credentials, segment);
         } else {
