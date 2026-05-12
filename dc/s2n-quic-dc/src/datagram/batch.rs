@@ -39,6 +39,13 @@ pub enum Priority {
 
 impl Priority {
     pub const LEVELS: usize = 5;
+    pub const ALL: [Self; Self::LEVELS] = [
+        Self::Ack,
+        Self::FlowRetryReset,
+        Self::FlowControl,
+        Self::FlowData,
+        Self::FlowInit,
+    ];
 
     #[inline]
     pub const fn as_index(self) -> usize {

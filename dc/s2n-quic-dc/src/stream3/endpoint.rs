@@ -3,6 +3,8 @@
 
 //! Stream3 Endpoint: shared infrastructure for the process.
 
+pub use s2n_quic_platform::features::Gso;
+
 pub(crate) mod ack;
 pub(crate) mod assemble;
 pub(crate) mod combinator;
@@ -100,6 +102,7 @@ impl Default for Budgets {
 /// Each field is a list of worker IDs (indices into the spawner's thread pool). The spawner
 /// must have at least `max(all IDs) + 1` threads. Overlapping IDs are allowed (e.g. recv_io
 /// and recv_dispatch on the same worker) but typically kept separate for isolation.
+#[derive(Debug)]
 pub struct WorkerLayout {
     /// Which worker runs the frame dispatch task (single).
     pub frame_dispatch: usize,
@@ -144,6 +147,13 @@ pub struct Config<S, C> {
     ///
     /// [`Paced`]: crate::socket::channel::Paced
     pub overall_send_rate: crate::socket::rate::Rate,
+    /// Per-socket bandwidth cap applied after assembly, before socket transmission.
+    ///
+    /// Each send socket gets its own [`Paced`] stage with this rate. This prevents any
+    /// single socket from saturating the NIC queue even when the overall rate budget allows it.
+    ///
+    /// [`Paced`]: crate::socket::channel::Paced
+    pub per_socket_send_rate: crate::socket::rate::Rate,
     /// Per-poll budgets for each pipeline task.
     pub budgets: Budgets,
     /// Number of shards for the frame submission channel.
@@ -185,6 +195,8 @@ where
 {
     let num_recv_dispatch = config.layout.recv_dispatch.len();
 
+    tracing::debug!(?config.layout, "setting up endpoint");
+
     if num_recv_dispatch.is_power_of_two() {
         setup_endpoint_inner::<_, _, _, _, _, routing::PowerOfTwoRoute>(
             config,
@@ -216,7 +228,9 @@ where
     C: s2n_quic_core::time::Clock + crate::clock::precision::Clock + Clone + Send + 'static,
     RecvRoute: routing::SenderRoute,
 {
-    use crate::{counter::Registry as CounterRegistry, socket::channel::intrusive_queue, stream3::frame};
+    use crate::{
+        counter::Registry as CounterRegistry, socket::channel::intrusive_queue, stream3::frame,
+    };
 
     let Config {
         spawner,
@@ -229,6 +243,7 @@ where
         idle_timeout,
         clock,
         overall_send_rate,
+        per_socket_send_rate,
         budgets,
         submission_shards,
     } = config;
@@ -285,6 +300,10 @@ where
     let counters = counters::Dispatch::new(&counter_registry);
     let decode_error_counter = counters.rx_none.clone();
 
+    // Set the socket sender count on the map so path-secret entries allocate
+    // per-socket transmission schedules for pick-two load balancing.
+    path_secret_map.set_socket_sender_count(num_send);
+
     // Build workers -------------------------------------------------------------
     let mut workers: Vec<Worker<SendSocket, RecvSocket, C, G, _, RecvRoute>> = {
         let mut v = Vec::with_capacity(num_workers);
@@ -294,15 +313,6 @@ where
         );
         v
     };
-
-    // Frame-dispatch task on its designated worker.
-    workers[layout.frame_dispatch].frame_dispatch = Some(FrameDispatchParts {
-        frame_rx,
-        worker_batch_txs,
-        rand: create_rand(),
-        clock: clock.clone(),
-        overall_send_rate,
-    });
 
     // Distribute send sockets across send workers round-robin.
     for (sender_idx, socket) in send_sockets.into_iter().enumerate() {
@@ -317,8 +327,24 @@ where
             pool: send_pool.clone(),
             clock: clock.clone(),
             inflight_gauge,
+            per_socket_send_rate,
         });
     }
+
+    // Build per-socket-id senders: each socket ID maps to its owning worker's channel.
+    let socket_senders: Vec<BatchSender> = sender_id_to_worker
+        .iter()
+        .map(|&worker_idx| worker_batch_txs[worker_idx].clone())
+        .collect();
+
+    // Frame-dispatch task on its designated worker.
+    workers[layout.frame_dispatch].frame_dispatch = Some(FrameDispatchParts {
+        frame_rx,
+        socket_senders,
+        rand: create_rand(),
+        clock: clock.clone(),
+        overall_send_rate,
+    });
 
     // Assign per-send-worker batch/ack receivers.
     for (idx, (batch_rx, ack_rx)) in worker_batch_rxs
@@ -349,7 +375,9 @@ where
     // using a hash of (credentials.id, source_sender_id) for peer affinity.
     let num_recv_dispatch = layout.recv_dispatch.len();
     let (dispatch_txs, dispatch_rxs): (Vec<_>, Vec<_>) = (0..num_recv_dispatch)
-        .map(|_| intrusive_queue::sync::new::<packet::datagram::decoder::Packet<descriptor::Filled>>())
+        .map(|_| {
+            intrusive_queue::sync::new::<packet::datagram::decoder::Packet<descriptor::Filled>>()
+        })
         .unzip();
 
     let ack_route = RecvRoute::new(num_send);
@@ -401,8 +429,8 @@ where
 /// All the ingredients needed to spawn the frame-dispatch task on a worker.
 struct FrameDispatchParts<G, Clk> {
     frame_rx: crate::stream3::frame::SubmissionReceiver,
-    /// Per-worker senders for batch routing (PickTwo targets these).
-    worker_batch_txs: Vec<BatchSender>,
+    /// Per-socket-id senders: indexed by socket ID, each routes to the owning worker.
+    socket_senders: Vec<BatchSender>,
     /// Random generator for pick-two routing.
     rand: G,
     /// Clock used by the pacing stage.
@@ -428,12 +456,11 @@ pub(crate) struct SendSocketParts<Socket, Clk> {
     pool: crate::socket::pool::Pool,
     clock: Clk,
     inflight_gauge: crate::counter::QueueGauge,
+    per_socket_send_rate: crate::socket::rate::Rate,
 }
 
-type PacketSender =
-    sync_queue::Sender<packet::datagram::decoder::Packet<descriptor::Filled>>;
-type PacketReceiver =
-    sync_queue::Receiver<packet::datagram::decoder::Packet<descriptor::Filled>>;
+type PacketSender = sync_queue::Sender<packet::datagram::decoder::Packet<descriptor::Filled>>;
+type PacketReceiver = sync_queue::Receiver<packet::datagram::decoder::Packet<descriptor::Filled>>;
 
 /// Ingredients for a recv IO worker (socket read + decode + fan-out).
 struct RecvSocketParts<Socket, Route> {
@@ -474,7 +501,8 @@ struct Worker<SendSocket, RecvSocket, Clk, G, AckSnd, Route> {
     recv_dispatch: Option<RecvDispatchParts<Clk, AckSnd, Route>>,
 }
 
-impl<SendSocket, RecvSocket, Clk, G, AckSnd, Route> Worker<SendSocket, RecvSocket, Clk, G, AckSnd, Route>
+impl<SendSocket, RecvSocket, Clk, G, AckSnd, Route>
+    Worker<SendSocket, RecvSocket, Clk, G, AckSnd, Route>
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
@@ -523,17 +551,15 @@ where
         spawner.spawn_local(id, move |mut local| {
             if let Some(fd) = frame_dispatch {
                 let mut random = fd.rand;
-                let random_fn = move |n: usize| {
+                let random_fn = move || {
                     let mut bytes = [0u8; 8];
                     random.public_random_fill(&mut bytes);
-                    let raw = u64::from_le_bytes(bytes) as usize;
-                    debug_assert!(n.is_power_of_two(), "sender count must be a power of two");
-                    raw & (n - 1)
+                    u64::from_le_bytes(bytes) as usize
                 };
                 tasks::frame_dispatch(
                     &mut local,
                     fd.frame_rx,
-                    fd.worker_batch_txs,
+                    fd.socket_senders,
                     random_fn,
                     fd.clock,
                     fd.overall_send_rate,

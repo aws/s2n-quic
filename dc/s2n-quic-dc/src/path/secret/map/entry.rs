@@ -339,23 +339,24 @@ impl Entry {
 
     pub fn pick_sender_by_next_transmission(
         &self,
-        random_fn: &mut impl FnMut(usize) -> usize,
+        random_fn: &mut impl FnMut() -> usize,
     ) -> usize {
         let len = self.next_transmission_by_sender.len();
-        if len == 0 {
-            // No sender sockets are configured yet; callers treat 0 as the default route index.
+        debug_assert!(len > 0, "sender schedule is empty");
+        debug_assert!(
+            len.is_power_of_two(),
+            "sender count must be a power of two, got {len}"
+        );
+
+        if len <= 1 {
             return 0;
         }
 
-        if len == 1 {
-            return 0;
-        }
-
-        let idx1 = random_fn(len) % len;
+        let idx1 = random_fn() & (len - 1);
         let idx2 = if len == 2 {
             idx1 ^ 1
         } else {
-            let mut idx2 = random_fn(len - 1) % (len - 1);
+            let mut idx2 = random_fn() % (len - 1);
             if idx2 >= idx1 {
                 idx2 += 1;
             }

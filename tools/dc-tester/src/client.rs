@@ -3,7 +3,7 @@
 
 use crate::config::{ClientConfig, WorkloadConfig};
 use s2n_quic_core::{buffer::Reader as _, stream::testing::Data, varint::VarInt};
-use s2n_quic_dc::stream2::endpoint::Endpoint;
+use s2n_quic_dc::stream3::endpoint::Endpoint;
 use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::io::AsyncWriteExt as _;
 use tracing::{info, warn};
@@ -16,7 +16,7 @@ pub async fn run(
     info!(
         workload_count = config.workloads.len(),
         %server_addr,
-        "Starting stream2 RPC test client"
+        "Starting stream3 RPC test client"
     );
 
     if config.workloads.is_empty() {
@@ -29,9 +29,9 @@ pub async fn run(
     // Create PSK client provider with data_port
     let handshake = crate::psk::client(data_port, endpoint.path_secret_map.clone())?;
 
-    // Create stream2 client
+    // Create stream3 client
     let server_name = crate::psk::server_name();
-    let client = s2n_quic_dc::stream2::Client::new(endpoint, handshake, server_name);
+    let client = s2n_quic_dc::stream3::Client::new(endpoint, handshake, server_name);
 
     let stats = crate::stats::Subscriber::spawn(std::time::Duration::from_secs(1));
 
@@ -64,7 +64,7 @@ pub async fn run(
 }
 
 async fn run_worker(
-    client: &mut s2n_quic_dc::stream2::Client,
+    client: &mut s2n_quic_dc::stream3::Client,
     server_addr: SocketAddr,
     workload: WorkloadConfig,
     worker_id: usize,
@@ -100,7 +100,7 @@ async fn run_worker(
 }
 
 async fn execute_request(
-    client: &mut s2n_quic_dc::stream2::Client,
+    client: &mut s2n_quic_dc::stream3::Client,
     server_addr: SocketAddr,
     workload: &WorkloadConfig,
 ) -> io::Result<(u64, u64)> {

@@ -119,8 +119,12 @@ impl UnboundedSender<Entry<Frame>> for PriorityInput {
 pub struct PriorityStorage(Box<PriorityInput>);
 
 impl PriorityStorage {
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Queue<Frame>> {
-        self.0.queues.iter_mut()
+    pub fn drain(&mut self) -> impl Iterator<Item = (Priority, Queue<Frame>)> + '_ {
+        self.0.len = 0;
+        Priority::ALL
+            .iter()
+            .zip(self.0.queues.iter_mut())
+            .map(|(&priority, queue)| (priority, core::mem::take(queue)))
     }
 }
 

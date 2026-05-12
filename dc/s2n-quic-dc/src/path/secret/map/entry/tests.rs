@@ -57,7 +57,6 @@ fn empty_sender_schedule_is_supported() {
     let entry = test_entry_with_senders(0);
     assert_eq!(entry.socket_sender_count(), 0);
     assert_eq!(entry.sender_next_transmission_micros(0), 0);
-    assert_eq!(entry.pick_sender_by_next_transmission(&mut |_| 0), 0);
 }
 
 #[test]
@@ -79,9 +78,9 @@ fn picks_sender_with_lower_next_transmission() {
         s2n_quic_core::recovery::bandwidth::Bandwidth::new(1_000, Duration::from_millis(1)),
     );
 
-    let picked = entry.pick_sender_by_next_transmission(&mut |upper_bound| upper_bound - 1);
+    let picked = entry.pick_sender_by_next_transmission(&mut || 1);
     assert_eq!(picked, 1);
 
-    let picked = entry.pick_sender_by_next_transmission(&mut |_| 0);
+    let picked = entry.pick_sender_by_next_transmission(&mut || 0);
     assert_eq!(picked, 1);
 }

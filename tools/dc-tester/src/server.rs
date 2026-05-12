@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use s2n_quic_core::{stream::testing::Data, varint::VarInt};
-use s2n_quic_dc::stream2::endpoint::Endpoint;
+use s2n_quic_dc::stream3::endpoint::Endpoint;
 use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::io::AsyncReadExt as _;
 use tracing::{error, info};
 
 pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()> {
-    info!("Starting stream2 RPC test server");
+    info!("Starting stream3 RPC test server");
 
     let data_port = endpoint.data_port;
 
@@ -17,8 +17,8 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
     let handshake =
         crate::psk::server(address, data_port, endpoint.path_secret_map.clone()).await?;
 
-    // Create stream2 server
-    let server = s2n_quic_dc::stream2::Server::new(endpoint, handshake);
+    // Create stream3 server
+    let server = s2n_quic_dc::stream3::Server::new(endpoint, handshake);
 
     // Register channel acceptor with ID 0
     let accept_rx = server.register_acceptor_channel(VarInt::ZERO, 1024)?;
@@ -51,7 +51,7 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
     }
 }
 
-async fn handle_connection(stream: s2n_quic_dc::stream2::Stream) -> io::Result<(u64, u64)> {
+async fn handle_connection(stream: s2n_quic_dc::stream3::Stream) -> io::Result<(u64, u64)> {
     let (mut reader, mut writer) = stream.into_split();
 
     tokio::time::timeout(Duration::from_secs(1), reader.validate())

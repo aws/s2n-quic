@@ -86,7 +86,7 @@ fn test_path_secret_entry() -> Arc<PathSecretEntry> {
     let peer = "127.0.0.1:4433"
         .parse()
         .expect("failed to parse hardcoded loopback address 127.0.0.1:4433");
-    PathSecretEntry::fake(peer, None)
+    PathSecretEntry::fake_with_socket_senders(peer, None, 2)
 }
 
 fn new_test_item(
@@ -137,7 +137,7 @@ fn with_noop_context<R>(f: impl FnOnce(&mut task::Context<'_>) -> R) -> R {
 
 // ── PickTwo tests ─────────────────────────────────────────────────────────
 
-fn try_send_pick_two<Rand: FnMut(usize) -> usize>(
+fn try_send_pick_two<Rand: FnMut() -> usize>(
     value: TestItem,
     senders: &mut Vec<TestSender>,
     random: &mut Rand,
@@ -160,7 +160,7 @@ fn selected_sender_receives_item() {
             calls: 0,
         },
     ];
-    let result = try_send_pick_two(item, &mut senders, &mut |_| 0);
+    let result = try_send_pick_two(item, &mut senders, &mut || 0);
     assert!(result.is_ok());
     assert_eq!(senders[0].calls, 1);
     assert_eq!(senders[1].calls, 0);
@@ -180,7 +180,7 @@ fn sender_error_returns_value() {
             calls: 0,
         },
     ];
-    let result = try_send_pick_two(item, &mut senders, &mut |_| 0);
+    let result = try_send_pick_two(item, &mut senders, &mut || 0);
     assert!(result.is_err());
     assert_eq!(senders[0].calls, 1);
     assert_eq!(senders[1].calls, 0);
@@ -205,7 +205,7 @@ fn pick_two_drops_unsent_entry_on_shutdown() {
         accept: false,
         calls: 0,
     }];
-    let pick_two = PickTwo::new(rx, senders, |_| 0);
+    let pick_two = PickTwo::new(rx, senders, || 0);
     let mut fut = core::pin::pin!(crate::socket::channel::ReceiverExt::drain_budgeted(
         pick_two, None
     ));
@@ -228,7 +228,7 @@ fn sticky_sender_bypasses_pick_two() {
             calls: 0,
         },
     ];
-    let result = try_send_pick_two(item, &mut senders, &mut |_| 0);
+    let result = try_send_pick_two(item, &mut senders, &mut || 0);
     assert!(result.is_ok());
     assert_eq!(senders[0].calls, 0);
     assert_eq!(senders[1].calls, 1);
@@ -249,7 +249,7 @@ fn sticky_sender_error_returns_value() {
             calls: 0,
         },
     ];
-    let result = try_send_pick_two(item, &mut senders, &mut |_| 0);
+    let result = try_send_pick_two(item, &mut senders, &mut || 0);
     assert!(result.is_err());
     assert_eq!(senders[0].calls, 1);
     assert_eq!(senders[1].calls, 0);

@@ -316,7 +316,7 @@ where
     T: ByteCost + PathSecretMapEntry + StickyRoute,
     R: Receiver<T>,
     S: UnboundedSender<T>,
-    Rand: FnMut(usize) -> usize,
+    Rand: FnMut() -> usize,
 {
     pub fn new(rx: R, senders: Vec<S>, random: Rand) -> Self {
         Self {
@@ -341,7 +341,7 @@ where
 
         debug_assert!(
             chosen_idx < senders.len(),
-            "sticky sender index out of bounds: sticky={} senders={}",
+            "sender index out of bounds: chosen={} senders={}",
             chosen_idx,
             senders.len()
         );
@@ -357,7 +357,7 @@ where
     T: ByteCost + PathSecretMapEntry + StickyRoute,
     R: Receiver<T>,
     S: UnboundedSender<T>,
-    Rand: FnMut(usize) -> usize,
+    Rand: FnMut() -> usize,
 {
     fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<()>> {
         let Some(value) = ready!(self.rx.poll_recv(cx)) else {

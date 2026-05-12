@@ -115,7 +115,7 @@ pub fn frame_dispatch<S, Rand, Clk>(
     budgets: Budgets,
 ) where
     S: UnboundedSender<Entry<FrameBatch>> + 'static,
-    Rand: FnMut(usize) -> usize + 'static,
+    Rand: FnMut() -> usize + 'static,
     Clk: precision::Clock + 'static,
 {
     let mut priority_batch_rxs = Vec::with_capacity(Priority::LEVELS);
@@ -134,9 +134,11 @@ pub fn frame_dispatch<S, Rand, Clk>(
             Poll::Ready(None) => Poll::Ready(()),
             Poll::Pending => Poll::Pending,
             Poll::Ready(Some(())) => {
-                for (queue, tx) in staging.iter_mut().zip(&mut priority_list_txs) {
+                for ((_priority, queue), tx) in
+                    staging.drain().zip(&mut priority_list_txs)
+                {
                     if !queue.is_empty() {
-                        let _ = UnboundedSender::send(tx, core::mem::take(queue));
+                        let _ = UnboundedSender::send(tx, queue);
                     }
                 }
                 cx.waker().wake_by_ref();
@@ -415,7 +417,7 @@ pub fn send_worker<Socket, Clk, Rand>(
             async move {
                 let rx = Assembler::new(
                     context_rx,
-                    clock,
+                    clock.clone(),
                     source_sender_id,
                     st.source_control_port,
                     st.gso,
@@ -425,6 +427,7 @@ pub fn send_worker<Socket, Clk, Rand>(
                     pto_wheel_tx,
                     idle_wheel_tx,
                 );
+                let rx = Paced::new(rx, clock, st.per_socket_send_rate);
                 let rx = SocketSender::new(rx, st.socket);
                 let rx = InspectErr::new(rx, |(err, _segments)| {
                     tracing::warn!(%err, "socket send error");

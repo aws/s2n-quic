@@ -5,7 +5,9 @@ use crate::config::EndpointConfig;
 use s2n_quic_dc::{
     busy_poll,
     path::secret::{self, stateless_reset::Signer},
-    stream2::endpoint,
+    socket::rate::Rate,
+    stream2::Spawner,
+    stream3::endpoint::{self, socket},
 };
 use std::{io, net::SocketAddr, sync::Arc};
 use tracing::info;
@@ -21,11 +23,17 @@ pub fn create(
     let subscriber = s2n_quic_dc::event::tracing::Subscriber::default();
     let map = secret::Map::new(signer, 50_000, true, clock, subscriber);
 
-    // Create recv sockets first to determine the data port
-    let num_recv_sockets = s2n_quic_dc::stream2::Spawner::worker_count(spawner)
-        .saturating_sub(1)
+    let num_workers = spawner.worker_count();
+
+    // Compute worker budget: 1 frame_dispatch + send + recv_io + recv_dispatch
+    let num_send_workers = (num_workers / 3).max(1);
+    let num_recv_dispatch = 1;
+    let num_recv_sockets = num_workers
+        .saturating_sub(1 + num_send_workers + num_recv_dispatch)
         .max(1);
-    let recv_sockets = endpoint::create_recv_sockets(num_recv_sockets, bind_addr)?;
+
+    // Create recv sockets first to determine the data port
+    let recv_sockets = socket::RecvConfig::new(num_recv_sockets, bind_addr).busy_poll()?;
 
     {
         use s2n_quic_dc::socket::recv::Socket as _;
@@ -35,7 +43,8 @@ pub fn create(
 
     // Create send sockets
     let gso = endpoint::Gso::default();
-    let send_sockets = endpoint::create_send_sockets(config.send_sockets, bind_addr, gso.clone())?;
+    let send_sockets =
+        socket::SendConfig::new(config.send_sockets, bind_addr, gso.clone()).busy_poll()?;
 
     {
         use s2n_quic_dc::socket::send::Socket as _;
@@ -50,26 +59,35 @@ pub fn create(
         );
     }
 
-    // Build endpoint config
+    let num_recv_io = num_recv_sockets;
+
+    let layout = endpoint::WorkerLayout {
+        frame_dispatch: 0,
+        send: (1..1 + num_send_workers).collect(),
+        recv_io: (1 + num_send_workers..1 + num_send_workers + num_recv_io).collect(),
+        recv_dispatch: (num_workers - num_recv_dispatch..num_workers).collect(),
+    };
+
     let bp_clock =
         s2n_quic_dc::busy_poll::clock::Timer::new(s2n_quic_dc::clock::tokio::Clock::default());
     let send_pool = s2n_quic_dc::socket::pool::Pool::new(u16::MAX);
     let recv_pool = s2n_quic_dc::socket::pool::Pool::new(u16::MAX);
-    let counters = endpoint::CounterRegistry::new();
     let acceptor_registry = s2n_quic_dc::acceptor::Registry::new();
 
-    let endpoint_config = endpoint::EndpointConfig {
-        overall_send_rate: s2n_quic_dc::socket::rate::Rate::new(config.bandwidth),
-        per_socket_send_rate: s2n_quic_dc::socket::rate::Rate::new(config.per_socket_bandwidth),
-        spawner,
-        clock: bp_clock,
+    let endpoint_config = endpoint::Config {
+        spawner: spawner.clone(),
+        layout,
         send_pool,
         recv_pool,
-        counters,
         path_secret_map: map,
         gso,
         acceptor_registry,
-        verbose_socket_metrics: config.verbose_socket_metrics,
+        idle_timeout: core::time::Duration::from_secs(30),
+        clock: bp_clock,
+        overall_send_rate: Rate::new(config.bandwidth),
+        per_socket_send_rate: Rate::new(config.per_socket_bandwidth),
+        budgets: endpoint::Budgets::default(),
+        submission_shards: config.submission_shards,
     };
 
     let inner = endpoint::setup_endpoint(endpoint_config, send_sockets, recv_sockets, || {
