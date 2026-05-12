@@ -11,7 +11,7 @@ mod server;
 mod stats;
 
 use clap::{Parser, Subcommand};
-use std::{net::SocketAddr, path::PathBuf};
+use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
@@ -98,6 +98,11 @@ async fn main() -> std::io::Result<()> {
     let spawner = busy_poll::create_pool(config.endpoint.workers);
     let data_bind: SocketAddr = "[::]:0".parse().unwrap();
     let endpoint = endpoint::create(&config.endpoint, data_bind, &spawner)?;
+
+    endpoint
+        .counters
+        .clone()
+        .spawn_reporter(Duration::from_secs(1));
 
     match cli.command {
         Commands::Server { address, .. } => {

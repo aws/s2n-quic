@@ -26,6 +26,18 @@ pub struct EndpointConfig {
     #[serde(default = "EndpointConfig::default_workers")]
     pub workers: usize,
 
+    /// Number of workers for the send pipeline (optional, derived from total if unset)
+    #[serde(default)]
+    pub send_workers: Option<usize>,
+
+    /// Number of workers for recv IO (socket read + decode) (optional, derived from total if unset)
+    #[serde(default)]
+    pub recv_io_workers: Option<usize>,
+
+    /// Number of workers for recv dispatch (decrypt + dedup + routing) (optional, derived from total if unset)
+    #[serde(default)]
+    pub recv_dispatch_workers: Option<usize>,
+
     /// Number of send sockets
     #[serde(default = "EndpointConfig::default_send_sockets")]
     pub send_sockets: usize,
@@ -65,10 +77,35 @@ impl EndpointConfig {
     }
 }
 
+impl EndpointConfig {
+    /// Derives the worker layout counts: (send, recv_io, recv_dispatch).
+    ///
+    /// The remaining threads after frame_dispatch (1 thread) are split:
+    /// - send: 1/4 of remaining
+    /// - recv_dispatch: 1/3 of remaining
+    /// - recv_io: the rest
+    ///
+    /// Any explicit overrides from the config take priority.
+    pub fn worker_counts(&self) -> (usize, usize, usize) {
+        let remaining = self.workers.saturating_sub(1).max(3);
+
+        let send = self.send_workers.unwrap_or((remaining / 4).max(1));
+        let recv_dispatch = self.recv_dispatch_workers.unwrap_or((remaining / 3).max(1));
+        let recv_io = self
+            .recv_io_workers
+            .unwrap_or(remaining.saturating_sub(send + recv_dispatch).max(1));
+
+        (send, recv_io, recv_dispatch)
+    }
+}
+
 impl Default for EndpointConfig {
     fn default() -> Self {
         Self {
             workers: Self::default_workers(),
+            send_workers: None,
+            recv_io_workers: None,
+            recv_dispatch_workers: None,
             send_sockets: Self::default_send_sockets(),
             bandwidth: Self::default_bandwidth(),
             per_socket_bandwidth: Self::default_per_socket_bandwidth(),

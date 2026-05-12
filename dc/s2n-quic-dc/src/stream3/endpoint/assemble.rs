@@ -27,7 +27,9 @@ use crate::{
     },
 };
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
-use s2n_quic_core::{buffer, packet::number::PacketNumberSpace, varint::VarInt};
+use s2n_quic_core::{
+    buffer, inet::ExplicitCongestionNotification, packet::number::PacketNumberSpace, varint::VarInt,
+};
 use s2n_quic_platform::features::Gso;
 
 #[cfg(test)]
@@ -57,14 +59,15 @@ pub(crate) fn assemble<Clk>(
 where
     Clk: precision::Clock + ?Sized,
 {
-    let available_window = context
-        .cca
-        .congestion_window()
-        .saturating_sub(context.cca.bytes_in_flight());
+    // TODO we need to see if we have an ACK scheduled to bypass this
+    // let available_window = context
+    //     .cca
+    //     .congestion_window()
+    //     .saturating_sub(context.cca.bytes_in_flight());
 
-    if available_window == 0 {
-        return None;
-    }
+    // if available_window == 0 {
+    //     return None;
+    // }
 
     let mtu = context.path_secret_entry.max_datagram_size();
     let now = clock.now();
@@ -78,6 +81,7 @@ where
 
     let result = unfilled.fill_with(|addr, cmsg, mut payload| {
         addr.set(context.path_secret_entry.data_addr().into());
+        cmsg.set_ecn(ExplicitCongestionNotification::Ect0);
 
         let mut offset: usize = 0;
         let mut watermark: usize = 0;
@@ -110,6 +114,7 @@ where
             let mut cancelled_queue = Queue::new();
             let mut packet_frames = Queue::new();
             let mut metadata = MetadataEstimate::new(context.flow_attempt_id_counter);
+            let mut is_ack_eliciting = false;
 
             while let Some(frame) = context.pop_pending() {
                 if !frame.should_transmit() {
@@ -131,6 +136,7 @@ where
                     break;
                 }
 
+                is_ack_eliciting |= !matches!(frame.header, frame::Header::Control { .. });
                 metadata = next_metadata;
                 packet_frames.push_back(frame);
 
@@ -180,23 +186,25 @@ where
                 segment_size = encoded_len as u16;
             }
 
-            // Register in inflight map
-            let has_more_app_data = context.has_pending();
-            let cc_info = context.cca.on_packet_sent(
-                time_sent,
-                encoded_len as u16,
-                has_more_app_data,
-                &context.rtt_estimator,
-            );
-            let tx_info = inflight::TransmissionInfo {
-                cc_info,
-                time_sent,
-                sent_bytes: encoded_len as u16,
-            };
-            let pn = PacketNumberSpace::Initial.new_packet_number(packet_number);
-            context
-                .inflight
-                .insert(pn, inflight::Packet::new(packet_frames, tx_info));
+            if is_ack_eliciting {
+                // Register in inflight map
+                let has_more_app_data = context.has_pending();
+                let cc_info = context.cca.on_packet_sent(
+                    time_sent,
+                    encoded_len as u16,
+                    has_more_app_data,
+                    &context.rtt_estimator,
+                );
+                let tx_info = inflight::TransmissionInfo {
+                    cc_info,
+                    time_sent,
+                    sent_bytes: encoded_len as u16,
+                };
+                let pn = PacketNumberSpace::Initial.new_packet_number(packet_number);
+                context
+                    .inflight
+                    .insert(pn, inflight::Packet::new(packet_frames, tx_info));
+            }
 
             segments_written += 1;
 

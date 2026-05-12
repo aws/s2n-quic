@@ -114,3 +114,91 @@ impl RecvConfig {
         Ok(sockets.into_iter().map(BusyPoll).collect())
     }
 }
+
+/// Wraps a send socket to count calls and bytes at the I/O boundary.
+pub(crate) struct MeteredSend<S> {
+    inner: S,
+    tx_counter: crate::counter::Counter,
+    tx_bytes_counter: crate::counter::Counter,
+}
+
+impl<S> MeteredSend<S> {
+    pub fn new(
+        inner: S,
+        tx_counter: crate::counter::Counter,
+        tx_bytes_counter: crate::counter::Counter,
+    ) -> Self {
+        Self {
+            inner,
+            tx_counter,
+            tx_bytes_counter,
+        }
+    }
+}
+
+impl<S: crate::socket::send::Socket> crate::socket::send::Socket for MeteredSend<S> {
+    #[inline]
+    fn send_msg(
+        &self,
+        addr: &crate::msg::addr::Addr,
+        payload: &[io::IoSlice],
+        segment_size: u16,
+        ecn: s2n_quic_core::inet::ExplicitCongestionNotification,
+    ) -> io::Result<usize> {
+        let result = self.inner.send_msg(addr, payload, segment_size, ecn);
+        if let Ok(sent) = &result {
+            self.tx_counter.add(1);
+            self.tx_bytes_counter.add(*sent as u64);
+        }
+        result
+    }
+
+    #[inline]
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.inner.local_addr()
+    }
+}
+
+/// Wraps a recv socket to count calls and bytes at the I/O boundary.
+pub(crate) struct MeteredRecv<S> {
+    inner: S,
+    rx_counter: crate::counter::Counter,
+    rx_bytes_counter: crate::counter::Counter,
+}
+
+impl<S> MeteredRecv<S> {
+    pub fn new(
+        inner: S,
+        rx_counter: crate::counter::Counter,
+        rx_bytes_counter: crate::counter::Counter,
+    ) -> Self {
+        Self {
+            inner,
+            rx_counter,
+            rx_bytes_counter,
+        }
+    }
+}
+
+impl<S: crate::socket::recv::Socket> crate::socket::recv::Socket for MeteredRecv<S> {
+    #[inline]
+    fn poll_recv(
+        &self,
+        cx: &mut core::task::Context,
+        addr: &mut crate::msg::addr::Addr,
+        cmsg: &mut crate::msg::cmsg::Receiver,
+        buffer: &mut [io::IoSliceMut],
+    ) -> core::task::Poll<io::Result<usize>> {
+        let result = self.inner.poll_recv(cx, addr, cmsg, buffer);
+        if let core::task::Poll::Ready(Ok(received)) = &result {
+            self.rx_counter.add(1);
+            self.rx_bytes_counter.add(*received as u64);
+        }
+        result
+    }
+
+    #[inline]
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.inner.local_addr()
+    }
+}

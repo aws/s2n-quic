@@ -262,14 +262,15 @@ impl Context {
             // Make sure we're not already linked
             && !self.is_tx_scheduled()
             // Check if the congestion controller is allowing a send
-            && (self.cca.requires_fast_retransmission() || !self.cca.is_congestion_limited())
+            && (self.cca.requires_fast_retransmission() || !self.cca.is_congestion_limited() || true)
+        // TODO we need to see if we have ACKs scheculed and still let those go through
         {
             let target = self
                 .cca
                 .earliest_departure_time()
-                .map(precision::Timestamp::from)
-                .unwrap_or_else(|| clock.now());
-            self.tx_wheel.target_time = Some(target);
+                .map(precision::Timestamp::from);
+            // If target time is `None` then the wheel will schedule it immediately
+            self.tx_wheel.target_time = target;
             true
         } else {
             false

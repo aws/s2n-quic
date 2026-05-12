@@ -162,6 +162,7 @@ where
     // (Header type tag + optional payload_len VarInt) and `payload_storage`
     // contains the concatenated, decrypted frame payloads.
 
+    let mut is_ack_eliciting = false;
     for result in decode::decode_frames(app_header_slice) {
         match result {
             Ok((header, frame_payload_len)) => {
@@ -178,6 +179,12 @@ where
                     );
                     break;
                 }
+
+                // If it's not an ACK then the peer needs an ACK back
+                if !matches!(header, Header::Control { .. }) {
+                    is_ack_eliciting = true;
+                }
+
                 // Split the frame's payload out of the shared storage.
                 let frame_payload = payload_storage.split_to(frame_payload_len);
                 dispatch_decoded_frame(
@@ -216,8 +223,10 @@ where
     }
 
     // TODO batch ACKs via the ACK wheel instead of emitting one per packet
-    if let Some(ack_frame) = peer.generate_ack_frame(clock, route) {
-        response_frames.push(ack_frame.into());
+    if is_ack_eliciting {
+        if let Some(ack_frame) = peer.generate_ack_frame(clock, route) {
+            response_frames.push(ack_frame.into());
+        }
     }
 
     let _ = response_tx.send(response_frames);

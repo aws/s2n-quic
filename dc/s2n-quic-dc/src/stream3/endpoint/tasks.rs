@@ -8,9 +8,9 @@ use crate::{
     socket::{
         channel::{
             intrusive_queue::{self, unsync},
-            FlattenList, FlattenQueue, FlattenSegments, InspectErr, Map, Paced,
-            Priority as PriorityRx, Receiver, ReceiverExt as _, RouterAdapter, SocketReceiver,
-            SocketSender, UnboundedSender,
+            FlattenList, FlattenSegments, InspectErr, Map, Paced, Priority as PriorityRx,
+            Receiver, ReceiverExt as _, RouterAdapter, SocketReceiver, SocketSender,
+            UnboundedSender,
         },
         pool::descriptor,
         rate::Rate,
@@ -166,8 +166,8 @@ pub fn frame_dispatch<S, Rand, Clk>(
 ///     → ACK processor (loss detection, retransmission)
 pub fn send_worker<Socket, Clk, Rand>(
     spawner: &mut impl LocalSpawner,
-    batch_rx: impl Receiver<Queue<FrameBatch>> + 'static,
-    ack_rx: impl Receiver<Queue<msg::Sender>> + 'static,
+    batch_rx: impl Receiver<Entry<FrameBatch>> + 'static,
+    ack_rx: impl Receiver<Entry<msg::Sender>> + 'static,
     total_sender_ids: usize,
     send_sockets: Vec<endpoint::SendSocketParts<Socket, Clk>>,
     clock: Clk,
@@ -220,7 +220,6 @@ pub fn send_worker<Socket, Clk, Rand>(
         let mut idle_wheel_tx = idle_wheel_tx.clone();
         let clock = clock.clone();
         async move {
-            let rx = FlattenQueue::new(rx);
             let rx = Map::new(rx, move |batch: Entry<FrameBatch>| {
                 let Some(sender_idx) = batch.sender_id() else {
                     unsafe {
@@ -283,7 +282,6 @@ pub fn send_worker<Socket, Clk, Rand>(
         let mut completed_tx = completed_tx;
         let mut cancelled_tx = cancelled_tx.clone();
         async move {
-            let rx = FlattenQueue::new(rx);
             let rx = Map::new(rx, move |entry: Entry<msg::Sender>| {
                 let msg::Sender::Ack {
                     local_sender_id,

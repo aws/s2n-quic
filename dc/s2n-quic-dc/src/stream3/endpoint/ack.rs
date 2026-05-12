@@ -74,7 +74,12 @@ pub(crate) fn process_ack<Clk, Rand>(
                 bytes_acked += tx_info.sent_bytes as usize;
             }
 
-            tracing::trace!(packet_number = num.as_u64(), "Packet ACKed");
+            tracing::trace!(
+                credentials = %context.credentials.id,
+                sender_idx = context.sender_idx,
+                packet_number = num.as_u64(),
+                "packet ACKed"
+            );
 
             for mut entry in packet.frames {
                 entry.status = TransmissionStatus::Acknowledged;

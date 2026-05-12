@@ -41,6 +41,8 @@ pub struct Endpoint {
     pub queue_allocator: msg::queue::Allocator,
     /// Acceptor registry for server-side stream dispatch
     pub acceptor_registry: acceptor::Registry<Stream>,
+    /// Counters associated with this endpoint
+    pub counters: crate::counter::Registry,
     /// Endpoint-wide stream ID counter
     pub next_stream_id: AtomicU64,
     /// The port that recv sockets are bound to
@@ -83,7 +85,7 @@ impl Default for Budgets {
     fn default() -> Self {
         Self {
             frame_dispatch: tasks::DEFAULT_DISPATCH_BUDGET,
-            context_resolver: tasks::DEFAULT_DISPATCH_BUDGET,
+            context_resolver: 128,
             ack_processor: tasks::DEFAULT_DISPATCH_BUDGET,
             tx_wheel: tasks::DEFAULT_DISPATCH_BUDGET,
             pto_wheel: tasks::DEFAULT_DISPATCH_BUDGET,
@@ -92,7 +94,7 @@ impl Default for Budgets {
             completion_acked: tasks::DEFAULT_DISPATCH_BUDGET,
             completion_cancelled: tasks::DEFAULT_DISPATCH_BUDGET,
             socket_recv: tasks::DEFAULT_RECV_BUDGET,
-            packet_dispatch: tasks::DEFAULT_DISPATCH_BUDGET,
+            packet_dispatch: 64,
         }
     }
 }
@@ -305,12 +307,27 @@ where
     path_secret_map.set_socket_sender_count(num_send);
 
     // Build workers -------------------------------------------------------------
-    let mut workers: Vec<Worker<SendSocket, RecvSocket, C, G, _, RecvRoute>> = {
+    let mut workers: Vec<
+        Worker<
+            socket::MeteredSend<SendSocket>,
+            socket::MeteredRecv<RecvSocket>,
+            C,
+            G,
+            _,
+            RecvRoute,
+        >,
+    > = {
         let mut v = Vec::with_capacity(num_workers);
-        v.extend(
-            (0..num_workers)
-                .map(|id| Worker::new(id, idle_timeout, budgets, num_send, clock.clone())),
-        );
+        v.extend((0..num_workers).map(|id| {
+            Worker::new(
+                id,
+                idle_timeout,
+                budgets,
+                num_send,
+                clock.clone(),
+                counter_registry.clone(),
+            )
+        }));
         v
     };
 
@@ -319,6 +336,11 @@ where
         let worker_id = layout.send[sender_idx % num_send_workers];
         sender_id_to_worker.push(sender_idx % num_send_workers);
         let inflight_gauge = counter_registry.register_queue_gauge("send.inflight");
+        let socket = socket::MeteredSend::new(
+            socket,
+            counter_registry.register("socket.tx"),
+            counter_registry.register("socket.tx:bytes"),
+        );
         workers[worker_id].send_sockets.push(SendSocketParts {
             socket,
             sender_idx,
@@ -402,6 +424,11 @@ where
             dispatch_txs.clone(),
             decode_error_counter.clone(),
         );
+        let socket = socket::MeteredRecv::new(
+            socket,
+            counter_registry.register("socket.rx"),
+            counter_registry.register("socket.rx:bytes"),
+        );
         workers[worker_id].recv_socket = Some(RecvSocketParts {
             socket,
             recv_pool: recv_pool.clone(),
@@ -419,6 +446,7 @@ where
         path_secret_map,
         queue_allocator,
         acceptor_registry,
+        counters: counter_registry,
         next_stream_id: AtomicU64::new(0),
         data_port: source_control_port,
     }
@@ -490,6 +518,7 @@ struct Worker<SendSocket, RecvSocket, Clk, G, AckSnd, Route> {
     budgets: Budgets,
     total_sender_ids: usize,
     clock: Clk,
+    counter_registry: crate::counter::Registry,
     frame_dispatch: Option<FrameDispatchParts<G, Clk>>,
     /// Per-worker batch/ack receiver (one per send worker).
     send_worker: Option<SendWorkerParts<G>>,
@@ -517,6 +546,7 @@ where
         budgets: Budgets,
         total_sender_ids: usize,
         clock: Clk,
+        counter_registry: crate::counter::Registry,
     ) -> Self {
         Self {
             id,
@@ -524,6 +554,7 @@ where
             budgets,
             total_sender_ids,
             clock,
+            counter_registry,
             frame_dispatch: None,
             send_worker: None,
             send_sockets: Vec::new(),
@@ -541,6 +572,7 @@ where
             budgets,
             total_sender_ids,
             clock,
+            counter_registry,
             frame_dispatch,
             send_worker,
             send_sockets,
@@ -568,10 +600,18 @@ where
             }
 
             if let Some(sw) = send_worker {
+                let batch_rx = crate::counter::GaugedQueue::new(
+                    sw.batch_rx,
+                    counter_registry.register_queue_gauge("q.batch"),
+                );
+                let ack_rx = crate::counter::GaugedQueue::new(
+                    sw.ack_rx,
+                    counter_registry.register_queue_gauge("q.ack"),
+                );
                 tasks::send_worker(
                     &mut local,
-                    sw.batch_rx,
-                    sw.ack_rx,
+                    batch_rx,
+                    ack_rx,
                     total_sender_ids,
                     send_sockets,
                     clock.clone(),
@@ -591,11 +631,15 @@ where
             }
 
             if let Some(rd) = recv_dispatch {
+                let packet_rx = crate::counter::GaugedQueue::new(
+                    rd.packet_rx,
+                    counter_registry.register_queue_gauge("q.packet"),
+                );
                 let recv_cache = std::rc::Rc::new(std::cell::RefCell::new(
                     crate::stream3::endpoint::recv::Cache::new(idle_timeout, id),
                 ));
                 local.spawn(tasks::packet_dispatch_task(
-                    rd.packet_rx,
+                    packet_rx,
                     recv_cache,
                     rd.path_secret_map,
                     rd.acceptor_registry,

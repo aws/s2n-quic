@@ -338,22 +338,25 @@ impl<A: Adapter> List<A> {
     pub fn push_back(&mut self, ptr: A::Pointer) {
         let raw = A::into_raw(ptr);
         let new_tail = unsafe { NonNull::new_unchecked(raw as *mut A::Value) };
+        let self_ref = unsafe { NonNull::new_unchecked(new_tail.as_ptr() as *mut ()) };
 
         unsafe {
             let links = A::links(new_tail.as_ptr());
             (*links).assert_unlinked();
-            (*links).prev.set(
-                self.tail
-                    .map(|p| NonNull::new_unchecked(p.as_ptr() as *mut ())),
-            );
-            (*links).next.set(None);
 
             if let Some(tail) = self.tail {
+                // Non-empty list: link after current tail
+                (*links).prev.set(Some(NonNull::new_unchecked(tail.as_ptr() as *mut ())));
+                (*links).next.set(Some(self_ref));
+
                 let tail_links = A::links(tail.as_ptr());
                 (*tail_links)
                     .next
                     .set(Some(NonNull::new_unchecked(new_tail.as_ptr() as *mut ())));
             } else {
+                // Empty list: singleton gets self-references
+                (*links).prev.set(Some(self_ref));
+                (*links).next.set(Some(self_ref));
                 self.head = Some(new_tail);
             }
         }
@@ -366,22 +369,25 @@ impl<A: Adapter> List<A> {
     pub fn push_front(&mut self, ptr: A::Pointer) {
         let raw = A::into_raw(ptr);
         let new_head = unsafe { NonNull::new_unchecked(raw as *mut A::Value) };
+        let self_ref = unsafe { NonNull::new_unchecked(new_head.as_ptr() as *mut ()) };
 
         unsafe {
             let links = A::links(new_head.as_ptr());
             (*links).assert_unlinked();
-            (*links).prev.set(None);
-            (*links).next.set(
-                self.head
-                    .map(|p| NonNull::new_unchecked(p.as_ptr() as *mut ())),
-            );
 
             if let Some(head) = self.head {
+                // Non-empty list: link before current head
+                (*links).prev.set(Some(self_ref));
+                (*links).next.set(Some(NonNull::new_unchecked(head.as_ptr() as *mut ())));
+
                 let head_links = A::links(head.as_ptr());
                 (*head_links)
                     .prev
                     .set(Some(NonNull::new_unchecked(new_head.as_ptr() as *mut ())));
             } else {
+                // Empty list: singleton gets self-references
+                (*links).prev.set(Some(self_ref));
+                (*links).next.set(Some(self_ref));
                 self.tail = Some(new_head);
             }
         }
@@ -399,13 +405,14 @@ impl<A: Adapter> List<A> {
             let next = (*links)
                 .next
                 .get()
-                .map(|p| NonNull::new_unchecked(p.as_ptr() as *mut A::Value));
+                .map(|p| NonNull::new_unchecked(p.as_ptr() as *mut A::Value))
+                .filter(|&p| p != head);
 
             self.head = next;
 
             if let Some(new_head) = self.head {
                 let new_head_links = A::links(new_head.as_ptr());
-                (*new_head_links).prev.set(None);
+                (*new_head_links).prev.set(Some(NonNull::new_unchecked(new_head.as_ptr() as *mut ())));
             } else {
                 self.tail = None;
             }
@@ -428,13 +435,14 @@ impl<A: Adapter> List<A> {
             let prev = (*links)
                 .prev
                 .get()
-                .map(|p| NonNull::new_unchecked(p.as_ptr() as *mut A::Value));
+                .map(|p| NonNull::new_unchecked(p.as_ptr() as *mut A::Value))
+                .filter(|&p| p != tail);
 
             self.tail = prev;
 
             if let Some(new_tail) = self.tail {
                 let new_tail_links = A::links(new_tail.as_ptr());
-                (*new_tail_links).next.set(None);
+                (*new_tail_links).next.set(Some(NonNull::new_unchecked(new_tail.as_ptr() as *mut ())));
             } else {
                 self.head = None;
             }
@@ -459,18 +467,23 @@ impl<A: Adapter> List<A> {
 
         unsafe {
             if let Some(tail) = self.tail {
+                // self.tail.next: was self-ref → now points to other_head
                 let tail_links = A::links(tail.as_ptr());
                 (*tail_links)
                     .next
                     .set(Some(NonNull::new_unchecked(other_head.as_ptr() as *mut ())));
 
+                // other_head.prev: was self-ref → now points to self.tail
                 let other_head_links = A::links(other_head.as_ptr());
                 (*other_head_links)
                     .prev
                     .set(Some(NonNull::new_unchecked(tail.as_ptr() as *mut ())));
 
+                // other_tail.next remains self-ref (still the tail) ✓
+                // self.head.prev remains self-ref (still the head) ✓
                 self.tail = Some(other_tail);
             } else {
+                // self was empty, just adopt other's structure as-is
                 self.head = Some(other_head);
                 self.tail = Some(other_tail);
             }
@@ -601,7 +614,8 @@ impl<'a, A: Adapter> Iterator for Iter<'a, A> {
             self.next = (*links)
                 .next
                 .get()
-                .map(|p| NonNull::new_unchecked(p.as_ptr() as *mut A::Value));
+                .map(|p| NonNull::new_unchecked(p.as_ptr() as *mut A::Value))
+                .filter(|&p| p != current);
             self.len -= 1;
             Some(value)
         }
@@ -630,7 +644,8 @@ impl<'a, A: Adapter> Iterator for IterMut<'a, A> {
             self.next = (*links)
                 .next
                 .get()
-                .map(|p| NonNull::new_unchecked(p.as_ptr() as *mut A::Value));
+                .map(|p| NonNull::new_unchecked(p.as_ptr() as *mut A::Value))
+                .filter(|&p| p != current);
             self.len -= 1;
             Some(value)
         }

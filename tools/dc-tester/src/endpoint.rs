@@ -6,7 +6,6 @@ use s2n_quic_dc::{
     busy_poll,
     path::secret::{self, stateless_reset::Signer},
     socket::rate::Rate,
-    stream2::Spawner,
     stream3::endpoint::{self, socket},
 };
 use std::{io, net::SocketAddr, sync::Arc};
@@ -23,22 +22,15 @@ pub fn create(
     let subscriber = s2n_quic_dc::event::tracing::Subscriber::default();
     let map = secret::Map::new(signer, 50_000, true, clock, subscriber);
 
-    let num_workers = spawner.worker_count();
-
-    // Compute worker budget: 1 frame_dispatch + send + recv_io + recv_dispatch
-    let num_send_workers = (num_workers / 3).max(1);
-    let num_recv_dispatch = 1;
-    let num_recv_sockets = num_workers
-        .saturating_sub(1 + num_send_workers + num_recv_dispatch)
-        .max(1);
+    let (num_send_workers, num_recv_io, num_recv_dispatch) = config.worker_counts();
 
     // Create recv sockets first to determine the data port
-    let recv_sockets = socket::RecvConfig::new(num_recv_sockets, bind_addr).busy_poll()?;
+    let recv_sockets = socket::RecvConfig::new(num_recv_io, bind_addr).busy_poll()?;
 
     {
         use s2n_quic_dc::socket::recv::Socket as _;
         let recv_port = recv_sockets.first().unwrap().local_addr().unwrap().port();
-        info!(num_recv_sockets, recv_port, "Recv sockets bound");
+        info!(num_recv_io, recv_port, "Recv sockets bound");
     }
 
     // Create send sockets
@@ -59,14 +51,16 @@ pub fn create(
         );
     }
 
-    let num_recv_io = num_recv_sockets;
-
     let layout = endpoint::WorkerLayout {
         frame_dispatch: 0,
         send: (1..1 + num_send_workers).collect(),
         recv_io: (1 + num_send_workers..1 + num_send_workers + num_recv_io).collect(),
-        recv_dispatch: (num_workers - num_recv_dispatch..num_workers).collect(),
+        recv_dispatch: (1 + num_send_workers + num_recv_io
+            ..1 + num_send_workers + num_recv_io + num_recv_dispatch)
+            .collect(),
     };
+
+    info!(?layout, "starting endpoint");
 
     let bp_clock =
         s2n_quic_dc::busy_poll::clock::Timer::new(s2n_quic_dc::clock::tokio::Clock::default());
