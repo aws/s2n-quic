@@ -11,7 +11,7 @@ use s2n_codec::{
     zerocopy::{FromBytes, IntoBytes, Unaligned},
     zerocopy_value_codec, Encoder, EncoderValue,
 };
-pub use s2n_quic_core::varint::VarInt as KeyId;
+pub use s2n_quic_core::{endpoint, varint::VarInt as KeyId};
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
@@ -25,6 +25,24 @@ pub mod testing;
 pub struct Id([u8; 16]);
 
 impl Id {
+    const ENDPOINT_BIT: u8 = 0x80;
+
+    #[inline]
+    pub fn for_endpoint(mut self, endpoint: endpoint::Type) -> Self {
+        match endpoint {
+            endpoint::Type::Server => self.0[0] |= Self::ENDPOINT_BIT,
+            endpoint::Type::Client => self.0[0] &= !Self::ENDPOINT_BIT,
+        }
+        self
+    }
+
+    #[inline]
+    pub fn for_peer(self) -> Self {
+        let mut id = self;
+        id.0[0] ^= Self::ENDPOINT_BIT;
+        id
+    }
+
     #[doc(hidden)]
     pub fn to_hash(self) -> u64 {
         // The ID has very high quality entropy already, so write just one half of it to keep hash

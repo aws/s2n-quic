@@ -138,7 +138,10 @@ impl Model {
                 let secret = path_secret_id.secret();
                 let id = *secret.id();
 
-                let stateless_reset = state.signer().sign(&id);
+                // In reality, sender.stateless_reset = peer.signer.sign(peer.local_id)
+                // = peer.signer.sign(our.peer_id). With identical signers this is
+                // signer.sign(id.for_peer()).
+                let stateless_reset = state.signer().sign(&id.for_peer());
                 state.test_insert(Arc::new(Entry::new(
                     ip,
                     secret,
@@ -175,13 +178,15 @@ impl Model {
                 state.cleaner.clean(state, 0);
             }
             Operation::ReceiveUnknown { path_secret_id } => {
-                let id = path_secret_id.id();
+                let local_id = path_secret_id.id();
+                // The control packet contains our peer_id (what we sent on the wire).
+                let wire_id = local_id.for_peer();
                 // This is signing with the "wrong" signer, but currently all of the signers used
                 // in this test are keyed the same way so it doesn't matter.
-                let stateless_reset = state.signer.sign(&id);
+                let stateless_reset = state.signer.sign(&wire_id);
                 let packet =
                     crate::packet::secret_control::unknown_path_secret::Packet::new_for_test(
-                        id,
+                        wire_id,
                         &stateless_reset,
                     );
 
@@ -189,11 +194,11 @@ impl Model {
                     .handle_unknown_path_secret_packet(&packet, &"127.0.0.1:1234".parse().unwrap());
 
                 if state.should_evict_on_unknown_path_secret()
-                    && self.invariants.contains(&Invariant::ContainsId(id))
+                    && self.invariants.contains(&Invariant::ContainsId(local_id))
                 {
                     self.invariants.retain(|invariant| {
                         if let Invariant::ContainsId(prev_id) = invariant {
-                            if prev_id == &id {
+                            if prev_id == &local_id {
                                 return false;
                             }
                         }
@@ -201,7 +206,7 @@ impl Model {
                         true
                     });
 
-                    self.invariants.insert(Invariant::IdRemoved(id));
+                    self.invariants.insert(Invariant::IdRemoved(local_id));
                 }
             }
         }
@@ -383,8 +388,11 @@ fn unknown_path_secret_evicts() {
     let entry = fake_entry(0);
     map.test_insert(entry.clone());
 
+    // Simulate receiving UnknownPathSecret from peer. The credential_id on the wire
+    // is our peer_id (what we sent them), and the tag is the sender's stateless_reset.
+    let wire_id = entry.id().for_peer();
     let packet = crate::packet::secret_control::unknown_path_secret::Packet::new_for_test(
-        *entry.clone().id(),
+        wire_id,
         &entry.sender().stateless_reset,
     );
 

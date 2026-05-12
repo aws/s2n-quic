@@ -35,6 +35,13 @@ pub mod testing;
 #[cfg(test)]
 mod event_tests;
 
+#[cfg(any(test, feature = "testing"))]
+#[derive(Clone, Copy, Debug)]
+pub struct TestPairIds {
+    pub local: crate::credentials::Id,
+    pub peer: crate::credentials::Id,
+}
+
 pub use entry::Entry;
 use store::Store;
 
@@ -446,7 +453,7 @@ impl Map {
         peer: &Self,
         peer_addr: SocketAddr,
         peer_params: Option<dc::ApplicationParams>,
-    ) -> crate::credentials::Id {
+    ) -> TestPairIds {
         use crate::path::secret::{schedule, sender};
         use s2n_quic_core::endpoint::Type;
 
@@ -485,12 +492,10 @@ impl Map {
             id
         };
 
-        let client_id = insert(self, peer, peer_addr, peer_params, Type::Client);
-        let server_id = insert(peer, self, local_addr, local_params, Type::Server);
+        let local = insert(self, peer, peer_addr, peer_params, Type::Client);
+        let peer = insert(peer, self, local_addr, local_params, Type::Server);
 
-        assert_eq!(client_id, server_id);
-
-        client_id
+        TestPairIds { local, peer }
     }
 
     #[allow(clippy::type_complexity)]

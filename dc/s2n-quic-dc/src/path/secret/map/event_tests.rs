@@ -61,7 +61,7 @@ fn control_packets() {
     let client_addr = "127.0.0.1:1234".parse().unwrap();
     let server_addr = "127.0.0.1:5678".parse().unwrap();
 
-    let id = client.test_insert_pair(client_addr, None, &server, server_addr, None);
+    let ids = client.test_insert_pair(client_addr, None, &server, server_addr, None);
 
     let mut out = [0; 128];
 
@@ -75,8 +75,8 @@ fn control_packets() {
         };
     }
 
-    let server_entry = server.store.get_by_id_untracked(&id).unwrap().clone();
-    let client_entry = client.store.get_by_id_untracked(&id).unwrap().clone();
+    let server_entry = server.store.get_by_id_untracked(&ids.peer).unwrap().clone();
+    let client_entry = client.store.get_by_id_untracked(&ids.local).unwrap().clone();
 
     let fake_secret =
         crate::path::secret::seal::control::Secret::new(&[0; 32], &aws_lc_rs::hmac::HMAC_SHA256);

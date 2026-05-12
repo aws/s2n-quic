@@ -450,7 +450,7 @@ impl Entry {
     pub fn uni_sealer(&self) -> (seal::Once, Credentials) {
         let key_id = self.sender.next_key_id();
         let credentials = Credentials {
-            id: *self.secret.id(),
+            id: self.secret.peer_id(),
             key_id,
         };
         let sealer = self.secret.application_sealer(key_id);
@@ -462,7 +462,7 @@ impl Entry {
     pub fn reusable_sealer(&self) -> (crate::crypto::awslc::seal::Application, Credentials) {
         let key_id = self.sender.next_key_id();
         let credentials = Credentials {
-            id: *self.secret.id(),
+            id: self.secret.peer_id(),
             key_id,
         };
         let sealer = self.secret.application_sealer(key_id);
@@ -502,7 +502,7 @@ impl Entry {
 
         Bidirectional {
             credentials: Credentials {
-                id: *self.secret.id(),
+                id: self.secret.peer_id(),
                 key_id,
             },
             application,

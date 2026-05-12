@@ -169,7 +169,7 @@ impl Secret {
 
         let mut id = Id::default();
         v.prk().expand_into(&[&[16], b" pid"], &mut *id);
-        v.id = id;
+        v.id = id.for_endpoint(endpoint);
 
         v
     }
@@ -184,6 +184,11 @@ impl Secret {
     #[inline]
     pub fn id(&self) -> &Id {
         &self.id
+    }
+
+    #[inline]
+    pub fn peer_id(&self) -> Id {
+        self.id.for_peer()
     }
 
     #[inline]

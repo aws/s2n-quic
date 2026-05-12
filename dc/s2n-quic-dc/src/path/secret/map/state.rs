@@ -974,8 +974,12 @@ where
             },
         );
 
+        // The credential_id in the packet is what we sent on the wire (our peer_id),
+        // so flip it to find our local entry.
+        let local_id = packet.credential_id().for_peer();
+
         // don't track access patterns here since it's not initiated by the local application
-        let Some(entry) = self.get_by_id_untracked(packet.credential_id()) else {
+        let Some(entry) = self.get_by_id_untracked(&local_id) else {
             self.subscriber().on_unknown_path_secret_packet_dropped(
                 event::builder::UnknownPathSecretPacketDropped {
                     credential_id: packet.credential_id().into_event(),
@@ -1032,7 +1036,9 @@ where
                 peer_address,
             });
 
-        let Some(entry) = self.ids.get(*packet.credential_id()) else {
+        let local_id = packet.credential_id().for_peer();
+
+        let Some(entry) = self.ids.get(local_id) else {
             self.subscriber()
                 .on_stale_key_packet_dropped(event::builder::StaleKeyPacketDropped {
                     credential_id: packet.credential_id().into_event(),
@@ -1080,7 +1086,9 @@ where
             },
         );
 
-        let Some(entry) = self.ids.get(*packet.credential_id()) else {
+        let local_id = packet.credential_id().for_peer();
+
+        let Some(entry) = self.ids.get(local_id) else {
             self.subscriber().on_replay_detected_packet_dropped(
                 event::builder::ReplayDetectedPacketDropped {
                     credential_id: packet.credential_id().into_event(),
