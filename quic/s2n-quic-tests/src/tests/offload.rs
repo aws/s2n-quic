@@ -29,6 +29,14 @@ impl ExporterHandler for Exporter {
     ) -> Option<Box<dyn std::any::Any + Send>> {
         None
     }
+
+    fn on_client_application_params(
+        &mut self,
+        _client_params: s2n_quic_core::crypto::tls::ApplicationParameters,
+        _server_params: &mut Vec<u8>,
+    ) -> Option<std::result::Result<(), s2n_quic_core::transport::Error>> {
+        None
+    }
 }
 
 #[test]

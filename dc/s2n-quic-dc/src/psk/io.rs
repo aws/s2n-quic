@@ -3,7 +3,6 @@
 
 use super::{client, server};
 use crate::path::secret;
-use cfg_if::cfg_if;
 use rand::RngExt;
 use s2n_quic::{
     provider::{
@@ -13,8 +12,9 @@ use s2n_quic::{
     },
     server::Name,
 };
-use s2n_quic_core::inet::SocketAddress;
+use s2n_quic_core::{endpoint::Type, inet::SocketAddress};
 use std::{
+    any::Any,
     hash::BuildHasher,
     io,
     net::SocketAddr,
@@ -24,7 +24,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::{sync::Semaphore, time::Instant as TokioInstant};
+use tokio::{runtime::Runtime, sync::Semaphore, time::Instant as TokioInstant};
 
 pub use crate::stream::DEFAULT_IDLE_TIMEOUT;
 pub const DEFAULT_MAX_DATA: u64 = 1u64 << 25;
@@ -36,12 +36,67 @@ pub const DEFAULT_MTU: u16 = DEFAULT_BASE_MTU;
 /// Jitter PTO probes by 33% to prevent synchronized timeouts across multiple connections
 pub const DEFAULT_PTO_JITTER_PERCENTAGE: u8 = 33;
 const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(1);
+const DC_QUIC_VERSION: u32 = 0;
+/// Number of threads used to make progress on the TLS handshake
+pub const DEFAULT_THREAD_COUNT: usize = 0;
 
 const BUFFER_SIZE: usize = 16 * 1024;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 pub type Result<T = (), E = Error> = core::result::Result<T, E>;
+
+struct TokioExecutor {
+    runtime: Runtime,
+}
+impl s2n_quic::provider::tls::offload::Executor for TokioExecutor {
+    fn spawn(&self, task: impl core::future::Future<Output = ()> + Send + 'static) {
+        self.runtime.spawn(task);
+    }
+}
+#[derive(Clone)]
+struct DCExporter {
+    map: secret::Map,
+    dc_version: u32,
+    endpoint_type: s2n_quic_core::endpoint::Type,
+}
+impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
+    fn on_tls_handshake_failed(
+        &self,
+        _session: &impl s2n_quic_core::crypto::tls::TlsSession,
+        _e: &(dyn core::error::Error + Send + Sync + 'static),
+    ) -> Option<Box<dyn std::any::Any + Send>> {
+        // TODO wire this up so that dc-quic can emit certificate on tls failure as an event
+        // https://github.com/aws/s2n-quic/issues/3080
+        None
+    }
+
+    fn on_tls_exporter_ready(
+        &self,
+        session: &impl s2n_quic_core::crypto::tls::TlsSession,
+    ) -> Option<Box<dyn Any + Send>> {
+        let result = crate::path::secret::map::handshake::on_path_secrets_ready(
+            self.dc_version,
+            self.endpoint_type,
+            &self.map,
+            session,
+        );
+
+        let boxed_result: Box<dyn Any + Send> = Box::new(result);
+        Some(boxed_result)
+    }
+
+    fn on_client_application_params(
+        &mut self,
+        client_params: s2n_quic_core::crypto::tls::ApplicationParameters,
+        server_params: &mut Vec<u8>,
+    ) -> Option<std::result::Result<(), s2n_quic_core::transport::Error>> {
+        Some(s2n_quic_core::dc::append_dc_versions(
+            client_params,
+            server_params,
+        ))
+    }
+}
 
 pub struct Server {
     server: s2n_quic::Server,
@@ -67,8 +122,6 @@ impl Server {
             .with_internal_recv_buffer_size(BUFFER_SIZE)?
             .build()?;
 
-        let server = s2n_quic::Server::builder().with_io(io)?;
-
         let initial_max_data = builder.initial_data_window.unwrap_or_else(|| {
             // default to only receive 10 packet worth before the application accepts the connection
             builder.mtu as u64 * 10
@@ -85,31 +138,49 @@ impl Server {
 
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
-        cfg_if!(
-            if #[cfg(any(test, feature = "testing"))] {
-                let server = {
-                    let server = server
-                        .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
-                        .with_limits(connection_limits)?
-                        .with_dc(map.clone())?
-                        .with_event((event, builder.event_subscriber))?
-                        .with_tls(tls_materials_provider)?;
-                    if let Some(limiter) = builder.endpoint_limits {
-                        server.with_endpoint_limits(limiter)?.start()?
-                    } else {
-                        server.start()?
-                    }
-                };
-            } else {
-                let server = server
+        macro_rules! build_and_start {
+            ($tls:expr) => {{
+                let s = s2n_quic::Server::builder()
+                    .with_io(io)?
                     .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
                     .with_limits(connection_limits)?
                     .with_dc(map.clone())?
                     .with_event((event, builder.event_subscriber))?
-                    .with_tls(tls_materials_provider)?
-                    .start()?;
-            }
-        );
+                    .with_tls($tls)?;
+                #[cfg(any(test, feature = "testing"))]
+                let started = if let Some(limiter) = builder.endpoint_limits {
+                    s.with_endpoint_limits(limiter)?.start()?
+                } else {
+                    s.start()?
+                };
+                #[cfg(not(any(test, feature = "testing")))]
+                let started = s.start()?;
+                started
+            }};
+        }
+
+        let server = if builder.thread_offload_count > 0 {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                // Hs=handshake, s=server, offload
+                .thread_name("hs-s-offload")
+                .worker_threads(builder.thread_offload_count)
+                .enable_all()
+                .build()?;
+
+            let tls = s2n_quic::provider::tls::offload::OffloadBuilder::new()
+                .with_endpoint(tls_materials_provider)
+                .with_exporter(DCExporter {
+                    dc_version: DC_QUIC_VERSION,
+                    endpoint_type: Type::Server,
+                    map: map.clone(),
+                })
+                .with_executor(TokioExecutor { runtime })
+                .build();
+
+            build_and_start!(tls)
+        } else {
+            build_and_start!(tls_materials_provider)
+        };
 
         Ok(Self { server })
     }
@@ -618,7 +689,7 @@ mod tests {
 
     impl TestSetup {
         /// Creates a test setup with an optional endpoint limiter for the server
-        async fn new<L>(endpoint_limits: Option<L>) -> Self
+        async fn new<L>(endpoint_limits: Option<L>, server_builder: server::Builder) -> Self
         where
             L: s2n_quic::provider::endpoint_limits::Limiter + Send + Sync + 'static,
         {
@@ -635,7 +706,6 @@ mod tests {
                 subscriber.clone(),
             );
 
-            let server_builder = crate::psk::server::Builder::default();
             let (server_addr_rx, server_guard) = if let Some(limiter) = endpoint_limits {
                 crate::psk::server::Provider::setup(
                     "127.0.0.1:0".parse().unwrap(),
@@ -695,7 +765,8 @@ mod tests {
     /// - If entry still exists (1-second delay active): cleanup is still sleeping
     #[tokio::test]
     async fn mtu_probing_complete_no_delay_test() {
-        let setup = TestSetup::new::<CloseAllConnectionsLimiter>(None).await;
+        let server_builder = crate::psk::server::Builder::default();
+        let setup = TestSetup::new::<CloseAllConnectionsLimiter>(None, server_builder).await;
         let server_name: s2n_quic::server::Name = "localhost".into();
 
         // First handshake
@@ -741,7 +812,8 @@ mod tests {
     /// connection close signal and returns immediately rather than blocking.
     #[tokio::test]
     async fn server_close_connection_no_delay_test() {
-        let setup = TestSetup::new(Some(CloseAllConnectionsLimiter)).await;
+        let server_builder = crate::psk::server::Builder::default();
+        let setup = TestSetup::new(Some(CloseAllConnectionsLimiter), server_builder).await;
         let server_name: s2n_quic::server::Name = "localhost".into();
 
         // Attempt to connect - the server should immediately close the connection
@@ -855,5 +927,22 @@ mod tests {
             err_msg.contains("CERTIFICATE_UNKNOWN"),
             "Expected CERTIFICATE_UNKNOWN, got: {err_msg}"
         );
+    }
+
+    /// Sanity check that a server with offloading enabled can successfully complete a dc-quic handshake
+    #[tokio::test]
+    async fn server_offloading() {
+        const TEST_THREAD_COUNT: usize = 8;
+        let server_builder =
+            crate::psk::server::Builder::default().with_thread_count(TEST_THREAD_COUNT);
+
+        let setup = TestSetup::new::<CloseAllConnectionsLimiter>(None, server_builder).await;
+        let server_name: s2n_quic::server::Name = "localhost".into();
+
+        setup
+            .client
+            .connect(setup.server_addr, HandshakeReason::User, server_name)
+            .await
+            .unwrap();
     }
 }

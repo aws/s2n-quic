@@ -4,12 +4,14 @@
 use super::*;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic::{
-    client,
-    client::ClientProviders,
+    client::{self, ClientProviders},
     connection,
-    provider::{dc, io::testing::Result},
-    server,
-    server::ServerProviders,
+    provider::{
+        dc,
+        io::testing::Result,
+        tls::offload::{Executor, ExporterHandler, OffloadBuilder},
+    },
+    server::{self, ServerProviders},
 };
 use s2n_quic_core::{
     crypto::tls,
@@ -82,7 +84,7 @@ fn dc_handshake_self_test() -> Result<()> {
         .with_tls(certificates::CERT_PEM)?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
-    self_test(server, client, true, None, None, true)?;
+    self_test(server, client, true, None, None, true, false)?;
 
     Ok(())
 }
@@ -139,6 +141,7 @@ fn dc_mtls_handshake_self_test() -> Result<()> {
             PacketSnapshot::named_snapshot("dc_mtls_handshake__server"),
             PacketSnapshot::named_snapshot("dc_mtls_handshake__client"),
         ),
+        false,
     )?;
 
     Ok(())
@@ -175,6 +178,7 @@ fn dc_mtls_handshake_auth_failure_self_test() -> Result<()> {
         Some(expected_client_error),
         None,
         true,
+        false,
     )?;
 
     Ok(())
@@ -219,6 +223,7 @@ fn dc_mtls_handshake_server_not_supported_self_test() -> Result<()> {
         )),
         Some(expected_server_error),
         true,
+        false,
     )?;
 
     Ok(())
@@ -268,6 +273,7 @@ fn dc_mtls_handshake_client_not_supported_self_test() -> Result<()> {
             "peer does not support specified dc versions",
         )),
         true,
+        false,
     )?;
 
     Ok(())
@@ -295,7 +301,7 @@ fn mtu_probing_complete_frame_exchange_test() -> Result<()> {
         .with_tls(client_tls)?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
-    let (client_events, server_events) = self_test(server, client, true, None, None, true)?;
+    let (client_events, server_events) = self_test(server, client, true, None, None, true, false)?;
 
     // Verify that client received MtuProbingComplete from server
     let client_mtu_complete_events = client_events
@@ -402,7 +408,7 @@ fn mtu_probing_complete_asymmetric_support_test(
     )?;
 
     let (client_events, server_events) =
-        self_test_with_mtu(server, client, true, None, None, false, None)?;
+        self_test_with_mtu(server, client, true, None, None, false, None, false)?;
 
     // Verify that client did NOT receive MtuProbingComplete from server
     let client_mtu_complete_events = client_events
@@ -503,7 +509,7 @@ fn mtu_probing_complete_frame_exchange_jumbo_mtu_test() -> Result<()> {
 
     // Use 9000 byte MTU for jumbo frames
     let (client_events, server_events) =
-        self_test_with_mtu(server, client, true, None, None, true, Some(9000))?;
+        self_test_with_mtu(server, client, true, None, None, true, Some(9000), false)?;
 
     let expected_mtu = 8972;
 
@@ -610,7 +616,8 @@ fn dc_possible_secret_control_packet(
         .with_dc(dc_endpoint)?
         .with_packet_interceptor(RandomShort::default())?;
 
-    let (client_events, _server_events) = self_test(server, client, true, None, None, false)?;
+    let (client_events, _server_events) =
+        self_test(server, client, true, None, None, false, false)?;
 
     assert_eq!(
         1,
@@ -638,6 +645,82 @@ fn dc_possible_secret_control_packet(
     Ok(())
 }
 
+#[test]
+fn dc_mtls_handshake_with_server_offloading_test() -> Result<()> {
+    let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let server_endpoint = OffloadBuilder::new()
+        .with_endpoint(server_tls)
+        .with_executor(BachExecutor)
+        .with_exporter(Exporter {
+            stateless_reset_tokens: CLIENT_TOKENS.to_vec(),
+        })
+        .build();
+    let server = Server::builder()
+        .with_tls(server_endpoint)?
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let client = Client::builder()
+        .with_tls(client_tls)?
+        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
+
+    // with_blocklist is false because of this issue: https://github.com/aws/s2n-quic/issues/2601.
+    // Packet loss is expected because the client sends the last Handshake message packet along with
+    // the first OneRTT packet in the same datagram. With offloading enabled the OneRtt packet is
+    // dropped while the Handshake packet is being processed.
+    self_test(server, client, true, None, None, false, true)?;
+
+    Ok(())
+}
+
+#[test]
+fn dc_mtls_handshake_auth_failure_with_server_offloading_test() -> Result<()> {
+    let server_tls = build_server_mtls_provider(certificates::UNTRUSTED_CERT_PEM)?;
+    let server_endpoint = OffloadBuilder::new()
+        .with_endpoint(server_tls)
+        .with_executor(BachExecutor)
+        .with_exporter(Exporter {
+            stateless_reset_tokens: CLIENT_TOKENS.to_vec(),
+        })
+        .build();
+    let server = Server::builder()
+        .with_tls(server_endpoint)?
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let client = Client::builder()
+        .with_tls(client_tls)?
+        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
+
+    // convert from a ConnectionClose frame so the initiator is `Remote`
+    let expected_client_error = ConnectionClose {
+        error_code: transport::Error::crypto_error(tls::Error::HANDSHAKE_FAILURE.code)
+            .code
+            .as_u64()
+            .try_into()
+            .unwrap(),
+        frame_type: Some(VarInt::ZERO),
+        reason: None,
+    }
+    .into();
+
+    // with_blocklist is false because of this issue: https://github.com/aws/s2n-quic/issues/2601.
+    // Packet loss is expected because the client sends the last Handshake message packet along with
+    // the first OneRTT packet in the same datagram. With offloading enabled the OneRtt packet is
+    // dropped while the Handshake packet is being processed.
+    self_test(
+        server,
+        client,
+        true,
+        Some(expected_client_error),
+        None,
+        false,
+        true,
+    )?;
+
+    Ok(())
+}
+
 #[track_caller]
 fn self_test<S: ServerProviders, C: ClientProviders>(
     server: server::Builder<S>,
@@ -646,6 +729,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     expected_client_error: Option<connection::Error>,
     expected_server_error: Option<connection::Error>,
     with_blocklist: bool,
+    offload: bool,
 ) -> Result<(DcRecorder, DcRecorder)> {
     self_test_inner(
         server,
@@ -656,6 +740,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
         with_blocklist,
         None,
         (PacketSnapshot::new(), PacketSnapshot::new()),
+        offload,
     )
 }
 
@@ -668,6 +753,7 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
     expected_server_error: Option<connection::Error>,
     with_blocklist: bool,
     max_mtu: Option<u16>,
+    offload: bool,
 ) -> Result<(DcRecorder, DcRecorder)> {
     self_test_inner(
         server,
@@ -678,6 +764,7 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
         with_blocklist,
         max_mtu,
         (PacketSnapshot::new(), PacketSnapshot::new()),
+        offload,
     )
 }
 
@@ -691,6 +778,7 @@ fn self_test_inner<S: ServerProviders, C: ClientProviders>(
     with_blocklist: bool,
     max_mtu: Option<u16>,
     packet_snapshots: (PacketSnapshot, PacketSnapshot),
+    offload: bool,
 ) -> Result<(DcRecorder, DcRecorder)> {
     let model = Model::default();
     let rtt = Duration::from_millis(100);
@@ -868,19 +956,36 @@ fn self_test_inner<S: ServerProviders, C: ClientProviders>(
     );
 
     // Server completes in 2.5 RTTs measured from the start of the test, since it takes .5 RTT
-    // for the Initial from the client to reach the server
-    assert_eq!(
-        rtt.mul_f32(2.5),
-        server_dc_state_changed_events[2]
-            .timestamp
-            .duration_since_start()
-    );
-    assert_eq!(
-        rtt * 2,
-        client_dc_state_changed_events[2]
-            .timestamp
-            .duration_since_start()
-    );
+    // for the Initial from the client to reach the server.
+    // In the case of offloading, server is dc-complete in 3.5 RTTs since the client's first
+    // Stateless Reset packet is dropped due to this issue: https://github.com/aws/s2n-quic/issues/2601.
+    if offload {
+        assert_eq!(
+            rtt.mul_f64(3.5),
+            server_dc_state_changed_events[2]
+                .timestamp
+                .duration_since_start()
+        );
+        assert_eq!(
+            rtt * 3,
+            client_dc_state_changed_events[2]
+                .timestamp
+                .duration_since_start()
+        );
+    } else {
+        assert_eq!(
+            rtt.mul_f32(2.5),
+            server_dc_state_changed_events[2]
+                .timestamp
+                .duration_since_start()
+        );
+        assert_eq!(
+            rtt * 2,
+            client_dc_state_changed_events[2]
+                .timestamp
+                .duration_since_start()
+        );
+    }
 
     let client_mtu_events = client_events.mtu_updated_events.lock().unwrap().clone();
     let server_mtu_events = server_events.mtu_updated_events.lock().unwrap().clone();
@@ -1319,5 +1424,43 @@ impl Interceptor for RandomShort {
         }
 
         DecoderBufferMut::new(payload)
+    }
+}
+
+struct BachExecutor;
+impl Executor for BachExecutor {
+    fn spawn(&self, task: impl core::future::Future<Output = ()> + Send + 'static) {
+        bach::spawn(task);
+    }
+}
+#[derive(Clone)]
+struct Exporter {
+    stateless_reset_tokens: Vec<stateless_reset::Token>,
+}
+impl ExporterHandler for Exporter {
+    fn on_tls_handshake_failed(
+        &self,
+        _session: &impl s2n_quic_core::crypto::tls::TlsSession,
+        _e: &(dyn core::error::Error + Send + Sync + 'static),
+    ) -> Option<Box<dyn std::any::Any + Send>> {
+        None
+    }
+
+    fn on_tls_exporter_ready(
+        &self,
+        _session: &impl s2n_quic_core::crypto::tls::TlsSession,
+    ) -> Option<Box<dyn std::any::Any + Send>> {
+        Some(Box::new((self.stateless_reset_tokens.clone()[0],)))
+    }
+
+    fn on_client_application_params(
+        &mut self,
+        client_params: tls::ApplicationParameters,
+        server_params: &mut Vec<u8>,
+    ) -> Option<std::result::Result<(), s2n_quic_core::transport::Error>> {
+        Some(s2n_quic_core::dc::append_dc_versions(
+            client_params,
+            server_params,
+        ))
     }
 }

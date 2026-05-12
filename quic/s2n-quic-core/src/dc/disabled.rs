@@ -56,4 +56,11 @@ impl Path for () {
     fn on_mtu_updated(&mut self, _mtu: u16) {
         unimplemented!()
     }
+
+    fn on_secret(
+        &mut self,
+        _secret: alloc::boxed::Box<dyn core::any::Any + Send + 'static>,
+    ) -> Result<Vec<stateless_reset::Token>, transport::Error> {
+        unimplemented!()
+    }
 }

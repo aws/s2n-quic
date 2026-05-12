@@ -20,7 +20,7 @@ use tokio::task::JoinHandle;
 
 mod cleaner;
 mod entry;
-mod handshake;
+pub mod handshake;
 mod peer;
 mod rehandshake;
 mod size_of;

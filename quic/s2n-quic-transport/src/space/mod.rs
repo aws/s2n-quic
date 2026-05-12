@@ -25,6 +25,7 @@ use s2n_quic_core::{
         tls::{self, Session},
         CryptoSuite, Key,
     },
+    dc::Endpoint,
     event::{self, IntoEvent},
     frame::{
         ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
@@ -290,6 +291,16 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
             match session_info.session.poll(&mut context)? {
                 Poll::Ready(_success) => {
+                    if Config::DcEndpoint::ENABLED {
+                        if let Some(context) = self.tls_context.take() {
+                            self.application
+                                .as_mut()
+                                .unwrap()
+                                .dc_manager
+                                .on_token(context, publisher)?;
+                        }
+                    }
+
                     if session_info.session.should_discard_session() {
                         self.discard_session();
                     }

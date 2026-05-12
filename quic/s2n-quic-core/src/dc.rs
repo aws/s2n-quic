@@ -8,7 +8,10 @@ use crate::{
         IntoEvent as _,
     },
     inet,
-    transport::parameters::{DcSupportedVersions, InitialFlowControlLimits},
+    transport::{
+        parameters,
+        parameters::{DcSupportedVersions, InitialFlowControlLimits},
+    },
     varint::VarInt,
 };
 use core::{
@@ -191,6 +194,33 @@ impl EncoderValue for ApplicationParams {
             }
         }
     }
+}
+
+pub fn append_dc_versions(
+    client_params: crate::crypto::tls::ApplicationParameters,
+    server_params: &mut alloc::vec::Vec<u8>,
+) -> Result<(), crate::transport::Error> {
+    let param_decoder = s2n_codec::DecoderBuffer::new(client_params.transport_parameters);
+    let (client_params, remaining) =
+        <parameters::ClientTransportParameters as s2n_codec::DecoderValue>::decode(param_decoder)
+            .map_err(|_| {
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-7.4
+            //# An endpoint SHOULD treat receipt of
+            //# duplicate transport parameters as a connection error of type
+            //# TRANSPORT_PARAMETER_ERROR.
+            crate::transport::Error::TRANSPORT_PARAMETER_ERROR
+                .with_reason("Invalid transport parameters")
+        })?;
+
+    debug_assert_eq!(remaining.len(), 0);
+
+    if let Some(selected_version) = crate::dc::select_version(client_params.dc_supported_versions) {
+        parameters::TransportParameter::append_to_buffer(
+            &parameters::DcSupportedVersions::for_server(selected_version),
+            server_params,
+        )
+    }
+    Ok(())
 }
 
 #[cfg(test)]
