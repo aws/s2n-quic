@@ -67,6 +67,7 @@ impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
         _e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Option<Box<dyn std::any::Any + Send>> {
         // TODO wire this up so that dc-quic can emit certificate on tls failure as an event
+        // https://github.com/aws/s2n-quic/issues/3080
         None
     }
 

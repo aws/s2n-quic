@@ -61,7 +61,7 @@ pub trait Path: 'static + Send {
     fn on_mtu_updated(&mut self, mtu: u16);
 
     /// Called when TLS handshake is complete and either an error occurred
-    /// or the TLS handshake was successful and the dc-quic secret is
+    /// or the TLS handshake was successful and the dc-quic secret
     /// can be stored in the map.
     ///
     /// The boxed type is PathSecretsRes. This callback is only triggered
