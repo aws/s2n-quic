@@ -175,7 +175,7 @@ pub fn frame_dispatch<S, Rand, Clk>(
 ///
 ///   ack_rx (sync, from recv workers)
 ///     → ACK processor (loss detection, retransmission)
-pub fn send_worker<Socket, Clk, Rand>(
+pub fn send_worker<Socket, Clk, Rand, WakerSink>(
     spawner: &mut impl LocalSpawner,
     batch_rx: impl Receiver<Entry<FrameBatch>> + 'static,
     ack_rx: impl Receiver<Entry<msg::Sender>> + 'static,
@@ -184,12 +184,14 @@ pub fn send_worker<Socket, Clk, Rand>(
     clock: Clk,
     mut random: Rand,
     frame_tx: crate::stream3::frame::SubmissionSender,
+    mut waker_sink: WakerSink,
     budgets: Budgets,
     counter_registry: crate::counter::Registry,
 ) where
     Socket: crate::socket::send::Socket + 'static,
     Clk: precision::Clock + s2n_quic_core::time::Clock + Clone + 'static,
     Rand: crate::random::Generator + 'static,
+    WakerSink: UnboundedSender<crate::flow::queue::AutoWake> + 'static,
 {
     let num_sockets = send_sockets.len();
 
@@ -377,6 +379,9 @@ pub fn send_worker<Socket, Clk, Rand>(
     // Task 3: Completion dispatcher — batches completed frames by channel, one lock per batch.
     spawner.spawn(async move {
         let rx = CompletionDispatcher::new(completed_rx);
+        let rx = Map::new(rx, move |waker: crate::flow::queue::AutoWake| {
+            let _ = waker_sink.send(waker);
+        });
         rx.drain_budgeted(Some(budgets.completion_acked)).await;
     });
 
@@ -553,7 +558,7 @@ pub async fn socket_recv_task<Socket, R>(
 ///
 /// - **Queue depth metric** (`q.datagram`): stream2 wraps the input queue in `GaugedQueue`.
 ///   Add once the counter infrastructure is available per-worker.
-pub async fn packet_dispatch_task<PacketRx, AckTx, Clk, Route>(
+pub async fn packet_dispatch_task<PacketRx, AckTx, WakerSink, Clk, Route>(
     packet_rx: PacketRx,
     recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
     path_secret_map: crate::path::secret::Map,
@@ -564,12 +569,14 @@ pub async fn packet_dispatch_task<PacketRx, AckTx, Clk, Route>(
     counters: endpoint::counters::Dispatch,
     clock: Clk,
     route: Route,
+    mut waker_sink: WakerSink,
     budgets: Budgets,
 ) where
     PacketRx: Receiver<
         crate::intrusive_queue::Entry<crate::packet::datagram::decoder::Packet<descriptor::Filled>>,
     >,
     AckTx: UnboundedSender<msg::Sender>,
+    WakerSink: UnboundedSender<crate::flow::queue::AutoWake>,
     Clk: s2n_quic_core::time::Clock + precision::Clock,
     Route: endpoint::routing::SenderRoute,
 {
@@ -595,6 +602,7 @@ pub async fn packet_dispatch_task<PacketRx, AckTx, Clk, Route>(
                 &clock,
                 &counters,
                 &route,
+                &mut waker_sink,
             )
         }
     });
@@ -603,6 +611,15 @@ pub async fn packet_dispatch_task<PacketRx, AckTx, Clk, Route>(
         move |err| on_packet_dispatch_error(&counters, err)
     });
     rx.drain_budgeted(Some(budgets.packet_dispatch)).await;
+}
+
+/// Drains offloaded wakers from dispatch workers, invoking each one.
+///
+/// Composes the `waker::Drain` receiver (which yields `Waker` values from its assigned slots)
+/// with a `Map` that calls `wake()` on each, then uses `drain_budgeted` for per-poll fairness.
+pub async fn waker_drain_task(drain: endpoint::waker::Drain, budgets: Budgets) {
+    let rx = Map::new(drain, |waker: core::task::Waker| waker.wake());
+    rx.drain_budgeted(Some(budgets.waker_drain)).await;
 }
 
 fn on_packet_dispatch_error(counters: &endpoint::counters::Dispatch, err: dispatch::Error) {

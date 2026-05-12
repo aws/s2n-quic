@@ -205,24 +205,35 @@ impl Registry {
 
     pub fn spawn_reporter(&self, interval: Duration) {
         let inner = self.inner.clone();
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(interval);
-            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            loop {
-                tick.tick().await;
-                if !inner.is_open() {
-                    break;
-                }
-                if let Some(line) = inner.try_take_current_metrics_line_sparse(false) {
-                    if !line.is_empty() {
-                        let formatted = format_metrics_line(&line);
-                        if !formatted.is_empty() {
-                            tracing::info!("{formatted}");
-                        }
-                    }
+
+        #[cfg(any(test, feature = "testing"))]
+        if bach::is_active() {
+            bach::spawn(report_loop(inner, move || bach::time::sleep(interval)));
+            return;
+        }
+
+        tokio::spawn(report_loop(inner, move || tokio::time::sleep(interval)));
+    }
+}
+
+async fn report_loop<F, Fut>(inner: s2n_quic_dc_metrics::Registry, sleep: F)
+where
+    F: Fn() -> Fut,
+    Fut: core::future::Future<Output = ()>,
+{
+    loop {
+        sleep().await;
+        if !inner.is_open() {
+            break;
+        }
+        if let Some(line) = inner.try_take_current_metrics_line_sparse(false) {
+            if !line.is_empty() {
+                let formatted = format_metrics_line(&line);
+                if !formatted.is_empty() {
+                    tracing::info!("{formatted}");
                 }
             }
-        });
+        }
     }
 }
 

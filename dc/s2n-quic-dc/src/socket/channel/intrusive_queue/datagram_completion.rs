@@ -12,7 +12,7 @@
 //! - Graceful shutdown: Receiver drops normally - transmit but silently drop completions
 //! - Panic/Cancel: Receiver panics or sender.cancel() - cancel all pending transmissions
 
-use crate::intrusive_queue;
+use crate::{flow::queue::AutoWake, intrusive_queue};
 use core::{
     mem::ManuallyDrop,
     sync::atomic::{AtomicU8, Ordering},
@@ -108,64 +108,53 @@ impl<T> Sender<T> {
         Arc::as_ptr(&self.shared) as usize
     }
 
-    /// Send a completion notification.
+    /// Send a completion notification, returning the receiver waker rather than invoking it.
     ///
     /// If the receiver is no longer alive, the completion is silently dropped.
     pub fn send_entry(
         &self,
         entry: intrusive_queue::Entry<T>,
-    ) -> Result<(), intrusive_queue::Entry<T>> {
+    ) -> Result<AutoWake, intrusive_queue::Entry<T>> {
         let flags = self.shared.flags.load(Ordering::Acquire);
 
         // If receiver is gone, silently drop the completion
         if flags & RECEIVER_ALIVE == 0 {
-            return Ok(());
+            return Ok(AutoWake::default());
         }
 
         let mut guard = self.shared.inner.lock();
         guard.queue.push_back(entry);
-
-        // Wake the receiver if it's waiting
-        if let Some(waker) = guard.recv_waker.take() {
-            drop(guard);
-            waker.wake();
-        }
-
-        Ok(())
+        let waker = AutoWake::new(guard.recv_waker.take());
+        Ok(waker)
     }
 
-    /// Send a batch of completion notifications.
+    /// Send a batch of completion notifications, returning the receiver waker if one was
+    /// registered rather than invoking it inline.
     pub fn send_batch(
         &self,
         mut batch: intrusive_queue::Queue<T>,
-    ) -> Result<(), intrusive_queue::Queue<T>> {
+    ) -> Result<AutoWake, intrusive_queue::Queue<T>> {
         if batch.is_empty() {
-            return Ok(());
+            return Ok(AutoWake::default());
         }
 
         let flags = self.shared.flags.load(Ordering::Acquire);
 
         // If receiver is gone, silently drop all completions
         if flags & RECEIVER_ALIVE == 0 {
-            return Ok(());
+            return Ok(AutoWake::default());
         }
 
         let mut guard = self.shared.inner.lock();
         guard.queue.append(&mut batch);
-
-        // Wake the receiver if it's waiting
-        if let Some(waker) = guard.recv_waker.take() {
-            drop(guard);
-            waker.wake();
-        }
-
-        Ok(())
+        let waker = AutoWake::new(guard.recv_waker.take());
+        Ok(waker)
     }
 }
 
 impl<T> super::super::UnboundedSender<intrusive_queue::Entry<T>> for Sender<T> {
     fn send(&mut self, value: intrusive_queue::Entry<T>) -> Result<(), intrusive_queue::Entry<T>> {
-        self.send_entry(value)
+        self.send_entry(value).map(drop)
     }
 }
 
@@ -177,7 +166,7 @@ impl<T> super::super::Sender<intrusive_queue::Entry<T>> for Sender<T> {
     ) -> Poll<Result<(), ()>> {
         let entry = unsafe { value.assume_init_read() };
         match self.send_entry(entry) {
-            Ok(()) => Poll::Ready(Ok(())),
+            Ok(_) => Poll::Ready(Ok(())),
             Err(_) => Poll::Ready(Err(())),
         }
     }
@@ -185,7 +174,7 @@ impl<T> super::super::Sender<intrusive_queue::Entry<T>> for Sender<T> {
 
 impl<T> super::super::UnboundedSender<intrusive_queue::Queue<T>> for Sender<T> {
     fn send(&mut self, batch: intrusive_queue::Queue<T>) -> Result<(), intrusive_queue::Queue<T>> {
-        self.send_batch(batch)
+        self.send_batch(batch).map(drop)
     }
 }
 
@@ -202,7 +191,7 @@ impl<T> super::super::Sender<intrusive_queue::Queue<T>> for Sender<T> {
         }
 
         match self.send_batch(batch) {
-            Ok(()) => Poll::Ready(Ok(())),
+            Ok(_) => Poll::Ready(Ok(())),
             Err(returned_batch) => {
                 value.write(returned_batch);
                 Poll::Ready(Err(()))

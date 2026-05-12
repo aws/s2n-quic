@@ -93,6 +93,14 @@ impl<T> Inner<T> {
 pub struct AutoWake(Option<Waker>);
 
 impl AutoWake {
+    pub fn new(waker: Option<Waker>) -> Self {
+        Self(waker)
+    }
+
+    pub fn is_some(&self) -> bool {
+        self.0.is_some()
+    }
+
     pub fn take(&mut self) -> Option<Waker> {
         self.0.take()
     }

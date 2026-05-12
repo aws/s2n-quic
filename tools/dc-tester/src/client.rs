@@ -24,7 +24,7 @@ pub async fn run(
         return Ok(());
     }
 
-    let data_port = endpoint.data_port;
+    let data_port = endpoint.data_addr.port();
 
     // Create PSK client provider with data_port
     let handshake = crate::psk::client(data_port, endpoint.path_secret_map.clone())?;

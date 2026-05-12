@@ -259,6 +259,7 @@ pub fn setup_sim_endpoint(
         send: vec![0],
         recv_io: vec![0],
         recv_dispatch: vec![0],
+        waker_drain: vec![0],
     };
 
     let spawner = crate::stream2::spawner::bach::Runtime::new(1);

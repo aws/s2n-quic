@@ -22,15 +22,13 @@ pub fn create(
     let subscriber = s2n_quic_dc::event::tracing::Subscriber::default();
     let map = secret::Map::new(signer, 50_000, true, clock, subscriber);
 
-    let (num_send_workers, num_recv_io, num_recv_dispatch) = config.worker_counts();
-
     // Create recv sockets first to determine the data port
-    let recv_sockets = socket::RecvConfig::new(num_recv_io, bind_addr).busy_poll()?;
+    let recv_sockets = socket::RecvConfig::new(config.recv_io_workers, bind_addr).busy_poll()?;
 
     {
         use s2n_quic_dc::socket::recv::Socket as _;
         let recv_port = recv_sockets.first().unwrap().local_addr().unwrap().port();
-        info!(num_recv_io, recv_port, "Recv sockets bound");
+        info!(recv_io_workers = config.recv_io_workers, recv_port, "Recv sockets bound");
     }
 
     // Create send sockets
@@ -51,15 +49,7 @@ pub fn create(
         );
     }
 
-    let layout = endpoint::WorkerLayout {
-        frame_dispatch: 0,
-        send: (1..1 + num_send_workers).collect(),
-        recv_io: (1 + num_send_workers..1 + num_send_workers + num_recv_io).collect(),
-        recv_dispatch: (1 + num_send_workers + num_recv_io
-            ..1 + num_send_workers + num_recv_io + num_recv_dispatch)
-            .collect(),
-    };
-
+    let layout = config.layout();
     info!(?layout, "starting endpoint");
 
     let bp_clock =

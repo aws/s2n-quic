@@ -617,31 +617,39 @@ where
             .map(|c| c.queue_id())
     }
 
-    fn flush(&mut self) {
+    fn flush(&mut self) -> crate::flow::queue::AutoWake {
         if self.batch.is_empty() {
-            return;
+            return Default::default();
         }
         let sender = self.batch.front_mut().and_then(|f| f.completion.take());
         let batch = core::mem::take(&mut self.batch);
         if let Some(sender) = sender {
-            let _ = sender.send_batch(batch);
+            sender.send_batch(batch).unwrap_or_default()
+        } else {
+            Default::default()
         }
     }
 }
 
-impl<R> Receiver<()> for CompletionDispatcher<R>
+impl<R> Receiver<crate::flow::queue::AutoWake> for CompletionDispatcher<R>
 where
     R: Receiver<Entry<Frame>>,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<()>> {
+    fn poll_recv(
+        &mut self,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<Option<crate::flow::queue::AutoWake>> {
         let frame = match self.inner.poll_recv(cx) {
             Poll::Ready(Some(frame)) => frame,
             Poll::Ready(None) => {
-                self.flush();
-                return Poll::Ready(None);
+                let waker = self.flush();
+                return Poll::Ready(Some(waker));
             }
             Poll::Pending => {
-                self.flush();
+                let waker = self.flush();
+                if waker.is_some() {
+                    return Poll::Ready(Some(waker));
+                }
                 return Poll::Pending;
             }
         };
@@ -649,17 +657,17 @@ where
         let incoming_id = frame.completion.as_ref().map(|c| c.queue_id());
 
         let Some(_) = incoming_id else {
-            return Poll::Ready(Some(()));
+            return Poll::Ready(Some(Default::default()));
         };
 
         if self.current_queue_id() == incoming_id {
             self.batch.push_back(Entry::from(frame));
+            Poll::Ready(Some(Default::default()))
         } else {
-            self.flush();
+            let waker = self.flush();
             self.batch.push_back(Entry::from(frame));
+            Poll::Ready(Some(waker))
         }
-
-        Poll::Ready(Some(()))
     }
 
     fn on_consumed(&mut self, bytes: u64) {

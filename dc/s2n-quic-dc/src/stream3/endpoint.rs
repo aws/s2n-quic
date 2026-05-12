@@ -19,6 +19,7 @@ pub(crate) mod routing;
 pub(crate) mod send;
 pub mod socket;
 pub(crate) mod tasks;
+pub(crate) mod waker;
 pub(crate) mod worker;
 
 #[cfg(any(test, feature = "testing"))]
@@ -87,6 +88,8 @@ pub struct Budgets {
     pub socket_recv: usize,
     /// Budget for the per-worker packet dispatch task.
     pub packet_dispatch: usize,
+    /// Budget for the waker drain task (wakers fired per poll).
+    pub waker_drain: usize,
 }
 
 impl Default for Budgets {
@@ -104,6 +107,7 @@ impl Default for Budgets {
             completion_cancelled: tasks::DEFAULT_DISPATCH_BUDGET,
             socket_recv: tasks::DEFAULT_RECV_BUDGET,
             packet_dispatch: usize::MAX,
+            waker_drain: 512,
         }
     }
 }
@@ -126,6 +130,9 @@ pub struct WorkerLayout {
     /// Workers that run recv dispatch (decrypt + dedup + frame routing to queues).
     /// Packets are hash-routed to these workers by (credentials.id, source_sender_id).
     pub recv_dispatch: Vec<usize>,
+    /// Workers that run waker drain tasks (fire wakers offloaded from dispatch/send workers).
+    /// Multiple workers are supported for sharding if the single-thread budget is exceeded.
+    pub waker_drain: Vec<usize>,
 }
 
 /// Configuration for the stream3 pipeline.
@@ -377,10 +384,24 @@ where
         overall_send_rate,
     });
 
+    // ── Waker offload ─────────────────────────────────────────────────────────
+    // One slot per producer (recv_dispatch + send workers), partitioned across waker_drain workers.
+    let num_recv_dispatch = layout.recv_dispatch.len();
+    let num_waker_slots = num_recv_dispatch + num_send_workers;
+    let num_waker_drains = layout.waker_drain.len().max(1);
+    let (mut waker_sinks, waker_drains) = waker::new(num_waker_slots, num_waker_drains);
+    let send_waker_sinks = waker_sinks.split_off(num_recv_dispatch);
+
+    for (idx, drain) in waker_drains.into_iter().enumerate() {
+        let worker_id = layout.waker_drain[idx % layout.waker_drain.len()];
+        workers[worker_id].waker_drain.push(drain);
+    }
+
     // Assign per-send-worker batch/ack receivers.
-    for (idx, (batch_rx, ack_rx)) in worker_batch_rxs
+    for (idx, ((batch_rx, ack_rx), waker_sink)) in worker_batch_rxs
         .into_iter()
         .zip(worker_ack_rxs.into_iter())
+        .zip(send_waker_sinks)
         .enumerate()
     {
         let worker_id = layout.send[idx];
@@ -389,6 +410,7 @@ where
             ack_rx,
             random: create_rand(),
             frame_tx: frame_tx.clone(),
+            waker_sink,
         });
     }
 
@@ -404,7 +426,6 @@ where
     // ── Recv dispatch queues ─────────────────────────────────────────────────
     // One dispatch queue per recv_dispatch worker. Recv IO tasks fan out to all of these
     // using a hash of (credentials.id, source_sender_id) for peer affinity.
-    let num_recv_dispatch = layout.recv_dispatch.len();
     let (dispatch_txs, dispatch_rxs): (Vec<_>, Vec<_>) = (0..num_recv_dispatch)
         .map(|_| {
             intrusive_queue::sync::new::<packet::datagram::decoder::Packet<descriptor::Filled>>()
@@ -412,7 +433,7 @@ where
         .unzip();
 
     let ack_route = RecvRoute::new(num_send);
-    for (idx, dispatch_rx) in dispatch_rxs.into_iter().enumerate() {
+    for (idx, (dispatch_rx, waker_sink)) in dispatch_rxs.into_iter().zip(waker_sinks).enumerate() {
         let worker_id = layout.recv_dispatch[idx];
         workers[worker_id].recv_dispatch = Some(RecvDispatchParts {
             packet_rx: dispatch_rx,
@@ -424,6 +445,7 @@ where
             counters: counters.clone(),
             clock: clock.clone(),
             route: ack_route,
+            waker_sink,
         });
     }
 
@@ -482,6 +504,7 @@ struct SendWorkerParts<G> {
     ack_rx: AckMsgReceiver,
     random: G,
     frame_tx: SubmissionSender,
+    waker_sink: waker::Sink,
 }
 
 /// Per-socket ingredients for the socket send task.
@@ -516,6 +539,7 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     counters: counters::Dispatch,
     clock: Clk,
     route: Route,
+    waker_sink: waker::Sink,
 }
 
 // ── Worker ────────────────────────────────────────────────────────────────
@@ -536,6 +560,8 @@ struct Worker<SendSocket, RecvSocket, Clk, G, AckSnd, Route> {
     recv_socket: Option<RecvSocketParts<RecvSocket, Route>>,
     /// Recv dispatch: decrypt + dedup + frame routing (at most one per worker).
     recv_dispatch: Option<RecvDispatchParts<Clk, AckSnd, Route>>,
+    /// Waker drain tasks assigned to this worker.
+    waker_drain: Vec<waker::Drain>,
 }
 
 impl<SendSocket, RecvSocket, Clk, G, AckSnd, Route>
@@ -568,6 +594,7 @@ where
             send_sockets: Vec::new(),
             recv_socket: None,
             recv_dispatch: None,
+            waker_drain: Vec::new(),
         }
     }
 
@@ -586,6 +613,7 @@ where
             send_sockets,
             recv_socket,
             recv_dispatch,
+            waker_drain,
         } = self;
 
         spawner.spawn_local(id, move |mut local| {
@@ -626,6 +654,7 @@ where
                     clock.clone(),
                     sw.random,
                     sw.frame_tx,
+                    sw.waker_sink,
                     budgets,
                     counter_registry.clone(),
                 );
@@ -659,8 +688,13 @@ where
                     rd.counters,
                     rd.clock,
                     rd.route,
+                    rd.waker_sink,
                     budgets,
                 ));
+            }
+
+            for drain in waker_drain {
+                local.spawn(tasks::waker_drain_task(drain, budgets));
             }
         });
     }

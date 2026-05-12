@@ -12,6 +12,7 @@ use crate::{
     byte_vec::ByteVec,
     credentials::Credentials,
     flow,
+    flow::queue::AutoWake,
     intrusive_queue::Entry,
     packet::{
         self,
@@ -70,6 +71,7 @@ pub(crate) fn process<Clk, Route>(
     clock: &Clk,
     counters: &counters::Dispatch,
     route: &Route,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) -> Result<(), Error>
 where
     Clk: s2n_quic_core::time::Clock + ?Sized,
@@ -211,6 +213,7 @@ where
                     sender_tx,
                     counters,
                     &mut response_frames,
+                    waker_sink,
                 );
             }
             Err(err) => {
@@ -267,6 +270,7 @@ fn dispatch_decoded_frame(
     sender_tx: &mut impl channel::UnboundedSender<msg::Sender>,
     counters: &counters::Dispatch,
     response_frames: &mut PriorityInput,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
     match header {
         Header::FlowInit {
@@ -291,6 +295,7 @@ fn dispatch_decoded_frame(
                 queue_dispatcher,
                 counters,
                 response_frames,
+                waker_sink,
             );
         }
         Header::FlowValidateRequest {
@@ -325,6 +330,7 @@ fn dispatch_decoded_frame(
                 queue_dispatcher,
                 counters,
                 response_frames,
+                waker_sink,
             );
         }
         Header::FlowData {
@@ -344,6 +350,7 @@ fn dispatch_decoded_frame(
                 queue_dispatcher,
                 counters,
                 response_frames,
+                waker_sink,
             );
         }
         Header::FlowControl {
@@ -359,6 +366,7 @@ fn dispatch_decoded_frame(
                 queue_dispatcher,
                 counters,
                 response_frames,
+                waker_sink,
             );
         }
         Header::FlowReset {
@@ -375,6 +383,7 @@ fn dispatch_decoded_frame(
                 error_code,
                 queue_dispatcher,
                 counters,
+                waker_sink,
             );
         }
         Header::Control { dest_sender_id } => {
@@ -410,6 +419,7 @@ fn handle_flow_init(
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
     response_frames: &mut PriorityInput,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
     let create_queue = |handle| {
         let (queue_control, queue_stream) =
@@ -559,12 +569,14 @@ fn handle_flow_init(
                                 stream_id,
                             };
                             let stream_entry = msg::Stream::FlowValidated.into();
-                            let _ = queue_dispatcher.send_stream(
+                            if let Ok(waker) = queue_dispatcher.send_stream(
                                 local_queue_id,
                                 Some(peer_queue_id),
                                 &request,
                                 stream_entry,
-                            );
+                            ) {
+                                let _ = waker_sink.send(waker);
+                            }
                             tracing::debug!(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
@@ -826,6 +838,7 @@ fn handle_flow_init_validate(
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
     response_frames: &mut PriorityInput,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
     let local_queue_id = queue_pair.dest_queue_id;
 
@@ -845,7 +858,8 @@ fn handle_flow_init_validate(
                 &request,
                 stream_entry,
             ) {
-                Ok(_waker) => {
+                Ok(waker) => {
+                    let _ = waker_sink.send(waker);
                     tracing::debug!(
                         attempt_id = attempt_id.as_u64(),
                         stream_id = stream_id.as_u64(),
@@ -904,6 +918,7 @@ fn handle_flow_data(
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
     response_frames: &mut PriorityInput,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
     let local_queue_id = queue_pair.dest_queue_id;
 
@@ -926,11 +941,8 @@ fn handle_flow_data(
         &request,
         entry,
     ) {
-        Ok(mut waker) => {
-            if let Some(waker) = waker.take() {
-                let _guard = counters.rx_data_wake_time.start();
-                waker.wake();
-            }
+        Ok(waker) => {
+            let _ = waker_sink.send(waker);
             counters.rx_data_ok.add(1);
             tracing::trace!(
                 stream_id = stream_id.as_u64(),
@@ -1013,6 +1025,7 @@ fn handle_flow_control(
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
     response_frames: &mut PriorityInput,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
     let local_queue_id = queue_pair.dest_queue_id;
 
@@ -1030,11 +1043,8 @@ fn handle_flow_control(
         &request,
         entry,
     ) {
-        Ok(mut waker) => {
-            if let Some(waker) = waker.take() {
-                let _guard = counters.rx_flow_control_wake_time.start();
-                waker.wake();
-            }
+        Ok(waker) => {
+            let _ = waker_sink.send(waker);
             counters.rx_flow_control_ok.add(1);
             tracing::trace!(
                 stream_id = stream_id.as_u64(),
@@ -1115,6 +1125,7 @@ fn handle_flow_reset(
     error_code: VarInt,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
     let local_queue_id = dest_queue_id;
 
@@ -1128,13 +1139,15 @@ fn handle_flow_reset(
             counters.rx_reset_both.add(1);
             let stream_entry = msg::Stream::Reset { error_code }.into();
             let control_entry = msg::Control::Reset { error_code }.into();
-            let (_waker_a, _waker_b) = queue_dispatcher.send_both(
+            let (waker_a, waker_b) = queue_dispatcher.send_both(
                 local_queue_id,
                 None,
                 &request,
                 stream_entry,
                 control_entry,
             );
+            let _ = waker_sink.send(waker_a);
+            let _ = waker_sink.send(waker_b);
 
             tracing::debug!(
                 stream_id = stream_id.as_u64(),
@@ -1146,7 +1159,11 @@ fn handle_flow_reset(
         ResetTarget::Stream => {
             counters.rx_reset_stream.add(1);
             let stream_entry = msg::Stream::Reset { error_code }.into();
-            let _ = queue_dispatcher.send_stream(local_queue_id, None, &request, stream_entry);
+            if let Ok(waker) =
+                queue_dispatcher.send_stream(local_queue_id, None, &request, stream_entry)
+            {
+                let _ = waker_sink.send(waker);
+            }
 
             tracing::debug!(
                 stream_id = stream_id.as_u64(),
@@ -1158,7 +1175,11 @@ fn handle_flow_reset(
         ResetTarget::Control => {
             counters.rx_reset_control.add(1);
             let control_entry = msg::Control::Reset { error_code }.into();
-            let _ = queue_dispatcher.send_control(local_queue_id, None, &request, control_entry);
+            if let Ok(waker) =
+                queue_dispatcher.send_control(local_queue_id, None, &request, control_entry)
+            {
+                let _ = waker_sink.send(waker);
+            }
 
             tracing::debug!(
                 stream_id = stream_id.as_u64(),

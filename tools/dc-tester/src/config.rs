@@ -22,21 +22,21 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EndpointConfig {
-    /// Number of busy poll workers for the endpoint pipeline
-    #[serde(default = "EndpointConfig::default_workers")]
-    pub workers: usize,
+    /// Number of workers for the send pipeline
+    #[serde(default = "EndpointConfig::default_send_workers")]
+    pub send_workers: usize,
 
-    /// Number of workers for the send pipeline (optional, derived from total if unset)
-    #[serde(default)]
-    pub send_workers: Option<usize>,
+    /// Number of workers for recv IO (socket read + decode)
+    #[serde(default = "EndpointConfig::default_recv_io_workers")]
+    pub recv_io_workers: usize,
 
-    /// Number of workers for recv IO (socket read + decode) (optional, derived from total if unset)
-    #[serde(default)]
-    pub recv_io_workers: Option<usize>,
+    /// Number of workers for recv dispatch (decrypt + dedup + routing)
+    #[serde(default = "EndpointConfig::default_recv_dispatch_workers")]
+    pub recv_dispatch_workers: usize,
 
-    /// Number of workers for recv dispatch (decrypt + dedup + routing) (optional, derived from total if unset)
-    #[serde(default)]
-    pub recv_dispatch_workers: Option<usize>,
+    /// Number of workers for waker drain (offloaded wake syscalls)
+    #[serde(default = "EndpointConfig::default_waker_drain_workers")]
+    pub waker_drain_workers: usize,
 
     /// Number of send sockets
     #[serde(default = "EndpointConfig::default_send_sockets")]
@@ -56,8 +56,20 @@ pub struct EndpointConfig {
 }
 
 impl EndpointConfig {
-    fn default_workers() -> usize {
-        17
+    fn default_send_workers() -> usize {
+        4
+    }
+
+    fn default_recv_io_workers() -> usize {
+        4
+    }
+
+    fn default_recv_dispatch_workers() -> usize {
+        5
+    }
+
+    fn default_waker_drain_workers() -> usize {
+        1
     }
 
     fn default_send_sockets() -> usize {
@@ -75,37 +87,35 @@ impl EndpointConfig {
     fn default_submission_shards() -> usize {
         128
     }
-}
 
-impl EndpointConfig {
-    /// Derives the worker layout counts: (send, recv_io, recv_dispatch).
-    ///
-    /// The remaining threads after frame_dispatch (1 thread) are split:
-    /// - send: 1/4 of remaining
-    /// - recv_dispatch: 1/3 of remaining
-    /// - recv_io: the rest
-    ///
-    /// Any explicit overrides from the config take priority.
-    pub fn worker_counts(&self) -> (usize, usize, usize) {
-        let remaining = self.workers.saturating_sub(1).max(3);
+    /// Total number of busy-poll threads needed (frame_dispatch + all worker roles).
+    pub fn total_workers(&self) -> usize {
+        1 + self.send_workers
+            + self.recv_io_workers
+            + self.recv_dispatch_workers
+            + self.waker_drain_workers
+    }
 
-        let send = self.send_workers.unwrap_or((remaining / 4).max(1));
-        let recv_dispatch = self.recv_dispatch_workers.unwrap_or((remaining / 3).max(1));
-        let recv_io = self
-            .recv_io_workers
-            .unwrap_or(remaining.saturating_sub(send + recv_dispatch).max(1));
-
-        (send, recv_io, recv_dispatch)
+    /// Constructs the worker layout, assigning contiguous thread indices to each role.
+    pub fn layout(&self) -> s2n_quic_dc::stream3::endpoint::WorkerLayout {
+        let mut ids = 1..; // 0 is frame_dispatch
+        s2n_quic_dc::stream3::endpoint::WorkerLayout {
+            frame_dispatch: 0,
+            send: (&mut ids).take(self.send_workers).collect(),
+            recv_io: (&mut ids).take(self.recv_io_workers).collect(),
+            recv_dispatch: (&mut ids).take(self.recv_dispatch_workers).collect(),
+            waker_drain: (&mut ids).take(self.waker_drain_workers).collect(),
+        }
     }
 }
 
 impl Default for EndpointConfig {
     fn default() -> Self {
         Self {
-            workers: Self::default_workers(),
-            send_workers: None,
-            recv_io_workers: None,
-            recv_dispatch_workers: None,
+            send_workers: Self::default_send_workers(),
+            recv_io_workers: Self::default_recv_io_workers(),
+            recv_dispatch_workers: Self::default_recv_dispatch_workers(),
+            waker_drain_workers: Self::default_waker_drain_workers(),
             send_sockets: Self::default_send_sockets(),
             bandwidth: Self::default_bandwidth(),
             per_socket_bandwidth: Self::default_per_socket_bandwidth(),

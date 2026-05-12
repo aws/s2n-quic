@@ -92,15 +92,13 @@ fn main() -> std::io::Result<()> {
         }
     };
 
-    let busy_poll_workers = config.endpoint.workers;
+    let busy_poll_workers = config.endpoint.total_workers();
     let available_cpus = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1);
     let tokio_threads = available_cpus.saturating_sub(busy_poll_workers).max(1);
 
-    eprintln!(
-        "CPUs: {available_cpus}, busy_poll: {busy_poll_workers}, tokio: {tokio_threads}"
-    );
+    eprintln!("CPUs: {available_cpus}, busy_poll: {busy_poll_workers}, tokio: {tokio_threads}");
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(tokio_threads)
