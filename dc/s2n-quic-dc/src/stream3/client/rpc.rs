@@ -3,7 +3,7 @@
 
 use crate::stream3::Stream;
 use core::future::Future;
-use s2n_quic_core::buffer::{self, writer::Storage as _};
+use s2n_quic_core::buffer::writer::Storage as _;
 use std::{future::poll_fn, io};
 
 pub use crate::stream::client::rpc::{InMemoryResponse, Request, Response};

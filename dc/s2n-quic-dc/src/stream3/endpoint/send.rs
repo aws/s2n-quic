@@ -252,7 +252,7 @@ impl Context {
     }
 
     /// Compute wheel interest after a state change
-    fn wheel_interest<Clk>(&mut self, clock: &Clk) -> WheelInterest
+    pub(crate) fn wheel_interest<Clk>(&mut self, clock: &Clk) -> WheelInterest
     where
         Clk: precision::Clock + ?Sized,
     {

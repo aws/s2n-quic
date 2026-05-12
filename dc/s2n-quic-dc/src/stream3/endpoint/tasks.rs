@@ -278,9 +278,9 @@ pub fn send_worker<Socket, Clk, Rand>(
         let rx = ack_rx;
         let mut frame_tx = frame_tx;
         let clock = clock.clone();
-        let mut tx_wheel_tx = tx_wheel_tx;
-        let mut pto_wheel_tx = pto_wheel_tx;
-        let mut idle_wheel_tx = idle_wheel_tx;
+        let mut tx_wheel_tx = tx_wheel_tx.clone();
+        let mut pto_wheel_tx = pto_wheel_tx.clone();
+        let mut idle_wheel_tx = idle_wheel_tx.clone();
         let mut completed_tx = completed_tx;
         let mut cancelled_tx = cancelled_tx;
         async move {
@@ -409,6 +409,9 @@ pub fn send_worker<Socket, Clk, Rand>(
 
         spawner.spawn({
             let clock = st.clock.clone();
+            let tx_wheel_tx = tx_wheel_tx.clone();
+            let pto_wheel_tx = pto_wheel_tx.clone();
+            let idle_wheel_tx = idle_wheel_tx.clone();
             async move {
                 let rx = Assembler::new(
                     context_rx,
@@ -418,6 +421,9 @@ pub fn send_worker<Socket, Clk, Rand>(
                     st.gso,
                     st.pool,
                     CancelledFrameSink,
+                    tx_wheel_tx,
+                    pto_wheel_tx,
+                    idle_wheel_tx,
                 );
                 let rx = SocketSender::new(rx, st.socket);
                 let rx = InspectErr::new(rx, |(err, _segments)| {

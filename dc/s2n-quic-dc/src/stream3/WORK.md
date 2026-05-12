@@ -2,18 +2,6 @@
 
 This implementation is porting/cleaning up the stream2 POC. These are the remaining gaps to fully replace it.
 
-## Critical (correctness)
-
-### Test compilation errors (combinator/tests.rs)
-
-- `Sender` trait → should be `UnboundedSender`
-- `try_send_pick_two` is now an associated fn `PickTwo::try_send_pick_two`, not a free fn
-- `TestItem` missing `StickyRoute::set_sender_id` impl
-
-### Assembler `todo!()` — wheel interest after assembly (combinator.rs:448)
-
-After `assemble::assemble` returns, the context needs to declare interest in timing wheels (tx wheel for next transmission, PTO wheel, idle wheel). The Assembler combinator needs fields for each wheel's sender, and should dispatch the context's wheel interest after yielding the assembled segments.
-
 ## High priority (observability)
 
 ### Queue depth visibility

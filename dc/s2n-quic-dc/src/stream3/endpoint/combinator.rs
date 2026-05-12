@@ -12,7 +12,7 @@ use crate::{
     intrusive_queue::{Entry, Queue},
     path::secret::map::Entry as PathSecretEntry,
     socket::{
-        channel::{ByteCost, Receiver, UnboundedSender},
+        channel::{intrusive_queue::unsync, ByteCost, Receiver, UnboundedSender},
         pool::descriptor,
     },
     stream3::{endpoint::send, frame::Frame},
@@ -397,6 +397,9 @@ pub(crate) struct Assembler<R, Clk, C> {
     pool: crate::socket::pool::Pool,
     header_buf: Vec<u8>,
     cancelled_tx: C,
+    tx_wheel_tx: unsync::Sender<send::TxWheelAdapter>,
+    pto_wheel_tx: unsync::Sender<send::PtoWheelAdapter>,
+    idle_wheel_tx: unsync::Sender<send::IdleWheelAdapter>,
 }
 
 impl<R, Clk, C> Assembler<R, Clk, C> {
@@ -408,6 +411,9 @@ impl<R, Clk, C> Assembler<R, Clk, C> {
         gso: s2n_quic_platform::features::Gso,
         pool: crate::socket::pool::Pool,
         cancelled_tx: C,
+        tx_wheel_tx: unsync::Sender<send::TxWheelAdapter>,
+        pto_wheel_tx: unsync::Sender<send::PtoWheelAdapter>,
+        idle_wheel_tx: unsync::Sender<send::IdleWheelAdapter>,
     ) -> Self {
         Self {
             inner,
@@ -418,6 +424,9 @@ impl<R, Clk, C> Assembler<R, Clk, C> {
             pool,
             header_buf: Vec::new(),
             cancelled_tx,
+            tx_wheel_tx,
+            pto_wheel_tx,
+            idle_wheel_tx,
         }
     }
 }
@@ -447,12 +456,16 @@ where
                 &mut self.header_buf,
                 &mut self.cancelled_tx,
             );
-            // ask the context if it wants to be inserted into any wheels
-            let wheel_interest = todo!();
+            let wheel_interest = context.wheel_interest(&self.clock);
             (segments, wheel_interest)
         };
 
-        // TODO reinsert the context if it has interest - those channels should be stored on the Assembler
+        wheel_interest.dispatch(
+            context,
+            &mut self.tx_wheel_tx,
+            &mut self.pto_wheel_tx,
+            &mut self.idle_wheel_tx,
+        );
 
         if let Some(segments) = segments {
             Poll::Ready(Some(segments))
