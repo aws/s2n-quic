@@ -148,6 +148,8 @@ impl
 
     #[inline(always)]
     fn append_to(mut self, storage: &mut PriorityStorage) {
+        storage.0.len += self.len;
+        self.len = 0;
         for (dst, src) in storage.0.queues.iter_mut().zip(self.queues.iter_mut()) {
             dst.append(src);
         }
@@ -167,6 +169,8 @@ impl
 
     #[inline(always)]
     fn append_to(self, storage: &mut PriorityStorage) {
+        storage.0.len += self.len;
+        self.len = 0;
         for (dst, src) in storage.0.queues.iter_mut().zip(self.queues.iter_mut()) {
             dst.append(src);
         }
@@ -188,6 +192,7 @@ impl
     fn append_to(self, storage: &mut PriorityStorage) {
         let idx = self.priority().as_index();
         storage.0.queues[idx].push_back(self);
+        storage.0.len += 1;
     }
 }
 
@@ -212,6 +217,7 @@ impl
             self.iter().all(|f| f.priority().as_index() == idx),
             "all frames in a Queue<Frame> input must share the same priority"
         );
+        storage.0.len += self.len();
         storage.0.queues[idx].append(&mut self);
     }
 }

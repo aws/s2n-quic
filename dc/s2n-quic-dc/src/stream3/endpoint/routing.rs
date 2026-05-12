@@ -1,7 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::credentials::{self, Credentials};
+use super::msg;
+use crate::{
+    credentials::{self, Credentials},
+    socket::channel::UnboundedSender,
+};
 use s2n_quic_core::varint::VarInt;
 
 #[inline]
@@ -121,13 +125,13 @@ impl<T> AckSender<T> {
     }
 }
 
-impl<T> crate::socket::channel::UnboundedSender<super::msg::Sender> for AckSender<T>
+impl<T> UnboundedSender<msg::Sender> for AckSender<T>
 where
-    T: crate::socket::channel::UnboundedSender<super::msg::Sender>,
+    T: UnboundedSender<msg::Sender>,
 {
-    fn send(&mut self, msg: super::msg::Sender) -> Result<(), super::msg::Sender> {
+    fn send(&mut self, msg: msg::Sender) -> Result<(), msg::Sender> {
         match &msg {
-            super::msg::Sender::Ack {
+            msg::Sender::Ack {
                 local_sender_id, ..
             } => {
                 let sender_idx = local_sender_id.as_u64() as usize;
