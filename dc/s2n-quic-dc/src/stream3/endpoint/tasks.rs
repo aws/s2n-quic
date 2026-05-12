@@ -23,8 +23,7 @@ use crate::{
                 Assembler, BatchFramesByPathSecret, CompletionDispatcher, FrameBatch,
                 PathSecretMapEntry, PickTwo,
             },
-            dispatch, msg, send,
-            Budgets,
+            dispatch, msg, send, Budgets,
         },
         frame::{Frame, PriorityStorage, SubmissionReceiver},
     },
@@ -134,9 +133,7 @@ pub fn frame_dispatch<S, Rand, Clk>(
             Poll::Ready(None) => Poll::Ready(()),
             Poll::Pending => Poll::Pending,
             Poll::Ready(Some(())) => {
-                for ((_priority, queue), tx) in
-                    staging.drain().zip(&mut priority_list_txs)
-                {
+                for ((_priority, queue), tx) in staging.drain().zip(&mut priority_list_txs) {
                     if !queue.is_empty() {
                         let _ = UnboundedSender::send(tx, queue);
                     }
@@ -284,7 +281,7 @@ pub fn send_worker<Socket, Clk, Rand>(
         let mut pto_wheel_tx = pto_wheel_tx.clone();
         let mut idle_wheel_tx = idle_wheel_tx.clone();
         let mut completed_tx = completed_tx;
-        let mut cancelled_tx = cancelled_tx;
+        let mut cancelled_tx = cancelled_tx.clone();
         async move {
             let rx = FlattenQueue::new(rx);
             let rx = Map::new(rx, move |entry: Entry<msg::Sender>| {
@@ -414,6 +411,7 @@ pub fn send_worker<Socket, Clk, Rand>(
             let tx_wheel_tx = tx_wheel_tx.clone();
             let pto_wheel_tx = pto_wheel_tx.clone();
             let idle_wheel_tx = idle_wheel_tx.clone();
+            let cancelled_tx = cancelled_tx.clone().into_list_sender();
             async move {
                 let rx = Assembler::new(
                     context_rx,
@@ -422,7 +420,7 @@ pub fn send_worker<Socket, Clk, Rand>(
                     st.source_control_port,
                     st.gso,
                     st.pool,
-                    CancelledFrameSink,
+                    cancelled_tx,
                     tx_wheel_tx,
                     pto_wheel_tx,
                     idle_wheel_tx,
@@ -459,17 +457,6 @@ async fn wheel_drain<A, T, F>(
     let rx = FlattenList::new(wheel);
     let rx = Map::new(rx, |item| on_expire(item));
     rx.drain_budgeted(Some(budget)).await;
-}
-
-// ── Helper Sinks ─────────────────────────────────────────────────────────────
-
-/// Sink that drops frames (completions fire on drop).
-struct CancelledFrameSink;
-
-impl UnboundedSender<Queue<Frame>> for CancelledFrameSink {
-    fn send(&mut self, _value: Queue<Frame>) -> Result<(), Queue<Frame>> {
-        Ok(())
-    }
 }
 
 /// Per-socket receive worker: reads raw UDP segments and routes decoded packets to dispatch.

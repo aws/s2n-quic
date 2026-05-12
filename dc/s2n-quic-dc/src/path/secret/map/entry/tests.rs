@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::packet::secret_control as control;
-use crate::path::secret::{receiver, schedule, sender};
+use crate::{
+    packet::secret_control as control,
+    path::secret::{receiver, schedule, sender},
+};
 use s2n_quic_core::time::Timestamp;
 use std::time::Duration;
 

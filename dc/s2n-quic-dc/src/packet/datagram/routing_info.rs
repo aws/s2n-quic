@@ -115,9 +115,7 @@ pub enum RoutingInfo {
     /// Used when a packet contains multiple frames from different streams that share
     /// only the source sender identity. Per-frame routing metadata (including ACK frames
     /// with their dest_sender_id) is encoded in the application header region.
-    SenderId {
-        source_sender_id: VarInt,
-    },
+    SenderId { source_sender_id: VarInt },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

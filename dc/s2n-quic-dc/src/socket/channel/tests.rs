@@ -593,7 +593,6 @@ fn paced_allows_burst() {
     });
 }
 
-
 // ── GaugedSender / GaugedReceiver tests ───────────────────────────────────
 
 mod gauged {

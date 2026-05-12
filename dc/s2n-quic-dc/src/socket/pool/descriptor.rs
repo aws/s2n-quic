@@ -477,8 +477,7 @@ impl s2n_quic_core::buffer::reader::Storage for Filled {
         // and does not move or invalidate the underlying memory.  The returned slice
         // is valid for the exclusive-borrow lifetime of `self` because the backing
         // allocation lives at least as long as `self`.
-        let slice: &[u8] =
-            unsafe { core::slice::from_raw_parts(self.payload().as_ptr(), len) };
+        let slice: &[u8] = unsafe { core::slice::from_raw_parts(self.payload().as_ptr(), len) };
         self.advance(len as u16);
         Ok(slice.into())
     }

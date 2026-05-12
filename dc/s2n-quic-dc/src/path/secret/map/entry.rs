@@ -337,10 +337,7 @@ impl Entry {
         next
     }
 
-    pub fn pick_sender_by_next_transmission(
-        &self,
-        random_fn: &mut impl FnMut() -> usize,
-    ) -> usize {
+    pub fn pick_sender_by_next_transmission(&self, random_fn: &mut impl FnMut() -> usize) -> usize {
         let len = self.next_transmission_by_sender.len();
         debug_assert!(len > 0, "sender schedule is empty");
         debug_assert!(
