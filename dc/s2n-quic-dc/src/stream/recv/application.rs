@@ -378,8 +378,17 @@ where
 
     #[inline]
     fn shutdown(mut self: Box<Self>) {
-        // If the application never read from the stream try to do so now
-        if let LocalState::Ready = self.local_state {
+        // Attempt a non-blocking drain if the application hasn't consumed all peer data:
+        //
+        // - Ready: the application never read from the stream, so we try now to process any
+        //   secret control packets the peer may have sent.
+        // - Reading: the application read some data but hasn't consumed a possible authenticated
+        //   closure frame, leaving it in the kernel's TCP receive buffer. Without this,
+        //   `close(fd)` sends RST instead of a clean shutdown. See `tcp_close()` in
+        //   `net/ipv4/tcp.c`: when `sk_receive_queue` is non-empty at close time, the kernel
+        //   calls `tcp_set_state(sk, TCP_CLOSE)` and sends RST rather than FIN. This increments
+        //   `TcpExtTCPAbortOnClose` (`/proc/net/netstat`).
+        if matches!(self.local_state, LocalState::Ready | LocalState::Reading) {
             let mut storage = buffer::writer::storage::Empty;
             let waker = s2n_quic_core::task::waker::noop();
             let mut cx = core::task::Context::from_waker(&waker);
