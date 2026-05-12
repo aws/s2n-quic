@@ -41,7 +41,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     io,
-    sync::{atomic::Ordering, Arc},
+    sync::{atomic::Ordering, Arc, Weak},
 };
 
 // ── Thread-local endpoint registries ─────────────────────────────────────────
@@ -53,15 +53,23 @@ use std::{
 //   `connect()` uses this to auto-insert fake path secrets without the caller
 //   having to thread maps through test code.
 //
-// SIM_ENDPOINT_BY_GROUP: stores one Arc<Endpoint> per Bach group (keyed by
-//   group.id()).  Server::new() / Client::new() create the endpoint
-//   lazily on first call so users don't have to call setup_sim_endpoint().
+// SIM_ENDPOINT_BY_GROUP: stores one Weak<Endpoint> per Bach group (keyed by
+//   group.id()).  A Weak reference is intentional: the strong Arc is held by
+//   the Server/Client structs, which are dropped *inside* the Bach simulation
+//   (Server when Bach cancels the non-primary task; Client when its task
+//   completes).  At that point all Bach TLS is still live, so the
+//   SubmissionSender::drop → AtomicWaker::wake() call that notifies the frame
+//   dispatch receiver safely runs inside the runtime.
+//
+//   After the simulation ends, this TLS holds only dead Weak references, so
+//   thread-exit TLS destruction is trivially cheap and cannot panic by trying
+//   to schedule a Bach task in an already-torn-down runtime.
 
 thread_local! {
     static SIM_MAP_REGISTRY: RefCell<HashMap<SocketAddr, PathSecretMap>> =
         RefCell::new(HashMap::new());
 
-    static SIM_ENDPOINT_BY_GROUP: RefCell<HashMap<u64, Arc<Endpoint>>> =
+    static SIM_ENDPOINT_BY_GROUP: RefCell<HashMap<u64, Weak<Endpoint>>> =
         RefCell::new(HashMap::new());
 }
 
@@ -83,14 +91,17 @@ pub const SERVER_PORT: u16 = 4433;
 
 /// Returns the shared [`Endpoint`] for the current Bach group, creating it lazily.
 ///
-/// `bind_addr` is used only on the first call for a given group; subsequent calls
-/// return the cached endpoint regardless of `bind_addr`.
+/// `bind_addr` is used only on the first call for a given group (or after a
+/// previous endpoint for that group has been fully dropped); subsequent calls
+/// upgrade the cached [`Weak`] reference and return the same [`Endpoint`].
 fn get_or_create_group_endpoint(bind_addr: SocketAddr) -> Arc<Endpoint> {
     let group_id = bach::group::current().id();
     SIM_ENDPOINT_BY_GROUP.with(|r| {
         let mut map = r.borrow_mut();
-        if let Some(ep) = map.get(&group_id) {
-            return ep.clone();
+        if let Some(weak) = map.get(&group_id) {
+            if let Some(ep) = weak.upgrade() {
+                return ep;
+            }
         }
         let path_secret_map = crate::path::secret::map::testing::new(50_000);
         let acceptor_registry = acceptor::Registry::new();
@@ -103,7 +114,7 @@ fn get_or_create_group_endpoint(bind_addr: SocketAddr) -> Arc<Endpoint> {
             path_secret_map,
             acceptor_registry,
         ));
-        map.insert(group_id, ep.clone());
+        map.insert(group_id, Arc::downgrade(&ep));
         ep
     })
 }
