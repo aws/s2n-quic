@@ -19,12 +19,17 @@ mod sender;
 
 // Re-export the Key trait
 pub use descriptor::Key;
+pub use inner::AutoWake;
 
 /// Allocate this many channels at a time
 ///
 /// With `debug_assertions`, we allocate smaller pages to try and cover more
 /// branches in the allocator logic around growth.
-const PAGE_SIZE: usize = if cfg!(debug_assertions) { 8 } else { 256 };
+const PAGE_SIZE: usize = if cfg!(debug_assertions) {
+    8
+} else {
+    u16::MAX as _
+};
 
 pub type Error<T> = inner::Error<T>;
 pub type Control<S, C, K> = handle::Control<S, C, K>;
@@ -153,7 +158,7 @@ where
         remote_queue_id: Option<VarInt>,
         params: &K::Request,
         data: intrusive_queue::Entry<C>,
-    ) -> Result<(), Error<intrusive_queue::Entry<C>>> {
+    ) -> Result<AutoWake, Error<intrusive_queue::Entry<C>>> {
         let res = self.senders.lookup(local_queue_id, data, |sender, data| {
             sender.send_control(data, remote_queue_id, |key| {
                 let valid = key.validate(params);
@@ -165,9 +170,9 @@ where
         });
 
         match res {
-            Ok(()) => {
+            Ok(waker) => {
                 tracing::trace!(%local_queue_id, "send_control");
-                Ok(())
+                Ok(waker)
             }
             Err(Error::PermanentlyClosed) => {
                 self.is_open = false;
@@ -195,7 +200,7 @@ where
         remote_queue_id: Option<VarInt>,
         params: &K::Request,
         data: intrusive_queue::Entry<S>,
-    ) -> Result<(), Error<intrusive_queue::Entry<S>>> {
+    ) -> Result<AutoWake, Error<intrusive_queue::Entry<S>>> {
         let res = self.senders.lookup(local_queue_id, data, |sender, data| {
             sender.send_stream(data, remote_queue_id, |key| {
                 let valid = key.validate(params);
@@ -207,9 +212,9 @@ where
         });
 
         match res {
-            Ok(()) => {
+            Ok(waker) => {
                 tracing::trace!(%local_queue_id, "send_stream");
-                Ok(())
+                Ok(waker)
             }
             Err(Error::PermanentlyClosed) => {
                 self.is_open = false;
@@ -238,8 +243,8 @@ where
         params: &K::Request,
         stream_data: intrusive_queue::Entry<S>,
         control_data: intrusive_queue::Entry<C>,
-    ) {
-        let _ = self.senders.lookup(local_queue_id, (), |sender, ()| {
+    ) -> (AutoWake, AutoWake) {
+        let res = self.senders.lookup(local_queue_id, (), |sender, ()| {
             let validate = |key: &K| {
                 let valid = key.validate(params);
                 if !valid {
@@ -248,13 +253,19 @@ where
                 valid
             };
 
-            let _ = sender.send_stream(stream_data, remote_queue_id, &validate);
-            let _ = sender.send_control(control_data, remote_queue_id, &validate);
+            let send = sender
+                .send_stream(stream_data, remote_queue_id, &validate)
+                .unwrap_or_default();
+            let recv = sender
+                .send_control(control_data, remote_queue_id, &validate)
+                .unwrap_or_default();
 
-            Ok(())
+            Ok((send, recv))
         });
 
         tracing::trace!(%local_queue_id, "send_both");
+
+        res.unwrap_or_default()
     }
 
     /// Validates the queue's key against the provided parameters by checking the stream queue.

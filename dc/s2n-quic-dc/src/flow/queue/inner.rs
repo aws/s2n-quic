@@ -8,8 +8,8 @@ use core::{
     ops::ControlFlow,
     task::{Context, Poll, Waker},
 };
+use parking_lot::{Mutex, MutexGuard};
 use s2n_quic_core::ensure;
-use std::sync::Mutex;
 
 bitflags! {
     /// Packed state flags for a queue half, stored in a single byte.
@@ -74,8 +74,8 @@ struct Inner<T> {
 }
 
 impl<T> Inner<T> {
-    fn take_waker(&mut self) -> Option<Waker> {
-        self.waker.take()
+    fn take_waker(&mut self) -> AutoWake {
+        AutoWake(self.waker.take())
     }
 
     fn update_waker(&mut self, cx: &mut Context) {
@@ -85,6 +85,23 @@ impl<T> Inner<T> {
             }
         } else {
             self.waker = Some(cx.waker().clone());
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct AutoWake(Option<Waker>);
+
+impl AutoWake {
+    pub fn take(&mut self) -> Option<Waker> {
+        self.0.take()
+    }
+}
+
+impl Drop for AutoWake {
+    fn drop(&mut self) {
+        if let Some(waker) = self.0.take() {
+            waker.wake();
         }
     }
 }
@@ -131,7 +148,7 @@ impl<T> Queue<T> {
         entry: intrusive_queue::Entry<T>,
         observe: O,
         validate: F,
-    ) -> Result<(), Error<intrusive_queue::Entry<T>>>
+    ) -> Result<AutoWake, Error<intrusive_queue::Entry<T>>>
     where
         F: FnOnce() -> bool,
         O: FnOnce() -> bool,
@@ -154,11 +171,8 @@ impl<T> Queue<T> {
         inner.queue.push_back(entry);
         let waker = inner.take_waker();
         drop(inner);
-        if let Some(waker) = waker {
-            waker.wake();
-        }
 
-        Ok(())
+        Ok(waker)
     }
 
     #[inline]
@@ -288,8 +302,8 @@ impl<T> Queue<T> {
     }
 
     fn close_receiver_inner<Closing, Other>(
-        mut closing: std::sync::MutexGuard<'_, Inner<Closing>>,
-        other: std::sync::MutexGuard<'_, Inner<Other>>,
+        mut closing: MutexGuard<'_, Inner<Closing>>,
+        other: MutexGuard<'_, Inner<Other>>,
     ) -> ControlFlow<()> {
         debug_assert!(
             closing.flags.contains(Flags::HAS_RECEIVER),
@@ -325,18 +339,16 @@ impl<T> Queue<T> {
     }
 
     #[inline]
-    pub fn close(&self) {
+    pub fn close(&self) -> AutoWake {
         let Ok(mut inner) = self.lock() else {
-            return;
+            return AutoWake(None);
         };
         inner.flags.remove(Flags::IS_OPEN);
 
         // Notify the receiver that the queue is now closed
         let waker = inner.take_waker();
         drop(inner);
-        if let Some(waker) = waker {
-            waker.wake();
-        }
+        waker
     }
 
     /// Validates the queue has a receiver (is allocated) and invokes the closure with a validation result.
@@ -361,7 +373,7 @@ impl<T> Queue<T> {
     }
 
     #[inline]
-    fn lock(&self) -> Result<std::sync::MutexGuard<'_, Inner<T>>, Closed> {
-        self.inner.lock().map_err(|_| Closed)
+    fn lock(&self) -> Result<MutexGuard<'_, Inner<T>>, Closed> {
+        Ok(self.inner.lock()) // .map_err(|_| Closed)
     }
 }

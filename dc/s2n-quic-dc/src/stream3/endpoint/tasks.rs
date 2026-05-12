@@ -8,9 +8,8 @@ use crate::{
     socket::{
         channel::{
             intrusive_queue::{self, unsync},
-            FlattenList, FlattenSegments, InspectErr, Map, Paced, Priority as PriorityRx,
-            Receiver, ReceiverExt as _, RouterAdapter, SocketReceiver, SocketSender,
-            UnboundedSender,
+            FlattenList, FlattenSegments, InspectErr, Map, Paced, Priority as PriorityRx, Receiver,
+            ReceiverExt as _, RouterAdapter, SocketReceiver, SocketSender, UnboundedSender,
         },
         pool::descriptor,
         rate::Rate,
@@ -20,8 +19,8 @@ use crate::{
         endpoint::{
             self,
             combinator::{
-                Assembler, BatchFramesByPathSecret, CompletionDispatcher, FrameBatch,
-                PathSecretMapEntry, PickTwo,
+                Assembler, AssemblerCounters, BatchFramesByPathSecret, CompletionDispatcher,
+                FrameBatch, PathSecretMapEntry, PickTwo,
             },
             dispatch, msg, send, Budgets,
         },
@@ -112,6 +111,7 @@ pub fn frame_dispatch<S, Rand, Clk>(
     clock: Clk,
     overall_send_rate: Rate,
     budgets: Budgets,
+    counter_registry: crate::counter::Registry,
 ) where
     S: UnboundedSender<Entry<FrameBatch>> + 'static,
     Rand: FnMut() -> usize + 'static,
@@ -120,34 +120,45 @@ pub fn frame_dispatch<S, Rand, Clk>(
     let mut priority_batch_rxs = Vec::with_capacity(Priority::LEVELS);
     let mut priority_list_txs: [_; Priority::LEVELS] = core::array::from_fn(|_| {
         let (tx, rx) = intrusive_queue::unsync::new::<Frame>();
-        let rx = BatchFramesByPathSecret::new(rx);
-        let rx = Map::new(rx, Entry::new);
+        // let rx = BatchFramesByPathSecret::new(rx);
+        // let rx = Map::new(rx, Entry::new);
         priority_batch_rxs.push(rx);
         tx.into_list_sender()
     });
 
     // Task 1: fixed-cost priority routing.
+    let q_frames = counter_registry.register_queue_gauge("q.frames");
     spawner.spawn({
+        let q_frames = q_frames.clone();
         let mut staging = PriorityStorage::default();
-        poll_fn(move |cx| match frame_rx.poll_swap(cx, &mut staging) {
-            Poll::Ready(None) => Poll::Ready(()),
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Some(())) => {
-                for ((_priority, queue), tx) in staging.drain().zip(&mut priority_list_txs) {
-                    if !queue.is_empty() {
-                        let _ = UnboundedSender::send(tx, queue);
+        poll_fn(move |cx| {
+            for _ in 0..budgets.submission_router {
+                match frame_rx.poll_swap(cx, &mut staging) {
+                    Poll::Ready(None) => return Poll::Ready(()),
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(Some(())) => {
+                        for ((_priority, queue), tx) in staging.drain().zip(&mut priority_list_txs)
+                        {
+                            if !queue.is_empty() {
+                                q_frames.enqueue(queue.len() as u64);
+                                let _ = UnboundedSender::send(tx, queue);
+                            }
+                        }
                     }
                 }
-                cx.waker().wake_by_ref();
-                Poll::Pending
             }
+            cx.waker().wake_by_ref();
+            Poll::Pending
         })
     });
 
     // Task 2: batch → Entry → priority merge → pace → pick-two to workers.
     spawner.spawn(async move {
         let rx = PriorityRx::new(priority_batch_rxs);
-        let rx = Paced::new(rx, clock, overall_send_rate);
+        let rx = crate::counter::GaugedReceiver::new(rx, q_frames);
+        let rx = BatchFramesByPathSecret::new(rx, &clock, overall_send_rate);
+        let rx = Map::new(rx, Entry::new);
+        // let rx = FrameDispatchPacer::new(rx, clock, overall_send_rate);
         let rx = PickTwo::new(rx, worker_senders, random);
         rx.drain_budgeted(Some(budgets.frame_dispatch)).await;
     });
@@ -174,6 +185,7 @@ pub fn send_worker<Socket, Clk, Rand>(
     mut random: Rand,
     frame_tx: crate::stream3::frame::SubmissionSender,
     budgets: Budgets,
+    counter_registry: crate::counter::Registry,
 ) where
     Socket: crate::socket::send::Socket + 'static,
     Clk: precision::Clock + s2n_quic_core::time::Clock + Clone + 'static,
@@ -198,12 +210,13 @@ pub fn send_worker<Socket, Clk, Rand>(
             sender_idx_to_local[st.sender_idx] = local_id;
 
             Rc::new(RefCell::new(send::Cache::new(
-                st.inflight_gauge.clone(),
+                &counter_registry,
                 st.sender_idx,
             )))
         })
         .collect();
 
+    let q_tx_wheel = counter_registry.register_queue_gauge("q.tx_wheel");
     let (tx_wheel_tx, tx_wheel_rx) = unsync::new_with_adapter();
     let (pto_wheel_tx, pto_wheel_rx) = unsync::new_with_adapter();
     let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter();
@@ -219,6 +232,7 @@ pub fn send_worker<Socket, Clk, Rand>(
         let mut pto_wheel_tx = pto_wheel_tx.clone();
         let mut idle_wheel_tx = idle_wheel_tx.clone();
         let clock = clock.clone();
+        let q_tx_wheel = q_tx_wheel.clone();
         async move {
             let rx = Map::new(rx, move |batch: Entry<FrameBatch>| {
                 let Some(sender_idx) = batch.sender_id() else {
@@ -258,6 +272,9 @@ pub fn send_worker<Socket, Clk, Rand>(
                     sender.push_batch(batch.into_inner(), &clock)
                 };
 
+                if wheel_interest.transmission {
+                    q_tx_wheel.enqueue(1);
+                }
                 wheel_interest.dispatch(
                     sender,
                     &mut tx_wheel_tx,
@@ -281,6 +298,8 @@ pub fn send_worker<Socket, Clk, Rand>(
         let mut idle_wheel_tx = idle_wheel_tx.clone();
         let mut completed_tx = completed_tx;
         let mut cancelled_tx = cancelled_tx.clone();
+        let q_tx_wheel = q_tx_wheel.clone();
+        let send_lost = counter_registry.register("!send.lost");
         async move {
             let rx = Map::new(rx, move |entry: Entry<msg::Sender>| {
                 let msg::Sender::Ack {
@@ -337,9 +356,13 @@ pub fn send_worker<Socket, Clk, Rand>(
                 };
 
                 if !lost_queue.is_empty() {
+                    send_lost.add(lost_queue.len() as u64);
                     let _ = frame_tx.send_batch(lost_queue);
                 }
 
+                if wheel_interest.transmission {
+                    q_tx_wheel.enqueue(1);
+                }
                 wheel_interest.dispatch(
                     ctx_rc,
                     &mut tx_wheel_tx,
@@ -370,7 +393,9 @@ pub fn send_worker<Socket, Clk, Rand>(
         {
             let sender_idx_to_local = sender_idx_to_local.clone();
             let mut socket_context_txs = socket_context_txs;
+            let q_tx_wheel = q_tx_wheel.clone();
             move |context: Rc<RefCell<send::Context>>| {
+                q_tx_wheel.dequeue();
                 let local_id = sender_idx_to_local[context.borrow().sender_idx];
                 let _ = UnboundedSender::send(&mut socket_context_txs[local_id], context);
             }
@@ -401,6 +426,7 @@ pub fn send_worker<Socket, Clk, Rand>(
     ));
 
     // Per-socket assembler + send tasks.
+    let asm_counters = AssemblerCounters::new(&counter_registry);
     for (st, context_rx) in send_sockets.into_iter().zip(socket_context_rxs) {
         let source_sender_id = VarInt::new(st.sender_idx as u64).unwrap();
 
@@ -410,6 +436,7 @@ pub fn send_worker<Socket, Clk, Rand>(
             let pto_wheel_tx = pto_wheel_tx.clone();
             let idle_wheel_tx = idle_wheel_tx.clone();
             let cancelled_tx = cancelled_tx.clone().into_list_sender();
+            let asm_counters = asm_counters.clone();
             async move {
                 let rx = Assembler::new(
                     context_rx,
@@ -422,6 +449,7 @@ pub fn send_worker<Socket, Clk, Rand>(
                     tx_wheel_tx,
                     pto_wheel_tx,
                     idle_wheel_tx,
+                    asm_counters,
                 );
                 let rx = Paced::new(rx, clock, st.per_socket_send_rate);
                 let rx = SocketSender::new(rx, st.socket);

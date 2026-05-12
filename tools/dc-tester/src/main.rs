@@ -52,8 +52,7 @@ enum Commands {
     },
 }
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() -> std::io::Result<()> {
+fn main() -> std::io::Result<()> {
     init_tracing();
 
     if let Ok(malloc_conf) = std::env::var("_RJEM_MALLOC_CONF") {
@@ -93,30 +92,47 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    net_stats::spawn();
+    let busy_poll_workers = config.endpoint.workers;
+    let available_cpus = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    let tokio_threads = available_cpus.saturating_sub(busy_poll_workers).max(1);
 
-    let spawner = busy_poll::create_pool(config.endpoint.workers);
-    let data_bind: SocketAddr = "[::]:0".parse().unwrap();
-    let endpoint = endpoint::create(&config.endpoint, data_bind, &spawner)?;
+    eprintln!(
+        "CPUs: {available_cpus}, busy_poll: {busy_poll_workers}, tokio: {tokio_threads}"
+    );
 
-    endpoint
-        .counters
-        .clone()
-        .spawn_reporter(Duration::from_secs(1));
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(tokio_threads)
+        .enable_all()
+        .build()?;
 
-    match cli.command {
-        Commands::Server { address, .. } => {
-            let server_addr = address.unwrap_or(config.server.address);
-            server::run(endpoint, server_addr).await
+    runtime.block_on(async move {
+        net_stats::spawn();
+
+        let spawner = busy_poll::create_pool(busy_poll_workers);
+        let data_bind: SocketAddr = "[::]:0".parse().unwrap();
+        let endpoint = endpoint::create(&config.endpoint, data_bind, &spawner)?;
+
+        endpoint
+            .counters
+            .clone()
+            .spawn_reporter(Duration::from_secs(1));
+
+        match cli.command {
+            Commands::Server { address, .. } => {
+                let server_addr = address.unwrap_or(config.server.address);
+                server::run(endpoint, server_addr).await
+            }
+            Commands::Client { server_addr, .. } => {
+                // wait for the server to boot
+                tokio::time::sleep(core::time::Duration::from_secs(1)).await;
+
+                let server_addr = server_addr.unwrap_or(config.server.address);
+                client::run(endpoint, config.client, server_addr).await
+            }
         }
-        Commands::Client { server_addr, .. } => {
-            // wait for the server to boot
-            tokio::time::sleep(core::time::Duration::from_secs(1)).await;
-
-            let server_addr = server_addr.unwrap_or(config.server.address);
-            client::run(endpoint, config.client, server_addr).await
-        }
-    }
+    })
 }
 
 fn init_tracing() {

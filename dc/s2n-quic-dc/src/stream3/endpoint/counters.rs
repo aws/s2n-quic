@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    counter::{Counter, Registry},
+    counter::{Counter, Registry, Summary, Timer, Unit},
     packet::datagram::ResetTarget,
     stream3::frame::Header,
 };
@@ -16,7 +16,8 @@ pub(crate) struct Dispatch {
     pub rx_validate: Counter,
     pub rx_init_validate: Counter,
     pub rx_data: Counter,
-    pub rx_control: Counter,
+    pub rx_flow_control: Counter,
+    pub rx_pkt_control: Counter,
     pub rx_reset: Counter,
 
     pub rx_init_dup: Counter,
@@ -40,11 +41,11 @@ pub(crate) struct Dispatch {
     pub rx_data_fully_closed: Counter,
     pub rx_data_perm_closed: Counter,
 
-    pub rx_control_ok: Counter,
-    pub rx_control_unallocated: Counter,
-    pub rx_control_half_closed: Counter,
-    pub rx_control_fully_closed: Counter,
-    pub rx_control_perm_closed: Counter,
+    pub rx_flow_control_ok: Counter,
+    pub rx_flow_control_unallocated: Counter,
+    pub rx_flow_control_half_closed: Counter,
+    pub rx_flow_control_fully_closed: Counter,
+    pub rx_flow_control_perm_closed: Counter,
 
     pub rx_reset_both: Counter,
     pub rx_reset_stream: Counter,
@@ -65,6 +66,14 @@ pub(crate) struct Dispatch {
     pub rx_process_err_duplicate: Counter,
     pub rx_process_err_missing_sender_id: Counter,
     pub rx_process_err_unsupported_routing: Counter,
+
+    pub rx_peer_lookup_time: Timer,
+    pub rx_decrypt_time: Timer,
+    pub rx_dispatch_time: Timer,
+    pub rx_data_wake_time: Timer,
+    pub rx_flow_control_wake_time: Timer,
+    pub rx_frames_per_packet: Summary,
+    pub rx_packet_size: Summary,
 }
 
 impl Dispatch {
@@ -76,7 +85,8 @@ impl Dispatch {
             rx_validate: counters.register("rx.validate"),
             rx_init_validate: counters.register("rx.init_validate"),
             rx_data: counters.register("rx.data"),
-            rx_control: counters.register("rx.control"),
+            rx_flow_control: counters.register("rx.flow_control"),
+            rx_pkt_control: counters.register("rx.pkt_control"),
             rx_reset: counters.register("rx.reset"),
 
             rx_init_dup: counters.register("!rx.init.dup"),
@@ -102,11 +112,11 @@ impl Dispatch {
             rx_data_fully_closed: counters.register("!rx.data.fully_closed"),
             rx_data_perm_closed: counters.register("rx.data.perm_closed"),
 
-            rx_control_ok: counters.register("rx.control.ok"),
-            rx_control_unallocated: counters.register("!rx.control.unallocated"),
-            rx_control_half_closed: counters.register("!rx.control.half_closed"),
-            rx_control_fully_closed: counters.register("!rx.control.fully_closed"),
-            rx_control_perm_closed: counters.register("rx.control.perm_closed"),
+            rx_flow_control_ok: counters.register("rx.flow_control.ok"),
+            rx_flow_control_unallocated: counters.register("!rx.flow_control.unallocated"),
+            rx_flow_control_half_closed: counters.register("!rx.flow_control.half_closed"),
+            rx_flow_control_fully_closed: counters.register("!rx.flow_control.fully_closed"),
+            rx_flow_control_perm_closed: counters.register("rx.flow_control.perm_closed"),
 
             rx_reset_both: counters.register("rx.reset.both"),
             rx_reset_stream: counters.register("rx.reset.stream"),
@@ -129,6 +139,14 @@ impl Dispatch {
                 .register("!rx.process.err.missing_sender_id"),
             rx_process_err_unsupported_routing: counters
                 .register("!rx.process.err.unsupported_routing"),
+
+            rx_peer_lookup_time: counters.register_timer("rx.peer_lookup_time"),
+            rx_decrypt_time: counters.register_timer("rx.decrypt_time"),
+            rx_dispatch_time: counters.register_timer("rx.dispatch_time"),
+            rx_data_wake_time: counters.register_timer("rx.data_wake_time"),
+            rx_flow_control_wake_time: counters.register_timer("rx.flow_control_wake_time"),
+            rx_frames_per_packet: counters.register_summary("rx.frames_per_packet", Unit::Count),
+            rx_packet_size: counters.register_summary("rx.packet_size", Unit::Byte),
         }
     }
 
@@ -139,9 +157,9 @@ impl Dispatch {
             Header::FlowValidateRequest { .. } => self.rx_validate.add(1),
             Header::FlowInitValidate { .. } => self.rx_init_validate.add(1),
             Header::FlowData { .. } => self.rx_data.add(1),
-            Header::FlowControl { .. } => self.rx_control.add(1),
+            Header::FlowControl { .. } => self.rx_flow_control.add(1),
             Header::FlowReset { .. } => self.rx_reset.add(1),
-            Header::Control { .. } => self.rx_control.add(1),
+            Header::Control { .. } => self.rx_pkt_control.add(1),
         };
     }
 

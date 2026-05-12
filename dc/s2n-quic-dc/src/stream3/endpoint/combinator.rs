@@ -14,6 +14,7 @@ use crate::{
     socket::{
         channel::{intrusive_queue::unsync, ByteCost, Receiver, UnboundedSender},
         pool::descriptor,
+        rate::Rate,
     },
     stream3::{endpoint::send, frame::Frame},
 };
@@ -162,26 +163,36 @@ impl PathSecretMapEntry for FrameBatch {
 
 // ── BatchFramesByPathSecret ───────────────────────────────────────────────
 
-const BATCH_FRAMES_POLL_BUDGET: usize = 10;
+const BATCH_FRAMES_POLL_BUDGET: usize = 100;
 
 /// Receiver combinator that batches consecutive frame entries by path-secret entry and byte budget.
 ///
-/// Batches target roughly one datagram (`path_secret_entry.max_datagram_size()`) while accounting
-/// for frame metadata and conservative packet overhead. A batch always contains at least one frame.
-pub struct BatchFramesByPathSecret<R> {
+/// Uses a timer to pace batch emissions: when a batch isn't full, waits up to
+/// `overall_send_rate.nanos_for_bytes(target_bytes)` for more frames to accumulate before
+/// emitting. This improves network utilization by sending fewer, fuller packets.
+pub struct BatchFramesByPathSecret<R, Clk: precision::Clock> {
     inner: R,
     buffered: Option<Entry<Frame>>,
+    pending_batch: Option<FrameBatch>,
+    timer: Clk::Timer,
+    wait_duration: core::time::Duration,
 }
 
-impl<R> BatchFramesByPathSecret<R>
+impl<R, Clk> BatchFramesByPathSecret<R, Clk>
 where
     R: Receiver<Entry<Frame>>,
+    Clk: precision::Clock,
 {
     #[inline]
-    pub fn new(inner: R) -> Self {
+    pub fn new(inner: R, clock: &Clk, rate: Rate) -> Self {
+        let target_bytes = u16::MAX as u64 - 3000;
+        let wait_nanos = rate.nanos_for_bytes(target_bytes);
         Self {
             inner,
             buffered: None,
+            pending_batch: None,
+            timer: clock.timer(),
+            wait_duration: core::time::Duration::from_nanos(wait_nanos),
         }
     }
 
@@ -193,47 +204,35 @@ where
 
         self.inner.poll_recv(cx)
     }
-}
 
-impl<R> Receiver<FrameBatch> for BatchFramesByPathSecret<R>
-where
-    R: Receiver<Entry<Frame>>,
-{
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<FrameBatch>> {
-        let Some(first) = (match self.take_first(cx) {
-            Poll::Ready(frame) => frame,
-            Poll::Pending => return Poll::Pending,
-        }) else {
-            return Poll::Ready(None);
-        };
-
-        let target_bytes = first.path_secret_entry.max_datagram_size() as u64;
-        let mut batch = FrameBatch::new(first);
-
+    /// Try to append frames from inner to the batch. Returns true if the batch is full or
+    /// must be emitted (different path secret / sticky conflict / channel closed).
+    fn try_fill_batch(
+        &mut self,
+        batch: &mut FrameBatch,
+        target_bytes: u64,
+        cx: &mut task::Context<'_>,
+    ) -> FillResult {
         for _ in 0..BATCH_FRAMES_POLL_BUDGET {
             if batch.byte_cost() >= target_bytes {
-                break;
+                return FillResult::Full;
             }
 
             match self.inner.poll_recv(cx) {
                 Poll::Ready(Some(frame_entry)) => {
                     if !Arc::ptr_eq(batch.path_secret_entry(), frame_entry.path_secret_entry()) {
                         self.buffered = Some(frame_entry);
-                        break;
+                        return FillResult::Full;
                     }
 
-                    // Break on conflicting sticky assignments: if the batch already has a
-                    // sticky sender and this frame wants a different one (or vice versa),
-                    // yield the current batch and buffer this frame for the next poll.
                     let frame_sticky = frame_entry.source_sender_id;
                     if batch.sender_id != frame_sticky
                         && (batch.sender_id != VarInt::MAX && frame_sticky != VarInt::MAX)
                     {
                         self.buffered = Some(frame_entry);
-                        break;
+                        return FillResult::Full;
                     }
 
-                    // Adopt the frame's sticky preference if the batch doesn't have one yet.
                     if batch.sender_id == VarInt::MAX {
                         batch.sender_id = frame_sticky;
                     }
@@ -242,16 +241,91 @@ where
                     let next_cost = batch.byte_cost().saturating_add(frame_cost);
                     if next_cost > target_bytes {
                         self.buffered = Some(frame_entry);
-                        break;
+                        return FillResult::Full;
                     }
 
                     batch.push_with_cost(frame_entry, frame_cost);
                 }
-                Poll::Ready(None) | Poll::Pending => break,
+                Poll::Ready(None) => return FillResult::Closed,
+                Poll::Pending => return FillResult::Pending,
+            }
+        }
+        FillResult::Full
+    }
+}
+
+enum FillResult {
+    Full,
+    Pending,
+    Closed,
+}
+
+impl<R, Clk> Receiver<FrameBatch> for BatchFramesByPathSecret<R, Clk>
+where
+    R: Receiver<Entry<Frame>>,
+    Clk: precision::Clock,
+{
+    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<FrameBatch>> {
+        use precision::Timer;
+
+        let target_bytes = u16::MAX as u64 - 3000;
+
+        // If we have a pending batch from a previous poll, try to keep filling it.
+        if let Some(mut batch) = self.pending_batch.take() {
+            match self.try_fill_batch(&mut batch, target_bytes, cx) {
+                FillResult::Full => {
+                    self.timer.cancel();
+                    return Poll::Ready(Some(batch));
+                }
+                FillResult::Closed => {
+                    self.timer.cancel();
+                    return Poll::Ready(Some(batch));
+                }
+                FillResult::Pending => {
+                    // Batch still not full — check if timer expired.
+                    match self.timer.poll_ready(cx) {
+                        Poll::Ready(()) => {
+                            return Poll::Ready(Some(batch));
+                        }
+                        Poll::Pending => {
+                            self.pending_batch = Some(batch);
+                            return Poll::Pending;
+                        }
+                    }
+                }
             }
         }
 
-        Poll::Ready(Some(batch))
+        // No pending batch — get first frame.
+        let Some(first) = (match self.take_first(cx) {
+            Poll::Ready(frame) => frame,
+            Poll::Pending => return Poll::Pending,
+        }) else {
+            return Poll::Ready(None);
+        };
+
+        let mut batch = FrameBatch::new(first);
+
+        // Greedily fill from whatever is immediately available.
+        match self.try_fill_batch(&mut batch, target_bytes, cx) {
+            FillResult::Full | FillResult::Closed => {
+                return Poll::Ready(Some(batch));
+            }
+            FillResult::Pending => {}
+        }
+
+        // Batch isn't full — arm timer and wait for more frames.
+        let now = self.timer.now();
+        let target = now + self.wait_duration;
+        self.timer.update(target);
+
+        match self.timer.poll_ready(cx) {
+            Poll::Ready(()) => Poll::Ready(Some(batch)),
+            Poll::Pending => {
+                self.pending_batch = Some(batch);
+                Poll::Pending
+            }
+        }
     }
 
     #[inline]
@@ -400,6 +474,22 @@ pub(crate) struct Assembler<R, Clk, C> {
     tx_wheel_tx: unsync::Sender<send::TxWheelAdapter>,
     pto_wheel_tx: unsync::Sender<send::PtoWheelAdapter>,
     idle_wheel_tx: unsync::Sender<send::IdleWheelAdapter>,
+    pub(crate) counters: AssemblerCounters,
+}
+
+#[derive(Clone)]
+pub(crate) struct AssemblerCounters {
+    pub segments: crate::counter::Summary,
+    pub q_tx_wheel: crate::counter::QueueGauge,
+}
+
+impl AssemblerCounters {
+    pub fn new(registry: &crate::counter::Registry) -> Self {
+        Self {
+            segments: registry.register_summary("asm.segments", crate::counter::Unit::Count),
+            q_tx_wheel: registry.register_queue_gauge("q.tx_wheel"),
+        }
+    }
 }
 
 impl<R, Clk, C> Assembler<R, Clk, C> {
@@ -414,6 +504,7 @@ impl<R, Clk, C> Assembler<R, Clk, C> {
         tx_wheel_tx: unsync::Sender<send::TxWheelAdapter>,
         pto_wheel_tx: unsync::Sender<send::PtoWheelAdapter>,
         idle_wheel_tx: unsync::Sender<send::IdleWheelAdapter>,
+        counters: AssemblerCounters,
     ) -> Self {
         Self {
             inner,
@@ -427,6 +518,7 @@ impl<R, Clk, C> Assembler<R, Clk, C> {
             tx_wheel_tx,
             pto_wheel_tx,
             idle_wheel_tx,
+            counters,
         }
     }
 }
@@ -460,11 +552,20 @@ where
             (segments, wheel_interest)
         };
 
+        if wheel_interest.transmission {
+            self.counters.q_tx_wheel.enqueue(1);
+        }
         wheel_interest.dispatch(
             context,
             &mut self.tx_wheel_tx,
             &mut self.pto_wheel_tx,
             &mut self.idle_wheel_tx,
+        );
+
+        self.counters.segments.record_value(
+            segments
+                .as_ref()
+                .map_or(0, |s| s.segment_count() as u64),
         );
 
         if let Some(segments) = segments {

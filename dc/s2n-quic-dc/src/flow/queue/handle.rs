@@ -4,7 +4,7 @@
 use super::{
     descriptor::Descriptor,
     inner::{Error, Half},
-    probes,
+    probes, AutoWake,
 };
 use crate::{intrusive_queue, sync::ring_deque};
 use core::{
@@ -156,12 +156,12 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
         entry: intrusive_queue::Entry<S>,
         remote_queue_id: Option<VarInt>,
         validate: F,
-    ) -> Result<(), Error<intrusive_queue::Entry<S>>>
+    ) -> Result<AutoWake, Error<intrusive_queue::Entry<S>>>
     where
         F: FnOnce(&Key) -> bool,
     {
         unsafe {
-            self.descriptor.stream_queue().push(
+            let waker = self.descriptor.stream_queue().push(
                 entry,
                 || {
                     if let Some(id) = remote_queue_id {
@@ -174,7 +174,7 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
                 || validate(self.descriptor.key()),
             )?;
             probes::on_send(self.descriptor.queue_id(), Half::Stream, false);
-            Ok(())
+            Ok(waker)
         }
     }
 
@@ -184,12 +184,12 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
         entry: intrusive_queue::Entry<C>,
         remote_queue_id: Option<VarInt>,
         validate: F,
-    ) -> Result<(), Error<intrusive_queue::Entry<C>>>
+    ) -> Result<AutoWake, Error<intrusive_queue::Entry<C>>>
     where
         F: FnOnce(&Key) -> bool,
     {
         unsafe {
-            self.descriptor.control_queue().push(
+            let waker = self.descriptor.control_queue().push(
                 entry,
                 || {
                     if let Some(id) = remote_queue_id {
@@ -202,7 +202,7 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
                 || validate(self.descriptor.key()),
             )?;
             probes::on_send(self.descriptor.queue_id(), Half::Control, false);
-            Ok(())
+            Ok(waker)
         }
     }
 

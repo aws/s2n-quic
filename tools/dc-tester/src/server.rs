@@ -4,7 +4,7 @@
 use s2n_quic_core::{stream::testing::Data, varint::VarInt};
 use s2n_quic_dc::stream3::endpoint::Endpoint;
 use std::{io, net::SocketAddr, sync::Arc, time::Duration};
-use tokio::io::AsyncReadExt as _;
+use tokio::{io::AsyncReadExt as _, task::JoinSet};
 use tracing::{error, info};
 
 pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()> {
@@ -21,7 +21,7 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
     let server = s2n_quic_dc::stream3::Server::new(endpoint, handshake);
 
     // Register channel acceptor with ID 0
-    let accept_rx = server.register_acceptor_channel(VarInt::ZERO, 1024)?;
+    let accept_rx = server.register_acceptor_channel(VarInt::ZERO, u32::MAX as _)?;
 
     info!(
         %address,
@@ -31,24 +31,43 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
 
     let stats = crate::stats::Subscriber::spawn(std::time::Duration::from_secs(1));
 
-    loop {
-        let stream = accept_rx.recv_front().await.map_err(|_| {
-            io::Error::new(io::ErrorKind::ConnectionAborted, "acceptor channel closed")
-        })?;
+    let mut tasks = JoinSet::new();
 
+    for _ in 0..16 {
+        let accept_rx = accept_rx.clone();
         let stats = stats.clone();
-        tokio::spawn(async move {
-            stats.start_request();
-            let (bytes_received, bytes_sent, is_error) = match handle_connection(stream).await {
-                Ok((recv, sent)) => (recv, sent, false),
-                Err(e) => {
-                    error!(error = %e, "Error handling connection");
-                    (0, 0, true)
-                }
-            };
-            stats.finish_request(bytes_sent, bytes_received, is_error);
+        tasks.spawn(async move {
+            loop {
+                let stream = accept_rx.recv_front().await.map_err(|_| {
+                    io::Error::new(io::ErrorKind::ConnectionAborted, "acceptor channel closed")
+                })?;
+
+                let stats = stats.clone();
+                tokio::spawn(async move {
+                    stats.start_request();
+                    let (bytes_received, bytes_sent, is_error) =
+                        match handle_connection(stream).await {
+                            Ok((recv, sent)) => (recv, sent, false),
+                            Err(e) => {
+                                error!(error = %e, "Error handling connection");
+                                (0, 0, true)
+                            }
+                        };
+                    stats.finish_request(bytes_sent, bytes_received, is_error);
+                });
+            }
         });
     }
+
+    let res = tasks
+        .join_next()
+        .await
+        .unwrap()
+        .unwrap_or_else(|e| Err(io::Error::other(e)));
+
+    tasks.abort_all();
+
+    res
 }
 
 async fn handle_connection(stream: s2n_quic_dc::stream3::Stream) -> io::Result<(u64, u64)> {

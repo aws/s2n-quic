@@ -39,6 +39,7 @@ rustc-hash = "2"
 s2n-codec = { version = "=0.76.0", path = "../../common/s2n-codec", default-features = false }
 s2n-quic = { version = "=1.76.0", path = "../../quic/s2n-quic", features = ["unstable-provider-dc", "unstable-provider-random"] }
 s2n-quic-core = { version = "=0.76.0", path = "../../quic/s2n-quic-core", default-features = false }
+s2n-quic-dc-metrics = { version = "=0.76.0", path = "../s2n-quic-dc-metrics" }
 s2n-quic-platform = { version = "=0.76.0", path = "../../quic/s2n-quic-platform" }
 s2n-tls = "0.3"
 slotmap = "1"

@@ -57,7 +57,7 @@ pub struct EndpointConfig {
 
 impl EndpointConfig {
     fn default_workers() -> usize {
-        9
+        17
     }
 
     fn default_send_sockets() -> usize {

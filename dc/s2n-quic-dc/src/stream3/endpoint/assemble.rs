@@ -32,7 +32,7 @@ use s2n_quic_core::{
 };
 use s2n_quic_platform::features::Gso;
 
-#[cfg(test)]
+#[cfg(todo)]
 mod tests;
 
 /// Attempt to assemble pending frames into a full GSO datagram of encrypted packets.

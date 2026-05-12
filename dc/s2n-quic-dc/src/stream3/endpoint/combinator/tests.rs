@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
     byte_vec::ByteVec,
+    clock::testing as test_clock_mod,
     path::secret::map::Entry as PathSecretEntry,
     socket::channel::ByteCost,
     stream3::frame::{Header, TransmissionStatus, DEFAULT_TTL},
@@ -16,6 +17,10 @@ use std::{
         Arc,
     },
 };
+
+fn test_clock() -> test_clock_mod::Clock {
+    test_clock_mod::Clock::new(std::time::Duration::from_secs(1))
+}
 
 struct TestItem {
     path_secret_entry: Arc<PathSecretEntry>,
@@ -275,7 +280,7 @@ fn batch_frames_groups_by_same_path_secret() {
         ]),
         consumed: 0,
     };
-    let mut batcher = BatchFramesByPathSecret::new(rx);
+    let mut batcher = BatchFramesByPathSecret::new(rx, &test_clock(), Rate::new(10.0));
 
     let first = with_noop_context(|cx| batcher.poll_recv(cx));
     let Poll::Ready(Some(first)) = first else {
@@ -295,30 +300,28 @@ fn batch_frames_groups_by_same_path_secret() {
 #[test]
 fn batch_frames_enforces_datagram_byte_budget() {
     let path = test_path_secret_entry();
-    path.update_max_datagram_size(220);
+    // target_bytes = u16::MAX - 3000 ≈ 62535. Use frames large enough to exceed it.
+    let frame_size = 40_000;
 
     let rx = TestReceiver {
         values: VecDeque::from([
-            new_test_frame(path.clone(), 70),
-            new_test_frame(path.clone(), 70),
-            new_test_frame(path.clone(), 70),
+            new_test_frame(path.clone(), frame_size),
+            new_test_frame(path.clone(), frame_size),
+            new_test_frame(path.clone(), frame_size),
         ]),
         consumed: 0,
     };
-    let mut batcher = BatchFramesByPathSecret::new(rx);
+    let mut batcher = BatchFramesByPathSecret::new(rx, &test_clock(), Rate::new(10.0));
+
+    let target_bytes = u16::MAX as u64 - 3000;
 
     let first = with_noop_context(|cx| batcher.poll_recv(cx));
     let Poll::Ready(Some(first)) = first else {
         panic!("expected first batch");
     };
+    // First frame + overhead exceeds target, so only one frame per batch.
     assert_eq!(first.len(), 1);
-    assert!(first.byte_cost() <= 220);
-    let frame_cost = first
-        .queue()
-        .peek_front()
-        .expect("batch must contain the first frame")
-        .byte_cost();
-    assert!(first.byte_cost().saturating_add(frame_cost) > 220);
+    assert!(first.byte_cost() <= target_bytes);
 
     let second = with_noop_context(|cx| batcher.poll_recv(cx));
     let Poll::Ready(Some(second)) = second else {
@@ -340,7 +343,7 @@ fn batch_frames_forwards_on_consumed() {
         values: VecDeque::from([new_test_frame(path, 0)]),
         consumed: 0,
     };
-    let mut batcher = BatchFramesByPathSecret::new(rx);
+    let mut batcher = BatchFramesByPathSecret::new(rx, &test_clock(), Rate::new(10.0));
 
     batcher.on_consumed(321);
     assert_eq!(batcher.inner.consumed, 321);
@@ -358,7 +361,7 @@ fn batch_frames_tracks_sticky_sender_from_first_frame() {
         ]),
         consumed: 0,
     };
-    let mut batcher = BatchFramesByPathSecret::new(rx);
+    let mut batcher = BatchFramesByPathSecret::new(rx, &test_clock(), Rate::new(10.0));
 
     let first = with_noop_context(|cx| batcher.poll_recv(cx));
     let Poll::Ready(Some(batch)) = first else {
@@ -380,7 +383,7 @@ fn batch_frames_breaks_on_conflicting_sticky_senders() {
         ]),
         consumed: 0,
     };
-    let mut batcher = BatchFramesByPathSecret::new(rx);
+    let mut batcher = BatchFramesByPathSecret::new(rx, &test_clock(), Rate::new(10.0));
 
     let first = with_noop_context(|cx| batcher.poll_recv(cx));
     let Poll::Ready(Some(batch1)) = first else {
@@ -410,7 +413,7 @@ fn batch_frames_adopts_sticky_from_later_frame() {
         ]),
         consumed: 0,
     };
-    let mut batcher = BatchFramesByPathSecret::new(rx);
+    let mut batcher = BatchFramesByPathSecret::new(rx, &test_clock(), Rate::new(10.0));
 
     let first = with_noop_context(|cx| batcher.poll_recv(cx));
     let Poll::Ready(Some(batch)) = first else {

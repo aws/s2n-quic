@@ -146,6 +146,9 @@ where
                 }
             }
 
+            drop(senders);
+            tracing::info!("grow failed");
+
             // return back to the alloc method, which may have a free descriptor now
             return;
         }
@@ -157,8 +160,11 @@ where
 
         // update the sender list with the newly allocated channels
         senders.pages.push(pending_senders);
+        let epoch = senders.epoch;
         // we don't need to synchronize with the senders any more so drop the local
         drop(senders);
+
+        tracing::info!(%epoch, "grow");
 
         // push all of the descriptors into the free list
         self.free.record_region(region, pending_desc);

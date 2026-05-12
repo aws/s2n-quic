@@ -40,9 +40,9 @@ impl<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> Clone
 
 impl<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> Senders<S, C, Key, PAGE_SIZE> {
     #[inline]
-    pub fn lookup<T, F>(&mut self, queue_id: VarInt, entry: T, f: F) -> Result<(), Error<T>>
+    pub fn lookup<T, F, V>(&mut self, queue_id: VarInt, entry: T, f: F) -> Result<V, Error<T>>
     where
-        F: FnOnce(&Sender<S, C, Key>, T) -> Result<(), Error<T>>,
+        F: FnOnce(&Sender<S, C, Key>, T) -> Result<V, Error<T>>,
     {
         let Some(queue_id) = queue_id.checked_sub(self.base) else {
             return Err(Error::Unallocated(entry));

@@ -234,7 +234,8 @@ impl Context {
         self.ack_state = AckState::Idle;
 
         // Consistently route through the same local sender id so RTTs are accurate
-        let local_sender_id = route.sender_id_for_ack(self.path_entry.id(), self.remote_sender_id);
+        // let local_sender_id = route.sender_id_for_ack(self.path_entry.id(), self.remote_sender_id);
+        let local_sender_id = VarInt::MAX;
 
         Some(Frame {
             header: Header::Control {

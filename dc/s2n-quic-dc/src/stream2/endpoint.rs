@@ -1401,7 +1401,7 @@ where
                         &request,
                         stream_entry,
                     ) {
-                        Ok(()) => {
+                        Ok(_waker) => {
                             tracing::debug!(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
@@ -1481,7 +1481,7 @@ where
                 &request,
                 entry,
             ) {
-                Ok(()) => {
+                Ok(_waker) => {
                     counters.rx_data_ok.add(1);
                     tracing::trace!(
                         stream_id = stream_id.as_u64(),
@@ -1580,7 +1580,7 @@ where
                 &request,
                 entry,
             ) {
-                Ok(()) => {
+                Ok(_waker) => {
                     counters.rx_control_ok.add(1);
                     tracing::trace!(
                         stream_id = stream_id.as_u64(),

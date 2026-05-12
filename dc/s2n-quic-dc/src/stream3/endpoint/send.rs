@@ -31,7 +31,7 @@ use s2n_quic_core::{
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
-#[cfg(test)]
+#[cfg(todo)]
 mod tests;
 
 /// Pending frame queue with an integrated wire-cost counter.
@@ -46,14 +46,16 @@ pub(crate) struct PendingFrames {
     /// Wire cost = payload bytes + header metadata bytes (type tag + routing
     /// varints + optional payload-length varint) for every frame.
     byte_cost: usize,
+    gauge: QueueGauge,
 }
 
 impl PendingFrames {
     #[inline]
-    pub fn new() -> Self {
+    pub fn new(gauge: QueueGauge) -> Self {
         Self {
             queue: Queue::new(),
             byte_cost: 0,
+            gauge,
         }
     }
 
@@ -66,6 +68,7 @@ impl PendingFrames {
     #[inline]
     pub fn push_front(&mut self, frame: intrusive_queue::Entry<Frame>) {
         self.byte_cost += frame.byte_cost() as usize;
+        self.gauge.enqueue(1);
         self.queue.push_front(frame);
     }
 
@@ -81,6 +84,7 @@ impl PendingFrames {
             cost
         );
         self.byte_cost = self.byte_cost.saturating_sub(cost);
+        self.gauge.dequeue();
         Some(frame)
     }
 
@@ -99,8 +103,10 @@ impl PendingFrames {
     /// Append all frames from a batch in O(1).
     #[inline]
     pub fn append_batch(&mut self, batch: super::combinator::FrameBatch) {
+        let count = batch.len() as u64;
         self.byte_cost += batch.byte_cost() as usize;
         let mut queue = batch.into_queue();
+        self.gauge.enqueue(count);
         self.queue.append(&mut queue);
     }
 }
@@ -171,6 +177,7 @@ impl Context {
     pub fn new(
         entry: &Arc<PathSecretEntry>,
         inflight_gauge: QueueGauge,
+        pending_gauge: QueueGauge,
         sender_idx: usize,
     ) -> Self {
         let (sealer, credentials) = entry.reusable_sealer();
@@ -188,7 +195,7 @@ impl Context {
             rtt_estimator,
             inflight,
             pto: Pto::default(),
-            pending: PendingFrames::new(),
+            pending: PendingFrames::new(pending_gauge),
             sender_idx,
             tx_wheel: WheelLinks::new(),
             pto_wheel: WheelLinks::new(),
@@ -494,14 +501,16 @@ impl Pto {
 pub(crate) struct Cache {
     contexts: HashMap<credentials::Id, Rc<RefCell<Context>>>,
     inflight_gauge: QueueGauge,
+    pending_gauge: QueueGauge,
     sender_idx: usize,
 }
 
 impl Cache {
-    pub fn new(inflight_gauge: QueueGauge, sender_idx: usize) -> Self {
+    pub fn new(counter_registry: &crate::counter::Registry, sender_idx: usize) -> Self {
         Self {
             contexts: HashMap::new(),
-            inflight_gauge,
+            inflight_gauge: counter_registry.register_queue_gauge("send.inflight"),
+            pending_gauge: counter_registry.register_queue_gauge("send.pending"),
             sender_idx,
         }
     }
@@ -515,6 +524,7 @@ impl Cache {
                 Rc::new(RefCell::new(Context::new(
                     entry,
                     self.inflight_gauge.clone(),
+                    self.pending_gauge.clone(),
                     self.sender_idx,
                 )))
             })

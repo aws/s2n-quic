@@ -57,6 +57,8 @@ pub struct Endpoint {
 /// Lower values improve fairness across tasks; higher values improve throughput under load.
 #[derive(Clone, Copy, Debug)]
 pub struct Budgets {
+    /// Budget for the submission router (shards drained per poll).
+    pub submission_router: usize,
     /// Budget for the frame-dispatch batcher+distributor task.
     pub frame_dispatch: usize,
     /// Budget for the send-worker context resolver task.
@@ -84,9 +86,10 @@ pub struct Budgets {
 impl Default for Budgets {
     fn default() -> Self {
         Self {
-            frame_dispatch: tasks::DEFAULT_DISPATCH_BUDGET,
+            submission_router: 1,
+            frame_dispatch: 1,
             context_resolver: 128,
-            ack_processor: tasks::DEFAULT_DISPATCH_BUDGET,
+            ack_processor: 256,
             tx_wheel: tasks::DEFAULT_DISPATCH_BUDGET,
             pto_wheel: tasks::DEFAULT_DISPATCH_BUDGET,
             idle_wheel: tasks::DEFAULT_DISPATCH_BUDGET,
@@ -94,7 +97,7 @@ impl Default for Budgets {
             completion_acked: tasks::DEFAULT_DISPATCH_BUDGET,
             completion_cancelled: tasks::DEFAULT_DISPATCH_BUDGET,
             socket_recv: tasks::DEFAULT_RECV_BUDGET,
-            packet_dispatch: 64,
+            packet_dispatch: usize::MAX,
         }
     }
 }
@@ -335,7 +338,6 @@ where
     for (sender_idx, socket) in send_sockets.into_iter().enumerate() {
         let worker_id = layout.send[sender_idx % num_send_workers];
         sender_id_to_worker.push(sender_idx % num_send_workers);
-        let inflight_gauge = counter_registry.register_queue_gauge("send.inflight");
         let socket = socket::MeteredSend::new(
             socket,
             counter_registry.register("socket.tx"),
@@ -348,7 +350,6 @@ where
             gso: gso.clone(),
             pool: send_pool.clone(),
             clock: clock.clone(),
-            inflight_gauge,
             per_socket_send_rate,
         });
     }
@@ -483,7 +484,6 @@ pub(crate) struct SendSocketParts<Socket, Clk> {
     gso: s2n_quic_platform::features::Gso,
     pool: crate::socket::pool::Pool,
     clock: Clk,
-    inflight_gauge: crate::counter::QueueGauge,
     per_socket_send_rate: crate::socket::rate::Rate,
 }
 
@@ -596,6 +596,7 @@ where
                     fd.clock,
                     fd.overall_send_rate,
                     budgets,
+                    counter_registry.clone(),
                 );
             }
 
@@ -618,6 +619,7 @@ where
                     sw.random,
                     sw.frame_tx,
                     budgets,
+                    counter_registry.clone(),
                 );
             }
 

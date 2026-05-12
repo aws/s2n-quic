@@ -289,6 +289,10 @@ impl Writer {
     }
 
     /// Write data from a buffer and send FIN
+    ///
+    /// Note this may not write all of the provided data - it's just signaling to the transport
+    /// that the provided length is the final amount to send. If the application wants to flush
+    /// the entire buffer, prefer [`Self::write_all_from_fin`] instead.
     pub async fn write_from_fin<S>(&mut self, buf: &mut S) -> io::Result<usize>
     where
         S: buffer::reader::storage::Infallible,
@@ -297,6 +301,8 @@ impl Writer {
     }
 
     /// Write all data from a buffer and send FIN
+    ///
+    /// This method blocks until all of the data is written or the stream returns an error.
     pub async fn write_all_from_fin<S>(&mut self, buf: &mut S) -> io::Result<usize>
     where
         S: buffer::reader::storage::Infallible,

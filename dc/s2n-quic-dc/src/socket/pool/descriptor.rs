@@ -566,6 +566,13 @@ impl Segments {
         self.descriptor.len()
     }
 
+    pub fn segment_count(&self) -> u16 {
+        if self.segment_len == 0 {
+            return 0;
+        }
+        (self.descriptor.len() + self.segment_len - 1) / self.segment_len
+    }
+
     pub fn take_filled(self) -> Filled {
         self.descriptor
     }

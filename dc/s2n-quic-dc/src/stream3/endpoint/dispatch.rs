@@ -88,13 +88,17 @@ where
 
     // Get or create peer receive state
     let mut control_out = Vec::new();
-    let Some(peer) = recv_cache.get_or_insert(
-        &credentials,
-        source_sender_id,
-        path_secret_map,
-        clock,
-        &mut control_out,
-    ) else {
+    let peer = {
+        let _guard = counters.rx_peer_lookup_time.start();
+        recv_cache.get_or_insert(
+            &credentials,
+            source_sender_id,
+            path_secret_map,
+            clock,
+            &mut control_out,
+        )
+    };
+    let Some(peer) = peer else {
         return Err(Error::PeerStateLookup {
             credentials,
             control_out,
@@ -108,12 +112,15 @@ where
 
     // Decrypt payload bytes into a BytesMut buffer.
     let mut decrypted = BytesMut::with_capacity(decrypt_len);
-    let written = packet
-        .decrypt_into(&peer.opener, bytes::BufMut::chunk_mut(&mut decrypted))
-        .map_err(|_| Error::Decryption {
-            credentials,
-            packet_number,
-        })?;
+    let written = {
+        let _guard = counters.rx_decrypt_time.start();
+        packet
+            .decrypt_into(&peer.opener, bytes::BufMut::chunk_mut(&mut decrypted))
+            .map_err(|_| Error::Decryption {
+                credentials,
+                packet_number,
+            })?
+    };
     if written != decrypt_len {
         tracing::warn!(
             %credentials,
@@ -154,6 +161,8 @@ where
         .on_packet_received(packet_number, clock.get_time());
     peer.ack_state = AckState::Scheduled;
 
+    counters.rx_packet_size.record_value(decrypt_len as u64);
+
     let mut payload_storage = decrypted;
 
     let mut response_frames = PriorityInput::default();
@@ -162,10 +171,13 @@ where
     // (Header type tag + optional payload_len VarInt) and `payload_storage`
     // contains the concatenated, decrypted frame payloads.
 
+    let _dispatch_guard = counters.rx_dispatch_time.start();
     let mut is_ack_eliciting = false;
+    let mut frame_count = 0u64;
     for result in decode::decode_frames(app_header_slice) {
         match result {
             Ok((header, frame_payload_len)) => {
+                frame_count += 1;
                 counters.on_received_frame(&header);
                 // Validate that the claimed payload length fits within the
                 // remaining payload storage.
@@ -221,6 +233,8 @@ where
             "multi-frame packet has unconsumed payload bytes"
         );
     }
+
+    counters.rx_frames_per_packet.record_value(frame_count);
 
     // TODO batch ACKs via the ACK wheel instead of emitting one per packet
     if is_ack_eliciting {
@@ -831,7 +845,7 @@ fn handle_flow_init_validate(
                 &request,
                 stream_entry,
             ) {
-                Ok(()) => {
+                Ok(_waker) => {
                     tracing::debug!(
                         attempt_id = attempt_id.as_u64(),
                         stream_id = stream_id.as_u64(),
@@ -912,7 +926,11 @@ fn handle_flow_data(
         &request,
         entry,
     ) {
-        Ok(()) => {
+        Ok(mut waker) => {
+            if let Some(waker) = waker.take() {
+                let _guard = counters.rx_data_wake_time.start();
+                waker.wake();
+            }
             counters.rx_data_ok.add(1);
             tracing::trace!(
                 stream_id = stream_id.as_u64(),
@@ -1012,8 +1030,12 @@ fn handle_flow_control(
         &request,
         entry,
     ) {
-        Ok(()) => {
-            counters.rx_control_ok.add(1);
+        Ok(mut waker) => {
+            if let Some(waker) = waker.take() {
+                let _guard = counters.rx_flow_control_wake_time.start();
+                waker.wake();
+            }
+            counters.rx_flow_control_ok.add(1);
             tracing::trace!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
@@ -1022,7 +1044,7 @@ fn handle_flow_control(
             );
         }
         Err(flow::queue::Error::Unallocated(_)) => {
-            counters.rx_control_unallocated.add(1);
+            counters.rx_flow_control_unallocated.add(1);
             tracing::debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
@@ -1039,7 +1061,7 @@ fn handle_flow_control(
             );
         }
         Err(flow::queue::Error::HalfClosed(_)) => {
-            counters.rx_control_half_closed.add(1);
+            counters.rx_flow_control_half_closed.add(1);
             tracing::debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
@@ -1056,7 +1078,7 @@ fn handle_flow_control(
             );
         }
         Err(flow::queue::Error::FullyClosed(_)) => {
-            counters.rx_control_fully_closed.add(1);
+            counters.rx_flow_control_fully_closed.add(1);
             tracing::debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
@@ -1073,7 +1095,7 @@ fn handle_flow_control(
             );
         }
         Err(flow::queue::Error::PermanentlyClosed) => {
-            counters.rx_control_perm_closed.add(1);
+            counters.rx_flow_control_perm_closed.add(1);
             tracing::trace!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
@@ -1106,7 +1128,13 @@ fn handle_flow_reset(
             counters.rx_reset_both.add(1);
             let stream_entry = msg::Stream::Reset { error_code }.into();
             let control_entry = msg::Control::Reset { error_code }.into();
-            queue_dispatcher.send_both(local_queue_id, None, &request, stream_entry, control_entry);
+            let (_waker_a, _waker_b) = queue_dispatcher.send_both(
+                local_queue_id,
+                None,
+                &request,
+                stream_entry,
+                control_entry,
+            );
 
             tracing::debug!(
                 stream_id = stream_id.as_u64(),
