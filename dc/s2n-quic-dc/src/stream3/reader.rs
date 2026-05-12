@@ -115,6 +115,8 @@ use tracing::{debug, trace};
 
 pub struct Reader(Box<Inner>);
 
+use super::coop::{self, Coop, HasCoop};
+
 struct Inner {
     /// Channel to submit frames to the wheel
     frame_tx: SubmissionSender,
@@ -134,6 +136,8 @@ struct Inner {
     status: Status,
     /// Reset error code if the stream was reset by the peer
     reset_error_code: Option<VarInt>,
+    /// Cooperative yield budget
+    coop: Coop,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -184,6 +188,7 @@ impl Reader {
             window_size,
             status: Status::Open,
             reset_error_code: None,
+            coop: Coop::default(),
         }))
     }
 
@@ -206,6 +211,7 @@ impl Reader {
             window_size,
             status: Status::Open,
             reset_error_code: None,
+            coop: Coop::default(),
         }))
     }
 
@@ -228,6 +234,7 @@ impl Reader {
             window_size,
             status: Status::PendingValidation,
             reset_error_code: None,
+            coop: Coop::default(),
         }))
     }
 
@@ -254,11 +261,19 @@ impl Reader {
     where
         S: buffer::writer::Storage,
     {
-        waker::debug_assert_contract(cx, |cx| self.0.poll_read_into(cx, buf))
+        self.0.poll_read_into(cx, buf)
+    }
+}
+
+impl HasCoop for Inner {
+    #[inline]
+    fn coop(&mut self) -> &mut Coop {
+        &mut self.coop
     }
 }
 
 impl Inner {
+    #[inline]
     fn poll_validate(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
         if !self.status.is_pending_validation() {
             return Poll::Ready(Ok(()));
@@ -277,7 +292,18 @@ impl Inner {
         }
     }
 
+    #[inline]
     fn poll_read_into<S>(&mut self, cx: &mut Context, buf: &mut S) -> Poll<io::Result<usize>>
+    where
+        S: buffer::writer::Storage,
+    {
+        waker::debug_assert_contract(cx, |cx| {
+            coop::poll(self, cx, |this, cx| this.poll_read_into_inner(cx, buf))
+        })
+    }
+
+    #[inline(always)]
+    fn poll_read_into_inner<S>(&mut self, cx: &mut Context, buf: &mut S) -> Poll<io::Result<usize>>
     where
         S: buffer::writer::Storage,
     {

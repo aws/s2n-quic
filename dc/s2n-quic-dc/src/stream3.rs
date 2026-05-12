@@ -12,6 +12,7 @@
 //! The architectural difference is entirely below the application layer.
 
 pub mod client;
+mod coop;
 pub mod endpoint;
 pub mod frame;
 mod reader;

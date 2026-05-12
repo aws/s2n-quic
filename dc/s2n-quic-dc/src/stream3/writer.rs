@@ -96,6 +96,8 @@ use std::{
 };
 use tracing::{debug, trace};
 
+use super::coop::{self, Coop, HasCoop};
+
 pub struct Writer(Box<Inner>);
 
 struct Inner {
@@ -125,6 +127,8 @@ struct Inner {
     status: Status,
     /// Reset error code if the stream was reset by the peer
     reset_error_code: Option<VarInt>,
+    /// Cooperative yield budget
+    coop: Coop,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -187,6 +191,7 @@ impl Writer {
             remote_max_data,
             status: Status::Init,
             reset_error_code: None,
+            coop: Coop::default(),
         }))
     }
 
@@ -217,9 +222,14 @@ impl Writer {
             remote_max_data: initial_remote_max_data,
             status: Status::Open,
             reset_error_code: None,
+            coop: Coop::default(),
         }))
     }
 
+    /// Writes the provided buffer to the stream
+    ///
+    /// Note that the stream may not write all of the provided data. If the application wants to flush
+    /// the entire buffer, prefer [`Self::write_all_from`] instead.
     pub async fn write_from<S>(&mut self, buf: &mut S) -> io::Result<usize>
     where
         S: buffer::reader::storage::Infallible,
@@ -227,6 +237,9 @@ impl Writer {
         core::future::poll_fn(|cx| self.poll_write_from(cx, buf, false)).await
     }
 
+    /// Write all data from a buffer
+    ///
+    /// This method blocks until all of the data is written or the stream returns an error.
     pub async fn write_all_from<S>(&mut self, buf: &mut S) -> io::Result<usize>
     where
         S: buffer::reader::storage::Infallible,
@@ -240,6 +253,11 @@ impl Writer {
         }
     }
 
+    /// Write data from a buffer and send FIN
+    ///
+    /// Note that the stream may not write all of the provided data. This method signals to the transport
+    /// that the provided length is the final amount to send. If the application wants to flush
+    /// the entire buffer, prefer [`Self::write_all_from_fin`] instead.
     pub async fn write_from_fin<S>(&mut self, buf: &mut S) -> io::Result<usize>
     where
         S: buffer::reader::storage::Infallible,
@@ -247,6 +265,9 @@ impl Writer {
         core::future::poll_fn(|cx| self.poll_write_from(cx, buf, true)).await
     }
 
+    /// Write all data from a buffer and send FIN
+    ///
+    /// This method blocks until all of the data is written or the stream returns an error.
     pub async fn write_all_from_fin<S>(&mut self, buf: &mut S) -> io::Result<usize>
     where
         S: buffer::reader::storage::Infallible,
@@ -269,7 +290,7 @@ impl Writer {
     where
         S: buffer::reader::storage::Infallible,
     {
-        waker::debug_assert_contract(cx, |cx| self.0.poll_write_from(cx, buf, is_fin))
+        self.0.poll_write_from(cx, buf, is_fin)
     }
 
     pub fn shutdown(&mut self) -> io::Result<()> {
@@ -282,8 +303,33 @@ impl Writer {
     }
 }
 
+impl HasCoop for Inner {
+    #[inline]
+    fn coop(&mut self) -> &mut Coop {
+        &mut self.coop
+    }
+}
+
 impl Inner {
+    #[inline]
     fn poll_write_from<S>(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut S,
+        is_fin: bool,
+    ) -> Poll<io::Result<usize>>
+    where
+        S: buffer::reader::storage::Infallible,
+    {
+        waker::debug_assert_contract(cx, |cx| {
+            coop::poll(self, cx, |this, cx| {
+                this.poll_write_from_inner(cx, buf, is_fin)
+            })
+        })
+    }
+
+    #[inline(always)]
+    fn poll_write_from_inner<S>(
         &mut self,
         cx: &mut Context,
         buf: &mut S,
@@ -923,6 +969,7 @@ mod tests {
             remote_max_data: VarInt::from_u16(4096),
             status: Status::Open,
             reset_error_code: None,
+            coop: Coop::default(),
         };
 
         (inner, frame_rx)
