@@ -86,7 +86,11 @@ impl Contract {
     /// Checks the state of the waker based on the provided `outcome`
     #[inline]
     #[track_caller]
-    pub fn check_outcome<T, C: fmt::Debug>(self, outcome: &Poll<T>, context: Option<&C>) {
+    pub fn check_outcome<T, C: fmt::Debug, F: FnOnce() -> Option<C>>(
+        self,
+        outcome: &Poll<T>,
+        context: F,
+    ) {
         if outcome.is_ready() {
             return;
         }
@@ -101,20 +105,20 @@ impl Contract {
         let wake_called = (wake_count + wake_by_ref_count) > 0;
 
         let is_ok = is_cloned || wake_called;
-        if let Some(context) = context {
-            assert!(
-                is_ok,
-                "clone_count = {clone_count}; drop_count = {drop_count}; \
-                 wake_count = {wake_count}; wake_by_ref_count = {wake_by_ref_count}; \
-                 live_clones = {live_clones}; contract_context = {context:?}"
-            );
-        } else {
-            assert!(
-                is_ok,
-                "clone_count = {clone_count}; drop_count = {drop_count}; \
-                 wake_count = {wake_count}; wake_by_ref_count = {wake_by_ref_count}; \
-                 live_clones = {live_clones}"
-            );
+        if !is_ok {
+            if let Some(context) = context() {
+                panic!(
+                    "clone_count = {clone_count}; drop_count = {drop_count}; \
+                     wake_count = {wake_count}; wake_by_ref_count = {wake_by_ref_count}; \
+                     live_clones = {live_clones}; contract_context = {context:?}"
+                );
+            } else {
+                panic!(
+                    "clone_count = {clone_count}; drop_count = {drop_count}; \
+                     wake_count = {wake_count}; wake_by_ref_count = {wake_by_ref_count}; \
+                     live_clones = {live_clones}"
+                );
+            }
         }
     }
 }
@@ -124,7 +128,7 @@ impl Contract {
 #[inline(always)]
 #[track_caller]
 pub fn assert_contract<F: FnOnce(&mut Context) -> Poll<R>, R>(cx: &mut Context, f: F) -> Poll<R> {
-    assert_contract_with_context::<_, _, ()>(cx, |cx| (f(cx), None))
+    assert_contract_with_context(cx, f, || Option::<()>::None)
 }
 
 /// Checks that if a function returns [`Poll::Pending`], then the function called [`Waker::clone`],
@@ -134,17 +138,19 @@ pub fn assert_contract<F: FnOnce(&mut Context) -> Poll<R>, R>(cx: &mut Context, 
 #[inline(always)]
 #[track_caller]
 pub fn assert_contract_with_context<
-    F: FnOnce(&mut Context) -> (Poll<R>, Option<C>),
+    F: FnOnce(&mut Context) -> Poll<R>,
+    Ctx: FnOnce() -> Option<C>,
     R,
     C: fmt::Debug,
 >(
     cx: &mut Context,
     f: F,
+    context: Ctx,
 ) -> Poll<R> {
     let contract = Contract::new(cx);
     let mut cx = contract.context();
-    let (outcome, context) = f(&mut cx);
-    contract.check_outcome(&outcome, context.as_ref());
+    let outcome = f(&mut cx);
+    contract.check_outcome(&outcome, context);
     outcome
 }
 
@@ -158,7 +164,7 @@ pub fn debug_assert_contract<F: FnOnce(&mut Context) -> Poll<R>, R>(
     cx: &mut Context,
     f: F,
 ) -> Poll<R> {
-    debug_assert_contract_with_context::<_, _, ()>(cx, |cx| (f(cx), None))
+    debug_assert_contract_with_context(cx, f, || Option::<()>::None)
 }
 
 /// Checks that if a function returns [`Poll::Pending`], then the function called [`Waker::clone`],
@@ -170,18 +176,20 @@ pub fn debug_assert_contract<F: FnOnce(&mut Context) -> Poll<R>, R>(
 #[inline(always)]
 #[track_caller]
 pub fn debug_assert_contract_with_context<
-    F: FnOnce(&mut Context) -> (Poll<R>, Option<C>),
+    F: FnOnce(&mut Context) -> Poll<R>,
+    Ctx: FnOnce() -> Option<C>,
     R,
     C: fmt::Debug,
 >(
     cx: &mut Context,
     f: F,
+    context: Ctx,
 ) -> Poll<R> {
     #[cfg(debug_assertions)]
-    return assert_contract_with_context(cx, f);
+    return assert_contract_with_context(cx, f, context);
 
     #[cfg(not(debug_assertions))]
-    return f(cx).0;
+    return f(cx);
 }
 
 #[cfg(test)]
@@ -247,10 +255,14 @@ mod tests {
             let poller = loom::thread::spawn(move || {
                 let noop = waker::noop();
                 let mut cx = Context::from_waker(&noop);
-                let _ = assert_contract_with_context::<_, (), ()>(&mut cx, |cx| {
-                    *poller_slot.lock().unwrap() = Some(cx.waker().clone());
-                    (Poll::<()>::Pending, None)
-                });
+                let _ = assert_contract_with_context::<_, _, (), ()>(
+                    &mut cx,
+                    |cx| {
+                        *poller_slot.lock().unwrap() = Some(cx.waker().clone());
+                        Poll::<()>::Pending
+                    },
+                    || None,
+                );
             });
 
             // Thread B (pusher): takes and wakes (simulating push -> take_waker -> wake)
