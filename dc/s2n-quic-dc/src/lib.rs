@@ -29,6 +29,7 @@ pub mod stream3;
 pub mod sync;
 pub mod task;
 pub mod uds;
+pub mod xorshift;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;

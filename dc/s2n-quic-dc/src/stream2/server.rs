@@ -112,15 +112,19 @@ struct ChannelAcceptor {
 }
 
 impl acceptor::Acceptor<FlowInit> for ChannelAcceptor {
-    fn handle_request(&self, flow_init: FlowInit) {
+    fn handle_request(&self, flow_init: FlowInit) -> crate::flow::queue::AutoWake {
         let stream = build_server_stream(flow_init, self.gso.clone(), false);
         self.send(stream);
+        crate::flow::queue::AutoWake::new(None)
     }
 
-    fn handle_pending(&self, flow_init: FlowInit) -> acceptor::PendingAction {
+    fn handle_pending(&self, flow_init: FlowInit) -> acceptor::Dispatch {
         let stream = build_server_stream(flow_init, self.gso.clone(), true);
         self.send(stream);
-        acceptor::PendingAction::AcceptedWithRetry
+        acceptor::Dispatch {
+            action: acceptor::PendingAction::AcceptedWithRetry,
+            waker: crate::flow::queue::AutoWake::new(None),
+        }
     }
 }
 

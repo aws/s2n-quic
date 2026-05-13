@@ -346,7 +346,9 @@ impl<A: Adapter> List<A> {
 
             if let Some(tail) = self.tail {
                 // Non-empty list: link after current tail
-                (*links).prev.set(Some(NonNull::new_unchecked(tail.as_ptr() as *mut ())));
+                (*links)
+                    .prev
+                    .set(Some(NonNull::new_unchecked(tail.as_ptr() as *mut ())));
                 (*links).next.set(Some(self_ref));
 
                 let tail_links = A::links(tail.as_ptr());
@@ -378,7 +380,9 @@ impl<A: Adapter> List<A> {
             if let Some(head) = self.head {
                 // Non-empty list: link before current head
                 (*links).prev.set(Some(self_ref));
-                (*links).next.set(Some(NonNull::new_unchecked(head.as_ptr() as *mut ())));
+                (*links)
+                    .next
+                    .set(Some(NonNull::new_unchecked(head.as_ptr() as *mut ())));
 
                 let head_links = A::links(head.as_ptr());
                 (*head_links)
@@ -412,7 +416,9 @@ impl<A: Adapter> List<A> {
 
             if let Some(new_head) = self.head {
                 let new_head_links = A::links(new_head.as_ptr());
-                (*new_head_links).prev.set(Some(NonNull::new_unchecked(new_head.as_ptr() as *mut ())));
+                (*new_head_links)
+                    .prev
+                    .set(Some(NonNull::new_unchecked(new_head.as_ptr() as *mut ())));
             } else {
                 self.tail = None;
             }
@@ -442,7 +448,9 @@ impl<A: Adapter> List<A> {
 
             if let Some(new_tail) = self.tail {
                 let new_tail_links = A::links(new_tail.as_ptr());
-                (*new_tail_links).next.set(Some(NonNull::new_unchecked(new_tail.as_ptr() as *mut ())));
+                (*new_tail_links)
+                    .next
+                    .set(Some(NonNull::new_unchecked(new_tail.as_ptr() as *mut ())));
             } else {
                 self.head = None;
             }

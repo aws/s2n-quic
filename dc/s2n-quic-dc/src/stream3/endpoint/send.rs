@@ -25,11 +25,12 @@ use crate::{
     stream3::{endpoint::inflight, frame::Frame},
 };
 use core::time::Duration;
+use rustc_hash::FxHashMap;
 use s2n_quic_core::{
     packet::number::PacketNumberSpace, path::INITIAL_PTO_BACKOFF, recovery::RttEstimator,
     varint::VarInt,
 };
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 #[cfg(todo)]
 mod tests;
@@ -499,7 +500,7 @@ impl Pto {
 /// Each send socket has its own Cache. A single peer always routes through the same
 /// send socket (via credential hashing), so there's exactly one Context per peer per socket.
 pub(crate) struct Cache {
-    contexts: HashMap<credentials::Id, Rc<RefCell<Context>>>,
+    contexts: FxHashMap<credentials::Id, Rc<RefCell<Context>>>,
     inflight_gauge: QueueGauge,
     pending_gauge: QueueGauge,
     sender_idx: usize,
@@ -508,7 +509,7 @@ pub(crate) struct Cache {
 impl Cache {
     pub fn new(counter_registry: &crate::counter::Registry, sender_idx: usize) -> Self {
         Self {
-            contexts: HashMap::new(),
+            contexts: FxHashMap::default(),
             inflight_gauge: counter_registry.register_queue_gauge("send.inflight"),
             pending_gauge: counter_registry.register_queue_gauge("send.pending"),
             sender_idx,

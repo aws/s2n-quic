@@ -28,7 +28,10 @@ pub fn create(
     {
         use s2n_quic_dc::socket::recv::Socket as _;
         let recv_port = recv_sockets.first().unwrap().local_addr().unwrap().port();
-        info!(recv_io_workers = config.recv_io_workers, recv_port, "Recv sockets bound");
+        info!(
+            recv_io_workers = config.recv_io_workers,
+            recv_port, "Recv sockets bound"
+        );
     }
 
     // Create send sockets
@@ -74,9 +77,7 @@ pub fn create(
         submission_shards: config.submission_shards,
     };
 
-    let inner = endpoint::setup_endpoint(endpoint_config, send_sockets, recv_sockets, || {
-        s2n_quic_dc::random::Random::default()
-    });
+    let inner = endpoint::setup_endpoint(endpoint_config, send_sockets, recv_sockets);
 
     Ok(Arc::new(inner))
 }

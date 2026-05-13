@@ -198,16 +198,14 @@ pub struct Config<S, C> {
 /// Recv IO tasks fan out decoded packets to recv_dispatch workers by hashing
 /// (credentials.id, source_sender_id), ensuring a given peer always lands in the same
 /// recv::Cache for coherent ACK space and packet-number deduplication.
-pub fn setup_endpoint<SendSocket, RecvSocket, G, S, C>(
+pub fn setup_endpoint<SendSocket, RecvSocket, S, C>(
     config: Config<S, C>,
     send_sockets: Vec<SendSocket>,
     recv_sockets: Vec<RecvSocket>,
-    create_rand: impl Fn() -> G,
 ) -> Endpoint
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
-    G: crate::random::Generator,
     S: crate::stream2::Spawner,
     C: s2n_quic_core::time::Clock + crate::clock::precision::Clock + Clone + Send + 'static,
 {
@@ -216,32 +214,24 @@ where
     tracing::debug!(?config.layout, "setting up endpoint");
 
     if num_recv_dispatch.is_power_of_two() {
-        setup_endpoint_inner::<_, _, _, _, _, routing::PowerOfTwoRoute>(
+        setup_endpoint_inner::<_, _, _, _, routing::PowerOfTwoRoute>(
             config,
             send_sockets,
             recv_sockets,
-            create_rand,
         )
     } else {
-        setup_endpoint_inner::<_, _, _, _, _, routing::ModuloRoute>(
-            config,
-            send_sockets,
-            recv_sockets,
-            create_rand,
-        )
+        setup_endpoint_inner::<_, _, _, _, routing::ModuloRoute>(config, send_sockets, recv_sockets)
     }
 }
 
-fn setup_endpoint_inner<SendSocket, RecvSocket, G, S, C, RecvRoute>(
+fn setup_endpoint_inner<SendSocket, RecvSocket, S, C, RecvRoute>(
     config: Config<S, C>,
     send_sockets: Vec<SendSocket>,
     recv_sockets: Vec<RecvSocket>,
-    create_rand: impl Fn() -> G,
 ) -> Endpoint
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
-    G: crate::random::Generator,
     S: crate::stream2::Spawner,
     C: s2n_quic_core::time::Clock + crate::clock::precision::Clock + Clone + Send + 'static,
     RecvRoute: routing::SenderRoute,
@@ -326,14 +316,7 @@ where
 
     // Build workers -------------------------------------------------------------
     let mut workers: Vec<
-        Worker<
-            socket::MeteredSend<SendSocket>,
-            socket::MeteredRecv<RecvSocket>,
-            C,
-            G,
-            _,
-            RecvRoute,
-        >,
+        Worker<socket::MeteredSend<SendSocket>, socket::MeteredRecv<RecvSocket>, C, _, RecvRoute>,
     > = {
         let mut v = Vec::with_capacity(num_workers);
         v.extend((0..num_workers).map(|id| {
@@ -379,7 +362,6 @@ where
     workers[layout.frame_dispatch].frame_dispatch = Some(FrameDispatchParts {
         frame_rx,
         socket_senders,
-        rand: create_rand(),
         clock: clock.clone(),
         overall_send_rate,
     });
@@ -408,7 +390,7 @@ where
         workers[worker_id].send_worker = Some(SendWorkerParts {
             batch_rx,
             ack_rx,
-            random: create_rand(),
+            random: crate::xorshift::Rng::new(),
             frame_tx: frame_tx.clone(),
             waker_sink,
         });
@@ -486,12 +468,10 @@ where
 // ── Worker parts ──────────────────────────────────────────────────────────
 
 /// All the ingredients needed to spawn the frame-dispatch task on a worker.
-struct FrameDispatchParts<G, Clk> {
+struct FrameDispatchParts<Clk> {
     frame_rx: crate::stream3::frame::SubmissionReceiver,
     /// Per-socket-id senders: indexed by socket ID, each routes to the owning worker.
     socket_senders: Vec<BatchSender>,
-    /// Random generator for pick-two routing.
-    rand: G,
     /// Clock used by the pacing stage.
     clock: Clk,
     /// Overall bandwidth cap for the pacing stage.
@@ -499,10 +479,10 @@ struct FrameDispatchParts<G, Clk> {
 }
 
 /// Per-worker state for context resolution and ACK processing.
-struct SendWorkerParts<G> {
+struct SendWorkerParts {
     batch_rx: BatchReceiver,
     ack_rx: AckMsgReceiver,
-    random: G,
+    random: crate::xorshift::Rng,
     frame_tx: SubmissionSender,
     waker_sink: waker::Sink,
 }
@@ -544,16 +524,16 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
 
 // ── Worker ────────────────────────────────────────────────────────────────
 
-struct Worker<SendSocket, RecvSocket, Clk, G, AckSnd, Route> {
+struct Worker<SendSocket, RecvSocket, Clk, AckSnd, Route> {
     id: usize,
     idle_timeout: core::time::Duration,
     budgets: Budgets,
     total_sender_ids: usize,
     clock: Clk,
     counter_registry: crate::counter::Registry,
-    frame_dispatch: Option<FrameDispatchParts<G, Clk>>,
+    frame_dispatch: Option<FrameDispatchParts<Clk>>,
     /// Per-worker batch/ack receiver (one per send worker).
-    send_worker: Option<SendWorkerParts<G>>,
+    send_worker: Option<SendWorkerParts>,
     /// Send sockets assigned to this worker.
     send_sockets: Vec<SendSocketParts<SendSocket, Clk>>,
     /// Recv IO: socket read + decode + fan-out (at most one per worker).
@@ -564,13 +544,11 @@ struct Worker<SendSocket, RecvSocket, Clk, G, AckSnd, Route> {
     waker_drain: Vec<waker::Drain>,
 }
 
-impl<SendSocket, RecvSocket, Clk, G, AckSnd, Route>
-    Worker<SendSocket, RecvSocket, Clk, G, AckSnd, Route>
+impl<SendSocket, RecvSocket, Clk, AckSnd, Route> Worker<SendSocket, RecvSocket, Clk, AckSnd, Route>
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
     Clk: s2n_quic_core::time::Clock + crate::clock::precision::Clock + Clone + Send + 'static,
-    G: crate::random::Generator + 'static,
     AckSnd: crate::socket::channel::UnboundedSender<msg::Sender> + Send + 'static,
     Route: routing::SenderRoute,
 {
@@ -618,17 +596,11 @@ where
 
         spawner.spawn_local(id, move |mut local| {
             if let Some(fd) = frame_dispatch {
-                let mut random = fd.rand;
-                let random_fn = move || {
-                    let mut bytes = [0u8; 8];
-                    random.public_random_fill(&mut bytes);
-                    u64::from_le_bytes(bytes) as usize
-                };
                 tasks::frame_dispatch(
                     &mut local,
                     fd.frame_rx,
                     fd.socket_senders,
-                    random_fn,
+                    crate::xorshift::Rng::new(),
                     fd.clock,
                     fd.overall_send_rate,
                     budgets,

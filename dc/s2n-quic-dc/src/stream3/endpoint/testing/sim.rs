@@ -119,30 +119,6 @@ fn get_or_create_group_endpoint(bind_addr: SocketAddr) -> Arc<Endpoint> {
     })
 }
 
-// ── Bach random generator ─────────────────────────────────────────────────────
-
-/// A [`random::Generator`] that draws bytes from the Bach / bolero random scope.
-///
-/// When running inside a production Bach simulation the scope is seeded
-/// deterministically, making test outcomes reproducible.  In ordinary
-/// `#[test]` runs it falls back to a randomly seeded `Xoshiro` RNG provided
-/// by bolero's thread-local default scope.
-struct BachGenerator;
-
-impl crate::random::Generator for BachGenerator {
-    #[inline]
-    fn public_random_fill(&mut self, dest: &mut [u8]) {
-        use bach::rand::AnySliceMutExt as _;
-        dest.fill_any();
-    }
-
-    #[inline]
-    fn private_random_fill(&mut self, dest: &mut [u8]) {
-        use bach::rand::AnySliceMutExt as _;
-        dest.fill_any();
-    }
-}
-
 // ── SimEndpointConfig ─────────────────────────────────────────────────────────
 
 /// Describes how to create a simulated endpoint.
@@ -293,9 +269,12 @@ pub fn setup_sim_endpoint(
         submission_shards,
     };
 
-    let endpoint = setup_endpoint(endpoint_config, send_sockets, recv_sockets, || {
-        BachGenerator
-    });
+    let endpoint = setup_endpoint(endpoint_config, send_sockets, recv_sockets);
+
+    endpoint.counters.spawn_reporter_with_label(
+        core::time::Duration::from_secs(1),
+        bach::group::current().name(),
+    );
 
     // Register in the thread-local registry so `connect` can find it.
     register_endpoint_map(endpoint.data_addr, path_secret_map);
@@ -381,13 +360,17 @@ struct ChannelAcceptor {
 }
 
 impl acceptor::Acceptor<Stream> for ChannelAcceptor {
-    fn handle_request(&self, stream: Stream) {
+    fn handle_request(&self, stream: Stream) -> crate::flow::queue::AutoWake {
         self.push(stream);
+        crate::flow::queue::AutoWake::new(None)
     }
 
-    fn handle_pending(&self, stream: Stream) -> acceptor::PendingAction {
+    fn handle_pending(&self, stream: Stream) -> acceptor::Dispatch {
         self.push(stream);
-        acceptor::PendingAction::AcceptedWithRetry
+        acceptor::Dispatch {
+            action: acceptor::PendingAction::AcceptedWithRetry,
+            waker: crate::flow::queue::AutoWake::new(None),
+        }
     }
 }
 

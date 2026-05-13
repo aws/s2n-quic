@@ -1091,7 +1091,7 @@ where
 
                             // Dispatch to the acceptor
                             match acceptor_registry.dispatch(acceptor_id, flow_init) {
-                                Ok(()) => {
+                                Ok(_waker) => {
                                     counters.flow_accepted.add(1);
                                     tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),
@@ -1204,7 +1204,10 @@ where
 
                             // Dispatch as pending since we can't guarantee it's not a duplicate
                             match acceptor_registry.dispatch_pending(acceptor_id, flow_init) {
-                                Ok(acceptor::PendingAction::Accepted) => {
+                                Ok(acceptor::Dispatch {
+                                    action: acceptor::PendingAction::Accepted,
+                                    ..
+                                }) => {
                                     counters.rx_init_accepted.add(1);
                                     counters.flow_accepted.add(1);
                                     tracing::debug!(
@@ -1215,7 +1218,10 @@ where
                                         "FlowInit accepted without retry - acceptor doesn't require dedup"
                                     );
                                 }
-                                Ok(acceptor::PendingAction::AcceptedWithRetry) => {
+                                Ok(acceptor::Dispatch {
+                                    action: acceptor::PendingAction::AcceptedWithRetry,
+                                    ..
+                                }) => {
                                     counters.rx_init_accepted_retry.add(1);
                                     counters.flow_pending.add(1);
                                     tracing::debug!(
@@ -1240,7 +1246,10 @@ where
                                         stream_id,
                                     });
                                 }
-                                Ok(acceptor::PendingAction::Reject { reset_code }) => {
+                                Ok(acceptor::Dispatch {
+                                    action: acceptor::PendingAction::Reject { reset_code },
+                                    ..
+                                }) => {
                                     counters.rx_init_reject.add(1);
                                     tracing::debug!(
                                         attempt_id = attempt_id.as_u64(),

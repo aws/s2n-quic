@@ -103,18 +103,17 @@ pub const DEFAULT_DISPATCH_BUDGET: usize = 32;
 /// [`Priority::LEVELS`]: crate::datagram::batch::Priority::LEVELS
 /// [`PriorityStorage`]: crate::stream3::frame::PriorityStorage
 /// [`PriorityInput`]: crate::stream3::frame::PriorityInput
-pub fn frame_dispatch<S, Rand, Clk>(
+pub fn frame_dispatch<S, Clk>(
     spawner: &mut impl LocalSpawner,
     mut frame_rx: SubmissionReceiver,
     worker_senders: Vec<S>,
-    random: Rand,
+    rng: crate::xorshift::Rng,
     clock: Clk,
     overall_send_rate: Rate,
     budgets: Budgets,
     counter_registry: crate::counter::Registry,
 ) where
     S: UnboundedSender<Entry<FrameBatch>> + 'static,
-    Rand: FnMut() -> usize + 'static,
     Clk: precision::Clock + 'static,
 {
     let mut priority_batch_rxs = Vec::with_capacity(Priority::LEVELS);
@@ -159,7 +158,7 @@ pub fn frame_dispatch<S, Rand, Clk>(
         let rx = BatchFramesByPathSecret::new(rx, &clock, overall_send_rate);
         let rx = Map::new(rx, Entry::new);
         // let rx = FrameDispatchPacer::new(rx, clock, overall_send_rate);
-        let rx = PickTwo::new(rx, worker_senders, random);
+        let rx = PickTwo::new(rx, worker_senders, rng);
         rx.drain_budgeted(Some(budgets.frame_dispatch)).await;
     });
 }
@@ -175,14 +174,14 @@ pub fn frame_dispatch<S, Rand, Clk>(
 ///
 ///   ack_rx (sync, from recv workers)
 ///     → ACK processor (loss detection, retransmission)
-pub fn send_worker<Socket, Clk, Rand, WakerSink>(
+pub fn send_worker<Socket, Clk, WakerSink>(
     spawner: &mut impl LocalSpawner,
     batch_rx: impl Receiver<Entry<FrameBatch>> + 'static,
     ack_rx: impl Receiver<Entry<msg::Sender>> + 'static,
     total_sender_ids: usize,
     send_sockets: Vec<endpoint::SendSocketParts<Socket, Clk>>,
     clock: Clk,
-    mut random: Rand,
+    mut random: crate::xorshift::Rng,
     frame_tx: crate::stream3::frame::SubmissionSender,
     mut waker_sink: WakerSink,
     budgets: Budgets,
@@ -190,7 +189,6 @@ pub fn send_worker<Socket, Clk, Rand, WakerSink>(
 ) where
     Socket: crate::socket::send::Socket + 'static,
     Clk: precision::Clock + s2n_quic_core::time::Clock + Clone + 'static,
-    Rand: crate::random::Generator + 'static,
     WakerSink: UnboundedSender<crate::flow::queue::AutoWake> + 'static,
 {
     let num_sockets = send_sockets.len();

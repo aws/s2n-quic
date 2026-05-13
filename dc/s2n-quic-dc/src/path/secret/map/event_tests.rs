@@ -76,7 +76,11 @@ fn control_packets() {
     }
 
     let server_entry = server.store.get_by_id_untracked(&ids.peer).unwrap().clone();
-    let client_entry = client.store.get_by_id_untracked(&ids.local).unwrap().clone();
+    let client_entry = client
+        .store
+        .get_by_id_untracked(&ids.local)
+        .unwrap()
+        .clone();
 
     let fake_secret =
         crate::path::secret::seal::control::Secret::new(&[0; 32], &aws_lc_rs::hmac::HMAC_SHA256);

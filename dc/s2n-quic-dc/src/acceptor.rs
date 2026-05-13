@@ -50,25 +50,36 @@
 //! # }
 //! ```
 
+pub mod channel;
+
+use crate::flow::queue::AutoWake;
 use dashmap::DashMap;
 use rustc_hash::FxBuildHasher;
 use s2n_quic_core::varint::VarInt;
 use std::sync::Arc;
 
+/// Result of dispatching a pending request to an acceptor.
+pub struct Dispatch {
+    pub action: PendingAction,
+    pub waker: AutoWake,
+}
+
 /// Trait for handling incoming requests
 pub trait Acceptor<T>: Send + Sync + 'static {
-    /// Called when a new request arrives
+    /// Called when a new request arrives.
     ///
-    /// Implementations typically spawn a task to handle the request asynchronously.
-    fn handle_request(&self, request: T);
+    /// Returns an `AutoWake` that should be forwarded to the waker thread.
+    fn handle_request(&self, request: T) -> AutoWake;
 
-    /// Called when a request arrives but cannot be confirmed as non-duplicate
+    /// Called when a request arrives but cannot be confirmed as non-duplicate.
     ///
-    /// Returns the action the registry should take. Default implementation
-    /// rejects the pending request.
-    fn handle_pending(&self, _request: T) -> PendingAction {
-        PendingAction::Reject {
-            reset_code: VarInt::from_u32(0),
+    /// Returns a `Dispatch` indicating the action to take and an `AutoWake`.
+    fn handle_pending(&self, _request: T) -> Dispatch {
+        Dispatch {
+            action: PendingAction::Reject {
+                reset_code: VarInt::from_u32(0),
+            },
+            waker: AutoWake::new(None),
         }
     }
 }
@@ -164,13 +175,12 @@ impl<T: Send + 'static> Registry<T> {
     /// Dispatch a request to the specified acceptor
     ///
     /// Returns Err if the acceptor doesn't exist.
-    pub fn dispatch(&self, acceptor_id: VarInt, request: T) -> Result<(), DispatchError> {
+    pub fn dispatch(&self, acceptor_id: VarInt, request: T) -> Result<AutoWake, DispatchError> {
         let Some(acceptor) = self.acceptors.get(&acceptor_id) else {
             return Err(DispatchError::AcceptorNotFound);
         };
 
-        acceptor.handle_request(request);
-        Ok(())
+        Ok(acceptor.handle_request(request))
     }
 
     /// Dispatch a pending request that cannot be confirmed as non-duplicate
@@ -180,7 +190,7 @@ impl<T: Send + 'static> Registry<T> {
         &self,
         acceptor_id: VarInt,
         request: T,
-    ) -> Result<PendingAction, DispatchError> {
+    ) -> Result<Dispatch, DispatchError> {
         let Some(acceptor) = self.acceptors.get(&acceptor_id) else {
             return Err(DispatchError::AcceptorNotFound);
         };
@@ -225,8 +235,9 @@ mod tests {
     }
 
     impl Acceptor<String> for TestAcceptor {
-        fn handle_request(&self, request: String) {
+        fn handle_request(&self, request: String) -> AutoWake {
             self.received.lock().unwrap().push(request);
+            AutoWake::new(None)
         }
     }
 
@@ -292,12 +303,12 @@ mod tests {
     struct CustomPendingAcceptor;
 
     impl Acceptor<String> for CustomPendingAcceptor {
-        fn handle_request(&self, _request: String) {
-            // Not used in this test
+        fn handle_request(&self, _request: String) -> AutoWake {
+            AutoWake::new(None)
         }
 
-        fn handle_pending(&self, request: String) -> PendingAction {
-            if request == "accept" {
+        fn handle_pending(&self, request: String) -> Dispatch {
+            let action = if request == "accept" {
                 PendingAction::Accepted
             } else if request == "retry" {
                 PendingAction::AcceptedWithRetry
@@ -305,6 +316,10 @@ mod tests {
                 PendingAction::Reject {
                     reset_code: VarInt::from_u32(42),
                 }
+            };
+            Dispatch {
+                action,
+                waker: AutoWake::new(None),
             }
         }
     }
@@ -322,20 +337,20 @@ mod tests {
         let result = registry
             .dispatch_pending(acceptor_id, "accept".to_string())
             .unwrap();
-        assert!(matches!(result, PendingAction::Accepted));
+        assert!(matches!(result.action, PendingAction::Accepted));
 
         // Test accepted with retry
         let result = registry
             .dispatch_pending(acceptor_id, "retry".to_string())
             .unwrap();
-        assert!(matches!(result, PendingAction::AcceptedWithRetry));
+        assert!(matches!(result.action, PendingAction::AcceptedWithRetry));
 
         // Test rejection
         let result = registry
             .dispatch_pending(acceptor_id, "reject".to_string())
             .unwrap();
         assert!(
-            matches!(result, PendingAction::Reject { reset_code } if reset_code == VarInt::from_u32(42))
+            matches!(result.action, PendingAction::Reject { reset_code } if reset_code == VarInt::from_u32(42))
         );
     }
 
@@ -360,6 +375,6 @@ mod tests {
         let result = registry
             .dispatch_pending(acceptor_id, "test".to_string())
             .unwrap();
-        assert!(matches!(result, PendingAction::Reject { .. }));
+        assert!(matches!(result.action, PendingAction::Reject { .. }));
     }
 }

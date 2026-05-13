@@ -21,7 +21,7 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
     let server = s2n_quic_dc::stream3::Server::new(endpoint, handshake);
 
     // Register channel acceptor with ID 0
-    let accept_rx = server.register_acceptor_channel(VarInt::ZERO, u32::MAX as _)?;
+    let accept_rx = server.register_acceptor_channel(VarInt::ZERO, (u32::MAX as usize).into())?;
 
     info!(
         %address,
@@ -34,13 +34,16 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
     let mut tasks = JoinSet::new();
 
     for _ in 0..16 {
-        let accept_rx = accept_rx.clone();
+        let mut accept_rx = accept_rx.clone();
         let stats = stats.clone();
         tasks.spawn(async move {
             loop {
-                let stream = accept_rx.recv_front().await.map_err(|_| {
-                    io::Error::new(io::ErrorKind::ConnectionAborted, "acceptor channel closed")
-                })?;
+                let Some(stream) = accept_rx.recv().await else {
+                    return Err::<(), io::Error>(io::Error::new(
+                        io::ErrorKind::ConnectionAborted,
+                        "acceptor channel closed",
+                    ));
+                };
 
                 let stats = stats.clone();
                 tokio::spawn(async move {

@@ -20,7 +20,11 @@ pub trait HasCoop {
     fn coop(&mut self) -> &mut Coop;
 }
 
-pub fn poll<S, T>(this: &mut S, cx: &mut Context, f: impl FnOnce(&mut S, &mut Context) -> Poll<T>) -> Poll<T>
+pub fn poll<S, T>(
+    this: &mut S,
+    cx: &mut Context,
+    f: impl FnOnce(&mut S, &mut Context) -> Poll<T>,
+) -> Poll<T>
 where
     S: HasCoop,
     Poll<T>: IsProgress,

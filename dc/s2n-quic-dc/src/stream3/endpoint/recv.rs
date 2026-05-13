@@ -10,14 +10,10 @@ use crate::{
     stream3::frame::{self, Frame, Header},
 };
 use core::time::Duration;
+use rustc_hash::FxHashMap;
 use s2n_codec::EncoderValue as _;
 use s2n_quic_core::{frame::ack::EcnCounts, varint::VarInt};
-use std::{
-    cell::RefCell,
-    collections::{hash_map, HashMap},
-    rc::Rc,
-    sync::Arc,
-};
+use std::{cell::RefCell, collections::hash_map, rc::Rc, sync::Arc};
 
 /// ACK transmission state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -254,15 +250,21 @@ impl Context {
 
 /// Key for sender state lookup — keyed by peer identity (stable) + sender_id,
 /// NOT by full Credentials (which includes the per-packet key_id).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Key {
     pub id: credentials::Id,
     pub remote_sender_id: VarInt,
 }
 
+impl core::hash::Hash for Key {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(self.id.to_hash() ^ self.remote_sender_id.as_u64());
+    }
+}
+
 /// Per-worker sender state cache.
 pub(crate) struct Cache {
-    pub senders: HashMap<Key, Context>,
+    pub senders: FxHashMap<Key, Context>,
     pub idle_timeout: Duration,
     pub worker_id: usize,
 }
@@ -270,13 +272,13 @@ pub(crate) struct Cache {
 impl Cache {
     pub fn new(idle_timeout: Duration, worker_id: usize) -> Self {
         Self {
-            senders: HashMap::new(),
+            senders: FxHashMap::default(),
             idle_timeout,
             worker_id,
         }
     }
 
-    #[track_caller]
+    #[inline]
     pub fn get_or_insert<Clk>(
         &mut self,
         credentials: &Credentials,
@@ -284,7 +286,7 @@ impl Cache {
         path_secret_map: &path::secret::map::Map,
         clock: &Clk,
         control_out: &mut Vec<u8>,
-    ) -> Option<&mut Context>
+    ) -> Option<(&mut Context, bool)>
     where
         Clk: s2n_quic_core::time::Clock + ?Sized,
     {
@@ -294,20 +296,21 @@ impl Cache {
         };
 
         Some(match self.senders.entry(key) {
-            hash_map::Entry::Occupied(entry) => entry.into_mut(),
+            hash_map::Entry::Occupied(entry) => (entry.into_mut(), true),
             hash_map::Entry::Vacant(entry) => {
-                tracing::debug!(%credentials, %remote_sender_id, caller = %core::panic::Location::caller(), worker_id = self.worker_id, "opener_for_credentials");
+                tracing::debug!(%credentials, %remote_sender_id, worker_id = self.worker_id, "opener_for_credentials");
                 let (opener, path_entry) =
                     path_secret_map.opener_for_credentials(credentials, None, control_out)?;
 
-                entry.insert(Context::new(
+                let ctx = entry.insert(Context::new(
                     path_entry,
                     remote_sender_id,
                     opener,
                     credentials.key_id,
                     clock,
                     self.idle_timeout,
-                ))
+                ));
+                (ctx, false)
             }
         })
     }

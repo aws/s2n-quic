@@ -378,39 +378,40 @@ impl<T: StickyRoute> StickyRoute for crate::intrusive_queue::Entry<T> {
 /// selects the sender with the earliest next-transmission time.
 ///
 /// Implements `Receiver<()>` so it can be drained via `ReceiverExt::drain_budgeted`.
-pub struct PickTwo<T, R, S, Rand> {
+pub struct PickTwo<T, R, S> {
     rx: R,
     senders: Vec<S>,
-    random: Rand,
+    rng: crate::xorshift::Rng,
     value: PhantomData<fn() -> T>,
 }
 
-impl<T, R, S, Rand> PickTwo<T, R, S, Rand>
+impl<T, R, S> PickTwo<T, R, S>
 where
     T: ByteCost + PathSecretMapEntry + StickyRoute,
     R: Receiver<T>,
     S: UnboundedSender<T>,
-    Rand: FnMut() -> usize,
 {
-    pub fn new(rx: R, senders: Vec<S>, random: Rand) -> Self {
+    pub fn new(rx: R, senders: Vec<S>, rng: crate::xorshift::Rng) -> Self {
         Self {
             rx,
             senders,
-            random,
+            rng,
             value: PhantomData,
         }
     }
 
-    fn try_send_pick_two(mut value: T, senders: &mut Vec<S>, random: &mut Rand) -> Result<(), T> {
+    fn try_send_pick_two(
+        mut value: T,
+        senders: &mut Vec<S>,
+        rng: &mut crate::xorshift::Rng,
+    ) -> Result<(), T> {
         debug_assert!(!senders.is_empty());
         let chosen_idx = if let Some(sticky_idx) = value.sticky_sender_idx() {
-            // Sticky routing — retransmissions must go back through the same socket.
             sticky_idx
         } else {
-            let picked = value
+            value
                 .path_secret_entry()
-                .pick_sender_by_next_transmission(random);
-            picked
+                .pick_sender_by_next_transmission(rng)
         };
 
         debug_assert!(
@@ -426,23 +427,19 @@ where
     }
 }
 
-impl<T, R, S, Rand> Receiver<()> for PickTwo<T, R, S, Rand>
+impl<T, R, S> Receiver<()> for PickTwo<T, R, S>
 where
     T: ByteCost + PathSecretMapEntry + StickyRoute,
     R: Receiver<T>,
     S: UnboundedSender<T>,
-    Rand: FnMut() -> usize,
 {
     fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<()>> {
         let Some(value) = ready!(self.rx.poll_recv(cx)) else {
             return Poll::Ready(None);
         };
 
-        match Self::try_send_pick_two(value, &mut self.senders, &mut self.random) {
-            Ok(()) => {
-                // Sent successfully. Compute byte cost before clearing slot.
-                Poll::Ready(Some(()))
-            }
+        match Self::try_send_pick_two(value, &mut self.senders, &mut self.rng) {
+            Ok(()) => Poll::Ready(Some(())),
             Err(_) => Poll::Ready(None),
         }
     }
@@ -562,11 +559,9 @@ where
             &mut self.idle_wheel_tx,
         );
 
-        self.counters.segments.record_value(
-            segments
-                .as_ref()
-                .map_or(0, |s| s.segment_count() as u64),
-        );
+        self.counters
+            .segments
+            .record_value(segments.as_ref().map_or(0, |s| s.segment_count() as u64));
 
         if let Some(segments) = segments {
             Poll::Ready(Some(segments))

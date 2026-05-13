@@ -337,7 +337,7 @@ impl Entry {
         next
     }
 
-    pub fn pick_sender_by_next_transmission(&self, random_fn: &mut impl FnMut() -> usize) -> usize {
+    pub fn pick_sender_by_next_transmission(&self, rng: &mut crate::xorshift::Rng) -> usize {
         let len = self.next_transmission_by_sender.len();
         debug_assert!(len > 0, "sender schedule is empty");
         debug_assert!(
@@ -349,11 +349,11 @@ impl Entry {
             return 0;
         }
 
-        let idx1 = random_fn() & (len - 1);
+        let idx1 = rng.next_usize(len);
         let idx2 = if len == 2 {
             idx1 ^ 1
         } else {
-            let mut idx2 = random_fn() % (len - 1);
+            let mut idx2 = rng.next_usize(len - 1);
             if idx2 >= idx1 {
                 idx2 += 1;
             }

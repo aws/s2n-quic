@@ -153,22 +153,14 @@ impl Registry {
             return existing.clone();
         }
 
-        let throughput = Counter(
-            self.inner
-                .register_counter(format!("{label}.enq"), None),
-        );
-        let drain = Counter(
-            self.inner
-                .register_counter(format!("{label}.drain"), None),
-        );
+        let throughput = Counter(self.inner.register_counter(format!("{label}.enq"), None));
+        let drain = Counter(self.inner.register_counter(format!("{label}.drain"), None));
         let depth = Arc::new(AtomicI64::new(0));
         let depth_clone = depth.clone();
-        self.inner.register_list_callback(
-            format!("{label}.depth"),
-            None,
-            Unit::Count,
-            move || NonZeroDisplay(depth_clone.load(Ordering::Relaxed)),
-        );
+        self.inner
+            .register_list_callback(format!("{label}.depth"), None, Unit::Count, move || {
+                NonZeroDisplay(depth_clone.load(Ordering::Relaxed))
+            });
 
         let gauge = QueueGauge {
             throughput,
@@ -182,18 +174,15 @@ impl Registry {
     pub fn register_gauge(&self, label: &str) -> Gauge {
         let inner = Arc::new(AtomicI64::new(0));
         let inner_clone = inner.clone();
-        self.inner.register_list_callback(
-            label.to_string(),
-            None,
-            Unit::Count,
-            move || NonZeroDisplay(inner_clone.load(Ordering::Relaxed)),
-        );
+        self.inner
+            .register_list_callback(label.to_string(), None, Unit::Count, move || {
+                NonZeroDisplay(inner_clone.load(Ordering::Relaxed))
+            });
         Gauge(inner)
     }
 
     pub fn register_summary(&self, label: &str, unit: Unit) -> Summary {
-        self.inner
-            .register_summary(label.to_string(), None, unit)
+        self.inner.register_summary(label.to_string(), None, unit)
     }
 
     pub fn register_timer(&self, label: &str) -> Timer {
@@ -204,19 +193,28 @@ impl Registry {
     }
 
     pub fn spawn_reporter(&self, interval: Duration) {
+        self.spawn_reporter_with_label(interval, "")
+    }
+
+    pub fn spawn_reporter_with_label(&self, interval: Duration, label: impl Into<String>) {
         let inner = self.inner.clone();
+        let label = label.into();
 
         #[cfg(any(test, feature = "testing"))]
         if bach::is_active() {
-            bach::spawn(report_loop(inner, move || bach::time::sleep(interval)));
+            bach::spawn(report_loop(inner, label, move || {
+                bach::time::sleep(interval)
+            }));
             return;
         }
 
-        tokio::spawn(report_loop(inner, move || tokio::time::sleep(interval)));
+        tokio::spawn(report_loop(inner, label, move || {
+            tokio::time::sleep(interval)
+        }));
     }
 }
 
-async fn report_loop<F, Fut>(inner: s2n_quic_dc_metrics::Registry, sleep: F)
+async fn report_loop<F, Fut>(inner: s2n_quic_dc_metrics::Registry, label: String, sleep: F)
 where
     F: Fn() -> Fut,
     Fut: core::future::Future<Output = ()>,
@@ -230,7 +228,11 @@ where
             if !line.is_empty() {
                 let formatted = format_metrics_line(&line);
                 if !formatted.is_empty() {
-                    tracing::info!("{formatted}");
+                    if label.is_empty() {
+                        tracing::info!("{formatted}");
+                    } else {
+                        tracing::info!("[{label}] {formatted}");
+                    }
                 }
             }
         }
@@ -343,10 +345,7 @@ impl<T, R> crate::socket::channel::Receiver<T> for GaugedReceiver<R>
 where
     R: crate::socket::channel::Receiver<T>,
 {
-    fn poll_recv(
-        &mut self,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Option<T>> {
+    fn poll_recv(&mut self, cx: &mut core::task::Context<'_>) -> core::task::Poll<Option<T>> {
         match self.inner.poll_recv(cx) {
             core::task::Poll::Ready(Some(v)) => {
                 self.gauge.dequeue();
@@ -371,8 +370,7 @@ where
 /// - `name:bytes` → converted to `name=X.XXGbps`
 /// - Everything else → passed through as `name=value`
 fn format_metrics_line(line: &str) -> String {
-    use std::collections::BTreeMap;
-    use std::fmt::Write;
+    use std::{collections::BTreeMap, fmt::Write};
 
     // Parse all key=value pairs
     let mut metrics: BTreeMap<&str, &str> = BTreeMap::new();
@@ -384,6 +382,8 @@ fn format_metrics_line(line: &str) -> String {
 
     // Collect queue gauge bases (keys that have .enq/.drain/.depth siblings)
     let mut queue_bases: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    // Collect hit/miss bases (keys that have .hit/.miss siblings)
+    let mut hit_miss_bases: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     for key in metrics.keys() {
         if let Some(base) = key.strip_suffix(".enq") {
             queue_bases.insert(base);
@@ -391,6 +391,10 @@ fn format_metrics_line(line: &str) -> String {
             queue_bases.insert(base);
         } else if let Some(base) = key.strip_suffix(".depth") {
             queue_bases.insert(base);
+        } else if let Some(base) = key.strip_suffix(".hit") {
+            hit_miss_bases.insert(base);
+        } else if let Some(base) = key.strip_suffix(".miss") {
+            hit_miss_bases.insert(base);
         }
     }
 
@@ -403,12 +407,12 @@ fn format_metrics_line(line: &str) -> String {
         }
 
         // Check if this key is part of a queue gauge group
-        let base = key
+        let queue_base = key
             .strip_suffix(".enq")
             .or_else(|| key.strip_suffix(".drain"))
             .or_else(|| key.strip_suffix(".depth"));
 
-        if let Some(base) = base {
+        if let Some(base) = queue_base {
             if queue_bases.contains(base) {
                 if emitted.contains(base) {
                     continue;
@@ -418,9 +422,27 @@ fn format_metrics_line(line: &str) -> String {
                 let enq_key = format!("{base}.enq");
                 let drain_key = format!("{base}.drain");
                 let depth_key = format!("{base}.depth");
-                emitted.insert(metrics.keys().find(|k| **k == enq_key.as_str()).copied().unwrap_or(""));
-                emitted.insert(metrics.keys().find(|k| **k == drain_key.as_str()).copied().unwrap_or(""));
-                emitted.insert(metrics.keys().find(|k| **k == depth_key.as_str()).copied().unwrap_or(""));
+                emitted.insert(
+                    metrics
+                        .keys()
+                        .find(|k| **k == enq_key.as_str())
+                        .copied()
+                        .unwrap_or(""),
+                );
+                emitted.insert(
+                    metrics
+                        .keys()
+                        .find(|k| **k == drain_key.as_str())
+                        .copied()
+                        .unwrap_or(""),
+                );
+                emitted.insert(
+                    metrics
+                        .keys()
+                        .find(|k| **k == depth_key.as_str())
+                        .copied()
+                        .unwrap_or(""),
+                );
 
                 let enq = metrics.get(enq_key.as_str()).unwrap_or(&"0");
                 let drain = metrics.get(drain_key.as_str()).unwrap_or(&"0");
@@ -433,6 +455,46 @@ fn format_metrics_line(line: &str) -> String {
                     Some(d) if *d != "0" => write!(output, "{base}={enq}/{drain}({d})").unwrap(),
                     _ => write!(output, "{base}={enq}/{drain}").unwrap(),
                 }
+                continue;
+            }
+        }
+
+        // Check if this key is part of a hit/miss group
+        let hm_base = key
+            .strip_suffix(".hit")
+            .or_else(|| key.strip_suffix(".miss"));
+
+        if let Some(base) = hm_base {
+            if hit_miss_bases.contains(base) {
+                if emitted.contains(base) {
+                    continue;
+                }
+                emitted.insert(base);
+
+                let hit_key = format!("{base}.hit");
+                let miss_key = format!("{base}.miss");
+                emitted.insert(
+                    metrics
+                        .keys()
+                        .find(|k| **k == hit_key.as_str())
+                        .copied()
+                        .unwrap_or(""),
+                );
+                emitted.insert(
+                    metrics
+                        .keys()
+                        .find(|k| **k == miss_key.as_str())
+                        .copied()
+                        .unwrap_or(""),
+                );
+
+                let hit = metrics.get(hit_key.as_str()).unwrap_or(&"0");
+                let miss = metrics.get(miss_key.as_str()).unwrap_or(&"0");
+
+                if !output.is_empty() {
+                    output.push(' ');
+                }
+                write!(output, "{base}={hit}/{miss}").unwrap();
                 continue;
             }
         }
@@ -600,7 +662,17 @@ mod tests {
     fn format_mixed() {
         let line = "q.ack.drain=46005,q.ack.enq=46005,rx.data=255470,socket.tx:bytes=272721617";
         let result = format_metrics_line(line);
-        assert_eq!(result, "q.ack=46005/46005 rx.data=255470 socket.tx=2.18Gbps");
+        assert_eq!(
+            result,
+            "q.ack=46005/46005 rx.data=255470 socket.tx=2.18Gbps"
+        );
+    }
+
+    #[test]
+    fn format_hit_miss() {
+        let line = "rx.peer_cache.hit=80000,rx.peer_cache.miss=5";
+        let result = format_metrics_line(line);
+        assert_eq!(result, "rx.peer_cache=80000/5");
     }
 
     #[test]

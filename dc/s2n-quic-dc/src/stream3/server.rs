@@ -18,12 +18,12 @@
 //! so the acceptor doesn't need to build anything — it just uses the stream.
 
 use crate::{
-    acceptor,
+    acceptor::{self, channel as accept_channel},
+    flow::queue::AutoWake,
     stream3::{
         endpoint::{reset_error::ResetError, Endpoint},
         Stream,
     },
-    sync::mpmc,
 };
 use s2n_quic_core::varint::VarInt;
 use std::{io, sync::Arc};
@@ -75,20 +75,20 @@ impl Server {
 
     /// Register a channel-based acceptor that yields Streams
     ///
-    /// Returns a Receiver that yields accepted streams. The acceptor is automatically
-    /// unregistered when all receivers are dropped.
+    /// Returns a Receiver that yields accepted streams. Cloning the receiver
+    /// scales out acceptance across multiple tasks via pick-two load balancing.
+    /// The acceptor is automatically unregistered when all receivers are dropped.
     ///
-    /// `capacity` controls the accept queue depth. Under high connection rates, older
-    /// pending streams are dropped to make room for new ones.
+    /// `config` controls the per-receiver queue capacity and eviction policy.
     pub fn register_acceptor_channel(
         &self,
         acceptor_id: VarInt,
-        capacity: usize,
-    ) -> io::Result<mpmc::Receiver<Stream>> {
-        let (tx, rx) = mpmc::new(capacity);
+        config: accept_channel::Config,
+    ) -> io::Result<accept_channel::Receiver<Stream>> {
+        let (tx, rx) = accept_channel::new(config);
 
         let channel_acceptor = Arc::new(ChannelAcceptor {
-            tx,
+            tx: parking_lot::Mutex::new(tx),
             handle: std::sync::Mutex::new(None),
         });
 
@@ -107,30 +107,37 @@ impl Server {
 }
 
 struct ChannelAcceptor {
-    tx: mpmc::Sender<Stream>,
+    tx: parking_lot::Mutex<accept_channel::Sender<Stream>>,
     handle: std::sync::Mutex<Option<acceptor::Handle>>,
 }
 
 impl acceptor::Acceptor<Stream> for ChannelAcceptor {
-    fn handle_request(&self, stream: Stream) {
-        self.send(stream);
+    fn handle_request(&self, stream: Stream) -> AutoWake {
+        self.send(stream)
     }
 
-    fn handle_pending(&self, stream: Stream) -> acceptor::PendingAction {
-        self.send(stream);
-        acceptor::PendingAction::AcceptedWithRetry
+    fn handle_pending(&self, stream: Stream) -> acceptor::Dispatch {
+        let waker = self.send(stream);
+        acceptor::Dispatch {
+            action: acceptor::PendingAction::AcceptedWithRetry,
+            waker,
+        }
     }
 }
 
 impl ChannelAcceptor {
-    fn send(&self, stream: Stream) {
-        match self.tx.send_back(stream) {
-            Ok(Some(mut evicted)) => {
+    fn send(&self, stream: Stream) -> AutoWake {
+        let mut tx = self.tx.lock();
+        match tx.send(stream) {
+            Ok((Some(mut evicted), waker)) => {
                 evicted.reset(ResetError::ServerBusy);
+                AutoWake::new(waker)
             }
-            Ok(None) => {}
+            Ok((None, waker)) => AutoWake::new(waker),
             Err(_) => {
+                drop(tx);
                 drop(self.handle.lock().unwrap().take());
+                AutoWake::new(None)
             }
         }
     }

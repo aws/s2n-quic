@@ -142,14 +142,12 @@ fn with_noop_context<R>(f: impl FnOnce(&mut task::Context<'_>) -> R) -> R {
 
 // ── PickTwo tests ─────────────────────────────────────────────────────────
 
-fn try_send_pick_two<Rand: FnMut() -> usize>(
+fn try_send_pick_two(
     value: TestItem,
     senders: &mut Vec<TestSender>,
-    random: &mut Rand,
+    rng: &mut crate::xorshift::Rng,
 ) -> Result<(), TestItem> {
-    PickTwo::<TestItem, TestReceiver<TestItem>, TestSender, Rand>::try_send_pick_two(
-        value, senders, random,
-    )
+    PickTwo::<TestItem, TestReceiver<TestItem>, TestSender>::try_send_pick_two(value, senders, rng)
 }
 
 #[test]
@@ -165,10 +163,9 @@ fn selected_sender_receives_item() {
             calls: 0,
         },
     ];
-    let result = try_send_pick_two(item, &mut senders, &mut || 0);
+    let result = try_send_pick_two(item, &mut senders, &mut crate::xorshift::Rng::new());
     assert!(result.is_ok());
-    assert_eq!(senders[0].calls, 1);
-    assert_eq!(senders[1].calls, 0);
+    assert_eq!(senders[0].calls + senders[1].calls, 1);
 }
 
 #[test]
@@ -181,14 +178,13 @@ fn sender_error_returns_value() {
             calls: 0,
         },
         TestSender {
-            accept: true,
+            accept: false,
             calls: 0,
         },
     ];
-    let result = try_send_pick_two(item, &mut senders, &mut || 0);
+    let result = try_send_pick_two(item, &mut senders, &mut crate::xorshift::Rng::new());
     assert!(result.is_err());
-    assert_eq!(senders[0].calls, 1);
-    assert_eq!(senders[1].calls, 0);
+    assert_eq!(senders[0].calls + senders[1].calls, 1);
     assert_eq!(drop_counter.load(Ordering::Relaxed), 0);
 
     drop(result);
@@ -206,11 +202,17 @@ fn pick_two_drops_unsent_entry_on_shutdown() {
         .into(),
         consumed: 0,
     };
-    let senders = vec![TestSender {
-        accept: false,
-        calls: 0,
-    }];
-    let pick_two = PickTwo::new(rx, senders, || 0);
+    let senders = vec![
+        TestSender {
+            accept: false,
+            calls: 0,
+        },
+        TestSender {
+            accept: false,
+            calls: 0,
+        },
+    ];
+    let pick_two = PickTwo::new(rx, senders, crate::xorshift::Rng::new());
     let mut fut = core::pin::pin!(crate::socket::channel::ReceiverExt::drain_budgeted(
         pick_two, None
     ));
@@ -233,7 +235,7 @@ fn sticky_sender_bypasses_pick_two() {
             calls: 0,
         },
     ];
-    let result = try_send_pick_two(item, &mut senders, &mut || 0);
+    let result = try_send_pick_two(item, &mut senders, &mut crate::xorshift::Rng::new());
     assert!(result.is_ok());
     assert_eq!(senders[0].calls, 0);
     assert_eq!(senders[1].calls, 1);
@@ -254,7 +256,7 @@ fn sticky_sender_error_returns_value() {
             calls: 0,
         },
     ];
-    let result = try_send_pick_two(item, &mut senders, &mut || 0);
+    let result = try_send_pick_two(item, &mut senders, &mut crate::xorshift::Rng::new());
     assert!(result.is_err());
     assert_eq!(senders[0].calls, 1);
     assert_eq!(senders[1].calls, 0);
