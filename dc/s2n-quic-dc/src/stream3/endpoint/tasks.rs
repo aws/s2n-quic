@@ -157,7 +157,7 @@ pub fn frame_dispatch<S, Clk>(
         let rx = crate::counter::GaugedReceiver::new(rx, q_frames);
         let rx = BatchFramesByPathSecret::new(rx, &clock, overall_send_rate);
         let rx = Map::new(rx, Entry::new);
-        // let rx = FrameDispatchPacer::new(rx, clock, overall_send_rate);
+        let rx = Paced::new(rx, clock, overall_send_rate);
         let rx = PickTwo::new(rx, worker_senders, rng);
         rx.drain_budgeted(Some(budgets.frame_dispatch)).await;
     });
