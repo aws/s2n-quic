@@ -182,6 +182,13 @@ impl<V> Map<V> {
         self.values[index].as_ref()
     }
 
+    /// Returns a mutable reference to the `V` associated with the given `packet_number`
+    #[inline]
+    pub fn get_mut(&mut self, packet_number: PacketNumber) -> Option<&mut V> {
+        let index = self.pn_index(packet_number)?;
+        self.values[index].as_mut()
+    }
+
     /// Removes the value associated with the given `packet_number`
     /// and returns the value if it was present
     pub fn remove(&mut self, packet_number: PacketNumber) -> Option<V> {

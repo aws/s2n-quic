@@ -27,13 +27,16 @@ pub(crate) struct TransmissionInfo {
 /// Contains all frames that were packed into this packet, plus the shared transmission
 /// metadata. When ACKed, each frame's completion fires. When lost, each frame is
 /// individually evaluated for retransmission.
+///
+/// ACK (control/immediate) frames are stripped before insertion — they are stale on
+/// any retransmit and must not be re-sent. So `frames` contains only data (ack-eliciting)
+/// frames.
 pub(crate) struct Packet {
-    /// All frames packed into this packet.
+    /// All data frames packed into this packet.
     ///
-    /// When the packet is ACKed, each frame's completion notification fires. When the
-    /// packet is declared lost, each frame is individually evaluated for retransmission.
-    /// When this packet is a "shell" (probed to a newer PN), the list will be empty
-    /// because the frames have been moved to the probe entry.
+    /// ACK/control frames are stripped before insertion — they are stale on retransmit.
+    /// When this packet is a "shell" (probed to a newer PN), the list is empty because
+    /// the frames have been moved to the probe entry.
     pub frames: Queue<Frame>,
     /// Transmission metadata shared by all frames in this packet (CCA info, send time,
     /// wire byte count). Taken on first ACK or loss so that RTT/CCA updates are applied
@@ -57,6 +60,15 @@ pub(crate) struct Packet {
 
 impl Packet {
     pub fn new(frames: Queue<Frame>, info: TransmissionInfo) -> Self {
+        // All stored frames must be ack-eliciting (ACK/control frames are stripped
+        // before insertion by the assembler).
+        #[cfg(debug_assertions)]
+        for frame in frames.iter() {
+            debug_assert!(
+                !frame.is_immediate(),
+                "ACK/control frame stored in inflight Packet — strip before insertion"
+            );
+        }
         Self {
             frames,
             transmission_info: Some(info),
@@ -100,6 +112,104 @@ impl Map {
 
     pub fn has_inflight(&self) -> bool {
         self.inner.iter().next().is_some()
+    }
+
+    /// Return a mutable reference to the packet at `pn`, if present.
+    pub fn get_mut(&mut self, pn: PacketNumber) -> Option<&mut Packet> {
+        self.inner.get_mut(pn)
+    }
+
+    /// Find the oldest inflight packet number that has data frames available for probing.
+    ///
+    /// Returns `None` if all inflight entries are shells or if the map is empty.
+    pub fn oldest_non_shell_pn(&self) -> Option<PacketNumber> {
+        self.inner
+            .iter()
+            .find(|(_, p)| !p.frames.is_empty())
+            .map(|(pn, _)| pn)
+    }
+
+    /// Take the frames from the oldest non-shell inflight entry for a PTO probe.
+    ///
+    /// The entry remains in the map with an empty `frames` list and its
+    /// `TransmissionInfo` intact. The caller must then call [`set_probed_to`] to
+    /// finalise the shell pointer.
+    ///
+    /// [`set_probed_to`]: Self::set_probed_to
+    pub fn take_oldest_for_probe(&mut self) -> Option<(PacketNumber, Queue<Frame>)> {
+        let old_pn = self.oldest_non_shell_pn()?;
+        let packet = self.inner.get_mut(old_pn)?;
+        let frames = core::mem::take(&mut packet.frames);
+        Some((old_pn, frames))
+    }
+
+    /// Verify structural invariants of the inflight map.
+    ///
+    /// Each stored packet must either have a `probed_to` link (shell) **or** contain
+    /// non-empty, all-ack-eliciting frames. A packet with only ACK frames and no
+    /// `probed_to` could trigger an ACK loop.
+    ///
+    /// The O(N × F) loop over all frames is only compiled in test builds. Cheaper
+    /// per-entry checks can be added outside the `#[cfg(test)]` guard in the future.
+    pub fn invariants(&self) {
+        #[cfg(test)]
+        for (_, packet) in self.inner.iter() {
+            if packet.probed_to.is_none() {
+                assert!(
+                    !packet.frames.is_empty(),
+                    "inflight packet has no probed_to link and no frames — potential ACK loop"
+                );
+                for frame in packet.frames.iter() {
+                    assert!(
+                        !frame.is_immediate(),
+                        "inflight packet stores an ACK/control frame — strip before insertion"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Set the `probed_to` forward pointer on an existing inflight entry.
+    ///
+    /// Called after a probe segment is successfully encoded: the `old_pn` entry
+    /// becomes a shell pointing to `new_pn` (the probe's packet number).
+    pub fn set_probed_to(&mut self, old_pn: PacketNumber, new_pn: PacketNumber) {
+        if let Some(packet) = self.inner.get_mut(old_pn) {
+            debug_assert!(
+                packet.frames.is_empty(),
+                "set_probed_to: old entry still has frames; \
+                 take_oldest_for_probe should have taken them before calling set_probed_to"
+            );
+            packet.probed_to = Some(new_pn);
+        }
+    }
+
+    /// Follow the `probed_to` chain starting at `pn` and take the frames from the tail.
+    ///
+    /// Used in ACK processing when a shell is ACKed: the frames to complete live at
+    /// the tail of the probe chain. The tail entry's `frames` are emptied but the
+    /// entry itself remains in the map with its `TransmissionInfo` intact for later
+    /// loss detection or ACK completion.
+    ///
+    /// Returns `(tail_pn, frames)`.
+    pub fn take_chain_tail_frames(&mut self, mut pn: PacketNumber) -> (PacketNumber, Queue<Frame>) {
+        // Walk the chain to the tail (first entry with no probed_to link).
+        loop {
+            match self.inner.get(pn).and_then(|p| p.probed_to) {
+                Some(next_pn) => pn = next_pn,
+                None => break,
+            }
+        }
+        let frames = self
+            .inner
+            .get_mut(pn)
+            .map(|p| core::mem::take(&mut p.frames))
+            .unwrap_or_default();
+        debug_assert!(
+            !frames.is_empty(),
+            "take_chain_tail_frames: probe chain tail has no frames"
+        );
+        (pn, frames)
     }
 }
 

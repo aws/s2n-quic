@@ -410,9 +410,27 @@ pub fn send_worker<Socket, Clk, WakerSink>(
     spawner.spawn(wheel_drain(
         pto_wheel_rx,
         clock.timer(),
-        |context: Rc<RefCell<send::Context>>| {
-            // TODO fire PTO probe for this context
-            let _ = context;
+        {
+            let clock = clock.clone();
+            let mut tx_wheel_tx = tx_wheel_tx.clone();
+            let mut pto_wheel_tx = pto_wheel_tx.clone();
+            let mut idle_wheel_tx = idle_wheel_tx.clone();
+            let q_tx_wheel = q_tx_wheel.clone();
+            move |context: Rc<RefCell<send::Context>>| {
+                let wheel_interest = {
+                    let mut ctx = context.borrow_mut();
+                    ctx.on_pto_timeout(&clock)
+                };
+                if wheel_interest.transmission {
+                    q_tx_wheel.enqueue(1);
+                }
+                wheel_interest.dispatch(
+                    context,
+                    &mut tx_wheel_tx,
+                    &mut pto_wheel_tx,
+                    &mut idle_wheel_tx,
+                );
+            }
         },
         budgets.pto_wheel,
     ));

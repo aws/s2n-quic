@@ -124,6 +124,7 @@ impl PendingFrames {
     }
 }
 
+#[must_use = "WheelInterest must be dispatched; ignoring it silently skips wheel scheduling"]
 #[derive(Clone, Copy, Debug)]
 pub struct WheelInterest {
     pub transmission: bool,
@@ -151,6 +152,43 @@ impl WheelInterest {
         if self.transmission {
             let _ = UnboundedSender::send(tx_wheel_tx, context);
         }
+    }
+}
+
+/// PTO probe state for a send context.
+///
+/// The assembler checks this on every assembly round:
+/// - `Idle`: no probe pending; perform normal immediate + pending drain.
+/// - `Requested`: a probe must be sent. If `pending` data is present it serves as the
+///   ack-eliciting packet (CWND is bypassed per RFC 9002 §6.2.4). Otherwise the assembler
+///   retransmits frames from the oldest non-shell inflight entry under a new packet number,
+///   linking the two via `inflight::Packet::probed_to`. After an ack-eliciting packet is
+///   successfully encoded, the assembler calls `on_transmit()` to transition back to `Idle`.
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ProbeState {
+    /// No probe pending.
+    #[default]
+    Idle,
+    /// A probe has been requested by the PTO handler.
+    Requested,
+}
+
+impl ProbeState {
+    s2n_quic_core::state::is!(
+        /// Returns `true` when a probe is pending.
+        is_requested, Requested
+    );
+
+    s2n_quic_core::state::event! {
+        /// Transition `Idle → Requested` when a PTO fires.
+        request(Idle => Requested);
+        /// Transition `Requested → Idle` after the assembler transmits an ack-eliciting probe.
+        on_transmit(Requested => Idle);
+    }
+
+    #[cfg(test)]
+    pub fn dot_test() {
+        insta::assert_snapshot!(Self::dot());
     }
 }
 
@@ -303,12 +341,18 @@ impl Context {
         // Check we have queued packets and we're not already linked
         !self.is_tx_scheduled()
             && (self.has_immediate()
+                || self.pto.probe_state.is_requested()
                 || (self.has_pending_data() && self.can_send_pending_frames()))
         {
-            let target = self
-                .cca
-                .earliest_departure_time()
-                .map(precision::Timestamp::from);
+            // Probes bypass pacing: if one is pending schedule immediately so the
+            // assembler can encode it without waiting for the CCA departure time.
+            let target = if self.pto.probe_state.is_requested() {
+                None
+            } else {
+                self.cca
+                    .earliest_departure_time()
+                    .map(precision::Timestamp::from)
+            };
             // If target time is `None` then the wheel will schedule it immediately
             self.tx_wheel.target_time = target;
             true
@@ -316,7 +360,7 @@ impl Context {
             false
         };
 
-        let pto = if !self.is_pto_scheduled() {
+        let pto = if !self.is_pto_scheduled() && self.inflight.has_inflight() {
             self.pto.update_target(clock, &self.rtt_estimator);
             if let Some(target) = self.pto.target_time {
                 self.pto_wheel.target_time = Some(target);
@@ -377,6 +421,12 @@ impl Context {
         self.queues[frame.priority().as_index()].push_front(frame);
     }
 
+    /// Push a frame to the back of whichever priority queue it belongs to.
+    #[inline]
+    pub fn push_back_frame(&mut self, frame: intrusive_queue::Entry<Frame>) {
+        self.queues[frame.priority().as_index()].push_back(frame);
+    }
+
     /// Publish the estimated next transmission time to the path secret entry.
     ///
     /// Derives the estimate from the current pending wire cost and the CCA bandwidth
@@ -428,6 +478,42 @@ impl Context {
     #[inline]
     pub fn is_idle_scheduled(&self) -> bool {
         self.idle_wheel.links.is_linked()
+    }
+
+    /// Called when the PTO wheel fires for this context.
+    ///
+    /// Transitions the probe state from `Idle` to `Requested` if a real probe
+    /// should be sent, then computes and returns the updated `WheelInterest` for
+    /// rescheduling. The caller only needs to dispatch the returned interest.
+    pub fn on_pto_timeout<Clk: precision::Clock + ?Sized>(&mut self, clock: &Clk) -> WheelInterest {
+        if self.pto.on_timeout() {
+            // The only failure case is `NoOp` — the state is already `Requested`
+            // because a previous probe hasn't been consumed by the assembler yet.
+            // That's harmless: the assembler will send the probe on its next run.
+            let _ = self.pto.probe_state.request();
+        }
+        self.wheel_interest(clock)
+    }
+
+    /// Verify structural invariants of the context.
+    ///
+    /// Runs assertions guarded by `cfg!(debug_assertions)` — in release builds this
+    /// compiles away to nothing. Call this after any mutation that could violate these
+    /// invariants:
+    /// - PTO target should be `None` when there is no inflight data (no need to probe).
+    /// - Every inflight packet must either have a `probed_to` link (shell) or contain
+    ///   non-empty, all-ack-eliciting frames (no stale ACK frames stored).
+    #[inline]
+    pub fn invariants(&self) {
+        if cfg!(debug_assertions) {
+            if !self.inflight.has_inflight() {
+                assert!(
+                    self.pto.target_time.is_none(),
+                    "PTO is armed but there is no inflight data to probe"
+                );
+            }
+        }
+        self.inflight.invariants();
     }
 }
 
@@ -510,20 +596,53 @@ context_wheel_adapter!(IdleWheelAdapter, idle_wheel);
 /// When all inflight packets may be lost (no ACKs arriving), PTO fires to send a probe.
 /// This ensures the peer generates an ACK, which either confirms delivery or triggers
 /// loss detection.
+///
+/// ## Constant-period wheel arming
+///
+/// The intrusive timing wheel does not support updating existing entries, so we always
+/// arm at one base PTO period (1× `pto_period(INITIAL_PTO_BACKOFF)`) and track the
+/// effective backoff as a fire count. The wheel fires cheaply at the base rate;
+/// the handler decrements the counter and only sends a real probe when it reaches zero.
+///
+/// On ACK: reset `firings_remaining` to 0 so the very next wheel firing is a probe
+/// (equivalent to resetting backoff to 1×). After at most one base period, we know
+/// whether more inflight data needs probing.
+///
+/// `arm_base` advances by one base period on every arm so successive firings are evenly
+/// spaced, even when `last_sent_time` stops advancing. Reset to `None` on packet-sent
+/// or ACK so the next arm re-anchors to the freshest send timestamp.
 pub(crate) struct Pto {
+    /// Number of base-period wheel firings to consume before sending the next probe.
+    ///
+    /// Set to `backoff - 1` after a probe fires (so the next `backoff` firings elapse
+    /// before probing again). Reset to 0 on ACK.
+    pub firings_remaining: u32,
+    /// Current effective backoff multiplier (doubles after each probe, capped at 16×).
     pub backoff: u32,
     pub target_time: Option<precision::Timestamp>,
+    /// Rolling base for `update_target` computations.
+    ///
+    /// `update_target` sets `target = arm_base + base_period` then advances `arm_base`
+    /// to that value so consecutive arms are evenly spaced. Reset to `None` on
+    /// packet-sent and on ACK so the next arm re-anchors to `last_sent_time`.
+    pub arm_base: Option<precision::Timestamp>,
     pub last_sent_time: Option<precision::Timestamp>,
     pub needs_update: bool,
+    /// PTO probe state: set to `Requested` by the PTO handler via `on_pto_timeout`;
+    /// cleared by the assembler after the probe segment is encoded.
+    pub probe_state: ProbeState,
 }
 
 impl Default for Pto {
     fn default() -> Self {
         Self {
+            firings_remaining: 0,
             backoff: INITIAL_PTO_BACKOFF,
             target_time: None,
+            arm_base: None,
             last_sent_time: None,
             needs_update: false,
+            probe_state: ProbeState::Idle,
         }
     }
 }
@@ -531,11 +650,16 @@ impl Default for Pto {
 impl Pto {
     pub fn on_packet_sent(&mut self, now: precision::Timestamp) {
         self.last_sent_time = Some(now);
+        // Reset arm_base so the next update_target re-anchors to this send time.
+        self.arm_base = None;
         self.needs_update = true;
     }
 
     pub fn on_ack_received(&mut self, has_remaining_inflight: bool) {
         self.backoff = INITIAL_PTO_BACKOFF;
+        self.firings_remaining = 0;
+        // Reset arm_base so the next arm is relative to the freshest last_sent_time.
+        self.arm_base = None;
 
         if has_remaining_inflight {
             self.needs_update = true;
@@ -545,29 +669,54 @@ impl Pto {
         }
     }
 
-    /// Returns true if we should send a probe.
+    /// Called when the PTO wheel fires for this context.
+    ///
+    /// Returns `true` if a probe should be sent now, `false` if this was a
+    /// countdown firing (or a needs-update re-sync) that simply re-arms the wheel.
     pub fn on_timeout(&mut self) -> bool {
         self.target_time = None;
 
         if self.needs_update {
+            // A packet was sent since the last arm; re-sync the arm base to the new
+            // last_sent_time rather than firing a spurious probe.
             self.needs_update = false;
+            self.arm_base = None;
             return false;
         }
 
+        if self.firings_remaining > 0 {
+            self.firings_remaining -= 1;
+            return false;
+        }
+
+        // Time to probe: double backoff for next round (capped at 16×).
         self.backoff = self.backoff.saturating_mul(2).min(16);
+        self.firings_remaining = self.backoff - 1;
         true
     }
 
+    /// Compute the next wheel arm target and store it in `target_time`.
+    ///
+    /// Always uses one base period (1× `pto_period(INITIAL_PTO_BACKOFF)`) regardless
+    /// of the current backoff level. `arm_base` advances by one period each call so
+    /// consecutive firings are evenly spaced.
     pub fn update_target<Clk: precision::Clock + ?Sized>(
         &mut self,
         clock: &Clk,
         rtt_estimator: &RttEstimator,
     ) {
-        let mut pto_period = rtt_estimator.pto_period(self.backoff, PacketNumberSpace::Initial);
-        pto_period = pto_period.max(Duration::from_millis(2));
+        let mut base_period =
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::Initial);
+        base_period = base_period.max(Duration::from_millis(2));
 
-        let base_time = self.last_sent_time.unwrap_or_else(|| clock.now());
-        self.target_time = Some(base_time + pto_period);
+        // Anchor to arm_base if available, otherwise to last_sent_time, otherwise now.
+        let base = self.arm_base.unwrap_or_else(|| {
+            self.last_sent_time.unwrap_or_else(|| clock.now())
+        });
+        let next = base + base_period;
+        // Advance arm_base so the next call steps forward by another period.
+        self.arm_base = Some(next);
+        self.target_time = Some(next);
     }
 }
 
