@@ -361,8 +361,7 @@ impl Context {
         };
 
         let pto = if !self.is_pto_scheduled() && self.inflight.has_inflight() {
-            self.pto.update_target(clock, &self.rtt_estimator);
-            if let Some(target) = self.pto.target_time {
+            if let Some(target) = self.pto.next_target(clock, &self.rtt_estimator) {
                 self.pto_wheel.target_time = Some(target);
                 true
             } else {
@@ -508,7 +507,7 @@ impl Context {
         if cfg!(debug_assertions) {
             if !self.inflight.has_inflight() {
                 assert!(
-                    self.pto.target_time.is_none(),
+                    !self.pto.is_armed(),
                     "PTO is armed but there is no inflight data to probe"
                 );
             }
@@ -619,10 +618,9 @@ pub(crate) struct Pto {
     pub firings_remaining: u32,
     /// Current effective backoff multiplier (doubles after each probe, capped at 16×).
     pub backoff: u32,
-    pub target_time: Option<precision::Timestamp>,
-    /// Rolling base for `update_target` computations.
+    /// Rolling base for `next_target` computations.
     ///
-    /// `update_target` sets `target = arm_base + base_period` then advances `arm_base`
+    /// `next_target` sets `target = arm_base + base_period` then advances `arm_base`
     /// to that value so consecutive arms are evenly spaced. Reset to `None` on
     /// packet-sent and on ACK so the next arm re-anchors to `last_sent_time`.
     pub arm_base: Option<precision::Timestamp>,
@@ -638,7 +636,6 @@ impl Default for Pto {
         Self {
             firings_remaining: 0,
             backoff: INITIAL_PTO_BACKOFF,
-            target_time: None,
             arm_base: None,
             last_sent_time: None,
             needs_update: false,
@@ -661,12 +658,7 @@ impl Pto {
         // Reset arm_base so the next arm is relative to the freshest last_sent_time.
         self.arm_base = None;
 
-        if has_remaining_inflight {
-            self.needs_update = true;
-        } else {
-            self.target_time = None;
-            self.needs_update = false;
-        }
+        self.needs_update = has_remaining_inflight;
     }
 
     /// Called when the PTO wheel fires for this context.
@@ -674,8 +666,6 @@ impl Pto {
     /// Returns `true` if a probe should be sent now, `false` if this was a
     /// countdown firing (or a needs-update re-sync) that simply re-arms the wheel.
     pub fn on_timeout(&mut self) -> bool {
-        self.target_time = None;
-
         if self.needs_update {
             // A packet was sent since the last arm; re-sync the arm base to the new
             // last_sent_time rather than firing a spurious probe.
@@ -695,16 +685,21 @@ impl Pto {
         true
     }
 
-    /// Compute the next wheel arm target and store it in `target_time`.
+    /// Returns `true` if the PTO needs to fire (has remaining countdown or pending state).
+    pub fn is_armed(&self) -> bool {
+        self.needs_update || self.arm_base.is_some()
+    }
+
+    /// Compute the next wheel arm target.
     ///
     /// Always uses one base period (1× `pto_period(INITIAL_PTO_BACKOFF)`) regardless
     /// of the current backoff level. `arm_base` advances by one period each call so
     /// consecutive firings are evenly spaced.
-    pub fn update_target<Clk: precision::Clock + ?Sized>(
+    pub fn next_target<Clk: precision::Clock + ?Sized>(
         &mut self,
         clock: &Clk,
         rtt_estimator: &RttEstimator,
-    ) {
+    ) -> Option<precision::Timestamp> {
         let mut base_period =
             rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::Initial);
         base_period = base_period.max(Duration::from_millis(2));
@@ -716,7 +711,7 @@ impl Pto {
         let next = base + base_period;
         // Advance arm_base so the next call steps forward by another period.
         self.arm_base = Some(next);
-        self.target_time = Some(next);
+        Some(next)
     }
 }
 
