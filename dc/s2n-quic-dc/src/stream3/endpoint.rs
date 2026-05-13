@@ -40,7 +40,7 @@ type BatchReceiver = sync_queue::Receiver<combinator::FrameBatch>;
 type AckMsgReceiver = sync_queue::Receiver<msg::Sender>;
 
 pub struct Endpoint {
-    /// Frame submission channel (writers submit Queue<Frame> here)
+    /// Frame submission channel (writers submit frame inputs here)
     pub frame_tx: SubmissionSender,
     /// Path secret map (shared with PSK providers)
     pub path_secret_map: crate::path::secret::Map,

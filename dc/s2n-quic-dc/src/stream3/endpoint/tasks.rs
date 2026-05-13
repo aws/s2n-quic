@@ -4,7 +4,7 @@
 use crate::{
     clock::precision,
     datagram::batch::Priority,
-    intrusive_queue::{Entry, Queue},
+    intrusive_queue::Entry,
     socket::{
         channel::{
             intrusive_queue::{self, unsync},
@@ -24,7 +24,7 @@ use crate::{
             },
             dispatch, msg, send, Budgets,
         },
-        frame::{Frame, PriorityStorage, SubmissionReceiver},
+        frame::{Frame, PriorityInput, PriorityStorage, SubmissionReceiver},
     },
 };
 use core::{future::poll_fn, task::Poll};
@@ -341,7 +341,7 @@ pub fn send_worker<Socket, Clk, WakerSink>(
                     return;
                 };
 
-                let mut lost_queue: Queue<Frame> = Queue::new();
+                let mut lost_queue = PriorityInput::default();
 
                 let wheel_interest = {
                     let mut ctx = ctx_rc.borrow_mut();

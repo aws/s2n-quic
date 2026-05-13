@@ -19,6 +19,7 @@ use crate::{
     congestion,
     counter::QueueGauge,
     credentials::{self, Credentials},
+    datagram::batch::Priority,
     intrusive_queue::{self, Queue},
     path::secret::map::Entry as PathSecretEntry,
     socket::channel::{intrusive_queue::unsync, ByteCost, UnboundedSender},
@@ -159,9 +160,9 @@ impl WheelInterest {
 /// queues. Frames are pushed in by the Dispatcher, then `assemble()` is called when the
 /// local wheel fires to pack them into encrypted packets.
 ///
-/// Frames are held in two queues based on whether they bypass CWND:
-/// - `immediate`: ACK frames (`Control` header) — drained unconditionally by the assembler.
-/// - `pending`: all other frames (data, resets, flow control) — subject to CWND gating.
+/// Frames are held in a single array of queues indexed by [`Priority`]:
+/// - `queues[0]` = [`Priority::Ack`] — ACK frames that bypass CWND, drained unconditionally.
+/// - `queues[1..LEVELS]` = all other frames in priority order, subject to CWND gating.
 pub(crate) struct Context {
     pub path_secret_entry: Arc<PathSecretEntry>,
     pub sealer: crate::crypto::awslc::seal::Application,
@@ -174,11 +175,9 @@ pub(crate) struct Context {
     pub rtt_estimator: RttEstimator,
     pub inflight: inflight::Map,
     pub pto: Pto,
-    /// ACK frames (Control header) that bypass CWND enforcement. Drained unconditionally
-    /// by the assembler before data frames.
-    pub immediate: PendingFrames,
-    /// Data frames subject to CWND. Drained only when the congestion window allows.
-    pub pending: PendingFrames,
+    /// Per-priority frame queues.  Index 0 (`Priority::Ack`) bypasses CWND; indices 1–N
+    /// are subject to congestion-window gating and are drained highest-priority first.
+    pub queues: [PendingFrames; Priority::LEVELS],
     /// Index of this socket in the path secret entry's `next_transmission_by_sender` array.
     ///
     /// Used by `publish_next_transmission_time` to write the correct slot so the
@@ -215,8 +214,14 @@ impl Context {
             rtt_estimator,
             inflight,
             pto: Pto::default(),
-            immediate: PendingFrames::new(immediate_gauge),
-            pending: PendingFrames::new(pending_gauge),
+            // index 0 (Ack/immediate) gets the immediate_gauge; all others get pending_gauge.
+            queues: core::array::from_fn(|i| {
+                if i == 0 {
+                    PendingFrames::new(immediate_gauge.clone())
+                } else {
+                    PendingFrames::new(pending_gauge.clone())
+                }
+            }),
             sender_idx,
             tx_wheel: WheelLinks::new(),
             pto_wheel: WheelLinks::new(),
@@ -227,20 +232,20 @@ impl Context {
     /// Append all frames from a batch and return wheel interest indicating which wheels
     /// need this context inserted.
     ///
-    /// The batch already carries pre-split immediate and pending queues — routing was done
-    /// once in the batcher where every frame was already inspected. This method performs
-    /// two O(1) queue-append operations.
+    /// Each priority level is appended in O(1) via an intrusive list splice.
     pub fn push_batch<Clk: precision::Clock + ?Sized>(
         &mut self,
         batch: super::combinator::FrameBatch,
         clock: &Clk,
     ) -> WheelInterest {
-        let (imm_q, imm_cost, pend_q, pend_cost) = batch.into_split();
-        if !imm_q.is_empty() {
-            self.immediate.append_queue(imm_q, imm_cost);
-        }
-        if !pend_q.is_empty() {
-            self.pending.append_queue(pend_q, pend_cost);
+        let (queues, byte_costs) = batch.into_queues();
+        for (queue, (slot, cost)) in queues
+            .into_iter()
+            .zip(self.queues.iter_mut().zip(byte_costs))
+        {
+            if !queue.is_empty() {
+                slot.append_queue(queue, cost);
+            }
         }
         self.wheel_interest(clock)
     }
@@ -330,46 +335,46 @@ impl Context {
         }
     }
 
-    /// Pop the next immediate (ACK) frame from the immediate queue.
+    /// Pop the next ACK (priority-0) frame, bypassing CWND.
     #[inline]
     pub fn pop_immediate(&mut self) -> Option<intrusive_queue::Entry<Frame>> {
-        self.immediate.pop_front()
+        self.queues[0].pop_front()
     }
 
-    /// Push a frame back to the front of the immediate queue.
+    /// Push a frame back to the front of the ACK queue.
     ///
     /// Only call this with a frame just removed via [`pop_immediate`].
     #[inline]
     pub fn push_front_immediate(&mut self, frame: intrusive_queue::Entry<Frame>) {
-        self.immediate.push_front(frame);
+        self.queues[0].push_front(frame);
     }
 
-    /// Pop the next frame from the pending queue.
+    /// Pop the next non-ACK frame, draining from highest priority first.
     #[inline]
     pub fn pop_pending(&mut self) -> Option<intrusive_queue::Entry<Frame>> {
-        self.pending.pop_front()
+        for queue in &mut self.queues[1..] {
+            if let Some(frame) = queue.pop_front() {
+                return Some(frame);
+            }
+        }
+        None
     }
 
-    /// Push a frame back to the front of the pending queue.
+    /// Push a frame back to the front of its priority level's queue.
     ///
     /// Only call this with a frame just removed via [`pop_pending`].
     #[inline]
     pub fn push_front_pending(&mut self, frame: intrusive_queue::Entry<Frame>) {
-        self.pending.push_front(frame);
+        // Delegate to push_front_frame which handles all levels uniformly.
+        self.push_front_frame(frame);
     }
 
-    /// Push a frame back to the front of whichever queue it belongs to.
+    /// Push a frame back to the front of whichever priority queue it belongs to.
     ///
-    /// Routes immediate frames (`is_immediate()`) to `immediate` and all other frames to
-    /// `pending`. Only call this with a frame just removed via [`pop_immediate`] or
-    /// [`pop_pending`].
+    /// Only call this with a frame just removed via [`pop_immediate`] or [`pop_pending`].
     #[inline]
     pub fn push_front_frame(&mut self, frame: intrusive_queue::Entry<Frame>) {
-        if frame.is_immediate() {
-            self.immediate.push_front(frame);
-        } else {
-            self.pending.push_front(frame);
-        }
+        self.queues[frame.priority().as_index()].push_front(frame);
     }
 
     /// Publish the estimated next transmission time to the path secret entry.
@@ -381,27 +386,28 @@ impl Context {
     /// Call this whenever the pending queue or CCA state changes.
     #[inline]
     pub fn publish_next_transmission_time(&self, now: s2n_quic_core::time::Timestamp) {
+        let total_cost: usize = self.queues.iter().map(|q| q.byte_cost()).sum();
         self.path_secret_entry.update_sender_next_transmission_time(
             self.sender_idx,
             now,
-            self.immediate.byte_cost() + self.pending.byte_cost(),
+            total_cost,
             self.cca.bandwidth(),
         );
     }
 
     #[inline]
     pub fn has_pending(&self) -> bool {
-        !self.immediate.is_empty() || !self.pending.is_empty()
+        self.queues.iter().any(|q| !q.is_empty())
     }
 
     #[inline]
     pub fn has_immediate(&self) -> bool {
-        !self.immediate.is_empty()
+        !self.queues[0].is_empty()
     }
 
     #[inline]
     pub fn has_pending_data(&self) -> bool {
-        !self.pending.is_empty()
+        self.queues[1..].iter().any(|q| !q.is_empty())
     }
 
     #[inline]

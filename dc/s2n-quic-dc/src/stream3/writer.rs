@@ -79,9 +79,10 @@ use crate::{
             msg,
             reset_error::{self, ResetError},
         },
-        frame::{self, Frame, Header, SubmissionSender, DEFAULT_TTL},
+        frame::{self, Frame, Header, HomogeneousBatch, SubmissionSender, DEFAULT_TTL},
     },
 };
+use crate::datagram::batch::Priority;
 use s2n_quic_core::{
     buffer::{self, writer::Storage},
     state::{event, is},
@@ -868,9 +869,12 @@ impl Inner {
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))
     }
 
-    fn send_batch(&mut self, frame: Queue<Frame>) -> io::Result<()> {
+    fn send_batch(&mut self, queue: Queue<Frame>) -> io::Result<()> {
         self.frame_tx
-            .send_batch(frame)
+            .send_batch(HomogeneousBatch {
+                queue,
+                priority: Priority::FlowData,
+            })
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))
     }
 }
