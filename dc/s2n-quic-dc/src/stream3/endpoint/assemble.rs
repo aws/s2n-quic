@@ -215,8 +215,11 @@ where
                         context.push_back_frame(frame);
                     }
                     // probe_state cleared below, after encoding, via on_transmit()
+                } else {
+                    // Inflight was drained (e.g. by an ACK) between the PTO fire and
+                    // assembly — clear the probe request so we don't spin.
+                    let _ = context.pto.probe_state.on_transmit();
                 }
-                // If no non-shell inflight entry exists the probe is a no-op for now.
             }
 
             // Phase 3: drain pending (data) frames.

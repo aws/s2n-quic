@@ -191,7 +191,9 @@ impl Map {
     /// entry itself remains in the map with its `TransmissionInfo` intact for later
     /// loss detection or ACK completion.
     ///
-    /// Returns `(tail_pn, frames)`.
+    /// Returns `(tail_pn, frames)`. The frames queue may be empty if the tail entry
+    /// was already ACKed and removed in the same ACK range (both shell and probe PN
+    /// acknowledged simultaneously).
     pub fn take_chain_tail_frames(&mut self, mut pn: PacketNumber) -> (PacketNumber, Queue<Frame>) {
         // Walk the chain to the tail (first entry with no probed_to link).
         loop {
@@ -205,10 +207,6 @@ impl Map {
             .get_mut(pn)
             .map(|p| core::mem::take(&mut p.frames))
             .unwrap_or_default();
-        debug_assert!(
-            !frames.is_empty(),
-            "take_chain_tail_frames: probe chain tail has no frames"
-        );
         (pn, frames)
     }
 }

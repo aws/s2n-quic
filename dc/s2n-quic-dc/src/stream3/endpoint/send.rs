@@ -343,6 +343,13 @@ impl Context {
     where
         Clk: precision::Clock + ?Sized,
     {
+        debug_assert!(
+            !self.pto.probe_state.is_requested()
+                || self.inflight.has_inflight()
+                || self.has_pending(),
+            "probe_state is Requested but nothing to probe with"
+        );
+
         let transmission = if
         // Check we have queued packets and we're not already linked
         !self.is_tx_scheduled()
@@ -496,7 +503,7 @@ impl Context {
     /// should be sent, then computes and returns the updated `WheelInterest` for
     /// rescheduling. The caller only needs to dispatch the returned interest.
     pub fn on_pto_timeout<Clk: precision::Clock + ?Sized>(&mut self, clock: &Clk) -> WheelInterest {
-        if self.pto.on_timeout() {
+        if self.pto.on_timeout() && (self.inflight.has_inflight() || self.has_pending()) {
             // The only failure case is `NoOp` — the state is already `Requested`
             // because a previous probe hasn't been consumed by the assembler yet.
             // That's harmless: the assembler will send the probe on its next run.
