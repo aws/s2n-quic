@@ -8,6 +8,8 @@
 //! are declared lost, frames are individually evaluated for retransmission (TTL, cancellation)
 //! and survivors are requeued to the wheel.
 
+pub(crate) mod state;
+
 use crate::{
     congestion,
     intrusive_queue::Entry,
@@ -207,6 +209,9 @@ fn detect_loss<Rand>(
 ) where
     Rand: random::Generator,
 {
+    // TODO: use max_tx_time for time-based loss detection
+    let _ = max_tx_time;
+
     let pn_threshold = max_acked_pn.checked_sub(VarInt::from_u8(3));
 
     let lost_min = PacketNumberSpace::Initial.new_packet_number(VarInt::ZERO);

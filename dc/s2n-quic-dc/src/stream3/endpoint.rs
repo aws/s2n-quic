@@ -3,6 +3,7 @@
 
 //! Stream3 Endpoint: shared infrastructure for the process.
 
+use s2n_quic_core::time;
 pub use s2n_quic_platform::features::Gso;
 
 pub(crate) mod ack;
@@ -29,8 +30,14 @@ pub mod testing;
 mod tests;
 
 use crate::{
-    acceptor, packet,
-    socket::{channel::intrusive_queue::sync as sync_queue, pool::descriptor},
+    acceptor,
+    clock::precision,
+    intrusive_queue::Entry,
+    packet,
+    socket::{
+        channel::{intrusive_queue::sync as sync_queue, UnboundedSender},
+        pool::descriptor,
+    },
     stream3::{frame::SubmissionSender, Stream},
 };
 use std::sync::{atomic::AtomicU64, Arc};
@@ -90,6 +97,8 @@ pub struct Budgets {
     pub packet_dispatch: usize,
     /// Budget for the waker drain task (wakers fired per poll).
     pub waker_drain: usize,
+    /// Budget for the ACK completion drain task (entries returned from assembler per poll).
+    pub ack_completion: usize,
 }
 
 impl Default for Budgets {
@@ -108,6 +117,7 @@ impl Default for Budgets {
             socket_recv: tasks::DEFAULT_RECV_BUDGET,
             packet_dispatch: usize::MAX,
             waker_drain: 512,
+            ack_completion: tasks::DEFAULT_DISPATCH_BUDGET,
         }
     }
 }
@@ -206,8 +216,8 @@ pub fn setup_endpoint<SendSocket, RecvSocket, S, C>(
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
-    S: crate::stream2::Spawner,
-    C: s2n_quic_core::time::Clock + crate::clock::precision::Clock + Clone + Send + 'static,
+    S: crate::spawner::Spawner,
+    C: time::Clock + precision::Clock + Clone + Send + 'static,
 {
     let num_recv_dispatch = config.layout.recv_dispatch.len();
 
@@ -232,8 +242,8 @@ fn setup_endpoint_inner<SendSocket, RecvSocket, S, C, RecvRoute>(
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
-    S: crate::stream2::Spawner,
-    C: s2n_quic_core::time::Clock + crate::clock::precision::Clock + Clone + Send + 'static,
+    S: crate::spawner::Spawner,
+    C: time::Clock + precision::Clock + Clone + Send + 'static,
     RecvRoute: routing::SenderRoute,
 {
     use crate::{
@@ -379,6 +389,13 @@ where
         workers[worker_id].waker_drain.push(drain);
     }
 
+    // ACK completion channels: one per recv dispatch worker. Send workers route completed
+    // ACK entries back to the recv worker that submitted them.
+    let (ack_completion_txs, ack_completion_rxs): (Vec<_>, Vec<_>) = (0..num_recv_dispatch)
+        .map(|_| crate::socket::channel::intrusive_queue::sync::new::<msg::Sender>())
+        .unzip();
+    let ack_completions_tx = routing::AckCompletionSender::new(ack_completion_txs);
+
     // Assign per-send-worker batch/ack receivers.
     for (idx, ((batch_rx, ack_rx), waker_sink)) in worker_batch_rxs
         .into_iter()
@@ -392,18 +409,13 @@ where
             ack_rx,
             random: crate::xorshift::Rng::new(),
             frame_tx: frame_tx.clone(),
+            ack_completions_tx: ack_completions_tx.clone(),
             waker_sink,
         });
     }
 
     // Build ACK sender after socket distribution so sender_id_to_worker is populated.
-    let ack_sender = routing::AckSender::new(
-        worker_ack_txs
-            .into_iter()
-            .map(crate::socket::channel::EntryBoxSender::new)
-            .collect(),
-        sender_id_to_worker,
-    );
+    let ack_sender = routing::AckSender::new(worker_ack_txs, &sender_id_to_worker);
 
     // ── Recv dispatch queues ─────────────────────────────────────────────────
     // One dispatch queue per recv_dispatch worker. Recv IO tasks fan out to all of these
@@ -415,7 +427,12 @@ where
         .unzip();
 
     let ack_route = RecvRoute::new(num_send);
-    for (idx, (dispatch_rx, waker_sink)) in dispatch_rxs.into_iter().zip(waker_sinks).enumerate() {
+    for (idx, ((dispatch_rx, ack_completion_rx), waker_sink)) in dispatch_rxs
+        .into_iter()
+        .zip(ack_completion_rxs)
+        .zip(waker_sinks)
+        .enumerate()
+    {
         let worker_id = layout.recv_dispatch[idx];
         workers[worker_id].recv_dispatch = Some(RecvDispatchParts {
             packet_rx: dispatch_rx,
@@ -423,6 +440,8 @@ where
             acceptor_registry: acceptor_registry.clone(),
             frame_tx: frame_tx.clone(),
             ack_sender: ack_sender.clone(),
+            ack_completion_rx,
+            recv_dispatch_idx: idx,
             queue_dispatcher: queue_dispatcher.clone(),
             counters: counters.clone(),
             clock: clock.clone(),
@@ -484,6 +503,7 @@ struct SendWorkerParts {
     ack_rx: AckMsgReceiver,
     random: crate::xorshift::Rng,
     frame_tx: SubmissionSender,
+    ack_completions_tx: routing::AckCompletionSender<sync_queue::Sender<msg::Sender>>,
     waker_sink: waker::Sink,
 }
 
@@ -515,6 +535,9 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     acceptor_registry: acceptor::Registry<Stream>,
     frame_tx: SubmissionSender,
     ack_sender: AckSnd,
+    ack_completion_rx: sync_queue::Receiver<msg::Sender>,
+    /// Index into the AckCompletionSender's staging array (0..num_recv_dispatch).
+    recv_dispatch_idx: usize,
     queue_dispatcher: msg::queue::Dispatcher,
     counters: Arc<counters::Dispatch>,
     clock: Clk,
@@ -548,10 +571,11 @@ impl<SendSocket, RecvSocket, Clk, AckSnd, Route> Worker<SendSocket, RecvSocket, 
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
-    Clk: s2n_quic_core::time::Clock + crate::clock::precision::Clock + Clone + Send + 'static,
-    AckSnd: crate::socket::channel::UnboundedSender<msg::Sender> + Send + 'static,
+    Clk: time::Clock + precision::Clock + Clone + Send + 'static,
+    AckSnd: UnboundedSender<Entry<msg::Sender>> + Clone + Send + 'static,
     Route: routing::SenderRoute,
 {
+    #[inline]
     fn new(
         id: usize,
         idle_timeout: core::time::Duration,
@@ -576,8 +600,9 @@ where
         }
     }
 
-    fn spawn<S: crate::stream2::Spawner>(self, spawner: &S) {
-        use crate::stream2::spawner::LocalSpawner as _;
+    #[inline]
+    fn spawn<S: crate::spawner::Spawner>(self, spawner: &S) {
+        use crate::spawner::LocalSpawner as _;
 
         let Self {
             id,
@@ -626,6 +651,7 @@ where
                     clock.clone(),
                     sw.random,
                     sw.frame_tx,
+                    sw.ack_completions_tx,
                     sw.waker_sink,
                     budgets,
                     counter_registry.clone(),
@@ -646,21 +672,28 @@ where
                     rd.packet_rx,
                     counter_registry.register_queue_gauge("q.packet"),
                 );
+                let recv_dispatch_idx = rd.recv_dispatch_idx;
                 let recv_cache = std::rc::Rc::new(std::cell::RefCell::new(
-                    crate::stream3::endpoint::recv::Cache::new(idle_timeout, id),
+                    crate::stream3::endpoint::recv::Cache::new(idle_timeout, recv_dispatch_idx),
                 ));
                 local.spawn(tasks::packet_dispatch_task(
                     packet_rx,
-                    recv_cache,
+                    recv_cache.clone(),
                     rd.path_secret_map,
                     rd.acceptor_registry,
                     rd.frame_tx,
-                    rd.ack_sender,
+                    rd.ack_sender.clone(),
                     rd.queue_dispatcher,
                     rd.counters,
                     rd.clock,
                     rd.route,
                     rd.waker_sink,
+                    budgets,
+                ));
+                local.spawn(tasks::ack_completion_task(
+                    rd.ack_completion_rx,
+                    recv_cache,
+                    rd.ack_sender,
                     budgets,
                 ));
             }

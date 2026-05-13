@@ -249,7 +249,7 @@ pub fn setup_sim_endpoint(
         waker_drain: vec![0],
     };
 
-    let spawner = crate::stream2::spawner::bach::Runtime::new(1);
+    let spawner = crate::spawner::bach::Runtime::new(1);
     let clock = Clock::default();
     let gso = s2n_quic_platform::features::Gso::default();
 

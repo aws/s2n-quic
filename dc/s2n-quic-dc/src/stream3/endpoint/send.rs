@@ -23,7 +23,10 @@ use crate::{
     intrusive_queue::{self, Queue},
     path::secret::map::Entry as PathSecretEntry,
     socket::channel::{intrusive_queue::unsync, ByteCost, UnboundedSender},
-    stream3::{endpoint::inflight, frame::Frame},
+    stream3::{
+        endpoint::{inflight, msg},
+        frame::Frame,
+    },
 };
 use core::time::Duration;
 use rustc_hash::FxHashMap;
@@ -64,6 +67,10 @@ impl PendingFrames {
     /// Push a frame onto the back of the queue, updating the cost counter.
     #[inline]
     pub fn push_back(&mut self, frame: intrusive_queue::Entry<Frame>) {
+        debug_assert!(
+            !matches!(frame.header, crate::stream3::frame::Header::Ack { .. }),
+            "Ack frames must use pending_acks, not the priority queues"
+        );
         self.byte_cost += frame.byte_cost() as usize;
         self.gauge.enqueue(1);
         self.queue.push_back(frame);
@@ -77,6 +84,10 @@ impl PendingFrames {
     /// *not* previously popped will double-count its wire cost.
     #[inline]
     pub fn push_front(&mut self, frame: intrusive_queue::Entry<Frame>) {
+        debug_assert!(
+            !matches!(frame.header, crate::stream3::frame::Header::Ack { .. }),
+            "Ack frames must use pending_acks, not the priority queues"
+        );
         self.byte_cost += frame.byte_cost() as usize;
         self.gauge.enqueue(1);
         self.queue.push_front(frame);
@@ -127,6 +138,45 @@ impl PendingFrames {
         self.byte_cost += byte_cost as usize;
         self.gauge.enqueue(count);
         self.queue.append(&mut queue);
+    }
+}
+
+/// Pending ACK submissions with integrated queue gauge.
+pub(crate) struct PendingAcks {
+    queue: Queue<msg::Sender>,
+    gauge: QueueGauge,
+}
+
+impl PendingAcks {
+    pub fn new(gauge: QueueGauge) -> Self {
+        Self {
+            queue: Queue::new(),
+            gauge,
+        }
+    }
+
+    #[inline]
+    pub fn push_back(&mut self, entry: intrusive_queue::Entry<msg::Sender>) {
+        self.gauge.enqueue(1);
+        self.queue.push_back(entry);
+    }
+
+    #[inline]
+    pub fn push_front(&mut self, entry: intrusive_queue::Entry<msg::Sender>) {
+        self.gauge.enqueue(1);
+        self.queue.push_front(entry);
+    }
+
+    #[inline]
+    pub fn pop_front(&mut self) -> Option<intrusive_queue::Entry<msg::Sender>> {
+        let entry = self.queue.pop_front()?;
+        self.gauge.dequeue();
+        Some(entry)
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
     }
 }
 
@@ -190,6 +240,8 @@ impl ProbeState {
         request(Idle => Requested);
         /// Transition `Requested → Idle` after the assembler transmits an ack-eliciting probe.
         on_transmit(Requested => Idle);
+        /// Transition `Requested → Idle` when all inflight data is ACKed before the probe fires.
+        on_all_acked(Requested => Idle);
     }
 
     #[cfg(test)]
@@ -204,9 +256,8 @@ impl ProbeState {
 /// queues. Frames are pushed in by the Dispatcher, then `assemble()` is called when the
 /// local wheel fires to pack them into encrypted packets.
 ///
-/// Frames are held in a single array of queues indexed by [`Priority`]:
-/// - `queues[0]` = [`Priority::Ack`] — ACK frames that bypass CWND, drained unconditionally.
-/// - `queues[1..LEVELS]` = all other frames in priority order, subject to CWND gating.
+/// Data frames are held in a priority-indexed array of queues, all subject to CWND gating.
+/// ACKs are handled separately via `pending_acks` (direct path, bypasses CWND).
 pub(crate) struct Context {
     pub path_secret_entry: Arc<PathSecretEntry>,
     pub sealer: crate::crypto::awslc::seal::Application,
@@ -222,6 +273,8 @@ pub(crate) struct Context {
     /// Per-priority frame queues.  Index 0 (`Priority::Ack`) bypasses CWND; indices 1–N
     /// are subject to congestion-window gating and are drained highest-priority first.
     pub queues: [PendingFrames; Priority::LEVELS],
+    /// Pending direct ACK submissions from recv dispatch workers.
+    pub pending_acks: PendingAcks,
     /// Index of this socket in the path secret entry's `next_transmission_by_sender` array.
     ///
     /// Used by `publish_next_transmission_time` to write the correct slot so the
@@ -241,7 +294,7 @@ impl Context {
     pub fn new(
         entry: &Arc<PathSecretEntry>,
         inflight_gauge: QueueGauge,
-        immediate_gauge: QueueGauge,
+        ack_gauge: QueueGauge,
         pending_gauge: QueueGauge,
         sender_idx: usize,
     ) -> Self {
@@ -260,14 +313,8 @@ impl Context {
             rtt_estimator,
             inflight,
             pto: Pto::default(),
-            // index 0 (Ack/immediate) gets the immediate_gauge; all others get pending_gauge.
-            queues: core::array::from_fn(|i| {
-                if i == 0 {
-                    PendingFrames::new(immediate_gauge.clone())
-                } else {
-                    PendingFrames::new(pending_gauge.clone())
-                }
-            }),
+            queues: core::array::from_fn(|_| PendingFrames::new(pending_gauge.clone())),
+            pending_acks: PendingAcks::new(ack_gauge),
             sender_idx,
             tx_wheel: WheelLinks::new(),
             pto_wheel: WheelLinks::new(),
@@ -357,7 +404,7 @@ impl Context {
         let transmission = if
         // Check we have queued packets and we're not already linked
         !self.is_tx_scheduled()
-            && (self.has_immediate()
+            && (self.has_pending_acks()
                 || self.pto.probe_state.is_requested()
                 || (self.has_pending_data() && self.can_send_pending_frames()))
         {
@@ -395,21 +442,7 @@ impl Context {
         }
     }
 
-    /// Pop the next ACK (priority-0) frame, bypassing CWND.
-    #[inline]
-    pub fn pop_immediate(&mut self) -> Option<intrusive_queue::Entry<Frame>> {
-        self.queues[0].pop_front()
-    }
-
-    /// Push a frame back to the front of the ACK queue.
-    ///
-    /// Only call this with a frame just removed via [`pop_immediate`].
-    #[inline]
-    pub fn push_front_immediate(&mut self, frame: intrusive_queue::Entry<Frame>) {
-        self.queues[0].push_front(frame);
-    }
-
-    /// Pop the next non-ACK frame, draining from highest priority first.
+    /// Pop the next pending frame, draining from highest priority first.
     #[inline]
     pub fn pop_pending(&mut self) -> Option<intrusive_queue::Entry<Frame>> {
         for queue in &mut self.queues[1..] {
@@ -420,18 +453,9 @@ impl Context {
         None
     }
 
-    /// Push a frame back to the front of its priority level's queue.
-    ///
-    /// Only call this with a frame just removed via [`pop_pending`].
-    #[inline]
-    pub fn push_front_pending(&mut self, frame: intrusive_queue::Entry<Frame>) {
-        // Delegate to push_front_frame which handles all levels uniformly.
-        self.push_front_frame(frame);
-    }
-
     /// Push a frame back to the front of whichever priority queue it belongs to.
     ///
-    /// Only call this with a frame just removed via [`pop_immediate`] or [`pop_pending`].
+    /// Only call this with a frame just removed via [`pop_pending`].
     #[inline]
     pub fn push_front_frame(&mut self, frame: intrusive_queue::Entry<Frame>) {
         self.queues[frame.priority().as_index()].push_front(frame);
@@ -466,14 +490,15 @@ impl Context {
         self.queues.iter().any(|q| !q.is_empty())
     }
 
+    #[cfg_attr(not(test), expect(dead_code))]
     #[inline]
     pub fn pending_count(&self) -> usize {
         self.queues.iter().map(|q| q.len()).sum()
     }
 
     #[inline]
-    pub fn has_immediate(&self) -> bool {
-        !self.queues[0].is_empty()
+    pub fn has_pending_acks(&self) -> bool {
+        !self.pending_acks.is_empty()
     }
 
     #[inline]
@@ -497,6 +522,7 @@ impl Context {
     }
 
     #[inline]
+    #[expect(dead_code)] // TODO implement expiration
     pub fn is_idle_scheduled(&self) -> bool {
         self.idle_wheel.links.is_linked()
     }
@@ -680,6 +706,10 @@ impl Pto {
         // Reset arm_base so the next arm is relative to the freshest last_sent_time.
         self.arm_base = None;
 
+        if !has_remaining_inflight {
+            let _ = self.probe_state.on_all_acked();
+        }
+
         self.needs_update = has_remaining_inflight;
     }
 
@@ -727,9 +757,9 @@ impl Pto {
         base_period = base_period.max(Duration::from_millis(2));
 
         // Anchor to arm_base if available, otherwise to last_sent_time, otherwise now.
-        let base = self.arm_base.unwrap_or_else(|| {
-            self.last_sent_time.unwrap_or_else(|| clock.now())
-        });
+        let base = self
+            .arm_base
+            .unwrap_or_else(|| self.last_sent_time.unwrap_or_else(|| clock.now()));
         let next = base + base_period;
         // Advance arm_base so the next call steps forward by another period.
         self.arm_base = Some(next);
@@ -744,7 +774,7 @@ impl Pto {
 pub(crate) struct Cache {
     contexts: FxHashMap<credentials::Id, Rc<RefCell<Context>>>,
     inflight_gauge: QueueGauge,
-    immediate_gauge: QueueGauge,
+    ack_gauge: QueueGauge,
     pending_gauge: QueueGauge,
     sender_idx: usize,
 }
@@ -754,7 +784,7 @@ impl Cache {
         Self {
             contexts: FxHashMap::default(),
             inflight_gauge: counter_registry.register_queue_gauge("send.inflight"),
-            immediate_gauge: counter_registry.register_queue_gauge("send.immediate"),
+            ack_gauge: counter_registry.register_queue_gauge("send.ack"),
             pending_gauge: counter_registry.register_queue_gauge("send.pending"),
             sender_idx,
         }
@@ -769,7 +799,7 @@ impl Cache {
                 Rc::new(RefCell::new(Context::new(
                     entry,
                     self.inflight_gauge.clone(),
-                    self.immediate_gauge.clone(),
+                    self.ack_gauge.clone(),
                     self.pending_gauge.clone(),
                     self.sender_idx,
                 )))

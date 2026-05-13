@@ -68,6 +68,7 @@
 
 use crate::{
     byte_vec::ByteVec,
+    datagram::batch::Priority,
     intrusive_queue::{Entry, Queue},
     packet::{
         control,
@@ -82,7 +83,6 @@ use crate::{
         frame::{self, Frame, Header, HomogeneousBatch, SubmissionSender, DEFAULT_TTL},
     },
 };
-use crate::datagram::batch::Priority;
 use s2n_quic_core::{
     buffer::{self, writer::Storage},
     state::{event, is},

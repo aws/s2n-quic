@@ -4,7 +4,7 @@
 use crate::{
     clock::precision,
     datagram::batch::Priority,
-    intrusive_queue::Entry,
+    intrusive_queue::{Entry, Queue},
     socket::{
         channel::{
             intrusive_queue::{self, unsync},
@@ -14,17 +14,17 @@ use crate::{
         pool::descriptor,
         rate::Rate,
     },
-    stream2::spawner::LocalSpawner,
+    spawner::LocalSpawner,
     stream3::{
         endpoint::{
             self,
             combinator::{
-                Assembler, AssemblerCounters, BatchFramesByPathSecret, CompletionDispatcher,
-                FrameBatch, PathSecretMapEntry, PickTwo,
+                AckProcessor, Assembler, AssemblerCounters, BatchFramesByPathSecret,
+                CompletionDispatcher, FrameBatch, PathSecretMapEntry, PickTwo,
             },
             dispatch, msg, send, Budgets,
         },
-        frame::{Frame, PriorityInput, PriorityStorage, SubmissionReceiver},
+        frame::{Frame, PriorityStorage, SubmissionReceiver},
     },
 };
 use core::{future::poll_fn, task::Poll};
@@ -174,15 +174,16 @@ pub fn frame_dispatch<S, Clk>(
 ///
 ///   ack_rx (sync, from recv workers)
 ///     → ACK processor (loss detection, retransmission)
-pub fn send_worker<Socket, Clk, WakerSink>(
+pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     spawner: &mut impl LocalSpawner,
     batch_rx: impl Receiver<Entry<FrameBatch>> + 'static,
     ack_rx: impl Receiver<Entry<msg::Sender>> + 'static,
     total_sender_ids: usize,
     send_sockets: Vec<endpoint::SendSocketParts<Socket, Clk>>,
     clock: Clk,
-    mut random: crate::xorshift::Rng,
+    random: crate::xorshift::Rng,
     frame_tx: crate::stream3::frame::SubmissionSender,
+    ack_completions_tx: AckComp,
     mut waker_sink: WakerSink,
     budgets: Budgets,
     counter_registry: crate::counter::Registry,
@@ -190,6 +191,7 @@ pub fn send_worker<Socket, Clk, WakerSink>(
     Socket: crate::socket::send::Socket + 'static,
     Clk: precision::Clock + s2n_quic_core::time::Clock + Clone + 'static,
     WakerSink: UnboundedSender<crate::flow::queue::AutoWake> + 'static,
+    AckComp: UnboundedSender<Queue<msg::Sender>> + Clone + 'static,
 {
     let num_sockets = send_sockets.len();
 
@@ -288,93 +290,26 @@ pub fn send_worker<Socket, Clk, WakerSink>(
 
     // Task 2: ACK processor — decode, update CCA/RTT, detect loss, reschedule.
     spawner.spawn({
-        let mut send_caches = send_caches.clone();
+        let send_caches = send_caches.clone();
         let sender_idx_to_local = sender_idx_to_local.clone();
-        let rx = ack_rx;
-        let mut frame_tx = frame_tx;
-        let clock = clock.clone();
-        let mut tx_wheel_tx = tx_wheel_tx.clone();
-        let mut pto_wheel_tx = pto_wheel_tx.clone();
-        let mut idle_wheel_tx = idle_wheel_tx.clone();
-        let mut completed_tx = completed_tx;
-        let mut cancelled_tx = cancelled_tx.clone();
-        let q_tx_wheel = q_tx_wheel.clone();
         let send_counters = endpoint::counters::Send::new(&counter_registry);
-        async move {
-            let rx = Map::new(rx, move |entry: Entry<msg::Sender>| {
-                let msg::Sender::Ack {
-                    local_sender_id,
-                    path_secret_entry,
-                    mut payload,
-                } = entry.into_inner();
-
-                let sender_idx = local_sender_id.as_u64() as usize;
-
-                let Some(local_id) = sender_idx_to_local.get(sender_idx).copied() else {
-                    unsafe {
-                        assume!(
-                            false,
-                            "sender id {} is out of range of {}",
-                            sender_idx,
-                            total_sender_ids
-                        )
-                    }
-                };
-                let Some(cache) = send_caches.get_mut(local_id) else {
-                    unsafe {
-                        assume!(
-                            false,
-                            "sender id {} is out of range of {}",
-                            sender_idx,
-                            total_sender_ids
-                        )
-                    }
-                };
-
-                let ctx_rc = {
-                    let cache = cache.borrow();
-                    cache.get(&path_secret_entry.id())
-                };
-
-                let Some(ctx_rc) = ctx_rc else {
-                    tracing::debug!(%sender_idx, id = %path_secret_entry.id(), "Sender state gone for ACK");
-                    return;
-                };
-
-                let mut lost_queue = PriorityInput::default();
-
-                let wheel_interest = {
-                    let mut ctx = ctx_rc.borrow_mut();
-                    let interest = ctx.process_ack_payload(
-                        &mut payload,
-                        &send_counters,
-                        &mut completed_tx,
-                        &mut lost_queue,
-                        &mut cancelled_tx,
-                        &clock,
-                        &mut random,
-                    );
-                    send_counters.on_rtt(ctx.rtt_estimator.smoothed_rtt());
-                    interest
-                };
-
-                if !lost_queue.is_empty() {
-                    send_counters.on_lost(lost_queue.len() as u64);
-                    let _ = frame_tx.send_batch(lost_queue);
-                }
-
-                if wheel_interest.transmission {
-                    q_tx_wheel.enqueue(1);
-                }
-                wheel_interest.dispatch(
-                    ctx_rc,
-                    &mut tx_wheel_tx,
-                    &mut pto_wheel_tx,
-                    &mut idle_wheel_tx,
-                );
-            });
-            rx.drain_budgeted(Some(budgets.ack_processor)).await;
-        }
+        let rx = AckProcessor::new(
+            ack_rx,
+            send_caches,
+            sender_idx_to_local,
+            total_sender_ids,
+            clock.clone(),
+            random,
+            frame_tx,
+            completed_tx,
+            cancelled_tx.clone(),
+            tx_wheel_tx.clone(),
+            pto_wheel_tx.clone(),
+            idle_wheel_tx.clone(),
+            send_counters,
+            q_tx_wheel.clone(),
+        );
+        rx.drain_budgeted(Some(budgets.ack_processor))
     });
 
     // Task 3: Completion dispatcher — batches completed frames by channel, one lock per batch.
@@ -468,6 +403,7 @@ pub fn send_worker<Socket, Clk, WakerSink>(
             let pto_wheel_tx = pto_wheel_tx.clone();
             let idle_wheel_tx = idle_wheel_tx.clone();
             let cancelled_tx = cancelled_tx.clone().into_list_sender();
+            let ack_completions_tx = ack_completions_tx.clone();
             let asm_counters = asm_counters.clone();
             async move {
                 let rx = Assembler::new(
@@ -478,6 +414,7 @@ pub fn send_worker<Socket, Clk, WakerSink>(
                     st.gso,
                     st.pool,
                     cancelled_tx,
+                    ack_completions_tx,
                     tx_wheel_tx,
                     pto_wheel_tx,
                     idle_wheel_tx,
@@ -602,7 +539,7 @@ pub async fn packet_dispatch_task<PacketRx, AckTx, WakerSink, Clk, Route>(
     PacketRx: Receiver<
         crate::intrusive_queue::Entry<crate::packet::datagram::decoder::Packet<descriptor::Filled>>,
     >,
-    AckTx: UnboundedSender<msg::Sender>,
+    AckTx: UnboundedSender<Entry<msg::Sender>>,
     WakerSink: UnboundedSender<crate::flow::queue::AutoWake>,
     Clk: s2n_quic_core::time::Clock + precision::Clock,
     Route: endpoint::routing::SenderRoute,
@@ -647,6 +584,57 @@ pub async fn packet_dispatch_task<PacketRx, AckTx, WakerSink, Clk, Route>(
 pub async fn waker_drain_task(drain: endpoint::waker::Drain, budgets: Budgets) {
     let rx = Map::new(drain, |waker: core::task::Waker| waker.wake());
     rx.drain_budgeted(Some(budgets.waker_drain)).await;
+}
+
+/// Drains ACK completion entries returning from the send worker's assembler.
+///
+/// For each returned entry, looks up the recv context and checks if new packets arrived
+/// while the ACK was in flight. If stale (ack_state went back to Scheduled), re-submits
+/// a fresh PendingAck. Otherwise transitions Flushed → Idle.
+pub async fn ack_completion_task<AckTx>(
+    completion_rx: impl Receiver<Entry<msg::Sender>>,
+    recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
+    mut ack_sender: AckTx,
+    budgets: Budgets,
+) where
+    AckTx: UnboundedSender<Entry<msg::Sender>>,
+{
+    let rx = Map::new(completion_rx, move |entry: Entry<msg::Sender>| {
+        let msg::Sender::PendingAck(ref submission) = *entry else {
+            return;
+        };
+
+        let key = endpoint::recv::Key {
+            id: *submission.path_secret_entry.id(),
+            remote_sender_id: submission.remote_sender_id,
+        };
+
+        let mut cache = recv_cache.borrow_mut();
+        let Some(ctx) = cache.senders.get_mut(&key) else {
+            return;
+        };
+
+        if ctx.ack_state.is_scheduled() {
+            // New packets arrived while in flight — re-submit.
+            let mtu = ctx.path_entry.max_datagram_size() as usize;
+            let max_body_len = mtu.saturating_sub(endpoint::recv::ack_ranges::PACKET_OVERHEAD);
+            let _ = ctx.ack_state.on_flush();
+            ctx.ack_writer.update(
+                ctx.ack_ranges
+                    .encode_body(ctx.ecn_counts.as_option(), max_body_len)
+                    .unwrap_or_default(),
+                ctx.ack_ranges
+                    .largest_recv_time()
+                    .map(Into::into)
+                    .unwrap_or(crate::clock::precision::Timestamp { nanos: 0 }),
+                ctx.ecn_counts.as_option().is_some(),
+            );
+            let _ = ack_sender.send(entry);
+        } else {
+            let _ = ctx.ack_state.on_completion_idle();
+        }
+    });
+    rx.drain_budgeted(Some(budgets.ack_completion)).await;
 }
 
 fn on_packet_dispatch_error(counters: &endpoint::counters::Dispatch, err: dispatch::Error) {

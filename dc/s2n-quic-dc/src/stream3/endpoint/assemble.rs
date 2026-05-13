@@ -11,7 +11,7 @@ use crate::{
     clock::precision,
     credentials::Credentials,
     crypto::seal,
-    intrusive_queue::Queue,
+    intrusive_queue::{self, Queue},
     msg::segment,
     packet::{
         datagram::{self, RoutingInfo},
@@ -22,7 +22,7 @@ use crate::{
         pool::{self, descriptor::Segments},
     },
     stream3::{
-        endpoint::{combinator::AssemblerCounters, inflight, send::Context},
+        endpoint::{combinator::AssemblerCounters, inflight, msg, send::Context},
         frame::{self, Frame},
     },
 };
@@ -57,7 +57,8 @@ pub(crate) fn assemble<Clk>(
     gso: &Gso,
     pool: &pool::Pool,
     header_buf: &mut Vec<u8>,
-    cancelled: &mut impl UnboundedSender<Queue<Frame>>,
+    cancelled: &mut impl UnboundedSender<intrusive_queue::Entry<Frame>>,
+    ack_completions: &mut impl UnboundedSender<intrusive_queue::Entry<msg::Sender>>,
     counters: &AssemblerCounters,
 ) -> Option<Segments>
 where
@@ -104,29 +105,44 @@ where
                 break;
             }
 
-            // Drain cancelled frames before collecting transmittable ones
-            let mut cancelled_queue = Queue::new();
             let mut packet_frames = Queue::new();
             let mut metadata = MetadataEstimate::new(context.flow_attempt_id_counter);
             let mut is_ack_eliciting = false;
-            // Number of leading ACK (control/immediate) frames in packet_frames.
-            // These are stripped from packet_frames before inflight insertion (ACK frames
-            // are stale on retransmit) but are still encoded into the outgoing packet.
+            // Number of leading ACK frames in packet_frames (from the direct path).
+            // These are stripped before inflight insertion since ACKs are stale on retransmit.
             let mut ack_frame_count: usize = 0;
             // If a probe is encoded in this segment, this records which old inflight
             // entry was turned into a shell so we can link it to the new PN after
             // the segment is registered in the inflight map.
             let mut probe_from_pn: Option<PacketNumber> = None;
 
-            // Phase 1: drain immediate (ACK) frames first — they go into the packet
-            // but are stripped from packet_frames before inflight insertion.
-            while let Some(frame) = context.pop_immediate() {
-                if !frame.should_transmit() {
-                    cancelled_queue.push_back(frame);
-                    continue;
-                }
+            // Phase 1: drain direct ACK submissions (from pending_acks queue).
+            // Each entry carries a shared state reader; snapshot it now for wire-time
+            // ack_delay accuracy. These bypass CWND like Phase 1 frames.
+            while let Some(entry) = context.pending_acks.pop_front() {
+                let crate::stream3::endpoint::msg::Sender::PendingAck(ref submission) = *entry
+                else {
+                    unreachable!("pending_acks should only contain PendingAck entries")
+                };
 
-                let next_metadata = metadata.with_frame(&frame);
+                let Some(snapshot) = submission.reader.snapshot() else {
+                    // Nothing to send — return entry to completion immediately.
+                    let _ = ack_completions.send(entry);
+                    continue;
+                };
+
+                let ack_delay_duration = now.duration_since(snapshot.largest_recv_time);
+                let ack_delay_micros = ack_delay_duration.as_micros() as u64;
+                let ack_delay = VarInt::new(ack_delay_micros).unwrap_or(VarInt::from_u32(u32::MAX));
+
+                let header = frame::Header::Ack {
+                    dest_sender_id: submission.remote_sender_id,
+                    ack_delay,
+                    has_ecn: snapshot.has_ecn,
+                };
+                let payload_len = snapshot.body.len();
+
+                let next_metadata = metadata.with_frame_parts(&header, payload_len);
                 let estimated_len = next_metadata.estimate_packet_len(
                     source_sender_id,
                     source_control_port,
@@ -136,15 +152,30 @@ where
                 );
 
                 if estimated_len > max_segment_len {
-                    context.push_front_frame(frame);
+                    context.pending_acks.push_front(entry);
                     break;
                 }
 
-                // Control frames are ACK priority and never ack-eliciting.
-                debug_assert!(matches!(frame.header, frame::Header::Control { .. }));
+                let frame = Frame {
+                    header,
+                    source_sender_id: submission.local_sender_id,
+                    payload: snapshot.body.into(),
+                    path_secret_entry: submission.path_secret_entry.clone(),
+                    completion: None,
+                    status: Default::default(),
+                    ttl: frame::DEFAULT_TTL,
+                    transmission_time: None,
+                };
+
+                // Mark transmitted before releasing the entry.
+                submission.reader.mark_transmitted(snapshot.version);
+
                 ack_frame_count += 1;
                 metadata = next_metadata;
-                packet_frames.push_back(frame);
+                packet_frames.push_back(frame.into());
+
+                // Return the entry to the recv worker via the completion channel.
+                let _ = ack_completions.send(entry);
 
                 if estimated_len == max_segment_len {
                     break;
@@ -231,7 +262,7 @@ where
             if can_send_pending {
                 while let Some(frame) = context.pop_pending() {
                     if !frame.should_transmit() {
-                        cancelled_queue.push_back(frame);
+                        let _ = cancelled.send(frame);
                         continue;
                     }
 
@@ -249,7 +280,7 @@ where
                         break;
                     }
 
-                    is_ack_eliciting |= !matches!(frame.header, frame::Header::Control { .. });
+                    is_ack_eliciting |= frame.header.is_ack_eliciting();
                     metadata = next_metadata;
                     packet_frames.push_back(frame);
 
@@ -257,11 +288,6 @@ where
                         break;
                     }
                 }
-            }
-
-            // Send cancelled frames to the completion channel
-            if !cancelled_queue.is_empty() {
-                let _ = cancelled.send(cancelled_queue);
             }
 
             if packet_frames.is_empty() {
@@ -320,23 +346,21 @@ where
             // using it to gate inflight insertion — a mismatch would silently drop packets.
             debug_assert_eq!(
                 is_ack_eliciting,
-                packet_frames.iter().any(|f| !f.is_immediate()),
+                packet_frames.iter().any(|f| f.header.is_ack_eliciting()),
                 "is_ack_eliciting flag does not match actual frames in packet_frames"
             );
 
             if is_ack_eliciting {
-                // Strip ACK (control/immediate) frames before inflight insertion — they
-                // are stale on any retransmit and must not be re-sent as probes.
+                // Strip leading ACK frames before inflight insertion — they are stale
+                // on retransmit and must not be re-sent as probes.
                 for _ in 0..ack_frame_count {
                     let frame = packet_frames
                         .pop_front()
                         .expect("ack_frame_count exceeds packet_frames length");
                     debug_assert!(
-                        frame.is_immediate(),
-                        "expected ACK/control frame during stripping, got a data frame"
+                        !frame.header.is_ack_eliciting(),
+                        "expected ACK frame during stripping, got a data frame"
                     );
-                    // TODO: once a dedicated ACK completion queue exists, notify it here so
-                    // the receiver can send another ACK if desired.
                     drop(frame);
                 }
 

@@ -23,7 +23,7 @@ use crate::{
     stream3::{
         endpoint::{
             counters, decode, msg,
-            recv::{self, AckState, AttemptDedupError},
+            recv::{self, AttemptDedupError},
             reset_error, routing,
         },
         frame::{Frame, Header, PriorityInput, SubmissionSender, DEFAULT_TTL},
@@ -66,7 +66,7 @@ pub(crate) fn process<Clk, Route>(
     acceptor_registry: &acceptor::Registry<Stream>,
     frame_tx: &SubmissionSender,
     response_tx: &mut impl channel::UnboundedSender<PriorityInput>,
-    sender_tx: &mut impl channel::UnboundedSender<msg::Sender>,
+    sender_tx: &mut impl channel::UnboundedSender<Entry<msg::Sender>>,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     clock: &Clk,
     counters: &counters::Dispatch,
@@ -81,6 +81,7 @@ where
     let packet_number = packet.packet_number();
     let routing_info = packet.routing_info();
     let idle_timeout = recv_cache.idle_timeout;
+    let recv_worker_id = recv_cache.worker_id;
 
     let source_sender_id = match routing_info {
         RoutingInfo::SenderId { source_sender_id } => source_sender_id,
@@ -98,6 +99,7 @@ where
             path_secret_map,
             clock,
             &mut control_out,
+            route,
         ) {
             Some(v) => v,
             None => {
@@ -151,12 +153,7 @@ where
     }
 
     // Packet number deduplication
-    if peer
-        .ack_space
-        .filter
-        .on_packet_number(packet_number)
-        .is_err()
-    {
+    if peer.dedup_filter.on_packet_number(packet_number).is_err() {
         return Err(Error::Duplicate {
             credentials,
             packet_number,
@@ -167,9 +164,8 @@ where
     peer.update_activity(clock, idle_timeout);
     peer.ecn_counts.increment(ecn);
     counters.on_ecn(ecn);
-    peer.ack_space
-        .on_packet_received(packet_number, clock.get_time());
-    peer.ack_state = AckState::Scheduled;
+    let now = clock.get_time();
+    peer.ack_ranges.on_packet_received(packet_number, now);
 
     counters.rx_packet_size.record_value(decrypt_len as u64);
 
@@ -202,8 +198,7 @@ where
                     break;
                 }
 
-                // If it's not an ACK then the peer needs an ACK back
-                if !matches!(header, Header::Control { .. }) {
+                if header.is_ack_eliciting() {
                     is_ack_eliciting = true;
                 }
 
@@ -247,10 +242,12 @@ where
 
     counters.rx_frames_per_packet.record_value(frame_count);
 
-    // TODO batch ACKs via the ACK wheel instead of emitting one per packet
     if is_ack_eliciting {
-        if let Some(ack_frame) = peer.generate_ack_frame(clock, route) {
-            response_frames.push(ack_frame.into());
+        let _ = peer.ack_state.on_ack_eliciting();
+
+        if let Some(submission) = peer.update_ack_state(recv_worker_id) {
+            let msg = msg::Sender::PendingAck(submission);
+            let _ = sender_tx.send(Entry::new(msg));
         }
     }
 
@@ -275,7 +272,7 @@ fn dispatch_decoded_frame(
     acceptor_registry: &acceptor::Registry<Stream>,
     frame_tx: &SubmissionSender,
     queue_dispatcher: &mut msg::queue::Dispatcher,
-    sender_tx: &mut impl channel::UnboundedSender<msg::Sender>,
+    sender_tx: &mut impl channel::UnboundedSender<Entry<msg::Sender>>,
     counters: &counters::Dispatch,
     response_frames: &mut PriorityInput,
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
@@ -394,13 +391,13 @@ fn dispatch_decoded_frame(
                 waker_sink,
             );
         }
-        Header::Control { dest_sender_id } => {
-            let message = msg::Sender::Ack {
+        Header::Ack { dest_sender_id, .. } => {
+            let message = msg::Sender::ReceivedAck {
                 local_sender_id: dest_sender_id,
                 path_secret_entry: peer.path_entry.clone(),
                 payload,
             };
-            if sender_tx.send(message).is_err() {
+            if sender_tx.send(Entry::new(message)).is_err() {
                 tracing::warn!(
                     %credentials,
                     source_sender_id = source_sender_id.as_u64(),

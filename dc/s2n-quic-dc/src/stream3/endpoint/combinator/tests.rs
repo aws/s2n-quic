@@ -121,8 +121,12 @@ fn new_test_frame_with_sender_id(
     }
 
     Entry::new(Frame {
-        header: Header::Control {
-            dest_sender_id: VarInt::from_u8(1),
+        header: Header::FlowControl {
+            queue_pair: crate::packet::datagram::QueuePair {
+                source_queue_id: VarInt::from_u8(0),
+                dest_queue_id: VarInt::from_u8(1),
+            },
+            stream_id: VarInt::from_u8(0),
         },
         source_sender_id,
         payload,

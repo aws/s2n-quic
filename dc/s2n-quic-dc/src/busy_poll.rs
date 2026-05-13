@@ -10,7 +10,6 @@ use std::{
     pin::Pin,
     sync::{Arc, Weak},
     task::Context,
-    time::Instant,
 };
 
 pub mod clock;
@@ -151,6 +150,7 @@ impl Spawn {
 struct Task {
     task: Pin<Box<dyn Future<Output = ()> + 'static>>,
     priority: u8,
+    #[allow(dead_code)]
     location: &'static Location<'static>,
 }
 
@@ -258,25 +258,12 @@ impl Tasks {
     }
 
     fn poll(&mut self, cx: &mut Context) {
-        const SLOW_POLL_THRESHOLD: std::time::Duration = std::time::Duration::from_millis(2);
-
         for (idx, slot) in self.slots.iter_mut().enumerate() {
             if let Some(task) = slot {
-                // let start = Instant::now();
                 if task.task.as_mut().poll(cx).is_ready() {
                     eprintln!("task {idx} done");
                     *slot = None;
                     self.free.push(idx);
-                } else {
-                    // let duration = start.elapsed();
-                    // if duration > SLOW_POLL_THRESHOLD {
-                    // tracing::warn!(
-                    // task_idx = idx,
-                    // ?duration,
-                    // location = %task.location,
-                    // "slow task poll detected"
-                    // );
-                    // }
                 }
             }
         }

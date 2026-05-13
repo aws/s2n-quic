@@ -65,8 +65,8 @@ impl Packet {
         #[cfg(debug_assertions)]
         for frame in frames.iter() {
             debug_assert!(
-                !frame.is_immediate(),
-                "ACK/control frame stored in inflight Packet — strip before insertion"
+                frame.header.is_ack_eliciting(),
+                "non-ack-eliciting frame stored in inflight — strip before insertion"
             );
         }
         Self {
@@ -161,8 +161,8 @@ impl Map {
                 );
                 for frame in packet.frames.iter() {
                     assert!(
-                        !frame.is_immediate(),
-                        "inflight packet stores an ACK/control frame — strip before insertion"
+                        frame.header.is_ack_eliciting(),
+                        "non-ack-eliciting frame stored in inflight — strip before insertion"
                     );
                 }
             }

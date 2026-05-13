@@ -361,8 +361,16 @@ pub enum Header {
         attempt_id: VarInt,
         stream_id: VarInt,
     },
-    /// ACK frame routed to a specific remote sender
-    Control { dest_sender_id: VarInt },
+    /// ACK frame with ack_delay lifted into the header (direct routing path).
+    ///
+    /// The body contains only the pre-encoded ACK ranges (and ECN counts if has_ecn).
+    /// ack_delay is computed by the sender at assembly time as `now - largest_recv_time`,
+    /// giving the most accurate delay measurement possible.
+    Ack {
+        dest_sender_id: VarInt,
+        ack_delay: VarInt,
+        has_ecn: bool,
+    },
 }
 
 impl Header {
@@ -376,7 +384,8 @@ impl Header {
     const FLOW_INIT_WITH_FIN_TYPE: u8 = 8;
     const FLOW_RESET_STREAM_TYPE: u8 = 9;
     const FLOW_RESET_CONTROL_TYPE: u8 = 10;
-    const CONTROL_TYPE: u8 = 13;
+    const ACK_TYPE: u8 = 14;
+    const ACK_ECN_TYPE: u8 = 15;
 
     #[inline]
     pub fn priority(&self) -> Priority {
@@ -392,8 +401,18 @@ impl Header {
             Self::FlowControl { .. } => Priority::FlowControl,
             Self::FlowReset { .. } => Priority::FlowReset,
             Self::FlowInitValidate { .. } | Self::FlowValidateRequest { .. } => Priority::FlowRetry,
-            Self::Control { .. } => Priority::Ack,
+            // Ack frames are assembled directly from pending_acks, never queued by priority.
+            Self::Ack { .. } => Priority::FlowControl,
         }
+    }
+
+    /// Returns true if a frame with this header type elicits an ACK from the peer.
+    ///
+    /// ACK frames are not ack-eliciting — they don't trigger the peer to send
+    /// an acknowledgment. All other frame types are ack-eliciting.
+    #[inline]
+    pub fn is_ack_eliciting(&self) -> bool {
+        !matches!(self, Self::Ack { .. })
     }
 
     /// Returns true if this header variant carries a per-frame payload length entry.
@@ -407,7 +426,7 @@ impl Header {
             Self::FlowInit { .. }
             | Self::FlowData { .. }
             | Self::FlowControl { .. }
-            | Self::Control { .. } => true,
+            | Self::Ack { .. } => true,
             Self::FlowReset { .. }
             | Self::FlowInitValidate { .. }
             | Self::FlowValidateRequest { .. } => false,
@@ -519,9 +538,19 @@ impl EncoderValue for Header {
                 encoder.encode(stream_id);
                 encoder.encode(error_code);
             }
-            Self::Control { dest_sender_id } => {
-                encoder.encode(&Self::CONTROL_TYPE);
+            Self::Ack {
+                dest_sender_id,
+                ack_delay,
+                has_ecn,
+            } => {
+                let tag = if *has_ecn {
+                    Self::ACK_ECN_TYPE
+                } else {
+                    Self::ACK_TYPE
+                };
+                encoder.encode(&tag);
                 encoder.encode(dest_sender_id);
+                encoder.encode(ack_delay);
             }
         }
     }
@@ -626,9 +655,18 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                     buffer,
                 ))
             }
-            Self::CONTROL_TYPE => {
+            Self::ACK_TYPE | Self::ACK_ECN_TYPE => {
                 let (dest_sender_id, buffer) = buffer.decode()?;
-                Ok((Self::Control { dest_sender_id }, buffer))
+                let (ack_delay, buffer) = buffer.decode()?;
+                let has_ecn = tag == Self::ACK_ECN_TYPE;
+                Ok((
+                    Self::Ack {
+                        dest_sender_id,
+                        ack_delay,
+                        has_ecn,
+                    },
+                    buffer,
+                ))
             }
             _ => {
                 decoder_invariant!(false, "unknown frame header type");
@@ -698,16 +736,6 @@ impl Frame {
     #[inline]
     pub fn payload_len(&self) -> usize {
         self.payload.len()
-    }
-
-    /// Returns true if this frame bypasses CWND enforcement (i.e., ACK/Control frames).
-    ///
-    /// Immediate frames are placed in the `immediate` queue of `send::Context` and drained
-    /// unconditionally by the assembler before data frames, so they are never blocked by the
-    /// congestion window.
-    #[inline]
-    pub fn is_immediate(&self) -> bool {
-        matches!(self.header, Header::Control { .. })
     }
 
     /// Returns true if this frame should still be transmitted.
@@ -832,30 +860,6 @@ mod tests {
         assert!(!frame.requires_sticky_sender());
         assert_eq!(frame.payload_len(), 0);
         assert_eq!(frame.peer_addr(), "10.0.0.1:9000".parse().unwrap());
-    }
-
-    #[test]
-    fn control() {
-        let entry = PathSecretEntry::fake("10.0.0.1:9000".parse().unwrap(), None);
-        let mut ack_data = ByteVec::new();
-        ack_data.push_back(bytes::Bytes::from_static(b"\x02\x00\x00"));
-
-        let frame = Frame {
-            header: Header::Control {
-                dest_sender_id: VarInt::from_u8(5),
-            },
-            source_sender_id: VarInt::MAX,
-            payload: ack_data,
-            path_secret_entry: entry,
-            completion: None,
-            status: TransmissionStatus::default(),
-            ttl: DEFAULT_TTL,
-            transmission_time: None,
-        };
-
-        assert_eq!(frame.priority(), Priority::Ack);
-        assert!(!frame.requires_sticky_sender());
-        assert_eq!(frame.payload_len(), 3);
     }
 
     #[test]

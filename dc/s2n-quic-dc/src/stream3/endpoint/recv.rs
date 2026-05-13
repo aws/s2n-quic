@@ -1,29 +1,56 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+pub(crate) mod ack_ranges;
+
 use crate::{
-    byte_vec::ByteVec,
     clock::precision,
     credentials::{self, Credentials},
     flow, intrusive_queue,
     path::{self, secret::map::Entry as PathSecretEntry},
-    stream3::frame::{self, Frame, Header},
+    stream3::endpoint::ack::state as ack_state,
 };
 use core::time::Duration;
 use rustc_hash::FxHashMap;
-use s2n_codec::EncoderValue as _;
 use s2n_quic_core::{frame::ack::EcnCounts, varint::VarInt};
 use std::{cell::RefCell, collections::hash_map, rc::Rc, sync::Arc};
 
-/// ACK transmission state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// ACK transmission state machine.
+///
+/// ```text
+/// Idle → Scheduled (ack-eliciting packet received)
+/// Scheduled → Flushed (submission sent to send worker)
+/// Flushed → Idle (completion returned, no new data)
+/// Flushed → Scheduled (completion returned, new data arrived while in flight)
+/// ```
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AckState {
-    /// No ACK pending.
+    /// No ACK pending and none in flight.
+    #[default]
     Idle,
-    /// ACK pending — context is in the ACK wheel waiting for the batching delay.
+    /// ACK pending — new ack-eliciting packets have arrived and need acknowledgment.
     Scheduled,
-    /// ACK was sent early (threshold exceeded). Wheel fires as a no-op.
+    /// ACK submission is in the send pipeline. New packets update the shared state
+    /// but don't produce another submission until the completion returns.
     Flushed,
+}
+
+impl AckState {
+    s2n_quic_core::state::is!(is_scheduled, Scheduled);
+    s2n_quic_core::state::is!(is_flushed, Flushed);
+
+    s2n_quic_core::state::event! {
+        /// An ack-eliciting packet was received.
+        on_ack_eliciting(Idle => Scheduled);
+        /// The ACK submission was sent to the send worker.
+        on_flush(Scheduled => Flushed);
+        /// Completion returned and no new packets arrived — back to idle.
+        on_completion_idle(Flushed => Idle);
+        /// Completion returned but new packets arrived — re-schedule.
+        on_completion_stale(Flushed => Scheduled);
+        /// Scheduled but nothing to encode — reset to idle.
+        on_empty(Scheduled => Idle);
+    }
 }
 
 // ── ACK Wheel Adapter ─────────────────────────────────────────────────────
@@ -138,9 +165,17 @@ pub(crate) struct Context {
     // openers (e.g., HashMap<VarInt, Opener>) to handle in-flight packets during rotation.
     pub opener: crate::crypto::awslc::open::Application,
     /// The key_id this opener corresponds to
+    #[expect(dead_code)] // TODO implement key rotation
     pub current_key_id: VarInt,
-    /// ACK space for tracking received packets (spans all key_ids for this peer)
-    pub ack_space: crate::stream::recv::ack::Space,
+    /// Sliding window for packet number deduplication.
+    pub dedup_filter: crate::stream::recv::ack::StreamFilter,
+    /// Lightweight ACK range tracker for the direct ACK path.
+    pub ack_ranges: ack_ranges::AckRanges,
+    /// Writer handle to the shared ACK state. Updated when ranges change;
+    /// the send worker reads the latest snapshot at assembly time.
+    pub ack_writer: ack_state::Writer,
+    /// Which local sender_id outgoing ACKs for this peer route through.
+    pub dest_sender_id: VarInt,
     /// Accumulated ECN counts for received packets, reported back to the sender
     /// in each ACK frame so the sender can validate ECN support and detect congestion.
     pub ecn_counts: EcnCounts,
@@ -159,6 +194,7 @@ impl Context {
     pub fn new<Clk>(
         path_entry: Arc<PathSecretEntry>,
         remote_sender_id: VarInt,
+        dest_sender_id: VarInt,
         opener: crate::crypto::awslc::open::Application,
         key_id: VarInt,
         clock: &Clk,
@@ -172,13 +208,17 @@ impl Context {
         idle_timer.set(now + idle_timeout);
 
         let flows = flow::Tracker::new(*path_entry.id());
+        let (ack_writer, _ack_reader) = ack_state::channel();
 
         Self {
             path_entry,
             remote_sender_id,
             opener,
             current_key_id: key_id,
-            ack_space: Default::default(),
+            dedup_filter: Default::default(),
+            ack_ranges: Default::default(),
+            ack_writer,
+            dest_sender_id,
             ecn_counts: Default::default(),
             idle_timer,
             last_activity: now,
@@ -205,45 +245,44 @@ impl Context {
         self.idle_timer.poll_expiration(clock.get_time()).is_ready()
     }
 
-    pub fn should_transmit(&self) -> bool {
-        self.ack_state == AckState::Scheduled
-    }
-
-    /// Generate an ACK frame for submission through the frame pipeline.
+    /// Update the shared ACK state and produce a submission for the direct ACK path.
     ///
-    /// Returns `None` if the ack_space has nothing to acknowledge.
-    /// Transitions ack_state from Scheduled to Idle on success.
-    pub fn generate_ack_frame<Clk, Route>(&mut self, clock: &Clk, route: &Route) -> Option<Frame>
-    where
-        Clk: s2n_quic_core::time::Clock + ?Sized,
-        Route: super::routing::SenderRoute,
-    {
-        let mtu = 1400u16;
-        let (ack_frame, _encoding_size) =
-            self.ack_space
-                .encoding(VarInt::ZERO, self.ecn_counts.as_option(), mtu, clock);
+    /// Only produces a submission when ack_state is Scheduled (new packets arrived
+    /// since the last submission). Transitions to Flushed after submitting to enforce
+    /// at-most-one-in-flight. When the completion returns, the recv worker checks
+    /// whether ack_state went back to Scheduled (new packets arrived) and re-submits.
+    ///
+    /// Returns `None` if there are no ranges or an ACK is already in flight.
+    pub fn update_ack_state(&mut self, recv_worker_id: usize) -> Option<ack_state::Submission> {
+        if !self.ack_state.is_scheduled() {
+            return None;
+        }
 
-        let ack_frame = ack_frame?;
+        let has_ecn = self.ecn_counts.as_option().is_some();
+        let mtu = self.path_entry.max_datagram_size() as usize;
+        let max_body_len = mtu.saturating_sub(ack_ranges::PACKET_OVERHEAD);
+        let Some(body) = self
+            .ack_ranges
+            .encode_body(self.ecn_counts.as_option(), max_body_len)
+        else {
+            let _ = self.ack_state.on_empty();
+            return None;
+        };
+        let Some(largest_recv_time) = self.ack_ranges.largest_recv_time() else {
+            let _ = self.ack_state.on_empty();
+            return None;
+        };
 
-        let payload: ByteVec = ack_frame.encode_to_vec().into();
+        self.ack_writer
+            .update(body, largest_recv_time.into(), has_ecn);
+        let _ = self.ack_state.on_flush();
 
-        self.ack_state = AckState::Idle;
-
-        // Consistently route through the same local sender id so RTTs are accurate
-        // let local_sender_id = route.sender_id_for_ack(self.path_entry.id(), self.remote_sender_id);
-        let local_sender_id = VarInt::MAX;
-
-        Some(Frame {
-            header: Header::Control {
-                dest_sender_id: self.remote_sender_id,
-            },
-            source_sender_id: local_sender_id,
-            payload,
+        Some(ack_state::Submission {
+            reader: self.ack_writer.reader(),
             path_secret_entry: self.path_entry.clone(),
-            completion: None,
-            status: Default::default(),
-            ttl: frame::DEFAULT_TTL,
-            transmission_time: None,
+            local_sender_id: self.dest_sender_id,
+            remote_sender_id: self.remote_sender_id,
+            recv_worker_id,
         })
     }
 }
@@ -279,16 +318,18 @@ impl Cache {
     }
 
     #[inline]
-    pub fn get_or_insert<Clk>(
+    pub fn get_or_insert<Clk, Route>(
         &mut self,
         credentials: &Credentials,
         remote_sender_id: VarInt,
         path_secret_map: &path::secret::map::Map,
         clock: &Clk,
         control_out: &mut Vec<u8>,
+        route: &Route,
     ) -> Option<(&mut Context, bool)>
     where
         Clk: s2n_quic_core::time::Clock + ?Sized,
+        Route: super::routing::SenderRoute,
     {
         let key = Key {
             id: credentials.id,
@@ -302,9 +343,12 @@ impl Cache {
                 let (opener, path_entry) =
                     path_secret_map.opener_for_credentials(credentials, None, control_out)?;
 
+                let dest_sender_id = route.sender_id_for_ack(&credentials.id, remote_sender_id);
+
                 let ctx = entry.insert(Context::new(
                     path_entry,
                     remote_sender_id,
+                    dest_sender_id,
                     opener,
                     credentials.key_id,
                     clock,
@@ -315,6 +359,7 @@ impl Cache {
         })
     }
 
+    #[expect(dead_code)] // TODO implement expiration
     pub fn cleanup_expired<Clk>(&mut self, clock: &Clk)
     where
         Clk: s2n_quic_core::time::Clock + ?Sized,

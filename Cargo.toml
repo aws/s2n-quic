@@ -1,6 +1,6 @@
 [workspace]
 members = ["common/s2n-*", "quic/s2n-*", "dc/s2n-*", "tools/dc-tester", "xtask"]
-default-members = ["common/s2n-*", "quic/s2n-*"]
+default-members = ["common/s2n-*", "quic/s2n-*", "dc/s2n-*"]
 resolver = "2"
 # don't include any workspaces outside of the main project
 exclude = ["examples", "tools/event-generator", "tools/memory-report", "tools/s2n-events", "tools/udp-attack", "tools/xdp"]

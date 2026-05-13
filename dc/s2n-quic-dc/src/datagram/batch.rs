@@ -30,18 +30,16 @@ unsafe impl Sync for NoContext {}
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Priority {
-    Ack = 0,
-    FlowReset = 1,
-    FlowControl = 2,
-    FlowData = 3,
-    FlowRetry = 4,
-    FlowInit = 5,
+    FlowReset = 0,
+    FlowControl = 1,
+    FlowData = 2,
+    FlowRetry = 3,
+    FlowInit = 4,
 }
 
 impl Priority {
-    pub const LEVELS: usize = 6;
+    pub const LEVELS: usize = 5;
     pub const ALL: [Self; Self::LEVELS] = [
-        Self::Ack,
         Self::FlowReset,
         Self::FlowControl,
         Self::FlowData,
@@ -57,7 +55,7 @@ impl Priority {
     #[inline]
     pub fn from_datagram(datagram: &PartialDatagram) -> Self {
         match &datagram.packet_type {
-            PacketType::Control { .. } => Self::Ack,
+            PacketType::Control { .. } => Self::FlowControl,
             PacketType::Datagram { routing_info, .. } => match routing_info {
                 RoutingInfo::FlowValidateRequest { .. } | RoutingInfo::FlowInitValidate { .. } => {
                     Self::FlowRetry

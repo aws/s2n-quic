@@ -71,13 +71,6 @@ pub(crate) struct Sink {
     slot: Arc<Slot>,
 }
 
-impl Sink {
-    #[inline]
-    pub fn push(&self, waker: Waker) {
-        self.slot.push(waker);
-    }
-}
-
 impl channel::UnboundedSender<Waker> for Sink {
     fn send(&mut self, waker: Waker) -> Result<(), Waker> {
         self.slot.push(waker);

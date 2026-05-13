@@ -249,7 +249,7 @@ where
                     tracing::info!("[{label}] {formatted}");
                 }
             } else {
-                tracing::debug!("<no metrics>");
+                tracing::info!("<no metrics>");
             }
         }
     }

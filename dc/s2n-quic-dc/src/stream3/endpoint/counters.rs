@@ -76,8 +76,6 @@ pub(crate) struct Dispatch {
     pub rx_init_register_time: Timer,
     pub rx_init_create_stream_time: Timer,
     pub rx_init_dispatch_time: Timer,
-    pub rx_data_wake_time: Timer,
-    pub rx_flow_control_wake_time: Timer,
     pub rx_frames_per_packet: Summary,
     pub rx_packet_size: Summary,
 
@@ -159,8 +157,6 @@ impl Dispatch {
             rx_init_register_time: counters.register_timer("rx.init.register_time"),
             rx_init_create_stream_time: counters.register_timer("rx.init.create_stream_time"),
             rx_init_dispatch_time: counters.register_timer("rx.init.dispatch_time"),
-            rx_data_wake_time: counters.register_timer("rx.data_wake_time"),
-            rx_flow_control_wake_time: counters.register_timer("rx.flow_control_wake_time"),
             rx_frames_per_packet: counters.register_summary("rx.frames_per_packet", Unit::Count),
             rx_packet_size: counters.register_summary("rx.packet_size", Unit::Byte),
 
@@ -190,7 +186,7 @@ impl Dispatch {
             Header::FlowData { .. } => self.rx_data.add(1),
             Header::FlowControl { .. } => self.rx_flow_control.add(1),
             Header::FlowReset { .. } => self.rx_reset.add(1),
-            Header::Control { .. } => self.rx_pkt_control.add(1),
+            Header::Ack { .. } => self.rx_pkt_control.add(1),
         };
     }
 

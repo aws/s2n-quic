@@ -3,7 +3,6 @@ use crate::{
     byte_vec::ByteVec,
     clock::testing::Clock,
     counter::Registry,
-    datagram::batch::Priority,
     packet::datagram::ResetTarget,
     path::secret::map::Entry as PathSecretEntry,
     stream3::frame::{Frame, Header, TransmissionStatus, DEFAULT_TTL},
@@ -31,7 +30,7 @@ impl bolero_generator::TypeGenerator for FrameInput {
     where
         D: bolero_generator::Driver,
     {
-        use bolero_generator::{TypeGenerator as _, ValueGenerator as _};
+        use bolero_generator::ValueGenerator as _;
 
         let header = Header::generate(driver)?;
         let payload_len = (0..=MAX_TEST_PAYLOAD_LEN).generate(driver)?;
@@ -58,7 +57,7 @@ impl bolero_generator::TypeGenerator for HarnessInput {
     where
         D: bolero_generator::Driver,
     {
-        use bolero_generator::{TypeGenerator as _, ValueGenerator as _};
+        use bolero_generator::ValueGenerator as _;
 
         let mtu = (MIN_TEST_MTU..=MAX_TEST_MTU).generate(driver)?;
         let max_segments = (1..=segment::MAX_COUNT).generate(driver)?;
@@ -80,23 +79,16 @@ impl bolero_generator::TypeGenerator for HarnessInput {
     }
 }
 
-struct CancelledSender(Vec<Queue<Frame>>);
-
-impl crate::socket::channel::UnboundedSender<Queue<Frame>> for CancelledSender {
-    fn send(&mut self, value: Queue<Frame>) -> Result<(), Queue<Frame>> {
-        self.0.push(value);
-        Ok(())
-    }
-}
+// Queue<T> implements UnboundedSender<Entry<T>> via push_back, so we use it directly.
 
 fn make_context(mtu: u16, registry: &Registry) -> (Context, Arc<PathSecretEntry>) {
     let entry = PathSecretEntry::fake("127.0.0.1:8080".parse().unwrap(), None);
     entry.update_max_datagram_size(mtu);
     let inflight_gauge = registry.register_queue_gauge("test.inflight");
-    let immediate_gauge = registry.register_queue_gauge("test.immediate");
+    let ack_gauge = registry.register_queue_gauge("test.ack");
     let pending_gauge = registry.register_queue_gauge("test.pending");
     (
-        Context::new(&entry, inflight_gauge, immediate_gauge, pending_gauge, 0),
+        Context::new(&entry, inflight_gauge, ack_gauge, pending_gauge, 0),
         entry,
     )
 }
@@ -282,7 +274,8 @@ fn assemble_accounts_for_header_overhead() {
     let gso = make_gso(1);
     let pool = pool::Pool::new(u16::MAX);
     let mut header_buf = Vec::new();
-    let mut cancelled = CancelledSender(Vec::new());
+    let mut cancelled = Queue::new();
+    let mut ack_completions = Queue::new();
 
     for _ in 0..128 {
         context.push_back_frame(
@@ -316,6 +309,7 @@ fn assemble_accounts_for_header_overhead() {
         &pool,
         &mut header_buf,
         &mut cancelled,
+        &mut ack_completions,
         &counters,
     )
     .expect("frames should assemble");
@@ -370,7 +364,8 @@ fn assemble_fuzz_respects_gso_invariants() {
             let gso = make_gso(max_segments);
             let pool = pool::Pool::new(u16::MAX);
             let mut header_buf = Vec::new();
-            let mut cancelled = CancelledSender(Vec::new());
+            let mut cancelled = Queue::new();
+            let mut ack_completions = Queue::new();
 
             for frame in &frames {
                 context.push_back_frame(to_frame(frame, &entry));
@@ -387,6 +382,7 @@ fn assemble_fuzz_respects_gso_invariants() {
                 &pool,
                 &mut header_buf,
                 &mut cancelled,
+                &mut ack_completions,
                 &counters,
             )
             .expect("assemble should make progress for bounded test inputs");
@@ -416,9 +412,9 @@ fn encode_decode_round_trip() {
 
     let registry = Registry::new();
     let inflight_gauge = registry.register_queue_gauge("test.inflight");
-    let immediate_gauge = registry.register_queue_gauge("test.immediate");
+    let ack_gauge = registry.register_queue_gauge("test.ack");
     let pending_gauge = registry.register_queue_gauge("test.pending");
-    let context = Context::new(&sealer_entry, inflight_gauge, immediate_gauge, pending_gauge, 0);
+    let context = Context::new(&sealer_entry, inflight_gauge, ack_gauge, pending_gauge, 0);
 
     let key_id = context.credentials.key_id;
     let opener = opener_entry.secret().application_opener(key_id);
@@ -559,15 +555,9 @@ fn encode_decode_fuzz_round_trip() {
 
             let registry = Registry::new();
             let inflight_gauge = registry.register_queue_gauge("test.inflight");
-            let immediate_gauge = registry.register_queue_gauge("test.immediate");
+            let ack_gauge = registry.register_queue_gauge("test.ack");
             let pending_gauge = registry.register_queue_gauge("test.pending");
-            let context = Context::new(
-                &sealer_entry,
-                inflight_gauge,
-                immediate_gauge,
-                pending_gauge,
-                0,
-            );
+            let context = Context::new(&sealer_entry, inflight_gauge, ack_gauge, pending_gauge, 0);
 
             let key_id = context.credentials.key_id;
             let opener = opener_entry.secret().application_opener(key_id);
