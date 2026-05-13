@@ -31,19 +31,21 @@ unsafe impl Sync for NoContext {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Priority {
     Ack = 0,
-    FlowRetryReset = 1,
+    FlowReset = 1,
     FlowControl = 2,
     FlowData = 3,
-    FlowInit = 4,
+    FlowRetry = 4,
+    FlowInit = 5,
 }
 
 impl Priority {
-    pub const LEVELS: usize = 5;
+    pub const LEVELS: usize = 6;
     pub const ALL: [Self; Self::LEVELS] = [
         Self::Ack,
-        Self::FlowRetryReset,
+        Self::FlowReset,
         Self::FlowControl,
         Self::FlowData,
+        Self::FlowRetry,
         Self::FlowInit,
     ];
 
@@ -57,9 +59,10 @@ impl Priority {
         match &datagram.packet_type {
             PacketType::Control { .. } => Self::Ack,
             PacketType::Datagram { routing_info, .. } => match routing_info {
-                RoutingInfo::FlowValidateRequest { .. }
-                | RoutingInfo::FlowInitValidate { .. }
-                | RoutingInfo::FlowReset { .. } => Self::FlowRetryReset,
+                RoutingInfo::FlowValidateRequest { .. } | RoutingInfo::FlowInitValidate { .. } => {
+                    Self::FlowRetry
+                }
+                RoutingInfo::FlowReset { .. } => Self::FlowReset,
                 RoutingInfo::FlowControl { .. } => Self::FlowControl,
                 RoutingInfo::FlowData { .. } | RoutingInfo::None | RoutingInfo::SenderId { .. } => {
                     Self::FlowData
@@ -67,7 +70,7 @@ impl Priority {
                 RoutingInfo::FlowInit { attempt_id, .. } => {
                     if *attempt_id != VarInt::MAX {
                         // Already been through the encoder — this is a retransmission
-                        Self::FlowRetryReset
+                        Self::FlowRetry
                     } else {
                         Self::FlowInit
                     }
@@ -630,7 +633,7 @@ impl<T> Entry<Batch<std::rc::Rc<T>>> {
     /// # Safety
     /// This transmutes Entry<Batch<Rc<T>>> back into Entry<Batch<NoContext>>.
     /// After this call, the batch is Send again.
-    pub fn into_parts(mut self) -> (Entry<Batch<NoContext>>, std::rc::Rc<T>) {
+    pub fn into_parts(self) -> (Entry<Batch<NoContext>>, std::rc::Rc<T>) {
         unsafe {
             // Extract the Rc<T> by transmuting directly from the context field
             // This preserves the internal RcBox pointer correctly

@@ -27,7 +27,7 @@ use std::{
 use tokio::{sync::Semaphore, time::Instant as TokioInstant};
 
 pub use crate::stream::DEFAULT_IDLE_TIMEOUT;
-pub const DEFAULT_MAX_DATA: u64 = 1u64 << 25;
+pub const DEFAULT_MAX_DATA: u64 = 1u64 << 23;
 pub const DEFAULT_BASE_MTU: u16 = 1450;
 #[cfg(target_os = "linux")]
 pub const DEFAULT_MTU: u16 = 8940;

@@ -366,16 +366,15 @@ impl Header {
         match self {
             Self::FlowInit { attempt_id, .. } => {
                 if *attempt_id != VarInt::MAX {
-                    Priority::FlowRetryReset
+                    Priority::FlowRetry
                 } else {
                     Priority::FlowInit
                 }
             }
             Self::FlowData { .. } => Priority::FlowData,
             Self::FlowControl { .. } => Priority::FlowControl,
-            Self::FlowReset { .. }
-            | Self::FlowInitValidate { .. }
-            | Self::FlowValidateRequest { .. } => Priority::FlowRetryReset,
+            Self::FlowReset { .. } => Priority::FlowReset,
+            Self::FlowInitValidate { .. } | Self::FlowValidateRequest { .. } => Priority::FlowRetry,
             Self::Control { .. } => Priority::Ack,
         }
     }
@@ -802,7 +801,7 @@ mod tests {
             transmission_time: None,
         };
 
-        assert_eq!(frame.priority(), Priority::FlowRetryReset);
+        assert_eq!(frame.priority(), Priority::FlowReset);
         assert!(!frame.requires_sticky_sender());
         assert_eq!(frame.payload_len(), 0);
         assert_eq!(frame.peer_addr(), "10.0.0.1:9000".parse().unwrap());
@@ -854,6 +853,6 @@ mod tests {
         };
 
         assert!(frame.requires_sticky_sender());
-        assert_eq!(frame.priority(), Priority::FlowRetryReset);
+        assert_eq!(frame.priority(), Priority::FlowRetry);
     }
 }
