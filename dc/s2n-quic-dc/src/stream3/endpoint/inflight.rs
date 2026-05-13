@@ -28,8 +28,31 @@ pub(crate) struct TransmissionInfo {
 /// metadata. When ACKed, each frame's completion fires. When lost, each frame is
 /// individually evaluated for retransmission.
 pub(crate) struct Packet {
+    /// All frames packed into this packet.
+    ///
+    /// When the packet is ACKed, each frame's completion notification fires. When the
+    /// packet is declared lost, each frame is individually evaluated for retransmission.
+    /// When this packet is a "shell" (probed to a newer PN), the list will be empty
+    /// because the frames have been moved to the probe entry.
     pub frames: Queue<Frame>,
+    /// Transmission metadata shared by all frames in this packet (CCA info, send time,
+    /// wire byte count). Taken on first ACK or loss so that RTT/CCA updates are applied
+    /// exactly once.
     pub transmission_info: Option<TransmissionInfo>,
+    /// PTO probe chain forward pointer.
+    ///
+    /// When a PTO fires and the assembler retransmits this packet's frames under a new
+    /// packet number, `probed_to` is set to that new PN and `frames` is emptied (this
+    /// entry becomes a "shell"). The chain can extend across multiple PTO firings:
+    ///
+    /// ```text
+    /// PN_0 (shell, probed_to=PN_1) -> PN_1 (shell, probed_to=PN_2) -> PN_2 (live frames)
+    /// ```
+    ///
+    /// ACK processing follows the chain to the tail to complete the frames found there.
+    /// Loss detection on a shell calls `on_packet_lost` for CCA but does not follow the
+    /// chain — the probe is still in flight and may succeed independently.
+    pub probed_to: Option<PacketNumber>,
 }
 
 impl Packet {
@@ -37,6 +60,7 @@ impl Packet {
         Self {
             frames,
             transmission_info: Some(info),
+            probed_to: None,
         }
     }
 }
