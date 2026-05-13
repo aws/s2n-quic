@@ -58,17 +58,28 @@ impl PathSecretMapEntry for crate::stream3::frame::Frame {
 const MAX_FRAME_BATCH_PACKET_OVERHEAD: u64 =
     crate::packet::datagram::partial::MAX_FLOW_DATA_HEADER_OVERHEAD as u64;
 
-/// A queue of frames grouped for a single path-secret entry.
+/// A queue of frames grouped for a single path-secret entry, pre-split by CWND exemption.
 ///
-/// This wrapper keeps the queue byte-cost estimate and path-secret entry so it can be
-/// routed through the priority merger and `PickTwo`.
+/// Frames with a `Control` header (outbound ACKs) are placed in `immediate`; all other
+/// frames go into `pending`. This split happens once here — in the batcher, which already
+/// inspects every frame — so downstream `send::Context::push_batch` can consume both
+/// queues with two O(1) list-append operations.
 ///
 /// Because individual frames are routed into per-priority unsync lanes *before*
 /// [`BatchFramesByPathSecret`] coalesces them, all frames in a `FrameBatch` that comes out
 /// of a given lane share the same priority class.
 pub struct FrameBatch {
-    queue: Queue<Frame>,
+    /// ACK (Control-header) frames: bypass CWND, drained unconditionally by assembler.
+    immediate: Queue<Frame>,
+    /// Data/reset/flow-control frames: subject to CWND.
+    pending: Queue<Frame>,
+    /// Total wire cost of all frames (immediate + pending), including per-packet overhead.
+    /// Used for batch-size budget checks in [`BatchFramesByPathSecret`].
     byte_cost: u64,
+    /// Wire cost of frames in the `immediate` queue only.
+    immediate_byte_cost: u64,
+    /// Wire cost of frames in the `pending` queue only (includes per-packet overhead).
+    pending_byte_cost: u64,
     /// Sticky sender assignment for this batch. `VarInt::MAX` means no preference (use pick-two).
     /// Set by `BatchFramesByPathSecret` when any frame in the batch requires sticky routing.
     sender_id: VarInt,
@@ -77,14 +88,31 @@ pub struct FrameBatch {
 impl FrameBatch {
     #[inline]
     fn new(first: Entry<Frame>) -> Self {
-        let byte_cost = MAX_FRAME_BATCH_PACKET_OVERHEAD.saturating_add(first.byte_cost());
+        let frame_cost = first.byte_cost();
+        // Per-packet overhead added once, counted towards whichever queue the first frame lands in.
+        let byte_cost = MAX_FRAME_BATCH_PACKET_OVERHEAD.saturating_add(frame_cost);
         let sender_id = first.source_sender_id;
-        let mut queue = Queue::new();
-        queue.push_back(first);
+        let mut immediate = Queue::new();
+        let mut pending = Queue::new();
+        let immediate_byte_cost;
+        let pending_byte_cost;
+
+        if first.is_immediate() {
+            immediate_byte_cost = byte_cost;
+            pending_byte_cost = 0;
+            immediate.push_back(first);
+        } else {
+            immediate_byte_cost = 0;
+            pending_byte_cost = byte_cost;
+            pending.push_back(first);
+        }
 
         Self {
-            queue,
+            immediate,
+            pending,
             byte_cost,
+            immediate_byte_cost,
+            pending_byte_cost,
             sender_id,
         }
     }
@@ -92,7 +120,13 @@ impl FrameBatch {
     #[inline]
     fn push_with_cost(&mut self, frame: Entry<Frame>, frame_cost: u64) {
         self.byte_cost = self.byte_cost.saturating_add(frame_cost);
-        self.queue.push_back(frame);
+        if frame.is_immediate() {
+            self.immediate_byte_cost = self.immediate_byte_cost.saturating_add(frame_cost);
+            self.immediate.push_back(frame);
+        } else {
+            self.pending_byte_cost = self.pending_byte_cost.saturating_add(frame_cost);
+            self.pending.push_back(frame);
+        }
     }
 
     /// Returns the sticky sender index if this batch requires sticky routing.
@@ -110,35 +144,31 @@ impl FrameBatch {
         self.sender_id = VarInt::new(id as u64).unwrap_or(VarInt::MAX);
     }
 
-    /// Returns the number of frames currently buffered in this batch.
+    /// Returns the total number of frames (immediate + pending) currently buffered.
     #[inline]
     pub fn len(&self) -> usize {
-        self.queue.len()
+        self.immediate.len() + self.pending.len()
     }
 
     /// Returns true when this batch contains no frames.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.queue.is_empty()
+        self.immediate.is_empty() && self.pending.is_empty()
     }
 
-    /// Borrows the underlying intrusive queue of frames.
+    /// Consumes the batch, returning the immediate and pending frame queues with their
+    /// respective wire costs for O(1) insertion into `send::Context`.
+    ///
+    /// The returned tuple is `(immediate_queue, immediate_cost, pending_queue, pending_cost)`.
+    /// Both costs already include the per-packet overhead estimate.
     #[inline]
-    pub fn queue(&self) -> &Queue<Frame> {
-        &self.queue
-    }
-
-    /// Consumes the batch and returns the underlying frame queue.
-    #[inline]
-    pub fn into_queue(self) -> Queue<Frame> {
-        self.queue
-    }
-}
-
-impl From<FrameBatch> for Queue<Frame> {
-    #[inline]
-    fn from(value: FrameBatch) -> Self {
-        value.into_queue()
+    pub fn into_split(self) -> (Queue<Frame>, u64, Queue<Frame>, u64) {
+        (
+            self.immediate,
+            self.immediate_byte_cost,
+            self.pending,
+            self.pending_byte_cost,
+        )
     }
 }
 
@@ -152,7 +182,7 @@ impl ByteCost for FrameBatch {
 impl PathSecretMapEntry for FrameBatch {
     #[inline]
     fn path_secret_entry(&self) -> &Arc<PathSecretEntry> {
-        let Some(front) = &self.queue.front() else {
+        let Some(front) = self.immediate.front().or_else(|| self.pending.front()) else {
             unsafe {
                 s2n_quic_core::assume!(false, "FrameBatch should always be non-empty");
             }

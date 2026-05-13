@@ -683,6 +683,16 @@ impl Frame {
         self.payload.len()
     }
 
+    /// Returns true if this frame bypasses CWND enforcement (i.e., ACK/Control frames).
+    ///
+    /// Immediate frames are placed in the `immediate` queue of `send::Context` and drained
+    /// unconditionally by the assembler before data frames, so they are never blocked by the
+    /// congestion window.
+    #[inline]
+    pub fn is_immediate(&self) -> bool {
+        matches!(self.header, Header::Control { .. })
+    }
+
     /// Returns true if this frame should still be transmitted.
     ///
     /// Delegates to the completion sender's cancellation flag. Returns true if there's no

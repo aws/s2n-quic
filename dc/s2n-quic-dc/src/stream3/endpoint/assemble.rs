@@ -59,7 +59,10 @@ pub(crate) fn assemble<Clk>(
 where
     Clk: precision::Clock + ?Sized,
 {
-    // TODO we need to see if we have an ACK scheduled to bypass this
+    // TODO (PTO task 4): re-enable CWND enforcement for pending (data) frames.
+    // Immediate (ACK) frames are exempt and already bypass the window via the
+    // immediate queue. Once enabled, only pending frames should be gated here.
+
     // let available_window = context
     //     .cca
     //     .congestion_window()
@@ -116,7 +119,10 @@ where
             let mut metadata = MetadataEstimate::new(context.flow_attempt_id_counter);
             let mut is_ack_eliciting = false;
 
-            while let Some(frame) = context.pop_pending() {
+            // Phase 1: drain immediate (ACK) frames unconditionally.
+            // Phase 2: drain pending (data) frames — currently ungated, CWND
+            //          enforcement will be re-enabled in a follow-up task.
+            while let Some(frame) = context.pop_immediate().or_else(|| context.pop_pending()) {
                 if !frame.should_transmit() {
                     cancelled_queue.push_back(frame);
                     continue;
@@ -132,7 +138,7 @@ where
                 );
 
                 if estimated_len > max_segment_len {
-                    context.push_front_pending(frame);
+                    context.push_front_frame(frame);
                     break;
                 }
 
