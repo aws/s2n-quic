@@ -152,6 +152,13 @@ impl Registry {
         Counter(self.inner.register_counter(label.to_string(), None))
     }
 
+    pub fn register_nominal(&self, label: &str, variant: &str) -> Counter {
+        Counter(
+            self.inner
+                .register_counter(label.to_string(), Some(variant.to_string())),
+        )
+    }
+
     pub fn register_queue_gauge(&self, label: &str) -> QueueGauge {
         let mut gauges = self.queue_gauges.lock().unwrap();
         if let Some(existing) = gauges.get(label) {
@@ -230,15 +237,19 @@ where
             break;
         }
         if let Some(line) = inner.try_take_current_metrics_line_sparse(false) {
-            if !line.is_empty() {
-                let formatted = format_metrics_line(&line);
-                if !formatted.is_empty() {
-                    if label.is_empty() {
-                        tracing::info!("{formatted}");
-                    } else {
-                        tracing::info!("[{label}] {formatted}");
-                    }
+            let line = Some(line)
+                .filter(|v| !v.is_empty())
+                .map(|v| format_metrics_line(&v))
+                .filter(|v| !v.is_empty());
+
+            if let Some(formatted) = line {
+                if label.is_empty() {
+                    tracing::info!("{formatted}");
+                } else {
+                    tracing::info!("[{label}] {formatted}");
                 }
+            } else {
+                tracing::debug!("<no metrics>");
             }
         }
     }
@@ -373,15 +384,28 @@ where
 /// Naming conventions used for parsing:
 /// - `name.enq`, `name.drain`, `name.depth` → grouped as `name=enq/drain(depth)`
 /// - `name:bytes` → converted to `name=X.XXGbps`
+/// - `name=value variant` (nominal) → grouped as `name(variant=value, ...)`
 /// - Everything else → passed through as `name=value`
 fn format_metrics_line(line: &str) -> String {
     use std::{collections::BTreeMap, fmt::Write};
 
-    // Parse all key=value pairs
+    // Parse all key=value pairs, collecting nominal (aggregated) entries separately.
+    // Raw format: "name=value" or "name=value aggregation"
+    // Histograms also use spaces (e.g. "0*4541+1*4552 us") so only treat as nominal
+    // when the value portion is a plain integer.
     let mut metrics: BTreeMap<&str, &str> = BTreeMap::new();
+    let mut nominals: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
     for part in line.split(',') {
         if let Some((key, value)) = part.split_once('=') {
-            metrics.insert(key, value);
+            if let Some((val, variant)) = value.split_once(' ') {
+                if val.bytes().all(|b| b.is_ascii_digit()) {
+                    nominals.entry(key).or_default().push((variant, val));
+                } else {
+                    metrics.insert(key, value);
+                }
+            } else {
+                metrics.insert(key, value);
+            }
         }
     }
 
@@ -548,6 +572,23 @@ fn format_metrics_line(line: &str) -> String {
         write!(output, "{key}={value}").unwrap();
     }
 
+    // Nominal (variant) counters: group by metric name
+    for (key, variants) in &nominals {
+        if !output.is_empty() {
+            output.push(' ');
+        }
+        write!(output, "{key}(").unwrap();
+        let mut first = true;
+        for (variant, value) in variants {
+            if !first {
+                output.push(' ');
+            }
+            first = false;
+            write!(output, "{variant}={value}").unwrap();
+        }
+        output.push(')');
+    }
+
     output
 }
 
@@ -698,5 +739,12 @@ mod tests {
         // p50 target = 8709 → cumulative 5036, 10115 → p50=7
         // p99 target = 17242 → cumulative 5036, 10115, 17067, 17416 → p99=25
         assert_eq!(result, "rx.frames_per_packet(n=17416 p50=7 p99=25 max=25)");
+    }
+
+    #[test]
+    fn format_nominal() {
+        let line = "rx.ecn=500 ect0,rx.ecn=3 ect1,rx.ecn=2 ce,rx.ecn=0 not_ect";
+        let result = format_metrics_line(line);
+        assert_eq!(result, "rx.ecn(ect0=500 ect1=3 ce=2 not_ect=0)");
     }
 }

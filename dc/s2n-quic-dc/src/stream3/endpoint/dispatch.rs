@@ -166,6 +166,7 @@ where
     // Update activity and ACK tracking
     peer.update_activity(clock, idle_timeout);
     peer.ecn_counts.increment(ecn);
+    counters.on_ecn(ecn);
     peer.ack_space
         .on_packet_received(packet_number, clock.get_time());
     peer.ack_state = AckState::Scheduled;
@@ -755,7 +756,7 @@ fn push_reset_frame_with_target(
         ttl: DEFAULT_TTL,
         transmission_time: None,
     };
-    counters.on_sent_frame(&frame.header);
+    counters.on_response_frame(&frame.header);
     response_frames.push(frame.into());
 }
 
@@ -787,7 +788,7 @@ fn push_validate_request_frame(
         ttl: DEFAULT_TTL,
         transmission_time: None,
     };
-    counters.on_sent_frame(&frame.header);
+    counters.on_response_frame(&frame.header);
     response_frames.push(frame.into());
 }
 
@@ -833,7 +834,7 @@ fn handle_flow_validate_request(
                 ttl: DEFAULT_TTL,
                 transmission_time: None,
             };
-            counters.on_sent_frame(&frame.header);
+            counters.on_response_frame(&frame.header);
             response_frames.push(frame.into());
         }
         Err(_) => {
@@ -858,7 +859,7 @@ fn handle_flow_validate_request(
                 ttl: DEFAULT_TTL,
                 transmission_time: None,
             };
-            counters.on_sent_frame(&frame.header);
+            counters.on_response_frame(&frame.header);
             response_frames.push(frame.into());
         }
     }

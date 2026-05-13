@@ -21,7 +21,10 @@ use crate::{
 use arrayvec::ArrayVec;
 use core::time::Duration;
 use s2n_quic_core::{
-    frame::{self as quic_frame, ack::AckRanges},
+    frame::{
+        self as quic_frame,
+        ack::{AckRanges, EcnCounts},
+    },
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     varint::VarInt,
 };
@@ -35,6 +38,7 @@ use s2n_quic_core::{
 pub(crate) fn process_ack<Clk, Rand>(
     ack: &quic_frame::Ack<impl AckRanges>,
     context: &mut send::Context,
+    counters: &super::counters::Send,
     completed: &mut impl UnboundedSender<Entry<Frame>>,
     lost: &mut impl UnboundedSender<Entry<Frame>>,
     cancelled: &mut impl UnboundedSender<Entry<Frame>>,
@@ -146,6 +150,21 @@ pub(crate) fn process_ack<Clk, Rand>(
         );
 
         context.publish_next_transmission_time(now);
+    }
+
+    // Process ECN feedback from the peer
+    if let Some(ecn_counts) = ack.ecn_counts {
+        let prev = context.peer_ecn_counts;
+        context.peer_ecn_counts = ecn_counts.max(prev);
+        let mut delta = context.peer_ecn_counts;
+        delta -= prev;
+        if delta != EcnCounts::default() {
+            counters.on_peer_ecn(&delta);
+            let ce_delta = delta.ce_count.as_u64();
+            if ce_delta > 0 {
+                context.cca.on_explicit_congestion(ce_delta, now);
+            }
+        }
     }
 
     // Run loss detection

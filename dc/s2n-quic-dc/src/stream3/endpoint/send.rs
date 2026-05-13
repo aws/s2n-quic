@@ -28,8 +28,8 @@ use crate::{
 use core::time::Duration;
 use rustc_hash::FxHashMap;
 use s2n_quic_core::{
-    packet::number::PacketNumberSpace, path::INITIAL_PTO_BACKOFF, recovery::RttEstimator,
-    varint::VarInt,
+    frame::ack::EcnCounts, packet::number::PacketNumberSpace, path::INITIAL_PTO_BACKOFF,
+    recovery::RttEstimator, varint::VarInt,
 };
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
@@ -233,6 +233,8 @@ pub(crate) struct Context {
     pub pto_wheel: WheelLinks,
     /// Intrusive links and target time for the idle timeout wheel
     pub idle_wheel: WheelLinks,
+    /// Last-seen ECN counts from peer ACK frames; used to compute deltas for the CCA.
+    pub peer_ecn_counts: EcnCounts,
 }
 
 impl Context {
@@ -270,6 +272,7 @@ impl Context {
             tx_wheel: WheelLinks::new(),
             pto_wheel: WheelLinks::new(),
             idle_wheel: WheelLinks::new(),
+            peer_ecn_counts: EcnCounts::default(),
         }
     }
 
@@ -303,6 +306,7 @@ impl Context {
     pub fn process_ack_payload<Clk, Rand>(
         &mut self,
         payload: &mut [u8],
+        counters: &super::counters::Send,
         completed: &mut impl UnboundedSender<intrusive_queue::Entry<Frame>>,
         lost: &mut impl UnboundedSender<intrusive_queue::Entry<Frame>>,
         cancelled: &mut impl UnboundedSender<intrusive_queue::Entry<Frame>>,
@@ -324,7 +328,7 @@ impl Context {
             match frame {
                 s2n_quic_core::frame::FrameMut::Ack(ack_frame) => {
                     super::ack::process_ack(
-                        &ack_frame, self, completed, lost, cancelled, clock, random,
+                        &ack_frame, self, counters, completed, lost, cancelled, clock, random,
                     );
                 }
                 s2n_quic_core::frame::FrameMut::Padding(_)

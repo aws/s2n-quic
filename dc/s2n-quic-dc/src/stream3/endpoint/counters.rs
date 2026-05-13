@@ -6,9 +6,10 @@ use crate::{
     packet::datagram::ResetTarget,
     stream3::frame::Header,
 };
+use s2n_quic_core::{frame::ack::EcnCounts, inet::ExplicitCongestionNotification};
+use std::sync::Arc;
 
-/// Counters for the datagram processing pipeline.
-#[derive(Clone)]
+/// Counters for the datagram receive/dispatch pipeline.
 pub(crate) struct Dispatch {
     pub rx_data_pkt: Counter,
     pub rx_none: Counter,
@@ -51,12 +52,12 @@ pub(crate) struct Dispatch {
     pub rx_reset_stream: Counter,
     pub rx_reset_control: Counter,
 
-    pub tx_validate: Counter,
-    pub tx_init_validate: Counter,
-    pub tx_reset: Counter,
-    pub tx_reset_both: Counter,
-    pub tx_reset_stream: Counter,
-    pub tx_reset_control: Counter,
+    pub rx_res_validate: Counter,
+    pub rx_res_init_validate: Counter,
+    pub rx_res_reset: Counter,
+    pub rx_res_reset_both: Counter,
+    pub rx_res_reset_stream: Counter,
+    pub rx_res_reset_control: Counter,
 
     pub flow_accepted: Counter,
     pub flow_pending: Counter,
@@ -79,11 +80,16 @@ pub(crate) struct Dispatch {
     pub rx_flow_control_wake_time: Timer,
     pub rx_frames_per_packet: Summary,
     pub rx_packet_size: Summary,
+
+    pub rx_ecn_ect0: Counter,
+    pub rx_ecn_ect1: Counter,
+    pub rx_ecn_ce: Counter,
+    pub rx_ecn_not_ect: Counter,
 }
 
 impl Dispatch {
-    pub fn new(counters: &Registry) -> Self {
-        Self {
+    pub fn new(counters: &Registry) -> Arc<Self> {
+        Arc::new(Self {
             rx_data_pkt: counters.register("rx.data_pkt"),
             rx_none: counters.register("!rx.none"),
             rx_init: counters.register("rx.init"),
@@ -127,12 +133,12 @@ impl Dispatch {
             rx_reset_stream: counters.register("rx.reset.stream"),
             rx_reset_control: counters.register("rx.reset.control"),
 
-            tx_validate: counters.register("tx.validate"),
-            tx_init_validate: counters.register("tx.init_validate"),
-            tx_reset: counters.register("tx.reset"),
-            tx_reset_both: counters.register("tx.reset.both"),
-            tx_reset_stream: counters.register("tx.reset.stream"),
-            tx_reset_control: counters.register("tx.reset.control"),
+            rx_res_validate: counters.register("rx.res.validate"),
+            rx_res_init_validate: counters.register("rx.res.init_validate"),
+            rx_res_reset: counters.register("rx.res.reset"),
+            rx_res_reset_both: counters.register("rx.res.reset.both"),
+            rx_res_reset_stream: counters.register("rx.res.reset.stream"),
+            rx_res_reset_control: counters.register("rx.res.reset.control"),
 
             flow_accepted: counters.register("flow.accepted"),
             flow_pending: counters.register("flow.pending"),
@@ -157,6 +163,21 @@ impl Dispatch {
             rx_flow_control_wake_time: counters.register_timer("rx.flow_control_wake_time"),
             rx_frames_per_packet: counters.register_summary("rx.frames_per_packet", Unit::Count),
             rx_packet_size: counters.register_summary("rx.packet_size", Unit::Byte),
+
+            rx_ecn_ect0: counters.register_nominal("rx.ecn", "ect0"),
+            rx_ecn_ect1: counters.register_nominal("rx.ecn", "ect1"),
+            rx_ecn_ce: counters.register_nominal("rx.ecn", "ce"),
+            rx_ecn_not_ect: counters.register_nominal("rx.ecn", "not_ect"),
+        })
+    }
+
+    #[inline]
+    pub fn on_ecn(&self, ecn: ExplicitCongestionNotification) {
+        match ecn {
+            ExplicitCongestionNotification::Ect0 => self.rx_ecn_ect0.add(1),
+            ExplicitCongestionNotification::Ect1 => self.rx_ecn_ect1.add(1),
+            ExplicitCongestionNotification::Ce => self.rx_ecn_ce.add(1),
+            ExplicitCongestionNotification::NotEct => self.rx_ecn_not_ect.add(1),
         }
     }
 
@@ -174,19 +195,66 @@ impl Dispatch {
     }
 
     #[inline]
-    pub fn on_sent_frame(&self, header: &Header) {
+    pub fn on_response_frame(&self, header: &Header) {
         match header {
-            Header::FlowValidateRequest { .. } => self.tx_validate.add(1),
-            Header::FlowInitValidate { .. } => self.tx_init_validate.add(1),
+            Header::FlowValidateRequest { .. } => self.rx_res_validate.add(1),
+            Header::FlowInitValidate { .. } => self.rx_res_init_validate.add(1),
             Header::FlowReset { reset_target, .. } => {
-                self.tx_reset.add(1);
+                self.rx_res_reset.add(1);
                 match reset_target {
-                    ResetTarget::Both => self.tx_reset_both.add(1),
-                    ResetTarget::Stream => self.tx_reset_stream.add(1),
-                    ResetTarget::Control => self.tx_reset_control.add(1),
+                    ResetTarget::Both => self.rx_res_reset_both.add(1),
+                    ResetTarget::Stream => self.rx_res_reset_stream.add(1),
+                    ResetTarget::Control => self.rx_res_reset_control.add(1),
                 };
             }
             _ => {}
         };
+    }
+}
+
+/// Counters for the send/ACK-processing path.
+pub(crate) struct Send {
+    pub lost: Counter,
+    pub tx_rtt: Timer,
+    pub tx_ecn_ect0: Counter,
+    pub tx_ecn_ect1: Counter,
+    pub tx_ecn_ce: Counter,
+}
+
+impl Send {
+    pub fn new(counters: &Registry) -> Arc<Self> {
+        Arc::new(Self {
+            lost: counters.register("!send.lost"),
+            tx_rtt: counters.register_timer("tx.rtt"),
+            tx_ecn_ect0: counters.register_nominal("tx.ecn", "ect0"),
+            tx_ecn_ect1: counters.register_nominal("tx.ecn", "ect1"),
+            tx_ecn_ce: counters.register_nominal("tx.ecn", "ce"),
+        })
+    }
+
+    #[inline]
+    pub fn on_lost(&self, count: u64) {
+        self.lost.add(count);
+    }
+
+    #[inline]
+    pub fn on_rtt(&self, rtt: core::time::Duration) {
+        self.tx_rtt.record(rtt);
+    }
+
+    #[inline]
+    pub fn on_peer_ecn(&self, delta: &EcnCounts) {
+        let ect0 = delta.ect_0_count.as_u64();
+        let ect1 = delta.ect_1_count.as_u64();
+        let ce = delta.ce_count.as_u64();
+        if ect0 > 0 {
+            self.tx_ecn_ect0.add(ect0);
+        }
+        if ect1 > 0 {
+            self.tx_ecn_ect1.add(ect1);
+        }
+        if ce > 0 {
+            self.tx_ecn_ce.add(ce);
+        }
     }
 }

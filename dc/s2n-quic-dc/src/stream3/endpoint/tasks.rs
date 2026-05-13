@@ -29,7 +29,7 @@ use crate::{
 };
 use core::{future::poll_fn, task::Poll};
 use s2n_quic_core::{assume, varint::VarInt};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 /// Default per-poll budget for [`socket_recv_task`]: process up to this many segments before
 /// yielding to the executor. Tune via the `budget` parameter if workloads differ.
@@ -299,8 +299,7 @@ pub fn send_worker<Socket, Clk, WakerSink>(
         let mut completed_tx = completed_tx;
         let mut cancelled_tx = cancelled_tx.clone();
         let q_tx_wheel = q_tx_wheel.clone();
-        let send_lost = counter_registry.register("!send.lost");
-        let tx_rtt = counter_registry.register_timer("tx.rtt");
+        let send_counters = endpoint::counters::Send::new(&counter_registry);
         async move {
             let rx = Map::new(rx, move |entry: Entry<msg::Sender>| {
                 let msg::Sender::Ack {
@@ -348,18 +347,19 @@ pub fn send_worker<Socket, Clk, WakerSink>(
                     let mut ctx = ctx_rc.borrow_mut();
                     let interest = ctx.process_ack_payload(
                         &mut payload,
+                        &send_counters,
                         &mut completed_tx,
                         &mut lost_queue,
                         &mut cancelled_tx,
                         &clock,
                         &mut random,
                     );
-                    tx_rtt.record(ctx.rtt_estimator.smoothed_rtt());
+                    send_counters.on_rtt(ctx.rtt_estimator.smoothed_rtt());
                     interest
                 };
 
                 if !lost_queue.is_empty() {
-                    send_lost.add(lost_queue.len() as u64);
+                    send_counters.on_lost(lost_queue.len() as u64);
                     let _ = frame_tx.send_batch(lost_queue);
                 }
 
@@ -593,7 +593,7 @@ pub async fn packet_dispatch_task<PacketRx, AckTx, WakerSink, Clk, Route>(
     frame_tx: crate::stream3::frame::SubmissionSender,
     ack_sender: AckTx,
     queue_dispatcher: msg::queue::Dispatcher,
-    counters: endpoint::counters::Dispatch,
+    counters: Arc<endpoint::counters::Dispatch>,
     clock: Clk,
     route: Route,
     mut waker_sink: WakerSink,

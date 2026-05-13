@@ -33,7 +33,7 @@ use crate::{
     socket::{channel::intrusive_queue::sync as sync_queue, pool::descriptor},
     stream3::{frame::SubmissionSender, Stream},
 };
-use std::sync::atomic::AtomicU64;
+use std::sync::{atomic::AtomicU64, Arc};
 
 type BatchSender = sync_queue::Sender<combinator::FrameBatch>;
 type BatchReceiver = sync_queue::Receiver<combinator::FrameBatch>;
@@ -516,7 +516,7 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     frame_tx: SubmissionSender,
     ack_sender: AckSnd,
     queue_dispatcher: msg::queue::Dispatcher,
-    counters: counters::Dispatch,
+    counters: Arc<counters::Dispatch>,
     clock: Clk,
     route: Route,
     waker_sink: waker::Sink,
