@@ -4,6 +4,7 @@
 use crate::{
     credentials::Id,
     event::{self, EndpointPublisher as _},
+    path::secret::map::ApplicationData,
     stream::{
         recv::application::{self as recv, Reader},
         send::application::{self as send, Writer},
@@ -175,6 +176,12 @@ where
     #[inline]
     pub fn path_secret_id(&self) -> &Id {
         self.read.path_secret_id()
+    }
+
+    /// Returns the application data associated with the path secret, if available.
+    #[inline]
+    pub fn path_application_data(&self) -> Option<&ApplicationData> {
+        self.read.path_application_data()
     }
 
     /// Returns the validated peer certificate chain, if available.

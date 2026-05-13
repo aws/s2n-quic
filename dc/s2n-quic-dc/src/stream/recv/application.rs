@@ -6,6 +6,7 @@ use crate::{
     credentials::Id,
     event::{self, ConnectionPublisher as _},
     msg,
+    path::secret::map::ApplicationData,
     stream::{
         recv, runtime,
         shared::{AcceptState, ArcShared, ShutdownKind},
@@ -138,6 +139,11 @@ where
     #[inline]
     pub fn path_secret_id(&self) -> &Id {
         &self.0.shared.credentials().id
+    }
+
+    #[inline]
+    pub fn path_application_data(&self) -> Option<&ApplicationData> {
+        self.0.shared.application_data()
     }
 
     #[inline]

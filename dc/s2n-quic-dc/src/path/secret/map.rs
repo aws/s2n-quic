@@ -177,7 +177,11 @@ impl Map {
         queue_id: Option<VarInt>,
         features: &TransportFeatures,
         control_out: &mut Vec<u8>,
-    ) -> Option<(entry::Bidirectional, dc::ApplicationParams)> {
+    ) -> Option<(
+        entry::Bidirectional,
+        dc::ApplicationParams,
+        Option<entry::ApplicationData>,
+    )> {
         let entry = self
             .store
             .pre_authentication(credentials, queue_id, control_out)?;
@@ -185,7 +189,8 @@ impl Map {
         let params = entry.parameters();
         let keys = entry.bidi_remote(self.clone(), credentials, queue_id, features);
 
-        Some((keys, params))
+        let application_data = entry.application_data().clone();
+        Some((keys, params, application_data))
     }
 
     pub fn secret_for_credentials(

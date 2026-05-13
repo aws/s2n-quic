@@ -692,6 +692,7 @@ where
             None,
         ),
         crypto: crate::stream::shared::Crypto::new(pair.sealer, pair.opener, None, map),
+        application_data: None,
         common,
     });
 

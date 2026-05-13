@@ -411,7 +411,7 @@ where
 
             let mut secret_control = vec![];
 
-            let (crypto, parameters) = match endpoint::derive_stream_credentials(
+            let (crypto, parameters, application_data) = match endpoint::derive_stream_credentials(
                 &initial_packet,
                 &context.secrets,
                 &TransportFeatures::TCP,
@@ -463,6 +463,7 @@ where
                 crypto,
                 parameters,
                 secret_control,
+                application_data,
             ) {
                 Ok(stream) => stream,
                 Err(error) => {

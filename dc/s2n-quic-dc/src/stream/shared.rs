@@ -6,6 +6,7 @@ use crate::{
     credentials::Credentials,
     event::{self, IntoEvent as _},
     packet::stream,
+    path::secret::map::ApplicationData,
     stream::{
         recv::shared as recv,
         send::{application, shared as send},
@@ -73,6 +74,7 @@ where
     pub receiver: recv::State,
     pub sender: send::State,
     pub crypto: Crypto,
+    pub application_data: Option<ApplicationData>,
     pub common: Common<Subscriber, Clk>,
 }
 
@@ -187,6 +189,11 @@ where
             // SAFETY: the fixed information doesn't change for the lifetime of the stream
             &*self.common.fixed.credentials.get()
         }
+    }
+
+    #[inline]
+    pub fn application_data(&self) -> Option<&ApplicationData> {
+        self.application_data.as_ref()
     }
 }
 

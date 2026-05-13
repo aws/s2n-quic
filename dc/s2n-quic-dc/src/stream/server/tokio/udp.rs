@@ -119,7 +119,7 @@ where
         let peer = env::udp::Owned(remote_addr, recv_buffer);
 
         let mut secret_control = vec![];
-        let (crypto, parameters) = match endpoint::derive_stream_credentials(
+        let (crypto, parameters, application_data) = match endpoint::derive_stream_credentials(
             &packet,
             &self.secrets,
             &TransportFeatures::UDP,
@@ -148,6 +148,7 @@ where
             crypto,
             parameters,
             secret_control,
+            application_data,
         ) {
             Ok(stream) => stream,
             Err(error) => {
