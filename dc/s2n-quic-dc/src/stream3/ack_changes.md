@@ -1,4 +1,4 @@
-# Direct ACK Channels
+# ACK Changes
 
 ## Problem and Background
 
@@ -36,27 +36,28 @@ G4. Keep the sender's read-side critical section as short as possible — ideall
 
 Each (recv dispatch worker, send worker) pair gets a dedicated channel. Since recv dispatch workers already know which send worker owns a given sender_id (the mapping is deterministic via credential hashing), ACK transmissions route directly to the correct send worker without intermediation.
 
-This mirrors the existing NxM pattern used for routing from the main scheduling worker to individual send workers. The channel is bounded (capacity 1 is sufficient given the at-most-one-in-flight invariant) and carries a lightweight handle to the shared ACK state rather than a full frame.
+This mirrors the existing NxM pattern used for routing from the main scheduling worker to individual send workers. The channel carries a lightweight handle to the shared ACK state rather than a full frame.
 
 This satisfies R1 (bypasses frame_tx), R6 (no shared contention — each pair has its own channel), and G1 (ACKs are fully decoupled from the data path).
 
 ## Solution: Shared ACK State with RwLock and Versioning
 
-Each recv state (keyed by `credentials::Id + remote_sender_id`) owns a shared ACK state behind a `RwLock`:
+Each recv state (keyed by `credentials::Id + remote_sender_id`) owns a shared ACK state behind a `Arc<RwLock>`:
 
 ```
 struct SharedAckState {
     body: Bytes,       // pre-encoded ACK ranges
-    version: u64,      // monotonically increasing on each update
+    current_version: u64,      // monotonically increasing on each update
+    tx_version: u64,               // the version that was observed by the sender at the time of transmission
     largest_recv_time: Timestamp,  // when the largest PN was received
 }
 ```
 
-The receiver writes to this state whenever it decides to update (which may be deferred if the recv worker is saturated — natural backpressure). The write is: encode ranges into a `Bytes`, bump the version, update the timestamp. The lock hold is a pointer swap and two field writes.
+The receiver writes to this state whenever it decides to update, which may be deferred if the recv worker is saturated. The write is: encode ranges into a `Bytes`, bump the version, update the timestamp. The lock hold is a pointer swap and two field writes.
 
 The sender reads from this state at assembly time. The read is: clone the `Bytes` (Arc ref bump), copy the version and timestamp. The lock hold is three field copies.
 
-The ACK transmission entry records which version it carried. When the completion notification arrives back at the recv worker, it compares `version_transmitted` against the current version. If stale, it immediately re-submits. If current, it idles until the next packet arrival triggers a new version.
+The ACK transmission entry records which version it carried. When the completion notification arrives back at the recv worker, it compares `tx_version` against the current version. If stale, it immediately re-submits. If current, it idles until the next packet arrival triggers a new version.
 
 This satisfies R2 (at-most-one in flight, gated by completion), R5 (sender always reads latest), G2 (recv can defer re-encoding), and G4 (read is just a Bytes clone).
 
@@ -85,7 +86,7 @@ A dedicated task per recv dispatch worker polls a completion queue. When an ACK 
 The completion task:
 
 1. Looks up the recv state by key.
-2. Compares `version_transmitted` against the current `SharedAckState.version`.
+2. Compares `tx_version` against the current `SharedAckState.version`.
 3. If stale: re-reads the shared state, submits a new ACK transmission to the direct channel.
 4. If current: marks the recv state as idle. The next inbound ack-eliciting packet will trigger a fresh cycle.
 
@@ -103,7 +104,7 @@ The send worker's assembler gains a new phase between immediate-drain and pendin
 
 ACK frames assembled via this path are not registered in the inflight map (same as today — ACKs are not ack-eliciting and not congestion-controlled). The packet they're coalesced into is registered if it also contains data.
 
-After encoding, the assembler posts the completion entry (with key + version) to the completion channel for the recv worker.
+After encoding, the assembler posts the completion entry (with key + version) to the completion channel for the recv worker. The completion channel should use the same Entry that was submitted on the ack channel to avoid allocations.
 
 This satisfies G3 (coalescing with data) and keeps the assembler as the single point of packet construction.
 
