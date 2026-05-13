@@ -570,7 +570,7 @@ impl Segments {
         if self.segment_len == 0 {
             return 0;
         }
-        (self.descriptor.len() + self.segment_len - 1) / self.segment_len
+        self.descriptor.len().div_ceil(self.segment_len)
     }
 
     pub fn take_filled(self) -> Filled {
