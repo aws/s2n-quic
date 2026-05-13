@@ -59,19 +59,6 @@ pub(crate) fn assemble<Clk>(
 where
     Clk: precision::Clock + ?Sized,
 {
-    // TODO (PTO task 4): re-enable CWND enforcement for pending (data) frames.
-    // Immediate (ACK) frames are exempt and already bypass the window via the
-    // immediate queue. Once enabled, only pending frames should be gated here.
-
-    // let available_window = context
-    //     .cca
-    //     .congestion_window()
-    //     .saturating_sub(context.cca.bytes_in_flight());
-
-    // if available_window == 0 {
-    //     return None;
-    // }
-
     let mtu = context.path_secret_entry.max_datagram_size();
     let now = clock.now();
     let time_sent = now.into();
@@ -120,9 +107,7 @@ where
             let mut is_ack_eliciting = false;
 
             // Phase 1: drain immediate (ACK) frames unconditionally.
-            // Phase 2: drain pending (data) frames — currently ungated, CWND
-            //          enforcement will be re-enabled in a follow-up task.
-            while let Some(frame) = context.pop_immediate().or_else(|| context.pop_pending()) {
+            while let Some(frame) = context.pop_immediate() {
                 if !frame.should_transmit() {
                     cancelled_queue.push_back(frame);
                     continue;
@@ -148,6 +133,40 @@ where
 
                 if estimated_len == max_segment_len {
                     break;
+                }
+            }
+
+            // Phase 2: drain pending (data) frames only when CWND permits.
+            let can_send_pending = context.has_pending_data() && context.can_send_pending_frames();
+
+            if can_send_pending {
+                while let Some(frame) = context.pop_pending() {
+                    if !frame.should_transmit() {
+                        cancelled_queue.push_back(frame);
+                        continue;
+                    }
+
+                    let next_metadata = metadata.with_frame(&frame);
+                    let estimated_len = next_metadata.estimate_packet_len(
+                        source_sender_id,
+                        source_control_port,
+                        context.next_packet_number,
+                        &context.credentials,
+                        seal::Application::tag_len(&context.sealer),
+                    );
+
+                    if estimated_len > max_segment_len {
+                        context.push_front_frame(frame);
+                        break;
+                    }
+
+                    is_ack_eliciting |= !matches!(frame.header, frame::Header::Control { .. });
+                    metadata = next_metadata;
+                    packet_frames.push_back(frame);
+
+                    if estimated_len == max_segment_len {
+                        break;
+                    }
                 }
             }
 
