@@ -84,6 +84,11 @@ impl Timer {
             start: Instant::now(),
         }
     }
+
+    #[inline]
+    pub fn record(&self, duration: Duration) {
+        self.0.record_duration(duration);
+    }
 }
 
 pub struct TimerGuard<'a> {

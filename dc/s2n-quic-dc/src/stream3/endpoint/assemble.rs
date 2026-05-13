@@ -22,22 +22,20 @@ use crate::{
         pool::{self, descriptor::Segments},
     },
     stream3::{
-            endpoint::{
-                inflight,
-                send::Context,
-            },
-            frame::{self, Frame},
-        },
+        endpoint::{combinator::AssemblerCounters, inflight, send::Context},
+        frame::{self, Frame},
+    },
 };
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
-    buffer, inet::ExplicitCongestionNotification,
+    buffer,
+    inet::ExplicitCongestionNotification,
     packet::number::{PacketNumber, PacketNumberSpace},
     varint::VarInt,
 };
 use s2n_quic_platform::features::Gso;
 
-#[cfg(todo)]
+#[cfg(test)]
 mod tests;
 
 /// Attempt to assemble pending frames into a full GSO datagram of encrypted packets.
@@ -60,6 +58,7 @@ pub(crate) fn assemble<Clk>(
     pool: &pool::Pool,
     header_buf: &mut Vec<u8>,
     cancelled: &mut impl UnboundedSender<Queue<Frame>>,
+    counters: &AssemblerCounters,
 ) -> Option<Segments>
 where
     Clk: precision::Clock + ?Sized,
@@ -162,9 +161,7 @@ where
             // ACK the probe (RFC 9000 §13.2.1 / RFC 9002 §6.2.4).
             if context.pto.probe_state.is_requested() && !context.has_pending_data() {
                 // No pending data — retransmit from the oldest inflight entry.
-                if let Some((old_pn, mut probe_frames)) =
-                    context.inflight.take_oldest_for_probe()
-                {
+                if let Some((old_pn, mut probe_frames)) = context.inflight.take_oldest_for_probe() {
                     // oldest_non_shell_pn only returns entries with non-empty frames.
                     debug_assert!(
                         !probe_frames.is_empty(),
@@ -279,19 +276,35 @@ where
 
             // Encode this segment
             header_buf.clear();
-            let encoded_len = encode_segment(
-                &mut payload[offset..],
-                source_control_port,
-                source_sender_id,
-                packet_number,
-                &context.sealer,
-                &context.credentials,
-                &mut context.flow_attempt_id_counter,
-                &packet_frames,
-                header_buf,
-            );
+            let encoded_len = {
+                let _guard = counters.encrypt_time.start();
+                encode_segment(
+                    &mut payload[offset..],
+                    source_control_port,
+                    source_sender_id,
+                    packet_number,
+                    &context.sealer,
+                    &context.credentials,
+                    &mut context.flow_attempt_id_counter,
+                    &packet_frames,
+                    header_buf,
+                )
+            };
 
             debug_assert!(encoded_len <= max_segment_len);
+
+            counters.packet_size.record_value(encoded_len as u64);
+            counters
+                .tx_frames_per_packet
+                .record_value(packet_frames.len() as u64);
+            counters
+                .tx_payload_size
+                .record_value(metadata.payload_len as u64);
+            counters.tx_data.add(1);
+
+            if probe_from_pn.is_some() {
+                counters.tx_probe.add(1);
+            }
 
             watermark = offset + encoded_len;
 

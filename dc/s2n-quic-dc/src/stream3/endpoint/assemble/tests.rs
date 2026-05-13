@@ -3,6 +3,7 @@ use crate::{
     byte_vec::ByteVec,
     clock::testing::Clock,
     counter::Registry,
+    datagram::batch::Priority,
     packet::datagram::ResetTarget,
     path::secret::map::Entry as PathSecretEntry,
     stream3::frame::{Frame, Header, TransmissionStatus, DEFAULT_TTL},
@@ -92,9 +93,10 @@ fn make_context(mtu: u16, registry: &Registry) -> (Context, Arc<PathSecretEntry>
     let entry = PathSecretEntry::fake("127.0.0.1:8080".parse().unwrap(), None);
     entry.update_max_datagram_size(mtu);
     let inflight_gauge = registry.register_queue_gauge("test.inflight");
+    let immediate_gauge = registry.register_queue_gauge("test.immediate");
     let pending_gauge = registry.register_queue_gauge("test.pending");
     (
-        Context::new(&entry, inflight_gauge, pending_gauge, 0),
+        Context::new(&entry, inflight_gauge, immediate_gauge, pending_gauge, 0),
         entry,
     )
 }
@@ -283,7 +285,7 @@ fn assemble_accounts_for_header_overhead() {
     let mut cancelled = CancelledSender(Vec::new());
 
     for _ in 0..128 {
-        context.push_frame(
+        context.push_back_frame(
             Frame {
                 header: Header::FlowReset {
                     dest_queue_id: VarInt::from_u8(1),
@@ -303,6 +305,8 @@ fn assemble_accounts_for_header_overhead() {
         );
     }
 
+    let registry = Registry::new();
+    let counters = AssemblerCounters::new(&registry);
     let segments = assemble(
         &mut context,
         &clock,
@@ -312,6 +316,7 @@ fn assemble_accounts_for_header_overhead() {
         &pool,
         &mut header_buf,
         &mut cancelled,
+        &counters,
     )
     .expect("frames should assemble");
 
@@ -330,7 +335,7 @@ fn assemble_fuzz_respects_gso_invariants() {
         .for_each(|input| {
             let registry = Registry::new();
             let (mut context, entry) = make_context(input.mtu, &registry);
-            let frames = input
+            let mut frames = input
                 .frames
                 .iter()
                 .filter(|frame| {
@@ -348,6 +353,10 @@ fn assemble_fuzz_respects_gso_invariants() {
                 return;
             }
 
+            // Sort by priority to match the assembler's drain order: immediate
+            // (Ack) first, then pending queues from lowest index to highest.
+            frames.sort_by_key(|f| f.header.priority().as_index());
+
             let max_segments = input.max_segments.min(segment::MAX_COUNT);
             let oracle = oracle(
                 &frames,
@@ -364,9 +373,11 @@ fn assemble_fuzz_respects_gso_invariants() {
             let mut cancelled = CancelledSender(Vec::new());
 
             for frame in &frames {
-                context.push_frame(to_frame(frame, &entry));
+                context.push_back_frame(to_frame(frame, &entry));
             }
 
+            let registry = Registry::new();
+            let counters = AssemblerCounters::new(&registry);
             let segments = assemble(
                 &mut context,
                 &clock,
@@ -376,12 +387,13 @@ fn assemble_fuzz_respects_gso_invariants() {
                 &pool,
                 &mut header_buf,
                 &mut cancelled,
+                &counters,
             )
             .expect("assemble should make progress for bounded test inputs");
 
             assert_gso_invariants(&segments, input.mtu, max_segments);
             assert_eq!(segments.sizes().collect::<Vec<_>>(), oracle.packet_sizes);
-            assert_eq!(context.pending.len(), oracle.remaining_frames);
+            assert_eq!(context.pending_count(), oracle.remaining_frames);
         });
 }
 
@@ -404,8 +416,9 @@ fn encode_decode_round_trip() {
 
     let registry = Registry::new();
     let inflight_gauge = registry.register_queue_gauge("test.inflight");
+    let immediate_gauge = registry.register_queue_gauge("test.immediate");
     let pending_gauge = registry.register_queue_gauge("test.pending");
-    let mut context = Context::new(&sealer_entry, inflight_gauge, pending_gauge, 0);
+    let context = Context::new(&sealer_entry, inflight_gauge, immediate_gauge, pending_gauge, 0);
 
     let key_id = context.credentials.key_id;
     let opener = opener_entry.secret().application_opener(key_id);
@@ -446,12 +459,14 @@ fn encode_decode_round_trip() {
         },
     ];
 
+    let mut packet_frames = Queue::new();
     for frame in &input_frames {
-        context.push_frame(to_frame(frame, &sealer_entry));
+        packet_frames.push_back(to_frame(frame, &sealer_entry));
     }
 
     let mut buf = vec![0u8; 65536];
     let mut header_buf = Vec::new();
+    let mut flow_attempt_id = VarInt::ZERO;
     let tag_len = crate::crypto::seal::Application::tag_len(&context.sealer);
     let encoded_len = encode_segment(
         &mut buf,
@@ -460,8 +475,8 @@ fn encode_decode_round_trip() {
         context.next_packet_number,
         &context.sealer,
         &context.credentials,
-        &mut context.flow_attempt_id_counter,
-        context.pending.as_queue(),
+        &mut flow_attempt_id,
+        &packet_frames,
         &mut header_buf,
     );
     assert!(encoded_len > 0, "must encode at least something");
@@ -544,8 +559,15 @@ fn encode_decode_fuzz_round_trip() {
 
             let registry = Registry::new();
             let inflight_gauge = registry.register_queue_gauge("test.inflight");
+            let immediate_gauge = registry.register_queue_gauge("test.immediate");
             let pending_gauge = registry.register_queue_gauge("test.pending");
-            let context = Context::new(&sealer_entry, inflight_gauge, pending_gauge, 0);
+            let context = Context::new(
+                &sealer_entry,
+                inflight_gauge,
+                immediate_gauge,
+                pending_gauge,
+                0,
+            );
 
             let key_id = context.credentials.key_id;
             let opener = opener_entry.secret().application_opener(key_id);

@@ -300,6 +300,7 @@ pub fn send_worker<Socket, Clk, WakerSink>(
         let mut cancelled_tx = cancelled_tx.clone();
         let q_tx_wheel = q_tx_wheel.clone();
         let send_lost = counter_registry.register("!send.lost");
+        let tx_rtt = counter_registry.register_timer("tx.rtt");
         async move {
             let rx = Map::new(rx, move |entry: Entry<msg::Sender>| {
                 let msg::Sender::Ack {
@@ -345,14 +346,16 @@ pub fn send_worker<Socket, Clk, WakerSink>(
 
                 let wheel_interest = {
                     let mut ctx = ctx_rc.borrow_mut();
-                    ctx.process_ack_payload(
+                    let interest = ctx.process_ack_payload(
                         &mut payload,
                         &mut completed_tx,
                         &mut lost_queue,
                         &mut cancelled_tx,
                         &clock,
                         &mut random,
-                    )
+                    );
+                    tx_rtt.record(ctx.rtt_estimator.smoothed_rtt());
+                    interest
                 };
 
                 if !lost_queue.is_empty() {
@@ -416,10 +419,18 @@ pub fn send_worker<Socket, Clk, WakerSink>(
             let mut pto_wheel_tx = pto_wheel_tx.clone();
             let mut idle_wheel_tx = idle_wheel_tx.clone();
             let q_tx_wheel = q_tx_wheel.clone();
+            let tx_pto_fired = counter_registry.register("tx.pto_fired");
+            let tx_pto_requested = counter_registry.register("tx.pto_requested");
             move |context: Rc<RefCell<send::Context>>| {
+                tx_pto_fired.add(1);
                 let wheel_interest = {
                     let mut ctx = context.borrow_mut();
-                    ctx.on_pto_timeout(&clock)
+                    let requested = ctx.pto.probe_state.is_requested();
+                    let interest = ctx.on_pto_timeout(&clock);
+                    if !requested && ctx.pto.probe_state.is_requested() {
+                        tx_pto_requested.add(1);
+                    }
+                    interest
                 };
                 if wheel_interest.transmission {
                     q_tx_wheel.enqueue(1);

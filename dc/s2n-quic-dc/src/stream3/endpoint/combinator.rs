@@ -482,6 +482,12 @@ pub(crate) struct Assembler<R, Clk, C> {
 #[derive(Clone)]
 pub(crate) struct AssemblerCounters {
     pub segments: crate::counter::Summary,
+    pub packet_size: crate::counter::Summary,
+    pub encrypt_time: crate::counter::Timer,
+    pub tx_data: crate::counter::Counter,
+    pub tx_probe: crate::counter::Counter,
+    pub tx_frames_per_packet: crate::counter::Summary,
+    pub tx_payload_size: crate::counter::Summary,
     pub q_tx_wheel: crate::counter::QueueGauge,
 }
 
@@ -489,6 +495,14 @@ impl AssemblerCounters {
     pub fn new(registry: &crate::counter::Registry) -> Self {
         Self {
             segments: registry.register_summary("asm.segments", crate::counter::Unit::Count),
+            packet_size: registry.register_summary("tx.packet_size", crate::counter::Unit::Byte),
+            encrypt_time: registry.register_timer("tx.encrypt_time"),
+            tx_data: registry.register("tx.data"),
+            tx_probe: registry.register("tx.probe"),
+            tx_frames_per_packet: registry
+                .register_summary("tx.frames_per_packet", crate::counter::Unit::Count),
+            tx_payload_size: registry
+                .register_summary("tx.payload_size", crate::counter::Unit::Byte),
             q_tx_wheel: registry.register_queue_gauge("q.tx_wheel"),
         }
     }
@@ -549,6 +563,7 @@ where
                 &self.pool,
                 &mut self.header_buf,
                 &mut self.cancelled_tx,
+                &self.counters,
             );
             let wheel_interest = context.wheel_interest(&self.clock);
             (segments, wheel_interest)

@@ -98,6 +98,12 @@ impl PendingFrames {
         Some(frame)
     }
 
+    /// Returns the number of frames in the queue.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
     /// Returns `true` if the queue contains no frames.
     #[inline]
     pub fn is_empty(&self) -> bool {
@@ -447,6 +453,11 @@ impl Context {
     #[inline]
     pub fn has_pending(&self) -> bool {
         self.queues.iter().any(|q| !q.is_empty())
+    }
+
+    #[inline]
+    pub fn pending_count(&self) -> usize {
+        self.queues.iter().map(|q| q.len()).sum()
     }
 
     #[inline]
