@@ -391,7 +391,7 @@ impl<T: Absorb> Channels<T> {
                 ldr {cpu_id:w}, [{rseq_ptr}, #{cpu_id_offset_start}]
 
                 cmp {cpu_id:w}, {per_cpu_len:w}
-                b.ge {fallback}
+                b.hs {fallback}
 
                 subs {loop_count}, {loop_count}, #1
                 b.eq {fallback}
@@ -571,8 +571,8 @@ impl<T: Absorb> Channels<T> {
                 ldr {cpu_id:w}, [{rseq_ptr}, #{cpu_id_offset_start}]
 
                 cmp {cpu_id:w}, {per_cpu_len:w}
-                cset {fallback:w}, ge
-                b.ge 7f
+                cset {fallback:w}, hs
+                b.hs 7f
 
                 subs {loop_count}, {loop_count}, #1
                 cset {fallback:w}, eq
@@ -1139,6 +1139,35 @@ mod tests {
         assert!(
             descriptor.start_ip - descriptor.abort_ip < 4096,
             "start_ip and abort_ip are too far apart to be in the same function",
+        );
+    }
+
+    // Verifies that the u32::MAX sentinel (used when rseq registration fails) is
+    // caught by the bounds check *before* any loop body executes. The comparison
+    // must be unsigned so that 0xFFFFFFFF is greater than per_cpu_len.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn check_u32_max_sentinel_immediate_fallback() {
+        let channels = Channels::<TestAbsorber>::new();
+        channels.allocate();
+
+        let mut rseq = Rseq {
+            cpu_id_start: u32::MAX,
+            cpu_id: 0,
+            rseq_cs: 0,
+            flags: 0,
+        };
+
+        channels.send_event_inner(0u64, NonNull::from(&mut rseq));
+
+        assert_eq!(channels.fallback.read().len(), 1);
+
+        // The bounds check fires before the rseq_cs store, so rseq_cs stays zero.
+        // A signed comparison would treat u32::MAX as -1, passing the bounds check
+        // and entering the loop body (which would set rseq_cs to non-zero).
+        assert_eq!(
+            rseq.rseq_cs, 0,
+            "u32::MAX sentinel must trigger immediate fallback at the bounds check"
         );
     }
 }
