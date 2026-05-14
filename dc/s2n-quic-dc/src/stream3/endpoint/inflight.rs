@@ -211,6 +211,320 @@ impl Map {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        byte_vec::ByteVec,
+        packet::datagram::QueuePair,
+        path::secret::map::Entry as PathSecretEntry,
+        stream3::frame::{Frame, Header, TransmissionStatus, DEFAULT_TTL},
+    };
+    use core::time::Duration;
+    use s2n_quic_core::{packet::number::PacketNumberSpace, recovery::RttEstimator, varint::VarInt};
+    use std::sync::Arc;
+
+    fn make_gauge() -> QueueGauge {
+        let registry = crate::counter::Registry::new();
+        registry.register_queue_gauge("test.inflight")
+    }
+
+    fn make_pn(n: u64) -> PacketNumber {
+        PacketNumberSpace::Initial.new_packet_number(VarInt::new(n).unwrap())
+    }
+
+    fn fake_entry() -> Arc<PathSecretEntry> {
+        PathSecretEntry::fake("127.0.0.1:9999".parse().unwrap(), None)
+    }
+
+    /// Create a Packet containing one FlowData (ack-eliciting) frame.
+    fn make_packet(entry: Arc<PathSecretEntry>) -> Packet {
+        let mut frames = Queue::new();
+        let mut payload = ByteVec::new();
+        payload.push_back(bytes::Bytes::from_static(b"x"));
+        let frame = Frame {
+            header: Header::FlowData {
+                queue_pair: QueuePair {
+                    source_queue_id: VarInt::from_u8(1),
+                    dest_queue_id: VarInt::from_u8(2),
+                },
+                stream_id: VarInt::from_u8(1),
+                offset: VarInt::ZERO,
+                is_fin: false,
+            },
+            source_sender_id: VarInt::MAX,
+            payload,
+            path_secret_entry: entry,
+            completion: None,
+            status: TransmissionStatus::default(),
+            ttl: DEFAULT_TTL,
+            transmission_time: None,
+        };
+        frames.push_back(frame.into());
+
+        let mut cca = crate::congestion::Controller::new(1500);
+        let rtt = RttEstimator::new(Duration::from_millis(2));
+        let now =
+            unsafe { s2n_quic_core::time::Timestamp::from_duration(Duration::from_millis(100)) };
+        let cc_info = cca.on_packet_sent(now, 100, false, &rtt);
+        Packet::new(
+            frames,
+            TransmissionInfo {
+                cc_info,
+                time_sent: now,
+                sent_bytes: 100,
+            },
+        )
+    }
+
+    // ── basic insertion / has_inflight ────────────────────────────────────────
+
+    #[test]
+    fn empty_map_has_no_inflight() {
+        let map = Map::new(make_gauge());
+        assert!(!map.has_inflight());
+        assert!(map.oldest_non_shell_pn().is_none());
+    }
+
+    #[test]
+    fn insert_single_packet_has_inflight() {
+        let mut map = Map::new(make_gauge());
+        let pn = make_pn(1);
+        map.insert(pn, make_packet(fake_entry()));
+        assert!(map.has_inflight());
+        assert_eq!(map.oldest_non_shell_pn(), Some(pn));
+    }
+
+    #[test]
+    fn oldest_non_shell_pn_returns_lowest_pn() {
+        let mut map = Map::new(make_gauge());
+        let pn1 = make_pn(1);
+        let pn2 = make_pn(5);
+        map.insert(pn1, make_packet(fake_entry()));
+        map.insert(pn2, make_packet(fake_entry()));
+        // Should return the lowest (oldest) PN
+        assert_eq!(map.oldest_non_shell_pn(), Some(pn1));
+    }
+
+    // ── take_oldest_for_probe ─────────────────────────────────────────────────
+
+    #[test]
+    fn take_oldest_for_probe_empty_map() {
+        let mut map = Map::new(make_gauge());
+        assert!(map.take_oldest_for_probe().is_none());
+    }
+
+    #[test]
+    fn take_oldest_for_probe_returns_frames_and_makes_shell() {
+        let mut map = Map::new(make_gauge());
+        let pn = make_pn(3);
+        map.insert(pn, make_packet(fake_entry()));
+
+        let (taken_pn, frames) = map.take_oldest_for_probe().unwrap();
+        assert_eq!(taken_pn, pn);
+        assert!(!frames.is_empty(), "frames should have been returned");
+
+        // Entry is still in the map (it is now a shell with empty frames)
+        assert!(map.has_inflight(), "shell entry remains in map");
+        assert!(
+            map.oldest_non_shell_pn().is_none(),
+            "no more non-shell entries"
+        );
+    }
+
+    #[test]
+    fn take_oldest_for_probe_picks_non_shell_oldest() {
+        let mut map = Map::new(make_gauge());
+        let pn1 = make_pn(1);
+        let pn2 = make_pn(10);
+        map.insert(pn1, make_packet(fake_entry()));
+        map.insert(pn2, make_packet(fake_entry()));
+
+        // Make pn1 a shell (take its frames and don't re-insert)
+        let (_old_pn, _frames) = map.take_oldest_for_probe().unwrap(); // takes pn1
+        map.set_probed_to(pn1, pn2); // link shell → pn2
+
+        // Now pn1 is a shell; the only non-shell is pn2
+        assert_eq!(map.oldest_non_shell_pn(), Some(pn2));
+        // take_oldest_for_probe should now return pn2
+        let (taken_pn, frames) = map.take_oldest_for_probe().unwrap();
+        assert_eq!(taken_pn, pn2);
+        assert!(!frames.is_empty());
+    }
+
+    #[test]
+    fn take_oldest_for_probe_all_shells_returns_none() {
+        let mut map = Map::new(make_gauge());
+        let pn1 = make_pn(1);
+        let pn2 = make_pn(10);
+        map.insert(pn1, make_packet(fake_entry()));
+        map.insert(pn2, make_packet(fake_entry()));
+
+        // Make both shells
+        map.take_oldest_for_probe(); // empties pn1's frames
+        map.set_probed_to(pn1, pn2);
+        map.take_oldest_for_probe(); // empties pn2's frames
+        // pn2 has no probed_to yet — take_oldest_for_probe should still return None
+        // because frames are empty
+
+        assert!(map.oldest_non_shell_pn().is_none());
+        assert!(map.take_oldest_for_probe().is_none());
+    }
+
+    // ── set_probed_to / take_chain_tail_frames ────────────────────────────────
+
+    #[test]
+    fn set_probed_to_and_take_chain_tail_single_hop() {
+        let mut map = Map::new(make_gauge());
+        let pn_old = make_pn(1);
+        let pn_new = make_pn(10);
+        map.insert(pn_old, make_packet(fake_entry()));
+
+        // Simulate probe assembly
+        let (_old, frames) = map.take_oldest_for_probe().unwrap();
+        // Insert probe packet containing the taken frames
+        let mut cca = crate::congestion::Controller::new(1500);
+        let rtt = RttEstimator::new(Duration::from_millis(2));
+        let now =
+            unsafe { s2n_quic_core::time::Timestamp::from_duration(Duration::from_millis(200)) };
+        let cc_info = cca.on_packet_sent(now, 100, false, &rtt);
+        let probe_packet = Packet::new(
+            frames,
+            TransmissionInfo {
+                cc_info,
+                time_sent: now,
+                sent_bytes: 100,
+            },
+        );
+        map.insert(pn_new, probe_packet);
+        map.set_probed_to(pn_old, pn_new);
+
+        // ACK the shell: chain walk should go shell → probe and return probe frames
+        let (tail_pn, tail_frames) = map.take_chain_tail_frames(pn_old);
+        assert_eq!(tail_pn, pn_new, "chain tail should be the probe PN");
+        assert!(!tail_frames.is_empty(), "tail frames should be non-empty");
+    }
+
+    #[test]
+    fn take_chain_tail_frames_already_removed_tail_returns_empty() {
+        // Shell → probe, but probe was already ACKed and removed from the map.
+        // take_chain_tail_frames should return an empty queue gracefully.
+        let mut map = Map::new(make_gauge());
+        let pn_old = make_pn(1);
+        let pn_new = make_pn(10);
+        map.insert(pn_old, make_packet(fake_entry()));
+
+        let (_old, frames) = map.take_oldest_for_probe().unwrap();
+        // Simulate inserting probe then ACKing both in the same ACK range
+        let mut cca = crate::congestion::Controller::new(1500);
+        let rtt = RttEstimator::new(Duration::from_millis(2));
+        let now =
+            unsafe { s2n_quic_core::time::Timestamp::from_duration(Duration::from_millis(200)) };
+        let cc_info = cca.on_packet_sent(now, 100, false, &rtt);
+        map.insert(
+            pn_new,
+            Packet::new(
+                frames,
+                TransmissionInfo {
+                    cc_info,
+                    time_sent: now,
+                    sent_bytes: 100,
+                },
+            ),
+        );
+        map.set_probed_to(pn_old, pn_new);
+
+        // ACK range covers pn_new first (remove_range processes in order).
+        // We simulate the probe PN being removed before the shell is processed.
+        let range = s2n_quic_core::packet::number::PacketNumberRange::new(pn_new, pn_new);
+        let _removed: Vec<_> = map.remove_range(range).collect();
+
+        // Now take_chain_tail_frames on the shell should return an empty queue
+        let (_tail_pn, tail_frames) = map.take_chain_tail_frames(pn_old);
+        assert!(
+            tail_frames.is_empty(),
+            "tail already removed; frames should be empty"
+        );
+    }
+
+    #[test]
+    fn take_chain_tail_frames_multi_hop() {
+        // Chain: pn1 (shell) → pn10 (shell) → pn20 (probe, non-shell with frames)
+        let mut map = Map::new(make_gauge());
+        let pn1 = make_pn(1);
+        let pn10 = make_pn(10);
+        let pn20 = make_pn(20);
+
+        let now =
+            unsafe { s2n_quic_core::time::Timestamp::from_duration(Duration::from_millis(100)) };
+        let mut cca = crate::congestion::Controller::new(1500);
+        let rtt = RttEstimator::new(Duration::from_millis(2));
+
+        map.insert(pn1, make_packet(fake_entry()));
+
+        // First probe: pn1 → pn10
+        let (_old1, frames1) = map.take_oldest_for_probe().unwrap();
+        let cc1 = cca.on_packet_sent(now, 100, false, &rtt);
+        map.insert(
+            pn10,
+            Packet::new(
+                frames1,
+                TransmissionInfo {
+                    cc_info: cc1,
+                    time_sent: now,
+                    sent_bytes: 100,
+                },
+            ),
+        );
+        map.set_probed_to(pn1, pn10);
+
+        // Second probe: pn10 → pn20
+        let (_old10, frames10) = map.take_oldest_for_probe().unwrap(); // takes pn10's frames
+        let cc2 = cca.on_packet_sent(now, 100, false, &rtt);
+        map.insert(
+            pn20,
+            Packet::new(
+                frames10,
+                TransmissionInfo {
+                    cc_info: cc2,
+                    time_sent: now,
+                    sent_bytes: 100,
+                },
+            ),
+        );
+        map.set_probed_to(pn10, pn20);
+
+        // Chain: pn1 → pn10 → pn20. Walking from pn1 should reach pn20.
+        let (tail_pn, tail_frames) = map.take_chain_tail_frames(pn1);
+        assert_eq!(tail_pn, pn20, "chain tail should be pn20");
+        assert!(!tail_frames.is_empty(), "pn20 frames should be present");
+    }
+
+    // ── invariants ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn invariants_passes_for_valid_packets() {
+        let mut map = Map::new(make_gauge());
+        map.insert(make_pn(1), make_packet(fake_entry()));
+        map.insert(make_pn(2), make_packet(fake_entry()));
+        // Should not panic
+        map.invariants();
+    }
+
+    #[test]
+    fn invariants_passes_for_valid_shell() {
+        let mut map = Map::new(make_gauge());
+        let pn1 = make_pn(1);
+        let pn2 = make_pn(5);
+        map.insert(pn1, make_packet(fake_entry()));
+        map.insert(pn2, make_packet(fake_entry()));
+        map.take_oldest_for_probe(); // makes pn1 a shell with empty frames
+        map.set_probed_to(pn1, pn2); // now pn1 is a valid shell (probed_to is Some)
+        // Should not panic: pn1 has probed_to, pn2 has non-empty frames
+        map.invariants();
+    }
+}
+
 pub(crate) struct RemoveRange<'a, I> {
     inner: I,
     gauge: &'a QueueGauge,

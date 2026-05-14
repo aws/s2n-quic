@@ -36,7 +36,7 @@ use s2n_quic_core::{
 };
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-#[cfg(todo)]
+#[cfg(test)]
 mod tests;
 
 /// Pending frame queue with an integrated wire-cost counter.
