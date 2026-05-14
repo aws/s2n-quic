@@ -376,7 +376,7 @@ impl Inner {
         }
 
         let available = self.min_send_budget();
-        if available == 0 && !is_fin {
+        if available == 0 && (!is_fin || !buf.buffer_is_empty()) {
             return Poll::Pending;
         }
 
