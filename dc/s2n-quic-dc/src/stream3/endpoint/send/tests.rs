@@ -1,12 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Unit tests for `Pto` and `ProbeState` logic.
+//! Unit tests for send-side queue accounting and PTO / `ProbeState` logic.
 
-use super::{ProbeState, Pto, INITIAL_PTO_BACKOFF};
-use crate::clock::testing::Clock;
+use super::{PendingFrames, ProbeState, Pto, INITIAL_PTO_BACKOFF};
+use crate::{
+    byte_vec::ByteVec,
+    clock::testing::Clock,
+    counter::Registry,
+    packet::datagram::QueuePair,
+    path::secret::map::Entry as PathSecretEntry,
+    socket::channel::ByteCost,
+    stream3::frame::{Frame, Header, TransmissionStatus, DEFAULT_TTL},
+};
+use bytes::Bytes;
 use core::time::Duration;
 use s2n_quic_core::recovery::RttEstimator;
+use std::sync::Arc;
 
 fn make_clock(millis: u64) -> Clock {
     Clock::new(Duration::from_millis(millis))
@@ -14,6 +24,100 @@ fn make_clock(millis: u64) -> Clock {
 
 fn make_rtt(smoothed_millis: u64) -> RttEstimator {
     RttEstimator::new(Duration::from_millis(smoothed_millis))
+}
+
+fn make_pending_frames() -> PendingFrames {
+    let registry = Registry::default();
+    PendingFrames::new(registry.register_queue_gauge("test.pending"))
+}
+
+fn make_path_secret_entry() -> Arc<PathSecretEntry> {
+    PathSecretEntry::fake("127.0.0.1:9999".parse().unwrap(), None)
+}
+
+fn make_frame(payload_len: usize) -> crate::intrusive_queue::Entry<Frame> {
+    let mut payload = ByteVec::new();
+    if payload_len > 0 {
+        payload.push_back(Bytes::from(vec![0; payload_len]));
+    }
+
+    Frame {
+        header: Header::FlowData {
+            queue_pair: QueuePair {
+                source_queue_id: s2n_quic_core::varint::VarInt::from_u8(1),
+                dest_queue_id: s2n_quic_core::varint::VarInt::from_u8(2),
+            },
+            stream_id: s2n_quic_core::varint::VarInt::from_u8(3),
+            offset: s2n_quic_core::varint::VarInt::ZERO,
+            is_fin: false,
+        },
+        source_sender_id: s2n_quic_core::varint::VarInt::MAX,
+        payload,
+        path_secret_entry: make_path_secret_entry(),
+        completion: None,
+        status: TransmissionStatus::Pending,
+        ttl: DEFAULT_TTL,
+        transmission_time: None,
+    }
+    .into()
+}
+
+#[test]
+fn pending_frames_tracks_byte_cost_through_push_pop_and_requeue() {
+    let mut pending = make_pending_frames();
+    let frame_a = make_frame(8);
+    let cost_a = frame_a.byte_cost() as usize;
+    let frame_b = make_frame(32);
+    let cost_b = frame_b.byte_cost() as usize;
+
+    pending.push_back(frame_a);
+    pending.push_back(frame_b);
+    assert_eq!(pending.len(), 2);
+    assert_eq!(pending.byte_cost(), cost_a + cost_b);
+
+    let popped = pending.pop_front().expect("frame should be present");
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending.byte_cost(), cost_b);
+
+    pending.push_front(popped);
+    assert_eq!(pending.len(), 2);
+    assert_eq!(pending.byte_cost(), cost_a + cost_b);
+
+    let first = pending.pop_front().expect("first frame should be present");
+    let second = pending.pop_front().expect("second frame should be present");
+    assert_eq!(first.byte_cost() as usize, cost_a);
+    assert_eq!(second.byte_cost() as usize, cost_b);
+    assert!(pending.is_empty());
+    assert_eq!(pending.byte_cost(), 0);
+}
+
+#[test]
+fn pending_frames_append_queue_uses_supplied_batch_cost_exactly() {
+    let mut pending = make_pending_frames();
+    let frame_a = make_frame(5);
+    let cost_a = frame_a.byte_cost();
+    let frame_b = make_frame(11);
+    let cost_b = frame_b.byte_cost();
+
+    let mut queue = crate::intrusive_queue::Queue::new();
+    queue.push_back(frame_a);
+    queue.push_back(frame_b);
+
+    let batch_cost = cost_a + cost_b;
+    pending.append_queue(queue, batch_cost);
+
+    assert_eq!(pending.len(), 2);
+    assert_eq!(pending.byte_cost(), batch_cost as usize);
+
+    let drained_cost = pending
+        .pop_front()
+        .into_iter()
+        .chain(pending.pop_front())
+        .map(|frame| frame.byte_cost() as usize)
+        .sum::<usize>();
+    assert_eq!(drained_cost, batch_cost as usize);
+    assert!(pending.is_empty());
+    assert_eq!(pending.byte_cost(), 0);
 }
 
 // ── ProbeState transitions ────────────────────────────────────────────────────
@@ -152,7 +256,10 @@ fn pto_needs_update_suppresses_probe() {
         "needs_update path should not fire a probe"
     );
     assert!(!pto.needs_update, "needs_update cleared after timeout");
-    assert!(pto.arm_base.is_none(), "arm_base reset in needs_update path");
+    assert!(
+        pto.arm_base.is_none(),
+        "arm_base reset in needs_update path"
+    );
 }
 
 #[test]
@@ -179,10 +286,7 @@ fn pto_on_ack_resets_backoff() {
     assert_eq!(pto.backoff, 4);
 
     pto.on_ack_received(true);
-    assert_eq!(
-        pto.backoff, INITIAL_PTO_BACKOFF,
-        "ACK should reset backoff"
-    );
+    assert_eq!(pto.backoff, INITIAL_PTO_BACKOFF, "ACK should reset backoff");
     assert_eq!(pto.firings_remaining, 0, "ACK should reset countdown");
     assert!(pto.arm_base.is_none(), "ACK should reset arm_base");
 }
@@ -311,7 +415,8 @@ fn pto_backoff_sequence_matches_expected_probe_count() {
     for (i, &should_probe) in expected.iter().enumerate() {
         let result = pto.on_timeout();
         assert_eq!(
-            result, should_probe,
+            result,
+            should_probe,
             "timeout #{}: expected probe={should_probe} but got {result}",
             i + 1
         );

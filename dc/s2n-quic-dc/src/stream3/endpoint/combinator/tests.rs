@@ -110,6 +110,28 @@ fn new_test_frame(path_secret_entry: Arc<PathSecretEntry>, payload_len: usize) -
     new_test_frame_with_sender_id(path_secret_entry, payload_len, VarInt::MAX)
 }
 
+fn new_test_frame_with_header(
+    path_secret_entry: Arc<PathSecretEntry>,
+    payload_len: usize,
+    header: Header,
+) -> Entry<Frame> {
+    let mut payload = ByteVec::new();
+    if payload_len > 0 {
+        payload.push_back(Bytes::from(vec![0u8; payload_len]));
+    }
+
+    Entry::new(Frame {
+        header,
+        source_sender_id: VarInt::MAX,
+        payload,
+        path_secret_entry,
+        completion: None,
+        status: TransmissionStatus::Pending,
+        ttl: DEFAULT_TTL,
+        transmission_time: None,
+    })
+}
+
 fn new_test_frame_with_sender_id(
     path_secret_entry: Arc<PathSecretEntry>,
     payload_len: usize,
@@ -270,6 +292,59 @@ fn sticky_sender_error_returns_value() {
 }
 
 // ── BatchFramesByPathSecret tests ─────────────────────────────────────────
+
+#[test]
+fn frame_batch_tracks_byte_costs_per_priority() {
+    let path = test_path_secret_entry();
+    let first = new_test_frame(path.clone(), 16);
+    let first_cost = first.byte_cost();
+    let mut batch = FrameBatch::new(first);
+
+    let data = new_test_frame_with_header(
+        path.clone(),
+        24,
+        Header::FlowData {
+            queue_pair: crate::packet::datagram::QueuePair {
+                source_queue_id: VarInt::from_u8(0),
+                dest_queue_id: VarInt::from_u8(1),
+            },
+            stream_id: VarInt::from_u8(0),
+            offset: VarInt::ZERO,
+            is_fin: false,
+        },
+    );
+    let data_cost = data.byte_cost();
+    batch.push_with_cost(data, data_cost);
+
+    let reset = new_test_frame_with_header(
+        path,
+        0,
+        Header::FlowReset {
+            dest_queue_id: VarInt::from_u8(1),
+            stream_id: VarInt::from_u8(0),
+            reset_target: crate::packet::datagram::ResetTarget::Both,
+            error_code: VarInt::from_u8(7),
+        },
+    );
+    let reset_cost = reset.byte_cost();
+    batch.push_with_cost(reset, reset_cost);
+
+    assert_eq!(
+        batch.byte_cost(),
+        MAX_FRAME_BATCH_PACKET_OVERHEAD + first_cost + data_cost + reset_cost
+    );
+
+    let (queues, costs) = batch.into_queues();
+    assert_eq!(
+        costs[Priority::FlowControl.as_index()],
+        MAX_FRAME_BATCH_PACKET_OVERHEAD + first_cost
+    );
+    assert_eq!(costs[Priority::FlowData.as_index()], data_cost);
+    assert_eq!(costs[Priority::FlowReset.as_index()], reset_cost);
+    assert_eq!(queues[Priority::FlowControl.as_index()].len(), 1);
+    assert_eq!(queues[Priority::FlowData.as_index()].len(), 1);
+    assert_eq!(queues[Priority::FlowReset.as_index()].len(), 1);
+}
 
 #[test]
 fn batch_frames_groups_by_same_path_secret() {

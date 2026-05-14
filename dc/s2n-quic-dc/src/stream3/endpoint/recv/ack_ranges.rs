@@ -184,6 +184,20 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_current_max_packet_does_not_regress_timestamp() {
+        let mut ranges = AckRanges::default();
+        ranges.on_packet_received(pn(7), ts(100));
+        ranges.on_packet_received(pn(9), ts(200));
+        ranges.on_packet_received(pn(9), ts(50));
+
+        assert_eq!(
+            ranges.largest_recv_time(),
+            Some(ts(200)),
+            "duplicate of the current max packet should not rewind the timestamp"
+        );
+    }
+
+    #[test]
     fn largest_recv_time_advances_monotonically() {
         let mut ranges = AckRanges::default();
         for i in 0u64..10 {
