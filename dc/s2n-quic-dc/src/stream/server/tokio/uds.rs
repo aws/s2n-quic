@@ -163,6 +163,9 @@ where
             crypto,
             decoded_packet.application_params().clone(),
             secret_control,
+            // application_data is not available for UDS streams because the in-application
+            // map does not contain the credential ID used by the forwarding process.
+            None,
         ) {
             Ok(stream) => stream,
             Err(error) => {

@@ -4,7 +4,7 @@
 use crate::{
     event::{self, api::Subscriber as _, IntoEvent as _},
     packet,
-    path::secret::{self, map, Map},
+    path::secret::{self, map, map::ApplicationData, Map},
     random::Random,
     stream::{
         self, application,
@@ -75,6 +75,7 @@ where
         endpoint::Type::Client,
         subscriber,
         subscriber_ctx,
+        None,
     )
 }
 
@@ -84,10 +85,17 @@ pub fn derive_stream_credentials(
     map: &Map,
     features: &stream::TransportFeatures,
     secret_control: &mut Vec<u8>,
-) -> Result<(secret::map::Bidirectional, dc::ApplicationParams), io::Error> {
+) -> Result<
+    (
+        secret::map::Bidirectional,
+        dc::ApplicationParams,
+        Option<ApplicationData>,
+    ),
+    io::Error,
+> {
     let credentials = &packet.credentials;
 
-    let Some((crypto, parameters)) = map.pair_for_credentials(
+    let Some((crypto, parameters, application_data)) = map.pair_for_credentials(
         credentials,
         packet.source_queue_id,
         features,
@@ -100,7 +108,7 @@ pub fn derive_stream_credentials(
         return Err(error);
     };
 
-    Ok((crypto, parameters))
+    Ok((crypto, parameters, application_data))
 }
 
 #[inline]
@@ -115,6 +123,7 @@ pub fn accept_stream<Env, P>(
     crypto: secret::map::Bidirectional,
     mut parameters: dc::ApplicationParams,
     secret_control: Vec<u8>,
+    application_data: Option<ApplicationData>,
 ) -> Result<application::Builder<Env::Subscriber>, AcceptError>
 where
     Env: Environment,
@@ -151,6 +160,7 @@ where
         endpoint::Type::Server,
         subscriber,
         subscriber_ctx,
+        application_data,
     );
 
     match res {
@@ -180,6 +190,7 @@ fn build_stream<Env, P>(
     endpoint_type: endpoint::Type,
     subscriber: Env::Subscriber,
     subscriber_ctx: <Env::Subscriber as event::Subscriber>::ConnectionContext,
+    application_data: Option<ApplicationData>,
 ) -> Result<application::Builder<Env::Subscriber>>
 where
     Env: Environment,
@@ -292,6 +303,7 @@ where
     let shared = Arc::new(shared::Shared {
         receiver: reader,
         sender: writer.0,
+        application_data,
         common,
         crypto,
     });
