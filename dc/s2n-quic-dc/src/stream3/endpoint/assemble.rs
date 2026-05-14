@@ -106,7 +106,7 @@ where
             }
 
             let mut packet_frames = Queue::new();
-            let mut metadata = MetadataEstimate::new(context.flow_attempt_id_counter);
+            let mut metadata = MetadataEstimate::new();
             let mut is_ack_eliciting = false;
             // Number of leading ACK frames in packet_frames (from the direct path).
             // These are stripped before inflight insertion since ACKs are stale on retransmit.
@@ -182,65 +182,22 @@ where
             // Skipping 4 PNs creates a gap large enough that the peer will immediately
             // ACK the probe (RFC 9000 §13.2.1 / RFC 9002 §6.2.4).
             if context.pto.probe_state.is_requested() && !context.has_pending_data() {
-                // No pending data — retransmit from the oldest inflight entry.
-                if let Some((old_pn, mut probe_frames)) = context.inflight.take_oldest_for_probe() {
-                    // oldest_non_shell_pn only returns entries with non-empty frames.
-                    debug_assert!(
-                        !probe_frames.is_empty(),
-                        "take_oldest_for_probe returned empty frames"
-                    );
-
-                    // Compute the post-skip packet number without committing it to
-                    // context yet — we only assign it if at least one frame fits.
-                    let next_packet_number = context.next_packet_number + 4;
-
-                    let mut probe_metadata = metadata;
-
-                    while let Some(frame) = probe_frames.pop_front() {
-                        let next = probe_metadata.with_frame(&frame);
-                        let est_len = next.estimate_packet_len(
-                            source_sender_id,
-                            source_control_port,
-                            next_packet_number,
-                            &context.credentials,
-                            seal::Application::tag_len(&context.sealer),
-                        );
-                        if est_len <= max_segment_len {
-                            probe_metadata = next;
-                            is_ack_eliciting = true;
-                            packet_frames.push_back(frame);
-                        } else {
-                            // A frame didn't fit.  If this is the very first probe frame
-                            // it is a header-estimate bug — MTUs don't change so it must
-                            // fit.  Panic loudly so we can fix the estimate.
-                            assert!(
-                                is_ack_eliciting,
-                                "first probe frame does not fit — header estimate is wrong"
-                            );
-                            // Remaining frames go back into probe_frames for retransmission.
-                            probe_frames.push_front(frame);
-                            break;
-                        }
+                match assemble_probe(
+                    context,
+                    &mut metadata,
+                    &mut packet_frames,
+                    source_sender_id,
+                    source_control_port,
+                    max_segment_len,
+                    cancelled,
+                ) {
+                    ProbeResult::Assembled { old_pn } => {
+                        is_ack_eliciting = true;
+                        probe_from_pn = Some(old_pn);
                     }
-
-                    // Commit the PN skip; at least one frame fit (asserted above).
-                    context.next_packet_number = next_packet_number;
-                    metadata = probe_metadata;
-
-                    // Always create the shell link regardless of full or partial fit.
-                    probe_from_pn = Some(old_pn);
-
-                    // Any frames that didn't fit are scheduled for retransmission so
-                    // they go out in the next TX opportunity without waiting for a loss
-                    // declaration or the next PTO firing.
-                    for frame in probe_frames {
-                        context.push_back_frame(frame);
+                    ProbeResult::NothingToProbe => {
+                        let _ = context.pto.probe_state.on_transmit();
                     }
-                    // probe_state cleared below, after encoding, via on_transmit()
-                } else {
-                    // Inflight was drained (e.g. by an ACK) between the PTO fire and
-                    // assembly — clear the probe request so we don't spin.
-                    let _ = context.pto.probe_state.on_transmit();
                 }
             }
 
@@ -306,7 +263,7 @@ where
                     &context.sealer,
                     &context.credentials,
                     &mut context.flow_attempt_id_counter,
-                    &packet_frames,
+                    &mut packet_frames,
                     header_buf,
                 )
             };
@@ -423,20 +380,87 @@ where
     Some(Segments::new(segments.take_filled(), segment_size))
 }
 
+enum ProbeResult {
+    Assembled { old_pn: PacketNumber },
+    NothingToProbe,
+}
+
+/// Try to assemble a PTO probe from the oldest inflight packet(s).
+///
+/// Skips packets whose frames have all been cancelled (writer dropped). If a
+/// transmittable packet is found, its frames are added to `packet_frames` and the
+/// PN is advanced by 4 to create the gap that triggers an immediate ACK.
+fn assemble_probe(
+    context: &mut Context,
+    metadata: &mut MetadataEstimate,
+    packet_frames: &mut Queue<Frame>,
+    source_sender_id: VarInt,
+    source_control_port: u16,
+    max_segment_len: usize,
+    cancelled: &mut impl UnboundedSender<intrusive_queue::Entry<Frame>>,
+) -> ProbeResult {
+    while let Some((old_pn, mut probe_frames)) = context.inflight.take_oldest_for_probe() {
+        let next_packet_number = context.next_packet_number + 4;
+        let mut probe_metadata = *metadata;
+        let mut has_frame = false;
+
+        while let Some(frame) = probe_frames.pop_front() {
+            if !frame.should_transmit() {
+                let _ = cancelled.send(frame);
+                continue;
+            }
+
+            let next = probe_metadata.with_frame(&frame);
+            let est_len = next.estimate_packet_len(
+                source_sender_id,
+                source_control_port,
+                next_packet_number,
+                &context.credentials,
+                seal::Application::tag_len(&context.sealer),
+            );
+            if est_len <= max_segment_len {
+                probe_metadata = next;
+                has_frame = true;
+                packet_frames.push_back(frame);
+            } else {
+                assert!(
+                    has_frame,
+                    "first probe frame does not fit — header estimate is wrong"
+                );
+                probe_frames.push_front(frame);
+                break;
+            }
+        }
+
+        if !has_frame {
+            continue;
+        }
+
+        context.next_packet_number = next_packet_number;
+        *metadata = probe_metadata;
+
+        for frame in probe_frames {
+            context.push_back_frame(frame);
+        }
+
+        return ProbeResult::Assembled { old_pn };
+    }
+
+    ProbeResult::NothingToProbe
+}
+
 #[derive(Clone, Copy, Debug)]
 struct MetadataEstimate {
     header_len: usize,
     payload_len: usize,
-    flow_attempt_id: VarInt,
 }
 
 impl MetadataEstimate {
     #[inline]
-    fn new(flow_attempt_id: VarInt) -> Self {
+    fn new() -> Self {
         Self {
             header_len: 0,
             payload_len: 0,
-            flow_attempt_id,
         }
     }
 
@@ -447,8 +471,7 @@ impl MetadataEstimate {
 
     #[inline]
     fn with_frame_parts(mut self, header: &frame::Header, payload_len: usize) -> Self {
-        let header = stamp_attempt_id(header, &mut self.flow_attempt_id);
-        self.header_len += frame_metadata_len(&header, payload_len);
+        self.header_len += frame_metadata_len(header, payload_len);
         self.payload_len += payload_len;
         self
     }
@@ -502,12 +525,14 @@ fn encode_segment<S: seal::Application>(
     sealer: &S,
     credentials: &Credentials,
     flow_attempt_id: &mut VarInt,
-    frames: &Queue<Frame>,
+    frames: &mut Queue<Frame>,
     header_buf: &mut Vec<u8>,
 ) -> usize {
     let routing_info = RoutingInfo::SenderId { source_sender_id };
 
-    // Build the application header: per-frame metadata entries
+    // Build the application header: per-frame metadata entries.
+    // This also stamps assigned attempt_ids back into FlowInit frame headers so
+    // PTO retransmissions reuse the same attempt_id.
     let total_payload_len = encode_frame_metadata(frames, flow_attempt_id, header_buf);
 
     let header_len = VarInt::try_from(header_buf.len() as u64).unwrap_or(VarInt::ZERO);
@@ -533,16 +558,16 @@ fn encode_segment<S: seal::Application>(
 }
 
 fn encode_frame_metadata(
-    frames: &Queue<Frame>,
+    frames: &mut Queue<Frame>,
     flow_attempt_id: &mut VarInt,
     header_buf: &mut Vec<u8>,
 ) -> usize {
     header_buf.clear();
     let mut total_payload_len = 0usize;
 
-    for frame in frames.iter() {
-        let header = stamp_attempt_id(&frame.header, flow_attempt_id);
-        push_frame_metadata(header_buf, &header, frame.payload_len());
+    for frame in frames.iter_mut() {
+        stamp_attempt_id(&mut frame.header, flow_attempt_id);
+        push_frame_metadata(header_buf, &frame.header, frame.payload_len());
 
         total_payload_len += frame.payload_len();
     }
@@ -586,33 +611,17 @@ fn push_frame_metadata(header_buf: &mut Vec<u8>, header: &frame::Header, payload
     );
 }
 
-/// Produce a Header with attempt_id stamped for FlowInit frames.
-fn stamp_attempt_id(header: &frame::Header, flow_attempt_id: &mut VarInt) -> frame::Header {
-    use crate::stream3::frame::Header;
-    match header {
-        Header::FlowInit {
-            source_queue_id,
-            dest_acceptor_id,
-            attempt_id,
-            stream_id,
-            is_fin,
-        } => {
-            let attempt_id = if *attempt_id == VarInt::MAX {
-                let id = *flow_attempt_id;
-                *flow_attempt_id += 1;
-                id
-            } else {
-                *attempt_id
-            };
-            Header::FlowInit {
-                source_queue_id: *source_queue_id,
-                dest_acceptor_id: *dest_acceptor_id,
-                attempt_id,
-                stream_id: *stream_id,
-                is_fin: *is_fin,
-            }
+/// Stamp attempt_id in place for FlowInit frames.
+///
+/// If the frame's attempt_id is the sentinel `VarInt::MAX`, allocates from the counter
+/// and writes it back into the header. On PTO retransmission the header already holds
+/// the assigned value, so no new allocation occurs.
+fn stamp_attempt_id(header: &mut frame::Header, flow_attempt_id: &mut VarInt) {
+    if let frame::Header::FlowInit { attempt_id, .. } = header {
+        if *attempt_id == VarInt::MAX {
+            *attempt_id = *flow_attempt_id;
+            *flow_attempt_id += 1;
         }
-        other => *other,
     }
 }
 

@@ -42,7 +42,7 @@ macro_rules! impl_recv {
             #[inline]
             pub fn push(&self, value: intrusive_queue::Entry<$type_param>) {
                 unsafe {
-                    let res = self.descriptor.$field().push(value, || false, || true);
+                    let res = self.descriptor.$field().push(value, || false, || Ok(()));
                     debug_assert!(res.is_ok());
                     probes::on_send(self.descriptor.queue_id(), $half, true);
                 }
@@ -151,14 +151,14 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
     }
 
     #[inline]
-    pub fn send_stream<F>(
+    pub fn send_stream(
         &self,
         entry: intrusive_queue::Entry<S>,
         remote_queue_id: Option<VarInt>,
-        validate: F,
+        params: &<Key as super::descriptor::Key>::Request,
     ) -> Result<AutoWake, Error<intrusive_queue::Entry<S>>>
     where
-        F: FnOnce(&Key) -> bool,
+        Key: super::descriptor::Key,
     {
         unsafe {
             let waker = self.descriptor.stream_queue().push(
@@ -171,7 +171,7 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
                         false
                     }
                 },
-                || validate(self.descriptor.key()),
+                || self.descriptor.validate(params),
             )?;
             probes::on_send(self.descriptor.queue_id(), Half::Stream, false);
             Ok(waker)
@@ -179,14 +179,14 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
     }
 
     #[inline]
-    pub fn send_control<F>(
+    pub fn send_control(
         &self,
         entry: intrusive_queue::Entry<C>,
         remote_queue_id: Option<VarInt>,
-        validate: F,
+        params: &<Key as super::descriptor::Key>::Request,
     ) -> Result<AutoWake, Error<intrusive_queue::Entry<C>>>
     where
-        F: FnOnce(&Key) -> bool,
+        Key: super::descriptor::Key,
     {
         unsafe {
             let waker = self.descriptor.control_queue().push(
@@ -199,44 +199,44 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
                         false
                     }
                 },
-                || validate(self.descriptor.key()),
+                || self.descriptor.validate(params),
             )?;
             probes::on_send(self.descriptor.queue_id(), Half::Control, false);
             Ok(waker)
         }
     }
 
-    /// Invokes the provided closure with a reference to the queue's key if the stream queue is allocated.
-    ///
-    /// This locks the stream queue to check if it has a receiver and accesses the key within
-    /// that lock to avoid races with queue deallocation.
-    ///
-    /// Returns Ok(R) if the stream queue is allocated, Err(()) otherwise.
     #[inline]
-    pub fn with_key_stream<F, R>(&self, f: F) -> Result<R, ()>
+    pub fn validate_stream(
+        &self,
+        params: &<Key as super::descriptor::Key>::Request,
+    ) -> Result<(), super::ValidateError>
     where
-        F: FnOnce(&Key) -> R,
+        Key: super::descriptor::Key,
     {
         unsafe {
-            let stream_queue = self.descriptor.stream_queue();
-            stream_queue.with_key(|| f(self.descriptor.key()))
+            self.descriptor
+                .stream_queue()
+                .with_key(|| self.descriptor.validate(params))
+                .map_err(|()| super::ValidateError::Unallocated)?
+                .map_err(super::ValidateError::Validation)
         }
     }
 
-    /// Invokes the provided closure with a reference to the queue's key if the control queue is allocated.
-    ///
-    /// This locks the control queue to check if it has a receiver and accesses the key within
-    /// that lock to avoid races with queue deallocation.
-    ///
-    /// Returns Ok(R) if the control queue is allocated, Err(()) otherwise.
     #[inline]
-    pub fn with_key_control<F, R>(&self, f: F) -> Result<R, ()>
+    pub fn validate_control(
+        &self,
+        params: &<Key as super::descriptor::Key>::Request,
+    ) -> Result<(), super::ValidateError>
     where
-        F: FnOnce(&Key) -> R,
+        Key: super::descriptor::Key,
     {
         unsafe {
-            let control_queue = self.descriptor.control_queue();
-            control_queue.with_key(|| f(self.descriptor.key()))
+            self.descriptor
+                .control_queue()
+                .with_key(|| self.descriptor.validate(params))
+                .map_err(|()| super::ValidateError::Unallocated)?
+                .map_err(super::ValidateError::Validation)
         }
     }
 }

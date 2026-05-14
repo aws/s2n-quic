@@ -38,8 +38,8 @@ pub enum Error<T> {
     Unallocated(T),
     /// The queue exists but this half has no receiver
     HalfClosed(T),
-    /// The entire queue is closed (either allocation dropped or key validation failed)
-    FullyClosed(T),
+    /// The queue key validation failed (credential or stream_id mismatch)
+    ValidationFailed(T, super::descriptor::ValidationError),
     /// The sender has been dropped and no more packets will be sent
     PermanentlyClosed,
 }
@@ -158,7 +158,7 @@ impl<T> Queue<T> {
         validate: F,
     ) -> Result<AutoWake, Error<intrusive_queue::Entry<T>>>
     where
-        F: FnOnce() -> bool,
+        F: FnOnce() -> Result<(), super::descriptor::ValidationError>,
         O: FnOnce() -> bool,
     {
         let mut inner = self.lock()?;
@@ -170,7 +170,9 @@ impl<T> Queue<T> {
             inner.flags.contains(Flags::HAS_RECEIVER),
             Err(Error::HalfClosed(entry))
         );
-        ensure!(validate(), Err(Error::FullyClosed(entry)));
+        if let Err(reason) = validate() {
+            return Err(Error::ValidationFailed(entry, reason));
+        }
 
         if !inner.flags.contains(Flags::HAS_OBSERVED) && observe() {
             inner.flags.insert(Flags::HAS_OBSERVED);

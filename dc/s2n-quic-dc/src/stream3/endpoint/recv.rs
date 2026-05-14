@@ -148,41 +148,87 @@ impl crate::intrusive_queue::Adapter for AckBurstAdapter {
     }
 }
 
-/// Attempt deduplication window for tracking seen attempt_ids.
+/// Attempt deduplication using a circular bitmap.
 ///
-/// Uses a sliding window to efficiently deduplicate FlowInit packets within
-/// a bounded memory footprint. This is the fast path for recent attempt_ids.
+/// Tracks up to `CAPACITY` recent attempt_ids without shifting memory. The bitmap
+/// is indexed relative to `right_edge` using modular arithmetic.
 pub(crate) struct AttemptDedup {
-    /// Sliding window for recent attempt_ids (same as packet number dedup)
-    window: s2n_quic_core::packet::number::SlidingWindow,
+    bitmap: [u64; Self::WORDS],
+    right_edge: Option<u64>,
 }
 
 impl AttemptDedup {
+    const WORDS: usize = 32;
+    const CAPACITY: u64 = (Self::WORDS as u64) * 64;
+
     pub fn new() -> Self {
         Self {
-            window: Default::default(),
+            bitmap: [0; Self::WORDS],
+            right_edge: None,
         }
     }
 
-    /// Check if an attempt_id has been seen before in the recent window.
-    ///
-    /// Returns:
-    /// - Ok(()) if attempt_id is new and within window
-    /// - Err(Duplicate) if already seen in window
-    /// - Err(TooOld) if outside window (check DashMap or retry)
     pub fn check_attempt_id(&mut self, attempt_id: VarInt) -> Result<(), AttemptDedupError> {
-        use s2n_quic_core::packet::number::{PacketNumberSpace, SlidingWindowError};
+        let id = attempt_id.as_u64();
 
-        let packet_number = PacketNumberSpace::Initial.new_packet_number(attempt_id);
-        match self.window.insert(packet_number) {
-            Ok(()) => Ok(()),
-            Err(SlidingWindowError::TooOld) => Err(AttemptDedupError::TooOld),
-            Err(SlidingWindowError::Duplicate) => Err(AttemptDedupError::Duplicate),
+        let Some(edge) = self.right_edge else {
+            self.right_edge = Some(id);
+            return Ok(());
+        };
+
+        if id == edge {
+            return Err(AttemptDedupError::Duplicate);
         }
+
+        if id > edge {
+            let advance = id - edge;
+            self.clear_range(edge + 1, advance);
+            // The old right_edge moves into the bitmap (if still in window)
+            if advance < Self::CAPACITY {
+                let (word, mask) = Self::index(edge);
+                self.bitmap[word] |= mask;
+            }
+            self.right_edge = Some(id);
+            return Ok(());
+        }
+
+        // id < edge
+        let offset = edge - id;
+        if offset >= Self::CAPACITY {
+            return Err(AttemptDedupError::TooOld);
+        }
+
+        let (word, mask) = Self::index(id);
+        if self.bitmap[word] & mask != 0 {
+            return Err(AttemptDedupError::Duplicate);
+        }
+
+        self.bitmap[word] |= mask;
+        Ok(())
+    }
+
+    /// Clear `count` bit positions starting at `from`.
+    fn clear_range(&mut self, from: u64, count: u64) {
+        if count >= Self::CAPACITY {
+            self.bitmap = [0; Self::WORDS];
+            return;
+        }
+        for i in 0..count {
+            let (word, mask) = Self::index(from + i);
+            self.bitmap[word] &= !mask;
+        }
+    }
+
+    #[inline]
+    fn index(id: u64) -> (usize, u64) {
+        let bit = (id % Self::CAPACITY) as usize;
+        let word = bit / 64;
+        let mask = 1u64 << (bit % 64);
+        (word, mask)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum AttemptDedupError {
     /// Attempt ID already seen (duplicate)
     Duplicate,
@@ -413,5 +459,179 @@ impl Cache {
         Clk: s2n_quic_core::time::Clock + ?Sized,
     {
         self.senders.retain(|_, state| !state.borrow_mut().is_expired(clock));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bolero::check;
+    use std::collections::VecDeque;
+
+    fn v(n: u64) -> VarInt {
+        VarInt::new(n).unwrap()
+    }
+
+    /// Oracle implementation using a VecDeque with the same capacity semantics.
+    struct Oracle {
+        seen: VecDeque<u64>,
+        right_edge: Option<u64>,
+    }
+
+    impl Oracle {
+        fn new() -> Self {
+            Self {
+                seen: VecDeque::new(),
+                right_edge: None,
+            }
+        }
+
+        fn check(&mut self, id: u64) -> Result<(), AttemptDedupError> {
+            let Some(edge) = self.right_edge else {
+                self.right_edge = Some(id);
+                self.seen.push_back(id);
+                return Ok(());
+            };
+
+            if id > edge {
+                self.right_edge = Some(id);
+            }
+
+            // Evict entries that are now too old
+            let new_edge = self.right_edge.unwrap();
+            while let Some(&oldest) = self.seen.front() {
+                if new_edge - oldest >= AttemptDedup::CAPACITY {
+                    self.seen.pop_front();
+                } else {
+                    break;
+                }
+            }
+
+            if new_edge - id >= AttemptDedup::CAPACITY {
+                return Err(AttemptDedupError::TooOld);
+            }
+
+            if self.seen.contains(&id) {
+                return Err(AttemptDedupError::Duplicate);
+            }
+
+            self.seen.push_back(id);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn first_insert_succeeds() {
+        let mut dedup = AttemptDedup::new();
+        assert!(dedup.check_attempt_id(v(0)).is_ok());
+    }
+
+    #[test]
+    fn duplicate_right_edge() {
+        let mut dedup = AttemptDedup::new();
+        assert!(dedup.check_attempt_id(v(5)).is_ok());
+        assert_eq!(
+            dedup.check_attempt_id(v(5)).unwrap_err(),
+            AttemptDedupError::Duplicate
+        );
+    }
+
+    #[test]
+    fn duplicate_within_window() {
+        let mut dedup = AttemptDedup::new();
+        assert!(dedup.check_attempt_id(v(10)).is_ok());
+        assert!(dedup.check_attempt_id(v(8)).is_ok());
+        assert_eq!(
+            dedup.check_attempt_id(v(8)).unwrap_err(),
+            AttemptDedupError::Duplicate
+        );
+    }
+
+    #[test]
+    fn too_old() {
+        let mut dedup = AttemptDedup::new();
+        assert!(dedup.check_attempt_id(v(AttemptDedup::CAPACITY + 10)).is_ok());
+        assert_eq!(
+            dedup.check_attempt_id(v(0)).unwrap_err(),
+            AttemptDedupError::TooOld
+        );
+    }
+
+    #[test]
+    fn advance_clears_old_bits() {
+        let mut dedup = AttemptDedup::new();
+        assert!(dedup.check_attempt_id(v(5)).is_ok());
+        assert!(dedup.check_attempt_id(v(3)).is_ok());
+
+        assert!(dedup.check_attempt_id(v(5 + AttemptDedup::CAPACITY + 1)).is_ok());
+
+        assert_eq!(
+            dedup.check_attempt_id(v(3)).unwrap_err(),
+            AttemptDedupError::TooOld
+        );
+        assert_eq!(
+            dedup.check_attempt_id(v(5)).unwrap_err(),
+            AttemptDedupError::TooOld
+        );
+    }
+
+    #[test]
+    fn advance_clears_reused_positions() {
+        let mut dedup = AttemptDedup::new();
+        assert!(dedup.check_attempt_id(v(0)).is_ok());
+        assert!(dedup.check_attempt_id(v(1)).is_ok());
+
+        let wrap = AttemptDedup::CAPACITY;
+        assert!(dedup.check_attempt_id(v(1 + wrap)).is_ok());
+        assert!(dedup.check_attempt_id(v(wrap)).is_ok());
+    }
+
+    #[test]
+    fn sequential_inserts() {
+        let mut dedup = AttemptDedup::new();
+        for i in 0..AttemptDedup::CAPACITY * 3 {
+            assert!(dedup.check_attempt_id(v(i)).is_ok(), "failed at {i}");
+        }
+    }
+
+    #[test]
+    fn out_of_order_within_window() {
+        let mut dedup = AttemptDedup::new();
+        assert!(dedup.check_attempt_id(v(100)).is_ok());
+        assert!(dedup.check_attempt_id(v(50)).is_ok());
+        assert!(dedup.check_attempt_id(v(75)).is_ok());
+        assert!(dedup.check_attempt_id(v(99)).is_ok());
+
+        assert_eq!(
+            dedup.check_attempt_id(v(50)).unwrap_err(),
+            AttemptDedupError::Duplicate
+        );
+        assert_eq!(
+            dedup.check_attempt_id(v(100)).unwrap_err(),
+            AttemptDedupError::Duplicate
+        );
+    }
+
+    #[test]
+    fn fuzz_matches_oracle() {
+        check!().with_type::<Vec<u16>>().for_each(|ops| {
+            let mut dedup = AttemptDedup::new();
+            let mut oracle = Oracle::new();
+
+            for &id in ops.iter() {
+                let id = id as u64;
+                let actual = dedup.check_attempt_id(v(id));
+                let expected = oracle.check(id);
+
+                assert_eq!(
+                    actual.is_ok(),
+                    expected.is_ok(),
+                    "mismatch at id={id}: actual={actual:?} expected={expected:?}"
+                );
+                if let (Err(a), Err(e)) = (&actual, &expected) {
+                    assert_eq!(a, e, "error kind mismatch at id={id}");
+                }
+            }
+        });
     }
 }

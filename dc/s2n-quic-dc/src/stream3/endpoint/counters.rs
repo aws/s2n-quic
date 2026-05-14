@@ -3,6 +3,7 @@
 
 use crate::{
     counter::{Counter, Registry, Summary, Timer, Unit},
+    flow::queue::ValidationError,
     packet::datagram::ResetTarget,
     stream3::frame::Header,
 };
@@ -39,14 +40,20 @@ pub(crate) struct Dispatch {
     pub rx_data_ok: Counter,
     pub rx_data_unallocated: Counter,
     pub rx_data_half_closed: Counter,
-    pub rx_data_fully_closed: Counter,
+    pub rx_data_credential_mismatch: Counter,
+    pub rx_data_stream_id_mismatch: Counter,
+    pub rx_data_tombstone: Counter,
     pub rx_data_perm_closed: Counter,
 
     pub rx_flow_control_ok: Counter,
     pub rx_flow_control_unallocated: Counter,
     pub rx_flow_control_half_closed: Counter,
-    pub rx_flow_control_fully_closed: Counter,
+    pub rx_flow_control_credential_mismatch: Counter,
+    pub rx_flow_control_stream_id_mismatch: Counter,
+    pub rx_flow_control_tombstone: Counter,
     pub rx_flow_control_perm_closed: Counter,
+
+    pub rx_reset_tombstone: Counter,
 
     pub rx_reset_both: Counter,
     pub rx_reset_stream: Counter,
@@ -116,17 +123,29 @@ impl Dispatch {
                 .register("!rx.init_validate.dispatch_failed"),
 
             rx_data_ok: counters.register("rx.data.ok"),
-            rx_data_unallocated: counters.register("!rx.data.unallocated"),
-            rx_data_half_closed: counters.register("!rx.data.half_closed"),
-            rx_data_fully_closed: counters.register("!rx.data.fully_closed"),
+            rx_data_unallocated: counters.register_nominal("!rx.data", "unallocated"),
+            rx_data_half_closed: counters.register_nominal("!rx.data", "half_closed"),
+            rx_data_credential_mismatch: counters
+                .register_nominal("!rx.data", "credential_mismatch"),
+            rx_data_stream_id_mismatch: counters
+                .register_nominal("!rx.data", "stream_id_mismatch"),
+            rx_data_tombstone: counters.register_nominal("rx.data", "tombstone"),
             rx_data_perm_closed: counters.register("rx.data.perm_closed"),
 
             rx_flow_control_ok: counters.register("rx.flow_control.ok"),
-            rx_flow_control_unallocated: counters.register("!rx.flow_control.unallocated"),
-            rx_flow_control_half_closed: counters.register("!rx.flow_control.half_closed"),
-            rx_flow_control_fully_closed: counters.register("!rx.flow_control.fully_closed"),
+            rx_flow_control_unallocated: counters
+                .register_nominal("!rx.flow_control", "unallocated"),
+            rx_flow_control_half_closed: counters
+                .register_nominal("!rx.flow_control", "half_closed"),
+            rx_flow_control_credential_mismatch: counters
+                .register_nominal("!rx.flow_control", "credential_mismatch"),
+            rx_flow_control_stream_id_mismatch: counters
+                .register_nominal("!rx.flow_control", "stream_id_mismatch"),
+            rx_flow_control_tombstone: counters
+                .register_nominal("rx.flow_control", "tombstone"),
             rx_flow_control_perm_closed: counters.register("rx.flow_control.perm_closed"),
 
+            rx_reset_tombstone: counters.register("rx.reset.tombstone"),
             rx_reset_both: counters.register("rx.reset.both"),
             rx_reset_stream: counters.register("rx.reset.stream"),
             rx_reset_control: counters.register("rx.reset.control"),
@@ -165,6 +184,26 @@ impl Dispatch {
             rx_ecn_ce: counters.register_nominal("rx.ecn", "ce"),
             rx_ecn_not_ect: counters.register_nominal("rx.ecn", "not_ect"),
         })
+    }
+
+    #[inline]
+    pub fn on_data_validation_failed(&self, reason: ValidationError) {
+        match reason {
+            ValidationError::CredentialMismatch => self.rx_data_credential_mismatch.add(1),
+            ValidationError::StreamIdMismatch => self.rx_data_stream_id_mismatch.add(1),
+            ValidationError::Tombstone => self.rx_data_tombstone.add(1),
+        }
+    }
+
+    #[inline]
+    pub fn on_flow_control_validation_failed(&self, reason: ValidationError) {
+        match reason {
+            ValidationError::CredentialMismatch => {
+                self.rx_flow_control_credential_mismatch.add(1)
+            }
+            ValidationError::StreamIdMismatch => self.rx_flow_control_stream_id_mismatch.add(1),
+            ValidationError::Tombstone => self.rx_flow_control_tombstone.add(1),
+        }
     }
 
     #[inline]

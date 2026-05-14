@@ -18,7 +18,7 @@ mod probes;
 mod sender;
 
 // Re-export the Key trait
-pub use descriptor::Key;
+pub use descriptor::{Key, ValidationError};
 pub use inner::AutoWake;
 
 /// Allocate this many channels at a time
@@ -160,13 +160,7 @@ where
         data: intrusive_queue::Entry<C>,
     ) -> Result<AutoWake, Error<intrusive_queue::Entry<C>>> {
         let res = self.senders.lookup(local_queue_id, data, |sender, data| {
-            sender.send_control(data, remote_queue_id, |key| {
-                let valid = key.validate(params);
-                if !valid {
-                    tracing::debug!(%local_queue_id, space = "control", "key validation failed");
-                }
-                valid
-            })
+            sender.send_control(data, remote_queue_id, params)
         });
 
         match res {
@@ -182,9 +176,9 @@ where
                 tracing::debug!(%local_queue_id, "control receiver closed");
                 Err(inner::Error::HalfClosed(data))
             }
-            Err(Error::FullyClosed(data)) => {
-                tracing::debug!(%local_queue_id, "control queue fully closed");
-                Err(inner::Error::FullyClosed(data))
+            Err(Error::ValidationFailed(data, reason)) => {
+                tracing::debug!(%local_queue_id, ?reason, "control queue validation failed");
+                Err(inner::Error::ValidationFailed(data, reason))
             }
             Err(Error::Unallocated(data)) => {
                 tracing::debug!("unroutable control data");
@@ -202,13 +196,7 @@ where
         data: intrusive_queue::Entry<S>,
     ) -> Result<AutoWake, Error<intrusive_queue::Entry<S>>> {
         let res = self.senders.lookup(local_queue_id, data, |sender, data| {
-            sender.send_stream(data, remote_queue_id, |key| {
-                let valid = key.validate(params);
-                if !valid {
-                    tracing::debug!(%local_queue_id, space = "stream", "key validation failed");
-                }
-                valid
-            })
+            sender.send_stream(data, remote_queue_id, params)
         });
 
         match res {
@@ -224,9 +212,9 @@ where
                 tracing::debug!(%local_queue_id, "stream receiver closed");
                 Err(inner::Error::HalfClosed(data))
             }
-            Err(Error::FullyClosed(data)) => {
-                tracing::debug!(%local_queue_id, "stream queue fully closed");
-                Err(inner::Error::FullyClosed(data))
+            Err(Error::ValidationFailed(data, reason)) => {
+                tracing::debug!(%local_queue_id, ?reason, "stream queue validation failed");
+                Err(inner::Error::ValidationFailed(data, reason))
             }
             Err(Error::Unallocated(data)) => {
                 tracing::debug!("unroutable stream data");
@@ -245,19 +233,11 @@ where
         control_data: intrusive_queue::Entry<C>,
     ) -> (AutoWake, AutoWake) {
         let res = self.senders.lookup(local_queue_id, (), |sender, ()| {
-            let validate = |key: &K| {
-                let valid = key.validate(params);
-                if !valid {
-                    tracing::debug!(%local_queue_id, "key validation failed");
-                }
-                valid
-            };
-
             let send = sender
-                .send_stream(stream_data, remote_queue_id, &validate)
+                .send_stream(stream_data, remote_queue_id, params)
                 .unwrap_or_default();
             let recv = sender
-                .send_control(control_data, remote_queue_id, &validate)
+                .send_control(control_data, remote_queue_id, params)
                 .unwrap_or_default();
 
             Ok((send, recv))
@@ -269,36 +249,41 @@ where
     }
 
     /// Validates the queue's key against the provided parameters by checking the stream queue.
-    ///
-    /// Returns Ok(()) if the stream queue is allocated and validation succeeds, Err(()) otherwise.
     #[inline]
     pub fn validate_stream(
         &mut self,
         local_queue_id: VarInt,
         params: &K::Request,
-    ) -> Result<(), ()> {
-        self.senders
-            .lookup(local_queue_id, (), |sender, ()| {
-                sender
-                    .with_key_stream(|key| key.validate(params))
-                    .map_err(|_| inner::Error::Unallocated(()))?;
-                Ok(())
-            })
-            .map_err(|_| ())
+    ) -> Result<(), ValidateError> {
+        match self.senders.lookup(local_queue_id, (), |sender, ()| {
+            Ok(sender.validate_stream(params))
+        }) {
+            Ok(result) => result,
+            Err(_) => Err(ValidateError::Unallocated),
+        }
     }
 
     /// Validates the queue's key against the provided parameters by checking the control queue.
-    ///
-    /// Returns Ok(()) if the control queue is allocated and validation succeeds, Err(()) otherwise.
     #[inline]
-    pub fn validate_control(&mut self, queue_id: VarInt, params: &K::Request) -> Result<(), ()> {
-        self.senders
-            .lookup(queue_id, (), |sender, ()| {
-                sender
-                    .with_key_control(|key| key.validate(params))
-                    .map_err(|_| inner::Error::Unallocated(()))?;
-                Ok(())
-            })
-            .map_err(|_| ())
+    pub fn validate_control(
+        &mut self,
+        queue_id: VarInt,
+        params: &K::Request,
+    ) -> Result<(), ValidateError> {
+        match self.senders.lookup(queue_id, (), |sender, ()| {
+            Ok(sender.validate_control(params))
+        }) {
+            Ok(result) => result,
+            Err(_) => Err(ValidateError::Unallocated),
+        }
     }
+}
+
+/// Error returned by validate_stream/validate_control
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValidateError {
+    /// Queue not found or deallocated
+    Unallocated,
+    /// Key validation failed
+    Validation(ValidationError),
 }

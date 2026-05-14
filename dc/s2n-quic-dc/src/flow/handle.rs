@@ -97,9 +97,17 @@ impl crate::flow::queue::Key for Handle {
     type Request = Request;
 
     #[inline]
-    fn validate(&self, params: &Self::Request) -> bool {
-        self.credential_id() == &params.credential_id && self.stream_id == params.stream_id
+    fn validate(&self, params: &Self::Request) -> Result<(), crate::flow::queue::ValidationError> {
+        use crate::flow::queue::ValidationError;
+        if self.credential_id() != &params.credential_id {
+            return Err(ValidationError::CredentialMismatch);
+        }
+        if self.stream_id != params.stream_id {
+            return Err(ValidationError::StreamIdMismatch);
+        }
+        Ok(())
     }
+
 }
 
 /// Tracker for managing flow lifecycle

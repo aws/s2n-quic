@@ -23,16 +23,47 @@ pub trait Key: 'static + Send {
     /// The request type used for validation
     type Request;
 
-    /// Validates the provided request parameters against this key
-    fn validate(&self, params: &Self::Request) -> bool;
+    /// Validates the provided request parameters against this key.
+    ///
+    /// Returns `Ok(())` if the request matches, or a specific error indicating
+    /// which field mismatched.
+    fn validate(&self, params: &Self::Request) -> Result<(), ValidationError>;
+}
+
+/// Indicates why a queue key validation failed
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValidationError {
+    /// The credential_id in the packet doesn't match the queue's owner
+    CredentialMismatch,
+    /// The stream_id in the packet doesn't match the queue's stream
+    StreamIdMismatch,
+    /// The packet matches the previous occupant of this queue (stale retransmit)
+    Tombstone,
+}
+
+impl ValidationError {
+    /// Returns the reset error code to send to the peer, or `None` for tombstone
+    /// (which should be silently dropped).
+    pub fn as_reset_code(self) -> Option<VarInt> {
+        use crate::stream3::endpoint::reset_error;
+        match self {
+            Self::CredentialMismatch => Some(reset_error::CREDENTIAL_MISMATCH),
+            Self::StreamIdMismatch => Some(reset_error::STREAM_ID_MISMATCH),
+            Self::Tombstone => None,
+        }
+    }
 }
 
 impl Key for crate::credentials::Credentials {
     type Request = crate::credentials::Credentials;
 
     #[inline]
-    fn validate(&self, params: &Self::Request) -> bool {
-        self == params
+    fn validate(&self, params: &Self::Request) -> Result<(), ValidationError> {
+        if self == params {
+            Ok(())
+        } else {
+            Err(ValidationError::CredentialMismatch)
+        }
     }
 }
 
@@ -115,7 +146,7 @@ impl<S: 'static, C: 'static, Key: 'static> Descriptor<S, C, Key> {
 
     #[inline]
     pub unsafe fn key(&self) -> &Key {
-        (*self.inner().key.get()).assume_init_ref()
+        (*self.inner().keys.get()).current()
     }
 
     /// # Safety
@@ -145,8 +176,7 @@ impl<S: 'static, C: 'static, Key: 'static> Descriptor<S, C, Key> {
     #[inline]
     pub unsafe fn init_key(&self, key: Key) {
         let inner = self.inner();
-        // SAFETY: the descriptor is fully owned by the caller and key is uninitialized
-        (*inner.key.get()).write(key);
+        (*inner.keys.get()).push(key);
     }
 
     /// # Safety
@@ -229,14 +259,40 @@ impl<S: 'static, C: 'static, Key: 'static> Descriptor<S, C, Key> {
 
         probes::on_receiver_free(inner.id, half);
 
-        // Drop the key before freeing the descriptor
-        (*inner.key.get()).assume_init_drop();
-
         let storage = inner.free_list.free(Descriptor {
             ptr: self.ptr,
             phantom: PhantomData,
         });
         drop(storage);
+    }
+
+    /// Validate the request against the current key. If validation fails, checks
+    /// the tombstone (previous occupant) to distinguish stale retransmits from
+    /// genuine errors.
+    ///
+    /// # Safety
+    ///
+    /// The caller needs to guarantee the [`Descriptor`] is still allocated.
+    #[inline]
+    pub unsafe fn validate(
+        &self,
+        params: &<Key as super::descriptor::Key>::Request,
+    ) -> Result<(), ValidationError>
+    where
+        Key: super::descriptor::Key,
+    {
+        let inner = self.inner();
+        let keys = &*inner.keys.get();
+        let result = keys.current().validate(params);
+        match result {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                if keys.tombstone_contains(params) {
+                    return Err(ValidationError::Tombstone);
+                }
+                Err(e)
+            }
+        }
     }
 }
 
@@ -251,12 +307,104 @@ pub(super) struct DescriptorInner<S, C, Key> {
     /// The peer's queue ID, written once by the dispatcher on first observation.
     /// Initialized to `u64::MAX` (unknown) and set via a relaxed store.
     remote_queue_id: AtomicU64,
-    key: UnsafeCell<MaybeUninit<Key>>,
+    /// Ring buffer holding the current key and previous occupants (tombstones).
+    /// The slot at `keys.current()` is the active key; all other initialized
+    /// slots are tombstones for recognizing stale retransmissions.
+    keys: UnsafeCell<KeyRing<Key>>,
     stream: Queue<S>,
     control: Queue<C>,
     /// A reference back to the free list
     free_list: Arc<dyn FreeList<S, C, Key>>,
     senders: AtomicUsize,
+}
+
+const KEY_RING_LEN: usize = 8;
+const KEY_RING_INDEX_MASK: u16 = (KEY_RING_LEN - 1) as u16;
+
+/// Ring buffer of keys: one current + N-1 tombstones. Power-of-2 sized for fast masking.
+struct KeyRing<Key> {
+    entries: [MaybeUninit<Key>; KEY_RING_LEN],
+    /// Packed state: bits [0,3) = current index, bits [3,11) = init mask per slot.
+    state: u16,
+}
+
+impl<Key> KeyRing<Key> {
+    const LEN: usize = KEY_RING_LEN;
+
+    fn new() -> Self {
+        Self {
+            entries: [const { MaybeUninit::uninit() }; Self::LEN],
+            state: 0,
+        }
+    }
+
+    fn init_bit(idx: usize) -> u16 {
+        1u16 << (3 + idx)
+    }
+
+    fn is_init(&self, idx: usize) -> bool {
+        self.state & Self::init_bit(idx) != 0
+    }
+
+    fn current_index(&self) -> usize {
+        self.next_index().wrapping_sub(1) & KEY_RING_INDEX_MASK as usize
+    }
+
+    fn next_index(&self) -> usize {
+        (self.state & KEY_RING_INDEX_MASK) as usize
+    }
+
+    /// Returns a reference to the current (active) key.
+    fn current(&self) -> &Key {
+        let idx = self.current_index();
+        debug_assert!(self.is_init(idx));
+        unsafe { self.entries[idx].assume_init_ref() }
+    }
+
+    fn push(&mut self, key: Key) {
+        let idx = self.next_index();
+        let bit = Self::init_bit(idx);
+
+        if self.state & bit != 0 {
+            unsafe { self.entries[idx].assume_init_drop() };
+        }
+
+        self.entries[idx] = MaybeUninit::new(key);
+        self.state |= bit;
+        let next = (idx + 1) & KEY_RING_INDEX_MASK as usize;
+        self.state = (self.state & !KEY_RING_INDEX_MASK) | next as u16;
+    }
+
+
+    /// Check if any tombstone (non-current initialized slot) matches the params.
+    fn tombstone_contains(&self, params: &<Key as super::descriptor::Key>::Request) -> bool
+    where
+        Key: super::descriptor::Key,
+    {
+        let current = self.current_index();
+        for i in 0..Self::LEN {
+            if i == current {
+                continue;
+            }
+            if self.is_init(i) {
+                let key = unsafe { self.entries[i].assume_init_ref() };
+                if key.validate(params).is_ok() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
+impl<Key> Drop for KeyRing<Key> {
+    fn drop(&mut self) {
+        for i in 0..Self::LEN {
+            if self.is_init(i) {
+                unsafe { self.entries[i].assume_init_drop() };
+            }
+        }
+    }
 }
 
 impl<S, C, Key> DescriptorInner<S, C, Key> {
@@ -266,11 +414,109 @@ impl<S, C, Key> DescriptorInner<S, C, Key> {
         Self {
             id,
             remote_queue_id: AtomicU64::new(REMOTE_QUEUE_ID_UNKNOWN),
-            key: UnsafeCell::new(MaybeUninit::uninit()),
+            keys: UnsafeCell::new(KeyRing::new()),
             stream,
             control,
             senders: AtomicUsize::new(0),
             free_list,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone, Debug)]
+    struct TestKey(u64);
+
+    impl Key for TestKey {
+        type Request = u64;
+
+        fn validate(&self, params: &u64) -> Result<(), ValidationError> {
+            if self.0 == *params {
+                Ok(())
+            } else {
+                Err(ValidationError::StreamIdMismatch)
+            }
+        }
+    }
+
+    const LEN: usize = KeyRing::<TestKey>::LEN;
+
+    #[test]
+    fn empty_ring_tombstone_contains_nothing() {
+        let ring = KeyRing::<TestKey>::new();
+        assert!(!ring.tombstone_contains(&42));
+    }
+
+    #[test]
+    fn current_key_accessible() {
+        let mut ring = KeyRing::<TestKey>::new();
+        ring.push(TestKey(7));
+        assert_eq!(ring.current().0, 7);
+    }
+
+    #[test]
+    fn previous_key_becomes_tombstone() {
+        let mut ring = KeyRing::<TestKey>::new();
+        ring.push(TestKey(1));
+        ring.push(TestKey(2));
+        assert_eq!(ring.current().0, 2);
+        assert!(ring.tombstone_contains(&1));
+    }
+
+    #[test]
+    fn current_is_not_tombstone() {
+        let mut ring = KeyRing::<TestKey>::new();
+        ring.push(TestKey(1));
+        assert!(!ring.tombstone_contains(&1));
+    }
+
+    #[test]
+    fn full_cycle_evicts_oldest() {
+        let mut ring = KeyRing::<TestKey>::new();
+        for i in 0..LEN as u64 + 1 {
+            ring.push(TestKey(i));
+        }
+        // Current is LEN, tombstones are 1..LEN, oldest (0) evicted
+        assert_eq!(ring.current().0, LEN as u64);
+        assert!(!ring.tombstone_contains(&0));
+        for i in 1..LEN as u64 {
+            assert!(ring.tombstone_contains(&i), "should contain {i}");
+        }
+    }
+
+    #[test]
+    fn many_generations() {
+        let mut ring = KeyRing::<TestKey>::new();
+        for i in 0..LEN as u64 * 3 {
+            ring.push(TestKey(i));
+        }
+        let last = LEN as u64 * 3 - 1;
+        assert_eq!(ring.current().0, last);
+        // LEN-1 tombstones visible
+        for i in (last - LEN as u64 + 1)..last {
+            assert!(ring.tombstone_contains(&i), "should contain {i}");
+        }
+        // Older ones evicted
+        assert!(!ring.tombstone_contains(&(last - LEN as u64)));
+    }
+
+    #[test]
+    fn drop_runs_cleanly() {
+        let mut ring = KeyRing::<TestKey>::new();
+        ring.push(TestKey(1));
+        ring.push(TestKey(2));
+        drop(ring);
+    }
+
+    #[test]
+    fn drop_many_generations() {
+        let mut ring = KeyRing::<TestKey>::new();
+        for i in 0..LEN as u64 * 2 {
+            ring.push(TestKey(i));
+        }
+        drop(ring);
     }
 }
