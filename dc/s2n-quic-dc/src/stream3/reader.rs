@@ -156,10 +156,6 @@ struct Inner {
     /// acceptance signal to the peer. Client-side readers set it to false since
     /// post-FIN credit updates are unnecessary once the peer is done sending.
     send_flow_update_after_fin: bool,
-    /// Tracks whether a FIN has been observed on the receive side.
-    /// When `fin_observed` is true and `send_flow_update_after_fin` is false,
-    /// flow updates are suppressed.
-    fin_observed: bool,
     /// Current status of the reader
     status: Status,
     /// Reset error code if the stream was reset by the peer
@@ -215,7 +211,6 @@ impl Reader {
             remote_max_data,
             window_size,
             send_flow_update_after_fin: false,
-            fin_observed: false,
             status: Status::Open,
             reset_error_code: None,
             coop: Coop::default(),
@@ -240,7 +235,6 @@ impl Reader {
             remote_max_data: VarInt::ZERO,
             window_size,
             send_flow_update_after_fin: true,
-            fin_observed: false,
             status: Status::Open,
             reset_error_code: None,
             coop: Coop::default(),
@@ -265,7 +259,6 @@ impl Reader {
             remote_max_data: VarInt::ZERO,
             window_size,
             send_flow_update_after_fin: true,
-            fin_observed: false,
             status: Status::PendingValidation,
             reset_error_code: None,
             coop: Coop::default(),
@@ -479,9 +472,6 @@ impl Inner {
                             mut payload,
                             fin,
                         } => {
-                            if fin {
-                                self.fin_observed = true;
-                            }
                             let Some(payload_end_offset) =
                                 offset.as_u64().checked_add(payload.len() as u64)
                             else {
@@ -617,9 +607,10 @@ impl Inner {
 
     fn maybe_send_max_data(&mut self) -> io::Result<()> {
         if let Some(final_size) = self.reassembler.final_size() {
-            if self.fin_observed && !self.send_flow_update_after_fin {
+            if !self.send_flow_update_after_fin {
                 return Ok(());
             }
+
             if self.remote_max_data.as_u64() >= final_size {
                 return Ok(());
             }

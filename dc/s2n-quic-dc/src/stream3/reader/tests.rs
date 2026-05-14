@@ -27,7 +27,7 @@ use super::{msg, reset_error, write_data_reader, ReadToEnd, Reader};
 use crate::{
     flow,
     intrusive_queue,
-    packet::datagram::ResetTarget,
+    packet::{control, datagram::ResetTarget},
     path::secret::map::Entry as PathSecretEntry,
     stream3::frame::{self, Frame, Header, PriorityStorage, SubmissionReceiver},
 };
@@ -35,6 +35,7 @@ use bytes::BytesMut;
 use s2n_quic_core::{
     buffer::{writer::Storage as _, Reassembler},
     endpoint,
+    frame::FrameMut,
     stream::testing::Data,
     varint::VarInt,
 };
@@ -168,13 +169,40 @@ impl Pusher {
 
     /// Asynchronously waits for frames up to `duration`.
     ///
-    /// Returns `Some(queue)` when `recv_frames` completes before timeout (the
-    /// queue may still be empty). Returns `None` only when the timeout expires.
+    /// Returns `Some(queue)` when at least one frame is received before timeout.
+    /// Returns `None` on timeout or when only an empty wake/close is observed.
     async fn recv_frames_timeout(
         &mut self,
         duration: Duration,
     ) -> Option<intrusive_queue::Queue<Frame>> {
-        crate::testing::timeout(duration, self.recv_frames()).await.ok()
+        let queue = crate::testing::timeout(duration, self.recv_frames()).await.ok()?;
+        if queue.is_empty() {
+            None
+        } else {
+            Some(queue)
+        }
+    }
+}
+
+fn decode_max_data_from_flow_control(frame: &Frame) -> Option<VarInt> {
+    if !matches!(frame.header, Header::FlowControl { .. }) {
+        return None;
+    }
+
+    let mut payload = Vec::with_capacity(frame.payload.len());
+    for chunk in frame.payload.chunks() {
+        payload.extend_from_slice(chunk);
+    }
+
+    let mut frames = control::decoder::ControlFramesMut::new(payload.as_mut_slice());
+    let frame = frames.next()?.ok()?;
+    if frames.next().is_some() {
+        return None;
+    }
+
+    match frame {
+        FrameMut::MaxData(max_data) => Some(max_data.maximum_data),
+        _ => None,
     }
 }
 
@@ -535,15 +563,18 @@ fn max_data_sent_after_consuming() {
         // advertised receive window.
         let payload = vec![0xabu8; (window_size / 2 + 1) as usize];
         let payload_len = payload.len();
+        let expected_max_data = VarInt::new(window_size + payload_len as u64).unwrap();
 
         // Endpoint task: push data, then wait for the MAX_DATA frame.
         async move {
             pusher.push_data(0, &payload, false);
             let frames = pusher.recv_frames().await;
-            let has_max_data = frames
-                .iter()
-                .any(|f| matches!(f.header, Header::FlowControl { .. }));
-            assert!(has_max_data, "expected at least one MAX_DATA frame");
+            assert_eq!(frames.len(), 1, "expected exactly one outbound frame");
+            assert_eq!(
+                frames.front().and_then(decode_max_data_from_flow_control),
+                Some(expected_max_data),
+                "expected exactly one MAX_DATA frame with the computed limit"
+            );
         }
         .primary()
         .spawn();
@@ -554,6 +585,9 @@ fn max_data_sent_after_consuming() {
             let read = reader.read_into(&mut buf).await.expect("read failed");
             assert_eq!(read, payload_len);
             assert_eq!(buf.len(), payload_len);
+            // Keep the task alive long enough for the endpoint-side assertion to
+            // consume this batch before Reader is dropped at task completion.
+            crate::testing::sleep(Duration::from_secs(1)).await;
         }
         .primary()
         .spawn();
@@ -574,7 +608,10 @@ fn flow_control_violation_errors_reader_and_sends_reset() {
         async move {
             pusher.push_data(0, &payload, false);
             let frames = pusher.recv_frames().await;
-            let has_protocol_reset = frames.iter().any(|f| {
+            let total_frames = frames.iter().count();
+            let reset_count = frames
+                .iter()
+                .filter(|f| {
                 // Flow-control violations currently share the protocol-error
                 // path, which emits FRAME_DECODE_ERROR.
                 matches!(
@@ -585,10 +622,13 @@ fn flow_control_violation_errors_reader_and_sends_reset() {
                         ..
                     } if error_code == reset_error::FLOW_CONTROL_ERROR
                 )
-            });
-            assert!(
-                has_protocol_reset,
-                "expected FlowReset(Both, FLOW_CONTROL_ERROR) on flow-control violation"
+                })
+                .count();
+            assert_eq!(total_frames, 1, "expected exactly one outbound frame");
+            assert_eq!(
+                reset_count,
+                1,
+                "expected exactly one FlowReset(Both, FLOW_CONTROL_ERROR) frame"
             );
         }
         .primary()
@@ -615,19 +655,17 @@ fn client_fin_within_window_does_not_send_max_data() {
         use crate::testing::ext::*;
 
         let (mut reader, mut pusher) = make_pair();
+        reader.0.window_size = 8;
+        reader.0.remote_max_data = VarInt::from_u8(8);
         let payload = b"hello";
 
         async move {
             pusher.push_data(0, payload, true);
-            if let Some(frames) = pusher.recv_frames_timeout(Duration::from_secs(1)).await {
-                let has_max_data = frames
-                    .iter()
-                    .any(|f| matches!(f.header, Header::FlowControl { .. }));
-                assert!(
-                    !has_max_data,
-                    "client-side FIN should not trigger a flow update frame"
-                );
-            }
+            let frames = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(
+                frames.is_none(),
+                "client-side FIN crossing the threshold should not emit outbound frames"
+            );
         }
         .primary()
         .spawn();
@@ -637,6 +675,43 @@ fn client_fin_within_window_does_not_send_max_data() {
             let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
             assert_eq!(outcome, ReadToEnd::Complete);
             assert_eq!(&buf[..], payload);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// If FIN is observed on an out-of-order tail before the missing head arrives,
+/// client readers still must not emit MAX_DATA after reassembly completes.
+#[test]
+fn client_fin_observed_before_gap_fill_does_not_send_max_data() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = make_pair();
+        reader.0.window_size = 8;
+        reader.0.remote_max_data = VarInt::from_u8(8);
+
+        async move {
+            pusher.push_data(2, b"llo", true);
+            // Sleep long enough to ensure the out-of-order FIN segment is
+            // processed before the head segment is injected.
+            crate::testing::sleep(Duration::from_secs(1)).await;
+            pusher.push_data(0, b"he", false);
+            let frames = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(
+                frames.is_none(),
+                "client should suppress all outbound frames once FIN has been observed"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut buf = BytesMut::with_capacity(32);
+            let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
+            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(&buf[..], b"hello");
         }
         .primary()
         .spawn();
@@ -678,6 +753,7 @@ fn server_validates_then_reads() {
         use crate::testing::ext::*;
 
         let (mut reader, mut pusher) = make_server_pair();
+        let expected_max_data = VarInt::new(reader.0.window_size + 5).unwrap();
 
         async move {
             pusher.push_flow_validated();
@@ -690,10 +766,12 @@ fn server_validates_then_reads() {
                 .recv_frames_timeout(Duration::from_secs(1))
                 .await
                 .expect("expected server flow update after validating/reading");
-            let has_max_data = frames
-                .iter()
-                .any(|f| matches!(f.header, Header::FlowControl { .. }));
-            assert!(has_max_data, "expected server to send flow update");
+            assert_eq!(frames.len(), 1, "expected exactly one outbound frame");
+            assert_eq!(
+                frames.front().and_then(decode_max_data_from_flow_control),
+                Some(expected_max_data),
+                "expected exactly one MAX_DATA frame with the computed limit"
+            );
         }
         .primary()
         .spawn();
@@ -726,7 +804,10 @@ fn drop_before_fin_sends_stop_sending() {
         async move {
             pusher.push_data(0, b"some data", false);
             let frames = pusher.recv_frames().await;
-            let has_stop_sending = frames.iter().any(|f| {
+            let total_frames = frames.iter().count();
+            let stop_sending_count = frames
+                .iter()
+                .filter(|f| {
                 matches!(
                     f.header,
                     Header::FlowReset {
@@ -735,10 +816,13 @@ fn drop_before_fin_sends_stop_sending() {
                         ..
                     } if error_code == reset_error::STOP_SENDING
                 )
-            });
-            assert!(
-                has_stop_sending,
-                "expected FlowReset(Stream, STOP_SENDING) on drop"
+                })
+                .count();
+            assert_eq!(total_frames, 1, "expected exactly one outbound frame");
+            assert_eq!(
+                stop_sending_count,
+                1,
+                "expected exactly one FlowReset(Stream, STOP_SENDING) on drop"
             );
         }
         .primary()
@@ -765,7 +849,10 @@ fn panic_drop_sends_abnormal_termination_reset() {
 
         async move {
             let frames = pusher.recv_frames().await;
-            let has_abnormal_reset = frames.iter().any(|f| {
+            let total_frames = frames.iter().count();
+            let abnormal_reset_count = frames
+                .iter()
+                .filter(|f| {
                 matches!(
                     f.header,
                     Header::FlowReset {
@@ -774,10 +861,13 @@ fn panic_drop_sends_abnormal_termination_reset() {
                         ..
                     } if error_code == reset_error::ABNORMAL_TERMINATION
                 )
-            });
-            assert!(
-                has_abnormal_reset,
-                "expected FlowReset(Both, ABNORMAL_TERMINATION) when dropping during panic"
+                })
+                .count();
+            assert_eq!(total_frames, 1, "expected exactly one outbound frame");
+            assert_eq!(
+                abnormal_reset_count,
+                1,
+                "expected exactly one FlowReset(Both, ABNORMAL_TERMINATION) on panic drop"
             );
         }
         .primary()
@@ -792,6 +882,89 @@ fn panic_drop_sends_abnormal_termination_reset() {
                 panic!("intentional test panic while dropping reader");
             }));
             assert!(panic_result.is_err());
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// After clean FIN completion, dropping Reader must not emit STOP_SENDING.
+#[test]
+fn drop_after_fin_completion_sends_no_reset() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = make_pair();
+
+        async move {
+            pusher.push_data(0, b"ok", true);
+            let frames = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(frames.is_none(), "no frame should be emitted after clean completion");
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut buf = BytesMut::with_capacity(16);
+            let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
+            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(&buf[..], b"ok");
+            drop(reader);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Flow-control violations should emit exactly one reset frame even if the app
+/// performs additional reads after the initial error.
+#[test]
+fn flow_control_violation_emits_single_reset_frame() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = make_pair();
+        let payload = vec![0u8; reader.0.window_size as usize + 1];
+
+        async move {
+            pusher.push_data(0, &payload, false);
+            let frames = pusher.recv_frames().await;
+            let total_frames = frames.iter().count();
+            let reset_count = frames.iter().filter(|f| {
+                matches!(
+                    f.header,
+                    Header::FlowReset {
+                        reset_target: ResetTarget::Both,
+                        error_code,
+                        ..
+                    } if error_code == reset_error::FLOW_CONTROL_ERROR
+                )
+            });
+            assert_eq!(total_frames, 1, "expected exactly one reset frame");
+            assert_eq!(reset_count.count(), 1, "expected one FLOW_CONTROL_ERROR reset");
+
+            let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(
+                extra.is_none(),
+                "reader should not emit additional frames on follow-up reads"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut buf = BytesMut::with_capacity(32);
+            let first = reader
+                .read_into(&mut buf)
+                .await
+                .expect_err("expected InvalidData on first violating read");
+            assert_eq!(first.kind(), std::io::ErrorKind::InvalidData);
+
+            let second = reader
+                .read_into(&mut buf)
+                .await
+                .expect_err("expected sticky reset on follow-up read");
+            assert_eq!(second.kind(), std::io::ErrorKind::ConnectionReset);
         }
         .primary()
         .spawn();
