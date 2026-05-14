@@ -386,7 +386,11 @@ where
 
     for (idx, drain) in waker_drains.into_iter().enumerate() {
         let worker_id = layout.waker_drain[idx % layout.waker_drain.len()];
-        workers[worker_id].waker_drain.push(drain);
+        let prev = workers[worker_id].waker_drain.replace(drain);
+        assert!(
+            prev.is_none(),
+            "worker {worker_id} assigned multiple waker drain tasks"
+        );
     }
 
     // ACK completion channels: one per recv dispatch worker. Send workers route completed
@@ -563,8 +567,8 @@ struct Worker<SendSocket, RecvSocket, Clk, AckSnd, Route> {
     recv_socket: Option<RecvSocketParts<RecvSocket, Route>>,
     /// Recv dispatch: decrypt + dedup + frame routing (at most one per worker).
     recv_dispatch: Option<RecvDispatchParts<Clk, AckSnd, Route>>,
-    /// Waker drain tasks assigned to this worker.
-    waker_drain: Vec<waker::Drain>,
+    /// Waker drain task assigned to this worker.
+    waker_drain: Option<waker::Drain>,
 }
 
 impl<SendSocket, RecvSocket, Clk, AckSnd, Route> Worker<SendSocket, RecvSocket, Clk, AckSnd, Route>
@@ -596,7 +600,7 @@ where
             send_sockets: Vec::new(),
             recv_socket: None,
             recv_dispatch: None,
-            waker_drain: Vec::new(),
+            waker_drain: None,
         }
     }
 
@@ -698,7 +702,7 @@ where
                 ));
             }
 
-            for drain in waker_drain {
+            if let Some(drain) = waker_drain {
                 local.spawn(tasks::waker_drain_task(drain, budgets));
             }
         });

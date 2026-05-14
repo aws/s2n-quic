@@ -152,14 +152,14 @@ pub fn frame_dispatch<S, Clk>(
     });
 
     // Task 2: batch → Entry → priority merge → pace → pick-two to workers.
-    spawner.spawn(async move {
+    spawner.spawn({
         let rx = PriorityRx::new(priority_batch_rxs);
         let rx = crate::counter::GaugedReceiver::new(rx, q_frames);
         let rx = BatchFramesByPathSecret::new(rx, &clock, overall_send_rate);
         let rx = Map::new(rx, Entry::new);
         let rx = Paced::new(rx, clock, overall_send_rate);
         let rx = PickTwo::new(rx, worker_senders, rng);
-        rx.drain_budgeted(Some(budgets.frame_dispatch)).await;
+        rx.drain_budgeted(Some(budgets.frame_dispatch))
     });
 }
 
@@ -235,57 +235,55 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         let mut idle_wheel_tx = idle_wheel_tx.clone();
         let clock = clock.clone();
         let q_tx_wheel = q_tx_wheel.clone();
-        async move {
-            let rx = Map::new(rx, move |batch: Entry<FrameBatch>| {
-                let Some(sender_idx) = batch.sender_id() else {
-                    unsafe {
-                        assume!(false, "batch needs an assigned sender id");
-                    }
-                };
-                let Some(local_id) = sender_idx_to_local.get(sender_idx).copied() else {
-                    unsafe {
-                        assume!(
-                            false,
-                            "sender id {} is out of range of {}",
-                            sender_idx,
-                            total_sender_ids
-                        )
-                    }
-                };
-                let Some(cache) = send_caches.get_mut(local_id) else {
-                    unsafe {
-                        assume!(
-                            false,
-                            "sender id {} is out of range of {}",
-                            sender_idx,
-                            total_sender_ids
-                        )
-                    }
-                };
-
-                let sender = {
-                    let mut cache = cache.borrow_mut();
-                    let cache = &mut *cache;
-                    cache.get_or_insert(batch.path_secret_entry())
-                };
-
-                let wheel_interest = {
-                    let mut sender = sender.borrow_mut();
-                    sender.push_batch(batch.into_inner(), &clock)
-                };
-
-                if wheel_interest.transmission {
-                    q_tx_wheel.enqueue(1);
+        let rx = Map::new(rx, move |batch: Entry<FrameBatch>| {
+            let Some(sender_idx) = batch.sender_id() else {
+                unsafe {
+                    assume!(false, "batch needs an assigned sender id");
                 }
-                wheel_interest.dispatch(
-                    sender,
-                    &mut tx_wheel_tx,
-                    &mut pto_wheel_tx,
-                    &mut idle_wheel_tx,
-                );
-            });
-            rx.drain_budgeted(Some(budgets.context_resolver)).await;
-        }
+            };
+            let Some(local_id) = sender_idx_to_local.get(sender_idx).copied() else {
+                unsafe {
+                    assume!(
+                        false,
+                        "sender id {} is out of range of {}",
+                        sender_idx,
+                        total_sender_ids
+                    )
+                }
+            };
+            let Some(cache) = send_caches.get_mut(local_id) else {
+                unsafe {
+                    assume!(
+                        false,
+                        "sender id {} is out of range of {}",
+                        sender_idx,
+                        total_sender_ids
+                    )
+                }
+            };
+
+            let sender = {
+                let mut cache = cache.borrow_mut();
+                let cache = &mut *cache;
+                cache.get_or_insert(batch.path_secret_entry())
+            };
+
+            let wheel_interest = {
+                let mut sender = sender.borrow_mut();
+                sender.push_batch(batch.into_inner(), &clock)
+            };
+
+            if wheel_interest.transmission {
+                q_tx_wheel.enqueue(1);
+            }
+            wheel_interest.dispatch(
+                sender,
+                &mut tx_wheel_tx,
+                &mut pto_wheel_tx,
+                &mut idle_wheel_tx,
+            );
+        });
+        rx.drain_budgeted(Some(budgets.context_resolver))
     });
 
     // Task 2: ACK processor — decode, update CCA/RTT, detect loss, reschedule.
@@ -313,18 +311,18 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     });
 
     // Task 3: Completion dispatcher — batches completed frames by channel, one lock per batch.
-    spawner.spawn(async move {
+    spawner.spawn({
         let rx = CompletionDispatcher::new(completed_rx);
         let rx = Map::new(rx, move |waker: crate::flow::queue::AutoWake| {
             let _ = waker_sink.send(waker);
         });
-        rx.drain_budgeted(Some(budgets.completion_acked)).await;
+        rx.drain_budgeted(Some(budgets.completion_acked))
     });
 
     // Task 4: Cancelled frame drain — drops frames whose writer is already gone.
-    spawner.spawn(async move {
+    spawner.spawn({
         let rx = Map::new(cancelled_rx, |_entry: Entry<Frame>| {});
-        rx.drain_budgeted(Some(budgets.completion_cancelled)).await;
+        rx.drain_budgeted(Some(budgets.completion_cancelled))
     });
 
     // Task 5: TX wheel drain — routes expired contexts to per-socket assembler channels.
@@ -405,29 +403,27 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             let cancelled_tx = cancelled_tx.clone().into_list_sender();
             let ack_completions_tx = ack_completions_tx.clone();
             let asm_counters = asm_counters.clone();
-            async move {
-                let rx = Assembler::new(
-                    context_rx,
-                    clock.clone(),
-                    source_sender_id,
-                    st.source_control_port,
-                    st.gso,
-                    st.pool,
-                    cancelled_tx,
-                    ack_completions_tx,
-                    tx_wheel_tx,
-                    pto_wheel_tx,
-                    idle_wheel_tx,
-                    asm_counters,
-                );
-                let rx = Paced::new(rx, clock, st.per_socket_send_rate);
-                let rx = SocketSender::new(rx, st.socket);
-                let rx = InspectErr::new(rx, |(err, _segments)| {
-                    tracing::warn!(%err, "socket send error");
-                });
-                let rx = Map::new(rx, |_segments| {});
-                rx.drain_budgeted(Some(budgets.assembler)).await;
-            }
+            let rx = Assembler::new(
+                context_rx,
+                clock.clone(),
+                source_sender_id,
+                st.source_control_port,
+                st.gso,
+                st.pool,
+                cancelled_tx,
+                ack_completions_tx,
+                tx_wheel_tx,
+                pto_wheel_tx,
+                idle_wheel_tx,
+                asm_counters,
+            );
+            let rx = Paced::new(rx, clock, st.per_socket_send_rate);
+            let rx = SocketSender::new(rx, st.socket);
+            let rx = InspectErr::new(rx, |(err, _segments)| {
+                tracing::warn!(%err, "socket send error");
+            });
+            let rx = Map::new(rx, |_segments| {});
+            rx.drain_budgeted(Some(budgets.assembler))
         });
     }
 }
