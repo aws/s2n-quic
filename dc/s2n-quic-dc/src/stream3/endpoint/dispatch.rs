@@ -32,6 +32,7 @@ use crate::{
 };
 use bytes::BytesMut;
 use s2n_quic_core::varint::VarInt;
+use std::{cell::RefCell, rc::Rc};
 
 const UNSET_SOURCE_SENDER_ID: VarInt = VarInt::MAX;
 
@@ -62,6 +63,7 @@ pub(crate) enum Error {
 pub(crate) fn process<Clk, Route>(
     packet: Entry<packet::datagram::decoder::Packet<descriptor::Filled>>,
     recv_cache: &mut recv::Cache,
+    ack_burst_tx: &mut impl channel::UnboundedSender<Rc<RefCell<recv::Context>>>,
     path_secret_map: &PathSecretMap,
     acceptor_registry: &acceptor::Registry<Stream>,
     frame_tx: &SubmissionSender,
@@ -81,7 +83,6 @@ where
     let packet_number = packet.packet_number();
     let routing_info = packet.routing_info();
     let idle_timeout = recv_cache.idle_timeout;
-    let recv_worker_id = recv_cache.worker_id;
 
     let source_sender_id = match routing_info {
         RoutingInfo::SenderId { source_sender_id } => source_sender_id,
@@ -91,7 +92,7 @@ where
 
     // Get or create peer receive state
     let mut control_out = Vec::new();
-    let (peer, cache_hit) = {
+    let (peer_rc, cache_hit) = {
         let _guard = counters.rx_peer_lookup_time.start();
         match recv_cache.get_or_insert(
             &credentials,
@@ -115,6 +116,7 @@ where
     } else {
         counters.rx_peer_cache_miss.add(1);
     }
+    let mut peer = peer_rc.borrow_mut();
 
     // Collect information about the packet layout before decryption.
     let app_header_slice: &[u8] = packet.application_header();
@@ -208,7 +210,7 @@ where
                     header,
                     source_sender_id,
                     frame_payload,
-                    peer,
+                    &mut peer,
                     &credentials,
                     acceptor_registry,
                     frame_tx,
@@ -242,13 +244,23 @@ where
 
     counters.rx_frames_per_packet.record_value(frame_count);
 
+    let mut enqueue_pending_ack = false;
     if is_ack_eliciting {
         let _ = peer.ack_state.on_ack_eliciting();
 
-        if let Some(submission) = peer.update_ack_state(recv_worker_id) {
-            let msg = msg::Sender::PendingAck(submission);
-            let _ = sender_tx.send(Entry::new(msg));
+        debug_assert!(
+            !peer.ack_burst.is_linked() || peer.ack_state.is_scheduled(),
+            "ack_burst link should only be active while ack_state is Scheduled"
+        );
+
+        if !peer.ack_burst.is_linked() {
+            enqueue_pending_ack = true;
         }
+    }
+    drop(peer);
+
+    if enqueue_pending_ack {
+        let _ = ack_burst_tx.send(peer_rc);
     }
 
     let _ = response_tx.send(response_frames);

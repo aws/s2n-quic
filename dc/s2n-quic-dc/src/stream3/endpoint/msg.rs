@@ -30,8 +30,8 @@ pub enum Sender {
         path_secret_entry: Arc<PathSecretEntry>,
         payload: BytesMut,
     },
-    /// Notification that fresh outbound ACK ranges are available in the shared state.
-    /// The send worker reads the snapshot at assembly time for wire-time ack_delay accuracy.
+    /// Notification carrying a freshly encoded outbound ACK body from recv worker.
+    /// The send worker stamps wire-time ack_delay during assembly.
     PendingAck(state::Submission),
 }
 

@@ -95,6 +95,9 @@ pub struct Budgets {
     pub socket_recv: usize,
     /// Budget for the per-worker packet dispatch task.
     pub packet_dispatch: usize,
+    /// Budget for the per-worker ACK burst drain task (`ack_burst_task`), i.e.
+    /// how many pending recv contexts are encoded/sent per poll.
+    pub ack_burst: usize,
     /// Budget for the waker drain task (wakers fired per poll).
     pub waker_drain: usize,
     /// Budget for the ACK completion drain task (entries returned from assembler per poll).
@@ -116,6 +119,7 @@ impl Default for Budgets {
             completion_cancelled: tasks::DEFAULT_DISPATCH_BUDGET,
             socket_recv: tasks::DEFAULT_RECV_BUDGET,
             packet_dispatch: usize::MAX,
+            ack_burst: tasks::DEFAULT_DISPATCH_BUDGET,
             waker_drain: 512,
             ack_completion: tasks::DEFAULT_DISPATCH_BUDGET,
         }
@@ -680,9 +684,14 @@ where
                 let recv_cache = std::rc::Rc::new(std::cell::RefCell::new(
                     crate::stream3::endpoint::recv::Cache::new(idle_timeout, recv_dispatch_idx),
                 ));
+                let (ack_burst_tx, ack_burst_rx) =
+                    crate::socket::channel::intrusive_queue::unsync::new_with_adapter::<
+                        crate::stream3::endpoint::recv::AckBurstAdapter,
+                    >();
                 local.spawn(tasks::packet_dispatch_task(
                     packet_rx,
                     recv_cache.clone(),
+                    ack_burst_tx,
                     rd.path_secret_map,
                     rd.acceptor_registry,
                     rd.frame_tx,
@@ -693,6 +702,12 @@ where
                     rd.route,
                     rd.waker_sink,
                     budgets,
+                ));
+                local.spawn(tasks::ack_burst_task(
+                    crate::socket::channel::FlattenList::new(ack_burst_rx.into_list_receiver()),
+                    rd.ack_sender.clone(),
+                    recv_dispatch_idx,
+                    budgets.ack_burst,
                 ));
                 local.spawn(tasks::ack_completion_task(
                     rd.ack_completion_rx,

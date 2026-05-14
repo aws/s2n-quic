@@ -117,30 +117,24 @@ where
             let mut probe_from_pn: Option<PacketNumber> = None;
 
             // Phase 1: drain direct ACK submissions (from pending_acks queue).
-            // Each entry carries a shared state reader; snapshot it now for wire-time
-            // ack_delay accuracy. These bypass CWND like Phase 1 frames.
+            // Each entry carries an already-encoded ACK body from recv worker; stamp
+            // wire-time ack_delay here. These bypass CWND like Phase 1 frames.
             while let Some(entry) = context.pending_acks.pop_front() {
                 let crate::stream3::endpoint::msg::Sender::PendingAck(ref submission) = *entry
                 else {
                     unreachable!("pending_acks should only contain PendingAck entries")
                 };
 
-                let Some(snapshot) = submission.reader.snapshot() else {
-                    // Nothing to send — return entry to completion immediately.
-                    let _ = ack_completions.send(entry);
-                    continue;
-                };
-
-                let ack_delay_duration = now.duration_since(snapshot.largest_recv_time);
+                let ack_delay_duration = now.duration_since(submission.largest_recv_time);
                 let ack_delay_micros = ack_delay_duration.as_micros() as u64;
                 let ack_delay = VarInt::new(ack_delay_micros).unwrap_or(VarInt::from_u32(u32::MAX));
 
                 let header = frame::Header::Ack {
                     dest_sender_id: submission.remote_sender_id,
                     ack_delay,
-                    has_ecn: snapshot.has_ecn,
+                    has_ecn: submission.has_ecn,
                 };
-                let payload_len = snapshot.body.len();
+                let payload_len = submission.body.len();
 
                 let next_metadata = metadata.with_frame_parts(&header, payload_len);
                 let estimated_len = next_metadata.estimate_packet_len(
@@ -159,16 +153,13 @@ where
                 let frame = Frame {
                     header,
                     source_sender_id: submission.local_sender_id,
-                    payload: snapshot.body.into(),
+                    payload: submission.body.clone().into(),
                     path_secret_entry: submission.path_secret_entry.clone(),
                     completion: None,
                     status: Default::default(),
                     ttl: frame::DEFAULT_TTL,
                     transmission_time: None,
                 };
-
-                // Mark transmitted before releasing the entry.
-                submission.reader.mark_transmitted(snapshot.version);
 
                 ack_frame_count += 1;
                 metadata = next_metadata;
