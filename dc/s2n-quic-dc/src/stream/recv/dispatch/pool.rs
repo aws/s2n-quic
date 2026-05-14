@@ -144,7 +144,10 @@ where
             // update our local copy
             self.epoch = senders.epoch;
 
-            // free what we just allocated, since we raced with the other pool instance
+            // Drop senders first since their drop impl accesses the descriptor's fields
+            drop(pending_senders);
+
+            // Now it's safe to destroy the descriptors
             for desc in pending_desc {
                 unsafe {
                     desc.drop_in_place();
