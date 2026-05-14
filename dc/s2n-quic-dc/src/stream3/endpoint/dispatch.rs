@@ -248,12 +248,11 @@ where
     if is_ack_eliciting {
         let _ = peer.ack_state.on_ack_eliciting();
 
-        debug_assert!(
-            !peer.ack_burst.is_linked() || peer.ack_state.is_scheduled(),
-            "ack_burst link should only be active while ack_state is Scheduled"
-        );
-
-        if !peer.ack_burst.is_linked() {
+        // Only enqueue into the burst queue when the state is Scheduled.
+        // When FlushedStale, the ack_completion_task handles re-encoding after
+        // the in-flight ACK completes — enqueueing here would leave a stale link
+        // that outlives the Scheduled state.
+        if !peer.ack_burst.is_linked() && peer.ack_state.is_scheduled() {
             enqueue_pending_ack = true;
         }
     }
