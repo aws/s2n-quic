@@ -117,6 +117,25 @@ pub struct Reader(Box<Inner>);
 
 use super::coop::{self, Coop, HasCoop};
 
+/// Outcome of [`Reader::read_to_end`].
+///
+/// `Complete` means EOF was reached. `BufferFull` means the provided storage ran
+/// out of remaining capacity before EOF and `read_to_end` should be called again
+/// with more capacity to continue draining the stream.
+#[must_use = "ReadToEnd indicates whether EOF was reached or another call is needed with more buffer capacity"]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReadToEnd {
+    Complete,
+    BufferFull,
+}
+
+impl ReadToEnd {
+    #[inline]
+    pub fn is_complete(self) -> bool {
+        matches!(self, Self::Complete)
+    }
+}
+
 struct Inner {
     /// Channel to submit frames to the wheel
     frame_tx: SubmissionSender,
@@ -132,6 +151,15 @@ struct Inner {
     remote_max_data: VarInt,
     /// Window size for flow control
     window_size: u64,
+    /// Whether this endpoint should emit a flow update after FIN is consumed.
+    /// Server-side readers set this to true so FIN consumption can act as an
+    /// acceptance signal to the peer. Client-side readers set it to false since
+    /// post-FIN credit updates are unnecessary once the peer is done sending.
+    send_flow_update_after_fin: bool,
+    /// Tracks whether a FIN has been observed on the receive side.
+    /// When `fin_observed` is true and `send_flow_update_after_fin` is false,
+    /// flow updates are suppressed.
+    fin_observed: bool,
     /// Current status of the reader
     status: Status,
     /// Reset error code if the stream was reset by the peer
@@ -186,6 +214,8 @@ impl Reader {
             reassembler: Reassembler::new(),
             remote_max_data,
             window_size,
+            send_flow_update_after_fin: false,
+            fin_observed: false,
             status: Status::Open,
             reset_error_code: None,
             coop: Coop::default(),
@@ -209,6 +239,8 @@ impl Reader {
             reassembler: Reassembler::new(),
             remote_max_data: VarInt::ZERO,
             window_size,
+            send_flow_update_after_fin: true,
+            fin_observed: false,
             status: Status::Open,
             reset_error_code: None,
             coop: Coop::default(),
@@ -232,6 +264,8 @@ impl Reader {
             reassembler: Reassembler::new(),
             remote_max_data: VarInt::ZERO,
             window_size,
+            send_flow_update_after_fin: true,
+            fin_observed: false,
             status: Status::PendingValidation,
             reset_error_code: None,
             coop: Coop::default(),
@@ -248,6 +282,7 @@ impl Reader {
         }
         let _ = self.0.send_reset_frame(error_code, ResetTarget::Both);
         self.0.status.on_reset().ok();
+        self.0.reassembler.reset();
     }
 
     pub async fn read_into<S>(&mut self, buf: &mut S) -> io::Result<usize>
@@ -255,6 +290,33 @@ impl Reader {
         S: buffer::writer::Storage,
     {
         core::future::poll_fn(|cx| self.poll_read_into(cx, buf)).await
+    }
+
+    /// Reads all remaining stream data into `buf`.
+    ///
+    /// Loops over [`read_into`][Self::read_into] until it returns `Ok(0)` (EOF),
+    /// propagating any error immediately.
+    ///
+    /// # Buffer requirements
+    ///
+    /// `S` must be a buffer that can always accept more bytes — for example
+    /// [`bytes::BytesMut`] or [`Vec<u8>`], which grow on demand. If `buf` has no
+    /// remaining capacity (empty at call time or later filled for fixed-size
+    /// storage), this method returns [`ReadToEnd::BufferFull`] so the caller can
+    /// provide additional capacity and call again.
+    pub async fn read_to_end<S>(&mut self, buf: &mut S) -> io::Result<ReadToEnd>
+    where
+        S: buffer::writer::Storage,
+    {
+        loop {
+            if !buf.track_write().has_remaining_capacity() {
+                return Ok(ReadToEnd::BufferFull);
+            }
+
+            if self.read_into(buf).await? == 0 {
+                return Ok(ReadToEnd::Complete);
+            }
+        }
     }
 
     pub fn poll_read_into<S>(&mut self, cx: &mut Context, buf: &mut S) -> Poll<io::Result<usize>>
@@ -307,8 +369,54 @@ impl Inner {
     where
         S: buffer::writer::Storage,
     {
+        // Once the stream is fully consumed, signal EOF without touching the
+        // (potentially already-closed) stream channel.
+        if self.status.is_complete() {
+            return Poll::Ready(Ok(0));
+        }
+
+        // If the stream was previously reset, drain any buffered data first
+        // (matching TCP semantics: data in the receive buffer before a RST is
+        // still readable).  Once the reassembler is empty every subsequent
+        // call returns the sticky error.
+        if self.status.is_reset() && self.reassembler.is_empty() {
+            self.reassembler.reset(); // free cursor metadata
+            let error = self.reset_error_code.map_or_else(
+                || io::Error::from(io::ErrorKind::ConnectionReset),
+                |code| io::Error::new(io::ErrorKind::ConnectionReset, ResetError::from(code)),
+            );
+            return Poll::Ready(Err(error));
+        }
+
         let mut tracker = buf.track_write();
-        let _ = self.poll_stream_rx(cx, &mut tracker)?;
+
+        // If already in reset state, skip the channel poll — no new messages
+        // will arrive.  Drain the reassembler and surface the error when empty.
+        // Otherwise poll for new stream messages.  Defer any channel error
+        // (BrokenPipe or ConnectionReset) while the reassembler still has data,
+        // delivering all buffered bytes to the application first.
+        let deferred_err = if self.status.is_reset() {
+            let e = self.reset_error_code.map_or_else(
+                || io::Error::from(io::ErrorKind::ConnectionReset),
+                |code| io::Error::new(io::ErrorKind::ConnectionReset, ResetError::from(code)),
+            );
+            Some(e)
+        } else {
+            let stream_result = self.poll_stream_rx(cx, &mut tracker);
+            match stream_result {
+                Poll::Ready(Ok(())) => None,
+                // Defer the error while the reassembler still has data to give
+                // to the application (either all writes complete, or a reset
+                // arrived but data was already buffered).
+                Poll::Ready(Err(e))
+                    if self.reassembler.is_writing_complete()
+                        || !self.reassembler.is_empty() =>
+                {
+                    Some(e)
+                }
+                other => return other.map_ok(|()| 0usize),
+            }
+        };
 
         if self.status.is_pending_validation() {
             return Poll::Ready(Err(io::Error::new(
@@ -317,24 +425,20 @@ impl Inner {
             )));
         }
 
-        if self.status.is_reset() {
-            if let Some(error_code) = self.reset_error_code {
-                let reset_error: ResetError = error_code.into();
-                return Poll::Ready(Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    reset_error,
-                )));
-            }
-            return Poll::Ready(Err(io::ErrorKind::ConnectionReset.into()));
-        }
-
         if tracker.has_remaining_capacity() {
             self.reassembler.infallible_copy_into(&mut tracker);
         }
 
         let bytes_read = tracker.written_len();
 
-        self.maybe_send_max_data()?;
+        // Only update flow-control while the channel is healthy.  When
+        // `deferred_err` is set the sender's channel has already closed, which
+        // means no more data is coming and there is nothing to send MAX_DATA to.
+        // Attempting to send in that state would produce an error that discards
+        // the data we just buffered, which is wrong.
+        if deferred_err.is_none() {
+            self.maybe_send_max_data()?;
+        }
 
         if self.reassembler.is_reading_complete() {
             debug!(
@@ -348,10 +452,16 @@ impl Inner {
         }
 
         if bytes_read > 0 {
-            Poll::Ready(Ok(bytes_read))
-        } else {
-            Poll::Pending
+            return Poll::Ready(Ok(bytes_read));
         }
+
+        // No data was consumed.  If the channel had a deferred error, surface
+        // it now that the reassembler is exhausted.
+        if let Some(e) = deferred_err {
+            return Poll::Ready(Err(e));
+        }
+
+        Poll::Pending
     }
 
     fn poll_stream_rx<S>(&mut self, cx: &mut Context, app_buf: &mut S) -> Poll<io::Result<()>>
@@ -369,6 +479,42 @@ impl Inner {
                             mut payload,
                             fin,
                         } => {
+                            if fin {
+                                self.fin_observed = true;
+                            }
+                            let Some(payload_end_offset) =
+                                offset.as_u64().checked_add(payload.len() as u64)
+                            else {
+                                debug!(
+                                    stream_id = self.stream_id.as_u64(),
+                                    offset = offset.as_u64(),
+                                    payload_len = payload.len(),
+                                    "Incoming data offset overflowed"
+                                );
+                                return self.protocol_error();
+                            };
+
+                            // Server bootstrap special-case:
+                            // `remote_max_data == 0` is used for server-side
+                            // streams before initial validation/credit release.
+                            // In that state the first bytes are accepted without
+                            // hard receive-window enforcement; once credits are
+                            // advertised (`remote_max_data > 0`) the check below
+                            // is enforced for all subsequent packets.
+                            if self.remote_max_data != VarInt::ZERO
+                                && payload_end_offset > self.remote_max_data.as_u64()
+                            {
+                                debug!(
+                                    stream_id = self.stream_id.as_u64(),
+                                    offset = offset.as_u64(),
+                                    payload_len = payload.len(),
+                                    payload_end_offset,
+                                    remote_max_data = self.remote_max_data.as_u64(),
+                                    "Peer exceeded advertised receive window"
+                                );
+                                return self.flow_control_error();
+                            }
+
                             trace!(
                                 stream_id = self.stream_id.as_u64(),
                                 offset = offset.as_u64(),
@@ -422,6 +568,14 @@ impl Inner {
                             );
                             self.reset_error_code = Some(error_code);
                             self.status.on_reset().ok();
+                            // Only clear the reassembler immediately when it is
+                            // already empty.  If data was buffered before the
+                            // reset arrived, leave it intact so poll_read_into_inner
+                            // can drain it to the application first (TCP semantics:
+                            // data in the receive buffer before a RST is readable).
+                            if self.reassembler.is_empty() {
+                                self.reassembler.reset();
+                            }
                             let reset_error: ResetError = error_code.into();
                             return Poll::Ready(Err(io::Error::new(
                                 io::ErrorKind::ConnectionReset,
@@ -445,6 +599,17 @@ impl Inner {
         let error_code = reset_error::FRAME_DECODE_ERROR;
         self.reset_error_code = Some(error_code);
         self.status.on_reset().ok();
+        self.reassembler.reset();
+        let _ = self.send_reset_frame(error_code, ResetTarget::Both);
+        let reset_error: ResetError = error_code.into();
+        Poll::Ready(Err(io::Error::new(io::ErrorKind::InvalidData, reset_error)))
+    }
+
+    fn flow_control_error(&mut self) -> Poll<io::Result<()>> {
+        let error_code = reset_error::FLOW_CONTROL_ERROR;
+        self.reset_error_code = Some(error_code);
+        self.status.on_reset().ok();
+        self.reassembler.reset();
         let _ = self.send_reset_frame(error_code, ResetTarget::Both);
         let reset_error: ResetError = error_code.into();
         Poll::Ready(Err(io::Error::new(io::ErrorKind::InvalidData, reset_error)))
@@ -452,6 +617,9 @@ impl Inner {
 
     fn maybe_send_max_data(&mut self) -> io::Result<()> {
         if let Some(final_size) = self.reassembler.final_size() {
+            if self.fin_observed && !self.send_flow_update_after_fin {
+                return Ok(());
+            }
             if self.remote_max_data.as_u64() >= final_size {
                 return Ok(());
             }
@@ -466,6 +634,9 @@ impl Inner {
             let new_max_data = VarInt::new(new_max_data)
                 .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "max_data overflow"))?;
 
+            // Frame send errors are propagated: if we cannot communicate flow
+            // control credits the peer may stall, so it is better to surface
+            // the failure immediately.
             self.send_max_data_frame(new_max_data)?;
             self.remote_max_data = new_max_data;
         } else {
@@ -627,115 +798,4 @@ impl tokio::io::AsyncRead for Reader {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{msg, write_data_reader, Reader};
-    use crate::{
-        flow, path::secret::map::Entry as PathSecretEntry, stream3::frame::SubmissionSender,
-    };
-    use bytes::BytesMut;
-    use core::task::Poll;
-    use s2n_quic_core::{
-        buffer::Reassembler, endpoint, stream::testing::Data, task::waker, varint::VarInt,
-    };
-    use std::{io, net::SocketAddr};
-
-    fn test_frame_tx() -> SubmissionSender {
-        let (frame_tx, _frame_rx) = crate::stream3::frame::submission_channel(1);
-        frame_tx
-    }
-
-    fn filled_payload(data: &[u8]) -> BytesMut {
-        BytesMut::from(data)
-    }
-
-    fn test_reader(msg: msg::Stream) -> Reader {
-        let stream_id = VarInt::from_u8(1);
-        let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
-        let path_secret_entry = PathSecretEntry::fake_deterministic(peer, endpoint::Type::Client);
-        let handle = flow::Handle::client(stream_id, path_secret_entry.clone());
-        let allocator = msg::queue::Allocator::new();
-        let (_control, stream_rx) = allocator
-            .alloc(handle, Some(VarInt::from_u8(2)))
-            .expect("queue alloc should succeed");
-        stream_rx.push(msg.into());
-
-        Reader::new_client(test_frame_tx(), path_secret_entry, stream_id, stream_rx)
-    }
-
-    #[test]
-    fn write_data_reader_bypasses_reassembler_for_in_order_data() {
-        let mut reassembler = Reassembler::new();
-        let mut reader = Data::new(8);
-        let mut app_buf: Vec<u8> = Vec::new();
-
-        write_data_reader(&mut reassembler, &mut reader, &mut app_buf, true).unwrap();
-
-        assert_eq!(app_buf, Data::send_one_at(0, 8));
-        assert_eq!(reassembler.consumed_len(), 8);
-        assert_eq!(reassembler.final_size(), Some(8));
-        assert!(reassembler.is_empty());
-        assert!(reassembler.is_reading_complete());
-    }
-
-    #[test]
-    fn write_data_reader_keeps_out_of_order_data_in_reassembler() {
-        let mut reassembler = Reassembler::new();
-        let mut reader = Data::new(8);
-        let mut app_buf: Vec<u8> = Vec::new();
-
-        reader.seek_forward(4);
-        write_data_reader(&mut reassembler, &mut reader, &mut app_buf, true).unwrap();
-
-        assert!(app_buf.is_empty());
-        assert_eq!(reassembler.consumed_len(), 0);
-        assert_eq!(reassembler.total_received_len(), 0);
-        assert!(reassembler.is_empty());
-        assert!(!reassembler.is_reading_complete());
-
-        reassembler
-            .write_at(0u32.into(), &Data::send_one_at(0, 4))
-            .unwrap();
-        assert_eq!(reassembler.len(), 8);
-    }
-
-    #[test]
-    fn write_data_reader_does_not_interpose_when_reassembler_has_head_data() {
-        let mut reassembler = Reassembler::new();
-        let mut reader = Data::new(8);
-        let mut app_buf: Vec<u8> = Vec::new();
-
-        reassembler
-            .write_at(0u32.into(), &Data::send_one_at(0, 4))
-            .unwrap();
-        reader.seek_forward(4);
-
-        write_data_reader(&mut reassembler, &mut reader, &mut app_buf, true).unwrap();
-
-        assert!(app_buf.is_empty());
-        assert_eq!(reassembler.len(), 8);
-        assert_eq!(reassembler.total_received_len(), 8);
-        assert!(!reassembler.is_empty());
-    }
-
-    #[test]
-    fn poll_read_into_counts_direct_interposer_writes() -> io::Result<()> {
-        let expected = Data::send_one_at(0, 8);
-        let mut reader = test_reader(msg::Stream::Data {
-            offset: VarInt::ZERO,
-            fin: true,
-            payload: filled_payload(&expected),
-        });
-        let waker = waker::noop();
-        let mut cx = core::task::Context::from_waker(&waker);
-        let mut out = Vec::new();
-
-        match reader.poll_read_into(&mut cx, &mut out) {
-            Poll::Ready(Ok(len)) => assert_eq!(len, 8),
-            other => panic!("unexpected first poll result: {other:?}"),
-        }
-        assert_eq!(out, expected);
-        assert!(reader.0.status.is_complete());
-
-        Ok(())
-    }
-}
+mod tests;

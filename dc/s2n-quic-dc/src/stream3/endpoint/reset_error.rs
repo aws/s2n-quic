@@ -28,6 +28,9 @@ pub const RETRANSMISSIONS_EXHAUSTED: VarInt = VarInt::from_u32(7);
 /// Server accept queue overflowed - stream was dropped before the application could handle it
 pub const SERVER_BUSY: VarInt = VarInt::from_u32(8);
 
+/// The sender exceeded advertised flow-control credit
+pub const FLOW_CONTROL_ERROR: VarInt = VarInt::from_u32(9);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResetError {
     StreamIdError,
@@ -38,6 +41,7 @@ pub enum ResetError {
     StopSending,
     RetransmissionsExhausted,
     ServerBusy,
+    FlowControlError,
     Unknown(VarInt),
 }
 
@@ -52,6 +56,7 @@ impl ResetError {
             Self::StopSending => STOP_SENDING,
             Self::RetransmissionsExhausted => RETRANSMISSIONS_EXHAUSTED,
             Self::ServerBusy => SERVER_BUSY,
+            Self::FlowControlError => FLOW_CONTROL_ERROR,
             Self::Unknown(code) => code,
         }
     }
@@ -68,6 +73,7 @@ impl From<VarInt> for ResetError {
             STOP_SENDING => Self::StopSending,
             RETRANSMISSIONS_EXHAUSTED => Self::RetransmissionsExhausted,
             SERVER_BUSY => Self::ServerBusy,
+            FLOW_CONTROL_ERROR => Self::FlowControlError,
             _ => Self::Unknown(code),
         }
     }
@@ -105,6 +111,12 @@ impl fmt::Display for ResetError {
             }
             Self::ServerBusy => {
                 write!(f, "SERVER_BUSY: server accept queue overflowed")
+            }
+            Self::FlowControlError => {
+                write!(
+                    f,
+                    "FLOW_CONTROL_ERROR: sender exceeded advertised flow-control credit"
+                )
             }
             Self::Unknown(code) => {
                 write!(f, "UNKNOWN({}): unknown reset error code", code.as_u64())
