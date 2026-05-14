@@ -6,7 +6,7 @@ use crate::{
     socket::channel::ByteCost,
     stream3::frame::{Header, TransmissionStatus, DEFAULT_TTL},
 };
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use core::task::Poll;
 use s2n_quic_core::varint::VarInt;
 use std::{
@@ -427,4 +427,50 @@ fn batch_frames_adopts_sticky_from_later_frame() {
     };
     assert_eq!(batch.len(), 3);
     assert_eq!(batch.sender_id(), Some(3));
+}
+
+#[test]
+fn ack_processor_drops_message_with_out_of_range_sender_idx() {
+    const OUT_OF_RANGE_SENDER_ID: u64 = 42; // total_sender_ids is 1, so any value > 0 is invalid.
+
+    let registry = crate::counter::Registry::default();
+    let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(&registry, 0)))];
+    let sender_idx_to_local = vec![0];
+    let (frame_tx, _frame_rx) = crate::stream3::frame::submission_channel(1);
+    let (tx_wheel_tx, _tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
+    let (pto_wheel_tx, _pto_wheel_rx) = unsync::new_with_adapter::<send::PtoWheelAdapter>();
+    let (idle_wheel_tx, _idle_wheel_rx) = unsync::new_with_adapter::<send::IdleWheelAdapter>();
+    let path_secret_entry = test_path_secret_entry();
+
+    let ack_rx = TestReceiver {
+        values: VecDeque::from([Entry::new(msg::Sender::ReceivedAck {
+            local_sender_id: VarInt::new(OUT_OF_RANGE_SENDER_ID).expect("valid varint"),
+            path_secret_entry,
+            payload: BytesMut::new(),
+        })]),
+        consumed: 0,
+    };
+
+    let mut processor = AckProcessor::new(
+        ack_rx,
+        send_caches,
+        sender_idx_to_local,
+        1,
+        crate::clock::bach::Clock::default(),
+        crate::xorshift::Rng::new(),
+        frame_tx,
+        crate::stream3::frame::PriorityInput::default(),
+        crate::stream3::frame::PriorityInput::default(),
+        tx_wheel_tx,
+        pto_wheel_tx,
+        idle_wheel_tx,
+        crate::stream3::endpoint::counters::Send::new(&registry),
+        registry.register_queue_gauge("q.tx_wheel"),
+    );
+
+    let first = with_noop_context(|cx| processor.poll_recv(cx));
+    assert_eq!(first, Poll::Ready(Some(())));
+
+    let second = with_noop_context(|cx| processor.poll_recv(cx));
+    assert_eq!(second, Poll::Ready(None));
 }

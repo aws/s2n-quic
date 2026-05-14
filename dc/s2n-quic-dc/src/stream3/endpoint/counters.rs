@@ -211,6 +211,7 @@ impl Dispatch {
 /// Counters for the send/ACK-processing path.
 pub(crate) struct Send {
     pub lost: Counter,
+    pub invalid_sender_idx: Counter,
     pub tx_rtt: Timer,
     pub tx_ecn_ect0: Counter,
     pub tx_ecn_ect1: Counter,
@@ -221,6 +222,7 @@ impl Send {
     pub fn new(counters: &Registry) -> Arc<Self> {
         Arc::new(Self {
             lost: counters.register("!send.lost"),
+            invalid_sender_idx: counters.register("!send.invalid_sender_idx"),
             tx_rtt: counters.register_timer("tx.rtt"),
             tx_ecn_ect0: counters.register_nominal("tx.ecn", "ect0"),
             tx_ecn_ect1: counters.register_nominal("tx.ecn", "ect1"),
@@ -231,6 +233,11 @@ impl Send {
     #[inline]
     pub fn on_lost(&self, count: u64) {
         self.lost.add(count);
+    }
+
+    #[inline]
+    pub fn on_invalid_sender_idx(&self) {
+        self.invalid_sender_idx.add(1);
     }
 
     #[inline]

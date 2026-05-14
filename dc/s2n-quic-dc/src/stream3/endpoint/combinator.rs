@@ -758,29 +758,20 @@ impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
         }
     }
 
-    fn resolve_cache(&mut self, sender_idx: usize) -> &mut Rc<RefCell<send::Cache>> {
-        let send_cache_count = self.send_caches.len();
+    fn resolve_cache(&mut self, sender_idx: usize) -> Option<&mut Rc<RefCell<send::Cache>>> {
+        if sender_idx >= self.total_sender_ids {
+            self.counters.on_invalid_sender_idx();
+            return None;
+        }
         let Some(local_id) = self.sender_idx_to_local.get(sender_idx).copied() else {
-            unsafe {
-                s2n_quic_core::assume!(
-                    false,
-                    "sender id {} is out of range of {}",
-                    sender_idx,
-                    self.total_sender_ids
-                )
-            }
+            self.counters.on_invalid_sender_idx();
+            return None;
         };
         let Some(cache) = self.send_caches.get_mut(local_id) else {
-            unsafe {
-                s2n_quic_core::assume!(
-                    false,
-                    "local id {} is out of range of {}",
-                    local_id,
-                    send_cache_count
-                )
-            }
+            self.counters.on_invalid_sender_idx();
+            return None;
         };
-        cache
+        Some(cache)
     }
 
     fn dispatch_wheel_interest(
@@ -813,7 +804,9 @@ where
         };
 
         let sender_idx = entry.sender_idx();
-        let cache = self.resolve_cache(sender_idx);
+        let Some(cache) = self.resolve_cache(sender_idx) else {
+            return Poll::Ready(Some(()));
+        };
 
         match &mut *entry {
             msg::Sender::ReceivedAck {
