@@ -74,9 +74,76 @@ fn make_pair_with_type(ep_type: endpoint::Type) -> (Writer, Pusher) {
         request,
         frame_rx,
         frame_storage: PriorityStorage::default(),
+        assembler: PayloadAssembler::default(),
     };
 
     (writer, pusher)
+}
+
+/// Reassembles payload from a sequence of data frames, validating contiguous
+/// offsets and FIN semantics along the way.
+///
+/// Designed to be held for the lifetime of a Pusher task so that offset tracking
+/// stays consistent across multiple `recv_frames` batches.
+#[derive(Default)]
+struct PayloadAssembler {
+    expected_offset: u64,
+    payload: Vec<u8>,
+    fin_count: usize,
+}
+
+impl PayloadAssembler {
+    /// Feeds a batch of frames through the assembler, asserting that each frame
+    /// carries a contiguous offset and valid FIN semantics.
+    ///
+    /// `header_filter` is called with each frame's header to perform
+    /// variant-specific assertions (e.g. ensuring only FlowData is emitted).
+    /// It must return `(offset, is_fin)` for the frame.
+    fn push(
+        &mut self,
+        frames: &intrusive_queue::Queue<Frame>,
+        header_filter: impl Fn(&Header) -> (VarInt, bool),
+    ) {
+        for frame in frames.iter() {
+            assert_eq!(
+                self.fin_count, 0,
+                "frame after FIN: writer must not send data after setting is_fin"
+            );
+            let (offset, is_fin) = header_filter(&frame.header);
+            assert_eq!(offset.as_u64(), self.expected_offset);
+            if is_fin {
+                self.fin_count += 1;
+            }
+            for chunk in frame.payload.chunks() {
+                self.payload.extend_from_slice(chunk);
+            }
+            self.expected_offset += frame.payload.len() as u64;
+        }
+    }
+
+    /// Feeds frames expecting only `Header::FlowData` variants.
+    fn push_flow_data(&mut self, frames: &intrusive_queue::Queue<Frame>) {
+        self.push(frames, |header| match *header {
+            Header::FlowData { offset, is_fin, .. } => (offset, is_fin),
+            _ => panic!("expected FlowData frame, got {header:?}"),
+        });
+    }
+
+    /// Feeds frames expecting only `Header::FlowInit` variants.
+    fn push_flow_init(&mut self, frames: &intrusive_queue::Queue<Frame>) {
+        self.push(frames, |header| match *header {
+            Header::FlowInit { is_fin, .. } => (VarInt::ZERO, is_fin),
+            _ => panic!("expected FlowInit frame, got {header:?}"),
+        });
+    }
+
+    fn assert_payload(&self, expected: &[u8]) {
+        assert_eq!(self.payload, expected);
+    }
+
+    fn assert_fin_count(&self, expected: usize) {
+        assert_eq!(self.fin_count, expected, "unexpected FIN count");
+    }
 }
 
 struct Pusher {
@@ -85,6 +152,7 @@ struct Pusher {
     request: flow::Request,
     frame_rx: SubmissionReceiver,
     frame_storage: PriorityStorage,
+    assembler: PayloadAssembler,
 }
 
 impl Pusher {
@@ -130,7 +198,12 @@ impl Pusher {
         &mut self,
         duration: Duration,
     ) -> Option<intrusive_queue::Queue<Frame>> {
-        crate::testing::timeout(duration, self.recv_frames()).await.ok()
+        let queue = crate::testing::timeout(duration, self.recv_frames()).await.ok()?;
+        if queue.is_empty() {
+            None
+        } else {
+            Some(queue)
+        }
     }
 
     fn complete_all(
@@ -165,8 +238,8 @@ fn client_write_all_from_fin_sends_flow_init_with_early_data_and_fin() {
 
         async move {
             let frames = pusher.recv_frames().await;
-            let frame = frames.iter().next().expect("expected one FlowInit frame");
-            assert!(frames.iter().nth(1).is_none(), "expected exactly one frame");
+            assert_eq!(frames.len(), 1, "expected exactly one frame");
+            let frame = frames.front().unwrap();
             assert!(matches!(frame.header, Header::FlowInit { is_fin: true, .. }));
             assert_eq!(frame.payload, &b"hello"[..]);
         }
@@ -222,12 +295,10 @@ fn client_second_write_blocks_until_max_data() {
 
         async move {
             let frames = pusher.recv_frames().await;
-            {
-                let frame = frames.iter().next().expect("expected one FlowInit frame");
-                assert!(frames.iter().nth(1).is_none(), "expected exactly one frame");
-                assert!(matches!(frame.header, Header::FlowInit { is_fin: false, .. }));
-                assert_eq!(frame.payload, &b"hello"[..]);
-            }
+            assert_eq!(frames.len(), 1, "expected exactly one frame");
+            let frame = frames.front().unwrap();
+            assert!(matches!(frame.header, Header::FlowInit { is_fin: false, .. }));
+            assert_eq!(frame.payload, &b"hello"[..]);
 
             // Give the app task a scheduling opportunity to attempt a second
             // write while Writer is still in `Status::FlowInitSent` (before any
@@ -236,15 +307,13 @@ fn client_second_write_blocks_until_max_data() {
             pusher.push_max_data(VarInt::from_u16(4096));
 
             let next = pusher.recv_frames().await;
-            {
-                let frame = next.iter().next().expect("expected one FlowData frame");
-                assert!(next.iter().nth(1).is_none(), "expected exactly one frame");
-                assert!(matches!(
-                    frame.header,
-                    Header::FlowData { is_fin: true, .. }
-                ));
-                assert_eq!(frame.payload, &b"!"[..]);
-            }
+            assert_eq!(next.len(), 1, "expected exactly one frame");
+            let frame = next.front().unwrap();
+            assert!(matches!(
+                frame.header,
+                Header::FlowData { is_fin: true, .. }
+            ));
+            assert_eq!(frame.payload, &b"!"[..]);
         }
         .primary()
         .spawn();
@@ -286,36 +355,9 @@ fn server_first_write_emits_flow_data_not_flow_init() {
 
         async move {
             let frames = pusher.recv_frames().await;
-            assert!(
-                frames.iter().next().is_some(),
-                "expected at least one FlowData frame"
-            );
-
-            let mut expected_offset = 0u64;
-            let mut payload = Vec::new();
-            for frame in frames.iter() {
-                match frame.header {
-                    Header::FlowData {
-                        offset, is_fin, ..
-                    } => {
-                        assert_eq!(offset.as_u64(), expected_offset);
-                        if is_fin {
-                            assert!(
-                                frame.payload.is_empty(),
-                                "drop-triggered FIN frame should be empty"
-                            );
-                        }
-                    }
-                    _ => panic!("server write should only emit FlowData"),
-                }
-
-                for chunk in frame.payload.chunks() {
-                    payload.extend_from_slice(chunk);
-                }
-                expected_offset += frame.payload.len() as u64;
-            }
-
-            assert_eq!(payload, b"hello");
+            assert!(!frames.is_empty(), "expected at least one FlowData frame");
+            pusher.assembler.push_flow_data(&frames);
+            pusher.assembler.assert_payload(b"hello");
         }
         .primary()
         .spawn();
@@ -340,45 +382,13 @@ fn server_flow_control_budget_caps_transmitted_bytes() {
 
         async move {
             let frames = pusher.recv_frames().await;
-            {
-                assert!(
-                    frames.iter().next().is_some(),
-                    "expected at least one FlowData frame"
-                );
-
-                let mut expected_offset = 0u64;
-                let mut payload = Vec::new();
-                for frame in frames.iter() {
-                    match frame.header {
-                        Header::FlowData {
-                            offset, is_fin, ..
-                        } => {
-                            assert_eq!(offset.as_u64(), expected_offset);
-                            if is_fin {
-                                assert!(
-                                    frame.payload.is_empty(),
-                                    "drop-triggered FIN frame should be empty"
-                                );
-                            }
-                        }
-                        _ => panic!("server write should only emit FlowData"),
-                    }
-
-                    for chunk in frame.payload.chunks() {
-                        payload.extend_from_slice(chunk);
-                    }
-                    expected_offset += frame.payload.len() as u64;
-                }
-
-                assert_eq!(payload, b"abc");
-            }
+            assert!(!frames.is_empty(), "expected at least one FlowData frame");
+            pusher.assembler.push_flow_data(&frames);
+            pusher.assembler.assert_payload(b"abc");
 
             let extra = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
-            let has_extra_frames = extra
-                .as_ref()
-                .is_some_and(|frames| frames.iter().next().is_some());
             assert!(
-                !has_extra_frames,
+                extra.is_none(),
                 "expected no additional burst after exhausting remote flow budget"
             );
         }
@@ -408,50 +418,22 @@ fn client_preserves_max_data_on_out_of_order_lower_update() {
 
         async move {
             let init = pusher.recv_frames().await;
-            {
-                let init_frame = init.iter().next().expect("expected FlowInit frame");
-                assert!(
-                    init.iter().nth(1).is_none(),
-                    "expected exactly one FlowInit frame"
-                );
-                assert!(matches!(
-                    init_frame.header,
-                    Header::FlowInit { is_fin: false, .. }
-                ));
-                assert_eq!(init_frame.payload, &b"abc"[..]);
-            }
+            assert_eq!(init.len(), 1, "expected exactly one FlowInit frame");
+            let init_frame = init.front().unwrap();
+            assert!(matches!(
+                init_frame.header,
+                Header::FlowInit { is_fin: false, .. }
+            ));
+            assert_eq!(init_frame.payload, &b"abc"[..]);
 
             pusher.push_max_data(VarInt::from_u8(8));
             pusher.push_max_data(VarInt::from_u8(3));
 
+            // The FlowInit consumed 3 bytes, so the assembler starts at offset 3.
+            pusher.assembler.expected_offset = 3;
             let next = pusher.recv_frames().await;
-            {
-                let mut expected_offset = 3u64;
-                let mut payload = Vec::new();
-                for frame in next.iter() {
-                    match frame.header {
-                        Header::FlowData {
-                            offset, is_fin, ..
-                        } => {
-                            assert_eq!(offset.as_u64(), expected_offset);
-                            if is_fin {
-                                assert!(
-                                    frame.payload.is_empty(),
-                                    "drop-triggered FIN frame should be empty"
-                                );
-                            }
-                        }
-                        _ => panic!("expected FlowData frame"),
-                    }
-
-                    for chunk in frame.payload.chunks() {
-                        payload.extend_from_slice(chunk);
-                    }
-                    expected_offset += frame.payload.len() as u64;
-                }
-
-                assert_eq!(payload, b"defgh");
-            }
+            pusher.assembler.push_flow_data(&next);
+            pusher.assembler.assert_payload(b"defgh");
         }
         .primary()
         .spawn();
@@ -485,19 +467,17 @@ fn server_write_from_fin_blocks_while_budget_exhausted_then_sends_single_fin_fra
 
         async move {
             let first = pusher.recv_frames().await;
-            {
-                let first_frame = first.iter().next().expect("expected one first frame");
-                assert!(first.iter().nth(1).is_none(), "expected exactly one frame");
-                assert!(matches!(
-                    first_frame.header,
-                    Header::FlowData {
-                        is_fin: false,
-                        offset,
-                        ..
-                    } if offset == VarInt::ZERO
-                ));
-                assert_eq!(first_frame.payload, &b"a"[..]);
-            }
+            assert_eq!(first.len(), 1, "expected exactly one frame");
+            let first_frame = first.front().unwrap();
+            assert!(matches!(
+                first_frame.header,
+                Header::FlowData {
+                    is_fin: false,
+                    offset,
+                    ..
+                } if offset == VarInt::ZERO
+            ));
+            assert_eq!(first_frame.payload, &b"a"[..]);
 
             let extra = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
             assert!(
@@ -508,19 +488,17 @@ fn server_write_from_fin_blocks_while_budget_exhausted_then_sends_single_fin_fra
             pusher.push_max_data(VarInt::from_u8(2));
 
             let second = pusher.recv_frames().await;
-            {
-                let second_frame = second.iter().next().expect("expected one second frame");
-                assert!(second.iter().nth(1).is_none(), "expected exactly one frame");
-                assert!(matches!(
-                    second_frame.header,
-                    Header::FlowData {
-                        is_fin: true,
-                        offset,
-                        ..
-                    } if offset == VarInt::from_u8(1)
-                ));
-                assert_eq!(second_frame.payload, &b"b"[..]);
-            }
+            assert_eq!(second.len(), 1, "expected exactly one frame");
+            let second_frame = second.front().unwrap();
+            assert!(matches!(
+                second_frame.header,
+                Header::FlowData {
+                    is_fin: true,
+                    offset,
+                    ..
+                } if offset == VarInt::from_u8(1)
+            ));
+            assert_eq!(second_frame.payload, &b"b"[..]);
         }
         .primary()
         .spawn();
@@ -562,33 +540,14 @@ fn client_fin_write_then_drop_emits_no_extra_packet() {
 
         async move {
             let first = pusher.recv_frames().await;
-            {
-                assert!(first.iter().next().is_some(), "expected at least one frame");
-                let mut payload = Vec::new();
-                let mut fin_count = 0usize;
-                for frame in first.iter() {
-                    match frame.header {
-                        Header::FlowInit { is_fin, .. } => {
-                            if is_fin {
-                                fin_count += 1;
-                            }
-                        }
-                        _ => panic!("client initial FIN write should emit FlowInit frames only"),
-                    }
-                    for chunk in frame.payload.chunks() {
-                        payload.extend_from_slice(chunk);
-                    }
-                }
-                assert_eq!(payload, b"hi");
-                assert_eq!(fin_count, 1, "expected exactly one FIN marker");
-            }
+            assert!(!first.is_empty(), "expected at least one frame");
+            pusher.assembler.push_flow_init(&first);
+            pusher.assembler.assert_payload(b"hi");
+            pusher.assembler.assert_fin_count(1);
 
             let extra = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
-            let has_extra_frames = extra
-                .as_ref()
-                .is_some_and(|frames| frames.iter().next().is_some());
             assert!(
-                !has_extra_frames,
+                extra.is_none(),
                 "expected no extra frame burst after FIN was already sent"
             );
         }
@@ -615,38 +574,14 @@ fn server_fin_write_then_drop_emits_no_extra_packet() {
 
         async move {
             let first = pusher.recv_frames().await;
-            {
-                assert!(first.iter().next().is_some(), "expected at least one frame");
-                let mut payload = Vec::new();
-                let mut fin_count = 0usize;
-                let mut expected_offset = 0u64;
-                for frame in first.iter() {
-                    match frame.header {
-                        Header::FlowData {
-                            is_fin, offset, ..
-                        } => {
-                            if is_fin {
-                                fin_count += 1;
-                            }
-                            assert_eq!(offset.as_u64(), expected_offset);
-                        }
-                        _ => panic!("server FIN write should emit FlowData frames only"),
-                    }
-                    for chunk in frame.payload.chunks() {
-                        payload.extend_from_slice(chunk);
-                    }
-                    expected_offset += frame.payload.len() as u64;
-                }
-                assert_eq!(payload, b"hi");
-                assert_eq!(fin_count, 1, "expected exactly one FIN marker");
-            }
+            assert!(!first.is_empty(), "expected at least one frame");
+            pusher.assembler.push_flow_data(&first);
+            pusher.assembler.assert_payload(b"hi");
+            pusher.assembler.assert_fin_count(1);
 
             let extra = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
-            let has_extra_frames = extra
-                .as_ref()
-                .is_some_and(|frames| frames.iter().next().is_some());
             assert!(
-                !has_extra_frames,
+                extra.is_none(),
                 "expected no extra frame burst after FIN was already sent"
             );
         }
@@ -682,17 +617,15 @@ fn transmission_error_completion_causes_broken_pipe_and_reset() {
                 .recv_frames_timeout(Duration::from_secs(1))
                 .await
                 .expect("expected FlowReset after transmission failure");
-            let has_reset = reset.iter().any(|f| {
-                matches!(
-                    f.header,
-                    Header::FlowReset {
-                        reset_target: ResetTarget::Both,
-                        error_code,
-                        ..
-                    } if error_code == reset_error::RETRANSMISSIONS_EXHAUSTED
-                )
-            });
-            assert!(has_reset, "expected retransmission-exhausted FlowReset");
+            assert_eq!(reset.len(), 1, "expected exactly one reset frame");
+            assert!(matches!(
+                reset.front().unwrap().header,
+                Header::FlowReset {
+                    reset_target: ResetTarget::Both,
+                    error_code,
+                    ..
+                } if error_code == reset_error::RETRANSMISSIONS_EXHAUSTED
+            ), "expected retransmission-exhausted FlowReset");
         }
         .primary()
         .spawn();
@@ -725,13 +658,9 @@ fn drop_open_writer_sends_fin_packet() {
 
         async move {
             let frames = pusher.recv_frames().await;
-            let frame = frames.iter().next().expect("expected one FIN frame");
-            assert!(
-                frames.iter().nth(1).is_none(),
-                "expected exactly one FIN frame on drop"
-            );
+            assert_eq!(frames.len(), 1, "expected exactly one FIN frame on drop");
             assert!(matches!(
-                frame.header,
+                frames.front().unwrap().header,
                 Header::FlowData {
                     is_fin: true,
                     offset,
@@ -759,18 +688,16 @@ fn panic_drop_sends_abnormal_termination_reset() {
 
         async move {
             let frames = pusher.recv_frames().await;
-            let has_abnormal_reset = frames.iter().any(|f| {
+            assert_eq!(frames.len(), 1, "expected exactly one reset frame");
+            assert!(
                 matches!(
-                    f.header,
+                    frames.front().unwrap().header,
                     Header::FlowReset {
                         reset_target: ResetTarget::Both,
                         error_code,
                         ..
                     } if error_code == reset_error::ABNORMAL_TERMINATION
-                )
-            });
-            assert!(
-                has_abnormal_reset,
+                ),
                 "expected FlowReset(Both, ABNORMAL_TERMINATION) when dropping during panic"
             );
         }

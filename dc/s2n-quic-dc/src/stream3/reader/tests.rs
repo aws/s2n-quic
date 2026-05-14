@@ -608,26 +608,16 @@ fn flow_control_violation_errors_reader_and_sends_reset() {
         async move {
             pusher.push_data(0, &payload, false);
             let frames = pusher.recv_frames().await;
-            let total_frames = frames.iter().count();
-            let reset_count = frames
-                .iter()
-                .filter(|f| {
-                // Flow-control violations currently share the protocol-error
-                // path, which emits FRAME_DECODE_ERROR.
+            assert_eq!(frames.len(), 1, "expected exactly one outbound frame");
+            assert!(
                 matches!(
-                    f.header,
+                    frames.front().unwrap().header,
                     Header::FlowReset {
                         reset_target: ResetTarget::Both,
                         error_code,
                         ..
                     } if error_code == reset_error::FLOW_CONTROL_ERROR
-                )
-                })
-                .count();
-            assert_eq!(total_frames, 1, "expected exactly one outbound frame");
-            assert_eq!(
-                reset_count,
-                1,
+                ),
                 "expected exactly one FlowReset(Both, FLOW_CONTROL_ERROR) frame"
             );
         }
@@ -804,24 +794,16 @@ fn drop_before_fin_sends_stop_sending() {
         async move {
             pusher.push_data(0, b"some data", false);
             let frames = pusher.recv_frames().await;
-            let total_frames = frames.iter().count();
-            let stop_sending_count = frames
-                .iter()
-                .filter(|f| {
+            assert_eq!(frames.len(), 1, "expected exactly one outbound frame");
+            assert!(
                 matches!(
-                    f.header,
+                    frames.front().unwrap().header,
                     Header::FlowReset {
                         reset_target: ResetTarget::Stream,
                         error_code,
                         ..
                     } if error_code == reset_error::STOP_SENDING
-                )
-                })
-                .count();
-            assert_eq!(total_frames, 1, "expected exactly one outbound frame");
-            assert_eq!(
-                stop_sending_count,
-                1,
+                ),
                 "expected exactly one FlowReset(Stream, STOP_SENDING) on drop"
             );
         }
@@ -849,24 +831,16 @@ fn panic_drop_sends_abnormal_termination_reset() {
 
         async move {
             let frames = pusher.recv_frames().await;
-            let total_frames = frames.iter().count();
-            let abnormal_reset_count = frames
-                .iter()
-                .filter(|f| {
+            assert_eq!(frames.len(), 1, "expected exactly one outbound frame");
+            assert!(
                 matches!(
-                    f.header,
+                    frames.front().unwrap().header,
                     Header::FlowReset {
                         reset_target: ResetTarget::Both,
                         error_code,
                         ..
                     } if error_code == reset_error::ABNORMAL_TERMINATION
-                )
-                })
-                .count();
-            assert_eq!(total_frames, 1, "expected exactly one outbound frame");
-            assert_eq!(
-                abnormal_reset_count,
-                1,
+                ),
                 "expected exactly one FlowReset(Both, ABNORMAL_TERMINATION) on panic drop"
             );
         }
@@ -929,19 +903,18 @@ fn flow_control_violation_emits_single_reset_frame() {
         async move {
             pusher.push_data(0, &payload, false);
             let frames = pusher.recv_frames().await;
-            let total_frames = frames.iter().count();
-            let reset_count = frames.iter().filter(|f| {
+            assert_eq!(frames.len(), 1, "expected exactly one reset frame");
+            assert!(
                 matches!(
-                    f.header,
+                    frames.front().unwrap().header,
                     Header::FlowReset {
                         reset_target: ResetTarget::Both,
                         error_code,
                         ..
                     } if error_code == reset_error::FLOW_CONTROL_ERROR
-                )
-            });
-            assert_eq!(total_frames, 1, "expected exactly one reset frame");
-            assert_eq!(reset_count.count(), 1, "expected one FLOW_CONTROL_ERROR reset");
+                ),
+                "expected one FLOW_CONTROL_ERROR reset"
+            );
 
             let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
             assert!(
