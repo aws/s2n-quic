@@ -333,6 +333,8 @@ fn assemble_fuzz_respects_gso_invariants() {
                 .frames
                 .iter()
                 .filter(|frame| {
+                    !matches!(frame.header, Header::Ack { .. })
+                        &&
                     is_frame_encodable(
                         frame,
                         input.source_sender_id,
@@ -347,8 +349,7 @@ fn assemble_fuzz_respects_gso_invariants() {
                 return;
             }
 
-            // Sort by priority to match the assembler's drain order: immediate
-            // (Ack) first, then pending queues from lowest index to highest.
+            // Sort by priority to match the assembler's pending-queue drain order.
             frames.sort_by_key(|f| f.header.priority().as_index());
 
             let max_segments = input.max_segments.min(segment::MAX_COUNT);
