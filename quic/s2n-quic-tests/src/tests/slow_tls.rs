@@ -37,13 +37,13 @@ fn slow_tls() {
             .with_io(handle.builder().build()?)?
             .with_limits(limits)?
             .with_tls(slow_server)?
-            .with_event(tracing_events(false, model.clone()))?
+            .with_event(tracing_events(true, model.clone()))?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(slow_client)?
-            .with_event((tracing_events(false, model.clone()), MyEvents))?
+            .with_event((tracing_events(true, model.clone()), MyEvents))?
             .with_limits(limits)?
             .start()?;
         let addr = start_server(server)?;
