@@ -397,7 +397,7 @@ impl<T: Absorb> Channels<T> {
                 b.eq {fallback}
 
                 adrp {tmp}, 9b
-                ldr {tmp}, [{tmp}, #:lo12:9b]
+                add {tmp}, {tmp}, :lo12:9b
                 str {tmp}, [{rseq_ptr}, #{rseq_cs_offset}]
 
                 2:
@@ -579,7 +579,7 @@ impl<T: Absorb> Channels<T> {
                 b.eq 7f
 
                 adrp {tmp}, 12b
-                ldr {tmp}, [{tmp}, #:lo12:12b]
+                add {tmp}, {tmp}, :lo12:12b
                 str {tmp}, [{rseq_ptr}, #{rseq_cs_offset}]
 
                 3:
@@ -1072,5 +1072,73 @@ mod tests {
             assert_eq!(channels.empty_pages.len(), 1);
         }
         drop(channels);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[repr(C)]
+    struct RseqCsDescriptor {
+        version: u32,
+        flags: u32,
+        start_ip: u64,
+        post_commit_offset: u64,
+        abort_ip: u64,
+    }
+
+    // Verifies that the assembly computes the rseq_cs descriptor *address* rather
+    // than accidentally dereferencing it (which would yield 0 since the first 8 bytes
+    // of the descriptor are zero-initialized version/flags fields).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn check_rseq_cs_descriptor_address() {
+        let channels = Channels::<TestAbsorber>::new();
+        channels.allocate();
+
+        let mut rseq = Rseq {
+            cpu_id_start: 0,
+            cpu_id: 1,
+            rseq_cs: 0,
+            flags: 0,
+        };
+
+        channels.send_event_inner(0u64, NonNull::from(&mut rseq));
+
+        assert_eq!(channels.fallback.read().len(), 1);
+
+        assert_ne!(
+            rseq.rseq_cs, 0,
+            "rseq_cs must contain the descriptor address, not zero"
+        );
+
+        let descriptor = unsafe { &*(rseq.rseq_cs as *const RseqCsDescriptor) };
+        assert_eq!(descriptor.version, 0);
+        assert_eq!(descriptor.flags, 0);
+        assert_ne!(descriptor.start_ip, 0);
+        assert_ne!(descriptor.post_commit_offset, 0);
+        assert_ne!(descriptor.abort_ip, 0);
+
+        // The abort handler appears before the critical section in the instruction
+        // stream, so abort_ip < start_ip.
+        assert!(
+            descriptor.abort_ip < descriptor.start_ip,
+            "abort_ip ({:#x}) should precede start_ip ({:#x})",
+            descriptor.abort_ip,
+            descriptor.start_ip,
+        );
+
+        // The critical section end (start_ip + post_commit_offset) must be after
+        // start_ip and within a reasonable distance (all in one function).
+        let end_ip = descriptor.start_ip + descriptor.post_commit_offset;
+        assert!(end_ip > descriptor.start_ip);
+        assert!(
+            descriptor.post_commit_offset < 4096,
+            "critical section size {} is unreasonably large",
+            descriptor.post_commit_offset,
+        );
+
+        // All three addresses should be in the same region (within the same function).
+        assert!(
+            descriptor.start_ip - descriptor.abort_ip < 4096,
+            "start_ip and abort_ip are too far apart to be in the same function",
+        );
     }
 }
