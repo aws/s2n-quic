@@ -1655,6 +1655,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             if packet_bytes.len() + self.packet_storage.len() < self.limits.stored_packet_size() {
                 self.packet_storage.extend(packet_bytes);
                 self.stored_packet_type = Some(PacketNumberSpace::Handshake)
+            } else {
+                let path = &self.path_manager[path_id];
+                publisher.on_packet_dropped(event::builder::PacketDropped {
+                    reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                        path: path_event!(path, path_id),
+                        packet_type: event::builder::PacketType::Handshake,
+                    },
+                });
             }
         } else {
             let path = &self.path_manager[path_id];
@@ -1724,6 +1732,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     // length info per packet to properly parse them once the application space is created.
                     self.packet_storage = packet_bytes;
                     self.stored_packet_type = Some(PacketNumberSpace::ApplicationData)
+                } else {
+                    let path = &self.path_manager[path_id];
+                    publisher.on_packet_dropped(event::builder::PacketDropped {
+                        reason: event::builder::PacketDropReason::HandshakeNotComplete {
+                            path: path_event!(path, path_id),
+                        },
+                    });
                 }
             } else {
                 let path = &self.path_manager[path_id];
