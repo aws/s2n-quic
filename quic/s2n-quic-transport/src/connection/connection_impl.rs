@@ -1652,7 +1652,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             //# of later packets that allow it to compute the key.
 
             let packet_bytes = packet.get_wire_bytes();
-            if packet_bytes.len() + self.packet_storage.len() < self.limits.stored_packet_size() {
+            if packet_bytes.len() + self.packet_storage.len() <= self.limits.stored_packet_size() {
                 self.packet_storage.extend(packet_bytes);
                 self.stored_packet_type = Some(PacketNumberSpace::Handshake)
             } else {
@@ -1726,7 +1726,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //# of later packets that allow it to compute the key.
 
                 let packet_bytes = packet.get_wire_bytes();
-                if packet_bytes.len() < self.limits.stored_packet_size() {
+                if packet_bytes.len() <= self.limits.stored_packet_size() {
                     // We only store one packet of application data for now. This is due to the fact that
                     // short packets do not contain a length prefix, therefore, we would have to store additional
                     // length info per packet to properly parse them once the application space is created.

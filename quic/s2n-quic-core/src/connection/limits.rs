@@ -271,7 +271,22 @@ impl Limits {
         u64
     );
     setter!(with_stream_batch_size, stream_batch_size, u8);
-    setter!(with_stored_packet_size, stored_packet_size, usize);
+    setter!(
+        /// Sets the maximum number of packet bytes that s2n-quic will store if the keys to decrypt them
+        /// haven't been created yet.
+        ///
+        /// We cap this to a reasonable size to avoid creating a per‑connection memory
+        /// amplification attack. We can raise the limit if this is too conservative.
+        with_stored_packet_size,
+        stored_packet_size,
+        u32,
+        |validate_value| {
+            decoder_invariant!(
+                validate_value <= 10_000,
+                "Cannot store packets larger than 10,000 bytes"
+            );
+        }
+    );
     setter!(with_ack_elicitation_interval, ack_elicitation_interval, u8);
     setter!(with_max_ack_ranges, ack_ranges_limit, u8);
     setter!(
