@@ -75,7 +75,7 @@ pub fn new<T>(config: Config) -> (Sender<T>, Receiver<T>) {
         rng: Rng::new(),
     };
 
-    let receiver = Receiver::register(&shared);
+    let receiver = Receiver::new_unregistered(&shared);
 
     (sender, receiver)
 }
@@ -246,33 +246,45 @@ fn pick_index<T>(rng: &mut Rng, slots: &[Arc<Slot<T>>]) -> usize {
 /// Cloning creates a new independent slot that will receive a share of future
 /// sends. The receiver maintains a local buffer and swaps from the shared slot
 /// only when empty, minimizing lock contention.
+///
+/// Slots are registered lazily on the first poll, so unpolled receivers never
+/// participate in load balancing.
 pub struct Receiver<T> {
     slot: Arc<Slot<T>>,
     shared: Arc<Shared<T>>,
     local: VecDeque<T>,
+    registered: bool,
 }
 
 impl<T> Clone for Receiver<T> {
     fn clone(&self) -> Self {
-        Self::register(&self.shared)
+        Self::new_unregistered(&self.shared)
     }
 }
 
 impl<T> Receiver<T> {
-    fn register(shared: &Arc<Shared<T>>) -> Self {
+    fn new_unregistered(shared: &Arc<Shared<T>>) -> Self {
         let slot = Arc::new(Slot::new(shared.config.capacity, shared.config.eviction));
-        shared.slots.lock().push(slot.clone());
         shared.receiver_count.fetch_add(1, Ordering::Relaxed);
-        shared.epoch.fetch_add(1, Ordering::Release);
         Self {
             slot,
             shared: shared.clone(),
             local: VecDeque::new(),
+            registered: false,
+        }
+    }
+
+    fn ensure_registered(&mut self) {
+        if !self.registered {
+            self.shared.slots.lock().push(self.slot.clone());
+            self.shared.epoch.fetch_add(1, Ordering::Release);
+            self.registered = true;
         }
     }
 
     /// Try to receive an item without blocking.
     pub fn try_recv(&mut self) -> Option<T> {
+        self.ensure_registered();
         if let Some(item) = self.local.pop_front() {
             self.slot.backlog.fetch_sub(1, Ordering::Relaxed);
             return Some(item);
@@ -287,6 +299,7 @@ impl<T> Receiver<T> {
     ///
     /// Registers the waker if the queue is empty so the sender can wake us later.
     pub fn poll_recv(&mut self, cx: &mut core::task::Context<'_>) -> Poll<Option<T>> {
+        self.ensure_registered();
         if let Some(item) = self.local.pop_front() {
             self.slot.backlog.fetch_sub(1, Ordering::Relaxed);
             return Poll::Ready(Some(item));
@@ -341,10 +354,12 @@ impl<T> Receiver<T> {
 
 impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
-        let mut slots = self.shared.slots.lock();
-        slots.retain(|s| !Arc::ptr_eq(s, &self.slot));
+        if self.registered {
+            let mut slots = self.shared.slots.lock();
+            slots.retain(|s| !Arc::ptr_eq(s, &self.slot));
+            self.shared.epoch.fetch_add(1, Ordering::Release);
+        }
         self.shared.receiver_count.fetch_sub(1, Ordering::Relaxed);
-        self.shared.epoch.fetch_add(1, Ordering::Release);
     }
 }
 
@@ -371,6 +386,9 @@ mod tests {
         };
         let (mut sender, mut rx) = new::<u32>(config);
 
+        // Receiver must be polled to register its slot
+        assert_eq!(rx.try_recv(), None);
+
         let (evicted, waker) = sender.send(42).unwrap();
         assert!(evicted.is_none());
         assert!(waker.is_none());
@@ -386,6 +404,9 @@ mod tests {
             eviction: Eviction::Front,
         };
         let (mut sender, mut rx) = new::<u32>(config);
+
+        // Register the slot
+        assert_eq!(rx.try_recv(), None);
 
         sender.send(1).unwrap();
         sender.send(2).unwrap();
@@ -403,6 +424,9 @@ mod tests {
             eviction: Eviction::Back,
         };
         let (mut sender, mut rx) = new::<u32>(config);
+
+        // Register the slot
+        assert_eq!(rx.try_recv(), None);
 
         sender.send(1).unwrap();
         sender.send(2).unwrap();
@@ -424,6 +448,7 @@ mod tests {
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);
 
+        // poll_recv registers the slot and parks
         assert!(rx.poll_recv(&mut cx).is_pending());
 
         let (_, waker) = sender.send(1).unwrap();
@@ -439,9 +464,14 @@ mod tests {
             capacity: 100,
             eviction: Eviction::Front,
         };
-        let (mut sender, rx1) = new::<u32>(config);
-        let _rx2 = rx1.clone();
-        let _rx3 = rx1.clone();
+        let (mut sender, mut rx1) = new::<u32>(config);
+        let mut rx2 = rx1.clone();
+        let mut rx3 = rx1.clone();
+
+        // Register all slots
+        assert_eq!(rx1.try_recv(), None);
+        assert_eq!(rx2.try_recv(), None);
+        assert_eq!(rx3.try_recv(), None);
 
         for i in 0..100 {
             sender.send(i).unwrap();
@@ -462,8 +492,12 @@ mod tests {
             capacity: 4,
             eviction: Eviction::Front,
         };
-        let (mut sender, rx1) = new::<u32>(config);
-        let rx2 = rx1.clone();
+        let (sender, mut rx1) = new::<u32>(config);
+        let mut rx2 = rx1.clone();
+
+        // Register both slots
+        assert_eq!(rx1.try_recv(), None);
+        assert_eq!(rx2.try_recv(), None);
         assert_eq!(sender.shared.slots.lock().len(), 2);
 
         drop(rx1);
@@ -471,9 +505,25 @@ mod tests {
 
         drop(rx2);
         assert_eq!(sender.shared.slots.lock().len(), 0);
+    }
 
-        // Send fails with no receivers
+    #[test]
+    fn unpolled_receiver_not_registered() {
+        let config = Config {
+            capacity: 4,
+            eviction: Eviction::Front,
+        };
+        let (mut sender, rx1) = new::<u32>(config);
+        let _rx2 = rx1.clone();
+
+        // Neither receiver has been polled, so no slots are registered
+        assert_eq!(sender.shared.slots.lock().len(), 0);
         assert!(sender.send(1).is_err());
+
+        // Dropping unpolled receivers doesn't affect slot list
+        drop(_rx2);
+        drop(rx1);
+        assert_eq!(sender.shared.slots.lock().len(), 0);
     }
 
     #[test]
@@ -483,6 +533,9 @@ mod tests {
             eviction: Eviction::Front,
         };
         let (mut sender, mut rx) = new::<u32>(config);
+
+        // Register the slot
+        assert_eq!(rx.try_recv(), None);
 
         sender.send(1).unwrap();
         drop(sender);
@@ -508,6 +561,9 @@ mod tests {
 
         // Channel still open because sender2 exists
         assert!(!rx.is_closed());
+
+        // try_recv registers the slot
+        assert_eq!(rx.try_recv(), None);
 
         sender2.send(42).unwrap();
         assert_eq!(rx.try_recv(), Some(42));

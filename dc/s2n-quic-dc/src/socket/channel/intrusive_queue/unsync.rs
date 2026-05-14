@@ -217,12 +217,22 @@ impl<A: intrusive_queue::Adapter> Receiver<A> {
 
 impl<A: intrusive_queue::Adapter> super::super::Receiver<A::Pointer> for Receiver<A> {
     #[inline(always)]
-    fn poll_recv(&mut self, cx: &mut core::task::Context<'_>) -> Poll<Option<A::Pointer>> {
+    fn poll_recv(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+        budget: &mut super::super::Budget,
+    ) -> Poll<Option<A::Pointer>> {
+        if budget.is_exhausted() {
+            budget.set_needs_wake();
+            return Poll::Pending;
+        }
+
         unsafe {
             // SAFETY: the Shared struct is non-Send and we have exclusive access through &mut
             let queue = &mut *self.shared.queue.get();
 
             if let Some(entry) = queue.pop_front() {
+                budget.consume();
                 return Poll::Ready(Some(entry));
             }
         }
@@ -258,14 +268,21 @@ impl<A: intrusive_queue::Adapter> super::super::Receiver<intrusive_queue::List<A
     fn poll_recv(
         &mut self,
         cx: &mut core::task::Context<'_>,
+        budget: &mut super::super::Budget,
     ) -> Poll<Option<intrusive_queue::List<A>>> {
+        if budget.is_exhausted() {
+            budget.set_needs_wake();
+            return Poll::Pending;
+        }
+
         unsafe {
             // SAFETY: the Shared struct is non-Send and we have exclusive access through &mut
             let queue = &mut *self.receiver.shared.queue.get();
 
             if !queue.is_empty() {
-                // Drain all available entries into a list
+                // Drain all available entries into a list (O(1) swap)
                 let list = core::mem::take(queue);
+                budget.consume();
                 return Poll::Ready(Some(list));
             }
         }

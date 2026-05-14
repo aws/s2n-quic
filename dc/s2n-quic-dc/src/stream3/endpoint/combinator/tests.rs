@@ -78,7 +78,7 @@ struct TestReceiver<T> {
 }
 
 impl<T> Receiver<T> for TestReceiver<T> {
-    fn poll_recv(&mut self, _cx: &mut task::Context<'_>) -> Poll<Option<T>> {
+    fn poll_recv(&mut self, _cx: &mut task::Context<'_>, _budget: &mut Budget) -> Poll<Option<T>> {
         Poll::Ready(self.values.pop_front())
     }
 
@@ -363,14 +363,14 @@ fn batch_frames_groups_by_same_path_secret() {
     };
     let mut batcher = BatchFramesByPathSecret::new(rx, &test_clock(), Rate::new(10.0));
 
-    let first = with_noop_context(|cx| batcher.poll_recv(cx));
+    let first = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
     let Poll::Ready(Some(first)) = first else {
         panic!("expected first batch");
     };
     assert_eq!(first.len(), 2);
     assert!(Arc::ptr_eq(first.path_secret_entry(), &path_a));
 
-    let second = with_noop_context(|cx| batcher.poll_recv(cx));
+    let second = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
     let Poll::Ready(Some(second)) = second else {
         panic!("expected second batch");
     };
@@ -396,7 +396,7 @@ fn batch_frames_enforces_datagram_byte_budget() {
 
     let target_bytes = u16::MAX as u64 - 3000;
 
-    let first = with_noop_context(|cx| batcher.poll_recv(cx));
+    let first = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
     let Poll::Ready(Some(first)) = first else {
         panic!("expected first batch");
     };
@@ -404,13 +404,13 @@ fn batch_frames_enforces_datagram_byte_budget() {
     assert_eq!(first.len(), 1);
     assert!(first.byte_cost() <= target_bytes);
 
-    let second = with_noop_context(|cx| batcher.poll_recv(cx));
+    let second = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
     let Poll::Ready(Some(second)) = second else {
         panic!("expected second batch");
     };
     assert_eq!(second.len(), 1);
 
-    let third = with_noop_context(|cx| batcher.poll_recv(cx));
+    let third = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
     let Poll::Ready(Some(third)) = third else {
         panic!("expected third batch");
     };
@@ -444,7 +444,7 @@ fn batch_frames_tracks_sticky_sender_from_first_frame() {
     };
     let mut batcher = BatchFramesByPathSecret::new(rx, &test_clock(), Rate::new(10.0));
 
-    let first = with_noop_context(|cx| batcher.poll_recv(cx));
+    let first = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
     let Poll::Ready(Some(batch)) = first else {
         panic!("expected batch");
     };
@@ -466,14 +466,14 @@ fn batch_frames_breaks_on_conflicting_sticky_senders() {
     };
     let mut batcher = BatchFramesByPathSecret::new(rx, &test_clock(), Rate::new(10.0));
 
-    let first = with_noop_context(|cx| batcher.poll_recv(cx));
+    let first = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
     let Poll::Ready(Some(batch1)) = first else {
         panic!("expected first batch");
     };
     assert_eq!(batch1.len(), 1);
     assert_eq!(batch1.sender_id(), Some(1));
 
-    let second = with_noop_context(|cx| batcher.poll_recv(cx));
+    let second = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
     let Poll::Ready(Some(batch2)) = second else {
         panic!("expected second batch");
     };
@@ -496,7 +496,7 @@ fn batch_frames_adopts_sticky_from_later_frame() {
     };
     let mut batcher = BatchFramesByPathSecret::new(rx, &test_clock(), Rate::new(10.0));
 
-    let first = with_noop_context(|cx| batcher.poll_recv(cx));
+    let first = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
     let Poll::Ready(Some(batch)) = first else {
         panic!("expected batch");
     };
@@ -543,9 +543,9 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
         registry.register_queue_gauge("q.tx_wheel"),
     );
 
-    let first = with_noop_context(|cx| processor.poll_recv(cx));
+    let first = with_noop_context(|cx| processor.poll_recv(cx, &mut Budget::new(usize::MAX)));
     assert_eq!(first, Poll::Ready(Some(())));
 
-    let second = with_noop_context(|cx| processor.poll_recv(cx));
+    let second = with_noop_context(|cx| processor.poll_recv(cx, &mut Budget::new(usize::MAX)));
     assert_eq!(second, Poll::Ready(None));
 }

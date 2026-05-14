@@ -66,9 +66,19 @@ pub struct Receiver<T> {
 
 impl<T> super::super::Receiver<T> for Receiver<T> {
     #[inline(always)]
-    fn poll_recv(&mut self, _cx: &mut core::task::Context<'_>) -> core::task::Poll<Option<T>> {
+    fn poll_recv(
+        &mut self,
+        _cx: &mut core::task::Context<'_>,
+        budget: &mut super::super::Budget,
+    ) -> core::task::Poll<Option<T>> {
+        if budget.is_exhausted() {
+            budget.set_needs_wake();
+            return Poll::Pending;
+        }
+
         match self.shared.poll(|v| v.is_some()) {
             Poll::Ready(Ok(())) => {
+                budget.consume();
                 unsafe {
                     // SAFETY: the Cell is non-Send and we just checked that it was non-empty
                     Poll::Ready(core::mem::take(&mut *self.shared.value.get()))

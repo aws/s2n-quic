@@ -107,8 +107,8 @@ pub struct Budgets {
 impl Default for Budgets {
     fn default() -> Self {
         Self {
-            submission_router: 1,
-            frame_dispatch: 1,
+            submission_router: 32,
+            frame_dispatch: 32,
             context_resolver: 128,
             ack_processor: 256,
             tx_wheel: tasks::DEFAULT_DISPATCH_BUDGET,
@@ -118,7 +118,7 @@ impl Default for Budgets {
             completion_acked: tasks::DEFAULT_DISPATCH_BUDGET,
             completion_cancelled: tasks::DEFAULT_DISPATCH_BUDGET,
             socket_recv: tasks::DEFAULT_RECV_BUDGET,
-            packet_dispatch: usize::MAX,
+            packet_dispatch: 256,
             ack_burst: tasks::DEFAULT_DISPATCH_BUDGET,
             waker_drain: 512,
             ack_completion: tasks::DEFAULT_DISPATCH_BUDGET,

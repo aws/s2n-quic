@@ -68,7 +68,11 @@ impl TestChannel {
 }
 
 impl channel::Receiver<Queue<TestEntry>> for &TestChannel {
-    fn poll_recv(&mut self, _cx: &mut task::Context<'_>) -> task::Poll<Option<Queue<TestEntry>>> {
+    fn poll_recv(
+        &mut self,
+        _cx: &mut task::Context<'_>,
+        _budget: &mut channel::Budget,
+    ) -> task::Poll<Option<Queue<TestEntry>>> {
         if let Some(batch) = self.queue.lock().unwrap().pop_front() {
             return task::Poll::Ready(Some(batch));
         }
@@ -102,7 +106,7 @@ fn test_immediate_transmission() {
     );
     channel.send_batch(batch);
 
-    let mut queue = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)))
+    let mut queue = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx, &mut channel::Budget::new(usize::MAX))))
         .unwrap()
         .unwrap();
 
@@ -133,7 +137,7 @@ fn test_len_tracking() {
     channel.send_batch(batch);
 
     // Poll to insert them into wheel - should insert and check if any are ready
-    let result = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)));
+    let result = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx, &mut channel::Budget::new(usize::MAX))));
     assert!(
         result.is_none(),
         "Entries should not be ready yet (they're in the future)"
@@ -142,7 +146,7 @@ fn test_len_tracking() {
 
     // Advance timer to future time and drain them
     clock.set(future_time);
-    let mut queue = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)))
+    let mut queue = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx, &mut channel::Budget::new(usize::MAX))))
         .unwrap()
         .unwrap();
 
@@ -170,16 +174,16 @@ fn test_cascade() {
     channel.send_batch(batch);
 
     // Poll to insert
-    let _ = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)));
+    let _ = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx, &mut channel::Budget::new(usize::MAX))));
 
     // Advance timer to 256 ticks - should still be pending (in level 1)
     clock.advance(Duration::from_micros(256));
-    let result = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)));
+    let result = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx, &mut channel::Budget::new(usize::MAX))));
     assert!(result.is_none(), "Entry should not be ready yet");
 
     // Advance to target time - should get the entry after cascade
     clock.set(future_time);
-    let mut queue = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)))
+    let mut queue = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx, &mut channel::Budget::new(usize::MAX))))
         .unwrap()
         .unwrap();
 
@@ -207,12 +211,12 @@ fn test_ordering() {
     channel.send_batch(batch);
 
     // Poll to insert
-    let _ = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)));
+    let _ = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx, &mut channel::Budget::new(usize::MAX))));
 
     // Advance timer to drain all
     clock.advance(Duration::from_micros(100));
 
-    let mut queue = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)))
+    let mut queue = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx, &mut channel::Budget::new(usize::MAX))))
         .unwrap()
         .unwrap();
 
@@ -244,7 +248,7 @@ fn test_empty_wheel_fast_path() {
     clock.advance(Duration::from_micros(1000));
 
     // Poll should handle the time advance efficiently
-    let result = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)));
+    let result = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx, &mut channel::Budget::new(usize::MAX))));
     assert!(result.is_none());
 
     // Current tick should have advanced
@@ -309,7 +313,7 @@ fn fuzz_oracle_comparison() {
             channel.send_batch(batch);
 
             // Poll to insert entries
-            let _ = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)));
+            let _ = poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx, &mut channel::Budget::new(usize::MAX))));
 
             // Verify len tracking
             assert_eq!(
@@ -331,7 +335,7 @@ fn fuzz_oracle_comparison() {
 
                 // Poll to get entries
                 let poll_result =
-                    poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx)));
+                    poll_once(core::future::poll_fn(|cx| wheel.poll_recv(cx, &mut channel::Budget::new(usize::MAX))));
 
                 let mut wheel_entries = Vec::new();
                 if let Some(Some(mut queue)) = poll_result {

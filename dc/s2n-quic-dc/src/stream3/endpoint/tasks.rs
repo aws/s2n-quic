@@ -8,8 +8,9 @@ use crate::{
     socket::{
         channel::{
             intrusive_queue::{self, unsync},
-            FlattenList, FlattenSegments, InspectErr, Map, Paced, Priority as PriorityRx, Receiver,
-            ReceiverExt as _, RouterAdapter, SocketReceiver, SocketSender, UnboundedSender,
+            Budget, FlattenList, FlattenSegments, InspectErr, Map, Paced, Priority as PriorityRx,
+            Receiver, ReceiverExt as _, RouterAdapter, SocketReceiver, SocketSender,
+            UnboundedSender,
         },
         pool::descriptor,
         rate::Rate,
@@ -27,7 +28,7 @@ use crate::{
         frame::{Frame, PriorityStorage, SubmissionReceiver},
     },
 };
-use core::{future::poll_fn, task::Poll};
+use core::task::Poll;
 use s2n_quic_core::{assume, varint::VarInt};
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
@@ -105,7 +106,7 @@ pub const DEFAULT_DISPATCH_BUDGET: usize = 32;
 /// [`PriorityInput`]: crate::stream3::frame::PriorityInput
 pub fn frame_dispatch<S, Clk>(
     spawner: &mut impl LocalSpawner,
-    mut frame_rx: SubmissionReceiver,
+    frame_rx: SubmissionReceiver,
     worker_senders: Vec<S>,
     rng: crate::xorshift::Rng,
     clock: Clk,
@@ -117,10 +118,8 @@ pub fn frame_dispatch<S, Clk>(
     Clk: precision::Clock + 'static,
 {
     let mut priority_batch_rxs = Vec::with_capacity(Priority::LEVELS);
-    let mut priority_list_txs: [_; Priority::LEVELS] = core::array::from_fn(|_| {
+    let priority_list_txs: [_; Priority::LEVELS] = core::array::from_fn(|_| {
         let (tx, rx) = intrusive_queue::unsync::new::<Frame>();
-        // let rx = BatchFramesByPathSecret::new(rx);
-        // let rx = Map::new(rx, Entry::new);
         priority_batch_rxs.push(rx);
         tx.into_list_sender()
     });
@@ -129,26 +128,13 @@ pub fn frame_dispatch<S, Clk>(
     let q_frames = counter_registry.register_queue_gauge("q.frames");
     spawner.spawn({
         let q_frames = q_frames.clone();
-        let mut staging = PriorityStorage::default();
-        poll_fn(move |cx| {
-            for _ in 0..budgets.submission_router {
-                match frame_rx.poll_swap(cx, &mut staging) {
-                    Poll::Ready(None) => return Poll::Ready(()),
-                    Poll::Pending => return Poll::Pending,
-                    Poll::Ready(Some(())) => {
-                        for ((_priority, queue), tx) in staging.drain().zip(&mut priority_list_txs)
-                        {
-                            if !queue.is_empty() {
-                                q_frames.enqueue(queue.len() as u64);
-                                let _ = UnboundedSender::send(tx, queue);
-                            }
-                        }
-                    }
-                }
-            }
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        })
+        let rx = SwapReceiver {
+            frame_rx,
+            staging: PriorityStorage::default(),
+            priority_list_txs,
+            q_frames,
+        };
+        rx.drain_budgeted(Some(budgets.submission_router))
     });
 
     // Task 2: batch → Entry → priority merge → pace → pick-two to workers.
@@ -639,15 +625,17 @@ pub async fn ack_burst_task<AckBurstRx, AckTx>(
     AckBurstRx: Receiver<Rc<RefCell<endpoint::recv::Context>>>,
     AckTx: UnboundedSender<Entry<msg::Sender>>,
 {
-    let rx = Map::new(ack_burst_rx, move |ctx_rc: Rc<RefCell<endpoint::recv::Context>>| {
-        let mut ctx = ctx_rc.borrow_mut();
-        if let Some(submission) = ctx.encode_and_flush(recv_worker_id) {
-            let _ = ack_sender.send(Entry::new(msg::Sender::PendingAck(submission)));
-        }
-    });
+    let rx = Map::new(
+        ack_burst_rx,
+        move |ctx_rc: Rc<RefCell<endpoint::recv::Context>>| {
+            let mut ctx = ctx_rc.borrow_mut();
+            if let Some(submission) = ctx.encode_and_flush(recv_worker_id) {
+                let _ = ack_sender.send(Entry::new(msg::Sender::PendingAck(submission)));
+            }
+        },
+    );
     rx.drain_budgeted(Some(budget)).await;
 }
-
 
 fn on_packet_dispatch_error(counters: &endpoint::counters::Dispatch, err: dispatch::Error) {
     match err {
@@ -693,4 +681,51 @@ fn on_packet_dispatch_error(counters: &endpoint::counters::Dispatch, err: dispat
             tracing::warn!(?routing_info, "unsupported datagram routing info");
         }
     }
+}
+
+// ── SwapReceiver ──────────────────────────────────────────────────────────
+
+/// Adapts the frame submission channel's `poll_swap` into a `Receiver<()>` so
+/// it can be drained via `drain_budgeted`. Each poll_recv performs one swap and
+/// distributes the resulting frames into per-priority lane senders.
+struct SwapReceiver<Tx> {
+    frame_rx: SubmissionReceiver,
+    staging: PriorityStorage,
+    priority_list_txs: [Tx; Priority::LEVELS],
+    q_frames: crate::counter::QueueGauge,
+}
+
+impl<Tx> Receiver<()> for SwapReceiver<Tx>
+where
+    Tx: UnboundedSender<crate::intrusive_queue::List<crate::intrusive_queue::EntryAdapter<Frame>>>,
+{
+    fn poll_recv(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+        budget: &mut Budget,
+    ) -> Poll<Option<()>> {
+        if budget.is_exhausted() {
+            budget.set_needs_wake();
+            return Poll::Pending;
+        }
+
+        match self.frame_rx.poll_swap(cx, &mut self.staging) {
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Some(())) => {
+                budget.consume();
+                for ((_priority, queue), tx) in
+                    self.staging.drain().zip(&mut self.priority_list_txs)
+                {
+                    if !queue.is_empty() {
+                        self.q_frames.enqueue(queue.len() as u64);
+                        let _ = UnboundedSender::send(tx, queue);
+                    }
+                }
+                Poll::Ready(Some(()))
+            }
+        }
+    }
+
+    fn on_consumed(&mut self, _bytes: u64) {}
 }

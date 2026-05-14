@@ -359,9 +359,13 @@ where
     Timer: precision::Timer,
     R: channel::Receiver<List<A>>,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<List<A>>> {
+    fn poll_recv(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        budget: &mut channel::Budget,
+    ) -> Poll<Option<List<A>>> {
         // 1. Try to drain one batch from inner receiver into the wheel
-        match self.inner.poll_recv(cx) {
+        match self.inner.poll_recv(cx, budget) {
             Poll::Ready(Some(batch)) => {
                 // Sort entries: immediate execution goes to pending, scheduled goes to wheel
                 for ptr in batch {
@@ -378,8 +382,8 @@ where
                         self.insert_entry(ptr);
                     }
                 }
-                // Self-wake to process more batches or tick
-                cx.waker().wake_by_ref();
+                // Signal more work available
+                budget.set_needs_wake();
             }
             Poll::Ready(None) => {
                 // Inner is closed - drain remaining entries and close
@@ -417,11 +421,11 @@ where
             return Poll::Pending;
         }
 
-        // 5. Poll timer - if Ready, self-wake to tick again; if Pending, we're done
+        // 5. Poll timer - if Ready, signal needs_wake to tick again; if Pending, we're done
         match self.timer.poll_ready(cx) {
             Poll::Ready(()) => {
-                // Timer fired, self-wake to tick again
-                cx.waker().wake_by_ref();
+                // Timer fired, signal more work to tick again
+                budget.set_needs_wake();
                 Poll::Pending
             }
             Poll::Pending => Poll::Pending,

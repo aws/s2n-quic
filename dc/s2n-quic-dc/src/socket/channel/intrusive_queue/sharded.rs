@@ -461,11 +461,20 @@ impl<A: intrusive_queue::Adapter> super::super::Receiver<intrusive_queue::List<A
     fn poll_recv(
         &mut self,
         cx: &mut core::task::Context<'_>,
+        budget: &mut super::super::Budget,
     ) -> Poll<Option<intrusive_queue::List<A>>> {
+        if budget.is_exhausted() {
+            budget.set_needs_wake();
+            return Poll::Pending;
+        }
+
         let mut batch = intrusive_queue::List::new();
 
         match self.poll_swap(cx, &mut batch) {
-            Poll::Ready(Some(())) => Poll::Ready(Some(batch)),
+            Poll::Ready(Some(())) => {
+                budget.consume();
+                Poll::Ready(Some(batch))
+            }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }
@@ -485,7 +494,7 @@ mod tests {
     use super::*;
     use crate::{
         intrusive_queue::{Entry, Queue},
-        socket::channel::{Receiver as _, UnboundedSender as _},
+        socket::channel::{Budget, Receiver as _, UnboundedSender as _},
     };
     use core::task::Poll;
 
@@ -598,18 +607,19 @@ mod tests {
     fn drains_entire_shard() {
         let (mut tx, mut rx) = new::<u32>(1);
         let mut cx = noop_cx();
+        let mut budget = Budget::new(usize::MAX);
         register(&mut rx);
 
-        assert!(matches!(rx.poll_recv(&mut cx), Poll::Pending));
+        assert!(matches!(rx.poll_recv(&mut cx, &mut budget), Poll::Pending));
 
         tx.send(list([1, 2, 3])).unwrap();
 
-        let Poll::Ready(Some(list)) = rx.poll_recv(&mut cx) else {
+        let Poll::Ready(Some(list)) = rx.poll_recv(&mut cx, &mut budget) else {
             panic!("expected drained list");
         };
         assert_eq!(values(&list), vec![1, 2, 3]);
 
-        assert!(matches!(rx.poll_recv(&mut cx), Poll::Pending));
+        assert!(matches!(rx.poll_recv(&mut cx, &mut budget), Poll::Pending));
     }
 
     #[test]
@@ -620,8 +630,9 @@ mod tests {
         let mut tx2 = tx0.clone();
         let mut tx3 = tx0.clone();
         let mut cx = noop_cx();
+        let mut budget = Budget::new(usize::MAX);
 
-        assert!(matches!(rx.poll_recv(&mut cx), Poll::Pending));
+        assert!(matches!(rx.poll_recv(&mut cx, &mut budget), Poll::Pending));
 
         tx3.send(list([3])).unwrap();
         tx2.send(list([2])).unwrap();
@@ -630,7 +641,7 @@ mod tests {
 
         let mut received = vec![];
         for _ in 0..4 {
-            let Poll::Ready(Some(list)) = rx.poll_recv(&mut cx) else {
+            let Poll::Ready(Some(list)) = rx.poll_recv(&mut cx, &mut budget) else {
                 panic!("expected drained list");
             };
             assert_eq!(list.len(), 1);
@@ -644,6 +655,7 @@ mod tests {
     fn sender_round_robins_locally_by_one() {
         let (mut tx, mut rx) = new::<u32>(4);
         let mut cx = noop_cx();
+        let mut budget = Budget::new(usize::MAX);
         register(&mut rx);
 
         for value in 0..4 {
@@ -651,7 +663,7 @@ mod tests {
         }
 
         for expected in 0..4 {
-            let Poll::Ready(Some(list)) = rx.poll_recv(&mut cx) else {
+            let Poll::Ready(Some(list)) = rx.poll_recv(&mut cx, &mut budget) else {
                 panic!("expected drained list");
             };
             assert_eq!(values(&list), vec![expected]);
@@ -724,10 +736,11 @@ mod tests {
     fn sender_drop_closes_receiver() {
         let (tx, mut rx) = new::<u32>(2);
         let mut cx = noop_cx();
+        let mut budget = Budget::new(usize::MAX);
 
-        assert!(matches!(rx.poll_recv(&mut cx), Poll::Pending));
+        assert!(matches!(rx.poll_recv(&mut cx, &mut budget), Poll::Pending));
         drop(tx);
-        assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(None)));
+        assert!(matches!(rx.poll_recv(&mut cx, &mut budget), Poll::Ready(None)));
     }
 
     #[test]
@@ -766,10 +779,11 @@ mod tests {
     fn stale_occupancy_bit_panics() {
         let (_tx, mut rx) = new::<u32>(1);
         let mut cx = noop_cx();
+        let mut budget = Budget::new(usize::MAX);
 
         rx.local_occupancy[0] = 1;
 
-        let _ = rx.poll_recv(&mut cx);
+        let _ = rx.poll_recv(&mut cx, &mut budget);
     }
 
     #[test]
@@ -795,6 +809,7 @@ mod tests {
                 loom::future::block_on(async move {
                     let mut rx = rx;
                     let mut received = vec![];
+                    let mut budget = Budget::new(usize::MAX);
 
                     core::future::poll_fn(|cx| {
                         rx.register(cx.waker());
@@ -806,7 +821,8 @@ mod tests {
                     .await;
 
                     loop {
-                        let item = core::future::poll_fn(|cx| rx.poll_recv(cx)).await;
+                        let item =
+                            core::future::poll_fn(|cx| rx.poll_recv(cx, &mut budget)).await;
 
                         match item {
                             Some(list) => received.extend(values(&list)),

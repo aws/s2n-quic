@@ -280,6 +280,7 @@ where
     fn poll_recv(
         &mut self,
         cx: &mut core::task::Context<'_>,
+        budget: &mut crate::socket::channel::Budget,
     ) -> core::task::Poll<Option<crate::intrusive_queue::Entry<T>>> {
         loop {
             if let Some(entry) = self.queue.pop_front() {
@@ -287,10 +288,10 @@ where
                 return core::task::Poll::Ready(Some(entry));
             }
 
-            match self.inner.poll_recv(cx) {
+            match self.inner.poll_recv(cx, budget) {
                 core::task::Poll::Ready(Some(queue)) => {
                     if queue.is_empty() {
-                        cx.waker().wake_by_ref();
+                        budget.set_needs_wake();
                         return core::task::Poll::Pending;
                     }
                     self.gauge.enqueue(queue.len() as u64);
@@ -361,8 +362,12 @@ impl<T, R> crate::socket::channel::Receiver<T> for GaugedReceiver<R>
 where
     R: crate::socket::channel::Receiver<T>,
 {
-    fn poll_recv(&mut self, cx: &mut core::task::Context<'_>) -> core::task::Poll<Option<T>> {
-        match self.inner.poll_recv(cx) {
+    fn poll_recv(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+        budget: &mut crate::socket::channel::Budget,
+    ) -> core::task::Poll<Option<T>> {
+        match self.inner.poll_recv(cx, budget) {
             core::task::Poll::Ready(Some(v)) => {
                 self.gauge.dequeue();
                 core::task::Poll::Ready(Some(v))

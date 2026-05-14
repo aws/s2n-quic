@@ -106,9 +106,19 @@ impl<T> Drop for Receiver<T> {
 }
 
 impl<T> super::super::Receiver<T> for Receiver<T> {
-    fn poll_recv(&mut self, cx: &mut core::task::Context<'_>) -> Poll<Option<T>> {
+    fn poll_recv(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+        budget: &mut super::super::Budget,
+    ) -> Poll<Option<T>> {
+        if budget.is_exhausted() {
+            budget.set_needs_wake();
+            return Poll::Pending;
+        }
+
         let mut guard = self.shared.inner.lock();
         if let Some(value) = guard.value.take() {
+            budget.consume();
             if let Some(waker) = guard.send_waker.take() {
                 drop(guard);
                 waker.wake();

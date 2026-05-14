@@ -13,7 +13,7 @@ use crate::{
     intrusive_queue::{Entry, Queue},
     path::secret::map::Entry as PathSecretEntry,
     socket::{
-        channel::{intrusive_queue::unsync, ByteCost, Receiver, UnboundedSender},
+        channel::{intrusive_queue::unsync, Budget, ByteCost, Receiver, UnboundedSender},
         pool::descriptor,
         rate::Rate,
     },
@@ -166,8 +166,6 @@ impl PathSecretMapEntry for FrameBatch {
 
 // ── BatchFramesByPathSecret ───────────────────────────────────────────────
 
-const BATCH_FRAMES_POLL_BUDGET: usize = 100;
-
 /// Receiver combinator that batches consecutive frame entries by path-secret entry and byte budget.
 ///
 /// Uses a timer to pace batch emissions: when a batch isn't full, waits up to
@@ -200,12 +198,12 @@ where
     }
 
     #[inline]
-    fn take_first(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<Entry<Frame>>> {
+    fn take_first(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<Entry<Frame>>> {
         if let Some(frame) = self.buffered.take() {
             return Poll::Ready(Some(frame));
         }
 
-        self.inner.poll_recv(cx)
+        self.inner.poll_recv(cx, budget)
     }
 
     /// Try to append frames from inner to the batch. Returns true if the batch is full or
@@ -215,13 +213,14 @@ where
         batch: &mut FrameBatch,
         target_bytes: u64,
         cx: &mut task::Context<'_>,
+        budget: &mut Budget,
     ) -> FillResult {
-        for _ in 0..BATCH_FRAMES_POLL_BUDGET {
+        loop {
             if batch.byte_cost() >= target_bytes {
                 return FillResult::Full;
             }
 
-            match self.inner.poll_recv(cx) {
+            match self.inner.poll_recv(cx, budget) {
                 Poll::Ready(Some(frame_entry)) => {
                     if !Arc::ptr_eq(batch.path_secret_entry(), frame_entry.path_secret_entry()) {
                         self.buffered = Some(frame_entry);
@@ -253,7 +252,6 @@ where
                 Poll::Pending => return FillResult::Pending,
             }
         }
-        FillResult::Full
     }
 }
 
@@ -268,14 +266,14 @@ where
     R: Receiver<Entry<Frame>>,
     Clk: precision::Clock,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<FrameBatch>> {
+    fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<FrameBatch>> {
         use precision::Timer;
 
         let target_bytes = u16::MAX as u64 - 3000;
 
         // If we have a pending batch from a previous poll, try to keep filling it.
         if let Some(mut batch) = self.pending_batch.take() {
-            match self.try_fill_batch(&mut batch, target_bytes, cx) {
+            match self.try_fill_batch(&mut batch, target_bytes, cx, budget) {
                 FillResult::Full => {
                     self.timer.cancel();
                     return Poll::Ready(Some(batch));
@@ -300,7 +298,7 @@ where
         }
 
         // No pending batch — get first frame.
-        let Some(first) = (match self.take_first(cx) {
+        let Some(first) = (match self.take_first(cx, budget) {
             Poll::Ready(frame) => frame,
             Poll::Pending => return Poll::Pending,
         }) else {
@@ -310,7 +308,7 @@ where
         let mut batch = FrameBatch::new(first);
 
         // Greedily fill from whatever is immediately available.
-        match self.try_fill_batch(&mut batch, target_bytes, cx) {
+        match self.try_fill_batch(&mut batch, target_bytes, cx, budget) {
             FillResult::Full | FillResult::Closed => {
                 return Poll::Ready(Some(batch));
             }
@@ -436,8 +434,8 @@ where
     R: Receiver<T>,
     S: UnboundedSender<T>,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<()>> {
-        let Some(value) = ready!(self.rx.poll_recv(cx)) else {
+    fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<()>> {
+        let Some(value) = ready!(self.rx.poll_recv(cx, budget)) else {
             return Poll::Ready(None);
         };
 
@@ -547,10 +545,10 @@ where
     C: UnboundedSender<Queue<Frame>>,
     A: UnboundedSender<Queue<msg::Sender>>,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<descriptor::Segments>> {
+    fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<descriptor::Segments>> {
         use crate::stream3::endpoint::assemble;
 
-        let Some(context) = ready!(self.inner.poll_recv(cx)) else {
+        let Some(context) = ready!(self.inner.poll_recv(cx, budget)) else {
             return Poll::Ready(None);
         };
 
@@ -597,7 +595,7 @@ where
         if let Some(segments) = segments {
             Poll::Ready(Some(segments))
         } else {
-            cx.waker().wake_by_ref();
+            budget.set_needs_wake();
             Poll::Pending
         }
     }
@@ -664,8 +662,9 @@ where
     fn poll_recv(
         &mut self,
         cx: &mut task::Context<'_>,
+        budget: &mut Budget,
     ) -> Poll<Option<crate::flow::queue::AutoWake>> {
-        let frame = match self.inner.poll_recv(cx) {
+        let frame = match self.inner.poll_recv(cx, budget) {
             Poll::Ready(Some(frame)) => frame,
             Poll::Ready(None) => {
                 let waker = self.flush();
@@ -798,8 +797,8 @@ where
     Rand: crate::random::Generator,
     C: UnboundedSender<Entry<Frame>>,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>) -> Poll<Option<()>> {
-        let Some(mut entry) = ready!(self.inner.poll_recv(cx)) else {
+    fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<()>> {
+        let Some(mut entry) = ready!(self.inner.poll_recv(cx, budget)) else {
             return Poll::Ready(None);
         };
 

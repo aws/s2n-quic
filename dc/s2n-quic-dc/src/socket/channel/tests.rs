@@ -14,7 +14,8 @@ fn noop_cx() -> core::task::Context<'static> {
 fn cell_poll_recv_empty_returns_pending() {
     let (_tx, mut rx) = cell::unsync::new::<u32>();
     let mut cx = noop_cx();
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Pending));
+    let mut budget = Budget::new(usize::MAX);
+    assert!(matches!(rx.poll_recv(&mut cx, &mut budget), Poll::Pending));
 }
 
 #[test]
@@ -22,7 +23,11 @@ fn cell_sender_drop_closes_receiver() {
     let (tx, mut rx) = cell::unsync::new::<u32>();
     drop(tx);
     let mut cx = noop_cx();
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(None)));
+    let mut budget = Budget::new(usize::MAX);
+    assert!(matches!(
+        rx.poll_recv(&mut cx, &mut budget),
+        Poll::Ready(None)
+    ));
 }
 
 #[test]
@@ -40,9 +45,10 @@ fn cell_receiver_drop_closes_sender() {
 fn cell_send_recv_poll_roundtrip() {
     let (mut tx, mut rx) = cell::unsync::new::<u32>();
     let mut cx = noop_cx();
+    let mut budget = Budget::new(usize::MAX);
 
     // Empty — pending
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Pending));
+    assert!(matches!(rx.poll_recv(&mut cx, &mut budget), Poll::Pending));
 
     // Send via poll
     {
@@ -51,27 +57,37 @@ fn cell_send_recv_poll_roundtrip() {
     }
 
     // Receive
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(42))));
+    assert!(matches!(
+        rx.poll_recv(&mut cx, &mut budget),
+        Poll::Ready(Some(42))
+    ));
 
     // Empty again
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Pending));
+    assert!(matches!(rx.poll_recv(&mut cx, &mut budget), Poll::Pending));
 
     // Send again
     {
         let mut fut = pin!(tx.send(99));
         assert!(matches!(fut.as_mut().poll(&mut cx), Poll::Ready(Ok(()))));
     }
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(99))));
+    assert!(matches!(
+        rx.poll_recv(&mut cx, &mut budget),
+        Poll::Ready(Some(99))
+    ));
 
     // Drop sender → closed
     drop(tx);
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(None)));
+    assert!(matches!(
+        rx.poll_recv(&mut cx, &mut budget),
+        Poll::Ready(None)
+    ));
 }
 
 #[test]
 fn cell_backpressure_poll() {
     let (mut tx, mut rx) = cell::unsync::new::<u32>();
     let mut cx = noop_cx();
+    let mut budget = Budget::new(usize::MAX);
 
     // Send one value
     {
@@ -86,14 +102,20 @@ fn cell_backpressure_poll() {
     }
 
     // Drain the slot
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(1))));
+    assert!(matches!(
+        rx.poll_recv(&mut cx, &mut budget),
+        Poll::Ready(Some(1))
+    ));
 
     // Now send succeeds
     {
         let mut fut = pin!(tx.send(3));
         assert!(matches!(fut.as_mut().poll(&mut cx), Poll::Ready(Ok(()))));
     }
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(3))));
+    assert!(matches!(
+        rx.poll_recv(&mut cx, &mut budget),
+        Poll::Ready(Some(3))
+    ));
 }
 
 // ── slot tests ─────────────────────────────────────────────────────
@@ -102,7 +124,8 @@ fn cell_backpressure_poll() {
 fn slot_poll_recv_empty_returns_pending() {
     let (_tx, mut rx) = cell::sync::new::<u32>();
     let mut cx = noop_cx();
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Pending));
+    let mut budget = Budget::new(usize::MAX);
+    assert!(matches!(rx.poll_recv(&mut cx, &mut budget), Poll::Pending));
 }
 
 #[test]
@@ -110,7 +133,11 @@ fn slot_sender_drop_closes_receiver() {
     let (tx, mut rx) = cell::sync::new::<u32>();
     drop(tx);
     let mut cx = noop_cx();
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(None)));
+    let mut budget = Budget::new(usize::MAX);
+    assert!(matches!(
+        rx.poll_recv(&mut cx, &mut budget),
+        Poll::Ready(None)
+    ));
 }
 
 #[test]
@@ -136,17 +163,18 @@ fn slot_send_recv_roundtrip() {
 
         async {
             let (mut tx, mut rx) = cell::sync::new::<u32>();
+            let mut budget = Budget::new(usize::MAX);
 
             tx.send(42).await.unwrap();
-            let val = rx.recv().await;
+            let val = rx.recv(&mut budget).await;
             assert_eq!(val, Some(42));
 
             tx.send(99).await.unwrap();
-            let val = rx.recv().await;
+            let val = rx.recv(&mut budget).await;
             assert_eq!(val, Some(99));
 
             drop(tx);
-            let val = rx.recv().await;
+            let val = rx.recv(&mut budget).await;
             assert_eq!(val, None);
         }
         .primary()
@@ -158,6 +186,7 @@ fn slot_send_recv_roundtrip() {
 fn slot_backpressure() {
     let (mut tx, mut rx) = cell::sync::new::<u32>();
     let mut cx = noop_cx();
+    let mut budget = Budget::new(usize::MAX);
 
     // Send one value via poll
     {
@@ -165,14 +194,20 @@ fn slot_backpressure() {
         assert!(matches!(fut.as_mut().poll(&mut cx), Poll::Ready(Ok(()))));
     }
 
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(1))));
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Pending));
+    assert!(matches!(
+        rx.poll_recv(&mut cx, &mut budget),
+        Poll::Ready(Some(1))
+    ));
+    assert!(matches!(rx.poll_recv(&mut cx, &mut budget), Poll::Pending));
 
     {
         let mut fut = pin!(tx.send(2));
         assert!(matches!(fut.as_mut().poll(&mut cx), Poll::Ready(Ok(()))));
     }
-    assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(2))));
+    assert!(matches!(
+        rx.poll_recv(&mut cx, &mut budget),
+        Poll::Ready(Some(2))
+    ));
 }
 
 #[test]
@@ -189,11 +224,12 @@ fn slot_concurrent_send_recv() {
         });
 
         async move {
+            let mut budget = Budget::new(usize::MAX);
             for expected in 0..10 {
-                let val = rx.recv().await.unwrap();
+                let val = rx.recv(&mut budget).await.unwrap();
                 assert_eq!(val, expected);
             }
-            let val = rx.recv().await;
+            let val = rx.recv(&mut budget).await;
             assert_eq!(val, None);
         }
         .primary()
@@ -210,7 +246,11 @@ fn priority_empty_returns_pending() {
     let mut priority = Priority::new(vec![rx0, rx1]);
 
     let mut cx = noop_cx();
-    assert!(matches!(priority.poll_recv(&mut cx), Poll::Pending));
+    let mut budget = Budget::new(usize::MAX);
+    assert!(matches!(
+        priority.poll_recv(&mut cx, &mut budget),
+        Poll::Pending
+    ));
 }
 
 #[test]
@@ -222,7 +262,11 @@ fn priority_all_closed_returns_none() {
     let mut priority = Priority::new(vec![rx0, rx1]);
 
     let mut cx = noop_cx();
-    assert!(matches!(priority.poll_recv(&mut cx), Poll::Ready(None)));
+    let mut budget = Budget::new(usize::MAX);
+    assert!(matches!(
+        priority.poll_recv(&mut cx, &mut budget),
+        Poll::Ready(None)
+    ));
 }
 
 #[test]
@@ -234,14 +278,15 @@ fn priority_high_wins_over_low() {
             let (mut tx0, rx0) = cell::sync::new::<u32>();
             let (mut tx1, rx1) = cell::sync::new::<u32>();
             let mut priority = Priority::new(vec![rx0, rx1]);
+            let mut budget = Budget::new(usize::MAX);
 
             tx0.send(10).await.unwrap();
             tx1.send(20).await.unwrap();
 
-            let val = priority.recv().await;
+            let val = priority.recv(&mut budget).await;
             assert_eq!(val, Some(10));
 
-            let val = priority.recv().await;
+            let val = priority.recv(&mut budget).await;
             assert_eq!(val, Some(20));
         }
         .primary()
@@ -258,10 +303,11 @@ fn priority_low_priority_works_when_high_empty() {
             let (_tx0, rx0) = cell::sync::new::<u32>();
             let (mut tx1, rx1) = cell::sync::new::<u32>();
             let mut priority = Priority::new(vec![rx0, rx1]);
+            let mut budget = Budget::new(usize::MAX);
 
             tx1.send(99).await.unwrap();
 
-            let val = priority.recv().await;
+            let val = priority.recv(&mut budget).await;
             assert_eq!(val, Some(99));
         }
         .primary()
@@ -278,15 +324,16 @@ fn priority_partial_close() {
             let (tx0, rx0) = cell::sync::new::<u32>();
             let (mut tx1, rx1) = cell::sync::new::<u32>();
             let mut priority = Priority::new(vec![rx0, rx1]);
+            let mut budget = Budget::new(usize::MAX);
 
             drop(tx0);
 
             tx1.send(42).await.unwrap();
-            let val = priority.recv().await;
+            let val = priority.recv(&mut budget).await;
             assert_eq!(val, Some(42));
 
             drop(tx1);
-            let val = priority.recv().await;
+            let val = priority.recv(&mut budget).await;
             assert_eq!(val, None);
         }
         .primary()
@@ -304,6 +351,7 @@ fn flatten_drains_queue_then_fetches_next() {
         async {
             let (mut tx, rx) = cell::sync::new::<intrusive_queue::Queue<u32>>();
             let mut flat = Flatten::new(rx);
+            let mut budget = Budget::new(usize::MAX);
 
             let mut queue = intrusive_queue::Queue::default();
             queue.push_back(intrusive_queue::Entry::new(10));
@@ -312,18 +360,18 @@ fn flatten_drains_queue_then_fetches_next() {
 
             assert!(tx.send(queue).await.is_ok());
 
-            assert_eq!(*flat.recv().await.unwrap(), 10);
-            assert_eq!(*flat.recv().await.unwrap(), 20);
-            assert_eq!(*flat.recv().await.unwrap(), 30);
+            assert_eq!(*flat.recv(&mut budget).await.unwrap(), 10);
+            assert_eq!(*flat.recv(&mut budget).await.unwrap(), 20);
+            assert_eq!(*flat.recv(&mut budget).await.unwrap(), 30);
 
             let mut queue2 = intrusive_queue::Queue::default();
             queue2.push_back(intrusive_queue::Entry::new(40));
             assert!(tx.send(queue2).await.is_ok());
 
-            assert_eq!(*flat.recv().await.unwrap(), 40);
+            assert_eq!(*flat.recv(&mut budget).await.unwrap(), 40);
 
             drop(tx);
-            let val = flat.recv().await;
+            let val = flat.recv(&mut budget).await;
             assert!(val.is_none());
         }
         .primary()
@@ -346,7 +394,8 @@ impl<F: core::future::Future> core::future::Future for AssertSend<F> {
 }
 
 #[test]
-fn yield_after_forces_yield_at_threshold() {
+#[allow(deprecated)]
+fn yield_after_is_passthrough() {
     sim(|| {
         use crate::testing::ext::*;
 
@@ -355,54 +404,16 @@ fn yield_after_forces_yield_at_threshold() {
             let mut yield_rx = super::YieldAfter::new(rx, 3);
 
             let mut cx = noop_cx();
+            let mut budget = Budget::new(usize::MAX);
 
-            // First 3 should return Ready
-            for i in 0..3 {
+            // YieldAfter is now a pass-through; all items return Ready
+            for i in 0..5 {
                 tx.send(i).await.unwrap();
-                assert!(matches!(yield_rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
+                assert!(matches!(
+                    yield_rx.poll_recv(&mut cx, &mut budget),
+                    Poll::Ready(Some(_))
+                ));
             }
-
-            // 4th should force a yield (return Pending)
-            tx.send(3).await.unwrap();
-            assert!(matches!(yield_rx.poll_recv(&mut cx), Poll::Pending));
-
-            // After the forced yield, should return Ready again
-            assert!(matches!(yield_rx.poll_recv(&mut cx), Poll::Ready(Some(3))));
-        })
-        .primary()
-        .spawn();
-    });
-}
-
-#[test]
-fn yield_after_resets_on_natural_pending() {
-    sim(|| {
-        use crate::testing::ext::*;
-
-        AssertSend(async {
-            let (mut tx, rx) = cell::sync::new::<u32>();
-            let mut yield_rx = super::YieldAfter::new(rx, 5);
-            let mut cx = noop_cx();
-
-            // Send and receive 2 values
-            tx.send(1).await.unwrap();
-            assert!(matches!(yield_rx.poll_recv(&mut cx), Poll::Ready(Some(1))));
-
-            tx.send(2).await.unwrap();
-            assert!(matches!(yield_rx.poll_recv(&mut cx), Poll::Ready(Some(2))));
-
-            // Now channel is empty, should return Pending naturally
-            assert!(matches!(yield_rx.poll_recv(&mut cx), Poll::Pending));
-
-            // Counter should have reset, so we can get 5 more Ready results
-            for i in 3..=7 {
-                tx.send(i).await.unwrap();
-                assert!(matches!(yield_rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
-            }
-
-            // Now should force a yield
-            tx.send(8).await.unwrap();
-            assert!(matches!(yield_rx.poll_recv(&mut cx), Poll::Pending));
         })
         .primary()
         .spawn();
@@ -429,7 +440,8 @@ fn flatten_empty_queue_skipped() {
         // Receiver task: should skip the empty queue and return 42
         async move {
             let mut flat = Flatten::new(rx);
-            assert_eq!(*flat.recv().await.unwrap(), 42);
+            let mut budget = Budget::new(usize::MAX);
+            assert_eq!(*flat.recv(&mut budget).await.unwrap(), 42);
         }
         .primary()
         .spawn();
@@ -449,13 +461,14 @@ fn paced_limits_rate() {
             // 1 Gbps = 8 nanos per byte
             let rate = crate::socket::rate::Rate::new(1.0);
             let mut paced_rx = super::Paced::new(rx, clock.clone(), rate);
+            let mut budget = Budget::new(usize::MAX);
 
             let start = clock.now();
 
             // Send 100KB total - exceeds burst capacity of 64KB
             for _ in 0..100 {
                 tx.send(1000).await.unwrap();
-                let val = paced_rx.recv().await;
+                let val = paced_rx.recv(&mut budget).await;
                 assert_eq!(val, Some(1000));
                 paced_rx.on_consumed(1000);
             }
@@ -481,17 +494,18 @@ fn paced_skips_cancelled_packets() {
             let clock = crate::clock::bach::Clock::default();
             let rate = crate::socket::rate::Rate::new(1.0);
             let mut paced_rx = super::Paced::new(rx, clock.clone(), rate);
+            let mut budget = Budget::new(usize::MAX);
 
             // Receive first packet but DON'T call on_consumed (simulating cancellation)
             tx.send(1000).await.unwrap();
-            let val = paced_rx.recv().await;
+            let val = paced_rx.recv(&mut budget).await;
             assert_eq!(val, Some(1000));
             // Intentionally not calling on_consumed
 
             // Next packet should not be paced since we didn't consume the first one
             tx.send(1000).await.unwrap();
             let start = clock.now();
-            let val = paced_rx.recv().await;
+            let val = paced_rx.recv(&mut budget).await;
             assert_eq!(val, Some(1000));
             let elapsed = clock.now().duration_since(start);
 
@@ -515,6 +529,7 @@ fn paced_throughput_test() {
             let rate = crate::socket::rate::Rate::new(5.0);
             let paced_rx = super::Paced::new(rx, clock.clone(), rate);
             let mut paced_rx = super::Reporter::new(paced_rx, clock.clone(), false);
+            let mut budget = Budget::new(usize::MAX);
 
             // Producer task: send 64KB packets continuously for 5 seconds worth of data
             // At 5Gbps, that's 5 * 5 / 8 = ~3GB = ~47,000 packets of 64KB
@@ -528,7 +543,7 @@ fn paced_throughput_test() {
             let start = clock.now();
             let mut count = 0;
             let mut total_bytes = 0u64;
-            while let Some(bytes) = paced_rx.recv().await {
+            while let Some(bytes) = paced_rx.recv(&mut budget).await {
                 total_bytes += bytes as u64;
                 // Simulate consuming the packet
                 paced_rx.on_consumed(bytes as u64);
@@ -570,13 +585,14 @@ fn paced_allows_burst() {
             let clock = crate::clock::bach::Clock::default();
             let rate = crate::socket::rate::Rate::new(1.0);
             let mut paced_rx = super::Paced::new(rx, clock.clone(), rate);
+            let mut budget = Budget::new(usize::MAX);
 
             let start = clock.now();
 
             // Send 64KB (burst capacity) - should go through without pacing
             for _ in 0..64 {
                 tx.send(1000).await.unwrap();
-                let val = paced_rx.recv().await;
+                let val = paced_rx.recv(&mut budget).await;
                 assert_eq!(val, Some(1000));
                 paced_rx.on_consumed(1000);
             }
@@ -717,11 +733,18 @@ mod gauged {
             GaugedReceiver::new(inner_rx, gauge.clone());
 
         let mut cx = noop_cx();
+        let mut budget = Budget::new(usize::MAX);
 
-        assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
+        assert!(matches!(
+            rx.poll_recv(&mut cx, &mut budget),
+            Poll::Ready(Some(_))
+        ));
         assert_eq!(gauge_depth(&gauge), 1);
 
-        assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
+        assert!(matches!(
+            rx.poll_recv(&mut cx, &mut budget),
+            Poll::Ready(Some(_))
+        ));
         assert_eq!(gauge_depth(&gauge), 0);
     }
 
@@ -736,6 +759,7 @@ mod gauged {
             GaugedReceiver::new(inner_rx, gauge.clone());
 
         let mut cx = noop_cx();
+        let mut budget = Budget::new(usize::MAX);
 
         <GaugedSender<_, _> as UnboundedSender<_>>::send(
             &mut tx,
@@ -749,7 +773,10 @@ mod gauged {
         .unwrap();
         assert_eq!(gauge_depth(&gauge), 2);
 
-        assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
+        assert!(matches!(
+            rx.poll_recv(&mut cx, &mut budget),
+            Poll::Ready(Some(_))
+        ));
         assert_eq!(gauge_depth(&gauge), 1);
 
         <GaugedSender<_, _> as UnboundedSender<_>>::send(
@@ -759,8 +786,14 @@ mod gauged {
         .unwrap();
         assert_eq!(gauge_depth(&gauge), 2);
 
-        assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
-        assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
+        assert!(matches!(
+            rx.poll_recv(&mut cx, &mut budget),
+            Poll::Ready(Some(_))
+        ));
+        assert!(matches!(
+            rx.poll_recv(&mut cx, &mut budget),
+            Poll::Ready(Some(_))
+        ));
         assert_eq!(gauge_depth(&gauge), 0);
     }
 
@@ -777,6 +810,7 @@ mod gauged {
             GaugedReceiver::new(inner_rx, gauge.clone());
 
         let mut cx = noop_cx();
+        let mut budget = Budget::new(usize::MAX);
 
         let mut batch = crate::intrusive_queue::Queue::new();
         for i in 0..4u32 {
@@ -785,7 +819,10 @@ mod gauged {
         inner_tx.send_batch(batch).unwrap();
 
         // Receiving the batch decrements depth by 4 (the batch_len)
-        assert!(matches!(rx.poll_recv(&mut cx), Poll::Ready(Some(_))));
+        assert!(matches!(
+            rx.poll_recv(&mut cx, &mut budget),
+            Poll::Ready(Some(_))
+        ));
         assert_eq!(gauge_depth(&gauge), 0);
     }
 }
