@@ -226,6 +226,7 @@ impl Reader {
         path_secret_entry: Arc<PathSecretEntry>,
         stream_id: VarInt,
         stream_rx: msg::queue::Stream,
+        peer_fin_received: bool,
     ) -> Self {
         let parameters = path_secret_entry.parameters();
         let window_size = parameters.local_recv_max_data.as_u64();
@@ -239,7 +240,7 @@ impl Reader {
             reassembler: Reassembler::new(),
             remote_max_data: VarInt::ZERO,
             window_size,
-            send_flow_update_after_fin: true,
+            send_flow_update_after_fin: !peer_fin_received,
             status: Status::Open,
             reset_error_code: None,
             coop: Coop::default(),
@@ -251,6 +252,7 @@ impl Reader {
         path_secret_entry: Arc<PathSecretEntry>,
         stream_id: VarInt,
         stream_rx: msg::queue::Stream,
+        peer_fin_received: bool,
     ) -> Self {
         let parameters = path_secret_entry.parameters();
         let window_size = parameters.local_recv_max_data.as_u64();
@@ -264,7 +266,7 @@ impl Reader {
             reassembler: Reassembler::new(),
             remote_max_data: VarInt::ZERO,
             window_size,
-            send_flow_update_after_fin: true,
+            send_flow_update_after_fin: !peer_fin_received,
             status: Status::PendingValidation,
             reset_error_code: None,
             coop: Coop::default(),

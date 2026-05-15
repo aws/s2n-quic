@@ -143,7 +143,7 @@ pub fn frame_dispatch<S, Clk>(
         let rx = BatchFramesByPathSecret::new(rx, &clock, overall_send_rate);
         let rx = Map::new(rx, Entry::new);
         let rx = Paced::new(rx, clock, overall_send_rate);
-        let rx = PickTwo::new(rx, worker_senders, rng);
+        let rx = PickTwo::new(rx, worker_senders, rng, &counter_registry);
         rx.drain_budgeted(Some(budgets.frame_dispatch))
     });
 }

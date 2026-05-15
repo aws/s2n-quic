@@ -62,9 +62,8 @@ fn empty_sender_schedule_is_supported() {
 }
 
 #[test]
-fn picks_sender_with_lower_next_transmission() {
+fn sender_with_more_queued_bytes_has_later_transmission_time() {
     let entry = test_entry_with_senders(2);
-    // SAFETY: this uses a non-negative test duration, which satisfies Timestamp invariants.
     let now = unsafe { Timestamp::from_duration(Duration::from_micros(10)) };
 
     entry.update_sender_next_transmission_time(
@@ -80,10 +79,7 @@ fn picks_sender_with_lower_next_transmission() {
         s2n_quic_core::recovery::bandwidth::Bandwidth::new(1_000, Duration::from_millis(1)),
     );
 
-    let mut rng = crate::xorshift::Rng::new();
-    let picked = entry.pick_sender_by_next_transmission(&mut rng);
-    assert_eq!(picked, 1);
-
-    let picked = entry.pick_sender_by_next_transmission(&mut rng);
-    assert_eq!(picked, 1);
+    let time0 = entry.sender_next_transmission_micros(0);
+    let time1 = entry.sender_next_transmission_micros(1);
+    assert!(time0 > time1, "sender 0 has more bytes queued so should be later");
 }

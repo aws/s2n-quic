@@ -387,6 +387,8 @@ pub struct PickTwo<T, R, S> {
     rx: R,
     senders: Vec<S>,
     rng: crate::xorshift::Rng,
+    pick_counters: Vec<crate::counter::Counter>,
+    time_delta: crate::counter::Summary,
     value: PhantomData<fn() -> T>,
 }
 
@@ -396,11 +398,25 @@ where
     R: Receiver<T>,
     S: UnboundedSender<T>,
 {
-    pub fn new(rx: R, senders: Vec<S>, rng: crate::xorshift::Rng) -> Self {
+    pub fn new(
+        rx: R,
+        senders: Vec<S>,
+        rng: crate::xorshift::Rng,
+        counter_registry: &crate::counter::Registry,
+    ) -> Self {
+        let pick_counters = (0..senders.len())
+            .map(|i| counter_registry.register_nominal("pick_two.chosen", format_args!("send.{i}")))
+            .collect();
+        let time_delta = counter_registry.register_summary(
+            "pick_two.time_delta",
+            crate::counter::Unit::Microsecond,
+        );
         Self {
             rx,
             senders,
             rng,
+            pick_counters,
+            time_delta,
             value: PhantomData,
         }
     }
@@ -409,14 +425,42 @@ where
         mut value: T,
         senders: &mut Vec<S>,
         rng: &mut crate::xorshift::Rng,
+        pick_counters: &[crate::counter::Counter],
+        time_delta: &crate::counter::Summary,
     ) -> Result<(), T> {
         debug_assert!(!senders.is_empty());
         let chosen_idx = if let Some(sticky_idx) = value.sticky_sender_idx() {
             sticky_idx
         } else {
-            value
-                .path_secret_entry()
-                .pick_sender_by_next_transmission(rng)
+            let entry = value.path_secret_entry();
+            let len = entry.socket_sender_count();
+
+            if len <= 1 {
+                0
+            } else {
+                let idx1 = rng.next_usize(len);
+                let idx2 = if len == 2 {
+                    idx1 ^ 1
+                } else {
+                    let mut idx2 = rng.next_usize(len - 1);
+                    if idx2 >= idx1 {
+                        idx2 += 1;
+                    }
+                    idx2
+                };
+
+                let time1 = entry.sender_next_transmission_micros(idx1);
+                let time2 = entry.sender_next_transmission_micros(idx2);
+
+                let delta_us = time1.abs_diff(time2);
+                time_delta.record_value(delta_us);
+
+                if time1 <= time2 {
+                    idx1
+                } else {
+                    idx2
+                }
+            }
         };
 
         debug_assert!(
@@ -426,6 +470,7 @@ where
             senders.len()
         );
 
+        pick_counters[chosen_idx].add(1);
         value.set_sender_id(chosen_idx);
 
         senders[chosen_idx].send(value)
@@ -443,7 +488,13 @@ where
             return Poll::Ready(None);
         };
 
-        match Self::try_send_pick_two(value, &mut self.senders, &mut self.rng) {
+        match Self::try_send_pick_two(
+            value,
+            &mut self.senders,
+            &mut self.rng,
+            &self.pick_counters,
+            &self.time_delta,
+        ) {
             Ok(()) => Poll::Ready(Some(())),
             Err(_) => Poll::Ready(None),
         }

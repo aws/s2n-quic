@@ -206,7 +206,14 @@ fn try_send_pick_two(
     senders: &mut Vec<TestSender>,
     rng: &mut crate::xorshift::Rng,
 ) -> Result<(), TestItem> {
-    PickTwo::<TestItem, TestReceiver<TestItem>, TestSender>::try_send_pick_two(value, senders, rng)
+    let registry = crate::counter::Registry::default();
+    let pick_counters: Vec<_> = (0..senders.len())
+        .map(|i| registry.register_nominal("pick_two.chosen", format_args!("send.{i}")))
+        .collect();
+    let time_delta = registry.register_summary("pick_two.time_delta", crate::counter::Unit::Microsecond);
+    PickTwo::<TestItem, TestReceiver<TestItem>, TestSender>::try_send_pick_two(
+        value, senders, rng, &pick_counters, &time_delta,
+    )
 }
 
 #[test]
@@ -271,7 +278,8 @@ fn pick_two_drops_unsent_entry_on_shutdown() {
             calls: 0,
         },
     ];
-    let pick_two = PickTwo::new(rx, senders, crate::xorshift::Rng::new());
+    let registry = crate::counter::Registry::default();
+    let pick_two = PickTwo::new(rx, senders, crate::xorshift::Rng::new(), &registry);
     let mut fut = core::pin::pin!(crate::socket::channel::ReceiverExt::drain_budgeted(
         pick_two, None
     ));

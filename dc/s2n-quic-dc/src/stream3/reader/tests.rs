@@ -42,58 +42,84 @@ use std::{net::SocketAddr, time::Duration};
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
-/// Creates a connected `(Reader, Pusher)` pair for use in tests.
-///
-/// * `Reader` – the component under test; owns the stream-side receive handle.
-/// * `Pusher` – the mock endpoint side; can inject stream messages and receive
-///   outbound frames submitted by the Reader (e.g. `MAX_DATA`).
+struct PairBuilder {
+    ep_type: endpoint::Type,
+    peer_fin_received: bool,
+}
+
+impl Default for PairBuilder {
+    fn default() -> Self {
+        Self {
+            ep_type: endpoint::Type::Client,
+            peer_fin_received: false,
+        }
+    }
+}
+
+impl PairBuilder {
+    fn server() -> Self {
+        Self {
+            ep_type: endpoint::Type::Server,
+            ..Default::default()
+        }
+    }
+
+    fn peer_fin_received(mut self, value: bool) -> Self {
+        self.peer_fin_received = value;
+        self
+    }
+
+    fn build(self) -> (Reader, Pusher) {
+        let stream_id = VarInt::from_u8(1);
+        let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
+        let path_secret_entry = PathSecretEntry::fake_deterministic(peer, self.ep_type);
+
+        let allocator = msg::queue::Allocator::new();
+        let dispatcher = allocator.dispatcher();
+        let handle = flow::Handle::client(stream_id, path_secret_entry.clone());
+        let (_control, stream_rx) = dispatcher
+            .alloc(handle, Some(VarInt::from_u8(2)))
+            .expect("queue alloc should succeed");
+
+        let queue_id = stream_rx.queue_id();
+        let request = flow::Request {
+            credential_id: *path_secret_entry.id(),
+            stream_id,
+        };
+
+        let (frame_tx, frame_rx) = frame::submission_channel(1);
+
+        let reader = match self.ep_type {
+            endpoint::Type::Client => {
+                Reader::new_client(frame_tx, path_secret_entry, stream_id, stream_rx)
+            }
+            endpoint::Type::Server => Reader::new_server_pending(
+                frame_tx,
+                path_secret_entry,
+                stream_id,
+                stream_rx,
+                self.peer_fin_received,
+            ),
+        };
+
+        let pusher = Pusher {
+            dispatcher,
+            queue_id,
+            request,
+            frame_rx,
+            frame_storage: PriorityStorage::default(),
+        };
+
+        (reader, pusher)
+    }
+}
+
 fn make_pair() -> (Reader, Pusher) {
-    make_pair_with_type(endpoint::Type::Client)
+    PairBuilder::default().build()
 }
 
-/// Creates a server-side `(Reader, Pusher)` pair (starts in `PendingValidation`).
 fn make_server_pair() -> (Reader, Pusher) {
-    make_pair_with_type(endpoint::Type::Server)
-}
-
-fn make_pair_with_type(ep_type: endpoint::Type) -> (Reader, Pusher) {
-    let stream_id = VarInt::from_u8(1);
-    let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
-    let path_secret_entry = PathSecretEntry::fake_deterministic(peer, ep_type);
-
-    let allocator = msg::queue::Allocator::new();
-    let dispatcher = allocator.dispatcher();
-    let handle = flow::Handle::client(stream_id, path_secret_entry.clone());
-    let (_control, stream_rx) = dispatcher
-        .alloc(handle, Some(VarInt::from_u8(2)))
-        .expect("queue alloc should succeed");
-
-    let queue_id = stream_rx.queue_id();
-    let request = flow::Request {
-        credential_id: *path_secret_entry.id(),
-        stream_id,
-    };
-
-    let (frame_tx, frame_rx) = frame::submission_channel(1);
-
-    let reader = match ep_type {
-        endpoint::Type::Client => {
-            Reader::new_client(frame_tx, path_secret_entry, stream_id, stream_rx)
-        }
-        endpoint::Type::Server => {
-            Reader::new_server_pending(frame_tx, path_secret_entry, stream_id, stream_rx)
-        }
-    };
-
-    let pusher = Pusher {
-        dispatcher,
-        queue_id,
-        request,
-        frame_rx,
-        frame_storage: PriorityStorage::default(),
-    };
-
-    (reader, pusher)
+    PairBuilder::server().build()
 }
 
 #[test]
@@ -844,6 +870,81 @@ fn server_validates_then_reads() {
             let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
             assert_eq!(outcome, ReadToEnd::Complete);
             assert_eq!(&buf[..], b"hello");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// When the server receives a complete request in the init (init+FIN), it must
+/// NOT send MAX_DATA frames — the peer's writer is already closed and no one
+/// would consume the credits.
+#[test]
+fn server_init_with_fin_suppresses_max_data() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = PairBuilder::server().peer_fin_received(true).build();
+
+        async move {
+            pusher.push_flow_validated();
+            bach::task::yield_now().await;
+            pusher.push_data(0, b"hello", true);
+            bach::task::yield_now().await;
+            let frames = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(
+                frames.is_none(),
+                "server should not send MAX_DATA when peer already sent FIN in init"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            reader.validate().await.expect("validate failed");
+            let mut buf = BytesMut::with_capacity(16);
+            let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
+            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(&buf[..], b"hello");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Same as above but with a larger payload that would normally cross the
+/// flow control replenishment threshold.
+#[test]
+fn server_init_with_fin_suppresses_max_data_large_payload() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = PairBuilder::server().peer_fin_received(true).build();
+        let window_size = reader.0.window_size;
+        let payload = vec![0xabu8; (window_size / 2 + 1) as usize];
+
+        let payload_clone = payload.clone();
+        async move {
+            pusher.push_flow_validated();
+            bach::task::yield_now().await;
+            pusher.push_data(0, &payload_clone, true);
+            bach::task::yield_now().await;
+            let frames = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(
+                frames.is_none(),
+                "server should suppress MAX_DATA even when payload crosses threshold, \
+                 because peer FIN was received in init"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            reader.validate().await.expect("validate failed");
+            let mut buf = BytesMut::with_capacity(payload.len() + 16);
+            let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
+            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(buf.len(), payload.len());
         }
         .primary()
         .spawn();

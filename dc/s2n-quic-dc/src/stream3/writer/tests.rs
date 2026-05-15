@@ -23,67 +23,87 @@ use std::{net::SocketAddr, task::Poll, time::Duration};
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
+struct PairBuilder {
+    ep_type: endpoint::Type,
+}
+
+impl Default for PairBuilder {
+    fn default() -> Self {
+        Self {
+            ep_type: endpoint::Type::Client,
+        }
+    }
+}
+
+impl PairBuilder {
+    fn server() -> Self {
+        Self {
+            ep_type: endpoint::Type::Server,
+        }
+    }
+
+    fn build(self) -> (Writer, Pusher) {
+        let stream_id = VarInt::from_u8(42);
+        let acceptor_id = VarInt::from_u8(7);
+        let remote_queue_id = VarInt::from_u8(2);
+        let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
+        let path_secret_entry = PathSecretEntry::fake_deterministic(peer, self.ep_type);
+
+        let allocator = msg::queue::Allocator::new();
+        let dispatcher = allocator.dispatcher();
+        let handle = match self.ep_type {
+            endpoint::Type::Client => flow::Handle::client(stream_id, path_secret_entry.clone()),
+            endpoint::Type::Server => {
+                let tracker = flow::Tracker::new(*path_secret_entry.id());
+                tracker
+                    .try_register(stream_id, |handle| (VarInt::ZERO, handle))
+                    .expect("server handle registration should succeed")
+            }
+        };
+        let (control_rx, _stream_rx) = dispatcher
+            .alloc(handle, Some(remote_queue_id))
+            .expect("queue alloc should succeed");
+
+        let queue_id = control_rx.queue_id();
+        let request = flow::Request {
+            credential_id: *path_secret_entry.id(),
+            stream_id,
+        };
+
+        let (frame_tx, frame_rx) = frame::submission_channel(1);
+
+        let writer = match self.ep_type {
+            endpoint::Type::Client => Writer::new_client(
+                frame_tx,
+                path_secret_entry,
+                stream_id,
+                acceptor_id,
+                control_rx,
+            ),
+            endpoint::Type::Server => {
+                Writer::new_server(frame_tx, path_secret_entry, stream_id, control_rx)
+            }
+        };
+
+        let pusher = Pusher {
+            dispatcher,
+            queue_id,
+            request,
+            frame_rx,
+            frame_storage: PriorityStorage::default(),
+            assembler: PayloadAssembler::default(),
+        };
+
+        (writer, pusher)
+    }
+}
+
 fn make_client_pair() -> (Writer, Pusher) {
-    make_pair_with_type(endpoint::Type::Client)
+    PairBuilder::default().build()
 }
 
 fn make_server_pair() -> (Writer, Pusher) {
-    make_pair_with_type(endpoint::Type::Server)
-}
-
-fn make_pair_with_type(ep_type: endpoint::Type) -> (Writer, Pusher) {
-    let stream_id = VarInt::from_u8(42);
-    let acceptor_id = VarInt::from_u8(7);
-    let remote_queue_id = VarInt::from_u8(2);
-    let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
-    let path_secret_entry = PathSecretEntry::fake_deterministic(peer, ep_type);
-
-    let allocator = msg::queue::Allocator::new();
-    let dispatcher = allocator.dispatcher();
-    let handle = match ep_type {
-        endpoint::Type::Client => flow::Handle::client(stream_id, path_secret_entry.clone()),
-        endpoint::Type::Server => {
-            let tracker = flow::Tracker::new(*path_secret_entry.id());
-            tracker
-                .try_register(stream_id, |handle| (VarInt::ZERO, handle))
-                .expect("server handle registration should succeed")
-        }
-    };
-    let (control_rx, _stream_rx) = dispatcher
-        .alloc(handle, Some(remote_queue_id))
-        .expect("queue alloc should succeed");
-
-    let queue_id = control_rx.queue_id();
-    let request = flow::Request {
-        credential_id: *path_secret_entry.id(),
-        stream_id,
-    };
-
-    let (frame_tx, frame_rx) = frame::submission_channel(1);
-
-    let writer = match ep_type {
-        endpoint::Type::Client => Writer::new_client(
-            frame_tx,
-            path_secret_entry,
-            stream_id,
-            acceptor_id,
-            control_rx,
-        ),
-        endpoint::Type::Server => {
-            Writer::new_server(frame_tx, path_secret_entry, stream_id, control_rx)
-        }
-    };
-
-    let pusher = Pusher {
-        dispatcher,
-        queue_id,
-        request,
-        frame_rx,
-        frame_storage: PriorityStorage::default(),
-        assembler: PayloadAssembler::default(),
-    };
-
-    (writer, pusher)
+    PairBuilder::server().build()
 }
 
 #[test]

@@ -376,39 +376,6 @@ impl Entry {
         next
     }
 
-    pub fn pick_sender_by_next_transmission(&self, rng: &mut crate::xorshift::Rng) -> usize {
-        let len = self.next_transmission_by_sender.len();
-        debug_assert!(len > 0, "sender schedule is empty");
-        debug_assert!(
-            len.is_power_of_two(),
-            "sender count must be a power of two, got {len}"
-        );
-
-        if len <= 1 {
-            return 0;
-        }
-
-        let idx1 = rng.next_usize(len);
-        let idx2 = if len == 2 {
-            idx1 ^ 1
-        } else {
-            let mut idx2 = rng.next_usize(len - 1);
-            if idx2 >= idx1 {
-                idx2 += 1;
-            }
-            idx2
-        };
-
-        let time1 = self.next_transmission_by_sender[idx1].load(Ordering::Acquire);
-        let time2 = self.next_transmission_by_sender[idx2].load(Ordering::Acquire);
-
-        if time1 <= time2 {
-            idx1
-        } else {
-            idx2
-        }
-    }
-
     pub fn idle_timeout(&self) -> Duration {
         self.parameters
             .max_idle_timeout

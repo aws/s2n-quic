@@ -488,6 +488,7 @@ fn handle_flow_init(
                 peer.path_entry.clone(),
                 stream_id,
                 queue_stream,
+                is_fin,
             )
         } else {
             Reader::new_server(
@@ -495,6 +496,7 @@ fn handle_flow_init(
                 peer.path_entry.clone(),
                 stream_id,
                 queue_stream,
+                is_fin,
             )
         };
 
