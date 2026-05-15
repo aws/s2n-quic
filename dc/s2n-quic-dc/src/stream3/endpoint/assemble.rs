@@ -430,6 +430,9 @@ fn assemble_probe(
         }
 
         if !has_frame {
+            // All frames were cancelled — remove the now-empty shell that has no
+            // probed_to link, otherwise it violates the inflight invariant.
+            context.inflight.remove(old_pn);
             continue;
         }
 

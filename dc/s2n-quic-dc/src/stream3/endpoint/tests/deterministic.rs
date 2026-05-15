@@ -529,24 +529,41 @@ fn sim_init_uniqueness(actions: &PacketActions, n: usize) {
                     .expect("acceptor registration failed");
 
                 for _ in 0..n {
-                    let stream =
-                        crate::testing::timeout(ACCEPT_TIMEOUT, acceptor.recv_front())
-                            .await
-                            .expect("server timed out waiting for a stream")
-                            .expect("acceptor channel closed unexpectedly");
+                    let mut stream = crate::testing::timeout(ACCEPT_TIMEOUT, acceptor.recv_front())
+                        .await
+                        .expect("server timed out waiting for a stream")
+                        .expect("acceptor channel closed unexpectedly");
 
-                    let id = stream.stream_id();
-                    let first_time = seen_ids_sv.lock().unwrap().insert(id);
-                    assert!(
-                        first_time,
-                        "stream_id {id} was delivered to the server acceptor twice — \
+                    let seen_ids_sv = seen_ids_sv.clone();
+                    spawn(async move {
+                        if stream.validate().await.is_err() {
+                            return;
+                        }
+
+                        let id = stream.stream_id();
+                        let first_time = seen_ids_sv.lock().unwrap().insert(id);
+                        assert!(
+                            first_time,
+                            "stream_id {id} was delivered to the server acceptor twice — \
                          init-protocol deduplication is broken"
-                    );
+                        );
 
-                    // Release the stream promptly so the protocol can reclaim
-                    // resources; we do not need to read any data here.
-                    spawn(async move { drop(stream); });
+                        let mut res: Vec<u8> = vec![];
+                        stream.read_into(&mut res).await.unwrap();
+                        assert_eq!(res, &id.to_be_bytes());
+
+                        stream
+                            .write_all_from_fin(&mut &id.to_be_bytes()[..])
+                            .await
+                            .unwrap();
+                    });
                 }
+
+                let stream = crate::testing::timeout(ACCEPT_TIMEOUT, acceptor.recv_front()).await;
+                assert!(
+                    stream.is_err(),
+                    "server accepted more streams than expected"
+                );
             }
             .group("server")
             .primary()
@@ -560,12 +577,23 @@ fn sim_init_uniqueness(actions: &PacketActions, n: usize) {
         {
             async move {
                 let mut client = Client::new();
-                for _ in 0..n {
-                    let _stream = client
+                for id in 0..n as u64 {
+                    let mut stream = client
                         .connect("server:0", acceptor_id)
                         .await
                         .expect("client connect() failed — this should never happen");
-                    // Dropping _stream here triggers Writer::drop → FIN.
+
+                    async move {
+                        stream
+                            .write_all_from_fin(&mut &id.to_be_bytes()[..])
+                            .await
+                            .unwrap();
+
+                        let mut res: Vec<u8> = vec![];
+                        stream.read_into(&mut res).await.unwrap();
+                        assert_eq!(res, &id.to_be_bytes());
+                    }
+                    .spawn();
                 }
                 // Stay alive so packets in flight can reach the server.
                 bach::time::sleep(Duration::from_secs(60)).await;
@@ -611,7 +639,7 @@ fn init_uniqueness_baseline() {
 /// second copy so the server acceptor sees each stream ID only once.
 #[test]
 fn init_uniqueness_all_duplicated() {
-    const N: usize = 1_000;
+    const N: usize = 100_000;
     let actions = PacketActions {
         delays: vec![0; N],
         duplicates: vec![true; N],
@@ -640,7 +668,7 @@ fn init_uniqueness_reordered_and_duplicated() {
 /// Fuzzes the init-protocol uniqueness invariant with randomized per-packet
 /// delay and duplication patterns.
 ///
-/// For each generated [`PacketActions`] value, 100 concurrent streams are
+/// For each generated [`PacketActions`] value, 10,000 concurrent streams are
 /// opened and the test asserts that the server acceptor receives each stream
 /// ID exactly once (no duplicates, none missing).
 #[test]
@@ -651,6 +679,6 @@ fn init_uniqueness_fuzz() {
         .with_shrink_time(Duration::from_secs(10))
         .cloned()
         .for_each(|actions| {
-            sim_init_uniqueness(&actions, 100);
+            sim_init_uniqueness(&actions, 10_000);
         });
 }

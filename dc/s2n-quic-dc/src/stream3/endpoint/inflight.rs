@@ -172,6 +172,14 @@ impl Map {
         }
     }
 
+    /// Remove a single packet from the map (e.g. when all its frames are cancelled).
+    #[inline]
+    pub fn remove(&mut self, pn: PacketNumber) {
+        if self.inner.remove(pn).is_some() {
+            self.inflight_gauge.dequeue();
+        }
+    }
+
     /// Set the `probed_to` forward pointer on an existing inflight entry.
     ///
     /// Called after a probe segment is successfully encoded: the `old_pn` entry
