@@ -428,7 +428,9 @@ fn build_sinks(config: &[ReporterSink]) -> Vec<Box<dyn ReporterOutputSink>> {
     for sink in config {
         match sink {
             ReporterSink::Tracing => sinks.push(Box::new(TracingSink)),
-            ReporterSink::StatsdUdp(config) => sinks.push(Box::new(StatsdUdpSink::new(config.clone()))),
+            ReporterSink::StatsdUdp(config) => {
+                sinks.push(Box::new(StatsdUdpSink::new(config.clone())))
+            }
         }
     }
 
@@ -621,9 +623,9 @@ impl Registry {
             .register_list_callback(format!("{label}.depth"), None, Unit::Count, move || {
                 NonZeroDisplay(depth_clone.load(Ordering::Relaxed))
             });
-        let depth_distribution = self
-            .inner
-            .register_summary(format!("{label}.depth_dist"), None, Unit::Count);
+        let depth_distribution =
+            self.inner
+                .register_summary(format!("{label}.depth_dist"), None, Unit::Count);
 
         let gauge = QueueGauge {
             throughput,
@@ -744,15 +746,23 @@ impl Registry {
 
         #[cfg(any(test, feature = "testing"))]
         if bach::is_active() {
-            bach::spawn(report_loop(inner, include_sparse, prefix, sinks, move || {
-                bach::time::sleep(interval)
-            }));
+            bach::spawn(report_loop(
+                inner,
+                include_sparse,
+                prefix,
+                sinks,
+                move || bach::time::sleep(interval),
+            ));
             return;
         }
 
-        tokio::spawn(report_loop(inner, include_sparse, prefix, sinks, move || {
-            tokio::time::sleep(interval)
-        }));
+        tokio::spawn(report_loop(
+            inner,
+            include_sparse,
+            prefix,
+            sinks,
+            move || tokio::time::sleep(interval),
+        ));
     }
 }
 
@@ -762,8 +772,7 @@ async fn report_loop<F, Fut>(
     prefix: Option<String>,
     mut sinks: Vec<Box<dyn ReporterOutputSink>>,
     sleep: F,
-)
-where
+) where
     F: Fn() -> Fut,
     Fut: core::future::Future<Output = ()>,
 {
@@ -1035,7 +1044,10 @@ impl<'a> ParsedMetricsLine<'a> {
             consumed.insert(key);
 
             if let Some(name) = key.strip_suffix(":bytes") {
-                let bytes = value.parse::<u64>().ok().or_else(|| parse_byte_value(value));
+                let bytes = value
+                    .parse::<u64>()
+                    .ok()
+                    .or_else(|| parse_byte_value(value));
                 if let Some(bytes) = bytes {
                     if bytes == 0 {
                         continue;
@@ -1052,7 +1064,10 @@ impl<'a> ParsedMetricsLine<'a> {
                     continue;
                 }
 
-                entries.push(MetricEntry::Throughput(ThroughputMetric { name: key, bytes }));
+                entries.push(MetricEntry::Throughput(ThroughputMetric {
+                    name: key,
+                    bytes,
+                }));
                 continue;
             }
 
@@ -1752,8 +1767,9 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(1);
         let config = StatsdUdpConfig::new("127.0.0.1:8125".parse().unwrap(), tx);
         let mut sink = StatsdUdpSink::new(config);
-        let payload =
-            ReportingPayload::from_line("rx.data=1,q.packet.depth=2,task.time=5*2+10*1 us dispatch");
+        let payload = ReportingPayload::from_line(
+            "rx.data=1,q.packet.depth=2,task.time=5*2+10*1 us dispatch",
+        );
 
         sink.emit(&payload, Some("svc")).unwrap();
         let batch = rx.try_recv().unwrap();

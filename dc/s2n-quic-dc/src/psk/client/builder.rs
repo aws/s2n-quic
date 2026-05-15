@@ -23,7 +23,7 @@ pub struct Builder<
     pub(crate) data_window: u64,
     pub(crate) mtu: u16,
     pub(crate) max_idle_timeout: Duration,
-    pub(crate) data_port: Option<u16>,
+    pub(crate) data_addrs: Vec<SocketAddr>,
     pub(crate) pto_jitter_percentage: u8,
     pub(crate) success_jitter: Duration,
 }
@@ -35,7 +35,7 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
             data_window: DEFAULT_MAX_DATA,
             mtu: DEFAULT_MTU,
             max_idle_timeout: DEFAULT_IDLE_TIMEOUT,
-            data_port: None,
+            data_addrs: Vec::new(),
             pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
             success_jitter: Duration::from_secs(60),
         }
@@ -53,7 +53,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             data_window: self.data_window,
             mtu: self.mtu,
             max_idle_timeout: self.max_idle_timeout,
-            data_port: self.data_port,
+            data_addrs: self.data_addrs,
             pto_jitter_percentage: self.pto_jitter_percentage,
             success_jitter: self.success_jitter,
         }
@@ -80,9 +80,9 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
         self
     }
 
-    /// Sets the local data port to advertise to the peer via post-handshake port exchange.
-    pub fn with_data_port(mut self, port: u16) -> Self {
-        self.data_port = Some(port);
+    /// Sets the local data addresses to advertise to the peer.
+    pub fn with_data_addrs(mut self, addrs: Vec<SocketAddr>) -> Self {
+        self.data_addrs = addrs;
         self
     }
 

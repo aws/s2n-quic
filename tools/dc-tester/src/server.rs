@@ -10,12 +10,13 @@ use tracing::{error, info};
 pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()> {
     info!("Starting stream3 RPC test server");
 
-    let data_port = endpoint.data_addr.port();
+    let data_addrs = endpoint.data_addrs.clone();
+    let num_recv_workers = data_addrs.len();
 
     // Create PSK server provider — address is the well-known server address,
-    // data_port is advertised to peers so they know where to send data
+    // data_addrs are advertised to peers so they know where to send data
     let handshake =
-        crate::psk::server(address, data_port, endpoint.path_secret_map.clone()).await?;
+        crate::psk::server(address, data_addrs, endpoint.path_secret_map.clone()).await?;
 
     // Create stream3 server
     let server = s2n_quic_dc::stream3::Server::new(endpoint, handshake);
@@ -25,7 +26,7 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
 
     info!(
         %address,
-        data_port,
+        recv_workers = num_recv_workers,
         "Server listening"
     );
 

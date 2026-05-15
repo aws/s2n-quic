@@ -75,7 +75,7 @@ where
     let mut segments_written: u32 = 0;
 
     let result = unfilled.fill_with(|addr, cmsg, mut payload| {
-        addr.set(context.path_secret_entry.data_addr().into());
+        addr.set(context.peer_addr.into());
         cmsg.set_ecn(ExplicitCongestionNotification::Ect0);
 
         let mut offset: usize = 0;

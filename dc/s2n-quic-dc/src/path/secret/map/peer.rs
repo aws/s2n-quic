@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{dc, seal, Bidirectional, Credentials, Entry, Id, Map, TransportFeatures};
+use crate::path::secret::map::PeerDataAddrs;
 use s2n_quic_core::time::Timestamp;
 use std::sync::Arc;
 
@@ -51,10 +52,10 @@ impl Peer {
         &self.map
     }
 
-    /// Returns true if the peer's data port has been learned via the post-handshake exchange.
+    /// Returns true if the peer's data addresses have been learned via the post-handshake exchange.
     #[inline]
-    pub fn has_data_port(&self) -> bool {
-        self.entry.has_data_port()
+    pub fn peer_data_addrs(&self) -> &PeerDataAddrs {
+        self.entry.peer_data_addrs()
     }
 
     /// Consume the Peer and return the underlying Arc<Entry>.

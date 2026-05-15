@@ -8,7 +8,6 @@ use zerocopy::{FromBytes, Unaligned};
 
 pub mod decoder;
 pub mod encoder;
-pub mod partial;
 mod routing_info;
 
 pub use routing_info::{QueuePair, ResetTarget, RoutingInfo};

@@ -62,8 +62,9 @@ pub struct Endpoint {
     pub counters: crate::counter::Registry,
     /// Endpoint-wide stream ID counter
     pub next_stream_id: AtomicU64,
-    /// Full socket address the recv socket is listening on
-    pub data_addr: std::net::SocketAddr,
+    /// Recv socket addresses advertised to peers during handshake.
+    /// Each recv worker has its own distinct address.
+    pub data_addrs: Vec<std::net::SocketAddr>,
 }
 
 // ── Pipeline Setup ────────────────────────────────────────────────────────
@@ -297,14 +298,16 @@ where
         "at least one recv_dispatch worker is required"
     );
 
-    // The port our recv sockets listen on — embedded in outbound packets so peers can ACK back.
-    const UNSPECIFIED_ADDR: std::net::SocketAddr =
-        std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 0);
-    let source_control_addr = recv_sockets
-        .first()
-        .and_then(|s| s.local_addr().ok())
-        .unwrap_or(UNSPECIFIED_ADDR);
-    let source_control_port = source_control_addr.port();
+    // Collect all recv socket addresses — advertised to peers so senders can target
+    // individual recv workers directly.
+    let data_addrs: Vec<std::net::SocketAddr> = recv_sockets
+        .iter()
+        .map(|s| {
+            s.local_addr()
+                .expect("recv socket must have a local address")
+        })
+        .collect();
+    let source_control_port = data_addrs.first().map_or(0, |a| a.port());
 
     // Frame submission channel: all writers share one sharded sender; one dispatch task drains it.
     let (frame_tx, frame_rx) = frame::submission_channel(submission_shards);
@@ -490,13 +493,21 @@ where
     }
 
     // Assign each recv socket to its corresponding recv_io worker (1:1).
-    for (socket, &worker_id) in recv_sockets.into_iter().zip(layout.recv_io.iter()) {
+    let rx_ops_total = counter_registry.register("socket.rx.ops");
+    let rx_bytes_total = counter_registry.register_bytes("socket.rx.bytes");
+    for (idx, (socket, &worker_id)) in recv_sockets
+        .into_iter()
+        .zip(layout.recv_io.iter())
+        .enumerate()
+    {
         let router =
             worker::FanOutRouter::<_, RecvRoute>::new(dispatch_txs.clone(), &counter_registry);
         let socket = socket::MeteredRecv::new(
             socket,
-            counter_registry.register("socket.rx.ops"),
-            counter_registry.register_bytes("socket.rx.bytes"),
+            counter_registry.register_nominal("socket.rx.ops", format_args!("recv.{idx}")),
+            counter_registry.register_nominal("socket.rx.bytes", format_args!("recv.{idx}")),
+            rx_ops_total.clone(),
+            rx_bytes_total.clone(),
         );
         workers[worker_id].recv_socket = Some(RecvSocketParts {
             socket,
@@ -517,7 +528,7 @@ where
         acceptor_registry,
         counters: counter_registry,
         next_stream_id: AtomicU64::new(0),
-        data_addr: source_control_addr,
+        data_addrs,
     }
 }
 
@@ -748,10 +759,8 @@ where
                     "q.ack_completion",
                     format_args!("recv.{recv_dispatch_idx}"),
                 );
-                let ack_completion_rx = crate::counter::GaugedReceiver::new(
-                    rd.ack_completion_rx,
-                    ack_completion_gauge,
-                );
+                let ack_completion_rx =
+                    crate::counter::GaugedReceiver::new(rd.ack_completion_rx, ack_completion_gauge);
                 local.spawn(tasks::ack_completion_task(
                     ack_completion_rx,
                     recv_cache,

@@ -47,6 +47,7 @@ use store::Store;
 
 pub use entry::{
     ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, ControlPair,
+    PeerDataAddrs, MAX_PEER_DATA_ADDRS,
 };
 pub use handshake::HandshakingPath;
 pub use peer::Peer;

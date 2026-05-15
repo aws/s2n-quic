@@ -16,7 +16,6 @@
 use crate::{
     byte_vec::ByteVec,
     clock::precision,
-    datagram::batch::Priority,
     intrusive_queue::{Entry, Queue},
     packet::datagram::{QueuePair, ResetTarget},
     path::secret::map::Entry as PathSecretEntry,
@@ -28,6 +27,35 @@ use std::sync::Arc;
 
 /// Default TTL for frames (number of transmission attempts before failure).
 pub const DEFAULT_TTL: u8 = 10;
+
+/// Worst-case header overhead for a FlowData packet on the wire.
+pub const MAX_FLOW_DATA_HEADER_OVERHEAD: u16 = 109;
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Priority {
+    FlowReset = 0,
+    FlowControl = 1,
+    FlowData = 2,
+    FlowRetry = 3,
+    FlowInit = 4,
+}
+
+impl Priority {
+    pub const LEVELS: usize = 5;
+    pub const ALL: [Self; Self::LEVELS] = [
+        Self::FlowReset,
+        Self::FlowControl,
+        Self::FlowData,
+        Self::FlowRetry,
+        Self::FlowInit,
+    ];
+
+    #[inline]
+    pub const fn as_index(self) -> usize {
+        self as usize
+    }
+}
 
 /// Completion channel sender typed on Frame.
 pub type CompletionSender = datagram_completion::Sender<Frame>;
@@ -734,11 +762,6 @@ impl Frame {
     }
 
     #[inline]
-    pub fn peer_addr(&self) -> std::net::SocketAddr {
-        self.path_secret_entry.data_addr()
-    }
-
-    #[inline]
     pub fn payload_len(&self) -> usize {
         self.payload.len()
     }
@@ -773,7 +796,7 @@ impl std::fmt::Debug for Frame {
         f.debug_struct("Frame")
             .field("header", &self.header)
             .field("payload_len", &self.payload.len())
-            .field("peer", &self.path_secret_entry.data_addr())
+            .field("peer_data_addrs", self.path_secret_entry.peer_data_addrs())
             .field("ttl", &self.ttl)
             .field("transmission_time", &self.transmission_time)
             .finish()
@@ -864,7 +887,10 @@ mod tests {
         assert_eq!(frame.priority(), Priority::FlowReset);
         assert!(!frame.requires_sticky_sender());
         assert_eq!(frame.payload_len(), 0);
-        assert_eq!(frame.peer_addr(), "10.0.0.1:9000".parse().unwrap());
+        assert_eq!(
+            *frame.path_secret_entry.peer(),
+            "10.0.0.1:9000".parse::<std::net::SocketAddr>().unwrap()
+        );
     }
 
     #[test]

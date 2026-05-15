@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stream::socket::{BusyPoll, Gso as GsoSocket, Options, ReusePort};
+use crate::stream::socket::{BusyPoll, Gso as GsoSocket, Options};
 use s2n_quic_platform::features;
 use std::{io, net::SocketAddr};
 
@@ -60,6 +60,10 @@ impl SendConfig {
 }
 
 /// Configuration for receive socket creation.
+///
+/// Each recv socket binds to its own distinct address so that remote senders can
+/// target individual recv workers directly (bypassing kernel RSS). The full list
+/// of bound addresses is advertised to peers during the handshake.
 pub struct RecvConfig {
     pub num_sockets: usize,
     pub bind_addr: SocketAddr,
@@ -75,35 +79,26 @@ impl RecvConfig {
         }
     }
 
-    /// Creates receive sockets with REUSEPORT for kernel-level load balancing.
+    /// Creates receive sockets, each bound to its own ephemeral port.
     ///
-    /// The first socket binds to the requested address (getting an ephemeral port if port is 0).
-    /// Subsequent sockets share the same port via SO_REUSEPORT. GRO is enabled for coalescing
-    /// received segments. Send buffer is zeroed since these sockets don't send.
+    /// Every socket gets a distinct address on the same IP so remote senders can
+    /// distribute traffic across recv workers without relying on RSS hashing.
+    /// GRO is enabled for coalescing received segments. Send buffer is zeroed
+    /// since these sockets don't send.
     pub fn create(&self) -> io::Result<Vec<std::net::UdpSocket>> {
         let mut sockets = Vec::with_capacity(self.num_sockets);
 
-        let mut opts = Options::default();
-        opts.addr = self.bind_addr;
-        if self.num_sockets > 1 {
-            opts.reuse_address = true;
-            opts.reuse_port = ReusePort::AfterBind;
-        }
-        opts.gro = true;
-        opts.blocking = false;
-        opts.recv_buffer = Some(self.recv_buffer);
-        opts.send_buffer = Some(0);
-        let first_socket = opts.build_udp()?;
-        sockets.push(first_socket);
+        let mut bind_addr = self.bind_addr;
+        bind_addr.set_port(0);
 
-        if self.num_sockets > 1 {
-            let bound_addr = sockets[0].local_addr()?;
-            assert_ne!(bound_addr.port(), 0);
-            opts.reuse_port = ReusePort::BeforeBind;
-            opts.addr = bound_addr;
-            for _ in 1..self.num_sockets {
-                sockets.push(opts.build_udp()?);
-            }
+        for _ in 0..self.num_sockets {
+            let mut opts = Options::default();
+            opts.addr = bind_addr;
+            opts.gro = true;
+            opts.blocking = false;
+            opts.recv_buffer = Some(self.recv_buffer);
+            opts.send_buffer = Some(0);
+            sockets.push(opts.build_udp()?);
         }
 
         Ok(sockets)
@@ -164,6 +159,8 @@ pub(crate) struct MeteredRecv<S> {
     inner: S,
     rx_counter: crate::counter::Counter,
     rx_bytes_counter: crate::counter::Counter,
+    rx_counter_total: crate::counter::Counter,
+    rx_bytes_counter_total: crate::counter::Counter,
 }
 
 impl<S> MeteredRecv<S> {
@@ -171,11 +168,15 @@ impl<S> MeteredRecv<S> {
         inner: S,
         rx_counter: crate::counter::Counter,
         rx_bytes_counter: crate::counter::Counter,
+        rx_counter_total: crate::counter::Counter,
+        rx_bytes_counter_total: crate::counter::Counter,
     ) -> Self {
         Self {
             inner,
             rx_counter,
             rx_bytes_counter,
+            rx_counter_total,
+            rx_bytes_counter_total,
         }
     }
 }
@@ -193,6 +194,8 @@ impl<S: crate::socket::recv::Socket> crate::socket::recv::Socket for MeteredRecv
         if let core::task::Poll::Ready(Ok(received)) = &result {
             self.rx_counter.add(1);
             self.rx_bytes_counter.add(*received as u64);
+            self.rx_counter_total.add(1);
+            self.rx_bytes_counter_total.add(*received as u64);
         }
         result
     }

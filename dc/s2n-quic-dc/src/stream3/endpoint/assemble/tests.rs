@@ -82,13 +82,15 @@ impl bolero_generator::TypeGenerator for HarnessInput {
 // Queue<T> implements UnboundedSender<Entry<T>> via push_back, so we use it directly.
 
 fn make_context(mtu: u16, registry: &Registry) -> (Context, Arc<PathSecretEntry>) {
-    let entry = PathSecretEntry::fake("127.0.0.1:8080".parse().unwrap(), None);
+    let peer: std::net::SocketAddr = "127.0.0.1:8080".parse().unwrap();
+    let entry = PathSecretEntry::fake(peer, None);
     entry.update_max_datagram_size(mtu);
+    entry.set_peer_data_addrs(&[peer]);
     let inflight_gauge = registry.register_queue_gauge("test.inflight");
     let ack_gauge = registry.register_queue_gauge("test.ack");
     let pending_gauge = registry.register_queue_gauge("test.pending");
     (
-        Context::new(&entry, inflight_gauge, ack_gauge, pending_gauge, 0),
+        Context::new(&entry, inflight_gauge, ack_gauge, pending_gauge, 0).unwrap(),
         entry,
     )
 }
@@ -407,12 +409,14 @@ fn encode_decode_round_trip() {
         endpoint::Type::Server,
     );
     sealer_entry.update_max_datagram_size(1500);
+    let peer: std::net::SocketAddr = "127.0.0.1:8080".parse().unwrap();
+    sealer_entry.set_peer_data_addrs(&[peer]);
 
     let registry = Registry::new();
     let inflight_gauge = registry.register_queue_gauge("test.inflight");
     let ack_gauge = registry.register_queue_gauge("test.ack");
     let pending_gauge = registry.register_queue_gauge("test.pending");
-    let context = Context::new(&sealer_entry, inflight_gauge, ack_gauge, pending_gauge, 0);
+    let context = Context::new(&sealer_entry, inflight_gauge, ack_gauge, pending_gauge, 0).unwrap();
 
     let key_id = context.credentials.key_id;
     let opener = opener_entry.secret().application_opener(key_id);
@@ -550,12 +554,15 @@ fn encode_decode_fuzz_round_trip() {
                 endpoint::Type::Server,
             );
             sealer_entry.update_max_datagram_size(input.mtu);
+            let peer: std::net::SocketAddr = "127.0.0.1:8080".parse().unwrap();
+            sealer_entry.set_peer_data_addrs(&[peer]);
 
             let registry = Registry::new();
             let inflight_gauge = registry.register_queue_gauge("test.inflight");
             let ack_gauge = registry.register_queue_gauge("test.ack");
             let pending_gauge = registry.register_queue_gauge("test.pending");
-            let context = Context::new(&sealer_entry, inflight_gauge, ack_gauge, pending_gauge, 0);
+            let context =
+                Context::new(&sealer_entry, inflight_gauge, ack_gauge, pending_gauge, 0).unwrap();
 
             let key_id = context.credentials.key_id;
             let opener = opener_entry.secret().application_opener(key_id);

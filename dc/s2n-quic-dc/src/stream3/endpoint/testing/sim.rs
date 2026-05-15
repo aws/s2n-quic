@@ -69,14 +69,33 @@ thread_local! {
     static SIM_MAP_REGISTRY: RefCell<HashMap<SocketAddr, PathSecretMap>> =
         RefCell::new(HashMap::new());
 
+    static SIM_ADDR_REGISTRY: RefCell<HashMap<SocketAddr, Vec<SocketAddr>>> =
+        RefCell::new(HashMap::new());
+
     static SIM_ENDPOINT_BY_GROUP: RefCell<HashMap<u64, Weak<Endpoint>>> =
         RefCell::new(HashMap::new());
 }
 
-fn register_endpoint_map(data_addr: SocketAddr, map: PathSecretMap) {
+fn register_endpoint_map(data_addrs: &[SocketAddr], map: PathSecretMap) {
     SIM_MAP_REGISTRY.with(|r| {
-        r.borrow_mut().insert(data_addr, map);
+        let mut reg = r.borrow_mut();
+        for &addr in data_addrs {
+            reg.insert(addr, map.clone());
+        }
     });
+    SIM_ADDR_REGISTRY.with(|r| {
+        let mut reg = r.borrow_mut();
+        let addrs = data_addrs.to_vec();
+        for &addr in data_addrs {
+            reg.insert(addr, addrs.clone());
+        }
+    });
+}
+
+fn lookup_peer_data_addrs(any_addr: SocketAddr) -> Vec<SocketAddr> {
+    SIM_ADDR_REGISTRY
+        .with(|r| r.borrow().get(&any_addr).cloned())
+        .unwrap_or_else(|| vec![any_addr])
 }
 
 /// Well-known port that [`Server`] binds to.
@@ -277,7 +296,7 @@ pub fn setup_sim_endpoint(
     );
 
     // Register in the thread-local registry so `connect` can find it.
-    register_endpoint_map(endpoint.data_addr, path_secret_map);
+    register_endpoint_map(&endpoint.data_addrs, path_secret_map);
 
     endpoint
 }
@@ -301,7 +320,7 @@ pub fn connect(
     local_endpoint: &Endpoint,
     peer_addr: SocketAddr,
 ) -> Arc<crate::path::secret::map::Entry> {
-    let local_addr = local_endpoint.data_addr;
+    let local_addr = local_endpoint.data_addrs[0];
     let local_map = &local_endpoint.path_secret_map;
 
     // Fast path: already connected.
@@ -321,9 +340,20 @@ pub fn connect(
 
     insert_fake_path_pair(local_map, local_addr, &peer_map, peer_addr);
 
-    local_map
+    let entry = local_map
         .get_raw(peer_addr)
-        .expect("path-secret entry just inserted by insert_fake_path_pair")
+        .expect("path-secret entry just inserted by insert_fake_path_pair");
+
+    // Set the peer's full recv address list (simulates the post-handshake exchange).
+    let peer_data_addrs = lookup_peer_data_addrs(peer_addr);
+    entry.set_peer_data_addrs(&peer_data_addrs);
+
+    // Also set our addrs on the peer's entry for us.
+    if let Some(peer_entry) = peer_map.get_raw(local_addr) {
+        peer_entry.set_peer_data_addrs(&local_endpoint.data_addrs);
+    }
+
+    entry
 }
 
 // ── insert_fake_path_pair ─────────────────────────────────────────────────────
@@ -352,7 +382,13 @@ pub fn insert_fake_path_pair(
     let mut params = TEST_APPLICATION_PARAMS;
     params.remote_max_data = params.local_recv_max_data;
 
-    local_map.test_insert_pair(local_addr, Some(params.clone()), peer_map, peer_addr, Some(params))
+    local_map.test_insert_pair(
+        local_addr,
+        Some(params.clone()),
+        peer_map,
+        peer_addr,
+        Some(params),
+    )
 }
 
 // ── SimChannelAcceptor ────────────────────────────────────────────────────────
@@ -425,9 +461,14 @@ impl Server {
         Self { endpoint }
     }
 
-    /// Returns the bound data address of the underlying endpoint.
+    /// Returns the first bound data address (for use as a connection target).
     pub fn data_addr(&self) -> SocketAddr {
-        self.endpoint.data_addr
+        self.endpoint.data_addrs[0]
+    }
+
+    /// Returns all recv data addresses advertised to peers.
+    pub fn data_addrs(&self) -> &[SocketAddr] {
+        &self.endpoint.data_addrs
     }
 
     /// Register a channel-based acceptor for incoming streams.
@@ -496,9 +537,14 @@ impl Client {
         }
     }
 
-    /// Returns the bound data address of the underlying endpoint.
+    /// Returns the first bound data address (for use as a connection target).
     pub fn data_addr(&self) -> SocketAddr {
-        self.endpoint.data_addr
+        self.endpoint.data_addrs[0]
+    }
+
+    /// Returns all recv data addresses advertised to peers.
+    pub fn data_addrs(&self) -> &[SocketAddr] {
+        &self.endpoint.data_addrs
     }
 
     /// Connect to a peer, returning a bidirectional [`Stream`].

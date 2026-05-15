@@ -33,6 +33,10 @@ mod tests;
 
 pub type ApplicationData = Arc<dyn Any + Send + Sync>;
 
+pub const MAX_PEER_DATA_ADDRS: usize = 32;
+
+pub type PeerDataAddrs = tokio::sync::SetOnce<Arc<[s2n_quic_core::inet::SocketAddressV6]>>;
+
 #[derive(Debug, thiserror::Error)]
 #[error("{inner}")]
 pub struct ApplicationDataError {
@@ -58,9 +62,8 @@ pub struct Entry {
     /// `s2n_quic_core::time::Timestamp` clock. A value of `0` means no rate limiting is applied.
     /// Callers should atomically claim a slot by advancing this value forward.
     next_connection: AtomicU64,
-    /// The peer's data port, exchanged after the handshake completes.
-    /// 0 means not yet learned.
-    peer_data_port: AtomicU16,
+    /// The peer's data recv addresses, learned via the post-handshake exchange.
+    peer_data_addrs: PeerDataAddrs,
     /// Next scheduled transmission timestamp per socket sender, encoded as microseconds.
     next_transmission_by_sender: Box<[AtomicU64]>,
 }
@@ -78,7 +81,7 @@ impl SizeOf for Entry {
             accessed,
             application_data,
             next_connection,
-            peer_data_port,
+            peer_data_addrs,
             next_transmission_by_sender,
         } = self;
         creation_time.size()
@@ -91,7 +94,10 @@ impl SizeOf for Entry {
             + accessed.size()
             + application_data.size()
             + next_connection.size()
-            + peer_data_port.size()
+            + std::mem::size_of::<PeerDataAddrs>()
+            + peer_data_addrs.get().map_or(0, |a| {
+                a.len() * std::mem::size_of::<s2n_quic_core::inet::SocketAddressV6>()
+            })
             + std::mem::size_of::<Box<[AtomicU64]>>()
             + next_transmission_by_sender.len() * std::mem::size_of::<AtomicU64>()
     }
@@ -163,7 +169,7 @@ impl Entry {
             accessed: AtomicU8::new(0),
             application_data,
             next_connection: AtomicU64::new(0),
-            peer_data_port: AtomicU16::new(0),
+            peer_data_addrs: PeerDataAddrs::default(),
             next_transmission_by_sender: Self::init_sender_schedule(socket_sender_count),
         }
     }
@@ -252,28 +258,61 @@ impl Entry {
         &self.peer
     }
 
-    /// Returns the data endpoint address for this peer.
-    ///
-    /// The port is learned via a post-handshake exchange. Returns the peer's
-    /// handshake address if the data port hasn't been set yet.
-    pub fn data_addr(&self) -> SocketAddr {
-        let mut addr = self.peer;
-        let port = self.peer_data_port.load(Ordering::Relaxed);
-        if port != 0 {
-            addr.set_port(port);
-        }
-        addr
+    /// Returns the peer's data recv addresses.
+    pub fn peer_data_addrs(&self) -> &PeerDataAddrs {
+        &self.peer_data_addrs
     }
 
-    /// Returns true if the peer's data port has been learned via the post-handshake exchange.
+    /// Returns true if the peer's data addresses have been learned via the post-handshake exchange.
     #[inline]
-    pub fn has_data_port(&self) -> bool {
-        self.peer_data_port.load(Ordering::Relaxed) != 0
+    pub fn has_data_addrs(&self) -> bool {
+        self.peer_data_addrs.get().is_some()
     }
 
-    /// Set the peer's data port, learned from the post-handshake port exchange.
-    pub fn set_peer_data_port(&self, port: u16) {
-        self.peer_data_port.store(port, Ordering::Relaxed);
+    /// Set the peer's data addresses, learned from the post-handshake exchange.
+    ///
+    /// Wildcard IPs in the address list are replaced with the peer's handshake IP,
+    /// since the peer bound to `[::]` but is reachable at the address we connected to.
+    ///
+    /// Returns `false` if validation fails (empty list, wildcard ports, or
+    /// loopback addrs from a non-loopback peer).
+    pub fn set_peer_data_addrs(&self, addrs: &[SocketAddr]) -> bool {
+        use s2n_quic_core::inet::SocketAddress;
+
+        if addrs.is_empty() {
+            tracing::error!(peer = %self.peer, "peer data addrs list is empty");
+            return false;
+        }
+
+        let peer_ip = self.peer.ip();
+        let peer_is_loopback = peer_ip.is_loopback();
+        let mut v6_addrs = Vec::with_capacity(addrs.len());
+
+        for addr in addrs {
+            if addr.port() == 0 {
+                tracing::error!(%addr, peer = %self.peer, "peer data addr has wildcard port");
+                return false;
+            }
+
+            let ip = match addr.ip() {
+                ip if ip.is_unspecified() => peer_ip,
+                ip => ip,
+            };
+
+            if !peer_is_loopback && ip.is_loopback() {
+                tracing::error!(
+                    %addr, peer = %self.peer,
+                    "peer data addr is loopback but handshake addr is not"
+                );
+                return false;
+            }
+
+            let resolved = SocketAddr::new(ip, addr.port());
+            v6_addrs.push(SocketAddress::from(resolved).to_ipv6_mapped());
+        }
+
+        let _ = self.peer_data_addrs.set(v6_addrs.into());
+        true
     }
 
     fn sender_index(&self, sender_idx: usize) -> Option<usize> {

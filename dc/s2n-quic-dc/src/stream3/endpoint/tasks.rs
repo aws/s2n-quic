@@ -3,7 +3,6 @@
 
 use crate::{
     clock::precision,
-    datagram::batch::Priority,
     intrusive_queue::{Entry, Queue},
     socket::{
         channel::{
@@ -25,7 +24,7 @@ use crate::{
             },
             dispatch, msg, send, Budgets,
         },
-        frame::{Frame, PriorityStorage, SubmissionReceiver},
+        frame::{Frame, Priority, PriorityStorage, SubmissionReceiver},
     },
 };
 use core::task::Poll;
@@ -101,7 +100,7 @@ pub const DEFAULT_DISPATCH_BUDGET: usize = 32;
 /// [`ListSender`]: crate::socket::channel::intrusive_queue::unsync::ListSender
 /// [`channel::Priority`]: crate::socket::channel::Priority
 /// [`channel::Paced`]: crate::socket::channel::Paced
-/// [`Priority::LEVELS`]: crate::datagram::batch::Priority::LEVELS
+/// [`Priority::LEVELS`]: crate::stream3::frame::Priority::LEVELS
 /// [`PriorityStorage`]: crate::stream3::frame::PriorityStorage
 /// [`PriorityInput`]: crate::stream3::frame::PriorityInput
 pub fn frame_dispatch<S, Clk>(
@@ -251,7 +250,13 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             let sender = {
                 let mut cache = cache.borrow_mut();
                 let cache = &mut *cache;
-                cache.get_or_insert(batch.path_secret_entry())
+                match cache.get_or_insert(batch.path_secret_entry()) {
+                    Ok(ctx) => ctx,
+                    Err(error) => {
+                        tracing::warn!(?error, "dropping batch: send context not ready");
+                        return;
+                    }
+                }
             };
 
             let wheel_interest = {

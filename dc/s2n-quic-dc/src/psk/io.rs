@@ -24,7 +24,11 @@ use std::{
     },
     time::Duration,
 };
-use tokio::{sync::Semaphore, time::Instant as TokioInstant};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::Semaphore,
+    time::Instant as TokioInstant,
+};
 
 pub use crate::stream::DEFAULT_IDLE_TIMEOUT;
 pub const DEFAULT_MAX_DATA: u64 = 1u64 << 23;
@@ -38,6 +42,58 @@ pub const DEFAULT_PTO_JITTER_PERCENTAGE: u8 = 33;
 const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(1);
 
 const BUFFER_SIZE: usize = 16 * 1024;
+
+/// Wire format: `u8 count` followed by `count` addresses, each 18 bytes (16 IPv6 + 2 port).
+/// IPv4 addresses are encoded as IPv4-mapped IPv6.
+const ADDR_WIRE_LEN: usize = 18;
+
+fn encode_data_addrs(addrs: &[SocketAddr]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(1 + addrs.len() * ADDR_WIRE_LEN);
+    buf.push(addrs.len() as u8);
+    for addr in addrs {
+        let v6 = match addr {
+            SocketAddr::V6(v6) => *v6,
+            SocketAddr::V4(v4) => {
+                std::net::SocketAddrV6::new(v4.ip().to_ipv6_mapped(), v4.port(), 0, 0)
+            }
+        };
+        buf.extend_from_slice(&v6.ip().octets());
+        buf.extend_from_slice(&v6.port().to_be_bytes());
+    }
+    buf
+}
+
+async fn read_data_addrs<R: AsyncReadExt + Unpin>(reader: &mut R) -> io::Result<Vec<SocketAddr>> {
+    use crate::path::secret::map::MAX_PEER_DATA_ADDRS;
+
+    let mut header = [0u8; 1];
+    reader.read_exact(&mut header).await?;
+    let count = header[0] as usize;
+
+    if count == 0 || count > MAX_PEER_DATA_ADDRS {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid data addr count",
+        ));
+    }
+
+    let total = count * ADDR_WIRE_LEN;
+    let mut buf = vec![0u8; total];
+    reader.read_exact(&mut buf).await?;
+
+    let mut addrs = Vec::with_capacity(count);
+    for chunk in buf.chunks_exact(ADDR_WIRE_LEN) {
+        let ip = std::net::Ipv6Addr::from(<[u8; 16]>::try_from(&chunk[..16]).unwrap());
+        let port = u16::from_be_bytes([chunk[16], chunk[17]]);
+        let addr = match ip.to_ipv4_mapped() {
+            Some(v4) => SocketAddr::new(v4.into(), port),
+            None => SocketAddr::new(ip.into(), port),
+        };
+        addrs.push(addr);
+    }
+
+    Ok(addrs)
+}
 
 pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
@@ -123,7 +179,7 @@ pub(super) async fn server<
     subscriber: Subscriber,
     on_ready: tokio::sync::oneshot::Sender<Result<SocketAddr, Error>>,
 ) {
-    let local_data_port = builder.data_port.unwrap_or(0);
+    let local_data_addrs = builder.data_addrs.clone();
 
     let mut server = match Server::bind::<Provider, Subscriber, Event>(
         address,
@@ -144,6 +200,7 @@ pub(super) async fn server<
 
     while let Some(mut connection) = server.server.accept().await {
         let map_clone = map.clone();
+        let local_data_addrs = local_data_addrs.clone();
         tokio::spawn(async move {
             // The accepted connection must remain open until the client has finished inserting
             // the entry into its map. The client indicates this by sending a ConnectionClose
@@ -151,41 +208,37 @@ pub(super) async fn server<
             //
             // A 10 second timeout is specified to avoid spawned tasks piling up when the
             // ConnectionClose from the client is lost. This timeout covers both the dc handshake
-            // confirmation, port exchange, and MTU probing completion.
+            // confirmation, addr exchange, and MTU probing completion.
             let deadline = TokioInstant::now() + Duration::from_secs(10);
-
-            use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
             let initial_exchange = async {
                 let stream = connection.accept_bidirectional_stream().await?;
 
-                let port_exchange = async move {
+                let addr_exchange = async move {
                     let Some(mut stream) = stream else {
                         return Err(io::ErrorKind::ConnectionAborted.into());
                     };
 
-                    let mut buf = [0u8; 2];
-                    stream.read_exact(&mut buf).await?;
-                    let peer_data_port = u16::from_be_bytes(buf);
-
-                    stream.write_all(&local_data_port.to_be_bytes()).await?;
+                    stream
+                        .write_all(&encode_data_addrs(&local_data_addrs))
+                        .await?;
                     stream.finish()?;
 
-                    io::Result::Ok(peer_data_port)
+                    let peer_addrs = read_data_addrs(&mut stream).await?;
+
+                    io::Result::Ok(peer_addrs)
                 };
 
                 let confirm = ConfirmComplete::wait_ready(&mut connection);
 
-                tokio::try_join!(confirm, port_exchange)
+                tokio::try_join!(confirm, addr_exchange)
             };
 
             match tokio::time::timeout_at(deadline, initial_exchange).await {
-                Ok(Ok(((), peer_data_port))) => {
-                    // TODO: The port exchange should be replaced with a proper transport
-                    // parameter or DC handshake integration.
+                Ok(Ok(((), peer_data_addrs))) => {
                     if let Ok(peer_address) = connection.remote_addr() {
                         if let Some(entry) = map_clone.get_raw(peer_address) {
-                            entry.set_peer_data_port(peer_data_port);
+                            entry.set_peer_data_addrs(&peer_data_addrs);
                         }
                     }
 
@@ -217,7 +270,7 @@ pub struct Client {
     client: s2n_quic::Client,
     map: secret::Map,
     queue: Arc<HandshakeQueue>,
-    data_port: u16,
+    data_addrs: Arc<[SocketAddr]>,
 }
 
 impl Client {
@@ -266,7 +319,7 @@ impl Client {
             client,
             map: map.clone(),
             queue: Arc::new(HandshakeQueue::new(builder.success_jitter)),
-            data_port: builder.data_port.unwrap_or(0),
+            data_addrs: builder.data_addrs.into(),
         })
     }
 
@@ -284,7 +337,7 @@ impl Client {
                 peer,
                 reason,
                 server_name,
-                self.data_port,
+                self.data_addrs.clone(),
             )
             .await
     }
@@ -409,7 +462,7 @@ impl HandshakeQueue {
         peer: SocketAddr,
         reason: HandshakeReason,
         server_name: Name,
-        local_data_port: u16,
+        local_data_addrs: Arc<[SocketAddr]>,
     ) -> Result<(), HandshakeFailed> {
         let entry = self.allocate_entry(peer, reason);
         let entry2 = entry.clone();
@@ -449,42 +502,36 @@ impl HandshakeQueue {
             // MtuConfirmComplete, avoiding unbounded waits if the peer is slow.
             let deadline = TokioInstant::now() + Duration::from_secs(10);
 
-            let port_exchange = {
-                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let addr_exchange = {
+                use tokio::io::AsyncWriteExt;
 
                 let mut stream = connection.open_bidirectional_stream().await?;
 
                 async move {
-                    stream.write_all(&local_data_port.to_be_bytes()).await?;
+                    stream
+                        .write_all(&encode_data_addrs(&local_data_addrs))
+                        .await?;
                     stream.finish()?;
 
-                    let mut buf = [0u8; 2];
-                    stream.read_exact(&mut buf).await?;
-                    io::Result::Ok(u16::from_be_bytes(buf))
+                    let peer_addrs = read_data_addrs(&mut stream).await?;
+                    io::Result::Ok(peer_addrs)
                 }
             };
 
             let confirm_result = ConfirmComplete::wait_ready(&mut connection);
 
-            // Run DC handshake confirmation and data port exchange in parallel.
-            // The port exchange opens a bidirectional stream where each side sends
-            // its data port as 2 big-endian bytes so the peer knows where to send datagrams.
-            let (confirm_result, port_result) = tokio::time::timeout_at(deadline, async move {
-                tokio::join!(confirm_result, port_exchange,)
+            let (confirm_result, addr_result) = tokio::time::timeout_at(deadline, async move {
+                tokio::join!(confirm_result, addr_exchange,)
             })
             .await
             .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "handshake timeout"))?;
 
             confirm_result?;
-            let peer_data_port = port_result?;
+            let peer_data_addrs = addr_result?;
 
-            // TODO: The port exchange should be replaced with a proper transport parameter
-            // or integrated into the DC handshake itself. Using map.get_raw here is safe
-            // because the HandshakeQueue deduplicates concurrent handshakes for the same
-            // peer, so the entry in the map is the one we just created above.
             map.get_raw(peer)
                 .unwrap()
-                .set_peer_data_port(peer_data_port);
+                .set_peer_data_addrs(&peer_data_addrs);
 
             // Don't wait for the connection to fully close, just wait until dc.complete to
             // drop the permit.

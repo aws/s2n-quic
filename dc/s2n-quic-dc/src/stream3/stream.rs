@@ -3,8 +3,7 @@
 
 use crate::stream3::{endpoint::reset_error::ResetError, Reader, Writer};
 use s2n_quic_core::buffer;
-use std::net::SocketAddr;
-use std::io;
+use std::{io, net::SocketAddr};
 
 /// A bidirectional stream composed of a Reader and Writer
 pub struct Stream {

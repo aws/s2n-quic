@@ -9,7 +9,6 @@
 
 use crate::{
     clock::precision,
-    datagram::batch::Priority,
     intrusive_queue::{Entry, Queue},
     path::secret::map::Entry as PathSecretEntry,
     socket::{
@@ -19,7 +18,7 @@ use crate::{
     },
     stream3::{
         endpoint::{msg, send},
-        frame::{self, Frame, PriorityInput},
+        frame::{self, Frame, Priority, PriorityInput},
     },
 };
 use core::task::{self, Poll};
@@ -56,11 +55,8 @@ impl PathSecretMapEntry for crate::stream3::frame::Frame {
 // ── FrameBatch ────────────────────────────────────────────────────────────
 
 /// Conservative packet-level overhead estimate for stream3 frame batches.
-///
-/// Uses the same upper-bound constant as datagram partials so batching leaves room for packet
-/// fields that are added later by workers (credentials, packet number, routing, tag, etc).
 const MAX_FRAME_BATCH_PACKET_OVERHEAD: u64 =
-    crate::packet::datagram::partial::MAX_FLOW_DATA_HEADER_OVERHEAD as u64;
+    crate::stream3::frame::MAX_FLOW_DATA_HEADER_OVERHEAD as u64;
 
 /// A queue of frames grouped for a single path-secret entry, stored in per-priority buckets.
 ///
@@ -916,7 +912,13 @@ where
             msg::Sender::PendingAck(_) => {
                 let ctx_rc = {
                     let mut cache = cache.borrow_mut();
-                    cache.get_or_insert(entry.path_secret_entry())
+                    match cache.get_or_insert(entry.path_secret_entry()) {
+                        Ok(ctx) => ctx,
+                        Err(error) => {
+                            tracing::warn!(?error, "dropping ack: send context not ready");
+                            return Poll::Ready(Some(()));
+                        }
+                    }
                 };
 
                 let wheel_interest = {

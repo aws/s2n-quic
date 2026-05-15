@@ -19,13 +19,12 @@ use crate::{
     congestion,
     counter::QueueGauge,
     credentials::{self, Credentials},
-    datagram::batch::Priority,
     intrusive_queue::{self, Queue},
     path::secret::map::Entry as PathSecretEntry,
     socket::channel::{intrusive_queue::unsync, ByteCost, UnboundedSender},
     stream3::{
         endpoint::{inflight, msg},
-        frame::Frame,
+        frame::{Frame, Priority},
     },
 };
 use core::time::Duration;
@@ -262,6 +261,8 @@ pub(crate) struct Context {
     pub path_secret_entry: Arc<PathSecretEntry>,
     pub sealer: crate::crypto::awslc::seal::Application,
     pub credentials: Credentials,
+    /// Resolved destination address for this sender (cached at context creation).
+    pub peer_addr: std::net::SocketAddr,
     /// Next packet number to assign
     pub next_packet_number: VarInt,
     /// Next attempt ID for FlowInit deduplication (per-sender counter)
@@ -290,6 +291,21 @@ pub(crate) struct Context {
     pub peer_ecn_counts: EcnCounts,
 }
 
+#[derive(Debug)]
+pub enum ContextError {
+    PeerDataAddrsNotReady,
+    PeerDataAddrsEmpty,
+}
+
+impl std::fmt::Display for ContextError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PeerDataAddrsNotReady => write!(f, "peer data addrs not yet exchanged"),
+            Self::PeerDataAddrsEmpty => write!(f, "peer data addrs list is empty"),
+        }
+    }
+}
+
 impl Context {
     pub fn new(
         entry: &Arc<PathSecretEntry>,
@@ -297,16 +313,26 @@ impl Context {
         ack_gauge: QueueGauge,
         pending_gauge: QueueGauge,
         sender_idx: usize,
-    ) -> Self {
+    ) -> Result<Self, ContextError> {
         let (sealer, credentials) = entry.reusable_sealer();
         let cca = congestion::Controller::new(entry.max_datagram_size());
         let rtt_estimator = RttEstimator::new(Duration::from_millis(2));
         let inflight = inflight::Map::new(inflight_gauge);
 
-        Self {
+        let addrs = entry
+            .peer_data_addrs()
+            .get()
+            .ok_or(ContextError::PeerDataAddrsNotReady)?;
+        if addrs.is_empty() {
+            return Err(ContextError::PeerDataAddrsEmpty);
+        }
+        let peer_addr = std::net::SocketAddr::from(addrs[sender_idx % addrs.len()].unmap());
+
+        Ok(Self {
             path_secret_entry: entry.clone(),
             sealer,
             credentials,
+            peer_addr,
             next_packet_number: VarInt::ZERO,
             flow_attempt_id_counter: VarInt::ZERO,
             cca,
@@ -320,7 +346,7 @@ impl Context {
             pto_wheel: WheelLinks::new(),
             idle_wheel: WheelLinks::new(),
             peer_ecn_counts: EcnCounts::default(),
-        }
+        })
     }
 
     /// Append all frames from a batch and return wheel interest indicating which wheels
@@ -376,14 +402,7 @@ impl Context {
             match frame {
                 s2n_quic_core::frame::FrameMut::Ack(ack_frame) => {
                     super::ack::process_ack(
-                        &ack_frame,
-                        ack_delay,
-                        self,
-                        counters,
-                        completed,
-                        lost,
-                        cancelled,
-                        clock,
+                        &ack_frame, ack_delay, self, counters, completed, lost, cancelled, clock,
                         random,
                     );
                 }
@@ -799,21 +818,27 @@ impl Cache {
         }
     }
 
-    pub fn get_or_insert(&mut self, entry: &Arc<PathSecretEntry>) -> Rc<RefCell<Context>> {
+    pub fn get_or_insert(
+        &mut self,
+        entry: &Arc<PathSecretEntry>,
+    ) -> Result<Rc<RefCell<Context>>, ContextError> {
+        use std::collections::hash_map::Entry as MapEntry;
+
         let id = *entry.id();
 
-        self.contexts
-            .entry(id)
-            .or_insert_with(|| {
-                Rc::new(RefCell::new(Context::new(
+        match self.contexts.entry(id) {
+            MapEntry::Occupied(e) => Ok(e.get().clone()),
+            MapEntry::Vacant(e) => {
+                let ctx = Context::new(
                     entry,
                     self.inflight_gauge.clone(),
                     self.ack_gauge.clone(),
                     self.pending_gauge.clone(),
                     self.sender_idx,
-                )))
-            })
-            .clone()
+                )?;
+                Ok(e.insert(Rc::new(RefCell::new(ctx))).clone())
+            }
+        }
     }
 
     pub fn get(&self, id: &credentials::Id) -> Option<Rc<RefCell<Context>>> {

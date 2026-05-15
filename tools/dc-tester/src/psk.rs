@@ -32,25 +32,25 @@ fn tls_client() -> io::Result<tls::Client> {
 
 pub async fn server(
     handshake_addr: SocketAddr,
-    data_port: u16,
+    data_addrs: Vec<SocketAddr>,
     map: secret::Map,
 ) -> io::Result<psk::server::Provider> {
     let tls = tls_server()?;
     let subscriber = s2n_quic::provider::event::default::Subscriber::default();
 
     psk::server::Provider::builder()
-        .with_data_port(data_port)
+        .with_data_addrs(data_addrs)
         .start(handshake_addr, tls, subscriber, map)
         .await
         .map_err(io::Error::other)
 }
 
-pub fn client(data_port: u16, map: secret::Map) -> io::Result<psk::client::Provider> {
+pub fn client(data_addrs: Vec<SocketAddr>, map: secret::Map) -> io::Result<psk::client::Provider> {
     let tls = tls_client()?;
     let subscriber = s2n_quic::provider::event::default::Subscriber::default();
 
     psk::client::Provider::builder()
-        .with_data_port(data_port)
+        .with_data_addrs(data_addrs)
         .start(
             "[::]:0".parse().unwrap(),
             map,

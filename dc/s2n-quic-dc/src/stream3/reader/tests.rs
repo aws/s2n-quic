@@ -647,7 +647,10 @@ fn max_data_transmission_failure_surfaces_error() {
         async move {
             let mut buf = BytesMut::with_capacity(payload_len + 16);
 
-            let read = reader.read_into(&mut buf).await.expect("first read should succeed");
+            let read = reader
+                .read_into(&mut buf)
+                .await
+                .expect("first read should succeed");
             assert_eq!(read, payload_len);
 
             bach::task::yield_now().await;

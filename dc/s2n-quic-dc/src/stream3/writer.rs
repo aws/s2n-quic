@@ -68,11 +68,10 @@
 
 use crate::{
     byte_vec::ByteVec,
-    datagram::batch::Priority,
     intrusive_queue::{Entry, Queue},
     packet::{
         control,
-        datagram::{partial::MAX_FLOW_DATA_HEADER_OVERHEAD, QueuePair, ResetTarget},
+        datagram::{QueuePair, ResetTarget},
     },
     path::secret::map::Entry as PathSecretEntry,
     stream3::{
@@ -80,7 +79,10 @@ use crate::{
             msg,
             reset_error::{self, ResetError},
         },
-        frame::{self, Frame, Header, HomogeneousBatch, SubmissionSender, DEFAULT_TTL},
+        frame::{
+            self, Frame, Header, HomogeneousBatch, Priority, SubmissionSender, DEFAULT_TTL,
+            MAX_FLOW_DATA_HEADER_OVERHEAD,
+        },
     },
 };
 use s2n_quic_core::{
