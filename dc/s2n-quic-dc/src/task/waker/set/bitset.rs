@@ -3,8 +3,7 @@
 
 use core::fmt;
 
-const SLOT_BYTES: usize = core::mem::size_of::<usize>();
-const SLOT_BITS: usize = SLOT_BYTES * 8;
+const PER_SLOT: usize = core::mem::size_of::<usize>() * 8;
 
 #[derive(Clone, Default)]
 pub struct BitSet {
@@ -75,8 +74,8 @@ impl BitSet {
 
     #[inline(always)]
     fn index_mask(id: usize) -> (usize, usize) {
-        let index = id / SLOT_BYTES;
-        let mask = 1 << (id % SLOT_BYTES);
+        let index = id / PER_SLOT;
+        let mask = 1 << (id % PER_SLOT);
         (index, mask)
     }
 }
@@ -116,17 +115,17 @@ impl<S: Slots> Iterator for Iter<S> {
             let trailing = (slot >> self.shift).trailing_zeros() as usize;
 
             // no more 1s so go to the next slot
-            if trailing == SLOT_BITS {
+            if trailing == PER_SLOT {
                 self.next_index(true);
                 continue;
             }
 
             let shift = self.shift + trailing;
-            let id = self.index * SLOT_BYTES + shift;
+            let id = self.index * PER_SLOT + shift;
             let next_shift = shift + 1;
 
             // check if the next shift overflows into the next index
-            if next_shift == SLOT_BITS {
+            if next_shift == PER_SLOT {
                 self.next_index(true);
             } else {
                 self.shift = next_shift;
