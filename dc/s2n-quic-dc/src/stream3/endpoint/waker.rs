@@ -107,7 +107,11 @@ impl Drain {
 }
 
 impl channel::Receiver<Waker> for Drain {
-    fn poll_recv(&mut self, cx: &mut core::task::Context<'_>, budget: &mut channel::Budget) -> Poll<Option<Waker>> {
+    fn poll_recv(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+        budget: &mut channel::Budget,
+    ) -> Poll<Option<Waker>> {
         if budget.is_exhausted() {
             if !self.local.is_empty() {
                 budget.set_needs_wake();

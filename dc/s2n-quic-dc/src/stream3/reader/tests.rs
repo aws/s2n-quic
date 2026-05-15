@@ -25,8 +25,7 @@
 
 use super::{msg, reset_error, write_data_reader, ReadToEnd, Reader};
 use crate::{
-    flow,
-    intrusive_queue,
+    flow, intrusive_queue,
     packet::{control, datagram::ResetTarget},
     path::secret::map::Entry as PathSecretEntry,
     stream3::frame::{self, Frame, Header, PriorityStorage, SubmissionReceiver},
@@ -175,7 +174,9 @@ impl Pusher {
         &mut self,
         duration: Duration,
     ) -> Option<intrusive_queue::Queue<Frame>> {
-        let queue = crate::testing::timeout(duration, self.recv_frames()).await.ok()?;
+        let queue = crate::testing::timeout(duration, self.recv_frames())
+            .await
+            .ok()?;
         if queue.is_empty() {
             None
         } else {
@@ -873,7 +874,10 @@ fn drop_after_fin_completion_sends_no_reset() {
         async move {
             pusher.push_data(0, b"ok", true);
             let frames = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
-            assert!(frames.is_none(), "no frame should be emitted after clean completion");
+            assert!(
+                frames.is_none(),
+                "no frame should be emitted after clean completion"
+            );
         }
         .primary()
         .spawn();

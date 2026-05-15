@@ -62,10 +62,16 @@ fn make_pair_with_type(ep_type: endpoint::Type) -> (Writer, Pusher) {
     let (frame_tx, frame_rx) = frame::submission_channel(1);
 
     let writer = match ep_type {
-        endpoint::Type::Client => {
-            Writer::new_client(frame_tx, path_secret_entry, stream_id, acceptor_id, control_rx)
+        endpoint::Type::Client => Writer::new_client(
+            frame_tx,
+            path_secret_entry,
+            stream_id,
+            acceptor_id,
+            control_rx,
+        ),
+        endpoint::Type::Server => {
+            Writer::new_server(frame_tx, path_secret_entry, stream_id, control_rx)
         }
-        endpoint::Type::Server => Writer::new_server(frame_tx, path_secret_entry, stream_id, control_rx),
     };
 
     let pusher = Pusher {
@@ -198,7 +204,9 @@ impl Pusher {
         &mut self,
         duration: Duration,
     ) -> Option<intrusive_queue::Queue<Frame>> {
-        let queue = crate::testing::timeout(duration, self.recv_frames()).await.ok()?;
+        let queue = crate::testing::timeout(duration, self.recv_frames())
+            .await
+            .ok()?;
         if queue.is_empty() {
             None
         } else {
@@ -240,7 +248,10 @@ fn client_write_all_from_fin_sends_flow_init_with_early_data_and_fin() {
             let frames = pusher.recv_frames().await;
             assert_eq!(frames.len(), 1, "expected exactly one frame");
             let frame = frames.front().unwrap();
-            assert!(matches!(frame.header, Header::FlowInit { is_fin: true, .. }));
+            assert!(matches!(
+                frame.header,
+                Header::FlowInit { is_fin: true, .. }
+            ));
             assert_eq!(frame.payload, &b"hello"[..]);
         }
         .primary()
@@ -297,7 +308,10 @@ fn client_second_write_blocks_until_max_data() {
             let frames = pusher.recv_frames().await;
             assert_eq!(frames.len(), 1, "expected exactly one frame");
             let frame = frames.front().unwrap();
-            assert!(matches!(frame.header, Header::FlowInit { is_fin: false, .. }));
+            assert!(matches!(
+                frame.header,
+                Header::FlowInit { is_fin: false, .. }
+            ));
             assert_eq!(frame.payload, &b"hello"[..]);
 
             // Give the app task a scheduling opportunity to attempt a second
@@ -364,7 +378,10 @@ fn server_first_write_emits_flow_data_not_flow_init() {
 
         async move {
             let mut payload = Bytes::from_static(b"hello");
-            let written = writer.write_from(&mut payload).await.expect("write should succeed");
+            let written = writer
+                .write_from(&mut payload)
+                .await
+                .expect("write should succeed");
             assert_eq!(written, 5);
         }
         .primary()
@@ -556,7 +573,10 @@ fn client_fin_write_then_drop_emits_no_extra_packet() {
 
         async move {
             let mut payload = Bytes::from_static(b"hi");
-            let written = writer.write_from_fin(&mut payload).await.expect("fin write");
+            let written = writer
+                .write_from_fin(&mut payload)
+                .await
+                .expect("fin write");
             assert_eq!(written, 2);
             drop(writer);
         }
@@ -590,7 +610,10 @@ fn server_fin_write_then_drop_emits_no_extra_packet() {
 
         async move {
             let mut payload = Bytes::from_static(b"hi");
-            let written = writer.write_from_fin(&mut payload).await.expect("fin write");
+            let written = writer
+                .write_from_fin(&mut payload)
+                .await
+                .expect("fin write");
             assert_eq!(written, 2);
             drop(writer);
         }
@@ -618,14 +641,17 @@ fn transmission_error_completion_causes_broken_pipe_and_reset() {
                 .await
                 .expect("expected FlowReset after transmission failure");
             assert_eq!(reset.len(), 1, "expected exactly one reset frame");
-            assert!(matches!(
-                reset.front().unwrap().header,
-                Header::FlowReset {
-                    reset_target: ResetTarget::Both,
-                    error_code,
-                    ..
-                } if error_code == reset_error::RETRANSMISSIONS_EXHAUSTED
-            ), "expected retransmission-exhausted FlowReset");
+            assert!(
+                matches!(
+                    reset.front().unwrap().header,
+                    Header::FlowReset {
+                        reset_target: ResetTarget::Both,
+                        error_code,
+                        ..
+                    } if error_code == reset_error::RETRANSMISSIONS_EXHAUSTED
+                ),
+                "expected retransmission-exhausted FlowReset"
+            );
         }
         .primary()
         .spawn();

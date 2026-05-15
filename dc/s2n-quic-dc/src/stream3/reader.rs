@@ -402,8 +402,7 @@ impl Inner {
                 // to the application (either all writes complete, or a reset
                 // arrived but data was already buffered).
                 Poll::Ready(Err(e))
-                    if self.reassembler.is_writing_complete()
-                        || !self.reassembler.is_empty() =>
+                    if self.reassembler.is_writing_complete() || !self.reassembler.is_empty() =>
                 {
                     Some(e)
                 }

@@ -370,7 +370,6 @@ impl<Key> KeyRing<Key> {
         self.state = (self.state & !KEY_RING_INDEX_MASK) | next as u16;
     }
 
-
     /// Check if any tombstone (non-current initialized slot) matches the params.
     fn tombstone_contains(&self, params: &<Key as super::descriptor::Key>::Request) -> bool
     where

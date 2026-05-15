@@ -740,7 +740,10 @@ mod tests {
 
         assert!(matches!(rx.poll_recv(&mut cx, &mut budget), Poll::Pending));
         drop(tx);
-        assert!(matches!(rx.poll_recv(&mut cx, &mut budget), Poll::Ready(None)));
+        assert!(matches!(
+            rx.poll_recv(&mut cx, &mut budget),
+            Poll::Ready(None)
+        ));
     }
 
     #[test]
@@ -821,8 +824,7 @@ mod tests {
                     .await;
 
                     loop {
-                        let item =
-                            core::future::poll_fn(|cx| rx.poll_recv(cx, &mut budget)).await;
+                        let item = core::future::poll_fn(|cx| rx.poll_recv(cx, &mut budget)).await;
 
                         match item {
                             Some(list) => received.extend(values(&list)),

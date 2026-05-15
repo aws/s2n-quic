@@ -449,8 +449,9 @@ where
     // using a hash of (credentials.id, source_sender_id) for peer affinity.
     let (dispatch_txs, dispatch_rxs): (Vec<PacketSender>, Vec<_>) = (0..num_recv_dispatch)
         .map(|i| {
-            let (tx, rx) =
-                intrusive_queue::sync::new::<packet::datagram::decoder::Packet<descriptor::Filled>>();
+            let (tx, rx) = intrusive_queue::sync::new::<
+                packet::datagram::decoder::Packet<descriptor::Filled>,
+            >();
             let gauge = counter_registry.register_queue_gauge_nominal("q.dispatch", i);
             (crate::socket::channel::GaugedSender::new(tx, gauge), rx)
         })
@@ -483,10 +484,8 @@ where
 
     // Assign each recv socket to its corresponding recv_io worker (1:1).
     for (socket, &worker_id) in recv_sockets.into_iter().zip(layout.recv_io.iter()) {
-        let router = worker::FanOutRouter::<_, RecvRoute>::new(
-            dispatch_txs.clone(),
-            &counter_registry,
-        );
+        let router =
+            worker::FanOutRouter::<_, RecvRoute>::new(dispatch_txs.clone(), &counter_registry);
         let socket = socket::MeteredRecv::new(
             socket,
             counter_registry.register("socket.rx"),
@@ -676,14 +675,9 @@ where
             }
 
             if let Some(sw) = send_worker {
-                let batch_rx = crate::counter::GaugedQueueReceiver::new(
-                    sw.batch_rx,
-                    sw.batch_gauge,
-                );
-                let ack_rx = crate::counter::GaugedQueueReceiver::new(
-                    sw.ack_rx,
-                    sw.ack_gauge,
-                );
+                let batch_rx =
+                    crate::counter::GaugedQueueReceiver::new(sw.batch_rx, sw.batch_gauge);
+                let ack_rx = crate::counter::GaugedQueueReceiver::new(sw.ack_rx, sw.ack_gauge);
                 tasks::send_worker(
                     &mut local,
                     batch_rx,
@@ -710,10 +704,8 @@ where
             }
 
             if let Some(rd) = recv_dispatch {
-                let packet_rx = crate::counter::GaugedQueueReceiver::new(
-                    rd.packet_rx,
-                    rd.packet_gauge,
-                );
+                let packet_rx =
+                    crate::counter::GaugedQueueReceiver::new(rd.packet_rx, rd.packet_gauge);
                 let recv_dispatch_idx = rd.recv_dispatch_idx;
                 let recv_cache = std::rc::Rc::new(std::cell::RefCell::new(
                     crate::stream3::endpoint::recv::Cache::new(idle_timeout, recv_dispatch_idx),

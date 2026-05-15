@@ -198,7 +198,11 @@ where
     }
 
     #[inline]
-    fn take_first(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<Entry<Frame>>> {
+    fn take_first(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        budget: &mut Budget,
+    ) -> Poll<Option<Entry<Frame>>> {
         if let Some(frame) = self.buffered.take() {
             return Poll::Ready(Some(frame));
         }
@@ -266,7 +270,11 @@ where
     R: Receiver<Entry<Frame>>,
     Clk: precision::Clock,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<FrameBatch>> {
+    fn poll_recv(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        budget: &mut Budget,
+    ) -> Poll<Option<FrameBatch>> {
         use precision::Timer;
 
         let target_bytes = u16::MAX as u64 - 3000;
@@ -545,7 +553,11 @@ where
     C: UnboundedSender<Queue<Frame>>,
     A: UnboundedSender<Queue<msg::Sender>>,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<descriptor::Segments>> {
+    fn poll_recv(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        budget: &mut Budget,
+    ) -> Poll<Option<descriptor::Segments>> {
         use crate::stream3::endpoint::assemble;
 
         let Some(context) = ready!(self.inner.poll_recv(cx, budget)) else {

@@ -458,7 +458,8 @@ impl Cache {
     where
         Clk: s2n_quic_core::time::Clock + ?Sized,
     {
-        self.senders.retain(|_, state| !state.borrow_mut().is_expired(clock));
+        self.senders
+            .retain(|_, state| !state.borrow_mut().is_expired(clock));
     }
 }
 
@@ -550,7 +551,9 @@ mod tests {
     #[test]
     fn too_old() {
         let mut dedup = AttemptDedup::new();
-        assert!(dedup.check_attempt_id(v(AttemptDedup::CAPACITY + 10)).is_ok());
+        assert!(dedup
+            .check_attempt_id(v(AttemptDedup::CAPACITY + 10))
+            .is_ok());
         assert_eq!(
             dedup.check_attempt_id(v(0)).unwrap_err(),
             AttemptDedupError::TooOld
@@ -563,7 +566,9 @@ mod tests {
         assert!(dedup.check_attempt_id(v(5)).is_ok());
         assert!(dedup.check_attempt_id(v(3)).is_ok());
 
-        assert!(dedup.check_attempt_id(v(5 + AttemptDedup::CAPACITY + 1)).is_ok());
+        assert!(dedup
+            .check_attempt_id(v(5 + AttemptDedup::CAPACITY + 1))
+            .is_ok());
 
         assert_eq!(
             dedup.check_attempt_id(v(3)).unwrap_err(),

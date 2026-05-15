@@ -123,8 +123,7 @@ impl Dispatch {
             rx_data_half_closed: counters.register_nominal("!rx.data", "half_closed"),
             rx_data_credential_mismatch: counters
                 .register_nominal("!rx.data", "credential_mismatch"),
-            rx_data_stream_id_mismatch: counters
-                .register_nominal("!rx.data", "stream_id_mismatch"),
+            rx_data_stream_id_mismatch: counters.register_nominal("!rx.data", "stream_id_mismatch"),
             rx_data_tombstone: counters.register_nominal("rx.data", "tombstone"),
             rx_data_perm_closed: counters.register("rx.data.perm_closed"),
 
@@ -137,8 +136,7 @@ impl Dispatch {
                 .register_nominal("!rx.flow_control", "credential_mismatch"),
             rx_flow_control_stream_id_mismatch: counters
                 .register_nominal("!rx.flow_control", "stream_id_mismatch"),
-            rx_flow_control_tombstone: counters
-                .register_nominal("rx.flow_control", "tombstone"),
+            rx_flow_control_tombstone: counters.register_nominal("rx.flow_control", "tombstone"),
             rx_flow_control_perm_closed: counters.register("rx.flow_control.perm_closed"),
 
             rx_reset_both: counters.register("rx.reset.both"),
@@ -193,9 +191,7 @@ impl Dispatch {
     #[inline]
     pub fn on_flow_control_validation_failed(&self, reason: ValidationError) {
         match reason {
-            ValidationError::CredentialMismatch => {
-                self.rx_flow_control_credential_mismatch.add(1)
-            }
+            ValidationError::CredentialMismatch => self.rx_flow_control_credential_mismatch.add(1),
             ValidationError::StreamIdMismatch => self.rx_flow_control_stream_id_mismatch.add(1),
             ValidationError::Tombstone => self.rx_flow_control_tombstone.add(1),
         }

@@ -538,8 +538,7 @@ pub async fn packet_dispatch_task<PacketRx, AckSender, AckBurstSender, WakerSink
         &variant,
         crate::counter::Unit::Count,
     );
-    let time_summary =
-        counter_registry.register_nominal_timer("task.time", &variant);
+    let time_summary = counter_registry.register_nominal_timer("task.time", &variant);
 
     // Response frames (ACKs sent back to peers) re-enter via the same submission channel.
     // TODO: route responses through a dedicated channel + RetransmissionBatcher (see above).

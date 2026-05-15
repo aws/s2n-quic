@@ -332,14 +332,13 @@ fn assemble_fuzz_respects_gso_invariants() {
                 .iter()
                 .filter(|frame| {
                     !matches!(frame.header, Header::Ack { .. })
-                        &&
-                    is_frame_encodable(
-                        frame,
-                        input.source_sender_id,
-                        input.source_control_port,
-                        &context.credentials,
-                        input.mtu,
-                    )
+                        && is_frame_encodable(
+                            frame,
+                            input.source_sender_id,
+                            input.source_control_port,
+                            &context.credentials,
+                            input.mtu,
+                        )
                 })
                 .cloned()
                 .collect::<Vec<_>>();
