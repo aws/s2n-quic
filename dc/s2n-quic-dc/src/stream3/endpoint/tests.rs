@@ -7,6 +7,8 @@
 //! wired endpoints backed by simulated UDP sockets.  Each endpoint lives in its own Bach
 //! group so it is treated as a separate machine from the network perspective.
 
+pub mod deterministic;
+
 use crate::stream3::endpoint::testing::sim::{Client, Server, SERVER_PORT};
 use bytes::{Bytes, BytesMut};
 use s2n_quic_core::varint::VarInt;

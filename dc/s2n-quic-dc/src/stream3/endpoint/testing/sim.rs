@@ -347,7 +347,12 @@ pub fn insert_fake_path_pair(
     peer_map: &PathSecretMap,
     peer_addr: SocketAddr,
 ) -> TestPairIds {
-    local_map.test_insert_pair(local_addr, None, peer_map, peer_addr, None)
+    use s2n_quic_core::dc::testing::TEST_APPLICATION_PARAMS;
+
+    let mut params = TEST_APPLICATION_PARAMS;
+    params.remote_max_data = params.local_recv_max_data;
+
+    local_map.test_insert_pair(local_addr, Some(params.clone()), peer_map, peer_addr, Some(params))
 }
 
 // ── SimChannelAcceptor ────────────────────────────────────────────────────────
