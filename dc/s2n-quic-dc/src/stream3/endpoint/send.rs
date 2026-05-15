@@ -353,6 +353,7 @@ impl Context {
     pub fn process_ack_payload<Clk, Rand>(
         &mut self,
         payload: &mut [u8],
+        ack_delay: Duration,
         counters: &super::counters::Send,
         completed: &mut impl UnboundedSender<intrusive_queue::Entry<Frame>>,
         lost: &mut impl UnboundedSender<intrusive_queue::Entry<Frame>>,
@@ -375,7 +376,15 @@ impl Context {
             match frame {
                 s2n_quic_core::frame::FrameMut::Ack(ack_frame) => {
                     super::ack::process_ack(
-                        &ack_frame, self, counters, completed, lost, cancelled, clock, random,
+                        &ack_frame,
+                        ack_delay,
+                        self,
+                        counters,
+                        completed,
+                        lost,
+                        cancelled,
+                        clock,
+                        random,
                     );
                 }
                 s2n_quic_core::frame::FrameMut::Padding(_)

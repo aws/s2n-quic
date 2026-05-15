@@ -828,6 +828,7 @@ where
             msg::Sender::ReceivedAck {
                 payload,
                 path_secret_entry,
+                ack_delay,
                 ..
             } => {
                 let ctx_rc = {
@@ -846,6 +847,7 @@ where
                     let mut ctx = ctx_rc.borrow_mut();
                     let interest = ctx.process_ack_payload(
                         payload,
+                        *ack_delay,
                         &self.counters,
                         &mut self.completed_tx,
                         &mut lost_queue,

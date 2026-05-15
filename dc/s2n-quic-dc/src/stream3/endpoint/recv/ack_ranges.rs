@@ -87,6 +87,10 @@ impl AckRanges {
             }
 
             let frame = frame::Ack {
+                // The ack_delay field in the body is a zero placeholder; the real wire-time
+                // delay is computed at assembly time from `largest_recv_time` and written into
+                // `Header::Ack.ack_delay`.  The receiver extracts it from the header and passes
+                // it directly to `process_ack`, so this body field is intentionally ignored.
                 ack_delay: VarInt::ZERO,
                 ack_ranges: &self.packets,
                 ecn_counts,

@@ -31,6 +31,7 @@ use crate::{
     },
 };
 use bytes::BytesMut;
+use core::time::Duration;
 use s2n_quic_core::varint::VarInt;
 use std::{cell::RefCell, rc::Rc};
 
@@ -402,11 +403,17 @@ fn dispatch_decoded_frame(
                 waker_sink,
             );
         }
-        Header::Ack { dest_sender_id, .. } => {
+        Header::Ack {
+            dest_sender_id,
+            ack_delay: ack_delay_micros,
+            ..
+        } => {
+            let ack_delay = Duration::from_micros(ack_delay_micros.as_u64());
             let message = msg::Sender::ReceivedAck {
                 local_sender_id: dest_sender_id,
                 path_secret_entry: peer.path_entry.clone(),
                 payload,
+                ack_delay,
             };
             if sender_tx.send(Entry::new(message)).is_err() {
                 tracing::warn!(

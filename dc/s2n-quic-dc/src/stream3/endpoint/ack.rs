@@ -39,6 +39,7 @@ use s2n_quic_core::{
 /// - **cancelled**: `should_transmit()` is false (writer already gone) — silently dropped
 pub(crate) fn process_ack<Clk, Rand>(
     ack: &quic_frame::Ack<impl AckRanges>,
+    ack_delay: Duration,
     context: &mut send::Context,
     counters: &super::counters::Send,
     completed: &mut impl UnboundedSender<Entry<Frame>>,
@@ -51,7 +52,6 @@ pub(crate) fn process_ack<Clk, Rand>(
     Rand: random::Generator,
 {
     let now = clock.get_time();
-    let ack_delay = ack.ack_delay();
 
     let mut max_acked_tx_time = None;
     let mut bytes_acked = 0usize;
