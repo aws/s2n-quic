@@ -111,7 +111,6 @@ async fn non_blocking_inner<S, Clk, Info, Meta, C, R>(
     let receivers = Priority::new(receivers);
     let receivers = Reporter::new(receivers, clock.clone(), cfg!(debug_assertions));
     let receivers = channel::Paced::new(receivers, clock.clone(), rate);
-    let receivers = channel::YieldAfter::new(receivers, 1);
 
     socket_sender(socket, clock, receivers).await;
 }

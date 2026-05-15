@@ -62,6 +62,7 @@ pub type CompleteTransmission<'a> = completion::CompleteTransmission<'a, PacketI
 #[derive(Clone)]
 pub struct SenderSpan {
     #[cfg(debug_assertions)]
+    #[allow(dead_code)]
     span: tracing::Span,
 }
 

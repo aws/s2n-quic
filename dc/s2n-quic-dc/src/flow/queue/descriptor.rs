@@ -144,11 +144,6 @@ impl<S: 'static, C: 'static, Key: 'static> Descriptor<S, C, Key> {
             .store(id.as_u64(), Ordering::Relaxed);
     }
 
-    #[inline]
-    pub unsafe fn key(&self) -> &Key {
-        (*self.inner().keys.get()).current()
-    }
-
     /// # Safety
     ///
     /// The caller needs to guarantee the [`Descriptor`] is still allocated.
@@ -333,7 +328,7 @@ impl<Key> KeyRing<Key> {
 
     fn new() -> Self {
         Self {
-            entries: [const { MaybeUninit::uninit() }; Self::LEN],
+            entries: [const { MaybeUninit::uninit() }; KEY_RING_LEN],
             state: 0,
         }
     }

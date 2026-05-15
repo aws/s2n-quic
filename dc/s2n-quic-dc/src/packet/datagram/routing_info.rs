@@ -177,7 +177,6 @@ impl RoutingInfo {
     const FLOW_RESET_STREAM_TYPE: u8 = 9;
     const FLOW_RESET_CONTROL_TYPE: u8 = 10;
     const SENDER_ID_TYPE: u8 = 11;
-    const SENDER_PAIR_TYPE: u8 = 12;
 
     /// Get the source sender ID for data packets (used for ACK routing)
     pub fn source_sender_id(&self) -> Option<VarInt> {

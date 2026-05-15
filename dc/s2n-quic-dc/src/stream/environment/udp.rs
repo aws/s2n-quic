@@ -6,10 +6,7 @@ use crate::{
     credentials::Credentials,
     packet::{secret_control::flow_reset, Packet},
     path::secret::Map,
-    socket::{
-        pool::{self, descriptor},
-        rate::Rate,
-    },
+    socket::pool::{self, descriptor},
     stream::{
         environment::{Environment, Peer, SetupResult, SocketSet},
         recv::{
@@ -107,10 +104,6 @@ impl Config {
             priority_levels: 1,
             flow_priority: None,
         }
-    }
-
-    pub(crate) fn rate(&self) -> Rate {
-        Rate::new(self.max_gigabits_per_second)
     }
 
     pub(crate) fn rx_packet_pool(&self) -> pool::Pool {

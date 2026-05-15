@@ -65,18 +65,17 @@ pub fn blocking<S: AsRawFd, R: Router>(socket: S, alloc: pool::Pool, mut router:
 /// Receives packets from a non-blocking [`std::net::UdpSocket`] and dispatches into the provided [`Router`]
 pub async fn non_blocking<S: Socket, R: Router>(socket: S, alloc: pool::Pool, router: R) {
     use crate::socket::channel::{
-        FlattenSegments, InspectErr, ReceiverExt, RouterAdapter, SocketReceiver, YieldAfter,
+        FlattenSegments, InspectErr, ReceiverExt, RouterAdapter, SocketReceiver,
     };
 
-    // Chain the adapters: socket → SocketReceiver → InspectErr → FlattenSegments → RouterAdapter → YieldAfter
+    // Chain the adapters: socket → SocketReceiver → InspectErr → FlattenSegments → RouterAdapter
     let rx = SocketReceiver::new(socket, alloc);
     let rx = InspectErr::new(rx, |err| {
         tracing::error!("socket recv error (kind={:?}): {err}", err.kind());
     });
     let rx = FlattenSegments::new(rx);
     let rx = RouterAdapter::new(rx, router);
-    let rx = YieldAfter::new(rx, 10);
 
-    // Drain until completion
-    rx.drain().await;
+    // Drain with budget of 10 items per poll before yielding
+    rx.drain_budgeted(Some(10)).await;
 }

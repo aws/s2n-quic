@@ -13,7 +13,6 @@ use std::sync::Arc;
 /// Counters for the datagram receive/dispatch pipeline.
 pub(crate) struct Dispatch {
     pub rx_data_pkt: Counter,
-    pub rx_none: Counter,
     pub rx_init: Counter,
     pub rx_validate: Counter,
     pub rx_init_validate: Counter,
@@ -52,8 +51,6 @@ pub(crate) struct Dispatch {
     pub rx_flow_control_stream_id_mismatch: Counter,
     pub rx_flow_control_tombstone: Counter,
     pub rx_flow_control_perm_closed: Counter,
-
-    pub rx_reset_tombstone: Counter,
 
     pub rx_reset_both: Counter,
     pub rx_reset_stream: Counter,
@@ -96,7 +93,6 @@ impl Dispatch {
     pub fn new(counters: &Registry) -> Arc<Self> {
         Arc::new(Self {
             rx_data_pkt: counters.register("rx.data_pkt"),
-            rx_none: counters.register("!rx.none"),
             rx_init: counters.register("rx.init"),
             rx_validate: counters.register("rx.validate"),
             rx_init_validate: counters.register("rx.init_validate"),
@@ -145,7 +141,6 @@ impl Dispatch {
                 .register_nominal("rx.flow_control", "tombstone"),
             rx_flow_control_perm_closed: counters.register("rx.flow_control.perm_closed"),
 
-            rx_reset_tombstone: counters.register("rx.reset.tombstone"),
             rx_reset_both: counters.register("rx.reset.both"),
             rx_reset_stream: counters.register("rx.reset.stream"),
             rx_reset_control: counters.register("rx.reset.control"),

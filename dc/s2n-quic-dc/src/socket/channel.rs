@@ -26,7 +26,6 @@ use crate::{
 };
 use core::{
     cell::RefCell,
-    fmt,
     task::{self, Poll},
 };
 use s2n_quic_core::{assume, ready, varint::VarInt};
@@ -180,32 +179,6 @@ pub trait Sender<T> {
         cx: &mut task::Context<'_>,
         value: &mut core::mem::MaybeUninit<T>,
     ) -> Poll<Result<(), ()>>;
-
-    /// Sends the value on the channel. Returns `Err` if the channel is closed.
-    async fn send(&mut self, value: T) -> Result<(), T> {
-        let mut slot = core::mem::MaybeUninit::new(value);
-        let mut taken = false;
-        core::future::poll_fn(move |cx| {
-            if taken {
-                // Value was already taken, just return Ready
-                return Poll::Ready(Ok(()));
-            }
-
-            match self.poll_send(cx, &mut slot) {
-                Poll::Ready(Ok(())) => {
-                    taken = true;
-                    Poll::Ready(Ok(()))
-                }
-                Poll::Ready(Err(())) => {
-                    taken = true;
-                    // Channel closed, extract the value
-                    Poll::Ready(Err(unsafe { slot.assume_init_read() }))
-                }
-                Poll::Pending => Poll::Pending,
-            }
-        })
-        .await
-    }
 }
 
 /// An async-capable channel receiver.
@@ -326,11 +299,6 @@ pub trait ReceiverExt<T>: Receiver<T> + Sized {
             }
             Poll::Pending
         })
-    }
-
-    /// Wraps the receiver with a debug adapter that logs received values.
-    fn dbg(self, label: &'static str) -> Dbg<T, Self> {
-        Dbg::new(self, label)
     }
 }
 
@@ -566,7 +534,11 @@ where
     A: crate::intrusive_queue::Adapter,
     R: Receiver<crate::intrusive_queue::List<A>>,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<A::Pointer>> {
+    fn poll_recv(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        budget: &mut Budget,
+    ) -> Poll<Option<A::Pointer>> {
         loop {
             // Drain buffered entries — subsequent items consume budget
             if !self.list.is_empty() {
@@ -836,36 +808,6 @@ where
     }
 }
 
-// ── YieldAfter adapter ─────────────────────────────────────────────────────
-
-/// Wraps a receiver. Previously forced yields after a threshold; now redundant
-/// since budget handles yielding. Kept for API compatibility but passes through.
-#[deprecated(note = "use Budget-based drain instead")]
-pub struct YieldAfter<R> {
-    inner: R,
-}
-
-#[allow(deprecated)]
-impl<R> YieldAfter<R> {
-    pub fn new(inner: R, _threshold: u32) -> Self {
-        Self { inner }
-    }
-}
-
-#[allow(deprecated)]
-impl<T, R> Receiver<T> for YieldAfter<R>
-where
-    R: Receiver<T>,
-{
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<T>> {
-        self.inner.poll_recv(cx, budget)
-    }
-
-    fn on_consumed(&mut self, bytes: u64) {
-        self.inner.on_consumed(bytes);
-    }
-}
-
 // ── Pump ───────────────────────────────────────────────────────────────────
 
 /// Continuously pumps values from a receiver to a sender.
@@ -1104,7 +1046,11 @@ where
     S: crate::socket::send::Socket,
     T: Sendable,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<Result<T, (io::Error, T)>>> {
+    fn poll_recv(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        budget: &mut Budget,
+    ) -> Poll<Option<Result<T, (io::Error, T)>>> {
         let Some(mut item) = ready!(self.inner.poll_recv(cx, budget)) else {
             return Poll::Ready(None);
         };
@@ -1612,7 +1558,11 @@ impl<R> Receiver<descriptor::Filled> for FlattenSegments<R>
 where
     R: Receiver<descriptor::Segments>,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<descriptor::Filled>> {
+    fn poll_recv(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        budget: &mut Budget,
+    ) -> Poll<Option<descriptor::Filled>> {
         loop {
             // Drain any buffered segments first
             if let Some(segment) = self.iter.next() {
@@ -1806,75 +1756,10 @@ impl Default for Pto {
 }
 
 impl Pto {
-    /// Returns true if we have inflight packets that need PTO protection
-    pub fn has_inflight_packets(
-        packet_map: &s2n_quic_core::packet::number::Map<
-            crate::intrusive_queue::Entry<crate::packet::datagram::partial::PartialDatagram>,
-        >,
-    ) -> bool {
-        !packet_map.is_empty()
-    }
-
     /// Called when a new ack-eliciting packet is sent
     pub fn on_packet_sent(&mut self, now: crate::clock::precision::Timestamp) {
-        // Track the last send time for PTO calculation
         self.last_sent_time = Some(now);
-        // Mark that we need to update the PTO timer (new tail packet)
         self.needs_update = true;
-    }
-
-    /// Called when we receive an ACK
-    pub fn on_ack_received(&mut self, has_remaining_inflight: bool) {
-        // Reset backoff on forward progress
-        self.backoff = s2n_quic_core::path::INITIAL_PTO_BACKOFF;
-
-        if has_remaining_inflight {
-            // We still have packets in flight, mark for update
-            self.needs_update = true;
-        } else {
-            // No more packets in flight, cancel PTO
-            self.target_time = None;
-            self.needs_update = false;
-        }
-    }
-
-    /// Called when the PTO timer fires. Returns true if we should send a probe.
-    ///
-    /// The caller must recompute target_time via update_target() before reinserting.
-    pub fn on_timeout(&mut self, has_inflight: bool) -> bool {
-        // Clear the target time - caller will recompute before reinserting
-        self.target_time = None;
-
-        // If we need an update, just reschedule without sending probe
-        if self.needs_update {
-            self.needs_update = false;
-            return false;
-        }
-
-        // This is an actual PTO timeout - send probe and increase backoff
-        self.backoff = self.backoff.saturating_mul(2).min(16); // Cap at 16
-        true
-    }
-
-    /// Calculate and set the target time for the next PTO
-    ///
-    /// Call this right before inserting into the wheel.
-    /// Uses last_sent_time as the base, falling back to clock.now() if no packets sent yet.
-    pub fn update_target<Clk: crate::clock::precision::Clock + ?Sized>(
-        &mut self,
-        clock: &Clk,
-        rtt_estimator: &s2n_quic_core::recovery::RttEstimator,
-    ) {
-        use s2n_quic_core::packet::number::PacketNumberSpace;
-        let mut pto_period = rtt_estimator.pto_period(self.backoff, PacketNumberSpace::Initial);
-
-        // Minimum 2ms to avoid premature triggers due to timestamp rounding
-        pto_period = pto_period.max(core::time::Duration::from_millis(2));
-
-        // Base the timeout on when the last packet was sent
-        // Only read clock if we don't have a last_sent_time
-        let base_time = self.last_sent_time.unwrap_or_else(|| clock.now());
-        self.target_time = Some(base_time + pto_period);
     }
 }
 
@@ -2337,100 +2222,6 @@ where
     }
 
     fn on_consumed(&mut self, bytes: u64) {
-        self.inner.on_consumed(bytes);
-    }
-}
-
-// ── Timing adapter ─────────────────────────────────────────────────────────
-
-/// Wraps a receiver and measures time spent in poll_recv
-pub struct Timing<T, R> {
-    inner: R,
-    label: &'static str,
-    _phantom: PhantomData<T>,
-}
-
-impl<T, R> Timing<T, R> {
-    pub fn new(inner: R, label: &'static str) -> Self {
-        Self {
-            inner,
-            label,
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<T, R> Receiver<T> for Timing<T, R>
-where
-    R: Receiver<T>,
-{
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<T>> {
-        // let start = std::time::Instant::now();
-        let result = self.inner.poll_recv(cx, budget);
-        // let elapsed = start.elapsed();
-
-        // if elapsed.as_millis() > 1 {
-        // tracing::warn!(label = self.label, ?elapsed, "slow poll_recv detected");
-        // }
-
-        result
-    }
-
-    fn on_consumed(&mut self, bytes: u64) {
-        self.inner.on_consumed(bytes);
-    }
-}
-
-// ── Dbg adapter ────────────────────────────────────────────────────────────
-
-/// Wraps a receiver and logs debug information about received values.
-///
-/// Prints the type name and label when values are received, useful for
-/// debugging channel pipelines.
-pub struct Dbg<T, R> {
-    inner: R,
-    label: &'static str,
-    _phantom: PhantomData<T>,
-}
-
-impl<T, R> Dbg<T, R> {
-    pub fn new(inner: R, label: &'static str) -> Self {
-        Self {
-            inner,
-            label,
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<T, R> Receiver<T> for Dbg<T, R>
-where
-    R: Receiver<T>,
-    T: fmt::Debug,
-{
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<T>> {
-        match self.inner.poll_recv(cx, budget) {
-            Poll::Ready(Some(value)) => {
-                tracing::trace!(
-                    label = self.label,
-                    // value = ?value,
-                    "recv Ready(Some)",
-                );
-                Poll::Ready(Some(value))
-            }
-            Poll::Ready(None) => {
-                tracing::trace!(label = self.label, "recv Ready(None)",);
-                Poll::Ready(None)
-            }
-            Poll::Pending => {
-                tracing::trace!(label = self.label, "recv Pending",);
-                Poll::Pending
-            }
-        }
-    }
-
-    fn on_consumed(&mut self, bytes: u64) {
-        tracing::trace!(label = self.label, bytes, "on_consumed",);
         self.inner.on_consumed(bytes);
     }
 }

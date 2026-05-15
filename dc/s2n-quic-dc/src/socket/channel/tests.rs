@@ -2,6 +2,32 @@ use super::*;
 use crate::{intrusive_queue, testing::sim};
 use core::{future::Future, pin::pin};
 
+trait SenderExt<T>: Sender<T> {
+    async fn send(&mut self, value: T) -> Result<(), T> {
+        let mut slot = core::mem::MaybeUninit::new(value);
+        let mut taken = false;
+        core::future::poll_fn(move |cx| {
+            if taken {
+                return Poll::Ready(Ok(()));
+            }
+            match self.poll_send(cx, &mut slot) {
+                Poll::Ready(Ok(())) => {
+                    taken = true;
+                    Poll::Ready(Ok(()))
+                }
+                Poll::Ready(Err(())) => {
+                    taken = true;
+                    Poll::Ready(Err(unsafe { slot.assume_init_read() }))
+                }
+                Poll::Pending => Poll::Pending,
+            }
+        })
+        .await
+    }
+}
+
+impl<T, S: Sender<T>> SenderExt<T> for S {}
+
 fn noop_cx() -> core::task::Context<'static> {
     let waker = s2n_quic_core::task::waker::noop();
     let waker = Box::leak(Box::new(waker));
@@ -374,47 +400,6 @@ fn flatten_drains_queue_then_fetches_next() {
             let val = flat.recv(&mut budget).await;
             assert!(val.is_none());
         }
-        .primary()
-        .spawn();
-    });
-}
-
-// ── YieldAfter tests ────────────────────────────────────────────────
-
-struct AssertSend<F>(F);
-unsafe impl<F> Send for AssertSend<F> {}
-impl<F: core::future::Future> core::future::Future for AssertSend<F> {
-    type Output = F::Output;
-    fn poll(
-        self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Self::Output> {
-        unsafe { self.map_unchecked_mut(|s| &mut s.0) }.poll(cx)
-    }
-}
-
-#[test]
-#[allow(deprecated)]
-fn yield_after_is_passthrough() {
-    sim(|| {
-        use crate::testing::ext::*;
-
-        AssertSend(async {
-            let (mut tx, rx) = cell::sync::new::<u32>();
-            let mut yield_rx = super::YieldAfter::new(rx, 3);
-
-            let mut cx = noop_cx();
-            let mut budget = Budget::new(usize::MAX);
-
-            // YieldAfter is now a pass-through; all items return Ready
-            for i in 0..5 {
-                tx.send(i).await.unwrap();
-                assert!(matches!(
-                    yield_rx.poll_recv(&mut cx, &mut budget),
-                    Poll::Ready(Some(_))
-                ));
-            }
-        })
         .primary()
         .spawn();
     });

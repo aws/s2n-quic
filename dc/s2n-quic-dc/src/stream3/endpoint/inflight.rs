@@ -84,6 +84,7 @@ pub(crate) struct Map {
 }
 
 impl Map {
+    #[inline]
     pub fn new(inflight_gauge: QueueGauge) -> Self {
         Self {
             inner: Default::default(),
@@ -91,6 +92,7 @@ impl Map {
         }
     }
 
+    #[inline]
     pub fn insert(&mut self, pn: PacketNumber, entry: Packet) {
         self.inflight_gauge.enqueue(1);
         self.inner.insert(pn, entry);
@@ -100,6 +102,7 @@ impl Map {
     ///
     /// Returns an iterator of (PacketNumber, Packet) for further processing
     /// (completion notifications, CCA updates).
+    #[inline]
     pub fn remove_range(
         &mut self,
         range: PacketNumberRange,
@@ -110,18 +113,15 @@ impl Map {
         }
     }
 
+    #[inline]
     pub fn has_inflight(&self) -> bool {
         self.inner.iter().next().is_some()
-    }
-
-    /// Return a mutable reference to the packet at `pn`, if present.
-    pub fn get_mut(&mut self, pn: PacketNumber) -> Option<&mut Packet> {
-        self.inner.get_mut(pn)
     }
 
     /// Find the oldest inflight packet number that has data frames available for probing.
     ///
     /// Returns `None` if all inflight entries are shells or if the map is empty.
+    #[inline]
     pub fn oldest_non_shell_pn(&self) -> Option<PacketNumber> {
         self.inner
             .iter()
@@ -136,6 +136,7 @@ impl Map {
     /// finalise the shell pointer.
     ///
     /// [`set_probed_to`]: Self::set_probed_to
+    #[inline]
     pub fn take_oldest_for_probe(&mut self) -> Option<(PacketNumber, Queue<Frame>)> {
         let old_pn = self.oldest_non_shell_pn()?;
         let packet = self.inner.get_mut(old_pn)?;
@@ -151,6 +152,7 @@ impl Map {
     ///
     /// The O(N × F) loop over all frames is only compiled in test builds. Cheaper
     /// per-entry checks can be added outside the `#[cfg(test)]` guard in the future.
+    #[inline]
     pub fn invariants(&self) {
         #[cfg(test)]
         for (_, packet) in self.inner.iter() {
@@ -173,6 +175,7 @@ impl Map {
     ///
     /// Called after a probe segment is successfully encoded: the `old_pn` entry
     /// becomes a shell pointing to `new_pn` (the probe's packet number).
+    #[inline]
     pub fn set_probed_to(&mut self, old_pn: PacketNumber, new_pn: PacketNumber) {
         if let Some(packet) = self.inner.get_mut(old_pn) {
             debug_assert!(
@@ -194,6 +197,7 @@ impl Map {
     /// Returns `(tail_pn, frames)`. The frames queue may be empty if the tail entry
     /// was already ACKed and removed in the same ACK range (both shell and probe PN
     /// acknowledged simultaneously).
+    #[inline]
     pub fn take_chain_tail_frames(&mut self, mut pn: PacketNumber) -> (PacketNumber, Queue<Frame>) {
         // Walk the chain to the tail (first entry with no probed_to link).
         loop {
@@ -221,7 +225,9 @@ mod tests {
         stream3::frame::{Frame, Header, TransmissionStatus, DEFAULT_TTL},
     };
     use core::time::Duration;
-    use s2n_quic_core::{packet::number::PacketNumberSpace, recovery::RttEstimator, varint::VarInt};
+    use s2n_quic_core::{
+        packet::number::PacketNumberSpace, recovery::RttEstimator, varint::VarInt,
+    };
     use std::sync::Arc;
 
     fn make_gauge() -> QueueGauge {
@@ -364,8 +370,8 @@ mod tests {
         map.take_oldest_for_probe(); // empties pn1's frames
         map.set_probed_to(pn1, pn2);
         map.take_oldest_for_probe(); // empties pn2's frames
-        // pn2 has no probed_to yet — take_oldest_for_probe should still return None
-        // because frames are empty
+                                     // pn2 has no probed_to yet — take_oldest_for_probe should still return None
+                                     // because frames are empty
 
         assert!(map.oldest_non_shell_pn().is_none());
         assert!(map.take_oldest_for_probe().is_none());
@@ -520,7 +526,7 @@ mod tests {
         map.insert(pn2, make_packet(fake_entry()));
         map.take_oldest_for_probe(); // makes pn1 a shell with empty frames
         map.set_probed_to(pn1, pn2); // now pn1 is a valid shell (probed_to is Some)
-        // Should not panic: pn1 has probed_to, pn2 has non-empty frames
+                                     // Should not panic: pn1 has probed_to, pn2 has non-empty frames
         map.invariants();
     }
 }
