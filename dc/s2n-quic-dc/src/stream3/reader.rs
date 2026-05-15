@@ -277,6 +277,12 @@ impl Reader {
         core::future::poll_fn(|cx| self.0.poll_validate(cx)).await
     }
 
+    /// Returns the stream identifier for this reader.
+    #[inline]
+    pub fn stream_id(&self) -> u64 {
+        self.0.stream_id.as_u64()
+    }
+
     #[inline]
     pub fn peer_addr(&self) -> SocketAddr {
         *self.0.path_secret_entry.peer()

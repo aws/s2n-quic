@@ -5,11 +5,15 @@ resolver = "2"
 # don't include any workspaces outside of the main project
 exclude = ["examples", "tools/event-generator", "tools/memory-report", "tools/s2n-events", "tools/udp-attack", "tools/xdp"]
 
-# Patch bach to include a fix for cancelled timer entries cascading in the
-# wheel and exceeding the max_microsteps limit in simulation.
-# https://github.com/camshaft/bach/commit/0bb8ade4f82f51fecedecf72dd707730a525a451
+# Patch bach to include:
+# - A fix for cancelled timer entries cascading in the wheel and exceeding
+#   the max_microsteps limit in simulation.
+#   https://github.com/camshaft/bach/commit/0bb8ade4f82f51fecedecf72dd707730a525a451
+# - Network monitor support for per-packet delays and duplication, enabling
+#   reordering and duplicate-transmission simulation in deterministic tests.
+#   https://github.com/camshaft/bach/commit/adaa41d1417035c8dc0737f0a8688ccac4768495
 [patch.crates-io]
-bach = { git = "https://github.com/camshaft/bach", rev = "0bb8ade4f82f51fecedecf72dd707730a525a451" }
+bach = { git = "https://github.com/camshaft/bach", rev = "adaa41d1417035c8dc0737f0a8688ccac4768495" }
 
 [profile.release-debug]
 inherits = "dev"

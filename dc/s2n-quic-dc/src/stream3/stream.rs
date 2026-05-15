@@ -25,6 +25,14 @@ impl Stream {
         self.write.force_shutdown();
     }
 
+    /// Returns the stream identifier.
+    ///
+    /// This is the same ID that the client assigned when opening the stream,
+    /// and is echoed by the server side once the stream is accepted.
+    pub fn stream_id(&self) -> u64 {
+        self.read.stream_id()
+    }
+
     /// Wait for the stream to be validated
     ///
     /// For streams that were already validated (confirmed non-duplicate), this is a no-op.
