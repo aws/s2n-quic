@@ -73,7 +73,12 @@ fn ping_pong() {
                 .await
                 .expect("connect failed");
 
+            let peer_addr = stream.peer_addr();
+            assert_eq!(peer_addr.port(), SERVER_PORT);
+
             let (mut reader, mut writer) = stream.into_split();
+            assert_eq!(reader.peer_addr(), peer_addr);
+            assert_eq!(writer.peer_addr(), peer_addr);
 
             // Send "ping" + FIN in the FlowInit packet.
             let mut ping = Bytes::from_static(b"ping");

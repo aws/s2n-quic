@@ -96,6 +96,13 @@ fn make_pair_with_type(ep_type: endpoint::Type) -> (Reader, Pusher) {
     (reader, pusher)
 }
 
+#[test]
+fn peer_addr_returns_handshake_addr() {
+    let (reader, _) = make_pair();
+    let expected: SocketAddr = "127.0.0.1:4433".parse().unwrap();
+    assert_eq!(reader.peer_addr(), expected);
+}
+
 /// Mock endpoint side of a reader test.
 ///
 /// `push_*` injects [`msg::Stream`] messages into the flow-queue dispatcher,

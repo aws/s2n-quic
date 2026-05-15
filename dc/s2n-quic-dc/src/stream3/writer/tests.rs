@@ -86,6 +86,13 @@ fn make_pair_with_type(ep_type: endpoint::Type) -> (Writer, Pusher) {
     (writer, pusher)
 }
 
+#[test]
+fn peer_addr_returns_handshake_addr() {
+    let (writer, _) = make_client_pair();
+    let expected: SocketAddr = "127.0.0.1:4433".parse().unwrap();
+    assert_eq!(writer.peer_addr(), expected);
+}
+
 /// Reassembles payload from a sequence of data frames, validating contiguous
 /// offsets and FIN semantics along the way.
 ///

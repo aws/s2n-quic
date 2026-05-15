@@ -107,6 +107,7 @@ use s2n_quic_core::{
 };
 use std::{
     io,
+    net::SocketAddr,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -272,6 +273,11 @@ impl Reader {
 
     pub async fn validate(&mut self) -> io::Result<()> {
         core::future::poll_fn(|cx| self.0.poll_validate(cx)).await
+    }
+
+    #[inline]
+    pub fn peer_addr(&self) -> SocketAddr {
+        *self.0.path_secret_entry.peer()
     }
 
     pub(crate) fn send_reset(&mut self, error_code: VarInt) {

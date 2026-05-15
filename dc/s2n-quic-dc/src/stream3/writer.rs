@@ -91,6 +91,7 @@ use s2n_quic_core::{
 };
 use std::{
     io,
+    net::SocketAddr,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -280,6 +281,11 @@ impl Writer {
                 return Ok(total);
             }
         }
+    }
+
+    #[inline]
+    pub fn peer_addr(&self) -> SocketAddr {
+        *self.0.path_secret_entry.peer()
     }
 
     pub fn poll_write_from<S>(
