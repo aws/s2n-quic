@@ -202,6 +202,8 @@ impl Provider for TestTlsProvider {
         let server = s2n_quic_tls_prov::Server::builder()
             .with_application_protocols(["h3"].iter())?
             .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)?
+            .with_client_authentication()?
+            .with_trusted_certificate(certificates::CERT_PEM)?
             .build()?;
         Ok(server)
     }
@@ -210,6 +212,7 @@ impl Provider for TestTlsProvider {
         let client = s2n_quic_tls_prov::Client::builder()
             .with_application_protocols(["h3"].iter())?
             .with_certificate(certificates::CERT_PEM)?
+            .with_client_identity(certificates::CERT_PEM, certificates::KEY_PEM)?
             .build()?;
         Ok(client)
     }
