@@ -27,6 +27,7 @@ mod size_of;
 mod state;
 mod status;
 mod store;
+pub mod persistence;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
@@ -35,6 +36,7 @@ pub mod testing;
 mod event_tests;
 
 pub use entry::Entry;
+pub use persistence::{PersistedEntry, PersistenceObserver, ReplayResult};
 use store::Store;
 
 pub use entry::{
@@ -79,21 +81,36 @@ impl Map {
         should_evict_on_unknown_path_secret: bool,
         clock: C,
         subscriber: S,
+        persistence_observer: Option<Arc<dyn persistence::PersistenceObserver>>,
     ) -> Self
     where
         C: 'static + time::Clock + Send + Sync,
         S: event::Subscriber,
     {
-        let store = state::State::builder()
+        let mut builder = state::State::builder()
             .with_signer(signer)
             .with_capacity(capacity)
             .with_evict_on_unknown_path_secret(should_evict_on_unknown_path_secret)
             .with_clock(clock)
-            .with_subscriber(subscriber)
-            .build()
-            .unwrap();
+            .with_subscriber(subscriber);
+
+        if let Some(observer) = persistence_observer {
+            builder = builder.with_persistence_observer(observer);
+        }
+
+        let store = builder.build().unwrap();
 
         Self { store }
+    }
+
+    pub fn replay_unknown_path_secrets(
+        &self,
+        entries: Vec<persistence::PersistedEntry>,
+        rate_pps: u32,
+        timeout: std::time::Duration,
+    ) -> persistence::ReplayResult {
+        self.store
+            .replay_unknown_path_secrets(entries, rate_pps, timeout)
     }
 
     /// The number of trusted secrets.

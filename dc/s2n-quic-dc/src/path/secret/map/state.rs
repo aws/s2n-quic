@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    cleaner::Cleaner, stateless_reset, ApplicationData, ApplicationDataError, Entry, Store,
+    cleaner::Cleaner, persistence::PersistenceObserver, stateless_reset, ApplicationData,
+    ApplicationDataError, Entry, Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -62,6 +63,7 @@ where
     should_evict_on_unknown_path_secret: bool,
     clock: Option<C>,
     subscriber: Option<S>,
+    persistence_observer: Option<Arc<dyn PersistenceObserver>>,
 }
 
 impl<C, S> StateBuilder<C, S>
@@ -76,7 +78,13 @@ where
             should_evict_on_unknown_path_secret: false,
             clock: None,
             subscriber: None,
+            persistence_observer: None,
         }
+    }
+
+    pub fn with_persistence_observer(mut self, observer: Arc<dyn PersistenceObserver>) -> Self {
+        self.persistence_observer = Some(observer);
+        self
     }
 
     pub fn with_signer(mut self, signer: stateless_reset::Signer) -> Self {
@@ -104,6 +112,7 @@ where
             should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
             signer: self.signer,
             capacity: self.capacity,
+            persistence_observer: self.persistence_observer,
         }
     }
 
@@ -114,6 +123,7 @@ where
             should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
             signer: self.signer,
             capacity: self.capacity,
+            persistence_observer: self.persistence_observer,
         }
     }
 
@@ -131,6 +141,7 @@ where
             self.should_evict_on_unknown_path_secret,
             clock,
             subscriber,
+            self.persistence_observer,
         ))
     }
 }
@@ -442,6 +453,8 @@ where
             >,
         >,
     >,
+
+    pub(super) persistence_observer: Option<Arc<dyn PersistenceObserver>>,
 }
 
 // FIXME: Avoid the whole socket.
@@ -503,6 +516,7 @@ where
         should_evict_on_unknown_path_secret: bool,
         clock: C,
         subscriber: S,
+        persistence_observer: Option<Arc<dyn PersistenceObserver>>,
     ) -> Arc<Self> {
         let control_socket = control_socket();
 
@@ -531,6 +545,7 @@ where
             subscriber,
             request_handshake: RwLock::new(None),
             mk_application_data: RwLock::new(None),
+            persistence_observer,
         };
 
         // Growing to double our maximum inserted entries should ensure that we never grow again, see:
@@ -1205,6 +1220,64 @@ where
             .on_dc_connection_timeout(event::builder::DcConnectionTimeout {
                 peer_address: SocketAddress::from(*peer_address).into_event(),
             });
+    }
+
+    fn replay_unknown_path_secrets(
+        &self,
+        entries: Vec<super::persistence::PersistedEntry>,
+        rate_pps: u32,
+        timeout: Duration,
+    ) -> super::persistence::ReplayResult {
+        use crate::packet::{secret_control as control, WireVersion};
+        use s2n_codec::EncoderBuffer;
+        use std::time::Instant;
+
+        let mut result = super::persistence::ReplayResult::default();
+
+        let control_socket = match self.control_socket.as_ref() {
+            Some(s) => s,
+            None => {
+                result.failed = entries.len() as u32;
+                return result;
+            }
+        };
+
+        let deadline = Instant::now() + timeout;
+        let sleep_per_packet = Duration::from_secs(1)
+            .checked_div(rate_pps)
+            .unwrap_or(Duration::from_secs(1));
+
+        for (i, entry) in entries.iter().enumerate() {
+            if Instant::now() >= deadline {
+                result.remaining = (entries.len() - i) as u32;
+                return result;
+            }
+
+            let packet = control::UnknownPathSecret {
+                wire_version: WireVersion::ZERO,
+                credential_id: entry.credential_id,
+                queue_id: None,
+            };
+
+            let stateless_reset = self.signer.sign(&entry.credential_id);
+
+            let mut buffer = [0u8; control::UnknownPathSecret::MAX_PACKET_SIZE];
+            let len = {
+                let encoder = EncoderBuffer::new(&mut buffer);
+                packet.encode(encoder, &stateless_reset)
+            };
+
+            match control_socket.send_to(&buffer[..len], entry.peer) {
+                Ok(_) => result.sent += 1,
+                Err(_) => result.failed += 1,
+            }
+
+            if i + 1 < entries.len() {
+                std::thread::sleep(sleep_per_packet);
+            }
+        }
+
+        result
     }
 }
 

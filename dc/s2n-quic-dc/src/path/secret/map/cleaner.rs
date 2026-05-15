@@ -188,6 +188,13 @@ impl Cleaner {
                 return false;
             }
 
+            if let Some(observer) = &state.persistence_observer {
+                observer.on_entry_visited(&super::persistence::PersistedEntry {
+                    peer: *entry.peer(),
+                    credential_id: *entry.id(),
+                });
+            }
+
             true
         });
 
@@ -195,6 +202,11 @@ impl Cleaner {
         state.cleaner_peer_seen.clear();
 
         drop(queue);
+
+        if let Some(observer) = &state.persistence_observer {
+            observer.on_cycle_complete();
+        }
+
         let handshake_lock_duration = state.clock.get_time().saturating_duration_since(in_lock);
 
         if refill_rehandshakes {
