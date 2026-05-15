@@ -285,7 +285,12 @@ pub fn submission_channel(shard_count: usize) -> (SubmissionSender, SubmissionRe
 
 /// Create a new completion channel for Frames.
 pub fn completion_channel() -> CompletionReceiver {
-    datagram_completion::new()
+    datagram_completion::new_with_mode(datagram_completion::SubscriptionMode::All)
+}
+
+/// Create a new completion channel that only delivers failed transmissions.
+pub fn failure_completion_channel() -> CompletionReceiver {
+    datagram_completion::new_with_mode(datagram_completion::SubscriptionMode::FailuresOnly)
 }
 
 /// Status of a frame's transmission through the pipeline.

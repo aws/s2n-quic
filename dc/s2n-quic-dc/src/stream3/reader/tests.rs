@@ -183,6 +183,26 @@ impl Pusher {
             Some(queue)
         }
     }
+
+    fn complete_with_status(
+        &mut self,
+        mut frames: intrusive_queue::Queue<Frame>,
+        status: frame::TransmissionStatus,
+    ) {
+        while let Some(entry) = frames.pop_front() {
+            let mut completed = entry.into_inner();
+            let Some(sender) = completed.completion.take() else {
+                continue;
+            };
+            completed.status = status;
+
+            let mut queue = intrusive_queue::Queue::new();
+            queue.push_back(completed.into());
+            sender
+                .send_batch(queue)
+                .expect("completion send should succeed in tests");
+        }
+    }
 }
 
 fn decode_max_data_from_flow_control(frame: &Frame) -> Option<VarInt> {
@@ -589,6 +609,47 @@ fn max_data_sent_after_consuming() {
             // Keep the task alive long enough for the endpoint-side assertion to
             // consume this batch before Reader is dropped at task completion.
             crate::testing::sleep(Duration::from_secs(1)).await;
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+#[test]
+fn max_data_transmission_failure_surfaces_error() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = make_pair();
+        let window_size = reader.0.window_size;
+        let payload = vec![0u8; (window_size / 2 + 1) as usize];
+        let payload_len = payload.len();
+
+        async move {
+            pusher.push_data(0, &payload, false);
+
+            let frames = pusher.recv_frames().await;
+            pusher.complete_with_status(
+                frames,
+                frame::TransmissionStatus::Failed(frame::FailureReason::TransmissionError),
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut buf = BytesMut::with_capacity(payload_len + 16);
+
+            let read = reader.read_into(&mut buf).await.expect("first read should succeed");
+            assert_eq!(read, payload_len);
+
+            bach::task::yield_now().await;
+
+            let err = reader
+                .read_into(&mut buf)
+                .await
+                .expect_err("expected broken pipe from failed MAX_DATA transmission");
+            assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
         }
         .primary()
         .spawn();

@@ -139,6 +139,8 @@ impl ReadToEnd {
 struct Inner {
     /// Channel to submit frames to the wheel
     frame_tx: SubmissionSender,
+    /// Receiver for failed completion notifications from the pipeline
+    completion_rx: frame::CompletionReceiver,
     /// Stream-side channel for receiving data from the pipeline
     stream_rx: msg::queue::Stream,
     /// Path secret entry providing MTU and crypto material
@@ -204,6 +206,7 @@ impl Reader {
 
         Self(Box::new(Inner {
             frame_tx,
+            completion_rx: frame::failure_completion_channel(),
             stream_rx,
             path_secret_entry,
             stream_id,
@@ -228,6 +231,7 @@ impl Reader {
 
         Self(Box::new(Inner {
             frame_tx,
+            completion_rx: frame::failure_completion_channel(),
             stream_rx,
             path_secret_entry,
             stream_id,
@@ -252,6 +256,7 @@ impl Reader {
 
         Self(Box::new(Inner {
             frame_tx,
+            completion_rx: frame::failure_completion_channel(),
             stream_rx,
             path_secret_entry,
             stream_id,
@@ -330,6 +335,8 @@ impl HasCoop for Inner {
 impl Inner {
     #[inline]
     fn poll_validate(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
+        self.poll_completions(cx)?;
+
         if !self.status.is_pending_validation() {
             return Poll::Ready(Ok(()));
         }
@@ -362,6 +369,8 @@ impl Inner {
     where
         S: buffer::writer::Storage,
     {
+        self.poll_completions(cx)?;
+
         // Once the stream is fully consumed, signal EOF without touching the
         // (potentially already-closed) stream channel.
         if self.status.is_complete() {
@@ -643,6 +652,59 @@ impl Inner {
         Ok(())
     }
 
+    fn poll_completions(&mut self, cx: &mut Context) -> io::Result<()> {
+        use crate::stream3::frame::FailureReason;
+
+        match self.completion_rx.poll_swap(cx) {
+            Poll::Ready(Some(queue)) => {
+                let mut failure = None;
+
+                for completed in queue.iter() {
+                    if let frame::TransmissionStatus::Failed(reason) = completed.status {
+                        if let Some(existing) = failure {
+                            debug!(
+                                stream_id = self.stream_id.as_u64(),
+                                first = ?existing,
+                                additional = ?reason,
+                                "observed additional transmission failure"
+                            );
+                        } else {
+                            failure = Some(reason);
+                        }
+                    }
+                }
+
+                if let Some(reason) = failure {
+                    return match reason {
+                        FailureReason::UnknownPathSecret => Err(io::Error::new(
+                            io::ErrorKind::ConnectionRefused,
+                            "path secret rejected by peer",
+                        )),
+                        FailureReason::PeerDead => Err(io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            "peer declared dead (idle timeout)",
+                        )),
+                        FailureReason::TransmissionError => Err(io::Error::new(
+                            io::ErrorKind::BrokenPipe,
+                            "transmission failed after retries",
+                        )),
+                        FailureReason::Cancelled => Err(io::Error::new(
+                            io::ErrorKind::Interrupted,
+                            "transmission cancelled",
+                        )),
+                    };
+                }
+
+                Ok(())
+            }
+            Poll::Ready(None) => Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "completion channel closed",
+            )),
+            Poll::Pending => Ok(()),
+        }
+    }
+
     fn send_max_data_frame(&mut self, maximum_data: VarInt) -> io::Result<()> {
         let Some(remote_queue_id) = self.stream_rx.remote_queue_id() else {
             return Ok(());
@@ -663,7 +725,7 @@ impl Inner {
             },
             payload: control_data,
             path_secret_entry: self.path_secret_entry.clone(),
-            completion: None,
+            completion: Some(self.completion_rx.sender()),
             status: frame::TransmissionStatus::default(),
             ttl: DEFAULT_TTL,
             transmission_time: None,

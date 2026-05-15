@@ -25,12 +25,20 @@ const SHOULD_TRANSMIT: u8 = 0b01;
 const RECEIVER_ALIVE: u8 = 0b10;
 const INITIAL_STATE: u8 = SHOULD_TRANSMIT | RECEIVER_ALIVE;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SubscriptionMode {
+    #[default]
+    All,
+    FailuresOnly,
+}
+
 struct Inner<T> {
     queue: intrusive_queue::Queue<T>,
     recv_waker: Option<core::task::Waker>,
 }
 
 struct Shared<T> {
+    mode: SubscriptionMode,
     /// Bitpacked flags:
     /// - bit 0: should_transmit
     /// - bit 1: receiver_alive
@@ -39,7 +47,12 @@ struct Shared<T> {
 }
 
 pub fn new<T>() -> Receiver<T> {
+    new_with_mode(SubscriptionMode::All)
+}
+
+pub fn new_with_mode<T>(mode: SubscriptionMode) -> Receiver<T> {
     let shared = Arc::new(Shared {
+        mode,
         flags: AtomicU8::new(INITIAL_STATE),
         inner: Mutex::new(Inner {
             queue: intrusive_queue::Queue::new(),
@@ -106,6 +119,11 @@ impl<T> Sender<T> {
     #[inline]
     pub fn queue_id(&self) -> usize {
         Arc::as_ptr(&self.shared) as usize
+    }
+
+    #[inline]
+    pub fn subscription_mode(&self) -> SubscriptionMode {
+        self.shared.mode
     }
 
     /// Send a completion notification, returning the receiver waker rather than invoking it.
@@ -375,5 +393,16 @@ mod tests {
 
         // Sender drop doesn't cancel transmissions
         assert!(tx2.should_transmit());
+    }
+
+    #[test]
+    fn sender_subscription_mode() {
+        let rx = new_with_mode::<()>(SubscriptionMode::FailuresOnly);
+        let tx = rx.sender();
+        assert_eq!(tx.subscription_mode(), SubscriptionMode::FailuresOnly);
+
+        let rx = new::<()>();
+        let tx = rx.sender();
+        assert_eq!(tx.subscription_mode(), SubscriptionMode::All);
     }
 }

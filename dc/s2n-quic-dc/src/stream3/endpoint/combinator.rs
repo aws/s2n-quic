@@ -622,9 +622,10 @@ where
 /// Receiver combinator that groups frames by completion channel and delivers each group
 /// as a single batch (one lock acquisition per channel).
 ///
-/// Each `poll_recv` call consumes one frame from the upstream. If the frame belongs to the
-/// same completion channel as the current batch, it's appended. Otherwise the accumulated
-/// batch is flushed via `send_batch` and a new batch begins with the incoming frame.
+/// Each `poll_recv` call consumes as many frames from the upstream as budget allows.
+/// If a frame belongs to the same completion channel as the current batch, it's appended.
+/// Otherwise the accumulated batch is flushed via `send_batch` and a new batch begins with
+/// the incoming frame.
 ///
 /// Frames without a completion sender are silently dropped (best-effort frames).
 ///
@@ -653,6 +654,22 @@ where
             .map(|c| c.queue_id())
     }
 
+    #[inline]
+    fn should_notify(frame: &Frame) -> bool {
+        use crate::socket::channel::intrusive_queue::datagram_completion::SubscriptionMode;
+
+        let Some(sender) = frame.completion.as_ref() else {
+            return false;
+        };
+
+        match sender.subscription_mode() {
+            SubscriptionMode::All => true,
+            SubscriptionMode::FailuresOnly => {
+                matches!(frame.status, frame::TransmissionStatus::Failed(_))
+            }
+        }
+    }
+
     fn flush(&mut self) -> crate::flow::queue::AutoWake {
         if self.batch.is_empty() {
             return Default::default();
@@ -676,34 +693,64 @@ where
         cx: &mut task::Context<'_>,
         budget: &mut Budget,
     ) -> Poll<Option<crate::flow::queue::AutoWake>> {
-        let frame = match self.inner.poll_recv(cx, budget) {
-            Poll::Ready(Some(frame)) => frame,
-            Poll::Ready(None) => {
-                let waker = self.flush();
-                return Poll::Ready(Some(waker));
-            }
-            Poll::Pending => {
-                let waker = self.flush();
-                if waker.is_some() {
-                    return Poll::Ready(Some(waker));
+        loop {
+            if budget.is_exhausted() {
+                budget.set_needs_wake();
+
+                if self.batch.is_empty() {
+                    return Poll::Pending;
                 }
-                return Poll::Pending;
+
+                return Poll::Ready(Some(self.flush()));
             }
-        };
 
-        let incoming_id = frame.completion.as_ref().map(|c| c.queue_id());
+            let frame = match self.inner.poll_recv(cx, budget) {
+                Poll::Ready(Some(frame)) => frame,
+                Poll::Ready(None) => {
+                    if self.batch.is_empty() {
+                        return Poll::Ready(None);
+                    }
 
-        let Some(_) = incoming_id else {
-            return Poll::Ready(Some(Default::default()));
-        };
+                    return Poll::Ready(Some(self.flush()));
+                }
+                Poll::Pending => {
+                    let waker = self.flush();
+                    if waker.is_some() {
+                        return Poll::Ready(Some(waker));
+                    }
+                    return Poll::Pending;
+                }
+            };
 
-        if self.current_queue_id() == incoming_id {
-            self.batch.push_back(Entry::from(frame));
-            Poll::Ready(Some(Default::default()))
-        } else {
+            if !Self::should_notify(&frame) {
+                continue;
+            }
+
+            if self.batch.is_empty() {
+                self.batch.push_back(Entry::from(frame));
+                continue;
+            }
+
+            let is_same_queue = self.current_queue_id()
+                == Some(
+                    frame
+                        .completion
+                        .as_ref()
+                        .map(|c| c.queue_id())
+                        .expect("invariant violation: frame.completion is None after should_notify returned true"),
+                );
+
+            if is_same_queue {
+                self.batch.push_back(Entry::from(frame));
+                continue;
+            }
+
             let waker = self.flush();
             self.batch.push_back(Entry::from(frame));
-            Poll::Ready(Some(waker))
+
+            if waker.is_some() {
+                return Poll::Ready(Some(waker));
+            }
         }
     }
 
