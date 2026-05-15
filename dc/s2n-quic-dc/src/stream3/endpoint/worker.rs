@@ -31,7 +31,7 @@ impl<D, Route: routing::SenderRoute> FanOutRouter<D, Route> {
     pub fn new(txs: Vec<D>, counters: &Registry) -> Self {
         let route = Route::new(txs.len());
         let per_worker_routed = (0..txs.len())
-            .map(|i| counters.register_nominal("router.routed", i))
+            .map(|i| counters.register_nominal("router.routed", format_args!("recv.{i}")))
             .collect();
         Self {
             txs,

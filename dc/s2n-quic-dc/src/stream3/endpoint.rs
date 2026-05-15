@@ -320,7 +320,8 @@ where
     let (worker_batch_txs, worker_batch_rxs): (Vec<_>, Vec<_>) = (0..num_send_workers)
         .map(|i| {
             let (tx, rx) = intrusive_queue::sync::new::<combinator::FrameBatch>();
-            let gauge = counter_registry.register_queue_gauge_nominal("q.batch", i);
+            let gauge =
+                counter_registry.register_queue_gauge_nominal("q.batch", format_args!("send.{i}"));
             let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
             (tx, rx)
         })
@@ -328,7 +329,8 @@ where
     let (worker_ack_txs, worker_ack_rxs): (Vec<_>, Vec<_>) = (0..num_send_workers)
         .map(|i| {
             let (tx, rx) = intrusive_queue::sync::new::<msg::Sender>();
-            let gauge = counter_registry.register_queue_gauge_nominal("q.ack", i);
+            let gauge =
+                counter_registry.register_queue_gauge_nominal("q.ack", format_args!("send.{i}"));
             let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
             (tx, rx)
         })
@@ -365,7 +367,7 @@ where
         let socket = socket::MeteredSend::new(
             socket,
             counter_registry.register("socket.tx"),
-            counter_registry.register("socket.tx:bytes"),
+            counter_registry.register_bytes("socket.tx"),
         );
         workers[worker_id].send_sockets.push(SendSocketParts {
             socket,
@@ -414,7 +416,8 @@ where
     let (ack_completion_txs, ack_completion_rxs): (Vec<_>, Vec<_>) = (0..num_recv_dispatch)
         .map(|i| {
             let (tx, rx) = crate::socket::channel::intrusive_queue::sync::new::<msg::Sender>();
-            let gauge = counter_registry.register_queue_gauge_nominal("q.ack_completion", i);
+            let gauge = counter_registry
+                .register_queue_gauge_nominal("q.ack_completion", format_args!("recv.{i}"));
             let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
             (tx, rx)
         })
@@ -431,9 +434,11 @@ where
         let worker_id = layout.send[idx];
         workers[worker_id].send_worker = Some(SendWorkerParts {
             batch_rx,
-            batch_gauge: counter_registry.register_queue_gauge_nominal("q.batch", idx),
+            batch_gauge: counter_registry
+                .register_queue_gauge_nominal("q.batch", format_args!("send.{idx}")),
             ack_rx,
-            ack_gauge: counter_registry.register_queue_gauge_nominal("q.ack", idx),
+            ack_gauge: counter_registry
+                .register_queue_gauge_nominal("q.ack", format_args!("send.{idx}")),
             random: crate::xorshift::Rng::new(),
             frame_tx: frame_tx.clone(),
             ack_completions_tx: ack_completions_tx.clone(),
@@ -452,7 +457,8 @@ where
             let (tx, rx) = intrusive_queue::sync::new::<
                 packet::datagram::decoder::Packet<descriptor::Filled>,
             >();
-            let gauge = counter_registry.register_queue_gauge_nominal("q.dispatch", i);
+            let gauge = counter_registry
+                .register_queue_gauge_nominal("q.dispatch", format_args!("recv.{i}"));
             (crate::socket::channel::GaugedSender::new(tx, gauge), rx)
         })
         .unzip();
@@ -467,7 +473,8 @@ where
         let worker_id = layout.recv_dispatch[idx];
         workers[worker_id].recv_dispatch = Some(RecvDispatchParts {
             packet_rx: dispatch_rx,
-            packet_gauge: counter_registry.register_queue_gauge_nominal("q.dispatch", idx),
+            packet_gauge: counter_registry
+                .register_queue_gauge_nominal("q.dispatch", format_args!("recv.{idx}")),
             path_secret_map: path_secret_map.clone(),
             acceptor_registry: acceptor_registry.clone(),
             frame_tx: frame_tx.clone(),
@@ -489,7 +496,7 @@ where
         let socket = socket::MeteredRecv::new(
             socket,
             counter_registry.register("socket.rx"),
-            counter_registry.register("socket.rx:bytes"),
+            counter_registry.register_bytes("socket.rx"),
         );
         workers[worker_id].recv_socket = Some(RecvSocketParts {
             socket,
@@ -737,8 +744,16 @@ where
                     recv_dispatch_idx,
                     budgets.ack_burst,
                 ));
-                local.spawn(tasks::ack_completion_task(
+                let ack_completion_gauge = counter_registry.register_queue_gauge_nominal(
+                    "q.ack_completion",
+                    format_args!("recv.{recv_dispatch_idx}"),
+                );
+                let ack_completion_rx = crate::counter::GaugedReceiver::new(
                     rd.ack_completion_rx,
+                    ack_completion_gauge,
+                );
+                local.spawn(tasks::ack_completion_task(
+                    ack_completion_rx,
                     recv_cache,
                     rd.ack_sender,
                     budgets,

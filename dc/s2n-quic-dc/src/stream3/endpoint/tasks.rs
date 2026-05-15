@@ -454,7 +454,7 @@ async fn wheel_drain<A, T, F>(
 /// # TODO: missing stream2 pipeline stages
 ///
 /// - **Receive metrics**: stream2 counts received packets (`socket.rx`) and bytes
-///   (`socket.rx:bytes`) via `channel::Inspect` before the router. Add equivalent counters once
+///   (`socket.rx` bytes) via `channel::Inspect` before the router. Add equivalent counters once
 ///   the counter infrastructure is wired up.
 ///
 /// - **Recv-side pacing** (experimental): stream2 has a commented-out `Paced` stage on the
