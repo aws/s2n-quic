@@ -75,9 +75,8 @@ impl Pool {
                                 "[watchdog] process alive for debugger attach: pid={}",
                                 std::process::id()
                             );
-                            loop {
-                                std::thread::sleep(std::time::Duration::from_secs(3600));
-                            }
+                            std::thread::sleep(std::time::Duration::from_secs(5));
+                            std::process::abort();
                         }
                         prev[worker_id] = current;
                     }

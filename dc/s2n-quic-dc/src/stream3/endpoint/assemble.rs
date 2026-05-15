@@ -140,7 +140,6 @@ where
                 let estimated_len = next_metadata.estimate_packet_len(
                     source_sender_id,
                     source_control_port,
-                    context.next_packet_number,
                     &context.credentials,
                     seal::Application::tag_len(&context.sealer),
                 );
@@ -218,7 +217,6 @@ where
                     let estimated_len = next_metadata.estimate_packet_len(
                         source_sender_id,
                         source_control_port,
-                        context.next_packet_number,
                         &context.credentials,
                         seal::Application::tag_len(&context.sealer),
                     );
@@ -414,7 +412,6 @@ fn assemble_probe(
             let est_len = next.estimate_packet_len(
                 source_sender_id,
                 source_control_port,
-                next_packet_number,
                 &context.credentials,
                 seal::Application::tag_len(&context.sealer),
             );
@@ -481,7 +478,6 @@ impl MetadataEstimate {
         &self,
         source_sender_id: VarInt,
         source_control_port: u16,
-        packet_number: VarInt,
         credentials: &Credentials,
         crypto_tag_len: usize,
     ) -> usize {
@@ -494,7 +490,7 @@ impl MetadataEstimate {
             + credentials.encoding_size()
             + WireVersion::ZERO.encoding_size()
             + source_control_port.encoding_size()
-            + packet_number.encoding_size()
+            + VarInt::MAX.encoding_size()
             + routing_info.encoding_size()
             + payload_len.encoding_size()
             + if self.header_len > 0 {

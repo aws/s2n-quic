@@ -144,6 +144,7 @@ impl Map {
         Some((old_pn, frames))
     }
 
+
     /// Verify structural invariants of the inflight map.
     ///
     /// Each stored packet must either have a `probed_to` link (shell) **or** contain

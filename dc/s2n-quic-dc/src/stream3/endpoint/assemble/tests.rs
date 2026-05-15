@@ -119,7 +119,6 @@ fn is_frame_encodable(
         .estimate_packet_len(
             source_sender_id,
             source_control_port,
-            VarInt::ZERO,
             credentials,
             TEST_CRYPTO_TAG_LEN,
         )
@@ -174,7 +173,6 @@ fn oracle(
     let mut packet_sizes = Vec::new();
     let mut segment_size = 0u16;
     let mut offset = 0usize;
-    let mut packet_number = VarInt::ZERO;
     let mut next_idx = 0usize;
 
     while next_idx < frames.len() && packet_sizes.len() < max_segments {
@@ -197,7 +195,6 @@ fn oracle(
             let estimated_len = next_metadata.estimate_packet_len(
                 source_sender_id,
                 source_control_port,
-                packet_number,
                 credentials,
                 TEST_CRYPTO_TAG_LEN,
             );
@@ -218,13 +215,19 @@ fn oracle(
             break;
         }
 
-        let packet_len = metadata.estimate_packet_len(
+        // The estimate uses VarInt::MAX for PN overhead, but the oracle needs to
+        // predict the actual encoded size which uses the real (smaller) PN.
+        // Since the assembler starts at PN 0 and increments by 1 per segment,
+        // the real PN for this packet is packet_sizes.len().
+        let real_pn = VarInt::new(packet_sizes.len() as u64).unwrap();
+        let pn_saving = VarInt::MAX.encoding_size() - real_pn.encoding_size();
+        let estimated = metadata.estimate_packet_len(
             source_sender_id,
             source_control_port,
-            packet_number,
             credentials,
             TEST_CRYPTO_TAG_LEN,
-        ) as u16;
+        );
+        let packet_len = (estimated - pn_saving) as u16;
         packet_sizes.push(packet_len);
 
         if segment_size == 0 {
@@ -232,7 +235,6 @@ fn oracle(
         }
 
         offset += segment_size as usize;
-        packet_number += 1;
 
         if packet_len < segment_size {
             break;
@@ -537,6 +539,145 @@ fn encode_decode_round_trip() {
 }
 
 #[test]
+fn assemble_probe_fuzz() {
+    use crate::stream3::endpoint::send::ProbeState;
+
+    // VarInt encoding boundaries where adding 4 to a value near the boundary causes
+    // the encoding to grow: 1→2 bytes at 64, 2→4 bytes at 16384, 4→8 bytes at 1073741824.
+    const VARINT_BOUNDARIES: [u64; 3] = [64, 16_384, 1_073_741_824];
+
+    #[derive(Clone, Debug)]
+    struct ProbeInput {
+        mtu: u16,
+        max_segments: usize,
+        source_sender_id: VarInt,
+        source_control_port: u16,
+        initial_pn: VarInt,
+        frames: Vec<FrameInput>,
+    }
+
+    impl bolero_generator::TypeGenerator for ProbeInput {
+        fn generate<D>(driver: &mut D) -> Option<Self>
+        where
+            D: bolero_generator::Driver,
+        {
+            use bolero_generator::ValueGenerator as _;
+
+            let mtu = (MIN_TEST_MTU..=MAX_TEST_MTU).generate(driver)?;
+            let max_segments = (1..=segment::MAX_COUNT).generate(driver)?;
+            let source_sender_id = VarInt::generate(driver)?;
+            let source_control_port = <u16 as bolero_generator::TypeGenerator>::generate(driver)?;
+
+            // Bias the starting PN toward VarInt boundaries where the bug manifests.
+            let boundary_idx = (0..VARINT_BOUNDARIES.len()).generate(driver)?;
+            let boundary = VARINT_BOUNDARIES[boundary_idx];
+            let offset = (0u64..=8).generate(driver)?;
+            let initial_pn =
+                VarInt::new(boundary.saturating_sub(offset)).unwrap_or(VarInt::ZERO);
+
+            let frame_count = (1usize..=8).generate(driver)?;
+            let mut frames = Vec::with_capacity(frame_count);
+            for _ in 0..frame_count {
+                frames.push(FrameInput::generate(driver)?);
+            }
+
+            Some(Self {
+                mtu,
+                max_segments,
+                source_sender_id,
+                source_control_port,
+                initial_pn,
+                frames,
+            })
+        }
+    }
+
+    check!()
+        .with_type::<ProbeInput>()
+        .with_test_time(Duration::from_secs(10))
+        .for_each(|input| {
+            let registry = Registry::new();
+            let (mut context, entry) = make_context(input.mtu, &registry);
+            context.next_packet_number = input.initial_pn;
+
+            let frames: Vec<_> = input
+                .frames
+                .iter()
+                .filter(|frame| {
+                    !matches!(frame.header, Header::Ack { .. })
+                        && is_frame_encodable(
+                            frame,
+                            input.source_sender_id,
+                            input.source_control_port,
+                            &context.credentials,
+                            input.mtu,
+                        )
+                })
+                .cloned()
+                .collect();
+            if frames.is_empty() {
+                return;
+            }
+
+            let clock = Clock::new(Duration::from_micros(1));
+            let gso = make_gso(input.max_segments);
+            let pool = pool::Pool::new(u16::MAX);
+            let mut header_buf = Vec::new();
+            let mut cancelled = Queue::new();
+            let mut ack_completions = Queue::new();
+
+            for frame in &frames {
+                context.push_back_frame(to_frame(frame, &entry));
+            }
+
+            // Phase 1: normal assembly — puts frames into inflight.
+            let registry2 = Registry::new();
+            let counters = AssemblerCounters::new(&registry2);
+            let _segments = assemble(
+                &mut context,
+                &clock,
+                input.source_sender_id,
+                input.source_control_port,
+                &gso,
+                &pool,
+                &mut header_buf,
+                &mut cancelled,
+                &mut ack_completions,
+                &counters,
+            );
+
+            if !context.inflight.has_inflight() {
+                return;
+            }
+
+            // Phase 2: request a probe and reassemble — exercises the probe path.
+            context.pto.probe_state = ProbeState::Requested;
+
+            let result = assemble(
+                &mut context,
+                &clock,
+                input.source_sender_id,
+                input.source_control_port,
+                &gso,
+                &pool,
+                &mut header_buf,
+                &mut cancelled,
+                &mut ack_completions,
+                &counters,
+            );
+
+            // If a probe was assembled, verify GSO invariants.
+            if let Some(segments) = result {
+                assert_gso_invariants(
+                    &segments,
+                    input.mtu,
+                    input.max_segments.min(segment::MAX_COUNT),
+                );
+            }
+        });
+}
+
+#[test]
 fn encode_decode_fuzz_round_trip() {
     use crate::stream3::endpoint::decode;
     use s2n_quic_core::endpoint;
@@ -585,7 +726,6 @@ fn encode_decode_fuzz_round_trip() {
                 let est = next_meta.estimate_packet_len(
                     input.source_sender_id,
                     input.source_control_port,
-                    context.next_packet_number,
                     &context.credentials,
                     tag_len,
                 );
