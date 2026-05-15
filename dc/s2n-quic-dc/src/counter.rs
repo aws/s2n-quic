@@ -295,18 +295,6 @@ fn parse_scalar_value(value: &str) -> Option<(&str, Option<&str>)> {
     }
 }
 
-fn scalar_metric_base_name(key: &str, suffix: Option<&str>) -> String {
-    if let Some(name) = key.strip_suffix(":bytes") {
-        return format!("{name}.bytes");
-    }
-
-    if matches!(suffix, Some("B")) {
-        return format!("{key}.bytes");
-    }
-
-    key.to_string()
-}
-
 fn convert_to_milliseconds(value: u64, unit: &str) -> Option<f64> {
     match unit {
         "us" => Some(value as f64 / 1_000.0),
@@ -334,12 +322,7 @@ fn encode_statsd_lines(samples: &[RawMetricSample<'_>], prefix: Option<&str>) ->
                 continue;
             }
 
-            let base_name = if unit == "B" {
-                format!("{}.bytes", sample.key)
-            } else {
-                scalar_metric_base_name(sample.key, None)
-            };
-            let mut metric = with_metric_prefix(&base_name, prefix);
+            let mut metric = with_metric_prefix(sample.key, prefix);
             if !variant.is_empty() {
                 metric.push('.');
                 metric.push_str(&sanitize_metric_name(variant));
@@ -376,10 +359,9 @@ fn encode_statsd_lines(samples: &[RawMetricSample<'_>], prefix: Option<&str>) ->
             continue;
         };
 
-        let base_name = scalar_metric_base_name(sample.key, suffix);
-        let mut metric = with_metric_prefix(&base_name, prefix);
+        let mut metric = with_metric_prefix(sample.key, prefix);
 
-        if let Some(suffix) = suffix.filter(|suffix| *suffix != "B") {
+        if let Some(suffix) = suffix.filter(|s| *s != "B") {
             metric.push('.');
             metric.push_str(&sanitize_metric_name(suffix));
         }
@@ -1589,17 +1571,9 @@ mod tests {
 
     #[test]
     fn format_bytes_as_bps() {
-        // 273390965 bytes * 8 = 2187127720 bits ≈ 2.19 Gbps
-        let line = "socket.rx:bytes=273390965";
+        let line = "socket.rx.bytes=273390965 B";
         let result = ParsedMetricsLine::parse(line).format_pretty();
-        assert_eq!(result, "socket.rx=2.19Gbps");
-    }
-
-    #[test]
-    fn format_bytes_unit_as_bps() {
-        let line = "socket.rx=273390965 B";
-        let result = ParsedMetricsLine::parse(line).format_pretty();
-        assert_eq!(result, "socket.rx=2.19Gbps");
+        assert_eq!(result, "socket.rx.bytes=2.19Gbps");
     }
 
     #[test]
@@ -1611,11 +1585,11 @@ mod tests {
 
     #[test]
     fn format_mixed() {
-        let line = "q.ack.drain=46005,q.ack.enq=46005,rx.data=255470,socket.tx:bytes=272721617";
+        let line = "q.ack.drain=46005,q.ack.enq=46005,rx.data=255470,socket.tx.bytes=272721617 B";
         let result = ParsedMetricsLine::parse(line).format_pretty();
         assert_eq!(
             result,
-            "q.ack=46005/46005 rx.data=255470 socket.tx=2.18Gbps"
+            "q.ack=46005/46005 rx.data=255470 socket.tx.bytes=2.18Gbps"
         );
     }
 
@@ -1764,8 +1738,9 @@ mod tests {
     }
 
     #[test]
-    fn statsd_encoding_supports_byte_units_without_bytes_suffix() {
-        let payload = ReportingPayload::from_line("socket.rx=273390965 B,socket.tx:bytes=272721617");
+    fn statsd_encoding_byte_unit_not_appended_to_name() {
+        let payload =
+            ReportingPayload::from_line("socket.rx.bytes=273390965 B,socket.tx.bytes=272721617 B");
         let lines = encode_statsd_lines(&payload.raw_samples, Some("svc"));
 
         assert!(lines.contains(&"svc.socket.rx.bytes:273390965|c".to_string()));

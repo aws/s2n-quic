@@ -366,8 +366,8 @@ where
         sender_id_to_worker.push(sender_idx % num_send_workers);
         let socket = socket::MeteredSend::new(
             socket,
-            counter_registry.register("socket.tx"),
-            counter_registry.register_bytes("socket.tx"),
+            counter_registry.register("socket.tx.ops"),
+            counter_registry.register_bytes("socket.tx.bytes"),
         );
         workers[worker_id].send_sockets.push(SendSocketParts {
             socket,
@@ -495,8 +495,8 @@ where
             worker::FanOutRouter::<_, RecvRoute>::new(dispatch_txs.clone(), &counter_registry);
         let socket = socket::MeteredRecv::new(
             socket,
-            counter_registry.register("socket.rx"),
-            counter_registry.register_bytes("socket.rx"),
+            counter_registry.register("socket.rx.ops"),
+            counter_registry.register_bytes("socket.rx.bytes"),
         );
         workers[worker_id].recv_socket = Some(RecvSocketParts {
             socket,
