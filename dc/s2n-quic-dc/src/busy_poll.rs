@@ -8,7 +8,10 @@ use std::{
     ops,
     panic::Location,
     pin::Pin,
-    sync::{Arc, Weak},
+    sync::{
+        atomic::{AtomicI64, AtomicU64, Ordering},
+        Arc, Weak,
+    },
     task::Context,
 };
 
@@ -25,9 +28,62 @@ impl fmt::Debug for Pool {
     }
 }
 
+/// Per-worker heartbeat state monitored by the watchdog thread.
+pub struct Heartbeat {
+    /// Bumped after each full task-list iteration. Watchdog compares snapshots to detect stalls.
+    counter: AtomicU64,
+    /// Index of the task currently being polled (-1 = between tasks).
+    current_task: AtomicI64,
+}
+
+impl Heartbeat {
+    fn new() -> Self {
+        Self {
+            counter: AtomicU64::new(0),
+            current_task: AtomicI64::new(-1),
+        }
+    }
+}
+
 impl Pool {
     pub fn new(handles: Arc<[Handle]>) -> Self {
         Self { handles }
+    }
+
+    /// Spawns a watchdog thread that monitors all workers for stalls.
+    ///
+    /// If any worker's heartbeat counter doesn't advance within `timeout`,
+    /// the watchdog prints which worker and task index is stuck, then aborts.
+    pub fn spawn_watchdog(&self, timeout: std::time::Duration) {
+        let heartbeats: Vec<Arc<Heartbeat>> =
+            self.handles.iter().map(|h| h.heartbeat.clone()).collect();
+        std::thread::Builder::new()
+            .name("busy_poll_watchdog".into())
+            .spawn(move || {
+                let mut prev: Vec<u64> = vec![0; heartbeats.len()];
+                loop {
+                    std::thread::sleep(timeout);
+                    for (worker_id, hb) in heartbeats.iter().enumerate() {
+                        let current = hb.counter.load(Ordering::Relaxed);
+                        if current == prev[worker_id] && current > 0 {
+                            let task_idx = hb.current_task.load(Ordering::Relaxed);
+                            eprintln!(
+                                "[watchdog] worker {worker_id} stuck in task {task_idx} \
+                                 (heartbeat={current}, no progress in {timeout:?})"
+                            );
+                            eprintln!(
+                                "[watchdog] process alive for debugger attach: pid={}",
+                                std::process::id()
+                            );
+                            loop {
+                                std::thread::sleep(std::time::Duration::from_secs(3600));
+                            }
+                        }
+                        prev[worker_id] = current;
+                    }
+                }
+            })
+            .expect("failed to spawn watchdog thread");
     }
 }
 
@@ -51,6 +107,7 @@ impl ops::Deref for Pool {
 #[derive(Clone)]
 pub struct Handle {
     state: Arc<Mutex<State>>,
+    heartbeat: Arc<Heartbeat>,
 }
 
 impl Handle {
@@ -58,10 +115,15 @@ impl Handle {
         let state = Arc::new(Mutex::new(State {
             spawns: Vec::with_capacity(16),
         }));
+        let heartbeat = Arc::new(Heartbeat::new());
         let handle = Self {
             state: state.clone(),
+            heartbeat: heartbeat.clone(),
         };
-        let runner = Runner(Arc::downgrade(&state));
+        let runner = Runner {
+            state: Arc::downgrade(&state),
+            heartbeat,
+        };
         (handle, runner)
     }
 
@@ -155,11 +217,15 @@ struct Task {
 }
 
 #[must_use]
-pub struct Runner(Weak<Mutex<State>>);
+pub struct Runner {
+    state: Weak<Mutex<State>>,
+    heartbeat: Arc<Heartbeat>,
+}
 
 impl Runner {
     pub fn run(self) {
-        let state = self.0;
+        let state = self.state;
+        let heartbeat = self.heartbeat;
         let waker = s2n_quic_core::task::waker::noop();
         let mut cx = Context::from_waker(&waker);
         let mut tasks = Tasks::new();
@@ -185,7 +251,7 @@ impl Runner {
             };
 
             for _ in 0..ITERATIONS {
-                tasks.poll(&mut cx);
+                tasks.poll(&mut cx, &*heartbeat);
             }
 
             // Yield to allow other threads (especially SCHED_OTHER threads like Tokio runtime)
@@ -257,15 +323,18 @@ impl Tasks {
         }
     }
 
-    fn poll(&mut self, cx: &mut Context) {
+    fn poll(&mut self, cx: &mut Context, heartbeat: &Heartbeat) {
         for (idx, slot) in self.slots.iter_mut().enumerate() {
             if let Some(task) = slot {
+                heartbeat.current_task.store(idx as i64, Ordering::Relaxed);
                 if task.task.as_mut().poll(cx).is_ready() {
-                    eprintln!("task {idx} done");
+                    eprintln!("task {idx} done ({})", task.location);
                     *slot = None;
                     self.free.push(idx);
                 }
             }
         }
+        heartbeat.current_task.store(-1, Ordering::Relaxed);
+        heartbeat.counter.fetch_add(1, Ordering::Relaxed);
     }
 }

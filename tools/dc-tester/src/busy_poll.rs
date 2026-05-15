@@ -22,7 +22,9 @@ pub fn create_pool(workers: usize) -> busy_poll::Pool {
         handles.push(handle);
     }
 
-    handles.into()
+    let pool: busy_poll::Pool = handles.into();
+    pool.spawn_watchdog(std::time::Duration::from_secs(5));
+    pool
 }
 
 #[cfg(target_os = "linux")]

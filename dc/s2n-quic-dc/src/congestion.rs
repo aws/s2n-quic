@@ -15,6 +15,7 @@ pub type PacketInfo = <BbrCongestionController as CongestionController>::PacketI
 #[derive(Clone, Debug)]
 pub struct Controller {
     controller: BbrCongestionController,
+    last_packet_sent_time: Option<Timestamp>,
 }
 
 impl Controller {
@@ -22,6 +23,7 @@ impl Controller {
     pub fn new(max_datagram_size: u16) -> Self {
         Self {
             controller: BbrCongestionController::new(max_datagram_size, Default::default()),
+            last_packet_sent_time: None,
         }
     }
 
@@ -34,7 +36,21 @@ impl Controller {
         rtt_estimator: &RttEstimator,
     ) -> PacketInfo {
         let sent_bytes = sent_bytes as usize;
-        let app_limited = Some(!has_more_app_data);
+
+        // Only mark as app-limited if the sender has been idle for longer than one
+        // pacing interval. This prevents brief inter-RPC gaps (microseconds) from being
+        // classified as app-limited, which would cause BBR's pipe-filling estimator to
+        // skip evaluation and keep the CCA stuck in Startup indefinitely.
+        let is_idle = !has_more_app_data
+            && self.last_packet_sent_time.is_some_and(|last| {
+                let elapsed = time_sent.saturating_duration_since(last);
+                let pacing_interval = self.send_quantum() as u64 / self.bandwidth();
+                elapsed > pacing_interval
+            });
+        let app_limited = Some(is_idle);
+
+        self.last_packet_sent_time = Some(time_sent);
+
         let publisher = &mut NoopPublisher;
         self.controller
             .on_packet_sent(time_sent, sent_bytes, app_limited, rtt_estimator, publisher)

@@ -518,6 +518,8 @@ pub async fn packet_dispatch_task<PacketRx, AckSender, AckBurstSender, WakerSink
     route: Route,
     mut waker_sink: WakerSink,
     budgets: Budgets,
+    counter_registry: crate::counter::Registry,
+    worker_idx: usize,
 ) where
     PacketRx: Receiver<
         crate::intrusive_queue::Entry<crate::packet::datagram::decoder::Packet<descriptor::Filled>>,
@@ -528,6 +530,17 @@ pub async fn packet_dispatch_task<PacketRx, AckSender, AckBurstSender, WakerSink
     Clk: s2n_quic_core::time::Clock + precision::Clock,
     Route: endpoint::routing::SenderRoute,
 {
+    eprintln!("[packet_dispatch.{worker_idx}] task started");
+
+    let variant = format!("packet_dispatch.{worker_idx}");
+    let budget_summary = counter_registry.register_nominal_summary(
+        "task.budget",
+        &variant,
+        crate::counter::Unit::Count,
+    );
+    let time_summary =
+        counter_registry.register_nominal_timer("task.time", &variant);
+
     // Response frames (ACKs sent back to peers) re-enter via the same submission channel.
     // TODO: route responses through a dedicated channel + RetransmissionBatcher (see above).
     let rx = Map::new(packet_rx, {
@@ -558,7 +571,10 @@ pub async fn packet_dispatch_task<PacketRx, AckSender, AckBurstSender, WakerSink
         let counters = counters;
         move |err| on_packet_dispatch_error(&counters, err)
     });
-    rx.drain_budgeted(Some(budgets.packet_dispatch)).await;
+    rx.drain_budgeted_metered(Some(budgets.packet_dispatch), budget_summary, time_summary)
+        .await;
+
+    eprintln!("[packet_dispatch.{worker_idx}] task exited");
 }
 
 /// Drains offloaded wakers from dispatch workers, invoking each one.

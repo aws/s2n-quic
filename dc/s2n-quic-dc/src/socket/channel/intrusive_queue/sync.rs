@@ -243,6 +243,10 @@ impl<T> super::super::Receiver<intrusive_queue::Entry<T>> for Receiver<T> {
 
         // Check if all senders are gone (strong_count <= 1 means only receiver left)
         if Arc::strong_count(&self.shared) <= 1 {
+            tracing::error!(
+                strong_count = Arc::strong_count(&self.shared),
+                "sync channel closed: all senders dropped"
+            );
             return Poll::Ready(None);
         }
 
@@ -276,6 +280,10 @@ impl<T> super::super::Receiver<intrusive_queue::Queue<T>> for Receiver<T> {
 
         // Check if all senders are gone (strong_count <= 1 means only receiver left)
         if Arc::strong_count(&self.shared) <= 1 {
+            tracing::error!(
+                strong_count = Arc::strong_count(&self.shared),
+                "sync channel closed: all senders dropped"
+            );
             return Poll::Ready(None);
         }
 

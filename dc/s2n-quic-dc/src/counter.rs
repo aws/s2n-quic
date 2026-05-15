@@ -148,20 +148,25 @@ impl Registry {
         }
     }
 
-    pub fn register(&self, label: &str) -> Counter {
+    pub fn register(&self, label: impl core::fmt::Display) -> Counter {
         Counter(self.inner.register_counter(label.to_string(), None))
     }
 
-    pub fn register_nominal(&self, label: &str, variant: &str) -> Counter {
+    pub fn register_nominal(
+        &self,
+        label: impl core::fmt::Display,
+        variant: impl core::fmt::Display,
+    ) -> Counter {
         Counter(
             self.inner
                 .register_counter(label.to_string(), Some(variant.to_string())),
         )
     }
 
-    pub fn register_queue_gauge(&self, label: &str) -> QueueGauge {
+    pub fn register_queue_gauge(&self, label: impl core::fmt::Display) -> QueueGauge {
+        let label = label.to_string();
         let mut gauges = self.queue_gauges.lock().unwrap();
-        if let Some(existing) = gauges.get(label) {
+        if let Some(existing) = gauges.get(&label) {
             return existing.clone();
         }
 
@@ -179,11 +184,49 @@ impl Registry {
             drain,
             depth: Gauge(depth),
         };
-        gauges.insert(label.to_string(), gauge.clone());
+        gauges.insert(label, gauge.clone());
         gauge
     }
 
-    pub fn register_gauge(&self, label: &str) -> Gauge {
+    pub fn register_queue_gauge_nominal(
+        &self,
+        label: impl core::fmt::Display,
+        variant: impl core::fmt::Display,
+    ) -> QueueGauge {
+        let label = label.to_string();
+        let variant = variant.to_string();
+        let key = format!("{label}.{variant}");
+        let mut gauges = self.queue_gauges.lock().unwrap();
+        if let Some(existing) = gauges.get(&key) {
+            return existing.clone();
+        }
+
+        let var = Some(variant);
+        let throughput = Counter(
+            self.inner
+                .register_counter(format!("{label}.enq"), var.clone()),
+        );
+        let drain = Counter(
+            self.inner
+                .register_counter(format!("{label}.drain"), var.clone()),
+        );
+        let depth = Arc::new(AtomicI64::new(0));
+        let depth_clone = depth.clone();
+        self.inner
+            .register_list_callback(format!("{label}.depth"), var, Unit::Count, move || {
+                NonZeroDisplay(depth_clone.load(Ordering::Relaxed))
+            });
+
+        let gauge = QueueGauge {
+            throughput,
+            drain,
+            depth: Gauge(depth),
+        };
+        gauges.insert(key, gauge.clone());
+        gauge
+    }
+
+    pub fn register_gauge(&self, label: impl core::fmt::Display) -> Gauge {
         let inner = Arc::new(AtomicI64::new(0));
         let inner_clone = inner.clone();
         self.inner
@@ -193,15 +236,37 @@ impl Registry {
         Gauge(inner)
     }
 
-    pub fn register_summary(&self, label: &str, unit: Unit) -> Summary {
+    pub fn register_summary(&self, label: impl core::fmt::Display, unit: Unit) -> Summary {
         self.inner.register_summary(label.to_string(), None, unit)
     }
 
-    pub fn register_timer(&self, label: &str) -> Timer {
+    pub fn register_nominal_summary(
+        &self,
+        label: impl core::fmt::Display,
+        variant: impl core::fmt::Display,
+        unit: Unit,
+    ) -> Summary {
+        self.inner
+            .register_summary(label.to_string(), Some(variant.to_string()), unit)
+    }
+
+    pub fn register_timer(&self, label: impl core::fmt::Display) -> Timer {
         Timer(
             self.inner
                 .register_summary(label.to_string(), None, Unit::Microsecond),
         )
+    }
+
+    pub fn register_nominal_timer(
+        &self,
+        label: impl core::fmt::Display,
+        variant: impl core::fmt::Display,
+    ) -> Timer {
+        Timer(self.inner.register_summary(
+            label.to_string(),
+            Some(variant.to_string()),
+            Unit::Microsecond,
+        ))
     }
 
     pub fn spawn_reporter(&self, interval: Duration) {
@@ -237,6 +302,7 @@ where
             break;
         }
         if let Some(line) = inner.try_take_current_metrics_line_sparse(false) {
+            // eprintln!("[raw] {line}");
             let line = Some(line)
                 .filter(|v| !v.is_empty())
                 .map(|v| format_metrics_line(&v))
@@ -255,15 +321,15 @@ where
     }
 }
 
-// ── GaugedQueue ─────────────────────────────────────────────────────────────
+// ── GaugedQueueReceiver ─────────────────────────────────────────────────────────────
 
-pub struct GaugedQueue<T, R> {
+pub struct GaugedQueueReceiver<T, R> {
     inner: R,
     queue: crate::intrusive_queue::Queue<T>,
     gauge: QueueGauge,
 }
 
-impl<T, R> GaugedQueue<T, R> {
+impl<T, R> GaugedQueueReceiver<T, R> {
     pub fn new(inner: R, gauge: QueueGauge) -> Self {
         Self {
             inner,
@@ -273,7 +339,8 @@ impl<T, R> GaugedQueue<T, R> {
     }
 }
 
-impl<T, R> crate::socket::channel::Receiver<crate::intrusive_queue::Entry<T>> for GaugedQueue<T, R>
+impl<T, R> crate::socket::channel::Receiver<crate::intrusive_queue::Entry<T>>
+    for GaugedQueueReceiver<T, R>
 where
     R: crate::socket::channel::Receiver<crate::intrusive_queue::Queue<T>>,
 {
@@ -283,8 +350,16 @@ where
         budget: &mut crate::socket::channel::Budget,
     ) -> core::task::Poll<Option<crate::intrusive_queue::Entry<T>>> {
         loop {
+            if budget.is_exhausted() {
+                if !self.queue.is_empty() {
+                    budget.set_needs_wake();
+                }
+                return core::task::Poll::Pending;
+            }
+
             if let Some(entry) = self.queue.pop_front() {
                 self.gauge.dequeue();
+                budget.consume();
                 return core::task::Poll::Ready(Some(entry));
             }
 
@@ -294,7 +369,6 @@ where
                         budget.set_needs_wake();
                         return core::task::Poll::Pending;
                     }
-                    self.gauge.enqueue(queue.len() as u64);
                     self.queue = queue;
                 }
                 core::task::Poll::Ready(None) => return core::task::Poll::Ready(None),
@@ -398,13 +472,18 @@ fn format_metrics_line(line: &str) -> String {
     // Raw format: "name=value" or "name=value aggregation"
     // Histograms also use spaces (e.g. "0*4541+1*4552 us") so only treat as nominal
     // when the value portion is a plain integer.
+    // Variant histograms have a trailing variant name (e.g. "0*100+1*50 us packet_dispatch.0")
+    // and are collected separately to avoid BTreeMap key collision.
     let mut metrics: BTreeMap<&str, &str> = BTreeMap::new();
     let mut nominals: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+    let mut variant_histograms: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for part in line.split(',') {
         if let Some((key, value)) = part.split_once('=') {
-            if let Some((val, variant)) = value.split_once(' ') {
+            if let Some((val, rest)) = value.split_once(' ') {
                 if val.bytes().all(|b| b.is_ascii_digit()) {
-                    nominals.entry(key).or_default().push((variant, val));
+                    nominals.entry(key).or_default().push((rest, val));
+                } else if val.contains('*') && !is_histogram_unit_only(rest) {
+                    variant_histograms.entry(key).or_default().push(value);
                 } else {
                     metrics.insert(key, value);
                 }
@@ -594,56 +673,42 @@ fn format_metrics_line(line: &str) -> String {
         output.push(')');
     }
 
+    // Variant histograms: group by key, each variant inside parentheses
+    for (key, entries) in &variant_histograms {
+        if !output.is_empty() {
+            output.push(' ');
+        }
+        write!(output, "{key}(").unwrap();
+        let mut first = true;
+        for value in entries {
+            if !first {
+                output.push(' ');
+            }
+            first = false;
+            format_histogram_variant(value, &mut output);
+        }
+        output.push(')');
+    }
+
     output
 }
 
-/// Parses a dc-metrics histogram value like `0*4541+1*4552+2*1710+5*378+13*45 us`
-/// and formats it as `key(n=N p50=V p99=V max=V unit)`.
+/// Returns true if `rest` (the part after the first space in a histogram value)
+/// is a recognized unit suffix only (e.g. "us", "B"), as opposed to containing a
+/// variant name.
+fn is_histogram_unit_only(rest: &str) -> bool {
+    matches!(rest, "us" | "ms" | "s" | "B" | "KB" | "MB" | "GB")
+}
+
+/// Parses a dc-metrics histogram value and formats it as `key(n=N p50=V p99=V max=V unit)`.
 fn format_histogram(key: &str, value: &str) -> String {
     use std::fmt::Write;
 
-    // Strip trailing unit suffix (` us`, ` B`, etc)
-    let (data, unit) = if let Some(pos) = value.rfind(' ') {
-        let (d, u) = value.split_at(pos);
-        (d, u.trim())
-    } else {
-        (value, "")
-    };
-
-    // Parse value*count pairs
-    let mut buckets: Vec<(u64, u64)> = Vec::new();
-    let mut total_count: u64 = 0;
-    for entry in data.split('+') {
-        if let Some((val_str, count_str)) = entry.split_once('*') {
-            if let (Ok(val), Ok(count)) = (val_str.parse::<u64>(), count_str.parse::<u64>()) {
-                buckets.push((val, count));
-                total_count += count;
-            }
-        }
-    }
+    let (data, unit, _variant) = parse_histogram_suffix(value);
+    let (total_count, p50, p99, max) = compute_histogram_percentiles(data);
 
     if total_count == 0 {
         return format!("{key}=0");
-    }
-
-    // Compute percentiles by walking the sorted buckets
-    let p50_target = ((total_count as f64) * 0.5).ceil() as u64;
-    let p99_target = ((total_count as f64) * 0.99).ceil() as u64;
-
-    let mut cumulative: u64 = 0;
-    let mut p50: u64 = 0;
-    let mut p99: u64 = 0;
-    let mut max: u64 = 0;
-
-    for &(val, count) in &buckets {
-        cumulative += count;
-        if p50 == 0 && cumulative >= p50_target {
-            p50 = val;
-        }
-        if p99 == 0 && cumulative >= p99_target {
-            p99 = val;
-        }
-        max = val;
     }
 
     let mut out = String::new();
@@ -664,6 +729,106 @@ fn format_histogram(key: &str, value: &str) -> String {
         out.push(')');
     }
     out
+}
+
+/// Formats a single variant histogram entry as `variant=(n=N p50=V p99=V max=V)`
+/// appended to the provided output buffer.
+fn format_histogram_variant(value: &str, out: &mut String) {
+    use std::fmt::Write;
+
+    let (data, unit, variant) = parse_histogram_suffix(value);
+    let (total_count, p50, p99, max) = compute_histogram_percentiles(data);
+
+    let label = if variant.is_empty() { "?" } else { variant };
+
+    if total_count == 0 {
+        write!(out, "{label}=0").unwrap();
+        return;
+    }
+
+    if unit == "us" {
+        write!(
+            out,
+            "{label}=(n={total_count} p50={} p99={} max={})",
+            format_duration_us(p50),
+            format_duration_us(p99),
+            format_duration_us(max),
+        )
+        .unwrap();
+    } else {
+        write!(
+            out,
+            "{label}=(n={total_count} p50={p50} p99={p99} max={max}"
+        )
+        .unwrap();
+        if !unit.is_empty() {
+            write!(out, " {unit}").unwrap();
+        }
+        out.push(')');
+    }
+}
+
+fn compute_histogram_percentiles(data: &str) -> (u64, u64, u64, u64) {
+    let mut buckets: Vec<(u64, u64)> = Vec::new();
+    let mut total_count: u64 = 0;
+    for entry in data.split('+') {
+        if let Some((val_str, count_str)) = entry.split_once('*') {
+            if let (Ok(val), Ok(count)) = (val_str.parse::<u64>(), count_str.parse::<u64>()) {
+                buckets.push((val, count));
+                total_count += count;
+            }
+        }
+    }
+
+    if total_count == 0 {
+        return (0, 0, 0, 0);
+    }
+
+    let p50_target = ((total_count as f64) * 0.5).ceil() as u64;
+    let p99_target = ((total_count as f64) * 0.99).ceil() as u64;
+
+    let mut cumulative: u64 = 0;
+    let mut p50: u64 = 0;
+    let mut p99: u64 = 0;
+    let mut max: u64 = 0;
+
+    for &(val, count) in &buckets {
+        cumulative += count;
+        if p50 == 0 && cumulative >= p50_target {
+            p50 = val;
+        }
+        if p99 == 0 && cumulative >= p99_target {
+            p99 = val;
+        }
+        max = val;
+    }
+
+    (total_count, p50, p99, max)
+}
+
+/// Splits a histogram value string into (data, unit, variant).
+fn parse_histogram_suffix(value: &str) -> (&str, &str, &str) {
+    // Find the first space — everything before it might be histogram data
+    let Some(first_space) = value.find(' ') else {
+        return (value, "", "");
+    };
+
+    let data = &value[..first_space];
+    let rest = value[first_space + 1..].trim();
+
+    // rest could be: "us", "B", "packet_dispatch.0", "us packet_dispatch.0"
+    if let Some((first_word, remainder)) = rest.split_once(' ') {
+        if is_histogram_unit_only(first_word) {
+            // "us packet_dispatch.0"
+            return (data, first_word, remainder.trim());
+        }
+        // Shouldn't happen in practice, but treat everything as variant
+        (data, "", rest)
+    } else if is_histogram_unit_only(rest) {
+        (data, rest, "")
+    } else {
+        (data, "", rest)
+    }
 }
 
 fn format_duration_us(us: u64) -> String {
@@ -751,5 +916,35 @@ mod tests {
         let line = "rx.ecn=500 ect0,rx.ecn=3 ect1,rx.ecn=2 ce,rx.ecn=0 not_ect";
         let result = format_metrics_line(line);
         assert_eq!(result, "rx.ecn(ect0=500 ect1=3 ce=2 not_ect=0)");
+    }
+
+    #[test]
+    fn format_variant_histogram_with_unit() {
+        let line = "task.time=5*5000+10*3000+50*1500+200*500 us packet_dispatch.0,task.time=3*4000+20*3000+80*2000+300*1000 us packet_dispatch.1";
+        let result = format_metrics_line(line);
+        assert_eq!(
+            result,
+            "task.time(packet_dispatch.0=(n=10000 p50=5us p99=200us max=200us) packet_dispatch.1=(n=10000 p50=20us p99=300us max=300us))"
+        );
+    }
+
+    #[test]
+    fn format_variant_histogram_no_unit() {
+        let line =
+            "task.budget=1*8000+2*1500+4*300+10*200 packet_dispatch.0,task.budget=1*7000+2*2000+5*800+12*200 packet_dispatch.1";
+        let result = format_metrics_line(line);
+        assert_eq!(
+            result,
+            "task.budget(packet_dispatch.0=(n=10000 p50=1 p99=10 max=10) packet_dispatch.1=(n=10000 p50=1 p99=12 max=12))"
+        );
+    }
+
+    #[test]
+    fn format_variant_histogram_real_log() {
+        let line = "task.budget=2*5321+3*208+4*1586+5*638+6*513+7*404+8*267+9*193+10*157+11*112+12*100+103*562 packet_dispatch.0,task.budget=2*6022+3*192+4*1576+5*544+6*514+7*413+8*309+9*236+10*157+11*138+12*115+147*840 packet_dispatch.1";
+        let result = format_metrics_line(line);
+        assert!(result.starts_with("task.budget(packet_dispatch.0=(n="));
+        assert!(result.contains("packet_dispatch.1=(n="));
+        assert!(result.ends_with(')'));
     }
 }

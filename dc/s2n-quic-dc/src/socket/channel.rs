@@ -45,6 +45,7 @@ mod tests;
 /// Threaded through the receiver pipeline from the top-level drain. Replaces
 /// per-combinator self-wakes with a centralized "needs_wake" signal.
 pub struct Budget {
+    capacity: usize,
     remaining: usize,
     generation: usize,
     needs_wake: bool,
@@ -54,6 +55,7 @@ impl Budget {
     #[inline]
     pub fn new(capacity: usize) -> Self {
         Self {
+            capacity,
             remaining: capacity,
             generation: 0,
             needs_wake: false,
@@ -90,10 +92,15 @@ impl Budget {
 
     /// Reset budget for the next poll cycle. Increments generation.
     #[inline]
-    pub fn reset(&mut self, capacity: usize) {
-        self.remaining = capacity;
+    pub fn reset(&mut self) {
+        self.remaining = self.capacity;
         self.needs_wake = false;
         self.generation = self.generation.wrapping_add(1);
+    }
+
+    #[inline]
+    pub fn consumed(&self) -> usize {
+        self.capacity - self.remaining
     }
 
     #[inline]
@@ -260,7 +267,7 @@ pub trait ReceiverExt<T>: Receiver<T> + Sized {
         let cap = capacity.unwrap_or(1);
         let mut budget = Budget::new(cap);
         core::future::poll_fn(move |cx| {
-            budget.reset(cap);
+            budget.reset();
             loop {
                 match self.poll_recv(cx, &mut budget) {
                     Poll::Pending => break,
@@ -274,6 +281,46 @@ pub trait ReceiverExt<T>: Receiver<T> + Sized {
                     }
                 }
             }
+            if budget.take_needs_wake() {
+                cx.waker().wake_by_ref();
+            }
+            Poll::Pending
+        })
+    }
+
+    /// Like [`drain_budgeted`](Self::drain_budgeted), but records per-poll metrics:
+    /// items consumed (budget summary) and wall-clock duration (timer).
+    fn drain_budgeted_metered(
+        mut self,
+        capacity: Option<usize>,
+        budget_summary: crate::counter::Summary,
+        time_summary: crate::counter::Timer,
+    ) -> impl core::future::Future<Output = ()>
+    where
+        Self: Receiver<()>,
+    {
+        let cap = capacity.unwrap_or(1);
+        let mut budget = Budget::new(cap);
+        core::future::poll_fn(move |cx| {
+            budget.reset();
+            let _guard = time_summary.start();
+            loop {
+                match self.poll_recv(cx, &mut budget) {
+                    Poll::Pending => break,
+                    Poll::Ready(None) => {
+                        budget_summary.record_value(budget.consumed() as u64);
+                        return Poll::Ready(());
+                    }
+                    Poll::Ready(Some(())) => {
+                        if budget.is_exhausted() {
+                            budget.set_needs_wake();
+                            break;
+                        }
+                        continue;
+                    }
+                }
+            }
+            budget_summary.record_value(budget.consumed() as u64);
             if budget.take_needs_wake() {
                 cx.waker().wake_by_ref();
             }
@@ -676,6 +723,10 @@ where
                     if let Some(mapped) = (self.filter_map)(value) {
                         return Poll::Ready(Some(mapped));
                     }
+                    if budget.is_exhausted() {
+                        budget.set_needs_wake();
+                        return Poll::Pending;
+                    }
                     continue;
                 }
                 Poll::Ready(None) => return Poll::Ready(None),
@@ -844,7 +895,6 @@ where
         rx,
         tx,
         value: None,
-        capacity: capacity.unwrap_or(1),
         budget: Budget::new(capacity.unwrap_or(1)),
     }
     .await;
@@ -853,7 +903,6 @@ where
         rx: R,
         tx: S,
         value: Option<core::mem::MaybeUninit<T>>,
-        capacity: usize,
         budget: Budget,
     }
 
@@ -869,7 +918,7 @@ where
             cx: &mut std::task::Context<'_>,
         ) -> Poll<Self::Output> {
             let this = unsafe { self.get_unchecked_mut() };
-            this.budget.reset(this.capacity);
+            this.budget.reset();
 
             loop {
                 if this.value.is_none() {
@@ -1114,6 +1163,10 @@ where
                 Ok(value) => return Poll::Ready(Some(value)),
                 Err(err) => {
                     (self.on_error)(err);
+                    if budget.is_exhausted() {
+                        budget.set_needs_wake();
+                        return Poll::Pending;
+                    }
                     continue;
                 }
             }
@@ -1156,7 +1209,13 @@ where
 
             match result {
                 Ok(value) => return Poll::Ready(Some(value)),
-                Err(_) => continue,
+                Err(_) => {
+                    if budget.is_exhausted() {
+                        budget.set_needs_wake();
+                        return Poll::Pending;
+                    }
+                    continue;
+                }
             }
         }
     }
@@ -2432,6 +2491,16 @@ pub struct GaugedSender<S, T> {
     inner: S,
     gauge: crate::counter::QueueGauge,
     _phantom: PhantomData<T>,
+}
+
+impl<S: Clone, T> Clone for GaugedSender<S, T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            gauge: self.gauge.clone(),
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<S, T> GaugedSender<S, T> {

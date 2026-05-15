@@ -803,6 +803,11 @@ where
         };
 
         let sender_idx = entry.sender_idx();
+        let is_ack = matches!(&*entry, msg::Sender::ReceivedAck { .. });
+        if is_ack {
+            self.counters.on_received_ack();
+        }
+
         let Some(cache) = self.resolve_cache(sender_idx) else {
             return Poll::Ready(Some(()));
         };
@@ -819,6 +824,7 @@ where
                 };
 
                 let Some(ctx_rc) = ctx_rc else {
+                    self.counters.on_received_ack_no_ctx();
                     return Poll::Ready(Some(()));
                 };
 

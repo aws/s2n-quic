@@ -4,7 +4,7 @@
 //! Worker infrastructure for distributing packets across send/recv sockets.
 
 use crate::{
-    counter::Counter,
+    counter::{Counter, Registry},
     intrusive_queue::Entry,
     packet::{self, datagram::RoutingInfo},
     socket::{channel, pool::descriptor, recv::router::Router},
@@ -22,15 +22,24 @@ pub(crate) struct FanOutRouter<D, Route> {
     txs: Vec<D>,
     route: Route,
     decode_error_counter: Counter,
+    routed_counter: Counter,
+    route_send_err_counter: Counter,
+    per_worker_routed: Vec<Counter>,
 }
 
 impl<D, Route: routing::SenderRoute> FanOutRouter<D, Route> {
-    pub fn new(txs: Vec<D>, decode_error_counter: Counter) -> Self {
+    pub fn new(txs: Vec<D>, counters: &Registry) -> Self {
         let route = Route::new(txs.len());
+        let per_worker_routed = (0..txs.len())
+            .map(|i| counters.register_nominal("router.routed", i))
+            .collect();
         Self {
             txs,
             route,
-            decode_error_counter,
+            decode_error_counter: counters.register("!router.decode_err"),
+            routed_counter: counters.register("router.routed"),
+            route_send_err_counter: counters.register("!router.send_err"),
+            per_worker_routed,
         }
     }
 }
@@ -56,7 +65,11 @@ where
         let idx = self
             .route
             .worker_id_for_recv(packet.credentials(), source_sender_id);
-        let _ = self.txs[idx].send(packet.into());
+        self.routed_counter.add(1);
+        self.per_worker_routed[idx].add(1);
+        if self.txs[idx].send(packet.into()).is_err() {
+            self.route_send_err_counter.add(1);
+        }
     }
 
     #[inline]

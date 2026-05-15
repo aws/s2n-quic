@@ -4,7 +4,12 @@
 //! Flow handle with validation support
 
 use crate::credentials;
+use rustc_hash::FxHashMap;
 use s2n_quic_core::varint::VarInt;
+use std::{
+    collections::{hash_map, VecDeque},
+    sync::Arc,
+};
 
 /// Flow handle that validates credentials and stream_id
 ///
@@ -14,24 +19,27 @@ use s2n_quic_core::varint::VarInt;
 pub struct Handle {
     /// Global stream identifier (client-wide)
     stream_id: VarInt,
-    /// Inner state (server-side with tracker, or client-side with path entry)
+    /// Inner state (server-side with drop channel, or client-side with path entry)
     inner: HandleInner,
 }
 
 #[derive(Clone)]
 enum HandleInner {
-    /// Server-side handle with tracker for deduplication
-    Server { tracker: Tracker },
+    /// Server-side handle — sends stream_id to drop channel on drop
+    Server {
+        credential_id: credentials::Id,
+        drop_channel: Arc<DropChannel>,
+    },
     /// Client-side handle with path secret entry
     Client {
-        path_entry: std::sync::Arc<crate::path::secret::map::Entry>,
+        path_entry: Arc<crate::path::secret::map::Entry>,
     },
 }
 
 impl core::fmt::Debug for HandleInner {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::Server { tracker } => f.debug_struct("Server").field("tracker", tracker).finish(),
+            Self::Server { .. } => f.debug_struct("Server").finish_non_exhaustive(),
             Self::Client { .. } => f.debug_struct("Client").finish_non_exhaustive(),
         }
     }
@@ -40,7 +48,7 @@ impl core::fmt::Debug for HandleInner {
 impl HandleInner {
     fn credential_id(&self) -> &credentials::Id {
         match self {
-            Self::Server { tracker } => &tracker.0.credentials,
+            Self::Server { credential_id, .. } => credential_id,
             Self::Client { path_entry } => path_entry.id(),
         }
     }
@@ -48,23 +56,10 @@ impl HandleInner {
 
 impl Handle {
     /// Create a client-side handle with path secret entry
-    ///
-    /// Client-side handles don't need trackers since the client doesn't do deduplication.
-    pub fn client(
-        stream_id: VarInt,
-        path_entry: std::sync::Arc<crate::path::secret::map::Entry>,
-    ) -> Self {
+    pub fn client(stream_id: VarInt, path_entry: Arc<crate::path::secret::map::Entry>) -> Self {
         Self {
             stream_id,
             inner: HandleInner::Client { path_entry },
-        }
-    }
-
-    /// Create a server-side handle with tracker (internal use only)
-    pub(super) fn server(stream_id: VarInt, tracker: Tracker) -> Self {
-        Self {
-            stream_id,
-            inner: HandleInner::Server { tracker },
         }
     }
 
@@ -79,10 +74,37 @@ impl Handle {
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        // Only clean up tracker on server side
-        if let HandleInner::Server { tracker } = &self.inner {
-            tracker.0.map.remove(&self.stream_id);
+        if let HandleInner::Server { drop_channel, .. } = &self.inner {
+            drop_channel.push(self.stream_id);
         }
+    }
+}
+
+/// Thread-safe drop notification channel. Handle::drop pushes stream_ids here;
+/// the owning dispatch worker drains them.
+pub struct DropChannel {
+    pending: parking_lot::Mutex<VecDeque<VarInt>>,
+}
+
+impl DropChannel {
+    pub fn new() -> Self {
+        Self {
+            pending: parking_lot::Mutex::new(VecDeque::new()),
+        }
+    }
+
+    fn push(&self, stream_id: VarInt) {
+        self.pending.lock().push_back(stream_id);
+    }
+
+    fn drain_into(&self, buf: &mut VecDeque<VarInt>) {
+        let mut pending = self.pending.lock();
+        if pending.is_empty() {
+            return;
+        }
+        // Swap: buf (empty from last drain) goes into pending for allocation reuse,
+        // pending (with items) comes out into buf for processing.
+        core::mem::swap(&mut *pending, buf);
     }
 }
 
@@ -107,49 +129,77 @@ impl crate::flow::queue::Key for Handle {
         }
         Ok(())
     }
-
 }
 
-/// Tracker for managing flow lifecycle
+/// Tracker for managing flow lifecycle on a single dispatch worker thread.
 ///
-/// Shared between the handle and the sender state to remove flows on drop.
+/// The map is thread-local (Rc + RefCell). Cross-thread Handle drops are
+/// received via a shared DropChannel and applied during `drain_drops`.
 #[derive(Clone)]
-pub struct Tracker(std::sync::Arc<TrackerInner>);
+pub struct Tracker {
+    map: std::rc::Rc<std::cell::RefCell<FxHashMap<VarInt, VarInt>>>,
+    drop_channel: Arc<DropChannel>,
+    drain_buf: std::rc::Rc<std::cell::RefCell<VecDeque<VarInt>>>,
+    credentials: credentials::Id,
+}
 
 impl core::fmt::Debug for Tracker {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Tracker")
-            .field("credentials", &self.0.credentials)
+            .field("credentials", &self.credentials)
             .finish_non_exhaustive()
     }
 }
 
 impl Tracker {
+    #[inline]
     pub fn new(credentials: credentials::Id) -> Self {
-        Self(std::sync::Arc::new(TrackerInner {
-            map: dashmap::DashMap::new(),
+        Self {
+            map: Default::default(),
+            drop_channel: Arc::new(DropChannel::new()),
+            drain_buf: Default::default(),
             credentials,
-        }))
+        }
     }
 
+    /// Drain pending Handle drops and remove them from the local map.
+    #[inline]
+    fn drain_drops(&self) {
+        let mut buf = self.drain_buf.borrow_mut();
+        self.drop_channel.drain_into(&mut buf);
+        if buf.is_empty() {
+            return;
+        }
+        let mut map = self.map.borrow_mut();
+        for stream_id in buf.drain(..) {
+            map.remove(&stream_id);
+        }
+    }
+
+    #[inline]
     pub fn try_register<Q>(
         &self,
         stream_id: VarInt,
         create_queue: impl FnOnce(Handle) -> (VarInt, Q),
     ) -> Result<Q, VarInt> {
-        match self.0.map.entry(stream_id) {
-            dashmap::mapref::entry::Entry::Occupied(local_queue_id) => Err(*local_queue_id.get()),
-            dashmap::mapref::entry::Entry::Vacant(entry) => {
-                let handle = Handle::server(stream_id, self.clone());
+        self.drain_drops();
+
+        match self.map.borrow_mut().entry(stream_id) {
+            hash_map::Entry::Occupied(entry) => {
+                return Err(*entry.get());
+            }
+            hash_map::Entry::Vacant(entry) => {
+                let handle = Handle {
+                    stream_id,
+                    inner: HandleInner::Server {
+                        credential_id: self.credentials,
+                        drop_channel: self.drop_channel.clone(),
+                    },
+                };
                 let (queue_id, queue) = create_queue(handle);
                 entry.insert(queue_id);
                 Ok(queue)
             }
         }
     }
-}
-
-struct TrackerInner {
-    map: dashmap::DashMap<VarInt, VarInt>,
-    credentials: credentials::Id,
 }
