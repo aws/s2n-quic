@@ -3,6 +3,7 @@
 
 mod buf;
 mod bytes;
+mod chain;
 mod chunk;
 mod empty;
 mod full_copy;
@@ -15,6 +16,7 @@ mod tracked;
 mod tests;
 
 pub use buf::Buf;
+pub use chain::Chain;
 pub use chunk::Chunk;
 pub use empty::Empty;
 pub use full_copy::FullCopy;
@@ -74,5 +76,15 @@ pub trait Storage {
     #[inline]
     fn track_read(&mut self) -> Tracked<'_, Self> {
         Tracked::new(self)
+    }
+
+    /// Chains this storage with another, draining `self` before `other`
+    #[inline]
+    fn chain<Other>(self, other: Other) -> Chain<Self, Other>
+    where
+        Self: Sized + Storage<Error = core::convert::Infallible>,
+        Other: Storage<Error = core::convert::Infallible>,
+    {
+        Chain::new(self, other)
     }
 }

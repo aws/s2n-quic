@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::config::{ClientConfig, WorkloadConfig};
-use s2n_quic_core::{buffer::Reader as _, stream::testing::Data, varint::VarInt};
+use s2n_quic_core::{
+    buffer::{reader::storage::Storage as _, Reader as _},
+    stream::testing::Data,
+    varint::VarInt,
+};
 use s2n_quic_dc::stream3::endpoint::Endpoint;
 use std::{io, net::SocketAddr, sync::Arc, time::Duration};
-use tokio::io::AsyncWriteExt as _;
 use tracing::{info, warn};
 
 pub async fn run(
@@ -115,15 +118,9 @@ async fn execute_request(
     // Send the request concurrently with receiving the response so both halves
     // are exercised at the same time, covering more half-close code paths.
     let send = async move {
-        // Write the 8-byte response size header
-        writer.write_u64(response_size).await?;
-
-        // write_from_fin transmits FIN on the final chunk; writer drop calls shutdown()
-        // as a fallback if FIN hasn't been sent yet (e.g. empty body)
-        let mut request = Data::new(request_size);
-        while !request.is_finished() {
-            writer.write_from_fin(&mut request).await?;
-        }
+        let header = response_size.to_be_bytes();
+        let mut payload = (&header[..]).chain(Data::new(request_size));
+        writer.write_all_from_fin(&mut payload).await?;
 
         io::Result::Ok(8 + request_size)
     };
