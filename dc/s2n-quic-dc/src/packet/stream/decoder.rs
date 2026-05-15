@@ -280,16 +280,7 @@ impl Packet<'_> {
 
         match space {
             stream::PacketSpace::Stream => {
-                let payload_len = self.payload.len();
-                let payload_ptr = self.payload.as_mut_ptr();
-                let tag_len = self.auth_tag.len();
-                let tag_ptr = self.auth_tag.as_mut_ptr();
-                let payload_and_tag = unsafe {
-                    debug_assert_eq!(payload_ptr.add(payload_len), tag_ptr);
-
-                    core::slice::from_raw_parts_mut(payload_ptr, payload_len + tag_len)
-                };
-                d.decrypt_in_place(key_phase, nonce, header, payload_and_tag)?;
+                d.decrypt_in_place(key_phase, nonce, header, self.payload, self.auth_tag)?;
             }
             stream::PacketSpace::Recovery => {
                 // recovery/probe packets cannot have payloads

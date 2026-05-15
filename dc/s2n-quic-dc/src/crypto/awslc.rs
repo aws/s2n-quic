@@ -201,7 +201,8 @@ pub mod open {
             key_phase: KeyPhase,
             packet_number: u64,
             header: &[u8],
-            payload_and_tag: &mut [u8],
+            payload: &mut [u8],
+            tag: &[u8],
         ) -> Result {
             ensure!(
                 key_phase == KeyPhase::Zero,
@@ -211,7 +212,7 @@ pub mod open {
             let aad = Aad::from(header);
 
             self.key
-                .open_in_place(nonce, aad, payload_and_tag)
+                .open_in_place_separate_tag(nonce, aad, tag, payload)
                 .map_err(|_| Error::InvalidTag)?;
 
             Ok(())

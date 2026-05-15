@@ -296,7 +296,8 @@ pub mod open {
             key_phase: KeyPhase,
             packet_number: u64,
             header: &[u8],
-            payload_and_tag: &mut [u8],
+            payload: &mut [u8],
+            tag: &[u8],
         ) -> open::Result {
             let opener = match key_phase {
                 KeyPhase::Zero => &self.openers[0],
@@ -308,10 +309,11 @@ pub mod open {
                 KeyPhase::Zero,
                 packet_number,
                 header,
-                payload_and_tag,
+                payload,
+                tag,
             )?;
 
-            self.on_decrypt_success(payload_and_tag.into())?;
+            self.on_decrypt_success(payload.into())?;
 
             if key_phase != self.key_phase {
                 self.needs_update.store(true, Ordering::Relaxed);
@@ -386,7 +388,8 @@ pub mod open {
             key_phase: KeyPhase,
             packet_number: u64,
             header: &[u8],
-            payload_and_tag: &mut [u8],
+            payload: &mut [u8],
+            tag: &[u8],
         ) -> open::Result {
             ensure!(
                 key_phase == KeyPhase::Zero,
@@ -394,9 +397,9 @@ pub mod open {
             );
 
             self.key
-                .decrypt_in_place(key_phase, packet_number, header, payload_and_tag)?;
+                .decrypt_in_place(key_phase, packet_number, header, payload, tag)?;
 
-            self.on_decrypt_success(payload_and_tag.into())?;
+            self.on_decrypt_success(payload.into())?;
 
             ensure!(
                 !self.opened.swap(true, Ordering::Relaxed),

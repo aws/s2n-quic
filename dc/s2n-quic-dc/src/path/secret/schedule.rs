@@ -613,11 +613,12 @@ mod tests {
 
             assert_ne!(msg, &buf[..5]);
 
+            let (payload, tag) = buf.split_at_mut(5);
             other
                 .opener
-                .decrypt_in_place(key_phase, packet_number, header, &mut buf)?;
+                .decrypt_in_place(key_phase, packet_number, header, payload, tag)?;
 
-            assert_eq!(msg, &buf[..5]);
+            assert_eq!(msg, payload);
 
             Ok(())
         }

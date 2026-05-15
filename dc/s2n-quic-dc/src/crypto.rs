@@ -104,13 +104,14 @@ pub mod open {
             payload_out: &mut UninitSlice,
         ) -> Result;
 
-        /// Decrypt a payload
+        /// Decrypt a payload in place with a separate tag
         fn decrypt_in_place(
             &self,
             key_phase: KeyPhase,
             packet_number: u64,
             header: &[u8],
-            payload_and_tag: &mut [u8],
+            payload: &mut [u8],
+            tag: &[u8],
         ) -> Result;
     }
 
