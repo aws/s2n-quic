@@ -118,6 +118,13 @@ impl Controller {
     }
 
     #[inline]
+    pub fn on_packet_discarded(&mut self, sent_bytes: usize) {
+        let publisher = &mut NoopPublisher;
+        self.controller
+            .on_packet_discarded(sent_bytes, publisher);
+    }
+
+    #[inline]
     pub fn is_congestion_limited(&self) -> bool {
         self.controller.is_congestion_limited()
     }

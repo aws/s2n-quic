@@ -120,7 +120,15 @@ async fn execute_request(
     let send = async move {
         let header = response_size.to_be_bytes();
         let mut payload = (&header[..]).chain(Data::new(request_size));
-        writer.write_all_from_fin(&mut payload).await?;
+        loop {
+            if payload.buffer_is_empty() {
+                break;
+            }
+            tokio::time::timeout(Duration::from_secs(10), writer.write_from_fin(&mut payload))
+                .await
+                .expect("writer did not produce a chunk within 10 seconds")
+                ?;
+        }
 
         io::Result::Ok(8 + request_size)
     };
@@ -129,7 +137,41 @@ async fn execute_request(
         // Read and validate response using Data
         let mut response = Data::new(response_size);
         loop {
-            let n = reader.read_into(&mut response).await?;
+            let n = match tokio::time::timeout(
+                Duration::from_secs(10),
+                reader.read_into(&mut response),
+            )
+            .await
+            {
+                Ok(result) => result?,
+                Err(_elapsed) => {
+                    // Timeout fired — try reading again immediately to check for a missed waker.
+                    // If data comes back, the waker was lost but the data was there all along.
+                    match tokio::time::timeout(
+                        Duration::from_millis(1),
+                        reader.read_into(&mut response),
+                    )
+                    .await
+                    {
+                        Ok(Ok(n)) if n > 0 => {
+                            panic!(
+                                "BUG: missed waker! read {n} bytes on immediate retry \
+                                 after 10s timeout. offset={}/{}",
+                                response.current_offset(),
+                                response_size,
+                            );
+                        }
+                        _ => {
+                            panic!(
+                                "reader did not produce a chunk within 10 seconds \
+                                 and no data was available on retry. offset={}/{}",
+                                response.current_offset(),
+                                response_size,
+                            );
+                        }
+                    }
+                }
+            };
             if n == 0 {
                 break;
             }

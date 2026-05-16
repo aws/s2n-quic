@@ -119,8 +119,11 @@ pub(crate) fn process_ack<Clk, Rand>(
 
         // Phase 2: follow deferred probe chains and complete the tail frames.
         for probe_pn in &deferred {
-            let (_, tail_frames) = context.inflight.take_chain_tail_frames(*probe_pn);
-            for mut entry in tail_frames {
+            let removal = context.inflight.remove_chain(*probe_pn);
+            if removal.discarded_bytes > 0 {
+                context.cca.on_packet_discarded(removal.discarded_bytes);
+            }
+            for mut entry in removal.frames {
                 entry.status = TransmissionStatus::Acknowledged;
                 let _ = completed.send(entry);
             }

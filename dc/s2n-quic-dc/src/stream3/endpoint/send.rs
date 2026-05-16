@@ -20,6 +20,7 @@ use crate::{
     counter::QueueGauge,
     credentials::{self, Credentials},
     intrusive_queue::{self, Queue},
+    msg::segment,
     path::secret::map::Entry as PathSecretEntry,
     socket::channel::{intrusive_queue::unsync, ByteCost, UnboundedSender},
     stream3::{
@@ -33,6 +34,7 @@ use s2n_quic_core::{
     frame::ack::EcnCounts, packet::number::PacketNumberSpace, path::INITIAL_PTO_BACKOFF,
     recovery::RttEstimator, varint::VarInt,
 };
+use s2n_quic_platform::features::Gso;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 #[cfg(test)]
@@ -584,6 +586,20 @@ impl Context {
         self.idle_wheel.links.is_linked()
     }
 
+    #[inline]
+    pub fn path_info(&self, gso: &Gso) -> PathInfo {
+        let mtu = self.path_secret_entry.max_datagram_size();
+        let send_quantum_segments = (self.cca.send_quantum() as u64).div_ceil(mtu as u64) as usize;
+        let max_segments = gso
+            .max_segments()
+            .min(segment::MAX_COUNT)
+            .min(send_quantum_segments);
+        PathInfo {
+            max_datagram_size: mtu,
+            max_segments,
+        }
+    }
+
     /// Called when the PTO wheel fires for this context.
     ///
     /// Transitions the probe state from `Idle` to `Requested` if a real probe
@@ -607,6 +623,7 @@ impl Context {
     /// - PTO target should be `None` when there is no inflight data (no need to probe).
     /// - Every inflight packet must either have a `probed_to` link (shell) or contain
     ///   non-empty, all-ack-eliciting frames (no stale ACK frames stored).
+    /// - The sum of `sent_bytes` in the inflight map must equal `cca.bytes_in_flight()`.
     #[inline]
     pub fn invariants(&self) {
         if cfg!(debug_assertions) {
@@ -616,9 +633,22 @@ impl Context {
                     "PTO is armed but there is no inflight data to probe"
                 );
             }
+
+            let map_bytes: u32 = self.inflight.sum_sent_bytes();
+            let cca_bytes = self.cca.bytes_in_flight();
+            assert_eq!(
+                map_bytes, cca_bytes,
+                "inflight map bytes ({map_bytes}) != CCA bytes_in_flight ({cca_bytes})"
+            );
         }
         self.inflight.invariants();
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PathInfo {
+    pub max_datagram_size: u16,
+    pub max_segments: usize,
 }
 
 // ── Wheel Links ───────────────────────────────────────────────────────────

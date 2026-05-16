@@ -172,12 +172,22 @@ impl Map {
         }
     }
 
+    /// Sum the `sent_bytes` of all inflight entries that still have transmission info.
+    #[inline]
+    pub fn sum_sent_bytes(&self) -> u32 {
+        self.inner
+            .iter()
+            .filter_map(|(_, p)| p.transmission_info.as_ref())
+            .map(|info| info.sent_bytes as u32)
+            .sum()
+    }
+
     /// Remove a single packet from the map (e.g. when all its frames are cancelled).
     #[inline]
-    pub fn remove(&mut self, pn: PacketNumber) {
-        if self.inner.remove(pn).is_some() {
-            self.inflight_gauge.dequeue();
-        }
+    pub fn remove(&mut self, pn: PacketNumber) -> Option<Packet> {
+        let packet = self.inner.remove(pn)?;
+        self.inflight_gauge.dequeue();
+        Some(packet)
     }
 
     /// Set the `probed_to` forward pointer on an existing inflight entry.
@@ -196,32 +206,50 @@ impl Map {
         }
     }
 
-    /// Follow the `probed_to` chain starting at `pn` and take the frames from the tail.
+    /// Follow the `probed_to` chain starting at `pn`, remove every entry in the
+    /// chain, and return the frames from the tail.
     ///
     /// Used in ACK processing when a shell is ACKed: the frames to complete live at
-    /// the tail of the probe chain. The tail entry's `frames` are emptied but the
-    /// entry itself remains in the map with its `TransmissionInfo` intact for later
-    /// loss detection or ACK completion.
+    /// the tail of the probe chain. All intermediate shells and the tail itself are
+    /// removed from the map so no zombie entries remain.
     ///
-    /// Returns `(tail_pn, frames)`. The frames queue may be empty if the tail entry
-    /// was already ACKed and removed in the same ACK range (both shell and probe PN
-    /// acknowledged simultaneously).
+    /// Returns the tail's frames and the total `sent_bytes` of all removed entries
+    /// that still had `transmission_info`. The caller must release these bytes from
+    /// the CCA via `on_packet_discarded`.
     #[inline]
-    pub fn take_chain_tail_frames(&mut self, mut pn: PacketNumber) -> (PacketNumber, Queue<Frame>) {
-        // Walk the chain to the tail (first entry with no probed_to link).
+    pub fn remove_chain(&mut self, mut pn: PacketNumber) -> ChainRemoval {
+        let mut frames = Queue::new();
+        let mut discarded_bytes: usize = 0;
+
         loop {
-            match self.inner.get(pn).and_then(|p| p.probed_to) {
-                Some(next_pn) => pn = next_pn,
+            match self.inner.remove(pn) {
+                Some(packet) => {
+                    self.inflight_gauge.dequeue();
+                    if let Some(tx_info) = &packet.transmission_info {
+                        discarded_bytes += tx_info.sent_bytes as usize;
+                    }
+                    if let Some(next_pn) = packet.probed_to {
+                        pn = next_pn;
+                    } else {
+                        frames = packet.frames;
+                        break;
+                    }
+                }
                 None => break,
             }
         }
-        let frames = self
-            .inner
-            .get_mut(pn)
-            .map(|p| core::mem::take(&mut p.frames))
-            .unwrap_or_default();
-        (pn, frames)
+
+        ChainRemoval {
+            frames,
+            discarded_bytes,
+        }
     }
+}
+
+#[must_use = "discarded_bytes must be released from the CCA via on_packet_discarded"]
+pub(crate) struct ChainRemoval {
+    pub frames: Queue<Frame>,
+    pub discarded_bytes: usize,
 }
 
 #[cfg(test)]
@@ -386,10 +414,10 @@ mod tests {
         assert!(map.take_oldest_for_probe().is_none());
     }
 
-    // ── set_probed_to / take_chain_tail_frames ────────────────────────────────
+    // ── set_probed_to / remove_chain ───────────────────────────────────────────
 
     #[test]
-    fn set_probed_to_and_take_chain_tail_single_hop() {
+    fn remove_chain_single_hop() {
         let mut map = Map::new(make_gauge());
         let pn_old = make_pn(1);
         let pn_new = make_pn(10);
@@ -397,40 +425,6 @@ mod tests {
 
         // Simulate probe assembly
         let (_old, frames) = map.take_oldest_for_probe().unwrap();
-        // Insert probe packet containing the taken frames
-        let mut cca = crate::congestion::Controller::new(1500);
-        let rtt = RttEstimator::new(Duration::from_millis(2));
-        let now =
-            unsafe { s2n_quic_core::time::Timestamp::from_duration(Duration::from_millis(200)) };
-        let cc_info = cca.on_packet_sent(now, 100, false, &rtt);
-        let probe_packet = Packet::new(
-            frames,
-            TransmissionInfo {
-                cc_info,
-                time_sent: now,
-                sent_bytes: 100,
-            },
-        );
-        map.insert(pn_new, probe_packet);
-        map.set_probed_to(pn_old, pn_new);
-
-        // ACK the shell: chain walk should go shell → probe and return probe frames
-        let (tail_pn, tail_frames) = map.take_chain_tail_frames(pn_old);
-        assert_eq!(tail_pn, pn_new, "chain tail should be the probe PN");
-        assert!(!tail_frames.is_empty(), "tail frames should be non-empty");
-    }
-
-    #[test]
-    fn take_chain_tail_frames_already_removed_tail_returns_empty() {
-        // Shell → probe, but probe was already ACKed and removed from the map.
-        // take_chain_tail_frames should return an empty queue gracefully.
-        let mut map = Map::new(make_gauge());
-        let pn_old = make_pn(1);
-        let pn_new = make_pn(10);
-        map.insert(pn_old, make_packet(fake_entry()));
-
-        let (_old, frames) = map.take_oldest_for_probe().unwrap();
-        // Simulate inserting probe then ACKing both in the same ACK range
         let mut cca = crate::congestion::Controller::new(1500);
         let rtt = RttEstimator::new(Duration::from_millis(2));
         let now =
@@ -449,22 +443,55 @@ mod tests {
         );
         map.set_probed_to(pn_old, pn_new);
 
-        // ACK range covers pn_new first (remove_range processes in order).
-        // We simulate the probe PN being removed before the shell is processed.
+        // remove_chain should follow shell → probe, remove probe, and return its frames
+        let removal = map.remove_chain(pn_old);
+        assert!(!removal.frames.is_empty(), "tail frames should be non-empty");
+        // Both entries should be removed
+        assert!(!map.has_inflight());
+    }
+
+    #[test]
+    fn remove_chain_already_removed_tail_returns_empty() {
+        // Shell → probe, but probe was already ACKed and removed from the map.
+        let mut map = Map::new(make_gauge());
+        let pn_old = make_pn(1);
+        let pn_new = make_pn(10);
+        map.insert(pn_old, make_packet(fake_entry()));
+
+        let (_old, frames) = map.take_oldest_for_probe().unwrap();
+        let mut cca = crate::congestion::Controller::new(1500);
+        let rtt = RttEstimator::new(Duration::from_millis(2));
+        let now =
+            unsafe { s2n_quic_core::time::Timestamp::from_duration(Duration::from_millis(200)) };
+        let cc_info = cca.on_packet_sent(now, 100, false, &rtt);
+        map.insert(
+            pn_new,
+            Packet::new(
+                frames,
+                TransmissionInfo {
+                    cc_info,
+                    time_sent: now,
+                    sent_bytes: 100,
+                },
+            ),
+        );
+        map.set_probed_to(pn_old, pn_new);
+
+        // Simulate the probe PN being removed before the shell is processed.
         let range = s2n_quic_core::packet::number::PacketNumberRange::new(pn_new, pn_new);
         let _removed: Vec<_> = map.remove_range(range).collect();
 
-        // Now take_chain_tail_frames on the shell should return an empty queue
-        let (_tail_pn, tail_frames) = map.take_chain_tail_frames(pn_old);
+        // remove_chain on the shell walks to pn_new which is gone → empty queue
+        let removal = map.remove_chain(pn_old);
         assert!(
-            tail_frames.is_empty(),
+            removal.frames.is_empty(),
             "tail already removed; frames should be empty"
         );
     }
 
     #[test]
-    fn take_chain_tail_frames_multi_hop() {
-        // Chain: pn1 (shell) → pn10 (shell) → pn20 (probe, non-shell with frames)
+    fn remove_chain_multi_hop() {
+        // Chain: pn1 (shell) → pn10 (shell) → pn20 (tail with frames)
         let mut map = Map::new(make_gauge());
         let pn1 = make_pn(1);
         let pn10 = make_pn(10);
@@ -494,7 +521,7 @@ mod tests {
         map.set_probed_to(pn1, pn10);
 
         // Second probe: pn10 → pn20
-        let (_old10, frames10) = map.take_oldest_for_probe().unwrap(); // takes pn10's frames
+        let (_old10, frames10) = map.take_oldest_for_probe().unwrap();
         let cc2 = cca.on_packet_sent(now, 100, false, &rtt);
         map.insert(
             pn20,
@@ -509,10 +536,11 @@ mod tests {
         );
         map.set_probed_to(pn10, pn20);
 
-        // Chain: pn1 → pn10 → pn20. Walking from pn1 should reach pn20.
-        let (tail_pn, tail_frames) = map.take_chain_tail_frames(pn1);
-        assert_eq!(tail_pn, pn20, "chain tail should be pn20");
-        assert!(!tail_frames.is_empty(), "pn20 frames should be present");
+        // remove_chain from pn1 should walk pn1 → pn10 → pn20, remove all, return pn20's frames
+        let removal = map.remove_chain(pn1);
+        assert!(!removal.frames.is_empty(), "pn20 frames should be present");
+        // All three entries removed
+        assert!(!map.has_inflight());
     }
 
     // ── invariants ────────────────────────────────────────────────────────────

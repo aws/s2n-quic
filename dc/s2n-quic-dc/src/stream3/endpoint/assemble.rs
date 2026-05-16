@@ -22,7 +22,11 @@ use crate::{
         pool::{self, descriptor::Segments},
     },
     stream3::{
-        endpoint::{combinator::AssemblerCounters, inflight, msg, send::Context},
+        endpoint::{
+            combinator::AssemblerCounters,
+            inflight, msg,
+            send::{Context, PathInfo},
+        },
         frame::{self, Frame},
     },
 };
@@ -64,10 +68,12 @@ pub(crate) fn assemble<Clk>(
 where
     Clk: precision::Clock + ?Sized,
 {
-    let mtu = context.path_secret_entry.max_datagram_size();
     let now = clock.now();
     let time_sent = now.into();
-    let max_segments = gso.max_segments().min(segment::MAX_COUNT);
+    let PathInfo {
+        max_datagram_size: mtu,
+        max_segments,
+    } = context.path_info(gso);
 
     let unfilled = pool.alloc()?;
 
@@ -432,7 +438,14 @@ fn assemble_probe(
         if !has_frame {
             // All frames were cancelled — remove the now-empty shell that has no
             // probed_to link, otherwise it violates the inflight invariant.
-            context.inflight.remove(old_pn);
+            // We must also inform the CCA so it releases the bytes from `bytes_in_flight`,
+            // otherwise the window is permanently inflated and the context becomes
+            // un-schedulable.
+            if let Some(packet) = context.inflight.remove(old_pn) {
+                if let Some(tx_info) = packet.transmission_info {
+                    context.cca.on_packet_discarded(tx_info.sent_bytes as usize);
+                }
+            }
             continue;
         }
 
