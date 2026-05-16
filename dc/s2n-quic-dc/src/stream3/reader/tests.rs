@@ -995,6 +995,417 @@ fn server_init_with_fin_suppresses_max_data_large_payload() {
     });
 }
 
+/// Reset arrives while `validate()` is in-flight and early data is already buffered.
+/// The application must be able to drain buffered data after validate fails with
+/// ConnectionReset (TCP receive-buffer semantics: data before RST is readable).
+#[test]
+fn server_reset_during_validate_with_buffered_data() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = make_server_pair();
+
+        async move {
+            // Early data arrives first (buffered in reassembler during PendingValidation)
+            pusher.push_data(0, b"buffered", false);
+            bach::task::yield_now().await;
+            // Reset arrives in subsequent batch
+            pusher.push_reset(VarInt::from_u8(99));
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            // validate() should fail with ConnectionReset
+            let err = reader
+                .validate()
+                .await
+                .expect_err("expected ConnectionReset from validate");
+            assert_eq!(err.kind(), std::io::ErrorKind::ConnectionReset);
+            assert!(reader.0.status.is_reset());
+
+            // Despite validate failing, buffered data should be drainable
+            let mut buf = BytesMut::with_capacity(32);
+            let n = reader
+                .read_into(&mut buf)
+                .await
+                .expect("buffered data should be readable after reset");
+            assert_eq!(n, 8);
+            assert_eq!(&buf[..], b"buffered");
+
+            // After drain, sticky ConnectionReset
+            let err2 = reader
+                .read_into(&mut buf)
+                .await
+                .expect_err("expected sticky ConnectionReset");
+            assert_eq!(err2.kind(), std::io::ErrorKind::ConnectionReset);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Calling `send_reset()` on a PendingValidation reader transitions to Reset.
+/// A subsequent `validate()` call returns `Ok(())` because the early-return at
+/// line 354 fires (`!is_pending_validation()`). The application must attempt a
+/// read to discover the reset error.
+#[test]
+fn server_validate_returns_ok_after_external_reset() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = make_server_pair();
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            assert_eq!(frames.len(), 1);
+            assert!(
+                matches!(
+                    frames.front().unwrap().header,
+                    Header::FlowReset {
+                        reset_target: ResetTarget::Both,
+                        error_code,
+                        ..
+                    } if error_code == VarInt::from_u8(77)
+                ),
+                "expected FlowReset(Both) from send_reset"
+            );
+            // No STOP_SENDING on drop since status is already Reset
+            let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(extra.is_none(), "no additional frames expected on drop");
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            // Application rejects the stream before validation completes
+            reader.send_reset(VarInt::from_u8(77));
+            assert!(reader.0.status.is_reset());
+
+            // validate() returns Ok despite the stream being dead
+            reader
+                .validate()
+                .await
+                .expect("validate returns Ok for non-pending status");
+
+            // read_into reveals the actual error
+            let mut buf = BytesMut::with_capacity(16);
+            let err = reader
+                .read_into(&mut buf)
+                .await
+                .expect_err("expected ConnectionReset");
+            assert_eq!(err.kind(), std::io::ErrorKind::ConnectionReset);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// FlowValidated and Data arrive in the same queue batch. The `interpose` flag
+/// is captured once as `false` (PendingValidation at start of poll_stream_rx),
+/// so data goes into the reassembler even though status transitions to Open
+/// mid-batch. Subsequent read_into must drain and emit MAX_DATA.
+#[test]
+fn server_flow_validated_and_data_same_batch() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = make_server_pair();
+        let expected_max_data = VarInt::new(reader.0.window_size + 5).unwrap();
+
+        async move {
+            // Same batch: no yield between pushes
+            pusher.push_flow_validated();
+            pusher.push_data(0, b"hello", true);
+            bach::task::yield_now().await;
+
+            let frames = pusher
+                .recv_frames_timeout(Duration::from_secs(1))
+                .await
+                .expect("expected MAX_DATA after same-batch validate+data");
+            assert_eq!(frames.len(), 1);
+            assert_eq!(
+                frames.front().and_then(decode_max_data_from_flow_control),
+                Some(expected_max_data),
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            reader.validate().await.expect("validate failed");
+            let mut buf = BytesMut::with_capacity(16);
+            let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
+            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(&buf[..], b"hello");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Reset arrives before FlowValidated in the same batch. The Reset causes
+/// poll_stream_rx to return immediately, so FlowValidated is never processed.
+/// Status goes directly PendingValidation → Reset.
+#[test]
+fn server_reset_before_flow_validated_same_batch() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = make_server_pair();
+
+        async move {
+            // Reset first, then FlowValidated in same batch
+            pusher.push_reset(VarInt::from_u8(5));
+            pusher.push_flow_validated();
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let err = reader
+                .validate()
+                .await
+                .expect_err("expected ConnectionReset");
+            assert_eq!(err.kind(), std::io::ErrorKind::ConnectionReset);
+            assert!(reader.0.status.is_reset());
+
+            // Subsequent read also errors
+            let mut buf = BytesMut::with_capacity(16);
+            let err2 = reader
+                .read_into(&mut buf)
+                .await
+                .expect_err("expected ConnectionReset on read");
+            assert_eq!(err2.kind(), std::io::ErrorKind::ConnectionReset);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// FlowValidated arrives before Reset in the same batch. FlowValidated
+/// transitions to Open, then Reset transitions Open → Reset. End state is
+/// the same as the reversed ordering (test above).
+#[test]
+fn server_flow_validated_then_reset_same_batch() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = make_server_pair();
+
+        async move {
+            // FlowValidated first, then Reset in same batch
+            pusher.push_flow_validated();
+            pusher.push_reset(VarInt::from_u8(5));
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let err = reader
+                .validate()
+                .await
+                .expect_err("expected ConnectionReset");
+            assert_eq!(err.kind(), std::io::ErrorKind::ConnectionReset);
+            assert!(reader.0.status.is_reset());
+
+            // Same end state as reset-before-validated
+            let mut buf = BytesMut::with_capacity(16);
+            let err2 = reader
+                .read_into(&mut buf)
+                .await
+                .expect_err("expected ConnectionReset on read");
+            assert_eq!(err2.kind(), std::io::ErrorKind::ConnectionReset);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Endpoint dies (dispatcher drops) while validate() is pending. The reader
+/// surfaces BrokenPipe. Status remains PendingValidation since channel closure
+/// doesn't trigger a state transition.
+#[test]
+fn server_channel_closed_during_validate() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, pusher) = make_server_pair();
+
+        async move {
+            // Drop the dispatcher to close the stream channel
+            drop(pusher);
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let err = reader
+                .validate()
+                .await
+                .expect_err("expected BrokenPipe when channel closes");
+            assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Multiple out-of-order chunks arrive before FlowValidated. After validation,
+/// reassembly produces the correct ordered stream and MAX_DATA reflects total
+/// consumed bytes.
+#[test]
+fn server_out_of_order_early_data_before_validated() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = make_server_pair();
+        let expected_max_data = VarInt::new(reader.0.window_size + 11).unwrap();
+
+        async move {
+            // Out-of-order: middle, head, tail+FIN
+            pusher.push_data(5, b"world", false);
+            pusher.push_data(0, b"hello", false);
+            pusher.push_data(10, b"!", true);
+            bach::task::yield_now().await;
+            pusher.push_flow_validated();
+            bach::task::yield_now().await;
+
+            let frames = pusher
+                .recv_frames_timeout(Duration::from_secs(1))
+                .await
+                .expect("expected MAX_DATA after reading out-of-order early data");
+            assert_eq!(
+                frames.front().and_then(decode_max_data_from_flow_control),
+                Some(expected_max_data),
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            reader.validate().await.expect("validate failed");
+            let mut buf = BytesMut::with_capacity(32);
+            let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
+            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(&buf[..], b"helloworld!");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Dropping a reader that was never validated (still PendingValidation) emits
+/// STOP_SENDING so the peer knows to stop sending data for this stream.
+#[test]
+fn server_drop_during_pending_validation_sends_stop_sending() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (reader, mut pusher) = make_server_pair();
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            assert_eq!(frames.len(), 1);
+            assert!(
+                matches!(
+                    frames.front().unwrap().header,
+                    Header::FlowReset {
+                        reset_target: ResetTarget::Stream,
+                        error_code,
+                        ..
+                    } if error_code == reset_error::STOP_SENDING
+                ),
+                "expected STOP_SENDING on drop of never-validated reader"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            // Drop without ever calling validate or read
+            drop(reader);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Application-initiated rejection: `send_reset` on a PendingValidation reader
+/// emits FlowReset(Both), transitions to Reset, and suppresses further frames
+/// on drop.
+#[test]
+fn server_send_reset_on_pending_reader() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = make_server_pair();
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            assert_eq!(frames.len(), 1);
+            assert!(
+                matches!(
+                    frames.front().unwrap().header,
+                    Header::FlowReset {
+                        reset_target: ResetTarget::Both,
+                        error_code,
+                        ..
+                    } if error_code == VarInt::from_u8(42)
+                ),
+                "expected FlowReset(Both, 42) from send_reset"
+            );
+            // Drop must NOT emit additional STOP_SENDING (status is already Reset)
+            let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(
+                extra.is_none(),
+                "no additional frames after drop of already-reset reader"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            reader.send_reset(VarInt::from_u8(42));
+            assert!(reader.0.status.is_reset());
+            assert!(reader.0.reassembler.is_empty());
+            drop(reader);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Calling validate() twice is idempotent: the second call returns Ok
+/// immediately without polling the channel.
+#[test]
+fn server_validate_idempotent_when_already_open() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = make_server_pair();
+
+        async move {
+            pusher.push_flow_validated();
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            reader.validate().await.expect("first validate failed");
+            assert!(reader.0.status.is_open());
+            // Second call is a no-op
+            reader
+                .validate()
+                .await
+                .expect("second validate should be Ok");
+            assert!(reader.0.status.is_open());
+        }
+        .primary()
+        .spawn();
+    });
+}
+
 /// Dropping the Reader before a FIN is received must send a `STOP_SENDING`
 /// (FlowReset) frame so the peer knows to stop.
 ///

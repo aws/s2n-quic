@@ -25,12 +25,14 @@ use std::{net::SocketAddr, task::Poll, time::Duration};
 
 struct PairBuilder {
     ep_type: endpoint::Type,
+    initial_remote_queue_id: Option<VarInt>,
 }
 
 impl Default for PairBuilder {
     fn default() -> Self {
         Self {
             ep_type: endpoint::Type::Client,
+            initial_remote_queue_id: Some(VarInt::from_u8(2)),
         }
     }
 }
@@ -39,13 +41,23 @@ impl PairBuilder {
     fn server() -> Self {
         Self {
             ep_type: endpoint::Type::Server,
+            ..Default::default()
+        }
+    }
+
+    /// Create a client pair without pre-setting remote_queue_id, matching
+    /// production behavior where the peer's queue ID is unknown until flow
+    /// establishment.
+    fn client_no_remote_queue_id() -> Self {
+        Self {
+            ep_type: endpoint::Type::Client,
+            initial_remote_queue_id: None,
         }
     }
 
     fn build(self) -> (Writer, Pusher) {
         let stream_id = VarInt::from_u8(42);
         let acceptor_id = VarInt::from_u8(7);
-        let remote_queue_id = VarInt::from_u8(2);
         let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
         let path_secret_entry = PathSecretEntry::fake_deterministic(peer, self.ep_type);
 
@@ -61,7 +73,7 @@ impl PairBuilder {
             }
         };
         let (control_rx, _stream_rx) = dispatcher
-            .alloc(handle, Some(remote_queue_id))
+            .alloc(handle, self.initial_remote_queue_id)
             .expect("queue alloc should succeed");
 
         let queue_id = control_rx.queue_id();
@@ -761,6 +773,590 @@ fn panic_drop_sends_abnormal_termination_reset() {
             let panic_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
                 let _writer = writer;
                 panic!("intentional test panic while dropping writer");
+            }));
+            assert!(panic_result.is_err());
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+// ─── Flow init protocol gap tests ───────────────────────────────────────────
+//
+// PROTOCOL GAP: FlowInitSent → peer notification failure
+//
+// When a client writer is abandoned during FlowInitSent (before the peer's
+// MAX_DATA response arrives), neither FIN nor FlowReset can reach the peer:
+//
+//   - `send_fin_packet()` is a no-op in FlowInitSent (only handles Init and Open).
+//   - `send_reset_frame()` requires `remote_queue_id` which is only set once
+//     the peer's MAX_DATA arrives (flow establishment).
+//
+// The consequence is that the peer (which already accepted the FlowInit, created
+// a reader, and possibly buffered early data) will hang indefinitely waiting for
+// more data or a FIN that never arrives. There is no stream-level idle timeout
+// on the reader side.
+//
+// Potential fix: `send_fin_packet()` should handle FlowInitSent by re-sending
+// the FlowInit frame with `is_fin: true`. The FlowInit header routes via
+// `dest_acceptor_id` (not `remote_queue_id`), so it can always be sent. The
+// peer's dedup logic would see the same stream_id and treat the FIN-bearing
+// retransmission as a final-size update on the already-accepted flow.
+//
+// The three tests below (client_drop_in_flow_init_sent_cannot_send_fin,
+// client_shutdown_during_flow_init_sent, client_panic_drop_during_flow_init_sent)
+// all document this gap. They will need updating when a fix lands.
+
+/// Dropping a client writer while in FlowInitSent (before MAX_DATA arrives)
+/// cannot send FIN or Reset because remote_queue_id is unknown. The peer that
+/// accepted the FlowInit gets no notification and will hang waiting for data.
+///
+/// See "PROTOCOL GAP" comment block above for full analysis.
+#[test]
+fn client_drop_in_flow_init_sent_cannot_send_fin() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
+
+        async move {
+            // FlowInit frame arrives
+            let frames = pusher.recv_frames().await;
+            assert_eq!(frames.len(), 1);
+            assert!(matches!(
+                frames.front().unwrap().header,
+                Header::FlowInit { is_fin: false, .. }
+            ));
+
+            // No additional frame on drop (no FIN, no FlowReset)
+            let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(
+                extra.is_none(),
+                "expected no frame on drop during FlowInitSent — peer gets no notification"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"hello");
+            let written = writer.write_from(&mut payload).await.expect("first write");
+            assert_eq!(written, 5);
+            assert!(writer.0.status.is_flow_init_sent());
+            drop(writer);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// PeerDead completion failure during FlowInitSent: send_reset_frame silently
+/// no-ops because remote_queue_id is unknown. The error is surfaced to the
+/// application but the peer is never explicitly notified (acceptable since the
+/// peer is dead anyway).
+#[test]
+fn client_reset_during_flow_init_sent_is_silent() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            assert_eq!(frames.len(), 1);
+            pusher.complete_all(
+                frames,
+                frame::TransmissionStatus::Failed(frame::FailureReason::PeerDead),
+            );
+
+            // No FlowReset emitted (remote_queue_id is None)
+            let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(
+                extra.is_none(),
+                "no FlowReset possible during FlowInitSent (remote_queue_id unknown)"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"hello");
+            let written = writer.write_from(&mut payload).await.expect("first write");
+            assert_eq!(written, 5);
+
+            bach::task::yield_now().await;
+
+            let mut retry = Bytes::from_static(b"!");
+            let err = writer
+                .write_from(&mut retry)
+                .await
+                .expect_err("expected TimedOut");
+            assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+            assert!(writer.0.status.is_shutdown());
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// TransmissionError during FlowInitSent: the code attempts send_reset_frame
+/// with RETRANSMISSIONS_EXHAUSTED but it silently fails. Unlike PeerDead, the
+/// peer might still be alive here — documenting the silent failure.
+#[test]
+fn client_transmission_error_during_flow_init_sent() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            assert_eq!(frames.len(), 1);
+            pusher.complete_all(
+                frames,
+                frame::TransmissionStatus::Failed(frame::FailureReason::TransmissionError),
+            );
+
+            // No FlowReset emitted despite TransmissionError (remote_queue_id unknown)
+            let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(extra.is_none(), "no FlowReset possible during FlowInitSent");
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"hello");
+            let written = writer.write_from(&mut payload).await.expect("first write");
+            assert_eq!(written, 5);
+
+            bach::task::yield_now().await;
+
+            let mut retry = Bytes::from_static(b"!");
+            let err = writer
+                .write_from(&mut retry)
+                .await
+                .expect_err("expected BrokenPipe");
+            assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+            assert!(writer.0.status.is_shutdown());
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Control channel closed while writer is in FlowInitSent (endpoint died).
+/// Next write attempt returns ConnectionReset.
+#[test]
+fn client_control_channel_closed_during_flow_init_sent() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
+
+        async move {
+            // Wait for the FlowInit frame (proves writer reached FlowInitSent)
+            let frames = pusher.recv_frames().await;
+            assert_eq!(frames.len(), 1);
+            assert!(matches!(
+                frames.front().unwrap().header,
+                Header::FlowInit { .. }
+            ));
+            // Now close the channel by dropping the pusher
+            drop(pusher);
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"hello");
+            let written = writer.write_from(&mut payload).await.expect("first write");
+            assert_eq!(written, 5);
+            assert!(writer.0.status.is_flow_init_sent());
+
+            // Next write detects closed control channel
+            let mut retry = Bytes::from_static(b"!");
+            let err = writer
+                .write_from(&mut retry)
+                .await
+                .expect_err("expected error from closed channel");
+            assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Explicit shutdown() while in FlowInitSent: send_fin_packet does nothing
+/// (FlowInitSent is neither Init nor Open), so no FIN reaches the peer.
+///
+/// See "PROTOCOL GAP" comment block above for full analysis.
+#[test]
+fn client_shutdown_during_flow_init_sent() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            assert_eq!(frames.len(), 1);
+            assert!(matches!(
+                frames.front().unwrap().header,
+                Header::FlowInit { is_fin: false, .. }
+            ));
+
+            // No FIN emitted by shutdown()
+            let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(
+                extra.is_none(),
+                "shutdown during FlowInitSent cannot send FIN — no frame emitted"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"hello");
+            let written = writer.write_from(&mut payload).await.expect("first write");
+            assert_eq!(written, 5);
+            assert!(writer.0.status.is_flow_init_sent());
+
+            writer.shutdown().expect("shutdown should succeed");
+            assert!(writer.0.status.is_shutdown());
+
+            // Writes after shutdown return BrokenPipe
+            let mut retry = Bytes::from_static(b"!");
+            let err = writer
+                .write_from(&mut retry)
+                .await
+                .expect_err("expected BrokenPipe after shutdown");
+            assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Empty-buffer write_from_fin sends FlowInit with empty payload and FIN=true.
+/// Tests the Init → FlowInitSent → FinSent transition in a single call.
+#[test]
+fn client_empty_fin_flow_init() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut writer, mut pusher) = make_client_pair();
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            assert_eq!(frames.len(), 1);
+            let frame = frames.front().unwrap();
+            assert!(matches!(
+                frame.header,
+                Header::FlowInit { is_fin: true, .. }
+            ));
+            assert!(frame.payload.is_empty(), "expected empty payload with FIN");
+
+            // No additional frame on drop (FIN already sent)
+            let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(extra.is_none(), "no extra frame after FIN already sent");
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::new();
+            let written = writer
+                .write_from_fin(&mut payload)
+                .await
+                .expect("empty fin write");
+            assert_eq!(written, 0);
+            assert!(writer.0.status.is_fin_sent());
+            drop(writer);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Server writer receives Reset while in Open state (actively writing).
+/// Existing test only covers client during FlowInitSent.
+#[test]
+fn server_reset_received_while_open() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut writer, mut pusher) = make_server_pair();
+
+        async move {
+            let _first = pusher.recv_frames().await;
+            // Now inject reset
+            pusher.push_reset(VarInt::from_u8(33));
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"hello");
+            let written = writer.write_from(&mut payload).await.expect("first write");
+            assert_eq!(written, 5);
+
+            bach::task::yield_now().await;
+
+            let mut more = Bytes::from_static(b"world");
+            let err = writer
+                .write_from(&mut more)
+                .await
+                .expect_err("expected ConnectionReset");
+            assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+            assert!(writer.0.status.is_shutdown());
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// PeerDead completion failure surfaces TimedOut error to the application.
+#[test]
+fn client_peer_dead_completion_surfaces_timed_out() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut writer, mut pusher) = make_server_pair();
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            pusher.complete_all(
+                frames,
+                frame::TransmissionStatus::Failed(frame::FailureReason::PeerDead),
+            );
+
+            // PeerDead does not emit FlowReset (peer can't receive it)
+            let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(extra.is_none(), "no FlowReset for PeerDead");
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"hello");
+            let written = writer.write_from(&mut payload).await.expect("first write");
+            assert_eq!(written, 5);
+
+            bach::task::yield_now().await;
+
+            let mut retry = Bytes::from_static(b"!");
+            let err = writer
+                .write_from(&mut retry)
+                .await
+                .expect_err("expected TimedOut");
+            assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+            assert!(writer.0.status.is_shutdown());
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// UnknownPathSecret completion failure surfaces ConnectionRefused.
+#[test]
+fn server_unknown_path_secret_completion_surfaces_connection_refused() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut writer, mut pusher) = make_server_pair();
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            pusher.complete_all(
+                frames,
+                frame::TransmissionStatus::Failed(frame::FailureReason::UnknownPathSecret),
+            );
+
+            let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(extra.is_none(), "no FlowReset for UnknownPathSecret");
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"hello");
+            let written = writer.write_from(&mut payload).await.expect("first write");
+            assert_eq!(written, 5);
+
+            bach::task::yield_now().await;
+
+            let mut retry = Bytes::from_static(b"!");
+            let err = writer
+                .write_from(&mut retry)
+                .await
+                .expect_err("expected ConnectionRefused");
+            assert_eq!(err.kind(), io::ErrorKind::ConnectionRefused);
+            assert!(writer.0.status.is_shutdown());
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// After explicit shutdown(), subsequent writes return BrokenPipe (not
+/// ConnectionReset — no reset_error_code stored for graceful shutdown).
+#[test]
+fn client_write_after_shutdown_returns_broken_pipe() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut writer, mut pusher) = make_server_pair();
+
+        async move {
+            // Consume the FIN frame from shutdown
+            let _frames = pusher.recv_frames().await;
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            writer.shutdown().expect("shutdown should succeed");
+            assert!(writer.0.status.is_shutdown());
+
+            let mut payload = Bytes::from_static(b"hello");
+            let err = writer
+                .write_from(&mut payload)
+                .await
+                .expect_err("expected BrokenPipe after shutdown");
+            assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Local inflight budget (max_inflight_bytes) caps how much data the writer
+/// can send before completions free up space.
+#[test]
+fn server_local_inflight_budget_blocks_write() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut writer, mut pusher) = make_server_pair();
+        writer.0.max_inflight_bytes = 3;
+
+        async move {
+            let first = pusher.recv_frames().await;
+            pusher.assembler.push_flow_data(&first);
+            pusher.assembler.assert_payload(b"abc");
+
+            // Writer is blocked — no more frames
+            let extra = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
+            assert!(
+                extra.is_none(),
+                "writer should block when local inflight budget is exhausted"
+            );
+
+            // Free up budget via completions
+            pusher.complete_all(first, frame::TransmissionStatus::Acknowledged);
+
+            // Writer unblocks and sends more data
+            let second = pusher.recv_frames().await;
+            pusher.assembler.push_flow_data(&second);
+            pusher.assembler.assert_payload(b"abcdef");
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"abcdef");
+            let first = writer.write_from(&mut payload).await.expect("first write");
+            assert_eq!(first, 3, "capped by local inflight budget");
+
+            let second = writer.write_from(&mut payload).await.expect("second write");
+            assert_eq!(second, 3, "freed budget allows more data");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Calling shutdown() multiple times is idempotent: only one FIN frame emitted.
+#[test]
+fn server_shutdown_idempotent() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut writer, mut pusher) = make_server_pair();
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            assert_eq!(frames.len(), 1);
+            assert!(matches!(
+                frames.front().unwrap().header,
+                Header::FlowData {
+                    is_fin: true,
+                    offset,
+                    ..
+                } if offset == VarInt::ZERO
+            ));
+
+            // No second FIN frame
+            let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(
+                extra.is_none(),
+                "no duplicate FIN from second shutdown call"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            writer.shutdown().expect("first shutdown");
+            assert!(writer.0.status.is_shutdown());
+            writer.shutdown().expect("second shutdown is no-op");
+            assert!(writer.0.status.is_shutdown());
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Panic drop during FlowInitSent: completion_rx.cancel() prevents further
+/// transmission of the FlowInit but no FlowReset can reach the peer (no
+/// remote_queue_id). Documents the silent failure on panic in this state.
+///
+/// See "PROTOCOL GAP" comment block above for full analysis.
+#[test]
+fn client_panic_drop_during_flow_init_sent() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
+
+        async move {
+            // FlowInit arrives
+            let frames = pusher.recv_frames().await;
+            assert_eq!(frames.len(), 1);
+            assert!(matches!(
+                frames.front().unwrap().header,
+                Header::FlowInit { is_fin: false, .. }
+            ));
+
+            // No FlowReset emitted on panic (remote_queue_id unknown)
+            let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
+            assert!(
+                extra.is_none(),
+                "panic during FlowInitSent cannot send FlowReset — peer unnotified"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"hello");
+            let written = writer.write_from(&mut payload).await.expect("first write");
+            assert_eq!(written, 5);
+            assert!(writer.0.status.is_flow_init_sent());
+
+            let panic_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                let _writer = writer;
+                panic!("intentional test panic during FlowInitSent");
             }));
             assert!(panic_result.is_err());
         }

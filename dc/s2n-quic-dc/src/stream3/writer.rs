@@ -29,6 +29,16 @@
 
 // TODOs:
 //
+// Correctness:
+//
+// * FlowInitSent shutdown gap: when the writer is dropped/shut down while in FlowInitSent
+//   (before the peer's MAX_DATA arrives), neither FIN nor FlowReset reaches the peer.
+//   `send_fin_packet()` is a no-op in FlowInitSent (only handles Init and Open), and
+//   `send_reset_frame()` requires `remote_queue_id` which is only set at flow establishment.
+//   The peer's reader hangs waiting for data/FIN that never arrives. Fix: `send_fin_packet()`
+//   should handle FlowInitSent by re-sending the FlowInit with `is_fin: true` (FlowInit
+//   routes via `dest_acceptor_id`, not `remote_queue_id`). See tests for reproduction.
+//
 // Flow control:
 //
 // * Auto-tune max_inflight_bytes based on completion queue delivery rate. Currently using a
