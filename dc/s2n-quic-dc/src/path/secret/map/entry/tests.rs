@@ -81,5 +81,8 @@ fn sender_with_more_queued_bytes_has_higher_load_score() {
 
     let score0 = entry.sender_load_score(0);
     let score1 = entry.sender_load_score(1);
-    assert!(score0 > score1, "sender 0 has more bytes queued so should have a higher load score");
+    assert!(
+        score0 > score1,
+        "sender 0 has more bytes queued so should have a higher load score"
+    );
 }

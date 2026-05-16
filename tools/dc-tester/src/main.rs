@@ -116,8 +116,7 @@ fn main() -> std::io::Result<()> {
         let data_bind: SocketAddr = "[::]:0".parse().unwrap();
         let endpoint = endpoint::create(&config.endpoint, data_bind, &spawner)?;
 
-        let mut reporter_config =
-            s2n_quic_dc::counter::ReporterConfig::new(Duration::from_secs(1));
+        let mut reporter_config = s2n_quic_dc::counter::ReporterConfig::new(Duration::from_secs(1));
         reporter_config.sparse_mode = s2n_quic_dc::counter::SparseMode::Once;
         endpoint
             .counters
@@ -141,7 +140,9 @@ fn main() -> std::io::Result<()> {
 
                 let mut client_config = config.client;
                 if !workloads.is_empty() {
-                    client_config.workloads.retain(|w| workloads.contains(&w.name));
+                    client_config
+                        .workloads
+                        .retain(|w| workloads.contains(&w.name));
                 } else if client_config.workloads.len() > 1 {
                     client_config.workloads.truncate(1);
                 }

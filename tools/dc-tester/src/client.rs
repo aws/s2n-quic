@@ -138,8 +138,7 @@ async fn execute_request(
             }
             tokio::time::timeout(Duration::from_secs(10), writer.write_from_fin(&mut payload))
                 .await
-                .expect("writer did not produce a chunk within 10 seconds")
-                ?;
+                .expect("writer did not produce a chunk within 10 seconds")?;
         }
 
         io::Result::Ok(8 + request_size)

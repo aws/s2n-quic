@@ -82,6 +82,20 @@ impl Local {
     pub fn run(self, sh: &Shell) -> Result<()> {
         let claudecode = std::env::var("CLAUDECODE").is_ok();
 
+        // Acquire an exclusive lock so concurrent runs block instead of clobbering
+        let lock_path = PathBuf::from("/tmp/xtask-local.lock");
+        let lock_file = std::fs::File::create(&lock_path).context("Failed to create lock file")?;
+        use std::os::unix::io::AsRawFd;
+        eprintln!("Acquiring lock...");
+        let ret = unsafe { libc::flock(lock_file.as_raw_fd(), libc::LOCK_EX) };
+        if ret != 0 {
+            anyhow::bail!(
+                "Failed to acquire lock: {}",
+                std::io::Error::last_os_error()
+            );
+        }
+        // lock_file held for the duration of run — released on drop
+
         let mut nodes = Nodes::from_config(sh, &self.config)?;
         let (binary_dir, binary_name) = self.binary_info()?;
 

@@ -436,6 +436,7 @@ where
     {
         let worker_id = layout.send[idx];
         workers[worker_id].send_worker = Some(SendWorkerParts {
+            idx,
             batch_rx,
             batch_gauge: counter_registry
                 .register_queue_gauge_nominal("q.batch", format_args!("send.{idx}")),
@@ -510,6 +511,7 @@ where
             rx_bytes_total.clone(),
         );
         workers[worker_id].recv_socket = Some(RecvSocketParts {
+            idx,
             socket,
             recv_pool: recv_pool.clone(),
             router,
@@ -547,6 +549,7 @@ struct FrameDispatchParts<Clk> {
 
 /// Per-worker state for context resolution and ACK processing.
 struct SendWorkerParts {
+    idx: usize,
     batch_rx: BatchReceiver,
     batch_gauge: crate::counter::QueueGauge,
     ack_rx: AckMsgReceiver,
@@ -581,6 +584,7 @@ type PacketReceiver = sync_queue::Receiver<packet::datagram::decoder::Packet<des
 
 /// Ingredients for a recv IO worker (socket read + decode + fan-out).
 struct RecvSocketParts<Socket, Route> {
+    idx: usize,
     socket: Socket,
     recv_pool: crate::socket::pool::Pool,
     router: worker::FanOutRouter<PacketSender, Route>,
@@ -698,6 +702,7 @@ where
                 let ack_rx = crate::counter::GaugedQueueReceiver::new(sw.ack_rx, sw.ack_gauge);
                 tasks::send_worker(
                     &mut local,
+                    sw.idx,
                     batch_rx,
                     ack_rx,
                     total_sender_ids,
@@ -713,14 +718,25 @@ where
             }
 
             if let Some(rs) = recv_socket {
+                let recv_idx = rs.idx;
                 let gro_segments = counter_registry
                     .register_summary("rx.gro_segments", crate::counter::Unit::Count);
+                let variant = format!("recv.{recv_idx}");
+                let budget_summary = counter_registry.register_nominal_summary(
+                    "task.socket_recv.drained",
+                    &variant,
+                    crate::counter::Unit::Count,
+                );
+                let time_summary =
+                    counter_registry.register_nominal_timer("task.socket_recv.time", &variant);
                 local.spawn(tasks::socket_recv_task(
                     rs.socket,
                     rs.recv_pool,
                     rs.router,
                     budgets,
                     gro_segments,
+                    budget_summary,
+                    time_summary,
                 ));
             }
 

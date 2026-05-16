@@ -500,8 +500,12 @@ fn cwnd_limited_adds_rtt_penalty_to_load_score() {
     let rtt_clone = ctx_congested.rtt_estimator.clone();
     let cwnd = ctx_congested.cca.congestion_window();
     let pkt_size = ((cwnd / 2).saturating_add(1)).clamp(1, u16::MAX as u32) as u16;
-    let _ = ctx_congested.cca.on_packet_sent(now, pkt_size, true, &rtt_clone);
-    let _ = ctx_congested.cca.on_packet_sent(now, pkt_size, true, &rtt_clone);
+    let _ = ctx_congested
+        .cca
+        .on_packet_sent(now, pkt_size, true, &rtt_clone);
+    let _ = ctx_congested
+        .cca
+        .on_packet_sent(now, pkt_size, true, &rtt_clone);
 
     assert!(
         ctx_congested.cca.is_congestion_limited(),

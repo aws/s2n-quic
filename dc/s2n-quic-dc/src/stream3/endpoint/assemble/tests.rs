@@ -572,8 +572,7 @@ fn assemble_probe_fuzz() {
             let boundary_idx = (0..VARINT_BOUNDARIES.len()).generate(driver)?;
             let boundary = VARINT_BOUNDARIES[boundary_idx];
             let offset = (0u64..=8).generate(driver)?;
-            let initial_pn =
-                VarInt::new(boundary.saturating_sub(offset)).unwrap_or(VarInt::ZERO);
+            let initial_pn = VarInt::new(boundary.saturating_sub(offset)).unwrap_or(VarInt::ZERO);
 
             let frame_count = (1usize..=8).generate(driver)?;
             let mut frames = Vec::with_capacity(frame_count);

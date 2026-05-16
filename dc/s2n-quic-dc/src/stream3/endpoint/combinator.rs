@@ -397,6 +397,7 @@ pub struct PickTwo<T, R, S> {
     senders: Vec<S>,
     rng: crate::xorshift::Rng,
     pick_counters: Vec<crate::counter::Counter>,
+    rejected_counters: Vec<crate::counter::Summary>,
     score_delta: crate::counter::Summary,
     value: PhantomData<fn() -> T>,
 }
@@ -416,15 +417,23 @@ where
         let pick_counters = (0..senders.len())
             .map(|i| counter_registry.register_nominal("pick_two.chosen", format_args!("send.{i}")))
             .collect();
-        let score_delta = counter_registry.register_summary(
-            "pick_two.score_delta",
-            crate::counter::Unit::Microsecond,
-        );
+        let rejected_counters = (0..senders.len())
+            .map(|i| {
+                counter_registry.register_nominal_summary(
+                    "pick_two.rejected",
+                    format_args!("send.{i}"),
+                    crate::counter::Unit::Microsecond,
+                )
+            })
+            .collect();
+        let score_delta = counter_registry
+            .register_summary("pick_two.score_delta", crate::counter::Unit::Microsecond);
         Self {
             rx,
             senders,
             rng,
             pick_counters,
+            rejected_counters,
             score_delta,
             value: PhantomData,
         }
@@ -435,6 +444,7 @@ where
         senders: &mut Vec<S>,
         rng: &mut crate::xorshift::Rng,
         pick_counters: &[crate::counter::Counter],
+        rejected_counters: &[crate::counter::Summary],
         score_delta: &crate::counter::Summary,
     ) -> Result<(), T> {
         debug_assert!(!senders.is_empty());
@@ -465,8 +475,10 @@ where
                 score_delta.record_value(delta);
 
                 if score1 <= score2 {
+                    rejected_counters[idx2].record_value(delta);
                     idx1
                 } else {
+                    rejected_counters[idx1].record_value(delta);
                     idx2
                 }
             }
@@ -502,6 +514,7 @@ where
             &mut self.senders,
             &mut self.rng,
             &self.pick_counters,
+            &self.rejected_counters,
             &self.score_delta,
         ) {
             Ok(()) => Poll::Ready(Some(())),

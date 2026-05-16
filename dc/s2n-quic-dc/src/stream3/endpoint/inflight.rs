@@ -160,7 +160,6 @@ impl Map {
         packet.frames = frames;
     }
 
-
     /// Verify structural invariants of the inflight map.
     ///
     /// Each stored packet must either have a `probed_to` link (shell) **or** contain
@@ -461,7 +460,10 @@ mod tests {
 
         // remove_chain should follow shell → probe, remove probe, and return its frames
         let removal = map.remove_chain(pn_old);
-        assert!(!removal.frames.is_empty(), "tail frames should be non-empty");
+        assert!(
+            !removal.frames.is_empty(),
+            "tail frames should be non-empty"
+        );
         // Both entries should be removed
         assert!(!map.has_inflight());
     }

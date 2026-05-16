@@ -450,7 +450,9 @@ impl Header {
     #[inline]
     pub fn is_ack_eliciting(&self) -> bool {
         match self {
-            Self::Ack { is_ack_eliciting, .. } => *is_ack_eliciting,
+            Self::Ack {
+                is_ack_eliciting, ..
+            } => *is_ack_eliciting,
             _ => true,
         }
     }
@@ -697,11 +699,15 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                     buffer,
                 ))
             }
-            Self::ACK_TYPE | Self::ACK_ECN_TYPE | Self::ACK_ELICITING_TYPE | Self::ACK_ECN_ELICITING_TYPE => {
+            Self::ACK_TYPE
+            | Self::ACK_ECN_TYPE
+            | Self::ACK_ELICITING_TYPE
+            | Self::ACK_ECN_ELICITING_TYPE => {
                 let (dest_sender_id, buffer) = buffer.decode()?;
                 let (ack_delay, buffer) = buffer.decode()?;
                 let has_ecn = matches!(tag, Self::ACK_ECN_TYPE | Self::ACK_ECN_ELICITING_TYPE);
-                let is_ack_eliciting = matches!(tag, Self::ACK_ELICITING_TYPE | Self::ACK_ECN_ELICITING_TYPE);
+                let is_ack_eliciting =
+                    matches!(tag, Self::ACK_ELICITING_TYPE | Self::ACK_ECN_ELICITING_TYPE);
                 Ok((
                     Self::Ack {
                         dest_sender_id,

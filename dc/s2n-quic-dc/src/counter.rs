@@ -12,11 +12,11 @@ use std::{
 };
 use tokio::sync::mpsc;
 
-pub use s2n_quic_dc_metrics::{Summary, Unit};
 use s2n_quic_dc_metrics::format::{
-    ParsedMetricsLine, parse_histogram_buckets, parse_histogram_suffix, histogram_count_min_max,
-    histogram_value_at_percentile,
+    histogram_count_min_max, histogram_value_at_percentile, parse_histogram_buckets,
+    parse_histogram_suffix, ParsedMetricsLine,
 };
+pub use s2n_quic_dc_metrics::{Summary, Unit};
 use std::time::Instant;
 
 /// A value that displays as empty when zero, suppressing it from metrics output.
@@ -748,23 +748,15 @@ impl Registry {
 
         #[cfg(any(test, feature = "testing"))]
         if bach::is_active() {
-            bach::spawn(report_loop(
-                inner,
-                sparse_mode,
-                prefix,
-                sinks,
-                move || bach::time::sleep(interval),
-            ));
+            bach::spawn(report_loop(inner, sparse_mode, prefix, sinks, move || {
+                bach::time::sleep(interval)
+            }));
             return;
         }
 
-        tokio::spawn(report_loop(
-            inner,
-            sparse_mode,
-            prefix,
-            sinks,
-            move || tokio::time::sleep(interval),
-        ));
+        tokio::spawn(report_loop(inner, sparse_mode, prefix, sinks, move || {
+            tokio::time::sleep(interval)
+        }));
     }
 }
 

@@ -210,9 +210,24 @@ fn try_send_pick_two(
     let pick_counters: Vec<_> = (0..senders.len())
         .map(|i| registry.register_nominal("pick_two.chosen", format_args!("send.{i}")))
         .collect();
-    let score_delta = registry.register_summary("pick_two.score_delta", crate::counter::Unit::Microsecond);
+    let rejected_counters: Vec<_> = (0..senders.len())
+        .map(|i| {
+            registry.register_nominal_summary(
+                "pick_two.rejected",
+                format_args!("send.{i}"),
+                crate::counter::Unit::Microsecond,
+            )
+        })
+        .collect();
+    let score_delta =
+        registry.register_summary("pick_two.score_delta", crate::counter::Unit::Microsecond);
     PickTwo::<TestItem, TestReceiver<TestItem>, TestSender>::try_send_pick_two(
-        value, senders, rng, &pick_counters, &score_delta,
+        value,
+        senders,
+        rng,
+        &pick_counters,
+        &rejected_counters,
+        &score_delta,
     )
 }
 
