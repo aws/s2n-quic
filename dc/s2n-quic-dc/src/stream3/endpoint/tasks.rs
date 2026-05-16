@@ -7,9 +7,9 @@ use crate::{
     socket::{
         channel::{
             intrusive_queue::{self, unsync},
-            Budget, FlattenList, FlattenSegments, InspectErr, Map, Paced, Priority as PriorityRx,
-            Receiver, ReceiverExt as _, RouterAdapter, SocketReceiver, SocketSender,
-            UnboundedSender,
+            Budget, FlattenList, FlattenSegments, Inspect, InspectErr, Map, Paced,
+            Priority as PriorityRx, Receiver, ReceiverExt as _, RouterAdapter, SocketReceiver,
+            SocketSender, UnboundedSender,
         },
         pool::descriptor,
         rate::Rate,
@@ -469,6 +469,7 @@ pub async fn socket_recv_task<Socket, R>(
     pool: crate::socket::pool::Pool,
     router: R,
     budgets: Budgets,
+    gro_segments: crate::counter::Summary,
 ) where
     Socket: crate::socket::recv::Socket,
     R: crate::socket::recv::router::Router,
@@ -476,6 +477,9 @@ pub async fn socket_recv_task<Socket, R>(
     let rx = SocketReceiver::new(socket, pool);
     let rx = InspectErr::new(rx, |err| {
         tracing::warn!(%err, "socket recv error");
+    });
+    let rx = Inspect::new(rx, move |segments: &descriptor::Segments| {
+        gro_segments.record_value(segments.segment_count() as u64);
     });
     let rx = FlattenSegments::new(rx);
     RouterAdapter::new(rx, router)

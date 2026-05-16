@@ -713,11 +713,14 @@ where
             }
 
             if let Some(rs) = recv_socket {
+                let gro_segments = counter_registry
+                    .register_summary("rx.gro_segments", crate::counter::Unit::Count);
                 local.spawn(tasks::socket_recv_task(
                     rs.socket,
                     rs.recv_pool,
                     rs.router,
                     budgets,
+                    gro_segments,
                 ));
             }
 

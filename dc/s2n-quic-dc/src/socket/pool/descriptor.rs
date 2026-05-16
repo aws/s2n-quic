@@ -568,7 +568,7 @@ impl Segments {
 
     pub fn segment_count(&self) -> u16 {
         if self.segment_len == 0 {
-            return 0;
+            return 1;
         }
         self.descriptor.len().div_ceil(self.segment_len)
     }
