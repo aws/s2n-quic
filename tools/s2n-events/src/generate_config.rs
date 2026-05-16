@@ -81,6 +81,7 @@ impl GenerateConfig {
     pub fn imports(&self) -> TokenStream {
         match self.mode {
             OutputMode::Ref => quote!(
+                #[allow(unused_imports)]
                 use core::sync::atomic::{AtomicU64, Ordering};
             ),
             OutputMode::Mut => quote!(),

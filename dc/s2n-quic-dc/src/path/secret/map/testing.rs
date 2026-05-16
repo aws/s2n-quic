@@ -15,7 +15,7 @@ pub fn new(capacity: usize) -> secret::Map {
             signer,
             capacity,
             false,
-            crate::clock::bach::Clock::default(),
+            crate::time::bach::Clock::default(),
             subscriber,
         )
     } else {

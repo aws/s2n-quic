@@ -1,5 +1,0 @@
----
-source: dc/s2n-quic-dc/src/stream/tests/deterministic.rs
-expression: "format!(\"winner_bytes={winner_bytes}, loser1_bytes={loser1_bytes}, loser2_bytes={loser2_bytes}, \\\n         payload={TOTAL_PAYLOAD}, header={HEADER_LEN}\")"
----
-winner_bytes=1088378, loser1_bytes=15090, loser2_bytes=15090, payload=1048576, header=128

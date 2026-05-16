@@ -1,8 +1,15 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::msg::{addr::Addr, cmsg};
+use crate::{
+    msg::{addr::Addr, cmsg},
+    socket::{
+        fd::{self, udp},
+        BusyPoll,
+    },
+};
 use core::task::{Context, Poll};
+use s2n_quic_core::ensure;
 use std::{io, io::IoSliceMut, net::SocketAddr};
 
 /// A socket that can receive packets
@@ -20,39 +27,44 @@ pub trait Socket: Send + 'static {
     fn local_addr(&self) -> io::Result<SocketAddr>;
 }
 
-// Implement for BusyPoll wrapper
-// impl<T: Socket> Socket for crate::stream::socket::BusyPoll<T> {
-//     fn poll_recv(
-//         &self,
-//         cx: &mut Context,
-//         addr: &mut Addr,
-//         cmsg: &mut cmsg::Receiver,
-//         buffer: &mut [IoSliceMut],
-//     ) -> Poll<io::Result<usize>> {
-//         self.0.poll_recv(cx, addr, cmsg, buffer)
-//     }
-
-//     fn local_addr(&self) -> io::Result<SocketAddr> {
-//         self.0.local_addr()
-//     }
-// }
-
-// Bridge implementation: anything that implements stream::socket::Socket also implements recv::Socket
-impl<T> Socket for T
+impl<T> Socket for BusyPoll<T>
 where
-    T: crate::stream::socket::Socket,
+    T: udp::Socket,
 {
+    #[inline]
     fn poll_recv(
         &self,
-        cx: &mut Context,
+        _cx: &mut Context,
         addr: &mut Addr,
         cmsg: &mut cmsg::Receiver,
         buffer: &mut [IoSliceMut],
     ) -> Poll<io::Result<usize>> {
-        crate::stream::socket::Socket::poll_recv(self, cx, addr, cmsg, buffer)
+        ensure!(!buffer.is_empty(), Ok(0).into());
+
+        debug_assert!(
+            buffer.iter().any(|s| !s.is_empty()),
+            "trying to recv into an empty buffer"
+        );
+
+        loop {
+            let res = udp::recv(&self.0, addr, cmsg, buffer, fd::Flags::default());
+
+            match res {
+                Ok(0) => continue,
+                Ok(len) => return Ok(len).into(),
+                Err(ref e)
+                    if [io::ErrorKind::WouldBlock, io::ErrorKind::Interrupted]
+                        .contains(&e.kind()) =>
+                {
+                    return Poll::Pending;
+                }
+                Err(err) => return Err(err).into(),
+            }
+        }
     }
 
+    #[inline]
     fn local_addr(&self) -> io::Result<SocketAddr> {
-        crate::stream::socket::Socket::local_addr(self)
+        self.0.local_addr()
     }
 }

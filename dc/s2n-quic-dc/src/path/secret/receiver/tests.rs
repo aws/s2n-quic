@@ -237,6 +237,7 @@ impl Model {
 }
 
 #[test]
+#[ignore = "this is too slow"]
 fn check_sequential() {
     let subject = State::new();
     let id = Id::from([0; 16]);

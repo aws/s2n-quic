@@ -20,10 +20,8 @@ use tracing::debug as warn;
 use tracing::warn;
 
 mod with_map;
-mod zero_router;
 
 pub use with_map::WithMap;
-pub use zero_router::ZeroRouter;
 
 /// Routes incoming packet segments to the appropriate destination
 pub trait Router {
@@ -35,19 +33,6 @@ pub trait Router {
         Self: Sized,
     {
         WithMap::new(self, map)
-    }
-
-    /// Wraps `self` in a router that intercepts packets with a `0` queue ID and routes
-    /// it to the provides `zero` router.
-    #[inline]
-    fn with_zero_router<Zero: Router>(self, zero: Zero) -> ZeroRouter<Zero, Self>
-    where
-        Self: Sized,
-    {
-        ZeroRouter {
-            zero,
-            non_zero: self,
-        }
     }
 
     fn is_open(&self) -> bool;

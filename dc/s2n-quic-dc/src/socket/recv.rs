@@ -3,6 +3,8 @@
 
 pub mod router;
 mod socket;
-pub mod udp;
+
+#[cfg(any(test, feature = "testing"))]
+mod bach;
 
 pub use socket::Socket;

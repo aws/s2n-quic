@@ -3,7 +3,7 @@
 
 //! Token-bucket rate limiting for pacing packet transmissions.
 
-use crate::clock::precision::Timestamp;
+use crate::time::precision::Timestamp;
 
 /// A token-bucket rate limiter for pacing packet transmissions.
 ///

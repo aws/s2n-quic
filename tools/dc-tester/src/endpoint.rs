@@ -6,7 +6,7 @@ use s2n_quic_dc::{
     busy_poll,
     path::secret::{self, stateless_reset::Signer},
     socket::rate::Rate,
-    stream3::endpoint::{self, socket},
+    stream::endpoint::{self, socket},
 };
 use std::{io, net::SocketAddr, sync::Arc};
 use tracing::info;
@@ -18,7 +18,7 @@ pub fn create(
 ) -> io::Result<Arc<endpoint::Endpoint>> {
     // Create the path secret map (shared by endpoint, client PSK, server PSK)
     let signer = Signer::new(b"dc-tester");
-    let clock = s2n_quic_dc::clock::tokio::Clock::default();
+    let clock = s2n_quic_dc::time::tokio::Clock::default();
     let subscriber = s2n_quic_dc::event::tracing::Subscriber::default();
     let map = secret::Map::new(signer, 50_000, true, clock, subscriber);
 
@@ -56,7 +56,7 @@ pub fn create(
     info!(?layout, "starting endpoint");
 
     let bp_clock =
-        s2n_quic_dc::busy_poll::clock::Timer::new(s2n_quic_dc::clock::tokio::Clock::default());
+        s2n_quic_dc::busy_poll::clock::Timer::new(s2n_quic_dc::time::tokio::Clock::default());
     let send_pool = s2n_quic_dc::socket::pool::Pool::new(u16::MAX);
     let recv_pool = s2n_quic_dc::socket::pool::Pool::new(u16::MAX);
     let acceptor_registry = s2n_quic_dc::acceptor::Registry::new();

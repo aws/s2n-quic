@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{intrusive_queue, sync::ring_deque::Closed};
+use crate::intrusive;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Closed;
 use bitflags::bitflags;
 use core::{
     fmt,
@@ -68,7 +71,7 @@ impl<T> From<Closed> for Error<T> {
 }
 
 struct Inner<T> {
-    queue: intrusive_queue::Queue<T>,
+    queue: intrusive::Queue<T>,
     flags: Flags,
     waker: Option<Waker>,
 }
@@ -135,7 +138,7 @@ impl<T> Queue<T> {
     pub fn new(half: Half) -> Self {
         Self {
             inner: Mutex::new(Inner {
-                queue: intrusive_queue::Queue::new(),
+                queue: intrusive::Queue::new(),
                 flags: Flags::IS_OPEN,
                 waker: None,
             }),
@@ -153,10 +156,10 @@ impl<T> Queue<T> {
     #[inline]
     pub fn push<F, O>(
         &self,
-        entry: intrusive_queue::Entry<T>,
+        entry: intrusive::Entry<T>,
         observe: O,
         validate: F,
-    ) -> Result<AutoWake, Error<intrusive_queue::Entry<T>>>
+    ) -> Result<AutoWake, Error<intrusive::Entry<T>>>
     where
         F: FnOnce() -> Result<(), super::descriptor::ValidationError>,
         O: FnOnce() -> bool,
@@ -186,7 +189,7 @@ impl<T> Queue<T> {
     }
 
     #[inline]
-    pub fn pop(&self) -> Result<Option<intrusive_queue::Entry<T>>, Closed> {
+    pub fn pop(&self) -> Result<Option<intrusive::Entry<T>>, Closed> {
         let mut inner = self.lock()?;
         if let Some(entry) = inner.queue.pop_front() {
             return Ok(Some(entry));
@@ -197,7 +200,7 @@ impl<T> Queue<T> {
     }
 
     #[inline]
-    pub fn poll_pop(&self, cx: &mut Context) -> Poll<Result<intrusive_queue::Entry<T>, Closed>> {
+    pub fn poll_pop(&self, cx: &mut Context) -> Poll<Result<intrusive::Entry<T>, Closed>> {
         let mut inner = self.lock()?;
         if let Some(entry) = inner.queue.pop_front() {
             return Ok(entry).into();
@@ -211,7 +214,7 @@ impl<T> Queue<T> {
     }
 
     #[inline]
-    pub fn poll_swap(&self, cx: &mut Context) -> Poll<Result<intrusive_queue::Queue<T>, Closed>> {
+    pub fn poll_swap(&self, cx: &mut Context) -> Poll<Result<intrusive::Queue<T>, Closed>> {
         let mut inner = self.lock()?;
 
         if inner.queue.is_empty() {

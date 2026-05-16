@@ -5,31 +5,30 @@ pub mod acceptor;
 pub mod allocator;
 pub mod busy_poll;
 pub mod byte_vec;
-pub mod clock;
 pub mod congestion;
 pub mod control;
 pub mod counter;
 pub mod credentials;
 pub mod crypto;
 pub mod datagram;
-pub mod either;
+pub mod endpoint;
 pub mod event;
 pub mod flow;
-pub mod intrusive_queue;
+pub mod intrusive;
 pub mod msg;
 pub mod packet;
 pub mod path;
 pub mod psk;
-pub mod random;
 pub mod recovery;
+pub mod runtime;
 pub mod socket;
-pub mod spawner;
 pub mod stream;
-pub mod stream3;
-pub mod sync;
 pub mod task;
+pub mod time;
 pub mod uds;
 pub mod xorshift;
+
+pub use stream as stream3;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;

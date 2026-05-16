@@ -7,7 +7,7 @@ use s2n_quic_core::{
     stream::testing::Data,
     varint::VarInt,
 };
-use s2n_quic_dc::stream3::endpoint::Endpoint;
+use s2n_quic_dc::stream::endpoint::Endpoint;
 use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 use tracing::{info, warn};
 
@@ -43,7 +43,7 @@ pub async fn run(
 
     // Create stream3 client
     let server_name = crate::psk::server_name();
-    let client = s2n_quic_dc::stream3::Client::new(endpoint, handshake, server_name);
+    let client = s2n_quic_dc::stream::Client::new(endpoint, handshake, server_name);
 
     let stats = crate::stats::Subscriber::spawn(std::time::Duration::from_secs(1));
 
@@ -76,7 +76,7 @@ pub async fn run(
 }
 
 async fn run_worker(
-    client: &mut s2n_quic_dc::stream3::Client,
+    client: &mut s2n_quic_dc::stream::Client,
     server_addr: SocketAddr,
     workload: WorkloadConfig,
     worker_id: usize,
@@ -114,7 +114,7 @@ async fn run_worker(
 }
 
 async fn execute_request(
-    client: &mut s2n_quic_dc::stream3::Client,
+    client: &mut s2n_quic_dc::stream::Client,
     server_addr: SocketAddr,
     workload: &WorkloadConfig,
     rng: &mut s2n_quic_dc::xorshift::Rng,

@@ -70,56 +70,6 @@ pub fn server_name() -> Name {
     SNI.get_or_init(|| "localhost".into()).clone()
 }
 
-pub mod task {
-    pub use bach::task::*;
-    pub use tokio::task::yield_now;
-
-    pub fn spawn<F>(f: F)
-    where
-        F: core::future::Future + Send + Sync + 'static,
-        F::Output: Send + 'static,
-    {
-        if bach::is_active() {
-            bach::spawn(f);
-        } else {
-            tokio::spawn(f);
-        }
-    }
-
-    pub fn spawn_named<F, N: core::fmt::Display>(f: F, name: N)
-    where
-        F: core::future::Future + Send + Sync + 'static,
-        F::Output: Send + 'static,
-    {
-        if bach::is_active() {
-            bach::task::spawn_named(f, name);
-        } else {
-            tokio::spawn(f);
-        }
-    }
-}
-
-pub use task::spawn;
-
-pub async fn sleep(duration: Duration) {
-    if bach::is_active() {
-        bach::time::sleep(duration).await;
-    } else {
-        tokio::time::sleep(duration).await;
-    }
-}
-
-pub async fn timeout<F>(duration: Duration, f: F) -> Result<F::Output, bach::time::error::Elapsed>
-where
-    F: core::future::Future,
-{
-    if bach::is_active() {
-        bach::time::timeout(duration, f).await
-    } else {
-        Ok(tokio::time::timeout(duration, f).await?)
-    }
-}
-
 pub fn assert_debug<T: core::fmt::Debug>(_v: &T) {}
 pub fn assert_send<T: Send>(_v: &T) {}
 pub fn assert_sync<T: Sync>(_v: &T) {}

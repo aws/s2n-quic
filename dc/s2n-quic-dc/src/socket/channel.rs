@@ -17,16 +17,13 @@
 //! The `drain_budgeted` future resets budget each poll, loops until Pending, then
 //! checks `budget.take_needs_wake()` to issue a single self-wake if more work exists.
 
-use crate::socket::{
-    pool::descriptor,
-    send::{completion::Completer as _, transmission},
-};
+use crate::{socket::pool::descriptor, time::precision};
 use core::task::{self, Poll};
 use s2n_quic_core::ready;
 use std::{future::Future, io, marker::PhantomData, mem::MaybeUninit};
 
 pub mod cell;
-pub mod intrusive_queue;
+pub mod intrusive;
 
 #[cfg(test)]
 mod tests;
@@ -151,12 +148,12 @@ impl<T, S> EntryBoxSender<T, S> {
 
 impl<T, S> UnboundedSender<T> for EntryBoxSender<T, S>
 where
-    S: UnboundedSender<crate::intrusive_queue::Entry<T>>,
+    S: UnboundedSender<crate::intrusive::Entry<T>>,
 {
     #[inline]
     fn send(&mut self, value: T) -> Result<(), T> {
         self.inner
-            .send(crate::intrusive_queue::Entry::new(value))
+            .send(crate::intrusive::Entry::new(value))
             .map_err(|e| e.into_inner())
     }
 }
@@ -446,7 +443,7 @@ where
 /// This avoids type inference issues with the generic `Flatten`.
 pub struct FlattenQueue<T, R> {
     inner: R,
-    queue: crate::intrusive_queue::Queue<T>,
+    queue: crate::intrusive::Queue<T>,
 }
 
 impl<T, R> FlattenQueue<T, R> {
@@ -458,15 +455,15 @@ impl<T, R> FlattenQueue<T, R> {
     }
 }
 
-impl<T, R> Receiver<crate::intrusive_queue::Entry<T>> for FlattenQueue<T, R>
+impl<T, R> Receiver<crate::intrusive::Entry<T>> for FlattenQueue<T, R>
 where
-    R: Receiver<crate::intrusive_queue::Queue<T>>,
+    R: Receiver<crate::intrusive::Queue<T>>,
 {
     fn poll_recv(
         &mut self,
         cx: &mut task::Context<'_>,
         budget: &mut Budget,
-    ) -> Poll<Option<crate::intrusive_queue::Entry<T>>> {
+    ) -> Poll<Option<crate::intrusive::Entry<T>>> {
         loop {
             // Drain any buffered entries — subsequent items consume budget
             if !self.queue.is_empty() {
@@ -505,28 +502,28 @@ where
 /// This is useful for flattening List<A> into A::Pointer entries.
 pub struct FlattenList<A, R>
 where
-    A: crate::intrusive_queue::Adapter,
+    A: crate::intrusive::Adapter,
 {
     inner: R,
-    list: crate::intrusive_queue::List<A>,
+    list: crate::intrusive::List<A>,
 }
 
 impl<A, R> FlattenList<A, R>
 where
-    A: crate::intrusive_queue::Adapter,
+    A: crate::intrusive::Adapter,
 {
     pub fn new(inner: R) -> Self {
         Self {
             inner,
-            list: crate::intrusive_queue::List::new(),
+            list: crate::intrusive::List::new(),
         }
     }
 }
 
 impl<A, R> Receiver<A::Pointer> for FlattenList<A, R>
 where
-    A: crate::intrusive_queue::Adapter,
-    R: Receiver<crate::intrusive_queue::List<A>>,
+    A: crate::intrusive::Adapter,
+    R: Receiver<crate::intrusive::List<A>>,
 {
     fn poll_recv(
         &mut self,
@@ -718,7 +715,7 @@ where
 /// This allows cancelled/skipped items to avoid rate limiting.
 pub struct Paced<R, Clk, T>
 where
-    Clk: crate::clock::precision::Clock,
+    Clk: precision::Clock,
 {
     inner: R,
     timer: Clk::Timer,
@@ -729,10 +726,10 @@ where
 
 impl<R, Clk, T> Paced<R, Clk, T>
 where
-    Clk: crate::clock::precision::Clock,
+    Clk: precision::Clock,
 {
     pub fn new(inner: R, clock: Clk, rate: crate::socket::rate::Rate) -> Self {
-        use crate::clock::precision::Timer;
+        use crate::time::precision::Timer;
 
         let timer = clock.timer();
         let now = timer.now();
@@ -750,10 +747,10 @@ where
 impl<T, R, Clk> Receiver<T> for Paced<R, Clk, T>
 where
     R: Receiver<T>,
-    Clk: crate::clock::precision::Clock,
+    Clk: precision::Clock,
 {
     fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<T>> {
-        use crate::clock::precision::Timer;
+        use crate::time::precision::Timer;
 
         // If we have a buffered item from a previous poll, check timer first
         if self.buffered.is_some() {
@@ -785,7 +782,7 @@ where
     }
 
     fn on_consumed(&mut self, bytes: u64) {
-        use crate::clock::precision::Timer;
+        use crate::time::precision::Timer;
 
         // Notify inner receiver first
         self.inner.on_consumed(bytes);
@@ -967,55 +964,6 @@ where
     }
 }
 
-// ── FilterAlive adapter ────────────────────────────────────────────────────
-
-/// Wraps a receiver and filters out entries with dead completion receivers.
-///
-/// Returns `Ok(entry)` if the completion receiver is alive, `Err(entry)` if dead.
-/// This allows downstream combinators to choose how to handle dead entries.
-pub struct FilterAlive<R, Info, Meta, C> {
-    inner: R,
-    _phantom: PhantomData<(Info, Meta, C)>,
-}
-
-impl<R, Info, Meta, C> FilterAlive<R, Info, Meta, C> {
-    pub fn new(inner: R) -> Self {
-        Self {
-            inner,
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<R, Info, Meta, C>
-    Receiver<Result<transmission::Entry<Info, Meta, C>, transmission::Entry<Info, Meta, C>>>
-    for FilterAlive<R, Info, Meta, C>
-where
-    R: Receiver<transmission::Entry<Info, Meta, C>>,
-    C: crate::socket::send::completion::Completion<Info, Meta>,
-{
-    fn poll_recv(
-        &mut self,
-        cx: &mut task::Context<'_>,
-        budget: &mut Budget,
-    ) -> Poll<Option<Result<transmission::Entry<Info, Meta, C>, transmission::Entry<Info, Meta, C>>>>
-    {
-        let Some(entry) = ready!(self.inner.poll_recv(cx, budget)) else {
-            return Poll::Ready(None);
-        };
-
-        if !entry.completion.is_alive() {
-            return Poll::Ready(Some(Err(entry)));
-        }
-
-        Poll::Ready(Some(Ok(entry)))
-    }
-
-    fn on_consumed(&mut self, bytes: u64) {
-        self.inner.on_consumed(bytes);
-    }
-}
-
 // ── SocketSender adapter ───────────────────────────────────────────────────
 
 /// Wraps a receiver and sends items on a socket using the Sendable trait.
@@ -1162,64 +1110,6 @@ where
 
     fn on_consumed(&mut self, bytes: u64) {
         self.inner.on_consumed(bytes);
-    }
-}
-
-// ── CompletionNotifier adapter ─────────────────────────────────────────────
-
-/// Wraps a receiver and notifies completions after receiving entries.
-///
-/// Checks if the completion receiver is still alive before yielding entries.
-/// If alive, upgrades the completion and notifies it immediately after receiving.
-pub struct CompletionNotifier<R, Info, Meta, C> {
-    inner: R,
-    _phantom: PhantomData<(Info, Meta, C)>,
-}
-
-impl<R, Info, Meta, C> CompletionNotifier<R, Info, Meta, C> {
-    pub fn new(inner: R) -> Self {
-        Self {
-            inner,
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<R, Info, Meta, C> Receiver<Result<(), transmission::Entry<Info, Meta, C>>>
-    for CompletionNotifier<R, Info, Meta, C>
-where
-    R: Receiver<transmission::Entry<Info, Meta, C>>,
-    C: crate::socket::send::completion::Completion<Info, Meta>,
-{
-    fn poll_recv(
-        &mut self,
-        cx: &mut task::Context<'_>,
-        budget: &mut Budget,
-    ) -> Poll<Option<Result<(), transmission::Entry<Info, Meta, C>>>> {
-        let Some(entry) = ready!(self.inner.poll_recv(cx, budget)) else {
-            return Poll::Ready(None);
-        };
-
-        let total_len = entry.total_len as u64;
-
-        // Try to upgrade the completion
-        let Some(completion) = entry.completion.upgrade() else {
-            // The sender went away; skip this entry
-            return Poll::Ready(Some(Err(entry)));
-        };
-
-        // Complete the entry
-        completion.complete(entry);
-
-        // Notify that we consumed the packet
-        self.inner.on_consumed(total_len);
-
-        // Return unit since we've consumed the entry
-        return Poll::Ready(Some(Ok(())));
-    }
-
-    fn on_consumed(&mut self, _bytes: u64) {
-        // Already handled in poll_recv
     }
 }
 
@@ -1415,15 +1305,15 @@ where
 pub struct Reporter<R, Clk> {
     inner: R,
     clock: Clk,
-    last_emit: crate::clock::precision::Timestamp,
-    next_emit: crate::clock::precision::Timestamp,
+    last_emit: precision::Timestamp,
+    next_emit: precision::Timestamp,
     sent: u64,
     enabled: bool,
 }
 
 impl<R, Clk> Reporter<R, Clk>
 where
-    Clk: crate::clock::precision::Clock,
+    Clk: precision::Clock,
 {
     pub fn new(inner: R, clock: Clk, enabled: bool) -> Self {
         let now = clock.now();
@@ -1472,7 +1362,7 @@ where
 impl<T, R, Clk> Receiver<T> for Reporter<R, Clk>
 where
     R: Receiver<T>,
-    Clk: crate::clock::precision::Clock,
+    Clk: precision::Clock,
 {
     fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<T>> {
         self.inner.poll_recv(cx, budget)
@@ -1502,7 +1392,7 @@ pub trait BatchLen {
 }
 
 /// Single intrusive-queue entries always count as one item.
-impl<T> BatchLen for crate::intrusive_queue::Entry<T> {
+impl<T> BatchLen for crate::intrusive::Entry<T> {
     #[inline]
     fn batch_len(&self) -> u64 {
         1
@@ -1511,7 +1401,7 @@ impl<T> BatchLen for crate::intrusive_queue::Entry<T> {
 
 /// An intrusive `List<A>` (including the `Queue<T>` type alias) counts as the
 /// number of entries it holds.
-impl<A: crate::intrusive_queue::Adapter> BatchLen for crate::intrusive_queue::List<A> {
+impl<A: crate::intrusive::Adapter> BatchLen for crate::intrusive::List<A> {
     #[inline]
     fn batch_len(&self) -> u64 {
         self.len() as u64

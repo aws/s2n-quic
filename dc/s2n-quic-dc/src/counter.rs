@@ -791,7 +791,7 @@ async fn report_loop<F, Fut>(
 
 pub struct GaugedQueueReceiver<T, R> {
     inner: R,
-    queue: crate::intrusive_queue::Queue<T>,
+    queue: crate::intrusive::Queue<T>,
     gauge: QueueGauge,
 }
 
@@ -805,16 +805,16 @@ impl<T, R> GaugedQueueReceiver<T, R> {
     }
 }
 
-impl<T, R> crate::socket::channel::Receiver<crate::intrusive_queue::Entry<T>>
+impl<T, R> crate::socket::channel::Receiver<crate::intrusive::Entry<T>>
     for GaugedQueueReceiver<T, R>
 where
-    R: crate::socket::channel::Receiver<crate::intrusive_queue::Queue<T>>,
+    R: crate::socket::channel::Receiver<crate::intrusive::Queue<T>>,
 {
     fn poll_recv(
         &mut self,
         cx: &mut core::task::Context<'_>,
         budget: &mut crate::socket::channel::Budget,
-    ) -> core::task::Poll<Option<crate::intrusive_queue::Entry<T>>> {
+    ) -> core::task::Poll<Option<crate::intrusive::Entry<T>>> {
         loop {
             if budget.is_exhausted() {
                 if !self.queue.is_empty() {

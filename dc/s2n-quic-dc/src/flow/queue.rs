@@ -6,7 +6,7 @@
 //! This provides queue infrastructure similar to `stream::recv::dispatch` but
 //! is generic over the stream and control data types.
 
-use crate::{credentials::Credentials, intrusive_queue};
+use crate::{credentials::Credentials, intrusive};
 use s2n_quic_core::varint::VarInt;
 
 mod descriptor;
@@ -157,8 +157,8 @@ where
         local_queue_id: VarInt,
         remote_queue_id: Option<VarInt>,
         params: &K::Request,
-        data: intrusive_queue::Entry<C>,
-    ) -> Result<AutoWake, Error<intrusive_queue::Entry<C>>> {
+        data: intrusive::Entry<C>,
+    ) -> Result<AutoWake, Error<intrusive::Entry<C>>> {
         let res = self.senders.lookup(local_queue_id, data, |sender, data| {
             sender.send_control(data, remote_queue_id, params)
         });
@@ -193,8 +193,8 @@ where
         local_queue_id: VarInt,
         remote_queue_id: Option<VarInt>,
         params: &K::Request,
-        data: intrusive_queue::Entry<S>,
-    ) -> Result<AutoWake, Error<intrusive_queue::Entry<S>>> {
+        data: intrusive::Entry<S>,
+    ) -> Result<AutoWake, Error<intrusive::Entry<S>>> {
         let res = self.senders.lookup(local_queue_id, data, |sender, data| {
             sender.send_stream(data, remote_queue_id, params)
         });
@@ -229,8 +229,8 @@ where
         local_queue_id: VarInt,
         remote_queue_id: Option<VarInt>,
         params: &K::Request,
-        stream_data: intrusive_queue::Entry<S>,
-        control_data: intrusive_queue::Entry<C>,
+        stream_data: intrusive::Entry<S>,
+        control_data: intrusive::Entry<C>,
     ) -> (AutoWake, AutoWake) {
         let res = self.senders.lookup(local_queue_id, (), |sender, ()| {
             let send = sender

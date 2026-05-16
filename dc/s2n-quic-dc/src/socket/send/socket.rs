@@ -5,7 +5,7 @@
 
 use crate::{
     msg::addr::Addr,
-    stream::socket::{fd::udp, BusyPoll, Gso},
+    socket::{fd::udp, BusyPoll, Gso},
 };
 use s2n_quic_core::inet::ExplicitCongestionNotification;
 use std::io::{self, IoSlice};

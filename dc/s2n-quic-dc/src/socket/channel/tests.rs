@@ -1,5 +1,5 @@
 use super::*;
-use crate::{intrusive_queue, testing::sim};
+use crate::{intrusive, testing::sim};
 use core::{future::Future, pin::pin};
 
 trait SenderExt<T>: Sender<T> {
@@ -243,11 +243,12 @@ fn slot_concurrent_send_recv() {
 
         let (mut tx, mut rx) = cell::sync::new::<u32>();
 
-        crate::testing::spawn(async move {
+        async move {
             for i in 0..10 {
                 tx.send(i).await.unwrap();
             }
-        });
+        }
+        .spawn();
 
         async move {
             let mut budget = Budget::new(usize::MAX);
@@ -375,14 +376,14 @@ fn flatten_drains_queue_then_fetches_next() {
         use crate::testing::ext::*;
 
         async {
-            let (mut tx, rx) = cell::sync::new::<intrusive_queue::Queue<u32>>();
+            let (mut tx, rx) = cell::sync::new::<intrusive::Queue<u32>>();
             let mut flat = Flatten::new(rx);
             let mut budget = Budget::new(usize::MAX);
 
-            let mut queue = intrusive_queue::Queue::default();
-            queue.push_back(intrusive_queue::Entry::new(10));
-            queue.push_back(intrusive_queue::Entry::new(20));
-            queue.push_back(intrusive_queue::Entry::new(30));
+            let mut queue = intrusive::Queue::default();
+            queue.push_back(intrusive::Entry::new(10));
+            queue.push_back(intrusive::Entry::new(20));
+            queue.push_back(intrusive::Entry::new(30));
 
             assert!(tx.send(queue).await.is_ok());
 
@@ -390,8 +391,8 @@ fn flatten_drains_queue_then_fetches_next() {
             assert_eq!(*flat.recv(&mut budget).await.unwrap(), 20);
             assert_eq!(*flat.recv(&mut budget).await.unwrap(), 30);
 
-            let mut queue2 = intrusive_queue::Queue::default();
-            queue2.push_back(intrusive_queue::Entry::new(40));
+            let mut queue2 = intrusive::Queue::default();
+            queue2.push_back(intrusive::Entry::new(40));
             assert!(tx.send(queue2).await.is_ok());
 
             assert_eq!(*flat.recv(&mut budget).await.unwrap(), 40);
@@ -410,17 +411,18 @@ fn flatten_empty_queue_skipped() {
     sim(|| {
         use crate::testing::ext::*;
 
-        let (mut tx, rx) = cell::sync::new::<intrusive_queue::Queue<u32>>();
+        let (mut tx, rx) = cell::sync::new::<intrusive::Queue<u32>>();
 
         // Sender task: send empty queue, then non-empty queue
-        crate::testing::spawn(async move {
-            let empty_queue = intrusive_queue::Queue::default();
+        async move {
+            let empty_queue = intrusive::Queue::default();
             assert!(tx.send(empty_queue).await.is_ok());
 
-            let mut queue = intrusive_queue::Queue::default();
-            queue.push_back(intrusive_queue::Entry::new(42));
+            let mut queue = intrusive::Queue::default();
+            queue.push_back(intrusive::Entry::new(42));
             assert!(tx.send(queue).await.is_ok());
-        });
+        }
+        .spawn();
 
         // Receiver task: should skip the empty queue and return 42
         async move {
@@ -438,11 +440,11 @@ fn flatten_empty_queue_skipped() {
 #[test]
 fn paced_limits_rate() {
     sim(|| {
-        use crate::{clock::precision::Clock as _, testing::ext::*};
+        use crate::{testing::ext::*, time::precision::Clock as _};
 
         async {
             let (mut tx, rx) = cell::sync::new::<u32>();
-            let clock = crate::clock::bach::Clock::default();
+            let clock = crate::time::bach::Clock::default();
             // 1 Gbps = 8 nanos per byte
             let rate = crate::socket::rate::Rate::new(1.0);
             let mut paced_rx = super::Paced::new(rx, clock.clone(), rate);
@@ -472,11 +474,11 @@ fn paced_limits_rate() {
 #[test]
 fn paced_skips_cancelled_packets() {
     sim(|| {
-        use crate::{clock::precision::Clock as _, testing::ext::*};
+        use crate::{testing::ext::*, time::precision::Clock as _};
 
         async {
             let (mut tx, rx) = cell::sync::new::<u32>();
-            let clock = crate::clock::bach::Clock::default();
+            let clock = crate::time::bach::Clock::default();
             let rate = crate::socket::rate::Rate::new(1.0);
             let mut paced_rx = super::Paced::new(rx, clock.clone(), rate);
             let mut budget = Budget::new(usize::MAX);
@@ -505,11 +507,11 @@ fn paced_skips_cancelled_packets() {
 #[test]
 fn paced_throughput_test() {
     sim(|| {
-        use crate::{clock::precision::Clock as _, testing::ext::*};
+        use crate::{testing::ext::*, time::precision::Clock as _};
 
         async {
             let (mut tx, rx) = cell::sync::new::<usize>();
-            let clock = crate::clock::bach::Clock::default();
+            let clock = crate::time::bach::Clock::default();
             // 5 Gbps
             let rate = crate::socket::rate::Rate::new(5.0);
             let paced_rx = super::Paced::new(rx, clock.clone(), rate);
@@ -518,11 +520,12 @@ fn paced_throughput_test() {
 
             // Producer task: send 64KB packets continuously for 5 seconds worth of data
             // At 5Gbps, that's 5 * 5 / 8 = ~3GB = ~47,000 packets of 64KB
-            crate::testing::spawn(async move {
+            async move {
                 for _ in 0..47000 {
                     tx.send(65536).await.unwrap();
                 }
-            });
+            }
+            .spawn();
 
             // Consumer task: receive and discard
             let start = clock.now();
@@ -563,11 +566,11 @@ fn paced_throughput_test() {
 #[test]
 fn paced_allows_burst() {
     sim(|| {
-        use crate::{clock::precision::Clock as _, testing::ext::*};
+        use crate::{testing::ext::*, time::precision::Clock as _};
 
         async {
             let (mut tx, rx) = cell::sync::new::<u32>();
-            let clock = crate::clock::bach::Clock::default();
+            let clock = crate::time::bach::Clock::default();
             let rate = crate::socket::rate::Rate::new(1.0);
             let mut paced_rx = super::Paced::new(rx, clock.clone(), rate);
             let mut budget = Budget::new(usize::MAX);
@@ -612,21 +615,21 @@ mod gauged {
 
     // Alias the channel-specific intrusive_queue::sync module to avoid
     // shadowing by the crate-level `use crate::{intrusive_queue, ...}` import.
-    use crate::socket::channel::intrusive_queue::sync as iq_sync;
+    use crate::socket::channel::intrusive::sync as iq_sync;
 
     #[test]
     fn batch_len_single_entry() {
-        let e = crate::intrusive_queue::Entry::new(42u32);
+        let e = crate::intrusive::Entry::new(42u32);
         assert_eq!(e.batch_len(), 1);
     }
 
     #[test]
     fn batch_len_queue() {
-        let mut q = crate::intrusive_queue::Queue::<u32>::new();
+        let mut q = crate::intrusive::Queue::<u32>::new();
         assert_eq!(q.batch_len(), 0);
-        q.push_back(crate::intrusive_queue::Entry::new(1u32));
-        q.push_back(crate::intrusive_queue::Entry::new(2u32));
-        q.push_back(crate::intrusive_queue::Entry::new(3u32));
+        q.push_back(crate::intrusive::Entry::new(1u32));
+        q.push_back(crate::intrusive::Entry::new(2u32));
+        q.push_back(crate::intrusive::Entry::new(3u32));
         assert_eq!(q.batch_len(), 3);
     }
 
@@ -645,19 +648,19 @@ mod gauged {
         let (gauge, _reg) = make_gauge();
         let (inner_tx, _rx) = iq_sync::new::<u32>();
 
-        let mut tx: GaugedSender<_, crate::intrusive_queue::Entry<u32>> =
+        let mut tx: GaugedSender<_, crate::intrusive::Entry<u32>> =
             GaugedSender::new(inner_tx, gauge.clone());
 
         assert_eq!(gauge_depth(&gauge), 0);
         <GaugedSender<_, _> as UnboundedSender<_>>::send(
             &mut tx,
-            crate::intrusive_queue::Entry::new(10u32),
+            crate::intrusive::Entry::new(10u32),
         )
         .unwrap();
         assert_eq!(gauge_depth(&gauge), 1);
         <GaugedSender<_, _> as UnboundedSender<_>>::send(
             &mut tx,
-            crate::intrusive_queue::Entry::new(20u32),
+            crate::intrusive::Entry::new(20u32),
         )
         .unwrap();
         assert_eq!(gauge_depth(&gauge), 2);
@@ -669,12 +672,12 @@ mod gauged {
         let (inner_tx, rx) = iq_sync::new::<u32>();
         drop(rx);
 
-        let mut tx: GaugedSender<_, crate::intrusive_queue::Entry<u32>> =
+        let mut tx: GaugedSender<_, crate::intrusive::Entry<u32>> =
             GaugedSender::new(inner_tx, gauge.clone());
 
         let result = <GaugedSender<_, _> as UnboundedSender<_>>::send(
             &mut tx,
-            crate::intrusive_queue::Entry::new(42u32),
+            crate::intrusive::Entry::new(42u32),
         );
         assert!(result.is_err(), "send should fail on closed channel");
         assert_eq!(gauge_depth(&gauge), 0, "depth must not increase on failure");
@@ -686,15 +689,15 @@ mod gauged {
         let (gauge, _reg) = make_gauge();
         let (inner_tx, _rx) = iq_sync::new::<u32>();
 
-        let mut tx: GaugedSender<_, crate::intrusive_queue::Queue<u32>> =
+        let mut tx: GaugedSender<_, crate::intrusive::Queue<u32>> =
             GaugedSender::new(inner_tx, gauge.clone());
 
         assert_eq!(gauge_depth(&gauge), 0);
 
-        let mut batch = crate::intrusive_queue::Queue::new();
-        batch.push_back(crate::intrusive_queue::Entry::new(1u32));
-        batch.push_back(crate::intrusive_queue::Entry::new(2u32));
-        batch.push_back(crate::intrusive_queue::Entry::new(3u32));
+        let mut batch = crate::intrusive::Queue::new();
+        batch.push_back(crate::intrusive::Entry::new(1u32));
+        batch.push_back(crate::intrusive::Entry::new(2u32));
+        batch.push_back(crate::intrusive::Entry::new(3u32));
         <GaugedSender<_, _> as UnboundedSender<_>>::send(&mut tx, batch).unwrap();
 
         assert_eq!(gauge_depth(&gauge), 3);
@@ -708,13 +711,13 @@ mod gauged {
         // Pre-populate gauge depth to simulate earlier enqueues
         gauge.enqueue(2);
         inner_tx
-            .send_entry(crate::intrusive_queue::Entry::new(1u32))
+            .send_entry(crate::intrusive::Entry::new(1u32))
             .unwrap();
         inner_tx
-            .send_entry(crate::intrusive_queue::Entry::new(2u32))
+            .send_entry(crate::intrusive::Entry::new(2u32))
             .unwrap();
 
-        let mut rx: GaugedReceiver<_, crate::intrusive_queue::Entry<u32>> =
+        let mut rx: GaugedReceiver<_, crate::intrusive::Entry<u32>> =
             GaugedReceiver::new(inner_rx, gauge.clone());
 
         let mut cx = noop_cx();
@@ -738,9 +741,9 @@ mod gauged {
         let (gauge, _reg) = make_gauge();
         let (inner_tx, inner_rx) = iq_sync::new::<u32>();
 
-        let mut tx: GaugedSender<_, crate::intrusive_queue::Entry<u32>> =
+        let mut tx: GaugedSender<_, crate::intrusive::Entry<u32>> =
             GaugedSender::new(inner_tx, gauge.clone());
-        let mut rx: GaugedReceiver<_, crate::intrusive_queue::Entry<u32>> =
+        let mut rx: GaugedReceiver<_, crate::intrusive::Entry<u32>> =
             GaugedReceiver::new(inner_rx, gauge.clone());
 
         let mut cx = noop_cx();
@@ -748,12 +751,12 @@ mod gauged {
 
         <GaugedSender<_, _> as UnboundedSender<_>>::send(
             &mut tx,
-            crate::intrusive_queue::Entry::new(1u32),
+            crate::intrusive::Entry::new(1u32),
         )
         .unwrap();
         <GaugedSender<_, _> as UnboundedSender<_>>::send(
             &mut tx,
-            crate::intrusive_queue::Entry::new(2u32),
+            crate::intrusive::Entry::new(2u32),
         )
         .unwrap();
         assert_eq!(gauge_depth(&gauge), 2);
@@ -766,7 +769,7 @@ mod gauged {
 
         <GaugedSender<_, _> as UnboundedSender<_>>::send(
             &mut tx,
-            crate::intrusive_queue::Entry::new(3u32),
+            crate::intrusive::Entry::new(3u32),
         )
         .unwrap();
         assert_eq!(gauge_depth(&gauge), 2);
@@ -791,15 +794,15 @@ mod gauged {
         // Pre-fill gauge depth to match the batch we will send
         gauge.enqueue(4);
 
-        let mut rx: GaugedReceiver<_, crate::intrusive_queue::Queue<u32>> =
+        let mut rx: GaugedReceiver<_, crate::intrusive::Queue<u32>> =
             GaugedReceiver::new(inner_rx, gauge.clone());
 
         let mut cx = noop_cx();
         let mut budget = Budget::new(usize::MAX);
 
-        let mut batch = crate::intrusive_queue::Queue::new();
+        let mut batch = crate::intrusive::Queue::new();
         for i in 0..4u32 {
-            batch.push_back(crate::intrusive_queue::Entry::new(i));
+            batch.push_back(crate::intrusive::Entry::new(i));
         }
         inner_tx.send_batch(batch).unwrap();
 

@@ -12,7 +12,6 @@ use crate::{
         seal, stateless_reset,
     },
     psk::io::HandshakeReason,
-    stream::TransportFeatures,
 };
 use core::fmt;
 use s2n_quic_core::{dc, time, varint::VarInt};
@@ -232,7 +231,6 @@ impl Map {
         &self,
         credentials: &Credentials,
         queue_id: Option<VarInt>,
-        features: &TransportFeatures,
         control_out: &mut Vec<u8>,
     ) -> Option<(entry::Bidirectional, dc::ApplicationParams)> {
         let entry = self
@@ -240,7 +238,7 @@ impl Map {
             .pre_authentication(credentials, queue_id, control_out)?;
 
         let params = entry.parameters();
-        let keys = entry.bidi_remote(self.clone(), credentials, queue_id, features);
+        let keys = entry.bidi_remote(self.clone(), credentials, queue_id);
 
         Some((keys, params))
     }
@@ -249,7 +247,6 @@ impl Map {
         &self,
         credentials: &Credentials,
         queue_id: Option<VarInt>,
-        features: &TransportFeatures,
         control_out: &mut Vec<u8>,
     ) -> Option<(
         ExportSecret,
@@ -261,7 +258,7 @@ impl Map {
             .store
             .pre_authentication(credentials, queue_id, control_out)?;
         let params = entry.parameters();
-        let keys = entry.bidi_remote(self.clone(), credentials, queue_id, features); // for dedup check
+        let keys = entry.bidi_remote(self.clone(), credentials, queue_id);
         let secret = entry.secret();
 
         Some((*secret.export_secret(), *secret.ciphersuite(), keys, params))

@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::clock::precision::{self, Clock, Timestamp};
+use crate::time::precision::{self, Clock, Timestamp};
 use core::task::Poll;
 use std::{fmt::Debug, future::poll_fn};
 

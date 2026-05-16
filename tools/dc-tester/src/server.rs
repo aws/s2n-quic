@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use s2n_quic_core::{stream::testing::Data, varint::VarInt};
-use s2n_quic_dc::stream3::endpoint::Endpoint;
+use s2n_quic_dc::stream::endpoint::Endpoint;
 use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{io::AsyncReadExt as _, task::JoinSet};
 use tracing::{error, info};
@@ -19,7 +19,7 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
         crate::psk::server(address, data_addrs, endpoint.path_secret_map.clone()).await?;
 
     // Create stream3 server
-    let server = s2n_quic_dc::stream3::Server::new(endpoint, handshake);
+    let server = s2n_quic_dc::stream::Server::new(endpoint, handshake);
 
     // Register channel acceptor with ID 0
     let accept_rx = server.register_acceptor_channel(VarInt::ZERO, (u32::MAX as usize).into())?;
@@ -74,7 +74,7 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
     res
 }
 
-async fn handle_connection(stream: s2n_quic_dc::stream3::Stream) -> io::Result<(u64, u64)> {
+async fn handle_connection(stream: s2n_quic_dc::stream::Stream) -> io::Result<(u64, u64)> {
     let (mut reader, mut writer) = stream.into_split();
 
     tokio::time::timeout(Duration::from_secs(1), reader.validate())

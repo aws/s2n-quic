@@ -16,7 +16,6 @@ testing = ["dep:bach", "bolero-generator", "s2n-quic-core/testing", "s2n-quic-pl
 tokio = ["tokio/io-util", "tokio/net", "tokio/rt-multi-thread", "tokio/time"]
 
 [dependencies]
-ahash = "0.8"
 arrayvec = "0.7"
 atomic-waker = "1"
 aws-lc-rs = "1.12"
@@ -25,14 +24,9 @@ bitflags = "2"
 bolero-generator = { version = "0.13", default-features = false, optional = true }
 bytes = "1"
 cfg-if = "1.0"
-crossbeam-channel = "0.5"
-crossbeam-queue = { version = "0.3" }
 dashmap = "6"
-event-listener-strategy = "0.5"
-flurry = "0.5"
 libc = "0.2"
 num-rational = { version = "0.4", default-features = false }
-once_cell = "1"
 pin-project-lite = "0.2"
 rand = "0.10"
 rustc-hash = "2"
@@ -42,7 +36,6 @@ s2n-quic-core = { version = "=0.76.0", path = "../../quic/s2n-quic-core", defaul
 s2n-quic-dc-metrics = { version = "=0.76.0", path = "../s2n-quic-dc-metrics" }
 s2n-quic-platform = { version = "=0.76.0", path = "../../quic/s2n-quic-platform" }
 s2n-tls = "0.3"
-slotmap = "1"
 hashbrown = "0.16"
 thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["sync"] }

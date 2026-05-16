@@ -14,7 +14,6 @@ use crate::{
         schedule::{self, Initiator},
         seal, sender,
     },
-    stream::TransportFeatures,
 };
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{dc, recovery::bandwidth::Bandwidth, time::Timestamp, varint::VarInt};
@@ -168,7 +167,7 @@ impl Entry {
         // clamp max datagram size to a well-known value
         parameters
             .max_datagram_size
-            .fetch_min(crate::stream::MAX_DATAGRAM_SIZE as _, Ordering::Relaxed);
+            .fetch_min(crate::endpoint::MAX_DATAGRAM_SIZE as _, Ordering::Relaxed);
 
         Self {
             creation_time: Instant::now(),
@@ -515,7 +514,7 @@ impl Entry {
         open::Once::new(opener, dedup)
     }
 
-    pub fn bidi_local(&self, features: &TransportFeatures) -> Bidirectional {
+    pub fn bidi_local(&self) -> Bidirectional {
         let key_id = self.sender.next_key_id();
         let initiator = Initiator::Local;
 
@@ -527,11 +526,7 @@ impl Entry {
             Dedup::disabled(),
         );
 
-        let control = if features.is_reliable() {
-            None
-        } else {
-            Some(ControlPair::new(&self.secret, key_id, initiator))
-        };
+        let control = Some(ControlPair::new(&self.secret, key_id, initiator));
 
         Bidirectional {
             credentials: Credentials {
@@ -548,7 +543,6 @@ impl Entry {
         map: Map,
         credentials: &Credentials,
         queue_id: Option<VarInt>,
-        features: &TransportFeatures,
     ) -> Bidirectional {
         let key_id = credentials.key_id;
         let initiator = Initiator::Remote;
@@ -561,11 +555,7 @@ impl Entry {
             Dedup::new(self.clone(), key_id, queue_id, map),
         );
 
-        let control = if features.is_reliable() {
-            None
-        } else {
-            Some(ControlPair::new(&self.secret, key_id, initiator))
-        };
+        let control = Some(ControlPair::new(&self.secret, key_id, initiator));
 
         Bidirectional {
             credentials: *credentials,

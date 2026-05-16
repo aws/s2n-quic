@@ -500,7 +500,6 @@ mod tests {
     use crate::{
         event,
         path::secret::{map::Dedup, open::Application as Opener, seal::Application as Sealer},
-        stream,
     };
     use bolero::*;
     use s2n_quic_core::time::testing;
@@ -536,7 +535,7 @@ mod tests {
             };
             let mut client_app = Application::new(client.application_pair(self.key_id, client_i));
             let mut server_app = Application::new(server.application_pair(self.key_id, server_i));
-            let subscriber = stream::shared::Subscriber {
+            let subscriber = event::subscriber::Subscriber {
                 subscriber: event::testing::Subscriber::no_snapshot(),
                 context: (),
             };

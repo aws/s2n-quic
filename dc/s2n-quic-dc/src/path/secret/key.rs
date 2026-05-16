@@ -9,7 +9,7 @@ pub mod seal {
     use super::*;
     use crate::crypto::{awslc, seal};
 
-    use crate::{event, event::ConnectionPublisher, stream::shared};
+    use crate::{event, event::ConnectionPublisher, event::subscriber as shared};
     pub use awslc::seal::control;
     use s2n_quic_core::event::IntoEvent;
 
@@ -148,7 +148,7 @@ pub mod open {
     use s2n_quic_core::ensure;
     use zeroize::Zeroize;
 
-    use crate::{event, event::ConnectionPublisher, stream::shared};
+    use crate::{event, event::ConnectionPublisher, event::subscriber as shared};
     pub use awslc::open::control;
     use s2n_quic_core::event::IntoEvent;
 

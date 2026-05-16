@@ -199,7 +199,7 @@ impl<N: Network> bach::environment::Environment for Env<N> {
 
     fn close<F>(&mut self, close: F)
     where
-        F: 'static + FnOnce() + Send,
+        F: 'static + FnOnce(),
     {
         Self::close(self, close)
     }

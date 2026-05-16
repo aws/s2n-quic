@@ -197,6 +197,10 @@ fn async_client_hello() {
         output: Option<bach::task::JoinHandle<()>>,
     }
 
+    /// SAFETY: Bach is single threaded
+    unsafe impl Send for MyConnectionFuture {}
+    unsafe impl Sync for MyConnectionFuture {}
+
     impl ClientHelloCallback for MyCallbackHandler {
         fn on_client_hello(
             &self,

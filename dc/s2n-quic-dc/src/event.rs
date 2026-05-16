@@ -35,7 +35,7 @@ impl Meta for api::EndpointMeta {
     }
 }
 
-pub mod diagnostic;
+pub mod subscriber;
 
 mod generated;
 pub use generated::*;

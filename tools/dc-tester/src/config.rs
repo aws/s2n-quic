@@ -97,9 +97,9 @@ impl EndpointConfig {
     }
 
     /// Constructs the worker layout, assigning contiguous thread indices to each role.
-    pub fn layout(&self) -> s2n_quic_dc::stream3::endpoint::WorkerLayout {
+    pub fn layout(&self) -> s2n_quic_dc::stream::endpoint::WorkerLayout {
         let mut ids = 1..; // 0 is frame_dispatch
-        s2n_quic_dc::stream3::endpoint::WorkerLayout {
+        s2n_quic_dc::stream::endpoint::WorkerLayout {
             frame_dispatch: 0,
             send: (&mut ids).take(self.send_workers).collect(),
             recv_io: (&mut ids).take(self.recv_io_workers).collect(),

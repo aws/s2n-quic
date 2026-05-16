@@ -3,10 +3,10 @@
 
 use super::{
     descriptor::Descriptor,
-    inner::{Error, Half},
+    inner::{Closed, Error, Half},
     probes, AutoWake,
 };
-use crate::{intrusive_queue, sync::ring_deque};
+use crate::intrusive;
 use core::{
     fmt,
     task::{Context, Poll},
@@ -40,7 +40,7 @@ macro_rules! impl_recv {
             }
 
             #[inline]
-            pub fn push(&self, value: intrusive_queue::Entry<$type_param>) {
+            pub fn push(&self, value: intrusive::Entry<$type_param>) {
                 unsafe {
                     let res = self.descriptor.$field().push(value, || false, || Ok(()));
                     debug_assert!(res.is_ok());
@@ -49,9 +49,7 @@ macro_rules! impl_recv {
             }
 
             #[inline]
-            pub fn try_recv(
-                &self,
-            ) -> Result<Option<intrusive_queue::Entry<$type_param>>, ring_deque::Closed> {
+            pub fn try_recv(&self) -> Result<Option<intrusive::Entry<$type_param>>, Closed> {
                 unsafe {
                     let value = self.descriptor.$field().pop()?;
                     probes::on_recv(self.descriptor.queue_id(), $half, value.is_some().into());
@@ -60,9 +58,7 @@ macro_rules! impl_recv {
             }
 
             #[inline]
-            pub async fn recv(
-                &self,
-            ) -> Result<intrusive_queue::Entry<$type_param>, ring_deque::Closed> {
+            pub async fn recv(&self) -> Result<intrusive::Entry<$type_param>, Closed> {
                 core::future::poll_fn(|cx| self.poll_recv(cx)).await
             }
 
@@ -70,7 +66,7 @@ macro_rules! impl_recv {
             pub fn poll_recv(
                 &self,
                 cx: &mut Context,
-            ) -> Poll<Result<intrusive_queue::Entry<$type_param>, ring_deque::Closed>> {
+            ) -> Poll<Result<intrusive::Entry<$type_param>, Closed>> {
                 unsafe {
                     match self.descriptor.$field().poll_pop(cx) {
                         Poll::Ready(Ok(entry)) => {
@@ -90,7 +86,7 @@ macro_rules! impl_recv {
             pub fn poll_swap(
                 &self,
                 cx: &mut Context,
-            ) -> Poll<Result<intrusive_queue::Queue<$type_param>, ring_deque::Closed>> {
+            ) -> Poll<Result<intrusive::Queue<$type_param>, Closed>> {
                 unsafe {
                     match self.descriptor.$field().poll_swap(cx) {
                         Poll::Ready(Ok(queue)) => {
@@ -153,10 +149,10 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
     #[inline]
     pub fn send_stream(
         &self,
-        entry: intrusive_queue::Entry<S>,
+        entry: intrusive::Entry<S>,
         remote_queue_id: Option<VarInt>,
         params: &<Key as super::descriptor::Key>::Request,
-    ) -> Result<AutoWake, Error<intrusive_queue::Entry<S>>>
+    ) -> Result<AutoWake, Error<intrusive::Entry<S>>>
     where
         Key: super::descriptor::Key,
     {
@@ -181,10 +177,10 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
     #[inline]
     pub fn send_control(
         &self,
-        entry: intrusive_queue::Entry<C>,
+        entry: intrusive::Entry<C>,
         remote_queue_id: Option<VarInt>,
         params: &<Key as super::descriptor::Key>::Request,
-    ) -> Result<AutoWake, Error<intrusive_queue::Entry<C>>>
+    ) -> Result<AutoWake, Error<intrusive::Entry<C>>>
     where
         Key: super::descriptor::Key,
     {

@@ -30,7 +30,7 @@ use tokio::{
     time::Instant as TokioInstant,
 };
 
-pub use crate::stream::DEFAULT_IDLE_TIMEOUT;
+pub use crate::endpoint::DEFAULT_IDLE_TIMEOUT;
 pub const DEFAULT_MAX_DATA: u64 = 1u64 << 23;
 pub const DEFAULT_BASE_MTU: u16 = 1450;
 #[cfg(target_os = "linux")]
@@ -70,7 +70,12 @@ async fn read_data_addrs<R: AsyncReadExt + Unpin>(reader: &mut R) -> io::Result<
     reader.read_exact(&mut header).await?;
     let count = header[0] as usize;
 
-    if count == 0 || count > MAX_PEER_DATA_ADDRS {
+    if count == 0 {
+        tracing::warn!("peer provided 0 data addrs");
+        return Ok(Vec::new());
+    }
+
+    if count > MAX_PEER_DATA_ADDRS {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "invalid data addr count",
@@ -784,15 +789,15 @@ mod tests {
         let server_name: s2n_quic::server::Name = "localhost".into();
 
         // First handshake
-        let first_handshake_result = setup
+        setup
             .client
             .connect(
                 setup.server_addr,
                 HandshakeReason::User,
                 server_name.clone(),
             )
-            .await;
-        assert!(first_handshake_result.is_ok());
+            .await
+            .unwrap();
 
         // Wait 500ms - enough for cleanup if MtuProbingComplete works, but not if 1s delay triggered
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -803,16 +808,16 @@ mod tests {
 
         // Second handshake to same peer - should succeed since entry was removed
         let second_handshake_start = Instant::now();
-        let second_handshake_result = setup
+        setup
             .client
             .connect(
                 setup.server_addr,
                 HandshakeReason::User,
                 server_name.clone(),
             )
-            .await;
+            .await
+            .unwrap();
         let second_handshake_duration = second_handshake_start.elapsed();
-        assert!(second_handshake_result.is_ok());
 
         // Additional timing check: if entry was properly removed, the second handshake
         // should take at least 1ms (a fresh handshake). If it's <1ms, it was deduplicated.

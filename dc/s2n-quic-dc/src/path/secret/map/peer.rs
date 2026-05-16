@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{dc, seal, Bidirectional, Credentials, Entry, Id, Map, TransportFeatures};
+use super::{dc, seal, Bidirectional, Credentials, Entry, Id, Map};
 use crate::path::secret::map::PeerDataAddrs;
 use s2n_quic_core::time::Timestamp;
 use std::sync::Arc;
@@ -26,8 +26,8 @@ impl Peer {
     }
 
     #[inline]
-    pub fn pair(&self, features: &TransportFeatures) -> (Bidirectional, dc::ApplicationParams) {
-        let keys = self.entry.bidi_local(features);
+    pub fn pair(&self) -> (Bidirectional, dc::ApplicationParams) {
+        let keys = self.entry.bidi_local();
 
         (keys, self.entry.parameters())
     }

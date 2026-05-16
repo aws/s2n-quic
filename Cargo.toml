@@ -12,8 +12,11 @@ exclude = ["examples", "tools/event-generator", "tools/memory-report", "tools/s2
 # - Network monitor support for per-packet delays and duplication, enabling
 #   reordering and duplicate-transmission simulation in deterministic tests.
 #   https://github.com/camshaft/bach/commit/adaa41d1417035c8dc0737f0a8688ccac4768495
+# - Relax Send bounds on spawn/primary ext traits for !Send futures in
+#   single-threaded simulation.
+#   https://github.com/camshaft/bach/commit/5a5ece139b71c226d18b2fb71af9a7f3ae4b09f2
 [patch.crates-io]
-bach = { git = "https://github.com/camshaft/bach", rev = "adaa41d1417035c8dc0737f0a8688ccac4768495" }
+bach = { git = "https://github.com/camshaft/bach", rev = "5a5ece139b71c226d18b2fb71af9a7f3ae4b09f2" }
 
 [profile.release-debug]
 inherits = "dev"

@@ -45,10 +45,10 @@ impl ValidationError {
     /// Returns the reset error code to send to the peer, or `None` for tombstone
     /// (which should be silently dropped).
     pub fn as_reset_code(self) -> Option<VarInt> {
-        use crate::stream3::endpoint::reset_error;
+        use crate::stream::endpoint::error;
         match self {
-            Self::CredentialMismatch => Some(reset_error::CREDENTIAL_MISMATCH),
-            Self::StreamIdMismatch => Some(reset_error::STREAM_ID_MISMATCH),
+            Self::CredentialMismatch => Some(error::CREDENTIAL_MISMATCH),
+            Self::StreamIdMismatch => Some(error::STREAM_ID_MISMATCH),
             Self::Tombstone => None,
         }
     }

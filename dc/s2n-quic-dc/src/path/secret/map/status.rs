@@ -38,7 +38,7 @@ impl IsRetired {
 }
 
 pub struct Dedup {
-    cell: once_cell::sync::OnceCell<crypto::open::Result>,
+    cell: std::sync::OnceLock<crypto::open::Result>,
     init: core::cell::Cell<Option<DedupInit>>,
 }
 
@@ -76,7 +76,7 @@ impl Dedup {
     #[inline]
     pub(crate) fn disabled() -> Self {
         Self {
-            cell: once_cell::sync::OnceCell::with_value(Ok(())),
+            cell: std::sync::OnceLock::from(Ok(())),
             init: core::cell::Cell::new(None),
         }
     }
