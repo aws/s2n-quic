@@ -144,6 +144,22 @@ impl Map {
         Some((old_pn, frames))
     }
 
+    /// Restore frames back into an inflight entry after a failed probe attempt.
+    ///
+    /// Used when the probe frame doesn't fit in the current segment (e.g. because
+    /// ACK frames already consumed the budget). The entry reverts from a shell back
+    /// to a live entry so it can be probed on the next opportunity.
+    #[inline]
+    pub fn restore_probe_frames(&mut self, pn: PacketNumber, frames: Queue<Frame>) {
+        let packet = self
+            .inner
+            .get_mut(pn)
+            .expect("inflight entry must exist when restoring probe frames");
+        debug_assert!(packet.frames.is_empty());
+        debug_assert!(packet.probed_to.is_none());
+        packet.frames = frames;
+    }
+
 
     /// Verify structural invariants of the inflight map.
     ///

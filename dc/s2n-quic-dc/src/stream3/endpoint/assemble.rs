@@ -425,11 +425,22 @@ fn assemble_probe(
                 probe_metadata = next;
                 has_frame = true;
                 packet_frames.push_back(frame);
-            } else {
+            } else if !has_frame {
+                // First probe frame doesn't fit. This is only legitimate when
+                // ACK frames already consumed part of the segment budget.
                 assert!(
-                    has_frame,
-                    "first probe frame does not fit — header estimate is wrong"
+                    metadata.payload_len > 0 || metadata.header_len > 0,
+                    "first probe frame does not fit in a clean packet — header estimate is wrong; \
+                     est_len={est_len}, max_segment_len={max_segment_len}, \
+                     metadata={probe_metadata:?}, \
+                     frame_header={:?}, frame_payload_len={}",
+                    frame.header,
+                    frame.payload_len(),
                 );
+                probe_frames.push_front(frame);
+                context.inflight.restore_probe_frames(old_pn, probe_frames);
+                return ProbeResult::NothingToProbe;
+            } else {
                 probe_frames.push_front(frame);
                 break;
             }

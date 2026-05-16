@@ -700,10 +700,6 @@ fn on_packet_dispatch_error(counters: &endpoint::counters::Dispatch, err: dispat
             counters.rx_process_err_missing_sender_id.add(1);
             tracing::warn!("packet missing routing info; expected SenderId");
         }
-        dispatch::Error::UnsupportedRoutingInfo { routing_info } => {
-            counters.rx_process_err_unsupported_routing.add(1);
-            tracing::warn!(?routing_info, "unsupported datagram routing info");
-        }
     }
 }
 

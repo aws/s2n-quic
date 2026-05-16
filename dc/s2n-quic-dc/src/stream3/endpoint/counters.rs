@@ -70,7 +70,6 @@ pub(crate) struct Dispatch {
     pub rx_process_err_decryption: Counter,
     pub rx_process_err_duplicate: Counter,
     pub rx_process_err_missing_sender_id: Counter,
-    pub rx_process_err_unsupported_routing: Counter,
 
     pub rx_peer_cache_hit: Counter,
     pub rx_peer_cache_miss: Counter,
@@ -158,8 +157,6 @@ impl Dispatch {
             rx_process_err_duplicate: counters.register("!rx.process.err.duplicate"),
             rx_process_err_missing_sender_id: counters
                 .register("!rx.process.err.missing_sender_id"),
-            rx_process_err_unsupported_routing: counters
-                .register("!rx.process.err.unsupported_routing"),
 
             rx_peer_cache_hit: counters.register("rx.peer_cache.hit"),
             rx_peer_cache_miss: counters.register("rx.peer_cache.miss"),

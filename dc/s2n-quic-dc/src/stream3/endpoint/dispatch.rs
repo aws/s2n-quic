@@ -51,9 +51,6 @@ pub(crate) enum Error {
         packet_number: VarInt,
     },
     MissingSenderId,
-    UnsupportedRoutingInfo {
-        routing_info: RoutingInfo,
-    },
 }
 
 /// Process a received datagram packet.
@@ -88,7 +85,6 @@ where
     let source_sender_id = match routing_info {
         RoutingInfo::SenderId { source_sender_id } => source_sender_id,
         RoutingInfo::None => return Err(Error::MissingSenderId),
-        _ => return Err(Error::UnsupportedRoutingInfo { routing_info }),
     };
 
     // Get or create peer receive state
