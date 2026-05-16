@@ -186,7 +186,8 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     waker: Waker,
     event_context: EventContext<Config>,
     /// Stores packets that arrive before we have generated the next packet space
-    packet_storage: Vec<u8>,
+    packet_buffer: Vec<u8>,
+    /// Tracks which type of packet is currently stored in packet_buffer
     stored_packet_type: Option<PacketNumberSpace>,
 }
 
@@ -287,7 +288,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         packet_interceptor: &mut Config::PacketInterceptor,
         connection_id_validator: &Config::ConnectionIdFormat,
     ) -> Result<(), connection::Error> {
-        let mut payload: Vec<u8> = self.packet_storage.drain(..).collect();
+        let mut payload: Vec<u8> = self.packet_buffer.drain(..).collect();
         let buffer = DecoderBufferMut::new(payload.as_mut_slice());
 
         let destination_connection_id = self.path_manager.active_path().local_connection_id;
@@ -748,7 +749,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             wakeup_handle,
             waker,
             event_context,
-            packet_storage: Vec::new(),
+            packet_buffer: Vec::new(),
             stored_packet_type: None,
         };
 
@@ -1652,8 +1653,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             //# of later packets that allow it to compute the key.
 
             let packet_bytes = packet.get_wire_bytes();
-            if packet_bytes.len() + self.packet_storage.len() <= self.limits.stored_packet_size() {
-                self.packet_storage.extend(packet_bytes);
+            if packet_bytes.len() + self.packet_buffer.len() <= self.limits.packet_buffer_size() {
+                self.packet_buffer.extend(packet_bytes);
                 self.stored_packet_type = Some(PacketNumberSpace::Handshake)
             } else {
                 let path = &self.path_manager[path_id];
@@ -1726,11 +1727,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //# of later packets that allow it to compute the key.
 
                 let packet_bytes = packet.get_wire_bytes();
-                if packet_bytes.len() <= self.limits.stored_packet_size() {
+                if packet_bytes.len() <= self.limits.packet_buffer_size() {
                     // We only store one packet of application data for now. This is due to the fact that
                     // short packets do not contain a length prefix, therefore, we would have to store additional
                     // length info per packet to properly parse them once the application space is created.
-                    self.packet_storage = packet_bytes;
+                    self.packet_buffer = packet_bytes;
                     self.stored_packet_type = Some(PacketNumberSpace::ApplicationData)
                 } else {
                     let path = &self.path_manager[path_id];

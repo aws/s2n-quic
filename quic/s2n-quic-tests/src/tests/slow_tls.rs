@@ -3,12 +3,13 @@
 
 use super::*;
 use s2n_quic::provider::tls::default;
-use s2n_quic_core::crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM};
+use s2n_quic_core::{
+    connection::limits::Limits,
+    crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM},
+};
 
 #[test]
 fn slow_tls() {
-    use s2n_quic_core::connection::limits::Limits;
-
     let model = Model::default();
 
     let server_endpoint = default::Server::builder()
@@ -30,7 +31,7 @@ fn slow_tls() {
     };
 
     // Connections will store up to 4000 bytes of packets that can't be processed yet
-    let limits = Limits::default().with_stored_packet_size(4000).unwrap();
+    let limits = Limits::default().with_packet_buffer_size(4000).unwrap();
 
     test(model.clone(), |handle| {
         let server = Server::builder()
@@ -43,7 +44,7 @@ fn slow_tls() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(slow_client)?
-            .with_event((tracing_events(true, model.clone()), MyEvents))?
+            .with_event((tracing_events(true, model.clone()), SlowTlsTestEvents))?
             .with_limits(limits)?
             .start()?;
         let addr = start_server(server)?;
@@ -53,10 +54,10 @@ fn slow_tls() {
     })
     .unwrap();
 
-    struct MyEvents;
-    struct MyContext;
-    impl events::Subscriber for MyEvents {
-        type ConnectionContext = MyContext;
+    struct SlowTlsTestEvents;
+    struct SlowTlsTestContext;
+    impl events::Subscriber for SlowTlsTestEvents {
+        type ConnectionContext = SlowTlsTestContext;
 
         fn create_connection_context(
             &mut self,

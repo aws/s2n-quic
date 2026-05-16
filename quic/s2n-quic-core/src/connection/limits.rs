@@ -39,7 +39,7 @@ const MAX_KEEP_ALIVE_PERIOD_DEFAULT: Duration = Duration::from_secs(30);
 pub const ANTI_AMPLIFICATION_MULTIPLIER: u8 = 3;
 
 pub const DEFAULT_STREAM_BATCH_SIZE: u8 = 1;
-pub const DEFAULT_STORED_PACKET_SIZE: usize = 0;
+pub const DEFAULT_PACKET_BUFFER_SIZE: usize = 0;
 
 // Maximum allowed PTO jitter percentage. Limited to 50% to prevent PTO timers
 // from becoming too short (which could cause premature timeouts) or too long
@@ -112,7 +112,7 @@ pub struct Limits {
     pub(crate) anti_amplification_multiplier: u8,
     pub(crate) stream_batch_size: u8,
     pub(crate) pto_jitter_percentage: u8,
-    pub(crate) stored_packet_size: usize,
+    pub(crate) packet_buffer_size: usize,
 }
 
 impl Default for Limits {
@@ -161,7 +161,7 @@ impl Limits {
             anti_amplification_multiplier: ANTI_AMPLIFICATION_MULTIPLIER,
             stream_batch_size: DEFAULT_STREAM_BATCH_SIZE,
             pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
-            stored_packet_size: DEFAULT_STORED_PACKET_SIZE,
+            packet_buffer_size: DEFAULT_PACKET_BUFFER_SIZE,
         }
     }
 
@@ -272,18 +272,21 @@ impl Limits {
     );
     setter!(with_stream_batch_size, stream_batch_size, u8);
     setter!(
-        /// Sets the maximum number of packet bytes that s2n-quic will store if the keys to decrypt them
-        /// haven't been created yet.
+        /// Set a limit on the amount of packet bytes that s2n-quic will buffer if the packet
+        /// decryption keys haven't been created yet.
         ///
-        /// We cap this to a reasonable size to avoid creating a per‑connection memory
-        /// amplification attack. We can raise the limit if this is too conservative.
-        with_stored_packet_size,
-        stored_packet_size,
+        /// A connection might receive packets that are encrypted with a key it has not yet computed,
+        /// due to packet reordering or loss. By default s2n-quic will drop these packets. This API
+        /// sets the amount of bytes that can be stored across packets per connection. This packet buffer
+        /// will be processed once the decryption keys are created.
+        with_packet_buffer_size,
+        packet_buffer_size,
         u32,
+        // Set this to a reasonable limit to avoid unnecessary memory consumption.
         |validate_value| {
             decoder_invariant!(
                 validate_value <= 10_000,
-                "Cannot store packets larger than 10,000 bytes"
+                "Cannot ever store more than 10,000 bytes across packets"
             );
         }
     );
@@ -493,8 +496,8 @@ impl Limits {
 
     #[doc(hidden)]
     #[inline]
-    pub fn stored_packet_size(&self) -> usize {
-        self.stored_packet_size
+    pub fn packet_buffer_size(&self) -> usize {
+        self.packet_buffer_size
     }
 }
 
