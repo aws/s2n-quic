@@ -566,7 +566,10 @@ pub(crate) struct AssemblerCounters {
 }
 
 impl AssemblerCounters {
-    pub fn new(registry: &crate::counter::Registry) -> Self {
+    pub fn new(
+        registry: &crate::counter::Registry,
+        q_tx_wheel: crate::counter::QueueGauge,
+    ) -> Self {
         Self {
             segments: registry.register_summary("asm.segments", crate::counter::Unit::Count),
             packet_size: registry.register_summary("tx.packet_size", crate::counter::Unit::Byte),
@@ -577,7 +580,7 @@ impl AssemblerCounters {
                 .register_summary("tx.frames_per_packet", crate::counter::Unit::Count),
             tx_payload_size: registry
                 .register_summary("tx.payload_size", crate::counter::Unit::Byte),
-            q_tx_wheel: registry.register_queue_gauge("q.tx_wheel"),
+            q_tx_wheel,
         }
     }
 }

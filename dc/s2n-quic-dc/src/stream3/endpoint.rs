@@ -112,14 +112,14 @@ impl Default for Budgets {
     fn default() -> Self {
         Self {
             submission_router: 32,
-            frame_dispatch: 32,
+            frame_dispatch: 128,
             context_resolver: 128,
             ack_processor: 256,
             tx_wheel: tasks::DEFAULT_DISPATCH_BUDGET,
             pto_wheel: tasks::DEFAULT_DISPATCH_BUDGET,
             idle_wheel: tasks::DEFAULT_DISPATCH_BUDGET,
             assembler: tasks::DEFAULT_DISPATCH_BUDGET,
-            completion_acked: tasks::DEFAULT_DISPATCH_BUDGET,
+            completion_acked: 128,
             completion_cancelled: tasks::DEFAULT_DISPATCH_BUDGET,
             socket_recv: tasks::DEFAULT_RECV_BUDGET,
             packet_dispatch: 4096,
@@ -323,8 +323,8 @@ where
     let (worker_batch_txs, worker_batch_rxs): (Vec<_>, Vec<_>) = (0..num_send_workers)
         .map(|i| {
             let (tx, rx) = intrusive_queue::sync::new::<combinator::FrameBatch>();
-            let gauge =
-                counter_registry.register_queue_gauge_nominal("q.batch", format_args!("send.{i}"));
+            let gauge = counter_registry
+                .register_queue_gauge_nominal("q.dispatch_to_resolver", format_args!("send.{i}"));
             let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
             (tx, rx)
         })
@@ -332,8 +332,8 @@ where
     let (worker_ack_txs, worker_ack_rxs): (Vec<_>, Vec<_>) = (0..num_send_workers)
         .map(|i| {
             let (tx, rx) = intrusive_queue::sync::new::<msg::Sender>();
-            let gauge =
-                counter_registry.register_queue_gauge_nominal("q.ack", format_args!("send.{i}"));
+            let gauge = counter_registry
+                .register_queue_gauge_nominal("q.recv_to_ack_processor", format_args!("send.{i}"));
             let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
             (tx, rx)
         })
@@ -420,7 +420,7 @@ where
         .map(|i| {
             let (tx, rx) = crate::socket::channel::intrusive_queue::sync::new::<msg::Sender>();
             let gauge = counter_registry
-                .register_queue_gauge_nominal("q.ack_completion", format_args!("recv.{i}"));
+                .register_queue_gauge_nominal("q.assembler_to_dispatch", format_args!("recv.{i}"));
             let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
             (tx, rx)
         })
@@ -439,10 +439,12 @@ where
             idx,
             batch_rx,
             batch_gauge: counter_registry
-                .register_queue_gauge_nominal("q.batch", format_args!("send.{idx}")),
+                .register_queue_gauge_nominal("q.dispatch_to_resolver", format_args!("send.{idx}")),
             ack_rx,
-            ack_gauge: counter_registry
-                .register_queue_gauge_nominal("q.ack", format_args!("send.{idx}")),
+            ack_gauge: counter_registry.register_queue_gauge_nominal(
+                "q.recv_to_ack_processor",
+                format_args!("send.{idx}"),
+            ),
             random: crate::xorshift::Rng::new(),
             frame_tx: frame_tx.clone(),
             ack_completions_tx: ack_completions_tx.clone(),
@@ -462,7 +464,7 @@ where
                 packet::datagram::decoder::Packet<descriptor::Filled>,
             >();
             let gauge = counter_registry
-                .register_queue_gauge_nominal("q.dispatch", format_args!("recv.{i}"));
+                .register_queue_gauge_nominal("q.io_to_dispatch", format_args!("recv.{i}"));
             (crate::socket::channel::GaugedSender::new(tx, gauge), rx)
         })
         .unzip();
@@ -478,7 +480,7 @@ where
         workers[worker_id].recv_dispatch = Some(RecvDispatchParts {
             packet_rx: dispatch_rx,
             packet_gauge: counter_registry
-                .register_queue_gauge_nominal("q.dispatch", format_args!("recv.{idx}")),
+                .register_queue_gauge_nominal("q.io_to_dispatch", format_args!("recv.{idx}")),
             path_secret_map: path_secret_map.clone(),
             acceptor_registry: acceptor_registry.clone(),
             frame_tx: frame_tx.clone(),
@@ -768,14 +770,21 @@ where
                     counter_registry.clone(),
                     recv_dispatch_idx,
                 ));
+                let variant = format!("recv.{recv_dispatch_idx}");
                 local.spawn(tasks::ack_burst_task(
                     crate::socket::channel::FlattenList::new(ack_burst_rx.into_list_receiver()),
                     rd.ack_sender.clone(),
                     recv_dispatch_idx,
                     budgets.ack_burst,
+                    counter_registry.register_nominal_summary(
+                        "task.ack_burst.drained",
+                        &variant,
+                        crate::counter::Unit::Count,
+                    ),
+                    counter_registry.register_nominal_timer("task.ack_burst.time", &variant),
                 ));
                 let ack_completion_gauge = counter_registry.register_queue_gauge_nominal(
-                    "q.ack_completion",
+                    "q.assembler_to_dispatch",
                     format_args!("recv.{recv_dispatch_idx}"),
                 );
                 let ack_completion_rx =
@@ -785,11 +794,29 @@ where
                     recv_cache,
                     rd.ack_sender,
                     budgets,
+                    counter_registry.register_nominal_summary(
+                        "task.ack_completion.drained",
+                        &variant,
+                        crate::counter::Unit::Count,
+                    ),
+                    counter_registry
+                        .register_nominal_timer("task.ack_completion.time", &variant),
                 ));
             }
 
             if let Some(drain) = waker_drain {
-                local.spawn(tasks::waker_drain_task(drain, budgets));
+                let variant = format!("waker.{id}");
+                local.spawn(tasks::waker_drain_task(
+                    drain,
+                    budgets,
+                    counter_registry.register_nominal_summary(
+                        "task.waker_drain.drained",
+                        &variant,
+                        crate::counter::Unit::Count,
+                    ),
+                    counter_registry
+                        .register_nominal_timer("task.waker_drain.time", &variant),
+                ));
             }
         });
     }

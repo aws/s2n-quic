@@ -122,16 +122,17 @@ pub fn frame_dispatch<S, Clk>(
         priority_batch_rxs.push(rx);
         tx.into_list_sender()
     });
+    let q_router_to_batcher: [_; Priority::LEVELS] = core::array::from_fn(|i| {
+        counter_registry.register_queue_gauge_nominal("q.router_to_batcher", format_args!("p{i}"))
+    });
 
     // Task 1: fixed-cost priority routing.
-    let q_frames = counter_registry.register_queue_gauge("q.frames");
     spawner.spawn({
-        let q_frames = q_frames.clone();
         let rx = SwapReceiver {
             frame_rx,
             staging: PriorityStorage::default(),
             priority_list_txs,
-            q_frames,
+            q_router_to_batcher: q_router_to_batcher.clone(),
         };
         let budget_summary = counter_registry
             .register_summary("task.priority_router.drained", crate::counter::Unit::Count);
@@ -145,8 +146,14 @@ pub fn frame_dispatch<S, Clk>(
 
     // Task 2: batch → Entry → priority merge → pace → pick-two to workers.
     spawner.spawn({
+        let priority_batch_rxs = priority_batch_rxs
+            .into_iter()
+            .zip(q_router_to_batcher)
+            .map(|(rx, gauge)| {
+                crate::counter::GaugedQueueReceiver::new(rx.into_list_receiver(), gauge)
+            })
+            .collect();
         let rx = PriorityRx::new(priority_batch_rxs);
-        let rx = crate::counter::GaugedReceiver::new(rx, q_frames);
         let rx = BatchFramesByPathSecret::new(rx, &clock, overall_send_rate);
         let rx = Map::new(rx, Entry::new);
         let rx = Paced::new(rx, clock, overall_send_rate);
@@ -189,13 +196,28 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     WakerSink: UnboundedSender<crate::flow::queue::AutoWake> + 'static,
     AckComp: UnboundedSender<Queue<msg::Sender>> + Clone + 'static,
 {
-    let num_sockets = send_sockets.len();
-
     // Per-socket unsync channel: wheel drain tasks route contexts here after expiration,
     // per-socket assembler+send task drains them.
-    let (socket_context_txs, socket_context_rxs): (Vec<_>, Vec<_>) = (0..num_sockets)
-        .map(|_| unsync::new_with_adapter::<send::TxWheelAdapter>())
-        .unzip();
+    let (socket_context_txs, socket_context_rxs, q_wheel_to_assembler): (Vec<_>, Vec<_>, Vec<_>) =
+        send_sockets
+            .iter()
+            .map(|st| {
+                let (tx, rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
+                let gauge = counter_registry.register_queue_gauge_nominal(
+                    "q.wheel_to_assembler",
+                    format_args!("send.{}", st.sender_idx),
+                );
+                (tx, rx, gauge)
+            })
+            .fold(
+                (Vec::new(), Vec::new(), Vec::new()),
+                |(mut txs, mut rxs, mut gauges), (tx, rx, gauge)| {
+                    txs.push(tx);
+                    rxs.push(rx);
+                    gauges.push(gauge);
+                    (txs, rxs, gauges)
+                },
+            );
 
     // Map sender_idx → local socket position for this worker.
     let mut sender_idx_to_local: Vec<usize> = (0..total_sender_ids).map(|_| usize::MAX).collect();
@@ -214,11 +236,21 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         })
         .collect();
 
-    let q_tx_wheel = counter_registry.register_queue_gauge("q.tx_wheel");
+    let variant = format!("send.{worker_id}");
+    let q_resolver_to_tx_wheel =
+        counter_registry.register_queue_gauge_nominal("q.resolver_to_tx_wheel", &variant);
     let (tx_wheel_tx, tx_wheel_rx) = unsync::new_with_adapter();
+    let q_resolver_to_pto_wheel =
+        counter_registry.register_queue_gauge_nominal("q.resolver_to_pto_wheel", &variant);
     let (pto_wheel_tx, pto_wheel_rx) = unsync::new_with_adapter();
+    let q_resolver_to_idle_wheel =
+        counter_registry.register_queue_gauge_nominal("q.resolver_to_idle_wheel", &variant);
     let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter();
+    let q_ack_to_completion =
+        counter_registry.register_queue_gauge_nominal("q.ack_to_completion", &variant);
     let (completed_tx, completed_rx) = unsync::new::<Frame>();
+    let q_ack_to_cancelled =
+        counter_registry.register_queue_gauge_nominal("q.ack_to_cancelled", &variant);
     let (cancelled_tx, cancelled_rx) = unsync::new::<Frame>();
 
     // Task 1: context resolver — drain batch_rx, resolve to context, push frames.
@@ -230,7 +262,9 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         let mut pto_wheel_tx = pto_wheel_tx.clone();
         let mut idle_wheel_tx = idle_wheel_tx.clone();
         let clock = clock.clone();
-        let q_tx_wheel = q_tx_wheel.clone();
+        let q_resolver_to_tx_wheel = q_resolver_to_tx_wheel.clone();
+        let q_resolver_to_pto_wheel = q_resolver_to_pto_wheel.clone();
+        let q_resolver_to_idle_wheel = q_resolver_to_idle_wheel.clone();
         let rx = Map::new(rx, move |batch: Entry<FrameBatch>| {
             let Some(sender_idx) = batch.sender_id() else {
                 unsafe {
@@ -276,7 +310,13 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             };
 
             if wheel_interest.transmission {
-                q_tx_wheel.enqueue(1);
+                q_resolver_to_tx_wheel.enqueue(1);
+            }
+            if wheel_interest.pto {
+                q_resolver_to_pto_wheel.enqueue(1);
+            }
+            if wheel_interest.idle_timeout {
+                q_resolver_to_idle_wheel.enqueue(1);
             }
             wheel_interest.dispatch(
                 sender,
@@ -301,6 +341,10 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         let send_caches = send_caches.clone();
         let sender_idx_to_local = sender_idx_to_local.clone();
         let send_counters = endpoint::counters::Send::new(&counter_registry);
+        let completed_tx =
+            crate::counter::GaugedSender::new(completed_tx, q_ack_to_completion.clone());
+        let cancelled_tx =
+            crate::counter::GaugedSender::new(cancelled_tx.clone(), q_ack_to_cancelled.clone());
         let rx = AckProcessor::new(
             ack_rx,
             send_caches,
@@ -310,12 +354,12 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             random,
             frame_tx,
             completed_tx,
-            cancelled_tx.clone(),
+            cancelled_tx,
             tx_wheel_tx.clone(),
             pto_wheel_tx.clone(),
             idle_wheel_tx.clone(),
             send_counters,
-            q_tx_wheel.clone(),
+            q_resolver_to_tx_wheel.clone(),
         );
         let variant = format!("send.{worker_id}");
         let budget_summary = counter_registry.register_nominal_summary(
@@ -330,7 +374,8 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
 
     // Task 3: Completion dispatcher — batches completed frames by channel, one lock per batch.
     spawner.spawn({
-        let rx = CompletionDispatcher::new(completed_rx);
+        let rx = crate::counter::GaugedReceiver::new(completed_rx, q_ack_to_completion);
+        let rx = CompletionDispatcher::new(rx);
         let rx = Map::new(rx, move |waker: crate::flow::queue::AutoWake| {
             let _ = waker_sink.send(waker);
         });
@@ -347,7 +392,8 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
 
     // Task 4: Cancelled frame drain — drops frames whose writer is already gone.
     spawner.spawn({
-        let rx = Map::new(cancelled_rx, |_entry: Entry<Frame>| {});
+        let rx = crate::counter::GaugedReceiver::new(cancelled_rx, q_ack_to_cancelled);
+        let rx = Map::new(rx, |_entry: Entry<Frame>| {});
         let variant = format!("send.{worker_id}");
         let budget_summary = counter_registry.register_nominal_summary(
             "task.cancelled.drained",
@@ -369,10 +415,12 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         {
             let sender_idx_to_local = sender_idx_to_local.clone();
             let mut socket_context_txs = socket_context_txs;
-            let q_tx_wheel = q_tx_wheel.clone();
+            let q_resolver_to_tx_wheel = q_resolver_to_tx_wheel.clone();
+            let q_wheel_to_assembler = q_wheel_to_assembler.clone();
             move |context: Rc<RefCell<send::Context>>| {
-                q_tx_wheel.dequeue();
+                q_resolver_to_tx_wheel.dequeue();
                 let local_id = sender_idx_to_local[context.borrow().sender_idx];
+                q_wheel_to_assembler[local_id].enqueue(1);
                 let _ = UnboundedSender::send(&mut socket_context_txs[local_id], context);
             }
         },
@@ -394,10 +442,13 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             let mut tx_wheel_tx = tx_wheel_tx.clone();
             let mut pto_wheel_tx = pto_wheel_tx.clone();
             let mut idle_wheel_tx = idle_wheel_tx.clone();
-            let q_tx_wheel = q_tx_wheel.clone();
+            let q_resolver_to_tx_wheel = q_resolver_to_tx_wheel.clone();
+            let q_resolver_to_pto_wheel = q_resolver_to_pto_wheel.clone();
+            let q_resolver_to_idle_wheel = q_resolver_to_idle_wheel.clone();
             let tx_pto_check = counter_registry.register("tx.pto_check");
             let tx_pto_requested = counter_registry.register("tx.pto_requested");
             move |context: Rc<RefCell<send::Context>>| {
+                q_resolver_to_pto_wheel.dequeue();
                 tx_pto_check.add(1);
                 let wheel_interest = {
                     let mut ctx = context.borrow_mut();
@@ -409,7 +460,13 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
                     interest
                 };
                 if wheel_interest.transmission {
-                    q_tx_wheel.enqueue(1);
+                    q_resolver_to_tx_wheel.enqueue(1);
+                }
+                if wheel_interest.pto {
+                    q_resolver_to_pto_wheel.enqueue(1);
+                }
+                if wheel_interest.idle_timeout {
+                    q_resolver_to_idle_wheel.enqueue(1);
                 }
                 wheel_interest.dispatch(
                     context,
@@ -432,9 +489,13 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     spawner.spawn(wheel_drain(
         idle_wheel_rx,
         clock.timer(),
-        |context: Rc<RefCell<send::Context>>| {
-            // TODO reclaim idle context resources
-            let _ = context;
+        {
+            let q_resolver_to_idle_wheel = q_resolver_to_idle_wheel.clone();
+            move |context: Rc<RefCell<send::Context>>| {
+                q_resolver_to_idle_wheel.dequeue();
+                // TODO reclaim idle context resources
+                let _ = context;
+            }
         },
         budgets.idle_wheel,
         counter_registry.register_nominal_summary(
@@ -447,8 +508,12 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     ));
 
     // Per-socket assembler + send tasks.
-    let asm_counters = AssemblerCounters::new(&counter_registry);
-    for (st, context_rx) in send_sockets.into_iter().zip(socket_context_rxs) {
+    let asm_counters = AssemblerCounters::new(&counter_registry, q_resolver_to_tx_wheel.clone());
+    for ((st, context_rx), gauge) in send_sockets
+        .into_iter()
+        .zip(socket_context_rxs)
+        .zip(q_wheel_to_assembler)
+    {
         let source_sender_id = VarInt::new(st.sender_idx as u64).unwrap();
         let sender_idx = st.sender_idx;
 
@@ -460,6 +525,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             let cancelled_tx = cancelled_tx.clone().into_list_sender();
             let ack_completions_tx = ack_completions_tx.clone();
             let asm_counters = asm_counters.clone();
+            let context_rx = crate::counter::GaugedReceiver::new(context_rx, gauge);
             let rx = Assembler::new(
                 context_rx,
                 clock.clone(),
@@ -669,9 +735,15 @@ pub async fn packet_dispatch_task<PacketRx, AckSender, AckBurstSender, WakerSink
 ///
 /// Composes the `waker::Drain` receiver (which yields `Waker` values from its assigned slots)
 /// with a `Map` that calls `wake()` on each, then uses `drain_budgeted` for per-poll fairness.
-pub async fn waker_drain_task(drain: endpoint::waker::Drain, budgets: Budgets) {
+pub async fn waker_drain_task(
+    drain: endpoint::waker::Drain,
+    budgets: Budgets,
+    budget_summary: crate::counter::Summary,
+    time_summary: crate::counter::Timer,
+) {
     let rx = Map::new(drain, |waker: core::task::Waker| waker.wake());
-    rx.drain_budgeted(Some(budgets.waker_drain)).await;
+    rx.drain_budgeted_metered(Some(budgets.waker_drain), budget_summary, time_summary)
+        .await;
 }
 
 /// Drains ACK completion entries returning from the send worker's assembler.
@@ -684,6 +756,8 @@ pub async fn ack_completion_task<AckTx>(
     recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
     mut ack_sender: AckTx,
     budgets: Budgets,
+    budget_summary: crate::counter::Summary,
+    time_summary: crate::counter::Timer,
 ) where
     AckTx: UnboundedSender<Entry<msg::Sender>>,
 {
@@ -717,7 +791,8 @@ pub async fn ack_completion_task<AckTx>(
             let _ = ack_sender.send(pending_ack_entry);
         }
     });
-    rx.drain_budgeted(Some(budgets.ack_completion)).await;
+    rx.drain_budgeted_metered(Some(budgets.ack_completion), budget_summary, time_summary)
+        .await;
 }
 
 pub async fn ack_burst_task<AckBurstRx, AckTx>(
@@ -725,6 +800,8 @@ pub async fn ack_burst_task<AckBurstRx, AckTx>(
     mut ack_sender: AckTx,
     recv_worker_id: usize,
     budget: usize,
+    budget_summary: crate::counter::Summary,
+    time_summary: crate::counter::Timer,
 ) where
     AckBurstRx: Receiver<Rc<RefCell<endpoint::recv::Context>>>,
     AckTx: UnboundedSender<Entry<msg::Sender>>,
@@ -738,7 +815,8 @@ pub async fn ack_burst_task<AckBurstRx, AckTx>(
             }
         },
     );
-    rx.drain_budgeted(Some(budget)).await;
+    rx.drain_budgeted_metered(Some(budget), budget_summary, time_summary)
+        .await;
 }
 
 fn on_packet_dispatch_error(counters: &endpoint::counters::Dispatch, err: dispatch::Error) {
@@ -792,7 +870,7 @@ struct SwapReceiver<Tx> {
     frame_rx: SubmissionReceiver,
     staging: PriorityStorage,
     priority_list_txs: [Tx; Priority::LEVELS],
-    q_frames: crate::counter::QueueGauge,
+    q_router_to_batcher: [crate::counter::QueueGauge; Priority::LEVELS],
 }
 
 impl<Tx> Receiver<()> for SwapReceiver<Tx>
@@ -814,11 +892,14 @@ where
             Poll::Pending => Poll::Pending,
             Poll::Ready(Some(())) => {
                 budget.consume();
-                for ((_priority, queue), tx) in
-                    self.staging.drain().zip(&mut self.priority_list_txs)
+                for (i, ((_priority, queue), tx)) in self
+                    .staging
+                    .drain()
+                    .zip(&mut self.priority_list_txs)
+                    .enumerate()
                 {
                     if !queue.is_empty() {
-                        self.q_frames.enqueue(queue.len() as u64);
+                        self.q_router_to_batcher[i].enqueue(queue.len() as u64);
                         let _ = UnboundedSender::send(tx, queue);
                     }
                 }
