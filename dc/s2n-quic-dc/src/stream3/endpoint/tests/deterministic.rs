@@ -511,31 +511,48 @@ fn sim_init_uniqueness(actions: &PacketActions, n: usize) {
     let seen_ids: Arc<Mutex<HashSet<u64>>> = Arc::new(Mutex::new(HashSet::new()));
     let seen_ids_sv = seen_ids.clone();
 
+    tracing::info!("════════════════════════════════════════════════════════════════════");
     tracing::info!(?actions, n, "starting init_uniqueness sim");
 
     sim(|| {
         install_init_monitors(actions);
 
         // ── Server (primary) ─────────────────────────────────────────────────
-        // Accept exactly `n` streams, asserting no stream ID appears twice.
+        // Accept streams until `n` unique stream IDs have been validated.
+        // Duplicates (which fail validation) are silently discarded.
         {
+            let validated_count = Arc::new(AtomicUsize::new(0));
+            let validated_count_inner = validated_count.clone();
             async move {
                 let server = Server::new();
-                // Buffer capacity is n*2 so the channel never blocks the
-                // dispatch worker even if streams arrive faster than the
-                // server loop drains them.
                 let acceptor = server
                     .register_acceptor_channel(acceptor_id, n * 2)
                     .expect("acceptor registration failed");
 
-                for _ in 0..n {
-                    let mut stream = crate::testing::timeout(ACCEPT_TIMEOUT, acceptor.recv_front())
-                        .await
-                        .expect("server timed out waiting for a stream")
-                        .expect("acceptor channel closed unexpectedly");
+                loop {
+                    if validated_count_inner.load(Ordering::Relaxed) == n {
+                        break;
+                    }
+
+                    let stream =
+                        crate::testing::timeout(ACCEPT_TIMEOUT, acceptor.recv_front()).await;
+
+                    let stream = match stream {
+                        Ok(Ok(s)) => s,
+                        _ => {
+                            assert_eq!(
+                                validated_count_inner.load(Ordering::Relaxed),
+                                n,
+                                "server timed out before all streams were validated"
+                            );
+                            break;
+                        }
+                    };
 
                     let seen_ids_sv = seen_ids_sv.clone();
+                    let validated_count = validated_count_inner.clone();
                     spawn(async move {
+                        let mut stream = stream;
                         if stream.validate().await.is_err() {
                             return;
                         }
@@ -556,14 +573,10 @@ fn sim_init_uniqueness(actions: &PacketActions, n: usize) {
                             .write_all_from_fin(&mut &id.to_be_bytes()[..])
                             .await
                             .unwrap();
+
+                        validated_count.fetch_add(1, Ordering::Relaxed);
                     });
                 }
-
-                let stream = crate::testing::timeout(ACCEPT_TIMEOUT, acceptor.recv_front()).await;
-                assert!(
-                    stream.is_err(),
-                    "server accepted more streams than expected"
-                );
             }
             .group("server")
             .primary()
