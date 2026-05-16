@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    cell::Cell,
-    ffi::CStr,
     fs,
     mem::MaybeUninit,
-    ptr::NonNull,
     sync::{
         atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering},
         Mutex, MutexGuard,
     },
 };
+
+#[cfg(target_os = "linux")]
+use std::{cell::Cell, ffi::CStr, ptr::NonNull};
 
 const SLOTS: usize = 1024 * 8 - 1;
 
@@ -22,6 +22,7 @@ struct Page {
     length: AtomicU64,
 }
 
+#[cfg(target_os = "linux")]
 impl Page {
     fn new() -> Box<Page> {
         Box::new(Page {
@@ -88,6 +89,7 @@ fn init_per_cpu() -> Box<[AtomicPtr<Page>]> {
 /// aggregates events, but then we'd either need to drop events or have unbounded memory. We could
 /// also have a shared-atomic aggregate, but that increases memory usage or requires another
 /// somewhat complicated data structure (per-index Arc / Vec with lock-free access respectively).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) struct Channels<T: Absorb> {
     per_cpu: Box<[AtomicPtr<Page>]>,
 
@@ -115,6 +117,7 @@ pub(crate) trait Absorb: Sized + Default {
     fn handle(slots: &mut [Self], events: &mut [u64]);
 }
 
+#[cfg(target_os = "linux")]
 static PRINTED_MEMBARRIER_WARNING: AtomicBool = AtomicBool::new(false);
 
 impl<T: Absorb> Channels<T> {
@@ -238,6 +241,7 @@ impl<T: Absorb> Channels<T> {
         self.aggregate_fallback(true);
     }
 
+    #[cfg(target_os = "linux")]
     fn handle_events(&self, mut page: Box<Page>) {
         let mut aggregate = self.aggregate.lock().unwrap();
         let length = *page.length.get_mut() as usize;
@@ -636,17 +640,20 @@ impl<T: Absorb> Channels<T> {
     }
 }
 
+#[cfg(target_os = "linux")]
 thread_local! {
     static RSEQ: Cell<Option<NonNull<Rseq>>> = const { Cell::new(None) };
 
     static RSEQ_ALLOC: Cell<Option<RseqStorage>> = const { Cell::new(None) };
 }
 
+#[cfg(target_os = "linux")]
 struct RseqStorage {
     slot: Box<Rseq>,
     registered: bool,
 }
 
+#[cfg(target_os = "linux")]
 impl Drop for RseqStorage {
     fn drop(&mut self) {
         let Some(taken_address) = RSEQ.take() else {
@@ -668,6 +675,7 @@ impl Drop for RseqStorage {
     }
 }
 
+#[cfg(target_os = "linux")]
 #[repr(C)]
 #[repr(align(32))]
 pub(crate) struct Rseq {
@@ -677,6 +685,7 @@ pub(crate) struct Rseq {
     flags: u32,
 }
 
+#[cfg(target_os = "linux")]
 // Note that NonNull is !Send + !Sync, so the compiler protects us against accessing this
 // cross-thread.
 pub(crate) fn rseq() -> NonNull<Rseq> {
@@ -693,15 +702,16 @@ pub(crate) fn rseq() -> NonNull<Rseq> {
 // For AL2 for simplicity we use the same RSEQ constant.
 //
 // This is part of the glibc ABI, we can't influence this value in any way.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const RSEQ_SIG: u32 = 0x53053053;
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 const RSEQ_SIG: u32 = 0xd428bc00;
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 static RSEQ_FAILED: AtomicBool = AtomicBool::new(false);
 
+#[cfg(target_os = "linux")]
 #[cold]
 fn rseq_init() -> NonNull<Rseq> {
     // If we successfully fetch rseq from libc, we **don't** touch the RSEQ_ALLOC thread local at
@@ -760,6 +770,7 @@ fn rseq_init() -> NonNull<Rseq> {
     rseq_ptr
 }
 
+#[cfg(target_os = "linux")]
 fn dlsym(symbol: &CStr) -> std::io::Result<*mut std::ffi::c_void> {
     unsafe {
         // clear previous errors
@@ -778,6 +789,7 @@ fn dlsym(symbol: &CStr) -> std::io::Result<*mut std::ffi::c_void> {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn thread_plus_offset(offset: libc::ptrdiff_t) -> *mut std::ffi::c_void {
     let output: *mut std::ffi::c_void;
     // As far as I can tell, both of these should work in the most general case.
@@ -795,6 +807,7 @@ fn thread_plus_offset(offset: libc::ptrdiff_t) -> *mut std::ffi::c_void {
     output.wrapping_offset(offset)
 }
 
+#[cfg(target_os = "linux")]
 fn from_libc() -> std::io::Result<*mut Rseq> {
     let _size = dlsym(c"__rseq_size")?.cast::<u32>();
     let offset = dlsym(c"__rseq_offset")?.cast::<libc::ptrdiff_t>(); // ptrdiff_t
@@ -803,33 +816,24 @@ fn from_libc() -> std::io::Result<*mut Rseq> {
     Ok(thread_plus_offset(unsafe { offset.read() }).cast())
 }
 
-#[allow(clippy::needless_return)]
+#[cfg(target_os = "linux")]
 fn sys_rseq(rseq_abi: *mut Rseq, flags: i32) -> std::io::Result<()> {
-    #[cfg(target_os = "linux")]
-    {
-        let ret = unsafe {
-            libc::syscall(
-                libc::SYS_rseq,
-                rseq_abi,
-                std::mem::size_of::<Rseq>() as u32,
-                flags,
-                RSEQ_SIG,
-            )
-        };
-        if ret != 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-
-        return Ok(());
+    let ret = unsafe {
+        libc::syscall(
+            libc::SYS_rseq,
+            rseq_abi,
+            std::mem::size_of::<Rseq>() as u32,
+            flags,
+            RSEQ_SIG,
+        )
+    };
+    if ret != 0 {
+        return Err(std::io::Error::last_os_error());
     }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
-    }
+    Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
 

@@ -16,15 +16,24 @@ pub async fn run(
     config: ClientConfig,
     server_addr: SocketAddr,
 ) -> io::Result<()> {
-    info!(
-        workload_count = config.workloads.len(),
-        %server_addr,
-        "Starting stream3 RPC test client"
-    );
-
     if config.workloads.is_empty() {
         warn!("No workloads configured");
         return Ok(());
+    }
+
+    info!(
+        %server_addr,
+        workloads = %config.workloads.iter().map(|w| w.name.as_str()).collect::<Vec<_>>().join(", "),
+        "Starting stream3 RPC test client"
+    );
+    for w in &config.workloads {
+        info!(
+            name = %w.name,
+            workers = w.workers,
+            request_size = ?w.request_size,
+            response_size = ?w.response_size,
+            "  workload"
+        );
     }
 
     let data_addrs = endpoint.data_addrs.clone();
@@ -79,10 +88,12 @@ async fn run_worker(
         None
     };
 
+    let mut rng = s2n_quic_dc::xorshift::Rng::new();
+
     loop {
         stats.start_request();
         let (bytes_sent, bytes_received, is_error) =
-            match execute_request(client, server_addr, &workload).await {
+            match execute_request(client, server_addr, &workload, &mut rng).await {
                 Ok((sent, received)) => (sent, received, false),
                 Err(e) => {
                     tracing::error!(
@@ -106,14 +117,15 @@ async fn execute_request(
     client: &mut s2n_quic_dc::stream3::Client,
     server_addr: SocketAddr,
     workload: &WorkloadConfig,
+    rng: &mut s2n_quic_dc::xorshift::Rng,
 ) -> io::Result<(u64, u64)> {
+    let request_size = workload.request_size.sample(rng);
+    let response_size = workload.response_size.sample(rng);
+
     // Connect to the server — handshake address is used to obtain/cache path secrets,
     // data address is derived from the path secret entry
     let stream = client.connect(server_addr, VarInt::ZERO).await?;
     let (mut reader, mut writer) = stream.into_split();
-
-    let request_size = workload.request_size;
-    let response_size = workload.response_size;
 
     // Send the request concurrently with receiving the response so both halves
     // are exercised at the same time, covering more half-close code paths.

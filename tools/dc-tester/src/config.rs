@@ -180,6 +180,36 @@ impl Default for ClientConfig {
     }
 }
 
+/// A size specification that can be either a fixed value or a random range.
+///
+/// In TOML, this can be specified as:
+///   - A plain integer: `request_size = 1024`
+///   - A range table: `request_size = { min = 64, max = 1048576 }`
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SizeSpec {
+    Fixed(u64),
+    Range { min: u64, max: u64 },
+}
+
+impl SizeSpec {
+    pub fn sample(&self, rng: &mut s2n_quic_dc::xorshift::Rng) -> u64 {
+        match *self {
+            Self::Fixed(v) => v,
+            Self::Range { min, max } => {
+                let range = max - min + 1;
+                min + rng.next_u64() % range
+            }
+        }
+    }
+}
+
+impl Default for SizeSpec {
+    fn default() -> Self {
+        Self::Fixed(1024)
+    }
+}
+
 /// Configuration for a single workload type
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -192,13 +222,13 @@ pub struct WorkloadConfig {
     #[serde(default = "WorkloadConfig::default_workers")]
     pub workers: usize,
 
-    /// Size of the request body in bytes
-    #[serde(default = "WorkloadConfig::default_request_size")]
-    pub request_size: u64,
+    /// Size of the request body in bytes (fixed or random range)
+    #[serde(default)]
+    pub request_size: SizeSpec,
 
-    /// Size of the response body in bytes
-    #[serde(default = "WorkloadConfig::default_response_size")]
-    pub response_size: u64,
+    /// Size of the response body in bytes (fixed or random range)
+    #[serde(default)]
+    pub response_size: SizeSpec,
 
     /// Delay between requests in milliseconds (0 means continuous)
     #[serde(default)]
@@ -213,14 +243,6 @@ impl WorkloadConfig {
     fn default_workers() -> usize {
         1
     }
-
-    fn default_request_size() -> u64 {
-        1024
-    }
-
-    fn default_response_size() -> u64 {
-        1024
-    }
 }
 
 impl Default for WorkloadConfig {
@@ -228,8 +250,8 @@ impl Default for WorkloadConfig {
         Self {
             name: Self::default_name(),
             workers: Self::default_workers(),
-            request_size: Self::default_request_size(),
-            response_size: Self::default_response_size(),
+            request_size: SizeSpec::default(),
+            response_size: SizeSpec::default(),
             request_delay_ms: 0,
         }
     }

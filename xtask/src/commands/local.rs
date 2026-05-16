@@ -61,10 +61,27 @@ pub struct Local {
     /// Generate flamegraph profile on client node(s)
     #[arg(long)]
     flamegraph: bool,
+
+    /// Workload names to run on client (defaults to first in config if omitted)
+    #[arg(long, short)]
+    workloads: Vec<String>,
+
+    /// Directory for log output (default: logs/{workload}/{date})
+    #[arg(long)]
+    log_dir: Option<PathBuf>,
+
+    /// Timeout in seconds (default: 30s when CLAUDECODE=1, unlimited otherwise)
+    #[arg(long)]
+    timeout: Option<u64>,
+
+    #[arg(long)]
+    print_metrics: Option<bool>,
 }
 
 impl Local {
     pub fn run(self, sh: &Shell) -> Result<()> {
+        let claudecode = std::env::var("CLAUDECODE").is_ok();
+
         let mut nodes = Nodes::from_config(sh, &self.config)?;
         let (binary_dir, binary_name) = self.binary_info()?;
 
@@ -230,7 +247,7 @@ impl Local {
                 ]
             } else {
                 let trace_dir = self.trace_dir.display().to_string();
-                vec![
+                let mut args = vec![
                     "--trace-dir".to_string(),
                     trace_dir,
                     "client".to_string(),
@@ -238,7 +255,12 @@ impl Local {
                     config_path,
                     "--server-addr".to_string(),
                     server_addr.to_string(),
-                ]
+                ];
+                for w in &self.workloads {
+                    args.push("--workloads".to_string());
+                    args.push(w.clone());
+                }
+                args
             };
 
             processes.push(ProcessConfig {
@@ -252,8 +274,43 @@ impl Local {
             });
         }
 
+        let workload_name = self
+            .workloads
+            .first()
+            .map(|s| s.as_str())
+            .unwrap_or("default");
+        let log_dir = self.log_dir.unwrap_or_else(|| {
+            let date = chrono_date();
+            PathBuf::from("logs").join(workload_name).join(date)
+        });
+
+        let timeout = self
+            .timeout
+            .or_else(|| if claudecode { Some(30) } else { None });
+
+        if let Some(t) = timeout {
+            eprintln!("Timeout: {t}s");
+        }
+        eprintln!("Log dir: {}\n", log_dir.display());
         eprintln!("Starting processes...\n");
-        run_processes(sh.clone(), processes)
+
+        let run_name = log_dir
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let run_config = RunConfig {
+            log_dir,
+            timeout,
+            run_name,
+            workloads: self.workloads,
+            ansi: !claudecode,
+            print_metrics: self.print_metrics.unwrap_or_else(|| {
+                // Reduce token usage
+                !claudecode
+            }),
+        };
+        run_processes(sh.clone(), processes, run_config)
     }
 
     fn binary_info(&self) -> Result<(PathBuf, String)> {
@@ -490,6 +547,7 @@ echo 950000 | sudo tee /sys/fs/cgroup/cpu,cpuacct/user.slice/cpu.rt_runtime_us >
 
         let rsync_args = [
             "--exclude=target/*",
+            "--exclude=logs/*",
             "--exclude=.git/",
             "--exclude=.claude",
             "-avz",
@@ -630,6 +688,48 @@ impl std::ops::Index<usize> for Nodes {
     }
 }
 
+struct RunConfig {
+    log_dir: PathBuf,
+    timeout: Option<u64>,
+    run_name: String,
+    workloads: Vec<String>,
+    ansi: bool,
+    print_metrics: bool,
+}
+
+fn chrono_date() -> String {
+    use std::time::SystemTime;
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let secs_per_day = 86400;
+    let days = now / secs_per_day;
+    // Simple date: YYYY-MM-DD_HHMMSS
+    let time_of_day = now % secs_per_day;
+    let hours = time_of_day / 3600;
+    let minutes = (time_of_day % 3600) / 60;
+    let seconds = time_of_day % 60;
+    // Approximate date from epoch days
+    let (year, month, day) = epoch_days_to_date(days);
+    format!("{year:04}-{month:02}-{day:02}_{hours:02}{minutes:02}{seconds:02}")
+}
+
+fn epoch_days_to_date(days: u64) -> (u64, u64, u64) {
+    // Civil days algorithm from Howard Hinnant
+    let z = days + 719468;
+    let era = z / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
 struct ProcessConfig {
     target: Node,
     label: String,
@@ -658,8 +758,24 @@ fn ports() -> impl Iterator<Item = u16> {
 }
 
 #[tokio::main]
-async fn run_processes(_sh: Shell, configs: Vec<ProcessConfig>) -> Result<()> {
+async fn run_processes(
+    _sh: Shell,
+    configs: Vec<ProcessConfig>,
+    run_config: RunConfig,
+) -> Result<()> {
+    use std::io::Write;
+
     let max_label_len = configs.iter().map(|c| c.label.len()).max().unwrap_or(0);
+
+    // Set up log directory and files
+    std::fs::create_dir_all(&run_config.log_dir)
+        .with_context(|| format!("Failed to create log dir: {}", run_config.log_dir.display()))?;
+    let log_path = run_config.log_dir.join("output.log");
+    let metrics_path = run_config.log_dir.join("metrics.jsonl");
+    let mut log_file = std::fs::File::create(&log_path)
+        .with_context(|| format!("Failed to create log file: {}", log_path.display()))?;
+    let mut metrics_file = std::fs::File::create(&metrics_path)
+        .with_context(|| format!("Failed to create metrics file: {}", metrics_path.display()))?;
 
     let mut children = Vec::new();
     let (tx, mut rx) = mpsc::channel(512);
@@ -680,10 +796,61 @@ async fn run_processes(_sh: Shell, configs: Vec<ProcessConfig>) -> Result<()> {
 
     let (shutdown, mut exit_task) = monitor_processes(children);
 
+    let timeout_at = run_config
+        .timeout
+        .map(|secs| tokio::time::Instant::now() + tokio::time::Duration::from_secs(secs));
+    let timeout_fut = async {
+        match timeout_at {
+            Some(deadline) => tokio::time::sleep_until(deadline).await,
+            None => std::future::pending().await,
+        }
+    };
+    tokio::pin!(timeout_fut);
+
     loop {
         tokio::select! {
             Some((color, label, line)) = rx.recv() => {
-                print_line(&mut stdout, color, &label, &line, max_label_len)?;
+                // Check for metrics prefix — line may be "...INFO [METRICS] raw"
+                if let Some((prefix, raw)) = line.split_once("[METRICS]") {
+                    let raw = raw.trim();
+                    if raw.is_empty() {
+                        // Heartbeat — skip
+                    } else {
+                        let parsed = s2n_quic_dc_metrics::format::ParsedMetricsLine::parse(raw);
+
+                        if run_config.print_metrics {
+                            // Pretty-print to console, preserving the timestamp prefix
+                            let pretty = parsed.format_pretty();
+                            print_line(&mut stdout, color, &label, format_args!("{} {}", prefix.trim_end(), pretty), max_label_len)?;
+                        }
+
+                        // Write structured JSONL — one row per metric
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs_f64();
+                        for mut row in parsed.to_json_rows() {
+                            if let Some(obj) = row.as_object_mut() {
+                                obj.insert("process".into(), serde_json::Value::String(label.to_string()));
+                                obj.insert("ts".into(), serde_json::json!(ts));
+                                obj.insert("run".into(), serde_json::Value::String(run_config.run_name.clone()));
+                                obj.insert("workloads".into(), serde_json::json!(run_config.workloads));
+                            }
+                            let _ = writeln!(metrics_file, "{}", row);
+                        }
+                    }
+                } else {
+                    // Non-metrics line: write to log and console
+                    let stripped = strip_ansi_escapes::strip(&line);
+                    let stripped = String::from_utf8_lossy(&stripped);
+                    let _ = writeln!(log_file, "[{label}] {stripped}");
+                    let line = if run_config.ansi {
+                        &*line
+                    } else {
+                        &*stripped
+                    };
+                    print_line(&mut stdout, color, &label, line, max_label_len)?;
+                }
             }
             _ = sigint.recv() => {
                 eprintln!("\nReceived Ctrl+C, shutting down...\n");
@@ -697,6 +864,10 @@ async fn run_processes(_sh: Shell, configs: Vec<ProcessConfig>) -> Result<()> {
                 eprintln!("\nChild processes exited, shutting down...\n");
                 break;
             }
+            _ = &mut timeout_fut => {
+                eprintln!("\nTimeout reached, shutting down...\n");
+                break;
+            }
         }
     }
 
@@ -705,6 +876,9 @@ async fn run_processes(_sh: Shell, configs: Vec<ProcessConfig>) -> Result<()> {
     if !exit_task.is_finished() {
         let _ = exit_task.await;
     }
+
+    eprintln!("Log: {}", log_path.display());
+    eprintln!("Metrics: {}", metrics_path.display());
 
     Ok(())
 }
@@ -803,7 +977,7 @@ fn print_line(
     stdout: &mut StandardStream,
     color: Color,
     label: &str,
-    line: &str,
+    line: impl core::fmt::Display,
     max_label_len: usize,
 ) -> Result<()> {
     use std::io::Write;
@@ -819,10 +993,10 @@ fn print_line(
 fn monitor_processes(
     mut children: Vec<(String, Child)>,
 ) -> (sync::oneshot::Sender<()>, JoinHandle<()>) {
-    let (shutdown_signal, on_shutdown) = sync::oneshot::channel::<()>();
+    let (shutdown_signal, mut on_shutdown) = sync::oneshot::channel::<()>();
 
     let task = tokio::spawn(async move {
-        while !on_shutdown.is_terminated() {
+        loop {
             let mut any_exited = false;
             for (label, child) in &mut children {
                 match child.try_wait() {
@@ -840,7 +1014,10 @@ fn monitor_processes(
             if any_exited {
                 break;
             }
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            tokio::select! {
+                _ = &mut on_shutdown => break,
+                _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {}
+            }
         }
 
         cleanup_processes(&mut children).await;

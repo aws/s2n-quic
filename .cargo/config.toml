@@ -3,4 +3,4 @@ rustflags = ['--cfg', 's2n_internal_dev']
 rustdocflags = ['--cfg', 's2n_internal_dev']
 
 [alias]
-xtask = "run --manifest-path xtask/Cargo.toml --"
+xtask = "run --manifest-path xtask/Cargo.toml --release --"

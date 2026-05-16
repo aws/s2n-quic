@@ -8,17 +8,107 @@
 address = "[::]:4433"
 
 [client]
-# Each workload defines a traffic pattern
-[[client.workloads]]
-name = "small-rpc"
-workers = 1
-request_size = 1024            # 1 KiB
-response_size = 10240000000000 # 1 KiB
-request_delay_ms = 0           # no delay - continuous
+# Each workload defines a traffic pattern.
+# Sizes can be a fixed value or a random range sampled per request:
+#   request_size = 1024
+#   request_size = { min = 64, max = 1048576 }
 
-# [[client.workloads]]
-# name = "large-rpc"
-# workers = 4
-# request_size = 1048576  # 1 MiB
-# response_size = 1048576 # 1 MiB
-# request_delay_ms = 0
+# --- tiny: 64 B – 1 KiB ---
+
+[[client.workloads]]
+name = "tiny-bidi"
+workers = 1000
+request_size = { min = 64, max = 1024 }
+response_size = { min = 64, max = 1024 }
+
+[[client.workloads]]
+name = "tiny-request"
+workers = 1000
+request_size = { min = 64, max = 1024 }
+response_size = 1024
+
+[[client.workloads]]
+name = "tiny-response"
+workers = 1000
+request_size = 1024
+response_size = { min = 64, max = 1024 }
+
+# --- small: 1 KiB – 64 KiB ---
+
+[[client.workloads]]
+name = "small-bidi"
+workers = 100
+request_size = { min = 1024, max = 65536 }
+response_size = { min = 1024, max = 65536 }
+
+[[client.workloads]]
+name = "small-request"
+workers = 100
+request_size = { min = 1024, max = 65536 }
+response_size = 1024
+
+[[client.workloads]]
+name = "small-response"
+workers = 100
+request_size = 1024
+response_size = { min = 1024, max = 65536 }
+
+# --- medium: 64 KiB – 1 MiB ---
+
+[[client.workloads]]
+name = "medium-bidi"
+workers = 10
+request_size = { min = 65536, max = 1048576 }
+response_size = { min = 65536, max = 1048576 }
+
+[[client.workloads]]
+name = "medium-request"
+workers = 10
+request_size = { min = 65536, max = 1048576 }
+response_size = 1024
+
+[[client.workloads]]
+name = "medium-response"
+workers = 10
+request_size = 1024
+response_size = { min = 65536, max = 1048576 }
+
+# --- large: 1 MiB – 128 MiB ---
+
+[[client.workloads]]
+name = "large-bidi"
+workers = 4
+request_size = { min = 1048576, max = 134217728 }
+response_size = { min = 1048576, max = 134217728 }
+
+[[client.workloads]]
+name = "large-request"
+workers = 4
+request_size = { min = 1048576, max = 134217728 }
+response_size = 1024
+
+[[client.workloads]]
+name = "large-response"
+workers = 4
+request_size = 1024
+response_size = { min = 1048576, max = 134217728 }
+
+# --- xlarge: 128 MiB – 4 GiB ---
+
+[[client.workloads]]
+name = "xlarge-bidi"
+workers = 1
+request_size = { min = 134217728, max = 4294967296 }
+response_size = { min = 134217728, max = 4294967296 }
+
+[[client.workloads]]
+name = "xlarge-request"
+workers = 1
+request_size = { min = 134217728, max = 4294967296 }
+response_size = 1024
+
+[[client.workloads]]
+name = "xlarge-response"
+workers = 1
+request_size = 1024
+response_size = { min = 134217728, max = 4294967296 }

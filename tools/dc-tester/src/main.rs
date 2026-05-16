@@ -49,6 +49,10 @@ enum Commands {
         /// Server address to connect to (e.g., [::1]:4433)
         #[arg(short, long)]
         server_addr: Option<SocketAddr>,
+
+        /// Workload names to run (defaults to first in config if omitted)
+        #[arg(short, long)]
+        workloads: Vec<String>,
     },
 }
 
@@ -112,22 +116,37 @@ fn main() -> std::io::Result<()> {
         let data_bind: SocketAddr = "[::]:0".parse().unwrap();
         let endpoint = endpoint::create(&config.endpoint, data_bind, &spawner)?;
 
+        let mut reporter_config =
+            s2n_quic_dc::counter::ReporterConfig::new(Duration::from_secs(1));
+        reporter_config.sparse_mode = s2n_quic_dc::counter::SparseMode::Once;
         endpoint
             .counters
             .clone()
-            .spawn_reporter(Duration::from_secs(1));
+            .spawn_reporter_with_config(reporter_config);
 
         match cli.command {
             Commands::Server { address, .. } => {
                 let server_addr = address.unwrap_or(config.server.address);
                 server::run(endpoint, server_addr).await
             }
-            Commands::Client { server_addr, .. } => {
+            Commands::Client {
+                server_addr,
+                workloads,
+                ..
+            } => {
                 // wait for the server to boot
                 tokio::time::sleep(core::time::Duration::from_secs(1)).await;
 
                 let server_addr = server_addr.unwrap_or(config.server.address);
-                client::run(endpoint, config.client, server_addr).await
+
+                let mut client_config = config.client;
+                if !workloads.is_empty() {
+                    client_config.workloads.retain(|w| workloads.contains(&w.name));
+                } else if client_config.workloads.len() > 1 {
+                    client_config.workloads.truncate(1);
+                }
+
+                client::run(endpoint, client_config, server_addr).await
             }
         }
     })

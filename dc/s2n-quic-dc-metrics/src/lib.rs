@@ -12,6 +12,8 @@ mod runtime;
 mod summary;
 mod task;
 
+pub mod format;
+
 pub use appender::MetricsWriter;
 pub use bool_counter::BoolCounter;
 pub use counter::Counter;
