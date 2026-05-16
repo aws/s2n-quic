@@ -272,7 +272,7 @@ impl Limits {
     );
     setter!(with_stream_batch_size, stream_batch_size, u8);
     setter!(
-        /// Set a limit on the amount of packet bytes that s2n-quic will buffer if the packet
+        /// Sets the amount of packet bytes that s2n-quic will buffer if the packet
         /// decryption keys haven't been created yet.
         ///
         /// A connection might receive packets that are encrypted with a key it has not yet computed,
