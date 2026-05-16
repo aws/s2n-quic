@@ -393,6 +393,38 @@ fn in_order_read_reports_byte_count_and_completes() {
     });
 }
 
+/// Repeated post-EOF reads should trip a debug assertion so applications do not
+/// accidentally spin on clean completion forever.
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "Reader returned EOF again on stream 1")]
+fn repeated_post_eof_reads_panic_in_debug() {
+    sim(|| {
+        let (mut reader, mut pusher) = make_pair();
+
+        async move {
+            pusher.push_data(0, b"ok", true);
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut buf = BytesMut::with_capacity(16);
+
+            let n = reader.read_into(&mut buf).await.expect("read failed");
+            assert_eq!(n, 2);
+            assert_eq!(&buf[..], b"ok");
+
+            let eof = reader.read_into(&mut buf).await.expect("read failed");
+            assert_eq!(eof, 0);
+
+            let _ = reader.read_into(&mut buf).await;
+        }
+        .primary()
+        .spawn();
+    });
+}
+
 /// Out-of-order delivery: endpoint pushes tail then head; app reads complete
 /// data after reassembly.  Both tasks are primaries so neither holds the other
 /// open artificially.
