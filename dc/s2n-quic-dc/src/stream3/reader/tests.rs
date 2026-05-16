@@ -876,6 +876,50 @@ fn server_validates_then_reads() {
     });
 }
 
+/// When early data arrives before FlowValidated (as happens with AcceptedWithRetry),
+/// the reader must still emit MAX_DATA after validate() + read() — even though
+/// poll_stream_rx returns Pending on the read call (channel already drained by validate).
+#[test]
+fn server_early_data_before_validated_sends_max_data() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let (mut reader, mut pusher) = make_server_pair();
+        let expected_max_data = VarInt::new(reader.0.window_size + 5).unwrap();
+
+        async move {
+            // Push early data FIRST (mimics FlowInit payload arriving before validation)
+            pusher.push_data(0, b"hello", true);
+            bach::task::yield_now().await;
+            // Then FlowValidated arrives (after the validation round-trip)
+            pusher.push_flow_validated();
+            bach::task::yield_now().await;
+
+            let frames = pusher
+                .recv_frames_timeout(Duration::from_secs(1))
+                .await
+                .expect("expected MAX_DATA after reading early data");
+            assert_eq!(frames.len(), 1);
+            assert_eq!(
+                frames.front().and_then(decode_max_data_from_flow_control),
+                Some(expected_max_data),
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            reader.validate().await.expect("validate failed");
+            let mut buf = BytesMut::with_capacity(16);
+            let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
+            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(&buf[..], b"hello");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
 /// When the server receives a complete request in the init (init+FIN), it must
 /// NOT send MAX_DATA frames — the peer's writer is already closed and no one
 /// would consume the credits.

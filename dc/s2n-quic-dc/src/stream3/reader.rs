@@ -429,6 +429,10 @@ impl Inner {
                 {
                     Some(e)
                 }
+                // The reassembler may already hold data from a prior poll (e.g.
+                // poll_validate consumed early data). Fall through so we drain
+                // the reassembler and call maybe_send_max_data.
+                Poll::Pending if !self.reassembler.is_empty() => None,
                 other => return other.map_ok(|()| 0usize),
             }
         };

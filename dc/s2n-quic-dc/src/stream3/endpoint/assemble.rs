@@ -139,6 +139,7 @@ where
                     dest_sender_id: submission.remote_sender_id,
                     ack_delay,
                     has_ecn: submission.has_ecn,
+                    is_ack_eliciting: context.pto.probe_state.is_requested(),
                 };
                 let payload_len = submission.body.len();
 
@@ -166,6 +167,7 @@ where
                     transmission_time: None,
                 };
 
+                is_ack_eliciting |= header.is_ack_eliciting();
                 ack_frame_count += 1;
                 metadata = next_metadata;
                 packet_frames.push_back(frame.into());
@@ -310,39 +312,43 @@ where
                         .pop_front()
                         .expect("ack_frame_count exceeds packet_frames length");
                     debug_assert!(
-                        !frame.header.is_ack_eliciting(),
+                        matches!(frame.header, frame::Header::Ack { .. }),
                         "expected ACK frame during stripping, got a data frame"
                     );
                     drop(frame);
-                }
-
-                // Register in inflight map
-                let has_more_app_data = context.has_pending();
-                let cc_info = context.cca.on_packet_sent(
-                    time_sent,
-                    encoded_len as u16,
-                    has_more_app_data,
-                    &context.rtt_estimator,
-                );
-                let tx_info = inflight::TransmissionInfo {
-                    cc_info,
-                    time_sent,
-                    sent_bytes: encoded_len as u16,
-                };
-                let pn = PacketNumberSpace::Initial.new_packet_number(packet_number);
-                context
-                    .inflight
-                    .insert(pn, inflight::Packet::new(packet_frames, tx_info));
-
-                // If this segment was a probe, link the old shell entry to the new PN.
-                if let Some(old_pn) = probe_from_pn {
-                    context.inflight.set_probed_to(old_pn, pn);
                 }
 
                 // Notify probe state that an ack-eliciting packet was transmitted.
                 // This clears `Requested → Idle`; if already Idle (e.g. second segment
                 // in this assembly round) the NoOp result is silently ignored.
                 let _ = context.pto.probe_state.on_transmit();
+
+                // Register in inflight map only if data frames remain after stripping ACKs.
+                // An ACK-only packet that was ack-eliciting (PING-style ACK) satisfies the
+                // PTO but has nothing to retransmit.
+                if !packet_frames.is_empty() {
+                    let has_more_app_data = context.has_pending();
+                    let cc_info = context.cca.on_packet_sent(
+                        time_sent,
+                        encoded_len as u16,
+                        has_more_app_data,
+                        &context.rtt_estimator,
+                    );
+                    let tx_info = inflight::TransmissionInfo {
+                        cc_info,
+                        time_sent,
+                        sent_bytes: encoded_len as u16,
+                    };
+                    let pn = PacketNumberSpace::Initial.new_packet_number(packet_number);
+                    context
+                        .inflight
+                        .insert(pn, inflight::Packet::new(packet_frames, tx_info));
+
+                    // If this segment was a probe, link the old shell entry to the new PN.
+                    if let Some(old_pn) = probe_from_pn {
+                        context.inflight.set_probed_to(old_pn, pn);
+                    }
+                }
                 context.invariants();
             }
 

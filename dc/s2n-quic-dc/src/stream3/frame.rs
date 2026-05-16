@@ -403,6 +403,7 @@ pub enum Header {
         dest_sender_id: VarInt,
         ack_delay: VarInt,
         has_ecn: bool,
+        is_ack_eliciting: bool,
     },
 }
 
@@ -419,6 +420,8 @@ impl Header {
     const FLOW_RESET_CONTROL_TYPE: u8 = 10;
     const ACK_TYPE: u8 = 14;
     const ACK_ECN_TYPE: u8 = 15;
+    const ACK_ELICITING_TYPE: u8 = 16;
+    const ACK_ECN_ELICITING_TYPE: u8 = 17;
 
     #[inline]
     pub fn priority(&self) -> Priority {
@@ -441,11 +444,15 @@ impl Header {
 
     /// Returns true if a frame with this header type elicits an ACK from the peer.
     ///
-    /// ACK frames are not ack-eliciting — they don't trigger the peer to send
-    /// an acknowledgment. All other frame types are ack-eliciting.
+    /// ACK frames are not ack-eliciting by default. When `is_ack_eliciting` is set
+    /// on an ACK frame (acting as a PING), it triggers the peer to acknowledge the
+    /// packet. All other frame types are always ack-eliciting.
     #[inline]
     pub fn is_ack_eliciting(&self) -> bool {
-        !matches!(self, Self::Ack { .. })
+        match self {
+            Self::Ack { is_ack_eliciting, .. } => *is_ack_eliciting,
+            _ => true,
+        }
     }
 
     /// Returns true if this header variant carries a per-frame payload length entry.
@@ -575,11 +582,13 @@ impl EncoderValue for Header {
                 dest_sender_id,
                 ack_delay,
                 has_ecn,
+                is_ack_eliciting,
             } => {
-                let tag = if *has_ecn {
-                    Self::ACK_ECN_TYPE
-                } else {
-                    Self::ACK_TYPE
+                let tag = match (*has_ecn, *is_ack_eliciting) {
+                    (false, false) => Self::ACK_TYPE,
+                    (true, false) => Self::ACK_ECN_TYPE,
+                    (false, true) => Self::ACK_ELICITING_TYPE,
+                    (true, true) => Self::ACK_ECN_ELICITING_TYPE,
                 };
                 encoder.encode(&tag);
                 encoder.encode(dest_sender_id);
@@ -688,15 +697,17 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                     buffer,
                 ))
             }
-            Self::ACK_TYPE | Self::ACK_ECN_TYPE => {
+            Self::ACK_TYPE | Self::ACK_ECN_TYPE | Self::ACK_ELICITING_TYPE | Self::ACK_ECN_ELICITING_TYPE => {
                 let (dest_sender_id, buffer) = buffer.decode()?;
                 let (ack_delay, buffer) = buffer.decode()?;
-                let has_ecn = tag == Self::ACK_ECN_TYPE;
+                let has_ecn = matches!(tag, Self::ACK_ECN_TYPE | Self::ACK_ECN_ELICITING_TYPE);
+                let is_ack_eliciting = matches!(tag, Self::ACK_ELICITING_TYPE | Self::ACK_ECN_ELICITING_TYPE);
                 Ok((
                     Self::Ack {
                         dest_sender_id,
                         ack_delay,
                         has_ecn,
+                        is_ack_eliciting,
                     },
                     buffer,
                 ))
