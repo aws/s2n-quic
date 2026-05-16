@@ -163,9 +163,7 @@ pub struct WorkerLayout {
 }
 
 /// Configuration for the stream pipeline.
-pub struct Config<S, C> {
-    /// Worker pool spawner.
-    pub spawner: S,
+pub struct Config {
     /// Worker layout — maps pipeline roles to spawner thread indices.
     pub layout: WorkerLayout,
     /// Buffer pool for outbound (send) packets.
@@ -182,8 +180,6 @@ pub struct Config<S, C> {
     ///
     /// [`recv::Cache`]: recv::Cache
     pub idle_timeout: core::time::Duration,
-    /// Wall-clock source used for RTT estimation and timeouts.
-    pub clock: C,
     /// Overall bandwidth cap applied by the frame-dispatch pacing stage.
     ///
     /// The [`Paced`] combinator in the dispatch pipeline enforces this rate across all
@@ -225,48 +221,53 @@ pub struct Config<S, C> {
 /// Recv IO tasks fan out decoded packets to recv_dispatch workers by hashing
 /// (credentials.id, source_sender_id), ensuring a given peer always lands in the same
 /// recv::Cache for coherent ACK space and packet-number deduplication.
-pub fn setup_endpoint<SendSocket, RecvSocket, S, C>(
-    config: Config<S, C>,
+pub fn setup_endpoint<SendSocket, RecvSocket, R>(
+    runtime: R,
+    config: Config,
     send_sockets: Vec<SendSocket>,
     recv_sockets: Vec<RecvSocket>,
 ) -> Endpoint
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
-    S: crate::runtime::Spawner,
-    C: time::Clock + precision::Clock + Clone + Send + 'static,
+    R: crate::runtime::Runtime,
 {
     let num_recv_dispatch = config.layout.recv_dispatch.len();
 
     tracing::debug!(?config.layout, "setting up endpoint");
 
     if num_recv_dispatch.is_power_of_two() {
-        setup_endpoint_inner::<_, _, _, _, routing::PowerOfTwoRoute>(
+        setup_endpoint_inner::<_, _, _, routing::PowerOfTwoRoute>(
+            runtime,
             config,
             send_sockets,
             recv_sockets,
         )
     } else {
-        setup_endpoint_inner::<_, _, _, _, routing::ModuloRoute>(config, send_sockets, recv_sockets)
+        setup_endpoint_inner::<_, _, _, routing::ModuloRoute>(
+            runtime,
+            config,
+            send_sockets,
+            recv_sockets,
+        )
     }
 }
 
-fn setup_endpoint_inner<SendSocket, RecvSocket, S, C, RecvRoute>(
-    config: Config<S, C>,
+fn setup_endpoint_inner<SendSocket, RecvSocket, R, RecvRoute>(
+    runtime: R,
+    config: Config,
     send_sockets: Vec<SendSocket>,
     recv_sockets: Vec<RecvSocket>,
 ) -> Endpoint
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
-    S: crate::runtime::Spawner,
-    C: time::Clock + precision::Clock + Clone + Send + 'static,
+    R: crate::runtime::Runtime,
     RecvRoute: routing::SenderRoute,
 {
     use crate::{counter::Registry as CounterRegistry, socket::channel::intrusive};
 
     let Config {
-        spawner,
         layout,
         send_pool,
         recv_pool,
@@ -274,14 +275,15 @@ where
         gso,
         acceptor_registry,
         idle_timeout,
-        clock,
         overall_send_rate,
         per_socket_send_rate,
         budgets,
         submission_shards,
     } = config;
 
-    let num_workers = spawner.worker_count().max(1);
+    let clock = runtime.clock();
+
+    let num_workers = runtime.worker_count().max(1);
     let num_send = send_sockets.len();
 
     assert!(
@@ -354,7 +356,7 @@ where
 
     // Build workers -------------------------------------------------------------
     let mut workers: Vec<
-        Worker<socket::MeteredSend<SendSocket>, socket::MeteredRecv<RecvSocket>, C, _, RecvRoute>,
+        Worker<socket::MeteredSend<SendSocket>, socket::MeteredRecv<RecvSocket>, R::Clock, _, RecvRoute>,
     > = {
         let mut v = Vec::with_capacity(num_workers);
         v.extend((0..num_workers).map(|id| {
@@ -528,7 +530,7 @@ where
 
     // Spawn all workers ---------------------------------------------------------
     for worker in workers {
-        worker.spawn(&spawner);
+        worker.spawn(&runtime);
     }
 
     Endpoint {
@@ -672,8 +674,8 @@ where
     }
 
     #[inline]
-    fn spawn<S: crate::runtime::Spawner>(self, spawner: &S) {
-        use crate::{runtime::LocalSpawner as _, socket::channel::ReceiverExt as _};
+    fn spawn<R: crate::runtime::Runtime>(self, runtime: &R) {
+        use crate::{runtime::Spawner as _, socket::channel::ReceiverExt as _};
 
         let Self {
             id,
@@ -690,7 +692,7 @@ where
             waker_drain,
         } = self;
 
-        spawner.spawn_local(id, move |mut local| {
+        runtime.spawn_local(id, move |mut local| {
             if let Some(fd) = frame_dispatch {
                 tasks::frame_dispatch(
                     &mut local,

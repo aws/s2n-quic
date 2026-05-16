@@ -33,7 +33,6 @@ use crate::{
         endpoint::{msg, setup_endpoint, Budgets, Config, Endpoint, WorkerLayout},
         Reader, Stream, Writer,
     },
-    time::bach::Clock,
 };
 use core::net::SocketAddr;
 use s2n_quic_core::varint::VarInt;
@@ -268,12 +267,10 @@ pub fn setup_sim_endpoint(
         waker_drain: vec![0],
     };
 
-    let spawner = crate::runtime::bach::Runtime::new(1);
-    let clock = Clock::default();
+    let runtime = crate::runtime::bach::Handle::new(1);
     let gso = s2n_quic_platform::features::Gso::default();
 
     let endpoint_config = Config {
-        spawner,
         layout,
         send_pool,
         recv_pool,
@@ -281,14 +278,13 @@ pub fn setup_sim_endpoint(
         gso,
         acceptor_registry,
         idle_timeout,
-        clock,
         overall_send_rate,
         per_socket_send_rate,
         budgets,
         submission_shards,
     };
 
-    let endpoint = setup_endpoint(endpoint_config, send_sockets, recv_sockets);
+    let endpoint = setup_endpoint(runtime, endpoint_config, send_sockets, recv_sockets);
 
     endpoint.counters.spawn_reporter_with_label(
         core::time::Duration::from_secs(1),

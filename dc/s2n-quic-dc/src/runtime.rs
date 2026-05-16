@@ -1,10 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Runtime spawner abstraction for stream2
+//! Runtime abstraction for stream endpoint initialization.
 //!
-//! This provides a generic interface for spawning tasks across different runtimes
-//! (busy-poll, tokio, bach) while respecting worker affinity for non-Send types.
+//! This provides a generic interface for spawning tasks and obtaining clocks across
+//! different runtimes (busy-poll, tokio, bach) while respecting worker affinity for
+//! non-Send types.
 //!
 //! The key challenge is that busy-poll uses a two-phase spawn pattern:
 //! 1. Call `handle.spawn_local(|spawner| { ... })` with a Send closure
@@ -12,31 +13,41 @@
 //!
 //! This abstraction needs to support both this pattern and simpler runtimes like tokio.
 
+use crate::time::precision;
+use s2n_quic_core::time;
 use std::future::Future;
 
-/// Abstraction for spawning tasks on a runtime
+/// Abstraction over a task runtime and its associated clock.
 ///
-/// Supports both Send futures (can run anywhere) and !Send futures (need worker affinity).
-pub trait Spawner: Clone + Send + 'static {
-    /// The worker-local spawner type for spawning !Send futures
-    type Local<'a>: LocalSpawner;
+/// Each runtime implementation bundles both spawning capability and the clock
+/// appropriate for that execution model (e.g. busy-poll timers that don't use wakers,
+/// tokio timers backed by the tokio runtime, bach simulated time).
+pub trait Runtime: Clone + Send + 'static {
+    /// The clock type associated with this runtime.
+    type Clock: time::Clock + precision::Clock + Clone + Send + 'static;
 
-    /// Number of workers in this runtime
+    /// The worker-local spawner type for spawning !Send futures.
+    type Spawner<'a>: Spawner;
+
+    /// Number of workers in this runtime.
     fn worker_count(&self) -> usize;
 
-    /// Spawn !Send futures on a specific worker
+    /// Returns a clone of the runtime's clock.
+    fn clock(&self) -> Self::Clock;
+
+    /// Spawn !Send futures on a specific worker.
     ///
     /// The closure receives a spawner handle that can spawn !Send futures.
     /// This matches the busy-poll pattern where you call spawn_local with a Send closure
     /// that receives a Spawner to spawn !Send futures.
     fn spawn_local<F>(&self, worker_id: usize, f: F)
     where
-        F: FnOnce(Self::Local<'_>) + Send + 'static;
+        F: FnOnce(Self::Spawner<'_>) + Send + 'static;
 }
 
-/// Handle for spawning !Send futures within a worker-local context
-pub trait LocalSpawner {
-    /// Spawn a !Send future on the current worker
+/// Handle for spawning !Send futures within a worker-local context.
+pub trait Spawner {
+    /// Spawn a !Send future on the current worker.
     fn spawn<F>(&mut self, future: F)
     where
         F: Future<Output = ()> + 'static;
@@ -46,25 +57,48 @@ pub trait LocalSpawner {
 
 /// Implementations for busy_poll runtime
 pub mod busy_poll {
-    use super::{LocalSpawner, Spawner};
+    use super::{Runtime, Spawner};
+    use crate::busy_poll::clock;
     use std::future::Future;
 
-    impl Spawner for crate::busy_poll::Pool {
-        type Local<'a> = crate::busy_poll::Spawner<'a>;
+    /// Busy-poll runtime: a pool of polling workers with a wall-clock timer.
+    #[derive(Clone)]
+    pub struct Handle {
+        pool: crate::busy_poll::Pool,
+        clock: clock::Clock,
+    }
+
+    impl Handle {
+        pub fn new(pool: crate::busy_poll::Pool) -> Self {
+            Self {
+                pool,
+                clock: clock::Clock::new(),
+            }
+        }
+    }
+
+    impl Runtime for Handle {
+        type Clock = clock::Timer;
+        type Spawner<'a> = crate::busy_poll::Spawner<'a>;
 
         fn worker_count(&self) -> usize {
-            self.len()
+            self.pool.len()
+        }
+
+        fn clock(&self) -> Self::Clock {
+            use crate::time::precision::Clock as _;
+            self.clock.timer()
         }
 
         fn spawn_local<F>(&self, worker_id: usize, f: F)
         where
-            F: FnOnce(Self::Local<'_>) + Send + 'static,
+            F: FnOnce(Self::Spawner<'_>) + Send + 'static,
         {
-            self[worker_id].spawn_local(f);
+            self.pool[worker_id].spawn_local(f);
         }
     }
 
-    impl LocalSpawner for crate::busy_poll::Spawner<'_> {
+    impl Spawner for crate::busy_poll::Spawner<'_> {
         fn spawn<F>(&mut self, future: F)
         where
             F: Future<Output = ()> + 'static,
@@ -76,23 +110,27 @@ pub mod busy_poll {
 
 // ── Bach Implementation ────────────────────────────────────────────────────
 
-/// Bach spawner for deterministic testing
+/// Bach runtime for deterministic testing
 #[cfg(any(test, feature = "testing"))]
 pub mod bach {
-    use super::{LocalSpawner, Spawner};
+    use super::{Runtime, Spawner};
     use std::future::Future;
 
-    /// Bach spawner for deterministic testing
+    /// Bach runtime for deterministic testing.
     ///
     /// Bach is single-threaded but we emulate multiple workers for testing worker affinity logic.
     #[derive(Clone)]
-    pub struct Runtime {
+    pub struct Handle {
         worker_count: usize,
+        clock: crate::time::bach::Clock,
     }
 
-    impl Runtime {
+    impl Handle {
         pub fn new(worker_count: usize) -> Self {
-            Self { worker_count }
+            Self {
+                worker_count,
+                clock: crate::time::bach::Clock::default(),
+            }
         }
     }
 
@@ -125,29 +163,31 @@ pub mod bach {
         }
     }
 
-    impl LocalSpawner for Local {
+    impl Spawner for Local {
         fn spawn<F>(&mut self, future: F)
         where
             F: Future<Output = ()> + 'static,
         {
-            // Wrap the !Send future to make it Send for bach's API
-            bach::spawn(SendWrapper(future));
+            ::bach::spawn(SendWrapper(future));
         }
     }
 
-    impl Spawner for Runtime {
-        type Local<'a> = Local;
+    impl Runtime for Handle {
+        type Clock = crate::time::bach::Clock;
+        type Spawner<'a> = Local;
 
         fn worker_count(&self) -> usize {
             self.worker_count
         }
 
+        fn clock(&self) -> Self::Clock {
+            self.clock.clone()
+        }
+
         fn spawn_local<F>(&self, _worker_id: usize, f: F)
         where
-            F: FnOnce(Self::Local<'_>) + Send + 'static,
+            F: FnOnce(Self::Spawner<'_>) + Send + 'static,
         {
-            // Bach is single-threaded, so worker_id doesn't matter
-            // Just invoke the closure immediately with a local spawner
             let local = Local;
             f(local);
         }
@@ -156,17 +196,18 @@ pub mod bach {
 
 // ── Tokio Implementation ───────────────────────────────────────────────────
 
-/// Tokio spawner with single-threaded runtimes per worker
+/// Tokio runtime with single-threaded runtimes per worker
 pub mod tokio {
-    use super::{LocalSpawner, Spawner};
+    use super::{Runtime, Spawner};
     use std::future::Future;
 
-    /// Tokio spawner with single-threaded runtimes per worker
+    /// Tokio runtime with single-threaded runtimes per worker.
     ///
     /// Each worker is a LocalSet that can run !Send futures.
     #[derive(Clone)]
-    pub struct Runtime {
+    pub struct Handle {
         workers: std::sync::Arc<Vec<WorkerHandle>>,
+        clock: crate::time::tokio::Clock,
     }
 
     struct WorkerHandle {
@@ -175,14 +216,13 @@ pub mod tokio {
 
     type WorkItem = Box<dyn FnOnce(Local) + Send>;
 
-    impl Runtime {
-        /// Create a new tokio spawner with the specified number of workers
+    impl Handle {
+        /// Create a new tokio runtime with the specified number of workers.
         pub fn new(worker_count: usize) -> Self {
             let workers: Vec<_> = (0..worker_count)
                 .map(|_| {
                     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WorkItem>();
 
-                    // Spawn a thread for this worker with a LocalSet
                     std::thread::spawn(move || {
                         let rt = tokio::runtime::Builder::new_current_thread()
                             .enable_all()
@@ -205,14 +245,15 @@ pub mod tokio {
 
             Self {
                 workers: std::sync::Arc::new(workers),
+                clock: crate::time::tokio::Clock::default(),
             }
         }
     }
 
-    /// Tokio local spawner that uses spawn_local within a LocalSet
+    /// Tokio local spawner that uses spawn_local within a LocalSet.
     pub struct Local;
 
-    impl LocalSpawner for Local {
+    impl Spawner for Local {
         fn spawn<F>(&mut self, future: F)
         where
             F: Future<Output = ()> + 'static,
@@ -221,16 +262,21 @@ pub mod tokio {
         }
     }
 
-    impl Spawner for Runtime {
-        type Local<'a> = Local;
+    impl Runtime for Handle {
+        type Clock = crate::time::tokio::Clock;
+        type Spawner<'a> = Local;
 
         fn worker_count(&self) -> usize {
             self.workers.len()
         }
 
+        fn clock(&self) -> Self::Clock {
+            self.clock.clone()
+        }
+
         fn spawn_local<F>(&self, worker_id: usize, f: F)
         where
-            F: FnOnce(Self::Local<'_>) + Send + 'static,
+            F: FnOnce(Self::Spawner<'_>) + Send + 'static,
         {
             let work: WorkItem = Box::new(f);
             self.workers[worker_id]
@@ -246,14 +292,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tokio_spawner_worker_count() {
-        let spawner = tokio::Runtime::new(4);
-        assert_eq!(spawner.worker_count(), 4);
+    fn tokio_runtime_worker_count() {
+        let rt = tokio::Handle::new(4);
+        assert_eq!(rt.worker_count(), 4);
     }
 
     #[test]
-    fn bach_spawner_worker_count() {
-        let spawner = bach::Runtime::new(4);
-        assert_eq!(spawner.worker_count(), 4);
+    fn bach_runtime_worker_count() {
+        let rt = bach::Handle::new(4);
+        assert_eq!(rt.worker_count(), 4);
     }
 }

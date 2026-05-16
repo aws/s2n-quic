@@ -13,7 +13,7 @@ use crate::{
         msg, send, Budgets,
     },
     intrusive::{Entry, Queue},
-    runtime::LocalSpawner,
+    runtime::Spawner,
     socket::{
         channel::{
             intrusive::{self, unsync},
@@ -101,7 +101,7 @@ mod tests;
 /// [`PriorityStorage`]: crate::stream::frame::PriorityStorage
 /// [`PriorityInput`]: crate::stream::frame::PriorityInput
 pub fn frame_dispatch<S, Clk>(
-    spawner: &mut impl LocalSpawner,
+    spawner: &mut impl Spawner,
     frame_rx: SubmissionReceiver,
     worker_senders: Vec<S>,
     rng: crate::xorshift::Rng,
@@ -174,7 +174,7 @@ pub fn frame_dispatch<S, Clk>(
 ///   ack_rx (sync, from recv workers)
 ///     → ACK processor (loss detection, retransmission)
 pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
-    spawner: &mut impl LocalSpawner,
+    spawner: &mut impl Spawner,
     worker_id: usize,
     batch_rx: impl Receiver<Entry<FrameBatch>> + 'static,
     ack_rx: impl Receiver<Entry<msg::Sender>> + 'static,

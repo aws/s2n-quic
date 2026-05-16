@@ -1,28 +1,61 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::time::precision::{self, Clock, Timestamp};
+use crate::time::precision::{self, Clock as _, Timestamp};
 use core::task::Poll;
-use std::{fmt::Debug, future::poll_fn};
+use std::{future::poll_fn, sync::OnceLock, time::Instant};
 
-#[derive(Clone, Debug)]
-pub struct Timer<C: Clock> {
-    clock: C,
-    target: Option<Timestamp>,
-    armed: bool,
+fn epoch() -> Instant {
+    static EPOCH: OnceLock<Instant> = OnceLock::new();
+    *EPOCH.get_or_init(Instant::now)
 }
 
-impl<C: precision::Clock> Timer<C> {
-    pub fn new(clock: C) -> Self {
-        Self {
-            clock,
+/// A polling-based clock and timer backed by `std::time::Instant`.
+///
+/// Unlike tokio/bach timers, busy-poll timers never register wakers — all futures
+/// are polled unconditionally every iteration, so the timer just checks whether
+/// wall-clock time has passed the target on each poll.
+#[derive(Clone, Copy, Debug)]
+pub struct Clock(Instant);
+
+impl Clock {
+    pub fn new() -> Self {
+        Self(epoch())
+    }
+}
+
+impl precision::Clock for Clock {
+    type Timer = Timer;
+
+    fn now(&self) -> Timestamp {
+        let nanos = self.0.elapsed().as_nanos() as u64;
+        Timestamp { nanos }
+    }
+
+    fn timer(&self) -> Self::Timer {
+        Timer {
+            clock: self.clone(),
             target: None,
             armed: false,
         }
     }
 }
 
-impl<C: precision::Clock + Send + Sync + Clone> precision::Clock for Timer<C> {
+impl s2n_quic_core::time::Clock for Clock {
+    #[inline]
+    fn get_time(&self) -> s2n_quic_core::time::Timestamp {
+        precision::Clock::now(self).into()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Timer {
+    clock: Clock,
+    target: Option<Timestamp>,
+    armed: bool,
+}
+
+impl precision::Clock for Timer {
     type Timer = Self;
 
     fn now(&self) -> Timestamp {
@@ -30,11 +63,11 @@ impl<C: precision::Clock + Send + Sync + Clone> precision::Clock for Timer<C> {
     }
 
     fn timer(&self) -> Self::Timer {
-        self.clone()
+        self.clock.timer()
     }
 }
 
-impl<C: precision::Clock + Send + Sync + Clone> precision::Timer for Timer<C> {
+impl precision::Timer for Timer {
     fn now(&self) -> Timestamp {
         precision::Clock::now(self)
     }
@@ -77,9 +110,9 @@ impl<C: precision::Clock + Send + Sync + Clone> precision::Timer for Timer<C> {
     }
 }
 
-impl<C: precision::Clock> s2n_quic_core::time::Clock for Timer<C> {
+impl s2n_quic_core::time::Clock for Timer {
     #[inline]
     fn get_time(&self) -> s2n_quic_core::time::Timestamp {
-        self.clock.now().into()
+        precision::Clock::now(self).into()
     }
 }
