@@ -15,4 +15,5 @@ pub use server::Server;
 pub use stream::Stream;
 pub use writer::Writer;
 
+#[deprecated = "use crate::endpoint instead"]
 pub use crate::endpoint;

@@ -28,6 +28,7 @@ pub mod time;
 pub mod uds;
 pub mod xorshift;
 
+#[deprecated = "use stream instead of stream3"]
 pub use stream as stream3;
 
 #[cfg(any(test, feature = "testing"))]

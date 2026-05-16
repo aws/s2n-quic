@@ -1,6 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Contract tests for the `ack_burst` task.
+//!
+//! The ack burst task sits on the recv dispatch worker. When the packet dispatch task
+//! schedules an ACK (by pushing a recv::Context into the burst queue), this task encodes
+//! the ACK ranges and emits a PendingAck submission to the send worker. These tests verify
+//! the encoding/emission contract: contexts with pending ACKs produce submissions, contexts
+//! without pending ACKs produce nothing, and already-flushed contexts are not double-submitted.
+
 use super::helpers::{CollectingSender, RecvContextBuilder, TestReceiver};
 use crate::{
     socket::channel::ReceiverExt as _,
@@ -10,6 +18,7 @@ use crate::{
 };
 use s2n_quic_core::{time::Clock as _, varint::VarInt};
 
+/// A context with ack_state=Scheduled and recorded ACK ranges produces a PendingAck submission.
 #[test]
 fn context_with_pending_acks_emits_submission() {
     crate::testing::sim(|| {
@@ -41,6 +50,7 @@ fn context_with_pending_acks_emits_submission() {
     });
 }
 
+/// A context in Idle state (no ack-eliciting packets received) produces no output.
 #[test]
 fn context_with_no_pending_acks_emits_nothing() {
     crate::testing::sim(|| {
@@ -62,6 +72,8 @@ fn context_with_no_pending_acks_emits_nothing() {
     });
 }
 
+/// Each context in the burst queue is processed independently — N scheduled contexts
+/// produce N submissions.
 #[test]
 fn multiple_contexts_each_produce_submission() {
     crate::testing::sim(|| {
@@ -98,6 +110,8 @@ fn multiple_contexts_each_produce_submission() {
     });
 }
 
+/// A context already in Flushed state (ACK submission already in the send pipeline)
+/// does not produce a second submission. The at-most-one-in-flight invariant is preserved.
 #[test]
 fn flushed_context_does_not_double_submit() {
     crate::testing::sim(|| {

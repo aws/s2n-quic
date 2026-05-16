@@ -729,9 +729,8 @@ where
 
             if let Some(rs) = recv_socket {
                 let recv_idx = rs.idx;
-                let gro_segments = counter_registry
-                    .register_summary("rx.gro_segments", crate::counter::Unit::Count);
                 let variant = format!("recv.{recv_idx}");
+                let rx = tasks::socket_recv(rs.socket, rs.recv_pool, rs.router);
                 let budget_summary = counter_registry.register_nominal_summary(
                     "task.socket_recv.drained",
                     &variant,
@@ -739,12 +738,8 @@ where
                 );
                 let time_summary =
                     counter_registry.register_nominal_timer("task.socket_recv.time", &variant);
-                local.spawn(tasks::socket_recv_task(
-                    rs.socket,
-                    rs.recv_pool,
-                    rs.router,
-                    budgets,
-                    gro_segments,
+                local.spawn(rx.drain_budgeted_metered(
+                    Some(budgets.socket_recv),
                     budget_summary,
                     time_summary,
                 ));
@@ -802,17 +797,18 @@ where
                 );
                 let ack_completion_rx =
                     crate::counter::GaugedReceiver::new(rd.ack_completion_rx, ack_completion_gauge);
-                local.spawn(tasks::ack_completion_task(
-                    ack_completion_rx,
-                    recv_cache,
-                    rd.ack_sender,
-                    budgets,
-                    counter_registry.register_nominal_summary(
-                        "task.ack_completion.drained",
-                        &variant,
-                        crate::counter::Unit::Count,
-                    ),
-                    counter_registry.register_nominal_timer("task.ack_completion.time", &variant),
+                let rx = tasks::ack_completion(ack_completion_rx, recv_cache, rd.ack_sender);
+                let budget_summary = counter_registry.register_nominal_summary(
+                    "task.ack_completion.drained",
+                    &variant,
+                    crate::counter::Unit::Count,
+                );
+                let time_summary =
+                    counter_registry.register_nominal_timer("task.ack_completion.time", &variant);
+                local.spawn(rx.drain_budgeted_metered(
+                    Some(budgets.ack_completion),
+                    budget_summary,
+                    time_summary,
                 ));
             }
 

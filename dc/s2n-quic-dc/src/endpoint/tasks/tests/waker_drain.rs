@@ -1,6 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Contract tests for the `waker_drain` task.
+//!
+//! The waker drain task offloads `Waker::wake()` calls from hot dispatch threads. Producers
+//! push wakers into per-slot queues via `Sink`; the drain task polls all slots round-robin
+//! and invokes each waker. These tests verify that wakers are reliably fired regardless of
+//! how they arrive (single, batched, multi-slot) and that the task shuts down cleanly when
+//! all producers are gone.
+
 use super::helpers::test_waker;
 use crate::{
     socket::channel::{ReceiverExt as _, UnboundedSender as _},
@@ -8,6 +16,7 @@ use crate::{
     testing::ext::*,
 };
 
+/// A single waker pushed to one slot is invoked exactly once.
 #[test]
 fn single_waker_fires() {
     crate::testing::sim(|| {
@@ -30,6 +39,8 @@ fn single_waker_fires() {
     });
 }
 
+/// Multiple wakers pushed to the same slot in a burst are all invoked.
+/// Verifies the drain doesn't stop after the first waker per slot.
 #[test]
 fn batched_wakers_same_slot() {
     crate::testing::sim(|| {
@@ -54,6 +65,8 @@ fn batched_wakers_same_slot() {
     });
 }
 
+/// Wakers distributed across multiple producer slots are all drained.
+/// Exercises the round-robin polling across slots.
 #[test]
 fn multiple_slots_all_fire() {
     crate::testing::sim(|| {
@@ -78,6 +91,8 @@ fn multiple_slots_all_fire() {
     });
 }
 
+/// The task continues draining after an initial batch completes.
+/// Producers can push new wakers at any time and they will eventually fire.
 #[test]
 fn wakers_pushed_after_initial_drain_still_fire() {
     crate::testing::sim(|| {
@@ -107,6 +122,8 @@ fn wakers_pushed_after_initial_drain_still_fire() {
     });
 }
 
+/// When all Sink handles are dropped, the drain task terminates cleanly.
+/// This ensures graceful endpoint shutdown — no leaked tasks.
 #[test]
 fn shutdown_after_all_sinks_dropped() {
     crate::testing::sim(|| {

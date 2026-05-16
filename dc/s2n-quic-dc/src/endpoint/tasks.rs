@@ -17,7 +17,7 @@ use crate::{
     socket::{
         channel::{
             intrusive::{self, unsync},
-            Budget, FlattenList, FlattenSegments, Inspect, InspectErr, Map, Paced,
+            Budget, FlattenList, FlattenSegments, InspectErr, Map, Paced,
             Priority as PriorityRx, Receiver, ReceiverExt as _, RouterAdapter, SocketReceiver,
             SocketSender, UnboundedSender,
         },
@@ -581,29 +581,22 @@ async fn wheel_drain<A, T, F>(
         .await;
 }
 
-/// Per-socket receive worker: reads raw UDP segments and routes decoded packets to dispatch.
+/// Builds a receiver that reads raw UDP segments from a socket and routes decoded packets
+/// to the dispatch task.
 ///
-/// `packet_tx` is generic so callers can substitute a local unsync sender when the dispatch
-/// task is co-located on the same worker.
-///
-/// Drives a [`SocketReceiver`] → [`InspectErr`] → [`FlattenSegments`] → [`RouterAdapter`] chain,
-/// drained with a per-poll `budget` so the executor can interleave other tasks.
-/// Each segment is decoded; datagram packets are forwarded via `packet_tx` to the dispatch task,
-/// and decode errors are tallied via `decode_error_counter`.
+/// Drives a [`SocketReceiver`] → [`InspectErr`] → [`FlattenSegments`] → [`RouterAdapter`]
+/// chain. The caller is responsible for draining with an appropriate budget and metrics.
 ///
 /// [`SocketReceiver`]: crate::socket::channel::SocketReceiver
 /// [`InspectErr`]: crate::socket::channel::InspectErr
 /// [`FlattenSegments`]: crate::socket::channel::FlattenSegments
 /// [`RouterAdapter`]: crate::socket::channel::RouterAdapter
-pub async fn socket_recv_task<Socket, R>(
+pub fn socket_recv<Socket, R>(
     socket: Socket,
     pool: crate::socket::pool::Pool,
     router: R,
-    budgets: Budgets,
-    gro_segments: crate::counter::Summary,
-    budget_summary: crate::counter::Summary,
-    time_summary: crate::counter::Timer,
-) where
+) -> impl Receiver<()>
+where
     Socket: crate::socket::recv::Socket,
     R: crate::socket::recv::router::Router,
 {
@@ -611,13 +604,8 @@ pub async fn socket_recv_task<Socket, R>(
     let rx = InspectErr::new(rx, |err| {
         tracing::warn!(%err, "socket recv error");
     });
-    let rx = Inspect::new(rx, move |segments: &descriptor::Segments| {
-        gro_segments.record_value(segments.segment_count() as u64);
-    });
     let rx = FlattenSegments::new(rx);
     RouterAdapter::new(rx, router)
-        .drain_budgeted_metered(Some(budgets.socket_recv), budget_summary, time_summary)
-        .await;
 }
 
 /// Per-worker packet dispatch loop: decrypts, deduplicates, and dispatches received packets.
@@ -725,17 +713,21 @@ pub fn waker_drain(drain: endpoint::waker::Drain) -> impl Receiver<()> {
 /// For each returned entry, looks up the recv context and checks if new packets arrived
 /// while the ACK was in flight. If stale (ack_state went back to Scheduled), re-submits
 /// a fresh PendingAck. Otherwise transitions Flushed → Idle.
-pub async fn ack_completion_task<AckTx>(
-    completion_rx: impl Receiver<Entry<msg::Sender>>,
+/// Builds a receiver that processes ACK completion entries returning from the assembler.
+///
+/// For each returned PendingAck entry, looks up the recv context and checks if new packets
+/// arrived while the ACK was in flight. If stale (ack_state went back to Scheduled),
+/// re-submits a fresh PendingAck. Otherwise transitions Flushed → Idle.
+pub fn ack_completion<CompRx, AckTx>(
+    completion_rx: CompRx,
     recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
     mut ack_sender: AckTx,
-    budgets: Budgets,
-    budget_summary: crate::counter::Summary,
-    time_summary: crate::counter::Timer,
-) where
+) -> impl Receiver<()>
+where
+    CompRx: Receiver<Entry<msg::Sender>>,
     AckTx: UnboundedSender<Entry<msg::Sender>>,
 {
-    let rx = Map::new(completion_rx, move |entry: Entry<msg::Sender>| {
+    Map::new(completion_rx, move |entry: Entry<msg::Sender>| {
         let (key, recv_worker_id) = match &*entry {
             msg::Sender::PendingAck(submission) => (
                 endpoint::recv::Key {
@@ -764,9 +756,7 @@ pub async fn ack_completion_task<AckTx>(
             *pending_ack_entry = msg::Sender::PendingAck(submission);
             let _ = ack_sender.send(pending_ack_entry);
         }
-    });
-    rx.drain_budgeted_metered(Some(budgets.ack_completion), budget_summary, time_summary)
-        .await;
+    })
 }
 
 /// Builds a receiver that encodes and flushes pending ACK bursts from recv contexts.
