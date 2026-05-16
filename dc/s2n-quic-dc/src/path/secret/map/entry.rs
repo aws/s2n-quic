@@ -64,8 +64,20 @@ pub struct Entry {
     next_connection: AtomicU64,
     /// The peer's data recv addresses, learned via the post-handshake exchange.
     peer_data_addrs: PeerDataAddrs,
-    /// Next scheduled transmission timestamp per socket sender, encoded as microseconds.
-    next_transmission_by_sender: Box<[AtomicU64]>,
+    /// Per-socket-sender load scores encoded as u64 nanoseconds.
+    ///
+    /// A lower score means the sender is expected to drain its queue sooner and is
+    /// therefore preferred for new work.  The value is not a raw clock timestamp but a
+    /// composite score:
+    ///
+    ///   score = max(now, earliest_departure_time)
+    ///         + congestion_penalty           (one smoothed RTT when cwnd-limited)
+    ///         + queued_bytes / bandwidth     (estimated queue-drain time)
+    ///
+    /// This means the score units are still nanoseconds but the semantics are *load*, not
+    /// *wall-clock time*.  Comparisons between two scores for the same peer at the same
+    /// instant are always valid; absolute values have no external meaning.
+    sender_load_scores: Box<[AtomicU64]>,
 }
 
 impl SizeOf for Entry {
@@ -82,7 +94,7 @@ impl SizeOf for Entry {
             application_data,
             next_connection,
             peer_data_addrs,
-            next_transmission_by_sender,
+            sender_load_scores,
         } = self;
         creation_time.size()
             + peer.size()
@@ -99,7 +111,7 @@ impl SizeOf for Entry {
                 a.len() * std::mem::size_of::<s2n_quic_core::inet::SocketAddressV6>()
             })
             + std::mem::size_of::<Box<[AtomicU64]>>()
-            + next_transmission_by_sender.len() * std::mem::size_of::<AtomicU64>()
+            + sender_load_scores.len() * std::mem::size_of::<AtomicU64>()
     }
 }
 
@@ -170,7 +182,7 @@ impl Entry {
             application_data,
             next_connection: AtomicU64::new(0),
             peer_data_addrs: PeerDataAddrs::default(),
-            next_transmission_by_sender: Self::init_sender_schedule(socket_sender_count),
+            sender_load_scores: Self::init_load_scores(socket_sender_count),
         }
     }
 
@@ -198,7 +210,7 @@ impl Entry {
     }
 
     /// Like [`fake`] but pre-allocates `socket_sender_count` sender slots so
-    /// `update_sender_next_transmission_time` / `pick_sender_by_next_transmission`
+    /// `update_sender_load_score` / `sender_load_score`
     /// can be exercised in unit tests.
     #[cfg(any(test, feature = "testing"))]
     pub fn fake_with_socket_senders(
@@ -316,7 +328,7 @@ impl Entry {
     }
 
     fn sender_index(&self, sender_idx: usize) -> Option<usize> {
-        let len = self.next_transmission_by_sender.len();
+        let len = self.sender_load_scores.len();
         if len == 0 {
             None
         } else {
@@ -324,20 +336,22 @@ impl Entry {
         }
     }
 
-    fn sender_schedule_micros(ts: Timestamp) -> u64 {
+    /// Encode a `Timestamp` as a u64 load-score value (nanoseconds since epoch).
+    fn score_as_u64(ts: Timestamp) -> u64 {
         // SAFETY: `Timestamp` values in this crate are monotonic and treated as non-negative.
-        let micros = unsafe { ts.as_duration().as_micros() };
-        micros.min(u64::MAX as u128) as u64
+        let nanos = unsafe { ts.as_duration().as_nanos() };
+        nanos.min(u64::MAX as u128) as u64
     }
 
-    fn init_sender_schedule(socket_sender_count: usize) -> Box<[AtomicU64]> {
+    fn init_load_scores(socket_sender_count: usize) -> Box<[AtomicU64]> {
         (0..socket_sender_count)
             .map(|_| AtomicU64::new(0))
             .collect::<Vec<_>>()
             .into_boxed_slice()
     }
 
-    fn transmission_delay(queued_bytes: usize, bandwidth: Bandwidth) -> Duration {
+    /// Compute how long it would take to drain `queued_bytes` at the given `bandwidth`.
+    fn queue_drain_delay(queued_bytes: usize, bandwidth: Bandwidth) -> Duration {
         if queued_bytes == 0 {
             return Duration::ZERO;
         }
@@ -348,32 +362,45 @@ impl Entry {
 
     #[inline]
     pub fn socket_sender_count(&self) -> usize {
-        self.next_transmission_by_sender.len()
+        self.sender_load_scores.len()
     }
 
+    /// Return the current load score for the given sender slot.
+    ///
+    /// A lower value means the sender is estimated to be less loaded.  Returns `0`
+    /// (the lowest possible score) when the entry has no sender slots.
     #[inline]
-    pub fn sender_next_transmission_micros(&self, sender_idx: usize) -> u64 {
+    pub fn sender_load_score(&self, sender_idx: usize) -> u64 {
         let Some(sender_idx) = self.sender_index(sender_idx) else {
             return 0;
         };
-        self.next_transmission_by_sender[sender_idx].load(Ordering::Acquire)
+        self.sender_load_scores[sender_idx].load(Ordering::Acquire)
     }
 
-    pub fn update_sender_next_transmission_time(
+    /// Update the load score for the given sender slot.
+    ///
+    /// The caller supplies `base` — a pre-computed starting point that already accounts
+    /// for the CCA's earliest-departure time and any congestion penalty:
+    ///
+    ///   base = max(now, earliest_departure_time) + congestion_penalty
+    ///
+    /// This method adds the estimated time to drain `queued_bytes` at `bandwidth` and
+    /// stores the result atomically so the pick-two load balancer can read it lock-free.
+    pub fn update_sender_load_score(
         &self,
         sender_idx: usize,
-        now: Timestamp,
+        base: Timestamp,
         queued_bytes: usize,
         bandwidth: Bandwidth,
     ) -> Timestamp {
         let Some(sender_idx) = self.sender_index(sender_idx) else {
-            return now;
+            return base;
         };
-        let delay = Self::transmission_delay(queued_bytes, bandwidth);
-        let next = now + delay;
-        let next_micros = Self::sender_schedule_micros(next);
-        self.next_transmission_by_sender[sender_idx].store(next_micros, Ordering::Release);
-        next
+        let delay = Self::queue_drain_delay(queued_bytes, bandwidth);
+        let score = base + delay;
+        let score_value = Self::score_as_u64(score);
+        self.sender_load_scores[sender_idx].store(score_value, Ordering::Release);
+        score
     }
 
     pub fn idle_timeout(&self) -> Duration {

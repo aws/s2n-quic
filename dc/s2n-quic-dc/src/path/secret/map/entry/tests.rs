@@ -58,28 +58,28 @@ fn allocates_sender_schedule_slots() {
 fn empty_sender_schedule_is_supported() {
     let entry = test_entry_with_senders(0);
     assert_eq!(entry.socket_sender_count(), 0);
-    assert_eq!(entry.sender_next_transmission_micros(0), 0);
+    assert_eq!(entry.sender_load_score(0), 0);
 }
 
 #[test]
-fn sender_with_more_queued_bytes_has_later_transmission_time() {
+fn sender_with_more_queued_bytes_has_higher_load_score() {
     let entry = test_entry_with_senders(2);
     let now = unsafe { Timestamp::from_duration(Duration::from_micros(10)) };
 
-    entry.update_sender_next_transmission_time(
+    entry.update_sender_load_score(
         0,
         now,
         4_000,
         s2n_quic_core::recovery::bandwidth::Bandwidth::new(1_000, Duration::from_millis(1)),
     );
-    entry.update_sender_next_transmission_time(
+    entry.update_sender_load_score(
         1,
         now,
         2_000,
         s2n_quic_core::recovery::bandwidth::Bandwidth::new(1_000, Duration::from_millis(1)),
     );
 
-    let time0 = entry.sender_next_transmission_micros(0);
-    let time1 = entry.sender_next_transmission_micros(1);
-    assert!(time0 > time1, "sender 0 has more bytes queued so should be later");
+    let score0 = entry.sender_load_score(0);
+    let score1 = entry.sender_load_score(1);
+    assert!(score0 > score1, "sender 0 has more bytes queued so should have a higher load score");
 }

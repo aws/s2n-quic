@@ -362,16 +362,16 @@ where
 
     if segments_written == 0 {
         // Frames may have been drained (e.g. all cancelled); publish the updated
-        // pending-byte count so the load-balancer sees the reduced queue.
-        context.publish_next_transmission_time(time_sent);
+        // load score so the pick-two balancer sees the reduced queue.
+        context.publish_sender_load_score(time_sent);
         return None;
     }
 
     // Update PTO
     context.pto.on_packet_sent(now);
 
-    // Publish updated load estimate: both pending queue and CCA state may have changed.
-    context.publish_next_transmission_time(time_sent);
+    // Publish updated load score: both pending queue and CCA state may have changed.
+    context.publish_sender_load_score(time_sent);
 
     header_buf.clear();
 

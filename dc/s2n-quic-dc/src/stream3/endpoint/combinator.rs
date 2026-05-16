@@ -141,6 +141,15 @@ impl FrameBatch {
     }
 }
 
+#[cfg(test)]
+impl FrameBatch {
+    /// Wrap a single frame in a `FrameBatch`, for use in unit tests that need to
+    /// call `send::Context::push_batch` without going through the full combinator pipeline.
+    pub fn single(frame: Entry<Frame>) -> Self {
+        Self::new(frame)
+    }
+}
+
 impl ByteCost for FrameBatch {
     #[inline]
     fn byte_cost(&self) -> u64 {
@@ -380,7 +389,7 @@ impl<T: StickyRoute> StickyRoute for crate::intrusive_queue::Entry<T> {
 ///
 /// If an item implements [`StickyRoute`] and returns a sender index, that sender is used
 /// directly (retransmissions must go back through the same socket). Otherwise pick-two
-/// selects the sender with the earliest next-transmission time.
+/// selects the sender with the lowest load score.
 ///
 /// Implements `Receiver<()>` so it can be drained via `ReceiverExt::drain_budgeted`.
 pub struct PickTwo<T, R, S> {
@@ -388,7 +397,7 @@ pub struct PickTwo<T, R, S> {
     senders: Vec<S>,
     rng: crate::xorshift::Rng,
     pick_counters: Vec<crate::counter::Counter>,
-    time_delta: crate::counter::Summary,
+    score_delta: crate::counter::Summary,
     value: PhantomData<fn() -> T>,
 }
 
@@ -407,8 +416,8 @@ where
         let pick_counters = (0..senders.len())
             .map(|i| counter_registry.register_nominal("pick_two.chosen", format_args!("send.{i}")))
             .collect();
-        let time_delta = counter_registry.register_summary(
-            "pick_two.time_delta",
+        let score_delta = counter_registry.register_summary(
+            "pick_two.score_delta",
             crate::counter::Unit::Microsecond,
         );
         Self {
@@ -416,7 +425,7 @@ where
             senders,
             rng,
             pick_counters,
-            time_delta,
+            score_delta,
             value: PhantomData,
         }
     }
@@ -426,7 +435,7 @@ where
         senders: &mut Vec<S>,
         rng: &mut crate::xorshift::Rng,
         pick_counters: &[crate::counter::Counter],
-        time_delta: &crate::counter::Summary,
+        score_delta: &crate::counter::Summary,
     ) -> Result<(), T> {
         debug_assert!(!senders.is_empty());
         let chosen_idx = if let Some(sticky_idx) = value.sticky_sender_idx() {
@@ -449,13 +458,13 @@ where
                     idx2
                 };
 
-                let time1 = entry.sender_next_transmission_micros(idx1);
-                let time2 = entry.sender_next_transmission_micros(idx2);
+                let score1 = entry.sender_load_score(idx1);
+                let score2 = entry.sender_load_score(idx2);
 
-                let delta_us = time1.abs_diff(time2);
-                time_delta.record_value(delta_us);
+                let delta = score1.abs_diff(score2);
+                score_delta.record_value(delta);
 
-                if time1 <= time2 {
+                if score1 <= score2 {
                     idx1
                 } else {
                     idx2
@@ -493,7 +502,7 @@ where
             &mut self.senders,
             &mut self.rng,
             &self.pick_counters,
-            &self.time_delta,
+            &self.score_delta,
         ) {
             Ok(()) => Poll::Ready(Some(())),
             Err(_) => Poll::Ready(None),

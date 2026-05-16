@@ -150,8 +150,6 @@ pub(crate) fn process_ack<Clk, Rand>(
             random,
             now,
         );
-
-        context.publish_next_transmission_time(now);
     }
 
     // Process ECN feedback from the peer
@@ -186,6 +184,11 @@ pub(crate) fn process_ack<Clk, Rand>(
     // Update PTO
     let has_remaining_inflight = context.inflight.has_inflight();
     context.pto.on_ack_received(has_remaining_inflight);
+
+    // Publish the load score after ALL CCA mutations have run:
+    // on_packet_ack, on_explicit_congestion (ECN), and on_packet_lost (loss detection).
+    // This ensures pick-two sees the fully-updated pacing and congestion state.
+    context.publish_sender_load_score(now);
 }
 
 /// Detect lost packets using the QUIC PN-threshold algorithm.

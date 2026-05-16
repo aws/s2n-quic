@@ -276,9 +276,9 @@ pub(crate) struct Context {
     pub queues: [PendingFrames; Priority::LEVELS],
     /// Pending direct ACK submissions from recv dispatch workers.
     pub pending_acks: PendingAcks,
-    /// Index of this socket in the path secret entry's `next_transmission_by_sender` array.
+    /// Index of this socket in the path secret entry's `sender_load_scores` array.
     ///
-    /// Used by `publish_next_transmission_time` to write the correct slot so the
+    /// Used by `publish_sender_load_score` to write the correct slot so the
     /// load-balancer pick-two logic has up-to-date per-socket load information.
     pub sender_idx: usize,
     /// Intrusive links and target time for the transmission pacing wheel
@@ -367,6 +367,9 @@ impl Context {
                 slot.append_queue(queue, cost);
             }
         }
+        // Refresh the load score immediately so pick-two sees the updated backlog.
+        let now: s2n_quic_core::time::Timestamp = clock.now().into();
+        self.publish_sender_load_score(now);
         self.wheel_interest(clock)
     }
 
@@ -495,19 +498,45 @@ impl Context {
         self.queues[frame.priority().as_index()].push_back(frame);
     }
 
-    /// Publish the estimated next transmission time to the path secret entry.
+    /// Publish the sender load score to the path secret entry.
     ///
-    /// Derives the estimate from the current pending wire cost and the CCA bandwidth
-    /// sample, then stores it in the path-secret entry so the load-balancer
-    /// (`pick_sender_by_next_transmission`) can compare per-socket load.
+    /// The score is a composite estimate of how busy this sender is:
     ///
-    /// Call this whenever the pending queue or CCA state changes.
+    ///   score = base + queued_bytes / pacing_rate
+    ///
+    /// where `base = max(now, earliest_departure_time) + congestion_penalty`.
+    ///
+    /// Using `earliest_departure_time` as the floor means BBR pacing information is
+    /// incorporated directly — a sender that is pacing-gated looks more loaded than one
+    /// that is idle.  The congestion penalty (one smoothed RTT when cwnd-limited) steers
+    /// new batches toward senders that still have room in their congestion window.
+    ///
+    /// Call this whenever the pending queue or CCA state changes (on send, on ACK, and
+    /// on enqueue).
     #[inline]
-    pub fn publish_next_transmission_time(&self, now: s2n_quic_core::time::Timestamp) {
+    pub fn publish_sender_load_score(&self, now: s2n_quic_core::time::Timestamp) {
         let total_cost: usize = self.queues.iter().map(|q| q.byte_cost()).sum();
-        self.path_secret_entry.update_sender_next_transmission_time(
+
+        // Use earliest_departure_time as the base if it is in the future so that
+        // pacing-limited senders appear more loaded than idle ones.
+        let base = self
+            .cca
+            .earliest_departure_time()
+            .map(|edt| edt.max(now))
+            .unwrap_or(now);
+
+        // Add a penalty equal to one smoothed RTT when cwnd-limited.  This makes
+        // congested senders look more expensive, steering new work to peers with
+        // available congestion window.
+        let congestion_penalty = if self.cca.is_congestion_limited() {
+            self.rtt_estimator.smoothed_rtt()
+        } else {
+            Duration::ZERO
+        };
+
+        self.path_secret_entry.update_sender_load_score(
             self.sender_idx,
-            now,
+            base + congestion_penalty,
             total_cost,
             self.cca.bandwidth(),
         );
