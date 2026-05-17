@@ -356,7 +356,13 @@ where
 
     // Build workers -------------------------------------------------------------
     let mut workers: Vec<
-        Worker<socket::MeteredSend<SendSocket>, socket::MeteredRecv<RecvSocket>, R::Clock, _, RecvRoute>,
+        Worker<
+            socket::MeteredSend<SendSocket>,
+            socket::MeteredRecv<RecvSocket>,
+            R::Clock,
+            _,
+            RecvRoute,
+        >,
     > = {
         let mut v = Vec::with_capacity(num_workers);
         v.extend((0..num_workers).map(|id| {
@@ -731,11 +737,9 @@ where
                 let recv_idx = rs.idx;
                 let variant = format!("recv.{recv_idx}");
                 let rx = tasks::socket_recv(rs.socket, rs.recv_pool, rs.router);
-                let task_counter = counter_registry.register_nominal_task("task.socket_recv", &variant);
-                local.spawn(rx.drain_budgeted_metered(
-                    Some(budgets.socket_recv),
-                    task_counter,
-                ));
+                let task_counter =
+                    counter_registry.register_nominal_task("task.socket_recv", &variant);
+                local.spawn(rx.drain_budgeted_metered(Some(budgets.socket_recv), task_counter));
             }
 
             if let Some(rd) = recv_dispatch {
@@ -766,10 +770,7 @@ where
                 let variant = format!("recv.{recv_dispatch_idx}");
                 let task_counter =
                     counter_registry.register_nominal_task("task.packet_dispatch", &variant);
-                local.spawn(rx.drain_budgeted_metered(
-                    Some(budgets.packet_dispatch),
-                    task_counter,
-                ));
+                local.spawn(rx.drain_budgeted_metered(Some(budgets.packet_dispatch), task_counter));
                 let rx = tasks::ack_burst(
                     crate::socket::channel::FlattenList::new(ack_burst_rx.into_list_receiver()),
                     rd.ack_sender.clone(),
@@ -777,10 +778,7 @@ where
                 );
                 let task_counter =
                     counter_registry.register_nominal_task("task.ack_burst", &variant);
-                local.spawn(rx.drain_budgeted_metered(
-                    Some(budgets.ack_burst),
-                    task_counter,
-                ));
+                local.spawn(rx.drain_budgeted_metered(Some(budgets.ack_burst), task_counter));
                 let ack_completion_gauge = counter_registry.register_queue_gauge_nominal(
                     "q.assembler_to_dispatch",
                     format_args!("recv.{recv_dispatch_idx}"),
@@ -790,10 +788,7 @@ where
                 let rx = tasks::ack_completion(ack_completion_rx, recv_cache, rd.ack_sender);
                 let task_counter =
                     counter_registry.register_nominal_task("task.ack_completion", &variant);
-                local.spawn(rx.drain_budgeted_metered(
-                    Some(budgets.ack_completion),
-                    task_counter,
-                ));
+                local.spawn(rx.drain_budgeted_metered(Some(budgets.ack_completion), task_counter));
             }
 
             if let Some(drain) = waker_drain {
@@ -801,10 +796,7 @@ where
                 let rx = tasks::waker_drain(drain);
                 let task_counter =
                     counter_registry.register_nominal_task("task.waker_drain", &variant);
-                local.spawn(rx.drain_budgeted_metered(
-                    Some(budgets.waker_drain),
-                    task_counter,
-                ));
+                local.spawn(rx.drain_budgeted_metered(Some(budgets.waker_drain), task_counter));
             }
         });
     }

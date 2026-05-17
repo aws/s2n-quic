@@ -907,6 +907,11 @@ impl Cache {
         }
     }
 
+    #[cfg(test)]
+    pub fn context_count(&self) -> usize {
+        self.contexts.len()
+    }
+
     pub fn get_or_insert(
         &mut self,
         entry: &Arc<PathSecretEntry>,

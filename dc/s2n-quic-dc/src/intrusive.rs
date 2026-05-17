@@ -697,16 +697,6 @@ mod tests {
     use bolero::{check, TypeGenerator};
     use std::collections::VecDeque;
 
-    pub struct Thing {
-        test: Links,
-    }
-
-    rc_adapter! {
-        struct Foo {
-            test: Thing
-        }
-    }
-
     #[test]
     fn test_push_pop() {
         let mut queue = Queue::new();

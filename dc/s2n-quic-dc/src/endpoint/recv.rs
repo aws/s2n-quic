@@ -6,7 +6,6 @@ use crate::{
     flow, intrusive,
     path::{self, secret::map::Entry as PathSecretEntry},
     stream::endpoint::ack::state as ack_state,
-    time::precision,
 };
 use core::time::Duration;
 use rustc_hash::FxHashMap;
@@ -63,61 +62,6 @@ impl AckState {
         );
         /// Scheduled but nothing to encode — reset to idle.
         on_empty(Scheduled => Idle);
-    }
-}
-
-// ── ACK Wheel Adapter ─────────────────────────────────────────────────────
-
-/// Intrusive links + target time for ACK batching wheel membership.
-pub(crate) struct AckWheelLinks {
-    pub links: intrusive::Links,
-    pub target_time: Option<precision::Timestamp>,
-}
-
-impl AckWheelLinks {
-    pub const fn new() -> Self {
-        Self {
-            links: intrusive::Links::new(),
-            target_time: None,
-        }
-    }
-}
-
-pub(crate) struct AckWheelAdapter;
-
-impl crate::intrusive::Adapter for AckWheelAdapter {
-    type Value = RefCell<Context>;
-    type Target = RefCell<Context>;
-    type Pointer = Rc<RefCell<Context>>;
-
-    unsafe fn links(value: *mut Self::Value) -> *mut intrusive::Links {
-        core::ptr::addr_of_mut!((*(*value).as_ptr()).ack_wheel.links)
-    }
-
-    unsafe fn target(value: *mut Self::Value) -> *mut Self::Target {
-        value
-    }
-
-    fn as_ptr(ptr: &Self::Pointer) -> *const Self::Value {
-        Rc::as_ptr(ptr)
-    }
-
-    fn into_raw(ptr: Self::Pointer) -> *mut Self::Value {
-        Rc::into_raw(ptr) as *mut Self::Value
-    }
-
-    unsafe fn from_raw(ptr: *mut Self::Value) -> Self::Pointer {
-        Rc::from_raw(ptr)
-    }
-}
-
-impl crate::time::wheel::WheelAdapter for AckWheelAdapter {
-    unsafe fn target_time(value: *const Self::Value) -> Option<precision::Timestamp> {
-        (*value).borrow().ack_wheel.target_time
-    }
-
-    unsafe fn set_target_time(value: *mut Self::Value, time: precision::Timestamp) {
-        (*value).borrow_mut().ack_wheel.target_time = Some(time);
     }
 }
 
@@ -270,8 +214,6 @@ pub(crate) struct Context {
     /// Map from stream_id to allocated queue_id for this sender.
     /// Shared with queue handles so they can remove entries when closed.
     pub flows: flow::Tracker,
-    /// Intrusive links for ACK batching wheel
-    pub ack_wheel: AckWheelLinks,
     /// Intrusive links for recv-worker pending-ACK burst queue membership.
     pub ack_burst: intrusive::Links,
 }
@@ -309,7 +251,6 @@ impl Context {
             ack_state: AckState::Idle,
             attempt_dedup: AttemptDedup::new(),
             flows,
-            ack_wheel: AckWheelLinks::new(),
             ack_burst: intrusive::Links::new(),
         }
     }

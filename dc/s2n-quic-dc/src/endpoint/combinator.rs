@@ -12,7 +12,7 @@ use crate::{
     intrusive::{Entry, Queue},
     path::secret::map::Entry as PathSecretEntry,
     socket::{
-        channel::{intrusive::unsync, Budget, ByteCost, Receiver, UnboundedSender},
+        channel::{Budget, ByteCost, Receiver, UnboundedSender},
         pool::descriptor,
         rate::Rate,
     },

@@ -495,7 +495,10 @@ fn handle_flow_init(
             )
         };
 
-        (local_queue_id, PendingValidation::new(Stream::new(reader, writer)))
+        (
+            local_queue_id,
+            PendingValidation::new(Stream::new(reader, writer)),
+        )
     };
 
     match peer.attempt_dedup.check_attempt_id(attempt_id) {

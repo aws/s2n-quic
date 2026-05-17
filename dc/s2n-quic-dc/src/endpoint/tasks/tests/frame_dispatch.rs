@@ -8,16 +8,14 @@
 //! (frames for the same peer are coalesced), and pick-two load balancing across workers.
 //! These tests verify end-to-end behavior of the two cooperating subtasks.
 
-use super::helpers::TestReceiverExt as _;
+use super::helpers::{test_entry, test_frame, TestReceiverExt as _};
 use crate::{
     endpoint::{
         combinator::FrameBatch,
-        frame::{self, Frame, Header, PriorityInput, SubmissionSender},
+        frame::{self, PriorityInput, SubmissionSender},
         tasks, Budgets,
     },
-    intrusive::{Entry, EntryAdapter},
-    packet::datagram::QueuePair,
-    path::secret::map::Entry as PathSecretEntry,
+    intrusive::EntryAdapter,
     runtime::bach::Local,
     socket::{
         channel::{intrusive::unsync, UnboundedSender},
@@ -26,29 +24,6 @@ use crate::{
     testing::{ext::*, sim},
     time::bach::Clock,
 };
-use s2n_quic_core::varint::VarInt;
-use std::sync::Arc;
-
-fn test_frame(pse: &Arc<PathSecretEntry>) -> Entry<Frame> {
-    Entry::new(Frame {
-        header: Header::FlowData {
-            queue_pair: QueuePair {
-                source_queue_id: VarInt::from_u8(1),
-                dest_queue_id: VarInt::from_u8(2),
-            },
-            stream_id: VarInt::from_u8(1),
-            offset: VarInt::ZERO,
-            is_fin: false,
-        },
-        source_sender_id: VarInt::MAX,
-        payload: Default::default(),
-        path_secret_entry: pse.clone(),
-        completion: None,
-        status: frame::TransmissionStatus::Pending,
-        ttl: 3,
-        transmission_time: None,
-    })
-}
 
 type WorkerRx = unsync::Receiver<EntryAdapter<FrameBatch>>;
 
@@ -88,10 +63,7 @@ fn single_frame_arrives_at_worker() {
         let mut worker_rx = rxs.pop().unwrap();
 
         async move {
-            let pse = PathSecretEntry::fake_deterministic(
-                "127.0.0.1:4433".parse().unwrap(),
-                s2n_quic_core::endpoint::Type::Client,
-            );
+            let pse = test_entry();
             let mut input = PriorityInput::default();
             input.push(test_frame(&pse));
             frame_tx.send_batch(input).unwrap();
@@ -116,10 +88,7 @@ fn same_peer_frames_batched() {
         let mut worker_rx = rxs.pop().unwrap();
 
         async move {
-            let pse = PathSecretEntry::fake_deterministic(
-                "127.0.0.1:4433".parse().unwrap(),
-                s2n_quic_core::endpoint::Type::Client,
-            );
+            let pse = test_entry();
             let mut input = PriorityInput::default();
             for _ in 0..5 {
                 input.push(test_frame(&pse));
@@ -147,10 +116,7 @@ fn multiple_workers_receive_frames() {
 
         // Submit one frame
         async move {
-            let pse = PathSecretEntry::fake_deterministic(
-                "127.0.0.1:4433".parse().unwrap(),
-                s2n_quic_core::endpoint::Type::Client,
-            );
+            let pse = test_entry();
             let mut input = PriorityInput::default();
             input.push(test_frame(&pse));
             frame_tx.send_batch(input).unwrap();

@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    endpoint::{
+        combinator::FrameBatch,
+        frame::{self, Frame, Header},
+    },
+    intrusive::Entry,
+    packet::datagram::QueuePair,
     path::secret::map::Entry as PathSecretEntry,
     socket::channel::{Budget, Receiver, UnboundedSender},
     stream::endpoint::recv,
@@ -180,4 +186,43 @@ impl RecvContextBuilder {
             self.idle_timeout,
         )))
     }
+}
+
+// ── Frame/Batch Helpers ──────────────────────────────────────────────────
+
+/// Creates a PathSecretEntry with peer data addrs set (required for send::Cache).
+pub fn test_entry() -> Arc<PathSecretEntry> {
+    let addr: SocketAddr = "127.0.0.1:4433".parse().unwrap();
+    let pse = PathSecretEntry::fake_deterministic(addr, s2n_quic_core::endpoint::Type::Client);
+    pse.set_peer_data_addrs(&[addr]);
+    pse
+}
+
+/// Creates a minimal FlowData frame for testing pipeline plumbing.
+pub fn test_frame(pse: &Arc<PathSecretEntry>) -> Entry<Frame> {
+    Entry::new(Frame {
+        header: Header::FlowData {
+            queue_pair: QueuePair {
+                source_queue_id: VarInt::from_u8(1),
+                dest_queue_id: VarInt::from_u8(2),
+            },
+            stream_id: VarInt::from_u8(1),
+            offset: VarInt::ZERO,
+            is_fin: false,
+        },
+        source_sender_id: VarInt::MAX,
+        payload: Default::default(),
+        path_secret_entry: pse.clone(),
+        completion: None,
+        status: frame::TransmissionStatus::Pending,
+        ttl: 3,
+        transmission_time: None,
+    })
+}
+
+/// Creates a single-frame FrameBatch with sender_id=0.
+pub fn test_batch(pse: &Arc<PathSecretEntry>) -> Entry<FrameBatch> {
+    let mut batch = FrameBatch::single(test_frame(pse));
+    batch.set_sender_id(0);
+    Entry::new(batch)
 }

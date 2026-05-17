@@ -261,7 +261,8 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             ),
         );
         let variant = format!("send.{worker_id}");
-        let task_counter = counter_registry.register_nominal_task("task.context_resolver", &variant);
+        let task_counter =
+            counter_registry.register_nominal_task("task.context_resolver", &variant);
         rx.drain_budgeted_metered(Some(budgets.context_resolver), task_counter)
     });
 
@@ -368,8 +369,14 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         let rx = send::WheelRouter::new(
             rx,
             crate::counter::GaugedSender::new(tx_wheel_tx.clone(), q_resolver_to_tx_wheel.clone()),
-            crate::counter::GaugedSender::new(pto_wheel_tx.clone(), q_resolver_to_pto_wheel.clone()),
-            crate::counter::GaugedSender::new(idle_wheel_tx.clone(), q_resolver_to_idle_wheel.clone()),
+            crate::counter::GaugedSender::new(
+                pto_wheel_tx.clone(),
+                q_resolver_to_pto_wheel.clone(),
+            ),
+            crate::counter::GaugedSender::new(
+                idle_wheel_tx.clone(),
+                q_resolver_to_idle_wheel.clone(),
+            ),
         );
         let task_counter =
             counter_registry.register_nominal_task("task.pto_wheel", format!("send.{worker_id}"));
@@ -401,9 +408,18 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
 
         spawner.spawn({
             let clock = st.clock.clone();
-            let tx_wheel_tx = crate::counter::GaugedSender::new(tx_wheel_tx.clone(), q_resolver_to_tx_wheel.clone());
-            let pto_wheel_tx = crate::counter::GaugedSender::new(pto_wheel_tx.clone(), q_resolver_to_pto_wheel.clone());
-            let idle_wheel_tx = crate::counter::GaugedSender::new(idle_wheel_tx.clone(), q_resolver_to_idle_wheel.clone());
+            let tx_wheel_tx = crate::counter::GaugedSender::new(
+                tx_wheel_tx.clone(),
+                q_resolver_to_tx_wheel.clone(),
+            );
+            let pto_wheel_tx = crate::counter::GaugedSender::new(
+                pto_wheel_tx.clone(),
+                q_resolver_to_pto_wheel.clone(),
+            );
+            let idle_wheel_tx = crate::counter::GaugedSender::new(
+                idle_wheel_tx.clone(),
+                q_resolver_to_idle_wheel.clone(),
+            );
             let cancelled_tx = cancelled_tx.clone().into_list_sender();
             let ack_completions_tx = ack_completions_tx.clone();
             let asm_counters = asm_counters.clone();

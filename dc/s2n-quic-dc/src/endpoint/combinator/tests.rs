@@ -3,7 +3,7 @@ use crate::{
     byte_vec::ByteVec,
     endpoint::frame::{Header, TransmissionStatus, DEFAULT_TTL},
     path::secret::map::Entry as PathSecretEntry,
-    socket::channel::ByteCost,
+    socket::channel::{intrusive::unsync, ByteCost},
     time::testing as test_clock_mod,
 };
 use bytes::{Bytes, BytesMut};

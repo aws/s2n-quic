@@ -11,37 +11,55 @@
 
 use super::helpers::{CollectingSender, RecvContextBuilder, TestReceiver};
 use crate::{
+    intrusive::Entry,
     socket::channel::ReceiverExt as _,
     stream::endpoint::{msg, tasks},
     testing::ext::*,
     time::bach::Clock,
 };
 use s2n_quic_core::{time::Clock as _, varint::VarInt};
+use std::{cell::RefCell, rc::Rc};
+
+struct Harness {
+    collected: Rc<RefCell<Vec<Entry<msg::Sender>>>>,
+}
+
+/// Spawns the ack_burst task with the given contexts and returns a harness
+/// for observing the emitted PendingAck submissions.
+fn setup(
+    contexts: impl IntoIterator<Item = Rc<RefCell<crate::stream::endpoint::recv::Context>>>,
+) -> Harness {
+    let (sender, collected) = CollectingSender::new();
+    let input = TestReceiver::new(contexts);
+    let rx = tasks::ack_burst(input, sender, 0);
+    async move { rx.drain_budgeted(Some(32)).await }
+        .primary()
+        .spawn();
+    Harness { collected }
+}
+
+/// Helper: build a context and schedule an ACK on it.
+fn scheduled_context() -> Rc<RefCell<crate::stream::endpoint::recv::Context>> {
+    let ctx = RecvContextBuilder::default().build();
+    {
+        let mut c = ctx.borrow_mut();
+        let clock = Clock::default();
+        let now = clock.get_time();
+        c.ack_ranges.on_packet_received(VarInt::from_u8(1), now);
+        c.ack_state.on_ack_eliciting().unwrap();
+    }
+    ctx
+}
 
 /// A context with ack_state=Scheduled and recorded ACK ranges produces a PendingAck submission.
 #[test]
 fn context_with_pending_acks_emits_submission() {
     crate::testing::sim(|| {
-        let ctx = RecvContextBuilder::default().build();
-
-        {
-            let mut c = ctx.borrow_mut();
-            let clock = Clock::default();
-            let now = clock.get_time();
-            c.ack_ranges.on_packet_received(VarInt::from_u8(1), now);
-            c.ack_state.on_ack_eliciting().unwrap();
-        }
-
-        let (sender, collected) = CollectingSender::new();
-        let input = TestReceiver::new([ctx]);
-        let rx = tasks::ack_burst(input, sender, 0);
-        async move { rx.drain_budgeted(Some(32)).await }
-            .primary()
-            .spawn();
+        let harness = setup([scheduled_context()]);
 
         async move {
             1.ms().sleep().await;
-            let items = collected.borrow();
+            let items = harness.collected.borrow();
             assert_eq!(items.len(), 1);
             assert!(matches!(&*items[0], msg::Sender::PendingAck(_)));
         }
@@ -55,17 +73,11 @@ fn context_with_pending_acks_emits_submission() {
 fn context_with_no_pending_acks_emits_nothing() {
     crate::testing::sim(|| {
         let ctx = RecvContextBuilder::default().build();
-
-        let (sender, collected) = CollectingSender::new();
-        let input = TestReceiver::new([ctx]);
-        let rx = tasks::ack_burst(input, sender, 0);
-        async move { rx.drain_budgeted(Some(32)).await }
-            .primary()
-            .spawn();
+        let harness = setup([ctx]);
 
         async move {
             1.ms().sleep().await;
-            assert!(collected.borrow().is_empty());
+            assert!(harness.collected.borrow().is_empty());
         }
         .primary()
         .spawn();
@@ -77,9 +89,6 @@ fn context_with_no_pending_acks_emits_nothing() {
 #[test]
 fn multiple_contexts_each_produce_submission() {
     crate::testing::sim(|| {
-        let clock = Clock::default();
-        let now = clock.get_time();
-
         let contexts: Vec<_> = (0..3)
             .map(|i| {
                 let ctx = RecvContextBuilder::default()
@@ -87,6 +96,8 @@ fn multiple_contexts_each_produce_submission() {
                     .build();
                 {
                     let mut c = ctx.borrow_mut();
+                    let clock = Clock::default();
+                    let now = clock.get_time();
                     c.ack_ranges.on_packet_received(VarInt::from_u8(1), now);
                     c.ack_state.on_ack_eliciting().unwrap();
                 }
@@ -94,16 +105,11 @@ fn multiple_contexts_each_produce_submission() {
             })
             .collect();
 
-        let (sender, collected) = CollectingSender::new();
-        let input = TestReceiver::new(contexts);
-        let rx = tasks::ack_burst(input, sender, 0);
-        async move { rx.drain_budgeted(Some(32)).await }
-            .primary()
-            .spawn();
+        let harness = setup(contexts);
 
         async move {
             1.ms().sleep().await;
-            assert_eq!(collected.borrow().len(), 3);
+            assert_eq!(harness.collected.borrow().len(), 3);
         }
         .primary()
         .spawn();
@@ -116,7 +122,6 @@ fn multiple_contexts_each_produce_submission() {
 fn flushed_context_does_not_double_submit() {
     crate::testing::sim(|| {
         let ctx = RecvContextBuilder::default().build();
-
         {
             let mut c = ctx.borrow_mut();
             let clock = Clock::default();
@@ -126,16 +131,11 @@ fn flushed_context_does_not_double_submit() {
             c.ack_state.on_flush().unwrap();
         }
 
-        let (sender, collected) = CollectingSender::new();
-        let input = TestReceiver::new([ctx]);
-        let rx = tasks::ack_burst(input, sender, 0);
-        async move { rx.drain_budgeted(Some(32)).await }
-            .primary()
-            .spawn();
+        let harness = setup([ctx]);
 
         async move {
             1.ms().sleep().await;
-            assert!(collected.borrow().is_empty());
+            assert!(harness.collected.borrow().is_empty());
         }
         .primary()
         .spawn();
