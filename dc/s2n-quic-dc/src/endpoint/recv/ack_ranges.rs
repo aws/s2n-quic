@@ -40,6 +40,11 @@ impl Default for AckRanges {
 }
 
 impl AckRanges {
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.packets.is_empty()
+    }
+
     /// Record a received packet number and its arrival time.
     pub fn on_packet_received(&mut self, packet_number: VarInt, now: Timestamp) {
         let pn = PacketNumberSpace::Initial.new_packet_number(packet_number);
@@ -81,6 +86,7 @@ impl AckRanges {
     ) -> Option<Bytes> {
         loop {
             if self.packets.is_empty() {
+                self.max_received_packet_time = None;
                 return None;
             }
 
@@ -100,6 +106,9 @@ impl AckRanges {
             }
 
             let _ = self.packets.pop_min();
+            if self.packets.is_empty() {
+                self.max_received_packet_time = None;
+            }
         }
     }
 }
@@ -297,6 +306,22 @@ mod tests {
         if let Some(b) = body {
             assert!(!b.is_empty());
         }
+    }
+
+    #[test]
+    fn encode_body_empty_result_clears_largest_recv_time() {
+        let mut ranges = AckRanges::default();
+        for i in 0u64..10 {
+            ranges.on_packet_received(pn(i * 7), ts(i + 1));
+        }
+
+        let body = ranges.encode_body(None, 0);
+        assert!(body.is_none(), "max_body_len=0 should trim all ranges");
+        assert!(ranges.is_empty(), "all ranges should be dropped");
+        assert!(
+            ranges.largest_recv_time().is_none(),
+            "largest_recv_time must be cleared when no ranges remain"
+        );
     }
 
     // ── contiguous ranges ─────────────────────────────────────────────────────

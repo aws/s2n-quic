@@ -32,7 +32,8 @@ fn setup(
 ) -> Harness {
     let (sender, output_rx) = unsync::new::<msg::Sender>();
     let input = TestReceiver::new(contexts);
-    let rx = tasks::ack_burst(input, sender, 0);
+    let counters = crate::endpoint::counters::Dispatch::new(&crate::counter::Registry::default());
+    let rx = tasks::ack_burst(input, sender, 0, counters);
     async move { rx.drain_budgeted(Some(32)).await }
         .primary()
         .spawn();
@@ -142,6 +143,30 @@ fn flushed_context_does_not_double_submit() {
             assert!(
                 output_rx.recv().await.is_none(),
                 "flushed context should not be re-submitted"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// The same context queued twice before the burst task drains should still produce
+/// at most one in-flight ACK submission.
+#[test]
+fn duplicate_context_entry_produces_single_submission() {
+    sim(|| {
+        let ctx = scheduled_context();
+        let Harness { mut output_rx } = setup([ctx.clone(), ctx]);
+
+        async move {
+            let first = output_rx
+                .recv()
+                .await
+                .expect("duplicate context should still emit first submission");
+            assert!(matches!(&*first, msg::Sender::PendingAck(_)));
+            assert!(
+                output_rx.recv().await.is_none(),
+                "duplicate context should not double-submit"
             );
         }
         .primary()

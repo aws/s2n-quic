@@ -192,6 +192,7 @@ pub(crate) fn process_ack<Clk, Rand>(
     // on_packet_ack, on_explicit_congestion (ECN), and on_packet_lost (loss detection).
     // This ensures pick-two sees the fully-updated pacing and congestion state.
     context.publish_sender_load_score(now);
+    context.invariants();
 }
 
 /// Detect lost packets using the QUIC PN-threshold algorithm.

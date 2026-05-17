@@ -426,6 +426,23 @@ fn pto_backoff_sequence_matches_expected_probe_count() {
     }
 }
 
+#[test]
+fn on_pto_timeout_with_no_work_does_not_request_probe() {
+    let registry = Registry::default();
+    let (mut ctx, _) = make_context_with_sender_slots(1, &registry);
+    let clock = make_clock(100);
+
+    let interest = ctx.on_pto_timeout(&clock);
+    assert!(
+        !ctx.pto.probe_state.is_requested(),
+        "probe state should remain idle when no inflight/pending work exists"
+    );
+    assert!(
+        !interest.transmission,
+        "no transmission should be scheduled without inflight/pending work"
+    );
+}
+
 // ── publish_sender_load_score tests ──────────────────────────────────────────
 
 /// Build a `Context` backed by an entry that has `sender_count` pre-allocated sender slots.

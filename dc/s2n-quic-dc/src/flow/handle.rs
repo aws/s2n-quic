@@ -162,6 +162,11 @@ impl Tracker {
         }
     }
 
+    #[inline]
+    pub fn credential_id(&self) -> &credentials::Id {
+        &self.credentials
+    }
+
     /// Drain pending Handle drops and remove them from the local map.
     #[inline]
     fn drain_drops(&self) {

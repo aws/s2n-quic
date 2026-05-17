@@ -813,6 +813,7 @@ pub fn ack_completion<CompRx, AckTx>(
     completion_rx: CompRx,
     recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
     mut ack_sender: AckTx,
+    counters: Arc<endpoint::counters::Dispatch>,
 ) -> impl Receiver<()>
 where
     CompRx: Receiver<Entry<msg::Sender>>,
@@ -829,6 +830,7 @@ where
             ),
             _ => {
                 debug_assert!(false, "ack completion task received non-PendingAck message");
+                counters.rx_ack_completion_impossible.add(1);
                 return;
             }
         };
@@ -841,12 +843,19 @@ where
             ctx.clone()
         };
         let mut ctx = ctx_rc.borrow_mut();
+        if cfg!(debug_assertions) {
+            assert_eq!(ctx.key(), key, "recv cache key/context mismatch in ack_completion");
+        }
+        ctx.invariants();
 
         if let Some(submission) = ctx.on_ack_completion(recv_worker_id) {
             let mut pending_ack_entry = entry;
             *pending_ack_entry = msg::Sender::PendingAck(submission);
             let _ = ack_sender.send(pending_ack_entry);
+        } else if ctx.ack_state.is_flushed() || ctx.ack_state.is_flushed_stale() {
+            counters.rx_ack_completion_impossible.add(1);
         }
+        ctx.invariants();
     })
 }
 
@@ -859,6 +868,7 @@ pub fn ack_burst<AckBurstRx, AckTx>(
     ack_burst_rx: AckBurstRx,
     mut ack_sender: AckTx,
     recv_worker_id: usize,
+    counters: Arc<endpoint::counters::Dispatch>,
 ) -> impl Receiver<()>
 where
     AckBurstRx: Receiver<Rc<RefCell<endpoint::recv::Context>>>,
@@ -868,9 +878,14 @@ where
         ack_burst_rx,
         move |ctx_rc: Rc<RefCell<endpoint::recv::Context>>| {
             let mut ctx = ctx_rc.borrow_mut();
+            let was_scheduled = ctx.ack_state.is_scheduled();
+            ctx.invariants();
             if let Some(submission) = ctx.encode_and_flush(recv_worker_id) {
                 let _ = ack_sender.send(Entry::new(msg::Sender::PendingAck(submission)));
+            } else if was_scheduled {
+                counters.rx_ack_state_impossible.add(1);
             }
+            ctx.invariants();
         },
     )
 }

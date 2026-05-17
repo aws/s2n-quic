@@ -123,6 +123,17 @@ impl Map {
         self.inner.iter().next().is_some()
     }
 
+    #[inline]
+    pub fn max_packet_number(&self) -> Option<VarInt> {
+        if !self.has_inflight() {
+            return None;
+        }
+
+        let max = self.inner.get_range().end().as_u64();
+        // SAFETY: packet numbers are encoded as QUIC varints.
+        Some(unsafe { VarInt::new_unchecked(max) })
+    }
+
     /// Find the oldest inflight packet number that has data frames available for probing.
     ///
     /// Returns `None` if all inflight entries are shells or if the map is empty.

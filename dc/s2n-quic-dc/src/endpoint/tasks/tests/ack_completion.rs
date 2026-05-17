@@ -17,6 +17,7 @@ use crate::{
     testing::{ext::*, sim},
     time::bach::Clock,
 };
+use bytes::Bytes;
 use s2n_quic_core::{time::Clock as _, varint::VarInt};
 use std::{cell::RefCell, rc::Rc};
 
@@ -48,7 +49,8 @@ fn setup(
 ) -> Harness {
     let (sender, output_rx) = unsync::new::<msg::Sender>();
     let input = TestReceiver::new(entries);
-    let rx = tasks::ack_completion(input, cache, sender);
+    let counters = crate::endpoint::counters::Dispatch::new(&crate::counter::Registry::default());
+    let rx = tasks::ack_completion(input, cache, sender, counters);
     async move { rx.drain_budgeted(Some(32)).await }
         .primary()
         .spawn();
@@ -146,6 +148,86 @@ fn unknown_context_silently_dropped() {
                 output_rx.recv().await.is_none(),
                 "unknown context should drop completion"
             );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// If completion arrives while context is not in a flushed state, it is ignored defensively.
+#[test]
+fn completion_from_idle_state_is_ignored() {
+    sim(|| {
+        let ctx = RecvContextBuilder::default().build();
+        let submission = ack_state::Submission {
+            // Body contents are irrelevant for this path: ack_completion only validates
+            // context state/cache lookup before deciding whether to re-submit.
+            body: Bytes::from_static(&[0]),
+            largest_recv_time: crate::time::precision::Clock::now(&Clock::default()),
+            has_ecn: false,
+            path_secret_entry: ctx.borrow().path_entry.clone(),
+            local_sender_id: ctx.borrow().dest_sender_id,
+            remote_sender_id: ctx.borrow().remote_sender_id,
+            recv_worker_id: 0,
+        };
+        let cache = cache_with_context(ctx, &submission);
+        let entry = crate::intrusive::Entry::new(msg::Sender::PendingAck(submission));
+        let Harness { mut output_rx } = setup(cache, [entry]);
+
+        async move {
+            assert!(
+                output_rx.recv().await.is_none(),
+                "completion from idle should not produce a resubmission"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// A stale completion may re-submit once; the next completion without new packets must settle.
+#[test]
+fn stale_resubmit_then_next_completion_settles() {
+    sim(|| {
+        let (ctx, submission) = setup_flushed_context();
+        {
+            let mut c = ctx.borrow_mut();
+            let clock = Clock::default();
+            let now = clock.get_time();
+            c.ack_ranges.on_packet_received(VarInt::from_u8(2), now);
+            c.ack_state.on_ack_eliciting().unwrap();
+        }
+
+        let cache = cache_with_context(ctx.clone(), &submission);
+        let first = crate::intrusive::Entry::new(msg::Sender::PendingAck(submission));
+        let Harness { mut output_rx } = setup(cache, [first]);
+
+        async move {
+            let resubmitted = output_rx
+                .recv()
+                .await
+                .expect("stale completion should re-submit exactly once");
+            assert!(
+                output_rx.recv().await.is_none(),
+                "stale completion should produce only one re-submission"
+            );
+
+            // Drive a second completion for the re-submitted ACK.
+            let cache = Rc::new(RefCell::new(recv::Cache::new(0)));
+            let key = {
+                let c = ctx.borrow();
+                recv::Key {
+                    id: *c.path_entry.id(),
+                    remote_sender_id: c.remote_sender_id,
+                }
+            };
+            cache.borrow_mut().senders.insert(key, ctx.clone());
+            let Harness { mut output_rx } = setup(cache, [resubmitted]);
+            assert!(
+                output_rx.recv().await.is_none(),
+                "second completion should not re-submit again without new data"
+            );
+            assert_eq!(ctx.borrow().ack_state, recv::AckState::Idle);
         }
         .primary()
         .spawn();

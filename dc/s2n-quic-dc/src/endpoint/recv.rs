@@ -218,6 +218,48 @@ pub(crate) struct Context {
 }
 
 impl Context {
+    #[inline]
+    pub fn key(&self) -> Key {
+        Key {
+            id: *self.path_entry.id(),
+            remote_sender_id: self.remote_sender_id,
+        }
+    }
+
+    #[inline]
+    pub fn invariants(&self) {
+        if cfg!(debug_assertions) {
+            assert_eq!(
+                self.flows.credential_id(),
+                self.path_entry.id(),
+                "flow tracker credential does not match path entry id"
+            );
+
+            if self.ack_ranges.is_empty() {
+                assert!(
+                    self.ack_ranges.largest_recv_time().is_none(),
+                    "largest_recv_time present while ack_ranges is empty"
+                );
+            } else {
+                assert!(
+                    self.ack_ranges.largest_recv_time().is_some(),
+                    "ack_ranges has packets but largest_recv_time is missing"
+                );
+            }
+
+            if self.ack_state.is_scheduled() || self.ack_state.is_flushed() || self.ack_state.is_flushed_stale() {
+                assert!(
+                    !self.ack_ranges.is_empty(),
+                    "ack_state indicates pending/inflight ACK but no ranges are present"
+                );
+                assert!(
+                    self.ack_ranges.largest_recv_time().is_some(),
+                    "ack_state indicates pending/inflight ACK but largest_recv_time is missing"
+                );
+            }
+        }
+    }
+
     pub fn new(
         path_entry: Arc<PathSecretEntry>,
         remote_sender_id: VarInt,
@@ -270,15 +312,30 @@ impl Context {
             .ack_ranges
             .encode_body(self.ecn_counts.as_option(), max_body_len)
         else {
-            let _ = self.ack_state.on_empty();
+            let transition = self.ack_state.on_empty();
+            debug_assert!(
+                transition.is_ok(),
+                "on_empty transition failed from Scheduled"
+            );
+            self.invariants();
             return None;
         };
         let Some(largest_recv_time) = self.ack_ranges.largest_recv_time() else {
-            let _ = self.ack_state.on_empty();
+            let transition = self.ack_state.on_empty();
+            debug_assert!(
+                transition.is_ok(),
+                "on_empty transition failed from Scheduled"
+            );
+            self.invariants();
             return None;
         };
 
-        let _ = self.ack_state.on_flush();
+        let transition = self.ack_state.on_flush();
+        debug_assert!(
+            transition.is_ok(),
+            "on_flush transition failed from Scheduled"
+        );
+        self.invariants();
 
         Some(ack_state::Submission {
             body,
@@ -292,12 +349,22 @@ impl Context {
     }
 
     pub fn on_ack_completion(&mut self, recv_worker_id: usize) -> Option<ack_state::Submission> {
+        if !(self.ack_state.is_flushed() || self.ack_state.is_flushed_stale()) {
+            tracing::warn!(
+                ?self.ack_state,
+                "ack completion observed while context is not in a flushed state"
+            );
+            self.invariants();
+            return None;
+        }
+        let transition = self.ack_state.on_flush_complete();
         debug_assert!(
-            self.ack_state.is_flushed() || self.ack_state.is_flushed_stale(),
-            "ack completion should only be observed for Flushed/FlushedStale states"
+            transition.is_ok(),
+            "on_flush_complete transition failed from Flushed/FlushedStale"
         );
-        let _ = self.ack_state.on_flush_complete();
-        self.encode_and_flush(recv_worker_id)
+        let submission = self.encode_and_flush(recv_worker_id);
+        self.invariants();
+        submission
     }
 }
 
@@ -349,7 +416,19 @@ impl Cache {
         };
 
         Some(match self.senders.entry(key) {
-            hash_map::Entry::Occupied(entry) => (entry.get().clone(), true),
+            hash_map::Entry::Occupied(entry) => {
+                let ctx = entry.get().clone();
+                {
+                    let ctx_ref = ctx.borrow();
+                    debug_assert_eq!(
+                        ctx_ref.key(),
+                        key,
+                        "recv cache key does not match cached context key"
+                    );
+                    ctx_ref.invariants();
+                }
+                (ctx, true)
+            }
             hash_map::Entry::Vacant(entry) => {
                 tracing::debug!(%credentials, %remote_sender_id, worker_id = self.worker_id, "opener_for_credentials");
                 let (opener, path_entry) =
@@ -365,6 +444,7 @@ impl Cache {
                     credentials.key_id,
                     clock.now(),
                 )));
+                ctx.borrow().invariants();
                 entry.insert(ctx.clone());
                 (ctx, false)
             }

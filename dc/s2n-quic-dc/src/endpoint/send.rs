@@ -433,7 +433,9 @@ impl Context {
         // Refresh the load score immediately so pick-two sees the updated backlog.
         let now: s2n_quic_core::time::Timestamp = clock.now().into();
         self.publish_sender_load_score(now);
-        self.wheel_interest(clock)
+        let interest = self.wheel_interest(clock);
+        self.invariants();
+        interest
     }
 
     /// Decode an ACK payload and process it against this context's inflight state.
@@ -480,7 +482,9 @@ impl Context {
             }
         }
 
-        self.wheel_interest(clock)
+        let interest = self.wheel_interest(clock);
+        self.invariants();
+        interest
     }
 
     /// Compute wheel interest after a state change
@@ -538,11 +542,14 @@ impl Context {
             false
         };
 
-        WheelInterest {
+        let interest = WheelInterest {
             transmission,
             pto,
             idle_timeout,
-        }
+        };
+
+        self.invariants();
+        interest
     }
 
     /// Pop the next pending frame, draining from highest priority first.
@@ -681,7 +688,9 @@ impl Context {
             // That's harmless: the assembler will send the probe on its next run.
             let _ = self.pto.probe_state.request();
         }
-        self.wheel_interest(clock)
+        let interest = self.wheel_interest(clock);
+        self.invariants();
+        interest
     }
 
     /// Verify structural invariants of the context.
@@ -696,10 +705,82 @@ impl Context {
     #[inline]
     pub fn invariants(&self) {
         if cfg!(debug_assertions) {
+            let has_pending_data = self.queues.iter().any(|q| !q.is_empty());
+            let has_pending_data_predicate = self.has_pending_data();
+            let has_pending_predicate = self.has_pending();
+            assert_eq!(
+                has_pending_data_predicate,
+                has_pending_data,
+                "has_pending_data predicate drifted from queue contents"
+            );
+            assert_eq!(
+                has_pending_predicate,
+                has_pending_data,
+                "has_pending predicate drifted from queue contents"
+            );
+
+            if self.tx_wheel.is_scheduled() {
+                assert!(
+                    self.has_pending_acks()
+                        || self.pto.probe_state.is_requested()
+                        || (self.has_pending_data() && self.can_send_pending_frames()),
+                    "tx wheel scheduled without any sendable work"
+                );
+                assert!(
+                    self.tx_wheel.target_time.is_some()
+                        || self.pto.probe_state.is_requested()
+                        || self.cca.earliest_departure_time().is_none(),
+                    "tx wheel has no target despite probe not requested and EDT present"
+                );
+            }
+
+            if self.pto_wheel.is_scheduled() {
+                assert!(
+                    self.inflight.has_inflight(),
+                    "pto wheel scheduled without inflight packets"
+                );
+                assert!(
+                    self.pto_wheel.target_time.is_some(),
+                    "pto wheel scheduled without target_time"
+                );
+            }
+
+            if self.idle_wheel.is_scheduled() {
+                assert!(
+                    self.idle_wheel.target_time.is_some(),
+                    "idle wheel scheduled without target_time"
+                );
+            }
+
+            if self.pto.probe_state.is_requested() {
+                assert!(
+                    self.inflight.has_inflight() || self.has_pending(),
+                    "probe_state is Requested but there is no inflight or pending work"
+                );
+            }
+
             if !self.inflight.has_inflight() {
                 assert!(
                     !self.pto.is_armed(),
                     "PTO is armed but there is no inflight data to probe"
+                );
+            }
+
+            if let Some(max_inflight_pn) = self.inflight.max_packet_number() {
+                assert!(
+                    self.next_packet_number.as_u64() > max_inflight_pn.as_u64(),
+                    "next_packet_number ({}) must be > max inflight pn ({})",
+                    self.next_packet_number.as_u64(),
+                    max_inflight_pn.as_u64()
+                );
+            }
+
+            let sender_slots = self.path_secret_entry.socket_sender_count();
+            if sender_slots > 0 {
+                assert!(
+                    self.sender_idx < sender_slots,
+                    "sender_idx ({}) out of range for sender_load_scores_len ({sender_slots})",
+                    self.sender_idx
                 );
             }
 
