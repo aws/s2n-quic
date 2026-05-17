@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::time::Duration;
+use s2n_quic_dc_metrics::format::{
+    histogram_count_min_max, histogram_value_at_percentile, parse_histogram_buckets,
+    parse_histogram_suffix, ParsedMetricsLine,
+};
 use std::{
     collections::HashMap,
     net::SocketAddr,
@@ -9,15 +13,11 @@ use std::{
         atomic::{AtomicI64, Ordering},
         Arc, Mutex,
     },
+    time::Instant,
 };
 use tokio::sync::mpsc;
 
-use s2n_quic_dc_metrics::format::{
-    histogram_count_min_max, histogram_value_at_percentile, parse_histogram_buckets,
-    parse_histogram_suffix, ParsedMetricsLine,
-};
 pub use s2n_quic_dc_metrics::{Summary, Unit};
-use std::time::Instant;
 
 /// A value that displays as empty when zero, suppressing it from metrics output.
 struct NonZeroDisplay(i64);
@@ -515,7 +515,7 @@ pub struct Timer(Summary);
 
 impl Timer {
     #[inline]
-    pub fn start(&self) -> TimerGuard {
+    pub fn start(&self) -> TimerGuard<'_> {
         self.start_at(Instant::now())
     }
 
@@ -524,7 +524,7 @@ impl Timer {
     /// Use this when multiple task metrics should share the exact same poll-start
     /// timestamp (for example, per-poll execution time and inter-poll latency).
     #[inline]
-    pub fn start_at(&self, start: Instant) -> TimerGuard {
+    pub fn start_at(&self, start: Instant) -> TimerGuard<'_> {
         TimerGuard {
             summary: &self.0,
             start,

@@ -7,5 +7,6 @@ mod context_resolver;
 mod frame_dispatch;
 mod helpers;
 mod idle_wheel;
+mod invalidation;
 mod socket_recv;
 mod waker_drain;

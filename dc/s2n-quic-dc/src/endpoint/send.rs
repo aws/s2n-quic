@@ -712,6 +712,26 @@ impl Context {
         }
         self.inflight.invariants();
     }
+
+    pub fn drain_frames(
+        &mut self,
+        reason: frame::FailureReason,
+        cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
+    ) {
+        let range = self.inflight.get_range();
+        for (_pn, packet) in self.inflight.remove_range(range) {
+            for mut frame in packet.frames {
+                frame.status = frame::TransmissionStatus::Failed(reason);
+                let _ = cancelled.send(frame.into());
+            }
+        }
+        for queue in &mut self.queues {
+            while let Some(mut frame) = queue.pop_front() {
+                frame.status = frame::TransmissionStatus::Failed(reason);
+                let _ = cancelled.send(frame);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -922,5 +942,20 @@ impl Cache {
 
     pub fn remove(&mut self, id: &credentials::Id) {
         self.contexts.remove(id);
+    }
+
+    pub fn invalidate(
+        &mut self,
+        id: &credentials::Id,
+        reason: frame::FailureReason,
+        cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
+    ) {
+        let Some(ctx) = self.contexts.remove(id) else {
+            tracing::trace!(%id, sender_idx = self.sender_idx, "invalidate: no context found");
+            return;
+        };
+        let mut ctx = ctx.borrow_mut();
+        tracing::debug!(%id, sender_idx = self.sender_idx, "invalidating send context");
+        ctx.drain_frames(reason, cancelled);
     }
 }

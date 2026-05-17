@@ -115,6 +115,8 @@ pub struct Budgets {
     pub waker_drain: usize,
     /// Budget for the ACK completion drain task (entries returned from assembler per poll).
     pub ack_completion: usize,
+    /// Budget for the per-worker invalidation drain task.
+    pub invalidation: usize,
 }
 
 impl Default for Budgets {
@@ -135,6 +137,7 @@ impl Default for Budgets {
             ack_burst: 256,
             waker_drain: 512,
             ack_completion: tasks::DEFAULT_DISPATCH_BUDGET,
+            invalidation: 1,
         }
     }
 }
@@ -160,6 +163,8 @@ pub struct WorkerLayout {
     /// Workers that run waker drain tasks (fire wakers offloaded from dispatch/send workers).
     /// Multiple workers are supported for sharding if the single-thread budget is exceeded.
     pub waker_drain: Vec<usize>,
+    /// Worker that runs background housekeeping tasks (e.g. invalidation validation).
+    pub background: usize,
 }
 
 /// Configuration for the stream pipeline.
@@ -343,6 +348,22 @@ where
         })
         .unzip();
 
+    // Invalidation channels: recv IO → background (raw segments) and background → all workers
+    let (invalidation_raw_tx, invalidation_raw_rx) =
+        intrusive::sync::new::<descriptor::Filled>();
+    let num_invalidation_targets = num_send_workers + layout.recv_dispatch.len();
+    let (invalidation_broadcast_txs, invalidation_worker_rxs): (Vec<_>, Vec<_>) =
+        (0..num_invalidation_targets)
+            .map(|i| {
+                let (tx, rx) = intrusive::sync::new::<crate::credentials::Id>();
+                let gauge = counter_registry
+                    .register_queue_gauge_nominal("q.invalidation", format_args!("worker.{i}"));
+                let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
+                (tx, rx)
+            })
+            .unzip();
+    let mut invalidation_worker_rxs = invalidation_worker_rxs.into_iter();
+
     let mut sender_id_to_worker: Vec<usize> = Vec::with_capacity(num_send);
 
     // Set the socket sender count on the map so path-secret entries allocate
@@ -357,6 +378,7 @@ where
             R::Clock,
             _,
             RecvRoute,
+            _,
         >,
     > = {
         let mut v = Vec::with_capacity(num_workers);
@@ -458,6 +480,7 @@ where
             frame_tx: frame_tx.clone(),
             ack_completions_tx: ack_completions_tx.clone(),
             waker_sink,
+            invalidation_rx: invalidation_worker_rxs.next().unwrap(),
         });
     }
 
@@ -500,6 +523,7 @@ where
             clock: clock.clone(),
             route: ack_route,
             waker_sink,
+            invalidation_rx: invalidation_worker_rxs.next().unwrap(),
         });
     }
 
@@ -511,8 +535,11 @@ where
         .zip(layout.recv_io.iter())
         .enumerate()
     {
-        let router =
-            worker::FanOutRouter::<_, RecvRoute>::new(dispatch_txs.clone(), &counter_registry);
+        let router = worker::FanOutRouter::<_, RecvRoute, _>::new(
+            dispatch_txs.clone(),
+            invalidation_raw_tx.clone(),
+            &counter_registry,
+        );
         let socket = socket::MeteredRecv::new(
             socket,
             counter_registry.register_nominal("socket.rx.ops", format_args!("recv.{idx}")),
@@ -527,6 +554,13 @@ where
             router,
         });
     }
+
+    // Background worker — invalidation validation + future housekeeping.
+    workers[layout.background].background = Some(BackgroundParts {
+        raw_rx: invalidation_raw_rx,
+        path_secret_map: path_secret_map.clone(),
+        broadcast_txs: invalidation_broadcast_txs,
+    });
 
     // Spawn all workers ---------------------------------------------------------
     for worker in workers {
@@ -573,6 +607,7 @@ struct SendWorkerParts {
         >,
     >,
     waker_sink: waker::Sink,
+    invalidation_rx: sync_queue::Receiver<crate::credentials::Id>,
 }
 
 /// Per-socket ingredients for the socket send task.
@@ -593,11 +628,11 @@ type PacketSender = crate::socket::channel::GaugedSender<
 type PacketReceiver = sync_queue::Receiver<packet::datagram::decoder::Packet<descriptor::Filled>>;
 
 /// Ingredients for a recv IO worker (socket read + decode + fan-out).
-struct RecvSocketParts<Socket, Route> {
+struct RecvSocketParts<Socket, Route, Inv> {
     idx: usize,
     socket: Socket,
     recv_pool: crate::socket::pool::Pool,
-    router: worker::FanOutRouter<PacketSender, Route>,
+    router: worker::FanOutRouter<PacketSender, Route, Inv>,
 }
 
 /// Ingredients for a recv dispatch worker (decrypt + dedup + frame dispatch).
@@ -616,11 +651,24 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     clock: Clk,
     route: Route,
     waker_sink: waker::Sink,
+    invalidation_rx: sync_queue::Receiver<crate::credentials::Id>,
 }
+
+/// Ingredients for the background worker (invalidation validation + future housekeeping).
+struct BackgroundParts {
+    raw_rx: sync_queue::Receiver<descriptor::Filled>,
+    path_secret_map: crate::path::secret::Map,
+    broadcast_txs: Vec<InvalidationSender>,
+}
+
+type InvalidationSender = crate::socket::channel::GaugedSender<
+    sync_queue::Sender<crate::credentials::Id>,
+    Entry<crate::credentials::Id>,
+>;
 
 // ── Worker ────────────────────────────────────────────────────────────────
 
-struct Worker<SendSocket, RecvSocket, Clk, AckSnd, Route> {
+struct Worker<SendSocket, RecvSocket, Clk, AckSnd, Route, Inv> {
     id: usize,
     budgets: Budgets,
     total_sender_ids: usize,
@@ -632,20 +680,23 @@ struct Worker<SendSocket, RecvSocket, Clk, AckSnd, Route> {
     /// Send sockets assigned to this worker.
     send_sockets: Vec<SendSocketParts<SendSocket, Clk>>,
     /// Recv IO: socket read + decode + fan-out (at most one per worker).
-    recv_socket: Option<RecvSocketParts<RecvSocket, Route>>,
+    recv_socket: Option<RecvSocketParts<RecvSocket, Route, Inv>>,
     /// Recv dispatch: decrypt + dedup + frame routing (at most one per worker).
     recv_dispatch: Option<RecvDispatchParts<Clk, AckSnd, Route>>,
     /// Waker drain task assigned to this worker.
     waker_drain: Option<waker::Drain>,
+    /// Background worker parts (invalidation validation).
+    background: Option<BackgroundParts>,
 }
 
-impl<SendSocket, RecvSocket, Clk, AckSnd, Route> Worker<SendSocket, RecvSocket, Clk, AckSnd, Route>
+impl<SendSocket, RecvSocket, Clk, AckSnd, Route, Inv> Worker<SendSocket, RecvSocket, Clk, AckSnd, Route, Inv>
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
     Clk: time::Clock + precision::Clock + Clone + Send + 'static,
     AckSnd: UnboundedSender<Entry<msg::Sender>> + Clone + Send + 'static,
     Route: routing::SenderRoute,
+    Inv: UnboundedSender<Entry<descriptor::Filled>> + Send + 'static,
 {
     #[inline]
     fn new(
@@ -667,6 +718,7 @@ where
             recv_socket: None,
             recv_dispatch: None,
             waker_drain: None,
+            background: None,
         }
     }
 
@@ -686,6 +738,7 @@ where
             recv_socket,
             recv_dispatch,
             waker_drain,
+            background,
         } = self;
 
         runtime.spawn_local(id, move |mut local| {
@@ -711,6 +764,7 @@ where
                     sw.idx,
                     batch_rx,
                     ack_rx,
+                    sw.invalidation_rx,
                     total_sender_ids,
                     send_sockets,
                     clock.clone(),
@@ -808,10 +862,15 @@ where
                 );
                 let ack_completion_rx =
                     crate::counter::GaugedReceiver::new(rd.ack_completion_rx, ack_completion_gauge);
-                let rx = tasks::ack_completion(ack_completion_rx, recv_cache, rd.ack_sender);
+                let rx = tasks::ack_completion(ack_completion_rx, recv_cache.clone(), rd.ack_sender);
                 let task_counter =
                     counter_registry.register_nominal_task("task.ack_completion", &variant);
                 local.spawn(rx.drain_budgeted_metered(Some(budgets.ack_completion), task_counter));
+
+                let rx = tasks::recv_invalidation(rd.invalidation_rx, recv_cache);
+                let task_counter =
+                    counter_registry.register_nominal_task("task.invalidation", &variant);
+                local.spawn(rx.drain_budgeted_metered(Some(budgets.invalidation), task_counter));
             }
 
             if let Some(drain) = waker_drain {
@@ -820,6 +879,17 @@ where
                 let task_counter =
                     counter_registry.register_nominal_task("task.waker_drain", &variant);
                 local.spawn(rx.drain_budgeted_metered(Some(budgets.waker_drain), task_counter));
+            }
+
+            if let Some(bg) = background {
+                let rx = tasks::invalidation_validator(
+                    bg.raw_rx,
+                    bg.path_secret_map,
+                    bg.broadcast_txs,
+                );
+                let task_counter =
+                    counter_registry.register_nominal_task("task.invalidation_validator", "background");
+                local.spawn(rx.drain_budgeted_metered(None, task_counter));
             }
         });
     }

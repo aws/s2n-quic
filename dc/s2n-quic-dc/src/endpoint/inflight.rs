@@ -98,6 +98,11 @@ impl Map {
         self.inner.insert(pn, entry);
     }
 
+    #[inline]
+    pub fn get_range(&self) -> PacketNumberRange {
+        self.inner.get_range()
+    }
+
     /// Remove a range of ACKed packet numbers.
     ///
     /// Returns an iterator of (PacketNumber, Packet) for further processing

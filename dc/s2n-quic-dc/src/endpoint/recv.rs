@@ -374,6 +374,13 @@ impl Cache {
     pub fn remove(&mut self, key: &Key) {
         self.senders.remove(key);
     }
+
+    pub fn invalidate_by_id(&mut self, id: &credentials::Id) {
+        let before = self.senders.len();
+        self.senders.retain(|key, _| key.id != *id);
+        let removed = before - self.senders.len();
+        tracing::debug!(%id, removed, worker_id = self.worker_id, "invalidating recv contexts");
+    }
 }
 
 crate::context_wheel_adapter!(IdleWheelAdapter, Context, idle_wheel);

@@ -170,6 +170,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     worker_id: usize,
     batch_rx: impl Receiver<Entry<FrameBatch>> + 'static,
     ack_rx: impl Receiver<Entry<msg::Sender>> + 'static,
+    invalidation_rx: impl Receiver<Entry<crate::credentials::Id>> + 'static,
     total_sender_ids: usize,
     send_sockets: Vec<endpoint::SendSocketParts<Socket, Clk>>,
     clock: Clk,
@@ -238,6 +239,8 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     let q_ack_to_completion =
         counter_registry.register_queue_gauge_nominal("q.ack_to_completion", &variant);
     let (completed_tx, completed_rx) = unsync::new::<Frame>();
+    let invalidation_completed_tx =
+        crate::counter::GaugedSender::new(completed_tx.clone(), q_ack_to_completion.clone());
     let q_ack_to_cancelled =
         counter_registry.register_queue_gauge_nominal("q.ack_to_cancelled", &variant);
     let (cancelled_tx, cancelled_rx) = unsync::new::<Frame>();
@@ -316,7 +319,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
 
     // Task 4: Cancelled frame drain — drops frames whose writer is already gone.
     spawner.spawn({
-        let rx = crate::counter::GaugedReceiver::new(cancelled_rx, q_ack_to_cancelled);
+        let rx = crate::counter::GaugedReceiver::new(cancelled_rx, q_ack_to_cancelled.clone());
         let rx = cancelled_drain(rx);
         let variant = format!("send.{worker_id}");
         let task_counter = counter_registry.register_nominal_task("task.cancelled", &variant);
@@ -449,6 +452,16 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             let task_counter = counter_registry.register_nominal_task("task.assembler", &variant);
             rx.drain_budgeted_metered(Some(budgets.assembler), task_counter)
         });
+    }
+
+    // Task: invalidation drain — purge send caches on path secret revocation.
+    // Routes to completed_tx (not cancelled) so CompletionDispatcher wakes streams.
+    {
+        let rx = send_invalidation(invalidation_rx, send_caches, invalidation_completed_tx);
+        let variant = format!("send.{worker_id}");
+        let task_counter =
+            counter_registry.register_nominal_task("task.invalidation", &variant);
+        spawner.spawn(rx.drain_budgeted_metered(Some(budgets.invalidation), task_counter));
     }
 }
 
@@ -868,6 +881,8 @@ fn on_packet_dispatch_error(counters: &endpoint::counters::Dispatch, err: dispat
             credentials,
             control_out,
         } => {
+            // TODO: send `control_out` (UnknownPathSecret response) back to the peer's
+            // control port so they know to invalidate their send state.
             counters.rx_process_err_peer_lookup.add(1);
             tracing::warn!(
                 ?credentials,
@@ -952,4 +967,73 @@ where
     }
 
     fn on_consumed(&mut self, _bytes: u64) {}
+}
+
+// ── Invalidation tasks ───────────────────────────────────────────────────
+
+pub fn send_invalidation<R>(
+    invalidation_rx: R,
+    send_caches: Vec<Rc<RefCell<send::Cache>>>,
+    mut cancelled_tx: impl UnboundedSender<Entry<Frame>> + 'static,
+) -> impl Receiver<()>
+where
+    R: Receiver<Entry<crate::credentials::Id>>,
+{
+    Map::new(invalidation_rx, move |entry: Entry<crate::credentials::Id>| {
+        let id = *entry;
+        for cache in &send_caches {
+            cache
+                .borrow_mut()
+                .invalidate(&id, frame::FailureReason::UnknownPathSecret, &mut cancelled_tx);
+        }
+    })
+}
+
+pub fn recv_invalidation<R>(
+    invalidation_rx: R,
+    recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
+) -> impl Receiver<()>
+where
+    R: Receiver<Entry<crate::credentials::Id>>,
+{
+    Map::new(invalidation_rx, move |entry: Entry<crate::credentials::Id>| {
+        let id = *entry;
+        recv_cache.borrow_mut().invalidate_by_id(&id);
+    })
+}
+
+pub fn invalidation_validator<R, Tx>(
+    raw_rx: R,
+    path_secret_map: crate::path::secret::Map,
+    mut broadcast_txs: Vec<Tx>,
+) -> impl Receiver<()>
+where
+    R: Receiver<Entry<descriptor::Filled>>,
+    Tx: UnboundedSender<Entry<crate::credentials::Id>>,
+{
+    use crate::packet::secret_control;
+    use s2n_codec::DecoderBufferMut;
+
+    Map::new(raw_rx, move |mut entry: Entry<descriptor::Filled>| {
+        let remote_address = entry.remote_address().get();
+        let peer = std::net::SocketAddr::from(remote_address);
+        let buf = entry.payload_mut();
+        let decoder = DecoderBufferMut::new(buf);
+        let Ok((packet, _)) = secret_control::Packet::decode(decoder) else {
+            return;
+        };
+        let secret_control::Packet::UnknownPathSecret(packet) = packet else {
+            return;
+        };
+
+        let Some(validated) = path_secret_map.handle_unknown_path_secret_packet(&packet, &peer)
+        else {
+            return;
+        };
+
+        let local_id = validated.credential_id.for_peer();
+        for tx in &mut broadcast_txs {
+            let _ = tx.send(Entry::from(local_id));
+        }
+    })
 }

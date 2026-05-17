@@ -4,12 +4,14 @@
 //! Worker infrastructure for distributing packets across send/recv sockets.
 
 use crate::{
+    credentials,
     counter::{Counter, Registry},
     intrusive::Entry,
     packet::{self, datagram::RoutingInfo},
     socket::{channel, pool::descriptor, recv::router::Router},
     stream::endpoint::routing,
 };
+use s2n_quic_core::varint::VarInt;
 
 // ── Packet Router ──────────────────────────────────────────────────────────
 
@@ -18,17 +20,18 @@ use crate::{
 ///
 /// This ensures that all packets from the same peer always land in the same
 /// dispatch task, maintaining coherent ACK space and packet-number deduplication.
-pub(crate) struct FanOutRouter<D, Route> {
+pub(crate) struct FanOutRouter<D, Route, Inv> {
     txs: Vec<D>,
     route: Route,
+    invalidation_tx: Inv,
     decode_error_counter: Counter,
     routed_counter: Counter,
     route_send_err_counter: Counter,
     per_worker_routed: Vec<Counter>,
 }
 
-impl<D, Route: routing::SenderRoute> FanOutRouter<D, Route> {
-    pub fn new(txs: Vec<D>, counters: &Registry) -> Self {
+impl<D, Route: routing::SenderRoute, Inv> FanOutRouter<D, Route, Inv> {
+    pub fn new(txs: Vec<D>, invalidation_tx: Inv, counters: &Registry) -> Self {
         let route = Route::new(txs.len());
         let per_worker_routed = (0..txs.len())
             .map(|i| counters.register_nominal("router.routed", format_args!("recv.{i}")))
@@ -36,6 +39,7 @@ impl<D, Route: routing::SenderRoute> FanOutRouter<D, Route> {
         Self {
             txs,
             route,
+            invalidation_tx,
             decode_error_counter: counters.register("!router.decode_err"),
             routed_counter: counters.register("router.routed"),
             route_send_err_counter: counters.register("!router.send_err"),
@@ -44,10 +48,11 @@ impl<D, Route: routing::SenderRoute> FanOutRouter<D, Route> {
     }
 }
 
-impl<D, Route> Router for FanOutRouter<D, Route>
+impl<D, Route, Inv> Router for FanOutRouter<D, Route, Inv>
 where
     D: channel::UnboundedSender<Entry<packet::datagram::decoder::Packet<descriptor::Filled>>>,
     Route: routing::SenderRoute,
+    Inv: channel::UnboundedSender<Entry<descriptor::Filled>>,
 {
     fn is_open(&self) -> bool {
         true
@@ -79,6 +84,15 @@ where
         _ecn: s2n_quic_core::inet::ExplicitCongestionNotification,
         _packet: packet::datagram::decoder::Packet<&mut [u8]>,
     ) {
+    }
+
+    fn dispatch_unknown_path_secret_packet(
+        &mut self,
+        _queue_id: Option<VarInt>,
+        _credentials: credentials::Id,
+        segment: descriptor::Filled,
+    ) {
+        let _ = self.invalidation_tx.send(segment.into());
     }
 
     fn on_decode_error(

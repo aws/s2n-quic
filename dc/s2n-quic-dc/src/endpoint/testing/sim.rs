@@ -260,6 +260,7 @@ pub fn setup_sim_endpoint(
         recv_io: vec![0],
         recv_dispatch: vec![0],
         waker_drain: vec![0],
+        background: 0,
     };
 
     let runtime = crate::runtime::bach::Handle::new(1);

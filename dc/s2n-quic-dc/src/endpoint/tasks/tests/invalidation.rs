@@ -1,0 +1,201 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+use super::helpers::{test_entry, CollectingSender, RecvContextBuilder, TestReceiverExt};
+use crate::{
+    credentials,
+    endpoint::{
+        frame::{self, Frame},
+        recv, send, tasks,
+    },
+    intrusive::Entry,
+    testing::{ext::*, sim},
+    time::{bach::Clock, precision},
+};
+use s2n_quic_core::varint::VarInt;
+use std::{cell::RefCell, rc::Rc, sync::Arc};
+
+// ── Send setup ──────────────────────────────────────────────────────────────
+
+struct SendSetup {
+    send_caches: Vec<Rc<RefCell<send::Cache>>>,
+    pse: Arc<crate::path::secret::map::Entry>,
+}
+
+fn setup_send() -> SendSetup {
+    let registry = crate::counter::Registry::default();
+    let clock = Clock::default();
+    let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(&registry, 0)))];
+
+    let pse = test_entry();
+    pse.touch_activity(precision::Clock::now(&clock));
+
+    let _ctx = send_caches[0]
+        .borrow_mut()
+        .get_or_insert(&pse, &clock)
+        .unwrap();
+
+    SendSetup { send_caches, pse }
+}
+
+fn test_frame(pse: &Arc<crate::path::secret::map::Entry>) -> Entry<Frame> {
+    Entry::new(Frame {
+        header: frame::Header::FlowData {
+            queue_pair: crate::packet::datagram::QueuePair {
+                source_queue_id: VarInt::from_u8(1),
+                dest_queue_id: VarInt::from_u8(2),
+            },
+            stream_id: VarInt::from_u8(1),
+            offset: VarInt::ZERO,
+            is_fin: false,
+        },
+        source_sender_id: VarInt::from_u8(0),
+        payload: Default::default(),
+        path_secret_entry: pse.clone(),
+        completion: None,
+        status: frame::TransmissionStatus::Pending,
+        ttl: 3,
+        transmission_time: None,
+    })
+}
+
+// ── Recv setup ──────────────────────────────────────────────────────────────
+
+fn setup_recv() -> (Rc<RefCell<recv::Cache>>, credentials::Id) {
+    let recv_cache = Rc::new(RefCell::new(recv::Cache::new(0)));
+
+    let ctx_a = RecvContextBuilder::default()
+        .remote_sender_id(VarInt::from_u8(0))
+        .build();
+    let ctx_b = RecvContextBuilder::default()
+        .remote_sender_id(VarInt::from_u8(1))
+        .build();
+
+    let id = *ctx_a.borrow().path_entry.id();
+    let key_a = recv::Key {
+        id,
+        remote_sender_id: VarInt::from_u8(0),
+    };
+    let key_b = recv::Key {
+        id,
+        remote_sender_id: VarInt::from_u8(1),
+    };
+
+    recv_cache.borrow_mut().senders.insert(key_a, ctx_a);
+    recv_cache.borrow_mut().senders.insert(key_b, ctx_b);
+
+    (recv_cache, id)
+}
+
+// ── Send invalidation tests ─────────────────────────────────────────────────
+
+#[test]
+fn send_invalidation_purges_cache_and_emits_failed_frames() {
+    sim(|| {
+        let SendSetup { send_caches, pse } = setup_send();
+
+        {
+            let ctx = send_caches[0].borrow().get(pse.id()).unwrap();
+            ctx.borrow_mut().queues[1].push_back(test_frame(&pse));
+        }
+
+        let id = *pse.id();
+        let (cancelled_tx, collected) = CollectingSender::<Entry<Frame>>::new();
+
+        let invalidation_rx = super::helpers::TestReceiver::new(vec![Entry::from(id)]);
+        let mut rx = tasks::send_invalidation(invalidation_rx, send_caches.clone(), cancelled_tx);
+
+        async move {
+            rx.recv().await;
+
+            assert_eq!(
+                send_caches[0].borrow().context_count(),
+                0,
+                "cache should be empty after invalidation"
+            );
+
+            let frames = collected.borrow();
+            assert_eq!(frames.len(), 1, "one frame should have been emitted");
+            assert_eq!(
+                frames[0].status,
+                frame::TransmissionStatus::Failed(frame::FailureReason::UnknownPathSecret),
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+#[test]
+fn send_invalidation_noop_for_unknown_id() {
+    sim(|| {
+        let SendSetup { send_caches, .. } = setup_send();
+
+        let fake_id = credentials::Id::from([0xAA; 16]);
+        let (cancelled_tx, collected) = CollectingSender::<Entry<Frame>>::new();
+
+        let invalidation_rx = super::helpers::TestReceiver::new(vec![Entry::from(fake_id)]);
+        let mut rx = tasks::send_invalidation(invalidation_rx, send_caches.clone(), cancelled_tx);
+
+        async move {
+            rx.recv().await;
+
+            assert_eq!(
+                send_caches[0].borrow().context_count(),
+                1,
+                "unrelated context should remain"
+            );
+            assert!(collected.borrow().is_empty(), "no frames should be emitted");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+// ── Recv invalidation tests ─────────────────────────────────────────────────
+
+#[test]
+fn recv_invalidation_removes_matching_entries() {
+    sim(|| {
+        let (recv_cache, id) = setup_recv();
+        assert_eq!(recv_cache.borrow().senders.len(), 2);
+
+        let invalidation_rx = super::helpers::TestReceiver::new(vec![Entry::from(id)]);
+        let mut rx = tasks::recv_invalidation(invalidation_rx, recv_cache.clone());
+
+        async move {
+            rx.recv().await;
+
+            assert_eq!(
+                recv_cache.borrow().senders.len(),
+                0,
+                "all entries with the invalidated ID should be removed"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+#[test]
+fn recv_invalidation_preserves_unrelated_entries() {
+    sim(|| {
+        let (recv_cache, _id) = setup_recv();
+
+        let fake_id = credentials::Id::from([0xBB; 16]);
+        let invalidation_rx = super::helpers::TestReceiver::new(vec![Entry::from(fake_id)]);
+        let mut rx = tasks::recv_invalidation(invalidation_rx, recv_cache.clone());
+
+        async move {
+            rx.recv().await;
+
+            assert_eq!(
+                recv_cache.borrow().senders.len(),
+                2,
+                "unrelated entries should be preserved"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
