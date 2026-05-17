@@ -13,13 +13,13 @@ use super::helpers::test_waker;
 use crate::{
     socket::channel::{ReceiverExt as _, UnboundedSender as _},
     stream::endpoint::{tasks, waker},
-    testing::ext::*,
+    testing::{ext::*, sim},
 };
 
 /// A single waker pushed to one slot is invoked exactly once.
 #[test]
 fn single_waker_fires() {
-    crate::testing::sim(|| {
+    sim(|| {
         let (mut sinks, mut drains) = waker::new(1, 1);
         let drain = drains.pop().unwrap();
 
@@ -43,7 +43,7 @@ fn single_waker_fires() {
 /// Verifies the drain doesn't stop after the first waker per slot.
 #[test]
 fn batched_wakers_same_slot() {
-    crate::testing::sim(|| {
+    sim(|| {
         let (mut sinks, mut drains) = waker::new(1, 1);
         let drain = drains.pop().unwrap();
 
@@ -69,7 +69,7 @@ fn batched_wakers_same_slot() {
 /// Exercises the round-robin polling across slots.
 #[test]
 fn multiple_slots_all_fire() {
-    crate::testing::sim(|| {
+    sim(|| {
         let (mut sinks, mut drains) = waker::new(3, 1);
         let drain = drains.pop().unwrap();
 
@@ -95,7 +95,7 @@ fn multiple_slots_all_fire() {
 /// Producers can push new wakers at any time and they will eventually fire.
 #[test]
 fn wakers_pushed_after_initial_drain_still_fire() {
-    crate::testing::sim(|| {
+    sim(|| {
         let (mut sinks, mut drains) = waker::new(1, 1);
         let drain = drains.pop().unwrap();
 
@@ -126,7 +126,7 @@ fn wakers_pushed_after_initial_drain_still_fire() {
 /// This ensures graceful endpoint shutdown — no leaked tasks.
 #[test]
 fn shutdown_after_all_sinks_dropped() {
-    crate::testing::sim(|| {
+    sim(|| {
         let (mut sinks, mut drains) = waker::new(2, 1);
         let drain = drains.pop().unwrap();
 

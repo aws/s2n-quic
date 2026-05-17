@@ -47,8 +47,11 @@ const BITSET_WORDS: usize = SLOTS_PER_LEVEL / 64;
 /// With 256 slots/level at 1µs base: covers 256^4 µs ≈ 71.6 minutes.
 const LEVELS: usize = 4;
 
-/// Default base tick granularity in microseconds.
-pub const DEFAULT_GRANULARITY_US: u64 = 1;
+/// Base tick granularity of 1 microsecond — used for latency-sensitive wheels (TX pacing, PTO).
+pub const MICROSECOND_GRANULARITY: u64 = 1;
+
+/// Base tick granularity of 1 second — used for coarse background wheels (idle timeout).
+pub const SECOND_GRANULARITY: u64 = 1_000_000;
 
 // ── Conversion utilities ───────────────────────────────────────────────────
 
@@ -118,7 +121,7 @@ impl<T: SingleTimer> WheelAdapter for crate::intrusive::EntryAdapter<T> {
 /// The wheel receives batches of entries from an inner `Receiver<List<A>>`,
 /// inserts them into time slots based on their target time, and yields
 /// batches of due entries. It manages its own timer to wake when entries are due.
-pub struct Wheel<A, Timer, R, const GRANULARITY_US: u64 = DEFAULT_GRANULARITY_US>
+pub struct Wheel<A, Timer, R, const GRANULARITY_US: u64 = MICROSECOND_GRANULARITY>
 where
     A: Adapter,
 {
@@ -509,4 +512,79 @@ impl<A: Adapter> Level<A> {
 
         None
     }
+}
+
+// ── Shared wheel link infrastructure ──────────────────────────────────────
+
+/// Intrusive links + target time for a single wheel membership.
+///
+/// Each context may have multiple of these — one per wheel. The target_time is set before
+/// insertion and read by the wheel to determine the correct slot. Once the wheel
+/// pops an entry, target_time can be stale — the handler decides whether to act
+/// or reinsert with a new target.
+pub struct WheelLinks {
+    pub links: crate::intrusive::Links,
+    pub target_time: Option<precision::Timestamp>,
+}
+
+impl WheelLinks {
+    pub const fn new() -> Self {
+        Self {
+            links: crate::intrusive::Links::new(),
+            target_time: None,
+        }
+    }
+
+    #[inline]
+    pub fn is_scheduled(&self) -> bool {
+        self.links.is_linked()
+    }
+}
+
+#[macro_export]
+macro_rules! context_wheel_adapter {
+    ($adapter:ident, $context:ty, $field:ident) => {
+        pub(crate) struct $adapter;
+
+        impl $crate::intrusive::Adapter for $adapter {
+            type Value = ::core::cell::RefCell<$context>;
+            type Target = ::core::cell::RefCell<$context>;
+            type Pointer = ::std::rc::Rc<::core::cell::RefCell<$context>>;
+
+            unsafe fn links(value: *mut Self::Value) -> *mut $crate::intrusive::Links {
+                core::ptr::addr_of_mut!((*(*value).as_ptr()).$field.links)
+            }
+
+            unsafe fn target(value: *mut Self::Value) -> *mut Self::Target {
+                value
+            }
+
+            fn as_ptr(ptr: &Self::Pointer) -> *const Self::Value {
+                ::std::rc::Rc::as_ptr(ptr)
+            }
+
+            fn into_raw(ptr: Self::Pointer) -> *mut Self::Value {
+                ::std::rc::Rc::into_raw(ptr) as *mut Self::Value
+            }
+
+            unsafe fn from_raw(ptr: *mut Self::Value) -> Self::Pointer {
+                ::std::rc::Rc::from_raw(ptr)
+            }
+        }
+
+        impl $crate::time::wheel::WheelAdapter for $adapter {
+            unsafe fn target_time(
+                value: *const Self::Value,
+            ) -> Option<$crate::time::precision::Timestamp> {
+                (*value).borrow().$field.target_time
+            }
+
+            unsafe fn set_target_time(
+                value: *mut Self::Value,
+                time: $crate::time::precision::Timestamp,
+            ) {
+                (*value).borrow_mut().$field.target_time = Some(time);
+            }
+        }
+    };
 }

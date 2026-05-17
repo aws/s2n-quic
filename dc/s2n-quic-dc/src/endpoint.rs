@@ -126,7 +126,7 @@ impl Default for Budgets {
             ack_processor: 256,
             tx_wheel: tasks::DEFAULT_DISPATCH_BUDGET,
             pto_wheel: tasks::DEFAULT_DISPATCH_BUDGET,
-            idle_wheel: tasks::DEFAULT_DISPATCH_BUDGET,
+            idle_wheel: 1,
             assembler: tasks::DEFAULT_DISPATCH_BUDGET,
             completion_acked: 128,
             completion_cancelled: tasks::DEFAULT_DISPATCH_BUDGET,
@@ -176,10 +176,6 @@ pub struct Config {
     pub gso: s2n_quic_platform::features::Gso,
     /// Server-side acceptor registry.
     pub acceptor_registry: acceptor::Registry<PendingValidation>,
-    /// Peer idle timeout — controls when [`recv::Cache`] entries expire.
-    ///
-    /// [`recv::Cache`]: recv::Cache
-    pub idle_timeout: core::time::Duration,
     /// Overall bandwidth cap applied by the frame-dispatch pacing stage.
     ///
     /// The [`Paced`] combinator in the dispatch pipeline enforces this rate across all
@@ -274,7 +270,6 @@ where
         path_secret_map,
         gso,
         acceptor_registry,
-        idle_timeout,
         overall_send_rate,
         per_socket_send_rate,
         budgets,
@@ -368,7 +363,6 @@ where
         v.extend((0..num_workers).map(|id| {
             Worker::new(
                 id,
-                idle_timeout,
                 budgets,
                 num_send,
                 clock.clone(),
@@ -628,7 +622,6 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
 
 struct Worker<SendSocket, RecvSocket, Clk, AckSnd, Route> {
     id: usize,
-    idle_timeout: core::time::Duration,
     budgets: Budgets,
     total_sender_ids: usize,
     clock: Clk,
@@ -657,7 +650,6 @@ where
     #[inline]
     fn new(
         id: usize,
-        idle_timeout: core::time::Duration,
         budgets: Budgets,
         total_sender_ids: usize,
         clock: Clk,
@@ -665,7 +657,6 @@ where
     ) -> Self {
         Self {
             id,
-            idle_timeout,
             budgets,
             total_sender_ids,
             clock,
@@ -685,7 +676,6 @@ where
 
         let Self {
             id,
-            idle_timeout,
             budgets,
             total_sender_ids,
             clock,
@@ -747,16 +737,49 @@ where
                     crate::counter::GaugedQueueReceiver::new(rd.packet_rx, rd.packet_gauge);
                 let recv_dispatch_idx = rd.recv_dispatch_idx;
                 let recv_cache = std::rc::Rc::new(std::cell::RefCell::new(
-                    crate::stream::endpoint::recv::Cache::new(idle_timeout, recv_dispatch_idx),
+                    crate::stream::endpoint::recv::Cache::new(recv_dispatch_idx),
                 ));
                 let (ack_burst_tx, ack_burst_rx) =
                     crate::socket::channel::intrusive::unsync::new_with_adapter::<
                         crate::stream::endpoint::recv::AckBurstAdapter,
                     >();
+
+                // Recv idle wheel — expires inactive recv contexts.
+                let variant = format!("recv.{recv_dispatch_idx}");
+                let q_recv_idle_wheel = counter_registry
+                    .register_queue_gauge_nominal("q.recv_idle_wheel", &variant);
+                let (recv_idle_wheel_tx, recv_idle_wheel_rx) =
+                    crate::socket::channel::intrusive::unsync::new_with_adapter::<
+                        crate::stream::endpoint::recv::IdleWheelAdapter,
+                    >();
+                {
+                    let recv_cache = recv_cache.clone();
+                    let clock = rd.clock.clone();
+                    let idle_expired = counter_registry.register("idle.recv.expired");
+                    let idle_rescheduled = counter_registry.register("idle.recv.rescheduled");
+                    let idle_lifetime =
+                        counter_registry.register_nominal_timer("idle.recv.lifetime", &variant);
+                    let task_counter = counter_registry
+                        .register_nominal_task("task.recv_idle_wheel", &variant);
+                    local.spawn(tasks::recv_idle_wheel_drain(
+                        recv_idle_wheel_rx,
+                        recv_idle_wheel_tx.clone(),
+                        clock,
+                        q_recv_idle_wheel,
+                        recv_cache,
+                        idle_expired,
+                        idle_rescheduled,
+                        idle_lifetime,
+                        budgets.idle_wheel,
+                        task_counter,
+                    ));
+                }
+
                 let rx = tasks::packet_dispatch(
                     packet_rx,
                     recv_cache.clone(),
                     ack_burst_tx,
+                    recv_idle_wheel_tx,
                     rd.path_secret_map,
                     rd.acceptor_registry,
                     rd.frame_tx,

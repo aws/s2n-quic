@@ -14,7 +14,7 @@ use crate::{
     intrusive::Entry,
     socket::channel::ReceiverExt as _,
     stream::endpoint::{msg, tasks},
-    testing::ext::*,
+    testing::{ext::*, sim},
     time::bach::Clock,
 };
 use s2n_quic_core::{time::Clock as _, varint::VarInt};
@@ -54,7 +54,7 @@ fn scheduled_context() -> Rc<RefCell<crate::stream::endpoint::recv::Context>> {
 /// A context with ack_state=Scheduled and recorded ACK ranges produces a PendingAck submission.
 #[test]
 fn context_with_pending_acks_emits_submission() {
-    crate::testing::sim(|| {
+    sim(|| {
         let harness = setup([scheduled_context()]);
 
         async move {
@@ -71,7 +71,7 @@ fn context_with_pending_acks_emits_submission() {
 /// A context in Idle state (no ack-eliciting packets received) produces no output.
 #[test]
 fn context_with_no_pending_acks_emits_nothing() {
-    crate::testing::sim(|| {
+    sim(|| {
         let ctx = RecvContextBuilder::default().build();
         let harness = setup([ctx]);
 
@@ -88,7 +88,7 @@ fn context_with_no_pending_acks_emits_nothing() {
 /// produce N submissions.
 #[test]
 fn multiple_contexts_each_produce_submission() {
-    crate::testing::sim(|| {
+    sim(|| {
         let contexts: Vec<_> = (0..3)
             .map(|i| {
                 let ctx = RecvContextBuilder::default()
@@ -120,7 +120,7 @@ fn multiple_contexts_each_produce_submission() {
 /// does not produce a second submission. The at-most-one-in-flight invariant is preserved.
 #[test]
 fn flushed_context_does_not_double_submit() {
-    crate::testing::sim(|| {
+    sim(|| {
         let ctx = RecvContextBuilder::default().build();
         {
             let mut c = ctx.borrow_mut();

@@ -444,6 +444,7 @@ fn make_context_with_sender_slots(
         registry.register_queue_gauge("test.ack"),
         registry.register_queue_gauge("test.pending"),
         0,
+        &crate::time::bach::Clock::default(),
     )
     .expect("Context::new should succeed with peer_data_addrs populated");
     (ctx, entry)

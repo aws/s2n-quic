@@ -324,7 +324,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     });
 
     // Task 5: TX wheel drain — routes expired contexts to per-socket assembler channels.
-    spawner.spawn(wheel_drain(
+    spawner.spawn(wheel_drain::<_, _, _, { crate::time::wheel::MICROSECOND_GRANULARITY }>(
         tx_wheel_rx,
         clock.timer(),
         q_resolver_to_tx_wheel.clone(),
@@ -384,14 +384,16 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     });
 
     // Task 7: Idle wheel drain — reclaims resources for idle connections.
-    spawner.spawn(wheel_drain(
+    spawner.spawn(send_idle_wheel_drain(
         idle_wheel_rx,
-        clock.timer(),
+        idle_wheel_tx.clone(),
+        clock.clone(),
         q_resolver_to_idle_wheel.clone(),
-        |context: Rc<RefCell<send::Context>>| {
-            // TODO reclaim idle context resources
-            drop(context);
-        },
+        send_caches.clone(),
+        sender_idx_to_local.clone(),
+        counter_registry.register("idle.send.expired"),
+        counter_registry.register("idle.send.rescheduled"),
+        counter_registry.register_nominal_timer("idle.send.lifetime", &variant),
         budgets.idle_wheel,
         counter_registry.register_nominal_task("task.idle_wheel", format!("send.{worker_id}")),
     ));
@@ -505,7 +507,7 @@ where
             let sender = {
                 let mut cache = cache.borrow_mut();
                 let cache = &mut *cache;
-                match cache.get_or_insert(batch.path_secret_entry()) {
+                match cache.get_or_insert(batch.path_secret_entry(), &clock) {
                     Ok(ctx) => ctx,
                     Err(error) => {
                         tracing::warn!(?error, "dropping batch: send context not ready");
@@ -559,7 +561,7 @@ where
 /// handed to `on_expire` one at a time. This runs up to `budget` items per poll.
 ///
 /// `input_gauge` tracks the wheel's depth: each expired item decrements it.
-async fn wheel_drain<A, T, F>(
+async fn wheel_drain<A, T, F, const GRANULARITY_US: u64>(
     rx: intrusive::unsync::Receiver<A>,
     timer: T,
     input_gauge: crate::counter::QueueGauge,
@@ -571,12 +573,111 @@ async fn wheel_drain<A, T, F>(
     T: precision::Timer,
     F: FnMut(A::Pointer),
 {
-    let wheel: crate::time::wheel::Wheel<A, T, _> =
+    let wheel: crate::time::wheel::Wheel<A, T, _, GRANULARITY_US> =
         crate::time::wheel::Wheel::new(rx.into_list_receiver(), timer);
     let rx = FlattenList::new(wheel);
     let rx = crate::counter::GaugedReceiver::new(rx, input_gauge);
     let rx = Map::new(rx, |item| on_expire(item));
     rx.drain_budgeted_metered(Some(budget), task_counter).await;
+}
+
+pub async fn send_idle_wheel_drain<Clk>(
+    rx: intrusive::unsync::Receiver<send::IdleWheelAdapter>,
+    idle_wheel_tx: intrusive::unsync::Sender<send::IdleWheelAdapter>,
+    clock: Clk,
+    input_gauge: crate::counter::QueueGauge,
+    send_caches: Vec<Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: Vec<usize>,
+    idle_expired: crate::counter::Counter,
+    idle_rescheduled: crate::counter::Counter,
+    idle_lifetime: crate::counter::Timer,
+    budget: usize,
+    task_counter: crate::counter::Task,
+) where
+    Clk: precision::Clock,
+{
+    let timer = clock.timer();
+    wheel_drain::<_, _, _, { crate::time::wheel::SECOND_GRANULARITY }>(
+        rx,
+        timer,
+        input_gauge.clone(),
+        {
+            let mut idle_wheel_tx =
+                crate::counter::GaugedSender::new(idle_wheel_tx, input_gauge);
+            move |context: Rc<RefCell<send::Context>>| {
+                let now = clock.now();
+                let ctx = context.borrow();
+                if ctx.path_secret_entry.is_idle_expired(now) {
+                    let id = *ctx.path_secret_entry.id();
+                    let local_id = sender_idx_to_local[ctx.sender_idx];
+                    let lifetime = now.duration_since(ctx.created_at);
+                    drop(ctx);
+                    send_caches[local_id].borrow_mut().remove(&id);
+                    idle_expired.add(1);
+                    idle_lifetime.record(lifetime);
+                } else {
+                    let timeout = ctx.path_secret_entry.idle_timeout();
+                    drop(ctx);
+                    context.borrow_mut().idle_wheel.target_time = Some(now + timeout);
+                    let _ = UnboundedSender::send(&mut idle_wheel_tx, context);
+                    idle_rescheduled.add(1);
+                }
+            }
+        },
+        budget,
+        task_counter,
+    )
+    .await;
+}
+
+pub async fn recv_idle_wheel_drain<Clk>(
+    rx: intrusive::unsync::Receiver<endpoint::recv::IdleWheelAdapter>,
+    idle_wheel_tx: intrusive::unsync::Sender<endpoint::recv::IdleWheelAdapter>,
+    clock: Clk,
+    input_gauge: crate::counter::QueueGauge,
+    recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
+    idle_expired: crate::counter::Counter,
+    idle_rescheduled: crate::counter::Counter,
+    idle_lifetime: crate::counter::Timer,
+    budget: usize,
+    task_counter: crate::counter::Task,
+) where
+    Clk: precision::Clock,
+{
+    let timer = clock.timer();
+    wheel_drain::<_, _, _, { crate::time::wheel::SECOND_GRANULARITY }>(
+        rx,
+        timer,
+        input_gauge.clone(),
+        {
+            let mut idle_wheel_tx =
+                crate::counter::GaugedSender::new(idle_wheel_tx, input_gauge);
+            move |context: Rc<RefCell<endpoint::recv::Context>>| {
+                let now = clock.now();
+                let ctx = context.borrow();
+                if ctx.path_entry.is_idle_expired(now) {
+                    let key = endpoint::recv::Key {
+                        id: *ctx.path_entry.id(),
+                        remote_sender_id: ctx.remote_sender_id,
+                    };
+                    let lifetime = now.duration_since(ctx.created_at);
+                    drop(ctx);
+                    recv_cache.borrow_mut().remove(&key);
+                    idle_expired.add(1);
+                    idle_lifetime.record(lifetime);
+                } else {
+                    let timeout = ctx.path_entry.idle_timeout();
+                    drop(ctx);
+                    context.borrow_mut().idle_wheel.target_time = Some(now + timeout);
+                    let _ = UnboundedSender::send(&mut idle_wheel_tx, context);
+                    idle_rescheduled.add(1);
+                }
+            }
+        },
+        budget,
+        task_counter,
+    )
+    .await;
 }
 
 /// Builds a receiver that reads raw UDP segments from a socket and routes decoded packets
@@ -619,10 +720,11 @@ where
 /// invalid/duplicate/unauthenticated packets which should not terminate the worker.
 ///
 /// [`dispatch::process`]: crate::endpoint::dispatch::process
-pub fn packet_dispatch<PacketRx, AckSender, AckBurstSender, WakerSink, Clk, Route>(
+pub fn packet_dispatch<PacketRx, AckSender, AckBurstSender, IdleWheelSender, WakerSink, Clk, Route>(
     packet_rx: PacketRx,
     recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
     mut ack_burst_tx: AckBurstSender,
+    mut idle_wheel_tx: IdleWheelSender,
     path_secret_map: crate::path::secret::Map,
     acceptor_registry: crate::acceptor::Registry<crate::stream::PendingValidation>,
     frame_tx: frame::SubmissionSender,
@@ -639,6 +741,7 @@ where
     >,
     AckSender: UnboundedSender<Entry<msg::Sender>>,
     AckBurstSender: UnboundedSender<Rc<RefCell<endpoint::recv::Context>>>,
+    IdleWheelSender: UnboundedSender<Rc<RefCell<endpoint::recv::Context>>>,
     WakerSink: UnboundedSender<crate::flow::queue::AutoWake>,
     Clk: s2n_quic_core::time::Clock + precision::Clock,
     Route: endpoint::routing::SenderRoute,
@@ -654,6 +757,7 @@ where
                 packet,
                 &mut recv_cache.borrow_mut(),
                 &mut ack_burst_tx,
+                &mut idle_wheel_tx,
                 &path_secret_map,
                 &acceptor_registry,
                 &frame_tx,

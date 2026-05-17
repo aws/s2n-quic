@@ -61,6 +61,7 @@ pub(crate) fn process<Clk, Route>(
     packet: Entry<packet::datagram::decoder::Packet<descriptor::Filled>>,
     recv_cache: &mut recv::Cache,
     ack_burst_tx: &mut impl channel::UnboundedSender<Rc<RefCell<recv::Context>>>,
+    idle_wheel_tx: &mut impl channel::UnboundedSender<Rc<RefCell<recv::Context>>>,
     path_secret_map: &PathSecretMap,
     acceptor_registry: &acceptor::Registry<PendingValidation>,
     frame_tx: &SubmissionSender,
@@ -73,13 +74,12 @@ pub(crate) fn process<Clk, Route>(
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) -> Result<(), Error>
 where
-    Clk: s2n_quic_core::time::Clock + ?Sized,
+    Clk: s2n_quic_core::time::Clock + crate::time::precision::Clock + ?Sized,
     Route: routing::SenderRoute,
 {
     let credentials = *packet.credentials();
     let packet_number = packet.packet_number();
     let routing_info = packet.routing_info();
-    let idle_timeout = recv_cache.idle_timeout;
 
     let source_sender_id = match routing_info {
         RoutingInfo::SenderId { source_sender_id } => source_sender_id,
@@ -111,6 +111,7 @@ where
         counters.rx_peer_cache_hit.add(1);
     } else {
         counters.rx_peer_cache_miss.add(1);
+        let _ = idle_wheel_tx.send(peer_rc.clone());
     }
     let mut peer = peer_rc.borrow_mut();
 
@@ -158,8 +159,8 @@ where
         });
     }
 
-    // Update activity and ACK tracking
-    peer.update_activity(clock, idle_timeout);
+    // Update activity tracking on the shared PathSecretEntry
+    peer.path_entry.touch_activity(crate::time::precision::Clock::now(clock));
     peer.ecn_counts.increment(ecn);
     counters.on_ecn(ecn);
     let now = clock.get_time();

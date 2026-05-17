@@ -90,7 +90,7 @@ fn make_context(mtu: u16, registry: &Registry) -> (Context, Arc<PathSecretEntry>
     let ack_gauge = registry.register_queue_gauge("test.ack");
     let pending_gauge = registry.register_queue_gauge("test.pending");
     (
-        Context::new(&entry, inflight_gauge, ack_gauge, pending_gauge, 0).unwrap(),
+        Context::new(&entry, inflight_gauge, ack_gauge, pending_gauge, 0, &crate::time::bach::Clock::default()).unwrap(),
         entry,
     )
 }
@@ -415,7 +415,7 @@ fn encode_decode_round_trip() {
     let inflight_gauge = registry.register_queue_gauge("test.inflight");
     let ack_gauge = registry.register_queue_gauge("test.ack");
     let pending_gauge = registry.register_queue_gauge("test.pending");
-    let context = Context::new(&sealer_entry, inflight_gauge, ack_gauge, pending_gauge, 0).unwrap();
+    let context = Context::new(&sealer_entry, inflight_gauge, ack_gauge, pending_gauge, 0, &crate::time::bach::Clock::default()).unwrap();
 
     let key_id = context.credentials.key_id;
     let opener = opener_entry.secret().application_opener(key_id);
@@ -699,7 +699,7 @@ fn encode_decode_fuzz_round_trip() {
             let ack_gauge = registry.register_queue_gauge("test.ack");
             let pending_gauge = registry.register_queue_gauge("test.pending");
             let context =
-                Context::new(&sealer_entry, inflight_gauge, ack_gauge, pending_gauge, 0).unwrap();
+                Context::new(&sealer_entry, inflight_gauge, ack_gauge, pending_gauge, 0, &crate::time::bach::Clock::default()).unwrap();
 
             let key_id = context.credentials.key_id;
             let opener = opener_entry.secret().application_opener(key_id);

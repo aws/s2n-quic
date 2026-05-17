@@ -349,6 +349,7 @@ pub(crate) struct Context {
     pub idle_wheel: WheelLinks,
     /// Last-seen ECN counts from peer ACK frames; used to compute deltas for the CCA.
     pub peer_ecn_counts: EcnCounts,
+    pub created_at: precision::Timestamp,
 }
 
 #[derive(Debug)]
@@ -373,6 +374,7 @@ impl Context {
         ack_gauge: QueueGauge,
         pending_gauge: QueueGauge,
         sender_idx: usize,
+        clock: &impl precision::Clock,
     ) -> Result<Self, ContextError> {
         let (sealer, credentials) = entry.reusable_sealer();
         let cca = congestion::Controller::new(entry.max_datagram_size());
@@ -406,6 +408,7 @@ impl Context {
             pto_wheel: WheelLinks::new(),
             idle_wheel: WheelLinks::new(),
             peer_ecn_counts: EcnCounts::default(),
+            created_at: clock.now(),
         })
     }
 
@@ -526,10 +529,19 @@ impl Context {
             false
         };
 
+        let idle_timeout = if !self.is_idle_scheduled() {
+            let timeout = self.path_secret_entry.idle_timeout();
+            let target = clock.now() + timeout;
+            self.idle_wheel.target_time = Some(target);
+            true
+        } else {
+            false
+        };
+
         WheelInterest {
             transmission,
             pto,
-            idle_timeout: false,
+            idle_timeout,
         }
     }
 
@@ -630,18 +642,17 @@ impl Context {
 
     #[inline]
     pub fn is_tx_scheduled(&self) -> bool {
-        self.tx_wheel.links.is_linked()
+        self.tx_wheel.is_scheduled()
     }
 
     #[inline]
     pub fn is_pto_scheduled(&self) -> bool {
-        self.pto_wheel.links.is_linked()
+        self.pto_wheel.is_scheduled()
     }
 
     #[inline]
-    #[expect(dead_code)] // TODO implement expiration
     pub fn is_idle_scheduled(&self) -> bool {
-        self.idle_wheel.links.is_linked()
+        self.idle_wheel.is_scheduled()
     }
 
     #[inline]
@@ -711,25 +722,7 @@ pub struct PathInfo {
 
 // ── Wheel Links ───────────────────────────────────────────────────────────
 
-/// Intrusive links + target time for a single wheel membership.
-///
-/// Each Context has three of these — one per wheel. The target_time is set before
-/// insertion and read by the wheel to determine the correct slot. Once the wheel
-/// pops an entry, target_time can be stale — the handler decides whether to act
-/// or reinsert with a new target.
-pub(crate) struct WheelLinks {
-    pub links: intrusive::Links,
-    pub target_time: Option<precision::Timestamp>,
-}
-
-impl WheelLinks {
-    pub const fn new() -> Self {
-        Self {
-            links: intrusive::Links::new(),
-            target_time: None,
-        }
-    }
-}
+pub(crate) use crate::time::wheel::WheelLinks;
 
 // ── Wheel Adapters ────────────────────────────────────────────────────────
 //
@@ -737,51 +730,9 @@ impl WheelLinks {
 // field for its wheel, and tells the timing wheel how to read/write target_time.
 // The pointer type is Rc<RefCell<Context>> for all three.
 
-macro_rules! context_wheel_adapter {
-    ($adapter:ident, $field:ident) => {
-        pub(crate) struct $adapter;
-
-        impl crate::intrusive::Adapter for $adapter {
-            type Value = RefCell<Context>;
-            type Target = RefCell<Context>;
-            type Pointer = Rc<RefCell<Context>>;
-
-            unsafe fn links(value: *mut Self::Value) -> *mut intrusive::Links {
-                core::ptr::addr_of_mut!((*(*value).as_ptr()).$field.links)
-            }
-
-            unsafe fn target(value: *mut Self::Value) -> *mut Self::Target {
-                value
-            }
-
-            fn as_ptr(ptr: &Self::Pointer) -> *const Self::Value {
-                Rc::as_ptr(ptr)
-            }
-
-            fn into_raw(ptr: Self::Pointer) -> *mut Self::Value {
-                Rc::into_raw(ptr) as *mut Self::Value
-            }
-
-            unsafe fn from_raw(ptr: *mut Self::Value) -> Self::Pointer {
-                Rc::from_raw(ptr)
-            }
-        }
-
-        impl crate::time::wheel::WheelAdapter for $adapter {
-            unsafe fn target_time(value: *const Self::Value) -> Option<precision::Timestamp> {
-                (*value).borrow().$field.target_time
-            }
-
-            unsafe fn set_target_time(value: *mut Self::Value, time: precision::Timestamp) {
-                (*value).borrow_mut().$field.target_time = Some(time);
-            }
-        }
-    };
-}
-
-context_wheel_adapter!(TxWheelAdapter, tx_wheel);
-context_wheel_adapter!(PtoWheelAdapter, pto_wheel);
-context_wheel_adapter!(IdleWheelAdapter, idle_wheel);
+crate::context_wheel_adapter!(TxWheelAdapter, Context, tx_wheel);
+crate::context_wheel_adapter!(PtoWheelAdapter, Context, pto_wheel);
+crate::context_wheel_adapter!(IdleWheelAdapter, Context, idle_wheel);
 
 /// PTO (Probe Timeout) state for tail loss recovery.
 ///
@@ -943,6 +894,7 @@ impl Cache {
     pub fn get_or_insert(
         &mut self,
         entry: &Arc<PathSecretEntry>,
+        clock: &impl precision::Clock,
     ) -> Result<Rc<RefCell<Context>>, ContextError> {
         use std::collections::hash_map::Entry as MapEntry;
 
@@ -957,6 +909,7 @@ impl Cache {
                     self.ack_gauge.clone(),
                     self.pending_gauge.clone(),
                     self.sender_idx,
+                    clock,
                 )?;
                 Ok(e.insert(Rc::new(RefCell::new(ctx))).clone())
             }
@@ -965,5 +918,9 @@ impl Cache {
 
     pub fn get(&self, id: &credentials::Id) -> Option<Rc<RefCell<Context>>> {
         self.contexts.get(id).cloned()
+    }
+
+    pub fn remove(&mut self, id: &credentials::Id) {
+        self.contexts.remove(id);
     }
 }

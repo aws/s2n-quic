@@ -6,5 +6,6 @@ mod ack_completion;
 mod context_resolver;
 mod frame_dispatch;
 mod helpers;
+mod idle_wheel;
 mod socket_recv;
 mod waker_drain;

@@ -58,10 +58,7 @@ fn cache_with_context(
     ctx: Rc<RefCell<recv::Context>>,
     submission: &ack_state::Submission,
 ) -> Rc<RefCell<recv::Cache>> {
-    let cache = Rc::new(RefCell::new(recv::Cache::new(
-        std::time::Duration::from_secs(30),
-        0,
-    )));
+    let cache = Rc::new(RefCell::new(recv::Cache::new(0)));
     let key = recv::Key {
         id: *submission.path_secret_entry.id(),
         remote_sender_id: submission.remote_sender_id,
@@ -131,10 +128,7 @@ fn unknown_context_silently_dropped() {
         let (_ctx, submission) = setup_flushed_context();
 
         // Empty cache — context won't be found
-        let cache = Rc::new(RefCell::new(recv::Cache::new(
-            std::time::Duration::from_secs(30),
-            0,
-        )));
+        let cache = Rc::new(RefCell::new(recv::Cache::new(0)));
         let entry = Entry::new(msg::Sender::PendingAck(submission));
 
         let harness = setup(cache, [entry]);

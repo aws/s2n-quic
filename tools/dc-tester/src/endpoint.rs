@@ -69,7 +69,6 @@ pub fn create(
         path_secret_map: map,
         gso,
         acceptor_registry,
-        idle_timeout: core::time::Duration::from_secs(30),
         overall_send_rate: Rate::new(config.bandwidth),
         per_socket_send_rate: Rate::new(config.per_socket_bandwidth),
         budgets: endpoint::Budgets::default(),

@@ -23,7 +23,6 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
-    time::Duration,
 };
 
 // ── Test Waker ───────────────────────────────────────────────────────────
@@ -139,7 +138,6 @@ pub struct RecvContextBuilder {
     peer: SocketAddr,
     remote_sender_id: VarInt,
     dest_sender_id: VarInt,
-    idle_timeout: Duration,
 }
 
 impl Default for RecvContextBuilder {
@@ -148,7 +146,6 @@ impl Default for RecvContextBuilder {
             peer: "127.0.0.1:4433".parse().unwrap(),
             remote_sender_id: VarInt::from_u8(0),
             dest_sender_id: VarInt::from_u8(1),
-            idle_timeout: Duration::from_secs(30),
         }
     }
 }
@@ -182,8 +179,7 @@ impl RecvContextBuilder {
             self.dest_sender_id,
             opener,
             VarInt::ZERO,
-            &clock,
-            self.idle_timeout,
+            crate::time::precision::Clock::now(&clock),
         )))
     }
 }

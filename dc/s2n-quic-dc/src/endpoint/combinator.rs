@@ -887,8 +887,9 @@ where
             self.counters.on_received_ack();
         }
 
-        let Some(cache) = self.resolve_cache(sender_idx) else {
-            return Poll::Ready(Some(None));
+        let cache = match self.resolve_cache(sender_idx) {
+            Some(cache) => cache.clone(),
+            None => return Poll::Ready(Some(None)),
         };
 
         let dispatch = match &mut *entry {
@@ -936,7 +937,7 @@ where
             msg::Sender::PendingAck(_) => {
                 let ctx_rc = {
                     let mut cache = cache.borrow_mut();
-                    match cache.get_or_insert(entry.path_secret_entry()) {
+                    match cache.get_or_insert(entry.path_secret_entry(), &self.clock) {
                         Ok(ctx) => ctx,
                         Err(error) => {
                             tracing::warn!(?error, "dropping ack: send context not ready");

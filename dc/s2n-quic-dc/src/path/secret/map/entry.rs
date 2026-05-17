@@ -57,10 +57,7 @@ pub struct Entry {
     // maps while not having two writes and wasting an extra byte of space.
     accessed: AtomicU8,
     application_data: Option<ApplicationData>,
-    /// Stores the next allowed connection time as microseconds from the epoch of the
-    /// `s2n_quic_core::time::Timestamp` clock. A value of `0` means no rate limiting is applied.
-    /// Callers should atomically claim a slot by advancing this value forward.
-    next_connection: AtomicU64,
+    last_activity: AtomicU64,
     /// The peer's data recv addresses, learned via the post-handshake exchange.
     peer_data_addrs: PeerDataAddrs,
     /// Per-socket-sender load scores encoded as u64 nanoseconds.
@@ -91,7 +88,7 @@ impl SizeOf for Entry {
             parameters,
             accessed,
             application_data,
-            next_connection,
+            last_activity,
             peer_data_addrs,
             sender_load_scores,
         } = self;
@@ -104,7 +101,7 @@ impl SizeOf for Entry {
             + parameters.size()
             + accessed.size()
             + application_data.size()
-            + next_connection.size()
+            + last_activity.size()
             + std::mem::size_of::<PeerDataAddrs>()
             + peer_data_addrs.get().map_or(0, |a| {
                 a.len() * std::mem::size_of::<s2n_quic_core::inet::SocketAddressV6>()
@@ -179,7 +176,7 @@ impl Entry {
             parameters,
             accessed: AtomicU8::new(0),
             application_data,
-            next_connection: AtomicU64::new(0),
+            last_activity: AtomicU64::new(0),
             peer_data_addrs: PeerDataAddrs::default(),
             sender_load_scores: Self::init_load_scores(socket_sender_count),
         }
@@ -442,41 +439,20 @@ impl Entry {
         self.retired.retired_at()
     }
 
-    /// Atomically claims the next connection slot for rate limiting.
-    ///
-    /// Given the current timestamp (`now`), this method returns the `Timestamp`
-    /// at which the caller should start sending.
-    ///
-    /// The returned value may be in the past (if no rate limiting is needed) or in the
-    /// future (if the caller should delay sending). This value can be used to initialize
-    /// the transmission wheel's start time.
-    pub fn next_connection_time(
-        &self,
-        now: s2n_quic_core::time::Timestamp,
-    ) -> s2n_quic_core::time::Timestamp {
-        let now_micros = unsafe { now.as_duration().as_micros() as u64 };
-
-        let prev = self
-            .next_connection
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-                // The next allowed time is at least `now` and at least `current`
-                let next = current.max(now_micros).saturating_add(1);
-                Some(next)
-            })
-            // fetch_update with a closure that always returns Some never fails
-            .unwrap();
-
-        // The start time for this connection is max(prev, now), since prev is the
-        // time the previous connection was scheduled to start (before we added delay)
-        let start_micros = prev.max(now_micros);
-        unsafe {
-            s2n_quic_core::time::Timestamp::from_duration(Duration::from_micros(start_micros))
-        }
+    pub fn touch_activity(&self, now: crate::time::precision::Timestamp) {
+        self.last_activity.store(now.nanos, Ordering::Release);
     }
 
-    /// Returns the raw next_connection value in microseconds for inspection/testing.
-    pub fn next_connection_micros(&self) -> u64 {
-        self.next_connection.load(Ordering::Acquire)
+    pub fn last_activity(&self) -> crate::time::precision::Timestamp {
+        let nanos = self.last_activity.load(Ordering::Acquire);
+        crate::time::precision::Timestamp { nanos }
+    }
+
+    pub fn is_idle_expired(&self, now: crate::time::precision::Timestamp) -> bool {
+        let last = self.last_activity();
+        let elapsed = now.nanos_since(last);
+        let timeout = self.idle_timeout();
+        elapsed > timeout.as_nanos() as u64
     }
 
     pub fn uni_sealer(&self) -> (seal::Once, Credentials) {

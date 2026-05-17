@@ -7,7 +7,6 @@ use crate::{
     path::{self, secret::map::Entry as PathSecretEntry},
     stream::endpoint::ack::state as ack_state,
 };
-use core::time::Duration;
 use rustc_hash::FxHashMap;
 use s2n_quic_core::{frame::ack::EcnCounts, varint::VarInt};
 use std::{cell::RefCell, collections::hash_map, rc::Rc, sync::Arc};
@@ -207,8 +206,8 @@ pub(crate) struct Context {
     /// Accumulated ECN counts for received packets, reported back to the sender
     /// in each ACK frame so the sender can validate ECN support and detect congestion.
     pub ecn_counts: EcnCounts,
-    pub idle_timer: s2n_quic_core::time::Timer,
-    pub last_activity: s2n_quic_core::time::Timestamp,
+    pub idle_wheel: crate::time::wheel::WheelLinks,
+    pub created_at: crate::time::precision::Timestamp,
     pub ack_state: AckState,
     pub attempt_dedup: AttemptDedup,
     /// Map from stream_id to allocated queue_id for this sender.
@@ -219,21 +218,17 @@ pub(crate) struct Context {
 }
 
 impl Context {
-    pub fn new<Clk>(
+    pub fn new(
         path_entry: Arc<PathSecretEntry>,
         remote_sender_id: VarInt,
         dest_sender_id: VarInt,
         opener: crate::crypto::awslc::open::Application,
         key_id: VarInt,
-        clock: &Clk,
-        idle_timeout: Duration,
-    ) -> Self
-    where
-        Clk: s2n_quic_core::time::Clock + ?Sized,
-    {
-        let now = clock.get_time();
-        let mut idle_timer = s2n_quic_core::time::Timer::default();
-        idle_timer.set(now + idle_timeout);
+        now: crate::time::precision::Timestamp,
+    ) -> Self {
+        let idle_timeout = path_entry.idle_timeout();
+        let mut idle_wheel = crate::time::wheel::WheelLinks::new();
+        idle_wheel.target_time = Some(now + idle_timeout);
 
         let flows = flow::Tracker::new(*path_entry.id());
 
@@ -246,29 +241,13 @@ impl Context {
             ack_ranges: Default::default(),
             dest_sender_id,
             ecn_counts: Default::default(),
-            idle_timer,
-            last_activity: now,
+            idle_wheel,
+            created_at: now,
             ack_state: AckState::Idle,
             attempt_dedup: AttemptDedup::new(),
             flows,
             ack_burst: intrusive::Links::new(),
         }
-    }
-
-    pub fn update_activity<Clk>(&mut self, clock: &Clk, idle_timeout: Duration)
-    where
-        Clk: s2n_quic_core::time::Clock + ?Sized,
-    {
-        let now = clock.get_time();
-        self.last_activity = now;
-        self.idle_timer.set(now + idle_timeout);
-    }
-
-    pub fn is_expired<Clk>(&mut self, clock: &Clk) -> bool
-    where
-        Clk: s2n_quic_core::time::Clock + ?Sized,
-    {
-        self.idle_timer.poll_expiration(clock.get_time()).is_ready()
     }
 
     /// Encode the current ACK state and produce a direct submission for the send worker.
@@ -339,15 +318,13 @@ impl core::hash::Hash for Key {
 /// Per-worker sender state cache.
 pub(crate) struct Cache {
     pub senders: FxHashMap<Key, Rc<RefCell<Context>>>,
-    pub idle_timeout: Duration,
     pub worker_id: usize,
 }
 
 impl Cache {
-    pub fn new(idle_timeout: Duration, worker_id: usize) -> Self {
+    pub fn new(worker_id: usize) -> Self {
         Self {
             senders: FxHashMap::default(),
-            idle_timeout,
             worker_id,
         }
     }
@@ -363,7 +340,7 @@ impl Cache {
         route: &Route,
     ) -> Option<(Rc<RefCell<Context>>, bool)>
     where
-        Clk: s2n_quic_core::time::Clock + ?Sized,
+        Clk: crate::time::precision::Clock + ?Sized,
         Route: super::routing::SenderRoute,
     {
         let key = Key {
@@ -386,8 +363,7 @@ impl Cache {
                     dest_sender_id,
                     opener,
                     credentials.key_id,
-                    clock,
-                    self.idle_timeout,
+                    clock.now(),
                 )));
                 entry.insert(ctx.clone());
                 (ctx, false)
@@ -395,15 +371,12 @@ impl Cache {
         })
     }
 
-    #[expect(dead_code)] // TODO implement expiration
-    pub fn cleanup_expired<Clk>(&mut self, clock: &Clk)
-    where
-        Clk: s2n_quic_core::time::Clock + ?Sized,
-    {
-        self.senders
-            .retain(|_, state| !state.borrow_mut().is_expired(clock));
+    pub fn remove(&mut self, key: &Key) {
+        self.senders.remove(key);
     }
 }
+
+crate::context_wheel_adapter!(IdleWheelAdapter, Context, idle_wheel);
 
 #[cfg(test)]
 mod tests {

@@ -167,9 +167,6 @@ pub struct SimEndpointConfig {
     /// Per-poll budgets.
     pub budgets: Budgets,
 
-    /// Peer idle timeout passed to the recv cache.
-    pub idle_timeout: core::time::Duration,
-
     /// Maximum transfer unit for the send / recv buffer pools (bytes).
     pub mtu: u16,
 }
@@ -183,7 +180,6 @@ impl Default for SimEndpointConfig {
             overall_send_rate: Rate::new(25.0),
             per_socket_send_rate: Rate::new(5.0),
             budgets: Budgets::default(),
-            idle_timeout: core::time::Duration::from_secs(30),
             mtu: 1500,
         }
     }
@@ -211,7 +207,6 @@ pub fn setup_sim_endpoint(
         overall_send_rate,
         per_socket_send_rate,
         budgets,
-        idle_timeout,
         mtu,
     } = config;
 
@@ -277,7 +272,6 @@ pub fn setup_sim_endpoint(
         path_secret_map: path_secret_map.clone(),
         gso,
         acceptor_registry,
-        idle_timeout,
         overall_send_rate,
         per_socket_send_rate,
         budgets,
