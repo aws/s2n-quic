@@ -756,7 +756,7 @@ where
                     crate::socket::channel::intrusive::unsync::new_with_adapter::<
                         crate::stream::endpoint::recv::AckBurstAdapter,
                     >();
-                local.spawn(tasks::packet_dispatch_task(
+                let rx = tasks::packet_dispatch(
                     packet_rx,
                     recv_cache.clone(),
                     ack_burst_tx,
@@ -769,11 +769,20 @@ where
                     rd.clock,
                     rd.route,
                     rd.waker_sink,
-                    budgets,
-                    counter_registry.clone(),
-                    recv_dispatch_idx,
-                ));
+                );
                 let variant = format!("recv.{recv_dispatch_idx}");
+                let budget_summary = counter_registry.register_nominal_summary(
+                    "task.packet_dispatch.drained",
+                    &variant,
+                    crate::counter::Unit::Count,
+                );
+                let time_summary = counter_registry
+                    .register_nominal_timer("task.packet_dispatch.time", &variant);
+                local.spawn(rx.drain_budgeted_metered(
+                    Some(budgets.packet_dispatch),
+                    budget_summary,
+                    time_summary,
+                ));
                 let rx = tasks::ack_burst(
                     crate::socket::channel::FlattenList::new(ack_burst_rx.into_list_receiver()),
                     rd.ack_sender.clone(),

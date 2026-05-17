@@ -24,6 +24,7 @@ use std::{
 struct Shared<A: intrusive::Adapter> {
     queue: UnsafeCell<intrusive::List<A>>,
     is_open: Cell<bool>,
+    sender_count: Cell<usize>,
     /// Waker stored by the receiver task when the queue is empty.
     ///
     /// # Safety
@@ -38,6 +39,11 @@ impl<A: intrusive::Adapter> Shared<A> {
     #[inline(always)]
     fn is_alive(&self) -> bool {
         self.is_open.get()
+    }
+
+    #[inline(always)]
+    fn has_senders(&self) -> bool {
+        self.sender_count.get() > 0
     }
 
     /// Takes the stored receiver waker (if any) and wakes it.
@@ -73,6 +79,7 @@ pub fn new_with_adapter<A: intrusive::Adapter>() -> (Sender<A>, Receiver<A>) {
     let shared = Rc::new(Shared {
         queue: UnsafeCell::new(intrusive::List::new()),
         is_open: Cell::new(true),
+        sender_count: Cell::new(1),
         waker: UnsafeCell::new(None),
     });
     (
@@ -89,8 +96,21 @@ pub struct Sender<A: intrusive::Adapter> {
 
 impl<A: intrusive::Adapter> Clone for Sender<A> {
     fn clone(&self) -> Self {
+        self.shared
+            .sender_count
+            .set(self.shared.sender_count.get() + 1);
         Self {
             shared: self.shared.clone(),
+        }
+    }
+}
+
+impl<A: intrusive::Adapter> Drop for Sender<A> {
+    fn drop(&mut self) {
+        let count = self.shared.sender_count.get() - 1;
+        self.shared.sender_count.set(count);
+        if count == 0 {
+            unsafe { self.shared.wake_receiver() };
         }
     }
 }
@@ -235,7 +255,7 @@ impl<A: intrusive::Adapter> super::super::Receiver<A::Pointer> for Receiver<A> {
             }
         }
 
-        if !self.shared.is_alive() {
+        if !self.shared.is_alive() || !self.shared.has_senders() {
             return Poll::Ready(None);
         }
 
@@ -283,7 +303,7 @@ impl<A: intrusive::Adapter> super::super::Receiver<intrusive::List<A>> for ListR
             }
         }
 
-        if !self.receiver.shared.is_alive() {
+        if !self.receiver.shared.is_alive() || !self.receiver.shared.has_senders() {
             return Poll::Ready(None);
         }
 

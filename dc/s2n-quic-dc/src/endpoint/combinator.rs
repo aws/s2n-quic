@@ -534,7 +534,7 @@ where
 /// poll. When the context is drained, it pulls the next batch from `inner`.
 ///
 /// [`assemble`]: crate::stream::endpoint::assemble::assemble
-pub(crate) struct Assembler<R, Clk, C, A> {
+pub(crate) struct Assembler<R, Clk, C, A, TxW, PtoW, IdleW> {
     inner: R,
     clock: Clk,
     source_sender_id: s2n_quic_core::varint::VarInt,
@@ -544,9 +544,9 @@ pub(crate) struct Assembler<R, Clk, C, A> {
     header_buf: Vec<u8>,
     cancelled_tx: C,
     ack_completions_tx: A,
-    tx_wheel_tx: unsync::Sender<send::TxWheelAdapter>,
-    pto_wheel_tx: unsync::Sender<send::PtoWheelAdapter>,
-    idle_wheel_tx: unsync::Sender<send::IdleWheelAdapter>,
+    tx_wheel_tx: TxW,
+    pto_wheel_tx: PtoW,
+    idle_wheel_tx: IdleW,
     pub(crate) counters: AssemblerCounters,
 }
 
@@ -582,7 +582,7 @@ impl AssemblerCounters {
     }
 }
 
-impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
+impl<R, Clk, C, A, TxW, PtoW, IdleW> Assembler<R, Clk, C, A, TxW, PtoW, IdleW> {
     pub(crate) fn new(
         inner: R,
         clock: Clk,
@@ -592,9 +592,9 @@ impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
         pool: crate::socket::pool::Pool,
         cancelled_tx: C,
         ack_completions_tx: A,
-        tx_wheel_tx: unsync::Sender<send::TxWheelAdapter>,
-        pto_wheel_tx: unsync::Sender<send::PtoWheelAdapter>,
-        idle_wheel_tx: unsync::Sender<send::IdleWheelAdapter>,
+        tx_wheel_tx: TxW,
+        pto_wheel_tx: PtoW,
+        idle_wheel_tx: IdleW,
         counters: AssemblerCounters,
     ) -> Self {
         Self {
@@ -615,12 +615,16 @@ impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
     }
 }
 
-impl<R, Clk, C, A> Receiver<descriptor::Segments> for Assembler<R, Clk, C, A>
+impl<R, Clk, C, A, TxW, PtoW, IdleW> Receiver<descriptor::Segments>
+    for Assembler<R, Clk, C, A, TxW, PtoW, IdleW>
 where
     R: Receiver<Rc<RefCell<send::Context>>>,
     Clk: precision::Clock,
     C: UnboundedSender<Queue<Frame>>,
     A: UnboundedSender<Queue<msg::Sender>>,
+    TxW: UnboundedSender<Rc<RefCell<send::Context>>>,
+    PtoW: UnboundedSender<Rc<RefCell<send::Context>>>,
+    IdleW: UnboundedSender<Rc<RefCell<send::Context>>>,
 {
     fn poll_recv(
         &mut self,
@@ -662,12 +666,15 @@ where
         if wheel_interest.transmission {
             self.counters.q_tx_wheel.enqueue(1);
         }
-        wheel_interest.dispatch(
-            context,
-            &mut self.tx_wheel_tx,
-            &mut self.pto_wheel_tx,
-            &mut self.idle_wheel_tx,
-        );
+        if wheel_interest.idle_timeout {
+            let _ = UnboundedSender::send(&mut self.idle_wheel_tx, context.clone());
+        }
+        if wheel_interest.pto {
+            let _ = UnboundedSender::send(&mut self.pto_wheel_tx, context.clone());
+        }
+        if wheel_interest.transmission {
+            let _ = UnboundedSender::send(&mut self.tx_wheel_tx, context);
+        }
 
         self.counters
             .segments
@@ -842,11 +849,7 @@ pub(crate) struct AckProcessor<R, Clk, Rand, C> {
     frame_tx: frame::SubmissionSender,
     completed_tx: C,
     cancelled_tx: C,
-    tx_wheel_tx: unsync::Sender<send::TxWheelAdapter>,
-    pto_wheel_tx: unsync::Sender<send::PtoWheelAdapter>,
-    idle_wheel_tx: unsync::Sender<send::IdleWheelAdapter>,
     counters: Arc<super::counters::Send>,
-    q_tx_wheel: crate::counter::QueueGauge,
 }
 
 impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
@@ -861,11 +864,7 @@ impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
         frame_tx: frame::SubmissionSender,
         completed_tx: C,
         cancelled_tx: C,
-        tx_wheel_tx: unsync::Sender<send::TxWheelAdapter>,
-        pto_wheel_tx: unsync::Sender<send::PtoWheelAdapter>,
-        idle_wheel_tx: unsync::Sender<send::IdleWheelAdapter>,
         counters: Arc<super::counters::Send>,
-        q_tx_wheel: crate::counter::QueueGauge,
     ) -> Self {
         Self {
             inner,
@@ -877,11 +876,7 @@ impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
             frame_tx,
             completed_tx,
             cancelled_tx,
-            tx_wheel_tx,
-            pto_wheel_tx,
-            idle_wheel_tx,
             counters,
-            q_tx_wheel,
         }
     }
 
@@ -900,32 +895,22 @@ impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
         };
         Some(cache)
     }
-
-    fn dispatch_wheel_interest(
-        &mut self,
-        ctx_rc: Rc<RefCell<send::Context>>,
-        wheel_interest: send::WheelInterest,
-    ) {
-        if wheel_interest.transmission {
-            self.q_tx_wheel.enqueue(1);
-        }
-        wheel_interest.dispatch(
-            ctx_rc,
-            &mut self.tx_wheel_tx,
-            &mut self.pto_wheel_tx,
-            &mut self.idle_wheel_tx,
-        );
-    }
 }
 
-impl<R, Clk, Rand, C> Receiver<()> for AckProcessor<R, Clk, Rand, C>
+type MaybeWheelDispatch = Option<(Rc<RefCell<send::Context>>, send::WheelInterest)>;
+
+impl<R, Clk, Rand, C> Receiver<MaybeWheelDispatch> for AckProcessor<R, Clk, Rand, C>
 where
     R: Receiver<Entry<msg::Sender>>,
     Clk: precision::Clock + s2n_quic_core::time::Clock,
     Rand: s2n_quic_core::random::Generator,
     C: UnboundedSender<Entry<Frame>>,
 {
-    fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<()>> {
+    fn poll_recv(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        budget: &mut Budget,
+    ) -> Poll<Option<MaybeWheelDispatch>> {
         let Some(mut entry) = ready!(self.inner.poll_recv(cx, budget)) else {
             return Poll::Ready(None);
         };
@@ -937,10 +922,10 @@ where
         }
 
         let Some(cache) = self.resolve_cache(sender_idx) else {
-            return Poll::Ready(Some(()));
+            return Poll::Ready(Some(None));
         };
 
-        match &mut *entry {
+        let dispatch = match &mut *entry {
             msg::Sender::ReceivedAck {
                 payload,
                 path_secret_entry,
@@ -954,7 +939,7 @@ where
 
                 let Some(ctx_rc) = ctx_rc else {
                     self.counters.on_received_ack_no_ctx();
-                    return Poll::Ready(Some(()));
+                    return Poll::Ready(Some(None));
                 };
 
                 let mut lost_queue = PriorityInput::default();
@@ -980,7 +965,7 @@ where
                     let _ = self.frame_tx.send_batch(lost_queue);
                 }
 
-                self.dispatch_wheel_interest(ctx_rc, wheel_interest);
+                Some((ctx_rc, wheel_interest))
             }
             msg::Sender::PendingAck(_) => {
                 let ctx_rc = {
@@ -989,7 +974,7 @@ where
                         Ok(ctx) => ctx,
                         Err(error) => {
                             tracing::warn!(?error, "dropping ack: send context not ready");
-                            return Poll::Ready(Some(()));
+                            return Poll::Ready(Some(None));
                         }
                     }
                 };
@@ -1000,11 +985,11 @@ where
                     ctx.wheel_interest(&self.clock)
                 };
 
-                self.dispatch_wheel_interest(ctx_rc, wheel_interest);
+                Some((ctx_rc, wheel_interest))
             }
-        }
+        };
 
-        Poll::Ready(Some(()))
+        Poll::Ready(Some(dispatch))
     }
 
     fn on_consumed(&mut self, bytes: u64) {

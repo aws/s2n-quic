@@ -692,7 +692,7 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
         consumed: 0,
     };
 
-    let mut processor = AckProcessor::new(
+    let processor = AckProcessor::new(
         ack_rx,
         send_caches,
         sender_idx_to_local,
@@ -702,16 +702,18 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
         frame_tx,
         frame::PriorityInput::default(),
         frame::PriorityInput::default(),
+        crate::stream::endpoint::counters::Send::new(&registry),
+    );
+    let rx = crate::socket::channel::Flatten::new(processor);
+    let mut router = crate::stream::endpoint::send::WheelRouter::new(
+        rx,
         tx_wheel_tx,
         pto_wheel_tx,
         idle_wheel_tx,
-        crate::stream::endpoint::counters::Send::new(&registry),
-        registry.register_queue_gauge("q.tx_wheel"),
     );
 
-    let first = with_noop_context(|cx| processor.poll_recv(cx, &mut Budget::new(usize::MAX)));
-    assert_eq!(first, Poll::Ready(Some(())));
-
-    let second = with_noop_context(|cx| processor.poll_recv(cx, &mut Budget::new(usize::MAX)));
-    assert_eq!(second, Poll::Ready(None));
+    // The invalid sender_idx message is consumed (Flatten skips the None),
+    // then the input is exhausted so the channel closes.
+    let result = with_noop_context(|cx| router.poll_recv(cx, &mut Budget::new(usize::MAX)));
+    assert_eq!(result, Poll::Ready(None));
 }

@@ -110,6 +110,23 @@ impl<T> UnboundedSender<T> for CollectingSender<T> {
     }
 }
 
+// ── ReceiverExt ──────────────────────────────────────────────────────────
+
+pub trait TestReceiverExt<T>: Receiver<T> {
+    /// Await the next item from the receiver, returning `None` if the channel is closed.
+    async fn recv(&mut self) -> Option<T> {
+        use core::future::poll_fn;
+        let mut budget = Budget::new(1);
+        poll_fn(|cx| {
+            budget.reset();
+            self.poll_recv(cx, &mut budget)
+        })
+        .await
+    }
+}
+
+impl<T, R: Receiver<T>> TestReceiverExt<T> for R {}
+
 // ── Recv Context Builder ─────────────────────────────────────────────────
 
 pub struct RecvContextBuilder {

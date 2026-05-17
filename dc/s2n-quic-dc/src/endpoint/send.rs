@@ -22,7 +22,7 @@ use crate::{
     intrusive::{self, Queue},
     msg::segment,
     path::secret::map::Entry as PathSecretEntry,
-    socket::channel::{intrusive::unsync, ByteCost, UnboundedSender},
+    socket::channel::{ByteCost, UnboundedSender},
     stream::endpoint::{inflight, msg},
     time::precision,
 };
@@ -187,26 +187,58 @@ pub struct WheelInterest {
     pub idle_timeout: bool,
 }
 
-impl WheelInterest {
-    /// Route a context into the appropriate wheel sender channels based on interest flags.
-    pub fn dispatch(
-        self,
-        context: Rc<RefCell<Context>>,
-        tx_wheel_tx: &mut unsync::Sender<TxWheelAdapter>,
-        pto_wheel_tx: &mut unsync::Sender<PtoWheelAdapter>,
-        idle_wheel_tx: &mut unsync::Sender<IdleWheelAdapter>,
-    ) {
-        if self.idle_timeout {
-            let _ = UnboundedSender::send(idle_wheel_tx, context.clone());
+/// A `Receiver<()>` that takes `(Rc<RefCell<Context>>, WheelInterest)` pairs from an
+/// inner receiver and dispatches each context into the appropriate timing wheel senders.
+pub struct WheelRouter<R, TxW, PtoW, IdleW> {
+    inner: R,
+    tx_wheel: TxW,
+    pto_wheel: PtoW,
+    idle_wheel: IdleW,
+}
+
+impl<R, TxW, PtoW, IdleW> WheelRouter<R, TxW, PtoW, IdleW> {
+    pub fn new(inner: R, tx_wheel: TxW, pto_wheel: PtoW, idle_wheel: IdleW) -> Self {
+        Self {
+            inner,
+            tx_wheel,
+            pto_wheel,
+            idle_wheel,
+        }
+    }
+}
+
+impl<R, TxW, PtoW, IdleW> crate::socket::channel::Receiver<()> for WheelRouter<R, TxW, PtoW, IdleW>
+where
+    R: crate::socket::channel::Receiver<(Rc<RefCell<Context>>, WheelInterest)>,
+    TxW: UnboundedSender<Rc<RefCell<Context>>>,
+    PtoW: UnboundedSender<Rc<RefCell<Context>>>,
+    IdleW: UnboundedSender<Rc<RefCell<Context>>>,
+{
+    fn poll_recv(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+        budget: &mut crate::socket::channel::Budget,
+    ) -> core::task::Poll<Option<()>> {
+        let item = core::task::ready!(self.inner.poll_recv(cx, budget));
+        let Some((context, interest)) = item else {
+            return core::task::Poll::Ready(None);
+        };
+
+        if interest.idle_timeout {
+            let _ = self.idle_wheel.send(context.clone());
+        }
+        if interest.pto {
+            let _ = self.pto_wheel.send(context.clone());
+        }
+        if interest.transmission {
+            let _ = self.tx_wheel.send(context);
         }
 
-        if self.pto {
-            let _ = UnboundedSender::send(pto_wheel_tx, context.clone());
-        }
+        core::task::Poll::Ready(Some(()))
+    }
 
-        if self.transmission {
-            let _ = UnboundedSender::send(tx_wheel_tx, context);
-        }
+    fn on_consumed(&mut self, bytes: u64) {
+        self.inner.on_consumed(bytes);
     }
 }
 
