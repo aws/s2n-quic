@@ -125,7 +125,7 @@ pub fn frame_dispatch<S, Clk>(
 
     // Task 1: fixed-cost priority routing.
     spawner.spawn({
-        let rx = SwapReceiver {
+        let rx = FrameReceiver {
             frame_rx,
             staging: PriorityStorage::default(),
             priority_list_txs,
@@ -397,7 +397,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     ));
 
     // Per-socket assembler + send tasks.
-    let asm_counters = AssemblerCounters::new(&counter_registry, q_resolver_to_tx_wheel.clone());
+    let asm_counters = AssemblerCounters::new(&counter_registry);
     for ((st, context_rx), gauge) in send_sockets
         .into_iter()
         .zip(socket_context_rxs)
@@ -433,11 +433,10 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
                 st.pool,
                 cancelled_tx,
                 ack_completions_tx,
-                tx_wheel_tx,
-                pto_wheel_tx,
-                idle_wheel_tx,
                 asm_counters,
             );
+            let rx = send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx);
+            let rx = Flatten::new(rx);
             let rx = Paced::new(rx, clock, st.per_socket_send_rate);
             let rx = SocketSender::new(rx, st.socket);
             let rx = InspectErr::new(rx, |(err, _segments)| {
@@ -801,19 +800,19 @@ fn on_packet_dispatch_error(counters: &endpoint::counters::Dispatch, err: dispat
     }
 }
 
-// ── SwapReceiver ──────────────────────────────────────────────────────────
+// ── FrameReceiver ──────────────────────────────────────────────────────────
 
 /// Adapts the frame submission channel's `poll_swap` into a `Receiver<()>` so
 /// it can be drained via `drain_budgeted`. Each poll_recv performs one swap and
 /// distributes the resulting frames into per-priority lane senders.
-struct SwapReceiver<Tx> {
+struct FrameReceiver<Tx> {
     frame_rx: SubmissionReceiver,
     staging: PriorityStorage,
     priority_list_txs: [Tx; Priority::LEVELS],
     q_router_to_batcher: [crate::counter::QueueGauge; Priority::LEVELS],
 }
 
-impl<Tx> Receiver<()> for SwapReceiver<Tx>
+impl<Tx> Receiver<()> for FrameReceiver<Tx>
 where
     Tx: UnboundedSender<crate::intrusive::List<crate::intrusive::EntryAdapter<Frame>>>,
 {

@@ -187,29 +187,55 @@ pub struct WheelInterest {
     pub idle_timeout: bool,
 }
 
-/// A `Receiver<()>` that takes `(Rc<RefCell<Context>>, WheelInterest)` pairs from an
-/// inner receiver and dispatches each context into the appropriate timing wheel senders.
-pub struct WheelRouter<R, TxW, PtoW, IdleW> {
+pub trait WheelRoutable {
+    type Output;
+    fn split(self) -> ((Rc<RefCell<Context>>, WheelInterest), Self::Output);
+}
+
+impl WheelRoutable for (Rc<RefCell<Context>>, WheelInterest) {
+    type Output = ();
+    #[inline]
+    fn split(self) -> ((Rc<RefCell<Context>>, WheelInterest), ()) {
+        (self, ())
+    }
+}
+
+impl<T> WheelRoutable for (Rc<RefCell<Context>>, WheelInterest, T) {
+    type Output = T;
+    #[inline]
+    fn split(self) -> ((Rc<RefCell<Context>>, WheelInterest), T) {
+        ((self.0, self.1), self.2)
+    }
+}
+
+/// A `Receiver<I::Output>` that takes `WheelRoutable` items from an inner receiver,
+/// dispatches each context into the appropriate timing wheel senders, and forwards
+/// the remaining output downstream.
+pub struct WheelRouter<I, R, TxW, PtoW, IdleW> {
     inner: R,
     tx_wheel: TxW,
     pto_wheel: PtoW,
     idle_wheel: IdleW,
+    _item: core::marker::PhantomData<fn() -> I>,
 }
 
-impl<R, TxW, PtoW, IdleW> WheelRouter<R, TxW, PtoW, IdleW> {
+impl<I, R, TxW, PtoW, IdleW> WheelRouter<I, R, TxW, PtoW, IdleW> {
     pub fn new(inner: R, tx_wheel: TxW, pto_wheel: PtoW, idle_wheel: IdleW) -> Self {
         Self {
             inner,
             tx_wheel,
             pto_wheel,
             idle_wheel,
+            _item: core::marker::PhantomData,
         }
     }
 }
 
-impl<R, TxW, PtoW, IdleW> crate::socket::channel::Receiver<()> for WheelRouter<R, TxW, PtoW, IdleW>
+impl<I, R, TxW, PtoW, IdleW> crate::socket::channel::Receiver<I::Output>
+    for WheelRouter<I, R, TxW, PtoW, IdleW>
 where
-    R: crate::socket::channel::Receiver<(Rc<RefCell<Context>>, WheelInterest)>,
+    I: WheelRoutable,
+    R: crate::socket::channel::Receiver<I>,
     TxW: UnboundedSender<Rc<RefCell<Context>>>,
     PtoW: UnboundedSender<Rc<RefCell<Context>>>,
     IdleW: UnboundedSender<Rc<RefCell<Context>>>,
@@ -218,11 +244,13 @@ where
         &mut self,
         cx: &mut core::task::Context<'_>,
         budget: &mut crate::socket::channel::Budget,
-    ) -> core::task::Poll<Option<()>> {
+    ) -> core::task::Poll<Option<I::Output>> {
         let item = core::task::ready!(self.inner.poll_recv(cx, budget));
-        let Some((context, interest)) = item else {
+        let Some(item) = item else {
             return core::task::Poll::Ready(None);
         };
+
+        let ((context, interest), output) = item.split();
 
         if interest.idle_timeout {
             let _ = self.idle_wheel.send(context.clone());
@@ -234,7 +262,7 @@ where
             let _ = self.tx_wheel.send(context);
         }
 
-        core::task::Poll::Ready(Some(()))
+        core::task::Poll::Ready(Some(output))
     }
 
     fn on_consumed(&mut self, bytes: u64) {

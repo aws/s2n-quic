@@ -534,7 +534,7 @@ where
 /// poll. When the context is drained, it pulls the next batch from `inner`.
 ///
 /// [`assemble`]: crate::stream::endpoint::assemble::assemble
-pub(crate) struct Assembler<R, Clk, C, A, TxW, PtoW, IdleW> {
+pub(crate) struct Assembler<R, Clk, C, A> {
     inner: R,
     clock: Clk,
     source_sender_id: s2n_quic_core::varint::VarInt,
@@ -544,9 +544,6 @@ pub(crate) struct Assembler<R, Clk, C, A, TxW, PtoW, IdleW> {
     header_buf: Vec<u8>,
     cancelled_tx: C,
     ack_completions_tx: A,
-    tx_wheel_tx: TxW,
-    pto_wheel_tx: PtoW,
-    idle_wheel_tx: IdleW,
     pub(crate) counters: AssemblerCounters,
 }
 
@@ -559,14 +556,10 @@ pub(crate) struct AssemblerCounters {
     pub tx_probe: crate::counter::Counter,
     pub tx_frames_per_packet: crate::counter::Summary,
     pub tx_payload_size: crate::counter::Summary,
-    pub q_tx_wheel: crate::counter::QueueGauge,
 }
 
 impl AssemblerCounters {
-    pub fn new(
-        registry: &crate::counter::Registry,
-        q_tx_wheel: crate::counter::QueueGauge,
-    ) -> Self {
+    pub fn new(registry: &crate::counter::Registry) -> Self {
         Self {
             segments: registry.register_summary("asm.segments", crate::counter::Unit::Count),
             packet_size: registry.register_summary("tx.packet_size", crate::counter::Unit::Byte),
@@ -577,12 +570,13 @@ impl AssemblerCounters {
                 .register_summary("tx.frames_per_packet", crate::counter::Unit::Count),
             tx_payload_size: registry
                 .register_summary("tx.payload_size", crate::counter::Unit::Byte),
-            q_tx_wheel,
         }
     }
 }
 
-impl<R, Clk, C, A, TxW, PtoW, IdleW> Assembler<R, Clk, C, A, TxW, PtoW, IdleW> {
+type AssemblerOutput = (Rc<RefCell<send::Context>>, send::WheelInterest, Option<descriptor::Segments>);
+
+impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
     pub(crate) fn new(
         inner: R,
         clock: Clk,
@@ -592,9 +586,6 @@ impl<R, Clk, C, A, TxW, PtoW, IdleW> Assembler<R, Clk, C, A, TxW, PtoW, IdleW> {
         pool: crate::socket::pool::Pool,
         cancelled_tx: C,
         ack_completions_tx: A,
-        tx_wheel_tx: TxW,
-        pto_wheel_tx: PtoW,
-        idle_wheel_tx: IdleW,
         counters: AssemblerCounters,
     ) -> Self {
         Self {
@@ -607,30 +598,23 @@ impl<R, Clk, C, A, TxW, PtoW, IdleW> Assembler<R, Clk, C, A, TxW, PtoW, IdleW> {
             header_buf: Vec::new(),
             cancelled_tx,
             ack_completions_tx,
-            tx_wheel_tx,
-            pto_wheel_tx,
-            idle_wheel_tx,
             counters,
         }
     }
 }
 
-impl<R, Clk, C, A, TxW, PtoW, IdleW> Receiver<descriptor::Segments>
-    for Assembler<R, Clk, C, A, TxW, PtoW, IdleW>
+impl<R, Clk, C, A> Receiver<AssemblerOutput> for Assembler<R, Clk, C, A>
 where
     R: Receiver<Rc<RefCell<send::Context>>>,
     Clk: precision::Clock,
     C: UnboundedSender<Queue<Frame>>,
     A: UnboundedSender<Queue<msg::Sender>>,
-    TxW: UnboundedSender<Rc<RefCell<send::Context>>>,
-    PtoW: UnboundedSender<Rc<RefCell<send::Context>>>,
-    IdleW: UnboundedSender<Rc<RefCell<send::Context>>>,
 {
     fn poll_recv(
         &mut self,
         cx: &mut task::Context<'_>,
         budget: &mut Budget,
-    ) -> Poll<Option<descriptor::Segments>> {
+    ) -> Poll<Option<AssemblerOutput>> {
         use crate::stream::endpoint::assemble;
 
         let Some(context) = ready!(self.inner.poll_recv(cx, budget)) else {
@@ -663,29 +647,11 @@ where
             (segments, wheel_interest)
         };
 
-        if wheel_interest.transmission {
-            self.counters.q_tx_wheel.enqueue(1);
-        }
-        if wheel_interest.idle_timeout {
-            let _ = UnboundedSender::send(&mut self.idle_wheel_tx, context.clone());
-        }
-        if wheel_interest.pto {
-            let _ = UnboundedSender::send(&mut self.pto_wheel_tx, context.clone());
-        }
-        if wheel_interest.transmission {
-            let _ = UnboundedSender::send(&mut self.tx_wheel_tx, context);
-        }
-
         self.counters
             .segments
             .record_value(segments.as_ref().map_or(0, |s| s.segment_count() as u64));
 
-        if let Some(segments) = segments {
-            Poll::Ready(Some(segments))
-        } else {
-            budget.set_needs_wake();
-            Poll::Pending
-        }
+        Poll::Ready(Some((context, wheel_interest, segments)))
     }
 
     fn on_consumed(&mut self, bytes: u64) {

@@ -298,10 +298,7 @@ fn assemble_accounts_for_header_overhead() {
     }
 
     let registry = Registry::new();
-    let counters = AssemblerCounters::new(
-        &registry,
-        registry.register_queue_gauge("q.resolver_to_tx_wheel"),
-    );
+    let counters = AssemblerCounters::new(&registry);
     let segments = assemble(
         &mut context,
         &clock,
@@ -374,10 +371,7 @@ fn assemble_fuzz_respects_gso_invariants() {
             }
 
             let registry = Registry::new();
-            let counters = AssemblerCounters::new(
-                &registry,
-                registry.register_queue_gauge("q.resolver_to_tx_wheel"),
-            );
+            let counters = AssemblerCounters::new(&registry);
             let segments = assemble(
                 &mut context,
                 &clock,
@@ -634,10 +628,7 @@ fn assemble_probe_fuzz() {
 
             // Phase 1: normal assembly — puts frames into inflight.
             let registry2 = Registry::new();
-            let counters = AssemblerCounters::new(
-                &registry2,
-                registry2.register_queue_gauge("q.resolver_to_tx_wheel"),
-            );
+            let counters = AssemblerCounters::new(&registry2);
             let _segments = assemble(
                 &mut context,
                 &clock,
