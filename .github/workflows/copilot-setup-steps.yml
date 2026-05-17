@@ -1,0 +1,56 @@
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_INSTA_VERSION: "1.47.2"
+      CARGO_NEXTEST_VERSION: "0.9.136"
+      CARGO_BOLERO_VERSION: "0.13.4"
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Cache cargo-insta binary
+        id: cache-cargo-insta
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-insta
+          key: ${{ runner.os }}-cargo-insta-${{ env.CARGO_INSTA_VERSION }}
+
+      - name: Install cargo-insta
+        if: steps.cache-cargo-insta.outputs.cache-hit != 'true'
+        run: cargo install cargo-insta --locked --version "$CARGO_INSTA_VERSION"
+
+      - name: Cache cargo-nextest binary
+        id: cache-cargo-nextest
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-nextest
+          key: ${{ runner.os }}-cargo-nextest-${{ env.CARGO_NEXTEST_VERSION }}
+
+      - name: Install cargo-nextest
+        if: steps.cache-cargo-nextest.outputs.cache-hit != 'true'
+        run: cargo install cargo-nextest --locked --version "$CARGO_NEXTEST_VERSION"
+
+      - name: Cache cargo-bolero binary
+        id: cache-cargo-bolero
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-bolero
+          key: ${{ runner.os }}-cargo-bolero-${{ env.CARGO_BOLERO_VERSION }}
+
+      - name: Install cargo-bolero
+        if: steps.cache-cargo-bolero.outputs.cache-hit != 'true'
+        run: cargo install cargo-bolero --locked --version "$CARGO_BOLERO_VERSION"
