@@ -3,15 +3,16 @@
 
 //! stream Server: inbound connection acceptance
 //!
-//! The Server is constructed from an Arc<Endpoint> and a PSK server provider. It provides
+//! The Server is constructed from an `Arc<Endpoint>` and a PSK server provider. It provides
 //! acceptor registration with two modes:
 //!
-//! 1. **Channel acceptor** (`register_acceptor_channel`): Returns a Receiver that yields
-//!    pending streams that must be validated. The acceptor handle is managed internally - dropping all receivers
+//! 1. **Channel acceptor** ([`register_acceptor_channel`](Server::register_acceptor_channel)):
+//!    Returns a [`Receiver`](crate::acceptor::channel::Receiver) that yields pending streams
+//!    that must be validated. The acceptor handle is managed internally — dropping all receivers
 //!    unregisters the acceptor.
 //!
-//! 2. **Direct acceptor** (`register_acceptor`): Takes an `impl Acceptor<PendingValidation>` directly
-//!    for full control over flow handling.
+//! 2. **Direct acceptor** ([`register_acceptor`](Server::register_acceptor)): Takes an
+//!    `impl Acceptor<PendingValidation>` directly for full control over flow handling.
 
 use crate::{
     acceptor::{self, channel as accept_channel},
@@ -24,9 +25,51 @@ use crate::{
 use s2n_quic_core::varint::VarInt;
 use std::{io, sync::Arc};
 
-/// Server for accepting inbound stream connections
+/// Server for accepting inbound `s2n-quic-dc` stream connections.
 ///
-/// Cheap to clone - holds an Arc to the shared Endpoint and PSK provider.
+/// `Server` wraps a shared [`Endpoint`] and a PSK provider to register named acceptors.
+/// Each acceptor is identified by a [`VarInt`] ID; the client must supply the same ID when
+/// calling [`Client::connect`](crate::stream::Client::connect).
+///
+/// `Server` is cheap to clone: it holds `Arc` references to the endpoint and PSK provider.
+///
+/// # Expectations and guarantees
+///
+/// - Multiple acceptors with different IDs can coexist on one endpoint.
+/// - Each acceptor ID can only be registered once; a second registration for the same ID
+///   returns an error.
+/// - An acceptor is automatically unregistered when all of its receivers (channel mode) or
+///   its [`Handle`](crate::acceptor::Handle) (direct mode) are dropped.
+///
+/// # Footguns
+///
+/// - The PSK provider's map **must** be the same `Arc` instance as the endpoint's map.
+///   [`new`](Self::new) panics if they differ.
+/// - Streams arrive as [`PendingValidation`]; callers must call
+///   [`validate`](PendingValidation::validate) before reading from or writing to the stream.
+///
+/// # Example
+///
+/// ```ignore
+/// use s2n_quic_dc::stream::{PendingValidation, Server, Stream};
+/// use s2n_quic_core::varint::VarInt;
+///
+/// async fn accept_loop(
+///     server: Server,
+///     acceptor_id: VarInt,
+/// ) -> std::io::Result<()> {
+///     let config = s2n_quic_dc::acceptor::channel::Config::default();
+///     let mut rx = server.register_acceptor_channel(acceptor_id, config)?;
+///     while let Some(pending) = rx.recv().await {
+///         tokio::spawn(async move {
+///             if let Ok(stream) = pending.validate().await {
+///                 handle(stream).await;
+///             }
+///         });
+///     }
+///     Ok(())
+/// }
+/// ```
 #[derive(Clone)]
 pub struct Server {
     endpoint: Arc<Endpoint>,
@@ -35,11 +78,12 @@ pub struct Server {
 }
 
 impl Server {
-    /// Create a new Server from a shared Endpoint and PSK provider
+    /// Creates a new `Server` from a shared [`Endpoint`] and PSK provider.
     ///
     /// # Panics
     ///
-    /// Panics if the PSK provider's map is not the same instance as the endpoint's map.
+    /// Panics if the PSK provider's map is not the same `Arc` instance as the endpoint's map.
+    /// Both must point to the same shared path-secret store.
     pub fn new(endpoint: Arc<Endpoint>, psk: crate::psk::server::Provider) -> Self {
         assert_eq!(
             endpoint.path_secret_map,
@@ -49,10 +93,18 @@ impl Server {
         Self { endpoint, psk }
     }
 
-    /// Register an acceptor directly
+    /// Registers an acceptor directly, giving full control over stream handling.
     ///
-    /// This gives full control over how accepted streams are handled. The acceptor
-    /// handle is returned for the caller to manage.
+    /// The returned [`Handle`](crate::acceptor::Handle) keeps the acceptor registered for as
+    /// long as it is held. Dropping the handle unregisters the acceptor.
+    ///
+    /// Use this form when you need custom dispatch logic or want to manage the acceptor
+    /// lifecycle explicitly. For the common case of feeding streams into an async task,
+    /// prefer [`register_acceptor_channel`](Self::register_acceptor_channel).
+    ///
+    /// # Errors
+    ///
+    /// Returns `AddrInUse` if `acceptor_id` is already registered.
     pub fn register_acceptor(
         &self,
         acceptor_id: VarInt,
@@ -69,13 +121,24 @@ impl Server {
             })
     }
 
-    /// Register a channel-based acceptor that yields pending streams
+    /// Registers a channel-based acceptor and returns a receiver for accepted streams.
     ///
-    /// Returns a Receiver that yields accepted streams. Cloning the receiver
-    /// scales out acceptance across multiple tasks via pick-two load balancing.
-    /// The acceptor is automatically unregistered when all receivers are dropped.
+    /// Incoming [`PendingValidation`] streams are placed in a bounded queue. Callers read
+    /// from the returned receiver and call [`validate`](PendingValidation::validate) before
+    /// using each stream.
     ///
-    /// `config` controls the per-receiver queue capacity and eviction policy.
+    /// Cloning the receiver scales out acceptance across multiple tasks: incoming streams
+    /// are distributed across all live receivers using pick-two load balancing.
+    ///
+    /// The acceptor is automatically unregistered when all clones of the receiver are
+    /// dropped. No explicit cleanup is required.
+    ///
+    /// `config` controls the per-receiver queue capacity and eviction policy for streams
+    /// that arrive faster than the application can accept them.
+    ///
+    /// # Errors
+    ///
+    /// Returns `AddrInUse` if `acceptor_id` is already registered.
     pub fn register_acceptor_channel(
         &self,
         acceptor_id: VarInt,

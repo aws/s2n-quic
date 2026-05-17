@@ -3,12 +3,13 @@
 
 //! stream Client: outbound connection establishment
 //!
-//! The Client is constructed from an Arc<Endpoint> and a PSK client provider. It provides
-//! connect() which performs a handshake if needed and returns a Stream. The Client holds its
-//! own clone of the queue allocator to avoid synchronization on the hot path.
+//! The Client is constructed from an `Arc<Endpoint>` and a PSK client provider. It provides
+//! [`connect`](Client::connect) which performs a handshake if needed and returns a [`Stream`].
+//! The Client holds its own clone of the queue allocator to avoid synchronization on the hot path.
 //!
-//! Flow initialization is lazy: connect() allocates local queues and returns immediately.
-//! The Writer sends FlowInit on the first write, potentially with early data.
+//! Flow initialization is lazy: `connect` allocates local queues and returns immediately.
+//! The [`Writer`](crate::stream::Writer) sends `FlowInit` on the first write, potentially
+//! with early data.
 
 use crate::{
     flow, psk,
@@ -27,7 +28,46 @@ use std::{
 
 pub mod rpc;
 
-/// Client for making outbound stream connections
+/// Client for making outbound `s2n-quic-dc` stream connections.
+///
+/// `Client` wraps a shared [`Endpoint`] and a PSK provider to open bidirectional [`Stream`]s
+/// to a remote server. Each call to [`connect`](Self::connect) performs a TLS handshake if
+/// no path secret exists yet, then allocates local queues and returns a ready-to-use stream.
+///
+/// `Client` is cheap to clone: it holds an `Arc` to the shared endpoint and an independent
+/// copy of the queue allocator, so hot-path connection creation does not require global
+/// synchronization.
+///
+/// # Expectations and guarantees
+///
+/// - Every clone shares the same underlying endpoint and path-secret map.
+/// - Flow initialization is lazy. The [`Writer`](crate::stream::Writer) sends `FlowInit`
+///   (with optional early data) on the first write after `connect` returns.
+/// - The TLS handshake, if needed, is performed inside `connect` and is transparent to
+///   the caller.
+///
+/// # Footguns
+///
+/// - The PSK provider's map **must** be the same `Arc` instance as the endpoint's map.
+///   [`new`](Self::new) panics if they differ.
+/// - `connect` only ensures a path secret exists. It does not guarantee the server is
+///   reachable or that the stream will complete successfully.
+///
+/// # Example
+///
+/// ```ignore
+/// use s2n_quic_dc::stream::{Client, Stream};
+/// use s2n_quic_core::varint::VarInt;
+/// use std::net::SocketAddr;
+///
+/// async fn open_stream(
+///     mut client: Client,
+///     server: SocketAddr,
+/// ) -> std::io::Result<Stream> {
+///     let acceptor_id = VarInt::from_u8(0);
+///     client.connect(server, acceptor_id).await
+/// }
+/// ```
 #[derive(Clone)]
 pub struct Client {
     endpoint: Arc<Endpoint>,
@@ -37,11 +77,14 @@ pub struct Client {
 }
 
 impl Client {
-    /// Create a new Client from a shared Endpoint and PSK provider
+    /// Creates a new `Client` from a shared [`Endpoint`] and PSK provider.
+    ///
+    /// `server_name` is the TLS server name used during handshakes with the peer.
     ///
     /// # Panics
     ///
-    /// Panics if the PSK provider's map is not the same instance as the endpoint's map.
+    /// Panics if the PSK provider's map is not the same `Arc` instance as the endpoint's map.
+    /// Both must point to the same shared path-secret store.
     pub fn new(endpoint: Arc<Endpoint>, psk: psk::client::Provider, server_name: Name) -> Self {
         assert_eq!(
             endpoint.path_secret_map,
@@ -57,13 +100,26 @@ impl Client {
         }
     }
 
-    /// Connect to a peer, returning a Stream
+    /// Opens a new bidirectional stream to `peer`.
     ///
-    /// Performs a TLS handshake if no path secret exists for the peer yet. Allocates local
-    /// flow queues and returns immediately - the actual FlowInit packet is sent lazily on
-    /// the first write (with optional early data).
+    /// If no path secret already exists for `peer`, a TLS handshake is performed first.
+    /// Once a path secret is available, local queues are allocated and a [`Stream`] is
+    /// returned immediately.
     ///
     /// `acceptor_id` identifies which acceptor on the server should handle this stream.
+    ///
+    /// # Semantics
+    ///
+    /// - Flow initialization is lazy. The [`Writer`](crate::stream::Writer) sends `FlowInit`
+    ///   (possibly with early data) on the first write.
+    /// - A successful return does not mean the server has accepted the stream yet; it only
+    ///   means local setup succeeded.
+    ///
+    /// # Footguns
+    ///
+    /// - If the TLS handshake fails, this returns an error and no stream is created.
+    /// - Using an `acceptor_id` not registered on the server causes the server to reject
+    ///   the stream, which surfaces as a later write or read error.
     pub async fn connect(&mut self, peer: SocketAddr, acceptor_id: VarInt) -> io::Result<Stream> {
         let (peer, _kind) = self
             .psk
@@ -97,7 +153,18 @@ impl Client {
         Ok(Stream::new(reader, writer))
     }
 
-    /// Perform an RPC over a new stream: send the request and collect the response
+    /// Performs a single-round-trip RPC: sends `request` and collects `response`.
+    ///
+    /// Opens a stream to `peer` (with `acceptor_id`), writes the full request payload
+    /// with FIN, then reads the full response and returns the caller-chosen output type.
+    /// The stream is consumed after the exchange.
+    ///
+    /// # Footguns
+    ///
+    /// - The response buffer provided by [`Response::provide_storage`] must have sufficient
+    ///   capacity. An error is returned if storage can never grow to fit the server's reply.
+    /// - If the request write or response read fails, the stream is dropped without a clean
+    ///   shutdown.
     pub async fn rpc<Req, Res>(
         &mut self,
         peer: SocketAddr,
