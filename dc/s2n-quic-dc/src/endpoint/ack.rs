@@ -56,12 +56,24 @@ pub(crate) fn process_ack<Clk, Rand>(
     let mut max_acked_tx_time = None;
     let mut bytes_acked = 0usize;
     let mut cca_args = None;
+    // RTT sample from an ack-eliciting ACK-only packet (read-heavy path).
+    // Set when an ACK range covers the pending PN recorded by `rtt_tracker`.
+    let mut ack_only_rtt_sample: Option<s2n_quic_core::time::Timestamp> = None;
 
     let max_acked_pn = ack.largest_acknowledged();
 
     for range in ack.ack_ranges() {
-        let pmin = PacketNumberSpace::Initial.new_packet_number(*range.start());
-        let pmax = PacketNumberSpace::Initial.new_packet_number(*range.end());
+        let start = *range.start();
+        let end = *range.end();
+
+        // Check whether this range covers the outstanding ack-eliciting ACK-only
+        // packet (if any) and collect the RTT sample.
+        if let Some(time_sent) = context.rtt_tracker.check_range(start, end) {
+            ack_only_rtt_sample = Some(time_sent);
+        }
+
+        let pmin = PacketNumberSpace::Initial.new_packet_number(start);
+        let pmax = PacketNumberSpace::Initial.new_packet_number(end);
         let range = PacketNumberRange::new(pmin, pmax);
 
         // Phase 1: remove ACKed entries from the inflight map.
@@ -130,7 +142,17 @@ pub(crate) fn process_ack<Clk, Rand>(
         }
     }
 
-    // Update RTT estimator and CCA
+    // Finalize loss detection for the ACK-only RTT tracker. This must be called
+    // after all ranges have been processed so that the loss heuristic does not
+    // fire on the first (largest) range and discard a slot that would have been
+    // covered by a later (smaller) range in the same ACK frame.
+    context.rtt_tracker.on_ack_done(max_acked_pn);
+
+    // Update RTT estimator and CCA.
+    //
+    // Data ACKs take priority: if any inflight data packet was acknowledged we
+    // compute the RTT sample from the most recently sent one. Otherwise, fall
+    // back to the ack-only RTT sample (read-heavy path) if one is available.
     if let Some((time_sent, cc_info)) = cca_args {
         let rtt_sample = now
             .saturating_duration_since(time_sent)
@@ -152,6 +174,28 @@ pub(crate) fn process_ack<Clk, Rand>(
             &context.rtt_estimator,
             random,
             now,
+        );
+    } else if let Some(ack_only_time_sent) = ack_only_rtt_sample {
+        // No data was ACKed in this frame, but the peer acknowledged our
+        // ack-eliciting ACK-only packet. Use this to keep the RTT estimate fresh.
+        let rtt_sample = now
+            .saturating_duration_since(ack_only_time_sent)
+            .saturating_sub(ack_delay)
+            .max(Duration::from_micros(1));
+
+        tracing::trace!(
+            credentials = %context.credentials.id,
+            sender_idx = context.sender_idx,
+            ?rtt_sample,
+            "RTT updated from ack-only packet (read-heavy path)"
+        );
+
+        context.rtt_estimator.update_rtt(
+            Duration::ZERO,
+            rtt_sample,
+            now,
+            true,
+            PacketNumberSpace::ApplicationData,
         );
     }
 

@@ -29,8 +29,13 @@ use crate::{
 use core::time::Duration;
 use rustc_hash::FxHashMap;
 use s2n_quic_core::{
-    frame::ack::EcnCounts, packet::number::PacketNumberSpace, path::INITIAL_PTO_BACKOFF, random,
-    recovery::RttEstimator, varint::VarInt,
+    frame::ack::EcnCounts,
+    packet::number::PacketNumberSpace,
+    path::INITIAL_PTO_BACKOFF,
+    random,
+    recovery::RttEstimator,
+    time::Timestamp,
+    varint::VarInt,
 };
 use s2n_quic_platform::features::Gso;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
@@ -176,6 +181,171 @@ impl PendingAcks {
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
+    }
+}
+
+/// Tracks RTT sampling for ACK-only (read-heavy) sends.
+///
+/// When there is no data in the inflight map, RTT samples cannot be obtained from
+/// normal ACK processing because no ack-eliciting packets are outstanding. This
+/// tracker records send times so the RTT estimator can be updated when the peer
+/// acknowledges one of those packets.
+///
+/// Two slots mirror the design in `s2n_quic_core::ack::transmission::Set`:
+///
+/// - **`stable`** — the *oldest* ack-eliciting ACK-only transmission that has not yet
+///   been acknowledged. Set once and held fixed until the peer ACKs it or loss is
+///   declared. Acts as a reliable fallback RTT sample if newer sends are dropped.
+///
+/// - **`latest`** — the *most recent* tracked ACK-only transmission. Updated on every
+///   send (ack-eliciting or not) while a probe is in-flight, so the RTT sample is
+///   as fresh as possible when the peer ACKs a range covering it.
+///
+/// **ACK loop prevention**: after a sample is consumed, the `sampled` flag is set to
+/// prevent issuing another ack-eliciting probe until [`clear`] is called (which
+/// happens when data enters the inflight map). This ensures that in a truly idle
+/// connection, the two sides do not ping-pong ack-eliciting packets indefinitely,
+/// which would reset the idle timer and prevent the connection from timing out.
+///
+/// The assembler gates `is_ack_eliciting` on `!is_pending()`. Once `stable` is set
+/// (a probe is in-flight), subsequent ACK-only sends are not ack-eliciting but still
+/// call [`on_non_eliciting_sent`] to keep `latest` fresh. When the probe is
+/// acknowledged, `sampled = true` suppresses further probing until `clear()`.
+///
+/// The tracker is also cleared whenever a data-carrying packet is inserted into
+/// the inflight map, because those packets will produce RTT samples on their own.
+#[derive(Debug, Default)]
+pub(crate) struct AckRttTracker {
+    /// Oldest pending ack-eliciting ACK-only transmission.
+    /// Set once; not replaced until acknowledged or declared lost.
+    stable: Option<(VarInt, Timestamp)>,
+    /// Most recently tracked ACK-only transmission (ack-eliciting or not).
+    /// Updated while a probe is in-flight to keep the sample as fresh as possible.
+    latest: Option<(VarInt, Timestamp)>,
+    /// Set to `true` after a sample has been successfully consumed. Prevents
+    /// re-probing until [`clear`] is called, breaking any potential ACK loop.
+    sampled: bool,
+}
+
+impl AckRttTracker {
+    /// Returns `true` when an ack-eliciting ACK-only probe is in-flight (`stable`
+    /// is set) **or** when we have just consumed a sample and are in the cooldown
+    /// period (`sampled` is set).
+    ///
+    /// The assembler gates `make_ack_eliciting` on `!is_pending()`, so at most one
+    /// ack-eliciting probe is outstanding at a time and re-probing is suppressed
+    /// until new data flows through the inflight map.
+    #[inline]
+    pub fn is_pending(&self) -> bool {
+        self.stable.is_some() || self.sampled
+    }
+
+    /// Called just before an ack-eliciting ACK-only packet is sent.
+    ///
+    /// Updates `latest` and sets `stable` if not already set (so `stable` always
+    /// refers to the oldest unacknowledged ack-eliciting transmission). Clears the
+    /// `sampled` flag to begin a new probe cycle.
+    #[inline]
+    pub fn on_sent(&mut self, packet_number: VarInt, time_sent: Timestamp) {
+        self.sampled = false;
+        self.latest = Some((packet_number, time_sent));
+        if self.stable.is_none() {
+            self.stable = Some((packet_number, time_sent));
+        }
+    }
+
+    /// Called for non-ack-eliciting ACK-only sends when a probe is already in-flight.
+    ///
+    /// Keeps `latest` pointing at the most recently sent PN so that if the peer
+    /// ACKs a range covering it (e.g. as part of a future combined ACK), we return
+    /// the freshest possible RTT sample. No-op when no probe is in-flight (`stable`
+    /// is `None`), since there is nothing to compare against.
+    #[inline]
+    pub fn on_non_eliciting_sent(&mut self, packet_number: VarInt, time_sent: Timestamp) {
+        if self.stable.is_some() {
+            self.latest = Some((packet_number, time_sent));
+        }
+    }
+
+    /// Clear all slots and reset the `sampled` flag.
+    ///
+    /// Called when a data-carrying packet is inserted into the inflight map.
+    /// In that case the tracker is no longer needed because RTT samples will
+    /// arrive via the normal inflight ACK path. Clearing `sampled` allows the
+    /// tracker to probe again the next time inflight becomes empty.
+    #[inline]
+    pub fn clear(&mut self) {
+        self.stable = None;
+        self.latest = None;
+        self.sampled = false;
+    }
+
+    /// Check whether a single ACK range covers either the `latest` or `stable` PN.
+    ///
+    /// `start` and `end` are the inclusive VarInt bounds of the acknowledged range.
+    /// Loss detection is handled separately by [`on_ack_done`], which must be called
+    /// after all ranges in an ACK frame have been processed.
+    ///
+    /// **When `latest` is covered:** returns its `time_sent`, clears both slots, and
+    /// sets `sampled = true`. This gives the freshest possible RTT sample.
+    ///
+    /// **When `stable` is covered (but `latest` is not):** returns `stable`'s
+    /// `time_sent`, advances `stable ← latest`, and sets `sampled = true`. This
+    /// handles the case where the most recent send was dropped but an older one was
+    /// acknowledged.
+    #[inline]
+    pub fn check_range(&mut self, start: VarInt, end: VarInt) -> Option<Timestamp> {
+        // Check latest first — fresher sample is preferable.
+        if let Some((pn, time_sent)) = self.latest {
+            if pn >= start && pn <= end {
+                // Latest ACKed → clear both, mark sampled, return the fresh sample.
+                self.stable = None;
+                self.latest = None;
+                self.sampled = true;
+                return Some(time_sent);
+            }
+        }
+
+        // Fall back to stable.
+        if let Some((pn, time_sent)) = self.stable {
+            if pn >= start && pn <= end {
+                // Stable ACKed → advance stable to latest so the next ACK
+                // can produce a fresher sample; mark sampled.
+                self.stable = self.latest.take();
+                self.sampled = true;
+                return Some(time_sent);
+            }
+        }
+
+        None
+    }
+
+    /// Declare loss for any tracked slots that were not covered by any range in the
+    /// current ACK frame.
+    ///
+    /// Must be called **once** after all ACK ranges have been processed with
+    /// [`check_range`]. Using `largest_acknowledged` (the overall largest PN in the
+    /// ACK frame) as the loss signal: if a slot's PN is strictly less than
+    /// `largest_acknowledged` and was not acknowledged by any range, it is
+    /// considered lost.
+    ///
+    /// When `latest` is lost it is cleared. When `stable` is lost it is advanced to
+    /// `latest` (which may also be `None`). The `sampled` flag is deliberately not
+    /// set on loss — the packet was never acknowledged so we should be free to probe
+    /// again on the next send.
+    #[inline]
+    pub fn on_ack_done(&mut self, largest_acknowledged: VarInt) {
+        if let Some((pn, _)) = self.latest {
+            if largest_acknowledged > pn {
+                self.latest = None;
+            }
+        }
+        if let Some((pn, _)) = self.stable {
+            if largest_acknowledged > pn {
+                // Advance stable to whatever latest holds (may be None).
+                self.stable = self.latest.take();
+            }
+        }
     }
 }
 
@@ -350,6 +520,13 @@ pub(crate) struct Context {
     /// Last-seen ECN counts from peer ACK frames; used to compute deltas for the CCA.
     pub peer_ecn_counts: EcnCounts,
     pub created_at: precision::Timestamp,
+    /// RTT sampler for ACK-only (read-heavy) sends.
+    ///
+    /// When `inflight` is empty we have no ack-eliciting packets in flight and
+    /// can no longer get RTT samples through the normal ACK path. This tracker
+    /// periodically makes an ACK-only packet ack-eliciting so that the peer
+    /// responds and we can measure the round-trip time.
+    pub rtt_tracker: AckRttTracker,
 }
 
 #[derive(Debug)]
@@ -409,6 +586,7 @@ impl Context {
             idle_wheel: WheelLinks::new(),
             peer_ecn_counts: EcnCounts::default(),
             created_at: clock.now(),
+            rtt_tracker: AckRttTracker::default(),
         })
     }
 

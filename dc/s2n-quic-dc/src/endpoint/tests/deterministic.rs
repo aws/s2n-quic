@@ -27,7 +27,7 @@ use s2n_quic_core::varint::VarInt;
 use std::{
     collections::HashSet,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::Duration,
@@ -680,7 +680,128 @@ fn init_uniqueness_reordered_and_duplicated() {
     sim_init_uniqueness(&actions, N);
 }
 
-// ── Fuzz test ─────────────────────────────────────────────────────────────────
+// ── ACK loop prevention ───────────────────────────────────────────────────────
+
+/// Verifies that the ACK-only RTT probe does not create an ACK loop.
+///
+/// In a read-heavy scenario the sender (server) emits only ACK-only packets.
+/// If those packets are always made ack-eliciting, the peer (client) will
+/// respond with ack-eliciting ACKs of its own, which causes the server to keep
+/// sending ack-eliciting responses, and so on indefinitely.  This ping-pong
+/// resets the idle timer on both sides, preventing the connection from ever
+/// timing out.
+///
+/// The `AckRttTracker::sampled` flag breaks the loop: after the RTT sample is
+/// consumed (the probe was acknowledged), `is_pending()` returns `true` and the
+/// assembler no longer makes ACK-only packets ack-eliciting.  This means the
+/// peer does not receive another ack-eliciting packet from us, so it has no
+/// reason to reply, and the exchange terminates.
+///
+/// This test counts packets sent during a 5-second observation window that
+/// starts immediately after a small data transfer completes.  With the fix,
+/// only a handful of completion-acknowledgement packets should flow.  Without
+/// the fix, an ACK loop at 1 ms RTT would generate thousands of packets.
+#[test]
+fn ack_only_probe_does_not_create_ack_loop() {
+    // Small body: we care about post-transfer behaviour, not throughput.
+    const BODY_LEN: usize = 1024;
+    // 5 simulated seconds at 1 ms RTT = 5,000 RTTs.  An unbounded ACK loop
+    // would produce at least two packets per RTT → ≥ 10,000 extra packets.
+    const OBSERVE_WINDOW: Duration = Duration::from_secs(5);
+    // Allow a generous margin for the legitimate ACK flush that follows the
+    // transfer (completing the last round of in-flight ACKs) plus a single
+    // probe exchange.
+    const MAX_EXTRA_PACKETS: usize = 100;
+
+    let transfer_done = Arc::new(AtomicBool::new(false));
+    let packets_after = Arc::new(AtomicUsize::new(0));
+
+    {
+        let transfer_done = transfer_done.clone();
+        let packets_after = packets_after.clone();
+
+        sim(|| {
+            // Count packets sent after the transfer completes.
+            {
+                let done = transfer_done.clone();
+                let count = packets_after.clone();
+                bach::net::monitor::on_packet_sent(move |_packet| {
+                    if done.load(Ordering::Relaxed) {
+                        count.fetch_add(1, Ordering::Relaxed);
+                    }
+                    bach::net::monitor::Command::Pass
+                });
+            }
+
+            let acceptor_id = VarInt::from_u8(1);
+
+            // ── Server: read-only (read-heavy path, ACK-only sends) ───────────
+            {
+                async move {
+                    let server = Server::new();
+                    let mut acceptor = server
+                        .register_acceptor_channel(acceptor_id, 8)
+                        .expect("acceptor registration");
+
+                    while let Some(stream) = acceptor.recv().await {
+                        async move {
+                            let stream = stream.validate().await.expect("server validate");
+                            let (mut reader, _writer) = stream.into_split();
+                            let mut buf = BytesMut::with_capacity(BODY_LEN);
+                            loop {
+                                let n = reader.read_into(&mut buf).await.expect("server read");
+                                if n == 0 {
+                                    break;
+                                }
+                            }
+                        }
+                        .spawn();
+                    }
+                }
+                .group("server")
+                .spawn();
+            }
+
+            // ── Client: write data, mark done, then observe for OBSERVE_WINDOW ──
+            {
+                let done = transfer_done.clone();
+                async move {
+                    let mut client = Client::new();
+                    let stream = client
+                        .connect("server:0", acceptor_id)
+                        .await
+                        .expect("connect");
+                    let (_reader, mut writer) = stream.into_split();
+                    let mut body = Bytes::from(vec![1u8; BODY_LEN]);
+                    writer
+                        .write_all_from_fin(&mut body)
+                        .await
+                        .expect("client write");
+
+                    // Signal that the transfer is complete and start counting.
+                    done.store(true, Ordering::Relaxed);
+
+                    // Wait for the observation window so background tasks can
+                    // exchange any post-transfer packets.
+                    bach::time::sleep(OBSERVE_WINDOW).await;
+                }
+                .group("client")
+                .primary()
+                .spawn();
+            }
+        });
+    }
+
+    let extra = packets_after.load(Ordering::Relaxed);
+    assert!(
+        extra < MAX_EXTRA_PACKETS,
+        "ACK loop detected: expected <{MAX_EXTRA_PACKETS} packets after transfer but \
+         observed {extra}. The AckRttTracker sampled flag may not be suppressing \
+         re-probing correctly."
+    );
+}
+
+// ── Init uniqueness fuzz ──────────────────────────────────────────────────────
 
 /// Fuzzes the init-protocol uniqueness invariant with randomized per-packet
 /// delay and duplication patterns.
@@ -700,3 +821,4 @@ fn init_uniqueness_fuzz() {
             sim_init_uniqueness(&actions, 10_000);
         });
 }
+
