@@ -24,6 +24,10 @@ struct Cli {
     #[arg(long, default_value = "/tmp/dc-traces")]
     trace_dir: PathBuf,
 
+    /// Print the endpoint runtime pipeline graph in Graphviz DOT format.
+    #[arg(long)]
+    print_pipeline_dot: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -114,7 +118,12 @@ fn main() -> std::io::Result<()> {
 
         let spawner = busy_poll::create_pool(busy_poll_workers);
         let data_bind: SocketAddr = "[::]:0".parse().unwrap();
-        let endpoint = endpoint::create(&config.endpoint, data_bind, &spawner)?;
+        let endpoint = endpoint::create(
+            &config.endpoint,
+            data_bind,
+            &spawner,
+            cli.print_pipeline_dot,
+        )?;
 
         let mut reporter_config = s2n_quic_dc::counter::ReporterConfig::new(Duration::from_secs(1));
         reporter_config.sparse_mode = s2n_quic_dc::counter::SparseMode::Once;

@@ -349,19 +349,18 @@ where
         .unzip();
 
     // Invalidation channels: recv IO → background (raw segments) and background → all workers
-    let (invalidation_raw_tx, invalidation_raw_rx) =
-        intrusive::sync::new::<descriptor::Filled>();
+    let (invalidation_raw_tx, invalidation_raw_rx) = intrusive::sync::new::<descriptor::Filled>();
     let num_invalidation_targets = num_send_workers + layout.recv_dispatch.len();
-    let (invalidation_broadcast_txs, invalidation_worker_rxs): (Vec<_>, Vec<_>) =
-        (0..num_invalidation_targets)
-            .map(|i| {
-                let (tx, rx) = intrusive::sync::new::<crate::credentials::Id>();
-                let gauge = counter_registry
-                    .register_queue_gauge_nominal("q.invalidation", format_args!("worker.{i}"));
-                let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
-                (tx, rx)
-            })
-            .unzip();
+    let (invalidation_broadcast_txs, invalidation_worker_rxs): (Vec<_>, Vec<_>) = (0
+        ..num_invalidation_targets)
+        .map(|i| {
+            let (tx, rx) = intrusive::sync::new::<crate::credentials::Id>();
+            let gauge = counter_registry
+                .register_queue_gauge_nominal("q.invalidation", format_args!("worker.{i}"));
+            let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
+            (tx, rx)
+        })
+        .unzip();
     let mut invalidation_worker_rxs = invalidation_worker_rxs.into_iter();
 
     let mut sender_id_to_worker: Vec<usize> = Vec::with_capacity(num_send);
@@ -689,7 +688,8 @@ struct Worker<SendSocket, RecvSocket, Clk, AckSnd, Route, Inv> {
     background: Option<BackgroundParts>,
 }
 
-impl<SendSocket, RecvSocket, Clk, AckSnd, Route, Inv> Worker<SendSocket, RecvSocket, Clk, AckSnd, Route, Inv>
+impl<SendSocket, RecvSocket, Clk, AckSnd, Route, Inv>
+    Worker<SendSocket, RecvSocket, Clk, AckSnd, Route, Inv>
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
@@ -724,7 +724,8 @@ where
 
     #[inline]
     fn spawn<R: crate::runtime::Runtime>(self, runtime: &R) {
-        use crate::{runtime::Spawner as _, socket::channel::ReceiverExt as _};
+        use crate::runtime::{ChannelRegistration, Spawner as _};
+        use crate::socket::channel::ReceiverExt as _;
 
         let Self {
             id,
@@ -756,9 +757,18 @@ where
             }
 
             if let Some(sw) = send_worker {
-                let batch_rx =
-                    crate::counter::GaugedQueueReceiver::new(sw.batch_rx, sw.batch_gauge);
-                let ack_rx = crate::counter::GaugedQueueReceiver::new(sw.ack_rx, sw.ack_gauge);
+                let batch_rx = crate::counter::GaugedQueueReceiver::new(
+                    sw.batch_rx,
+                    sw.batch_gauge
+                        .receiver("task.context_resolver")
+                        .with_function("endpoint::Worker::spawn"),
+                );
+                let ack_rx = crate::counter::GaugedQueueReceiver::new(
+                    sw.ack_rx,
+                    sw.ack_gauge
+                        .receiver("task.ack_processor")
+                        .with_function("endpoint::Worker::spawn"),
+                );
                 tasks::send_worker(
                     &mut local,
                     sw.idx,
@@ -781,14 +791,27 @@ where
                 let recv_idx = rs.idx;
                 let variant = format!("recv.{recv_idx}");
                 let rx = tasks::socket_recv(rs.socket, rs.recv_pool, rs.router);
-                let task_counter =
-                    counter_registry.register_nominal_task("task.socket_recv", &variant);
-                local.spawn(rx.drain_budgeted_metered(Some(budgets.socket_recv), task_counter));
+                let task_counter = counter_registry
+                    .register_nominal_task("task.socket_recv", &variant)
+                    .with_registration_metadata(
+                        "task.socket_recv",
+                        "Reads UDP datagrams and routes packets into dispatch queues",
+                        "endpoint::Worker::spawn",
+                    );
+                local.spawn_receiver_task(
+                    rx.drain_budgeted_metered(Some(budgets.socket_recv), task_counter.clone()),
+                    Some(budgets.socket_recv),
+                    task_counter,
+                );
             }
 
             if let Some(rd) = recv_dispatch {
-                let packet_rx =
-                    crate::counter::GaugedQueueReceiver::new(rd.packet_rx, rd.packet_gauge);
+                let packet_rx = crate::counter::GaugedQueueReceiver::new(
+                    rd.packet_rx,
+                    rd.packet_gauge
+                        .receiver("task.packet_dispatch")
+                        .with_function("endpoint::Worker::spawn"),
+                );
                 let recv_dispatch_idx = rd.recv_dispatch_idx;
                 let recv_cache = std::rc::Rc::new(std::cell::RefCell::new(
                     crate::stream::endpoint::recv::Cache::new(recv_dispatch_idx),
@@ -797,15 +820,52 @@ where
                     crate::socket::channel::intrusive::unsync::new_with_adapter::<
                         crate::stream::endpoint::recv::AckBurstAdapter,
                     >();
+                local.register_channel(ChannelRegistration::new(
+                    format!("ch.packet_dispatch_to_ack_burst.recv.{recv_dispatch_idx}"),
+                    "ACK burst queue carrying recv contexts that need acknowledgement encoding",
+                    "endpoint::Worker::spawn",
+                ));
+                local.register_channel_sender(
+                    "task.packet_dispatch",
+                    format!("ch.packet_dispatch_to_ack_burst.recv.{recv_dispatch_idx}"),
+                    "Packet dispatch schedules recv contexts for ACK encoding",
+                    "endpoint::Worker::spawn",
+                );
+                local.register_channel_receiver(
+                    "task.ack_burst",
+                    format!("ch.packet_dispatch_to_ack_burst.recv.{recv_dispatch_idx}"),
+                    "ACK burst task drains contexts and emits ACK messages",
+                    "endpoint::Worker::spawn",
+                );
 
                 // Recv idle wheel — expires inactive recv contexts.
                 let variant = format!("recv.{recv_dispatch_idx}");
-                let q_recv_idle_wheel = counter_registry
-                    .register_queue_gauge_nominal("q.recv_idle_wheel", &variant);
+                let q_recv_idle_wheel =
+                    counter_registry.register_queue_gauge_nominal("q.recv_idle_wheel", &variant);
                 let (recv_idle_wheel_tx, recv_idle_wheel_rx) =
                     crate::socket::channel::intrusive::unsync::new_with_adapter::<
                         crate::stream::endpoint::recv::IdleWheelAdapter,
                     >();
+                local.register_channel(
+                    ChannelRegistration::new(
+                        format!("ch.recv_idle_wheel.{variant}"),
+                        "Recv-context idle wheel queue from packet dispatch to idle drain",
+                        "endpoint::Worker::spawn",
+                    )
+                    .with_metric(&q_recv_idle_wheel),
+                );
+                local.register_channel_sender(
+                    "task.packet_dispatch",
+                    format!("ch.recv_idle_wheel.{variant}"),
+                    "Packet dispatch schedules recv contexts for idle expiry",
+                    "endpoint::Worker::spawn",
+                );
+                local.register_channel_receiver(
+                    "task.recv_idle_wheel",
+                    format!("ch.recv_idle_wheel.{variant}"),
+                    "Recv idle wheel drains scheduled contexts",
+                    "endpoint::Worker::spawn",
+                );
                 {
                     let recv_cache = recv_cache.clone();
                     let clock = rd.clock.clone();
@@ -814,19 +874,28 @@ where
                     let idle_lifetime =
                         counter_registry.register_nominal_timer("idle.recv.lifetime", &variant);
                     let task_counter = counter_registry
-                        .register_nominal_task("task.recv_idle_wheel", &variant);
-                    local.spawn(tasks::recv_idle_wheel_drain(
-                        recv_idle_wheel_rx,
-                        recv_idle_wheel_tx.clone(),
-                        clock,
-                        q_recv_idle_wheel,
-                        recv_cache,
-                        idle_expired,
-                        idle_rescheduled,
-                        idle_lifetime,
-                        budgets.idle_wheel,
+                        .register_nominal_task("task.recv_idle_wheel", &variant)
+                        .with_registration_metadata(
+                            "task.recv_idle_wheel",
+                            "Expires or re-schedules idle recv contexts",
+                            "endpoint::Worker::spawn",
+                        );
+                    local.spawn_receiver_task(
+                        tasks::recv_idle_wheel_drain(
+                            recv_idle_wheel_rx,
+                            recv_idle_wheel_tx.clone(),
+                            clock,
+                            q_recv_idle_wheel,
+                            recv_cache,
+                            idle_expired,
+                            idle_rescheduled,
+                            idle_lifetime,
+                            budgets.idle_wheel,
+                            task_counter.clone(),
+                        ),
+                        Some(budgets.idle_wheel),
                         task_counter,
-                    ));
+                    );
                 }
 
                 let rx = tasks::packet_dispatch(
@@ -845,57 +914,132 @@ where
                     rd.waker_sink,
                 );
                 let variant = format!("recv.{recv_dispatch_idx}");
-                let task_counter =
-                    counter_registry.register_nominal_task("task.packet_dispatch", &variant);
-                local.spawn(rx.drain_budgeted_metered(Some(budgets.packet_dispatch), task_counter));
+                let task_counter = counter_registry
+                    .register_nominal_task("task.packet_dispatch", &variant)
+                    .with_registration_metadata(
+                        "task.packet_dispatch",
+                        "Decrypts, validates, and routes inbound packets",
+                        "endpoint::Worker::spawn",
+                    );
+                local.spawn_receiver_task(
+                    rx.drain_budgeted_metered(Some(budgets.packet_dispatch), task_counter.clone()),
+                    Some(budgets.packet_dispatch),
+                    task_counter,
+                );
                 let rx = tasks::ack_burst(
                     crate::socket::channel::FlattenList::new(ack_burst_rx.into_list_receiver()),
                     rd.ack_sender.clone(),
                     recv_dispatch_idx,
                     rd.counters.clone(),
                 );
-                let task_counter =
-                    counter_registry.register_nominal_task("task.ack_burst", &variant);
-                local.spawn(rx.drain_budgeted_metered(Some(budgets.ack_burst), task_counter));
+                let task_counter = counter_registry
+                    .register_nominal_task("task.ack_burst", &variant)
+                    .with_registration_metadata(
+                        "task.ack_burst",
+                        "Encodes and submits ACK bursts from recv contexts",
+                        "endpoint::Worker::spawn",
+                    );
+                local.spawn_receiver_task(
+                    rx.drain_budgeted_metered(Some(budgets.ack_burst), task_counter.clone()),
+                    Some(budgets.ack_burst),
+                    task_counter,
+                );
                 let ack_completion_gauge = counter_registry.register_queue_gauge_nominal(
                     "q.assembler_to_dispatch",
                     format_args!("recv.{recv_dispatch_idx}"),
                 );
-                let ack_completion_rx =
-                    crate::counter::GaugedReceiver::new(rd.ack_completion_rx, ack_completion_gauge);
+                local.register_channel(
+                    ChannelRegistration::new(
+                        format!("ch.assembler_to_dispatch.recv.{recv_dispatch_idx}"),
+                        "ACK completion queue from assembler tasks back to recv dispatch worker",
+                        "endpoint::Worker::spawn",
+                    )
+                    .with_metric(&ack_completion_gauge),
+                );
+                local.register_channel_sender(
+                    "task.assembler",
+                    format!("ch.assembler_to_dispatch.recv.{recv_dispatch_idx}"),
+                    "Assembler publishes ACK completion entries",
+                    "endpoint::Worker::spawn",
+                );
+                local.register_channel_receiver(
+                    "task.ack_completion",
+                    format!("ch.assembler_to_dispatch.recv.{recv_dispatch_idx}"),
+                    "ACK completion task drains completion entries",
+                    "endpoint::Worker::spawn",
+                );
+                let ack_completion_rx = crate::counter::GaugedReceiver::new(
+                    rd.ack_completion_rx,
+                    ack_completion_gauge
+                        .receiver("task.ack_completion")
+                        .with_function("endpoint::Worker::spawn"),
+                );
                 let rx = tasks::ack_completion(
                     ack_completion_rx,
                     recv_cache.clone(),
                     rd.ack_sender,
                     rd.counters.clone(),
                 );
-                let task_counter =
-                    counter_registry.register_nominal_task("task.ack_completion", &variant);
-                local.spawn(rx.drain_budgeted_metered(Some(budgets.ack_completion), task_counter));
+                let task_counter = counter_registry
+                    .register_nominal_task("task.ack_completion", &variant)
+                    .with_registration_metadata(
+                        "task.ack_completion",
+                        "Finalizes ACK send completions and retries stale acknowledgements",
+                        "endpoint::Worker::spawn",
+                    );
+                local.spawn_receiver_task(
+                    rx.drain_budgeted_metered(Some(budgets.ack_completion), task_counter.clone()),
+                    Some(budgets.ack_completion),
+                    task_counter,
+                );
 
                 let rx = tasks::recv_invalidation(rd.invalidation_rx, recv_cache);
-                let task_counter =
-                    counter_registry.register_nominal_task("task.invalidation", &variant);
-                local.spawn(rx.drain_budgeted_metered(Some(budgets.invalidation), task_counter));
+                let task_counter = counter_registry
+                    .register_nominal_task("task.invalidation", &variant)
+                    .with_registration_metadata(
+                        "task.invalidation",
+                        "Purges invalidated recv contexts",
+                        "endpoint::Worker::spawn",
+                    );
+                local.spawn_receiver_task(
+                    rx.drain_budgeted_metered(Some(budgets.invalidation), task_counter.clone()),
+                    Some(budgets.invalidation),
+                    task_counter,
+                );
             }
 
             if let Some(drain) = waker_drain {
                 let variant = format!("waker.{id}");
                 let rx = tasks::waker_drain(drain);
-                let task_counter =
-                    counter_registry.register_nominal_task("task.waker_drain", &variant);
-                local.spawn(rx.drain_budgeted_metered(Some(budgets.waker_drain), task_counter));
+                let task_counter = counter_registry
+                    .register_nominal_task("task.waker_drain", &variant)
+                    .with_registration_metadata(
+                        "task.waker_drain",
+                        "Invokes deferred wakers enqueued by dispatch workers",
+                        "endpoint::Worker::spawn",
+                    );
+                local.spawn_receiver_task(
+                    rx.drain_budgeted_metered(Some(budgets.waker_drain), task_counter.clone()),
+                    Some(budgets.waker_drain),
+                    task_counter,
+                );
             }
 
             if let Some(bg) = background {
-                let rx = tasks::invalidation_validator(
-                    bg.raw_rx,
-                    bg.path_secret_map,
-                    bg.broadcast_txs,
+                let rx =
+                    tasks::invalidation_validator(bg.raw_rx, bg.path_secret_map, bg.broadcast_txs);
+                let task_counter = counter_registry
+                    .register_nominal_task("task.invalidation_validator", "background")
+                    .with_registration_metadata(
+                        "task.invalidation_validator",
+                        "Validates invalidation datagrams and fan-outs revocation events",
+                        "endpoint::Worker::spawn",
+                    );
+                local.spawn_receiver_task(
+                    rx.drain_budgeted_metered(None, task_counter.clone()),
+                    None,
+                    task_counter,
                 );
-                let task_counter =
-                    counter_registry.register_nominal_task("task.invalidation_validator", "background");
-                local.spawn(rx.drain_budgeted_metered(None, task_counter));
             }
         });
     }

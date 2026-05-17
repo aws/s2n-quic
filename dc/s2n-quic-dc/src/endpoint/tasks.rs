@@ -120,28 +120,60 @@ pub fn frame_dispatch<S, Clk>(
         tx.into_list_sender()
     });
     let q_router_to_batcher: [_; Priority::LEVELS] = core::array::from_fn(|i| {
-        counter_registry.register_queue_gauge_nominal("q.router_to_batcher", format_args!("p{i}"))
+        counter_registry
+            .register_queue_gauge_nominal("q.router_to_batcher", format_args!("p{i}"))
+            .with_registration_metadata(
+                format!("ch.router_to_batcher.p{i}"),
+                "Per-priority unsync queue from priority router to frame dispatch",
+                "endpoint::tasks::frame_dispatch",
+            )
     });
+    for i in 0..Priority::LEVELS {
+        spawner.register_queue_channel(&q_router_to_batcher[i]);
+    }
 
-    // Task 1: fixed-cost priority routing.
-    spawner.spawn({
+    {
+        // Task 1: fixed-cost priority routing.
+        for i in 0..Priority::LEVELS {
+            let sender = q_router_to_batcher[i]
+                .sender("task.priority_router")
+                .with_description("Priority router emits per-lane frame queues")
+                .with_function("endpoint::tasks::frame_dispatch");
+            spawner.register_queue_sender(&sender);
+        }
+
         let rx = FrameReceiver {
             frame_rx,
             staging: PriorityStorage::default(),
             priority_list_txs,
             q_router_to_batcher: q_router_to_batcher.clone(),
         };
-        let task_counter = counter_registry.register_task("task.priority_router");
-        rx.drain_budgeted_metered(Some(budgets.submission_router), task_counter)
-    });
+        let task_counter = counter_registry
+            .register_task("task.priority_router")
+            .with_registration_metadata(
+                "task.priority_router",
+                "Routes submissions into per-priority queues",
+                "endpoint::tasks::frame_dispatch",
+            );
+        spawner.spawn_receiver_task(
+            rx.drain_budgeted_metered(Some(budgets.submission_router), task_counter.clone()),
+            Some(budgets.submission_router),
+            task_counter,
+        );
+    }
 
-    // Task 2: batch → Entry → priority merge → pace → pick-two to workers.
-    spawner.spawn({
+    {
+        // Task 2: batch → Entry → priority merge → pace → pick-two to workers.
         let priority_batch_rxs = priority_batch_rxs
             .into_iter()
             .zip(q_router_to_batcher)
             .map(|(rx, gauge)| {
-                crate::counter::GaugedQueueReceiver::new(rx.into_list_receiver(), gauge)
+                let receiver = gauge
+                    .receiver("task.frame_dispatch")
+                    .with_description("Frame dispatch drains per-lane queues")
+                    .with_function("endpoint::tasks::frame_dispatch");
+                spawner.register_queue_receiver(&receiver);
+                crate::counter::GaugedQueueReceiver::new(rx.into_list_receiver(), receiver)
             })
             .collect();
         let rx = PriorityRx::new(priority_batch_rxs);
@@ -149,9 +181,19 @@ pub fn frame_dispatch<S, Clk>(
         let rx = Map::new(rx, Entry::new);
         let rx = Paced::new(rx, clock, overall_send_rate);
         let rx = PickTwo::new(rx, worker_senders, rng, &counter_registry);
-        let task_counter = counter_registry.register_task("task.frame_dispatch");
-        rx.drain_budgeted_metered(Some(budgets.frame_dispatch), task_counter)
-    });
+        let task_counter = counter_registry
+            .register_task("task.frame_dispatch")
+            .with_registration_metadata(
+                "task.frame_dispatch",
+                "Batches, paces, and routes frame batches to worker send sockets",
+                "endpoint::tasks::frame_dispatch",
+            );
+        spawner.spawn_receiver_task(
+            rx.drain_budgeted_metered(Some(budgets.frame_dispatch), task_counter.clone()),
+            Some(budgets.frame_dispatch),
+            task_counter,
+        );
+    }
 }
 
 /// Spawns all send-side tasks for a worker: context resolution, ACK processing, and
@@ -239,121 +281,277 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     let q_ack_to_completion =
         counter_registry.register_queue_gauge_nominal("q.ack_to_completion", &variant);
     let (completed_tx, completed_rx) = unsync::new::<Frame>();
-    let invalidation_completed_tx =
-        crate::counter::GaugedSender::new(completed_tx.clone(), q_ack_to_completion.clone());
     let q_ack_to_cancelled =
         counter_registry.register_queue_gauge_nominal("q.ack_to_cancelled", &variant);
     let (cancelled_tx, cancelled_rx) = unsync::new::<Frame>();
+    let q_resolver_to_tx_wheel = q_resolver_to_tx_wheel.with_registration_metadata(
+        format!("ch.resolver_to_tx_wheel.{variant}"),
+        "Send context scheduling channel feeding the tx wheel",
+        "endpoint::tasks::send_worker",
+    );
+    let q_resolver_to_pto_wheel = q_resolver_to_pto_wheel.with_registration_metadata(
+        format!("ch.resolver_to_pto_wheel.{variant}"),
+        "Send context scheduling channel feeding the pto wheel",
+        "endpoint::tasks::send_worker",
+    );
+    let q_resolver_to_idle_wheel = q_resolver_to_idle_wheel.with_registration_metadata(
+        format!("ch.resolver_to_idle_wheel.{variant}"),
+        "Send context scheduling channel feeding the idle wheel",
+        "endpoint::tasks::send_worker",
+    );
+    let q_ack_to_completion = q_ack_to_completion.with_registration_metadata(
+        format!("ch.ack_to_completion.{variant}"),
+        "Completed frame channel from ack/invalidation tasks to completion dispatcher",
+        "endpoint::tasks::send_worker",
+    );
+    let invalidation_completed_tx = crate::counter::GaugedSender::new(
+        completed_tx.clone(),
+        q_ack_to_completion
+            .sender("task.invalidation")
+            .with_description("Invalidation task emits failed frames as completions")
+            .with_function("endpoint::tasks::send_worker"),
+    );
+    let q_ack_to_cancelled = q_ack_to_cancelled.with_registration_metadata(
+        format!("ch.ack_to_cancelled.{variant}"),
+        "Cancelled frame channel drained by cancelled task",
+        "endpoint::tasks::send_worker",
+    );
+    spawner.register_queue_channel(&q_resolver_to_tx_wheel);
+    spawner.register_queue_channel(&q_resolver_to_pto_wheel);
+    spawner.register_queue_channel(&q_resolver_to_idle_wheel);
+    spawner.register_queue_channel(&q_ack_to_completion);
+    spawner.register_queue_channel(&q_ack_to_cancelled);
 
-    // Task 1: context resolver — drain batch_rx, resolve to context, push frames.
-    spawner.spawn({
+    {
+        // Task 1: context resolver — drain batch_rx, resolve to context, push frames.
+        let tx_wheel_sender = q_resolver_to_tx_wheel
+            .sender("task.context_resolver")
+            .with_description("Context resolver schedules transmission work")
+            .with_function("endpoint::tasks::send_worker");
+        let pto_wheel_sender = q_resolver_to_pto_wheel
+            .sender("task.context_resolver")
+            .with_description("Context resolver schedules PTO checks")
+            .with_function("endpoint::tasks::send_worker");
+        let idle_wheel_sender = q_resolver_to_idle_wheel
+            .sender("task.context_resolver")
+            .with_description("Context resolver tracks idle expiry")
+            .with_function("endpoint::tasks::send_worker");
+        spawner.register_queue_sender(&tx_wheel_sender);
+        spawner.register_queue_sender(&pto_wheel_sender);
+        spawner.register_queue_sender(&idle_wheel_sender);
+
         let rx = context_resolver(
             batch_rx,
             send_caches.clone(),
             sender_idx_to_local.clone(),
             total_sender_ids,
             clock.clone(),
-            crate::counter::GaugedSender::new(tx_wheel_tx.clone(), q_resolver_to_tx_wheel.clone()),
-            crate::counter::GaugedSender::new(
-                pto_wheel_tx.clone(),
-                q_resolver_to_pto_wheel.clone(),
-            ),
-            crate::counter::GaugedSender::new(
-                idle_wheel_tx.clone(),
-                q_resolver_to_idle_wheel.clone(),
-            ),
+            crate::counter::GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
+            crate::counter::GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
+            crate::counter::GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
         );
-        let variant = format!("send.{worker_id}");
-        let task_counter =
-            counter_registry.register_nominal_task("task.context_resolver", &variant);
-        rx.drain_budgeted_metered(Some(budgets.context_resolver), task_counter)
-    });
+        let task_counter = counter_registry
+            .register_nominal_task("task.context_resolver", &variant)
+            .with_registration_metadata(
+                "task.context_resolver",
+                "Resolves frame batches to send contexts and schedules wheels",
+                "endpoint::tasks::send_worker",
+            );
+        spawner.spawn_receiver_task(
+            rx.drain_budgeted_metered(Some(budgets.context_resolver), task_counter.clone()),
+            Some(budgets.context_resolver),
+            task_counter,
+        );
+    }
 
-    // Task 2: ACK processor — decode, update CCA/RTT, detect loss, reschedule.
-    spawner.spawn({
-        let send_caches = send_caches.clone();
-        let sender_idx_to_local = sender_idx_to_local.clone();
+    {
+        // Task 2: ACK processor — decode, update CCA/RTT, detect loss, reschedule.
+        let tx_wheel_sender = q_resolver_to_tx_wheel
+            .sender("task.ack_processor")
+            .with_description("ACK processor re-schedules transmission work")
+            .with_function("endpoint::tasks::send_worker");
+        let pto_wheel_sender = q_resolver_to_pto_wheel
+            .sender("task.ack_processor")
+            .with_description("ACK processor updates PTO scheduling")
+            .with_function("endpoint::tasks::send_worker");
+        let idle_wheel_sender = q_resolver_to_idle_wheel
+            .sender("task.ack_processor")
+            .with_description("ACK processor updates idle scheduling")
+            .with_function("endpoint::tasks::send_worker");
+        let completion_sender = q_ack_to_completion
+            .sender("task.ack_processor")
+            .with_description("ACK processor emits completed frames")
+            .with_function("endpoint::tasks::send_worker");
+        let cancelled_sender = q_ack_to_cancelled
+            .sender("task.ack_processor")
+            .with_description("ACK processor emits cancelled frames")
+            .with_function("endpoint::tasks::send_worker");
+        spawner.register_queue_sender(&tx_wheel_sender);
+        spawner.register_queue_sender(&pto_wheel_sender);
+        spawner.register_queue_sender(&idle_wheel_sender);
+        spawner.register_queue_sender(&completion_sender);
+        spawner.register_queue_sender(&cancelled_sender);
+
+        let send_caches_for_ack = send_caches.clone();
+        let sender_idx_to_local_for_ack = sender_idx_to_local.clone();
         let send_counters = endpoint::counters::Send::new(&counter_registry);
-        let completed_tx =
-            crate::counter::GaugedSender::new(completed_tx, q_ack_to_completion.clone());
-        let cancelled_tx =
-            crate::counter::GaugedSender::new(cancelled_tx.clone(), q_ack_to_cancelled.clone());
+        let completed_tx = crate::counter::GaugedSender::new(completed_tx, completion_sender);
+        let cancelled_tx_for_ack =
+            crate::counter::GaugedSender::new(cancelled_tx.clone(), cancelled_sender);
         let rx = AckProcessor::new(
             ack_rx,
-            send_caches,
-            sender_idx_to_local,
+            send_caches_for_ack,
+            sender_idx_to_local_for_ack,
             total_sender_ids,
             clock.clone(),
             random,
             frame_tx,
             completed_tx,
-            cancelled_tx,
+            cancelled_tx_for_ack,
             send_counters,
         );
         let rx = Flatten::new(rx);
         let rx = send::WheelRouter::new(
             rx,
-            crate::counter::GaugedSender::new(tx_wheel_tx.clone(), q_resolver_to_tx_wheel.clone()),
-            crate::counter::GaugedSender::new(
-                pto_wheel_tx.clone(),
-                q_resolver_to_pto_wheel.clone(),
-            ),
-            crate::counter::GaugedSender::new(
-                idle_wheel_tx.clone(),
-                q_resolver_to_idle_wheel.clone(),
-            ),
+            crate::counter::GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
+            crate::counter::GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
+            crate::counter::GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
         );
-        let variant = format!("send.{worker_id}");
-        let task_counter = counter_registry.register_nominal_task("task.ack_processor", &variant);
-        rx.drain_budgeted_metered(Some(budgets.ack_processor), task_counter)
-    });
+        let task_counter = counter_registry
+            .register_nominal_task("task.ack_processor", &variant)
+            .with_registration_metadata(
+                "task.ack_processor",
+                "Processes ACK feedback and re-schedules contexts across wheels",
+                "endpoint::tasks::send_worker",
+            );
+        spawner.spawn_receiver_task(
+            rx.drain_budgeted_metered(Some(budgets.ack_processor), task_counter.clone()),
+            Some(budgets.ack_processor),
+            task_counter,
+        );
+    }
 
-    // Task 3: Completion dispatcher — batches completed frames by channel, one lock per batch.
-    spawner.spawn({
-        let rx = crate::counter::GaugedReceiver::new(completed_rx, q_ack_to_completion);
+    {
+        // Task 3: Completion dispatcher — batches completed frames by channel, one lock per batch.
+        let completion_receiver = q_ack_to_completion
+            .receiver("task.completion")
+            .with_description("Completion task drains completed frames")
+            .with_function("endpoint::tasks::send_worker");
+        spawner.register_queue_receiver(&completion_receiver);
+
+        let rx = crate::counter::GaugedReceiver::new(completed_rx, completion_receiver);
         let rx = completion_dispatcher(rx, waker_sink);
-        let variant = format!("send.{worker_id}");
-        let task_counter = counter_registry.register_nominal_task("task.completion", &variant);
-        rx.drain_budgeted_metered(Some(budgets.completion_acked), task_counter)
-    });
+        let task_counter = counter_registry
+            .register_nominal_task("task.completion", &variant)
+            .with_registration_metadata(
+                "task.completion",
+                "Dispatches completion notifications back to writer wakers",
+                "endpoint::tasks::send_worker",
+            );
+        spawner.spawn_receiver_task(
+            rx.drain_budgeted_metered(Some(budgets.completion_acked), task_counter.clone()),
+            Some(budgets.completion_acked),
+            task_counter,
+        );
+    }
 
-    // Task 4: Cancelled frame drain — drops frames whose writer is already gone.
-    spawner.spawn({
-        let rx = crate::counter::GaugedReceiver::new(cancelled_rx, q_ack_to_cancelled.clone());
+    {
+        // Task 4: Cancelled frame drain — drops frames whose writer is already gone.
+        let cancelled_receiver = q_ack_to_cancelled
+            .receiver("task.cancelled")
+            .with_description("Cancelled task drains cancelled frames")
+            .with_function("endpoint::tasks::send_worker");
+        spawner.register_queue_receiver(&cancelled_receiver);
+
+        let rx = crate::counter::GaugedReceiver::new(cancelled_rx, cancelled_receiver);
         let rx = cancelled_drain(rx);
-        let variant = format!("send.{worker_id}");
-        let task_counter = counter_registry.register_nominal_task("task.cancelled", &variant);
-        rx.drain_budgeted_metered(Some(budgets.completion_cancelled), task_counter)
-    });
+        let task_counter = counter_registry
+            .register_nominal_task("task.cancelled", &variant)
+            .with_registration_metadata(
+                "task.cancelled",
+                "Drains cancelled frames that no longer have an owner",
+                "endpoint::tasks::send_worker",
+            );
+        spawner.spawn_receiver_task(
+            rx.drain_budgeted_metered(Some(budgets.completion_cancelled), task_counter.clone()),
+            Some(budgets.completion_cancelled),
+            task_counter,
+        );
+    }
 
-    // Task 5: TX wheel drain — routes expired contexts to per-socket assembler channels.
-    spawner.spawn(wheel_drain::<_, _, _, { crate::time::wheel::MICROSECOND_GRANULARITY }>(
-        tx_wheel_rx,
-        clock.timer(),
-        q_resolver_to_tx_wheel.clone(),
-        {
-            let sender_idx_to_local = sender_idx_to_local.clone();
-            let mut socket_context_txs: Vec<_> = socket_context_txs
-                .into_iter()
-                .zip(q_wheel_to_assembler.iter().cloned())
-                .map(|(tx, gauge)| crate::counter::GaugedSender::new(tx, gauge))
-                .collect();
-            move |context: Rc<RefCell<send::Context>>| {
-                let local_id = sender_idx_to_local[context.borrow().sender_idx];
-                let _ = UnboundedSender::send(&mut socket_context_txs[local_id], context);
-            }
-        },
-        budgets.tx_wheel,
-        counter_registry.register_nominal_task("task.tx_wheel", format!("send.{worker_id}")),
-    ));
+    {
+        // Task 5: TX wheel drain — routes expired contexts to per-socket assembler channels.
+        let tx_wheel_receiver = q_resolver_to_tx_wheel
+            .receiver("task.tx_wheel")
+            .with_description("Tx wheel drains scheduled contexts")
+            .with_function("endpoint::tasks::send_worker");
+        spawner.register_queue_receiver(&tx_wheel_receiver);
+        let task_counter = counter_registry
+            .register_nominal_task("task.tx_wheel", format!("send.{worker_id}"))
+            .with_registration_metadata(
+                "task.tx_wheel",
+                "Drains tx timing wheel and routes expired contexts to assemblers",
+                "endpoint::tasks::send_worker",
+            );
+        let tx_wheel_task = wheel_drain::<_, _, _, { crate::time::wheel::MICROSECOND_GRANULARITY }>(
+            tx_wheel_rx,
+            clock.timer(),
+            q_resolver_to_tx_wheel.clone(),
+            {
+                let sender_idx_to_local = sender_idx_to_local.clone();
+                let mut socket_context_txs: Vec<_> = socket_context_txs
+                    .into_iter()
+                    .zip(q_wheel_to_assembler.iter().cloned())
+                    .map(|(tx, gauge)| {
+                        let sender = gauge
+                            .sender("task.tx_wheel")
+                            .with_description(
+                                "Tx wheel routes expired contexts to socket assembler",
+                            )
+                            .with_function("endpoint::tasks::send_worker");
+                        spawner.register_queue_sender(&sender);
+                        crate::counter::GaugedSender::new(tx, sender)
+                    })
+                    .collect();
+                move |context: Rc<RefCell<send::Context>>| {
+                    let local_id = sender_idx_to_local[context.borrow().sender_idx];
+                    let _ = UnboundedSender::send(&mut socket_context_txs[local_id], context);
+                }
+            },
+            budgets.tx_wheel,
+            task_counter.clone(),
+        );
+        spawner.spawn_receiver_task(tx_wheel_task, Some(budgets.tx_wheel), task_counter);
+    }
 
-    // Task 6: PTO wheel drain — fires probes for tail loss recovery.
-    spawner.spawn({
+    {
+        // Task 6: PTO wheel drain — fires probes for tail loss recovery.
+        let pto_wheel_receiver = q_resolver_to_pto_wheel
+            .receiver("task.pto_wheel")
+            .with_description("PTO wheel drains scheduled contexts")
+            .with_function("endpoint::tasks::send_worker");
+        let tx_wheel_sender = q_resolver_to_tx_wheel
+            .sender("task.pto_wheel")
+            .with_description("PTO wheel requests probe transmissions")
+            .with_function("endpoint::tasks::send_worker");
+        let pto_wheel_sender = q_resolver_to_pto_wheel
+            .sender("task.pto_wheel")
+            .with_description("PTO wheel re-enqueues contexts after timeout processing")
+            .with_function("endpoint::tasks::send_worker");
+        let idle_wheel_sender = q_resolver_to_idle_wheel
+            .sender("task.pto_wheel")
+            .with_description("PTO wheel updates idle scheduling")
+            .with_function("endpoint::tasks::send_worker");
+        spawner.register_queue_receiver(&pto_wheel_receiver);
+        spawner.register_queue_sender(&tx_wheel_sender);
+        spawner.register_queue_sender(&pto_wheel_sender);
+        spawner.register_queue_sender(&idle_wheel_sender);
+
         let wheel: crate::time::wheel::Wheel<_, _, _> =
             crate::time::wheel::Wheel::new(pto_wheel_rx.into_list_receiver(), clock.timer());
         let rx = FlattenList::new(wheel);
-        let rx = crate::counter::GaugedReceiver::new(rx, q_resolver_to_pto_wheel.clone());
-        let clock = clock.clone();
+        let rx = crate::counter::GaugedReceiver::new(rx, pto_wheel_receiver);
+        let clock_for_pto = clock.clone();
         let tx_pto_check = counter_registry.register("tx.pto_check");
         let tx_pto_requested = counter_registry.register("tx.pto_requested");
         let rx = Map::new(rx, move |context: Rc<RefCell<send::Context>>| {
@@ -361,7 +559,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             let wheel_interest = {
                 let mut ctx = context.borrow_mut();
                 let requested = ctx.pto.probe_state.is_requested();
-                let interest = ctx.on_pto_timeout(&clock);
+                let interest = ctx.on_pto_timeout(&clock_for_pto);
                 if !requested && ctx.pto.probe_state.is_requested() {
                     tx_pto_requested.add(1);
                 }
@@ -371,35 +569,54 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         });
         let rx = send::WheelRouter::new(
             rx,
-            crate::counter::GaugedSender::new(tx_wheel_tx.clone(), q_resolver_to_tx_wheel.clone()),
-            crate::counter::GaugedSender::new(
-                pto_wheel_tx.clone(),
-                q_resolver_to_pto_wheel.clone(),
-            ),
-            crate::counter::GaugedSender::new(
-                idle_wheel_tx.clone(),
-                q_resolver_to_idle_wheel.clone(),
-            ),
+            crate::counter::GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
+            crate::counter::GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
+            crate::counter::GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
         );
-        let task_counter =
-            counter_registry.register_nominal_task("task.pto_wheel", format!("send.{worker_id}"));
-        rx.drain_budgeted_metered(Some(budgets.pto_wheel), task_counter)
-    });
+        let task_counter = counter_registry
+            .register_nominal_task("task.pto_wheel", format!("send.{worker_id}"))
+            .with_registration_metadata(
+                "task.pto_wheel",
+                "Handles probe-timeout expirations and wheel re-scheduling",
+                "endpoint::tasks::send_worker",
+            );
+        spawner.spawn_receiver_task(
+            rx.drain_budgeted_metered(Some(budgets.pto_wheel), task_counter.clone()),
+            Some(budgets.pto_wheel),
+            task_counter,
+        );
+    }
 
-    // Task 7: Idle wheel drain — reclaims resources for idle connections.
-    spawner.spawn(send_idle_wheel_drain(
-        idle_wheel_rx,
-        idle_wheel_tx.clone(),
-        clock.clone(),
-        q_resolver_to_idle_wheel.clone(),
-        send_caches.clone(),
-        sender_idx_to_local.clone(),
-        counter_registry.register("idle.send.expired"),
-        counter_registry.register("idle.send.rescheduled"),
-        counter_registry.register_nominal_timer("idle.send.lifetime", &variant),
-        budgets.idle_wheel,
-        counter_registry.register_nominal_task("task.idle_wheel", format!("send.{worker_id}")),
-    ));
+    {
+        // Task 7: Idle wheel drain — reclaims resources for idle connections.
+        let idle_wheel_receiver = q_resolver_to_idle_wheel
+            .receiver("task.idle_wheel")
+            .with_description("Idle wheel drains scheduled contexts")
+            .with_function("endpoint::tasks::send_worker");
+        spawner.register_queue_receiver(&idle_wheel_receiver);
+
+        let task_counter = counter_registry
+            .register_nominal_task("task.idle_wheel", format!("send.{worker_id}"))
+            .with_registration_metadata(
+                "task.idle_wheel",
+                "Expires or re-schedules idle send contexts",
+                "endpoint::tasks::send_worker",
+            );
+        let idle_wheel_task = send_idle_wheel_drain(
+            idle_wheel_rx,
+            idle_wheel_tx.clone(),
+            clock.clone(),
+            q_resolver_to_idle_wheel.clone(),
+            send_caches.clone(),
+            sender_idx_to_local.clone(),
+            counter_registry.register("idle.send.expired"),
+            counter_registry.register("idle.send.rescheduled"),
+            counter_registry.register_nominal_timer("idle.send.lifetime", &variant),
+            budgets.idle_wheel,
+            task_counter.clone(),
+        );
+        spawner.spawn_receiver_task(idle_wheel_task, Some(budgets.idle_wheel), task_counter);
+    }
 
     // Per-socket assembler + send tasks.
     let asm_counters = AssemblerCounters::new(&counter_registry);
@@ -410,58 +627,102 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     {
         let source_sender_id = VarInt::new(st.sender_idx as u64).unwrap();
         let sender_idx = st.sender_idx;
+        let task_name = format!("task.assembler.send.{sender_idx}");
+        let gauge = gauge.with_registration_metadata(
+            format!("ch.wheel_to_assembler.send.{sender_idx}"),
+            "Per-socket queue from tx wheel to assembler+socket sender task",
+            "endpoint::tasks::send_worker",
+        );
+        spawner.register_queue_channel(&gauge);
+        let assembler_receiver = gauge
+            .receiver(&task_name)
+            .with_description("Assembler drains contexts assigned to this socket")
+            .with_function("endpoint::tasks::send_worker");
+        spawner.register_queue_receiver(&assembler_receiver);
 
-        spawner.spawn({
-            let clock = st.clock.clone();
-            let tx_wheel_tx = crate::counter::GaugedSender::new(
-                tx_wheel_tx.clone(),
-                q_resolver_to_tx_wheel.clone(),
-            );
-            let pto_wheel_tx = crate::counter::GaugedSender::new(
-                pto_wheel_tx.clone(),
-                q_resolver_to_pto_wheel.clone(),
-            );
-            let idle_wheel_tx = crate::counter::GaugedSender::new(
-                idle_wheel_tx.clone(),
-                q_resolver_to_idle_wheel.clone(),
-            );
-            let cancelled_tx = cancelled_tx.clone().into_list_sender();
-            let ack_completions_tx = ack_completions_tx.clone();
-            let asm_counters = asm_counters.clone();
-            let context_rx = crate::counter::GaugedReceiver::new(context_rx, gauge);
-            let rx = Assembler::new(
-                context_rx,
-                clock.clone(),
-                source_sender_id,
-                st.source_control_port,
-                st.gso,
-                st.pool,
-                cancelled_tx,
-                ack_completions_tx,
-                asm_counters,
-            );
-            let rx = send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx);
-            let rx = Flatten::new(rx);
-            let rx = Paced::new(rx, clock, st.per_socket_send_rate);
-            let rx = SocketSender::new(rx, st.socket);
-            let rx = InspectErr::new(rx, |(err, _segments)| {
-                tracing::warn!(%err, "socket send error");
-            });
-            let rx = Map::new(rx, |_segments| {});
-            let variant = format!("send.{sender_idx}");
-            let task_counter = counter_registry.register_nominal_task("task.assembler", &variant);
-            rx.drain_budgeted_metered(Some(budgets.assembler), task_counter)
+        let clock = st.clock.clone();
+        let tx_wheel_tx = crate::counter::GaugedSender::new(
+            tx_wheel_tx.clone(),
+            q_resolver_to_tx_wheel
+                .sender(&task_name)
+                .with_description("Assembler schedules immediate transmit wheel work")
+                .with_function("endpoint::tasks::send_worker"),
+        );
+        let pto_wheel_tx = crate::counter::GaugedSender::new(
+            pto_wheel_tx.clone(),
+            q_resolver_to_pto_wheel
+                .sender(&task_name)
+                .with_description("Assembler schedules PTO wheel work")
+                .with_function("endpoint::tasks::send_worker"),
+        );
+        let idle_wheel_tx = crate::counter::GaugedSender::new(
+            idle_wheel_tx.clone(),
+            q_resolver_to_idle_wheel
+                .sender(&task_name)
+                .with_description("Assembler updates idle wheel scheduling")
+                .with_function("endpoint::tasks::send_worker"),
+        );
+        let cancelled_tx = cancelled_tx.clone().into_list_sender();
+        let ack_completions_tx = ack_completions_tx.clone();
+        let asm_counters = asm_counters.clone();
+        let context_rx = crate::counter::GaugedReceiver::new(context_rx, assembler_receiver);
+        let rx = Assembler::new(
+            context_rx,
+            clock.clone(),
+            source_sender_id,
+            st.source_control_port,
+            st.gso,
+            st.pool,
+            cancelled_tx,
+            ack_completions_tx,
+            asm_counters,
+        );
+        let rx = send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx);
+        let rx = Flatten::new(rx);
+        let rx = Paced::new(rx, clock, st.per_socket_send_rate);
+        let rx = SocketSender::new(rx, st.socket);
+        let rx = InspectErr::new(rx, |(err, _segments)| {
+            tracing::warn!(%err, "socket send error");
         });
+        let rx = Map::new(rx, |_segments| {});
+        let variant = format!("send.{sender_idx}");
+        let task_counter = counter_registry
+            .register_nominal_task("task.assembler", &variant)
+            .with_registration_metadata(
+                &task_name,
+                "Assembles and sends packets for one socket sender id",
+                "endpoint::tasks::send_worker",
+            );
+        spawner.spawn_receiver_task(
+            rx.drain_budgeted_metered(Some(budgets.assembler), task_counter.clone()),
+            Some(budgets.assembler),
+            task_counter,
+        );
     }
 
     // Task: invalidation drain — purge send caches on path secret revocation.
     // Routes to completed_tx (not cancelled) so CompletionDispatcher wakes streams.
     {
+        let invalidation_sender = q_ack_to_completion
+            .sender("task.invalidation")
+            .with_description("Invalidation task emits failed frames as completions")
+            .with_function("endpoint::tasks::send_worker");
+        spawner.register_queue_sender(&invalidation_sender);
+
         let rx = send_invalidation(invalidation_rx, send_caches, invalidation_completed_tx);
         let variant = format!("send.{worker_id}");
-        let task_counter =
-            counter_registry.register_nominal_task("task.invalidation", &variant);
-        spawner.spawn(rx.drain_budgeted_metered(Some(budgets.invalidation), task_counter));
+        let task_counter = counter_registry
+            .register_nominal_task("task.invalidation", &variant)
+            .with_registration_metadata(
+                "task.invalidation",
+                "Purges revoked path secrets from send cache and emits completions",
+                "endpoint::tasks::send_worker",
+            );
+        spawner.spawn_receiver_task(
+            rx.drain_budgeted_metered(Some(budgets.invalidation), task_counter.clone()),
+            Some(budgets.invalidation),
+            task_counter,
+        );
     }
 }
 
@@ -589,7 +850,12 @@ async fn wheel_drain<A, T, F, const GRANULARITY_US: u64>(
     let wheel: crate::time::wheel::Wheel<A, T, _, GRANULARITY_US> =
         crate::time::wheel::Wheel::new(rx.into_list_receiver(), timer);
     let rx = FlattenList::new(wheel);
-    let rx = crate::counter::GaugedReceiver::new(rx, input_gauge);
+    let rx = crate::counter::GaugedReceiver::new(
+        rx,
+        input_gauge
+            .receiver("task.wheel_drain")
+            .with_function("endpoint::tasks::wheel_drain"),
+    );
     let rx = Map::new(rx, |item| on_expire(item));
     rx.drain_budgeted_metered(Some(budget), task_counter).await;
 }
@@ -615,8 +881,13 @@ pub async fn send_idle_wheel_drain<Clk>(
         timer,
         input_gauge.clone(),
         {
-            let mut idle_wheel_tx =
-                crate::counter::GaugedSender::new(idle_wheel_tx, input_gauge);
+            let mut idle_wheel_tx = crate::counter::GaugedSender::new(
+                idle_wheel_tx,
+                input_gauge
+                    .sender("task.send_idle_wheel_drain")
+                    .with_description("Idle wheel re-enqueues active send contexts")
+                    .with_function("endpoint::tasks::send_idle_wheel_drain"),
+            );
             move |context: Rc<RefCell<send::Context>>| {
                 let now = clock.now();
                 let ctx = context.borrow();
@@ -663,8 +934,13 @@ pub async fn recv_idle_wheel_drain<Clk>(
         timer,
         input_gauge.clone(),
         {
-            let mut idle_wheel_tx =
-                crate::counter::GaugedSender::new(idle_wheel_tx, input_gauge);
+            let mut idle_wheel_tx = crate::counter::GaugedSender::new(
+                idle_wheel_tx,
+                input_gauge
+                    .sender("task.recv_idle_wheel_drain")
+                    .with_description("Idle wheel re-enqueues active recv contexts")
+                    .with_function("endpoint::tasks::recv_idle_wheel_drain"),
+            );
             move |context: Rc<RefCell<endpoint::recv::Context>>| {
                 let now = clock.now();
                 let ctx = context.borrow();
@@ -733,7 +1009,15 @@ where
 /// invalid/duplicate/unauthenticated packets which should not terminate the worker.
 ///
 /// [`dispatch::process`]: crate::endpoint::dispatch::process
-pub fn packet_dispatch<PacketRx, AckSender, AckBurstSender, IdleWheelSender, WakerSink, Clk, Route>(
+pub fn packet_dispatch<
+    PacketRx,
+    AckSender,
+    AckBurstSender,
+    IdleWheelSender,
+    WakerSink,
+    Clk,
+    Route,
+>(
     packet_rx: PacketRx,
     recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
     mut ack_burst_tx: AckBurstSender,
@@ -844,7 +1128,11 @@ where
         };
         let mut ctx = ctx_rc.borrow_mut();
         if cfg!(debug_assertions) {
-            assert_eq!(ctx.key(), key, "recv cache key/context mismatch in ack_completion");
+            assert_eq!(
+                ctx.key(),
+                key,
+                "recv cache key/context mismatch in ack_completion"
+            );
         }
         ctx.invariants();
 
@@ -994,14 +1282,19 @@ pub fn send_invalidation<R>(
 where
     R: Receiver<Entry<crate::credentials::Id>>,
 {
-    Map::new(invalidation_rx, move |entry: Entry<crate::credentials::Id>| {
-        let id = *entry;
-        for cache in &send_caches {
-            cache
-                .borrow_mut()
-                .invalidate(&id, frame::FailureReason::UnknownPathSecret, &mut cancelled_tx);
-        }
-    })
+    Map::new(
+        invalidation_rx,
+        move |entry: Entry<crate::credentials::Id>| {
+            let id = *entry;
+            for cache in &send_caches {
+                cache.borrow_mut().invalidate(
+                    &id,
+                    frame::FailureReason::UnknownPathSecret,
+                    &mut cancelled_tx,
+                );
+            }
+        },
+    )
 }
 
 pub fn recv_invalidation<R>(
@@ -1011,10 +1304,13 @@ pub fn recv_invalidation<R>(
 where
     R: Receiver<Entry<crate::credentials::Id>>,
 {
-    Map::new(invalidation_rx, move |entry: Entry<crate::credentials::Id>| {
-        let id = *entry;
-        recv_cache.borrow_mut().invalidate_by_id(&id);
-    })
+    Map::new(
+        invalidation_rx,
+        move |entry: Entry<crate::credentials::Id>| {
+            let id = *entry;
+            recv_cache.borrow_mut().invalidate_by_id(&id);
+        },
+    )
 }
 
 pub fn invalidation_validator<R, Tx>(
