@@ -366,209 +366,355 @@ impl<T> Drop for Receiver<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::task::Context;
-    use std::{sync::Arc, task::Wake};
+    use crate::testing::{ext::*, sim};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
 
-    struct NoopWaker;
-    impl Wake for NoopWaker {
-        fn wake(self: Arc<Self>) {}
-    }
+    // ── Helper ───────────────────────────────────────────────────────────────────
 
-    fn noop_waker() -> Waker {
-        Arc::new(NoopWaker).into()
-    }
-
-    #[test]
-    fn basic_send_recv() {
-        let config = Config {
-            capacity: 4,
-            eviction: Eviction::Front,
-        };
-        let (mut sender, mut rx) = new::<u32>(config);
-
-        // Receiver must be polled to register its slot
-        assert_eq!(rx.try_recv(), None);
-
-        let (evicted, waker) = sender.send(42).unwrap();
-        assert!(evicted.is_none());
-        assert!(waker.is_none());
-
-        assert_eq!(rx.try_recv(), Some(42));
-        assert_eq!(rx.try_recv(), None);
-    }
-
-    #[test]
-    fn eviction_front() {
-        let config = Config {
-            capacity: 2,
-            eviction: Eviction::Front,
-        };
-        let (mut sender, mut rx) = new::<u32>(config);
-
-        // Register the slot
-        assert_eq!(rx.try_recv(), None);
-
-        sender.send(1).unwrap();
-        sender.send(2).unwrap();
-        let (evicted, _) = sender.send(3).unwrap();
-        assert_eq!(evicted, Some(1));
-
-        assert_eq!(rx.try_recv(), Some(2));
-        assert_eq!(rx.try_recv(), Some(3));
-    }
-
-    #[test]
-    fn eviction_back() {
-        let config = Config {
-            capacity: 2,
-            eviction: Eviction::Back,
-        };
-        let (mut sender, mut rx) = new::<u32>(config);
-
-        // Register the slot
-        assert_eq!(rx.try_recv(), None);
-
-        sender.send(1).unwrap();
-        sender.send(2).unwrap();
-        let (evicted, _) = sender.send(3).unwrap();
-        assert_eq!(evicted, Some(2));
-
-        assert_eq!(rx.try_recv(), Some(1));
-        assert_eq!(rx.try_recv(), Some(3));
-    }
-
-    #[test]
-    fn waker_returned_when_parked() {
-        let config = Config {
-            capacity: 4,
-            eviction: Eviction::Front,
-        };
-        let (mut sender, mut rx) = new::<u32>(config);
-
-        let waker = noop_waker();
-        let mut cx = Context::from_waker(&waker);
-
-        // poll_recv registers the slot and parks
-        assert!(rx.poll_recv(&mut cx).is_pending());
-
-        let (_, waker) = sender.send(1).unwrap();
-        assert!(waker.is_some());
-
-        let (_, waker) = sender.send(2).unwrap();
-        assert!(waker.is_none());
-    }
-
-    #[test]
-    fn clone_receiver_scales() {
-        let config = Config {
-            capacity: 100,
-            eviction: Eviction::Front,
-        };
-        let (mut sender, mut rx1) = new::<u32>(config);
-        let mut rx2 = rx1.clone();
-        let mut rx3 = rx1.clone();
-
-        // Register all slots
-        assert_eq!(rx1.try_recv(), None);
-        assert_eq!(rx2.try_recv(), None);
-        assert_eq!(rx3.try_recv(), None);
-
-        for i in 0..100 {
-            sender.send(i).unwrap();
+    /// Send an item and immediately fire any waker returned by the channel, so
+    /// parked receiver tasks are rescheduled within the same bach step.
+    fn send_wake<T>(sender: &mut Sender<T>, item: T) -> Result<Option<T>, T> {
+        let (evicted, waker) = sender.send(item)?;
+        if let Some(w) = waker {
+            w.wake();
         }
-
-        let slots = sender.shared.slots.lock();
-        let total: usize = slots.iter().map(|s| s.backlog()).sum();
-        assert_eq!(total, 100);
-
-        // No single receiver should have everything
-        let max = slots.iter().map(|s| s.backlog()).max().unwrap();
-        assert!(max < 80);
+        Ok(evicted)
     }
 
+    // ── Tests ────────────────────────────────────────────────────────────────────
+
+    /// A receiver that parks before any item is sent is woken when the sender
+    /// pushes an item.  After the sender drops the channel closes and the
+    /// receiver sees `None`.
     #[test]
-    fn receiver_drop_unregisters() {
-        let config = Config {
-            capacity: 4,
-            eviction: Eviction::Front,
-        };
-        let (sender, mut rx1) = new::<u32>(config);
-        let mut rx2 = rx1.clone();
+    fn send_wakes_parked_receiver() {
+        sim(|| {
+            let (mut sender, mut rx) = new::<u32>(4.into());
 
-        // Register both slots
-        assert_eq!(rx1.try_recv(), None);
-        assert_eq!(rx2.try_recv(), None);
-        assert_eq!(sender.shared.slots.lock().len(), 2);
+            async move {
+                let item = rx.recv().await;
+                assert_eq!(item, Some(1), "parked receiver should be woken with the sent item");
+                // Negative: channel closes after sender drops
+                assert!(
+                    rx.recv().await.is_none(),
+                    "receiver should see None once the channel closes"
+                );
+            }
+            .primary()
+            .spawn();
 
-        drop(rx1);
-        assert_eq!(sender.shared.slots.lock().len(), 1);
-
-        drop(rx2);
-        assert_eq!(sender.shared.slots.lock().len(), 0);
+            async move {
+                1.ms().sleep().await; // let receiver park first
+                send_wake(&mut sender, 1).unwrap();
+                drop(sender);
+            }
+            .primary()
+            .spawn();
+        });
     }
 
+    /// The first send to a parked receiver consumes the stored waker; the second
+    /// send (before the receiver re-polls) finds no waker and returns `None`.
     #[test]
-    fn unpolled_receiver_not_registered() {
-        let config = Config {
-            capacity: 4,
-            eviction: Eviction::Front,
-        };
-        let (mut sender, rx1) = new::<u32>(config);
-        let _rx2 = rx1.clone();
+    fn second_send_does_not_return_waker() {
+        sim(|| {
+            let (mut sender, mut rx) = new::<u32>(4.into());
 
-        // Neither receiver has been polled, so no slots are registered
-        assert_eq!(sender.shared.slots.lock().len(), 0);
-        assert!(sender.send(1).is_err());
+            async move {
+                // Park the receiver so the sender can pick up its waker
+                1.ms().sleep().await;
 
-        // Dropping unpolled receivers doesn't affect slot list
-        drop(_rx2);
-        drop(rx1);
-        assert_eq!(sender.shared.slots.lock().len(), 0);
+                assert_eq!(rx.recv().await, Some(1), "first item should arrive");
+                assert_eq!(rx.recv().await, Some(2), "second item should arrive");
+                assert!(rx.recv().await.is_none(), "channel should close");
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                1.ms().sleep().await;
+
+                let (_, w1) = sender.send(1).unwrap();
+                assert!(w1.is_some(), "first send to parked receiver should return a waker");
+                if let Some(w) = w1 {
+                    w.wake();
+                }
+
+                // Second send before the receiver re-parks: waker slot is empty
+                let (_, w2) = sender.send(2).unwrap();
+                assert!(
+                    w2.is_none(),
+                    "second consecutive send should not return a waker"
+                );
+
+                drop(sender);
+            }
+            .primary()
+            .spawn();
+        });
     }
 
+    /// When the last sender drops, a receiver that is waiting asynchronously
+    /// receives `None`.
     #[test]
-    fn closed_on_sender_drop() {
-        let config = Config {
-            capacity: 4,
-            eviction: Eviction::Front,
-        };
-        let (mut sender, mut rx) = new::<u32>(config);
+    fn channel_closes_when_last_sender_drops() {
+        sim(|| {
+            let (sender, mut rx) = new::<u32>(4.into());
 
-        // Register the slot
-        assert_eq!(rx.try_recv(), None);
+            async move {
+                assert!(
+                    rx.recv().await.is_none(),
+                    "receiver should see None when the channel closes"
+                );
+            }
+            .primary()
+            .spawn();
 
-        sender.send(1).unwrap();
-        drop(sender);
-
-        assert_eq!(rx.try_recv(), Some(1));
-        assert!(rx.is_closed());
-
-        let waker = noop_waker();
-        let mut cx = Context::from_waker(&waker);
-        assert_eq!(rx.poll_recv(&mut cx), Poll::Ready(None));
+            async move {
+                1.ms().sleep().await;
+                drop(sender);
+            }
+            .primary()
+            .spawn();
+        });
     }
 
+    /// Cloning a sender keeps the channel alive.  The receiver only sees `None`
+    /// after every sender clone has been dropped.
     #[test]
     fn sender_clone_keeps_channel_open() {
-        let config = Config {
-            capacity: 4,
-            eviction: Eviction::Front,
-        };
-        let (sender, mut rx) = new::<u32>(config);
-        let mut sender2 = sender.clone();
+        sim(|| {
+            let (sender, mut rx) = new::<u32>(4.into());
+            let mut sender2 = sender.clone();
 
-        drop(sender);
+            async move {
+                let item = rx.recv().await;
+                assert_eq!(item, Some(42), "item from cloned sender should arrive");
+                assert!(
+                    rx.recv().await.is_none(),
+                    "channel should close only after both senders are gone"
+                );
+            }
+            .primary()
+            .spawn();
 
-        // Channel still open because sender2 exists
-        assert!(!rx.is_closed());
+            async move {
+                // Drop the original; the channel must stay open because sender2 lives
+                drop(sender);
+                1.ms().sleep().await;
 
-        // try_recv registers the slot
-        assert_eq!(rx.try_recv(), None);
+                send_wake(&mut sender2, 42).unwrap();
+                drop(sender2);
+            }
+            .primary()
+            .spawn();
+        });
+    }
 
-        sender2.send(42).unwrap();
-        assert_eq!(rx.try_recv(), Some(42));
+    /// With Front eviction, sending to a full queue discards the oldest item and
+    /// delivers the newest two to the receiver.
+    #[test]
+    fn eviction_front_drops_oldest_item() {
+        sim(|| {
+            let (mut sender, mut rx) = new::<u32>(Config {
+                capacity: 2,
+                eviction: Eviction::Front,
+            });
 
-        drop(sender2);
-        assert!(rx.is_closed());
+            async move {
+                assert_eq!(rx.recv().await, Some(2), "oldest item should have been evicted");
+                assert_eq!(rx.recv().await, Some(3), "newest item should be present");
+                assert!(rx.recv().await.is_none());
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                1.ms().sleep().await;
+
+                // Fill the queue and overflow once
+                send_wake(&mut sender, 1).unwrap(); // will be evicted
+                send_wake(&mut sender, 2).unwrap();
+                let evicted = send_wake(&mut sender, 3).unwrap();
+                assert_eq!(evicted, Some(1), "front-eviction should discard item 1");
+
+                drop(sender);
+            }
+            .primary()
+            .spawn();
+        });
+    }
+
+    /// With Back eviction, sending to a full queue discards the most-recently
+    /// queued item and preserves the older ones.
+    #[test]
+    fn eviction_back_drops_newest_item() {
+        sim(|| {
+            let (mut sender, mut rx) = new::<u32>(Config {
+                capacity: 2,
+                eviction: Eviction::Back,
+            });
+
+            async move {
+                assert_eq!(rx.recv().await, Some(1), "first item should survive back eviction");
+                assert_eq!(rx.recv().await, Some(3), "overflow item should replace the back");
+                assert!(rx.recv().await.is_none());
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                1.ms().sleep().await;
+
+                send_wake(&mut sender, 1).unwrap();
+                send_wake(&mut sender, 2).unwrap(); // will be evicted
+                let evicted = send_wake(&mut sender, 3).unwrap();
+                assert_eq!(evicted, Some(2), "back-eviction should discard item 2");
+
+                drop(sender);
+            }
+            .primary()
+            .spawn();
+        });
+    }
+
+    /// Three receivers each consume items concurrently.  Pick-two load balancing
+    /// ensures no single receiver handles all the work.
+    #[test]
+    fn three_receivers_distribute_load() {
+        let rx1_count = Arc::new(AtomicUsize::new(0));
+        let rx2_count = Arc::new(AtomicUsize::new(0));
+        let rx3_count = Arc::new(AtomicUsize::new(0));
+
+        {
+            let rx1_count = rx1_count.clone();
+            let rx2_count = rx2_count.clone();
+            let rx3_count = rx3_count.clone();
+
+            sim(move || {
+                let (mut sender, rx1) = new::<u32>(100.into());
+                let rx2 = rx1.clone();
+                let rx3 = rx1.clone();
+
+                for (mut rx, count) in [
+                    (rx1, rx1_count),
+                    (rx2, rx2_count),
+                    (rx3, rx3_count),
+                ] {
+                    async move {
+                        while rx.recv().await.is_some() {
+                            count.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                    .primary()
+                    .spawn();
+                }
+
+                async move {
+                    1.ms().sleep().await; // let all three receivers register
+
+                    for i in 0u32..60 {
+                        send_wake(&mut sender, i).unwrap();
+                    }
+                    drop(sender);
+                }
+                .primary()
+                .spawn();
+            });
+        }
+
+        let c1 = rx1_count.load(Ordering::Relaxed);
+        let c2 = rx2_count.load(Ordering::Relaxed);
+        let c3 = rx3_count.load(Ordering::Relaxed);
+
+        assert_eq!(
+            c1 + c2 + c3,
+            60,
+            "all 60 items should be received exactly once (distribution: rx1={c1}, rx2={c2}, rx3={c3})"
+        );
+        // Pick-two load balancing must spread the work: no receiver should be idle
+        assert!(c1 > 0, "receiver 1 should receive some items (distribution: rx1={c1}, rx2={c2}, rx3={c3})");
+        assert!(c2 > 0, "receiver 2 should receive some items (distribution: rx1={c1}, rx2={c2}, rx3={c3})");
+        assert!(c3 > 0, "receiver 3 should receive some items (distribution: rx1={c1}, rx2={c2}, rx3={c3})");
+        // And no single receiver should be overwhelmed
+        assert!(c1 < 50, "receiver 1 should not handle most of the load (distribution: rx1={c1}, rx2={c2}, rx3={c3})");
+        assert!(c2 < 50, "receiver 2 should not handle most of the load (distribution: rx1={c1}, rx2={c2}, rx3={c3})");
+        assert!(c3 < 50, "receiver 3 should not handle most of the load (distribution: rx1={c1}, rx2={c2}, rx3={c3})");
+    }
+
+    /// After one of two *registered* receivers is dropped its slot is removed.
+    /// All subsequent sends go to the surviving receiver.
+    ///
+    /// Registration is lazy: a receiver only participates in load balancing
+    /// after it has polled at least once.  This test:
+    ///   1. Registers `rx2` via `try_recv` (which calls `ensure_registered`).
+    ///   2. Drops `rx2`, removing its slot from the shared list.
+    ///   3. Sends 10 items — they must all arrive on `rx1`.
+    #[test]
+    fn dropped_receiver_stops_receiving() {
+        sim(|| {
+            let (mut sender, mut rx1) = new::<u32>(100.into());
+            let mut rx2 = rx1.clone();
+
+            // Register rx2 by calling try_recv (returns None on empty queue),
+            // then immediately drop it so its slot is removed.
+            async move {
+                let _ = rx2.try_recv(); // registers the slot, returns None
+                // rx2 is dropped here — slot is unregistered
+            }
+            .spawn();
+
+            async move {
+                // Wait for the rx2 task to complete and unregister before sending.
+                1.ms().sleep().await;
+
+                for i in 0u32..10 {
+                    send_wake(&mut sender, i).unwrap();
+                }
+                drop(sender);
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                let mut received = 0u32;
+                while rx1.recv().await.is_some() {
+                    received += 1;
+                }
+                assert_eq!(received, 10, "all items should arrive on the surviving receiver");
+            }
+            .primary()
+            .spawn();
+        });
+    }
+
+    /// `send` returns `Err` when no receiver has polled yet (no registered slots).
+    #[test]
+    fn send_fails_with_no_registered_receivers() {
+        sim(|| {
+            async move {
+                let (mut sender, rx) = new::<u32>(4.into());
+                let _rx2 = rx.clone();
+
+                // Neither receiver has polled — no slots registered
+                assert!(
+                    sender.send(1).is_err(),
+                    "send should fail when no slots are registered"
+                );
+
+                // Dropping unpolled receivers must not change the slot count
+                drop(_rx2);
+                drop(rx);
+                assert!(
+                    sender.send(2).is_err(),
+                    "send should still fail after unpolled receivers are dropped"
+                );
+            }
+            .primary()
+            .spawn();
+        });
     }
 }
