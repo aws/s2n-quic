@@ -20,7 +20,7 @@
 use crate::{socket::pool::descriptor, time::precision};
 use core::task::{self, Poll};
 use s2n_quic_core::ready;
-use std::{future::Future, io, marker::PhantomData, mem::MaybeUninit};
+use std::{future::Future, io, marker::PhantomData, mem::MaybeUninit, time::Instant};
 
 pub mod cell;
 pub mod intrusive;
@@ -253,27 +253,35 @@ pub trait ReceiverExt<T>: Receiver<T> + Sized {
     }
 
     /// Like [`drain_budgeted`](Self::drain_budgeted), but records per-poll metrics:
-    /// items consumed (budget summary) and wall-clock duration (timer).
+    /// items consumed, wall-clock duration, and the latency until the next poll.
     fn drain_budgeted_metered(
         mut self,
         capacity: Option<usize>,
-        budget_summary: crate::counter::Summary,
-        time_summary: crate::counter::Timer,
+        task_counter: crate::counter::Task,
     ) -> impl core::future::Future<Output = ()>
     where
         Self: Receiver<()>,
     {
         let cap = capacity.unwrap_or(1);
         let mut budget = Budget::new(cap);
+        let mut prev_poll_end = None::<Instant>;
         core::future::poll_fn(move |cx| {
             budget.reset();
-            let _guard = time_summary.start();
+            let poll_start = Instant::now();
+            if let Some(prev_end) = prev_poll_end {
+                task_counter
+                    .next_poll_latency
+                    .record(poll_start.duration_since(prev_end));
+            }
+            let guard = task_counter.time.start_at(poll_start);
+            let mut output = Poll::Pending;
             loop {
                 match self.poll_recv(cx, &mut budget) {
                     Poll::Pending => break,
                     Poll::Ready(None) => {
-                        budget_summary.record_value(budget.consumed() as u64);
-                        return Poll::Ready(());
+                        task_counter.drained.record_value(budget.consumed() as u64);
+                        output = Poll::Ready(());
+                        break;
                     }
                     Poll::Ready(Some(())) => {
                         if budget.is_exhausted() {
@@ -284,11 +292,14 @@ pub trait ReceiverExt<T>: Receiver<T> + Sized {
                     }
                 }
             }
-            budget_summary.record_value(budget.consumed() as u64);
-            if budget.take_needs_wake() {
-                cx.waker().wake_by_ref();
+            if output.is_pending() {
+                task_counter.drained.record_value(budget.consumed() as u64);
+                if budget.take_needs_wake() {
+                    cx.waker().wake_by_ref();
+                }
             }
-            Poll::Pending
+            prev_poll_end = Some(guard.record());
+            output
         })
     }
 }

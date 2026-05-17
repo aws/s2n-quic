@@ -516,9 +516,19 @@ pub struct Timer(Summary);
 impl Timer {
     #[inline]
     pub fn start(&self) -> TimerGuard {
+        self.start_at(Instant::now())
+    }
+
+    /// Starts a timer from a caller-provided `Instant`.
+    ///
+    /// Use this when multiple task metrics should share the exact same poll-start
+    /// timestamp (for example, per-poll execution time and inter-poll latency).
+    #[inline]
+    pub fn start_at(&self, start: Instant) -> TimerGuard {
         TimerGuard {
             summary: &self.0,
-            start: Instant::now(),
+            start,
+            recorded: false,
         }
     }
 
@@ -531,13 +541,41 @@ impl Timer {
 pub struct TimerGuard<'a> {
     summary: &'a Summary,
     start: Instant,
+    recorded: bool,
+}
+
+impl TimerGuard<'_> {
+    #[inline]
+    pub fn record(mut self) -> Instant {
+        let now = Instant::now();
+        self.summary.record_duration(now.duration_since(self.start));
+        self.recorded = true;
+        now
+    }
 }
 
 impl Drop for TimerGuard<'_> {
     #[inline]
     fn drop(&mut self) {
-        self.summary.record_duration(self.start.elapsed());
+        if !self.recorded {
+            self.summary.record_duration(self.start.elapsed());
+        }
     }
+}
+
+// ── Task ────────────────────────────────────────────────────────────────────
+
+/// Metric bundle for a drain-budgeted task poll loop.
+///
+/// - `drained`: number of items processed in a single poll
+/// - `time`: wall-clock duration spent inside a poll
+/// - `next_poll_latency`: elapsed time from the end of one poll to the start
+///   of the next poll
+#[derive(Clone)]
+pub struct Task {
+    pub drained: Summary,
+    pub time: Timer,
+    pub next_poll_latency: Timer,
 }
 
 // ── QueueGauge ──────────────────────────────────────────────────────────────
@@ -714,6 +752,15 @@ impl Registry {
         )
     }
 
+    pub fn register_task(&self, label: impl core::fmt::Display) -> Task {
+        let label = label.to_string();
+        Task {
+            drained: self.register_summary(format!("{label}.drained"), Unit::Count),
+            time: self.register_timer(format!("{label}.time")),
+            next_poll_latency: self.register_timer(format!("{label}.next_poll_latency")),
+        }
+    }
+
     pub fn register_nominal_timer(
         &self,
         label: impl core::fmt::Display,
@@ -724,6 +771,25 @@ impl Registry {
             Some(variant.to_string()),
             Unit::Microsecond,
         ))
+    }
+
+    pub fn register_nominal_task(
+        &self,
+        label: impl core::fmt::Display,
+        variant: impl core::fmt::Display,
+    ) -> Task {
+        let label = label.to_string();
+        let variant = variant.to_string();
+        Task {
+            drained: self.register_nominal_summary(
+                format!("{label}.drained"),
+                &variant,
+                Unit::Count,
+            ),
+            time: self.register_nominal_timer(format!("{label}.time"), &variant),
+            next_poll_latency: self
+                .register_nominal_timer(format!("{label}.next_poll_latency"), &variant),
+        }
     }
 
     pub fn spawn_reporter(&self, interval: Duration) {

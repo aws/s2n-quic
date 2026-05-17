@@ -131,14 +131,8 @@ pub fn frame_dispatch<S, Clk>(
             priority_list_txs,
             q_router_to_batcher: q_router_to_batcher.clone(),
         };
-        let budget_summary = counter_registry
-            .register_summary("task.priority_router.drained", crate::counter::Unit::Count);
-        let time_summary = counter_registry.register_timer("task.priority_router.time");
-        rx.drain_budgeted_metered(
-            Some(budgets.submission_router),
-            budget_summary,
-            time_summary,
-        )
+        let task_counter = counter_registry.register_task("task.priority_router");
+        rx.drain_budgeted_metered(Some(budgets.submission_router), task_counter)
     });
 
     // Task 2: batch → Entry → priority merge → pace → pick-two to workers.
@@ -155,10 +149,8 @@ pub fn frame_dispatch<S, Clk>(
         let rx = Map::new(rx, Entry::new);
         let rx = Paced::new(rx, clock, overall_send_rate);
         let rx = PickTwo::new(rx, worker_senders, rng, &counter_registry);
-        let budget_summary = counter_registry
-            .register_summary("task.frame_dispatch.drained", crate::counter::Unit::Count);
-        let time_summary = counter_registry.register_timer("task.frame_dispatch.time");
-        rx.drain_budgeted_metered(Some(budgets.frame_dispatch), budget_summary, time_summary)
+        let task_counter = counter_registry.register_task("task.frame_dispatch");
+        rx.drain_budgeted_metered(Some(budgets.frame_dispatch), task_counter)
     });
 }
 
@@ -269,14 +261,8 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             ),
         );
         let variant = format!("send.{worker_id}");
-        let budget_summary = counter_registry.register_nominal_summary(
-            "task.context_resolver.drained",
-            &variant,
-            crate::counter::Unit::Count,
-        );
-        let time_summary =
-            counter_registry.register_nominal_timer("task.context_resolver.time", &variant);
-        rx.drain_budgeted_metered(Some(budgets.context_resolver), budget_summary, time_summary)
+        let task_counter = counter_registry.register_nominal_task("task.context_resolver", &variant);
+        rx.drain_budgeted_metered(Some(budgets.context_resolver), task_counter)
     });
 
     // Task 2: ACK processor — decode, update CCA/RTT, detect loss, reschedule.
@@ -314,14 +300,8 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             ),
         );
         let variant = format!("send.{worker_id}");
-        let budget_summary = counter_registry.register_nominal_summary(
-            "task.ack_processor.drained",
-            &variant,
-            crate::counter::Unit::Count,
-        );
-        let time_summary =
-            counter_registry.register_nominal_timer("task.ack_processor.time", &variant);
-        rx.drain_budgeted_metered(Some(budgets.ack_processor), budget_summary, time_summary)
+        let task_counter = counter_registry.register_nominal_task("task.ack_processor", &variant);
+        rx.drain_budgeted_metered(Some(budgets.ack_processor), task_counter)
     });
 
     // Task 3: Completion dispatcher — batches completed frames by channel, one lock per batch.
@@ -329,14 +309,8 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         let rx = crate::counter::GaugedReceiver::new(completed_rx, q_ack_to_completion);
         let rx = completion_dispatcher(rx, waker_sink);
         let variant = format!("send.{worker_id}");
-        let budget_summary = counter_registry.register_nominal_summary(
-            "task.completion.drained",
-            &variant,
-            crate::counter::Unit::Count,
-        );
-        let time_summary =
-            counter_registry.register_nominal_timer("task.completion.time", &variant);
-        rx.drain_budgeted_metered(Some(budgets.completion_acked), budget_summary, time_summary)
+        let task_counter = counter_registry.register_nominal_task("task.completion", &variant);
+        rx.drain_budgeted_metered(Some(budgets.completion_acked), task_counter)
     });
 
     // Task 4: Cancelled frame drain — drops frames whose writer is already gone.
@@ -344,17 +318,8 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         let rx = crate::counter::GaugedReceiver::new(cancelled_rx, q_ack_to_cancelled);
         let rx = cancelled_drain(rx);
         let variant = format!("send.{worker_id}");
-        let budget_summary = counter_registry.register_nominal_summary(
-            "task.cancelled.drained",
-            &variant,
-            crate::counter::Unit::Count,
-        );
-        let time_summary = counter_registry.register_nominal_timer("task.cancelled.time", &variant);
-        rx.drain_budgeted_metered(
-            Some(budgets.completion_cancelled),
-            budget_summary,
-            time_summary,
-        )
+        let task_counter = counter_registry.register_nominal_task("task.cancelled", &variant);
+        rx.drain_budgeted_metered(Some(budgets.completion_cancelled), task_counter)
     });
 
     // Task 5: TX wheel drain — routes expired contexts to per-socket assembler channels.
@@ -375,12 +340,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             }
         },
         budgets.tx_wheel,
-        counter_registry.register_nominal_summary(
-            "task.tx_wheel.drained",
-            format!("send.{worker_id}"),
-            crate::counter::Unit::Count,
-        ),
-        counter_registry.register_nominal_timer("task.tx_wheel.time", format!("send.{worker_id}")),
+        counter_registry.register_nominal_task("task.tx_wheel", format!("send.{worker_id}")),
     ));
 
     // Task 6: PTO wheel drain — fires probes for tail loss recovery.
@@ -411,14 +371,9 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             crate::counter::GaugedSender::new(pto_wheel_tx.clone(), q_resolver_to_pto_wheel.clone()),
             crate::counter::GaugedSender::new(idle_wheel_tx.clone(), q_resolver_to_idle_wheel.clone()),
         );
-        let budget_summary = counter_registry.register_nominal_summary(
-            "task.pto_wheel.drained",
-            format!("send.{worker_id}"),
-            crate::counter::Unit::Count,
-        );
-        let time_summary =
-            counter_registry.register_nominal_timer("task.pto_wheel.time", format!("send.{worker_id}"));
-        rx.drain_budgeted_metered(Some(budgets.pto_wheel), budget_summary, time_summary)
+        let task_counter =
+            counter_registry.register_nominal_task("task.pto_wheel", format!("send.{worker_id}"));
+        rx.drain_budgeted_metered(Some(budgets.pto_wheel), task_counter)
     });
 
     // Task 7: Idle wheel drain — reclaims resources for idle connections.
@@ -431,13 +386,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             drop(context);
         },
         budgets.idle_wheel,
-        counter_registry.register_nominal_summary(
-            "task.idle_wheel.drained",
-            format!("send.{worker_id}"),
-            crate::counter::Unit::Count,
-        ),
-        counter_registry
-            .register_nominal_timer("task.idle_wheel.time", format!("send.{worker_id}")),
+        counter_registry.register_nominal_task("task.idle_wheel", format!("send.{worker_id}")),
     ));
 
     // Per-socket assembler + send tasks.
@@ -480,14 +429,8 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             });
             let rx = Map::new(rx, |_segments| {});
             let variant = format!("send.{sender_idx}");
-            let budget_summary = counter_registry.register_nominal_summary(
-                "task.assembler.drained",
-                &variant,
-                crate::counter::Unit::Count,
-            );
-            let time_summary =
-                counter_registry.register_nominal_timer("task.assembler.time", &variant);
-            rx.drain_budgeted_metered(Some(budgets.assembler), budget_summary, time_summary)
+            let task_counter = counter_registry.register_nominal_task("task.assembler", &variant);
+            rx.drain_budgeted_metered(Some(budgets.assembler), task_counter)
         });
     }
 }
@@ -607,8 +550,7 @@ async fn wheel_drain<A, T, F>(
     input_gauge: crate::counter::QueueGauge,
     mut on_expire: F,
     budget: usize,
-    budget_summary: crate::counter::Summary,
-    time_summary: crate::counter::Timer,
+    task_counter: crate::counter::Task,
 ) where
     A: crate::time::wheel::WheelAdapter,
     T: precision::Timer,
@@ -619,8 +561,7 @@ async fn wheel_drain<A, T, F>(
     let rx = FlattenList::new(wheel);
     let rx = crate::counter::GaugedReceiver::new(rx, input_gauge);
     let rx = Map::new(rx, |item| on_expire(item));
-    rx.drain_budgeted_metered(Some(budget), budget_summary, time_summary)
-        .await;
+    rx.drain_budgeted_metered(Some(budget), task_counter).await;
 }
 
 /// Builds a receiver that reads raw UDP segments from a socket and routes decoded packets
