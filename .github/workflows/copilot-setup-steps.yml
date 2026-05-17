@@ -24,6 +24,8 @@ jobs:
           echo "cargo_insta=1.47.2" >> "$GITHUB_OUTPUT"
           echo "cargo_nextest=0.9.136" >> "$GITHUB_OUTPUT"
           echo "cargo_bolero=0.13.4" >> "$GITHUB_OUTPUT"
+          echo "cargo_mcp_rev=21a1e53538211587a167587ab6a23eee56092b8b" >> "$GITHUB_OUTPUT"
+          echo "duckdb=v1.5.2" >> "$GITHUB_OUTPUT"
 
       - name: Cache cargo-insta binary
         id: cache-cargo-insta
@@ -57,3 +59,29 @@ jobs:
       - name: Install cargo-bolero
         if: steps.cache-cargo-bolero.outputs.cache-hit != 'true'
         run: cargo install cargo-bolero --locked --version "${{ steps.versions.outputs.cargo_bolero }}"
+
+      - name: Cache cargo-mcp binary
+        id: cache-cargo-mcp
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-mcp
+          key: ${{ runner.os }}-cargo-mcp-${{ steps.versions.outputs.cargo_mcp_rev }}
+
+      - name: Install cargo-mcp
+        if: steps.cache-cargo-mcp.outputs.cache-hit != 'true'
+        run: cargo install --git https://github.com/camshaft/cargo-mcp --rev "${{ steps.versions.outputs.cargo_mcp_rev }}" cargo-mcp
+
+      - name: Cache duckdb binary
+        id: cache-duckdb
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/duckdb
+          key: ${{ runner.os }}-duckdb-${{ steps.versions.outputs.duckdb }}
+
+      - name: Install duckdb
+        if: steps.cache-duckdb.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL "https://github.com/duckdb/duckdb/releases/download/${{ steps.versions.outputs.duckdb }}/duckdb_cli-linux-amd64.zip" -o /tmp/duckdb.zip
+          unzip /tmp/duckdb.zip -d /tmp/duckdb
+          sudo mv /tmp/duckdb/duckdb /usr/local/bin/duckdb
+          sudo chmod +x /usr/local/bin/duckdb
