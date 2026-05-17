@@ -1288,18 +1288,22 @@ where
         let buf = entry.payload_mut();
         let decoder = DecoderBufferMut::new(buf);
         let Ok((packet, _)) = secret_control::Packet::decode(decoder) else {
+            tracing::debug!(%peer, "ignored invalidation control packet: decode failed");
             return;
         };
         let secret_control::Packet::UnknownPathSecret(packet) = packet else {
+            tracing::debug!(%peer, "ignored invalidation control packet: unsupported control type");
             return;
         };
 
         let Some(validated) = path_secret_map.handle_unknown_path_secret_packet(&packet, &peer)
         else {
+            tracing::debug!(%peer, "ignored invalidation control packet: unknown path secret rejected");
             return;
         };
 
         let local_id = validated.credential_id.for_peer();
+        tracing::debug!(%peer, credential_id = %local_id, sinks = broadcast_txs.len(), "validated unknown path secret invalidation");
         for tx in &mut broadcast_txs {
             let _ = tx.send(Entry::from(local_id));
         }

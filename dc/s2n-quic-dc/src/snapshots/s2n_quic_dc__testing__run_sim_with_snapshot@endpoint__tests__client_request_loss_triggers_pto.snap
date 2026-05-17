@@ -2,6 +2,10 @@
 source: dc/s2n-quic-dc/src/testing.rs
 expression: logs
 ---
+0:00:00.000000000 DEBUG setting up endpoint config.layout=WorkerLayout { frame_dispatch: 0, send: [0], recv_io: [0], recv_dispatch: [0], waker_drain: [0], background: 0 }
+0:00:00.000000000 DEBUG grow epoch=8
+0:00:00.000000000 DEBUG setting up endpoint config.layout=WorkerLayout { frame_dispatch: 0, send: [0], recv_io: [0], recv_dispatch: [0], waker_drain: [0], background: 0 }
+0:00:00.000000000 DEBUG grow epoch=8
 0:00:00.000000000 TRACE m#task.priority_router.drained=0
 0:00:00.000000000 TRACE m#task.frame_dispatch.drained=0
 0:00:00.000000000 TRACE m#task.context_resolver.drained[send.0]=0
@@ -40,6 +44,9 @@ expression: logs
 0:00:00.000000000 TRACE m#task.invalidation.drained[recv.0]=0
 0:00:00.000000000 TRACE m#task.waker_drain.drained[waker.0]=0
 0:00:00.000000000 TRACE m#task.invalidation_validator.drained[background]=0
+0:00:00.000000000 DEBUG event=on_send_flow_init prev=Init next=FlowInitSent location=dc/s2n-quic-dc/src/stream/writer.rs:805:21
+0:00:00.000000000 DEBUG event=on_send_fin prev=FlowInitSent next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs:808:25
+0:00:00.000000000 DEBUG Sent FlowInit with early data stream_id=0 bytes_read=4 is_fin=true
 0:00:00.000000000 TRACE m#task.priority_router.drained=0
 0:00:00.000000000 TRACE m#task.frame_dispatch.drained=0
 0:00:00.000000000 TRACE m#task.context_resolver.drained[send.0]=0
@@ -138,6 +145,7 @@ expression: logs
 0:00:00.000021000 TRACE m#task.assembler.drained[send.0]=1
 0:00:00.000021000 TRACE m#task.tx_wheel.drained[send.0]=0
 0:00:00.000021000 TRACE m#task.pto_wheel.drained[send.0]=1
+0:00:00.000021000  INFO dropping client packet #1 len=52
 0:00:00.000021000 TRACE m#task.pto_wheel.drained[send.0]=0
 0:00:00.005888000 TRACE m#task.pto_wheel.drained[send.0]=0
 0:00:00.006021000 TRACE c#q.resolver_to_pto_wheel.receiver[send.0.task.pto_wheel]=1
@@ -152,6 +160,7 @@ expression: logs
 0:00:00.006021000 TRACE c#q.resolver_to_pto_wheel.drain[send.0]=1
 0:00:00.006021000 TRACE g#q.resolver_to_pto_wheel.depth[send.0]=0
 0:00:00.006021000 TRACE c#tx.pto_check=1
+0:00:00.006021000 DEBUG event=request prev=Idle next=Requested location=dc/s2n-quic-dc/src/endpoint/send.rs:872:42
 0:00:00.006021000 TRACE c#tx.pto_requested=1
 0:00:00.006021000 TRACE c#q.resolver_to_pto_wheel.sender[send.0.task.pto_wheel]=1
 0:00:00.006021000 TRACE c#q.resolver_to_pto_wheel.enq[send.0]=1
@@ -176,6 +185,7 @@ expression: logs
 0:00:00.006021000 TRACE g#q.wheel_to_assembler.depth[send.0]=0
 0:00:00.006021000 TRACE c#tx.data=1
 0:00:00.006021000 TRACE c#tx.probe=1
+0:00:00.006021000 DEBUG event=on_transmit prev=Requested next=Idle location=dc/s2n-quic-dc/src/endpoint/assemble.rs:337:49
 0:00:00.006021000 TRACE c#send.inflight.enq=1
 0:00:00.006021000 TRACE g#send.inflight.depth=2
 0:00:00.006021000 TRACE m#send.inflight.depth_dist=2
@@ -201,6 +211,7 @@ expression: logs
 0:00:00.006521000 TRACE c#rx.ecn[ect0]=1
 0:00:00.006521000 TRACE c#rx.init=1
 0:00:00.006521000 TRACE c#flow.accepted=1
+0:00:00.006521000 DEBUG FlowInit accepted - dispatched to acceptor attempt_id=0 stream_id=0 acceptor_id=1 server_queue_id=0
 0:00:00.006521000 TRACE m#task.packet_dispatch.drained[recv.0]=2
 0:00:00.006521000 TRACE m#task.recv_idle_wheel.drained[recv.0]=1
 0:00:00.006521000 TRACE m#task.waker_drain.drained[waker.0]=1
@@ -224,6 +235,12 @@ expression: logs
 0:00:00.006521000 TRACE g#q.resolver_to_tx_wheel.depth[send.0]=1
 0:00:00.006521000 TRACE m#q.resolver_to_tx_wheel.depth_dist[send.0]=1
 0:00:00.006521000 TRACE m#task.ack_processor.drained[send.0]=2
+0:00:00.006521000 DEBUG Reader complete - all data consumed stream_id=0 final_size=Some(4) consumed_len=4
+0:00:00.006521000 DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs:625:25
+0:00:00.006521000 DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs:956:29
+0:00:00.006521000 DEBUG Writer dropping stream_id=0 status=FinSent next_offset=4 inflight_bytes=4 remote_max_data=1048576
+0:00:00.006521000 DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs:514:25
+0:00:00.006521000 DEBUG Reader dropping stream_id=0 status=Complete final_size=Some(4) consumed_len=4 total_received_len=4 is_writing_complete=true is_reading_complete=true
 0:00:00.006521000 TRACE m#task.idle_wheel.drained[send.0]=1
 0:00:00.006521000 TRACE c#q.resolver_to_tx_wheel.receiver[send.0.task.wheel_drain]=1
 0:00:00.006521000 TRACE c#q.resolver_to_tx_wheel.drain[send.0]=1
@@ -412,6 +429,12 @@ expression: logs
 0:00:00.007041000 TRACE g#q.ack.depth[send.0]=1
 0:00:00.007041000 TRACE m#q.ack.depth_dist[send.0]=1
 0:00:00.007041000 TRACE m#task.ack_burst.drained[recv.0]=1
+0:00:00.007041000 DEBUG Reader complete - all data consumed stream_id=0 final_size=Some(4) consumed_len=4
+0:00:00.007041000 DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs:625:25
+0:00:00.007041000  INFO client_request_loss_triggers_pto passed
+0:00:00.007041000 DEBUG Writer dropping stream_id=0 status=FinSent next_offset=4 inflight_bytes=4 remote_max_data=0
+0:00:00.007041000 DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs:514:25
+0:00:00.007041000 DEBUG Reader dropping stream_id=0 status=Complete final_size=Some(4) consumed_len=4 total_received_len=4 is_writing_complete=true is_reading_complete=true
 0:00:00.007041000 TRACE c#q.ack.receiver[send.0.task.ack_processor]=1
 0:00:00.007041000 TRACE c#q.ack.drain[send.0]=1
 0:00:00.007041000 TRACE g#q.ack.depth[send.0]=0

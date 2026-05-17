@@ -2,4 +2,4 @@
 source: dc/s2n-quic-dc/src/testing.rs
 expression: logs
 ---
-
+0:00:04.928070000  INFO Received 47000 packets (3 GB) in 4.93s = 5.00 Gbps
