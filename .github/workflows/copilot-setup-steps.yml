@@ -12,45 +12,48 @@ on:
 jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
-    env:
-      CARGO_INSTA_VERSION: "1.47.2"
-      CARGO_NEXTEST_VERSION: "0.9.136"
-      CARGO_BOLERO_VERSION: "0.13.4"
     permissions:
       contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Set tool versions
+        id: versions
+        run: |
+          echo "cargo_insta=1.47.2" >> "$GITHUB_OUTPUT"
+          echo "cargo_nextest=0.9.136" >> "$GITHUB_OUTPUT"
+          echo "cargo_bolero=0.13.4" >> "$GITHUB_OUTPUT"
+
       - name: Cache cargo-insta binary
         id: cache-cargo-insta
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-insta
-          key: ${{ runner.os }}-cargo-insta-${{ env.CARGO_INSTA_VERSION }}
+          key: ${{ runner.os }}-cargo-insta-${{ steps.versions.outputs.cargo_insta }}
 
       - name: Install cargo-insta
         if: steps.cache-cargo-insta.outputs.cache-hit != 'true'
-        run: cargo install cargo-insta --locked --version "$CARGO_INSTA_VERSION"
+        run: cargo install cargo-insta --locked --version "${{ steps.versions.outputs.cargo_insta }}"
 
       - name: Cache cargo-nextest binary
         id: cache-cargo-nextest
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-nextest
-          key: ${{ runner.os }}-cargo-nextest-${{ env.CARGO_NEXTEST_VERSION }}
+          key: ${{ runner.os }}-cargo-nextest-${{ steps.versions.outputs.cargo_nextest }}
 
       - name: Install cargo-nextest
         if: steps.cache-cargo-nextest.outputs.cache-hit != 'true'
-        run: cargo install cargo-nextest --locked --version "$CARGO_NEXTEST_VERSION"
+        run: cargo install cargo-nextest --locked --version "${{ steps.versions.outputs.cargo_nextest }}"
 
       - name: Cache cargo-bolero binary
         id: cache-cargo-bolero
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bolero
-          key: ${{ runner.os }}-cargo-bolero-${{ env.CARGO_BOLERO_VERSION }}
+          key: ${{ runner.os }}-cargo-bolero-${{ steps.versions.outputs.cargo_bolero }}
 
       - name: Install cargo-bolero
         if: steps.cache-cargo-bolero.outputs.cache-hit != 'true'
-        run: cargo install cargo-bolero --locked --version "$CARGO_BOLERO_VERSION"
+        run: cargo install cargo-bolero --locked --version "${{ steps.versions.outputs.cargo_bolero }}"
