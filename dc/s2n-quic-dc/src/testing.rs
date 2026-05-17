@@ -360,8 +360,8 @@ impl BusyPool {
         self.0
             .get_or_init(|| {
                 let mut handles = vec![];
-                for _ in 0..2 {
-                    let (handle, runner) = crate::busy_poll::Handle::new();
+                for worker_id in 0..2 {
+                    let (handle, runner) = crate::busy_poll::Handle::new(worker_id);
                     std::thread::spawn(move || runner.run());
                     handles.push(handle);
                 }

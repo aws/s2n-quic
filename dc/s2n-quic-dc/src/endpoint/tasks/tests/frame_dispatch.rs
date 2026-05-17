@@ -40,7 +40,7 @@ fn setup(num_workers: usize) -> (SubmissionSender, Vec<WorkerRx>) {
         rxs.push(rx);
     }
 
-    let mut spawner = Local;
+    let mut spawner = Local::new(0);
     tasks::frame_dispatch(
         &mut spawner,
         frame_rx,

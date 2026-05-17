@@ -683,6 +683,7 @@ impl Drop for TimerGuard<'_> {
 ///   of the next poll
 #[derive(Clone)]
 pub struct Task {
+    registry: Registry,
     registration: Arc<Mutex<TaskRegistrationMetadata>>,
     pub drained: SummaryMetric,
     pub time: Timer,
@@ -694,6 +695,8 @@ struct TaskRegistrationMetadata {
     name: String,
     description: String,
     function: String,
+    budget: Option<usize>,
+    worker_id: Option<usize>,
 }
 
 impl Task {
@@ -717,12 +720,13 @@ impl Task {
         .collect()
     }
 
-    pub fn with_registration_metadata_ref<T>(&self, f: impl FnOnce(&str, &str, &str) -> T) -> T {
+    pub fn with_registration_metadata_ref<T>(&self, f: impl FnOnce(&str, &str, &str, Option<usize>) -> T) -> T {
         let registration = self.registration.lock().unwrap();
         f(
             registration.name.as_str(),
             registration.description.as_str(),
             registration.function.as_str(),
+            registration.budget,
         )
     }
 
@@ -759,6 +763,35 @@ impl Task {
             registration.function = function.to_string();
         }
         self
+    }
+
+    /// Called when the task is spawned to record spawn-time information in the topology.
+    /// 
+    /// This captures the budget and worker ID, then registers the task in the topology.
+    /// Panics in debug builds if the task has already been spawned.
+    pub fn on_spawn(&self, budget: Option<usize>, worker_id: usize) {
+        let mut registration = self.registration.lock().unwrap();
+        debug_assert!(
+            registration.worker_id.is_none(),
+            "Task '{}' has already been spawned on worker {:?}",
+            registration.name,
+            registration.worker_id
+        );
+        registration.budget = budget;
+        registration.worker_id = Some(worker_id);
+        
+        // Register in topology now that spawn information is finalized
+        let task_registration = TaskRegistration::new(
+            &registration.name,
+            &registration.description,
+            &registration.function,
+        )
+        .with_budget(budget)
+        .with_worker_id(Some(worker_id))
+        .with_metric(self);
+        
+        drop(registration);
+        self.registry.register_task_topology(task_registration);
     }
 }
 
@@ -831,9 +864,17 @@ impl QueueGauge {
         description: impl core::fmt::Display,
         function: impl core::fmt::Display,
     ) -> Self {
-        self.with_registration_name(name)
+        let queue = self.with_registration_name(name)
             .with_registration_description(description)
-            .with_registration_function(function)
+            .with_registration_function(function);
+        
+        // Update topology with new metadata
+        let registration = queue.with_registration_metadata_ref(|name, description, function| {
+            ChannelRegistration::new(name, description, function).with_metric(&queue)
+        });
+        queue.registry.upsert_channel_topology(registration);
+        
+        queue
     }
 
     pub fn with_registration_name(self, name: impl core::fmt::Display) -> Self {
@@ -935,10 +976,23 @@ impl QueueGauge {
                     ..Default::default()
                 },
             );
-        QueueSender {
+        let sender = QueueSender {
             queue: self.clone(),
             metric,
-        }
+        };
+        
+        // Auto-register in topology
+        let channel_name = sender.channel_metadata(|name, _, _| name.to_string());
+        let binding = ChannelBinding::new(
+            sender.task_name(),
+            channel_name,
+            ChannelDirection::Sends,
+            sender.description(),
+            sender.function(),
+        );
+        self.registry.register_binding_topology(binding);
+        
+        sender
     }
 
     pub fn receiver(&self, task_name: impl core::fmt::Display) -> QueueReceiver {
@@ -959,10 +1013,23 @@ impl QueueGauge {
                     ..Default::default()
                 },
             );
-        QueueReceiver {
+        let receiver = QueueReceiver {
             queue: self.clone(),
             metric,
-        }
+        };
+        
+        // Auto-register in topology
+        let channel_name = receiver.channel_metadata(|name, _, _| name.to_string());
+        let binding = ChannelBinding::new(
+            receiver.task_name(),
+            channel_name,
+            ChannelDirection::Receives,
+            receiver.description(),
+            receiver.function(),
+        );
+        self.registry.register_binding_topology(binding);
+        
+        receiver
     }
 }
 
@@ -990,6 +1057,18 @@ impl QueueGauge {
 impl QueueSender {
     pub fn with_description(mut self, description: impl core::fmt::Display) -> Self {
         self.metric = self.metric.with_description(description);
+        
+        // Update binding in topology
+        let channel_name = self.channel_metadata(|name, _, _| name.to_string());
+        let binding = ChannelBinding::new(
+            self.task_name(),
+            channel_name,
+            ChannelDirection::Sends,
+            self.description(),
+            self.function(),
+        );
+        self.queue.registry.upsert_binding_topology(binding);
+        
         self
     }
 
@@ -1004,6 +1083,18 @@ impl QueueSender {
         {
             metadata.function = function.to_string();
         }
+        
+        // Update binding in topology
+        let channel_name = self.channel_metadata(|name, _, _| name.to_string());
+        let binding = ChannelBinding::new(
+            self.task_name(),
+            channel_name,
+            ChannelDirection::Sends,
+            self.description(),
+            self.function(),
+        );
+        self.queue.registry.upsert_binding_topology(binding);
+        
         self
     }
 
@@ -1054,6 +1145,18 @@ impl QueueSender {
 impl QueueReceiver {
     pub fn with_description(mut self, description: impl core::fmt::Display) -> Self {
         self.metric = self.metric.with_description(description);
+        
+        // Update binding in topology
+        let channel_name = self.channel_metadata(|name, _, _| name.to_string());
+        let binding = ChannelBinding::new(
+            self.task_name(),
+            channel_name,
+            ChannelDirection::Receives,
+            self.description(),
+            self.function(),
+        );
+        self.queue.registry.upsert_binding_topology(binding);
+        
         self
     }
 
@@ -1068,6 +1171,18 @@ impl QueueReceiver {
         {
             metadata.function = function.to_string();
         }
+        
+        // Update binding in topology
+        let channel_name = self.channel_metadata(|name, _, _| name.to_string());
+        let binding = ChannelBinding::new(
+            self.task_name(),
+            channel_name,
+            ChannelDirection::Receives,
+            self.description(),
+            self.function(),
+        );
+        self.queue.registry.upsert_binding_topology(binding);
+        
         self
     }
 
@@ -1115,6 +1230,277 @@ impl QueueReceiver {
     }
 }
 
+// ── Metric Registration Structures ──────────────────────────────────────────
+
+#[derive(Clone, Debug)]
+pub struct MetricRegistration {
+    pub label: String,
+    pub variant: Option<String>,
+    pub kind: MetricKind,
+    pub unit: Option<&'static str>,
+    pub description: String,
+}
+
+impl MetricRegistration {
+    #[inline]
+    pub fn new(
+        name: impl core::fmt::Display,
+        kind: MetricKind,
+        description: impl core::fmt::Display,
+    ) -> Self {
+        Self {
+            label: name.to_string(),
+            variant: None,
+            kind,
+            unit: None,
+            description: description.to_string(),
+        }
+    }
+
+    #[inline]
+    pub fn with_variant(mut self, variant: impl core::fmt::Display) -> Self {
+        self.variant = Some(variant.to_string());
+        self
+    }
+
+    #[inline]
+    pub fn with_unit(mut self, unit: &'static str) -> Self {
+        self.unit = Some(unit);
+        self
+    }
+}
+
+pub trait Metric {
+    fn registrations(&self) -> Vec<MetricRegistration>;
+}
+
+impl Metric for MetricRegistration {
+    fn registrations(&self) -> Vec<MetricRegistration> {
+        vec![self.clone()]
+    }
+}
+
+impl Metric for Task {
+    fn registrations(&self) -> Vec<MetricRegistration> {
+        self.metrics()
+            .into_iter()
+            .map(|metric| {
+                let mut registration =
+                    MetricRegistration::new(metric.label, metric.kind, metric.description);
+                if let Some(variant) = metric.variant {
+                    registration = registration.with_variant(variant);
+                }
+                if let Some(unit) = metric.unit {
+                    registration = registration.with_unit(unit);
+                }
+                registration
+            })
+            .collect()
+    }
+}
+
+impl Metric for QueueGauge {
+    fn registrations(&self) -> Vec<MetricRegistration> {
+        self.metrics()
+            .into_iter()
+            .map(|metric| {
+                let mut registration =
+                    MetricRegistration::new(metric.label, metric.kind, metric.description);
+                if let Some(variant) = metric.variant {
+                    registration = registration.with_variant(variant);
+                }
+                if let Some(unit) = metric.unit {
+                    registration = registration.with_unit(unit);
+                }
+                registration
+            })
+            .collect()
+    }
+}
+
+impl Metric for QueueSender {
+    fn registrations(&self) -> Vec<MetricRegistration> {
+        self.metric
+            .metric_metadata()
+            .into_iter()
+            .map(|metadata| MetricRegistration {
+                label: metadata.label,
+                variant: metadata.variant,
+                kind: metadata.kind,
+                unit: metadata.unit,
+                description: metadata.description,
+            })
+            .collect()
+    }
+}
+
+impl Metric for QueueReceiver {
+    fn registrations(&self) -> Vec<MetricRegistration> {
+        self.metric
+            .metric_metadata()
+            .into_iter()
+            .map(|metadata| MetricRegistration {
+                label: metadata.label,
+                variant: metadata.variant,
+                kind: metadata.kind,
+                unit: metadata.unit,
+                description: metadata.description,
+            })
+            .collect()
+    }
+}
+
+/// Describes a spawned pipeline task for runtime-level introspection.
+#[derive(Clone, Debug)]
+pub struct TaskRegistration {
+    pub name: String,
+    pub description: String,
+    pub function: String,
+    pub budget: Option<usize>,
+    pub worker_id: Option<usize>,
+    pub metrics: Vec<MetricRegistration>,
+}
+
+impl TaskRegistration {
+    #[inline]
+    pub fn new(
+        name: impl core::fmt::Display,
+        description: impl core::fmt::Display,
+        function: impl core::fmt::Display,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            description: description.to_string(),
+            function: function.to_string(),
+            budget: None,
+            worker_id: None,
+            metrics: Vec::new(),
+        }
+    }
+
+    #[inline]
+    pub fn with_budget(mut self, budget: Option<usize>) -> Self {
+        self.budget = budget;
+        self
+    }
+
+    #[inline]
+    pub fn with_worker_id(mut self, worker_id: Option<usize>) -> Self {
+        self.worker_id = worker_id;
+        self
+    }
+
+    #[inline]
+    pub fn with_metric(mut self, metric: &impl Metric) -> Self {
+        for metric in metric.registrations() {
+            self.upsert_metric(metric);
+        }
+        self
+    }
+
+    #[inline]
+    fn upsert_metric(&mut self, metric: MetricRegistration) {
+        if let Some(current) = self
+            .metrics
+            .iter_mut()
+            .find(|m| m.label == metric.label && m.variant == metric.variant)
+        {
+            *current = metric;
+        } else {
+            self.metrics.push(metric);
+        }
+    }
+}
+
+/// Describes a channel/queue entity in the runtime pipeline.
+#[derive(Clone, Debug)]
+pub struct ChannelRegistration {
+    pub name: String,
+    pub description: String,
+    pub function: String,
+    pub metrics: Vec<MetricRegistration>,
+}
+
+impl ChannelRegistration {
+    #[inline]
+    pub fn new(
+        name: impl core::fmt::Display,
+        description: impl core::fmt::Display,
+        function: impl core::fmt::Display,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            description: description.to_string(),
+            function: function.to_string(),
+            metrics: Vec::new(),
+        }
+    }
+
+    #[inline]
+    pub fn with_metric(mut self, metric: &impl Metric) -> Self {
+        for metric in metric.registrations() {
+            self.upsert_metric(metric);
+        }
+        self
+    }
+
+    #[inline]
+    fn upsert_metric(&mut self, metric: MetricRegistration) {
+        if let Some(current) = self
+            .metrics
+            .iter_mut()
+            .find(|m| m.label == metric.label && m.variant == metric.variant)
+        {
+            *current = metric;
+        } else {
+            self.metrics.push(metric);
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ChannelDirection {
+    Sends,
+    Receives,
+}
+
+impl core::fmt::Display for ChannelDirection {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Sends => f.write_str("sends"),
+            Self::Receives => f.write_str("receives"),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ChannelBinding {
+    pub task_name: String,
+    pub channel_name: String,
+    pub direction: ChannelDirection,
+    pub description: String,
+    pub function: String,
+}
+
+impl ChannelBinding {
+    #[inline]
+    pub fn new(
+        task_name: impl core::fmt::Display,
+        channel_name: impl core::fmt::Display,
+        direction: ChannelDirection,
+        description: impl core::fmt::Display,
+        function: impl core::fmt::Display,
+    ) -> Self {
+        Self {
+            task_name: task_name.to_string(),
+            channel_name: channel_name.to_string(),
+            direction,
+            description: description.to_string(),
+            function: function.to_string(),
+        }
+    }
+}
+
 // ── Registry ────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Default)]
@@ -1124,6 +1510,178 @@ pub struct Registry {
     queue_metadata: Arc<Mutex<HashMap<String, QueueRegistrationMetadata>>>,
     queue_endpoint_metadata: Arc<Mutex<HashMap<MetricId, QueueEndpointMetadata>>>,
     metric_metadata: Arc<Mutex<HashMap<MetricId, MetricMetadata>>>,
+    topology: Arc<Mutex<Topology>>,
+}
+
+/// Runtime topology tracked by the counter registry.
+///
+/// This includes all tasks, channels/queues, and their bindings (sender/receiver relationships).
+/// The registry owns this information and can expose it for runtime introspection (e.g., DOT graphs).
+#[derive(Clone, Default, Debug)]
+pub struct Topology {
+    pub tasks: Vec<TaskRegistration>,
+    pub channels: Vec<ChannelRegistration>,
+    pub bindings: Vec<ChannelBinding>,
+}
+
+impl Topology {
+    /// Generate a DOT graph representation of the topology.
+    pub fn to_dot(&self) -> String {
+        let mut out = String::from("digraph pipeline {\n  rankdir=LR;\n");
+
+        let mut task_node_ids = std::collections::HashMap::new();
+        let mut channel_node_ids = std::collections::HashMap::new();
+
+        // Render tasks
+        for (idx, task) in self.tasks.iter().enumerate() {
+            let node_id = format!("t{idx}");
+            task_node_ids.insert(task.name.clone(), node_id.clone());
+            let budget = task
+                .budget
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "none".to_string());
+            let metrics = metric_summary(&task.metrics);
+            let label = format!(
+                "{}\\nfn: {}\\nbudget: {}\\nmetrics: {}\\n{}",
+                task.name, task.function, budget, metrics, task.description
+            );
+            out.push_str(&format!(
+                "  {node_id} [shape=box,label=\"{}\"];\n",
+                escape_dot(&label)
+            ));
+        }
+
+        // Render channels
+        for (idx, channel) in self.channels.iter().enumerate() {
+            let node_id = format!("c{idx}");
+            channel_node_ids.insert(channel.name.clone(), node_id.clone());
+            let metrics = metric_summary(&channel.metrics);
+            let label = format!(
+                "{}\\nfn: {}\\nmetrics: {}\\n{}",
+                channel.name, channel.function, metrics, channel.description
+            );
+            out.push_str(&format!(
+                "  {node_id} [shape=ellipse,label=\"{}\"];\n",
+                escape_dot(&label)
+            ));
+        }
+
+        // Render bindings
+        for binding in &self.bindings {
+            let Some(task_node) = task_node_ids.get(&binding.task_name) else {
+                out.push_str(&format!(
+                    "  // unresolved binding: missing task '{}'\n",
+                    binding.task_name
+                ));
+                continue;
+            };
+            let Some(channel_node) = channel_node_ids.get(&binding.channel_name) else {
+                out.push_str(&format!(
+                    "  // unresolved binding: missing channel '{}'\n",
+                    binding.channel_name
+                ));
+                continue;
+            };
+
+            let (from, to) = if binding.direction == ChannelDirection::Sends {
+                (task_node, channel_node)
+            } else {
+                (channel_node, task_node)
+            };
+            let label = format!(
+                "{}\\nfn: {}\\n{}",
+                binding.direction, binding.function, binding.description
+            );
+            out.push_str(&format!(
+                "  {from} -> {to} [label=\"{}\"];\n",
+                escape_dot(&label)
+            ));
+        }
+
+        out.push_str("}\n");
+        out
+    }
+
+    /// Validate that the topology is coherent.
+    ///
+    /// Checks that every channel has at least one sender and one receiver.
+    /// Returns a list of validation errors if any are found.
+    pub fn validate(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+        let mut channel_senders = std::collections::HashMap::new();
+        let mut channel_receivers = std::collections::HashMap::new();
+
+        // Count senders and receivers for each channel
+        for binding in &self.bindings {
+            match binding.direction {
+                ChannelDirection::Sends => {
+                    *channel_senders
+                        .entry(binding.channel_name.clone())
+                        .or_insert(0) += 1;
+                }
+                ChannelDirection::Receives => {
+                    *channel_receivers
+                        .entry(binding.channel_name.clone())
+                        .or_insert(0) += 1;
+                }
+            }
+        }
+
+        // Check that every channel has at least one sender and one receiver
+        for channel in &self.channels {
+            let sender_count = channel_senders.get(&channel.name).copied().unwrap_or(0);
+            let receiver_count = channel_receivers.get(&channel.name).copied().unwrap_or(0);
+
+            if sender_count == 0 {
+                errors.push(format!(
+                    "Channel '{}' has no senders",
+                    channel.name
+                ));
+            }
+            if receiver_count == 0 {
+                errors.push(format!(
+                    "Channel '{}' has no receivers",
+                    channel.name
+                ));
+            }
+        }
+
+        errors
+    }
+}
+
+fn escape_dot(input: &str) -> String {
+    input
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+}
+
+fn metric_summary(metrics: &[MetricRegistration]) -> String {
+    if metrics.is_empty() {
+        "none".to_string()
+    } else {
+        metrics
+            .iter()
+            .map(|metric| {
+                let variant = metric
+                    .variant
+                    .as_ref()
+                    .map(|variant| format!(" variant={variant}"))
+                    .unwrap_or_default();
+                let unit = metric
+                    .unit
+                    .map(|unit| format!(" unit={unit}"))
+                    .unwrap_or_default();
+                format!(
+                    "{} [{}{}{}]: {}",
+                    metric.label, metric.kind, variant, unit, metric.description
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\\n")
+    }
 }
 
 impl Registry {
@@ -1137,7 +1695,89 @@ impl Registry {
             queue_metadata: Arc::new(Mutex::new(HashMap::new())),
             queue_endpoint_metadata: Arc::new(Mutex::new(HashMap::new())),
             metric_metadata: Arc::new(Mutex::new(HashMap::new())),
+            topology: Arc::new(Mutex::new(Topology::default())),
         }
+    }
+
+    /// Returns a snapshot of the runtime topology tracked by this registry.
+    ///
+    /// This includes all registered tasks, channels, and their bindings.
+    pub fn topology(&self) -> Topology {
+        self.topology.lock().unwrap().clone()
+    }
+
+    /// Register a task in the topology.
+    pub(crate) fn register_task_topology(&self, task: TaskRegistration) {
+        self.topology.lock().unwrap().tasks.push(task);
+    }
+
+    /// Register a channel/queue in the topology.
+    pub(crate) fn register_channel_topology(&self, channel: ChannelRegistration) {
+        self.topology.lock().unwrap().channels.push(channel);
+    }
+
+    /// Update or insert a channel/queue in the topology by name.
+    pub(crate) fn upsert_channel_topology(&self, channel: ChannelRegistration) {
+        let mut topology = self.topology.lock().unwrap();
+        if let Some(existing) = topology.channels.iter_mut().find(|c| c.name == channel.name) {
+            *existing = channel;
+        } else {
+            topology.channels.push(channel);
+        }
+    }
+
+    /// Register a channel binding (sender/receiver relationship) in the topology.
+    pub(crate) fn register_binding_topology(&self, binding: ChannelBinding) {
+        self.topology.lock().unwrap().bindings.push(binding);
+    }
+
+    /// Update or insert a channel binding in the topology.
+    /// Matches on task_name, channel_name, and direction.
+    pub(crate) fn upsert_binding_topology(&self, binding: ChannelBinding) {
+        let mut topology = self.topology.lock().unwrap();
+        if let Some(existing) = topology.bindings.iter_mut().find(|b| {
+            b.task_name == binding.task_name
+                && b.channel_name == binding.channel_name
+                && b.direction == binding.direction
+        }) {
+            *existing = binding;
+        } else {
+            topology.bindings.push(binding);
+        }
+    }
+
+    /// Register a queue/channel in the topology.
+    pub fn register_queue_channel(&self, channel: &QueueGauge) {
+        let registration = channel.with_registration_metadata_ref(|name, description, function| {
+            ChannelRegistration::new(name, description, function).with_metric(channel)
+        });
+        self.register_channel_topology(registration);
+    }
+
+    /// Register a queue sender in the topology.
+    pub fn register_queue_sender(&self, sender: &QueueSender) {
+        let channel_name = sender.channel_metadata(|name, _, _| name.to_string());
+        let binding = ChannelBinding::new(
+            sender.task_name(),
+            channel_name,
+            ChannelDirection::Sends,
+            sender.description(),
+            sender.function(),
+        );
+        self.register_binding_topology(binding);
+    }
+
+    /// Register a queue receiver in the topology.
+    pub fn register_queue_receiver(&self, receiver: &QueueReceiver) {
+        let channel_name = receiver.channel_metadata(|name, _, _| name.to_string());
+        let binding = ChannelBinding::new(
+            receiver.task_name(),
+            channel_name,
+            ChannelDirection::Receives,
+            receiver.description(),
+            receiver.function(),
+        );
+        self.register_binding_topology(binding);
     }
 
     fn register_metric_metadata(
@@ -1297,6 +1937,13 @@ impl Registry {
                 ..Default::default()
             },
         );
+        
+        // Auto-register in topology
+        let registration = gauge.with_registration_metadata_ref(|name, description, function| {
+            ChannelRegistration::new(name, description, function).with_metric(&gauge)
+        });
+        self.register_channel_topology(registration);
+        
         gauges.insert(label, gauge.clone());
         gauge
     }
@@ -1383,6 +2030,13 @@ impl Registry {
                 ..Default::default()
             },
         );
+        
+        // Auto-register in topology
+        let registration = gauge.with_registration_metadata_ref(|name, description, function| {
+            ChannelRegistration::new(name, description, function).with_metric(&gauge)
+        });
+        self.register_channel_topology(registration);
+        
         gauges.insert(key, gauge.clone());
         gauge
     }
@@ -1455,6 +2109,7 @@ impl Registry {
             Task::NEXT_POLL_LATENCY_DESCRIPTION,
         );
         Task {
+            registry: self.clone(),
             registration: Arc::new(Mutex::new(TaskRegistrationMetadata {
                 name: label.clone(),
                 ..Default::default()
@@ -1529,6 +2184,7 @@ impl Registry {
             Task::NEXT_POLL_LATENCY_DESCRIPTION,
         );
         Task {
+            registry: self.clone(),
             registration: Arc::new(Mutex::new(TaskRegistrationMetadata {
                 name: format!("{label}.{variant}"),
                 ..Default::default()
@@ -1952,5 +2608,31 @@ mod tests {
         }
 
         assert_eq!(seen.lock().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn topology_validation() {
+        let registry = Registry::new();
+        
+        // Create a queue with both sender and receiver
+        let q1 = registry.register_queue_gauge("q.test1");
+        let _sender1 = q1.sender("task.sender");
+        let _receiver1 = q1.receiver("task.receiver");
+        
+        // Create a queue with only a sender (missing receiver)
+        let q2 = registry.register_queue_gauge("q.test2");
+        let _sender2 = q2.sender("task.sender");
+        
+        // Create a queue with only a receiver (missing sender)
+        let q3 = registry.register_queue_gauge("q.test3");
+        let _receiver3 = q3.receiver("task.receiver");
+        
+        let topology = registry.topology();
+        let errors = topology.validate();
+        
+        // Should have 2 errors: q.test2 missing receiver, q.test3 missing sender
+        assert_eq!(errors.len(), 2);
+        assert!(errors.iter().any(|e| e.contains("q.test2") && e.contains("no receivers")));
+        assert!(errors.iter().any(|e| e.contains("q.test3") && e.contains("no senders")));
     }
 }

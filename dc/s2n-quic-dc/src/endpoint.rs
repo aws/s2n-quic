@@ -333,7 +333,7 @@ where
         .map(|i| {
             let (tx, rx) = intrusive::sync::new::<combinator::FrameBatch>();
             let gauge = counter_registry
-                .register_queue_gauge_nominal("q.dispatch_to_resolver", format_args!("send.{i}"));
+                .register_queue_gauge_nominal("q.resolver", format_args!("send.{i}"));
             let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
             (tx, rx)
         })
@@ -342,7 +342,7 @@ where
         .map(|i| {
             let (tx, rx) = intrusive::sync::new::<msg::Sender>();
             let gauge = counter_registry
-                .register_queue_gauge_nominal("q.recv_to_ack_processor", format_args!("send.{i}"));
+                .register_queue_gauge_nominal("q.ack", format_args!("send.{i}"));
             let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
             (tx, rx)
         })
@@ -450,7 +450,7 @@ where
         .map(|i| {
             let (tx, rx) = crate::socket::channel::intrusive::sync::new::<msg::Sender>();
             let gauge = counter_registry
-                .register_queue_gauge_nominal("q.assembler_to_dispatch", format_args!("recv.{i}"));
+                .register_queue_gauge_nominal("q.dispatch", format_args!("recv.{i}"));
             let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
             (tx, rx)
         })
@@ -469,10 +469,10 @@ where
             idx,
             batch_rx,
             batch_gauge: counter_registry
-                .register_queue_gauge_nominal("q.dispatch_to_resolver", format_args!("send.{idx}")),
+                .register_queue_gauge_nominal("q.resolver", format_args!("send.{idx}")),
             ack_rx,
             ack_gauge: counter_registry.register_queue_gauge_nominal(
-                "q.recv_to_ack_processor",
+                "q.ack",
                 format_args!("send.{idx}"),
             ),
             random: crate::xorshift::Rng::new(),
@@ -494,7 +494,7 @@ where
             let (tx, rx) =
                 intrusive::sync::new::<packet::datagram::decoder::Packet<descriptor::Filled>>();
             let gauge = counter_registry
-                .register_queue_gauge_nominal("q.io_to_dispatch", format_args!("recv.{i}"));
+                .register_queue_gauge_nominal("q.dispatch_rx", format_args!("recv.{i}"));
             (crate::socket::channel::GaugedSender::new(tx, gauge), rx)
         })
         .unzip();
@@ -510,7 +510,7 @@ where
         workers[worker_id].recv_dispatch = Some(RecvDispatchParts {
             packet_rx: dispatch_rx,
             packet_gauge: counter_registry
-                .register_queue_gauge_nominal("q.io_to_dispatch", format_args!("recv.{idx}")),
+                .register_queue_gauge_nominal("q.dispatch_rx", format_args!("recv.{idx}")),
             path_secret_map: path_secret_map.clone(),
             acceptor_registry: acceptor_registry.clone(),
             frame_tx: frame_tx.clone(),
@@ -724,7 +724,7 @@ where
 
     #[inline]
     fn spawn<R: crate::runtime::Runtime>(self, runtime: &R) {
-        use crate::runtime::{ChannelRegistration, Spawner as _};
+        use crate::runtime::Spawner as _;
         use crate::socket::channel::ReceiverExt as _;
 
         let Self {
@@ -820,52 +820,15 @@ where
                     crate::socket::channel::intrusive::unsync::new_with_adapter::<
                         crate::stream::endpoint::recv::AckBurstAdapter,
                     >();
-                local.register_channel(ChannelRegistration::new(
-                    format!("ch.packet_dispatch_to_ack_burst.recv.{recv_dispatch_idx}"),
-                    "ACK burst queue carrying recv contexts that need acknowledgement encoding",
-                    "endpoint::Worker::spawn",
-                ));
-                local.register_channel_sender(
-                    "task.packet_dispatch",
-                    format!("ch.packet_dispatch_to_ack_burst.recv.{recv_dispatch_idx}"),
-                    "Packet dispatch schedules recv contexts for ACK encoding",
-                    "endpoint::Worker::spawn",
-                );
-                local.register_channel_receiver(
-                    "task.ack_burst",
-                    format!("ch.packet_dispatch_to_ack_burst.recv.{recv_dispatch_idx}"),
-                    "ACK burst task drains contexts and emits ACK messages",
-                    "endpoint::Worker::spawn",
-                );
 
                 // Recv idle wheel — expires inactive recv contexts.
                 let variant = format!("recv.{recv_dispatch_idx}");
                 let q_recv_idle_wheel =
-                    counter_registry.register_queue_gauge_nominal("q.recv_idle_wheel", &variant);
+                    counter_registry.register_queue_gauge_nominal("q.idle_wheel", &variant);
                 let (recv_idle_wheel_tx, recv_idle_wheel_rx) =
                     crate::socket::channel::intrusive::unsync::new_with_adapter::<
                         crate::stream::endpoint::recv::IdleWheelAdapter,
                     >();
-                local.register_channel(
-                    ChannelRegistration::new(
-                        format!("ch.recv_idle_wheel.{variant}"),
-                        "Recv-context idle wheel queue from packet dispatch to idle drain",
-                        "endpoint::Worker::spawn",
-                    )
-                    .with_metric(&q_recv_idle_wheel),
-                );
-                local.register_channel_sender(
-                    "task.packet_dispatch",
-                    format!("ch.recv_idle_wheel.{variant}"),
-                    "Packet dispatch schedules recv contexts for idle expiry",
-                    "endpoint::Worker::spawn",
-                );
-                local.register_channel_receiver(
-                    "task.recv_idle_wheel",
-                    format!("ch.recv_idle_wheel.{variant}"),
-                    "Recv idle wheel drains scheduled contexts",
-                    "endpoint::Worker::spawn",
-                );
                 {
                     let recv_cache = recv_cache.clone();
                     let clock = rd.clock.clone();
@@ -945,28 +908,8 @@ where
                     task_counter,
                 );
                 let ack_completion_gauge = counter_registry.register_queue_gauge_nominal(
-                    "q.assembler_to_dispatch",
+                    "q.dispatch",
                     format_args!("recv.{recv_dispatch_idx}"),
-                );
-                local.register_channel(
-                    ChannelRegistration::new(
-                        format!("ch.assembler_to_dispatch.recv.{recv_dispatch_idx}"),
-                        "ACK completion queue from assembler tasks back to recv dispatch worker",
-                        "endpoint::Worker::spawn",
-                    )
-                    .with_metric(&ack_completion_gauge),
-                );
-                local.register_channel_sender(
-                    "task.assembler",
-                    format!("ch.assembler_to_dispatch.recv.{recv_dispatch_idx}"),
-                    "Assembler publishes ACK completion entries",
-                    "endpoint::Worker::spawn",
-                );
-                local.register_channel_receiver(
-                    "task.ack_completion",
-                    format!("ch.assembler_to_dispatch.recv.{recv_dispatch_idx}"),
-                    "ACK completion task drains completion entries",
-                    "endpoint::Worker::spawn",
                 );
                 let ack_completion_rx = crate::counter::GaugedReceiver::new(
                     rd.ack_completion_rx,
