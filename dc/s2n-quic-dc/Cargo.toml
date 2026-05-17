@@ -14,6 +14,7 @@ exclude = ["corpus.tar.gz"]
 default = ["tokio"]
 testing = ["dep:bach", "bolero-generator", "s2n-quic-core/testing", "s2n-quic-platform/testing", "tracing-subscriber"]
 tokio = ["tokio/io-util", "tokio/net", "tokio/rt-multi-thread", "tokio/time"]
+metric-tracing = []
 
 [dependencies]
 arrayvec = "0.7"

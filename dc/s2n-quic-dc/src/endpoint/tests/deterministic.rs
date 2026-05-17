@@ -17,10 +17,10 @@
 //! throughput is immediately visible.
 
 use crate::{
-    stream::endpoint::testing::sim::{Client, Server, SERVER_PORT},
-    testing::{ext::*, sim},
+    stream::endpoint::testing::sim::{Client, SERVER_PORT, Server},
+    testing::{ext::*, sim, without_tracing},
 };
-use bach::time::{timeout, Instant};
+use bach::time::{Instant, timeout};
 use bytes::{Bytes, BytesMut};
 use core::ops::Range;
 use s2n_quic_core::varint::VarInt;
@@ -133,6 +133,7 @@ impl DroppedPackets {
         let end_time: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
         let end_time_inner = end_time.clone();
 
+        let _guard = without_tracing();
         sim(|| {
             {
                 tracing::info!(
@@ -341,6 +342,7 @@ fn sporadic_loss() {
 /// completes — the exact duration is not checked here, only liveness.
 #[test]
 fn bulk_transfer_with_loss() {
+    let _guard = without_tracing();
     bolero::check!()
         .with_type::<DroppedPackets>()
         .with_test_time(core::time::Duration::from_secs(30))
@@ -360,6 +362,7 @@ fn bulk_transfer_with_loss() {
 /// end-to-end time grows orders of magnitude beyond what the loss rate predicts.
 #[test]
 fn transmission_rate_fuzz() {
+    let _guard = without_tracing();
     bolero::check!()
         .with_type::<DroppedPackets>()
         .with_test_time(core::time::Duration::from_secs(30))
@@ -517,10 +520,8 @@ fn sim_init_uniqueness(actions: &PacketActions, n: usize) {
     tracing::info!("════════════════════════════════════════════════════════════════════");
     tracing::info!(?actions, n, "starting init_uniqueness sim");
 
+    let _guard = without_tracing();
     sim(|| {
-        install_init_monitors(actions);
-
-        // ── Server (primary) ─────────────────────────────────────────────────
         // Accept streams until `n` unique stream IDs have been validated.
         // Duplicates (which fail validation) are silently discarded.
         {
@@ -661,6 +662,7 @@ fn init_uniqueness_all_duplicated() {
         delays: vec![0; N],
         duplicates: vec![true; N],
     };
+    let _guard = without_tracing();
     sim_init_uniqueness(&actions, N);
 }
 

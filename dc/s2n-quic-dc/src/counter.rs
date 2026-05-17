@@ -3,15 +3,15 @@
 
 use core::time::Duration;
 use s2n_quic_dc_metrics::format::{
-    histogram_count_min_max, histogram_value_at_percentile, parse_histogram_buckets,
-    parse_histogram_suffix, ParsedMetricsLine,
+    ParsedMetricsLine, histogram_count_min_max, histogram_value_at_percentile,
+    parse_histogram_buckets, parse_histogram_suffix,
 };
 use std::{
     collections::HashMap,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicI64, Ordering},
         Arc, Mutex,
+        atomic::{AtomicI64, Ordering},
     },
     time::Instant,
 };
@@ -66,6 +66,64 @@ impl core::fmt::Display for NonZeroDisplay {
 
 const DEFAULT_STATSD_UDP_MAX_PAYLOAD: usize = 1200;
 const STATSD_HISTOGRAM_PERCENTILES: [u32; 4] = [50, 90, 95, 99];
+
+/// Emits a compact metric trace event.
+///
+/// Format: `{prefix}#{label}={value}` or `{prefix}#{label}[{variant}]={value}`.
+/// The `target` is set to `"s2n_quic_dc::metric"` so the snapshot subscriber's
+/// env-filter directive (`s2n_quic_dc::metric=trace`) can enable it, while the
+/// snapshot formatter suppresses the target string itself with `with_target(false)`.
+#[cfg(any(test, feature = "metric-tracing"))]
+macro_rules! metric_emit {
+    ($prefix:literal, $label:expr, $variant:expr, $value:expr) => {
+        match $variant.as_deref() {
+            Some(v) => tracing::trace!(
+                target: "s2n_quic_dc::metric",
+                concat!($prefix, "#{}[{}]={}"),
+                $label,
+                v,
+                $value
+            ),
+            None => tracing::trace!(
+                target: "s2n_quic_dc::metric",
+                concat!($prefix, "#{}={}"),
+                $label,
+                $value
+            ),
+        }
+    };
+}
+
+/// Returns the `(label, variant)` for a metric from the shared metadata map.
+#[cfg(any(test, feature = "metric-tracing"))]
+#[inline]
+fn metric_trace_fields(
+    metric_id: MetricId,
+    metadata: &Arc<Mutex<HashMap<MetricId, MetricMetadata>>>,
+) -> (String, Option<String>) {
+    let metadata = metadata.lock().unwrap().get(&metric_id).cloned();
+    match metadata {
+        Some(metadata) => (metadata.label, metadata.variant),
+        None => ("unknown".to_string(), None),
+    }
+}
+
+/// Returns `true` when the current thread is running inside a bach discrete-event
+/// simulation.  In that context wall-clock [`Instant`] values are synthetic and
+/// non-deterministic timer durations should not be emitted to snapshots.
+#[cfg(any(test, feature = "metric-tracing"))]
+#[inline]
+fn in_bach_sim() -> bool {
+    #[cfg(any(test, feature = "testing"))]
+    {
+        bach::is_active()
+    }
+
+    #[cfg(not(any(test, feature = "testing")))]
+    {
+        false
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum SparseMode {
@@ -507,6 +565,11 @@ pub struct Counter {
 impl Counter {
     #[inline]
     pub fn add(&self, v: u64) {
+        #[cfg(any(test, feature = "metric-tracing"))]
+        {
+            let (label, variant) = metric_trace_fields(self.metric_id, &self.metadata);
+            metric_emit!("c", label, variant, v);
+        }
         self.inner.increment(v);
     }
 
@@ -543,12 +606,24 @@ pub struct Gauge {
 impl Gauge {
     #[inline]
     pub fn add(&self, v: i64) -> i64 {
-        self.inner.fetch_add(v, Ordering::Relaxed) + v
+        let value = self.inner.fetch_add(v, Ordering::Relaxed) + v;
+        #[cfg(any(test, feature = "metric-tracing"))]
+        {
+            let (label, variant) = metric_trace_fields(self.metric_id, &self.metadata);
+            metric_emit!("g", label, variant, value);
+        }
+        value
     }
 
     #[inline]
     pub fn sub(&self, v: i64) -> i64 {
-        self.inner.fetch_sub(v, Ordering::Relaxed) - v
+        let value = self.inner.fetch_sub(v, Ordering::Relaxed) - v;
+        #[cfg(any(test, feature = "metric-tracing"))]
+        {
+            let (label, variant) = metric_trace_fields(self.metric_id, &self.metadata);
+            metric_emit!("g", label, variant, value);
+        }
+        value
     }
 
     #[inline]
@@ -595,8 +670,14 @@ impl Timer {
     /// timestamp (for example, per-poll execution time and inter-poll latency).
     #[inline]
     pub fn start_at(&self, start: Instant) -> TimerGuard<'_> {
+        #[cfg(any(test, feature = "metric-tracing"))]
+        let (metric_label, metric_variant) = metric_trace_fields(self.metric_id, &self.metadata);
+        #[cfg(not(any(test, feature = "metric-tracing")))]
+        let (metric_label, metric_variant) = (String::new(), None);
         TimerGuard {
             summary: &self.summary,
+            metric_label,
+            metric_variant,
             start,
             recorded: false,
         }
@@ -604,6 +685,11 @@ impl Timer {
 
     #[inline]
     pub fn record(&self, duration: Duration) {
+        #[cfg(any(test, feature = "metric-tracing"))]
+        if !in_bach_sim() {
+            let (label, variant) = metric_trace_fields(self.metric_id, &self.metadata);
+            metric_emit!("t", label, variant, duration.as_micros());
+        }
         self.summary.record_duration(duration);
     }
 
@@ -631,6 +717,11 @@ pub struct SummaryMetric {
 impl SummaryMetric {
     #[inline]
     pub fn record_value(&self, value: u64) {
+        #[cfg(any(test, feature = "metric-tracing"))]
+        {
+            let (label, variant) = metric_trace_fields(self.metric_id, &self.metadata);
+            metric_emit!("m", label, variant, value);
+        }
         self.summary.record_value(value);
     }
 
@@ -650,6 +741,10 @@ impl SummaryMetric {
 
 pub struct TimerGuard<'a> {
     summary: &'a Summary,
+    #[allow(dead_code)]
+    metric_label: String,
+    #[allow(dead_code)]
+    metric_variant: Option<String>,
     start: Instant,
     recorded: bool,
 }
@@ -658,7 +753,12 @@ impl TimerGuard<'_> {
     #[inline]
     pub fn record(mut self) -> Instant {
         let now = Instant::now();
-        self.summary.record_duration(now.duration_since(self.start));
+        let duration = now.duration_since(self.start);
+        #[cfg(any(test, feature = "metric-tracing"))]
+        if !in_bach_sim() {
+            metric_emit!("t", self.metric_label, self.metric_variant, duration.as_micros());
+        }
+        self.summary.record_duration(duration);
         self.recorded = true;
         now
     }
@@ -668,7 +768,12 @@ impl Drop for TimerGuard<'_> {
     #[inline]
     fn drop(&mut self) {
         if !self.recorded {
-            self.summary.record_duration(self.start.elapsed());
+            let duration = self.start.elapsed();
+            #[cfg(any(test, feature = "metric-tracing"))]
+            if !in_bach_sim() {
+                metric_emit!("t", self.metric_label, self.metric_variant, duration.as_micros());
+            }
+            self.summary.record_duration(duration);
         }
     }
 }
@@ -1044,13 +1149,13 @@ impl QueueGauge {
     #[inline]
     pub fn dequeue(&self) {
         self.drain.add(1);
-        self.depth.sub(1);
+        let _ = self.depth.sub(1).max(0) as u64;
     }
 
     #[inline]
     pub fn dequeue_n(&self, count: u64) {
         self.drain.add(count);
-        self.depth.sub(count as i64);
+        let _ = self.depth.sub(count as i64).max(0) as u64;
     }
 }
 
