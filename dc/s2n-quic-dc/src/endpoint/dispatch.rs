@@ -27,7 +27,7 @@ use crate::{
     },
     path::secret::{map::Entry as PathSecretEntry, Map as PathSecretMap},
     socket::{channel, pool::descriptor},
-    stream::{Reader, Stream, Writer},
+    stream::{PendingValidation, Reader, Stream, Writer},
 };
 use bytes::BytesMut;
 use core::time::Duration;
@@ -62,7 +62,7 @@ pub(crate) fn process<Clk, Route>(
     recv_cache: &mut recv::Cache,
     ack_burst_tx: &mut impl channel::UnboundedSender<Rc<RefCell<recv::Context>>>,
     path_secret_map: &PathSecretMap,
-    acceptor_registry: &acceptor::Registry<Stream>,
+    acceptor_registry: &acceptor::Registry<PendingValidation>,
     frame_tx: &SubmissionSender,
     response_tx: &mut impl channel::UnboundedSender<PriorityInput>,
     sender_tx: &mut impl channel::UnboundedSender<Entry<msg::Sender>>,
@@ -276,7 +276,7 @@ fn dispatch_decoded_frame(
     payload: BytesMut,
     peer: &mut recv::Context,
     credentials: &Credentials,
-    acceptor_registry: &acceptor::Registry<Stream>,
+    acceptor_registry: &acceptor::Registry<PendingValidation>,
     frame_tx: &SubmissionSender,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     sender_tx: &mut impl channel::UnboundedSender<Entry<msg::Sender>>,
@@ -432,7 +432,7 @@ fn handle_flow_init(
     stream_id: VarInt,
     is_fin: bool,
     buf: BytesMut,
-    acceptor_registry: &acceptor::Registry<Stream>,
+    acceptor_registry: &acceptor::Registry<PendingValidation>,
     frame_tx: &SubmissionSender,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
@@ -495,7 +495,7 @@ fn handle_flow_init(
             )
         };
 
-        (local_queue_id, Stream::new(reader, writer))
+        (local_queue_id, PendingValidation::new(Stream::new(reader, writer)))
     };
 
     match peer.attempt_dedup.check_attempt_id(attempt_id) {

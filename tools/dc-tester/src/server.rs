@@ -74,12 +74,14 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
     res
 }
 
-async fn handle_connection(stream: s2n_quic_dc::stream::Stream) -> io::Result<(u64, u64)> {
-    let (mut reader, mut writer) = stream.into_split();
-
-    tokio::time::timeout(Duration::from_secs(1), reader.validate())
+async fn handle_connection(
+    stream: s2n_quic_dc::stream::PendingValidation,
+) -> io::Result<(u64, u64)> {
+    let stream = tokio::time::timeout(Duration::from_secs(1), stream.validate())
         .await
         .unwrap_or_else(|_| Err(io::ErrorKind::TimedOut.into()))?;
+
+    let (mut reader, mut writer) = stream.into_split();
 
     // Read the 8-byte response size header (required by the send half to know how many bytes to write)
     let response_size = reader.read_u64().await?;

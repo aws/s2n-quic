@@ -5,6 +5,72 @@ use crate::stream::{endpoint::error::Error, Reader, Writer};
 use s2n_quic_core::buffer;
 use std::{io, net::SocketAddr};
 
+/// A stream accepted by the server that may still require validation.
+///
+/// This wrapper enforces server-side validation in the type system: until the
+/// value is converted into a [`Stream`], application code can only use the
+/// validation-specific methods on this type.
+///
+/// # Footguns
+///
+/// Validation has no built-in timeout. Applications should wrap
+/// [`validate`](Self::validate) with their own timeout policy.
+pub struct PendingValidation {
+    stream: Stream,
+}
+
+impl PendingValidation {
+    pub(crate) fn new(stream: Stream) -> Self {
+        Self { stream }
+    }
+
+    /// Waits for the stream to become valid for application use and returns the
+    /// unwrapped [`Stream`].
+    ///
+    /// This call has no built-in timeout. If validation is part of your request
+    /// deadline, wrap it in your own timeout.
+    pub async fn validate(mut self) -> io::Result<Stream> {
+        self.stream.read.validate().await?;
+        Ok(self.stream)
+    }
+
+    /// Attempts to unwrap immediately if validation already completed.
+    ///
+    /// Returns `Ok(Stream)` when validated, or `Err(Self)` if validation is
+    /// still pending.
+    pub fn try_validate(self) -> Result<Stream, Self> {
+        if self.is_validated() {
+            Ok(self.stream)
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Returns whether validation has already completed.
+    #[inline]
+    pub fn is_validated(&self) -> bool {
+        self.stream.read.is_validated()
+    }
+
+    /// Returns the stream identifier.
+    #[inline]
+    pub fn stream_id(&self) -> u64 {
+        self.stream.stream_id()
+    }
+
+    /// Returns the handshake peer address used to identify this stream.
+    #[inline]
+    pub fn peer_addr(&self) -> SocketAddr {
+        self.stream.peer_addr()
+    }
+
+    /// Resets both halves of the stream.
+    #[inline]
+    pub fn reset(&mut self, error: Error) {
+        self.stream.reset(error);
+    }
+}
+
 /// A bidirectional stream composed of a [`Reader`] and [`Writer`].
 ///
 /// This is the convenience API for applications that want one handle for both
@@ -33,8 +99,6 @@ use std::{io, net::SocketAddr};
 /// async fn handle(
 ///     mut stream: s2n_quic_dc::stream::Stream,
 /// ) -> std::io::Result<()> {
-///     stream.validate().await?;
-///
 ///     let (mut reader, mut writer) = stream.into_split();
 ///     let recv = async move {
 ///         let mut body = Vec::new();
@@ -82,16 +146,6 @@ impl Stream {
     /// and is echoed by the server side once the stream is accepted.
     pub fn stream_id(&self) -> u64 {
         self.read.stream_id()
-    }
-
-    /// Waits for the read half to become valid for application use.
-    ///
-    /// For streams that were already validated (confirmed non-duplicate), this is a no-op.
-    /// For pending streams, this polls for the FlowValidated message from the pipeline.
-    /// The application should wrap this in its own timeout.
-    #[inline]
-    pub async fn validate(&mut self) -> io::Result<()> {
-        self.read.validate().await
     }
 
     /// Returns borrowed access to the read and write halves.

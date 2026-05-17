@@ -12,7 +12,7 @@ pub use crate::endpoint::Error;
 pub use client::Client;
 pub use reader::Reader;
 pub use server::Server;
-pub use stream::Stream;
+pub use stream::{PendingValidation, Stream};
 pub use writer::Writer;
 
 #[deprecated = "use crate::endpoint instead"]

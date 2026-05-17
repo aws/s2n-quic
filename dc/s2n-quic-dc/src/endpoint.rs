@@ -12,7 +12,7 @@ use crate::{
         channel::{intrusive::sync as sync_queue, UnboundedSender},
         pool::descriptor,
     },
-    stream::Stream,
+    stream::PendingValidation,
     time::precision,
 };
 use core::time::Duration;
@@ -66,7 +66,7 @@ pub struct Endpoint {
     /// Queue allocator for flow queues
     pub queue_allocator: msg::queue::Allocator,
     /// Acceptor registry for server-side stream dispatch
-    pub acceptor_registry: acceptor::Registry<Stream>,
+    pub acceptor_registry: acceptor::Registry<PendingValidation>,
     /// Counters associated with this endpoint
     pub counters: crate::counter::Registry,
     /// Endpoint-wide stream ID counter
@@ -175,7 +175,7 @@ pub struct Config {
     /// GSO capability probed for the local host.
     pub gso: s2n_quic_platform::features::Gso,
     /// Server-side acceptor registry.
-    pub acceptor_registry: acceptor::Registry<Stream>,
+    pub acceptor_registry: acceptor::Registry<PendingValidation>,
     /// Peer idle timeout — controls when [`recv::Cache`] entries expire.
     ///
     /// [`recv::Cache`]: recv::Cache
@@ -605,7 +605,7 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     packet_rx: PacketReceiver,
     packet_gauge: crate::counter::QueueGauge,
     path_secret_map: crate::path::secret::Map,
-    acceptor_registry: acceptor::Registry<Stream>,
+    acceptor_registry: acceptor::Registry<PendingValidation>,
     frame_tx: SubmissionSender,
     ack_sender: AckSnd,
     ack_completion_rx: sync_queue::Receiver<msg::Sender>,

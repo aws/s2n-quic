@@ -130,9 +130,6 @@ use tracing::{debug, trace};
 ///
 /// # Footguns
 ///
-/// - Server-side readers can start in a pending-validation state. Calling
-///   `read_into` before [`validate`](Self::validate) succeeds returns
-///   `InvalidInput`.
 /// - In debug builds, repeatedly calling `read_into` after it already returned
 ///   `Ok(0)` triggers a debug assertion so applications notice accidental
 ///   post-EOF spin loops.
@@ -147,8 +144,6 @@ use tracing::{debug, trace};
 /// use s2n_quic_dc::stream::Reader;
 ///
 /// async fn drain(mut reader: Reader) -> std::io::Result<Vec<u8>> {
-///     reader.validate().await?;
-///
 ///     let mut body = Vec::new();
 ///     while !reader.read_to_end(&mut body).await?.is_complete() {}
 ///
@@ -341,8 +336,13 @@ impl Reader {
     ///
     /// This method has no built-in timeout. If validation is part of a request
     /// deadline, wrap it in your own timeout.
-    pub async fn validate(&mut self) -> io::Result<()> {
+    pub(crate) async fn validate(&mut self) -> io::Result<()> {
         core::future::poll_fn(|cx| self.0.poll_validate(cx)).await
+    }
+
+    #[inline]
+    pub(crate) fn is_validated(&self) -> bool {
+        !self.0.status.is_pending_validation()
     }
 
     /// Returns the stream identifier assigned when the flow was created.
@@ -387,8 +387,6 @@ impl Reader {
     ///
     /// # Footguns
     ///
-    /// - On pending server-side streams, call [`validate`](Self::validate)
-    ///   first.
     /// - `Ok(0)` is EOF, not "no bytes available right now".
     /// - In debug builds, repeatedly calling `read_into` after the first
     ///   `Ok(0)` triggers a debug assertion to catch EOF polling loops.

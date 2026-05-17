@@ -7,10 +7,10 @@
 //! acceptor registration with two modes:
 //!
 //! 1. **Channel acceptor** (`register_acceptor_channel`): Returns a Receiver that yields
-//!    Streams. The acceptor handle is managed internally - dropping all receivers
+//!    pending streams that must be validated. The acceptor handle is managed internally - dropping all receivers
 //!    unregisters the acceptor.
 //!
-//! 2. **Direct acceptor** (`register_acceptor`): Takes an `impl Acceptor<Stream>` directly
+//! 2. **Direct acceptor** (`register_acceptor`): Takes an `impl Acceptor<PendingValidation>` directly
 //!    for full control over flow handling.
 
 use crate::{
@@ -18,7 +18,7 @@ use crate::{
     flow::queue::AutoWake,
     stream::{
         endpoint::{Endpoint, Error},
-        Stream,
+        PendingValidation,
     },
 };
 use s2n_quic_core::varint::VarInt;
@@ -56,7 +56,7 @@ impl Server {
     pub fn register_acceptor(
         &self,
         acceptor_id: VarInt,
-        acceptor: Arc<dyn acceptor::Acceptor<Stream>>,
+        acceptor: Arc<dyn acceptor::Acceptor<PendingValidation>>,
     ) -> io::Result<acceptor::Handle> {
         self.endpoint
             .acceptor_registry
@@ -69,7 +69,7 @@ impl Server {
             })
     }
 
-    /// Register a channel-based acceptor that yields Streams
+    /// Register a channel-based acceptor that yields pending streams
     ///
     /// Returns a Receiver that yields accepted streams. Cloning the receiver
     /// scales out acceptance across multiple tasks via pick-two load balancing.
@@ -80,7 +80,7 @@ impl Server {
         &self,
         acceptor_id: VarInt,
         config: accept_channel::Config,
-    ) -> io::Result<accept_channel::Receiver<Stream>> {
+    ) -> io::Result<accept_channel::Receiver<PendingValidation>> {
         let (tx, rx) = accept_channel::new(config);
 
         let channel_acceptor = Arc::new(ChannelAcceptor::new(tx));
@@ -100,12 +100,12 @@ impl Server {
 }
 
 pub struct ChannelAcceptor {
-    tx: parking_lot::Mutex<accept_channel::Sender<Stream>>,
+    tx: parking_lot::Mutex<accept_channel::Sender<PendingValidation>>,
     handle: std::sync::Mutex<Option<acceptor::Handle>>,
 }
 
 impl ChannelAcceptor {
-    pub fn new(tx: accept_channel::Sender<Stream>) -> Self {
+    pub fn new(tx: accept_channel::Sender<PendingValidation>) -> Self {
         Self {
             tx: parking_lot::Mutex::new(tx),
             handle: std::sync::Mutex::new(None),
@@ -117,12 +117,12 @@ impl ChannelAcceptor {
     }
 }
 
-impl acceptor::Acceptor<Stream> for ChannelAcceptor {
-    fn handle_request(&self, stream: Stream) -> AutoWake {
+impl acceptor::Acceptor<PendingValidation> for ChannelAcceptor {
+    fn handle_request(&self, stream: PendingValidation) -> AutoWake {
         self.send(stream)
     }
 
-    fn handle_pending(&self, stream: Stream) -> acceptor::Dispatch {
+    fn handle_pending(&self, stream: PendingValidation) -> acceptor::Dispatch {
         let waker = self.send(stream);
         acceptor::Dispatch {
             action: acceptor::PendingAction::AcceptedWithRetry,
@@ -132,7 +132,7 @@ impl acceptor::Acceptor<Stream> for ChannelAcceptor {
 }
 
 impl ChannelAcceptor {
-    fn send(&self, stream: Stream) -> AutoWake {
+    fn send(&self, stream: PendingValidation) -> AutoWake {
         let res = {
             let mut tx = self.tx.lock();
             tx.send(stream)

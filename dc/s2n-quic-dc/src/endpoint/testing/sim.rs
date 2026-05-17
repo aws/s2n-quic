@@ -31,7 +31,7 @@ use crate::{
     socket::{pool::Pool, rate::Rate},
     stream::{
         endpoint::{msg, setup_endpoint, Budgets, Config, Endpoint, WorkerLayout},
-        Reader, Stream, Writer,
+        PendingValidation, Reader, Stream, Writer,
     },
 };
 use core::net::SocketAddr;
@@ -202,7 +202,7 @@ impl Default for SimEndpointConfig {
 pub fn setup_sim_endpoint(
     config: SimEndpointConfig,
     path_secret_map: PathSecretMap,
-    acceptor_registry: acceptor::Registry<Stream>,
+    acceptor_registry: acceptor::Registry<PendingValidation>,
 ) -> Endpoint {
     let SimEndpointConfig {
         bind_addr,
@@ -398,7 +398,7 @@ pub fn insert_fake_path_pair(
 /// ```
 ///
 /// Acceptors are registered via [`Server::register_acceptor_channel`], which
-/// returns an [`mpmc::Receiver<Stream>`] that yields accepted streams.
+/// returns an [`mpmc::Receiver<PendingValidation>`] that yields accepted streams.
 pub struct Server {
     endpoint: Arc<Endpoint>,
 }
@@ -427,13 +427,13 @@ impl Server {
 
     /// Register a channel-based acceptor for incoming streams.
     ///
-    /// Returns an [`accept_channel::Receiver<Stream>`] that yields accepted [`Stream`]s.
+    /// Returns an [`accept_channel::Receiver<PendingValidation>`] that yields accepted streams.
     /// The acceptor is automatically unregistered when all receivers are dropped.
     pub fn register_acceptor_channel(
         &self,
         acceptor_id: VarInt,
         capacity: usize,
-    ) -> io::Result<accept_channel::Receiver<Stream>> {
+    ) -> io::Result<accept_channel::Receiver<PendingValidation>> {
         use crate::stream::server::ChannelAcceptor;
 
         let (tx, rx) = accept_channel::new(capacity.into());

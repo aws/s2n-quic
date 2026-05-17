@@ -668,7 +668,7 @@ pub fn packet_dispatch<PacketRx, AckSender, AckBurstSender, WakerSink, Clk, Rout
     recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
     mut ack_burst_tx: AckBurstSender,
     path_secret_map: crate::path::secret::Map,
-    acceptor_registry: crate::acceptor::Registry<crate::stream::Stream>,
+    acceptor_registry: crate::acceptor::Registry<crate::stream::PendingValidation>,
     frame_tx: frame::SubmissionSender,
     mut ack_sender: AckSender,
     queue_dispatcher: msg::queue::Dispatcher,
