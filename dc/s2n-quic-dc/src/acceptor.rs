@@ -12,22 +12,27 @@
 //! use s2n_quic_core::varint::VarInt;
 //! use std::sync::Arc;
 //!
-//! # use s2n_quic_dc::acceptor::{Acceptor, PendingAction, Registry};
+//! # use s2n_quic_dc::acceptor::{Acceptor, Dispatch, PendingAction, Registry};
+//! # use s2n_quic_dc::flow::queue::AutoWake;
 //! struct MyAcceptor;
 //!
 //! impl Acceptor<String> for MyAcceptor {
-//!     fn handle_request(&self, request: String) {
+//!     fn handle_request(&self, request: String) -> AutoWake {
 //!         // Spawn a task to handle the request
 //!         tokio::spawn(async move {
 //!             println!("Handling request: {}", request);
 //!         });
+//!         AutoWake::new(None)
 //!     }
 //!
-//!     fn handle_pending(&self, request: String) -> PendingAction {
+//!     fn handle_pending(&self, request: String) -> Dispatch {
 //!         // For pending requests that can't be confirmed as non-duplicate,
 //!         // accept them but request a retry to confirm
 //!         println!("Handling pending request: {}", request);
-//!         PendingAction::AcceptedWithRetry
+//!         Dispatch {
+//!             action: PendingAction::AcceptedWithRetry,
+//!             waker: AutoWake::new(None),
+//!         }
 //!     }
 //! }
 //!
@@ -42,7 +47,11 @@
 //! registry.dispatch(VarInt::from_u8(1), "hello".to_string()).unwrap();
 //!
 //! // Dispatch pending requests that need deduplication handling
-//! match registry.dispatch_pending(VarInt::from_u8(1), "pending".to_string()).unwrap() {
+//! match registry
+//!     .dispatch_pending(VarInt::from_u8(1), "pending".to_string())
+//!     .unwrap()
+//!     .action
+//! {
 //!     PendingAction::Accepted => println!("Accepted without retry"),
 //!     PendingAction::AcceptedWithRetry => println!("Accepted, send retry request"),
 //!     PendingAction::Reject { reset_code } => println!("Rejected with code {}", reset_code),

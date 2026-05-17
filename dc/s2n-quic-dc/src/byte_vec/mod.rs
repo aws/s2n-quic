@@ -51,7 +51,7 @@ impl From<ByteVecError> for io::Error {
 /// using [`bytes::BytesMut`] to build a new [`Bytes`] for each chunk.
 ///
 /// ```
-/// use amzn_membrain_bytevec::ByteVec;
+/// use s2n_quic_dc::byte_vec::ByteVec;
 /// use bytes::Bytes;
 ///
 /// let mut buf = ByteVec::default();
@@ -100,7 +100,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     /// use bytes::Bytes;
     ///
     /// let mut buf = ByteVec::new();
@@ -121,7 +121,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     /// use bytes::Bytes;
     ///
     /// let mut buf = ByteVec::new();
@@ -140,7 +140,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     ///
     /// let mut buf = ByteVec::from(b"hello");
     /// assert_eq!(buf.len(), 5);
@@ -161,7 +161,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     /// use bytes::Bytes;
     ///
     /// let mut buf = ByteVec::new();
@@ -199,7 +199,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     /// use bytes::Bytes;
     ///
     /// let mut buf = ByteVec::new();
@@ -230,7 +230,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     /// use bytes::Bytes;
     ///
     /// let mut buf = ByteVec::new();
@@ -291,7 +291,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     ///
     /// let mut a = ByteVec::from(&b"hello world"[..]);
     /// let b = a.split_to(5).unwrap();
@@ -328,7 +328,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     ///
     /// let mut a = ByteVec::from(&b"hello world"[..]);
     /// let b = a.split_to_copy(5).unwrap();
@@ -357,7 +357,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     /// use bytes::Bytes;
     ///
     /// let mut buf = ByteVec::new();
@@ -388,7 +388,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     /// use bytes::Bytes;
     ///
     /// let mut buf = ByteVec::new();
@@ -427,7 +427,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     /// use bytes::Bytes;
     ///
     /// let mut buf = ByteVec::new();
@@ -464,7 +464,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     /// use bytes::Bytes;
     ///
     /// let mut buf = ByteVec::new();
@@ -493,7 +493,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     ///
     /// let mut buf = ByteVec::from(b"hello world");
     /// buf.truncate(5);
@@ -501,7 +501,7 @@ impl ByteVec {
     /// ```
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     ///
     /// let mut buf = ByteVec::from(b"hello world");
     /// buf.truncate(0);
@@ -509,7 +509,7 @@ impl ByteVec {
     /// ```
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     ///
     /// let mut buf = ByteVec::from(b"hello world");
     /// buf.truncate(11);
@@ -551,7 +551,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     /// use bytes::Bytes;
     ///
     /// let mut buf = ByteVec::new();
@@ -591,7 +591,7 @@ impl ByteVec {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     /// use bytes::Bytes;
     ///
     /// let mut buf = ByteVec::new();
@@ -1058,7 +1058,7 @@ macro_rules! impl_reader_traits {
             /// # Examples
             ///
             /// ```
-            /// use amzn_membrain_bytevec::ByteVec;
+            /// use s2n_quic_dc::byte_vec::ByteVec;
             ///
             /// let mut buf = ByteVec::from(b"hello world");
             ///

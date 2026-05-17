@@ -12,9 +12,9 @@ const DEFAULT_CAPACITY: usize = 1 << 17;
 /// # Examples
 ///
 /// ```
-/// use amzn_membrain_bytevec::ByteVec;
+/// use s2n_quic_dc::byte_vec::ByteVec;
 /// use bytes::Bytes;
-/// use membrain_buffer::writer::Storage;
+/// use s2n_quic_core::buffer::writer::Storage;
 ///
 /// let mut builder = ByteVec::builder(1024);
 /// builder.put_slice(b"hello");
@@ -47,7 +47,7 @@ impl Builder {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
     ///
     /// let builder = ByteVec::builder(1024);
     /// ```
@@ -66,8 +66,8 @@ impl Builder {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
-    /// use membrain_buffer::writer::Storage;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
+    /// use s2n_quic_core::buffer::writer::Storage;
     ///
     /// let mut builder = ByteVec::builder(1024);
     /// builder.put_slice(b"hello");
@@ -85,8 +85,8 @@ impl Builder {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
-    /// use membrain_buffer::writer::Storage;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
+    /// use s2n_quic_core::buffer::writer::Storage;
     ///
     /// let mut builder = ByteVec::builder(1024);
     /// assert!(builder.is_empty());
@@ -106,8 +106,8 @@ impl Builder {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
-    /// use membrain_buffer::writer::Storage;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
+    /// use s2n_quic_core::buffer::writer::Storage;
     ///
     /// let mut builder = ByteVec::builder(1024);
     /// builder.put_slice(b"hello");
@@ -134,8 +134,8 @@ impl Builder {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
-    /// use membrain_buffer::writer::Storage;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
+    /// use s2n_quic_core::buffer::writer::Storage;
     ///
     /// let mut builder = ByteVec::builder(1024);
     /// builder.put_slice(b"hello");
@@ -161,8 +161,8 @@ impl Builder {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
-    /// use membrain_buffer::writer::Storage;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
+    /// use s2n_quic_core::buffer::writer::Storage;
     ///
     /// let mut builder = ByteVec::builder(1024);
     /// builder.put_slice(b"hello world");
@@ -189,8 +189,8 @@ impl Builder {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
-    /// use membrain_buffer::writer::Storage;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
+    /// use s2n_quic_core::buffer::writer::Storage;
     ///
     /// let mut builder = ByteVec::builder(1024);
     /// builder.put_slice(b"hello world");
@@ -229,8 +229,8 @@ impl Builder {
     /// # Examples
     ///
     /// ```
-    /// use amzn_membrain_bytevec::ByteVec;
-    /// use membrain_buffer::writer::Storage;
+    /// use s2n_quic_dc::byte_vec::ByteVec;
+    /// use s2n_quic_core::buffer::writer::Storage;
     ///
     /// let mut builder = ByteVec::builder(1024);
     /// builder.put_slice(b"hello");

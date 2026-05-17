@@ -492,6 +492,11 @@ impl Context {
     where
         Clk: precision::Clock + ?Sized,
     {
+        if !self.inflight.has_inflight() {
+            self.pto.on_ack_received(false);
+            self.pto_wheel.target_time = None;
+        }
+
         debug_assert!(
             !self.pto.probe_state.is_requested()
                 || self.inflight.has_inflight()
@@ -735,14 +740,12 @@ impl Context {
             }
 
             if self.pto_wheel.is_scheduled() {
-                assert!(
-                    self.inflight.has_inflight(),
-                    "pto wheel scheduled without inflight packets"
-                );
-                assert!(
-                    self.pto_wheel.target_time.is_some(),
-                    "pto wheel scheduled without target_time"
-                );
+                if self.pto_wheel.target_time.is_some() {
+                    assert!(
+                        self.inflight.has_inflight(),
+                        "pto wheel scheduled with target_time but no inflight packets"
+                    );
+                }
             }
 
             if self.idle_wheel.is_scheduled() {

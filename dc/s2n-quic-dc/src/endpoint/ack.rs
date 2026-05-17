@@ -187,6 +187,9 @@ pub(crate) fn process_ack<Clk, Rand>(
     // Update PTO
     let has_remaining_inflight = context.inflight.has_inflight();
     context.pto.on_ack_received(has_remaining_inflight);
+    if !has_remaining_inflight {
+        context.pto_wheel.target_time = None;
+    }
 
     // Publish the load score after ALL CCA mutations have run:
     // on_packet_ack, on_explicit_congestion (ECN), and on_packet_lost (loss detection).

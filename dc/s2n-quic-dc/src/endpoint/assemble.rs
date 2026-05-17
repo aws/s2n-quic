@@ -77,6 +77,7 @@ where
 
     let mut segment_size: u16 = 0;
     let mut segments_written: u32 = 0;
+    let mut sent_inflight_packet = false;
 
     let result = unfilled.fill_with(|addr, cmsg, mut payload| {
         addr.set(context.peer_addr.into());
@@ -341,6 +342,7 @@ where
                     context
                         .inflight
                         .insert(pn, inflight::Packet::new(packet_frames, tx_info));
+                    sent_inflight_packet = true;
 
                     // If this segment was a probe, link the old shell entry to the new PN.
                     if let Some(old_pn) = probe_from_pn {
@@ -377,8 +379,10 @@ where
         return None;
     }
 
-    // Update PTO
-    context.pto.on_packet_sent(now);
+    if sent_inflight_packet {
+        // Update PTO only when an inflight packet was created.
+        context.pto.on_packet_sent(now);
+    }
 
     // Publish updated load score: both pending queue and CCA state may have changed.
     context.publish_sender_load_score(time_sent);

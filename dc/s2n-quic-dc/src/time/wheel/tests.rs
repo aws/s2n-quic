@@ -277,6 +277,54 @@ fn test_empty_wheel_fast_path() {
     );
 }
 
+#[test]
+fn test_some_to_none_while_queued_still_returns_entry() {
+    let clock = Clock::new(Duration::from_micros(1000));
+    let channel = TestChannel::new();
+    let mut wheel: TestWheel = Wheel::new(&channel, clock.timer());
+
+    let future_time = clock.get_time() + Duration::from_micros(50);
+    let mut batch = Queue::new();
+    batch.push_back(
+        TestEntry {
+            meta: 77,
+            transmission_time: Some(future_time),
+        }
+        .into(),
+    );
+    channel.send_batch(batch);
+
+    let result = poll_once(core::future::poll_fn(|cx| {
+        wheel.poll_recv(cx, &mut channel::Budget::new(usize::MAX))
+    }));
+    assert!(result.is_none(), "entry should be queued in wheel");
+    assert_eq!(wheel.len, 1);
+
+    let mut mutated = 0usize;
+    for level in wheel.levels.iter_mut() {
+        for slot in level.slots.iter_mut() {
+            for entry in slot.iter_mut() {
+                if entry.meta == 77 {
+                    entry.transmission_time = None;
+                    mutated += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(mutated, 1, "expected to mutate exactly one queued entry");
+
+    clock.advance(Duration::from_micros(300));
+    let mut queue = poll_once(core::future::poll_fn(|cx| {
+        wheel.poll_recv(cx, &mut channel::Budget::new(usize::MAX))
+    }))
+    .unwrap()
+    .unwrap();
+
+    let entry = queue.pop_front().expect("entry should be returned");
+    assert_eq!(entry.meta, 77);
+    assert!(queue.is_empty());
+}
+
 /// Oracle-based fuzz test: compare the wheel against a BTreeMap oracle.
 ///
 /// For random insertion patterns, we verify that:
