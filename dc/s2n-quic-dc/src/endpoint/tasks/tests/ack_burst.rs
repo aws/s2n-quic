@@ -9,10 +9,9 @@
 //! the encoding/emission contract: contexts with pending ACKs produce submissions, contexts
 //! without pending ACKs produce nothing, and already-flushed contexts are not double-submitted.
 
-use super::helpers::{CollectingSender, RecvContextBuilder, TestReceiver};
+use super::helpers::{RecvContextBuilder, TestReceiver, TestReceiverExt as _};
 use crate::{
-    intrusive::Entry,
-    socket::channel::ReceiverExt as _,
+    socket::channel::{intrusive::unsync, ReceiverExt as _},
     stream::endpoint::{msg, tasks},
     testing::{ext::*, sim},
     time::bach::Clock,
@@ -21,7 +20,9 @@ use s2n_quic_core::{time::Clock as _, varint::VarInt};
 use std::{cell::RefCell, rc::Rc};
 
 struct Harness {
-    collected: Rc<RefCell<Vec<Entry<msg::Sender>>>>,
+    output_rx: crate::socket::channel::intrusive::unsync::Receiver<
+        crate::intrusive::EntryAdapter<msg::Sender>,
+    >,
 }
 
 /// Spawns the ack_burst task with the given contexts and returns a harness
@@ -29,13 +30,13 @@ struct Harness {
 fn setup(
     contexts: impl IntoIterator<Item = Rc<RefCell<crate::stream::endpoint::recv::Context>>>,
 ) -> Harness {
-    let (sender, collected) = CollectingSender::new();
+    let (sender, output_rx) = unsync::new::<msg::Sender>();
     let input = TestReceiver::new(contexts);
     let rx = tasks::ack_burst(input, sender, 0);
     async move { rx.drain_budgeted(Some(32)).await }
         .primary()
         .spawn();
-    Harness { collected }
+    Harness { output_rx }
 }
 
 /// Helper: build a context and schedule an ACK on it.
@@ -55,13 +56,12 @@ fn scheduled_context() -> Rc<RefCell<crate::stream::endpoint::recv::Context>> {
 #[test]
 fn context_with_pending_acks_emits_submission() {
     sim(|| {
-        let harness = setup([scheduled_context()]);
+        let Harness { mut output_rx } = setup([scheduled_context()]);
 
         async move {
-            1.ms().sleep().await;
-            let items = harness.collected.borrow();
-            assert_eq!(items.len(), 1);
-            assert!(matches!(&*items[0], msg::Sender::PendingAck(_)));
+            let first = output_rx.recv().await.expect("expected pending-ack submission");
+            assert!(matches!(&*first, msg::Sender::PendingAck(_)));
+            assert!(output_rx.recv().await.is_none(), "expected exactly one submission");
         }
         .primary()
         .spawn();
@@ -73,11 +73,10 @@ fn context_with_pending_acks_emits_submission() {
 fn context_with_no_pending_acks_emits_nothing() {
     sim(|| {
         let ctx = RecvContextBuilder::default().build();
-        let harness = setup([ctx]);
+        let Harness { mut output_rx } = setup([ctx]);
 
         async move {
-            1.ms().sleep().await;
-            assert!(harness.collected.borrow().is_empty());
+            assert!(output_rx.recv().await.is_none(), "idle context should emit nothing");
         }
         .primary()
         .spawn();
@@ -105,11 +104,17 @@ fn multiple_contexts_each_produce_submission() {
             })
             .collect();
 
-        let harness = setup(contexts);
+        let Harness { mut output_rx } = setup(contexts);
 
         async move {
-            1.ms().sleep().await;
-            assert_eq!(harness.collected.borrow().len(), 3);
+            for _ in 0..3 {
+                let item = output_rx
+                    .recv()
+                    .await
+                    .expect("scheduled context should emit submission");
+                assert!(matches!(&*item, msg::Sender::PendingAck(_)));
+            }
+            assert!(output_rx.recv().await.is_none(), "expected exactly three submissions");
         }
         .primary()
         .spawn();
@@ -131,11 +136,13 @@ fn flushed_context_does_not_double_submit() {
             c.ack_state.on_flush().unwrap();
         }
 
-        let harness = setup([ctx]);
+        let Harness { mut output_rx } = setup([ctx]);
 
         async move {
-            1.ms().sleep().await;
-            assert!(harness.collected.borrow().is_empty());
+            assert!(
+                output_rx.recv().await.is_none(),
+                "flushed context should not be re-submitted"
+            );
         }
         .primary()
         .spawn();

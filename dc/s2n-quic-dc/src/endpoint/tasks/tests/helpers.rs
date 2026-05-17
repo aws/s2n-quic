@@ -9,7 +9,7 @@ use crate::{
     intrusive::Entry,
     packet::datagram::QueuePair,
     path::secret::map::Entry as PathSecretEntry,
-    socket::channel::{Budget, Receiver, UnboundedSender},
+    socket::channel::{intrusive::unsync, Budget, EntryBoxSender, Receiver},
     stream::endpoint::recv,
 };
 use core::task::{Poll, Waker};
@@ -91,28 +91,12 @@ impl<T> Receiver<T> for TestReceiver<T> {
     fn on_consumed(&mut self, _bytes: u64) {}
 }
 
-/// A sender that collects all sent items into a shared Vec for assertion.
-pub struct CollectingSender<T> {
-    pub items: Rc<RefCell<Vec<T>>>,
-}
-
-impl<T> CollectingSender<T> {
-    pub fn new() -> (Self, Rc<RefCell<Vec<T>>>) {
-        let items = Rc::new(RefCell::new(Vec::new()));
-        (
-            Self {
-                items: items.clone(),
-            },
-            items,
-        )
-    }
-}
-
-impl<T> UnboundedSender<T> for CollectingSender<T> {
-    fn send(&mut self, value: T) -> Result<(), T> {
-        self.items.borrow_mut().push(value);
-        Ok(())
-    }
+pub fn entry_channel<T>() -> (
+    EntryBoxSender<T, unsync::Sender<crate::intrusive::EntryAdapter<T>>>,
+    unsync::Receiver<crate::intrusive::EntryAdapter<T>>,
+) {
+    let (tx, rx) = unsync::new::<T>();
+    (EntryBoxSender::new(tx), rx)
 }
 
 // ── ReceiverExt ──────────────────────────────────────────────────────────

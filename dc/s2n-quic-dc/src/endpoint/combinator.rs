@@ -703,6 +703,10 @@ where
         let Some(sender) = frame.completion.as_ref() else {
             return false;
         };
+        debug_assert!(
+            !matches!(frame.status, frame::TransmissionStatus::Pending),
+            "completion notification must not be emitted for pending frames"
+        );
 
         match sender.subscription_mode() {
             SubscriptionMode::All => true,

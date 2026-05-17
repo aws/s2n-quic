@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::helpers::{test_entry, CollectingSender, RecvContextBuilder, TestReceiverExt};
+use super::helpers::{test_entry, RecvContextBuilder, TestReceiverExt};
 use crate::{
     credentials,
     endpoint::{
@@ -9,6 +9,7 @@ use crate::{
         recv, send, tasks,
     },
     intrusive::Entry,
+    socket::channel::intrusive::unsync,
     testing::{ext::*, sim},
     time::{bach::Clock, precision},
 };
@@ -100,13 +101,14 @@ fn send_invalidation_purges_cache_and_emits_failed_frames() {
         }
 
         let id = *pse.id();
-        let (cancelled_tx, collected) = CollectingSender::<Entry<Frame>>::new();
+        let (cancelled_tx, mut collected_rx) = unsync::new::<Frame>();
 
         let invalidation_rx = super::helpers::TestReceiver::new(vec![Entry::from(id)]);
         let mut rx = tasks::send_invalidation(invalidation_rx, send_caches.clone(), cancelled_tx);
 
         async move {
             rx.recv().await;
+            drop(rx);
 
             assert_eq!(
                 send_caches[0].borrow().context_count(),
@@ -114,11 +116,17 @@ fn send_invalidation_purges_cache_and_emits_failed_frames() {
                 "cache should be empty after invalidation"
             );
 
-            let frames = collected.borrow();
-            assert_eq!(frames.len(), 1, "one frame should have been emitted");
+            let frame = collected_rx
+                .recv()
+                .await
+                .expect("one frame should have been emitted");
             assert_eq!(
-                frames[0].status,
+                frame.status,
                 frame::TransmissionStatus::Failed(frame::FailureReason::UnknownPathSecret),
+            );
+            assert!(
+                collected_rx.recv().await.is_none(),
+                "only one failed frame should be emitted"
             );
         }
         .primary()
@@ -132,20 +140,24 @@ fn send_invalidation_noop_for_unknown_id() {
         let SendSetup { send_caches, .. } = setup_send();
 
         let fake_id = credentials::Id::from([0xAA; 16]);
-        let (cancelled_tx, collected) = CollectingSender::<Entry<Frame>>::new();
+        let (cancelled_tx, mut collected_rx) = unsync::new::<Frame>();
 
         let invalidation_rx = super::helpers::TestReceiver::new(vec![Entry::from(fake_id)]);
         let mut rx = tasks::send_invalidation(invalidation_rx, send_caches.clone(), cancelled_tx);
 
         async move {
             rx.recv().await;
+            drop(rx);
 
             assert_eq!(
                 send_caches[0].borrow().context_count(),
                 1,
                 "unrelated context should remain"
             );
-            assert!(collected.borrow().is_empty(), "no frames should be emitted");
+            assert!(
+                collected_rx.recv().await.is_none(),
+                "no frames should be emitted"
+            );
         }
         .primary()
         .spawn();
