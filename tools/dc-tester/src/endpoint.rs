@@ -18,7 +18,7 @@ pub fn create(
     pool: &busy_poll::Pool,
     print_pipeline_dot: bool,
 ) -> io::Result<Arc<endpoint::Endpoint>> {
-    let inspector = runtime::inspector::Handle::new(runtime::busy_poll::Handle::new(pool.clone()));
+    let runtime = runtime::busy_poll::Handle::new(pool.clone());
 
     // Create the path secret map (shared by endpoint, client PSK, server PSK)
     let signer = Signer::new(b"dc-tester");
@@ -76,17 +76,20 @@ pub fn create(
         submission_shards: config.submission_shards,
     };
 
-    let inner = endpoint::setup_endpoint(
-        inspector.clone(),
-        endpoint_config,
-        send_sockets,
-        recv_sockets,
-    );
+    let inner = endpoint::setup_endpoint(runtime, endpoint_config, send_sockets, recv_sockets);
     if print_pipeline_dot {
-        println!("{}", inspector.to_dot());
+        let topology = inner.counters.topology();
+        println!("{}", topology.to_dot());
         eprintln!("pipeline channel bindings:");
-        for binding in inspector.channel_bindings() {
-            eprintln!("{binding}");
+        for binding in topology.bindings {
+            eprintln!(
+                "task '{}' {} channel '{}' ({}, fn: {})",
+                binding.task_name,
+                binding.direction,
+                binding.channel_name,
+                binding.description,
+                binding.function
+            );
         }
     }
 

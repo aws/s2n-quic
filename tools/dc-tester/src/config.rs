@@ -94,17 +94,24 @@ impl EndpointConfig {
             + self.recv_io_workers
             + self.recv_dispatch_workers
             + self.waker_drain_workers
+            + 1
     }
 
     /// Constructs the worker layout, assigning contiguous thread indices to each role.
     pub fn layout(&self) -> s2n_quic_dc::stream::endpoint::WorkerLayout {
         let mut ids = 1..; // 0 is frame_dispatch
+        let send = (&mut ids).take(self.send_workers).collect();
+        let recv_io = (&mut ids).take(self.recv_io_workers).collect();
+        let recv_dispatch = (&mut ids).take(self.recv_dispatch_workers).collect();
+        let waker_drain = (&mut ids).take(self.waker_drain_workers).collect();
+        let background = ids.next().expect("background worker id must exist");
         s2n_quic_dc::stream::endpoint::WorkerLayout {
             frame_dispatch: 0,
-            send: (&mut ids).take(self.send_workers).collect(),
-            recv_io: (&mut ids).take(self.recv_io_workers).collect(),
-            recv_dispatch: (&mut ids).take(self.recv_dispatch_workers).collect(),
-            waker_drain: (&mut ids).take(self.waker_drain_workers).collect(),
+            send,
+            recv_io,
+            recv_dispatch,
+            waker_drain,
+            background,
         }
     }
 }

@@ -23,7 +23,7 @@ use std::future::Future;
 /// Each runtime implementation bundles both spawning capability and the clock
 /// appropriate for that execution model (e.g. busy-poll timers that don't use wakers,
 /// tokio timers backed by the tokio runtime, bach simulated time).
-pub trait Runtime: Clone + Send + 'static {
+pub trait Runtime: Clone + 'static {
     /// The clock type associated with this runtime.
     type Clock: time::Clock + precision::Clock + Clone + Send + 'static;
 
@@ -86,7 +86,8 @@ pub trait Spawner {
     {
         let worker_id = self.worker_id();
         task_counter.on_spawn(budget, worker_id);
-        let task_name = task_counter.with_registration_metadata_ref(|name, _, _, _| name.to_string());
+        let task_name =
+            task_counter.with_registration_metadata_ref(|name, _, _, _| name.to_string());
         self.spawn_named(&task_name, future);
     }
 }
@@ -377,19 +378,53 @@ pub mod tokio {
 /// Use the counter::Registry::topology() function to get the graph of the pipeline
 /// after using the inspector runtime.
 pub mod inspector {
+    use crate::endpoint::{self, Config, WorkerLayout};
+    use crate::time::precision;
+    use core::pin::Pin;
     use std::future::Future;
-    use std::pin::Pin;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::sync::{Arc, Mutex};
 
-    /// Inspector that holds futures to prevent them from being dropped.
+    /// Inspector runtime for topology introspection.
+    ///
+    /// Spawned tasks are recorded without being executed.
     #[derive(Clone)]
     pub struct Handle {
-        futures: Arc<Mutex<Vec<Pin<Box<dyn Future<Output = ()> + Send>>>>>,
+        worker_count: usize,
+        clock: Clock,
+        futures: Arc<Mutex<Vec<Pin<Box<dyn Future<Output = ()> + 'static>>>>>,
+    }
+
+    /// Simple clock for inspector runtime.
+    #[derive(Clone, Debug, Default)]
+    pub struct Clock;
+
+    /// Simple timer for inspector runtime.
+    #[derive(Clone, Debug, Default)]
+    pub struct Timer {
+        armed: bool,
+    }
+
+    pub struct Local {
+        worker_id: usize,
+        futures: Arc<Mutex<Vec<Pin<Box<dyn Future<Output = ()> + 'static>>>>>,
+    }
+
+    #[derive(Clone, Copy)]
+    struct PanicSendSocket {
+        addr: SocketAddr,
+    }
+
+    #[derive(Clone, Copy)]
+    struct PanicRecvSocket {
+        addr: SocketAddr,
     }
 
     impl Handle {
-        pub fn new() -> Self {
+        pub fn new(worker_count: usize) -> Self {
             Self {
+                worker_count: worker_count.max(1),
+                clock: Clock,
                 futures: Arc::new(Mutex::new(Vec::new())),
             }
         }
@@ -397,27 +432,204 @@ pub mod inspector {
         /// Spawn a future and hold it to prevent it from being dropped.
         pub fn spawn<F>(&self, future: F)
         where
-            F: Future<Output = ()> + Send + 'static,
+            F: Future<Output = ()> + 'static,
         {
-            self.futures.lock().unwrap().push(Box::pin(future));
+            self.futures
+                .lock()
+                .expect("inspector future lock poisoned")
+                .push(Box::pin(future));
         }
 
         /// Get the number of futures currently held.
         pub fn future_count(&self) -> usize {
-            self.futures.lock().unwrap().len()
+            self.futures
+                .lock()
+                .expect("inspector future lock poisoned")
+                .len()
         }
+    }
+
+    /// Builds an endpoint with panic-only sockets and returns the resulting topology.
+    ///
+    /// This is intended for topology introspection without creating real sockets or executing
+    /// runtime tasks.
+    pub fn endpoint_topology(
+        config: Config,
+        send_socket_count: usize,
+        recv_socket_count: usize,
+    ) -> crate::counter::Topology {
+        let worker_count = required_worker_count(&config.layout);
+        let runtime = Handle::new(worker_count);
+        let send_sockets = (0..send_socket_count)
+            .map(|idx| PanicSendSocket {
+                addr: socket_addr(10_000, idx),
+            })
+            .collect();
+        let recv_sockets = (0..recv_socket_count)
+            .map(|idx| PanicRecvSocket {
+                addr: socket_addr(20_000, idx),
+            })
+            .collect();
+        endpoint::setup_endpoint(runtime, config, send_sockets, recv_sockets)
+            .counters
+            .topology()
     }
 
     impl Default for Handle {
         fn default() -> Self {
-            Self::new()
+            Self::new(1)
         }
+    }
+
+    impl super::Spawner for Local {
+        fn spawn<F>(&mut self, future: F)
+        where
+            F: Future<Output = ()> + 'static,
+        {
+            self.futures
+                .lock()
+                .expect("inspector future lock poisoned")
+                .push(Box::pin(future));
+        }
+
+        fn worker_id(&self) -> usize {
+            self.worker_id
+        }
+    }
+
+    impl super::Runtime for Handle {
+        type Clock = Clock;
+        type Spawner<'a> = Local;
+
+        fn worker_count(&self) -> usize {
+            self.worker_count
+        }
+
+        fn clock(&self) -> Self::Clock {
+            self.clock.clone()
+        }
+
+        fn spawn_local<F>(&self, worker_id: usize, f: F)
+        where
+            F: FnOnce(Self::Spawner<'_>) + Send + 'static,
+        {
+            f(Local {
+                worker_id,
+                futures: self.futures.clone(),
+            });
+        }
+    }
+
+    impl s2n_quic_core::time::Clock for Clock {
+        fn get_time(&self) -> s2n_quic_core::time::Timestamp {
+            // SAFETY: Duration::ZERO is always a valid non-negative timestamp origin.
+            unsafe { s2n_quic_core::time::Timestamp::from_duration(core::time::Duration::ZERO) }
+        }
+    }
+
+    impl precision::Clock for Clock {
+        type Timer = Timer;
+
+        fn now(&self) -> precision::Timestamp {
+            precision::Timestamp { nanos: 0 }
+        }
+
+        fn timer(&self) -> Self::Timer {
+            Timer { armed: false }
+        }
+    }
+
+    impl precision::Timer for Timer {
+        fn now(&self) -> precision::Timestamp {
+            precision::Timestamp { nanos: 0 }
+        }
+
+        async fn sleep_until(&mut self, _target: precision::Timestamp) {}
+
+        fn poll_ready(&mut self, _cx: &mut core::task::Context) -> core::task::Poll<()> {
+            core::task::Poll::Pending
+        }
+
+        fn update(&mut self, _target: precision::Timestamp) {
+            self.armed = true;
+        }
+
+        fn cancel(&mut self) {
+            self.armed = false;
+        }
+
+        fn is_armed(&self) -> bool {
+            self.armed
+        }
+    }
+
+    impl crate::socket::send::Socket for PanicSendSocket {
+        fn send_msg(
+            &self,
+            _addr: &crate::msg::addr::Addr,
+            _payload: &[std::io::IoSlice],
+            _segment_size: u16,
+            _ecn: s2n_quic_core::inet::ExplicitCongestionNotification,
+        ) -> std::io::Result<usize> {
+            panic!("send_msg should not be called during topology snapshot");
+        }
+
+        fn local_addr(&self) -> std::io::Result<SocketAddr> {
+            Ok(self.addr)
+        }
+    }
+
+    impl crate::socket::recv::Socket for PanicRecvSocket {
+        fn poll_recv(
+            &self,
+            _cx: &mut core::task::Context,
+            _addr: &mut crate::msg::addr::Addr,
+            _cmsg: &mut crate::msg::cmsg::Receiver,
+            _buffer: &mut [std::io::IoSliceMut],
+        ) -> core::task::Poll<std::io::Result<usize>> {
+            panic!("poll_recv should not be called during topology snapshot");
+        }
+
+        fn local_addr(&self) -> std::io::Result<SocketAddr> {
+            Ok(self.addr)
+        }
+    }
+
+    fn required_worker_count(layout: &WorkerLayout) -> usize {
+        let max = layout
+            .send
+            .iter()
+            .chain(layout.recv_io.iter())
+            .chain(layout.recv_dispatch.iter())
+            .chain(layout.waker_drain.iter())
+            .chain(core::iter::once(&layout.frame_dispatch))
+            .chain(core::iter::once(&layout.background))
+            .copied()
+            .max()
+            .expect("worker layout should not be empty");
+        max + 1
+    }
+
+    fn socket_addr(base_port: u16, idx: usize) -> SocketAddr {
+        let offset = u16::try_from(idx).expect("socket index exceeds u16::MAX (65535)");
+        let port = base_port
+            .checked_add(offset)
+            .expect("port calculation overflows u16::MAX (base_port + index exceeds 65535)");
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::{
+        pin::Pin,
+        task::{Context, Poll},
+    };
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
 
     #[test]
     fn tokio_runtime_worker_count() {
@@ -433,14 +645,48 @@ mod tests {
 
     #[test]
     fn inspector_holds_futures() {
-        let inspector = inspector::Handle::new();
+        let inspector = inspector::Handle::new(1);
         assert_eq!(inspector.future_count(), 0);
-        
+
         // Spawn some futures
         inspector.spawn(async {});
         inspector.spawn(async {});
         inspector.spawn(async {});
-        
+
         assert_eq!(inspector.future_count(), 3);
+    }
+
+    #[test]
+    fn inspector_spawn_does_not_drop_future() {
+        let inspector = inspector::Handle::new(1);
+        let drop_count = Arc::new(AtomicUsize::new(0));
+        inspector.spawn(DropOnDropFuture::new(drop_count.clone()));
+
+        assert_eq!(inspector.future_count(), 1);
+        assert_eq!(drop_count.load(Ordering::Relaxed), 0);
+    }
+
+    struct DropOnDropFuture {
+        drop_count: Arc<AtomicUsize>,
+    }
+
+    impl DropOnDropFuture {
+        fn new(drop_count: Arc<AtomicUsize>) -> Self {
+            Self { drop_count }
+        }
+    }
+
+    impl Future for DropOnDropFuture {
+        type Output = ();
+
+        fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+            Poll::Pending
+        }
+    }
+
+    impl Drop for DropOnDropFuture {
+        fn drop(&mut self) {
+            self.drop_count.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }

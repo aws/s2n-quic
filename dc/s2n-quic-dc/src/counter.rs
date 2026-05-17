@@ -825,7 +825,10 @@ impl Task {
         .collect()
     }
 
-    pub fn with_registration_metadata_ref<T>(&self, f: impl FnOnce(&str, &str, &str, Option<usize>) -> T) -> T {
+    pub fn with_registration_metadata_ref<T>(
+        &self,
+        f: impl FnOnce(&str, &str, &str, Option<usize>) -> T,
+    ) -> T {
         let registration = self.registration.lock().unwrap();
         f(
             registration.name.as_str(),
@@ -871,7 +874,7 @@ impl Task {
     }
 
     /// Called when the task is spawned to record spawn-time information in the topology.
-    /// 
+    ///
     /// This captures the budget and worker ID, then registers the task in the topology.
     /// Panics in debug builds if the task has already been spawned.
     pub fn on_spawn(&self, budget: Option<usize>, worker_id: usize) {
@@ -884,7 +887,7 @@ impl Task {
         );
         registration.budget = budget;
         registration.worker_id = Some(worker_id);
-        
+
         // Register in topology now that spawn information is finalized
         let task_registration = TaskRegistration::new(
             &registration.name,
@@ -894,7 +897,7 @@ impl Task {
         .with_budget(budget)
         .with_worker_id(Some(worker_id))
         .with_metric(self);
-        
+
         drop(registration);
         self.registry.register_task_topology(task_registration);
     }
@@ -969,16 +972,17 @@ impl QueueGauge {
         description: impl core::fmt::Display,
         function: impl core::fmt::Display,
     ) -> Self {
-        let queue = self.with_registration_name(name)
+        let queue = self
+            .with_registration_name(name)
             .with_registration_description(description)
             .with_registration_function(function);
-        
+
         // Update topology with new metadata
         let registration = queue.with_registration_metadata_ref(|name, description, function| {
             ChannelRegistration::new(name, description, function).with_metric(&queue)
         });
         queue.registry.upsert_channel_topology(registration);
-        
+
         queue
     }
 
@@ -1085,7 +1089,7 @@ impl QueueGauge {
             queue: self.clone(),
             metric,
         };
-        
+
         // Auto-register in topology
         let channel_name = sender.channel_metadata(|name, _, _| name.to_string());
         let binding = ChannelBinding::new(
@@ -1096,7 +1100,7 @@ impl QueueGauge {
             sender.function(),
         );
         self.registry.register_binding_topology(binding);
-        
+
         sender
     }
 
@@ -1122,7 +1126,7 @@ impl QueueGauge {
             queue: self.clone(),
             metric,
         };
-        
+
         // Auto-register in topology
         let channel_name = receiver.channel_metadata(|name, _, _| name.to_string());
         let binding = ChannelBinding::new(
@@ -1133,7 +1137,7 @@ impl QueueGauge {
             receiver.function(),
         );
         self.registry.register_binding_topology(binding);
-        
+
         receiver
     }
 }
@@ -1162,7 +1166,7 @@ impl QueueGauge {
 impl QueueSender {
     pub fn with_description(mut self, description: impl core::fmt::Display) -> Self {
         self.metric = self.metric.with_description(description);
-        
+
         // Update binding in topology
         let channel_name = self.channel_metadata(|name, _, _| name.to_string());
         let binding = ChannelBinding::new(
@@ -1173,7 +1177,7 @@ impl QueueSender {
             self.function(),
         );
         self.queue.registry.upsert_binding_topology(binding);
-        
+
         self
     }
 
@@ -1188,7 +1192,7 @@ impl QueueSender {
         {
             metadata.function = function.to_string();
         }
-        
+
         // Update binding in topology
         let channel_name = self.channel_metadata(|name, _, _| name.to_string());
         let binding = ChannelBinding::new(
@@ -1199,7 +1203,7 @@ impl QueueSender {
             self.function(),
         );
         self.queue.registry.upsert_binding_topology(binding);
-        
+
         self
     }
 
@@ -1250,7 +1254,7 @@ impl QueueSender {
 impl QueueReceiver {
     pub fn with_description(mut self, description: impl core::fmt::Display) -> Self {
         self.metric = self.metric.with_description(description);
-        
+
         // Update binding in topology
         let channel_name = self.channel_metadata(|name, _, _| name.to_string());
         let binding = ChannelBinding::new(
@@ -1261,7 +1265,7 @@ impl QueueReceiver {
             self.function(),
         );
         self.queue.registry.upsert_binding_topology(binding);
-        
+
         self
     }
 
@@ -1276,7 +1280,7 @@ impl QueueReceiver {
         {
             metadata.function = function.to_string();
         }
-        
+
         // Update binding in topology
         let channel_name = self.channel_metadata(|name, _, _| name.to_string());
         let binding = ChannelBinding::new(
@@ -1287,7 +1291,7 @@ impl QueueReceiver {
             self.function(),
         );
         self.queue.registry.upsert_binding_topology(binding);
-        
+
         self
     }
 
@@ -1707,6 +1711,119 @@ impl Topology {
         out
     }
 
+    /// Generate a stable, human-readable snapshot representation of the topology.
+    pub fn to_snapshot(&self) -> String {
+        let mut out = String::new();
+
+        let mut tasks = self.tasks.clone();
+        tasks.sort_by(|a, b| {
+            (
+                a.name.as_str(),
+                a.function.as_str(),
+                a.description.as_str(),
+                a.budget,
+                a.worker_id,
+            )
+                .cmp(&(
+                    b.name.as_str(),
+                    b.function.as_str(),
+                    b.description.as_str(),
+                    b.budget,
+                    b.worker_id,
+                ))
+        });
+        out.push_str("tasks:\n");
+        for task in tasks {
+            out.push_str(&format!("  - name: {}\n", snapshot_text(&task.name)));
+            out.push_str(&format!(
+                "    function: {}\n",
+                snapshot_text(&task.function)
+            ));
+            out.push_str(&format!(
+                "    description: {}\n",
+                snapshot_text(&task.description)
+            ));
+            out.push_str(&format!(
+                "    budget: {}\n",
+                task.budget
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "none".to_string())
+            ));
+            out.push_str(&format!(
+                "    worker_id: {}\n",
+                task.worker_id
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "none".to_string())
+            ));
+            write_metrics_snapshot(&mut out, &task.metrics);
+        }
+
+        let mut channels = self.channels.clone();
+        channels.sort_by(|a, b| {
+            (a.name.as_str(), a.function.as_str(), a.description.as_str()).cmp(&(
+                b.name.as_str(),
+                b.function.as_str(),
+                b.description.as_str(),
+            ))
+        });
+        out.push_str("channels:\n");
+        for channel in channels {
+            out.push_str(&format!("  - name: {}\n", snapshot_text(&channel.name)));
+            out.push_str(&format!(
+                "    function: {}\n",
+                snapshot_text(&channel.function)
+            ));
+            out.push_str(&format!(
+                "    description: {}\n",
+                snapshot_text(&channel.description)
+            ));
+            write_metrics_snapshot(&mut out, &channel.metrics);
+        }
+
+        let mut bindings = self.bindings.clone();
+        bindings.sort_by(|a, b| {
+            (
+                a.task_name.as_str(),
+                a.channel_name.as_str(),
+                direction_sort_key(a.direction),
+                a.function.as_str(),
+                a.description.as_str(),
+            )
+                .cmp(&(
+                    b.task_name.as_str(),
+                    b.channel_name.as_str(),
+                    direction_sort_key(b.direction),
+                    b.function.as_str(),
+                    b.description.as_str(),
+                ))
+        });
+        out.push_str("bindings:\n");
+        for binding in bindings {
+            out.push_str(&format!(
+                "  - task: {}\n",
+                snapshot_text(&binding.task_name)
+            ));
+            out.push_str(&format!(
+                "    direction: {}\n",
+                direction_sort_key(binding.direction)
+            ));
+            out.push_str(&format!(
+                "    channel: {}\n",
+                snapshot_text(&binding.channel_name)
+            ));
+            out.push_str(&format!(
+                "    function: {}\n",
+                snapshot_text(&binding.function)
+            ));
+            out.push_str(&format!(
+                "    description: {}\n",
+                snapshot_text(&binding.description)
+            ));
+        }
+
+        out
+    }
+
     /// Validate that the topology is coherent.
     ///
     /// Checks that every channel has at least one sender and one receiver.
@@ -1738,16 +1855,10 @@ impl Topology {
             let receiver_count = channel_receivers.get(&channel.name).copied().unwrap_or(0);
 
             if sender_count == 0 {
-                errors.push(format!(
-                    "Channel '{}' has no senders",
-                    channel.name
-                ));
+                errors.push(format!("Channel '{}' has no senders", channel.name));
             }
             if receiver_count == 0 {
-                errors.push(format!(
-                    "Channel '{}' has no receivers",
-                    channel.name
-                ));
+                errors.push(format!("Channel '{}' has no receivers", channel.name));
             }
         }
 
@@ -1761,6 +1872,62 @@ fn escape_dot(input: &str) -> String {
         .replace('"', "\\\"")
         .replace('\n', "\\n")
         .replace('\r', "\\r")
+}
+
+fn snapshot_text(input: &str) -> String {
+    input.replace('\n', "\\n").replace('\r', "\\r")
+}
+
+fn direction_sort_key(direction: ChannelDirection) -> &'static str {
+    match direction {
+        ChannelDirection::Sends => "sends",
+        ChannelDirection::Receives => "receives",
+    }
+}
+
+fn write_metrics_snapshot(out: &mut String, metrics: &[MetricRegistration]) {
+    out.push_str("    metrics:\n");
+
+    let mut metrics = metrics.to_vec();
+    metrics.sort_by(|a, b| {
+        (
+            a.label.as_str(),
+            a.variant.as_deref().unwrap_or(""),
+            a.kind.to_string(),
+            a.unit.unwrap_or(""),
+            a.description.as_str(),
+        )
+            .cmp(&(
+                b.label.as_str(),
+                b.variant.as_deref().unwrap_or(""),
+                b.kind.to_string(),
+                b.unit.unwrap_or(""),
+                b.description.as_str(),
+            ))
+    });
+
+    if metrics.is_empty() {
+        out.push_str("      - none\n");
+        return;
+    }
+
+    for metric in metrics {
+        out.push_str("      - ");
+        out.push_str(&snapshot_text(&metric.label));
+        out.push_str(" [");
+        out.push_str(&metric.kind.to_string());
+        if let Some(variant) = &metric.variant {
+            out.push_str(" variant=");
+            out.push_str(&snapshot_text(variant));
+        }
+        if let Some(unit) = metric.unit {
+            out.push_str(" unit=");
+            out.push_str(unit);
+        }
+        out.push_str("]: ");
+        out.push_str(&snapshot_text(&metric.description));
+        out.push('\n');
+    }
 }
 
 fn metric_summary(metrics: &[MetricRegistration]) -> String {
@@ -1824,7 +1991,11 @@ impl Registry {
     /// Update or insert a channel/queue in the topology by name.
     pub(crate) fn upsert_channel_topology(&self, channel: ChannelRegistration) {
         let mut topology = self.topology.lock().unwrap();
-        if let Some(existing) = topology.channels.iter_mut().find(|c| c.name == channel.name) {
+        if let Some(existing) = topology
+            .channels
+            .iter_mut()
+            .find(|c| c.name == channel.name)
+        {
             *existing = channel;
         } else {
             topology.channels.push(channel);
@@ -2042,13 +2213,13 @@ impl Registry {
                 ..Default::default()
             },
         );
-        
+
         // Auto-register in topology
         let registration = gauge.with_registration_metadata_ref(|name, description, function| {
             ChannelRegistration::new(name, description, function).with_metric(&gauge)
         });
         self.register_channel_topology(registration);
-        
+
         gauges.insert(label, gauge.clone());
         gauge
     }
@@ -2135,13 +2306,13 @@ impl Registry {
                 ..Default::default()
             },
         );
-        
+
         // Auto-register in topology
         let registration = gauge.with_registration_metadata_ref(|name, description, function| {
             ChannelRegistration::new(name, description, function).with_metric(&gauge)
         });
         self.register_channel_topology(registration);
-        
+
         gauges.insert(key, gauge.clone());
         gauge
     }
@@ -2718,26 +2889,30 @@ mod tests {
     #[test]
     fn topology_validation() {
         let registry = Registry::new();
-        
+
         // Create a queue with both sender and receiver
         let q1 = registry.register_queue_gauge("q.test1");
         let _sender1 = q1.sender("task.sender");
         let _receiver1 = q1.receiver("task.receiver");
-        
+
         // Create a queue with only a sender (missing receiver)
         let q2 = registry.register_queue_gauge("q.test2");
         let _sender2 = q2.sender("task.sender");
-        
+
         // Create a queue with only a receiver (missing sender)
         let q3 = registry.register_queue_gauge("q.test3");
         let _receiver3 = q3.receiver("task.receiver");
-        
+
         let topology = registry.topology();
         let errors = topology.validate();
-        
+
         // Should have 2 errors: q.test2 missing receiver, q.test3 missing sender
         assert_eq!(errors.len(), 2);
-        assert!(errors.iter().any(|e| e.contains("q.test2") && e.contains("no receivers")));
-        assert!(errors.iter().any(|e| e.contains("q.test3") && e.contains("no senders")));
+        assert!(errors
+            .iter()
+            .any(|e| e.contains("q.test2") && e.contains("no receivers")));
+        assert!(errors
+            .iter()
+            .any(|e| e.contains("q.test3") && e.contains("no senders")));
     }
 }

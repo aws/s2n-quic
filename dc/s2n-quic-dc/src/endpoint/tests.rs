@@ -13,6 +13,46 @@ use crate::stream::endpoint::testing::sim::{Client, Server, SERVER_PORT};
 use bytes::{Bytes, BytesMut};
 use s2n_quic_core::varint::VarInt;
 
+#[test]
+fn topology_snapshot_uses_dc_tester_layout() {
+    use crate::{
+        acceptor,
+        path::secret::map::testing,
+        runtime,
+        socket::{pool::Pool, rate::Rate},
+        stream::endpoint::{self, Config, WorkerLayout},
+    };
+
+    let mut ids = 1..;
+    let layout = WorkerLayout {
+        frame_dispatch: 0,
+        send: (&mut ids).take(4).collect(),
+        recv_io: (&mut ids).take(4).collect(),
+        recv_dispatch: (&mut ids).take(5).collect(),
+        waker_drain: (&mut ids).take(1).collect(),
+        background: ids.next().expect("background worker id should exist"),
+    };
+
+    let topology = runtime::inspector::endpoint_topology(
+        Config {
+            layout,
+            send_pool: Pool::new(u16::MAX),
+            recv_pool: Pool::new(u16::MAX),
+            path_secret_map: testing::new(50_000),
+            gso: endpoint::Gso::default(),
+            acceptor_registry: acceptor::Registry::new(),
+            overall_send_rate: Rate::new(25.0),
+            per_socket_send_rate: Rate::new(5.0),
+            budgets: endpoint::Budgets::default(),
+            submission_shards: 128,
+        },
+        64,
+        4,
+    );
+
+    insta::assert_snapshot!(topology.to_snapshot());
+}
+
 /// Ping-pong end-to-end test: the client sends "ping" and the server echoes
 /// "pong" back over a real simulated UDP network path.
 ///

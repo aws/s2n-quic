@@ -9,7 +9,7 @@ pub fn create_pool(workers: usize) -> busy_poll::Pool {
     let mut handles = Vec::with_capacity(workers);
 
     for idx in 0..workers {
-        let (handle, runner) = busy_poll::Handle::new();
+        let (handle, runner) = busy_poll::Handle::new(idx);
 
         std::thread::Builder::new()
             .name(format!("dcquic:busy_poll:{}", idx))
