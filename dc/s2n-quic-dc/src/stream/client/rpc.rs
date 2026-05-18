@@ -153,3 +153,237 @@ where
     })
     .await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        stream::endpoint::testing::sim::{Client, Server},
+        testing::{ext::*, sim},
+    };
+    use bytes::{Bytes, BytesMut};
+    use s2n_quic_core::{buffer::writer::storage::Empty, varint::VarInt};
+    use std::{
+        io,
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        },
+    };
+
+    #[test]
+    fn from_stream_round_trips_request_and_response() {
+        let _guard = crate::testing::without_snapshots();
+        sim(|| {
+            let acceptor_id = VarInt::from_u8(1);
+
+            async move {
+                let server = Server::new();
+                let mut acceptor = server
+                    .register_acceptor_channel(acceptor_id, 1)
+                    .expect("acceptor registration failed");
+
+                while let Some(stream) = acceptor.recv().await {
+                    async move {
+                        let stream = stream.validate().await.expect("server validate");
+                        let (mut reader, mut writer) = stream.into_split();
+
+                        let mut request = BytesMut::with_capacity(8);
+                        while reader.read_into(&mut request).await.expect("server read") != 0 {}
+                        assert_eq!(&request[..], b"ping");
+
+                        let mut response = Bytes::from_static(b"pong");
+                        writer
+                            .write_all_from_fin(&mut response)
+                            .await
+                            .expect("server write");
+                    }
+                    .primary()
+                    .spawn();
+                }
+            }
+            .group("server")
+            .spawn();
+
+            async move {
+                let mut client = Client::new();
+                let stream = client
+                    .connect("server:0", acceptor_id)
+                    .await
+                    .expect("connect failed");
+
+                let response = from_stream(
+                    stream,
+                    Bytes::from_static(b"ping"),
+                    InMemoryResponse::from(Vec::<u8>::new()),
+                )
+                .await
+                .expect("rpc should succeed");
+
+                assert_eq!(&response[..], b"pong");
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        });
+    }
+
+    #[test]
+    fn from_stream_errors_when_response_storage_has_no_capacity() {
+        struct NoCapacityResponse {
+            storage: Empty,
+            provide_calls: Arc<AtomicUsize>,
+        }
+
+        impl Response for NoCapacityResponse {
+            type Storage = Empty;
+            type Output = ();
+
+            async fn provide_storage(&mut self) -> io::Result<&mut Self::Storage> {
+                self.provide_calls.fetch_add(1, Ordering::Relaxed);
+                Ok(&mut self.storage)
+            }
+
+            async fn finish(self) -> io::Result<Self::Output> {
+                Ok(())
+            }
+        }
+
+        let _guard = crate::testing::without_snapshots();
+        let provide_calls = Arc::new(AtomicUsize::new(0));
+        sim(|| {
+            let acceptor_id = VarInt::from_u8(1);
+
+            async move {
+                let server = Server::new();
+                let mut acceptor = server
+                    .register_acceptor_channel(acceptor_id, 1)
+                    .expect("acceptor registration failed");
+
+                while let Some(stream) = acceptor.recv().await {
+                    async move {
+                        let stream = stream.validate().await.expect("server validate");
+                        let (mut reader, _) = stream.into_split();
+                        let mut request = BytesMut::new();
+                        while reader.read_into(&mut request).await.expect("server read") != 0 {}
+                    }
+                    .primary()
+                    .spawn();
+                }
+            }
+            .group("server")
+            .spawn();
+
+            let provide_calls_for_client = provide_calls.clone();
+            async move {
+                let mut client = Client::new();
+                let stream = client
+                    .connect("server:0", acceptor_id)
+                    .await
+                    .expect("connect failed");
+
+                let err = from_stream(
+                    stream,
+                    Bytes::from_static(b"ping"),
+                    NoCapacityResponse {
+                        storage: Empty,
+                        provide_calls: provide_calls_for_client,
+                    },
+                )
+                .await
+                .expect_err("rpc should fail with full response storage");
+
+                assert_eq!(err.kind(), io::ErrorKind::Other);
+                assert!(
+                    err.to_string()
+                        .contains("failed to provide enough capacity"),
+                    "unexpected error: {err:?}"
+                );
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        });
+
+        assert_eq!(
+            provide_calls.load(Ordering::Relaxed),
+            1,
+            "RPC should fail on the first full-buffer check"
+        );
+    }
+
+    #[test]
+    fn from_stream_propagates_finish_error() {
+        struct FailingFinishResponse(Vec<u8>);
+
+        impl Response for FailingFinishResponse {
+            type Storage = Vec<u8>;
+            type Output = ();
+
+            async fn provide_storage(&mut self) -> io::Result<&mut Self::Storage> {
+                Ok(&mut self.0)
+            }
+
+            async fn finish(self) -> io::Result<Self::Output> {
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "synthetic finish failure",
+                ))
+            }
+        }
+
+        let _guard = crate::testing::without_snapshots();
+        sim(|| {
+            let acceptor_id = VarInt::from_u8(1);
+
+            async move {
+                let server = Server::new();
+                let mut acceptor = server
+                    .register_acceptor_channel(acceptor_id, 1)
+                    .expect("acceptor registration failed");
+
+                while let Some(stream) = acceptor.recv().await {
+                    async move {
+                        let stream = stream.validate().await.expect("server validate");
+                        let (mut reader, mut writer) = stream.into_split();
+
+                        let mut request = BytesMut::new();
+                        while reader.read_into(&mut request).await.expect("server read") != 0 {}
+
+                        let mut response = Bytes::from_static(b"ok");
+                        writer
+                            .write_all_from_fin(&mut response)
+                            .await
+                            .expect("server write");
+                    }
+                    .primary()
+                    .spawn();
+                }
+            }
+            .group("server")
+            .spawn();
+
+            async move {
+                let mut client = Client::new();
+                let stream = client
+                    .connect("server:0", acceptor_id)
+                    .await
+                    .expect("connect failed");
+
+                let err = from_stream(
+                    stream,
+                    Bytes::from_static(b"ping"),
+                    FailingFinishResponse(Vec::new()),
+                )
+                .await
+                .expect_err("rpc should propagate finish errors");
+
+                assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+                assert_eq!(err.to_string(), "synthetic finish failure");
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        });
+    }
+}
