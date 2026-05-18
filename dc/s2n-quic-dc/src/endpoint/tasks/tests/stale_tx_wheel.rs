@@ -28,11 +28,7 @@ use bytes::BytesMut;
 use core::time::Duration;
 use s2n_codec::EncoderValue as _;
 use s2n_quic_core::{
-    ack,
-    frame as quic_frame,
-    packet::number::PacketNumberSpace,
-    time::Clock as _,
-    varint::VarInt,
+    ack, frame as quic_frame, packet::number::PacketNumberSpace, time::Clock as _, varint::VarInt,
 };
 
 /// Encode a QUIC ACK frame acknowledging a single contiguous range [0, largest].
@@ -51,9 +47,7 @@ fn encode_ack_payload(largest: u64) -> BytesMut {
 }
 
 /// Create a test frame suitable for inflight insertion (ack-eliciting).
-fn inflight_frame(
-    pse: &std::sync::Arc<crate::path::secret::map::Entry>,
-) -> Entry<Frame> {
+fn inflight_frame(pse: &std::sync::Arc<crate::path::secret::map::Entry>) -> Entry<Frame> {
     Entry::new(Frame {
         header: Header::FlowData {
             queue_pair: QueuePair {
