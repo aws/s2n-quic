@@ -1733,6 +1733,112 @@ impl Topology {
         out
     }
 
+    /// Generate a Mermaid flowchart representation of the topology.
+    pub fn to_mermaid(&self) -> String {
+        let mut out = String::from(
+            "flowchart LR\n  classDef task_node fill:#eef2ff,stroke:#4f46e5,stroke-width:2px;\n  classDef channel_node fill:#ecfeff,stroke:#0891b2,stroke-width:2px;\n",
+        );
+
+        use std::collections::BTreeMap;
+        let mut task_node_ids = std::collections::HashMap::new();
+        let mut channel_node_ids = std::collections::HashMap::new();
+        let mut worker_task_nodes = BTreeMap::<usize, Vec<String>>::new();
+        let mut unassigned_task_nodes = Vec::new();
+
+        // Render tasks
+        for (idx, task) in self.tasks.iter().enumerate() {
+            let node_id = format!("t{idx}");
+            task_node_ids.insert(task.name.clone(), node_id.clone());
+            let budget = task
+                .budget
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "none".to_string());
+            let metrics = metric_summary(&task.metrics);
+            let label = format_mermaid_card(
+                &task.name,
+                [
+                    format!("fn: {}", task.function),
+                    format!("budget: {budget}"),
+                    format!("metrics: {metrics}"),
+                    format!("desc: {}", task.description),
+                ],
+            );
+            let node_line = format!("{node_id}[\"{}\"]\nclass {node_id} task_node;\n", label);
+
+            if let Some(worker_id) = task.worker_id {
+                worker_task_nodes
+                    .entry(worker_id)
+                    .or_default()
+                    .push(node_line);
+            } else {
+                unassigned_task_nodes.push(node_line);
+            }
+        }
+
+        for (worker_id, task_nodes) in worker_task_nodes {
+            out.push_str(&format!("  subgraph worker_{worker_id}[worker {worker_id}]\n"));
+            for node in task_nodes {
+                push_indented(&mut out, "    ", &node);
+            }
+            out.push_str("  end\n");
+        }
+
+        for node in unassigned_task_nodes {
+            push_indented(&mut out, "  ", &node);
+        }
+
+        // Render channels
+        for (idx, channel) in self.channels.iter().enumerate() {
+            let node_id = format!("c{idx}");
+            channel_node_ids.insert(channel.name.clone(), node_id.clone());
+            let metrics = metric_summary(&channel.metrics);
+            let label = format_mermaid_card(
+                &channel.name,
+                [
+                    format!("fn: {}", channel.function),
+                    format!("metrics: {metrics}"),
+                    format!("desc: {}", channel.description),
+                ],
+            );
+            out.push_str(&format!(
+                "  {node_id}[\"{}\"]\n  class {node_id} channel_node;\n",
+                label
+            ));
+        }
+
+        // Render bindings
+        for binding in &self.bindings {
+            let Some(task_node) = task_node_ids.get(&binding.task_name) else {
+                out.push_str(&format!(
+                    "  %% unresolved binding: missing task '{}'\n",
+                    binding.task_name
+                ));
+                continue;
+            };
+            let Some(channel_node) = channel_node_ids.get(&binding.channel_name) else {
+                out.push_str(&format!(
+                    "  %% unresolved binding: missing channel '{}'\n",
+                    binding.channel_name
+                ));
+                continue;
+            };
+
+            let (from, to) = if binding.direction == ChannelDirection::Sends {
+                (task_node, channel_node)
+            } else {
+                (channel_node, task_node)
+            };
+            let label = format!(
+                "{}\nfn: {}\n{}",
+                binding.direction, binding.function, binding.description
+            );
+            let edge_label = escape_mermaid(&label).replace('|', "&#124;");
+            out.push_str(&format!("  {from} -->|{}| {to}\n", edge_label));
+        }
+
+        out
+    }
+
     /// Generate a stable, human-readable snapshot representation of the topology.
     pub fn to_snapshot(&self) -> String {
         let mut out = String::new();
@@ -1894,6 +2000,33 @@ fn escape_dot(input: &str) -> String {
         .replace('"', "\\\"")
         .replace('\n', "\\n")
         .replace('\r', "\\r")
+}
+
+fn escape_mermaid(input: &str) -> String {
+    input
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "<br/>")
+        .replace('\r', "")
+}
+
+fn format_mermaid_card(header: &str, properties: impl IntoIterator<Item = String>) -> String {
+    let mut label = String::new();
+    label.push_str(header);
+    label.push_str("\n────────");
+    for property in properties {
+        label.push('\n');
+        label.push_str(&property);
+    }
+    escape_mermaid(&label)
+}
+
+fn push_indented(out: &mut String, indent: &str, block: &str) {
+    for line in block.lines() {
+        out.push_str(indent);
+        out.push_str(line);
+        out.push('\n');
+    }
 }
 
 fn snapshot_text(input: &str) -> String {
@@ -2951,5 +3084,42 @@ mod tests {
         };
 
         insta::assert_snapshot!(topology.to_dot());
+    }
+
+    #[test]
+    fn topology_mermaid_groups_tasks_by_worker_id() {
+        let topology = Topology {
+            tasks: vec![
+                TaskRegistration::new("task.worker.1", "desc", "fn").with_worker_id(Some(1)),
+                TaskRegistration::new("task.worker.2", "desc", "fn").with_worker_id(Some(2)),
+                TaskRegistration::new("task.unassigned", "desc", "fn"),
+            ],
+            channels: vec![ChannelRegistration::new("queue.main", "queue desc", "queue_fn")],
+            bindings: vec![
+                ChannelBinding::new(
+                    "task.worker.1",
+                    "queue.main",
+                    ChannelDirection::Sends,
+                    "write path",
+                    "worker_send",
+                ),
+                ChannelBinding::new(
+                    "task.worker.2",
+                    "queue.main",
+                    ChannelDirection::Receives,
+                    "read path",
+                    "worker_recv",
+                ),
+                ChannelBinding::new(
+                    "task.unassigned",
+                    "queue.main",
+                    ChannelDirection::Receives,
+                    "monitor path",
+                    "monitor_recv",
+                ),
+            ],
+        };
+
+        insta::assert_snapshot!(topology.to_mermaid());
     }
 }

@@ -1,0 +1,22 @@
+---
+source: dc/s2n-quic-dc/src/counter.rs
+expression: topology.to_mermaid()
+---
+flowchart LR
+  classDef task_node fill:#eef2ff,stroke:#4f46e5,stroke-width:2px;
+  classDef channel_node fill:#ecfeff,stroke:#0891b2,stroke-width:2px;
+  subgraph worker_1[worker 1]
+    t0["task.worker.1<br/>────────<br/>fn: fn<br/>budget: none<br/>metrics: none<br/>desc: desc"]
+    class t0 task_node;
+  end
+  subgraph worker_2[worker 2]
+    t1["task.worker.2<br/>────────<br/>fn: fn<br/>budget: none<br/>metrics: none<br/>desc: desc"]
+    class t1 task_node;
+  end
+  t2["task.unassigned<br/>────────<br/>fn: fn<br/>budget: none<br/>metrics: none<br/>desc: desc"]
+  class t2 task_node;
+  c0["queue.main<br/>────────<br/>fn: queue_fn<br/>metrics: none<br/>desc: queue desc"]
+  class c0 channel_node;
+  t0 -->|sends<br/>fn: worker_send<br/>write path| c0
+  c0 -->|receives<br/>fn: worker_recv<br/>read path| t1
+  c0 -->|receives<br/>fn: monitor_recv<br/>monitor path| t2
