@@ -22,7 +22,8 @@ pub const MAX_UDP_PAYLOAD: u16 = 9001 - IPV4_HEADER_LEN - UDP_HEADER_LEN;
 ///
 /// From <https://elixir.bootlin.com/linux/v6.8.7/source/include/uapi/linux/uio.h#L28>
 /// > #define UIO_MAXIOV  1024
-pub const MAX_COUNT: usize = if features::gso::IS_SUPPORTED || cfg!(any(test, feature = "testing")) {
+pub const MAX_COUNT: usize = if features::gso::IS_SUPPORTED || cfg!(any(test, feature = "testing"))
+{
     // base the max segments on the max datagram size for the default ethernet mtu
     let max_datagram_size = 1500 - min_u16(IPV4_HEADER_LEN, IPV6_HEADER_LEN) - UDP_HEADER_LEN;
 

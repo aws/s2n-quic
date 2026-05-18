@@ -1432,13 +1432,8 @@ fn handle_flow_init_reset(
 
     let stream_entry = msg::Stream::Reset { error_code }.into();
     let control_entry = msg::Control::Reset { error_code }.into();
-    let (waker_a, waker_b) = queue_dispatcher.send_both(
-        local_queue_id,
-        None,
-        &request,
-        stream_entry,
-        control_entry,
-    );
+    let (waker_a, waker_b) =
+        queue_dispatcher.send_both(local_queue_id, None, &request, stream_entry, control_entry);
     let _ = waker_sink.send(waker_a);
     let _ = waker_sink.send(waker_b);
 

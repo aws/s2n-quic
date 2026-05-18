@@ -13,8 +13,7 @@
 //!
 //! This abstraction needs to support both this pattern and simpler runtimes like tokio.
 
-use crate::counter;
-use crate::time::precision;
+use crate::{counter, time::precision};
 use s2n_quic_core::time;
 use std::future::Future;
 
@@ -378,12 +377,16 @@ pub mod tokio {
 /// Use the counter::Registry::topology() function to get the graph of the pipeline
 /// after using the inspector runtime.
 pub mod inspector {
-    use crate::endpoint::{self, Config, WorkerLayout};
-    use crate::time::precision;
+    use crate::{
+        endpoint::{self, Config, WorkerLayout},
+        time::precision,
+    };
     use core::pin::Pin;
-    use std::future::Future;
-    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-    use std::sync::{Arc, Mutex};
+    use std::{
+        future::Future,
+        net::{IpAddr, Ipv4Addr, SocketAddr},
+        sync::{Arc, Mutex},
+    };
 
     /// Inspector runtime for topology introspection.
     ///

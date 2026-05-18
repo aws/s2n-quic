@@ -15,7 +15,7 @@
 use crate::{flow::queue::AutoWake, intrusive};
 use core::{
     mem::ManuallyDrop,
-    sync::atomic::{AtomicU8, AtomicU64, Ordering},
+    sync::atomic::{AtomicU64, AtomicU8, Ordering},
     task::Poll,
 };
 use parking_lot::Mutex;

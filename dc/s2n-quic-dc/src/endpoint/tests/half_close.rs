@@ -822,8 +822,7 @@ fn writer_drop_in_flow_init_sent_hangs_server_reader() {
     use std::time::Duration;
 
     crate::testing::sim(|| {
-        use crate::stream::endpoint::testing::sim::SERVER_PORT;
-        use crate::testing::ext::*;
+        use crate::{stream::endpoint::testing::sim::SERVER_PORT, testing::ext::*};
 
         // Suppress the very first server→client packet (the `MAX_DATA` /
         // `FlowControl` response to `FlowInit`).  This keeps the client writer

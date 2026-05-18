@@ -99,12 +99,11 @@ jobs:
       - name: Install rust toolchain
         id: toolchain
         run: |
-          rustup toolchain install 1.91.0 --profile minimal --component rustfmt
-          rustup override set 1.91.0
+          rustup toolchain install "${RUST_NIGHTLY_TOOLCHAIN}" --profile minimal --component rustfmt
 
       - name: Run cargo fmt
         run: |
-          cargo fmt --all -- --check
+          cargo +"${RUST_NIGHTLY_TOOLCHAIN}" fmt --all -- --check
 
   clippy:
     runs-on: ubuntu-latest
@@ -200,12 +199,12 @@ jobs:
       - name: Install rust nightly toolchain
         id: nightly-toolchain
         run: |
-          rustup toolchain install nightly --profile minimal
+          rustup toolchain install "${RUST_NIGHTLY_TOOLCHAIN}" --profile minimal
 
       - uses: camshaft/rust-cache@v1
 
       - name: Run cargo doc
-        run: cargo +nightly doc --all-features --no-deps --workspace --exclude s2n-quic-qns
+        run: cargo +"${RUST_NIGHTLY_TOOLCHAIN}" doc --all-features --no-deps --workspace --exclude s2n-quic-qns
         env:
           RUSTDOCFLAGS: --cfg docsrs
 
@@ -249,9 +248,9 @@ jobs:
             rust: stable
             target: native
             cache_target: x86_64-unknown-linux-gnu
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             rust: stable
-            target: aarch64-unknown-linux-gnu
+            target: native
             cache_target: aarch64-unknown-linux-gnu
           - os: macos-latest
             rust: stable
@@ -270,10 +269,6 @@ jobs:
           rustup toolchain install ${{ matrix.rust }}
           rustup override set ${{ matrix.rust }}
 
-      - name: Install target
-        if: ${{ matrix.target != 'native' }}
-        run: rustup target add ${{ matrix.target }}
-
       - uses: camshaft/rust-cache@v1
         with:
           key: dc-core-tests-${{ matrix.os }}-${{ matrix.cache_target }}
@@ -288,7 +283,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-nextest
-          key: ${{ runner.os }}-cargo-nextest-${{ steps.versions.outputs.cargo_nextest }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-nextest-${{ steps.versions.outputs.cargo_nextest }}
 
       - name: Install cargo-nextest
         if: steps.cache-cargo-nextest.outputs.cache-hit != 'true'
@@ -298,17 +293,6 @@ jobs:
         if: ${{ matrix.target == 'native' }}
         run: |
           cargo nextest run -p s2n-quic-core -p s2n-quic-dc
-
-      - name: Install cross
-        if: ${{ matrix.target != 'native' }}
-        uses: camshaft/install@v1
-        with:
-          crate: cross
-
-      - name: Run cross test
-        if: ${{ matrix.target != 'native' }}
-        run: |
-          cross test -p s2n-quic-core -p s2n-quic-dc --target ${{ matrix.target }}
 
   asan:
     runs-on: ubuntu-latest
@@ -465,34 +449,13 @@ jobs:
       - name: Run cargo llvm-cov
         run: cargo llvm-cov --html --no-fail-fast -p s2n-quic-core -p s2n-quic-dc --all-features
 
-      - uses: aws-actions/configure-aws-credentials@v6.0.0
-        if: github.event_name == 'push'
+      - name: Upload coverage report artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
         with:
-          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2nQuicGHAS3Session
-          aws-region: us-west-2
-
-      - name: Upload results
-        if: github.event_name == 'push'
-        id: s3
-        run: |
-          TARGET_SHA="${{ github.sha }}/coverage"
-          aws s3 sync target/llvm-cov/html "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
-          URL="$CDN/$TARGET_SHA/index.html"
-          echo "URL=$URL" >> $GITHUB_OUTPUT
-
-          # Only upload to latest if the event is push to main
-          if [ "${{ github.event_name }}" == "push" ]; then
-            TARGET_LATEST="latest/coverage"
-            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
-          fi
-
-      - uses: ouzi-dev/commit-status-updater@v2.0.2
-        if: github.event_name == 'push'
-        with:
-          name: "coverage / report"
-          status: "success"
-          url: "${{ steps.s3.outputs.URL }}"
+          name: coverage-report
+          path: target/llvm-cov/html
+          if-no-files-found: ignore
 
   # This CI step will directly build each crate in common/ and quic/ which is
   # useful because it sidesteps the feature resolution that normally occurs in a
@@ -538,7 +501,7 @@ jobs:
       - name: Install rust nightly toolchain
         id: nightly-toolchain
         run: |
-          rustup toolchain install nightly --component rustfmt
+          rustup toolchain install "${RUST_NIGHTLY_TOOLCHAIN}" --component rustfmt
 
       - name: Install rust stable toolchain
         id: stable-toolchain
@@ -552,7 +515,7 @@ jobs:
 
       - name: format
         working-directory: ${{ matrix.example }}
-        run: cargo +nightly fmt --all -- --check
+        run: cargo +"${RUST_NIGHTLY_TOOLCHAIN}" fmt --all -- --check
 
       # not all examples will build with the --manifest-path argument, since the
       # manifest-path argument will pull configuration from the current directory
@@ -1022,15 +985,8 @@ jobs:
     if: ${{ always() }}
     needs: [env, rustfmt, clippy, test, asan, coverage, copyright, snapshots, typos, loom]
     steps:
-      - uses: aws-actions/configure-aws-credentials@v6.0.0
-        if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
-        with:
-          role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
-          role-session-name: S2nQuicGHASession
-          aws-region: us-west-2
-
       - name: Report daily CI run to CloudWatch
-        if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
+        if: false # Disabled in this fork: no CloudWatch publishing is configured
         run: |
           METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
           aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFailure" \
@@ -1054,7 +1010,7 @@ jobs:
           echo "END_TIME=$END_TIME" >> $GITHUB_ENV
 
       - name: Report workflow duration to CloudWatch
-        if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
+        if: false # Disabled in this fork: no CloudWatch publishing is configured
         run: |
           aws cloudwatch put-metric-data \
             --namespace "Github" \

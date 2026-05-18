@@ -26,6 +26,10 @@ jobs:
           echo "cargo_bolero=0.13.4" >> "$GITHUB_OUTPUT"
           echo "cargo_mcp_rev=d5b2b8e6716e9e5620b48492855dd8afdabba4bb" >> "$GITHUB_OUTPUT"
           echo "duckdb=v1.5.2" >> "$GITHUB_OUTPUT"
+          echo "rust_nightly_toolchain=nightly-2025-11-09" >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned nightly toolchain
+        run: rustup toolchain install "${{ steps.versions.outputs.rust_nightly_toolchain }}" --profile minimal --component rustfmt
 
       - name: Cache cargo-insta binary
         id: cache-cargo-insta

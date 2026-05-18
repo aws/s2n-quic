@@ -1,13 +1,12 @@
 name: PR Title Validation
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
 permissions:
   contents: read
 
 jobs:
   validate-pr-title:
+    if: false # Disabled in this fork: PR title validation is not enforced here
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

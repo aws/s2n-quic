@@ -1,10 +1,5 @@
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch:
 
 name: book
 
@@ -24,6 +19,7 @@ permissions:
 
 jobs:
   build-deploy:
+    if: false # Disabled in this fork: the book is not published from GitHub Actions
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

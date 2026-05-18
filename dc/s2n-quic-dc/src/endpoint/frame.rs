@@ -421,10 +421,7 @@ pub enum Header {
     /// If the server has not yet registered the stream (FlowInit not yet received), it
     /// buffers this `(stream_id, offset)` so it can apply the FIN as soon as the matching
     /// FlowInit is processed.
-    FlowInitFin {
-        stream_id: VarInt,
-        offset: VarInt,
-    },
+    FlowInitFin { stream_id: VarInt, offset: VarInt },
     /// Client response to a FlowValidateRequest
     FlowInitValidate {
         queue_pair: QueuePair,
