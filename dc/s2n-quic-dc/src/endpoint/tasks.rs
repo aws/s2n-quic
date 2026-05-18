@@ -460,30 +460,23 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
                 "Drains tx timing wheel and routes expired contexts to assemblers",
                 "endpoint::tasks::send_worker",
             );
-        let tx_wheel_task = wheel_drain::<_, _, _, { crate::time::wheel::MICROSECOND_GRANULARITY }>(
+        let socket_context_txs: Vec<_> = socket_context_txs
+            .into_iter()
+            .zip(q_wheel_to_assembler.iter().cloned())
+            .map(|(tx, gauge)| {
+                let sender = gauge
+                    .sender("task.tx_wheel")
+                    .with_description("Tx wheel routes expired contexts to socket assembler")
+                    .with_function("endpoint::tasks::send_worker");
+                crate::counter::GaugedSender::new(tx, sender)
+            })
+            .collect();
+        let tx_wheel_task = send_tx_wheel_drain(
             tx_wheel_rx,
-            clock.timer(),
+            clock.clone(),
             q_resolver_to_tx_wheel.clone(),
-            {
-                let sender_idx_to_local = sender_idx_to_local.clone();
-                let mut socket_context_txs: Vec<_> = socket_context_txs
-                    .into_iter()
-                    .zip(q_wheel_to_assembler.iter().cloned())
-                    .map(|(tx, gauge)| {
-                        let sender = gauge
-                            .sender("task.tx_wheel")
-                            .with_description(
-                                "Tx wheel routes expired contexts to socket assembler",
-                            )
-                            .with_function("endpoint::tasks::send_worker");
-                        crate::counter::GaugedSender::new(tx, sender)
-                    })
-                    .collect();
-                move |context: Rc<RefCell<send::Context>>| {
-                    let local_id = sender_idx_to_local[context.borrow().sender_idx];
-                    let _ = UnboundedSender::send(&mut socket_context_txs[local_id], context);
-                }
-            },
+            socket_context_txs,
+            sender_idx_to_local.clone(),
             budgets.tx_wheel,
             task_counter.clone(),
         );
@@ -844,6 +837,37 @@ where
     R: Receiver<Entry<Frame>>,
 {
     Map::new(cancelled_rx, |_entry: Entry<Frame>| {})
+}
+
+/// Drains the send TX wheel and routes each expired context to its socket assembler queue.
+pub async fn send_tx_wheel_drain<Clk, TxW>(
+    tx_wheel_rx: intrusive::unsync::Receiver<send::TxWheelAdapter>,
+    clock: Clk,
+    input_gauge: crate::counter::QueueGauge,
+    socket_context_txs: Vec<TxW>,
+    sender_idx_to_local: Vec<usize>,
+    budget: usize,
+    task_counter: crate::counter::Task,
+) where
+    Clk: precision::Clock,
+    TxW: UnboundedSender<Rc<RefCell<send::Context>>>,
+{
+    let timer = clock.timer();
+    wheel_drain::<_, _, _, { crate::time::wheel::MICROSECOND_GRANULARITY }>(
+        tx_wheel_rx,
+        timer,
+        input_gauge,
+        {
+            let mut socket_context_txs = socket_context_txs;
+            move |context: Rc<RefCell<send::Context>>| {
+                let local_id = sender_idx_to_local[context.borrow().sender_idx];
+                let _ = UnboundedSender::send(&mut socket_context_txs[local_id], context);
+            }
+        },
+        budget,
+        task_counter,
+    )
+    .await;
 }
 
 /// Drains a timing wheel, yielding each expired context to the provided callback.

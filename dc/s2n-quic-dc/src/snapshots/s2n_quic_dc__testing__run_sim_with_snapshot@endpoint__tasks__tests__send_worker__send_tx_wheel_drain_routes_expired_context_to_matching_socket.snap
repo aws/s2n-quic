@@ -1,0 +1,15 @@
+---
+source: dc/s2n-quic-dc/src/testing.rs
+expression: logs
+---
+0:00:00.000000000 TRACE c#test.pending.enq=1
+0:00:00.000000000 TRACE g#test.pending.depth=1
+0:00:00.000000000 TRACE m#test.pending.depth_dist=1
+0:00:00.000000000 TRACE m#task.tx_wheel.drained[send.0]=0
+0:00:00.000000000 DEBUG sending context to tx wheel
+0:00:00.000000000 TRACE c#test.tx_wheel.receiver[task.wheel_drain]=1
+0:00:00.000000000 TRACE c#test.tx_wheel.drain=1
+0:00:00.000000000 TRACE g#test.tx_wheel.depth=-1
+0:00:00.000000000 TRACE m#task.tx_wheel.drained[send.0]=1
+0:00:00.000000000 DEBUG socket 1 routing result routed=true
+0:00:00.000000000 DEBUG socket 0 routing result unexpected=false

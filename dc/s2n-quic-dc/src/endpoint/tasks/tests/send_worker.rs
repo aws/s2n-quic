@@ -8,7 +8,7 @@ use crate::{
     endpoint::{frame, msg, send, tasks},
     socket::channel::{intrusive::unsync, ReceiverExt as _, UnboundedSender as _},
     testing::{ext::*, sim},
-    time::bach::Clock,
+    time::{bach::Clock, precision},
     xorshift::Rng,
 };
 use bytes::BytesMut;
@@ -142,6 +142,60 @@ fn send_pto_timeout_routes_pending_context_to_tx_wheel() {
                 idle_wheel_rx.recv().await.is_some(),
                 "pto timeout pipeline should preserve idle scheduling for active context"
             );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+#[test]
+fn send_tx_wheel_drain_routes_expired_context_to_matching_socket() {
+    sim(|| {
+        let registry = crate::counter::Registry::default();
+        let clock = Clock::default();
+        let entry = test_entry();
+        let mut ctx = send::Context::new(
+            &entry,
+            registry.register_queue_gauge("test.inflight"),
+            registry.register_queue_gauge("test.ack"),
+            registry.register_queue_gauge("test.pending"),
+            1,
+            &clock,
+        )
+        .expect("test context should be constructible");
+        let _ = ctx.push_batch(test_batch(&entry).into_inner(), &clock);
+        ctx.tx_wheel.target_time = Some(precision::Clock::now(&clock));
+        let ctx = Rc::new(RefCell::new(ctx));
+
+        let (mut tx_wheel_tx, tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
+        let (socket0_tx, mut socket0_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
+        let (socket1_tx, mut socket1_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
+
+        tasks::send_tx_wheel_drain(
+            tx_wheel_rx,
+            clock,
+            registry.register_queue_gauge("test.tx_wheel"),
+            vec![socket0_tx, socket1_tx],
+            vec![0usize, 1usize],
+            32,
+            registry.register_nominal_task("task.tx_wheel", "send.0"),
+        )
+        .spawn();
+
+        async move {
+            tracing::debug!("sending context to tx wheel");
+            let _ = tx_wheel_tx.send(ctx);
+            drop(tx_wheel_tx);
+        }
+        .spawn();
+
+        async move {
+            let routed = socket1_rx.recv().await.is_some();
+            tracing::debug!(routed, "socket 1 routing result");
+            assert!(routed, "sender_idx=1 context should route to socket queue 1");
+            let unexpected = socket0_rx.recv().await.is_some();
+            tracing::debug!(unexpected, "socket 0 routing result");
+            assert!(!unexpected, "socket queue 0 should not receive sender_idx=1 context");
         }
         .primary()
         .spawn();
