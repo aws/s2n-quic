@@ -4,3 +4,4 @@ rustdocflags = ['--cfg', 's2n_internal_dev']
 
 [alias]
 xtask = "run --manifest-path xtask/Cargo.toml --release --"
+tdc = "nextest run -p s2n-quic-dc"
