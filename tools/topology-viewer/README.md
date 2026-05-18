@@ -16,11 +16,43 @@ Open http://localhost:5173 in your browser.
 
 ## Usage
 
-### 1. Paste a Mermaid diagram
+### 1. Load a Mermaid diagram
 
-In the textarea at the bottom of the screen, paste Mermaid text produced by
-`topology.to_mermaid()` from the Rust crate. The graph renders immediately, and
-metric metadata is parsed from the embedded `%% metric:` comments.
+You can still paste Mermaid text in the textarea, but you can now also load it
+from a URL in the control bar (**Load Mermaid URL**). The URL is stored in the
+query string as `?mermaid=...`, so the viewer can reopen and fetch it
+automatically (for example from gist raw content or a localhost endpoint).
+
+You can also provide a config URL (`?config=...`) that points to a JSON config
+document, then click **Load Config URL**.
+
+Supported config fields:
+
+```json
+{
+  "adapterConfig": {
+    "type": "none | prometheus | cloudwatch",
+    "prometheusUrl": "http://localhost:9090",
+    "prometheusPrefix": "s2n_quic_dc",
+    "cloudwatchProxyUrl": "http://localhost:3001",
+    "cloudwatchNamespace": "s2n-quic-dc"
+  },
+  "refreshIntervalMs": 15000,
+  "timeRangeMinutes": 15,
+  "renderMode": "inline | adjacent | hover",
+  "perKindMode": {
+    "counter": "inline | adjacent | hover | hidden",
+    "gauge": "inline | adjacent | hover | hidden",
+    "summary": "inline | adjacent | hover | hidden",
+    "timer": "inline | adjacent | hover | hidden"
+  },
+  "mermaidUrl": "https://example.com/topology.mmd",
+  "mermaidText": "flowchart LR\\n..."
+}
+```
+
+`mermaidUrl` is the typical entry-point value; `mermaidText` is a fallback when
+you want to embed source directly in config.
 
 ### 2. Configure a metrics backend
 
@@ -56,8 +88,9 @@ or hide noisy metrics entirely.
 ### 5. Drill down into a node
 
 Click any node to open the **Drilldown Panel** at the bottom. It shows node
-metadata and a table of all registered metrics with their latest value, unit,
-and query status (loading / error / timestamp).
+metadata, an Observable Plot time-series chart, and a table of all registered
+metrics with their latest value, unit, and query status (loading / error /
+timestamp).
 
 ### 6. Export for Observable
 

@@ -20,15 +20,25 @@ const TIME_RANGE_OPTIONS = [
 
 interface Props {
   onRefresh(): void;
+  onLoadMermaidUrl(): void;
+  onLoadConfigUrl(): void;
 }
 
 /**
  * Top control bar: backend selector, Prometheus/CloudWatch inputs,
  * refresh interval, time window, and a manual refresh button.
  */
-export function ControlBar({ onRefresh }: Props) {
+export function ControlBar({
+  onRefresh,
+  onLoadMermaidUrl,
+  onLoadConfigUrl,
+}: Props) {
   const adapterConfig = useTopologyStore((s) => s.adapterConfig);
   const setAdapterConfig = useTopologyStore((s) => s.setAdapterConfig);
+  const mermaidUrl = useTopologyStore((s) => s.mermaidUrl);
+  const setMermaidUrl = useTopologyStore((s) => s.setMermaidUrl);
+  const configUrl = useTopologyStore((s) => s.configUrl);
+  const setConfigUrl = useTopologyStore((s) => s.setConfigUrl);
   const refreshIntervalMs = useTopologyStore((s) => s.refreshIntervalMs);
   const setRefreshInterval = useTopologyStore((s) => s.setRefreshInterval);
   const timeRangeMinutes = useTopologyStore((s) => s.timeRangeMinutes);
@@ -146,6 +156,36 @@ export function ControlBar({ onRefresh }: Props) {
           ))}
         </select>
       </label>
+
+      <div className="h-5 w-px bg-gray-200" />
+
+      <input
+        type="url"
+        placeholder="Mermaid URL (gist/raw/local endpoint)"
+        value={mermaidUrl}
+        onChange={(e) => setMermaidUrl(e.target.value)}
+        className="w-72 rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+      />
+      <button
+        onClick={onLoadMermaidUrl}
+        className="rounded border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-indigo-700 text-sm hover:bg-indigo-100"
+      >
+        Load Mermaid URL
+      </button>
+
+      <input
+        type="url"
+        placeholder="Config URL (JSON)"
+        value={configUrl}
+        onChange={(e) => setConfigUrl(e.target.value)}
+        className="w-56 rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+      />
+      <button
+        onClick={onLoadConfigUrl}
+        className="rounded border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-indigo-700 text-sm hover:bg-indigo-100"
+      >
+        Load Config URL
+      </button>
 
       <div className="h-5 w-px bg-gray-200" />
 

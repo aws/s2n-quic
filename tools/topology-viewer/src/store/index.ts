@@ -17,9 +17,13 @@ export type PerKindMode = "inline" | "adjacent" | "hover" | "hidden";
 interface TopologyStore {
   // Topology
   mermaidText: string;
+  mermaidUrl: string;
+  configUrl: string;
   graph: TopologyGraph | null;
   parseError: string | null;
   setMermaidText(text: string): void;
+  setMermaidUrl(url: string): void;
+  setConfigUrl(url: string): void;
 
   // Adapter
   adapterConfig: AdapterConfig;
@@ -60,6 +64,8 @@ interface TopologyStore {
 export const useTopologyStore = create<TopologyStore>((set, get) => ({
   // Topology
   mermaidText: "",
+  mermaidUrl: "",
+  configUrl: "",
   graph: null,
   parseError: null,
   setMermaidText(text) {
@@ -70,6 +76,12 @@ export const useTopologyStore = create<TopologyStore>((set, get) => ({
       const msg = err instanceof Error ? err.message : String(err);
       set({ mermaidText: text, graph: null, parseError: msg });
     }
+  },
+  setMermaidUrl(url) {
+    set({ mermaidUrl: url });
+  },
+  setConfigUrl(url) {
+    set({ configUrl: url });
   },
 
   // Adapter

@@ -10,9 +10,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@observablehq/plot": "^0.6.17",
+    "mermaid": "^11.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "mermaid": "^11.4.1",
     "zustand": "^5.0.3"
   },
   "devDependencies": {

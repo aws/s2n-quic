@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { useTopologyStore } from "./store";
+import { useTopologyStore, type RenderMode, type PerKindMode } from "./store";
 import { ControlBar } from "./components/ControlBar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { TopologyGraph } from "./components/TopologyGraph";
 import { DrilldownPanel } from "./components/DrilldownPanel";
 import { PrometheusAdapter } from "./adapters/prometheus";
 import { makeCloudWatchAdapter } from "./adapters/cloudwatch";
-import type { DataSourceAdapter, TimeRange } from "./adapters/types";
+import type { AdapterConfig, DataSourceAdapter, TimeRange } from "./adapters/types";
+import type { MetricKind } from "./schema/topology";
 
 // Sample diagram that demonstrates the Mermaid format produced by Topology::to_mermaid().
 const SAMPLE_MERMAID = `flowchart LR
@@ -23,6 +24,25 @@ const SAMPLE_MERMAID = `flowchart LR
   class c0 channel_node;
   t0 -->|sends\\nfn: worker_send\\nwrite path| c0
   c0 -->|receives\\nfn: worker_recv\\nread path| t0`;
+
+interface RemoteViewerConfig {
+  adapterConfig?: AdapterConfig;
+  refreshIntervalMs?: number;
+  timeRangeMinutes?: number;
+  renderMode?: RenderMode;
+  perKindMode?: Partial<Record<MetricKind, PerKindMode>>;
+  mermaidText?: string;
+  mermaidUrl?: string;
+}
+
+const VALID_ADAPTER_TYPES = ["none", "prometheus", "cloudwatch"] as const;
+
+function isAdapterType(value: unknown): value is AdapterConfig["type"] {
+  return (
+    typeof value === "string" &&
+    (VALID_ADAPTER_TYPES as readonly string[]).includes(value)
+  );
+}
 
 function buildAdapter(config: {
   type: string;
@@ -43,19 +63,54 @@ function buildAdapter(config: {
   return null;
 }
 
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function cleanUrlInput(value: string): string {
+  return value.trim();
+}
+
+async function fetchText(url: string): Promise<string> {
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error(`HTTP ${resp.status} while fetching ${url}`);
+  }
+  return await resp.text();
+}
+
+async function fetchJson(url: string): Promise<unknown> {
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error(`HTTP ${resp.status} while fetching ${url}`);
+  }
+  return await resp.json();
+}
+
 export default function App() {
   const mermaidText = useTopologyStore((s) => s.mermaidText);
   const setMermaidText = useTopologyStore((s) => s.setMermaidText);
+  const mermaidUrl = useTopologyStore((s) => s.mermaidUrl);
+  const setMermaidUrl = useTopologyStore((s) => s.setMermaidUrl);
+  const configUrl = useTopologyStore((s) => s.configUrl);
+  const setConfigUrl = useTopologyStore((s) => s.setConfigUrl);
   const graph = useTopologyStore((s) => s.graph);
   const adapterConfig = useTopologyStore((s) => s.adapterConfig);
+  const setAdapterConfig = useTopologyStore((s) => s.setAdapterConfig);
   const setMetricData = useTopologyStore((s) => s.setMetricData);
   const setQueryStatus = useTopologyStore((s) => s.setQueryStatus);
   const refreshIntervalMs = useTopologyStore((s) => s.refreshIntervalMs);
+  const setRefreshInterval = useTopologyStore((s) => s.setRefreshInterval);
   const timeRangeMinutes = useTopologyStore((s) => s.timeRangeMinutes);
+  const setTimeRange = useTopologyStore((s) => s.setTimeRange);
   const parseError = useTopologyStore((s) => s.parseError);
+  const setRenderMode = useTopologyStore((s) => s.setRenderMode);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sourceLoadError, setSourceLoadError] = useState<string | null>(null);
+  const [sourceLoadStatus, setSourceLoadStatus] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const bootstrapRanRef = useRef(false);
 
   // Memoize the adapter so it only rebuilds when the relevant config fields
   // change — not on every keystroke in unrelated inputs.
@@ -101,12 +156,192 @@ export default function App() {
               lastUpdated: new Date(),
             });
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = getErrorMessage(err);
             setQueryStatus(node.id, { loading: false, error: msg });
           }
         }),
     );
   }, [graph, adapter, timeRangeMinutes, setMetricData, setQueryStatus]);
+
+  const loadMermaidFromUrl = useCallback(
+    async (url: string) => {
+      const cleanUrl = cleanUrlInput(url);
+      if (!cleanUrl) return;
+      setSourceLoadStatus(`Loading Mermaid from ${cleanUrl}...`);
+      setSourceLoadError(null);
+      try {
+        const text = await fetchText(cleanUrl);
+        setMermaidText(text);
+        setSourceLoadStatus(`Loaded Mermaid from ${cleanUrl}`);
+      } catch (err) {
+        const msg = getErrorMessage(err);
+        setSourceLoadError(msg);
+        setSourceLoadStatus(null);
+      }
+    },
+    [setMermaidText],
+  );
+
+  const applyConfigObject = useCallback(
+    (raw: unknown): RemoteViewerConfig => {
+      if (!raw || typeof raw !== "object") {
+        throw new Error("Config response must be a JSON object.");
+      }
+
+      const cfg = raw as Record<string, unknown>;
+      const next: RemoteViewerConfig = {};
+
+      if (cfg.adapterConfig && typeof cfg.adapterConfig === "object") {
+        const adapter = cfg.adapterConfig as Record<string, unknown>;
+        if (!isAdapterType(adapter.type)) {
+          throw new Error(
+            `Invalid adapterConfig.type "${String(adapter.type)}". Expected one of: ${VALID_ADAPTER_TYPES.join(", ")}.`,
+          );
+        }
+        next.adapterConfig = {
+          type: adapter.type,
+          prometheusUrl:
+            typeof adapter.prometheusUrl === "string"
+              ? adapter.prometheusUrl
+              : undefined,
+          prometheusPrefix:
+            typeof adapter.prometheusPrefix === "string"
+              ? adapter.prometheusPrefix
+              : undefined,
+          cloudwatchProxyUrl:
+            typeof adapter.cloudwatchProxyUrl === "string"
+              ? adapter.cloudwatchProxyUrl
+              : undefined,
+          cloudwatchNamespace:
+            typeof adapter.cloudwatchNamespace === "string"
+              ? adapter.cloudwatchNamespace
+              : undefined,
+          cloudwatchRegion:
+            typeof adapter.cloudwatchRegion === "string"
+              ? adapter.cloudwatchRegion
+              : undefined,
+        };
+      }
+
+      if (typeof cfg.refreshIntervalMs === "number") {
+        next.refreshIntervalMs = cfg.refreshIntervalMs;
+      }
+      if (typeof cfg.timeRangeMinutes === "number") {
+        next.timeRangeMinutes = cfg.timeRangeMinutes;
+      }
+      if (
+        cfg.renderMode === "inline" ||
+        cfg.renderMode === "adjacent" ||
+        cfg.renderMode === "hover"
+      ) {
+        next.renderMode = cfg.renderMode;
+      }
+
+      if (typeof cfg.mermaidText === "string") {
+        next.mermaidText = cfg.mermaidText;
+      }
+      if (typeof cfg.mermaidUrl === "string") {
+        next.mermaidUrl = cfg.mermaidUrl;
+      }
+
+      if (cfg.perKindMode && typeof cfg.perKindMode === "object") {
+        const nextPerKind: Partial<Record<MetricKind, PerKindMode>> = {};
+        const perKind = cfg.perKindMode as Record<string, unknown>;
+        for (const kind of ["counter", "gauge", "summary", "timer"] as const) {
+          const mode = perKind[kind];
+          if (
+            mode === "inline" ||
+            mode === "adjacent" ||
+            mode === "hover" ||
+            mode === "hidden"
+          ) {
+            nextPerKind[kind] = mode;
+          }
+        }
+        next.perKindMode = nextPerKind;
+      }
+
+      return next;
+    },
+    [],
+  );
+
+  const loadConfigFromUrl = useCallback(
+    async (url: string, overrideMermaidUrl?: string) => {
+      const cleanUrl = cleanUrlInput(url);
+      if (!cleanUrl) return;
+      setSourceLoadStatus(`Loading config from ${cleanUrl}...`);
+      setSourceLoadError(null);
+      try {
+        const raw = await fetchJson(cleanUrl);
+        const cfg = applyConfigObject(raw);
+
+        if (cfg.adapterConfig) setAdapterConfig(cfg.adapterConfig);
+        if (typeof cfg.refreshIntervalMs === "number") {
+          setRefreshInterval(cfg.refreshIntervalMs);
+        }
+        if (typeof cfg.timeRangeMinutes === "number") {
+          setTimeRange(cfg.timeRangeMinutes);
+        }
+        if (cfg.renderMode) {
+          setRenderMode(cfg.renderMode);
+        }
+        if (cfg.perKindMode) {
+          useTopologyStore.setState({ perKindMode: cfg.perKindMode });
+        }
+
+        const currentMermaidUrl = useTopologyStore.getState().mermaidUrl;
+        const effectiveMermaidUrl = cleanUrlInput(
+          overrideMermaidUrl ?? currentMermaidUrl,
+        );
+        const configMermaidUrl = cleanUrlInput(cfg.mermaidUrl ?? "");
+
+        if (effectiveMermaidUrl) {
+          await loadMermaidFromUrl(effectiveMermaidUrl);
+        } else if (configMermaidUrl) {
+          setMermaidUrl(configMermaidUrl);
+          await loadMermaidFromUrl(configMermaidUrl);
+        } else if (cfg.mermaidText) {
+          setMermaidText(cfg.mermaidText);
+        }
+
+        setSourceLoadStatus(`Loaded config from ${cleanUrl}`);
+      } catch (err) {
+        const msg = getErrorMessage(err);
+        setSourceLoadError(msg);
+        setSourceLoadStatus(null);
+      }
+    },
+    [
+      applyConfigObject,
+      loadMermaidFromUrl,
+      setAdapterConfig,
+      setMermaidText,
+      setMermaidUrl,
+      setRefreshInterval,
+      setRenderMode,
+      setTimeRange,
+    ],
+  );
+
+  // Keep query params in sync with source links.
+  useEffect(() => {
+    if (!bootstrapRanRef.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const nextMermaidUrl = cleanUrlInput(mermaidUrl);
+    const nextConfigUrl = cleanUrlInput(configUrl);
+
+    if (nextMermaidUrl) params.set("mermaid", nextMermaidUrl);
+    else params.delete("mermaid");
+
+    if (nextConfigUrl) params.set("config", nextConfigUrl);
+    else params.delete("config");
+
+    const query = params.toString();
+    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", nextUrl);
+  }, [mermaidUrl, configUrl]);
 
   // Auto-refresh loop
   useEffect(() => {
@@ -126,16 +361,54 @@ export default function App() {
     void fetchAll();
   }, [fetchAll]);
 
-  // Load sample diagram on mount
+  // Initial load from query params (config + mermaid links), fallback to sample.
   useEffect(() => {
-    setMermaidText(SAMPLE_MERMAID);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let cancelled = false;
+
+    async function loadInitial() {
+      if (bootstrapRanRef.current) return;
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const configFromQuery = cleanUrlInput(params.get("config") ?? "");
+        const mermaidFromQuery = cleanUrlInput(params.get("mermaid") ?? "");
+
+        if (configFromQuery) setConfigUrl(configFromQuery);
+        if (mermaidFromQuery) setMermaidUrl(mermaidFromQuery);
+
+        if (configFromQuery) {
+          await loadConfigFromUrl(configFromQuery, mermaidFromQuery);
+          return;
+        }
+
+        if (mermaidFromQuery) {
+          await loadMermaidFromUrl(mermaidFromQuery);
+          return;
+        }
+
+        if (!cancelled) {
+          setMermaidText(SAMPLE_MERMAID);
+        }
+      } finally {
+        if (!cancelled) {
+          bootstrapRanRef.current = true;
+        }
+      }
+    }
+
+    void loadInitial();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadConfigFromUrl, loadMermaidFromUrl, setConfigUrl, setMermaidText, setMermaidUrl]);
 
   return (
     <div className="flex h-screen flex-col bg-gray-50 font-sans text-gray-900">
       {/* Control bar */}
-      <ControlBar onRefresh={() => void fetchAll()} />
+      <ControlBar
+        onRefresh={() => void fetchAll()}
+        onLoadMermaidUrl={() => void loadMermaidFromUrl(mermaidUrl)}
+        onLoadConfigUrl={() => void loadConfigFromUrl(configUrl, mermaidUrl)}
+      />
 
       {/* Main area */}
       <div className="flex flex-1 overflow-hidden">
@@ -150,6 +423,18 @@ export default function App() {
           {parseError && (
             <div className="border-t border-red-200 bg-red-50 px-4 py-1.5 text-xs text-red-600">
               Parse error: {parseError}
+            </div>
+          )}
+
+          {/* Source load status */}
+          {sourceLoadStatus && (
+            <div className="border-t border-indigo-200 bg-indigo-50 px-4 py-1.5 text-xs text-indigo-700">
+              {sourceLoadStatus}
+            </div>
+          )}
+          {sourceLoadError && (
+            <div className="border-t border-red-200 bg-red-50 px-4 py-1.5 text-xs text-red-600">
+              Source load error: {sourceLoadError}
             </div>
           )}
 

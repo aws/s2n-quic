@@ -1,5 +1,6 @@
 import { useTopologyStore } from "../store";
 import type { MetricSeries } from "../adapters/types";
+import { MetricPlot } from "./MetricPlot";
 
 function formatValue(series?: MetricSeries): string {
   if (!series) return "—";
@@ -79,57 +80,60 @@ export function DrilldownPanel() {
           No metrics registered for this node.
         </p>
       ) : (
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-gray-50 text-gray-500 uppercase tracking-wide text-[10px]">
-              <th className="px-3 py-2 text-left font-medium">Metric</th>
-              <th className="px-3 py-2 text-left font-medium">Kind</th>
-              <th className="px-3 py-2 text-left font-medium">Unit</th>
-              <th className="px-3 py-2 text-left font-medium">Latest value</th>
-              <th className="px-3 py-2 text-left font-medium">Time</th>
-              <th className="px-3 py-2 text-left font-medium">Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            {node.metrics.map((m, i) => {
-              const series = nodeMetrics[m.key];
-              const hasError = !!series?.error;
-              return (
-                <tr
-                  key={m.key}
-                  className={`border-t border-gray-100 ${
-                    i % 2 === 0 ? "bg-white" : "bg-gray-50"
-                  }`}
-                >
-                  <td className="px-3 py-1.5 font-mono text-gray-700 whitespace-nowrap">
-                    {m.name}
-                    {m.variant && (
-                      <span className="ml-1 text-gray-400">[{m.variant}]</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-1.5 text-indigo-600">{m.kind}</td>
-                  <td className="px-3 py-1.5 text-gray-500">{m.unit ?? "—"}</td>
-                  <td
-                    className={`px-3 py-1.5 font-mono whitespace-nowrap ${
-                      hasError ? "text-red-500" : "text-gray-800"
+        <div className="px-3 py-2 space-y-2">
+          <MetricPlot node={node} metricData={nodeMetrics} />
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-gray-50 text-gray-500 uppercase tracking-wide text-[10px]">
+                <th className="px-3 py-2 text-left font-medium">Metric</th>
+                <th className="px-3 py-2 text-left font-medium">Kind</th>
+                <th className="px-3 py-2 text-left font-medium">Unit</th>
+                <th className="px-3 py-2 text-left font-medium">Latest value</th>
+                <th className="px-3 py-2 text-left font-medium">Time</th>
+                <th className="px-3 py-2 text-left font-medium">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {node.metrics.map((m, i) => {
+                const series = nodeMetrics[m.key];
+                const hasError = !!series?.error;
+                return (
+                  <tr
+                    key={m.key}
+                    className={`border-t border-gray-100 ${
+                      i % 2 === 0 ? "bg-white" : "bg-gray-50"
                     }`}
                   >
-                    {formatValue(series)}
-                  </td>
-                  <td className="px-3 py-1.5 text-gray-400 whitespace-nowrap">
-                    {formatTimestamp(series)}
-                  </td>
-                  <td
-                    className="px-3 py-1.5 text-gray-500 max-w-xs truncate"
-                    title={m.description}
-                  >
-                    {m.description}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    <td className="px-3 py-1.5 font-mono text-gray-700 whitespace-nowrap">
+                      {m.name}
+                      {m.variant && (
+                        <span className="ml-1 text-gray-400">[{m.variant}]</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5 text-indigo-600">{m.kind}</td>
+                    <td className="px-3 py-1.5 text-gray-500">{m.unit ?? "—"}</td>
+                    <td
+                      className={`px-3 py-1.5 font-mono whitespace-nowrap ${
+                        hasError ? "text-red-500" : "text-gray-800"
+                      }`}
+                    >
+                      {formatValue(series)}
+                    </td>
+                    <td className="px-3 py-1.5 text-gray-400 whitespace-nowrap">
+                      {formatTimestamp(series)}
+                    </td>
+                    <td
+                      className="px-3 py-1.5 text-gray-500 max-w-xs truncate"
+                      title={m.description}
+                    >
+                      {m.description}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
