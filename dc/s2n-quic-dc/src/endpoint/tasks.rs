@@ -375,27 +375,18 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             .with_description("ACK processor emits cancelled frames")
             .with_function("endpoint::tasks::send_worker");
 
-        let send_caches_for_ack = send_caches.clone();
-        let sender_idx_to_local_for_ack = sender_idx_to_local.clone();
         let send_counters = endpoint::counters::Send::new(&counter_registry);
-        let completed_tx = crate::counter::GaugedSender::new(completed_tx, completion_sender);
-        let cancelled_tx_for_ack =
-            crate::counter::GaugedSender::new(cancelled_tx.clone(), cancelled_sender);
-        let rx = AckProcessor::new(
+        let rx = send_ack_processor(
             ack_rx,
-            send_caches_for_ack,
-            sender_idx_to_local_for_ack,
+            send_caches.clone(),
+            sender_idx_to_local.clone(),
             total_sender_ids,
             clock.clone(),
             random,
             frame_tx,
-            completed_tx,
-            cancelled_tx_for_ack,
+            crate::counter::GaugedSender::new(completed_tx, completion_sender),
+            crate::counter::GaugedSender::new(cancelled_tx.clone(), cancelled_sender),
             send_counters,
-        );
-        let rx = Flatten::new(rx);
-        let rx = send::WheelRouter::new(
-            rx,
             crate::counter::GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
             crate::counter::GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
             crate::counter::GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
@@ -522,27 +513,16 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             crate::time::wheel::Wheel::new(pto_wheel_rx.into_list_receiver(), clock.timer());
         let rx = FlattenList::new(wheel);
         let rx = crate::counter::GaugedReceiver::new(rx, pto_wheel_receiver);
-        let clock_for_pto = clock.clone();
         let tx_pto_check = counter_registry.register("tx.pto_check");
         let tx_pto_requested = counter_registry.register("tx.pto_requested");
-        let rx = Map::new(rx, move |context: Rc<RefCell<send::Context>>| {
-            tx_pto_check.add(1);
-            let wheel_interest = {
-                let mut ctx = context.borrow_mut();
-                let requested = ctx.pto.probe_state.is_requested();
-                let interest = ctx.on_pto_timeout(&clock_for_pto);
-                if !requested && ctx.pto.probe_state.is_requested() {
-                    tx_pto_requested.add(1);
-                }
-                interest
-            };
-            (context, wheel_interest)
-        });
-        let rx = send::WheelRouter::new(
+        let rx = send_pto_timeout(
             rx,
+            clock.clone(),
             crate::counter::GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
             crate::counter::GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
             crate::counter::GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
+            tx_pto_check,
+            tx_pto_requested,
         );
         let task_counter = counter_registry
             .register_nominal_task("task.pto_wheel", format!("send.{worker_id}"))
@@ -756,6 +736,87 @@ where
         },
     );
     let rx = Flatten::new(rx);
+    send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx)
+}
+
+/// Builds the ACK-processing receiver pipeline used by the send worker.
+///
+/// This pipeline decodes incoming ACK messages, updates send context state, and routes
+/// the resulting wheel interest to tx/pto/idle schedulers.
+#[allow(clippy::too_many_arguments)]
+pub fn send_ack_processor<AckRx, Clk, Rand, C, TxW, PtoW, IdleW>(
+    ack_rx: AckRx,
+    send_caches: Vec<Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: Vec<usize>,
+    total_sender_ids: usize,
+    clock: Clk,
+    random: Rand,
+    frame_tx: frame::SubmissionSender,
+    completed_tx: C,
+    cancelled_tx: C,
+    send_counters: Arc<endpoint::counters::Send>,
+    tx_wheel_tx: TxW,
+    pto_wheel_tx: PtoW,
+    idle_wheel_tx: IdleW,
+) -> impl Receiver<()>
+where
+    AckRx: Receiver<Entry<msg::Sender>>,
+    Clk: precision::Clock + s2n_quic_core::time::Clock,
+    Rand: s2n_quic_core::random::Generator,
+    C: UnboundedSender<Entry<Frame>>,
+    TxW: UnboundedSender<Rc<RefCell<send::Context>>>,
+    PtoW: UnboundedSender<Rc<RefCell<send::Context>>>,
+    IdleW: UnboundedSender<Rc<RefCell<send::Context>>>,
+{
+    let rx = AckProcessor::new(
+        ack_rx,
+        send_caches,
+        sender_idx_to_local,
+        total_sender_ids,
+        clock,
+        random,
+        frame_tx,
+        completed_tx,
+        cancelled_tx,
+        send_counters,
+    );
+    let rx = Flatten::new(rx);
+    send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx)
+}
+
+/// Builds the send-worker PTO timeout receiver pipeline.
+///
+/// For each context emitted by the PTO wheel, updates probe state and routes the resulting
+/// wheel interest to tx/pto/idle schedulers.
+pub fn send_pto_timeout<CtxRx, Clk, TxW, PtoW, IdleW>(
+    pto_context_rx: CtxRx,
+    clock: Clk,
+    tx_wheel_tx: TxW,
+    pto_wheel_tx: PtoW,
+    idle_wheel_tx: IdleW,
+    tx_pto_check: crate::counter::Counter,
+    tx_pto_requested: crate::counter::Counter,
+) -> impl Receiver<()>
+where
+    CtxRx: Receiver<Rc<RefCell<send::Context>>>,
+    Clk: precision::Clock,
+    TxW: UnboundedSender<Rc<RefCell<send::Context>>>,
+    PtoW: UnboundedSender<Rc<RefCell<send::Context>>>,
+    IdleW: UnboundedSender<Rc<RefCell<send::Context>>>,
+{
+    let rx = Map::new(pto_context_rx, move |context: Rc<RefCell<send::Context>>| {
+        tx_pto_check.add(1);
+        let wheel_interest = {
+            let mut ctx = context.borrow_mut();
+            let requested = ctx.pto.probe_state.is_requested();
+            let interest = ctx.on_pto_timeout(&clock);
+            if !requested && ctx.pto.probe_state.is_requested() {
+                tx_pto_requested.add(1);
+            }
+            interest
+        };
+        (context, wheel_interest)
+    });
     send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx)
 }
 

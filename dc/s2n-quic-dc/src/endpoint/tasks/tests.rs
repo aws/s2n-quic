@@ -19,4 +19,5 @@ mod idle_wheel;
 mod invalidation;
 mod invalidation_validator;
 mod socket_recv;
+mod send_worker;
 mod waker_drain;
