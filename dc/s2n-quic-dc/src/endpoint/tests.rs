@@ -10,8 +10,16 @@
 pub mod deterministic;
 
 use crate::stream::endpoint::testing::sim::{Client, Server, SERVER_PORT};
+use bach::time::timeout;
 use bytes::{Bytes, BytesMut};
 use s2n_quic_core::varint::VarInt;
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 #[test]
 fn topology_snapshot_uses_dc_tester_layout() {
@@ -747,6 +755,168 @@ fn bidirectional_simultaneous_send() {
             assert_eq!(&buf[..], b"server_data");
 
             tracing::info!("bidirectional_simultaneous_send passed");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
+/// Verifies duplicate client init traffic does not create duplicate accepted streams.
+///
+/// The first client packet toward the server is duplicated at the network layer.
+/// The server should still accept exactly one stream and no second accept event
+/// should appear afterward.
+#[test]
+fn duplicated_client_init_accepts_only_once() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+        let duplicated_packets = Arc::new(AtomicUsize::new(0));
+        let duplicated_packets_monitor = duplicated_packets.clone();
+
+        {
+            let mut duplicated_first_client_packet = false;
+            bach::net::monitor::on_packet_sent(move |packet| {
+                // Test-setup assumption: the first non-duplicate packet emitted is the client's
+                // FlowInit packet, so duplicating that first original packet exercises init dedup.
+                if !packet.is_duplicate && !duplicated_first_client_packet {
+                    duplicated_first_client_packet = true;
+                    duplicated_packets_monitor.fetch_add(1, Ordering::Relaxed);
+                    return bach::net::monitor::duplicate(1).absolute().into();
+                }
+
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            let stream = timeout(Duration::from_secs(1), acceptor.recv())
+                .await
+                .expect("first stream should be accepted within timeout")
+                .expect("server should accept one stream");
+
+            let stream = stream.validate().await.expect("server validate");
+            let (mut reader, mut writer) = stream.into_split();
+
+            let mut buf = BytesMut::with_capacity(8);
+            loop {
+                let n = reader.read_into(&mut buf).await.expect("server read");
+                if n == 0 {
+                    break;
+                }
+            }
+            assert_eq!(&buf[..], b"ping");
+
+            let mut pong = Bytes::from_static(b"pong");
+            writer
+                .write_all_from_fin(&mut pong)
+                .await
+                .expect("server write");
+
+            let unexpected = timeout(Duration::from_millis(200), acceptor.recv()).await;
+            assert!(
+                unexpected.is_err(),
+                "duplicate init traffic must not create an extra accepted stream"
+            );
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (mut reader, mut writer) = stream.into_split();
+
+            let mut ping = Bytes::from_static(b"ping");
+            writer
+                .write_all_from_fin(&mut ping)
+                .await
+                .expect("client write");
+
+            let mut buf = BytesMut::with_capacity(8);
+            loop {
+                let n = reader.read_into(&mut buf).await.expect("client read");
+                if n == 0 {
+                    break;
+                }
+            }
+            assert_eq!(&buf[..], b"pong");
+
+            assert_eq!(
+                duplicated_packets.load(Ordering::Relaxed),
+                1,
+                "test setup should duplicate exactly one client packet"
+            );
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
+/// Verifies streams targeting an unregistered acceptor ID are not delivered to
+/// other registered acceptor channels.
+#[test]
+fn unregistered_acceptor_id_does_not_reach_registered_acceptor() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let registered_acceptor_id = VarInt::from_u8(1);
+        let missing_acceptor_id = VarInt::from_u8(2);
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(registered_acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            let unexpected = timeout(Duration::from_secs(1), acceptor.recv()).await;
+            assert!(
+                unexpected.is_err(),
+                "stream for unregistered acceptor id should not arrive on registered acceptor"
+            );
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let mut stream = client
+                .connect("server:0", missing_acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let mut payload = Bytes::from_static(b"ping");
+            let written = stream.write_from(&mut payload).await.expect("client write");
+            assert!(written > 0, "client write should send at least one byte");
+
+            let mut buf = BytesMut::with_capacity(1);
+            let err = timeout(
+                Duration::from_secs(1), // simulated wall-clock timeout (bach time)
+                stream.read_into(&mut buf),
+            )
+                .await
+                .expect("client read should fail within timeout")
+                .expect_err("read should fail for unregistered acceptor id");
+            assert_eq!(err.kind(), std::io::ErrorKind::ConnectionReset);
+
+            let reset_error = err
+                .get_ref()
+                .and_then(|cause| cause.downcast_ref::<crate::endpoint::error::Error>())
+                .copied()
+                .expect("reset should include endpoint error code");
+            assert_eq!(reset_error, crate::endpoint::error::Error::AcceptorNotFound);
         }
         .group("client")
         .primary()

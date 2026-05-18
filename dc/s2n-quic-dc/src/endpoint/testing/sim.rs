@@ -97,11 +97,18 @@ fn lookup_peer_data_addrs(any_addr: SocketAddr) -> Vec<SocketAddr> {
         .unwrap_or_else(|| vec![any_addr])
 }
 
-/// Well-known port that [`Server`] binds to.
+/// Well-known server identifier port used by sim endpoint discovery.
+///
+/// # ⚠️ WARNING
+///
+/// In simulation, this is a stable *lookup identifier* for the server group, not
+/// the destination port used for runtime data packets. `Client::connect` resolves
+/// the group name and then rewrites traffic to the server's advertised data
+/// addresses.
 ///
 /// 4433 is the QUIC/IETF QUIC standard port and is conventionally used for DC
-/// (datagram-capable) connections.  Using a well-known port means clients can
-/// resolve the peer address by group name alone, without an out-of-band channel:
+/// (datagram-capable) connections. Using a well-known identifier means clients
+/// can resolve the peer by group name alone, without an out-of-band channel:
 /// ```ignore
 /// client.connect("server:4433", acceptor_id).await
 /// ```

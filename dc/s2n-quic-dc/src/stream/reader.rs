@@ -369,6 +369,18 @@ impl Reader {
         self.0.reassembler.reset();
     }
 
+    /// Transitions the reader to reset state without sending a reset frame.
+    ///
+    /// This is used when the caller will emit a reset via another path and only
+    /// needs to suppress Drop-time STOP_SENDING behavior.
+    pub(crate) fn force_reset(&mut self) {
+        if self.0.status.is_terminal() {
+            return;
+        }
+        self.0.status.on_reset().ok();
+        self.0.reassembler.reset();
+    }
+
     /// Reads the next contiguous bytes into the destination buffer.
     ///
     /// The returned byte count may be smaller than `buf`'s remaining capacity.

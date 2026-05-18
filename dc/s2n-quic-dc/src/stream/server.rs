@@ -181,21 +181,30 @@ impl ChannelAcceptor {
 }
 
 impl acceptor::Acceptor<PendingValidation> for ChannelAcceptor {
-    fn handle_request(&self, stream: PendingValidation) -> AutoWake {
+    fn handle_request(
+        &self,
+        stream: PendingValidation,
+    ) -> Result<AutoWake, acceptor::Reject<PendingValidation>> {
         self.send(stream)
     }
 
-    fn handle_pending(&self, stream: PendingValidation) -> acceptor::Dispatch {
-        let waker = self.send(stream);
-        acceptor::Dispatch {
+    fn handle_pending(
+        &self,
+        stream: PendingValidation,
+    ) -> Result<acceptor::Dispatch, acceptor::Reject<PendingValidation>> {
+        let waker = self.send(stream)?;
+        Ok(acceptor::Dispatch {
             action: acceptor::PendingAction::AcceptedWithRetry,
             waker,
-        }
+        })
     }
 }
 
 impl ChannelAcceptor {
-    fn send(&self, stream: PendingValidation) -> AutoWake {
+    fn send(
+        &self,
+        stream: PendingValidation,
+    ) -> Result<AutoWake, acceptor::Reject<PendingValidation>> {
         let res = {
             let mut tx = self.tx.lock();
             tx.send(stream)
@@ -203,12 +212,15 @@ impl ChannelAcceptor {
         match res {
             Ok((Some(mut evicted), waker)) => {
                 evicted.reset(Error::ServerBusy);
-                AutoWake::new(waker)
+                Ok(AutoWake::new(waker))
             }
-            Ok((None, waker)) => AutoWake::new(waker),
-            Err(_) => {
+            Ok((None, waker)) => Ok(AutoWake::new(waker)),
+            Err(stream) => {
                 drop(self.handle.lock().unwrap().take());
-                AutoWake::new(None)
+                Err(acceptor::Reject::new(
+                    stream,
+                    crate::endpoint::error::Error::ServerBusy,
+                ))
             }
         }
     }

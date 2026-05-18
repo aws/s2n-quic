@@ -69,6 +69,18 @@ impl PendingValidation {
     pub fn reset(&mut self, error: Error) {
         self.stream.reset(error);
     }
+
+    /// Disables both halves without emitting reset frames.
+    ///
+    /// Intended for rejection paths where the caller sends the reset frame via
+    /// endpoint dispatch and only needs to suppress per-half Drop side effects.
+    /// This is safe to call before validation completes because it only updates
+    /// local stream-halves state and intentionally bypasses user-facing
+    /// validation flow.
+    #[inline]
+    pub(crate) fn disable(&mut self) {
+        self.stream.disable();
+    }
 }
 
 /// A bidirectional stream composed of a [`Reader`] and [`Writer`].
@@ -137,6 +149,15 @@ impl Stream {
     /// future I/O should stop.
     pub fn reset(&mut self, error: Error) {
         self.read.send_reset(error.as_varint());
+        self.write.force_shutdown();
+    }
+
+    /// Disables both halves without emitting reset frames.
+    ///
+    /// Intended for early rejection paths before normal stream ownership
+    /// handoff, where reset signaling is emitted by the caller.
+    pub(crate) fn disable(&mut self) {
+        self.read.force_reset();
         self.write.force_shutdown();
     }
 
