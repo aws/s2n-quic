@@ -602,9 +602,9 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         let ack_completions_tx = ack_completions_tx.clone();
         let asm_counters = asm_counters.clone();
         let context_rx = crate::counter::GaugedReceiver::new(context_rx, assembler_receiver);
-        let rx = Assembler::new(
+        let rx = send_socket_assembler(
             context_rx,
-            clock.clone(),
+            clock,
             source_sender_id,
             st.source_control_port,
             st.gso,
@@ -612,15 +612,12 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             cancelled_tx,
             ack_completions_tx,
             asm_counters,
+            st.per_socket_send_rate,
+            st.socket,
+            tx_wheel_tx,
+            pto_wheel_tx,
+            idle_wheel_tx,
         );
-        let rx = send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx);
-        let rx = Flatten::new(rx);
-        let rx = Paced::new(rx, clock, st.per_socket_send_rate);
-        let rx = SocketSender::new(rx, st.socket);
-        let rx = InspectErr::new(rx, |(err, _segments)| {
-            tracing::warn!(%err, "socket send error");
-        });
-        let rx = Map::new(rx, |_segments| {});
         let variant = format!("send.{sender_idx}");
         let task_counter = counter_registry
             .register_nominal_task("task.assembler", &variant)
@@ -900,6 +897,70 @@ async fn wheel_drain<A, T, F, const GRANULARITY_US: u64>(
     );
     let rx = Map::new(rx, |item| on_expire(item));
     rx.drain_budgeted_metered(Some(budget), task_counter).await;
+}
+
+/// Builds the per-socket assembler + send pipeline for one send socket.
+///
+/// For each `Context` emitted from the tx wheel, this pipeline:
+///
+/// 1. Assembles pending frames into encrypted UDP datagrams via [`Assembler`].
+/// 2. Routes any post-assembly wheel interest (tx reschedule, PTO arm, idle update)
+///    back to the appropriate wheel senders via [`send::WheelRouter`].
+/// 3. Paces the outgoing segment stream with [`Paced`].
+/// 4. Sends each [`Segments`] batch over the socket via [`SocketSender`].
+/// 5. Logs socket send errors without terminating the pipeline.
+///
+/// Returns a `Receiver<()>` — callers must drain it (typically via
+/// `drain_budgeted_metered`) to make progress.
+///
+/// [`Assembler`]: crate::endpoint::combinator::Assembler
+/// [`send::WheelRouter`]: crate::endpoint::send::WheelRouter
+/// [`Segments`]: crate::socket::pool::descriptor::Segments
+pub fn send_socket_assembler<ContextRx, Clk, Socket, C, A, TxW, PtoW, IdleW>(
+    context_rx: ContextRx,
+    clock: Clk,
+    source_sender_id: VarInt,
+    source_control_port: u16,
+    gso: s2n_quic_platform::features::Gso,
+    pool: crate::socket::pool::Pool,
+    cancelled_tx: C,
+    ack_completions_tx: A,
+    asm_counters: AssemblerCounters,
+    per_socket_send_rate: Rate,
+    socket: Socket,
+    tx_wheel_tx: TxW,
+    pto_wheel_tx: PtoW,
+    idle_wheel_tx: IdleW,
+) -> impl Receiver<()>
+where
+    ContextRx: Receiver<Rc<RefCell<send::Context>>>,
+    Clk: precision::Clock + Clone,
+    Socket: crate::socket::send::Socket,
+    C: UnboundedSender<Queue<Frame>>,
+    A: UnboundedSender<Queue<msg::Sender>>,
+    TxW: UnboundedSender<Rc<RefCell<send::Context>>>,
+    PtoW: UnboundedSender<Rc<RefCell<send::Context>>>,
+    IdleW: UnboundedSender<Rc<RefCell<send::Context>>>,
+{
+    let rx = Assembler::new(
+        context_rx,
+        clock.clone(),
+        source_sender_id,
+        source_control_port,
+        gso,
+        pool,
+        cancelled_tx,
+        ack_completions_tx,
+        asm_counters,
+    );
+    let rx = send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx);
+    let rx = Flatten::new(rx);
+    let rx = Paced::new(rx, clock, per_socket_send_rate);
+    let rx = SocketSender::new(rx, socket);
+    let rx = InspectErr::new(rx, |(err, _segments)| {
+        tracing::warn!(%err, "socket send error");
+    });
+    Map::new(rx, |_segments| {})
 }
 
 pub async fn send_idle_wheel_drain<Clk>(
