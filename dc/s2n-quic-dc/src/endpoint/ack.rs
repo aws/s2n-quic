@@ -235,6 +235,17 @@ pub(crate) fn process_ack<Clk, Rand>(
         context.pto_wheel.target_time = None;
     }
 
+    // If the tx wheel entry is now stale (scheduling reason removed by the ACK), clear
+    // target_time so the wheel treats it as expired on next tick rather than firing the
+    // invariant. The assembler handles stale pops gracefully (produces zero segments).
+    if context.tx_wheel.is_scheduled()
+        && !context.has_pending_acks()
+        && !context.pto.probe_state.is_requested()
+        && !(context.has_pending_data() && context.can_send_pending_frames())
+    {
+        context.tx_wheel.target_time = None;
+    }
+
     // Publish the load score after ALL CCA mutations have run:
     // on_packet_ack, on_explicit_congestion (ECN), and on_packet_lost (loss detection).
     // This ensures pick-two sees the fully-updated pacing and congestion state.

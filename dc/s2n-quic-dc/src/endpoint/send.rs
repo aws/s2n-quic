@@ -895,18 +895,12 @@ impl Context {
                 "has_pending predicate drifted from queue contents"
             );
 
-            if self.tx_wheel.is_scheduled() {
+            if self.tx_wheel.is_scheduled() && self.tx_wheel.target_time.is_some() {
                 assert!(
                     self.has_pending_acks()
                         || self.pto.probe_state.is_requested()
                         || (self.has_pending_data() && self.can_send_pending_frames()),
                     "tx wheel scheduled without any sendable work"
-                );
-                assert!(
-                    self.tx_wheel.target_time.is_some()
-                        || self.pto.probe_state.is_requested()
-                        || self.cca.earliest_departure_time().is_none(),
-                    "tx wheel has no target despite probe not requested and EDT present"
                 );
             }
 

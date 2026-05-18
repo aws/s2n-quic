@@ -67,4 +67,5 @@ mod invalidation_validator;
 mod send_socket_assembler;
 mod send_worker;
 mod socket_recv;
+mod stale_tx_wheel;
 mod waker_drain;
