@@ -77,21 +77,48 @@ pub async fn run(
         let phase_timers = workload.paxos.as_ref().map(|_| {
             let prefix = format!("paxos.{}", workload.name);
             let make_phase = |name: &str| PhaseTimers {
-                phase: endpoint.counters.register_timer(format!("{prefix}.{name}")).unsampled(),
-                request: endpoint.counters.register_timer(format!("{prefix}.{name}.request")).unsampled(),
-                laggard: endpoint.counters.register_timer(format!("{prefix}.{name}.laggard")).unsampled(),
-                request_errors: endpoint.counters.register(format!("{prefix}.{name}.request_errors")),
+                phase: endpoint
+                    .counters
+                    .register_timer(format!("{prefix}.{name}"))
+                    .unsampled(),
+                request: endpoint
+                    .counters
+                    .register_timer(format!("{prefix}.{name}.request"))
+                    .unsampled(),
+                laggard: endpoint
+                    .counters
+                    .register_timer(format!("{prefix}.{name}.laggard"))
+                    .unsampled(),
+                request_errors: endpoint
+                    .counters
+                    .register(format!("{prefix}.{name}.request_errors")),
             };
             PaxosTimers {
                 prepare: make_phase("prepare"),
                 accept: make_phase("accept"),
                 learn: make_phase("learn"),
-                round: endpoint.counters.register_timer(format!("{prefix}.round")).unsampled(),
-                connect: endpoint.counters.register_timer(format!("{prefix}.connect")).unsampled(),
-                send: endpoint.counters.register_timer(format!("{prefix}.send")).unsampled(),
-                recv: endpoint.counters.register_timer(format!("{prefix}.recv")).unsampled(),
-                rounds_completed: endpoint.counters.register(format!("{prefix}.rounds_completed")),
-                rounds_failed: endpoint.counters.register(format!("{prefix}.rounds_failed")),
+                round: endpoint
+                    .counters
+                    .register_timer(format!("{prefix}.round"))
+                    .unsampled(),
+                connect: endpoint
+                    .counters
+                    .register_timer(format!("{prefix}.connect"))
+                    .unsampled(),
+                send: endpoint
+                    .counters
+                    .register_timer(format!("{prefix}.send"))
+                    .unsampled(),
+                recv: endpoint
+                    .counters
+                    .register_timer(format!("{prefix}.recv"))
+                    .unsampled(),
+                rounds_completed: endpoint
+                    .counters
+                    .register(format!("{prefix}.rounds_completed")),
+                rounds_failed: endpoint
+                    .counters
+                    .register(format!("{prefix}.rounds_failed")),
             }
         });
 
@@ -101,8 +128,15 @@ pub async fn run(
             let stats = stats.clone();
             let phase_timers = phase_timers.clone();
             let handle = tokio::spawn(async move {
-                run_worker(&mut client, server_addr, workload, worker_id, stats, phase_timers)
-                    .await
+                run_worker(
+                    &mut client,
+                    server_addr,
+                    workload,
+                    worker_id,
+                    stats,
+                    phase_timers,
+                )
+                .await
             });
             handles.push(handle);
         }
@@ -220,18 +254,45 @@ async fn execute_paxos_round(
 
     let round_start = Instant::now();
 
-    let (sent, received) =
-        execute_phase(client, server_addr, &paxos.prepare, paxos.acceptors, quorum, rng, &timers.prepare, timers).await?;
+    let (sent, received) = execute_phase(
+        client,
+        server_addr,
+        &paxos.prepare,
+        paxos.acceptors,
+        quorum,
+        rng,
+        &timers.prepare,
+        timers,
+    )
+    .await?;
     total_sent += sent;
     total_received += received;
 
-    let (sent, received) =
-        execute_phase(client, server_addr, &paxos.accept, paxos.acceptors, quorum, rng, &timers.accept, timers).await?;
+    let (sent, received) = execute_phase(
+        client,
+        server_addr,
+        &paxos.accept,
+        paxos.acceptors,
+        quorum,
+        rng,
+        &timers.accept,
+        timers,
+    )
+    .await?;
     total_sent += sent;
     total_received += received;
 
-    let (sent, received) =
-        execute_phase(client, server_addr, &paxos.learn, paxos.acceptors, quorum, rng, &timers.learn, timers).await?;
+    let (sent, received) = execute_phase(
+        client,
+        server_addr,
+        &paxos.learn,
+        paxos.acceptors,
+        quorum,
+        rng,
+        &timers.learn,
+        timers,
+    )
+    .await?;
     total_sent += sent;
     total_received += received;
 
@@ -251,7 +312,12 @@ async fn execute_phase(
     paxos_timers: &PaxosTimers,
 ) -> io::Result<(u64, u64)> {
     let sizes: Vec<(u64, u64)> = (0..acceptors)
-        .map(|_| (phase.request_size.sample(rng), phase.response_size.sample(rng)))
+        .map(|_| {
+            (
+                phase.request_size.sample(rng),
+                phase.response_size.sample(rng),
+            )
+        })
         .collect();
 
     let phase_start = Instant::now();
