@@ -112,3 +112,39 @@ name = "xlarge-response"
 workers = 1
 request_size = 1024
 response_size = { min = 134217728, max = 4294967296 }
+
+# --- paxos: multi-phase consensus workload ---
+# Each round runs PREPARE → ACCEPT → LEARN sequentially.
+# Within each phase, messages fan out in parallel to all acceptors.
+
+[[client.workloads]]
+name = "paxos-3"
+workers = 50
+paxos.acceptors = 3
+paxos.prepare = { request_size = 1024, response_size = 100 }
+paxos.accept = { request_size = 102400, response_size = 100 }
+paxos.learn = { request_size = 100, response_size = 100 }
+
+[[client.workloads]]
+name = "paxos-5"
+workers = 50
+paxos.acceptors = 5
+paxos.prepare = { request_size = 1024, response_size = 1024 }
+paxos.accept = { request_size = 102400, response_size = 1024 }
+paxos.learn = { request_size = 100, response_size = 100 }
+
+[[client.workloads]]
+name = "paxos-3-small"
+workers = 50
+paxos.acceptors = 3
+paxos.prepare = { request_size = 1024, response_size = 100 }
+paxos.accept = { request_size = 1024, response_size = 100 }
+paxos.learn = { request_size = 100, response_size = 100 }
+
+[[client.workloads]]
+name = "paxos-5-variable"
+workers = 20
+paxos.acceptors = 5
+paxos.prepare = { request_size = { min = 512, max = 2048 }, response_size = { min = 512, max = 2048 } }
+paxos.accept = { request_size = { min = 50000, max = 150000 }, response_size = { min = 512, max = 2048 } }
+paxos.learn = { request_size = { min = 64, max = 200 }, response_size = { min = 64, max = 200 } }

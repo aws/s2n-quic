@@ -228,6 +228,12 @@ impl<'a> ParsedMetricsLine<'a> {
                 }
                 MetricEntry::Histogram(m) => {
                     let (count, p50, p99, max) = m.histogram.summarize();
+                    let buckets: Vec<_> = m
+                        .histogram
+                        .buckets
+                        .iter()
+                        .map(|b| json!([b.value, b.count]))
+                        .collect();
                     rows.push(json!({
                         "metric": m.name,
                         "type": "histogram",
@@ -236,6 +242,7 @@ impl<'a> ParsedMetricsLine<'a> {
                         "p50": p50,
                         "p99": p99,
                         "max": max,
+                        "buckets": buckets,
                     }));
                 }
                 MetricEntry::Scalar(m) => {
@@ -258,6 +265,12 @@ impl<'a> ParsedMetricsLine<'a> {
                 MetricEntry::VariantHistograms(m) => {
                     for v in &m.variants {
                         let (count, p50, p99, max) = v.histogram.summarize();
+                        let buckets: Vec<_> = v
+                            .histogram
+                            .buckets
+                            .iter()
+                            .map(|b| json!([b.value, b.count]))
+                            .collect();
                         rows.push(json!({
                             "metric": m.name,
                             "type": "histogram",
@@ -267,6 +280,7 @@ impl<'a> ParsedMetricsLine<'a> {
                             "p50": p50,
                             "p99": p99,
                             "max": max,
+                            "buckets": buckets,
                         }));
                     }
                 }

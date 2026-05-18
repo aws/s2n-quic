@@ -131,16 +131,8 @@ pub fn frame_dispatch<S, Clk>(
 
     {
         // Task 1: fixed-cost priority routing.
-        let priority_list_txs: [_; Priority::LEVELS] = core::array::from_fn(|i| {
-            let sender = q_router_to_batcher[i]
-                .sender("task.priority_router")
-                .with_description("Priority router emits per-lane frame queues")
-                .with_function("endpoint::tasks::frame_dispatch");
-            crate::counter::GaugedSender::new(
-                priority_txs_raw[i].clone().into_list_sender(),
-                sender,
-            )
-        });
+        let priority_list_txs: [_; Priority::LEVELS] =
+            core::array::from_fn(|i| priority_txs_raw[i].clone().into_list_sender());
 
         let rx = FrameReceiver {
             frame_rx,

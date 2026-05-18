@@ -229,17 +229,58 @@ pub struct WorkloadConfig {
     #[serde(default = "WorkloadConfig::default_workers")]
     pub workers: usize,
 
-    /// Size of the request body in bytes (fixed or random range)
+    /// Size of the request body in bytes (used for simple workloads)
     #[serde(default)]
     pub request_size: SizeSpec,
 
-    /// Size of the response body in bytes (fixed or random range)
+    /// Size of the response body in bytes (used for simple workloads)
     #[serde(default)]
     pub response_size: SizeSpec,
 
-    /// Delay between requests in milliseconds (0 means continuous)
+    /// Delay between requests/rounds in milliseconds (0 means continuous)
     #[serde(default)]
     pub request_delay_ms: u64,
+
+    /// If set, run a Paxos-like multi-phase workload instead of simple request-response
+    #[serde(default)]
+    pub paxos: Option<PaxosConfig>,
+}
+
+/// Configuration for the Paxos-like multi-phase workload
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PaxosConfig {
+    /// Number of acceptors (fan-out count per phase)
+    #[serde(default = "PaxosConfig::default_acceptors")]
+    pub acceptors: usize,
+
+    /// PREPARE phase configuration
+    pub prepare: PaxosPhaseConfig,
+
+    /// ACCEPT phase configuration
+    pub accept: PaxosPhaseConfig,
+
+    /// LEARN phase configuration
+    pub learn: PaxosPhaseConfig,
+}
+
+impl PaxosConfig {
+    fn default_acceptors() -> usize {
+        5
+    }
+}
+
+/// Configuration for a single phase of the Paxos workload
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PaxosPhaseConfig {
+    /// Size of the request body sent to each acceptor
+    #[serde(default)]
+    pub request_size: SizeSpec,
+
+    /// Size of the response body from each acceptor
+    #[serde(default)]
+    pub response_size: SizeSpec,
 }
 
 impl WorkloadConfig {
@@ -260,6 +301,7 @@ impl Default for WorkloadConfig {
             request_size: SizeSpec::default(),
             response_size: SizeSpec::default(),
             request_delay_ms: 0,
+            paxos: None,
         }
     }
 }
