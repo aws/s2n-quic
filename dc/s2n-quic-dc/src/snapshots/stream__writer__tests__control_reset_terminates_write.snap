@@ -4,5 +4,5 @@ expression: logs
 ---
 0:00:00.000000000 [main] DEBUG grow epoch=8
 0:00:00.000000000 [main] DEBUG poll_remote_budget received messages stream_id=42 status=Init msg_count=1
-0:00:00.000000000 [main] DEBUG event=on_shutdown prev=Init next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs:720:41
+0:00:00.000000000 [main] DEBUG event=on_shutdown prev=Init next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs:837:41
 0:00:00.000000000 [main] DEBUG Writer dropping stream_id=42 status=Shutdown next_offset=0 inflight_bytes=0 remote_max_data=0

@@ -424,6 +424,33 @@ fn dispatch_decoded_frame(
                 waker_sink,
             );
         }
+        Header::FlowInitReset {
+            attempt_id,
+            stream_id,
+            error_code,
+        } => {
+            handle_flow_init_reset(
+                peer,
+                credentials,
+                attempt_id,
+                stream_id,
+                error_code,
+                queue_dispatcher,
+                counters,
+                waker_sink,
+            );
+        }
+        Header::FlowInitFin { stream_id, offset } => {
+            handle_flow_init_fin(
+                peer,
+                credentials,
+                stream_id,
+                offset,
+                queue_dispatcher,
+                counters,
+                waker_sink,
+            );
+        }
         Header::Ack {
             dest_sender_id,
             ack_delay: ack_delay_micros,
@@ -1332,5 +1359,173 @@ fn handle_flow_reset(
                 "FlowReset(Control) dispatched"
             );
         }
+    }
+}
+
+// ── FlowInitReset ─────────────────────────────────────────────────────────
+
+/// Handle a FlowInitReset frame from a client that doesn't yet know the server's queue ID.
+///
+/// The client is in `FlowInitSent` state — it transmitted a FlowInit but has not yet
+/// received MAX_DATA (and thus doesn't know the server's queue ID). Rather than
+/// silently dropping the reset, it sends a FlowInitReset containing only the stream_id.
+///
+/// We look up the stream_id in the per-peer `flows` tracker to find the local queue_id,
+/// then dispatch a Reset to both stream and control queues. If the stream_id is not
+/// found (FlowInit not yet registered or already closed), we mark the attempt_id as
+/// finalized in the dedup window so that any later FlowInit with this attempt_id is
+/// silently rejected — the server will never create a stream that the client has
+/// already aborted. We never send a reset back in response.
+fn handle_flow_init_reset(
+    peer: &mut recv::Context,
+    credentials: &Credentials,
+    attempt_id: VarInt,
+    stream_id: VarInt,
+    error_code: VarInt,
+    queue_dispatcher: &mut msg::queue::Dispatcher,
+    counters: &counters::Dispatch,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
+) {
+    let Some(local_queue_id) = peer.flows.lookup(stream_id) else {
+        if attempt_id == VarInt::MAX {
+            tracing::debug!(
+                stream_id = stream_id.as_u64(),
+                "FlowInitReset for unknown stream_id has sentinel attempt_id - ignoring dedup update"
+            );
+            counters.rx_init_reset_unknown.add(1);
+            return;
+        }
+
+        // Stream not found: mark attempt_id as seen so a later FlowInit with
+        // the same attempt_id is rejected.
+        match peer.attempt_dedup.check_attempt_id(attempt_id) {
+            Ok(()) => {
+                tracing::debug!(
+                    attempt_id = attempt_id.as_u64(),
+                    stream_id = stream_id.as_u64(),
+                    "FlowInitReset for unknown stream_id - attempt_id marked as seen"
+                );
+            }
+            Err(AttemptDedupError::Duplicate) => {
+                tracing::debug!(
+                    attempt_id = attempt_id.as_u64(),
+                    stream_id = stream_id.as_u64(),
+                    "FlowInitReset for unknown stream_id - attempt_id already marked (duplicate reset)"
+                );
+            }
+            Err(AttemptDedupError::TooOld) => {
+                tracing::debug!(
+                    attempt_id = attempt_id.as_u64(),
+                    stream_id = stream_id.as_u64(),
+                    "FlowInitReset for unknown stream_id - attempt_id outside dedup window"
+                );
+            }
+        }
+        counters.rx_init_reset_unknown.add(1);
+        return;
+    };
+
+    let request = flow::Request {
+        credential_id: credentials.id,
+        stream_id,
+    };
+
+    let stream_entry = msg::Stream::Reset { error_code }.into();
+    let control_entry = msg::Control::Reset { error_code }.into();
+    let (waker_a, waker_b) = queue_dispatcher.send_both(
+        local_queue_id,
+        None,
+        &request,
+        stream_entry,
+        control_entry,
+    );
+    let _ = waker_sink.send(waker_a);
+    let _ = waker_sink.send(waker_b);
+
+    tracing::debug!(
+        attempt_id = attempt_id.as_u64(),
+        stream_id = stream_id.as_u64(),
+        queue_id = local_queue_id.as_u64(),
+        error_code = error_code.as_u64(),
+        "FlowInitReset dispatched"
+    );
+}
+
+// ── FlowInitFin ───────────────────────────────────────────────────────────
+
+/// Handle a FlowInitFin frame: graceful FIN from a client that doesn't yet know
+/// the server's queue ID.
+///
+/// The client is in `FlowInitSent` state — it transmitted a FlowInit (with early
+/// data, `is_fin=false`) but has not yet received MAX_DATA. Rather than leaving the
+/// server reader blocked indefinitely, the client sends FlowInitFin with the total
+/// byte offset it has written so the server can deliver a proper EOF to the reader.
+///
+/// We look up the stream_id in the per-peer `flows` tracker, then dispatch a
+/// zero-payload FIN data chunk at `offset` to the stream queue.
+///
+/// If the stream_id is not found (FlowInit not yet received or already closed), we
+/// currently drop the signal and count it in `rx_init_fin_unknown`.
+///
+/// TODO: replace this with a bounded/robust mechanism for handling pre-establishment
+/// FIN reordering without unbounded per-peer state growth.
+fn handle_flow_init_fin(
+    peer: &mut recv::Context,
+    credentials: &Credentials,
+    stream_id: VarInt,
+    offset: VarInt,
+    queue_dispatcher: &mut msg::queue::Dispatcher,
+    counters: &counters::Dispatch,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
+) {
+    let Some(local_queue_id) = peer.flows.lookup(stream_id) else {
+        counters.rx_init_fin_unknown.add(1);
+        tracing::debug!(
+            stream_id = stream_id.as_u64(),
+            offset = offset.as_u64(),
+            "FlowInitFin for unknown stream_id - dropping"
+        );
+        return;
+    };
+
+    dispatch_flow_init_fin(
+        credentials,
+        local_queue_id,
+        stream_id,
+        offset,
+        queue_dispatcher,
+        waker_sink,
+    );
+
+    tracing::debug!(
+        stream_id = stream_id.as_u64(),
+        queue_id = local_queue_id.as_u64(),
+        offset = offset.as_u64(),
+        "FlowInitFin dispatched"
+    );
+}
+
+/// Dispatch a zero-payload FIN data chunk to the stream queue.
+fn dispatch_flow_init_fin(
+    credentials: &Credentials,
+    local_queue_id: VarInt,
+    stream_id: VarInt,
+    offset: VarInt,
+    queue_dispatcher: &mut msg::queue::Dispatcher,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
+) {
+    let request = flow::Request {
+        credential_id: credentials.id,
+        stream_id,
+    };
+
+    let stream_entry = msg::Stream::Data {
+        offset,
+        fin: true,
+        payload: BytesMut::new(),
+    }
+    .into();
+    if let Ok(waker) = queue_dispatcher.send_stream(local_queue_id, None, &request, stream_entry) {
+        let _ = waker_sink.send(waker);
     }
 }

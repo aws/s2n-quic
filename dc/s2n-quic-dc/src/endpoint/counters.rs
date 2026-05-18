@@ -55,6 +55,10 @@ pub(crate) struct Dispatch {
     pub rx_reset_both: Counter,
     pub rx_reset_stream: Counter,
     pub rx_reset_control: Counter,
+    pub rx_init_reset: Counter,
+    pub rx_init_reset_unknown: Counter,
+    pub rx_init_fin: Counter,
+    pub rx_init_fin_unknown: Counter,
 
     pub rx_res_validate: Counter,
     pub rx_res_init_validate: Counter,
@@ -143,6 +147,10 @@ impl Dispatch {
             rx_reset_both: counters.register("rx.reset.both"),
             rx_reset_stream: counters.register("rx.reset.stream"),
             rx_reset_control: counters.register("rx.reset.control"),
+            rx_init_reset: counters.register("rx.init_reset"),
+            rx_init_reset_unknown: counters.register("!rx.init_reset.unknown"),
+            rx_init_fin: counters.register("rx.init_fin"),
+            rx_init_fin_unknown: counters.register("!rx.init_fin.unknown"),
 
             rx_res_validate: counters.register("rx.res.validate"),
             rx_res_init_validate: counters.register("rx.res.init_validate"),
@@ -218,6 +226,8 @@ impl Dispatch {
             Header::FlowControl { .. } => self.rx_flow_control.add(1),
             Header::FlowMaxData { .. } => self.rx_flow_control.add(1),
             Header::FlowReset { .. } => self.rx_reset.add(1),
+            Header::FlowInitReset { .. } => self.rx_init_reset.add(1),
+            Header::FlowInitFin { .. } => self.rx_init_fin.add(1),
             Header::Ack { .. } => self.rx_pkt_control.add(1),
         };
     }

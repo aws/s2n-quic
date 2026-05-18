@@ -15,15 +15,18 @@
 use crate::{flow::queue::AutoWake, intrusive};
 use core::{
     mem::ManuallyDrop,
-    sync::atomic::{AtomicU8, Ordering},
+    sync::atomic::{AtomicU8, AtomicU64, Ordering},
     task::Poll,
 };
 use parking_lot::Mutex;
+use s2n_quic_core::varint::VarInt;
 use std::sync::Arc;
 
 const SHOULD_TRANSMIT: u8 = 0b01;
 const RECEIVER_ALIVE: u8 = 0b10;
 const INITIAL_STATE: u8 = SHOULD_TRANSMIT | RECEIVER_ALIVE;
+/// Sentinel meaning "not yet assigned"
+const UNSET_SENDER_IDX: u64 = u64::MAX;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SubscriptionMode {
@@ -43,6 +46,16 @@ struct Shared<T> {
     /// - bit 0: should_transmit
     /// - bit 1: receiver_alive
     flags: AtomicU8,
+    /// Index of the sender socket that transmitted the first FlowInit frame for this
+    /// completion channel.  Stamped by the assembler when it picks up the FlowInit frame.
+    /// `UNSET_SENDER_IDX` means the FlowInit has not yet been transmitted by any sender.
+    init_sender_idx: AtomicU64,
+    /// The `attempt_id` assigned to the FlowInit frame when it was first transmitted.
+    /// Stamped alongside `init_sender_idx` by the assembler.  The writer includes this
+    /// value in subsequent FlowInitReset frames so the server can mark the attempt as
+    /// finalized in its dedup window and reject any late-arriving FlowInit duplicate.
+    /// `UNSET_SENDER_IDX` means the FlowInit has not yet been transmitted.
+    init_attempt_id: AtomicU64,
     inner: Mutex<Inner<T>>,
 }
 
@@ -54,6 +67,8 @@ pub fn new_with_mode<T>(mode: SubscriptionMode) -> Receiver<T> {
     let shared = Arc::new(Shared {
         mode,
         flags: AtomicU8::new(INITIAL_STATE),
+        init_sender_idx: AtomicU64::new(UNSET_SENDER_IDX),
+        init_attempt_id: AtomicU64::new(UNSET_SENDER_IDX),
         inner: Mutex::new(Inner {
             queue: intrusive::Queue::new(),
             recv_waker: None,
@@ -124,6 +139,55 @@ impl<T> Sender<T> {
     #[inline]
     pub fn subscription_mode(&self) -> SubscriptionMode {
         self.shared.mode
+    }
+
+    /// Record which sender-socket index transmitted the FlowInit frame for this channel.
+    ///
+    /// Called by the assembler the first time it picks up a FlowInit frame. The writer
+    /// reads this back via [`Receiver::init_sender_idx`] to route FlowInitReset and
+    /// FlowInitFin through the same sender socket.
+    #[inline]
+    pub fn set_init_sender_idx(&self, idx: usize) {
+        // Only stamp on the first transmission (compare-exchange from UNSET).
+        let _ = self.shared.init_sender_idx.compare_exchange(
+            UNSET_SENDER_IDX,
+            idx as u64,
+            Ordering::Release,
+            Ordering::Relaxed,
+        );
+    }
+
+    /// Returns the sender-socket index stamped for the FlowInit, if any.
+    #[inline]
+    pub fn init_sender_idx(&self) -> Option<usize> {
+        match self.shared.init_sender_idx.load(Ordering::Acquire) {
+            UNSET_SENDER_IDX => None,
+            idx => Some(idx as usize),
+        }
+    }
+
+    /// Record the `attempt_id` assigned to the FlowInit frame by the assembler.
+    ///
+    /// Stamped alongside [`set_init_sender_idx`].  The writer includes this value in
+    /// FlowInitReset frames so the server can mark the attempt as finalized in its
+    /// dedup window.
+    #[inline]
+    pub fn set_init_attempt_id(&self, id: VarInt) {
+        let _ = self.shared.init_attempt_id.compare_exchange(
+            UNSET_SENDER_IDX,
+            id.as_u64(),
+            Ordering::Release,
+            Ordering::Relaxed,
+        );
+    }
+
+    /// Returns the `attempt_id` stamped for the FlowInit, if any.
+    #[inline]
+    pub fn init_attempt_id(&self) -> Option<VarInt> {
+        match self.shared.init_attempt_id.load(Ordering::Acquire) {
+            UNSET_SENDER_IDX => None,
+            id => VarInt::new(id).ok(),
+        }
     }
 
     /// Send a completion notification, returning the receiver waker rather than invoking it.
@@ -228,6 +292,28 @@ impl<T> Receiver<T> {
     pub fn sender(&self) -> Sender<T> {
         Sender {
             shared: ManuallyDrop::new(Arc::clone(&self.shared)),
+        }
+    }
+
+    /// Returns the sender-socket index that transmitted the FlowInit frame, if known.
+    ///
+    /// Returns `None` if the FlowInit has not yet been picked up by any sender socket.
+    #[inline]
+    pub fn init_sender_idx(&self) -> Option<usize> {
+        match self.shared.init_sender_idx.load(Ordering::Acquire) {
+            UNSET_SENDER_IDX => None,
+            idx => Some(idx as usize),
+        }
+    }
+
+    /// Returns the `attempt_id` assigned to the FlowInit by the assembler, if known.
+    ///
+    /// Returns `None` if the FlowInit has not yet been transmitted.
+    #[inline]
+    pub fn init_attempt_id(&self) -> Option<VarInt> {
+        match self.shared.init_attempt_id.load(Ordering::Acquire) {
+            UNSET_SENDER_IDX => None,
+            id => VarInt::new(id).ok(),
         }
     }
 

@@ -181,6 +181,16 @@ impl Tracker {
         }
     }
 
+    /// Look up the queue_id associated with a stream_id, if one exists.
+    ///
+    /// Returns `None` if no flow has been registered for this stream_id, or if
+    /// the entry was already dropped.
+    #[inline]
+    pub fn lookup(&self, stream_id: VarInt) -> Option<VarInt> {
+        self.drain_drops();
+        self.map.borrow().get(&stream_id).copied()
+    }
+
     #[inline]
     pub fn try_register<Q>(
         &self,

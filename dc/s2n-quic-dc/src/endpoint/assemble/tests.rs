@@ -469,6 +469,7 @@ fn encode_decode_round_trip() {
         &mut buf,
         443,                // source_control_port
         VarInt::from_u8(7), // source_sender_id
+        0,                  // sender_idx
         context.next_packet_number,
         &context.sealer,
         &context.credentials,
@@ -753,6 +754,7 @@ fn encode_decode_fuzz_round_trip() {
                 &mut buf,
                 input.source_control_port,
                 input.source_sender_id,
+                0, // sender_idx
                 context.next_packet_number,
                 &context.sealer,
                 &context.credentials,

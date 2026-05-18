@@ -278,6 +278,7 @@ where
                     &mut payload[offset..],
                     source_control_port,
                     source_sender_id,
+                    context.sender_idx,
                     packet_number,
                     &context.sealer,
                     &context.credentials,
@@ -594,6 +595,7 @@ fn encode_segment<S: seal::Application>(
     buf: &mut [u8],
     source_control_port: u16,
     source_sender_id: VarInt,
+    sender_idx: usize,
     packet_number: VarInt,
     sealer: &S,
     credentials: &Credentials,
@@ -605,8 +607,10 @@ fn encode_segment<S: seal::Application>(
 
     // Build the application header: per-frame metadata entries.
     // This also stamps assigned attempt_ids back into FlowInit frame headers so
-    // PTO retransmissions reuse the same attempt_id.
-    let total_payload_len = encode_frame_metadata(frames, flow_attempt_id, header_buf);
+    // PTO retransmissions reuse the same attempt_id, and records the sender index
+    // on the completion channel so the writer can route FlowInitReset/FlowInitFin
+    // through the same socket.
+    let total_payload_len = encode_frame_metadata(frames, flow_attempt_id, sender_idx, header_buf);
 
     let header_len = VarInt::try_from(header_buf.len() as u64).unwrap_or(VarInt::ZERO);
     let payload_len_varint = VarInt::try_from(total_payload_len as u64).unwrap_or(VarInt::ZERO);
@@ -633,6 +637,7 @@ fn encode_segment<S: seal::Application>(
 fn encode_frame_metadata(
     frames: &mut Queue<Frame>,
     flow_attempt_id: &mut VarInt,
+    sender_idx: usize,
     header_buf: &mut Vec<u8>,
 ) -> usize {
     header_buf.clear();
@@ -640,6 +645,7 @@ fn encode_frame_metadata(
 
     for frame in frames.iter_mut() {
         stamp_attempt_id(&mut frame.header, flow_attempt_id);
+        stamp_init_sender_idx(frame, sender_idx);
         push_frame_metadata(header_buf, &frame.header, frame.payload_len());
 
         total_payload_len += frame.payload_len();
@@ -694,6 +700,20 @@ fn stamp_attempt_id(header: &mut frame::Header, flow_attempt_id: &mut VarInt) {
         if *attempt_id == VarInt::MAX {
             *attempt_id = *flow_attempt_id;
             *flow_attempt_id += 1;
+        }
+    }
+}
+
+/// Stamp `init_sender_idx` and `init_attempt_id` on the completion channel of a FlowInit frame.
+///
+/// Called by the assembler the first time it processes a FlowInit frame so that
+/// the writer can later route FlowInitReset/FlowInitFin through the same socket, and
+/// include the correct attempt_id in FlowInitReset frames for server-side dedup.
+fn stamp_init_sender_idx(frame: &Frame, sender_idx: usize) {
+    if let frame::Header::FlowInit { attempt_id, .. } = &frame.header {
+        if let Some(completion) = &frame.completion {
+            completion.set_init_sender_idx(sender_idx);
+            completion.set_init_attempt_id(*attempt_id);
         }
     }
 }

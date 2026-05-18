@@ -394,6 +394,37 @@ pub enum Header {
         reset_target: ResetTarget,
         error_code: VarInt,
     },
+    /// Reset a flow before flow establishment (client doesn't know server's queue ID yet).
+    ///
+    /// Sent when the client needs to reset a stream while in the FlowInitSent state —
+    /// i.e., the FlowInit was transmitted but no MAX_DATA (and thus no server queue ID)
+    /// has been received yet. The server looks up the stream_id in its per-peer
+    /// stream_id → queue_id map and dispatches the reset to the appropriate queues.
+    ///
+    /// `attempt_id` is the same value stamped into the FlowInit frame.  The server uses
+    /// it to mark the attempt as finalized so that any later FlowInit duplicate with the
+    /// same `attempt_id` is silently dropped (preventing the server from accepting a
+    /// stream that the client has already aborted).
+    FlowInitReset {
+        attempt_id: VarInt,
+        stream_id: VarInt,
+        error_code: VarInt,
+    },
+    /// Graceful FIN before flow establishment (client doesn't know server's queue ID yet).
+    ///
+    /// Sent when the client has written early data in a FlowInit (is_fin=false) and then
+    /// wants to signal the end of the write side before MAX_DATA arrives. The server
+    /// looks up the stream_id → queue_id mapping and dispatches a FIN at `offset` to the
+    /// stream queue.  `offset` is the total number of payload bytes already sent in the
+    /// FlowInit so the reader can close the stream correctly.
+    ///
+    /// If the server has not yet registered the stream (FlowInit not yet received), it
+    /// buffers this `(stream_id, offset)` so it can apply the FIN as soon as the matching
+    /// FlowInit is processed.
+    FlowInitFin {
+        stream_id: VarInt,
+        offset: VarInt,
+    },
     /// Client response to a FlowValidateRequest
     FlowInitValidate {
         queue_pair: QueuePair,
@@ -432,6 +463,8 @@ impl Header {
     const FLOW_RESET_STREAM_TYPE: u8 = 9;
     const FLOW_RESET_CONTROL_TYPE: u8 = 10;
     const FLOW_MAX_DATA_TYPE: u8 = 11;
+    const FLOW_INIT_RESET_TYPE: u8 = 12;
+    const FLOW_INIT_FIN_TYPE: u8 = 13;
     const ACK_TYPE: u8 = 14;
     const ACK_ECN_TYPE: u8 = 15;
     const ACK_ELICITING_TYPE: u8 = 16;
@@ -448,9 +481,9 @@ impl Header {
                 }
             }
             Self::FlowData { .. } => Priority::FlowData,
-            Self::FlowControl { .. } => Priority::FlowControl,
-            Self::FlowMaxData { .. } => Priority::FlowControl,
+            Self::FlowControl { .. } | Self::FlowMaxData { .. } => Priority::FlowControl,
             Self::FlowReset { .. } => Priority::FlowReset,
+            Self::FlowInitReset { .. } | Self::FlowInitFin { .. } => Priority::FlowInit,
             Self::FlowInitValidate { .. } | Self::FlowValidateRequest { .. } => Priority::FlowRetry,
             // Ack frames are assembled directly from pending_acks, never queued by priority.
             Self::Ack { .. } => Priority::FlowControl,
@@ -486,6 +519,8 @@ impl Header {
             | Self::Ack { .. } => true,
             Self::FlowReset { .. }
             | Self::FlowMaxData { .. }
+            | Self::FlowInitReset { .. }
+            | Self::FlowInitFin { .. }
             | Self::FlowInitValidate { .. }
             | Self::FlowValidateRequest { .. } => false,
         }
@@ -605,6 +640,21 @@ impl EncoderValue for Header {
                 encoder.encode(dest_queue_id);
                 encoder.encode(stream_id);
                 encoder.encode(error_code);
+            }
+            Self::FlowInitReset {
+                attempt_id,
+                stream_id,
+                error_code,
+            } => {
+                encoder.encode(&Self::FLOW_INIT_RESET_TYPE);
+                encoder.encode(attempt_id);
+                encoder.encode(stream_id);
+                encoder.encode(error_code);
+            }
+            Self::FlowInitFin { stream_id, offset } => {
+                encoder.encode(&Self::FLOW_INIT_FIN_TYPE);
+                encoder.encode(stream_id);
+                encoder.encode(offset);
             }
             Self::Ack {
                 dest_sender_id,
@@ -737,6 +787,24 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                     },
                     buffer,
                 ))
+            }
+            Self::FLOW_INIT_RESET_TYPE => {
+                let (attempt_id, buffer) = buffer.decode()?;
+                let (stream_id, buffer) = buffer.decode()?;
+                let (error_code, buffer) = buffer.decode()?;
+                Ok((
+                    Self::FlowInitReset {
+                        attempt_id,
+                        stream_id,
+                        error_code,
+                    },
+                    buffer,
+                ))
+            }
+            Self::FLOW_INIT_FIN_TYPE => {
+                let (stream_id, buffer) = buffer.decode()?;
+                let (offset, buffer) = buffer.decode()?;
+                Ok((Self::FlowInitFin { stream_id, offset }, buffer))
             }
             Self::ACK_TYPE
             | Self::ACK_ECN_TYPE

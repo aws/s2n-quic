@@ -5,5 +5,5 @@ expression: logs
 0:00:00.000000000 [main] DEBUG grow epoch=8
 0:00:00.000000000 [main] DEBUG Transmission failed stream_id=42 reason=TransmissionError
 0:00:00.000000000 [main] DEBUG Sent FlowReset stream_id=42 error_code=7 reset_target=Both
-0:00:00.000000000 [main] DEBUG event=on_shutdown prev=Open next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs:660:41
+0:00:00.000000000 [main] DEBUG event=on_shutdown prev=Open next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs:777:41
 0:00:00.000000000 [main] DEBUG Writer dropping stream_id=42 status=Shutdown next_offset=5 inflight_bytes=0 remote_max_data=14720

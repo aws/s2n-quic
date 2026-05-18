@@ -3,12 +3,12 @@ source: dc/s2n-quic-dc/src/testing.rs
 expression: logs
 ---
 0:00:00.000000000 [main] DEBUG grow epoch=8
-0:00:00.000000000 [main] DEBUG event=on_send_flow_init prev=Init next=FlowInitSent location=dc/s2n-quic-dc/src/stream/writer.rs:819:21
+0:00:00.000000000 [main] DEBUG event=on_send_flow_init prev=Init next=FlowInitSent location=dc/s2n-quic-dc/src/stream/writer.rs:936:21
 0:00:00.000000000 [main] DEBUG Sent FlowInit with early data stream_id=42 bytes_read=3 is_fin=false
 0:00:00.000000000 [main] DEBUG poll_remote_budget received messages stream_id=42 status=FlowInitSent msg_count=2
-0:00:00.000000000 [main] DEBUG event=on_flow_established prev=FlowInitSent next=Open location=dc/s2n-quic-dc/src/stream/writer.rs:761:24
+0:00:00.000000000 [main] DEBUG event=on_flow_established prev=FlowInitSent next=Open location=dc/s2n-quic-dc/src/stream/writer.rs:878:24
 0:00:00.000000000 [main] DEBUG Flow established stream_id=42
 0:00:00.000000000 [main] DEBUG Writer dropping stream_id=42 status=Open next_offset=8 inflight_bytes=8 remote_max_data=8
 0:00:00.000000000 [main] DEBUG Sent FIN stream_id=42
-0:00:00.000000000 [main] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs:596:25
-0:00:00.000000000 [main] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs:519:21
+0:00:00.000000000 [main] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs:713:25
+0:00:00.000000000 [main] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs:515:21
