@@ -71,6 +71,49 @@ jobs:
         if: steps.cache-cargo-mcp.outputs.cache-hit != 'true'
         run: cargo install --git https://github.com/camshaft/cargo-mcp --rev "${{ steps.versions.outputs.cargo_mcp_rev }}" cargo-mcp
 
+      - name: Setup cargo-mcp MCP config
+        run: |
+          MCP_CONFIG_PATH="${HOME}/.copilot/mcp-config.json"
+          mkdir -p "$(dirname "$MCP_CONFIG_PATH")"
+          export MCP_CONFIG_PATH
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          config_path = pathlib.Path(os.environ["MCP_CONFIG_PATH"])
+          config = {}
+          if config_path.exists():
+              try:
+                  with config_path.open() as f:
+                      config = json.load(f)
+              except json.JSONDecodeError:
+                  print(f"::warning file={config_path}::{config_path} contained invalid JSON; recreating config")
+                  config = {}
+
+          if not isinstance(config, dict):
+              print(f"warning: {config_path} did not contain a JSON object; recreating config")
+              config = {}
+
+          mcp_servers = config.get("mcpServers")
+          if not isinstance(mcp_servers, dict):
+              if "mcpServers" in config:
+                  print(f"warning: {config_path} had a non-object mcpServers value; recreating mcpServers")
+              mcp_servers = {}
+              config["mcpServers"] = mcp_servers
+
+          mcp_servers["camshaft/cargo-mcp"] = {
+              "type": "local",
+              "command": "cargo-mcp",
+              "args": [],
+              "tools": ["*"],
+          }
+
+          with config_path.open("w") as f:
+              json.dump(config, f, indent=2, sort_keys=True)
+              f.write("\n")
+          PY
+
       - name: Cache duckdb binary
         id: cache-duckdb
         uses: actions/cache@v4
