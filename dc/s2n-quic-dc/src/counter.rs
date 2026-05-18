@@ -647,27 +647,95 @@ impl Gauge {
 
 // ── Timer ───────────────────────────────────────────────────────────────────
 
+/// Single-threaded counter that is `Send + Sync` for crossing thread boundaries at setup time.
+///
+/// Once a `Timer` is moved onto its owning executor thread, the `Sampler` is only ever
+/// accessed from that one thread. We enforce this structurally: `Timer` is cloned during
+/// setup, then each clone is moved into exactly one task closure — no concurrent access.
+struct Sampler(std::cell::UnsafeCell<u8>);
+
+impl Clone for Sampler {
+    fn clone(&self) -> Self {
+        Self::new()
+    }
+}
+
+// SAFETY: Sampler is only mutated from a single thread after setup. Cloning produces
+// an independent instance per task — no shared mutable state.
+unsafe impl Send for Sampler {}
+unsafe impl Sync for Sampler {}
+
+impl Sampler {
+    fn new() -> Self {
+        Self(std::cell::UnsafeCell::new(0))
+    }
+
+    #[inline]
+    fn next(&self) -> u8 {
+        // SAFETY: only called from the owning executor thread
+        unsafe {
+            let ptr = self.0.get();
+            let c = (*ptr).wrapping_add(1);
+            *ptr = c;
+            c
+        }
+    }
+}
+
 /// A histogram that records elapsed durations via a guard pattern.
 ///
 /// Call `timer.start()` to begin timing; the returned guard records
 /// the elapsed duration into the underlying `Summary` on drop.
+///
+/// By default, timing is sampled at 1-in-64 to minimize overhead on hot paths.
+/// Use [`Timer::unsampled`] to get a timer that records every call.
 #[derive(Clone)]
 pub struct Timer {
     summary: Summary,
     metric_id: MetricId,
     metadata: Arc<Mutex<HashMap<MetricId, MetricMetadata>>>,
+    sampler: Sampler,
+    sample_mask: u8,
 }
 
 impl Timer {
+    /// Sample 1-in-64: only record timing on every 64th call.
+    const DEFAULT_SAMPLE_MASK: u8 = 63;
+
+    /// Returns a version of this timer that records every call (no sampling).
     #[inline]
-    pub fn start(&self) -> TimerGuard<'_> {
+    pub fn unsampled(mut self) -> Self {
+        self.sample_mask = 0;
+        self
+    }
+
+    /// Returns true if this call should be sampled (and advances the counter).
+    ///
+    /// In bach simulations, always returns true — time is simulated and free,
+    /// and deterministic recording keeps snapshot tests stable.
+    #[inline]
+    fn should_sample(&self) -> bool {
+        if cfg!(any(test, feature = "testing")) && bach::is_active() {
+            return true;
+        }
+        self.sampler.next() & self.sample_mask == 0
+    }
+
+    #[inline]
+    pub fn start(&self) -> Option<TimerGuard<'_>> {
+        if !self.should_sample() {
+            return None;
+        }
+        Some(self.start_unchecked())
+    }
+
+    /// Starts a timer unconditionally (bypasses sampling).
+    #[inline]
+    fn start_unchecked(&self) -> TimerGuard<'_> {
         self.start_at(Instant::now())
     }
 
     /// Starts a timer from a caller-provided `Instant`.
-    ///
-    /// Use this when multiple task metrics should share the exact same poll-start
-    /// timestamp (for example, per-poll execution time and inter-poll latency).
     #[inline]
     pub fn start_at(&self, start: Instant) -> TimerGuard<'_> {
         #[cfg(any(test, feature = "metric-tracing"))]
@@ -685,6 +753,9 @@ impl Timer {
 
     #[inline]
     pub fn record(&self, duration: Duration) {
+        if !self.should_sample() {
+            return;
+        }
         #[cfg(any(test, feature = "metric-tracing"))]
         if !in_bach_sim() {
             let (label, variant) = metric_trace_fields(self.metric_id, &self.metadata);
@@ -2435,6 +2506,8 @@ impl Registry {
             summary,
             metric_id,
             metadata: self.metric_metadata.clone(),
+            sampler: Sampler::new(),
+            sample_mask: Timer::DEFAULT_SAMPLE_MASK,
         }
     }
 
