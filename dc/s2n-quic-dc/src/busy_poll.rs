@@ -107,7 +107,6 @@ impl ops::Deref for Pool {
 pub struct Handle {
     state: Arc<Mutex<State>>,
     heartbeat: Arc<Heartbeat>,
-    worker_id: usize,
 }
 
 impl Handle {
@@ -119,7 +118,6 @@ impl Handle {
         let handle = Self {
             state: state.clone(),
             heartbeat: heartbeat.clone(),
-            worker_id,
         };
         let runner = Runner {
             state: Arc::downgrade(&state),

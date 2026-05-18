@@ -522,6 +522,8 @@ fn sim_init_uniqueness(actions: &PacketActions, n: usize) {
 
     let _guard = without_tracing();
     sim(|| {
+        install_init_monitors(actions);
+
         // Accept streams until `n` unique stream IDs have been validated.
         // Duplicates (which fail validation) are silently discarded.
         {

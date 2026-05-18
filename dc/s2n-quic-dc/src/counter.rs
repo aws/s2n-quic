@@ -715,7 +715,8 @@ impl Timer {
     /// and deterministic recording keeps snapshot tests stable.
     #[inline]
     fn should_sample(&self) -> bool {
-        if cfg!(any(test, feature = "testing")) && bach::is_active() {
+        #[cfg(any(test, feature = "testing"))]
+        if bach::is_active() {
             return true;
         }
         self.sampler.next() & self.sample_mask == 0

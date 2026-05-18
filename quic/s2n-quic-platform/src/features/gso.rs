@@ -94,6 +94,7 @@ mod platform {
         false
     }
 
+    #[cfg(any(feature = "testing", test))]
     #[inline]
     pub fn handle_socket_error(_error: &std::io::Error) -> bool {
         false
@@ -107,7 +108,7 @@ pub use platform::{is_match, CMSG_SPACE, LEVEL, TYPE};
 /// Noop Gso: always reports 1 segment, cannot be reconfigured.
 #[cfg(any(not(s2n_quic_platform_gso), test))]
 mod gso_noop {
-    #![cfg_attr(test, allow(dead_code))]
+    #![cfg_attr(any(test, feature = "testing"), allow(dead_code))]
 
     use super::*;
 
