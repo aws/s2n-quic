@@ -91,4 +91,6 @@ pub struct Parameters<'a, Cfg: endpoint::Config> {
     pub limits_endpoint: &'a mut Cfg::ConnectionLimits,
     /// The random generator
     pub random_generator: &'a mut Cfg::RandomGenerator,
+    pub interceptor_endpoint: &'a mut Cfg::PacketInterceptor,
+    pub connection_id_validator: &'a Cfg::ConnectionIdFormat,
 }

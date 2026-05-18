@@ -118,6 +118,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
         conn_limits: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
+        packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
+        connection_id_validator: &mut <Self::Config as endpoint::Config>::ConnectionIdFormat,
     ) -> Result<(), connection::Error>;
 
     // Packet handling
@@ -135,6 +137,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
         connection_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
+        connection_id_format: &<Self::Config as endpoint::Config>::ConnectionIdFormat,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when an unprotected initial packet had been received
@@ -149,6 +152,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
         connection_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
+        connection_id_format: &<Self::Config as endpoint::Config>::ConnectionIdFormat,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a handshake packet had been received
@@ -164,6 +168,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
         connection_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
+        connection_id_validator: &<Self::Config as endpoint::Config>::ConnectionIdFormat,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a short packet had been received
@@ -245,6 +250,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
         connection_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
+        connection_id_format: &<Self::Config as endpoint::Config>::ConnectionIdFormat,
         check_for_stateless_reset: &mut bool,
     ) -> Result<(), connection::Error> {
         macro_rules! emit_drop_reason {
@@ -328,6 +334,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 datagram_endpoint,
                 dc_endpoint,
                 connection_limits_endpoint,
+                connection_id_format,
             ),
             ProtectedPacket::ZeroRtt(packet) => self.handle_zero_rtt_packet(
                 datagram,
@@ -348,6 +355,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 datagram_endpoint,
                 dc_endpoint,
                 connection_limits_endpoint,
+                connection_id_format,
             ),
             ProtectedPacket::Retry(packet) => self.handle_retry_packet(
                 datagram,
@@ -471,6 +479,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 datagram_endpoint,
                 dc_endpoint,
                 connection_limits_endpoint,
+                connection_id_validator,
                 check_for_stateless_reset,
             );
 
