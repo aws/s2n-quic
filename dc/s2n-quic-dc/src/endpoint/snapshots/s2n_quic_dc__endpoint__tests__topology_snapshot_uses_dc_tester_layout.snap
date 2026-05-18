@@ -4485,31 +4485,6 @@ bindings:
     channel: q.dispatch_rx.recv.4
     function: endpoint::Worker::spawn
     description: Queue receives performed by task.packet_dispatch
-  - task: task.priority_router
-    direction: sends
-    channel: ch.router_to_batcher.p0
-    function: endpoint::tasks::frame_dispatch
-    description: Priority router emits per-lane frame queues
-  - task: task.priority_router
-    direction: sends
-    channel: ch.router_to_batcher.p1
-    function: endpoint::tasks::frame_dispatch
-    description: Priority router emits per-lane frame queues
-  - task: task.priority_router
-    direction: sends
-    channel: ch.router_to_batcher.p2
-    function: endpoint::tasks::frame_dispatch
-    description: Priority router emits per-lane frame queues
-  - task: task.priority_router
-    direction: sends
-    channel: ch.router_to_batcher.p3
-    function: endpoint::tasks::frame_dispatch
-    description: Priority router emits per-lane frame queues
-  - task: task.priority_router
-    direction: sends
-    channel: ch.router_to_batcher.p4
-    function: endpoint::tasks::frame_dispatch
-    description: Priority router emits per-lane frame queues
   - task: task.pto_wheel
     direction: sends
     channel: ch.resolver_to_idle_wheel.send.0
