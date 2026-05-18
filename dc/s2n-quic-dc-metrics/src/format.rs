@@ -315,7 +315,7 @@ impl MetricEntry<'_> {
                 let (rate, prefix) = format_bits_per_second(metric.bytes);
                 write!(output, "{}={rate:.2}{prefix}bps", metric.name).unwrap();
             }
-            Self::Histogram(metric) => metric.histogram.write_summary(&metric.name, output),
+            Self::Histogram(metric) => metric.histogram.write_summary(metric.name, output),
             Self::Scalar(metric) => write!(output, "{}={}", metric.name, metric.value).unwrap(),
             Self::Nominal(metric) => {
                 write!(output, "{}(", metric.name).unwrap();
@@ -413,7 +413,7 @@ impl<'a> HistogramVariant<'a> {
     }
 
     fn write_to(&self, output: &mut String) {
-        self.histogram.write_variant(&self.label, output);
+        self.histogram.write_variant(self.label, output);
     }
 }
 

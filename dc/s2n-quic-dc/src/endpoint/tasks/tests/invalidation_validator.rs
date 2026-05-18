@@ -38,7 +38,10 @@ fn setup_map_with_entry(peer: SocketAddr) -> (Map, Id) {
     (map, *secret.id())
 }
 
-fn encode_unknown_path_secret(credential_id: Id, stateless_reset: [u8; secret_control::TAG_LEN]) -> Vec<u8> {
+fn encode_unknown_path_secret(
+    credential_id: Id,
+    stateless_reset: [u8; secret_control::TAG_LEN],
+) -> Vec<u8> {
     let mut out = [0u8; secret_control::MAX_PACKET_SIZE];
     let len = secret_control::UnknownPathSecret {
         wire_version: WireVersion::ZERO,
@@ -49,8 +52,13 @@ fn encode_unknown_path_secret(credential_id: Id, stateless_reset: [u8; secret_co
     out[..len].to_vec()
 }
 
-fn packet_entry(payload: &[u8], peer: SocketAddr) -> Entry<crate::socket::pool::descriptor::Filled> {
-    let unfilled = Pool::new(1200).alloc().expect("packet allocation should succeed");
+fn packet_entry(
+    payload: &[u8],
+    peer: SocketAddr,
+) -> Entry<crate::socket::pool::descriptor::Filled> {
+    let unfilled = Pool::new(1200)
+        .alloc()
+        .expect("packet allocation should succeed");
     let segments = unfilled
         .fill_with(|addr, _cmsg, mut buffer| {
             addr.set(peer.into());
@@ -80,7 +88,10 @@ fn unknown_path_secret_packet_broadcasts_validated_id() {
             assert!(rx.recv().await.is_some());
             drop(rx);
 
-            assert_eq!(*rx_a.recv().await.expect("first output should receive id"), local_id);
+            assert_eq!(
+                *rx_a.recv().await.expect("first output should receive id"),
+                local_id
+            );
             assert_eq!(
                 *rx_b.recv().await.expect("second output should receive id"),
                 local_id
@@ -106,7 +117,10 @@ fn malformed_packet_is_ignored() {
         async move {
             assert!(rx.recv().await.is_some());
             drop(rx);
-            assert!(output_rx.recv().await.is_none(), "invalid packet should be ignored");
+            assert!(
+                output_rx.recv().await.is_none(),
+                "invalid packet should be ignored"
+            );
         }
         .primary()
         .spawn();

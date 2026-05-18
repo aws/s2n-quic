@@ -237,7 +237,10 @@ pub fn test_batch(pse: &Arc<PathSecretEntry>) -> Entry<FrameBatch> {
 /// Use two such batches pushed into a context with a large enough payload to ensure
 /// the assembler can only fit the first into one segment, leaving the second pending
 /// and re-arming the TX wheel.
-pub fn test_batch_with_payload(pse: &Arc<PathSecretEntry>, payload_size: usize) -> Entry<FrameBatch> {
+pub fn test_batch_with_payload(
+    pse: &Arc<PathSecretEntry>,
+    payload_size: usize,
+) -> Entry<FrameBatch> {
     let mut batch = FrameBatch::single(test_frame_with_payload(pse, payload_size));
     batch.set_sender_id(0);
     Entry::new(batch)

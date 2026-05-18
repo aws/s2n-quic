@@ -3,7 +3,7 @@
 
 use crate::{
     event,
-    path::secret::{Map, stateless_reset::Signer},
+    path::secret::{stateless_reset::Signer, Map},
     psk::{client, server},
 };
 use s2n_quic::{provider::tls::Provider, server::Name};
@@ -345,11 +345,44 @@ fn run_sim_with_snapshot(f: impl FnOnce()) {
     let _snapshot_mode_guard = SnapshotModeGuard::enter();
     tracing::subscriber::with_default(subscriber, || run_sim(f));
 
-    let logs = writer.take_string();
+    let logs = normalize_snapshot_logs(writer.take_string());
 
     insta::with_settings!({prepend_module_to_snapshot => false}, {
         insta::assert_snapshot!(snapshot_name, logs);
     });
+}
+
+#[cfg(test)]
+fn normalize_snapshot_logs(logs: String) -> String {
+    let mut normalized = String::with_capacity(logs.len());
+
+    for segment in logs.split_inclusive('\n') {
+        let (line, newline) = segment
+            .strip_suffix('\n')
+            .map(|line| (line, "\n"))
+            .unwrap_or((segment, ""));
+        normalized.push_str(&trim_rust_location_suffix(line));
+        normalized.push_str(newline);
+    }
+
+    normalized
+}
+
+#[cfg(test)]
+fn trim_rust_location_suffix(line: &str) -> String {
+    let Some((prefix, suffix)) = line.rsplit_once(".rs:") else {
+        return line.into();
+    };
+
+    let suffix_has_only_numbers = suffix
+        .split(':')
+        .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()));
+
+    if suffix_has_only_numbers {
+        format!("{prefix}.rs")
+    } else {
+        line.into()
+    }
 }
 
 #[cfg(test)]

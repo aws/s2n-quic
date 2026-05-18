@@ -148,14 +148,46 @@ fn wheel_router_routes_all_interest_combinations() {
         };
 
         let interests = [
-            send::WheelInterest { transmission: false, pto: false, idle_timeout: false },
-            send::WheelInterest { transmission: true, pto: false, idle_timeout: false },
-            send::WheelInterest { transmission: false, pto: true, idle_timeout: false },
-            send::WheelInterest { transmission: false, pto: false, idle_timeout: true },
-            send::WheelInterest { transmission: true, pto: true, idle_timeout: false },
-            send::WheelInterest { transmission: true, pto: false, idle_timeout: true },
-            send::WheelInterest { transmission: false, pto: true, idle_timeout: true },
-            send::WheelInterest { transmission: true, pto: true, idle_timeout: true },
+            send::WheelInterest {
+                transmission: false,
+                pto: false,
+                idle_timeout: false,
+            },
+            send::WheelInterest {
+                transmission: true,
+                pto: false,
+                idle_timeout: false,
+            },
+            send::WheelInterest {
+                transmission: false,
+                pto: true,
+                idle_timeout: false,
+            },
+            send::WheelInterest {
+                transmission: false,
+                pto: false,
+                idle_timeout: true,
+            },
+            send::WheelInterest {
+                transmission: true,
+                pto: true,
+                idle_timeout: false,
+            },
+            send::WheelInterest {
+                transmission: true,
+                pto: false,
+                idle_timeout: true,
+            },
+            send::WheelInterest {
+                transmission: false,
+                pto: true,
+                idle_timeout: true,
+            },
+            send::WheelInterest {
+                transmission: true,
+                pto: true,
+                idle_timeout: true,
+            },
         ];
         let input = TestReceiver::new(interests.into_iter().map(|i| (make_context(), i)));
         let (tx_sender, mut tx_items) = unsync::new_with_adapter::<send::TxWheelAdapter>();

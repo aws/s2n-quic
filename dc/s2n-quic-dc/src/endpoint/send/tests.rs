@@ -624,9 +624,7 @@ use super::AckRttTracker;
 use s2n_quic_core::varint::VarInt;
 
 fn make_ts(millis: u64) -> s2n_quic_core::time::Timestamp {
-    unsafe {
-        s2n_quic_core::time::Timestamp::from_duration(Duration::from_millis(millis))
-    }
+    unsafe { s2n_quic_core::time::Timestamp::from_duration(Duration::from_millis(millis)) }
 }
 
 fn make_varint(n: u64) -> VarInt {
@@ -673,7 +671,11 @@ fn ack_rtt_tracker_single_send_acked() {
 
     // ACK range [3, 7] covers PN 5.
     let result = tracker.check_range(make_varint(3), make_varint(7));
-    assert_eq!(result, Some(sent_time), "should return time_sent when PN covered");
+    assert_eq!(
+        result,
+        Some(sent_time),
+        "should return time_sent when PN covered"
+    );
     // sampled=true → is_pending()=true (cooldown prevents re-probe)
     assert!(
         tracker.is_pending(),
@@ -720,7 +722,10 @@ fn ack_rtt_tracker_stable_fallback_when_latest_lost() {
     let result = tracker.check_range(make_varint(1), make_varint(1));
     assert_eq!(result, Some(t1), "stable fallback time_sent returned");
     // stable advanced to (5,t5) (the value latest held), sampled=true → is_pending()=true
-    assert!(tracker.is_pending(), "still pending (sampled + advanced stable)");
+    assert!(
+        tracker.is_pending(),
+        "still pending (sampled + advanced stable)"
+    );
 
     // After all ranges: on_ack_done(6) declares pn=5 lost (6 > 5).
     tracker.on_ack_done(make_varint(6));
@@ -871,7 +876,11 @@ fn ack_rtt_tracker_multi_range_ack_largest_first() {
     assert!(r1.is_none());
 
     let r2 = tracker.check_range(make_varint(1), make_varint(5)); // covers pn=3
-    assert_eq!(r2, Some(sent_time), "second range should still yield sample");
+    assert_eq!(
+        r2,
+        Some(sent_time),
+        "second range should still yield sample"
+    );
 
     tracker.on_ack_done(make_varint(15));
     // sampled=true after consuming in r2

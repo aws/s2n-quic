@@ -574,7 +574,11 @@ impl AssemblerCounters {
     }
 }
 
-type AssemblerOutput = (Rc<RefCell<send::Context>>, send::WheelInterest, Option<descriptor::Segments>);
+type AssemblerOutput = (
+    Rc<RefCell<send::Context>>,
+    send::WheelInterest,
+    Option<descriptor::Segments>,
+);
 
 impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
     pub(crate) fn new(

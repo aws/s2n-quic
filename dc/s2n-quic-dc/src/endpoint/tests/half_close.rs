@@ -76,8 +76,7 @@ fn client_write_half_close() {
         use crate::testing::ext::*;
 
         async move {
-            let server =
-                crate::stream::endpoint::testing::sim::Server::new();
+            let server = crate::stream::endpoint::testing::sim::Server::new();
             let mut acceptor = server
                 .register_acceptor_channel(ACCEPTOR_ID, 8)
                 .expect("acceptor registration");
@@ -108,8 +107,7 @@ fn client_write_half_close() {
         .spawn();
 
         async move {
-            let mut client =
-                crate::stream::endpoint::testing::sim::Client::new();
+            let mut client = crate::stream::endpoint::testing::sim::Client::new();
             let stream = client
                 .connect("server:0", ACCEPTOR_ID)
                 .await
@@ -161,8 +159,7 @@ fn server_write_half_close() {
         use crate::testing::ext::*;
 
         async move {
-            let server =
-                crate::stream::endpoint::testing::sim::Server::new();
+            let server = crate::stream::endpoint::testing::sim::Server::new();
             let mut acceptor = server
                 .register_acceptor_channel(ACCEPTOR_ID, 8)
                 .expect("acceptor registration");
@@ -193,8 +190,7 @@ fn server_write_half_close() {
         .spawn();
 
         async move {
-            let mut client =
-                crate::stream::endpoint::testing::sim::Client::new();
+            let mut client = crate::stream::endpoint::testing::sim::Client::new();
             let stream = client
                 .connect("server:0", ACCEPTOR_ID)
                 .await
@@ -231,8 +227,7 @@ fn both_sides_half_close() {
         use crate::testing::ext::*;
 
         async move {
-            let server =
-                crate::stream::endpoint::testing::sim::Server::new();
+            let server = crate::stream::endpoint::testing::sim::Server::new();
             let mut acceptor = server
                 .register_acceptor_channel(ACCEPTOR_ID, 8)
                 .expect("acceptor registration");
@@ -263,8 +258,7 @@ fn both_sides_half_close() {
         .spawn();
 
         async move {
-            let mut client =
-                crate::stream::endpoint::testing::sim::Client::new();
+            let mut client = crate::stream::endpoint::testing::sim::Client::new();
             let stream = client
                 .connect("server:0", ACCEPTOR_ID)
                 .await
@@ -326,8 +320,7 @@ fn writer_drop_sends_fin() {
         const PAYLOAD_LEN: usize = 1500;
 
         async move {
-            let server =
-                crate::stream::endpoint::testing::sim::Server::new();
+            let server = crate::stream::endpoint::testing::sim::Server::new();
             let mut acceptor = server
                 .register_acceptor_channel(ACCEPTOR_ID, 8)
                 .expect("acceptor registration");
@@ -354,8 +347,7 @@ fn writer_drop_sends_fin() {
         .spawn();
 
         async move {
-            let mut client =
-                crate::stream::endpoint::testing::sim::Client::new();
+            let mut client = crate::stream::endpoint::testing::sim::Client::new();
             let stream = client
                 .connect("server:0", ACCEPTOR_ID)
                 .await
@@ -421,8 +413,7 @@ fn reader_drop_before_eof_sends_stop_sending() {
         const MAX_WRITES: usize = 3000;
 
         async move {
-            let server =
-                crate::stream::endpoint::testing::sim::Server::new();
+            let server = crate::stream::endpoint::testing::sim::Server::new();
             let mut acceptor = server
                 .register_acceptor_channel(ACCEPTOR_ID, 8)
                 .expect("acceptor registration");
@@ -444,10 +435,7 @@ fn reader_drop_before_eof_sends_stop_sending() {
                         let mut data = Bytes::from(chunk.clone());
                         match writer.write_from(&mut data).await {
                             Ok(_) => {}
-                            Err(e)
-                                if e.kind()
-                                    == std::io::ErrorKind::ConnectionReset =>
-                            {
+                            Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => {
                                 got_stop_sending = true;
                                 break;
                             }
@@ -469,8 +457,7 @@ fn reader_drop_before_eof_sends_stop_sending() {
         .spawn();
 
         async move {
-            let mut client =
-                crate::stream::endpoint::testing::sim::Client::new();
+            let mut client = crate::stream::endpoint::testing::sim::Client::new();
             let stream = client
                 .connect("server:0", ACCEPTOR_ID)
                 .await
@@ -479,7 +466,10 @@ fn reader_drop_before_eof_sends_stop_sending() {
 
             // Send a small request + FIN to establish the stream.
             let mut req = Bytes::from_static(b"req");
-            writer.write_all_from_fin(&mut req).await.expect("req write");
+            writer
+                .write_all_from_fin(&mut req)
+                .await
+                .expect("req write");
 
             // Read one chunk from the server (establishes remote_queue_id on
             // the reader so that Drop can send STOP_SENDING), then drop.
@@ -526,8 +516,7 @@ fn server_reader_drop_sends_stop_sending() {
         const MAX_WRITES: usize = 3000;
 
         async move {
-            let server =
-                crate::stream::endpoint::testing::sim::Server::new();
+            let server = crate::stream::endpoint::testing::sim::Server::new();
             let mut acceptor = server
                 .register_acceptor_channel(ACCEPTOR_ID, 8)
                 .expect("acceptor registration");
@@ -552,8 +541,7 @@ fn server_reader_drop_sends_stop_sending() {
         .spawn();
 
         async move {
-            let mut client =
-                crate::stream::endpoint::testing::sim::Client::new();
+            let mut client = crate::stream::endpoint::testing::sim::Client::new();
             let stream = client
                 .connect("server:0", ACCEPTOR_ID)
                 .await
@@ -570,9 +558,7 @@ fn server_reader_drop_sends_stop_sending() {
                 let mut data = Bytes::from(chunk.clone());
                 match writer.write_from(&mut data).await {
                     Ok(_) => {}
-                    Err(e)
-                        if e.kind() == std::io::ErrorKind::ConnectionReset =>
-                    {
+                    Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => {
                         got_stop_sending = true;
                         break;
                     }
@@ -614,8 +600,7 @@ fn shutdown_is_idempotent() {
         use crate::testing::ext::*;
 
         async move {
-            let server =
-                crate::stream::endpoint::testing::sim::Server::new();
+            let server = crate::stream::endpoint::testing::sim::Server::new();
             let mut acceptor = server
                 .register_acceptor_channel(ACCEPTOR_ID, 8)
                 .expect("acceptor registration");
@@ -640,8 +625,7 @@ fn shutdown_is_idempotent() {
         .spawn();
 
         async move {
-            let mut client =
-                crate::stream::endpoint::testing::sim::Client::new();
+            let mut client = crate::stream::endpoint::testing::sim::Client::new();
             let stream = client
                 .connect("server:0", ACCEPTOR_ID)
                 .await
@@ -649,10 +633,7 @@ fn shutdown_is_idempotent() {
             let (mut reader, mut writer) = stream.into_split();
 
             let mut data = Bytes::from_static(b"idem");
-            writer
-                .write_all_from_fin(&mut data)
-                .await
-                .expect("write");
+            writer.write_all_from_fin(&mut data).await.expect("write");
 
             // Multiple shutdown calls must all succeed without error.
             writer.shutdown().expect("shutdown 1");
@@ -687,8 +668,7 @@ fn reader_drop_after_eof_does_not_send_stop_sending() {
         use crate::testing::ext::*;
 
         async move {
-            let server =
-                crate::stream::endpoint::testing::sim::Server::new();
+            let server = crate::stream::endpoint::testing::sim::Server::new();
             let mut acceptor = server
                 .register_acceptor_channel(ACCEPTOR_ID, 8)
                 .expect("acceptor registration");
@@ -720,8 +700,7 @@ fn reader_drop_after_eof_does_not_send_stop_sending() {
         .spawn();
 
         async move {
-            let mut client =
-                crate::stream::endpoint::testing::sim::Client::new();
+            let mut client = crate::stream::endpoint::testing::sim::Client::new();
             let stream = client
                 .connect("server:0", ACCEPTOR_ID)
                 .await
@@ -758,8 +737,7 @@ fn write_after_shutdown_returns_broken_pipe() {
         use crate::testing::ext::*;
 
         async move {
-            let server =
-                crate::stream::endpoint::testing::sim::Server::new();
+            let server = crate::stream::endpoint::testing::sim::Server::new();
             let mut acceptor = server
                 .register_acceptor_channel(ACCEPTOR_ID, 8)
                 .expect("acceptor registration");
@@ -784,8 +762,7 @@ fn write_after_shutdown_returns_broken_pipe() {
         .spawn();
 
         async move {
-            let mut client =
-                crate::stream::endpoint::testing::sim::Client::new();
+            let mut client = crate::stream::endpoint::testing::sim::Client::new();
             let stream = client
                 .connect("server:0", ACCEPTOR_ID)
                 .await
@@ -845,8 +822,8 @@ fn writer_drop_in_flow_init_sent_hangs_server_reader() {
     use std::time::Duration;
 
     crate::testing::sim(|| {
-        use crate::testing::ext::*;
         use crate::stream::endpoint::testing::sim::SERVER_PORT;
+        use crate::testing::ext::*;
 
         // Suppress the very first server→client packet (the `MAX_DATA` /
         // `FlowControl` response to `FlowInit`).  This keeps the client writer
@@ -865,8 +842,7 @@ fn writer_drop_in_flow_init_sent_hangs_server_reader() {
         }
 
         async move {
-            let server =
-                crate::stream::endpoint::testing::sim::Server::new();
+            let server = crate::stream::endpoint::testing::sim::Server::new();
             let mut acceptor = server
                 .register_acceptor_channel(ACCEPTOR_ID, 8)
                 .expect("acceptor registration");
@@ -878,13 +854,10 @@ fn writer_drop_in_flow_init_sent_hangs_server_reader() {
 
                     // Server reader should unblock (EOF or reset) after the
                     // client drops its writer.  Currently it hangs (known bug).
-                    let result = bach::time::timeout(
-                        Duration::from_secs(5),
-                        async {
-                            let mut buf = BytesMut::with_capacity(16);
-                            read_to_eof!(reader, buf);
-                        },
-                    )
+                    let result = bach::time::timeout(Duration::from_secs(5), async {
+                        let mut buf = BytesMut::with_capacity(16);
+                        read_to_eof!(reader, buf);
+                    })
                     .await;
 
                     // TODO: flip to `result.is_ok()` once the bug is fixed.
@@ -901,8 +874,7 @@ fn writer_drop_in_flow_init_sent_hangs_server_reader() {
         .spawn();
 
         async move {
-            let mut client =
-                crate::stream::endpoint::testing::sim::Client::new();
+            let mut client = crate::stream::endpoint::testing::sim::Client::new();
             let stream = client
                 .connect("server:0", ACCEPTOR_ID)
                 .await

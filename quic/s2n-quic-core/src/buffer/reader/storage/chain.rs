@@ -109,7 +109,7 @@ mod tests {
         let b: &[u8] = b"CDEF";
         let mut chain = Chain::new(a, b);
 
-        let mut dest = vec![0u8; 5];
+        let mut dest = [0u8; 5];
         let mut target = &mut dest[..];
         let chunk = chain.partial_copy_into(&mut target).unwrap();
 
@@ -161,7 +161,7 @@ mod tests {
         let b: &[u8] = b"GHI";
         let mut chain = Chain::new(a, b);
 
-        let mut dest = vec![0u8; 3];
+        let mut dest = [0u8; 3];
         let mut target = &mut dest[..];
         let chunk = chain.partial_copy_into(&mut target).unwrap();
 

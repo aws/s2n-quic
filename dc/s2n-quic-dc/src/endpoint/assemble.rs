@@ -151,8 +151,7 @@ where
                     dest_sender_id: submission.remote_sender_id,
                     ack_delay,
                     has_ecn: submission.has_ecn,
-                    is_ack_eliciting: context.pto.probe_state.is_requested()
-                        || make_ack_eliciting,
+                    is_ack_eliciting: context.pto.probe_state.is_requested() || make_ack_eliciting,
                 };
                 let payload_len = submission.body.len();
 
@@ -380,7 +379,9 @@ where
                         // PTO made the packet ack-eliciting while our own probe was not
                         // requested (sampled=true or stable already in-flight). Update
                         // `latest` so if the peer's ACK covers this PN we get a fresh sample.
-                        context.rtt_tracker.on_non_eliciting_sent(packet_number, time_sent);
+                        context
+                            .rtt_tracker
+                            .on_non_eliciting_sent(packet_number, time_sent);
                     }
                 }
                 context.invariants();
@@ -389,7 +390,9 @@ where
                 // implies `make_ack_eliciting=false` (a true `make_ack_eliciting` would have
                 // set the ACK header ack-eliciting, making `is_ack_eliciting=true`).
                 // Keep `latest` fresh while the in-flight probe waits for an ACK.
-                context.rtt_tracker.on_non_eliciting_sent(packet_number, time_sent);
+                context
+                    .rtt_tracker
+                    .on_non_eliciting_sent(packet_number, time_sent);
                 context.invariants();
             } else {
                 context.invariants();

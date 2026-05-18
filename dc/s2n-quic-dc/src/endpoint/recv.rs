@@ -247,7 +247,10 @@ impl Context {
                 );
             }
 
-            if self.ack_state.is_scheduled() || self.ack_state.is_flushed() || self.ack_state.is_flushed_stale() {
+            if self.ack_state.is_scheduled()
+                || self.ack_state.is_flushed()
+                || self.ack_state.is_flushed_stale()
+            {
                 assert!(
                     !self.ack_ranges.is_empty(),
                     "ack_state indicates pending/inflight ACK but no ranges are present"

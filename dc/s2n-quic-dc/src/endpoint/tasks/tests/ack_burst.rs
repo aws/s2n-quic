@@ -60,9 +60,15 @@ fn context_with_pending_acks_emits_submission() {
         let Harness { mut output_rx } = setup([scheduled_context()]);
 
         async move {
-            let first = output_rx.recv().await.expect("expected pending-ack submission");
+            let first = output_rx
+                .recv()
+                .await
+                .expect("expected pending-ack submission");
             assert!(matches!(&*first, msg::Sender::PendingAck(_)));
-            assert!(output_rx.recv().await.is_none(), "expected exactly one submission");
+            assert!(
+                output_rx.recv().await.is_none(),
+                "expected exactly one submission"
+            );
         }
         .primary()
         .spawn();
@@ -77,7 +83,10 @@ fn context_with_no_pending_acks_emits_nothing() {
         let Harness { mut output_rx } = setup([ctx]);
 
         async move {
-            assert!(output_rx.recv().await.is_none(), "idle context should emit nothing");
+            assert!(
+                output_rx.recv().await.is_none(),
+                "idle context should emit nothing"
+            );
         }
         .primary()
         .spawn();
@@ -115,7 +124,10 @@ fn multiple_contexts_each_produce_submission() {
                     .expect("scheduled context should emit submission");
                 assert!(matches!(&*item, msg::Sender::PendingAck(_)));
             }
-            assert!(output_rx.recv().await.is_none(), "expected exactly three submissions");
+            assert!(
+                output_rx.recv().await.is_none(),
+                "expected exactly three submissions"
+            );
         }
         .primary()
         .spawn();

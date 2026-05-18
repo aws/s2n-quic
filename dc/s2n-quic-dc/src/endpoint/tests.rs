@@ -907,9 +907,9 @@ fn unregistered_acceptor_id_does_not_reach_registered_acceptor() {
                 Duration::from_secs(1), // simulated wall-clock timeout (bach time)
                 stream.read_into(&mut buf),
             )
-                .await
-                .expect("client read should fail within timeout")
-                .expect_err("read should fail for unregistered acceptor id");
+            .await
+            .expect("client read should fail within timeout")
+            .expect_err("read should fail for unregistered acceptor id");
             assert_eq!(err.kind(), std::io::ErrorKind::ConnectionReset);
 
             let reset_error = err

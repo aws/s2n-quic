@@ -136,7 +136,10 @@ pub fn frame_dispatch<S, Clk>(
                 .sender("task.priority_router")
                 .with_description("Priority router emits per-lane frame queues")
                 .with_function("endpoint::tasks::frame_dispatch");
-            crate::counter::GaugedSender::new(priority_txs_raw[i].clone().into_list_sender(), sender)
+            crate::counter::GaugedSender::new(
+                priority_txs_raw[i].clone().into_list_sender(),
+                sender,
+            )
         });
 
         let rx = FrameReceiver {
@@ -794,19 +797,22 @@ where
     PtoW: UnboundedSender<Rc<RefCell<send::Context>>>,
     IdleW: UnboundedSender<Rc<RefCell<send::Context>>>,
 {
-    let rx = Map::new(pto_context_rx, move |context: Rc<RefCell<send::Context>>| {
-        tx_pto_check.add(1);
-        let wheel_interest = {
-            let mut ctx = context.borrow_mut();
-            let requested = ctx.pto.probe_state.is_requested();
-            let interest = ctx.on_pto_timeout(&clock);
-            if !requested && ctx.pto.probe_state.is_requested() {
-                tx_pto_requested.add(1);
-            }
-            interest
-        };
-        (context, wheel_interest)
-    });
+    let rx = Map::new(
+        pto_context_rx,
+        move |context: Rc<RefCell<send::Context>>| {
+            tx_pto_check.add(1);
+            let wheel_interest = {
+                let mut ctx = context.borrow_mut();
+                let requested = ctx.pto.probe_state.is_requested();
+                let interest = ctx.on_pto_timeout(&clock);
+                if !requested && ctx.pto.probe_state.is_requested() {
+                    tx_pto_requested.add(1);
+                }
+                interest
+            };
+            (context, wheel_interest)
+        },
+    );
     send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx)
 }
 

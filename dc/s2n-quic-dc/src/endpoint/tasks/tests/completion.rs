@@ -123,9 +123,18 @@ fn cancelled_drain_consumes_all_frames_then_closes() {
         .spawn();
 
         async move {
-            assert!(rx.recv().await.is_some(), "first cancelled frame should be consumed");
-            assert!(rx.recv().await.is_some(), "second cancelled frame should be consumed");
-            assert!(rx.recv().await.is_none(), "drain should close after input closes");
+            assert!(
+                rx.recv().await.is_some(),
+                "first cancelled frame should be consumed"
+            );
+            assert!(
+                rx.recv().await.is_some(),
+                "second cancelled frame should be consumed"
+            );
+            assert!(
+                rx.recv().await.is_none(),
+                "drain should close after input closes"
+            );
         }
         .primary()
         .spawn();

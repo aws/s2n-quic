@@ -296,7 +296,7 @@ macro_rules! rx_stream_apis {
     };
 }
 
-/// A readable and writeable QUIC stream
+/// A readable and writable QUIC stream
 pub struct Stream(State);
 
 impl fmt::Debug for Stream {
@@ -368,7 +368,7 @@ impl Stream {
     }
 }
 
-/// A writeable QUIC stream
+/// A writable QUIC stream
 pub struct SendStream(State);
 
 impl fmt::Debug for SendStream {

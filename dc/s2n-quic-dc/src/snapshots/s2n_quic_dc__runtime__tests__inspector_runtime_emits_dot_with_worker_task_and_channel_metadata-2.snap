@@ -1,6 +1,0 @@
----
-source: dc/s2n-quic-dc/src/runtime.rs
-expression: "rt.channel_bindings().join(\"\\n\")"
----
-worker 1: task 'task.consumer' receives on channel 'ch.producer_to_consumer'
-worker 1: task 'task.producer' sends on channel 'ch.producer_to_consumer'

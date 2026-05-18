@@ -176,7 +176,9 @@ fn recv_idle_wheel_expires_inactive_context() {
 
         let ctx = RecvContextBuilder::default().build();
         // Simulate initial activity
-        ctx.borrow().path_entry.touch_activity(precision::Clock::now(&clock));
+        ctx.borrow()
+            .path_entry
+            .touch_activity(precision::Clock::now(&clock));
         let key = {
             let c = ctx.borrow();
             recv::Key {
@@ -214,7 +216,9 @@ fn recv_idle_wheel_reschedules_active_context() {
             }
         };
         // Touch activity so last_activity != 0
-        ctx.borrow().path_entry.touch_activity(precision::Clock::now(&clock));
+        ctx.borrow()
+            .path_entry
+            .touch_activity(precision::Clock::now(&clock));
         recv_cache.borrow_mut().senders.insert(key, ctx.clone());
         let _ = idle_wheel_tx.send(ctx);
 

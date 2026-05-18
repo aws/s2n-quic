@@ -17,10 +17,10 @@
 //! throughput is immediately visible.
 
 use crate::{
-    stream::endpoint::testing::sim::{Client, SERVER_PORT, Server},
+    stream::endpoint::testing::sim::{Client, Server, SERVER_PORT},
     testing::{ext::*, sim, without_tracing},
 };
-use bach::time::{Instant, timeout};
+use bach::time::{timeout, Instant};
 use bytes::{Bytes, BytesMut};
 use core::ops::Range;
 use s2n_quic_core::varint::VarInt;
@@ -823,4 +823,3 @@ fn init_uniqueness_fuzz() {
             sim_init_uniqueness(&actions, 10_000);
         });
 }
-

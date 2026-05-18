@@ -4,8 +4,8 @@
 //! Worker infrastructure for distributing packets across send/recv sockets.
 
 use crate::{
-    credentials,
     counter::{Counter, Registry},
+    credentials,
     intrusive::Entry,
     packet::{self, datagram::RoutingInfo},
     socket::{channel, pool::descriptor, recv::router::Router},

@@ -27,7 +27,8 @@ fn send_ack_processor_ignores_invalid_sender_id() {
         let (mut ack_tx, ack_rx) = unsync::new::<msg::Sender>();
         let (tx_wheel_tx, mut tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
         let (pto_wheel_tx, mut pto_wheel_rx) = unsync::new_with_adapter::<send::PtoWheelAdapter>();
-        let (idle_wheel_tx, mut idle_wheel_rx) = unsync::new_with_adapter::<send::IdleWheelAdapter>();
+        let (idle_wheel_tx, mut idle_wheel_rx) =
+            unsync::new_with_adapter::<send::IdleWheelAdapter>();
         let (completed_tx, mut completed_rx) = unsync::new::<frame::Frame>();
         let (cancelled_tx, mut cancelled_rx) = unsync::new::<frame::Frame>();
         let (frame_tx, _frame_rx) = frame::submission_channel(1);
@@ -113,7 +114,8 @@ fn send_pto_timeout_routes_pending_context_to_tx_wheel() {
 
         let (tx_wheel_tx, mut tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
         let (pto_wheel_tx, mut pto_wheel_rx) = unsync::new_with_adapter::<send::PtoWheelAdapter>();
-        let (idle_wheel_tx, mut idle_wheel_rx) = unsync::new_with_adapter::<send::IdleWheelAdapter>();
+        let (idle_wheel_tx, mut idle_wheel_rx) =
+            unsync::new_with_adapter::<send::IdleWheelAdapter>();
 
         let rx = tasks::send_pto_timeout(
             input,
@@ -192,10 +194,16 @@ fn send_tx_wheel_drain_routes_expired_context_to_matching_socket() {
         async move {
             let routed = socket1_rx.recv().await.is_some();
             tracing::debug!(routed, "socket 1 routing result");
-            assert!(routed, "sender_idx=1 context should route to socket queue 1");
+            assert!(
+                routed,
+                "sender_idx=1 context should route to socket queue 1"
+            );
             let unexpected = socket0_rx.recv().await.is_some();
             tracing::debug!(unexpected, "socket 0 routing result");
-            assert!(!unexpected, "socket queue 0 should not receive sender_idx=1 context");
+            assert!(
+                !unexpected,
+                "socket queue 0 should not receive sender_idx=1 context"
+            );
         }
         .primary()
         .spawn();

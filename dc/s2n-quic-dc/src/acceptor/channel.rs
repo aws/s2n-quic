@@ -396,7 +396,11 @@ mod tests {
 
             async move {
                 let item = rx.recv().await;
-                assert_eq!(item, Some(1), "parked receiver should be woken with the sent item");
+                assert_eq!(
+                    item,
+                    Some(1),
+                    "parked receiver should be woken with the sent item"
+                );
                 // Negative: channel closes after sender drops
                 assert!(
                     rx.recv().await.is_none(),
@@ -438,7 +442,10 @@ mod tests {
                 1.ms().sleep().await;
 
                 let (_, w1) = sender.send(1).unwrap();
-                assert!(w1.is_some(), "first send to parked receiver should return a waker");
+                assert!(
+                    w1.is_some(),
+                    "first send to parked receiver should return a waker"
+                );
                 if let Some(w) = w1 {
                     w.wake();
                 }
@@ -525,7 +532,11 @@ mod tests {
             });
 
             async move {
-                assert_eq!(rx.recv().await, Some(2), "oldest item should have been evicted");
+                assert_eq!(
+                    rx.recv().await,
+                    Some(2),
+                    "oldest item should have been evicted"
+                );
                 assert_eq!(rx.recv().await, Some(3), "newest item should be present");
                 assert!(rx.recv().await.is_none());
             }
@@ -559,8 +570,16 @@ mod tests {
             });
 
             async move {
-                assert_eq!(rx.recv().await, Some(1), "first item should survive back eviction");
-                assert_eq!(rx.recv().await, Some(3), "overflow item should replace the back");
+                assert_eq!(
+                    rx.recv().await,
+                    Some(1),
+                    "first item should survive back eviction"
+                );
+                assert_eq!(
+                    rx.recv().await,
+                    Some(3),
+                    "overflow item should replace the back"
+                );
                 assert!(rx.recv().await.is_none());
             }
             .primary()
@@ -599,11 +618,7 @@ mod tests {
                 let rx2 = rx1.clone();
                 let rx3 = rx1.clone();
 
-                for (mut rx, count) in [
-                    (rx1, rx1_count),
-                    (rx2, rx2_count),
-                    (rx3, rx3_count),
-                ] {
+                for (mut rx, count) in [(rx1, rx1_count), (rx2, rx2_count), (rx3, rx3_count)] {
                     async move {
                         while rx.recv().await.is_some() {
                             count.fetch_add(1, Ordering::Relaxed);
@@ -636,9 +651,18 @@ mod tests {
             "all 60 items should be received exactly once (distribution: rx1={c1}, rx2={c2}, rx3={c3})"
         );
         // Pick-two load balancing must spread the work: no receiver should be idle
-        assert!(c1 > 0, "receiver 1 should receive some items (distribution: rx1={c1}, rx2={c2}, rx3={c3})");
-        assert!(c2 > 0, "receiver 2 should receive some items (distribution: rx1={c1}, rx2={c2}, rx3={c3})");
-        assert!(c3 > 0, "receiver 3 should receive some items (distribution: rx1={c1}, rx2={c2}, rx3={c3})");
+        assert!(
+            c1 > 0,
+            "receiver 1 should receive some items (distribution: rx1={c1}, rx2={c2}, rx3={c3})"
+        );
+        assert!(
+            c2 > 0,
+            "receiver 2 should receive some items (distribution: rx1={c1}, rx2={c2}, rx3={c3})"
+        );
+        assert!(
+            c3 > 0,
+            "receiver 3 should receive some items (distribution: rx1={c1}, rx2={c2}, rx3={c3})"
+        );
         // And no single receiver should be overwhelmed
         assert!(c1 < 50, "receiver 1 should not handle most of the load (distribution: rx1={c1}, rx2={c2}, rx3={c3})");
         assert!(c2 < 50, "receiver 2 should not handle most of the load (distribution: rx1={c1}, rx2={c2}, rx3={c3})");
@@ -663,7 +687,7 @@ mod tests {
             // then immediately drop it so its slot is removed.
             async move {
                 let _ = rx2.try_recv(); // registers the slot, returns None
-                // rx2 is dropped here — slot is unregistered
+                                        // rx2 is dropped here — slot is unregistered
             }
             .spawn();
 
@@ -684,7 +708,10 @@ mod tests {
                 while rx1.recv().await.is_some() {
                     received += 1;
                 }
-                assert_eq!(received, 10, "all items should arrive on the surviving receiver");
+                assert_eq!(
+                    received, 10,
+                    "all items should arrive on the surviving receiver"
+                );
             }
             .primary()
             .spawn();

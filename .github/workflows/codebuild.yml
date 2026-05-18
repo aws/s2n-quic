@@ -2,16 +2,11 @@
 name: Codebuild
 
 on:
-  push:
-    branches: [main]
-  # This event can use aws credentials, but runs against upstream code instead of PR code.
-  # https://docs.github.com/en/actions/reference/events-that-trigger-workflows#pull_request_target
-  # https://securitylab.github.com/resources/github-actions-preventing-pwn-requests/
-  pull_request_target:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   codebuild-trigger:
+    if: false # Disabled in this fork: no CodeBuild environment configured
     runs-on: ubuntu-latest
     permissions:
       id-token: write

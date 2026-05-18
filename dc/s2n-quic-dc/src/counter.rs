@@ -3,15 +3,15 @@
 
 use core::time::Duration;
 use s2n_quic_dc_metrics::format::{
-    ParsedMetricsLine, histogram_count_min_max, histogram_value_at_percentile,
-    parse_histogram_buckets, parse_histogram_suffix,
+    histogram_count_min_max, histogram_value_at_percentile, parse_histogram_buckets,
+    parse_histogram_suffix, ParsedMetricsLine,
 };
 use std::{
     collections::HashMap,
     net::SocketAddr,
     sync::{
-        Arc, Mutex,
         atomic::{AtomicI64, Ordering},
+        Arc, Mutex,
     },
     time::Instant,
 };
@@ -756,7 +756,12 @@ impl TimerGuard<'_> {
         let duration = now.duration_since(self.start);
         #[cfg(any(test, feature = "metric-tracing"))]
         if !in_bach_sim() {
-            metric_emit!("t", self.metric_label, self.metric_variant, duration.as_micros());
+            metric_emit!(
+                "t",
+                self.metric_label,
+                self.metric_variant,
+                duration.as_micros()
+            );
         }
         self.summary.record_duration(duration);
         self.recorded = true;
@@ -771,7 +776,12 @@ impl Drop for TimerGuard<'_> {
             let duration = self.start.elapsed();
             #[cfg(any(test, feature = "metric-tracing"))]
             if !in_bach_sim() {
-                metric_emit!("t", self.metric_label, self.metric_variant, duration.as_micros());
+                metric_emit!(
+                    "t",
+                    self.metric_label,
+                    self.metric_variant,
+                    duration.as_micros()
+                );
             }
             self.summary.record_duration(duration);
         }
@@ -1850,7 +1860,10 @@ impl Topology {
             let node_line = format!("{node_id} [shape=box,label=\"{}\"];\n", escape_dot(&label));
 
             if let Some(worker_id) = task.worker_id {
-                worker_task_nodes.entry(worker_id).or_default().push(node_line);
+                worker_task_nodes
+                    .entry(worker_id)
+                    .or_default()
+                    .push(node_line);
             } else {
                 unassigned_task_nodes.push(node_line);
             }
@@ -2233,7 +2246,10 @@ fn format_metrics_with_formatter<F: MermaidMetricFormatter>(
                 .unit
                 .map(|unit| format!(" unit={unit}"))
                 .unwrap_or_default();
-            format!("{name} [{}{}{}]: {}", metric.kind, variant, unit, metric.description)
+            format!(
+                "{name} [{}{}{}]: {}",
+                metric.kind, variant, unit, metric.description
+            )
         })
         .collect();
     if lines.is_empty() {
@@ -3255,7 +3271,11 @@ mod tests {
                 TaskRegistration::new("task.worker.2", "desc", "fn").with_worker_id(Some(2)),
                 TaskRegistration::new("task.unassigned", "desc", "fn"),
             ],
-            channels: vec![ChannelRegistration::new("queue.main", "queue desc", "queue_fn")],
+            channels: vec![ChannelRegistration::new(
+                "queue.main",
+                "queue desc",
+                "queue_fn",
+            )],
             bindings: vec![
                 ChannelBinding::new(
                     "task.worker.1",

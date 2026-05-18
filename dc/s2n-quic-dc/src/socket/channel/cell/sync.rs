@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use core::{mem::ManuallyDrop, task::Poll};
 use parking_lot::Mutex;
 use std::sync::Arc;

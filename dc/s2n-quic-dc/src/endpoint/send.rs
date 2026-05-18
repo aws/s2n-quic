@@ -29,13 +29,8 @@ use crate::{
 use core::time::Duration;
 use rustc_hash::FxHashMap;
 use s2n_quic_core::{
-    frame::ack::EcnCounts,
-    packet::number::PacketNumberSpace,
-    path::INITIAL_PTO_BACKOFF,
-    random,
-    recovery::RttEstimator,
-    time::Timestamp,
-    varint::VarInt,
+    frame::ack::EcnCounts, packet::number::PacketNumberSpace, path::INITIAL_PTO_BACKOFF, random,
+    recovery::RttEstimator, time::Timestamp, varint::VarInt,
 };
 use s2n_quic_platform::features::Gso;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
@@ -892,13 +887,11 @@ impl Context {
             let has_pending_data_predicate = self.has_pending_data();
             let has_pending_predicate = self.has_pending();
             assert_eq!(
-                has_pending_data_predicate,
-                has_pending_data,
+                has_pending_data_predicate, has_pending_data,
                 "has_pending_data predicate drifted from queue contents"
             );
             assert_eq!(
-                has_pending_predicate,
-                has_pending_data,
+                has_pending_predicate, has_pending_data,
                 "has_pending predicate drifted from queue contents"
             );
 
