@@ -1,0 +1,6 @@
+---
+source: dc/s2n-quic-dc/src/testing.rs
+expression: logs
+---
+0:00:00.000000000 [main] DEBUG grow epoch=8
+0:00:00.000000000 [main] DEBUG Reader dropping stream_id=1 status=Open final_size=Some(5) consumed_len=1 total_received_len=5 is_writing_complete=true is_reading_complete=false

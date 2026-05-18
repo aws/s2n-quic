@@ -260,7 +260,12 @@ struct Uptime(tracing_subscriber::fmt::time::SystemTime);
 impl tracing_subscriber::fmt::time::FormatTime for Uptime {
     fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
         if bach::is_active() {
-            write!(w, "{}", bach::time::Instant::now())
+            write!(
+                w,
+                "{} [{}]",
+                bach::time::Instant::now(),
+                bach::group::current().name()
+            )
         } else {
             self.0.format_time(w)
         }
@@ -308,10 +313,10 @@ fn is_bolero_fuzzing() -> bool {
 #[cfg(test)]
 #[track_caller]
 fn run_sim_with_snapshot(f: impl FnOnce()) {
-    // Derive a stable snapshot suffix from the test thread name (e.g.
+    // Derive a stable snapshot name from the test thread name (e.g.
     // "endpoint::tasks::tests::context_resolver::same_peer_reuses_context")
     // rather than from the caller file/line, which changes as code moves.
-    let suffix = std::thread::current()
+    let snapshot_name = std::thread::current()
         .name()
         .unwrap_or("unknown")
         .replace([':', '/', '\\', '.', ' '], "_");
@@ -342,8 +347,8 @@ fn run_sim_with_snapshot(f: impl FnOnce()) {
 
     let logs = writer.take_string();
 
-    insta::with_settings!({snapshot_suffix => suffix}, {
-        insta::assert_snapshot!(logs);
+    insta::with_settings!({prepend_module_to_snapshot => false}, {
+        insta::assert_snapshot!(snapshot_name, logs);
     });
 }
 

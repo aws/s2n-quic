@@ -1,8 +1,0 @@
----
-source: dc/s2n-quic-dc/src/testing.rs
-expression: logs
----
-0:00:00.000000000 DEBUG grow epoch=8
-0:00:00.000000000 DEBUG Writer dropping stream_id=42 status=Open next_offset=0 inflight_bytes=0 remote_max_data=14720
-0:00:00.000000000 DEBUG Sent FlowReset stream_id=42 error_code=5 reset_target=Both
-0:00:00.000000000 DEBUG Writer dropped during panic - sent FlowReset and cancelled transmissions stream_id=42

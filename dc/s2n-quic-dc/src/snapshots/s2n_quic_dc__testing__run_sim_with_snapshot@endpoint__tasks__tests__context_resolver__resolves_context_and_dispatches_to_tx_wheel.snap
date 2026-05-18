@@ -1,7 +1,0 @@
----
-source: dc/s2n-quic-dc/src/testing.rs
-expression: logs
----
-0:00:00.000000000 TRACE c#send.pending.enq=1
-0:00:00.000000000 TRACE g#send.pending.depth=1
-0:00:00.000000000 TRACE m#send.pending.depth_dist=1

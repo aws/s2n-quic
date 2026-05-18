@@ -1,8 +1,0 @@
----
-source: dc/s2n-quic-dc/src/testing.rs
-expression: logs
----
-0:00:00.000000000 DEBUG grow epoch=8
-0:00:00.000000000 DEBUG Transmission failed stream_id=42 reason=PeerDead
-0:00:00.000000000 DEBUG event=on_shutdown prev=Open next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs:651:41
-0:00:00.000000000 DEBUG Writer dropping stream_id=42 status=Shutdown next_offset=5 inflight_bytes=0 remote_max_data=14720

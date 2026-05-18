@@ -1,0 +1,10 @@
+---
+source: dc/s2n-quic-dc/src/testing.rs
+expression: logs
+---
+0:00:00.000000000 [main] TRACE c#send.pending.enq=1
+0:00:00.000000000 [main] TRACE g#send.pending.depth=1
+0:00:00.000000000 [main] TRACE m#send.pending.depth_dist=1
+0:00:00.000000000 [main] DEBUG invalidating send context id=0x25a69ae25d5f3678f5373f68bc3c106d sender_idx=0
+0:00:00.000000000 [main] TRACE c#send.pending.drain=1
+0:00:00.000000000 [main] TRACE g#send.pending.depth=0
