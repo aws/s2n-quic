@@ -1014,7 +1014,11 @@ impl Drop for Reader {
             );
         } else if !self.0.reassembler.is_writing_complete() && !self.0.status.is_reset() {
             let error_code = error::STOP_SENDING;
-            let _ = self.0.send_reset_frame(error_code, ResetTarget::Stream);
+            // STOP_SENDING must target the *writer* on the peer side, which
+            // polls the *control* channel.  Using ResetTarget::Stream would
+            // route the reset to the peer's reader (stream queue) instead and
+            // the peer's writer would never observe the signal.
+            let _ = self.0.send_reset_frame(error_code, ResetTarget::Control);
             debug!(
                 stream_id = self.0.stream_id.as_u64(),
                 "Reader dropped before FIN received - sent STOP_SENDING"

@@ -16,3 +16,5 @@ perf.data*
 .claude/
 *.log
 logs/*
+poll_test
+rust_out

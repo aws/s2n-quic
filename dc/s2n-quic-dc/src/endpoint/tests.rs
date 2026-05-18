@@ -8,6 +8,7 @@
 //! group so it is treated as a separate machine from the network perspective.
 
 pub mod deterministic;
+pub mod half_close;
 
 use crate::stream::endpoint::testing::sim::{Client, Server, SERVER_PORT};
 use bach::time::timeout;
