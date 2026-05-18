@@ -709,10 +709,11 @@ impl Inner {
                                 )));
                             }
 
-                            if self.status.on_flow_established().is_ok() {
-                                debug_assert!(self.control_rx.remote_queue_id().is_some());
-                                debug!(stream_id = self.stream_id.as_u64(), "Flow established");
-                            }
+                            self.try_establish_flow();
+                        }
+                        msg::Control::MaxData { maximum_data } => {
+                            self.apply_max_data(maximum_data);
+                            self.try_establish_flow();
                         }
                         msg::Control::Reset { error_code } => {
                             self.reset_error_code = Some(error_code);
@@ -743,6 +744,26 @@ impl Inner {
         }
     }
 
+    /// Applies a received MAX_DATA value, keeping the highest observed window.
+    fn apply_max_data(&mut self, maximum_data: VarInt) {
+        let prev_max = self.remote_max_data;
+        self.remote_max_data = self.remote_max_data.max(maximum_data);
+        trace!(
+            stream_id = self.stream_id.as_u64(),
+            prev_max = prev_max.as_u64(),
+            new_max = self.remote_max_data.as_u64(),
+            "Received MAX_DATA"
+        );
+    }
+
+    /// Transitions the writer to `Open` if it is currently `FlowInitSent`.
+    fn try_establish_flow(&mut self) {
+        if self.status.on_flow_established().is_ok() {
+            debug_assert!(self.control_rx.remote_queue_id().is_some());
+            debug!(stream_id = self.stream_id.as_u64(), "Flow established");
+        }
+    }
+
     fn handle_control_frames(&mut self, payload: &mut [u8]) -> Result<(), s2n_codec::DecoderError> {
         use s2n_quic_core::frame::{FrameMut, MaxData};
 
@@ -751,14 +772,7 @@ impl Inner {
         while let Some(frame) = frames_iter.next() {
             match frame? {
                 FrameMut::MaxData(MaxData { maximum_data }) => {
-                    let prev_max = self.remote_max_data;
-                    self.remote_max_data = self.remote_max_data.max(maximum_data);
-                    trace!(
-                        stream_id = self.stream_id.as_u64(),
-                        prev_max = prev_max.as_u64(),
-                        new_max = self.remote_max_data.as_u64(),
-                        "Received MAX_DATA"
-                    );
+                    self.apply_max_data(maximum_data);
                 }
                 frame => {
                     trace!(

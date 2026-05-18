@@ -88,7 +88,6 @@ use crate::{
     packet::datagram::{QueuePair, ResetTarget},
     path::secret::map::Entry as PathSecretEntry,
 };
-use s2n_codec::EncoderValue;
 use s2n_quic_core::{
     buffer::{
         self,
@@ -97,7 +96,6 @@ use s2n_quic_core::{
         reassembler::Reassembler,
         writer::{Storage as _, Writer as _},
     },
-    frame::MaxData,
     ready,
     state::{event, is},
     task::waker,
@@ -897,20 +895,17 @@ impl Inner {
             return Ok(());
         };
 
-        let frame = MaxData { maximum_data };
-        let encoded_bytes = frame.encode_to_vec();
-        let control_data = ByteVec::from(encoded_bytes);
-
         let frame = Frame {
             source_sender_id: VarInt::MAX,
-            header: Header::FlowControl {
+            header: Header::FlowMaxData {
                 queue_pair: QueuePair {
                     source_queue_id: self.stream_rx.queue_id(),
                     dest_queue_id: remote_queue_id,
                 },
                 stream_id: self.stream_id,
+                maximum_data,
             },
-            payload: control_data,
+            payload: ByteVec::new(),
             path_secret_entry: self.path_secret_entry.clone(),
             completion: Some(self.completion_rx.sender()),
             status: frame::TransmissionStatus::default(),

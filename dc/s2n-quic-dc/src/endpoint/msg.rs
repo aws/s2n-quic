@@ -21,6 +21,12 @@ pub enum Stream {
 
 pub enum Control {
     Frames { payload: BytesMut },
+    /// Inline window update: the new `maximum_data` value advertised by the reader.
+    ///
+    /// This is the fast path dispatched from a [`Header::FlowMaxData`] frame,
+    /// avoiding payload allocation and QUIC frame decoding for the common
+    /// flow-control case.
+    MaxData { maximum_data: VarInt },
     Reset { error_code: VarInt },
 }
 

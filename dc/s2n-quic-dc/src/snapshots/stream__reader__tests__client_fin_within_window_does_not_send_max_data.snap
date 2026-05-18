@@ -4,5 +4,5 @@ expression: logs
 ---
 0:00:00.000000000 [main] DEBUG grow epoch=8
 0:00:00.000000000 [main] DEBUG Reader complete - all data consumed stream_id=1 final_size=Some(5) consumed_len=5
-0:00:00.000000000 [main] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs:625:25
+0:00:00.000000000 [main] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs:635:25
 0:00:00.000000000 [main] DEBUG Reader dropping stream_id=1 status=Complete final_size=Some(5) consumed_len=5 total_received_len=5 is_writing_complete=true is_reading_complete=true

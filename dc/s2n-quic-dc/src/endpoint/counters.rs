@@ -216,6 +216,7 @@ impl Dispatch {
             Header::FlowInitValidate { .. } => self.rx_init_validate.add(1),
             Header::FlowData { .. } => self.rx_data.add(1),
             Header::FlowControl { .. } => self.rx_flow_control.add(1),
+            Header::FlowMaxData { .. } => self.rx_flow_control.add(1),
             Header::FlowReset { .. } => self.rx_reset.add(1),
             Header::Ack { .. } => self.rx_pkt_control.add(1),
         };

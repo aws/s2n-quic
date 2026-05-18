@@ -19,8 +19,7 @@ use crate::{
 };
 use bach::{ext::*, time::timeout};
 use bytes::Bytes;
-use s2n_codec::EncoderValue;
-use s2n_quic_core::{endpoint, frame::MaxData, varint::VarInt};
+use s2n_quic_core::{endpoint, varint::VarInt};
 use std::{net::SocketAddr, task::Poll, time::Duration};
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
@@ -223,9 +222,7 @@ impl Pusher {
     }
 
     fn push_max_data(&mut self, maximum_data: VarInt) {
-        self.push_control(msg::Control::Frames {
-            payload: Bytes::from(MaxData { maximum_data }.encode_to_vec()).into(),
-        });
+        self.push_control(msg::Control::MaxData { maximum_data });
     }
 
     /// Receives one submitted burst.

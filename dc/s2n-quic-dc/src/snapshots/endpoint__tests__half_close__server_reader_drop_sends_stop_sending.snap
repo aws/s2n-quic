@@ -1,6 +1,5 @@
 ---
 source: dc/s2n-quic-dc/src/testing.rs
-assertion_line: 351
 expression: logs
 ---
 0:00:00.000000000 [server] DEBUG setting up endpoint config.layout=WorkerLayout { frame_dispatch: 0, send: [0], recv_io: [0], recv_dispatch: [0], waker_drain: [0], background: 0 }
@@ -45,7 +44,7 @@ expression: logs
 0:00:00.000000000 [client] TRACE m#task.invalidation.drained[recv.0]=0
 0:00:00.000000000 [client] TRACE m#task.waker_drain.drained[waker.0]=0
 0:00:00.000000000 [client] TRACE m#task.invalidation_validator.drained[background]=0
-0:00:00.000000000 [client] DEBUG event=on_send_flow_init prev=Init next=FlowInitSent location=dc/s2n-quic-dc/src/stream/writer.rs:805:21
+0:00:00.000000000 [client] DEBUG event=on_send_flow_init prev=Init next=FlowInitSent location=dc/s2n-quic-dc/src/stream/writer.rs:819:21
 0:00:00.000000000 [client] DEBUG Sent FlowInit with early data stream_id=0 bytes_read=1024 is_fin=false
 0:00:00.000000000 [server] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [server] TRACE m#task.frame_dispatch.drained=0
@@ -188,7 +187,7 @@ expression: logs
 0:00:00.000521000 [server] TRACE g#q.resolver_to_tx_wheel.depth[send.0]=1
 0:00:00.000521000 [server] TRACE m#q.resolver_to_tx_wheel.depth_dist[send.0]=1
 0:00:00.000521000 [server] TRACE m#task.ack_processor.drained[send.0]=2
-0:00:00.000521000 [server] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs:956:29
+0:00:00.000521000 [server] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs:970:29
 0:00:00.000521000 [server] DEBUG Writer dropping stream_id=0 status=FinSent next_offset=4 inflight_bytes=4 remote_max_data=1048576
 0:00:00.000521000 [server] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs:514:25
 0:00:00.000521000 [server] DEBUG Reader dropping stream_id=0 status=Open final_size=None consumed_len=0 total_received_len=0 is_writing_complete=false is_reading_complete=false
@@ -399,9 +398,9 @@ expression: logs
 0:00:00.001041000 [client] TRACE m#q.ack.depth_dist[send.0]=1
 0:00:00.001041000 [client] TRACE m#task.ack_burst.drained[recv.0]=1
 0:00:00.001041000 [client] DEBUG poll_remote_budget received messages stream_id=0 status=FlowInitSent msg_count=1
-0:00:00.001041000 [client] DEBUG event=on_shutdown prev=FlowInitSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs:719:41
+0:00:00.001041000 [client] DEBUG event=on_shutdown prev=FlowInitSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs:720:41
 0:00:00.001041000 [client] DEBUG Reader complete - all data consumed stream_id=0 final_size=Some(4) consumed_len=4
-0:00:00.001041000 [client] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs:625:25
+0:00:00.001041000 [client] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs:635:25
 0:00:00.001041000 [client] DEBUG Writer dropping stream_id=0 status=Shutdown next_offset=1024 inflight_bytes=0 remote_max_data=0
 0:00:00.001041000 [client] DEBUG Reader dropping stream_id=0 status=Complete final_size=Some(4) consumed_len=4 total_received_len=4 is_writing_complete=true is_reading_complete=true
 0:00:00.001041000 [client] TRACE c#q.ack.receiver[send.0.task.ack_processor]=1

@@ -27,7 +27,7 @@ use super::{error, msg, write_data_reader, ReadToEnd, Reader};
 use crate::{
     endpoint::frame::{self, Frame, Header, PriorityStorage, SubmissionReceiver},
     flow, intrusive,
-    packet::{control, datagram::ResetTarget},
+    packet::datagram::ResetTarget,
     path::secret::map::Entry as PathSecretEntry,
     testing::{ext::*, sim},
 };
@@ -35,7 +35,6 @@ use bytes::BytesMut;
 use s2n_quic_core::{
     buffer::{writer::Storage as _, Reassembler},
     endpoint,
-    frame::FrameMut,
     stream::testing::Data,
     varint::VarInt,
 };
@@ -237,23 +236,8 @@ impl Pusher {
 }
 
 fn decode_max_data_from_flow_control(frame: &Frame) -> Option<VarInt> {
-    if !matches!(frame.header, Header::FlowControl { .. }) {
-        return None;
-    }
-
-    let mut payload = Vec::with_capacity(frame.payload.len());
-    for chunk in frame.payload.chunks() {
-        payload.extend_from_slice(chunk);
-    }
-
-    let mut frames = control::decoder::ControlFramesMut::new(payload.as_mut_slice());
-    let frame = frames.next()?.ok()?;
-    if frames.next().is_some() {
-        return None;
-    }
-
-    match frame {
-        FrameMut::MaxData(max_data) => Some(max_data.maximum_data),
+    match frame.header {
+        Header::FlowMaxData { maximum_data, .. } => Some(maximum_data),
         _ => None,
     }
 }
@@ -1291,7 +1275,7 @@ fn server_drop_during_pending_validation_sends_stop_sending() {
                 matches!(
                     frames.front().unwrap().header,
                     Header::FlowReset {
-                        reset_target: ResetTarget::Stream,
+                        reset_target: ResetTarget::Control,
                         error_code,
                         ..
                     } if error_code == error::STOP_SENDING
@@ -1401,12 +1385,12 @@ fn drop_before_fin_sends_stop_sending() {
                 matches!(
                     frames.front().unwrap().header,
                     Header::FlowReset {
-                        reset_target: ResetTarget::Stream,
+                        reset_target: ResetTarget::Control,
                         error_code,
                         ..
                     } if error_code == error::STOP_SENDING
                 ),
-                "expected exactly one FlowReset(Stream, STOP_SENDING) on drop"
+                "expected exactly one FlowReset(Control, STOP_SENDING) on drop"
             );
         }
         .primary()
