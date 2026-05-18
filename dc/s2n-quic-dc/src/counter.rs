@@ -1379,6 +1379,45 @@ impl MetricRegistration {
     }
 }
 
+/// Controls how metrics are rendered in a Mermaid node.
+///
+/// Metrics are always embedded as structured `%% metric:` comments on each node
+/// so a custom Mermaid extension can read them. The comments use the name returned
+/// by [`format_metric_name`], so namespace prefixes and other transformations are
+/// reflected there too.
+///
+/// [`should_display_metric`] separately controls whether the metric list is also
+/// shown inline in the visible node card — useful for maintainer views vs.
+/// end-user charts where only live values matter.
+///
+/// [`format_metric_name`]: MermaidMetricFormatter::format_metric_name
+/// [`should_display_metric`]: MermaidMetricFormatter::should_display_metric
+pub trait MermaidMetricFormatter {
+    /// Return the display name for this metric (used in both the `%% metric:`
+    /// comment and the visible card line).  Implement this to add a namespace
+    /// prefix or map to a backend-specific identifier.
+    fn format_metric_name(&self, metric: &MetricRegistration) -> String;
+
+    /// Return `true` to include this metric in the visible node card, or `false`
+    /// to hide it (it still appears in the `%% metric:` comments).
+    fn should_display_metric(&self, metric: &MetricRegistration) -> bool;
+}
+
+/// Default [`MermaidMetricFormatter`] that renders each metric name as-is and
+/// shows all metrics inline in the node card.
+#[derive(Clone, Debug, Default)]
+pub struct DefaultMermaidMetricFormatter;
+
+impl MermaidMetricFormatter for DefaultMermaidMetricFormatter {
+    fn format_metric_name(&self, metric: &MetricRegistration) -> String {
+        metric.label.clone()
+    }
+
+    fn should_display_metric(&self, _metric: &MetricRegistration) -> bool {
+        true
+    }
+}
+
 pub trait Metric {
     fn registrations(&self) -> Vec<MetricRegistration>;
 }
@@ -1633,6 +1672,157 @@ pub struct Topology {
     pub bindings: Vec<ChannelBinding>,
 }
 
+/// A Mermaid flowchart view of a [`Topology`] that can be rendered via [`Display`].
+///
+/// Obtained from [`Topology::to_mermaid`]. A custom [`MermaidMetricFormatter`] can be
+/// supplied with [`Mermaid::with_metric_formatter`] before rendering.
+///
+/// # Type parameters
+///
+/// - `'a` — lifetime of the borrowed [`Topology`].
+/// - `F` — metric formatter; defaults to [`DefaultMermaidMetricFormatter`].
+///
+/// [`Display`]: core::fmt::Display
+pub struct Mermaid<'a, F = DefaultMermaidMetricFormatter> {
+    topology: &'a Topology,
+    formatter: F,
+}
+
+impl<'a> Mermaid<'a> {
+    fn new(topology: &'a Topology) -> Self {
+        Self {
+            topology,
+            formatter: DefaultMermaidMetricFormatter,
+        }
+    }
+}
+
+impl<'a, F> Mermaid<'a, F> {
+    /// Replace the metric formatter, returning a new [`Mermaid`] with the given formatter.
+    pub fn with_metric_formatter<G: MermaidMetricFormatter>(self, formatter: G) -> Mermaid<'a, G> {
+        Mermaid {
+            topology: self.topology,
+            formatter,
+        }
+    }
+}
+
+impl<'a, F: MermaidMetricFormatter> core::fmt::Display for Mermaid<'a, F> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let topology = self.topology;
+
+        write!(
+            f,
+            "flowchart LR\n  classDef task_node fill:#eef2ff,stroke:#4f46e5,stroke-width:2px;\n  classDef channel_node fill:#ecfeff,stroke:#0891b2,stroke-width:2px;\n"
+        )?;
+
+        use std::collections::BTreeMap;
+        let mut task_node_ids = std::collections::HashMap::new();
+        let mut channel_node_ids = std::collections::HashMap::new();
+        let mut worker_task_nodes = BTreeMap::<usize, Vec<String>>::new();
+        let mut unassigned_task_nodes = Vec::new();
+
+        // Render tasks
+        for (idx, task) in topology.tasks.iter().enumerate() {
+            let node_id = format!("t{idx}");
+            task_node_ids.insert(task.name.clone(), node_id.clone());
+            let budget = task
+                .budget
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "none".to_string());
+            let comments = metric_comment_lines(&self.formatter, &task.metrics);
+            let metrics_display = format_metrics_with_formatter(&self.formatter, &task.metrics);
+            let mut props = vec![
+                format!("fn: {}", task.function),
+                format!("budget: {budget}"),
+            ];
+            if let Some(metrics) = metrics_display {
+                props.push(format!("metrics: {metrics}"));
+            }
+            props.push(format!("desc: {}", task.description));
+            let label = format_mermaid_card(&task.name, props);
+            let node_line = format!(
+                "{node_id}[\"{}\"]\nclass {node_id} task_node;\n{comments}",
+                label
+            );
+
+            if let Some(worker_id) = task.worker_id {
+                worker_task_nodes
+                    .entry(worker_id)
+                    .or_default()
+                    .push(node_line);
+            } else {
+                unassigned_task_nodes.push(node_line);
+            }
+        }
+
+        for (worker_id, task_nodes) in worker_task_nodes {
+            writeln!(f, "  subgraph worker_{worker_id}[worker {worker_id}]")?;
+            for node in &task_nodes {
+                write_indented(f, "    ", node)?;
+            }
+            writeln!(f, "  end")?;
+        }
+
+        for node in &unassigned_task_nodes {
+            write_indented(f, "  ", node)?;
+        }
+
+        // Render channels
+        for (idx, channel) in topology.channels.iter().enumerate() {
+            let node_id = format!("c{idx}");
+            channel_node_ids.insert(channel.name.clone(), node_id.clone());
+            let comments = metric_comment_lines(&self.formatter, &channel.metrics);
+            let metrics_display = format_metrics_with_formatter(&self.formatter, &channel.metrics);
+            let mut props = vec![format!("fn: {}", channel.function)];
+            if let Some(metrics) = metrics_display {
+                props.push(format!("metrics: {metrics}"));
+            }
+            props.push(format!("desc: {}", channel.description));
+            let label = format_mermaid_card(&channel.name, props);
+            writeln!(f, "  {node_id}[\"{}\"]", label)?;
+            writeln!(f, "  class {node_id} channel_node;")?;
+            if !comments.is_empty() {
+                write_indented(f, "  ", &comments)?;
+            }
+        }
+
+        // Render bindings
+        for binding in &topology.bindings {
+            let Some(task_node) = task_node_ids.get(&binding.task_name) else {
+                writeln!(
+                    f,
+                    "  %% unresolved binding: missing task '{}'",
+                    binding.task_name
+                )?;
+                continue;
+            };
+            let Some(channel_node) = channel_node_ids.get(&binding.channel_name) else {
+                writeln!(
+                    f,
+                    "  %% unresolved binding: missing channel '{}'",
+                    binding.channel_name
+                )?;
+                continue;
+            };
+
+            let (from, to) = if binding.direction == ChannelDirection::Sends {
+                (task_node, channel_node)
+            } else {
+                (channel_node, task_node)
+            };
+            let label = format!(
+                "{}\nfn: {}\n{}",
+                binding.direction, binding.function, binding.description
+            );
+            let edge_label = escape_mermaid(&label).replace('|', "&#124;");
+            writeln!(f, "  {from} -->|{}| {to}", edge_label)?;
+        }
+
+        Ok(())
+    }
+}
+
 impl Topology {
     /// Generate a DOT graph representation of the topology.
     pub fn to_dot(&self) -> String {
@@ -1733,110 +1923,14 @@ impl Topology {
         out
     }
 
-    /// Generate a Mermaid flowchart representation of the topology.
-    pub fn to_mermaid(&self) -> String {
-        let mut out = String::from(
-            "flowchart LR\n  classDef task_node fill:#eef2ff,stroke:#4f46e5,stroke-width:2px;\n  classDef channel_node fill:#ecfeff,stroke:#0891b2,stroke-width:2px;\n",
-        );
-
-        use std::collections::BTreeMap;
-        let mut task_node_ids = std::collections::HashMap::new();
-        let mut channel_node_ids = std::collections::HashMap::new();
-        let mut worker_task_nodes = BTreeMap::<usize, Vec<String>>::new();
-        let mut unassigned_task_nodes = Vec::new();
-
-        // Render tasks
-        for (idx, task) in self.tasks.iter().enumerate() {
-            let node_id = format!("t{idx}");
-            task_node_ids.insert(task.name.clone(), node_id.clone());
-            let budget = task
-                .budget
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "none".to_string());
-            let metrics = metric_summary(&task.metrics);
-            let label = format_mermaid_card(
-                &task.name,
-                [
-                    format!("fn: {}", task.function),
-                    format!("budget: {budget}"),
-                    format!("metrics: {metrics}"),
-                    format!("desc: {}", task.description),
-                ],
-            );
-            let node_line = format!("{node_id}[\"{}\"]\nclass {node_id} task_node;\n", label);
-
-            if let Some(worker_id) = task.worker_id {
-                worker_task_nodes
-                    .entry(worker_id)
-                    .or_default()
-                    .push(node_line);
-            } else {
-                unassigned_task_nodes.push(node_line);
-            }
-        }
-
-        for (worker_id, task_nodes) in worker_task_nodes {
-            out.push_str(&format!("  subgraph worker_{worker_id}[worker {worker_id}]\n"));
-            for node in task_nodes {
-                push_indented(&mut out, "    ", &node);
-            }
-            out.push_str("  end\n");
-        }
-
-        for node in unassigned_task_nodes {
-            push_indented(&mut out, "  ", &node);
-        }
-
-        // Render channels
-        for (idx, channel) in self.channels.iter().enumerate() {
-            let node_id = format!("c{idx}");
-            channel_node_ids.insert(channel.name.clone(), node_id.clone());
-            let metrics = metric_summary(&channel.metrics);
-            let label = format_mermaid_card(
-                &channel.name,
-                [
-                    format!("fn: {}", channel.function),
-                    format!("metrics: {metrics}"),
-                    format!("desc: {}", channel.description),
-                ],
-            );
-            out.push_str(&format!(
-                "  {node_id}[\"{}\"]\n  class {node_id} channel_node;\n",
-                label
-            ));
-        }
-
-        // Render bindings
-        for binding in &self.bindings {
-            let Some(task_node) = task_node_ids.get(&binding.task_name) else {
-                out.push_str(&format!(
-                    "  %% unresolved binding: missing task '{}'\n",
-                    binding.task_name
-                ));
-                continue;
-            };
-            let Some(channel_node) = channel_node_ids.get(&binding.channel_name) else {
-                out.push_str(&format!(
-                    "  %% unresolved binding: missing channel '{}'\n",
-                    binding.channel_name
-                ));
-                continue;
-            };
-
-            let (from, to) = if binding.direction == ChannelDirection::Sends {
-                (task_node, channel_node)
-            } else {
-                (channel_node, task_node)
-            };
-            let label = format!(
-                "{}\nfn: {}\n{}",
-                binding.direction, binding.function, binding.description
-            );
-            let edge_label = escape_mermaid(&label).replace('|', "&#124;");
-            out.push_str(&format!("  {from} -->|{}| {to}\n", edge_label));
-        }
-
-        out
+    /// Returns a [`Mermaid`] view of this topology that renders as a Mermaid flowchart.
+    ///
+    /// The returned value implements [`Display`] and can be customized with a
+    /// [`MermaidMetricFormatter`] via [`Mermaid::with_metric_formatter`].
+    ///
+    /// [`Display`]: core::fmt::Display
+    pub fn to_mermaid(&self) -> Mermaid<'_> {
+        Mermaid::new(self)
     }
 
     /// Generate a stable, human-readable snapshot representation of the topology.
@@ -2021,12 +2115,15 @@ fn format_mermaid_card(header: &str, properties: impl IntoIterator<Item = String
     escape_mermaid(&label)
 }
 
-fn push_indented(out: &mut String, indent: &str, block: &str) {
+fn write_indented(
+    f: &mut core::fmt::Formatter<'_>,
+    indent: &str,
+    block: &str,
+) -> core::fmt::Result {
     for line in block.lines() {
-        out.push_str(indent);
-        out.push_str(line);
-        out.push('\n');
+        writeln!(f, "{indent}{line}")?;
     }
+    Ok(())
 }
 
 fn snapshot_text(input: &str) -> String {
@@ -2109,6 +2206,70 @@ fn metric_summary(metrics: &[MetricRegistration]) -> String {
             .collect::<Vec<_>>()
             .join("\\n")
     }
+}
+
+/// Render a metric list using the provided formatter for names while keeping
+/// the standard unified format (`[kind variant unit]: description`) for the rest.
+/// Returns `None` when the formatter hides all metrics (so callers can omit the
+/// `metrics:` card line entirely).
+fn format_metrics_with_formatter<F: MermaidMetricFormatter>(
+    formatter: &F,
+    metrics: &[MetricRegistration],
+) -> Option<String> {
+    if metrics.is_empty() {
+        return Some("none".to_string());
+    }
+    let lines: Vec<String> = metrics
+        .iter()
+        .filter(|metric| formatter.should_display_metric(metric))
+        .map(|metric| {
+            let name = formatter.format_metric_name(metric);
+            let variant = metric
+                .variant
+                .as_ref()
+                .map(|variant| format!(" variant={variant}"))
+                .unwrap_or_default();
+            let unit = metric
+                .unit
+                .map(|unit| format!(" unit={unit}"))
+                .unwrap_or_default();
+            format!("{name} [{}{}{}]: {}", metric.kind, variant, unit, metric.description)
+        })
+        .collect();
+    if lines.is_empty() {
+        None
+    } else {
+        Some(lines.join("\\n"))
+    }
+}
+
+/// Emit well-structured `%% metric:` comments for a node, using the formatter's
+/// `format_metric_name` so namespace prefixes and other transformations are reflected.
+/// These comments are always emitted regardless of `should_display_metric` and are
+/// machine-readable by custom Mermaid extensions.
+fn metric_comment_lines<F: MermaidMetricFormatter>(
+    formatter: &F,
+    metrics: &[MetricRegistration],
+) -> String {
+    metrics
+        .iter()
+        .map(|metric| {
+            let name = formatter.format_metric_name(metric);
+            let variant = metric
+                .variant
+                .as_ref()
+                .map(|variant| format!(" variant={variant}"))
+                .unwrap_or_default();
+            let unit = metric
+                .unit
+                .map(|unit| format!(" unit={unit}"))
+                .unwrap_or_default();
+            format!(
+                "%% metric: {name} [{}{}{}]: {}\n",
+                metric.kind, variant, unit, metric.description
+            )
+        })
+        .collect()
 }
 
 impl Registry {
