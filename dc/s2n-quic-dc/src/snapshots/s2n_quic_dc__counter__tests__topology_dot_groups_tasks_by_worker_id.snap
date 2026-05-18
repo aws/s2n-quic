@@ -1,0 +1,18 @@
+---
+source: dc/s2n-quic-dc/src/counter.rs
+expression: topology.to_dot()
+---
+digraph pipeline {
+  rankdir=LR;
+  subgraph cluster_worker_1 {
+    label="worker 1";
+    style=rounded;
+    t0 [shape=box,label="task.worker.1\nfn: fn\nbudget: none\nmetrics: none\ndesc"];
+  }
+  subgraph cluster_worker_2 {
+    label="worker 2";
+    style=rounded;
+    t1 [shape=box,label="task.worker.2\nfn: fn\nbudget: none\nmetrics: none\ndesc"];
+  }
+  t2 [shape=box,label="task.unassigned\nfn: fn\nbudget: none\nmetrics: none\ndesc"];
+}
