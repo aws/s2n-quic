@@ -4,6 +4,7 @@
 use std::{
     fs,
     mem::MaybeUninit,
+    ptr,
     sync::{
         atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering},
         Mutex, MutexGuard,
@@ -20,6 +21,7 @@ struct Page {
     // assembly assumes slots is at index 0
     slots: [MaybeUninit<u64>; SLOTS],
     length: AtomicU64,
+    next: *mut Page,
 }
 
 #[cfg(target_os = "linux")]
@@ -28,7 +30,107 @@ impl Page {
         Box::new(Page {
             slots: [const { MaybeUninit::uninit() }; SLOTS],
             length: AtomicU64::new(0),
+            next: ptr::null_mut(),
         })
+    }
+}
+
+/// Lock-free intrusive stack of Pages.
+///
+/// Push is a single CAS. `take_all` swaps the head to null and returns the
+/// entire chain for batch processing — no per-element atomic ops on drain.
+struct PageStack {
+    head: AtomicPtr<Page>,
+}
+
+impl PageStack {
+    const fn new() -> Self {
+        Self {
+            head: AtomicPtr::new(ptr::null_mut()),
+        }
+    }
+
+    fn push(&self, page: Box<Page>) {
+        let raw = Box::into_raw(page);
+        loop {
+            let head = self.head.load(Ordering::Relaxed);
+            unsafe { (*raw).next = head };
+            if self
+                .head
+                .compare_exchange_weak(head, raw, Ordering::Release, Ordering::Relaxed)
+                .is_ok()
+            {
+                break;
+            }
+        }
+    }
+
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    fn pop(&self) -> Option<Box<Page>> {
+        loop {
+            let head = self.head.load(Ordering::Acquire);
+            if head.is_null() {
+                return None;
+            }
+            let next = unsafe { (*head).next };
+            if self
+                .head
+                .compare_exchange_weak(head, next, Ordering::Release, Ordering::Relaxed)
+                .is_ok()
+            {
+                unsafe { (*head).next = ptr::null_mut() };
+                return Some(unsafe { Box::from_raw(head) });
+            }
+        }
+    }
+}
+
+
+
+const PAGE_POOL_SHARDS: usize = 2;
+const PAGE_POOL_MASK: usize = PAGE_POOL_SHARDS - 1;
+
+/// Sharded page pool. Each shard is a lock-free intrusive stack.
+/// Producers pick a shard via `cpu_hint & MASK`, distributing contention
+/// across shards so the CAS loop almost never retries.
+struct ShardedPagePool {
+    shards: [PageStack; PAGE_POOL_SHARDS],
+}
+
+impl ShardedPagePool {
+    const fn new() -> Self {
+        Self {
+            shards: [PageStack::new(), PageStack::new()],
+        }
+    }
+
+    #[inline]
+    fn push(&self, page: Box<Page>, cpu_hint: usize) {
+        self.shards[cpu_hint & PAGE_POOL_MASK].push(page);
+    }
+
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    fn pop(&self, cpu_hint: usize) -> Option<Box<Page>> {
+        let start = cpu_hint & PAGE_POOL_MASK;
+        for i in 0..PAGE_POOL_SHARDS {
+            let shard = &self.shards[(start + i) & PAGE_POOL_MASK];
+            if let Some(page) = shard.pop() {
+                return Some(page);
+            }
+        }
+        None
+    }
+
+    fn drain(&self, mut f: impl FnMut(Box<Page>)) {
+        for shard in &self.shards {
+            let mut cursor = shard.head.swap(ptr::null_mut(), Ordering::Acquire);
+            while !cursor.is_null() {
+                let next = unsafe { (*cursor).next };
+                unsafe { (*cursor).next = ptr::null_mut() };
+                f(unsafe { Box::from_raw(cursor) });
+                cursor = next;
+            }
+        }
     }
 }
 
@@ -98,9 +200,11 @@ pub(crate) struct Channels<T: Absorb> {
     /// (e.g. because we fail to register rseq).
     must_use_fallback: bool,
 
-    fallback: parking_lot::RwLock<crossbeam_queue::SegQueue<u64>>,
+    fallback: crossbeam_queue::SegQueue<u64>,
 
-    empty_pages: crossbeam_queue::SegQueue<Box<Page>>,
+    empty_pages: ShardedPagePool,
+
+    full_pages: ShardedPagePool,
 
     // What we aggregate events into.
     aggregate: Mutex<Vec<T>>,
@@ -160,7 +264,8 @@ impl<T: Absorb> Channels<T> {
             must_use_fallback,
             per_cpu: init_per_cpu(),
             fallback: Default::default(),
-            empty_pages: Default::default(),
+            empty_pages: ShardedPagePool::new(),
+            full_pages: ShardedPagePool::new(),
 
             aggregate: Mutex::new(Vec::new()),
         }
@@ -180,13 +285,25 @@ impl<T: Absorb> Channels<T> {
 
     #[cfg(not(target_os = "linux"))]
     pub(crate) fn steal_pages(&self) {
-        self.aggregate_fallback(true);
+        let mut aggregate = self.aggregate.lock().unwrap();
+        self.full_pages.drain(|page| {
+            Self::aggregate_page(&mut aggregate, page, &self.empty_pages);
+        });
+        self.drain_fallback(&mut aggregate);
     }
 
     #[cfg(target_os = "linux")]
     pub(crate) fn steal_pages(&self) {
+        let mut aggregate = self.aggregate.lock().unwrap();
+
+        // Drain any full pages enqueued by send_event_slow — single atomic swap
+        // takes the entire chain.
+        self.full_pages.drain(|page| {
+            Self::aggregate_page(&mut aggregate, page, &self.empty_pages);
+        });
+
         if self.must_use_fallback {
-            self.aggregate_fallback(true);
+            self.drain_fallback(&mut aggregate);
 
             // Don't look at per_cpu structures if we're in the only-fallback path.
             return;
@@ -234,23 +351,24 @@ impl<T: Absorb> Channels<T> {
 
         for page in pages {
             if !page.is_null() {
-                self.handle_events(unsafe { Box::from_raw(page) });
+                Self::aggregate_page(&mut aggregate, unsafe { Box::from_raw(page) }, &self.empty_pages);
             }
         }
 
-        self.aggregate_fallback(true);
+        self.drain_fallback(&mut aggregate);
     }
 
-    #[cfg(target_os = "linux")]
-    fn handle_events(&self, mut page: Box<Page>) {
-        let mut aggregate = self.aggregate.lock().unwrap();
+    fn aggregate_page(
+        aggregate: &mut Vec<T>,
+        mut page: Box<Page>,
+        empty_pages: &ShardedPagePool,
+    ) {
         let length = *page.length.get_mut() as usize;
         let filled = unsafe { &mut *(&mut page.slots[..length] as *mut [_] as *mut [u64]) };
-        T::handle(&mut aggregate, filled);
-        drop(aggregate);
+        T::handle(aggregate, filled);
 
         *page.length.get_mut() = 0;
-        self.empty_pages.push(page);
+        empty_pages.push(page, 0);
     }
 
     pub(crate) fn lock_aggregate(&self) -> MutexGuard<'_, Vec<T>> {
@@ -460,36 +578,25 @@ impl<T: Absorb> Channels<T> {
 
     #[inline(never)]
     fn fallback_push(&self, event: u64) {
-        let read_guard = self.fallback.read();
-        read_guard.push(event);
-        if read_guard.len() < SLOTS * 2 {
-            return;
-        }
-        drop(read_guard);
-
-        self.aggregate_fallback(false);
+        self.fallback.push(event);
     }
 
-    fn aggregate_fallback(&self, force: bool) {
-        let mut write_guard = self.fallback.write();
-        if !force && write_guard.len() < SLOTS * 2 {
-            return;
-        }
-        let taken = std::mem::take(&mut *write_guard);
-        drop(write_guard);
-
+    fn drain_fallback(&self, aggregate: &mut Vec<T>) {
         let mut buffer = Vec::with_capacity(SLOTS * 2);
-        taken.into_iter().for_each(|e| buffer.push(e));
-        let mut aggregate = self.aggregate.lock().unwrap();
-        T::handle(&mut aggregate, &mut buffer);
-        drop(aggregate);
+        while let Some(event) = self.fallback.pop() {
+            buffer.push(event);
+        }
+        if !buffer.is_empty() {
+            T::handle(aggregate, &mut buffer);
+        }
     }
 
     #[cold]
     #[cfg(target_os = "linux")]
     #[cfg_attr(target_arch = "aarch64", target_feature(enable = "lse"))]
     fn send_event_slow(&self, rseq_ptr: NonNull<Rseq>, serialized_event: u64) {
-        let mut new_page = self.empty_pages.pop().unwrap_or_else(Page::new);
+        let cpu_hint = unsafe { (*rseq_ptr.as_ptr()).cpu_id_start } as usize;
+        let mut new_page = self.empty_pages.pop(cpu_hint).unwrap_or_else(Page::new);
 
         new_page.slots[0].write(serialized_event);
         new_page.length.store(1, Ordering::Relaxed);
@@ -621,21 +728,16 @@ impl<T: Absorb> Channels<T> {
             assert!(!taken.is_null());
 
             // We failed to xchg `taken` with the page in the per_cpu[current] slot. As such
-            // `taken` is still owned by us:
-            let taken = unsafe { Box::from_raw(taken) };
-
-            // And we need to handle events from it. This is a *very* slow path, but should
-            // basically never happen in production; if we're consistently hitting the fallback
-            // path we should be hitting it in the hot path too, which will then bail to the faster
-            // fallback (`fallback_push`) rather than here.
-
-            self.handle_events(taken);
+            // `taken` is still owned by us. Enqueue for background aggregation.
+            self.full_pages.push(unsafe { Box::from_raw(taken) }, cpu_hint);
         } else {
             if taken.is_null() {
                 return;
             }
 
-            self.handle_events(unsafe { Box::from_raw(taken) });
+            // The old page was swapped out successfully. Enqueue for background aggregation
+            // rather than blocking the recording thread on the aggregate mutex.
+            self.full_pages.push(unsafe { Box::from_raw(taken) }, cpu_hint);
         }
     }
 }
@@ -936,9 +1038,9 @@ mod tests {
         channels.allocate();
         rseq.cpu_id_start = 0;
         rseq.cpu_id = 1;
-        assert_eq!(channels.fallback.read().len(), 0);
+        assert_eq!(channels.fallback.len(), 0);
         channels.send_event_inner(0u64, NonNull::from(&mut rseq));
-        assert_eq!(channels.fallback.read().len(), 1);
+        assert_eq!(channels.fallback.len(), 1);
         drop(channels);
 
         // An index that's one out of bounds (but consistent) also causes us to fallback.
@@ -946,9 +1048,9 @@ mod tests {
         channels.allocate();
         rseq.cpu_id_start = channels.per_cpu.len() as u32;
         rseq.cpu_id = channels.per_cpu.len() as u32;
-        assert_eq!(channels.fallback.read().len(), 0);
+        assert_eq!(channels.fallback.len(), 0);
         channels.send_event_inner(0u64, NonNull::from(&mut rseq));
-        assert_eq!(channels.fallback.read().len(), 1);
+        assert_eq!(channels.fallback.len(), 1);
         drop(channels);
 
         // We allocate the page at the right CPU index.
@@ -961,11 +1063,11 @@ mod tests {
         for idx in 0..64 {
             rseq.cpu_id_start = idx;
             rseq.cpu_id = idx;
-            assert_eq!(channels.fallback.read().len(), 0);
+            assert_eq!(channels.fallback.len(), 0);
             channels.send_event_inner(0u64, NonNull::from(&mut rseq));
 
             // Didn't fallback.
-            assert_eq!(channels.fallback.read().len(), 0);
+            assert_eq!(channels.fallback.len(), 0);
 
             // Only allocated exactly one CPU, at the right index.
             let taken = std::mem::take(channels.per_cpu[idx as usize].get_mut());
@@ -1037,7 +1139,7 @@ mod tests {
             }
 
             // Didn't fallback.
-            assert_eq!(channels.fallback.read().len(), 0);
+            assert_eq!(channels.fallback.len(), 0);
 
             // And no events were sent on the channel -- we allocated a page and added it (this is
             // actually sort of tested above) but because no page existed, there wasn't anything to
@@ -1059,7 +1161,7 @@ mod tests {
             }
 
             // Didn't fallback.
-            assert_eq!(channels.fallback.read().len(), 0);
+            assert_eq!(channels.fallback.len(), 0);
 
             // And no events were sent on the channel -- we allocated a page and added it (this is
             // actually sort of tested above) but because no page existed, there wasn't anything to
@@ -1073,7 +1175,8 @@ mod tests {
             for cpu in channels.per_cpu.iter_mut() {
                 assert!(cpu.get_mut().is_null());
             }
-            assert_eq!(channels.empty_pages.len(), 1);
+            assert!(channels.empty_pages.pop(0).is_some());
+            assert!(channels.empty_pages.pop(0).is_none());
         }
         drop(channels);
     }
