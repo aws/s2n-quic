@@ -41,6 +41,62 @@ pub struct TestPairIds {
     pub peer: crate::credentials::Id,
 }
 
+#[cfg(any(test, feature = "testing"))]
+#[inline]
+fn deterministic_test_pair_secret(
+    local_addr: SocketAddr,
+    peer_addr: SocketAddr,
+    generation: u64,
+) -> [u8; 32] {
+    #[inline]
+    fn mix(state: &mut u64, bytes: &[u8]) {
+        for &byte in bytes {
+            *state ^= byte as u64;
+            *state = state.wrapping_mul(0x1000_0000_01B3);
+        }
+    }
+
+    #[inline]
+    fn mix_addr(state: &mut u64, addr: SocketAddr) {
+        match addr {
+            SocketAddr::V4(addr) => {
+                mix(state, &[4]);
+                mix(state, &addr.ip().octets());
+                mix(state, &addr.port().to_be_bytes());
+            }
+            SocketAddr::V6(addr) => {
+                mix(state, &[6]);
+                mix(state, &addr.ip().octets());
+                mix(state, &addr.port().to_be_bytes());
+                mix(state, &addr.flowinfo().to_be_bytes());
+                mix(state, &addr.scope_id().to_be_bytes());
+            }
+        }
+    }
+
+    // FNV-1a with a fixed offset basis and deterministic address encoding.
+    let mut state = 0xCBF2_9CE4_8422_2325;
+    mix_addr(&mut state, local_addr);
+    mix_addr(&mut state, peer_addr);
+    mix(&mut state, &generation.to_be_bytes());
+
+    // Normalize to an odd state for stable deterministic secret derivation.
+    let mut state = state | 1;
+
+    let mut secret = [0u8; 32];
+    for chunk in secret.chunks_exact_mut(8) {
+        // splitmix64-style step for stable diffusion from the address-derived seed
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^= z >> 31;
+        chunk.copy_from_slice(&z.to_be_bytes());
+    }
+
+    secret
+}
+
 pub use entry::Entry;
 use store::Store;
 
@@ -457,8 +513,36 @@ impl Map {
 
         let ciphersuite = schedule::Ciphersuite::AES_GCM_128_SHA256;
 
-        let mut secret = [0; 32];
-        aws_lc_rs::rand::fill(&mut secret).unwrap();
+        let secret = if bach::is_active() {
+            let mut generation = 0u64;
+            let secret = loop {
+                let secret = deterministic_test_pair_secret(local_addr, peer_addr, generation);
+                let local_id =
+                    *schedule::Secret::new(ciphersuite, dc::SUPPORTED_VERSIONS[0], Type::Client, &secret).id();
+                let peer_id =
+                    *schedule::Secret::new(ciphersuite, dc::SUPPORTED_VERSIONS[0], Type::Server, &secret).id();
+
+                let local_exists = self.store.get_by_id_untracked(&local_id).is_some();
+                let peer_exists = peer.store.get_by_id_untracked(&peer_id).is_some();
+
+                if !local_exists && !peer_exists {
+                    break secret;
+                }
+
+                generation = generation.wrapping_add(1);
+            };
+            tracing::trace!(
+                %local_addr,
+                %peer_addr,
+                generation,
+                "using deterministic test pair secret for bach sim"
+            );
+            secret
+        } else {
+            let mut secret = [0; 32];
+            aws_lc_rs::rand::fill(&mut secret).unwrap();
+            secret
+        };
 
         let insert = |map: &Self,
                       peer: &Self,
