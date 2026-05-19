@@ -473,7 +473,10 @@ pub mod inspector {
                 addr: socket_addr(20_000, idx),
             })
             .collect();
-        endpoint::setup_endpoint(runtime, config, send_sockets, recv_sockets)
+        let ups_socket = PanicSendSocket {
+            addr: socket_addr(30_000, 0),
+        };
+        endpoint::setup_endpoint(runtime, config, send_sockets, recv_sockets, ups_socket)
             .counters
             .topology()
     }

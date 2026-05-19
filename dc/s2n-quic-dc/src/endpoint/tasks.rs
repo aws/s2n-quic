@@ -17,7 +17,7 @@ use crate::{
     socket::{
         channel::{
             intrusive::{self, unsync},
-            Budget, Flatten, FlattenList, FlattenSegments, InspectErr, Map, Paced,
+            Budget, FilterMap, Flatten, FlattenList, FlattenSegments, InspectErr, Map, Paced,
             Priority as PriorityRx, Receiver, ReceiverExt as _, RouterAdapter, SocketReceiver,
             SocketSender, UnboundedSender,
         },
@@ -1115,6 +1115,7 @@ pub fn packet_dispatch<
     AckSender,
     AckBurstSender,
     IdleWheelSender,
+    UpsSender,
     WakerSink,
     Clk,
     Route,
@@ -1132,6 +1133,7 @@ pub fn packet_dispatch<
     clock: Clk,
     route: Route,
     mut waker_sink: WakerSink,
+    ups_tx: UpsSender,
 ) -> impl Receiver<()>
 where
     PacketRx: Receiver<
@@ -1140,6 +1142,7 @@ where
     AckSender: UnboundedSender<Entry<msg::Sender>>,
     AckBurstSender: UnboundedSender<Rc<RefCell<endpoint::recv::Context>>>,
     IdleWheelSender: UnboundedSender<Rc<RefCell<endpoint::recv::Context>>>,
+    UpsSender: UnboundedSender<Entry<endpoint::ups::Response>>,
     WakerSink: UnboundedSender<crate::flow::queue::AutoWake>,
     Clk: s2n_quic_core::time::Clock + precision::Clock,
     Route: endpoint::routing::SenderRoute,
@@ -1171,7 +1174,8 @@ where
     });
     InspectErr::new(rx, {
         let counters = counters;
-        move |err| on_packet_dispatch_error(&counters, err)
+        let mut ups_tx = ups_tx;
+        move |err| on_packet_dispatch_error(&counters, &mut ups_tx, err)
     })
 }
 
@@ -1279,19 +1283,28 @@ where
     )
 }
 
-fn on_packet_dispatch_error(counters: &endpoint::counters::Dispatch, err: dispatch::Error) {
+fn on_packet_dispatch_error(
+    counters: &endpoint::counters::Dispatch,
+    ups_tx: &mut impl UnboundedSender<Entry<endpoint::ups::Response>>,
+    err: dispatch::Error,
+) {
     match err {
         dispatch::Error::PeerStateLookup {
+            dest_addr,
             credentials,
             control_out,
         } => {
-            // TODO: send `control_out` (UnknownPathSecret response) back to the peer's
-            // control port so they know to invalidate their send state.
             counters.rx_process_err_peer_lookup.add(1);
-            tracing::warn!(
+            if !control_out.is_empty() {
+                let response = endpoint::ups::Response {
+                    dest_addr,
+                    packet: control_out,
+                };
+                let _ = ups_tx.send(Entry::new(response));
+            }
+            tracing::debug!(
                 ?credentials,
-                control_out_len = control_out.len(),
-                "failed to get or create peer state"
+                "peer state lookup failed - queued UPS response"
             );
         }
         dispatch::Error::Decryption {
@@ -1321,6 +1334,51 @@ fn on_packet_dispatch_error(counters: &endpoint::counters::Dispatch, err: dispat
             tracing::warn!("packet missing routing info; expected SenderId");
         }
     }
+}
+
+// ── UPS send ──────────────────────────────────────────────────────────────
+
+/// Drains the shared UPS queue, applies per-credential dedup, paces, and sends via socket.
+pub fn ups_send<Rx, Socket, Clk>(
+    rx: Rx,
+    socket: Socket,
+    clock: Clk,
+    rate: Rate,
+    dedup_capacity: usize,
+    dedup_window: core::time::Duration,
+    counters: endpoint::ups::Counters,
+) -> impl Receiver<()>
+where
+    Rx: Receiver<Entry<endpoint::ups::Response>>,
+    Socket: crate::socket::send::Socket,
+    Clk: precision::Clock,
+{
+    use crate::time::precision::Timer;
+
+    let timer = clock.timer();
+    let dedup_counters = endpoint::ups::DedupCounters {
+        suppressed: counters.dedup_suppressed.clone(),
+    };
+    let mut dedup = endpoint::ups::DedupFilter::new(dedup_capacity, dedup_window, dedup_counters);
+
+    let rx = FilterMap::new(rx, move |entry: Entry<endpoint::ups::Response>| {
+        let now = timer.now();
+        if dedup.check(&entry, now) {
+            Some(entry)
+        } else {
+            None
+        }
+    });
+    let rx = Paced::new(rx, clock, rate);
+    let rx = SocketSender::new(rx, socket);
+    let send_error = counters.send_error;
+    let rx = InspectErr::new(rx, move |(_err, _item)| {
+        send_error.add(1);
+    });
+    let sent = counters.sent;
+    Map::new(rx, move |_| {
+        sent.add(1);
+    })
 }
 
 // ── FrameReceiver ──────────────────────────────────────────────────────────

@@ -34,6 +34,7 @@ pub(crate) mod routing;
 pub(crate) mod send;
 pub mod socket;
 pub(crate) mod tasks;
+pub(crate) mod ups;
 pub(crate) mod waker;
 pub(crate) mod worker;
 
@@ -200,6 +201,12 @@ pub struct Config {
     pub budgets: Budgets,
     /// Number of shards for the frame submission channel.
     pub submission_shards: usize,
+    /// Rate limit for UnknownPathSecret responses (pacing rate).
+    pub ups_rate: crate::socket::rate::Rate,
+    /// Dedup LRU capacity for UnknownPathSecret responses.
+    pub ups_dedup_capacity: usize,
+    /// Dedup suppression window for UnknownPathSecret responses.
+    pub ups_dedup_window: core::time::Duration,
 }
 
 // ── setup_endpoint ────────────────────────────────────────────────────────
@@ -222,15 +229,17 @@ pub struct Config {
 /// Recv IO tasks fan out decoded packets to recv_dispatch workers by hashing
 /// (credentials.id, source_sender_id), ensuring a given peer always lands in the same
 /// recv::Cache for coherent ACK space and packet-number deduplication.
-pub fn setup_endpoint<SendSocket, RecvSocket, R>(
+pub fn setup_endpoint<SendSocket, RecvSocket, UpsSocket, R>(
     runtime: R,
     config: Config,
     send_sockets: Vec<SendSocket>,
     recv_sockets: Vec<RecvSocket>,
+    ups_socket: UpsSocket,
 ) -> Endpoint
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
+    UpsSocket: crate::socket::send::Socket + Send + 'static,
     R: crate::runtime::Runtime,
 {
     let num_recv_dispatch = config.layout.recv_dispatch.len();
@@ -238,31 +247,35 @@ where
     tracing::debug!(?config.layout, "setting up endpoint");
 
     if num_recv_dispatch.is_power_of_two() {
-        setup_endpoint_inner::<_, _, _, routing::PowerOfTwoRoute>(
+        setup_endpoint_inner::<_, _, _, _, routing::PowerOfTwoRoute>(
             runtime,
             config,
             send_sockets,
             recv_sockets,
+            ups_socket,
         )
     } else {
-        setup_endpoint_inner::<_, _, _, routing::ModuloRoute>(
+        setup_endpoint_inner::<_, _, _, _, routing::ModuloRoute>(
             runtime,
             config,
             send_sockets,
             recv_sockets,
+            ups_socket,
         )
     }
 }
 
-fn setup_endpoint_inner<SendSocket, RecvSocket, R, RecvRoute>(
+fn setup_endpoint_inner<SendSocket, RecvSocket, UpsSocket, R, RecvRoute>(
     runtime: R,
     config: Config,
     send_sockets: Vec<SendSocket>,
     recv_sockets: Vec<RecvSocket>,
+    ups_socket: UpsSocket,
 ) -> Endpoint
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
+    UpsSocket: crate::socket::send::Socket + Send + 'static,
     R: crate::runtime::Runtime,
     RecvRoute: routing::SenderRoute,
 {
@@ -279,6 +292,9 @@ where
         per_socket_send_rate,
         budgets,
         submission_shards,
+        ups_rate,
+        ups_dedup_capacity,
+        ups_dedup_window,
     } = config;
 
     let clock = runtime.clock();
@@ -348,6 +364,11 @@ where
         })
         .unzip();
 
+    // UPS channel: recv_dispatch workers → background (UnknownPathSecret responses)
+    let (ups_tx, ups_rx) = intrusive::sync::new::<ups::Response>();
+    let ups_queue_gauge = counter_registry.register_queue_gauge("q.ups");
+    let ups_tx = crate::socket::channel::GaugedSender::new(ups_tx, ups_queue_gauge.clone());
+
     // Invalidation channels: recv IO → background (raw segments) and background → all workers
     let (invalidation_raw_tx, invalidation_raw_rx) = intrusive::sync::new::<descriptor::Filled>();
     let num_invalidation_targets = num_send_workers + layout.recv_dispatch.len();
@@ -374,6 +395,7 @@ where
         Worker<
             socket::MeteredSend<SendSocket>,
             socket::MeteredRecv<RecvSocket>,
+            UpsSocket,
             R::Clock,
             _,
             RecvRoute,
@@ -520,6 +542,7 @@ where
             clock: clock.clone(),
             route: ack_route,
             waker_sink,
+            ups_tx: ups_tx.clone(),
             invalidation_rx: invalidation_worker_rxs.next().unwrap(),
         });
     }
@@ -557,6 +580,12 @@ where
         raw_rx: invalidation_raw_rx,
         path_secret_map: path_secret_map.clone(),
         broadcast_txs: invalidation_broadcast_txs,
+        ups_rx,
+        ups_queue_gauge: counter_registry.register_queue_gauge("q.ups"),
+        ups_socket,
+        ups_rate,
+        ups_dedup_capacity,
+        ups_dedup_window,
     });
 
     // Spawn all workers ---------------------------------------------------------
@@ -648,14 +677,21 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     clock: Clk,
     route: Route,
     waker_sink: waker::Sink,
+    ups_tx: UpsSender,
     invalidation_rx: sync_queue::Receiver<crate::credentials::Id>,
 }
 
 /// Ingredients for the background worker (invalidation validation + future housekeeping).
-struct BackgroundParts {
+struct BackgroundParts<UpsSocket> {
     raw_rx: sync_queue::Receiver<descriptor::Filled>,
     path_secret_map: crate::path::secret::Map,
     broadcast_txs: Vec<InvalidationSender>,
+    ups_rx: sync_queue::Receiver<ups::Response>,
+    ups_queue_gauge: crate::counter::QueueGauge,
+    ups_socket: UpsSocket,
+    ups_rate: crate::socket::rate::Rate,
+    ups_dedup_capacity: usize,
+    ups_dedup_window: core::time::Duration,
 }
 
 type InvalidationSender = crate::socket::channel::GaugedSender<
@@ -663,9 +699,12 @@ type InvalidationSender = crate::socket::channel::GaugedSender<
     Entry<crate::credentials::Id>,
 >;
 
+type UpsSender =
+    crate::socket::channel::GaugedSender<sync_queue::Sender<ups::Response>, Entry<ups::Response>>;
+
 // ── Worker ────────────────────────────────────────────────────────────────
 
-struct Worker<SendSocket, RecvSocket, Clk, AckSnd, Route, Inv> {
+struct Worker<SendSocket, RecvSocket, UpsSocket, Clk, AckSnd, Route, Inv> {
     id: usize,
     budgets: Budgets,
     total_sender_ids: usize,
@@ -683,14 +722,15 @@ struct Worker<SendSocket, RecvSocket, Clk, AckSnd, Route, Inv> {
     /// Waker drain task assigned to this worker.
     waker_drain: Option<waker::Drain>,
     /// Background worker parts (invalidation validation).
-    background: Option<BackgroundParts>,
+    background: Option<BackgroundParts<UpsSocket>>,
 }
 
-impl<SendSocket, RecvSocket, Clk, AckSnd, Route, Inv>
-    Worker<SendSocket, RecvSocket, Clk, AckSnd, Route, Inv>
+impl<SendSocket, RecvSocket, UpsSocket, Clk, AckSnd, Route, Inv>
+    Worker<SendSocket, RecvSocket, UpsSocket, Clk, AckSnd, Route, Inv>
 where
     SendSocket: crate::socket::send::Socket + Send + 'static,
     RecvSocket: crate::socket::recv::Socket + Send + 'static,
+    UpsSocket: crate::socket::send::Socket + Send + 'static,
     Clk: time::Clock + precision::Clock + Clone + Send + 'static,
     AckSnd: UnboundedSender<Entry<msg::Sender>> + Clone + Send + 'static,
     Route: routing::SenderRoute,
@@ -872,6 +912,7 @@ where
                     rd.clock,
                     rd.route,
                     rd.waker_sink,
+                    rd.ups_tx,
                 );
                 let variant = format!("recv.{recv_dispatch_idx}");
                 let task_counter = counter_registry
@@ -980,6 +1021,26 @@ where
                     None,
                     task_counter,
                 );
+
+                let ups_counters = ups::Counters::new(&counter_registry);
+                let ups_rx = crate::counter::GaugedReceiver::new(
+                    bg.ups_rx,
+                    bg.ups_queue_gauge
+                        .receiver("task.ups_send")
+                        .with_function("endpoint::Worker::spawn"),
+                );
+                let rx = tasks::ups_send(
+                    ups_rx,
+                    bg.ups_socket,
+                    clock.clone(),
+                    bg.ups_rate,
+                    bg.ups_dedup_capacity,
+                    bg.ups_dedup_window,
+                    ups_counters,
+                );
+                let task_counter =
+                    counter_registry.register_nominal_task("task.ups_send", "background");
+                local.spawn(rx.drain_budgeted_metered(None, task_counter));
             }
         });
     }

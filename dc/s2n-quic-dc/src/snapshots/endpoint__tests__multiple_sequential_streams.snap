@@ -25,6 +25,7 @@ expression: logs
 0:00:00.000000000 [server] TRACE m#task.invalidation.drained[recv.0]=0
 0:00:00.000000000 [server] TRACE m#task.waker_drain.drained[waker.0]=0
 0:00:00.000000000 [server] TRACE m#task.invalidation_validator.drained[background]=0
+0:00:00.000000000 [server] TRACE m#task.ups_send.drained[background]=0
 0:00:00.000000000 [client] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [client] TRACE m#task.frame_dispatch.drained=0
 0:00:00.000000000 [client] TRACE m#task.context_resolver.drained[send.0]=0
@@ -44,6 +45,7 @@ expression: logs
 0:00:00.000000000 [client] TRACE m#task.invalidation.drained[recv.0]=0
 0:00:00.000000000 [client] TRACE m#task.waker_drain.drained[waker.0]=0
 0:00:00.000000000 [client] TRACE m#task.invalidation_validator.drained[background]=0
+0:00:00.000000000 [client] TRACE m#task.ups_send.drained[background]=0
 0:00:00.000000000 [client] DEBUG event=on_send_flow_init prev=Init next=FlowInitSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [client] DEBUG event=on_send_fin prev=FlowInitSent next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [client] DEBUG Sent FlowInit with early data stream_id=0 bytes_read=5 is_fin=true
@@ -66,6 +68,7 @@ expression: logs
 0:00:00.000000000 [server] TRACE m#task.invalidation.drained[recv.0]=0
 0:00:00.000000000 [server] TRACE m#task.waker_drain.drained[waker.0]=0
 0:00:00.000000000 [server] TRACE m#task.invalidation_validator.drained[background]=0
+0:00:00.000000000 [server] TRACE m#task.ups_send.drained[background]=0
 0:00:00.000000000 [client] TRACE c#q.router_to_batcher.enq[p4]=1
 0:00:00.000000000 [client] TRACE g#q.router_to_batcher.depth[p4]=1
 0:00:00.000000000 [client] TRACE m#q.router_to_batcher.depth_dist[p4]=1
@@ -91,6 +94,7 @@ expression: logs
 0:00:00.000000000 [client] TRACE m#task.invalidation.drained[recv.0]=0
 0:00:00.000000000 [client] TRACE m#task.waker_drain.drained[waker.0]=0
 0:00:00.000000000 [client] TRACE m#task.invalidation_validator.drained[background]=0
+0:00:00.000000000 [client] TRACE m#task.ups_send.drained[background]=0
 0:00:00.000000000 [client] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [client] TRACE m#task.frame_dispatch.drained=0
 0:00:00.000021000 [client] TRACE c#pick_two.chosen[send.0]=1

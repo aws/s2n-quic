@@ -63,6 +63,18 @@ pub fn create(
     let recv_pool = s2n_quic_dc::socket::pool::Pool::new(u16::MAX);
     let acceptor_registry = s2n_quic_dc::acceptor::Registry::new();
 
+    // Create a single UPS (UnknownPathSecret) send socket bound to an ephemeral port.
+    let ups_socket = {
+        let mut opts = s2n_quic_dc::socket::Options::default();
+        opts.addr = bind_addr;
+        opts.addr.set_port(0);
+        opts.blocking = false;
+        opts.send_buffer = Some(1 << 20); // 1 MiB
+        opts.recv_buffer = Some(0);
+        let socket = opts.build_udp()?;
+        s2n_quic_dc::socket::Gso(s2n_quic_dc::socket::BusyPoll(socket), gso.clone())
+    };
+
     let endpoint_config = endpoint::Config {
         layout,
         send_pool,
@@ -74,9 +86,18 @@ pub fn create(
         per_socket_send_rate: Rate::new(config.per_socket_bandwidth),
         budgets: endpoint::Budgets::default(),
         submission_shards: config.submission_shards,
+        ups_rate: Rate::new(0.001), // 1 Mbps — small budget; UPS is low-volume control traffic
+        ups_dedup_capacity: 1024,
+        ups_dedup_window: core::time::Duration::from_secs(1),
     };
 
-    let inner = endpoint::setup_endpoint(runtime, endpoint_config, send_sockets, recv_sockets);
+    let inner = endpoint::setup_endpoint(
+        runtime,
+        endpoint_config,
+        send_sockets,
+        recv_sockets,
+        ups_socket,
+    );
     if print_pipeline_dot {
         let topology = inner.counters.topology();
         println!("{}", topology.to_dot());

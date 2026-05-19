@@ -2333,6 +2333,14 @@ channels:
       - q.router_to_batcher.depth_dist [summary variant=p4 unit=count]: Distribution of observed queue depth values
       - q.router_to_batcher.drain [counter variant=p4 unit=count]: Total queue dequeue events
       - q.router_to_batcher.enq [counter variant=p4 unit=count]: Total queue enqueue events
+  - name: q.ups
+    function: 
+    description: 
+    metrics:
+      - q.ups.depth [gauge unit=count]: Current queue depth
+      - q.ups.depth_dist [summary unit=count]: Distribution of observed queue depth values
+      - q.ups.drain [counter unit=count]: Total queue dequeue events
+      - q.ups.enq [counter unit=count]: Total queue enqueue events
   - name: q.wheel_to_assembler.send.0
     function: 
     description: 
@@ -4885,3 +4893,8 @@ bindings:
     channel: q.wheel_to_assembler.send.9
     function: endpoint::tasks::send_worker
     description: Tx wheel routes expired contexts to socket assembler
+  - task: task.ups_send
+    direction: receives
+    channel: q.ups
+    function: endpoint::Worker::spawn
+    description: Queue receives performed by task.ups_send

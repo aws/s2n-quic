@@ -1011,7 +1011,10 @@ where
         };
 
         let result = match item.send(&self.socket) {
-            Ok(()) => Ok(item),
+            Ok(()) => {
+                self.inner.on_consumed(item.byte_cost());
+                Ok(item)
+            }
             Err(err) => Err((err, item)),
         };
 
