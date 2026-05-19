@@ -243,6 +243,13 @@ pub fn without_tracing() -> WithoutTracingGuard {
 /// only the insta snapshot capture is skipped so the output of `sim` is not
 /// compared against stored snapshots.
 ///
+/// ⚠️⚠️⚠️ WARNING: avoid using this unless snapshotting is genuinely impractical.
+/// In this repository, disabling snapshots is only allowed when:
+/// 1) the snapshot would be unreasonably large, or
+/// 2) the test runs a multi-sim harness across varying inputs.
+///
+/// If neither condition applies, snapshots should remain enabled to detect regressions.
+///
 /// ```rust,ignore
 /// let _guard = testing::without_snapshots();
 /// testing::sim(|| { ... }); // runs, but no snapshot is taken

@@ -105,7 +105,6 @@ fn setup_recv() -> (Rc<RefCell<recv::Cache>>, credentials::Id) {
 
 #[test]
 fn send_invalidation_purges_cache_and_emits_failed_frames() {
-    let _guard = crate::testing::without_snapshots();
     sim(|| {
         let SendSetup { send_caches, pse } = setup_send();
 
@@ -161,7 +160,6 @@ fn send_invalidation_purges_cache_and_emits_failed_frames() {
 
 #[test]
 fn send_invalidation_noop_for_unknown_id() {
-    let _guard = crate::testing::without_snapshots();
     sim(|| {
         let SendSetup { send_caches, .. } = setup_send();
 
@@ -333,7 +331,6 @@ fn ack_burst_after_recv_invalidation_emits_nothing() {
 
 #[test]
 fn send_invalidation_stale_key_targets_matching_sender_only() {
-    let _guard = crate::testing::without_snapshots();
     sim(|| {
         let registry = crate::counter::Registry::default();
         let clock = Clock::default();

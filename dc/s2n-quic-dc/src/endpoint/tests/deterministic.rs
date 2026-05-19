@@ -345,7 +345,6 @@ fn sim_path_pair_ids_are_stable_across_identical_runs() {
 
         let ids = Arc::new(Mutex::new(None));
         let ids_out = ids.clone();
-        let _guard = crate::testing::without_snapshots();
 
         sim(|| {
             let local_map = testing::new(1_024);
@@ -389,7 +388,6 @@ fn sim_path_pair_ids_are_stable_across_identical_runs() {
 #[test]
 fn sim_path_pair_ids_increment_generation_for_same_pair() {
     const SENDER_COUNT: usize = 4;
-    let _guard = crate::testing::without_snapshots();
 
     sim(|| {
         use crate::path::secret::map::testing;

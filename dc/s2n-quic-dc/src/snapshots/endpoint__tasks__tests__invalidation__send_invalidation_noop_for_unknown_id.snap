@@ -2,4 +2,4 @@
 source: dc/s2n-quic-dc/src/testing.rs
 expression: logs
 ---
-
+0:00:00.000000000 [main] TRACE c#test.invalidation.ups.events=1

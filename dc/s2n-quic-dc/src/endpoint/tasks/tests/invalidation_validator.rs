@@ -114,7 +114,6 @@ fn packet_entry(
 
 #[test]
 fn unknown_path_secret_packet_broadcasts_validated_id() {
-    let _guard = crate::testing::without_snapshots();
     sim(|| {
         let peer: SocketAddr = "127.0.0.1:4444".parse().unwrap();
         let (map, local_id) = setup_map_with_entry(peer);
@@ -191,7 +190,6 @@ fn malformed_packet_is_ignored() {
 
 #[test]
 fn stale_key_packet_broadcasts_validated_sender_target() {
-    let _guard = crate::testing::without_snapshots();
     sim(|| {
         let peer: SocketAddr = "127.0.0.1:6666".parse().unwrap();
         let (map, local_id) = setup_map_with_entry(peer);
@@ -244,7 +242,6 @@ fn stale_key_packet_broadcasts_validated_sender_target() {
 
 #[test]
 fn replay_detected_packet_broadcasts_validated_sender_target() {
-    let _guard = crate::testing::without_snapshots();
     sim(|| {
         let peer: SocketAddr = "127.0.0.1:7777".parse().unwrap();
         let (map, local_id) = setup_map_with_entry(peer);

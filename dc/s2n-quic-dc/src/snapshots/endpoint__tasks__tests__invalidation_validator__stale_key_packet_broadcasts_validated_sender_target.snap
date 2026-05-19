@@ -1,0 +1,6 @@
+---
+source: dc/s2n-quic-dc/src/testing.rs
+expression: logs
+---
+0:00:00.000000000 [main] DEBUG validated stale key invalidation peer=127.0.0.1:6666 credential_id=0x25a69ae25d5f3678f5373f68bc3c106d sender_id=7 sinks=2
+0:00:00.000000000 [main] TRACE c#test.invalidation.validator.stale=1
