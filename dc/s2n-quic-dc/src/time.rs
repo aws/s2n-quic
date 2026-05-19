@@ -1,12 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::tracing::trace;
 use core::{fmt, pin::Pin, task::Poll, time::Duration};
 use s2n_quic_core::{
     ensure, time,
     time::{timer, timer::Provider},
 };
-use tracing::trace;
 
 #[macro_use]
 mod macros;

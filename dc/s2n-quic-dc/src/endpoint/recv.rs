@@ -6,6 +6,7 @@ use crate::{
     flow, intrusive,
     path::{self, secret::map::Entry as PathSecretEntry},
     stream::endpoint::ack::state as ack_state,
+    tracing::*,
 };
 use rustc_hash::FxHashMap;
 use s2n_quic_core::{frame::ack::EcnCounts, varint::VarInt};
@@ -378,7 +379,7 @@ impl Context {
 
     pub fn on_ack_completion(&mut self, recv_worker_id: usize) -> Option<ack_state::Submission> {
         if !(self.ack_state.is_flushed() || self.ack_state.is_flushed_stale()) {
-            tracing::warn!(
+            warn!(
                 ?self.ack_state,
                 "ack completion observed while context is not in a flushed state"
             );
@@ -511,7 +512,7 @@ impl Cache {
                     .map_err(|_| CacheError::ReplayDetected)?;
 
                 // Packet is authentic — replace the stale entry.
-                tracing::debug!(
+                debug!(
                     %credentials,
                     %remote_sender_id,
                     cached_key_id = cached_key_id.as_u64(),
@@ -532,7 +533,7 @@ impl Cache {
                 Ok((r, new_ctx, false))
             }
             hash_map::Entry::Vacant(entry) => {
-                tracing::debug!(%credentials, %remote_sender_id, worker_id = self.worker_id, "opener_for_credentials");
+                debug!(%credentials, %remote_sender_id, worker_id = self.worker_id, "opener_for_credentials");
                 let (opener, path_entry) = path_secret_map
                     .opener_for_credentials(
                         credentials,
@@ -580,7 +581,7 @@ impl Cache {
         let before = self.senders.len();
         self.senders.retain(|key, _| key.id != *id);
         let removed = before - self.senders.len();
-        tracing::debug!(%id, removed, worker_id = self.worker_id, "invalidating recv contexts");
+        debug!(%id, removed, worker_id = self.worker_id, "invalidating recv contexts");
     }
 }
 

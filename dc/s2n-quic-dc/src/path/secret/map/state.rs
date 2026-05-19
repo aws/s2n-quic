@@ -1,6 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
 use super::{
     cleaner::Cleaner, stateless_reset, ApplicationData, ApplicationDataError, Entry, Store,
 };
@@ -11,6 +10,7 @@ use crate::{
     packet::{secret_control as control, Packet},
     path::secret::receiver,
     psk::io::HandshakeReason,
+    tracing::*,
 };
 use s2n_quic_core::{
     inet::SocketAddress,
@@ -466,7 +466,7 @@ fn control_socket() -> Option<Arc<dyn crate::socket::send::Socket + Send + Sync>
         return match bach::net::UdpSocket::new(&o) {
             Ok(socket) => Some(Arc::new(socket)),
             Err(err) => {
-                tracing::warn!(%err, "failed to create bach control socket");
+                warn!(%err, "failed to create bach control socket");
                 None
             }
         };
@@ -497,7 +497,7 @@ fn control_socket() -> Option<Arc<dyn crate::socket::send::Socket + Send + Sync>
                 return Some(socket as Arc<dyn crate::socket::send::Socket + Send + Sync>);
             }
             Err(err) => {
-                tracing::warn!(%err, addr, "failed to create control socket");
+                warn!(%err, addr, "failed to create control socket");
                 continue;
             }
         }
@@ -1171,7 +1171,7 @@ where
         // Advance the sender past the rejected key-id so retransmissions use a
         // fresh key-id the peer hasn't seen.
         if let Some(next) = packet.rejected_key_id.checked_add_usize(1) {
-            tracing::debug!(
+            debug!(
                 credential_id = %packet.credential_id,
                 rejected_key_id = packet.rejected_key_id.as_u64(),
                 new_min_key_id = next.as_u64(),
@@ -1190,12 +1190,12 @@ where
     fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]) {
         let control_socket = self.control_socket.get_or_init(control_socket);
         let Some(control_socket) = control_socket.as_ref() else {
-            tracing::warn!(%dst, "send_control_packet: no control socket available");
+            warn!(%dst, "send_control_packet: no control socket available");
             return;
         };
         match control_socket.send_to(dst, buffer) {
             Ok(_) => {
-                tracing::debug!(%dst, len = buffer.len(), "send_control_packet: sent");
+                debug!(%dst, len = buffer.len(), "send_control_packet: sent");
                 // all done
                 match control::Packet::decode(s2n_codec::DecoderBufferMut::new(buffer))
                     .map(|(t, _)| t)
@@ -1231,7 +1231,7 @@ where
                 // ignore would block -- we're not going to queue up control packet messages.
             }
             Err(e) => {
-                tracing::warn!("Failed to send control packet to {:?}: {:?}", dst, e);
+                warn!("Failed to send control packet to {:?}: {:?}", dst, e);
             }
         }
     }
@@ -1264,7 +1264,7 @@ where
                 Ok(())
             }
             Err(receiver::Error::AlreadyExists) => {
-                tracing::debug!(
+                debug!(
                     credential_id = %creds.id,
                     key_id = key_id.as_u64(),
                     ?queue_id,

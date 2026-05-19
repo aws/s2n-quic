@@ -4,6 +4,7 @@
 use crate::{
     allocator,
     msg::{self, addr::Addr, cmsg},
+    tracing::trace,
 };
 use core::fmt;
 use s2n_quic_core::inet::ExplicitCongestionNotification;
@@ -13,7 +14,6 @@ use std::{
     ptr::NonNull,
     sync::atomic::{AtomicUsize, Ordering},
 };
-use tracing::trace;
 
 /// A pointer to a single descriptor
 ///

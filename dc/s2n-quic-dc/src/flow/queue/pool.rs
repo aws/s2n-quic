@@ -1,12 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
 use super::{
     descriptor::{Descriptor, DescriptorInner},
     free_list::{self, FreeVec},
     handle::{Control, Sender, Stream},
     sender::{self, Senders},
 };
+use crate::tracing::*;
 use s2n_quic_core::varint::VarInt;
 use std::{alloc::Layout, marker::PhantomData, ptr::NonNull, sync::Arc};
 
@@ -147,7 +147,7 @@ where
             }
 
             drop(senders);
-            tracing::debug!("grow failed");
+            debug!("grow failed");
 
             // return back to the alloc method, which may have a free descriptor now
             return;
@@ -164,7 +164,7 @@ where
         // we don't need to synchronize with the senders any more so drop the local
         drop(senders);
 
-        tracing::debug!(%epoch, "grow");
+        debug!(%epoch, "grow");
 
         // push all of the descriptors into the free list
         self.free.record_region(region, pending_desc);

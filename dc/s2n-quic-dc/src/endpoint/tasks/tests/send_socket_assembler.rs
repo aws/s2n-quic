@@ -8,7 +8,6 @@
 //! the context into tx/PTO/idle wheels after assembly), pacing, and the socket sender.
 //! These tests verify the routing behavior of every output channel under different
 //! pending-data and frame-cancellation scenarios.
-
 use super::helpers::{
     build_send_context, test_batch, test_batch_with_payload, test_entry_at, TestReceiverExt as _,
 };
@@ -21,6 +20,7 @@ use crate::{
     },
     testing::{ext::*, sim},
     time::{bach::Clock, precision::Clock as _},
+    tracing::*,
 };
 use bach::net::UdpSocket;
 use core::time::Duration;
@@ -169,7 +169,7 @@ fn sends_encrypted_packet_to_peer() {
             let recv_socket = UdpSocket::bind("0.0.0.0:4433").await.unwrap();
             let mut buf = vec![0u8; 1500];
             let (n, _peer) = recv_socket.recv_from(&mut buf).await.unwrap();
-            tracing::debug!(n, "received encrypted datagram at server");
+            debug!(n, "received encrypted datagram at server");
             assert!(n > 0, "assembler should have sent an encrypted packet");
         }
         .group("server")
@@ -193,7 +193,7 @@ fn sends_encrypted_packet_to_peer() {
 
             // drain_budgeted consumes the pipeline, dropping all internal senders,
             // so empty receivers now return None immediately.
-            tracing::debug!("asserting wheel routing after assembly");
+            debug!("asserting wheel routing after assembly");
             assert!(
                 pto_wheel_rx.recv().await.is_some(),
                 "context with inflight data should be routed to PTO wheel"
@@ -214,7 +214,7 @@ fn sends_encrypted_packet_to_peer() {
                 ack_completions_rx.recv().await.is_none(),
                 "no ACK completions for a plain FlowData frame"
             );
-            tracing::debug!("all output assertions passed");
+            debug!("all output assertions passed");
         }
         .spawn();
 
@@ -271,7 +271,7 @@ fn reassembles_context_to_tx_wheel_when_data_remains() {
             let recv_socket = UdpSocket::bind("0.0.0.0:4433").await.unwrap();
             let mut buf = vec![0u8; 2000];
             let (n, _peer) = recv_socket.recv_from(&mut buf).await.unwrap();
-            tracing::debug!(n, "received encrypted datagram at server");
+            debug!(n, "received encrypted datagram at server");
             assert!(n > 0, "assembler should have sent the first large frame");
 
             // Assert no second datagram arrives.
@@ -393,7 +393,7 @@ fn cancelled_frame_emitted_when_completion_is_cancelled() {
                 result.is_err(),
                 "no datagram should arrive for a cancelled frame"
             );
-            tracing::debug!("server confirmed no packet arrived (timeout as expected)");
+            debug!("server confirmed no packet arrived (timeout as expected)");
         }
         .group("server")
         .primary()
@@ -436,7 +436,7 @@ fn cancelled_frame_emitted_when_completion_is_cancelled() {
                 ack_completions_rx.recv().await.is_none(),
                 "no ACK completions when only a cancelled data frame was processed"
             );
-            tracing::debug!("all output assertions passed");
+            debug!("all output assertions passed");
         }
         .spawn();
 

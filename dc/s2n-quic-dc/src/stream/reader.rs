@@ -87,6 +87,7 @@ use crate::{
     intrusive,
     packet::datagram::{QueuePair, ResetTarget},
     path::secret::map::Entry as PathSecretEntry,
+    tracing::{debug, trace},
 };
 use s2n_quic_core::{
     buffer::{
@@ -108,7 +109,6 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-use tracing::{debug, trace};
 
 /// The receive half of an `s2n-quic-dc` stream.
 ///

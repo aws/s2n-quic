@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::tracing::*;
 use core::time::Duration;
 use s2n_quic_dc_metrics::format::{
     histogram_count_min_max, histogram_value_at_percentile, parse_histogram_buckets,
@@ -77,14 +78,14 @@ const STATSD_HISTOGRAM_PERCENTILES: [u32; 4] = [50, 90, 95, 99];
 macro_rules! metric_emit {
     ($prefix:literal, $label:expr, $variant:expr, $value:expr) => {
         match $variant.as_deref() {
-            Some(v) => tracing::trace!(
+            Some(v) => trace!(
                 target: "s2n_quic_dc::metric",
                 concat!($prefix, "#{}[{}]={}"),
                 $label,
                 v,
                 $value
             ),
-            None => tracing::trace!(
+            None => trace!(
                 target: "s2n_quic_dc::metric",
                 concat!($prefix, "#{}={}"),
                 $label,
@@ -204,7 +205,7 @@ async fn statsd_udp_sender(
     let socket = match tokio::net::UdpSocket::from_std(socket) {
         Ok(s) => s,
         Err(e) => {
-            tracing::warn!(error = %e, "failed to convert statsd UDP socket to async");
+            warn!(error = %e, "failed to convert statsd UDP socket to async");
             return;
         }
     };
@@ -214,7 +215,7 @@ async fn statsd_udp_sender(
             let target_nanos = rate.nanos_for_bytes(payload.len() as u64);
             let before = Instant::now();
             if let Err(e) = socket.send_to(payload, batch.addr).await {
-                tracing::warn!(addr = %batch.addr, error = %e, "statsd UDP send failed");
+                warn!(addr = %batch.addr, error = %e, "statsd UDP send failed");
                 break;
             }
             let elapsed = before.elapsed();
@@ -264,9 +265,9 @@ impl ReporterOutputSink for TracingSink {
     fn emit(&mut self, payload: &ReportingPayload<'_>, prefix: Option<&str>) -> Result<(), String> {
         let raw = payload.raw_line;
         if let Some(prefix) = prefix.filter(|p| !p.is_empty()) {
-            tracing::info!("[METRICS:{prefix}] {raw}");
+            info!("[METRICS:{prefix}] {raw}");
         } else {
-            tracing::info!("[METRICS] {raw}");
+            info!("[METRICS] {raw}");
         }
         Ok(())
     }
@@ -291,7 +292,7 @@ impl ReporterOutputSink for StatsdUdpSink {
 
         let (payloads, dropped) = chunk_statsd_lines(&lines, self.config.max_payload_size);
         if dropped > 0 {
-            tracing::warn!(
+            warn!(
                 dropped,
                 max_payload_size = self.config.max_payload_size,
                 "dropped oversized statsd metrics"
@@ -305,7 +306,7 @@ impl ReporterOutputSink for StatsdUdpSink {
         match self.config.tx.try_send(batch) {
             Ok(()) => {}
             Err(mpsc::error::TrySendError::Full(_)) => {
-                tracing::warn!(addr = %self.config.addr, "statsd payload queue full; dropping batch");
+                warn!(addr = %self.config.addr, "statsd payload queue full; dropping batch");
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 return Err("statsd payload queue disconnected".into());
@@ -536,7 +537,7 @@ fn dispatch_payload_to_sinks(
 ) {
     for sink in sinks {
         if let Err(error) = sink.emit(payload, prefix) {
-            tracing::warn!(?error, "failed to emit metrics to sink");
+            warn!(?error, "failed to emit metrics to sink");
         }
     }
 }

@@ -65,7 +65,6 @@
 // * Deterministic tests using bach for: flow control stalls and recovery, FIN delivery,
 //   early data with FlowInit, completion failure handling, panic-drop behavior, and
 //   multi-stream contention on shared pipeline resources.
-
 use super::coop::{self, Coop, HasCoop};
 use crate::{
     byte_vec::ByteVec,
@@ -83,6 +82,7 @@ use crate::{
         datagram::{QueuePair, ResetTarget},
     },
     path::secret::map::Entry as PathSecretEntry,
+    tracing::*,
 };
 use s2n_quic_core::{
     buffer::{self, writer::Storage},
@@ -97,7 +97,6 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-use tracing::{debug, trace};
 
 /// The send half of an `s2n-quic-dc` stream.
 ///
@@ -758,7 +757,7 @@ impl Inner {
                             );
                         }
                         TransmissionStatus::Pending => {
-                            tracing::warn!(
+                            warn!(
                                 stream_id = self.stream_id.as_u64(),
                                 "Received completion with Pending status"
                             );

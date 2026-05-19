@@ -15,11 +15,11 @@
 //! Deterministic tests (`no_loss`, `initial_loss`, `sporadic_loss`) additionally
 //! lock in the elapsed simulated time via insta snapshots so any regression in
 //! throughput is immediately visible.
-
 use crate::{
     endpoint::routing::hash_id_and_sender,
     stream::endpoint::testing::sim::{Client, Server, SERVER_PORT},
     testing::{ext::*, sim, without_tracing},
+    tracing::*,
 };
 use bach::time::{timeout, Instant};
 use bytes::{Bytes, BytesMut};
@@ -137,7 +137,7 @@ impl DroppedPackets {
         let _guard = without_tracing();
         sim(|| {
             {
-                tracing::info!(
+                info!(
                     packets = ?self,
                     loss = format!("{:.02}%", self.loss_percent()),
                     "starting test"
@@ -147,14 +147,14 @@ impl DroppedPackets {
                     if packet.destination().port() != SERVER_PORT {
                         if let Some((idx, enabled)) = enabled.next() {
                             if !enabled {
-                                tracing::info!(
+                                info!(
                                     idx,
                                     len = packet.transport.payload().len(),
                                     "dropping server packet"
                                 );
                                 return bach::net::monitor::Command::Drop;
                             } else {
-                                tracing::info!(
+                                info!(
                                     idx,
                                     len = packet.transport.payload().len(),
                                     "allowing server packet"
@@ -598,8 +598,8 @@ fn sim_init_uniqueness(actions: &PacketActions, n: usize) {
     let seen_ids: Arc<Mutex<HashSet<u64>>> = Arc::new(Mutex::new(HashSet::new()));
     let seen_ids_sv = seen_ids.clone();
 
-    tracing::info!("════════════════════════════════════════════════════════════════════");
-    tracing::info!(?actions, n, "starting init_uniqueness sim");
+    info!("════════════════════════════════════════════════════════════════════");
+    info!(?actions, n, "starting init_uniqueness sim");
 
     let _guard = without_tracing();
     sim(|| {

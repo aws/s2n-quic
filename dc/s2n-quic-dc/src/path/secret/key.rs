@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
 use super::{map, schedule};
+use crate::tracing::*;
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use s2n_quic_core::{packet::KeyPhase, time::Clock};
 
@@ -68,7 +68,7 @@ pub mod seal {
             self.ku = ku;
             self.encrypted_records = AtomicU64::new(0);
             self.key_phase = self.key_phase.next_phase();
-            tracing::debug!(sealer_updated = ?self.key_phase);
+            debug!(sealer_updated = ?self.key_phase);
 
             subscriber
                 .publisher(clock.get_time())
@@ -246,7 +246,7 @@ pub mod open {
             self.ku = ku;
             self.key_phase = self.key_phase.next_phase();
             self.needs_update.store(false, Ordering::Relaxed);
-            tracing::debug!(opener_updated = ?self.key_phase);
+            debug!(opener_updated = ?self.key_phase);
 
             subscriber
                 .publisher(clock.get_time())

@@ -25,6 +25,7 @@ use crate::{
     socket::channel::{ByteCost, UnboundedSender},
     stream::endpoint::{inflight, msg},
     time::precision,
+    tracing::*,
 };
 use core::time::Duration;
 use rustc_hash::FxHashMap;
@@ -642,7 +643,7 @@ impl Context {
 
         for frame in frames_iter {
             let Ok(frame) = frame else {
-                tracing::debug!("failed to decode control frame in ACK payload");
+                debug!("failed to decode control frame in ACK payload");
                 break;
             };
 
@@ -656,7 +657,7 @@ impl Context {
                 s2n_quic_core::frame::FrameMut::Padding(_)
                 | s2n_quic_core::frame::FrameMut::Ping(_) => {}
                 frame => {
-                    tracing::debug!(?frame, "unexpected control frame type in ACK payload");
+                    debug!(?frame, "unexpected control frame type in ACK payload");
                 }
             }
         }
@@ -1222,11 +1223,11 @@ impl Cache {
         cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
     ) -> Option<usize> {
         let Some(ctx) = self.contexts.remove(id) else {
-            tracing::trace!(%id, sender_idx = self.sender_idx, "invalidate: no context found");
+            trace!(%id, sender_idx = self.sender_idx, "invalidate: no context found");
             return None;
         };
         let mut ctx = ctx.borrow_mut();
-        tracing::debug!(%id, sender_idx = self.sender_idx, "invalidating send context");
+        debug!(%id, sender_idx = self.sender_idx, "invalidating send context");
         Some(ctx.drain_frames(Some(reason), cancelled))
     }
 
@@ -1247,7 +1248,7 @@ impl Cache {
         }
 
         let Some(ctx) = self.contexts.get(id) else {
-            tracing::trace!(
+            trace!(
                 %id,
                 sender_idx = self.sender_idx,
                 stale_sender_id = sender_idx,
@@ -1259,7 +1260,7 @@ impl Cache {
         // If the send context's key_id is already past the rejected one, this
         // invalidation is stale (e.g. a delayed/replayed control packet) — ignore it.
         if ctx.borrow().credentials.key_id > rejected_key_id {
-            tracing::trace!(
+            trace!(
                 %id,
                 sender_idx = self.sender_idx,
                 rejected_key_id = rejected_key_id.as_u64(),
@@ -1271,7 +1272,7 @@ impl Cache {
 
         let ctx = self.contexts.remove(id).unwrap();
         let mut ctx = ctx.borrow_mut();
-        tracing::debug!(
+        debug!(
             %id,
             sender_idx = self.sender_idx,
             stale_sender_id = sender_idx,

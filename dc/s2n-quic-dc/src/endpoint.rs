@@ -14,6 +14,7 @@ use crate::{
     },
     stream::PendingValidation,
     time::precision,
+    tracing::*,
 };
 use core::time::Duration;
 use s2n_quic_core::time;
@@ -244,7 +245,7 @@ where
 {
     let num_recv_dispatch = config.layout.recv_dispatch.len();
 
-    tracing::debug!(?config.layout, "setting up endpoint");
+    debug!(?config.layout, "setting up endpoint");
 
     if num_recv_dispatch.is_power_of_two() {
         setup_endpoint_inner::<_, _, _, _, routing::PowerOfTwoRoute>(

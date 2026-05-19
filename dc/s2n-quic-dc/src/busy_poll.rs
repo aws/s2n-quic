@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::tracing::*;
 use parking_lot::Mutex;
 use std::{
     fmt,
@@ -67,7 +68,7 @@ impl Pool {
                         let current = hb.counter.load(Ordering::Relaxed);
                         if current == prev[worker_id] && current > 0 {
                             let task_idx = hb.current_task.load(Ordering::Relaxed);
-                            tracing::error!(
+                            error!(
                                 "[watchdog] worker {worker_id} stuck in task {task_idx} \
                                  (heartbeat={current}, no progress in {timeout:?})"
                             );

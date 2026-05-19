@@ -546,7 +546,7 @@ fn paced_throughput_test() {
             assert_eq!(count, 47000);
             let elapsed_sec = elapsed.as_secs_f64();
             let gbps = (total_bytes as f64 * 8.0) / elapsed_sec / 1_000_000_000.0;
-            tracing::info!(
+            info!(
                 "Received {} packets ({} GB) in {:.2}s = {:.2} Gbps",
                 count,
                 total_bytes / 1_000_000_000,

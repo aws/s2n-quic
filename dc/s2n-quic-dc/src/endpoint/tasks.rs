@@ -25,6 +25,7 @@ use crate::{
         rate::Rate,
     },
     time::precision,
+    tracing::*,
 };
 use core::task::Poll;
 use s2n_quic_core::{assume, varint::VarInt};
@@ -736,7 +737,7 @@ where
                 match cache.get_or_insert(batch.path_secret_entry(), &clock) {
                     Ok(ctx) => ctx,
                     Err(error) => {
-                        tracing::warn!(?error, "dropping batch: send context not ready");
+                        warn!(?error, "dropping batch: send context not ready");
                         return None;
                     }
                 }
@@ -986,7 +987,7 @@ where
     let rx = Paced::new(rx, clock, per_socket_send_rate);
     let rx = SocketSender::new(rx, socket);
     let rx = InspectErr::new(rx, |(err, _segments)| {
-        tracing::warn!(%err, "socket send error");
+        warn!(%err, "socket send error");
     });
     Map::new(rx, |_segments| {})
 }
@@ -1215,7 +1216,7 @@ where
 {
     let rx = SocketReceiver::new(socket, pool);
     let rx = InspectErr::new(rx, |err| {
-        tracing::warn!(%err, "socket recv error");
+        warn!(%err, "socket recv error");
     });
     let rx = FlattenSegments::new(rx);
     RouterAdapter::new(rx, router)
@@ -1426,7 +1427,7 @@ fn on_packet_dispatch_error(
                 };
                 let _ = ups_tx.send(Entry::new(response));
             }
-            tracing::debug!(
+            debug!(
                 ?credentials,
                 "peer state lookup failed - queued UPS response"
             );
@@ -1436,7 +1437,7 @@ fn on_packet_dispatch_error(
             packet_number,
         } => {
             counters.rx_process_err_decryption.add(1);
-            tracing::debug!(
+            debug!(
                 ?credentials,
                 pn = packet_number.as_u64(),
                 "failed to decrypt packet - authentication failed"
@@ -1447,7 +1448,7 @@ fn on_packet_dispatch_error(
             packet_number,
         } => {
             counters.rx_process_err_duplicate.add(1);
-            tracing::trace!(
+            trace!(
                 ?credentials,
                 pn = packet_number.as_u64(),
                 "duplicate packet filtered"
@@ -1458,7 +1459,7 @@ fn on_packet_dispatch_error(
             packet_number,
         } => {
             counters.rx_process_err_stale_key.add(1);
-            tracing::debug!(
+            debug!(
                 ?credentials,
                 pn = packet_number.as_u64(),
                 "stale key detected - key-id already seen or outside replay window"
@@ -1466,7 +1467,7 @@ fn on_packet_dispatch_error(
         }
         dispatch::Error::MissingSenderId => {
             counters.rx_process_err_missing_sender_id.add(1);
-            tracing::warn!("packet missing routing info; expected SenderId");
+            warn!("packet missing routing info; expected SenderId");
         }
     }
 }
@@ -1683,7 +1684,7 @@ where
         let buf = entry.payload_mut();
         let decoder = DecoderBufferMut::new(buf);
         let Ok((packet, _)) = secret_control::Packet::decode(decoder) else {
-            tracing::debug!(%peer, "ignored invalidation control packet: decode failed");
+            debug!(%peer, "ignored invalidation control packet: decode failed");
             return;
         };
         let Some(invalidation) = (match packet {
@@ -1691,12 +1692,12 @@ where
                 let Some(validated) =
                     path_secret_map.handle_unknown_path_secret_packet(&packet, &peer)
                 else {
-                    tracing::debug!(%peer, "ignored invalidation control packet: unknown path secret rejected");
+                    debug!(%peer, "ignored invalidation control packet: unknown path secret rejected");
                     return;
                 };
 
                 let local_id = validated.credential_id.for_peer();
-                tracing::debug!(
+                debug!(
                     %peer,
                     credential_id = %local_id,
                     sinks = send_txs.len() + recv_txs.len(),
@@ -1710,15 +1711,15 @@ where
             secret_control::Packet::StaleKey(packet) => {
                 let Some(validated) = path_secret_map.handle_stale_key_packet(&packet, &peer)
                 else {
-                    tracing::debug!(%peer, "ignored invalidation control packet: stale key rejected");
+                    debug!(%peer, "ignored invalidation control packet: stale key rejected");
                     return;
                 };
                 let Some(sender_id) = validated.sender_id else {
-                    tracing::debug!(%peer, "ignored invalidation control packet: stale key missing sender_id");
+                    debug!(%peer, "ignored invalidation control packet: stale key missing sender_id");
                     return;
                 };
                 let local_id = validated.credential_id.for_peer();
-                tracing::debug!(
+                debug!(
                     %peer,
                     credential_id = %local_id,
                     sender_id = sender_id.as_u64(),
@@ -1735,15 +1736,15 @@ where
             secret_control::Packet::ReplayDetected(packet) => {
                 let Some(validated) = path_secret_map.handle_replay_detected_packet(&packet, &peer)
                 else {
-                    tracing::debug!(%peer, "ignored invalidation control packet: replay detected rejected");
+                    debug!(%peer, "ignored invalidation control packet: replay detected rejected");
                     return;
                 };
                 let Some(sender_id) = validated.sender_id else {
-                    tracing::debug!(%peer, "ignored invalidation control packet: replay detected missing sender_id");
+                    debug!(%peer, "ignored invalidation control packet: replay detected missing sender_id");
                     return;
                 };
                 let local_id = validated.credential_id.for_peer();
-                tracing::debug!(
+                debug!(
                     %peer,
                     credential_id = %local_id,
                     sender_id = sender_id.as_u64(),

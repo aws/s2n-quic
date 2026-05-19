@@ -13,11 +13,13 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
+use crate::tracing::trace;
+
 // Use `debug` logging for unhandled packets in non-test builds to reduce noise
 #[cfg(not(test))]
-use tracing::debug as warn;
+use crate::tracing::debug as warn;
 #[cfg(test)]
-use tracing::warn;
+use crate::tracing::warn;
 
 mod with_map;
 
@@ -68,7 +70,7 @@ pub trait Router {
                         // #[cfg(debug_assertions)]
                         // let _span = tracing::info_span!("recv::control", peer_addr = %remote_address, flow_id = %credentials).entered();
 
-                        tracing::trace!(?tag, ?stream_id, %credentials, "parsed_control_packet");
+                        trace!(?tag, ?stream_id, %credentials, "parsed_control_packet");
                         let meta = *control_packet.meta();
                         self.handle_control_packet(remote_address, ecn, control_packet);
 
@@ -84,7 +86,7 @@ pub trait Router {
                         // #[cfg(debug_assertions)]
                         // let _span = tracing::info_span!("recv::stream", peer_addr = %remote_address, flow_id = %credentials).entered();
 
-                        tracing::trace!(?tag, ?stream_id, %credentials, "parsed_stream_packet");
+                        trace!(?tag, ?stream_id, %credentials, "parsed_stream_packet");
 
                         self.handle_stream_packet(remote_address, ecn, stream_packet);
                         self.dispatch_stream_packet(tag, stream_id, credentials, segment);
@@ -96,7 +98,7 @@ pub trait Router {
                         // #[cfg(debug_assertions)]
                         // let _span = tracing::info_span!("recv::datagram", peer_addr = %remote_address, flow_id = %credentials).entered();
 
-                        tracing::trace!(?tag, %credentials, "parsed_datagram_packet");
+                        trace!(?tag, %credentials, "parsed_datagram_packet");
                         let meta = *datagram_packet.meta();
                         self.handle_datagram_packet(remote_address, ecn, datagram_packet);
 
@@ -113,7 +115,7 @@ pub trait Router {
                         // #[cfg(debug_assertions)]
                         // let _span = tracing::info_span!("recv::flow_reset", peer_addr = %remote_address, flow_id = %credentials).entered();
 
-                        tracing::trace!(?tag, ?queue_id, %credentials, ?trigger, "parsed_flow_reset_packet");
+                        trace!(?tag, ?queue_id, %credentials, ?trigger, "parsed_flow_reset_packet");
                         self.handle_flow_reset_packet(remote_address, ecn, packet);
                         self.dispatch_flow_reset_packet(
                             tag,
@@ -124,21 +126,21 @@ pub trait Router {
                         );
                     }
                     packet::Packet::StaleKey(packet) => {
-                        tracing::trace!(?packet, "parsed_stale_key_packet");
+                        trace!(?packet, "parsed_stale_key_packet");
                         let sender_id = packet.sender_id();
                         let credentials = *packet.credential_id();
                         self.handle_stale_key_packet(packet, remote_address);
                         self.dispatch_stale_key_packet(sender_id, credentials, segment);
                     }
                     packet::Packet::ReplayDetected(packet) => {
-                        tracing::trace!(?packet, "parsed_replay_detected_packet");
+                        trace!(?packet, "parsed_replay_detected_packet");
                         let sender_id = packet.sender_id();
                         let credentials = *packet.credential_id();
                         self.handle_replay_detected_packet(packet, remote_address);
                         self.dispatch_replay_detected_packet(sender_id, credentials, segment);
                     }
                     packet::Packet::UnknownPathSecret(packet) => {
-                        tracing::trace!(?packet, "parsed_unknown_path_secret_packet");
+                        trace!(?packet, "parsed_unknown_path_secret_packet");
                         let queue_id = packet.queue_id();
                         let credentials = *packet.credential_id();
                         self.handle_unknown_path_secret_packet(packet, remote_address);

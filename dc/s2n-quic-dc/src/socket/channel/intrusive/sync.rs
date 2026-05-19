@@ -5,8 +5,7 @@
 //!
 //! The sender has no backpressure - it can always push entries to the queue.
 //! The receiver drains the queue until empty, using wakers for notification.
-
-use crate::intrusive;
+use crate::{intrusive, tracing::*};
 use core::{
     mem::ManuallyDrop,
     sync::atomic::{AtomicBool, Ordering},
@@ -237,7 +236,7 @@ impl<T> super::super::Receiver<intrusive::Entry<T>> for Receiver<T> {
 
         // Check if all senders are gone (strong_count <= 1 means only receiver left)
         if Arc::strong_count(&self.shared) <= 1 {
-            tracing::error!(
+            error!(
                 strong_count = Arc::strong_count(&self.shared),
                 "sync channel closed: all senders dropped"
             );
@@ -274,7 +273,7 @@ impl<T> super::super::Receiver<intrusive::Queue<T>> for Receiver<T> {
 
         // Check if all senders are gone (strong_count <= 1 means only receiver left)
         if Arc::strong_count(&self.shared) <= 1 {
-            tracing::error!(
+            error!(
                 strong_count = Arc::strong_count(&self.shared),
                 "sync channel closed: all senders dropped"
             );

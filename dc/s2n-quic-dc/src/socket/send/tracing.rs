@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::Socket;
-use crate::msg::addr::Addr;
+use crate::{msg::addr::Addr, tracing::trace};
 use s2n_quic_core::inet::ExplicitCongestionNotification;
 use std::io::{self, IoSlice};
-use tracing::trace;
 
 pub struct Tracing<S>(pub S);
 

@@ -1,8 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
 use super::{client, server};
-use crate::path::secret;
+use crate::{path::secret, tracing::*};
 use cfg_if::cfg_if;
 use rand::RngExt;
 use s2n_quic::{
@@ -71,7 +70,7 @@ async fn read_data_addrs<R: AsyncReadExt + Unpin>(reader: &mut R) -> io::Result<
     let count = header[0] as usize;
 
     if count == 0 {
-        tracing::warn!("peer provided 0 data addrs");
+        warn!("peer provided 0 data addrs");
         return Ok(Vec::new());
     }
 
@@ -195,7 +194,7 @@ pub(super) async fn server<
     ) {
         Ok(s) => s,
         Err(e) => {
-            tracing::error!("failed to bind server to {:?}: {:?}", address, e);
+            error!("failed to bind server to {:?}: {:?}", address, e);
             let _ = on_ready.send(Err(e));
             return;
         }
@@ -254,10 +253,9 @@ pub(super) async fn server<
                     .await;
                 }
                 Ok(Err(e)) => {
-                    tracing::debug!(
+                    debug!(
                         "failed to establish DC connection with {:?}: {:?}",
-                        address,
-                        e
+                        address, e
                     );
                 }
                 Err(_) => {
@@ -596,7 +594,7 @@ impl HandshakeQueue {
                 if let Err(e) = handshake.await {
                     // We may want to remove this in favor of only relying on the service log
                     // eventually, but keeping it for parity for now.
-                    tracing::error!("handshake with {peer} failed: {e}");
+                    error!("handshake with {peer} failed: {e}");
 
                     let this = self.clone();
                     tokio::spawn(async move {

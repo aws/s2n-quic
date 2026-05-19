@@ -1,6 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
 use super::{
     size_of::SizeOf,
     status::{Dedup, IsRetired},
@@ -14,6 +13,7 @@ use crate::{
         schedule::{self, Initiator},
         seal, sender,
     },
+    tracing::*,
 };
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{dc, recovery::bandwidth::Bandwidth, time::Timestamp, varint::VarInt};
@@ -286,7 +286,7 @@ impl Entry {
         use s2n_quic_core::inet::SocketAddress;
 
         if addrs.is_empty() {
-            tracing::error!(peer = %self.peer, "peer data addrs list is empty");
+            error!(peer = %self.peer, "peer data addrs list is empty");
             return false;
         }
 
@@ -296,7 +296,7 @@ impl Entry {
 
         for addr in addrs {
             if addr.port() == 0 {
-                tracing::error!(%addr, peer = %self.peer, "peer data addr has wildcard port");
+                error!(%addr, peer = %self.peer, "peer data addr has wildcard port");
                 return false;
             }
 
@@ -306,7 +306,7 @@ impl Entry {
             };
 
             if !peer_is_loopback && ip.is_loopback() {
-                tracing::error!(
+                error!(
                     %addr, peer = %self.peer,
                     "peer data addr is loopback but handshake addr is not"
                 );

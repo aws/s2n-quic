@@ -16,6 +16,7 @@ use crate::{
     },
     intrusive::Entry,
     socket::channel::UnboundedSender,
+    tracing::*,
 };
 use core::time::Duration;
 use s2n_quic_core::{
@@ -103,7 +104,7 @@ pub(crate) fn process_ack<Clk, Rand>(
                 bytes_acked += tx_info.sent_bytes as usize;
             }
 
-            tracing::trace!(
+            trace!(
                 credentials = %context.credentials.id,
                 sender_idx = context.sender_idx,
                 packet_number = num.as_u64(),
@@ -182,7 +183,7 @@ pub(crate) fn process_ack<Clk, Rand>(
             .saturating_sub(ack_delay)
             .max(Duration::from_micros(1));
 
-        tracing::trace!(
+        trace!(
             credentials = %context.credentials.id,
             sender_idx = context.sender_idx,
             ?rtt_sample,
@@ -295,7 +296,7 @@ fn detect_loss<Rand>(
     for (num, mut packet) in context.inflight.remove_range(range) {
         let tx_info = packet.transmission_info.take().unwrap();
 
-        tracing::trace!(
+        trace!(
             pn = num.as_u64(),
             max_acked = max_acked_pn.as_u64(),
             time_sent = ?tx_info.time_sent,
@@ -316,7 +317,7 @@ fn detect_loss<Rand>(
 
             if entry.ttl == 0 {
                 debug_assert_ne!(entry.ttl, 0, "frame TTL should never be exhausted");
-                tracing::error!(
+                error!(
                     credentials = %context.credentials.id,
                     sender_idx = context.sender_idx,
                     frame = ?*entry,
@@ -339,7 +340,7 @@ fn detect_loss<Rand>(
     }
 
     if lost_count + cancelled_count + ttl_exhausted_count > 0 {
-        tracing::debug!(
+        debug!(
             lost_count,
             cancelled_count,
             ttl_exhausted_count,

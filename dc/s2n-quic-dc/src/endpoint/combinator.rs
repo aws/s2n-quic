@@ -18,6 +18,7 @@ use crate::{
     },
     stream::endpoint::{msg, send},
     time::precision,
+    tracing::*,
 };
 use core::task::{self, Poll};
 use s2n_quic_core::{packet::number::PacketNumber, ready, varint::VarInt};
@@ -955,7 +956,7 @@ where
                     match cache.get_or_insert(entry.path_secret_entry(), &self.clock) {
                         Ok(ctx) => ctx,
                         Err(error) => {
-                            tracing::warn!(?error, "dropping ack: send context not ready");
+                            warn!(?error, "dropping ack: send context not ready");
                             return Poll::Ready(Some(None));
                         }
                     }

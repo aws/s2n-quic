@@ -38,7 +38,7 @@
 //! * **Write after shutdown returns BrokenPipe** – writes after FIN fail fast.
 //! * **Known bug (ignored)** – writer drop during `FlowInitSent` leaves server
 //!   reader hanging.
-
+use crate::tracing::*;
 use bytes::{Bytes, BytesMut};
 use s2n_quic_core::varint::VarInt;
 
@@ -563,7 +563,7 @@ fn server_reader_drop_sends_stop_sending() {
                         break;
                     }
                     Err(e) => {
-                        tracing::warn!("client write unexpected error: {e}");
+                        warn!("client write unexpected error: {e}");
                         break;
                     }
                 }

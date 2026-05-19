@@ -16,8 +16,7 @@
 //!
 //! The `drain_budgeted` future resets budget each poll, loops until Pending, then
 //! checks `budget.take_needs_wake()` to issue a single self-wake if more work exists.
-
-use crate::{socket::pool::descriptor, time::precision};
+use crate::{socket::pool::descriptor, time::precision, tracing::*};
 use core::task::{self, Poll};
 use s2n_quic_core::ready;
 use std::{future::Future, io, marker::PhantomData, mem::MaybeUninit, time::Instant};
@@ -1167,7 +1166,7 @@ where
 
         let Some(unfilled) = unfilled else {
             // Allocator exhausted
-            tracing::warn!("packet allocator exhausted on recv path");
+            warn!("packet allocator exhausted on recv path");
             budget.set_needs_wake();
             return Poll::Pending;
         };
@@ -1367,7 +1366,7 @@ where
                     break;
                 }
             }
-            tracing::info!("{now}: {rate:.2} {prefix}bps");
+            info!("{now}: {rate:.2} {prefix}bps");
         }
         self.last_emit = now;
         self.next_emit = now + std::time::Duration::from_secs(1);

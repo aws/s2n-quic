@@ -28,6 +28,7 @@ use crate::{
     path::secret::{map::Entry as PathSecretEntry, Map as PathSecretMap},
     socket::{channel, pool::descriptor},
     stream::{PendingValidation, Reader, Stream, Writer},
+    tracing::*,
 };
 use bytes::BytesMut;
 use core::time::Duration;
@@ -116,7 +117,7 @@ where
         let written = packet
             .decrypt_into(opener, bytes::BufMut::chunk_mut(&mut buf))
             .map_err(|err| {
-                tracing::warn!(
+                warn!(
                     %credentials,
                     packet_number = packet_number.as_u64(),
                     error = %err,
@@ -125,7 +126,7 @@ where
             })
             .ok()?;
         if written != decrypt_len {
-            tracing::warn!(
+            warn!(
                 %credentials,
                 packet_number = packet_number.as_u64(),
                 expected_len = decrypt_len,
@@ -164,7 +165,7 @@ where
                 });
             }
             Err(recv::CacheError::DecryptFailed) => {
-                tracing::warn!(
+                warn!(
                     %credentials,
                     packet_number = packet_number.as_u64(),
                     "failed to decrypt packet"
@@ -234,7 +235,7 @@ where
                 // Validate that the claimed payload length fits within the
                 // remaining payload storage.
                 if frame_payload_len > payload_storage.len() {
-                    tracing::warn!(
+                    warn!(
                         %credentials,
                         packet_number = packet_number.as_u64(),
                         frame_payload_len,
@@ -266,7 +267,7 @@ where
                 );
             }
             Err(err) => {
-                tracing::warn!(
+                warn!(
                     %credentials,
                     packet_number = packet_number.as_u64(),
                     ?err,
@@ -278,7 +279,7 @@ where
     }
 
     if !payload_storage.is_empty() {
-        tracing::warn!(
+        warn!(
             %credentials,
             packet_number = packet_number.as_u64(),
             remaining = payload_storage.len(),
@@ -510,7 +511,7 @@ fn dispatch_decoded_frame(
                 ack_delay,
             };
             if sender_tx.send(Entry::new(message)).is_err() {
-                tracing::warn!(
+                warn!(
                     %credentials,
                     source_sender_id = source_sender_id.as_u64(),
                     dest_sender_id = dest_sender_id.as_u64(),
@@ -550,7 +551,7 @@ fn handle_flow_init(
                              pending_validation: bool| {
         let payload = initial_payload.take();
         if payload.is_none() {
-            tracing::error!(
+            error!(
                 attempt_id = attempt_id.as_u64(),
                 stream_id = stream_id.as_u64(),
                 "create_stream called more than once for FlowInit"
@@ -621,7 +622,7 @@ fn handle_flow_init(
                     });
 
                     let Some((local_queue_id, dispatch_result)) = dispatched else {
-                        tracing::debug!(
+                        debug!(
                             attempt_id = attempt_id.as_u64(),
                             stream_id = stream_id.as_u64(),
                             acceptor_id = acceptor_id.as_u64(),
@@ -642,7 +643,7 @@ fn handle_flow_init(
                         Ok(waker) => {
                             counters.flow_accepted.add(1);
                             let _ = waker_sink.send(waker);
-                            tracing::debug!(
+                            debug!(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 acceptor_id = acceptor_id.as_u64(),
@@ -653,7 +654,7 @@ fn handle_flow_init(
                         Err(mut reject) => {
                             reject.request.disable();
                             counters.rx_init_acceptor_reset.add(1);
-                            tracing::debug!(
+                            debug!(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 acceptor_id = acceptor_id.as_u64(),
@@ -672,7 +673,7 @@ fn handle_flow_init(
                     }
                 }
                 Err(local_queue_id) => {
-                    tracing::debug!(
+                    debug!(
                         attempt_id = attempt_id.as_u64(),
                         stream_id = stream_id.as_u64(),
                         local_queue_id = local_queue_id.as_u64(),
@@ -691,7 +692,7 @@ fn handle_flow_init(
         }
         Err(AttemptDedupError::Duplicate) => {
             counters.rx_init_dup.add(1);
-            tracing::trace!(
+            trace!(
                 attempt_id = attempt_id.as_u64(),
                 stream_id = stream_id.as_u64(),
                 "Duplicate FlowInit attempt_id - dropping"
@@ -720,7 +721,7 @@ fn handle_flow_init(
 
                     let Some((local_queue_id, dispatch_result)) = dispatched else {
                         counters.rx_init_no_acceptor.add(1);
-                        tracing::debug!(
+                        debug!(
                             attempt_id = attempt_id.as_u64(),
                             stream_id = stream_id.as_u64(),
                             acceptor_id = acceptor_id.as_u64(),
@@ -757,7 +758,7 @@ fn handle_flow_init(
                                     ) {
                                         let _ = waker_sink.send(waker);
                                     }
-                                    tracing::debug!(
+                                    debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
                                         acceptor_id = acceptor_id.as_u64(),
@@ -768,7 +769,7 @@ fn handle_flow_init(
                                 acceptor::PendingAction::AcceptedWithRetry => {
                                     counters.rx_init_accepted_retry.add(1);
                                     counters.flow_pending.add(1);
-                                    tracing::debug!(
+                                    debug!(
                                         attempt_id = attempt_id.as_u64(),
                                         stream_id = stream_id.as_u64(),
                                         acceptor_id = acceptor_id.as_u64(),
@@ -791,7 +792,7 @@ fn handle_flow_init(
                         Err(mut reject) => {
                             reject.request.disable();
                             counters.rx_init_reject.add(1);
-                            tracing::debug!(
+                            debug!(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 acceptor_id = acceptor_id.as_u64(),
@@ -811,7 +812,7 @@ fn handle_flow_init(
                 }
                 Err(local_queue_id) => {
                     counters.rx_init_retx.add(1);
-                    tracing::trace!(
+                    trace!(
                         attempt_id = attempt_id.as_u64(),
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
@@ -925,7 +926,7 @@ fn handle_flow_validate_request(
     match queue_dispatcher.validate_stream(local_queue_id, &request) {
         Ok(()) => {
             counters.rx_validate_ok.add(1);
-            tracing::debug!(
+            debug!(
                 attempt_id = attempt_id.as_u64(),
                 stream_id = stream_id.as_u64(),
                 "FlowValidateRequest validated"
@@ -949,7 +950,7 @@ fn handle_flow_validate_request(
         }
         Err(_) => {
             counters.rx_validate_failed.add(1);
-            tracing::warn!(
+            warn!(
                 attempt_id = attempt_id.as_u64(),
                 stream_id = stream_id.as_u64(),
                 "FlowValidateRequest validation failed"
@@ -1008,7 +1009,7 @@ fn handle_flow_init_validate(
             ) {
                 Ok(waker) => {
                     let _ = waker_sink.send(waker);
-                    tracing::debug!(
+                    debug!(
                         attempt_id = attempt_id.as_u64(),
                         stream_id = stream_id.as_u64(),
                         "FlowInitValidate validated"
@@ -1016,7 +1017,7 @@ fn handle_flow_init_validate(
                 }
                 Err(_) => {
                     counters.rx_init_validate_dispatch_failed.add(1);
-                    tracing::warn!(
+                    warn!(
                         attempt_id = attempt_id.as_u64(),
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
@@ -1035,7 +1036,7 @@ fn handle_flow_init_validate(
         }
         Err(_) => {
             counters.rx_init_validate_validation_failed.add(1);
-            tracing::warn!(
+            warn!(
                 attempt_id = attempt_id.as_u64(),
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
@@ -1092,7 +1093,7 @@ fn handle_flow_data(
         Ok(waker) => {
             let _ = waker_sink.send(waker);
             counters.rx_data_ok.add(1);
-            tracing::trace!(
+            trace!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 offset = offset.as_u64(),
@@ -1103,7 +1104,7 @@ fn handle_flow_data(
         }
         Err(flow::queue::Error::Unallocated(_)) => {
             counters.rx_data_unallocated.add(1);
-            tracing::warn!(
+            warn!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 "FlowData for unallocated queue - sending reset"
@@ -1119,7 +1120,7 @@ fn handle_flow_data(
         }
         Err(flow::queue::Error::HalfClosed(_)) => {
             counters.rx_data_half_closed.add(1);
-            tracing::trace!(
+            trace!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 "FlowData for half-closed stream - dropping"
@@ -1128,7 +1129,7 @@ fn handle_flow_data(
         Err(flow::queue::Error::ValidationFailed(_, reason)) => {
             counters.on_data_validation_failed(reason);
             if let Some(error_code) = reason.as_reset_code() {
-                tracing::debug!(
+                debug!(
                     stream_id = stream_id.as_u64(),
                     queue_id = local_queue_id.as_u64(),
                     ?reason,
@@ -1144,7 +1145,7 @@ fn handle_flow_data(
                     error_code,
                 );
             } else {
-                tracing::trace!(
+                trace!(
                     stream_id = stream_id.as_u64(),
                     queue_id = local_queue_id.as_u64(),
                     "FlowData for previous occupant - dropping"
@@ -1153,7 +1154,7 @@ fn handle_flow_data(
         }
         Err(flow::queue::Error::PermanentlyClosed) => {
             counters.rx_data_perm_closed.add(1);
-            tracing::trace!(
+            trace!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 "FlowData for permanently closed queue"
@@ -1188,7 +1189,7 @@ fn handle_flow_control(
         response_frames,
         waker_sink,
     ) {
-        tracing::trace!(
+        trace!(
             stream_id = stream_id.as_u64(),
             queue_id = queue_pair.dest_queue_id.as_u64(),
             payload_len,
@@ -1222,7 +1223,7 @@ fn handle_flow_max_data(
         response_frames,
         waker_sink,
     ) {
-        tracing::trace!(
+        trace!(
             stream_id = stream_id.as_u64(),
             queue_id = queue_pair.dest_queue_id.as_u64(),
             maximum_data = maximum_data.as_u64(),
@@ -1268,7 +1269,7 @@ fn dispatch_control_message(
         }
         Err(flow::queue::Error::Unallocated(_)) => {
             counters.rx_flow_control_unallocated.add(1);
-            tracing::debug!(
+            debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 "flow control for unallocated queue - sending reset"
@@ -1286,7 +1287,7 @@ fn dispatch_control_message(
         }
         Err(flow::queue::Error::HalfClosed(_)) => {
             counters.rx_flow_control_half_closed.add(1);
-            tracing::trace!(
+            trace!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 "flow control for half-closed control queue - dropping"
@@ -1296,7 +1297,7 @@ fn dispatch_control_message(
         Err(flow::queue::Error::ValidationFailed(_, reason)) => {
             counters.on_flow_control_validation_failed(reason);
             if let Some(error_code) = reason.as_reset_code() {
-                tracing::debug!(
+                debug!(
                     stream_id = stream_id.as_u64(),
                     queue_id = local_queue_id.as_u64(),
                     ?reason,
@@ -1312,7 +1313,7 @@ fn dispatch_control_message(
                     error_code,
                 );
             } else {
-                tracing::trace!(
+                trace!(
                     stream_id = stream_id.as_u64(),
                     queue_id = local_queue_id.as_u64(),
                     "flow control for previous occupant - dropping"
@@ -1322,7 +1323,7 @@ fn dispatch_control_message(
         }
         Err(flow::queue::Error::PermanentlyClosed) => {
             counters.rx_flow_control_perm_closed.add(1);
-            tracing::trace!(
+            trace!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 "flow control for permanently closed queue"
@@ -1366,7 +1367,7 @@ fn handle_flow_reset(
             let _ = waker_sink.send(waker_a);
             let _ = waker_sink.send(waker_b);
 
-            tracing::debug!(
+            debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 error_code = error_code.as_u64(),
@@ -1382,7 +1383,7 @@ fn handle_flow_reset(
                 let _ = waker_sink.send(waker);
             }
 
-            tracing::debug!(
+            debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 error_code = error_code.as_u64(),
@@ -1398,7 +1399,7 @@ fn handle_flow_reset(
                 let _ = waker_sink.send(waker);
             }
 
-            tracing::debug!(
+            debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 error_code = error_code.as_u64(),
@@ -1434,7 +1435,7 @@ fn handle_flow_init_reset(
 ) {
     let Some(local_queue_id) = peer.flows.lookup(stream_id) else {
         if attempt_id == VarInt::MAX {
-            tracing::debug!(
+            debug!(
                 stream_id = stream_id.as_u64(),
                 "FlowInitReset for unknown stream_id has sentinel attempt_id - ignoring dedup update"
             );
@@ -1446,21 +1447,21 @@ fn handle_flow_init_reset(
         // the same attempt_id is rejected.
         match peer.attempt_dedup.check_attempt_id(attempt_id) {
             Ok(()) => {
-                tracing::debug!(
+                debug!(
                     attempt_id = attempt_id.as_u64(),
                     stream_id = stream_id.as_u64(),
                     "FlowInitReset for unknown stream_id - attempt_id marked as seen"
                 );
             }
             Err(AttemptDedupError::Duplicate) => {
-                tracing::debug!(
+                debug!(
                     attempt_id = attempt_id.as_u64(),
                     stream_id = stream_id.as_u64(),
                     "FlowInitReset for unknown stream_id - attempt_id already marked (duplicate reset)"
                 );
             }
             Err(AttemptDedupError::TooOld) => {
-                tracing::debug!(
+                debug!(
                     attempt_id = attempt_id.as_u64(),
                     stream_id = stream_id.as_u64(),
                     "FlowInitReset for unknown stream_id - attempt_id outside dedup window"
@@ -1483,7 +1484,7 @@ fn handle_flow_init_reset(
     let _ = waker_sink.send(waker_a);
     let _ = waker_sink.send(waker_b);
 
-    tracing::debug!(
+    debug!(
         attempt_id = attempt_id.as_u64(),
         stream_id = stream_id.as_u64(),
         queue_id = local_queue_id.as_u64(),
@@ -1521,7 +1522,7 @@ fn handle_flow_init_fin(
 ) {
     let Some(local_queue_id) = peer.flows.lookup(stream_id) else {
         counters.rx_init_fin_unknown.add(1);
-        tracing::debug!(
+        debug!(
             stream_id = stream_id.as_u64(),
             offset = offset.as_u64(),
             "FlowInitFin for unknown stream_id - dropping"
@@ -1538,7 +1539,7 @@ fn handle_flow_init_fin(
         waker_sink,
     );
 
-    tracing::debug!(
+    debug!(
         stream_id = stream_id.as_u64(),
         queue_id = local_queue_id.as_u64(),
         offset = offset.as_u64(),

@@ -85,8 +85,6 @@ impl PageStack {
     }
 }
 
-
-
 const PAGE_POOL_SHARDS: usize = 2;
 const PAGE_POOL_MASK: usize = PAGE_POOL_SHARDS - 1;
 
@@ -351,18 +349,18 @@ impl<T: Absorb> Channels<T> {
 
         for page in pages {
             if !page.is_null() {
-                Self::aggregate_page(&mut aggregate, unsafe { Box::from_raw(page) }, &self.empty_pages);
+                Self::aggregate_page(
+                    &mut aggregate,
+                    unsafe { Box::from_raw(page) },
+                    &self.empty_pages,
+                );
             }
         }
 
         self.drain_fallback(&mut aggregate);
     }
 
-    fn aggregate_page(
-        aggregate: &mut Vec<T>,
-        mut page: Box<Page>,
-        empty_pages: &ShardedPagePool,
-    ) {
+    fn aggregate_page(aggregate: &mut Vec<T>, mut page: Box<Page>, empty_pages: &ShardedPagePool) {
         let length = *page.length.get_mut() as usize;
         let filled = unsafe { &mut *(&mut page.slots[..length] as *mut [_] as *mut [u64]) };
         T::handle(aggregate, filled);
@@ -729,7 +727,8 @@ impl<T: Absorb> Channels<T> {
 
             // We failed to xchg `taken` with the page in the per_cpu[current] slot. As such
             // `taken` is still owned by us. Enqueue for background aggregation.
-            self.full_pages.push(unsafe { Box::from_raw(taken) }, cpu_hint);
+            self.full_pages
+                .push(unsafe { Box::from_raw(taken) }, cpu_hint);
         } else {
             if taken.is_null() {
                 return;
@@ -737,7 +736,8 @@ impl<T: Absorb> Channels<T> {
 
             // The old page was swapped out successfully. Enqueue for background aggregation
             // rather than blocking the recording thread on the aggregate mutex.
-            self.full_pages.push(unsafe { Box::from_raw(taken) }, cpu_hint);
+            self.full_pages
+                .push(unsafe { Box::from_raw(taken) }, cpu_hint);
         }
     }
 }

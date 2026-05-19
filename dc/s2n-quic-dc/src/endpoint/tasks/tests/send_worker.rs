@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Contract tests for extracted send-worker pipeline helpers.
-
 use super::helpers::{test_batch, test_entry, TestReceiver, TestReceiverExt as _};
 use crate::{
     endpoint::{frame, msg, send, tasks},
     socket::channel::{intrusive::unsync, ReceiverExt as _, UnboundedSender as _},
     testing::{ext::*, sim},
     time::{bach::Clock, precision},
+    tracing::*,
     xorshift::Rng,
 };
 use bytes::BytesMut;
@@ -185,7 +185,7 @@ fn send_tx_wheel_drain_routes_expired_context_to_matching_socket() {
         .spawn();
 
         async move {
-            tracing::debug!("sending context to tx wheel");
+            debug!("sending context to tx wheel");
             let _ = tx_wheel_tx.send(ctx);
             drop(tx_wheel_tx);
         }
@@ -193,13 +193,13 @@ fn send_tx_wheel_drain_routes_expired_context_to_matching_socket() {
 
         async move {
             let routed = socket1_rx.recv().await.is_some();
-            tracing::debug!(routed, "socket 1 routing result");
+            debug!(routed, "socket 1 routing result");
             assert!(
                 routed,
                 "sender_idx=1 context should route to socket queue 1"
             );
             let unexpected = socket0_rx.recv().await.is_some();
-            tracing::debug!(unexpected, "socket 0 routing result");
+            debug!(unexpected, "socket 0 routing result");
             assert!(
                 !unexpected,
                 "socket queue 0 should not receive sender_idx=1 context"

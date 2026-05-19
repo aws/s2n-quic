@@ -1,6 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
+use crate::tracing::*;
 use nix::{
     sys::socket::{recvmsg, ControlMessageOwned, MsgFlags, UnixAddr},
     unistd::{close, unlink},
@@ -75,7 +75,7 @@ impl Receiver {
             if let ControlMessageOwned::ScmRights(fds) = cmsg {
                 if let Some(&fd) = fds.first() {
                     for &extra_fd in fds.iter().skip(1) {
-                        tracing::warn!("Closing extra file descriptors");
+                        warn!("Closing extra file descriptors");
                         let _ = close(extra_fd);
                     }
                     let fd = unsafe { OwnedFd::from_raw_fd(fd) };

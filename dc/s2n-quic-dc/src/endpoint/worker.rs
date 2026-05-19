@@ -10,6 +10,7 @@ use crate::{
     packet::{self, datagram::RoutingInfo},
     socket::{channel, pool::descriptor, recv::router::Router},
     stream::endpoint::routing,
+    tracing::*,
 };
 use s2n_quic_core::varint::VarInt;
 
@@ -64,7 +65,7 @@ where
         packet: packet::datagram::decoder::Packet<descriptor::Filled>,
     ) {
         let RoutingInfo::SenderId { source_sender_id } = packet.routing_info() else {
-            tracing::info!(?packet, "invalid packet routing info");
+            info!(?packet, "invalid packet routing info");
             return;
         };
         let idx = self
@@ -120,7 +121,7 @@ where
         segment: descriptor::Filled,
     ) {
         self.decode_error_counter.add(1);
-        tracing::debug!(
+        debug!(
             ?error,
             %remote_address,
             packet_len = segment.len(),

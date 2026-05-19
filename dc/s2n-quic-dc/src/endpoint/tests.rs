@@ -7,10 +7,10 @@
 //! wired endpoints backed by simulated UDP sockets.  Each endpoint lives in its own Bach
 //! group so it is treated as a separate machine from the network perspective.
 
-pub mod deterministic;
-pub mod half_close;
-
-use crate::stream::endpoint::testing::sim::{Client, Server, SERVER_PORT};
+use crate::{
+    stream::endpoint::testing::sim::{Client, Server, SERVER_PORT},
+    tracing::*,
+};
 use bach::time::timeout;
 use bytes::{Bytes, BytesMut};
 use s2n_quic_core::varint::VarInt;
@@ -22,6 +22,9 @@ use std::{
     },
     time::Duration,
 };
+
+pub mod deterministic;
+pub mod half_close;
 
 #[test]
 fn topology_snapshot_uses_dc_tester_layout() {
@@ -151,7 +154,7 @@ fn ping_pong() {
             }
             assert_eq!(&buf[..], b"pong");
 
-            tracing::info!("ping_pong passed");
+            info!("ping_pong passed");
         }
         .group("client")
         .primary()
@@ -179,7 +182,7 @@ fn server_response_loss_triggers_pto() {
                 if packet.source().port() == SERVER_PORT {
                     server_pkt_count += 1;
                     if server_pkt_count == 1 {
-                        tracing::info!(
+                        info!(
                             "dropping server packet #{server_pkt_count} (source={:?}, len={})",
                             packet.source(),
                             packet.transport.payload().len()
@@ -250,7 +253,7 @@ fn server_response_loss_triggers_pto() {
             }
             assert_eq!(&buf[..], b"pong");
 
-            tracing::info!("server_response_loss_triggers_pto passed");
+            info!("server_response_loss_triggers_pto passed");
         }
         .group("client")
         .primary()
@@ -276,7 +279,7 @@ fn client_request_loss_triggers_pto() {
                 if packet.source().port() != SERVER_PORT {
                     client_pkt_count += 1;
                     if client_pkt_count == 1 {
-                        tracing::info!(
+                        info!(
                             "dropping client packet #{client_pkt_count} len={}",
                             packet.transport.payload().len()
                         );
@@ -345,7 +348,7 @@ fn client_request_loss_triggers_pto() {
             }
             assert_eq!(&buf[..], b"pong");
 
-            tracing::info!("client_request_loss_triggers_pto passed");
+            info!("client_request_loss_triggers_pto passed");
         }
         .group("client")
         .primary()
@@ -422,10 +425,10 @@ fn multiple_sequential_streams() {
                     }
                 }
                 assert_eq!(&buf[..], msg, "echoed data mismatch for msg {:?}", msg);
-                tracing::info!("stream {:?} completed", msg);
+                info!("stream {:?} completed", msg);
             }
 
-            tracing::info!("multiple_sequential_streams passed");
+            info!("multiple_sequential_streams passed");
         }
         .group("client")
         .primary()
@@ -506,7 +509,7 @@ fn large_payload_transfer() {
             assert_eq!(buf.len(), PAYLOAD_SIZE, "client received wrong amount");
             assert_eq!(&buf[..], &payload[..], "echoed payload mismatch");
 
-            tracing::info!("large_payload_transfer passed");
+            info!("large_payload_transfer passed");
         }
         .group("client")
         .primary()
@@ -532,7 +535,7 @@ fn multiple_packet_loss_recovered_by_pto() {
                 if packet.source().port() == SERVER_PORT {
                     server_pkt_count += 1;
                     if server_pkt_count <= 2 {
-                        tracing::info!(
+                        info!(
                             "dropping server packet #{server_pkt_count} len={}",
                             packet.transport.payload().len()
                         );
@@ -600,7 +603,7 @@ fn multiple_packet_loss_recovered_by_pto() {
             }
             assert_eq!(&buf[..], b"pong");
 
-            tracing::info!("multiple_packet_loss_recovered_by_pto passed");
+            info!("multiple_packet_loss_recovered_by_pto passed");
         }
         .group("client")
         .primary()
@@ -677,7 +680,7 @@ fn ack_drains_inflight() {
                 assert_eq!(&buf[..], &payload[..], "stream {} echo mismatch", i);
             }
 
-            tracing::info!("ack_drains_inflight passed");
+            info!("ack_drains_inflight passed");
         }
         .group("client")
         .primary()
@@ -759,7 +762,7 @@ fn bidirectional_simultaneous_send() {
             }
             assert_eq!(&buf[..], b"server_data");
 
-            tracing::info!("bidirectional_simultaneous_send passed");
+            info!("bidirectional_simultaneous_send passed");
         }
         .group("client")
         .primary()
@@ -1026,7 +1029,7 @@ fn total_packet_loss_surfaces_read_timeout() {
                 }
                 assert_eq!(&buf[..], b"pong");
 
-                tracing::info!("baseline exchange succeeded; enabling blackhole");
+                info!("baseline exchange succeeded; enabling blackhole");
 
                 // Enable 100% packet loss.
                 blackhole.store(1, Ordering::Relaxed);
@@ -1062,7 +1065,7 @@ fn total_packet_loss_surfaces_read_timeout() {
                         panic!("read returned data — blackhole should prevent delivery");
                     }
                     Ok(Err(e)) => {
-                        tracing::info!(?e, "read failed as expected");
+                        info!(?e, "read failed as expected");
                         assert!(
                             e.kind() == io::ErrorKind::TimedOut,
                             "expected TimedOut error kind, got: {e:?}"
@@ -1070,7 +1073,7 @@ fn total_packet_loss_surfaces_read_timeout() {
                     }
                 }
 
-                tracing::info!("total_packet_loss_surfaces_read_timeout passed");
+                info!("total_packet_loss_surfaces_read_timeout passed");
             }
             .group("client")
             .primary()
@@ -1168,7 +1171,7 @@ fn total_packet_loss_surfaces_write_timeout() {
                 }
                 assert_eq!(&buf[..], b"pong");
 
-                tracing::info!("baseline exchange succeeded; enabling blackhole");
+                info!("baseline exchange succeeded; enabling blackhole");
                 blackhole.store(1, Ordering::Relaxed);
 
                 // Second stream: write a payload larger than the initial credit window
@@ -1195,7 +1198,7 @@ fn total_packet_loss_surfaces_write_timeout() {
                         panic!("write_all_from completed — should have blocked on credits");
                     }
                     Ok(Err(e)) => {
-                        tracing::info!(?e, "write failed as expected");
+                        info!(?e, "write failed as expected");
                         assert_eq!(
                             e.kind(),
                             io::ErrorKind::TimedOut,
@@ -1204,7 +1207,7 @@ fn total_packet_loss_surfaces_write_timeout() {
                     }
                 }
 
-                tracing::info!("total_packet_loss_surfaces_write_timeout passed");
+                info!("total_packet_loss_surfaces_write_timeout passed");
             }
             .group("client")
             .primary()
@@ -1356,7 +1359,7 @@ fn multi_server_concurrent_loss_sim() {
                 handle.await.expect("task join").expect("stream failed");
             }
 
-            tracing::info!(
+            info!(
                 "multi_server_concurrent_loss_recovery passed: all {NUM_STREAMS} streams completed"
             );
         }

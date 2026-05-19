@@ -5,8 +5,7 @@
 //!
 //! This provides queue infrastructure similar to `stream::recv::dispatch` but
 //! is generic over the stream and control data types.
-
-use crate::{credentials::Credentials, intrusive};
+use crate::{credentials::Credentials, intrusive, tracing::*};
 use s2n_quic_core::varint::VarInt;
 
 mod descriptor;
@@ -165,7 +164,7 @@ where
 
         match res {
             Ok(waker) => {
-                tracing::trace!(%local_queue_id, "send_control");
+                trace!(%local_queue_id, "send_control");
                 Ok(waker)
             }
             Err(Error::PermanentlyClosed) => {
@@ -173,15 +172,15 @@ where
                 Err(inner::Error::PermanentlyClosed)
             }
             Err(Error::HalfClosed(data)) => {
-                tracing::debug!(%local_queue_id, "control receiver closed");
+                debug!(%local_queue_id, "control receiver closed");
                 Err(inner::Error::HalfClosed(data))
             }
             Err(Error::ValidationFailed(data, reason)) => {
-                tracing::debug!(%local_queue_id, ?reason, "control queue validation failed");
+                debug!(%local_queue_id, ?reason, "control queue validation failed");
                 Err(inner::Error::ValidationFailed(data, reason))
             }
             Err(Error::Unallocated(data)) => {
-                tracing::debug!("unroutable control data");
+                debug!("unroutable control data");
                 Err(inner::Error::Unallocated(data))
             }
         }
@@ -201,7 +200,7 @@ where
 
         match res {
             Ok(waker) => {
-                tracing::trace!(%local_queue_id, "send_stream");
+                trace!(%local_queue_id, "send_stream");
                 Ok(waker)
             }
             Err(Error::PermanentlyClosed) => {
@@ -209,15 +208,15 @@ where
                 Err(inner::Error::PermanentlyClosed)
             }
             Err(Error::HalfClosed(data)) => {
-                tracing::debug!(%local_queue_id, "stream receiver closed");
+                debug!(%local_queue_id, "stream receiver closed");
                 Err(inner::Error::HalfClosed(data))
             }
             Err(Error::ValidationFailed(data, reason)) => {
-                tracing::debug!(%local_queue_id, ?reason, "stream queue validation failed");
+                debug!(%local_queue_id, ?reason, "stream queue validation failed");
                 Err(inner::Error::ValidationFailed(data, reason))
             }
             Err(Error::Unallocated(data)) => {
-                tracing::debug!("unroutable stream data");
+                debug!("unroutable stream data");
                 Err(inner::Error::Unallocated(data))
             }
         }
@@ -243,7 +242,7 @@ where
             Ok((send, recv))
         });
 
-        tracing::trace!(%local_queue_id, "send_both");
+        trace!(%local_queue_id, "send_both");
 
         res.unwrap_or_default()
     }
