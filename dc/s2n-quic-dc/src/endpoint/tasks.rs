@@ -1329,6 +1329,17 @@ fn on_packet_dispatch_error(
                 "duplicate packet filtered"
             );
         }
+        dispatch::Error::StaleKey {
+            credentials,
+            packet_number,
+        } => {
+            counters.rx_process_err_stale_key.add(1);
+            tracing::debug!(
+                ?credentials,
+                pn = packet_number.as_u64(),
+                "stale key detected - key-id already seen or outside replay window"
+            );
+        }
         dispatch::Error::MissingSenderId => {
             counters.rx_process_err_missing_sender_id.add(1);
             tracing::warn!("packet missing routing info; expected SenderId");

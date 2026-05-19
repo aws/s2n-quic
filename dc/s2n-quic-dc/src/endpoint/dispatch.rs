@@ -50,6 +50,13 @@ pub(crate) enum Error {
         credentials: Credentials,
         packet_number: VarInt,
     },
+    /// `check_dedup` detected that the key-id was already registered (definite replay)
+    /// or outside the replay window (possible replay / too old).  The peer should be
+    /// notified to trigger a re-handshake.
+    StaleKey {
+        credentials: Credentials,
+        packet_number: VarInt,
+    },
     MissingSenderId,
 }
 
@@ -87,9 +94,54 @@ where
         RoutingInfo::None => return Err(Error::MissingSenderId),
     };
 
-    // Get or create peer receive state
+    // Collect the fields we need before the closure captures `packet`.
+    let app_header_slice: &[u8] = packet.application_header();
+    let decrypt_len = packet.decrypt_into_len();
+    let ecn = packet.storage().ecn();
+
+    // Get or create peer receive state, decrypting the packet on-demand.
+    //
+    // The decrypt closure is invoked with the opener (cached on hit, freshly derived
+    // on miss).  `post_authentication` is called inside `get_or_insert` only on a
+    // cache miss — recording the key-id in the receiver's replay window for the first
+    // packet of a new session.  Cache hits skip `post_authentication` because many
+    // packets legitimately share the same key-id within a session; per-packet replay
+    // protection is handled by `dedup_filter` inside the `Context`.  On a cache miss
+    // the Context is inserted only once both decrypt and `post_authentication` succeed,
+    // preventing stale path-secret entries from poisoning the cache.
     let mut control_out = Vec::new();
-    let (peer_rc, cache_hit) = {
+    let decrypt_fn = |opener: &crate::crypto::awslc::open::Application| {
+        let _guard = counters.rx_decrypt_time.start();
+        let mut buf = BytesMut::with_capacity(decrypt_len);
+        let written = packet
+            .decrypt_into(opener, bytes::BufMut::chunk_mut(&mut buf))
+            .map_err(|err| {
+                tracing::warn!(
+                    %credentials,
+                    packet_number = packet_number.as_u64(),
+                    error = %err,
+                    "decrypt_into failed"
+                );
+            })
+            .ok()?;
+        if written != decrypt_len {
+            tracing::warn!(
+                %credentials,
+                packet_number = packet_number.as_u64(),
+                expected_len = decrypt_len,
+                actual_len = written,
+                "decrypt_into wrote an unexpected number of bytes"
+            );
+            return None;
+        }
+        // SAFETY: `buf` was allocated with `with_capacity(decrypt_len)` and
+        // `chunk_mut` exposed exactly that region to `decrypt_into`, which
+        // initialized `decrypt_len` bytes.  We returned early unless
+        // `written == decrypt_len`.
+        unsafe { buf.set_len(decrypt_len) };
+        Some(buf)
+    };
+    let (decrypted, peer_rc, cache_hit) = {
         let _guard = counters.rx_peer_lookup_time.start();
         match recv_cache.get_or_insert(
             &credentials,
@@ -98,9 +150,10 @@ where
             clock,
             &mut control_out,
             route,
+            decrypt_fn,
         ) {
-            Some(v) => v,
-            None => {
+            Ok(v) => v,
+            Err(recv::CacheError::PathSecretNotFound) => {
                 let remote_addr = packet.storage().remote_address().get();
                 let mut dest_addr = crate::msg::addr::Addr::new(remote_addr);
                 dest_addr.set_port(packet.source_control_port());
@@ -108,6 +161,30 @@ where
                     dest_addr,
                     credentials,
                     control_out,
+                });
+            }
+            Err(recv::CacheError::DecryptFailed) => {
+                tracing::warn!(
+                    %credentials,
+                    packet_number = packet_number.as_u64(),
+                    "failed to decrypt packet"
+                );
+                return Err(Error::Decryption {
+                    credentials,
+                    packet_number,
+                });
+            }
+            Err(recv::CacheError::ReplayDetected) => {
+                // TODO: `check_dedup` already sends a StaleKey/ReplayDetected control
+                // packet to the peer via the map's background socket, but that path is
+                // best-effort and may not reach the peer.  We should also populate
+                // `control_out` with the appropriate stale-key notification and return
+                // it via the UPS in-band path (mirroring the `PeerStateLookup` arm
+                // above) so that the peer has a reliable mechanism to learn about the
+                // stale key and trigger a re-handshake.
+                return Err(Error::StaleKey {
+                    credentials,
+                    packet_number,
                 });
             }
         }
@@ -119,50 +196,6 @@ where
         let _ = idle_wheel_tx.send(peer_rc.clone());
     }
     let mut peer = peer_rc.borrow_mut();
-
-    // Collect information about the packet layout before decryption.
-    let app_header_slice: &[u8] = packet.application_header();
-    let decrypt_len = packet.decrypt_into_len();
-    let ecn = packet.storage().ecn();
-
-    // Decrypt payload bytes into a BytesMut buffer.
-    let mut decrypted = BytesMut::with_capacity(decrypt_len);
-    let written = {
-        let _guard = counters.rx_decrypt_time.start();
-        packet
-            .decrypt_into(&peer.opener, bytes::BufMut::chunk_mut(&mut decrypted))
-            .map_err(|error| {
-                tracing::warn!(
-                    error = %error,
-                    ?packet,
-                    ?peer,
-                    "failed to decrypt packet"
-                );
-                Error::Decryption {
-                    credentials,
-                    packet_number,
-                }
-            })?
-    };
-    if written != decrypt_len {
-        tracing::warn!(
-            %credentials,
-            packet_number = packet_number.as_u64(),
-            expected_len = decrypt_len,
-            actual_len = written,
-            "decrypt_into wrote an unexpected number of bytes"
-        );
-        return Err(Error::Decryption {
-            credentials,
-            packet_number,
-        });
-    }
-    unsafe {
-        // SAFETY: `decrypted` was allocated with `with_capacity(decrypt_len)` and `chunk_mut`
-        // exposed exactly that uninitialized region to decrypt_into, which initialized
-        // `decrypt_len` bytes. We returned early unless `written == decrypt_len`.
-        decrypted.set_len(decrypt_len);
-    }
 
     // Packet number deduplication
     if peer.dedup_filter.on_packet_number(packet_number).is_err() {

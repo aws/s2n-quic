@@ -401,6 +401,25 @@ pub fn insert_fake_path_pair(
     )
 }
 
+/// Returns the [`PathSecretMap`] registered for the given address, or `None`
+/// if no sim endpoint is registered at that address.
+///
+/// This is useful for tests that need to pre-insert path-secret entries with
+/// custom [`dc::ApplicationParams`] before a stream is established.
+///
+/// # Example
+///
+/// ```ignore
+/// let server_map = lookup_sim_map(server_addr).expect("server not registered");
+/// let client_map = lookup_sim_map(client.data_addr()).expect("client not registered");
+/// // local_params → applied to server_map's entry for client_addr (short timeout)
+/// // peer_params  → applied to client_map's entry for server_addr (long timeout)
+/// client_map.test_insert_pair(client_addr, Some(short_params), &server_map, server_addr, Some(long_params));
+/// ```
+pub fn lookup_sim_map(addr: SocketAddr) -> Option<PathSecretMap> {
+    SIM_MAP_REGISTRY.with(|r| r.borrow().get(&addr).cloned())
+}
+
 // ── Server ─────────────────────────────────────────────────────────────────
 
 /// High-level sim server that lazily creates one [`Endpoint`] per Bach group.

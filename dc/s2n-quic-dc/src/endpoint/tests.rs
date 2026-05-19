@@ -1081,3 +1081,170 @@ fn multi_server_concurrent_loss_sim() {
         .spawn();
     });
 }
+
+/// Verifies that a stale-key metric fires when the server's recv-cache entry
+/// is evicted by the idle wheel while the client's send context (and therefore
+/// its key-id) is still live.
+///
+/// Setup: path-secret entries are pre-inserted with **asymmetric** idle
+/// timeouts — the server-side entry has a short timeout (1 s) so its recv
+/// context expires quickly, while the client-side entry has the default
+/// 30 s timeout so the client's send context (and the key-id it carries)
+/// stays alive.
+///
+/// After the first stream completes and time is advanced past the server's idle
+/// timeout, the client sends a second stream using the *same* key-id (same send
+/// context, different stream-id).  The server misses the recv cache, calls
+/// `check_dedup`, finds the key-id already registered, and increments the
+/// `!rx.process.err.stale_key` counter.
+#[test]
+fn stale_key_detected_after_recv_cache_eviction() {
+    use crate::{
+        endpoint::testing::sim::{self, SERVER_PORT},
+        testing::ext::*,
+    };
+    use s2n_quic_core::{dc::testing::TEST_APPLICATION_PARAMS, varint::VarInt};
+    use std::num::NonZeroU32;
+
+    crate::testing::sim(|| {
+        let acceptor_id = VarInt::from_u8(1);
+
+        // Server group: accept all streams and echo the payload.
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let stream = stream.validate().await.expect("validate");
+                    let (mut reader, mut writer) = stream.into_split();
+                    let mut buf = BytesMut::with_capacity(32);
+                    loop {
+                        if reader.read_into(&mut buf).await.expect("read") == 0 {
+                            break;
+                        }
+                    }
+                    let mut echo = Bytes::copy_from_slice(&buf);
+                    writer.write_all_from_fin(&mut echo).await.expect("write");
+                }
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        // Client group (primary): orchestrates the stale-key scenario.
+        async move {
+            let mut client = Client::new();
+            // Yield so the server group has a chance to bind its socket.
+            bach::task::yield_now().await;
+
+            // Resolve the server's address (its well-known port is SERVER_PORT).
+            let server_addr = bach::net::lookup_host(format!("server:{SERVER_PORT}"))
+                .await
+                .expect("lookup")
+                .next()
+                .expect("no addr");
+
+            // Retrieve both path-secret maps so we can pre-insert entries with
+            // asymmetric idle timeouts before the first stream is established.
+            let client_addr = client.data_addr();
+            let client_map = sim::lookup_sim_map(client_addr).expect("client sim map");
+            let server_map = sim::lookup_sim_map(server_addr).expect("server sim map");
+
+            // Short idle timeout for the server-side entry (1 s).
+            // This ensures the server's recv idle wheel evicts the recv context
+            // well before the second stream arrives.
+            let mut short_params = TEST_APPLICATION_PARAMS;
+            short_params.max_idle_timeout = NonZeroU32::new(1_000); // 1,000 ms = 1 s
+            short_params.remote_max_data = short_params.local_recv_max_data;
+
+            // Standard idle timeout for the client-side entry (30 s).
+            // The client's send context stays alive, keeping key-id = 0 in use
+            // for both the first and second stream.
+            let mut long_params = TEST_APPLICATION_PARAMS;
+            long_params.remote_max_data = long_params.local_recv_max_data;
+
+            // Insert the path-secret pair.
+            //
+            // In test_insert_pair, `local_params` is used by the peer (server_map)
+            // and `peer_params` is used by self (client_map):
+            //
+            //   client_map entry (for server_addr): peer_params  → LONG timeout
+            //   server_map entry (for client_addr): local_params → SHORT timeout
+            client_map.test_insert_pair(
+                client_addr,
+                Some(short_params), // local_params → goes to server_map's entry for client_addr
+                &server_map,
+                server_addr,
+                Some(long_params), // peer_params → goes to client_map's entry for server_addr
+            );
+
+            // Populate peer data addresses so the send context knows where to
+            // deliver packets.
+            if let Some(entry) = client_map.get_raw(server_addr) {
+                entry.set_peer_data_addrs(&[server_addr]);
+            }
+            if let Some(entry) = server_map.get_raw(client_addr) {
+                entry.set_peer_data_addrs(&[client_addr]);
+            }
+
+            // ── First stream: should complete successfully ──────────────────────
+            //
+            // client.connect() finds the pre-inserted entry via the fast path (no
+            // re-insertion), so the send context is created with key-id = 0.  The
+            // server recv cache misses, calls check_dedup(key-id=0) → OK, and
+            // installs the recv context.
+            let stream = client
+                .connect(format!("server:{SERVER_PORT}"), acceptor_id)
+                .await
+                .expect("connect 1");
+            let (mut reader, mut writer) = stream.into_split();
+            let mut ping = Bytes::from_static(b"ping");
+            writer.write_all_from_fin(&mut ping).await.expect("write 1");
+            let mut buf = BytesMut::with_capacity(8);
+            loop {
+                if reader.read_into(&mut buf).await.expect("read 1") == 0 {
+                    break;
+                }
+            }
+            assert_eq!(&buf[..], b"ping", "first stream should echo payload");
+
+            // ── Advance simulated time past the server's idle timeout ────────────
+            //
+            // The server's recv idle wheel fires at ~1 s and reschedules until the
+            // context is expired (≥ 2 s elapsed).  After 3 s the recv context for
+            // the client is definitely gone from the server's recv cache.
+            // The client's send context (30 s timeout) is still alive: it still
+            // holds key-id = 0.
+            3.s().sleep().await;
+
+            // ── Second stream: triggers stale-key detection ──────────────────────
+            //
+            // The client's send context is a cache HIT (same path-secret entry,
+            // still within its 30 s window) → packets are encrypted with key-id = 0.
+            // The server's recv cache MISSES → check_dedup(key-id=0) → AlreadyExists
+            // → ReplayDetected → !rx.process.err.stale_key is incremented.
+            // The server drops the packet; the stream times out on the client side.
+            let stream2 = client
+                .connect(format!("server:{SERVER_PORT}"), acceptor_id)
+                .await
+                .expect("connect 2");
+            let (_, mut writer2) = stream2.into_split();
+            let mut data = Bytes::from_static(b"hi");
+            // Fire the FlowInit packet and then bail — the server silently drops
+            // it after stale-key detection, so write_all_from_fin never completes.
+            let _ = timeout(500.ms(), writer2.write_all_from_fin(&mut data)).await;
+
+            // Give the server a moment to process the packet and emit the metric.
+            500.ms().sleep().await;
+
+            tracing::info!("stale_key_detected_after_recv_cache_eviction passed");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}

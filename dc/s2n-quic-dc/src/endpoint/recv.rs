@@ -11,6 +11,18 @@ use rustc_hash::FxHashMap;
 use s2n_quic_core::{frame::ack::EcnCounts, varint::VarInt};
 use std::{cell::RefCell, collections::hash_map, fmt, rc::Rc, sync::Arc};
 
+/// Errors returned by [`Cache::get_or_insert`].
+pub(crate) enum CacheError {
+    /// Path-secret lookup failed; `control_out` has been populated with an
+    /// `UnknownPathSecret` control packet ready to be forwarded to the sender.
+    PathSecretNotFound,
+    /// The decrypt callback returned `None` (authentication / decryption failed).
+    DecryptFailed,
+    /// `post_authentication` failed: the key-id has already been seen (definite replay)
+    /// or falls outside the receiver's replay window (possible replay / too old).
+    ReplayDetected,
+}
+
 pub(crate) mod ack_ranges;
 mod dedup;
 
@@ -412,8 +424,26 @@ impl Cache {
         }
     }
 
+    /// Look up an existing [`Context`] by `(credentials.id, remote_sender_id)`, or derive
+    /// a new one on cache miss.
+    ///
+    /// `decrypt` is invoked with the opener (cached on hit, freshly derived on miss).  If
+    /// it returns `None` the whole call fails with [`CacheError::DecryptFailed`] and **no**
+    /// new entry is inserted into the cache.
+    ///
+    /// On a cache miss, after a successful decrypt,
+    /// [`post_authentication`](crate::path::secret::receiver::State::post_authentication)
+    /// is called via `path_secret_map`.  This records the `key_id` as seen in the
+    /// receiver's replay window, preventing a replayed initial packet from poisoning
+    /// the cache with a stale path-secret entry.  If `post_authentication` detects a
+    /// replay the call fails with [`CacheError::ReplayDetected`] without inserting the
+    /// context.
+    ///
+    /// On a cache hit `post_authentication` is **not** called because many packets
+    /// legitimately share the same `key_id`; per-packet replay protection is handled
+    /// separately by the `dedup_filter` inside the returned [`Context`].
     #[inline]
-    pub fn get_or_insert<Clk, Route>(
+    pub fn get_or_insert<Clk, Route, F, R>(
         &mut self,
         credentials: &Credentials,
         remote_sender_id: VarInt,
@@ -421,17 +451,19 @@ impl Cache {
         clock: &Clk,
         control_out: &mut Vec<u8>,
         route: &Route,
-    ) -> Option<(Rc<RefCell<Context>>, bool)>
+        decrypt: F,
+    ) -> Result<(R, Rc<RefCell<Context>>, bool), CacheError>
     where
         Clk: crate::time::precision::Clock + ?Sized,
         Route: super::routing::SenderRoute,
+        F: FnOnce(&crate::crypto::awslc::open::Application) -> Option<R>,
     {
         let key = Key {
             id: credentials.id,
             remote_sender_id,
         };
 
-        Some(match self.senders.entry(key) {
+        match self.senders.entry(key) {
             hash_map::Entry::Occupied(entry) => {
                 let ctx = entry.get().clone();
                 {
@@ -451,12 +483,33 @@ impl Cache {
                     );
                     ctx_ref.invariants();
                 }
-                (ctx, true)
+
+                // Invoke the decrypt callback with the cached opener.
+                // `post_authentication` is intentionally not called here: many packets
+                // legitimately share the same key_id within a session.  Per-packet replay
+                // protection is the responsibility of the `dedup_filter` in the Context.
+                let r = decrypt(&ctx.borrow().opener).ok_or(CacheError::DecryptFailed)?;
+
+                Ok((r, ctx, true))
             }
             hash_map::Entry::Vacant(entry) => {
                 tracing::debug!(%credentials, %remote_sender_id, worker_id = self.worker_id, "opener_for_credentials");
                 let (opener, path_entry) =
-                    path_secret_map.opener_for_credentials(credentials, None, control_out)?;
+                    path_secret_map
+                        .opener_for_credentials(credentials, None, control_out)
+                        .ok_or(CacheError::PathSecretNotFound)?;
+
+                // Decrypt before inserting: only create a Context if the packet is authentic.
+                let r = decrypt(&opener).ok_or(CacheError::DecryptFailed)?;
+
+                // Record the key_id as seen in the receiver's replay window.  This prevents
+                // a replayed initial packet from establishing a poisoned cache entry.
+                // Only called on miss: the key_id is registered once when the session is
+                // first established; subsequent packets (same key_id, different packet
+                // numbers) are deduplicated by the Context's `dedup_filter`.
+                path_secret_map
+                    .check_dedup(&path_entry, credentials, None)
+                    .map_err(|_| CacheError::ReplayDetected)?;
 
                 let dest_sender_id = route.sender_id_for_ack(&credentials.id, remote_sender_id);
 
@@ -470,9 +523,9 @@ impl Cache {
                 )));
                 ctx.borrow().invariants();
                 entry.insert(ctx.clone());
-                (ctx, false)
+                Ok((r, ctx, false))
             }
-        })
+        }
     }
 
     pub fn remove(&mut self, key: &Key) {

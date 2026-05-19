@@ -73,6 +73,7 @@ pub(crate) struct Dispatch {
     pub rx_process_err_peer_lookup: Counter,
     pub rx_process_err_decryption: Counter,
     pub rx_process_err_duplicate: Counter,
+    pub rx_process_err_stale_key: Counter,
     pub rx_process_err_missing_sender_id: Counter,
     pub rx_ack_state_impossible: Counter,
     pub rx_ack_completion_impossible: Counter,
@@ -165,6 +166,7 @@ impl Dispatch {
             rx_process_err_peer_lookup: counters.register("!rx.process.err.peer_lookup"),
             rx_process_err_decryption: counters.register("!rx.process.err.decrypt"),
             rx_process_err_duplicate: counters.register("!rx.process.err.duplicate"),
+            rx_process_err_stale_key: counters.register("!rx.process.err.stale_key"),
             rx_process_err_missing_sender_id: counters
                 .register("!rx.process.err.missing_sender_id"),
             rx_ack_state_impossible: counters.register("!rx.ack.state_impossible"),

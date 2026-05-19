@@ -3,7 +3,7 @@
 
 use crate::{
     credentials::{Credentials, Id},
-    crypto::awslc,
+    crypto::{self, awslc},
     event,
     packet::{secret_control as control, Packet},
     path::secret::{
@@ -498,6 +498,19 @@ impl Map {
         let peer = insert(peer, self, local_addr, local_params, Type::Server);
 
         TestPairIds { local, peer }
+    }
+
+    /// Called after successful decryption to record the key_id as seen and detect replays.
+    ///
+    /// This is equivalent to the per-stream `check_dedup` but used in the datagram recv path
+    /// where decryption happens without going through a stream opener.
+    pub fn check_dedup(
+        &self,
+        entry: &Arc<Entry>,
+        credentials: &Credentials,
+        queue_id: Option<VarInt>,
+    ) -> crypto::open::Result {
+        self.store.check_dedup(entry, credentials.key_id, queue_id)
     }
 
     #[allow(clippy::type_complexity)]
