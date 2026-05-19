@@ -26,7 +26,7 @@ use s2n_quic_core::varint::VarInt;
 use std::sync::Arc;
 
 /// Default TTL for frames (number of transmission attempts before failure).
-pub const DEFAULT_TTL: u8 = 10;
+pub const DEFAULT_TTL: u16 = u16::MAX;
 
 /// Worst-case header overhead for a FlowData packet on the wire.
 pub const MAX_FLOW_DATA_HEADER_OVERHEAD: u16 = 109;
@@ -864,7 +864,7 @@ pub struct Frame {
     pub status: TransmissionStatus,
     /// Remaining transmission attempts. Decremented on each retransmission.
     /// When zero, the frame completes with failure instead of being retransmitted.
-    pub ttl: u8,
+    pub ttl: u16,
     /// Target transmission time for pacing. Writers assign times at 1us granularity to
     /// interleave fairly with frames from other streams rather than forming bursts.
     /// Advisory — actual pacing happens at the Peer Context level.

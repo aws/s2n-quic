@@ -142,6 +142,14 @@ paxos.accept = { request_size = 1024, response_size = 100 }
 paxos.learn = { request_size = 100, response_size = 100 }
 
 [[client.workloads]]
+name = "paxos-3-small-45"
+workers = 45
+paxos.acceptors = 3
+paxos.prepare = { request_size = 1024, response_size = 100 }
+paxos.accept = { request_size = 1024, response_size = 100 }
+paxos.learn = { request_size = 100, response_size = 100 }
+
+[[client.workloads]]
 name = "paxos-5-variable"
 workers = 20
 paxos.acceptors = 5

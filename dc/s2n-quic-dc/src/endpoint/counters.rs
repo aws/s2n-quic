@@ -253,9 +253,11 @@ impl Dispatch {
 /// Counters for the send/ACK-processing path.
 pub(crate) struct Send {
     pub lost: Counter,
+    pub ttl_exhausted: Counter,
     pub invalid_sender_idx: Counter,
     pub tx_ack_received: Counter,
     pub tx_ack_no_ctx: Counter,
+    pub tx_ack_packets: Summary,
     pub tx_rtt: Timer,
     pub tx_ecn_ect0: Counter,
     pub tx_ecn_ect1: Counter,
@@ -266,9 +268,12 @@ impl Send {
     pub fn new(counters: &Registry) -> Arc<Self> {
         Arc::new(Self {
             lost: counters.register("!send.lost"),
+            ttl_exhausted: counters.register("!send.ttl_exhausted"),
             invalid_sender_idx: counters.register("!send.invalid_sender_idx"),
             tx_ack_received: counters.register("tx.ack_received"),
             tx_ack_no_ctx: counters.register("!tx.ack_no_ctx"),
+            tx_ack_packets: counters
+                .register_summary("tx.ack_packets", crate::counter::Unit::Count),
             tx_rtt: counters.register_timer("tx.rtt"),
             tx_ecn_ect0: counters.register_nominal("tx.ecn", "ect0"),
             tx_ecn_ect1: counters.register_nominal("tx.ecn", "ect1"),

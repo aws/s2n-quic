@@ -126,9 +126,16 @@ where
         let _guard = counters.rx_decrypt_time.start();
         packet
             .decrypt_into(&peer.opener, bytes::BufMut::chunk_mut(&mut decrypted))
-            .map_err(|_| Error::Decryption {
-                credentials,
-                packet_number,
+            .map_err(|error| {
+                tracing::warn!(
+                    error = %error,
+                    ?packet,
+                    "failed to decrypt packet"
+                );
+                Error::Decryption {
+                    credentials,
+                    packet_number,
+                }
             })?
     };
     if written != decrypt_len {

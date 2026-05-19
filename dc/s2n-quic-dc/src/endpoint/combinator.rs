@@ -550,6 +550,7 @@ pub(crate) struct Assembler<R, Clk, C, A> {
 #[derive(Clone)]
 pub(crate) struct AssemblerCounters {
     pub segments: crate::counter::Summary,
+    pub max_datagram_size: crate::counter::Summary,
     pub packet_size: crate::counter::Summary,
     pub encrypt_time: crate::counter::Timer,
     pub tx_data: crate::counter::Counter,
@@ -562,6 +563,8 @@ impl AssemblerCounters {
     pub fn new(registry: &crate::counter::Registry) -> Self {
         Self {
             segments: registry.register_summary("asm.segments", crate::counter::Unit::Count),
+            max_datagram_size: registry
+                .register_summary("asm.max_datagram_size", crate::counter::Unit::Byte),
             packet_size: registry.register_summary("tx.packet_size", crate::counter::Unit::Byte),
             encrypt_time: registry.register_timer("tx.encrypt_time"),
             tx_data: registry.register("tx.data"),

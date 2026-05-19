@@ -50,9 +50,9 @@ enum Commands {
         #[arg(short, long)]
         config: Option<PathBuf>,
 
-        /// Server address to connect to (e.g., [::1]:4433)
+        /// Server address(es) to connect to (e.g., [::1]:4433). Can be specified multiple times for round-robin.
         #[arg(short, long)]
-        server_addr: Option<SocketAddr>,
+        server_addr: Vec<SocketAddr>,
 
         /// Workload names to run (defaults to first in config if omitted)
         #[arg(short, long)]
@@ -145,7 +145,11 @@ fn main() -> std::io::Result<()> {
                 // wait for the server to boot
                 tokio::time::sleep(core::time::Duration::from_secs(1)).await;
 
-                let server_addr = server_addr.unwrap_or(config.server.address);
+                let server_addrs = if server_addr.is_empty() {
+                    vec![config.server.address]
+                } else {
+                    server_addr
+                };
 
                 let mut client_config = config.client;
                 if !workloads.is_empty() {
@@ -156,7 +160,7 @@ fn main() -> std::io::Result<()> {
                     client_config.workloads.truncate(1);
                 }
 
-                client::run(endpoint, client_config, server_addr).await
+                client::run(endpoint, client_config, server_addrs).await
             }
         }
     })

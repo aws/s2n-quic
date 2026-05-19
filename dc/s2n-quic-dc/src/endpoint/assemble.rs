@@ -72,6 +72,7 @@ where
         max_datagram_size: mtu,
         max_segments,
     } = context.path_info(gso);
+    counters.max_datagram_size.record_value(mtu as u64);
 
     let unfilled = pool.alloc()?;
 

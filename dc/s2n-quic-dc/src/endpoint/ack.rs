@@ -55,6 +55,7 @@ pub(crate) fn process_ack<Clk, Rand>(
 
     let mut max_acked_tx_time = None;
     let mut bytes_acked = 0usize;
+    let mut packets_acked = 0u64;
     let mut cca_args = None;
     // RTT sample from an ack-eliciting ACK-only packet (read-heavy path).
     // Set when an ACK range covers the pending PN recorded by `rtt_tracker`.
@@ -90,6 +91,8 @@ pub(crate) fn process_ack<Clk, Rand>(
         let mut deferred: ArrayVec<PacketNumber, 8> = ArrayVec::new();
 
         for (num, mut packet) in context.inflight.remove_range(range) {
+            packets_acked += 1;
+
             if let Some(tx_info) = packet.transmission_info.take() {
                 let time_sent = tx_info.time_sent;
                 max_acked_tx_time = max_acked_tx_time.max(Some(time_sent));
@@ -141,6 +144,8 @@ pub(crate) fn process_ack<Clk, Rand>(
             }
         }
     }
+
+    counters.tx_ack_packets.record_value(packets_acked);
 
     // Finalize loss detection for the ACK-only RTT tracker. This must be called
     // after all ranges have been processed so that the loss heuristic does not
@@ -220,6 +225,7 @@ pub(crate) fn process_ack<Clk, Rand>(
             context,
             max_acked_pn,
             max_tx_time,
+            counters,
             completed,
             lost,
             cancelled,
@@ -266,6 +272,7 @@ fn detect_loss<Rand>(
     context: &mut send::Context,
     max_acked_pn: VarInt,
     max_tx_time: s2n_quic_core::time::Timestamp,
+    counters: &super::counters::Send,
     completed: &mut impl UnboundedSender<Entry<Frame>>,
     lost: &mut impl UnboundedSender<Entry<Frame>>,
     cancelled: &mut impl UnboundedSender<Entry<Frame>>,
@@ -289,6 +296,7 @@ fn detect_loss<Rand>(
     let range = PacketNumberRange::new(lost_min, lost_max);
     let mut lost_count = 0usize;
     let mut cancelled_count = 0usize;
+    let mut ttl_exhausted_count = 0usize;
 
     for (num, mut packet) in context.inflight.remove_range(range) {
         let tx_info = packet.transmission_info.take().unwrap();
@@ -313,9 +321,16 @@ fn detect_loss<Rand>(
             }
 
             if entry.ttl == 0 {
+                debug_assert_ne!(entry.ttl, 0, "frame TTL should never be exhausted");
+                tracing::error!(
+                    credentials = %context.credentials.id,
+                    sender_idx = context.sender_idx,
+                    frame = ?*entry,
+                    "frame TTL exhausted - this should never happen"
+                );
                 entry.status = TransmissionStatus::Failed(frame::FailureReason::TransmissionError);
                 let _ = completed.send(entry);
-                lost_count += 1;
+                ttl_exhausted_count += 1;
                 continue;
             }
 
@@ -325,10 +340,15 @@ fn detect_loss<Rand>(
         }
     }
 
-    if lost_count + cancelled_count > 0 {
+    if ttl_exhausted_count > 0 {
+        counters.ttl_exhausted.add(ttl_exhausted_count as u64);
+    }
+
+    if lost_count + cancelled_count + ttl_exhausted_count > 0 {
         tracing::debug!(
             lost_count,
             cancelled_count,
+            ttl_exhausted_count,
             max_acked = max_acked_pn.as_u64(),
             threshold = pn_threshold.map(|v| v.as_u64()),
             rtt = ?context.rtt_estimator.smoothed_rtt(),

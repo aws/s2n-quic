@@ -15,6 +15,7 @@ use bach::time::timeout;
 use bytes::{Bytes, BytesMut};
 use s2n_quic_core::varint::VarInt;
 use std::{
+    io,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -918,6 +919,159 @@ fn unregistered_acceptor_id_does_not_reach_registered_acceptor() {
                 .copied()
                 .expect("reset should include endpoint error code");
             assert_eq!(reset_error, crate::endpoint::error::Error::AcceptorNotFound);
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
+/// Fuzz test: one client sends concurrent requests to two servers under random
+/// packet loss. All streams must recover within a bounded time regardless of
+/// the loss pattern.
+#[test]
+fn multi_server_concurrent_loss_recovery() {
+    let _guard = crate::testing::without_tracing();
+
+    bolero::check!()
+        .with_test_time(core::time::Duration::from_secs(10))
+        .with_shrink_time(core::time::Duration::from_secs(0))
+        .with_max_len(usize::MAX)
+        .run(|| {
+            multi_server_concurrent_loss_sim();
+        });
+}
+
+fn multi_server_concurrent_loss_sim() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+        const NUM_STREAMS: usize = 50;
+
+        // Drop 50% of all packets randomly.
+        {
+            bach::net::monitor::on_packet_sent(move |_packet| {
+                if bach::rand::any::<bool>() {
+                    return bach::net::monitor::Command::Drop;
+                }
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        // ── Server A ──────────────────────────────────────────────────────
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 64)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let stream = stream.validate().await.expect("server_a validate");
+                    let (mut reader, mut writer) = stream.into_split();
+                    let mut buf = BytesMut::with_capacity(64);
+                    loop {
+                        let n = reader.read_into(&mut buf).await.expect("server_a read");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+                    let mut echo = Bytes::copy_from_slice(&buf);
+                    writer
+                        .write_all_from_fin(&mut echo)
+                        .await
+                        .expect("server_a echo");
+                }
+                .spawn();
+            }
+        }
+        .group("server_a")
+        .spawn();
+
+        // ── Server B ──────────────────────────────────────────────────────
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 64)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let stream = stream.validate().await.expect("server_b validate");
+                    let (mut reader, mut writer) = stream.into_split();
+                    let mut buf = BytesMut::with_capacity(64);
+                    loop {
+                        let n = reader.read_into(&mut buf).await.expect("server_b read");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+                    let mut echo = Bytes::copy_from_slice(&buf);
+                    writer
+                        .write_all_from_fin(&mut echo)
+                        .await
+                        .expect("server_b echo");
+                }
+                .spawn();
+            }
+        }
+        .group("server_b")
+        .spawn();
+
+        // ── Client ────────────────────────────────────────────────────────
+        async move {
+            let mut client = Client::new();
+            let mut handles = Vec::new();
+
+            for i in 0..NUM_STREAMS {
+                let server = if i % 2 == 0 {
+                    "server_a:0"
+                } else {
+                    "server_b:0"
+                };
+                let stream = client
+                    .connect(server, acceptor_id)
+                    .await
+                    .expect("connect failed");
+
+                let msg = format!("req-{i}");
+                handles.push(
+                    async move {
+                        let (mut reader, mut writer) = stream.into_split();
+
+                        let mut data = Bytes::from(msg.clone());
+                        writer
+                            .write_all_from_fin(&mut data)
+                            .await
+                            .expect("client write");
+
+                        let mut buf = BytesMut::with_capacity(64);
+                        timeout(Duration::from_secs(20), async {
+                            loop {
+                                let n = reader.read_into(&mut buf).await.expect("client read");
+                                if n == 0 {
+                                    break;
+                                }
+                            }
+                        })
+                        .await
+                        .expect("stream should complete within 5s");
+
+                        assert_eq!(&buf[..], msg.as_bytes(), "echo mismatch for {msg}");
+                        io::Result::Ok(())
+                    }
+                    .spawn(),
+                );
+            }
+
+            for handle in handles {
+                handle.await.expect("task join").expect("stream failed");
+            }
+
+            tracing::info!(
+                "multi_server_concurrent_loss_recovery passed: all {NUM_STREAMS} streams completed"
+            );
         }
         .group("client")
         .primary()

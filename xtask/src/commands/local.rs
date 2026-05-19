@@ -196,12 +196,22 @@ impl Local {
                 ]
             } else {
                 let trace_dir = self.trace_dir.display().to_string();
+                let bind_addr = SocketAddr::new(
+                    if server_addr.is_ipv6() {
+                        "::".parse().unwrap()
+                    } else {
+                        "0.0.0.0".parse().unwrap()
+                    },
+                    server_addr.port(),
+                );
                 vec![
                     "--trace-dir".to_string(),
                     trace_dir,
                     "server".to_string(),
                     "--config".to_string(),
                     config_path,
+                    "--address".to_string(),
+                    bind_addr.to_string(),
                 ]
             };
 
@@ -225,14 +235,11 @@ impl Local {
 
             let label = format!("client:{i}");
 
-            // Round-robin assign clients to servers
-            let server_addr = server_addresses[i % server_addresses.len()];
-
             eprintln!(
-                "  {} ({}) connecting to {}",
+                "  {} ({}) connecting to {:?}",
                 label,
                 node.host(),
-                server_addr
+                server_addresses
             );
 
             let mut env_vars = base_env.clone();
@@ -257,7 +264,7 @@ impl Local {
                 vec![
                     "client".to_string(),
                     "--server".to_string(),
-                    server_addr.to_string(),
+                    server_addresses[i % server_addresses.len()].to_string(),
                 ]
             } else {
                 let trace_dir = self.trace_dir.display().to_string();
@@ -267,9 +274,11 @@ impl Local {
                     "client".to_string(),
                     "--config".to_string(),
                     config_path,
-                    "--server-addr".to_string(),
-                    server_addr.to_string(),
                 ];
+                for addr in &server_addresses {
+                    args.push("--server-addr".to_string());
+                    args.push(addr.to_string());
+                }
                 for w in &self.workloads {
                     args.push("--workloads".to_string());
                     args.push(w.clone());

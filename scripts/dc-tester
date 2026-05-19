@@ -5,8 +5,9 @@ set -eo pipefail
 WORKLOAD=${1:-tiny-bidi}
 DURATION=${2:-}
 PROFILE=${3:-release-debug}
+SERVERS=${4:-1}
 
-ARGS="--config xtask/etc/local.toml --servers 1 --clients 1 --profile ${PROFILE} --workloads ${WORKLOAD}"
+ARGS="--config xtask/etc/local.toml --servers ${SERVERS} --clients 1 --profile ${PROFILE} --workloads ${WORKLOAD}"
 
 if [ -n "${DURATION}" ]; then
     ARGS="${ARGS} --timeout ${DURATION}"

@@ -23,7 +23,7 @@ use tracing::{info, warn};
 pub async fn run(
     endpoint: Arc<Endpoint>,
     config: ClientConfig,
-    server_addr: SocketAddr,
+    server_addrs: Vec<SocketAddr>,
 ) -> io::Result<()> {
     if config.workloads.is_empty() {
         warn!("No workloads configured");
@@ -31,7 +31,7 @@ pub async fn run(
     }
 
     info!(
-        %server_addr,
+        server_addrs = ?server_addrs,
         workloads = %config.workloads.iter().map(|w| w.name.as_str()).collect::<Vec<_>>().join(", "),
         "Starting stream3 RPC test client"
     );
@@ -61,10 +61,18 @@ pub async fn run(
 
     // Create stream3 client
     let server_name = crate::psk::server_name();
-    let client = s2n_quic_dc::stream::Client::new(endpoint.clone(), handshake, server_name);
+    let mut client = s2n_quic_dc::stream::Client::new(endpoint.clone(), handshake, server_name);
 
     let stats = crate::stats::Subscriber::spawn(std::time::Duration::from_secs(1));
 
+    // Warm up path secrets by sending a ping to each server
+    for &addr in &server_addrs {
+        info!(%addr, "Warming up connection");
+        execute_single_message(&mut client, addr, 1, 1).await?;
+    }
+    info!("Warmup complete");
+
+    let server_addrs: Arc<[SocketAddr]> = server_addrs.into();
     let mut handles = Vec::new();
 
     for workload in config.workloads {
@@ -127,10 +135,11 @@ pub async fn run(
             let workload = workload.clone();
             let stats = stats.clone();
             let phase_timers = phase_timers.clone();
+            let server_addrs = server_addrs.clone();
             let handle = tokio::spawn(async move {
                 run_worker(
                     &mut client,
-                    server_addr,
+                    &server_addrs,
                     workload,
                     worker_id,
                     stats,
@@ -152,7 +161,7 @@ pub async fn run(
 
 async fn run_worker(
     client: &mut s2n_quic_dc::stream::Client,
-    server_addr: SocketAddr,
+    server_addrs: &[SocketAddr],
     workload: WorkloadConfig,
     worker_id: usize,
     stats: crate::stats::Subscriber,
@@ -165,12 +174,25 @@ async fn run_worker(
     };
 
     let mut rng = s2n_quic_dc::xorshift::Rng::new();
+    let mut addr_index = worker_id % server_addrs.len();
 
     loop {
+        let server_addr = server_addrs[addr_index];
+        addr_index = (addr_index + 1) % server_addrs.len();
+
         stats.start_request();
         let (bytes_sent, bytes_received, is_error) = if workload.paxos.is_some() {
             let timers = phase_timers.as_ref().unwrap();
-            match execute_paxos_round(client, server_addr, &workload, &mut rng, timers).await {
+            match execute_paxos_round(
+                client,
+                server_addrs,
+                &mut addr_index,
+                &workload,
+                &mut rng,
+                timers,
+            )
+            .await
+            {
                 Ok((sent, received)) => {
                     timers.rounds_completed.add(1);
                     (sent, received, false)
@@ -242,7 +264,8 @@ struct PhaseTimers {
 
 async fn execute_paxos_round(
     client: &mut s2n_quic_dc::stream::Client,
-    server_addr: SocketAddr,
+    server_addrs: &[SocketAddr],
+    addr_index: &mut usize,
     workload: &WorkloadConfig,
     rng: &mut s2n_quic_dc::xorshift::Rng,
     timers: &PaxosTimers,
@@ -256,7 +279,8 @@ async fn execute_paxos_round(
 
     let (sent, received) = execute_phase(
         client,
-        server_addr,
+        server_addrs,
+        addr_index,
         &paxos.prepare,
         paxos.acceptors,
         quorum,
@@ -270,7 +294,8 @@ async fn execute_paxos_round(
 
     let (sent, received) = execute_phase(
         client,
-        server_addr,
+        server_addrs,
+        addr_index,
         &paxos.accept,
         paxos.acceptors,
         quorum,
@@ -284,7 +309,8 @@ async fn execute_paxos_round(
 
     let (sent, received) = execute_phase(
         client,
-        server_addr,
+        server_addrs,
+        addr_index,
         &paxos.learn,
         paxos.acceptors,
         quorum,
@@ -303,7 +329,8 @@ async fn execute_paxos_round(
 
 async fn execute_phase(
     client: &mut s2n_quic_dc::stream::Client,
-    server_addr: SocketAddr,
+    server_addrs: &[SocketAddr],
+    addr_index: &mut usize,
     phase: &PaxosPhaseConfig,
     acceptors: usize,
     quorum: usize,
@@ -326,6 +353,8 @@ async fn execute_phase(
     let mut join_set = JoinSet::new();
     for (request_size, response_size) in sizes {
         let mut client = client.clone();
+        let server_addr = server_addrs[*addr_index];
+        *addr_index = (*addr_index + 1) % server_addrs.len();
         let request_timer = timers.request.clone();
         let laggard_elapsed_us = laggard_elapsed_us.clone();
         let request_errors = timers.request_errors.clone();
