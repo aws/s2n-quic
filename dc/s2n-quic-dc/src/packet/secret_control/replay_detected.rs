@@ -4,14 +4,24 @@
 use super::*;
 
 impl_tag!(REPLAY_DETECTED);
-impl_packet!(ReplayDetected);
+impl_packet!(ReplayDetected, {
+    #[inline]
+    pub fn sender_id(&self) -> Option<VarInt> {
+        self.value.sender_id
+    }
+
+    #[inline]
+    pub fn credential_id(&self) -> &crate::credentials::Id {
+        &self.value.credential_id
+    }
+});
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
 pub struct ReplayDetected {
     pub credential_id: credentials::Id,
     pub wire_version: WireVersion,
-    pub queue_id: Option<VarInt>,
+    pub sender_id: Option<VarInt>,
     pub rejected_key_id: VarInt,
 }
 
@@ -21,11 +31,11 @@ impl ReplayDetected {
     where
         C: seal::control::Secret,
     {
-        encoder.encode(&Tag::default().with_queue_id(self.queue_id.is_some()));
+        encoder.encode(&Tag::default().with_queue_id(self.sender_id.is_some()));
         encoder.encode(&self.credential_id);
         encoder.encode(&self.wire_version);
-        if let Some(queue_id) = self.queue_id {
-            encoder.encode(&queue_id);
+        if let Some(sender_id) = self.sender_id {
+            encoder.encode(&sender_id);
         }
         encoder.encode(&self.rejected_key_id);
 
@@ -44,9 +54,9 @@ impl<'a> DecoderValue<'a> for ReplayDetected {
         let (tag, buffer) = buffer.decode::<Tag>()?;
         let (credential_id, buffer) = buffer.decode()?;
         let (wire_version, buffer) = buffer.decode()?;
-        let (queue_id, buffer) = if tag.has_queue_id() {
-            let (queue_id, buffer) = buffer.decode()?;
-            (Some(queue_id), buffer)
+        let (sender_id, buffer) = if tag.has_queue_id() {
+            let (sender_id, buffer) = buffer.decode()?;
+            (Some(sender_id), buffer)
         } else {
             (None, buffer)
         };
@@ -54,7 +64,7 @@ impl<'a> DecoderValue<'a> for ReplayDetected {
         let value = Self {
             credential_id,
             wire_version,
-            queue_id,
+            sender_id,
             rejected_key_id,
         };
         Ok((value, buffer))

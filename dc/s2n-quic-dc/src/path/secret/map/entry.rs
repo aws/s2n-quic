@@ -599,14 +599,14 @@ impl receiver::Error {
                 wire_version: WireVersion::ZERO,
                 credential_id: credentials.id,
                 rejected_key_id: credentials.key_id,
-                queue_id,
+                sender_id: queue_id,
             }
             .encode(encoder, &entry.control_sealer()),
             receiver::Error::Unknown => control::StaleKey {
                 wire_version: WireVersion::ZERO,
                 credential_id: credentials.id,
                 min_key_id: entry.receiver.minimum_unseen_key_id(),
-                queue_id,
+                sender_id: queue_id,
             }
             .encode(encoder, &entry.control_sealer()),
         };

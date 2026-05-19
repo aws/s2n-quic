@@ -125,17 +125,17 @@ pub trait Router {
                     }
                     packet::Packet::StaleKey(packet) => {
                         tracing::trace!(?packet, "parsed_stale_key_packet");
-                        let queue_id = packet.queue_id();
+                        let sender_id = packet.sender_id();
                         let credentials = *packet.credential_id();
                         self.handle_stale_key_packet(packet, remote_address);
-                        self.dispatch_stale_key_packet(queue_id, credentials, segment);
+                        self.dispatch_stale_key_packet(sender_id, credentials, segment);
                     }
                     packet::Packet::ReplayDetected(packet) => {
                         tracing::trace!(?packet, "parsed_replay_detected_packet");
-                        let queue_id = packet.queue_id();
+                        let sender_id = packet.sender_id();
                         let credentials = *packet.credential_id();
                         self.handle_replay_detected_packet(packet, remote_address);
-                        self.dispatch_replay_detected_packet(queue_id, credentials, segment);
+                        self.dispatch_replay_detected_packet(sender_id, credentials, segment);
                     }
                     packet::Packet::UnknownPathSecret(packet) => {
                         tracing::trace!(?packet, "parsed_unknown_path_secret_packet");
@@ -281,14 +281,14 @@ pub trait Router {
     #[inline]
     fn dispatch_stale_key_packet(
         &mut self,
-        queue_id: Option<VarInt>,
+        sender_id: Option<VarInt>,
         credentials: credentials::Id,
         segment: descriptor::Filled,
     ) {
         warn!(
             unhandled_packet = "stale_key",
             router = core::any::type_name::<Self>(),
-            ?queue_id,
+            ?sender_id,
             %credentials,
             remote_address = %segment.remote_address(),
             packet_len = segment.len()
@@ -307,14 +307,14 @@ pub trait Router {
     #[inline]
     fn dispatch_replay_detected_packet(
         &mut self,
-        queue_id: Option<VarInt>,
+        sender_id: Option<VarInt>,
         credentials: credentials::Id,
         segment: descriptor::Filled,
     ) {
         warn!(
             unhandled_packet = "replay_detected",
             router = core::any::type_name::<Self>(),
-            ?queue_id,
+            ?sender_id,
             %credentials,
             remote_address = %segment.remote_address(),
             packet_len = segment.len()

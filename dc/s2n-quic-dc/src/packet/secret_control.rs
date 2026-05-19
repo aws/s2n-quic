@@ -185,11 +185,11 @@ impl<'a> Packet<'a> {
     }
 
     #[inline]
-    pub fn queue_id(&self) -> Option<VarInt> {
+    pub fn sender_id(&self) -> Option<VarInt> {
         match self {
-            Self::UnknownPathSecret(p) => p.queue_id(),
-            Self::StaleKey(p) => p.queue_id(),
-            Self::ReplayDetected(p) => p.queue_id(),
+            Self::UnknownPathSecret(_) => None,
+            Self::StaleKey(p) => p.sender_id(),
+            Self::ReplayDetected(p) => p.sender_id(),
         }
     }
 }

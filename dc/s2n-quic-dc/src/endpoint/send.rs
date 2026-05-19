@@ -964,22 +964,30 @@ impl Context {
 
     pub fn drain_frames(
         &mut self,
-        reason: frame::FailureReason,
-        cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
-    ) {
+        reason: Option<frame::FailureReason>,
+        output: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
+    ) -> usize {
+        let mut drained = 0usize;
         let range = self.inflight.get_range();
         for (_pn, packet) in self.inflight.remove_range(range) {
             for mut frame in packet.frames {
-                frame.status = frame::TransmissionStatus::Failed(reason);
-                let _ = cancelled.send(frame.into());
+                frame.status = reason.map_or(frame::TransmissionStatus::Pending, |reason| {
+                    frame::TransmissionStatus::Failed(reason)
+                });
+                let _ = output.send(frame.into());
+                drained += 1;
             }
         }
         for queue in &mut self.queues {
             while let Some(mut frame) = queue.pop_front() {
-                frame.status = frame::TransmissionStatus::Failed(reason);
-                let _ = cancelled.send(frame);
+                frame.status = reason.map_or(frame::TransmissionStatus::Pending, |reason| {
+                    frame::TransmissionStatus::Failed(reason)
+                });
+                let _ = output.send(frame);
+                drained += 1;
             }
         }
+        drained
     }
 }
 
@@ -1198,13 +1206,47 @@ impl Cache {
         id: &credentials::Id,
         reason: frame::FailureReason,
         cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
-    ) {
+    ) -> Option<usize> {
         let Some(ctx) = self.contexts.remove(id) else {
             tracing::trace!(%id, sender_idx = self.sender_idx, "invalidate: no context found");
-            return;
+            return None;
         };
         let mut ctx = ctx.borrow_mut();
         tracing::debug!(%id, sender_idx = self.sender_idx, "invalidating send context");
-        ctx.drain_frames(reason, cancelled);
+        Some(ctx.drain_frames(Some(reason), cancelled))
+    }
+
+    pub fn invalidate_stale_key(
+        &mut self,
+        id: &credentials::Id,
+        sender_id: VarInt,
+        retransmit: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
+    ) -> Option<usize> {
+        let sender_idx = sender_id.as_u64() as usize;
+        debug_assert_eq!(
+            self.sender_idx, sender_idx,
+            "invalidate_stale_key called for wrong sender cache"
+        );
+        if self.sender_idx != sender_idx {
+            return None;
+        }
+
+        let Some(ctx) = self.contexts.remove(id) else {
+            tracing::trace!(
+                %id,
+                sender_idx = self.sender_idx,
+                stale_sender_id = sender_idx,
+                "invalidate_stale_key: no context found"
+            );
+            return None;
+        };
+        let mut ctx = ctx.borrow_mut();
+        tracing::debug!(
+            %id,
+            sender_idx = self.sender_idx,
+            stale_sender_id = sender_idx,
+            "invalidating stale/replay send context for retransmission"
+        );
+        Some(ctx.drain_frames(None, retransmit))
     }
 }

@@ -95,6 +95,24 @@ where
         let _ = self.invalidation_tx.send(segment.into());
     }
 
+    fn dispatch_stale_key_packet(
+        &mut self,
+        _sender_id: Option<VarInt>,
+        _credentials: credentials::Id,
+        segment: descriptor::Filled,
+    ) {
+        let _ = self.invalidation_tx.send(segment.into());
+    }
+
+    fn dispatch_replay_detected_packet(
+        &mut self,
+        _queue_id: Option<VarInt>,
+        _credentials: credentials::Id,
+        segment: descriptor::Filled,
+    ) {
+        let _ = self.invalidation_tx.send(segment.into());
+    }
+
     fn on_decode_error(
         &mut self,
         error: s2n_codec::DecoderError,

@@ -203,7 +203,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     worker_id: usize,
     batch_rx: impl Receiver<Entry<FrameBatch>> + 'static,
     ack_rx: impl Receiver<Entry<msg::Sender>> + 'static,
-    invalidation_rx: impl Receiver<Entry<crate::credentials::Id>> + 'static,
+    invalidation_rx: impl Receiver<Entry<Invalidation>> + 'static,
     total_sender_ids: usize,
     send_sockets: Vec<endpoint::SendSocketParts<Socket, Clk>>,
     clock: Clk,
@@ -378,7 +378,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             total_sender_ids,
             clock.clone(),
             random,
-            frame_tx,
+            frame_tx.clone(),
             crate::counter::GaugedSender::new(completed_tx, completion_sender),
             crate::counter::GaugedSender::new(cancelled_tx.clone(), cancelled_sender),
             send_counters,
@@ -631,7 +631,26 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     // Task: invalidation drain — purge send caches on path secret revocation.
     // Routes to completed_tx (not cancelled) so CompletionDispatcher wakes streams.
     {
-        let rx = send_invalidation(invalidation_rx, send_caches, invalidation_completed_tx);
+        let invalidation_counters = SendInvalidationCounters {
+            unknown_path_secret_events: counter_registry.register("invalidation.ups.events"),
+            unknown_path_secret_contexts: counter_registry.register("invalidation.ups.contexts"),
+            unknown_path_secret_frames_failed: counter_registry
+                .register("invalidation.ups.frames_failed"),
+            stale_or_replay_events: counter_registry.register("invalidation.stale_replay.events"),
+            stale_or_replay_contexts: counter_registry
+                .register("invalidation.stale_replay.contexts"),
+            stale_or_replay_frames_requeued: counter_registry
+                .register("invalidation.stale_replay.frames_requeued"),
+        };
+        let retransmit_tx = frame_tx.clone();
+        let rx = send_invalidation(
+            invalidation_rx,
+            send_caches,
+            sender_idx_to_local.clone(),
+            invalidation_completed_tx,
+            retransmit_tx,
+            invalidation_counters,
+        );
         let variant = format!("send.{worker_id}");
         let task_counter = counter_registry
             .register_nominal_task("task.invalidation", &variant)
@@ -1447,21 +1466,62 @@ where
 pub fn send_invalidation<R>(
     invalidation_rx: R,
     send_caches: Vec<Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: Vec<usize>,
     mut cancelled_tx: impl UnboundedSender<Entry<Frame>> + 'static,
+    mut retransmit_tx: impl UnboundedSender<Entry<Frame>> + 'static,
+    counters: SendInvalidationCounters,
 ) -> impl Receiver<()>
 where
-    R: Receiver<Entry<crate::credentials::Id>>,
+    R: Receiver<Entry<Invalidation>>,
 {
     Map::new(
         invalidation_rx,
-        move |entry: Entry<crate::credentials::Id>| {
-            let id = *entry;
-            for cache in &send_caches {
-                cache.borrow_mut().invalidate(
-                    &id,
-                    frame::FailureReason::UnknownPathSecret,
-                    &mut cancelled_tx,
+        move |entry: Entry<Invalidation>| match *entry {
+            Invalidation::UnknownPathSecret { credential_id } => {
+                counters.unknown_path_secret_events.add(1);
+                for cache in &send_caches {
+                    if let Some(drained) = cache.borrow_mut().invalidate(
+                        &credential_id,
+                        frame::FailureReason::UnknownPathSecret,
+                        &mut cancelled_tx,
+                    ) {
+                        counters.unknown_path_secret_contexts.add(1);
+                        counters
+                            .unknown_path_secret_frames_failed
+                            .add(drained as u64);
+                    }
+                }
+            }
+            Invalidation::StaleKey {
+                credential_id,
+                sender_id,
+            } => {
+                counters.stale_or_replay_events.add(1);
+                let sender_idx = sender_id.as_u64() as usize;
+                let local_id = sender_idx_to_local.get(sender_idx).copied();
+                debug_assert!(
+                    local_id.is_some(),
+                    "sender_id had no local sender_idx mapping; this should not occur in normal operation and may indicate sender_id_to_worker mapping drift"
                 );
+                let Some(local_id) = local_id else {
+                    return;
+                };
+                let cache = send_caches.get(local_id);
+                debug_assert!(
+                    cache.is_some(),
+                    "sender_id resolved to a sender_idx not owned by this worker; this should not occur in normal operation and may indicate sender_id_to_worker mapping drift"
+                );
+                let Some(cache) = cache else {
+                    return;
+                };
+                if let Some(drained) = cache.borrow_mut().invalidate_stale_key(
+                    &credential_id,
+                    sender_id,
+                    &mut retransmit_tx,
+                ) {
+                    counters.stale_or_replay_contexts.add(1);
+                    counters.stale_or_replay_frames_requeued.add(drained as u64);
+                }
             }
         },
     )
@@ -1472,25 +1532,37 @@ pub fn recv_invalidation<R>(
     recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
 ) -> impl Receiver<()>
 where
-    R: Receiver<Entry<crate::credentials::Id>>,
+    R: Receiver<Entry<Invalidation>>,
 {
-    Map::new(
-        invalidation_rx,
-        move |entry: Entry<crate::credentials::Id>| {
-            let id = *entry;
-            recv_cache.borrow_mut().invalidate_by_id(&id);
-        },
-    )
+    Map::new(invalidation_rx, move |entry: Entry<Invalidation>| {
+        if let Invalidation::UnknownPathSecret { credential_id } = *entry {
+            recv_cache.borrow_mut().invalidate_by_id(&credential_id);
+        }
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Invalidation {
+    UnknownPathSecret {
+        credential_id: crate::credentials::Id,
+    },
+    StaleKey {
+        credential_id: crate::credentials::Id,
+        sender_id: VarInt,
+    },
 }
 
 pub fn invalidation_validator<R, Tx>(
     raw_rx: R,
     path_secret_map: crate::path::secret::Map,
-    mut broadcast_txs: Vec<Tx>,
+    mut send_txs: Vec<Tx>,
+    mut recv_txs: Vec<Tx>,
+    sender_id_to_worker: Vec<usize>,
+    counters: ValidatorInvalidationCounters,
 ) -> impl Receiver<()>
 where
     R: Receiver<Entry<descriptor::Filled>>,
-    Tx: UnboundedSender<Entry<crate::credentials::Id>>,
+    Tx: UnboundedSender<Entry<Invalidation>>,
 {
     use crate::packet::secret_control;
     use s2n_codec::DecoderBufferMut;
@@ -1504,21 +1576,125 @@ where
             tracing::debug!(%peer, "ignored invalidation control packet: decode failed");
             return;
         };
-        let secret_control::Packet::UnknownPathSecret(packet) = packet else {
-            tracing::debug!(%peer, "ignored invalidation control packet: unsupported control type");
+        let Some(invalidation) = (match packet {
+            secret_control::Packet::UnknownPathSecret(packet) => {
+                let Some(validated) =
+                    path_secret_map.handle_unknown_path_secret_packet(&packet, &peer)
+                else {
+                    tracing::debug!(%peer, "ignored invalidation control packet: unknown path secret rejected");
+                    return;
+                };
+
+                let local_id = validated.credential_id.for_peer();
+                tracing::debug!(
+                    %peer,
+                    credential_id = %local_id,
+                    sinks = send_txs.len() + recv_txs.len(),
+                    "validated unknown path secret invalidation"
+                );
+                counters.unknown_path_secret_validated.add(1);
+                Some(Invalidation::UnknownPathSecret {
+                    credential_id: local_id,
+                })
+            }
+            secret_control::Packet::StaleKey(packet) => {
+                let Some(validated) = path_secret_map.handle_stale_key_packet(&packet, &peer)
+                else {
+                    tracing::debug!(%peer, "ignored invalidation control packet: stale key rejected");
+                    return;
+                };
+                let Some(sender_id) = validated.sender_id else {
+                    tracing::debug!(%peer, "ignored invalidation control packet: stale key missing sender_id");
+                    return;
+                };
+                let local_id = validated.credential_id.for_peer();
+                tracing::debug!(
+                    %peer,
+                    credential_id = %local_id,
+                    sender_id = sender_id.as_u64(),
+                    sinks = send_txs.len(),
+                    "validated stale key invalidation"
+                );
+                counters.stale_key_validated.add(1);
+                Some(Invalidation::StaleKey {
+                    credential_id: local_id,
+                    sender_id,
+                })
+            }
+            secret_control::Packet::ReplayDetected(packet) => {
+                let Some(validated) = path_secret_map.handle_replay_detected_packet(&packet, &peer)
+                else {
+                    tracing::debug!(%peer, "ignored invalidation control packet: replay detected rejected");
+                    return;
+                };
+                let Some(sender_id) = validated.sender_id else {
+                    tracing::debug!(%peer, "ignored invalidation control packet: replay detected missing sender_id");
+                    return;
+                };
+                let local_id = validated.credential_id.for_peer();
+                tracing::debug!(
+                    %peer,
+                    credential_id = %local_id,
+                    sender_id = sender_id.as_u64(),
+                    sinks = send_txs.len(),
+                    "validated replay detected invalidation"
+                );
+                counters.replay_detected_validated.add(1);
+                Some(Invalidation::StaleKey {
+                    credential_id: local_id,
+                    sender_id,
+                })
+            }
+        }) else {
             return;
         };
 
-        let Some(validated) = path_secret_map.handle_unknown_path_secret_packet(&packet, &peer)
-        else {
-            tracing::debug!(%peer, "ignored invalidation control packet: unknown path secret rejected");
-            return;
-        };
-
-        let local_id = validated.credential_id.for_peer();
-        tracing::debug!(%peer, credential_id = %local_id, sinks = broadcast_txs.len(), "validated unknown path secret invalidation");
-        for tx in &mut broadcast_txs {
-            let _ = tx.send(Entry::from(local_id));
+        match invalidation {
+            Invalidation::UnknownPathSecret { .. } => {
+                for tx in &mut send_txs {
+                    let _ = tx.send(Entry::new(invalidation));
+                }
+                for tx in &mut recv_txs {
+                    let _ = tx.send(Entry::new(invalidation));
+                }
+            }
+            Invalidation::StaleKey { sender_id, .. } => {
+                let sender_idx = sender_id.as_u64() as usize;
+                let worker_id = sender_id_to_worker.get(sender_idx).copied();
+                debug_assert!(
+                    worker_id.is_some(),
+                    "stale/replay invalidation sender_id had no sender_id_to_worker mapping; this indicates an invalid endpoint worker configuration"
+                );
+                let Some(worker_id) = worker_id else {
+                    return;
+                };
+                let tx = send_txs.get_mut(worker_id);
+                debug_assert!(
+                    tx.is_some(),
+                    "stale/replay invalidation worker mapping exceeded send_txs length; sender_id_to_worker and send worker wiring are inconsistent"
+                );
+                let Some(tx) = tx else {
+                    return;
+                };
+                let _ = tx.send(Entry::new(invalidation));
+            }
         }
     })
+}
+
+#[derive(Clone)]
+pub struct SendInvalidationCounters {
+    pub unknown_path_secret_events: crate::counter::Counter,
+    pub unknown_path_secret_contexts: crate::counter::Counter,
+    pub unknown_path_secret_frames_failed: crate::counter::Counter,
+    pub stale_or_replay_events: crate::counter::Counter,
+    pub stale_or_replay_contexts: crate::counter::Counter,
+    pub stale_or_replay_frames_requeued: crate::counter::Counter,
+}
+
+#[derive(Clone)]
+pub struct ValidatorInvalidationCounters {
+    pub unknown_path_secret_validated: crate::counter::Counter,
+    pub stale_key_validated: crate::counter::Counter,
+    pub replay_detected_validated: crate::counter::Counter,
 }

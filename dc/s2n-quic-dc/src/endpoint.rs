@@ -369,20 +369,29 @@ where
     let ups_queue_gauge = counter_registry.register_queue_gauge("q.ups");
     let ups_tx = crate::socket::channel::GaugedSender::new(ups_tx, ups_queue_gauge.clone());
 
-    // Invalidation channels: recv IO → background (raw segments) and background → all workers
+    // Invalidation channels: recv IO → background (raw segments) and background → workers
     let (invalidation_raw_tx, invalidation_raw_rx) = intrusive::sync::new::<descriptor::Filled>();
-    let num_invalidation_targets = num_send_workers + layout.recv_dispatch.len();
-    let (invalidation_broadcast_txs, invalidation_worker_rxs): (Vec<_>, Vec<_>) = (0
-        ..num_invalidation_targets)
+    let (invalidation_send_txs, invalidation_send_rxs): (Vec<_>, Vec<_>) = (0..num_send_workers)
         .map(|i| {
-            let (tx, rx) = intrusive::sync::new::<crate::credentials::Id>();
+            let (tx, rx) = intrusive::sync::new::<tasks::Invalidation>();
             let gauge = counter_registry
-                .register_queue_gauge_nominal("q.invalidation", format_args!("worker.{i}"));
+                .register_queue_gauge_nominal("q.invalidation", format_args!("send.{i}"));
             let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
             (tx, rx)
         })
         .unzip();
-    let mut invalidation_worker_rxs = invalidation_worker_rxs.into_iter();
+    let (invalidation_recv_txs, invalidation_recv_rxs): (Vec<_>, Vec<_>) =
+        (0..layout.recv_dispatch.len())
+        .map(|i| {
+            let (tx, rx) = intrusive::sync::new::<tasks::Invalidation>();
+            let gauge = counter_registry
+                .register_queue_gauge_nominal("q.invalidation", format_args!("recv.{i}"));
+            let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
+            (tx, rx)
+        })
+        .unzip();
+    let mut invalidation_send_rxs = invalidation_send_rxs.into_iter();
+    let mut invalidation_recv_rxs = invalidation_recv_rxs.into_iter();
 
     let mut sender_id_to_worker: Vec<usize> = Vec::with_capacity(num_send);
 
@@ -499,7 +508,7 @@ where
             frame_tx: frame_tx.clone(),
             ack_completions_tx: ack_completions_tx.clone(),
             waker_sink,
-            invalidation_rx: invalidation_worker_rxs.next().unwrap(),
+            invalidation_rx: invalidation_send_rxs.next().unwrap(),
         });
     }
 
@@ -543,7 +552,7 @@ where
             route: ack_route,
             waker_sink,
             ups_tx: ups_tx.clone(),
-            invalidation_rx: invalidation_worker_rxs.next().unwrap(),
+            invalidation_rx: invalidation_recv_rxs.next().unwrap(),
         });
     }
 
@@ -579,7 +588,9 @@ where
     workers[layout.background].background = Some(BackgroundParts {
         raw_rx: invalidation_raw_rx,
         path_secret_map: path_secret_map.clone(),
-        broadcast_txs: invalidation_broadcast_txs,
+        send_txs: invalidation_send_txs,
+        recv_txs: invalidation_recv_txs,
+        sender_id_to_worker,
         ups_rx,
         ups_queue_gauge: counter_registry.register_queue_gauge("q.ups"),
         ups_socket,
@@ -633,7 +644,7 @@ struct SendWorkerParts {
         >,
     >,
     waker_sink: waker::Sink,
-    invalidation_rx: sync_queue::Receiver<crate::credentials::Id>,
+    invalidation_rx: sync_queue::Receiver<tasks::Invalidation>,
 }
 
 /// Per-socket ingredients for the socket send task.
@@ -678,14 +689,16 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     route: Route,
     waker_sink: waker::Sink,
     ups_tx: UpsSender,
-    invalidation_rx: sync_queue::Receiver<crate::credentials::Id>,
+    invalidation_rx: sync_queue::Receiver<tasks::Invalidation>,
 }
 
 /// Ingredients for the background worker (invalidation validation + future housekeeping).
 struct BackgroundParts<UpsSocket> {
     raw_rx: sync_queue::Receiver<descriptor::Filled>,
     path_secret_map: crate::path::secret::Map,
-    broadcast_txs: Vec<InvalidationSender>,
+    send_txs: Vec<InvalidationSender>,
+    recv_txs: Vec<InvalidationSender>,
+    sender_id_to_worker: Vec<usize>,
     ups_rx: sync_queue::Receiver<ups::Response>,
     ups_queue_gauge: crate::counter::QueueGauge,
     ups_socket: UpsSocket,
@@ -695,8 +708,8 @@ struct BackgroundParts<UpsSocket> {
 }
 
 type InvalidationSender = crate::socket::channel::GaugedSender<
-    sync_queue::Sender<crate::credentials::Id>,
-    Entry<crate::credentials::Id>,
+    sync_queue::Sender<tasks::Invalidation>,
+    Entry<tasks::Invalidation>,
 >;
 
 type UpsSender =
@@ -1007,8 +1020,22 @@ where
             }
 
             if let Some(bg) = background {
-                let rx =
-                    tasks::invalidation_validator(bg.raw_rx, bg.path_secret_map, bg.broadcast_txs);
+                let invalidation_counters = tasks::ValidatorInvalidationCounters {
+                    unknown_path_secret_validated: counter_registry
+                        .register("invalidation.validator.ups.validated"),
+                    stale_key_validated: counter_registry
+                        .register("invalidation.validator.stale_key.validated"),
+                    replay_detected_validated: counter_registry
+                        .register("invalidation.validator.replay_detected.validated"),
+                };
+                let rx = tasks::invalidation_validator(
+                    bg.raw_rx,
+                    bg.path_secret_map,
+                    bg.send_txs,
+                    bg.recv_txs,
+                    bg.sender_id_to_worker,
+                    invalidation_counters,
+                );
                 let task_counter = counter_registry
                     .register_nominal_task("task.invalidation_validator", "background")
                     .with_registration_metadata(

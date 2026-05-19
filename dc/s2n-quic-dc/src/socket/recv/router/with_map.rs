@@ -135,12 +135,12 @@ impl<Inner: Router> Router for WithMap<Inner> {
     #[inline]
     fn dispatch_stale_key_packet(
         &mut self,
-        queue_id: Option<s2n_quic_core::varint::VarInt>,
+        sender_id: Option<s2n_quic_core::varint::VarInt>,
         credentials: crate::credentials::Id,
         segment: descriptor::Filled,
     ) {
         self.inner
-            .dispatch_stale_key_packet(queue_id, credentials, segment);
+            .dispatch_stale_key_packet(sender_id, credentials, segment);
     }
 
     #[inline]
@@ -161,12 +161,12 @@ impl<Inner: Router> Router for WithMap<Inner> {
     #[inline]
     fn dispatch_replay_detected_packet(
         &mut self,
-        queue_id: Option<s2n_quic_core::varint::VarInt>,
+        sender_id: Option<s2n_quic_core::varint::VarInt>,
         credentials: crate::credentials::Id,
         segment: descriptor::Filled,
     ) {
         self.inner
-            .dispatch_replay_detected_packet(queue_id, credentials, segment);
+            .dispatch_replay_detected_packet(sender_id, credentials, segment);
     }
 
     #[inline]
