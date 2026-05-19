@@ -29,9 +29,34 @@ pub trait Socket {
 
     /// Get the local address of this socket
     fn local_addr(&self) -> io::Result<std::net::SocketAddr>;
+
+    /// Send a single buffer to an address with default ECN marking.
+    fn send_to(&self, addr: &std::net::SocketAddr, data: &[u8]) -> io::Result<usize> {
+        let addr = Addr::new((*addr).into());
+        let iov = [IoSlice::new(data)];
+        self.send_msg(&addr, &iov, 0, ExplicitCongestionNotification::NotEct)
+    }
 }
 
 // Blanket implementations for common wrapper types
+
+impl Socket for std::net::UdpSocket {
+    #[inline]
+    fn send_msg(
+        &self,
+        addr: &Addr,
+        payload: &[IoSlice],
+        segment_size: u16,
+        ecn: ExplicitCongestionNotification,
+    ) -> io::Result<usize> {
+        udp::send(self, addr, ecn, payload, Some(segment_size), 0)
+    }
+
+    #[inline]
+    fn local_addr(&self) -> io::Result<std::net::SocketAddr> {
+        (*self).local_addr()
+    }
+}
 
 impl<T: Socket> Socket for std::sync::Arc<T> {
     #[inline]

@@ -17,7 +17,7 @@ use std::{
     time::Duration,
 };
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 use std::sync::{Arc, Mutex};
 
 pub use bach::{ext, rand};
@@ -78,6 +78,9 @@ pub static SNI: OnceLock<Name> = OnceLock::new();
 thread_local! {
     static TRACING_DISABLED_DEPTH: Cell<usize> = const { Cell::new(0) };
     static SNAPSHOT_DISABLED_DEPTH: Cell<usize> = const { Cell::new(0) };
+    /// Per-test snapshot buffer. Set by `run_sim_with_snapshot`, read by the
+    /// snapshot fmt layer's MakeWriter.
+    static SNAPSHOT_BUFFER: Cell<Option<Arc<Mutex<Vec<u8>>>>> = const { Cell::new(None) };
 }
 
 static SNAPSHOT_MODE_DEPTH: AtomicUsize = AtomicUsize::new(0);
@@ -116,13 +119,11 @@ impl Drop for SnapshotDisabledGuard {
 ///
 /// Obtain one with [`without_tracing`].  While the guard is live:
 /// - `sim` will not produce snapshot output.
-/// - A [`tracing::subscriber::NoSubscriber`] is installed on the current
-///   thread so metric events are not recorded.
+/// - The stdout layer suppresses all output.
 ///
 /// Dropping the guard restores the previous state.
 pub struct WithoutTracingGuard {
     _depth: Option<TracingDisabledGuard>,
-    _dispatch: Option<tracing::subscriber::DefaultGuard>,
 }
 
 /// Guard that suppresses sim snapshot output for its lifetime.
@@ -174,19 +175,13 @@ pub fn init_tracing() {
     }
 
     use std::sync::Once;
+    use tracing_subscriber::{layer::SubscriberExt, Layer as _};
 
     static TRACING: Once = Once::new();
 
     // make sure this only gets initialized once
     TRACING.call_once(|| {
-        let format = tracing_subscriber::fmt::format()
-            //.with_level(false) // don't include levels in formatted output
-            //.with_ansi(false)
-            .with_timer(Uptime::default())
-            .compact(); // Use a less verbose output format.
-
         let default_level = if std::env::var("CI").is_ok() {
-            // The CI runs out of memory if we log too much tracing data
             tracing::Level::INFO
         } else if cfg!(debug_assertions) {
             tracing::Level::DEBUG
@@ -194,17 +189,53 @@ pub fn init_tracing() {
             tracing::Level::WARN
         };
 
-        let env_filter = tracing_subscriber::EnvFilter::builder()
+        let stdout_filter = tracing_subscriber::EnvFilter::builder()
             .with_default_directive(default_level.into())
             .with_env_var("S2N_LOG")
             .from_env()
             .unwrap();
 
-        tracing_subscriber::fmt()
-            .with_env_filter(env_filter)
-            .event_format(format)
-            .with_test_writer()
-            .init();
+        // Stdout layer: always active unless tracing is explicitly disabled.
+        let mut stdout_layer = tracing_subscriber::fmt::layer().event_format(
+            tracing_subscriber::fmt::format()
+                .with_timer(Uptime::default())
+                .compact(),
+        );
+
+        // avoid ANSI with agents
+        if std::env::var("CLAUDECODE").is_ok() {
+            stdout_layer = stdout_layer.with_ansi(false);
+        }
+
+        let stdout_layer = stdout_layer
+            .with_writer(StdoutWriter)
+            .with_filter(stdout_filter);
+
+        // Snapshot layer: only writes when SNAPSHOT_BUFFER is set on this thread.
+        // Fixed filter — never reads env vars so snapshot content is deterministic.
+        let snapshot_filter = tracing_subscriber::EnvFilter::builder()
+            .with_default_directive(tracing::Level::DEBUG.into())
+            .parse("")
+            .unwrap()
+            .add_directive("s2n_quic_dc::metric=trace".parse().unwrap());
+
+        let snapshot_layer = tracing_subscriber::fmt::layer()
+            .event_format(
+                tracing_subscriber::fmt::format()
+                    .with_timer(Uptime::default())
+                    .with_target(false)
+                    .compact(),
+            )
+            .with_ansi(false)
+            .with_writer(ThreadLocalSnapshotWriter)
+            .with_filter(snapshot_filter);
+
+        let subscriber = tracing_subscriber::registry()
+            .with(stdout_layer)
+            .with(snapshot_layer);
+
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("failed to set global tracing subscriber");
     });
 }
 
@@ -216,24 +247,16 @@ pub fn init_tracing() {
 /// // guard drops here, tracing restored
 /// ```
 pub fn without_tracing() -> WithoutTracingGuard {
-    // make sure the global subscriber is initialized before swapping in NoSubscriber
     init_tracing();
 
     static FORCED: OnceLock<bool> = OnceLock::new();
 
-    // add the option to get logs with `S2N_LOG_FORCED=1`
     if *FORCED.get_or_init(|| std::env::var("S2N_LOG_FORCED").is_ok()) {
-        return WithoutTracingGuard {
-            _depth: None,
-            _dispatch: None,
-        };
+        return WithoutTracingGuard { _depth: None };
     }
 
     WithoutTracingGuard {
         _depth: Some(TracingDisabledGuard::enter()),
-        _dispatch: Some(tracing::subscriber::set_default(
-            tracing::subscriber::NoSubscriber::new(),
-        )),
     }
 }
 
@@ -320,39 +343,22 @@ fn is_bolero_fuzzing() -> bool {
 #[cfg(test)]
 #[track_caller]
 fn run_sim_with_snapshot(f: impl FnOnce()) {
-    // Derive a stable snapshot name from the test thread name (e.g.
-    // "endpoint::tasks::tests::context_resolver::same_peer_reuses_context")
-    // rather than from the caller file/line, which changes as code moves.
     let snapshot_name = std::thread::current()
         .name()
         .unwrap_or("unknown")
         .replace([':', '/', '\\', '.', ' '], "_");
 
-    let writer = SnapshotWriter::default();
-    let format = tracing_subscriber::fmt::format()
-        .with_timer(Uptime::default())
-        .with_target(false)
-        .compact();
-    let env_filter = tracing_subscriber::EnvFilter::builder()
-        .with_default_directive(tracing::Level::WARN.into())
-        .with_env_var("S2N_LOG")
-        .from_env()
-        .unwrap()
-        .add_directive("s2n_quic_dc=debug".parse().unwrap())
-        .add_directive("s2n_quic_dc::endpoint::recv=info".parse().unwrap())
-        .add_directive("s2n_quic_dc::metric=trace".parse().unwrap())
-        .add_directive("s2n_quic_dc::counter=warn".parse().unwrap());
-    let subscriber = tracing_subscriber::fmt()
-        .with_env_filter(env_filter)
-        .event_format(format)
-        .with_ansi(false)
-        .with_writer(writer.clone())
-        .finish();
-
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    SNAPSHOT_BUFFER.with(|cell| cell.set(Some(buffer.clone())));
     let _snapshot_mode_guard = SnapshotModeGuard::enter();
-    tracing::subscriber::with_default(subscriber, || run_sim(f));
 
-    let logs = normalize_snapshot_logs(writer.take_string());
+    run_sim(f);
+
+    // Clear the buffer so it doesn't leak into subsequent tests on this thread.
+    SNAPSHOT_BUFFER.with(|cell| cell.set(None));
+
+    let bytes = buffer.lock().unwrap().clone();
+    let logs = normalize_snapshot_logs(String::from_utf8_lossy(&bytes).into_owned());
 
     insta::with_settings!({prepend_module_to_snapshot => false}, {
         insta::assert_snapshot!(snapshot_name, logs);
@@ -392,39 +398,73 @@ fn trim_rust_location_suffix(line: &str) -> String {
     }
 }
 
-#[cfg(test)]
-#[derive(Clone, Default)]
-struct SnapshotWriter(Arc<Mutex<Vec<u8>>>);
+/// MakeWriter for the stdout layer. Produces a sink when tracing is disabled.
+struct StdoutWriter;
 
-#[cfg(test)]
-impl SnapshotWriter {
-    fn take_string(&self) -> String {
-        let bytes = self.0.lock().unwrap().clone();
-        String::from_utf8_lossy(&bytes).into_owned()
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for StdoutWriter {
+    type Writer = StdoutWriterGuard;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        let active = !TRACING_DISABLED_DEPTH.with(|depth| depth.get() > 0);
+        StdoutWriterGuard { active }
     }
 }
 
-#[cfg(test)]
-struct SnapshotWriteGuard(Arc<Mutex<Vec<u8>>>);
+struct StdoutWriterGuard {
+    active: bool,
+}
 
-#[cfg(test)]
-impl std::io::Write for SnapshotWriteGuard {
+impl std::io::Write for StdoutWriterGuard {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buf);
+        if self.active {
+            std::io::stderr().write(buf)
+        } else {
+            Ok(buf.len())
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        if self.active {
+            std::io::stderr().flush()
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// MakeWriter for the snapshot layer. Writes to the per-test SNAPSHOT_BUFFER
+/// thread-local when set, otherwise discards.
+struct ThreadLocalSnapshotWriter;
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for ThreadLocalSnapshotWriter {
+    type Writer = ThreadLocalSnapshotWriterGuard;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        let buffer = SNAPSHOT_BUFFER.with(|cell| {
+            // SAFETY: we borrow the Option, clone the Arc if present, then put it back.
+            let opt = cell.take();
+            let cloned = opt.clone();
+            cell.set(opt);
+            cloned
+        });
+        ThreadLocalSnapshotWriterGuard { buffer }
+    }
+}
+
+struct ThreadLocalSnapshotWriterGuard {
+    buffer: Option<Arc<Mutex<Vec<u8>>>>,
+}
+
+impl std::io::Write for ThreadLocalSnapshotWriterGuard {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if let Some(buffer) = &self.buffer {
+            buffer.lock().unwrap().extend_from_slice(buf);
+        }
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
-    }
-}
-
-#[cfg(test)]
-impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for SnapshotWriter {
-    type Writer = SnapshotWriteGuard;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        SnapshotWriteGuard(self.0.clone())
     }
 }
 

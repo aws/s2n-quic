@@ -8,13 +8,22 @@ use crate::{
     path::secret::{receiver, stateless_reset},
     psk::io::HandshakeReason,
 };
-use core::time::Duration;
 use s2n_codec::EncoderBuffer;
-use s2n_quic_core::varint::VarInt;
+use s2n_quic_core::{time, varint::VarInt};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::task::JoinHandle;
 
-pub trait Store: 'static + Send + Sync {
+/// Determines how the map delivers a control response (e.g. UnknownPathSecret)
+/// when pre-authentication fails.
+pub enum ControlResponse<'a> {
+    /// The map sends the control packet directly via its background socket.
+    SendDirect { peer: SocketAddr },
+    /// The caller will handle delivery (e.g. via rate-limited UPS path).
+    /// The encoded packet is written into the provided buffer.
+    ReturnBuffer { out: &'a mut Vec<u8> },
+}
+
+pub trait Store: 'static + Send + Sync + time::Clock {
     fn secrets_len(&self) -> usize;
 
     fn peers_len(&self) -> usize;
@@ -75,8 +84,6 @@ pub trait Store: 'static + Send + Sync {
 
     fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]);
 
-    fn rehandshake_period(&self) -> Duration;
-
     fn register_request_handshake(
         &self,
         cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
@@ -121,7 +128,7 @@ pub trait Store: 'static + Send + Sync {
         &self,
         identity: &Credentials,
         queue_id: Option<VarInt>,
-        control_out: &mut Vec<u8>,
+        control: ControlResponse<'_>,
     ) -> Option<Arc<Entry>> {
         let Some(state) = self.get_by_id_tracked(&identity.id) else {
             let packet = control::UnknownPathSecret {
@@ -129,11 +136,19 @@ pub trait Store: 'static + Send + Sync {
                 credential_id: identity.id,
                 queue_id,
             };
-            control_out.resize(control::UnknownPathSecret::MAX_PACKET_SIZE, 0);
             let stateless_reset = self.signer().sign(&identity.id);
-            let encoder = EncoderBuffer::new(control_out);
-            let len = packet.encode(encoder, &stateless_reset);
-            control_out.truncate(len);
+            match control {
+                ControlResponse::SendDirect { peer } => {
+                    let mut buf = [0u8; control::MAX_PACKET_SIZE];
+                    let len = packet.encode(EncoderBuffer::new(&mut buf), &stateless_reset);
+                    self.send_control_packet(&peer, &mut buf[..len]);
+                }
+                ControlResponse::ReturnBuffer { out } => {
+                    out.resize(control::UnknownPathSecret::MAX_PACKET_SIZE, 0);
+                    let len = packet.encode(EncoderBuffer::new(out), &stateless_reset);
+                    out.truncate(len);
+                }
+            }
             return None;
         };
 

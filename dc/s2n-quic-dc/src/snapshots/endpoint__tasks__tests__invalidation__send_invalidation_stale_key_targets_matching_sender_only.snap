@@ -9,7 +9,7 @@ expression: logs
 0:00:00.000000000 [main] TRACE g#send.pending.depth=2
 0:00:00.000000000 [main] TRACE m#send.pending.depth_dist=2
 0:00:00.000000000 [main] TRACE c#test.invalidation.stale_replay.events=1
-0:00:00.000000000 [main] DEBUG invalidating stale/replay send context for retransmission id=0x25a69ae25d5f3678f5373f68bc3c106d sender_idx=1 stale_sender_id=1
+0:00:00.000000000 [main] DEBUG invalidating stale/replay send context for retransmission id=0x25a69ae25d5f3678f5373f68bc3c106d sender_idx=1 stale_sender_id=1 rejected_key_id=1
 0:00:00.000000000 [main] TRACE c#send.pending.drain=1
 0:00:00.000000000 [main] TRACE g#send.pending.depth=1
 0:00:00.000000000 [main] TRACE c#test.invalidation.stale_replay.contexts=1

@@ -1082,9 +1082,11 @@ fn multi_server_concurrent_loss_sim() {
     });
 }
 
-/// Verifies that a stale-key metric fires when the server's recv-cache entry
-/// is evicted by the idle wheel while the client's send context (and therefore
-/// its key-id) is still live.
+/// Verifies end-to-end stale-key recovery: after the server's recv-cache entry
+/// is evicted by the idle wheel, the client's next stream initially fails
+/// (stale key detected), but the server sends a StaleKey control packet back,
+/// the client advances its key-id, retransmits, and the stream completes
+/// successfully.
 ///
 /// Setup: path-secret entries are pre-inserted with **asymmetric** idle
 /// timeouts — the server-side entry has a short timeout (1 s) so its recv
@@ -1094,9 +1096,9 @@ fn multi_server_concurrent_loss_sim() {
 ///
 /// After the first stream completes and time is advanced past the server's idle
 /// timeout, the client sends a second stream using the *same* key-id (same send
-/// context, different stream-id).  The server misses the recv cache, calls
-/// `check_dedup`, finds the key-id already registered, and increments the
-/// `!rx.process.err.stale_key` counter.
+/// context, different stream-id).  The server detects the stale key, sends a
+/// StaleKey control packet, the client bumps its key-id, and the retransmitted
+/// frame succeeds — proving full recovery despite the server losing recv state.
 #[test]
 fn stale_key_detected_after_recv_cache_eviction() {
     use crate::{
@@ -1221,27 +1223,39 @@ fn stale_key_detected_after_recv_cache_eviction() {
             // holds key-id = 0.
             3.s().sleep().await;
 
-            // ── Second stream: triggers stale-key detection ──────────────────────
+            // ── Second stream: stale-key recovery ────────────────────────────────
             //
             // The client's send context is a cache HIT (same path-secret entry,
             // still within its 30 s window) → packets are encrypted with key-id = 0.
             // The server's recv cache MISSES → check_dedup(key-id=0) → AlreadyExists
-            // → ReplayDetected → !rx.process.err.stale_key is incremented.
-            // The server drops the packet; the stream times out on the client side.
+            // → server sends StaleKey control packet back to client.
+            // The client receives the StaleKey, bumps its sender key-id, the
+            // invalidation task retransmits the frame, and the stream completes.
             let stream2 = client
                 .connect(format!("server:{SERVER_PORT}"), acceptor_id)
                 .await
                 .expect("connect 2");
-            let (_, mut writer2) = stream2.into_split();
-            let mut data = Bytes::from_static(b"hi");
-            // Fire the FlowInit packet and then bail — the server silently drops
-            // it after stale-key detection, so write_all_from_fin never completes.
-            let _ = timeout(500.ms(), writer2.write_all_from_fin(&mut data)).await;
-
-            // Give the server a moment to process the packet and emit the metric.
-            500.ms().sleep().await;
-
-            tracing::info!("stale_key_detected_after_recv_cache_eviction passed");
+            let (mut reader2, mut writer2) = stream2.into_split();
+            let mut data = Bytes::from_static(b"hello");
+            timeout(5.s(), writer2.write_all_from_fin(&mut data))
+                .await
+                .expect("write 2 should not time out (stale-key recovery)")
+                .expect("write 2");
+            let mut buf2 = BytesMut::with_capacity(8);
+            loop {
+                let n = timeout(5.s(), reader2.read_into(&mut buf2))
+                    .await
+                    .expect("read 2 should not time out")
+                    .expect("read 2");
+                if n == 0 {
+                    break;
+                }
+            }
+            assert_eq!(
+                &buf2[..],
+                b"hello",
+                "second stream should echo payload after stale-key recovery"
+            );
         }
         .group("client")
         .primary()

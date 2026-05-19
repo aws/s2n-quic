@@ -23,6 +23,30 @@ pub use time::clock::Cached;
 pub use time::Timestamp;
 pub mod wheel;
 
+/// Returns the current timestamp from the appropriate clock.
+///
+/// Inside bach simulations this returns simulated time; otherwise it
+/// falls back to the tokio clock (wall-clock relative to process start).
+pub fn now() -> Timestamp {
+    use time::Clock as _;
+
+    #[cfg(any(test, feature = "testing"))]
+    if ::bach::is_active() {
+        return bach::Clock::default().get_time();
+    }
+
+    #[cfg(feature = "tokio")]
+    {
+        return tokio::Clock::default().get_time();
+    }
+
+    #[cfg(not(feature = "tokio"))]
+    {
+        use s2n_quic_core::time::clock::StdClock;
+        StdClock.get_time()
+    }
+}
+
 pub type SleepHandle = Pin<Box<dyn Sleep>>;
 
 pub trait Clock: 'static + Send + Sync + fmt::Debug + time::Clock {

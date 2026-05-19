@@ -148,7 +148,7 @@ impl Model {
                     sender::State::new(stateless_reset),
                     receiver::State::new(),
                     dc::testing::TEST_APPLICATION_PARAMS,
-                    dc::testing::TEST_REHANDSHAKE_PERIOD,
+                    crate::time::now(),
                     None,
                 )));
 

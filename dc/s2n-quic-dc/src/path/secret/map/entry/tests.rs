@@ -24,7 +24,7 @@ fn test_entry_with_senders(sender_count: usize) -> Entry {
         sender::State::new([0; control::TAG_LEN]),
         receiver::State::new(),
         s2n_quic_core::dc::testing::TEST_APPLICATION_PARAMS,
-        Duration::from_secs(1),
+        crate::time::now(),
         None,
         sender_count,
     )

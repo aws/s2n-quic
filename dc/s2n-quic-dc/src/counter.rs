@@ -711,13 +711,13 @@ impl Timer {
 
     /// Returns true if this call should be sampled (and advances the counter).
     ///
-    /// In bach simulations, always returns true — time is simulated and free,
-    /// and deterministic recording keeps snapshot tests stable.
+    /// Under bach simulations, always returns false — CPU wall-clock timings
+    /// are nondeterministic and would destabilize snapshot tests.
     #[inline]
     fn should_sample(&self) -> bool {
         #[cfg(any(test, feature = "testing"))]
         if bach::is_active() {
-            return true;
+            return false;
         }
         self.sampler.next() & self.sample_mask == 0
     }

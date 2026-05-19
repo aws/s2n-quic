@@ -355,6 +355,9 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
             super::helpers::TestReceiver::new(vec![Entry::new(tasks::Invalidation::StaleKey {
                 credential_id: id,
                 sender_id: VarInt::from_u8(1),
+                // Cache[1]'s context uses key_id=1 (second call to next_key_id),
+                // so rejected_key_id must be >= 1 to trigger invalidation.
+                rejected_key_id: VarInt::from_u8(1),
             })]);
         let mut rx = tasks::send_invalidation(
             invalidation_rx,

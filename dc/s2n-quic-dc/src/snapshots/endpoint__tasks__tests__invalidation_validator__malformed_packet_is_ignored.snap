@@ -2,4 +2,10 @@
 source: dc/s2n-quic-dc/src/testing.rs
 expression: logs
 ---
+0:00:00.000000000 [main] DEBUG s2n_quic_dc: capacity=16
+0:00:00.000000000 [main] DEBUG s2n_quic_dc: acquire=1µs duration=1µs
+0:00:00.000000000 [main] DEBUG s2n_quic_dc: peer_address=127.0.0.1:5555 credential_id=[37, 166, 154, 226, 93, 95, 54, 120, 245, 55, 63, 104, 188, 60, 16, 109]
+0:00:00.000000000 [main] DEBUG s2n_quic_dc: acquire=1µs duration=1µs
+0:00:00.000000000 [main] DEBUG s2n_quic_dc: peer_address=127.0.0.1:5555 credential_id=[37, 166, 154, 226, 93, 95, 54, 120, 245, 55, 63, 104, 188, 60, 16, 109]
 0:00:00.000000000 [main] DEBUG ignored invalidation control packet: decode failed peer=127.0.0.1:5555
+0:00:00.000000000 [main] DEBUG s2n_quic_dc: capacity=16 entries=1 lifetime=1µs

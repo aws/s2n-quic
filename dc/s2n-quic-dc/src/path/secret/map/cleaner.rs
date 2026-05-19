@@ -9,14 +9,88 @@ use crate::{
 use rand::RngExt as _;
 use s2n_quic_core::time;
 use std::{
+    future::Future,
+    pin::pin,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, Instant},
+    task::{Context, Poll},
+    time::Duration,
 };
 
 const EVICTION_CYCLES: u64 = if cfg!(test) { 0 } else { 10 };
+
+const INTERVAL: Duration = Duration::from_secs(60);
+
+/// Async background worker loop, generic over the sleep implementation.
+///
+/// Both environments (std thread and bach async task) run the exact same logic;
+/// only the `sleep` closure differs:
+/// - std thread: `|d| async move { std::thread::park_timeout(d); }` — blocks
+///   the calling thread (interruptible via `thread::unpark`).
+/// - bach task:  `|d| bach::time::sleep(d)` — suspends the task cooperatively.
+async fn background_worker<C, S, F, Fut>(state: std::sync::Weak<State<C, S>>, sleep: F)
+where
+    C: 'static + time::Clock + Send + Sync,
+    S: event::Subscriber,
+    F: Fn(Duration) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    loop {
+        // Random jitter avoids thundering-herd when many maps start together.
+        let jitter = if cfg!(test) {
+            INTERVAL
+        } else {
+            let ms = rand::rng().random_range(
+                Duration::from_secs(5).as_millis() as u64..INTERVAL.as_millis() as u64,
+            );
+            Duration::from_millis(ms)
+        };
+
+        let Some(st) = state.upgrade() else {
+            break;
+        };
+        let start = st.clock.get_time();
+        drop(st);
+
+        sleep(jitter).await;
+
+        let Some(st) = state.upgrade() else {
+            break;
+        };
+        if st.cleaner().should_stop.load(Ordering::Relaxed) {
+            break;
+        }
+        st.cleaner().clean(&st, EVICTION_CYCLES);
+
+        // Sleep the remainder of the interval so cycles stay ~60s apart.
+        let elapsed = st.clock.get_time().saturating_duration_since(start);
+        let remainder = INTERVAL.saturating_sub(elapsed);
+        drop(st);
+
+        if !remainder.is_zero() {
+            sleep(remainder).await;
+        }
+    }
+}
+
+/// Drive a future to completion on the current thread.
+///
+/// Designed for futures where every `.await` point blocks synchronously (e.g.
+/// `park_timeout`-based sleep), so `Poll::Pending` should never be returned in
+/// practice.  A no-op waker is used; if a future does return `Pending` the
+/// executor spins until it becomes ready.
+fn block_on<F: Future<Output = ()>>(f: F) {
+    let waker = s2n_quic_core::task::waker::noop();
+    let mut cx = Context::from_waker(&waker);
+    let mut f = pin!(f);
+    loop {
+        if let Poll::Ready(()) = f.as_mut().poll(&mut cx) {
+            return;
+        }
+    }
+}
 
 pub struct Cleaner {
     should_stop: AtomicBool,
@@ -60,39 +134,24 @@ impl Cleaner {
         C: 'static + time::Clock + Send + Sync,
         S: event::Subscriber,
     {
-        // check to see if we're in a simulation before spawning a thread
+        // In deterministic simulation tests use a bach async task rather than a
+        // real OS thread so that the cleaner participates in simulated time.
         #[cfg(any(test, feature = "testing"))]
         if bach::is_active() {
+            let state = Arc::downgrade(&state);
+            bach::spawn(background_worker(state, |d| bach::time::sleep(d)));
             return;
         }
 
         let state = Arc::downgrade(&state);
         let handle = std::thread::Builder::new()
             .name("dc_quic::cleaner".into())
-            .spawn(move || loop {
-                // in tests, we should try and be as deterministic as possible
-                let pause = if cfg!(test) {
-                    Duration::from_secs(60).as_millis() as u64
-                } else {
-                    rand::rng().random_range(
-                        Duration::from_secs(5).as_millis() as u64
-                            ..Duration::from_secs(60).as_millis() as u64,
-                    )
-                };
-
-                let next_start = Instant::now() + Duration::from_secs(60);
-                std::thread::park_timeout(Duration::from_millis(pause));
-
-                let Some(state) = state.upgrade() else {
-                    break;
-                };
-                if state.cleaner().should_stop.load(Ordering::Relaxed) {
-                    break;
-                }
-                state.cleaner().clean(&state, EVICTION_CYCLES);
-
-                // pause the rest of the time to run once a minute, not twice a minute
-                std::thread::park_timeout(next_start.saturating_duration_since(Instant::now()));
+            .spawn(move || {
+                // `park_timeout` blocks the thread but is interruptible via
+                // `Thread::unpark()`, which `stop()` calls to wake us early.
+                block_on(background_worker(state, |d| async move {
+                    std::thread::park_timeout(d);
+                }));
             })
             .unwrap();
         *self.thread.lock().unwrap() = Some(handle);

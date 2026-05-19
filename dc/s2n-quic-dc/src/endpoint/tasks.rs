@@ -1495,6 +1495,7 @@ where
             Invalidation::StaleKey {
                 credential_id,
                 sender_id,
+                rejected_key_id,
             } => {
                 counters.stale_or_replay_events.add(1);
                 let sender_idx = sender_id.as_u64() as usize;
@@ -1517,6 +1518,7 @@ where
                 if let Some(drained) = cache.borrow_mut().invalidate_stale_key(
                     &credential_id,
                     sender_id,
+                    rejected_key_id,
                     &mut retransmit_tx,
                 ) {
                     counters.stale_or_replay_contexts.add(1);
@@ -1549,6 +1551,9 @@ pub enum Invalidation {
     StaleKey {
         credential_id: crate::credentials::Id,
         sender_id: VarInt,
+        /// The key_id that was rejected. Only invalidate send contexts whose
+        /// key_id <= this value; contexts already advanced past it are fine.
+        rejected_key_id: VarInt,
     },
 }
 
@@ -1619,6 +1624,7 @@ where
                 Some(Invalidation::StaleKey {
                     credential_id: local_id,
                     sender_id,
+                    rejected_key_id: validated.min_key_id,
                 })
             }
             secret_control::Packet::ReplayDetected(packet) => {
@@ -1643,6 +1649,7 @@ where
                 Some(Invalidation::StaleKey {
                     credential_id: local_id,
                     sender_id,
+                    rejected_key_id: validated.rejected_key_id,
                 })
             }
         }) else {

@@ -2,4 +2,9 @@
 source: dc/s2n-quic-dc/src/testing.rs
 expression: logs
 ---
-
+0:00:00.000000000 [main] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/tasks/tests/ack_completion.rs
+0:00:00.000000000 [main] DEBUG event=on_flush prev=Scheduled next=Flushed location=dc/s2n-quic-dc/src/endpoint/recv.rs
+0:00:00.000000000 [main] DEBUG event=on_ack_eliciting prev=Flushed next=FlushedStale location=dc/s2n-quic-dc/src/endpoint/tasks/tests/ack_completion.rs
+0:00:00.000000000 [main] DEBUG event=on_flush_complete prev=FlushedStale next=Scheduled location=dc/s2n-quic-dc/src/endpoint/recv.rs
+0:00:00.000000000 [main] DEBUG event=on_flush prev=Scheduled next=Flushed location=dc/s2n-quic-dc/src/endpoint/recv.rs
+0:00:00.000000000 [main] DEBUG event=on_flush_complete prev=Flushed next=Idle location=dc/s2n-quic-dc/src/endpoint/recv.rs

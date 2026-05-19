@@ -230,6 +230,7 @@ fn stale_key_packet_broadcasts_validated_sender_target() {
                 tasks::Invalidation::StaleKey {
                     credential_id: local_id,
                     sender_id,
+                    rejected_key_id: s2n_quic_core::varint::VarInt::from_u8(3),
                 }
             );
             assert!(rx_a.recv().await.is_none());
@@ -285,6 +286,7 @@ fn replay_detected_packet_broadcasts_validated_sender_target() {
                 tasks::Invalidation::StaleKey {
                     credential_id: local_id,
                     sender_id,
+                    rejected_key_id: s2n_quic_core::varint::VarInt::from_u8(2),
                 }
             );
             assert!(rx_a.recv().await.is_none());

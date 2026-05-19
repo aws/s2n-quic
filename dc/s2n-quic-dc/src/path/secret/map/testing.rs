@@ -8,18 +8,7 @@ pub fn new(capacity: usize) -> secret::Map {
 
     let subscriber = event::tracing::Subscriber::default();
 
-    let signer = if bach::is_active() {
-        let mut secret = [0u8; 32];
-        let group_id = bach::group::current().id();
-        secret[..8].copy_from_slice(&group_id.to_be_bytes());
-        tracing::trace!(
-            group_id,
-            "using deterministic stateless reset signer for bach sim map"
-        );
-        secret::stateless_reset::Signer::new(&secret)
-    } else {
-        secret::stateless_reset::Signer::random()
-    };
+    let signer = secret::stateless_reset::Signer::random();
 
     if s2n_quic_platform::io::testing::is_in_env() {
         secret::Map::new(

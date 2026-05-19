@@ -24,7 +24,7 @@ use std::{
     net::SocketAddr,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, Mutex, RwLock, Weak,
+        Arc, Mutex, OnceLock, RwLock, Weak,
     },
     time::Duration,
 };
@@ -386,8 +386,6 @@ where
     // Determines if path secret is evicted upon receiving an UnknownPathSecret packet.
     should_evict_on_unknown_path_secret: bool,
 
-    rehandshake_period: Duration,
-
     // peers is the most recent entry originating from a locally *or* remote initiated handshake.
     //
     // Handshakes use s2n-quic and the SocketAddr is the address of the handshake socket. Since
@@ -412,7 +410,10 @@ where
 
     // This socket is used *only* for sending secret control packets.
     // FIXME: This will get replaced with sending on a handshake socket associated with the map.
-    pub(super) control_socket: Option<Arc<std::net::UdpSocket>>,
+    //
+    // Initialized lazily on first send so that socket creation does not affect
+    // the deterministic port-assignment order inside bach simulations.
+    pub(super) control_socket: OnceLock<Option<Arc<dyn crate::socket::send::Socket + Send + Sync>>>,
 
     #[allow(clippy::type_complexity)]
     pub(super) request_handshake: RwLock<
@@ -455,14 +456,29 @@ where
 // from that socket as well. Not exactly clear on how to achieve that yet though (both
 // ownership wise since the map doesn't have direct access to handshakes and in terms
 // of implementation).
-fn control_socket() -> Option<Arc<std::net::UdpSocket>> {
+fn control_socket() -> Option<Arc<dyn crate::socket::send::Socket + Send + Sync>> {
+    // In deterministic simulation tests, use a bach socket (one per State instance)
+    // rather than a shared OS socket so that the simulated network handles sends.
+    #[cfg(any(test, feature = "testing"))]
+    if bach::is_active() {
+        let mut o = bach::net::socket::Options::default();
+        o.local_addr = "[::]:0".parse().unwrap();
+        return match bach::net::UdpSocket::new(&o) {
+            Ok(socket) => Some(Arc::new(socket)),
+            Err(err) => {
+                tracing::warn!(%err, "failed to create bach control socket");
+                None
+            }
+        };
+    }
+
     // Share control sockets -- we only send on these so it doesn't really matter if there's only one
     // per process.
     static CONTROL_SOCKET: Mutex<Weak<std::net::UdpSocket>> = Mutex::new(Weak::new());
 
     let mut guard = CONTROL_SOCKET.lock().unwrap();
     if let Some(socket) = guard.upgrade() {
-        return Some(socket);
+        return Some(socket as Arc<dyn crate::socket::send::Socket + Send + Sync>);
     }
 
     // Try ipv6 before since that can support both
@@ -478,7 +494,7 @@ fn control_socket() -> Option<Arc<std::net::UdpSocket>> {
             Ok(socket) => {
                 let socket = Arc::new(socket);
                 *guard = Arc::downgrade(&socket);
-                return Some(socket);
+                return Some(socket as Arc<dyn crate::socket::send::Socket + Send + Sync>);
             }
             Err(err) => {
                 tracing::warn!(%err, addr, "failed to create control socket");
@@ -508,8 +524,6 @@ where
         clock: C,
         subscriber: S,
     ) -> Arc<Self> {
-        let control_socket = control_socket();
-
         let init_time = clock.get_time();
 
         // FIXME: Allow configuring the rehandshake_period.
@@ -520,7 +534,6 @@ where
             max_capacity: capacity,
             socket_sender_count: AtomicUsize::new(0),
             should_evict_on_unknown_path_secret,
-            rehandshake_period,
             peers: Default::default(),
             ids: Default::default(),
             eviction_queue: Default::default(),
@@ -530,7 +543,8 @@ where
                 rehandshake_period,
             )),
             signer,
-            control_socket,
+            // Initialized lazily on first send; see send_control_packet.
+            control_socket: OnceLock::new(),
             init_time,
             clock,
             subscriber,
@@ -577,7 +591,10 @@ where
                 event::builder::PathSecretMapIdEntryEvicted {
                     peer_address: SocketAddress::from(*evicted.peer()).into_event(),
                     credential_id: evicted.id().into_event(),
-                    age: evicted.age(),
+                    age: self
+                        .clock
+                        .get_time()
+                        .saturating_duration_since(evicted.creation_time()),
                 },
             );
         }
@@ -594,7 +611,10 @@ where
                 event::builder::PathSecretMapAddressEntryEvicted {
                     peer_address: SocketAddress::from(*evicted.peer()).into_event(),
                     credential_id: evicted.id().into_event(),
-                    age: evicted.age(),
+                    age: self
+                        .clock
+                        .get_time()
+                        .saturating_duration_since(evicted.creation_time()),
                 },
             );
         }
@@ -681,6 +701,16 @@ where
             clock: &self.clock,
             subscriber: self.subscriber(),
         }
+    }
+}
+
+impl<C, S> time::Clock for State<C, S>
+where
+    C: time::Clock + Sync + Send,
+    S: event::Subscriber,
+{
+    fn get_time(&self) -> time::Timestamp {
+        self.clock.get_time()
     }
 }
 
@@ -845,7 +875,10 @@ where
                 .on_path_secret_map_address_cache_accessed_hit(
                     event::builder::PathSecretMapAddressCacheAccessedHit {
                         peer_address: SocketAddress::from(*peer).into_event(),
-                        age: entry.age(),
+                        age: self
+                            .clock
+                            .get_time()
+                            .saturating_duration_since(entry.creation_time()),
                     },
                 );
         }
@@ -872,7 +905,10 @@ where
             self.subscriber().on_path_secret_map_id_cache_accessed_hit(
                 event::builder::PathSecretMapIdCacheAccessedHit {
                     credential_id: id.into_event(),
-                    age: entry.age(),
+                    age: self
+                        .clock
+                        .get_time()
+                        .saturating_duration_since(entry.creation_time()),
                 },
             );
         }
@@ -1132,6 +1168,18 @@ where
         // de-duplicated).
         self.request_handshake(*entry.peer(), HandshakeReason::Remote);
 
+        // Advance the sender past the rejected key-id so retransmissions use a
+        // fresh key-id the peer hasn't seen.
+        if let Some(next) = packet.rejected_key_id.checked_add_usize(1) {
+            tracing::debug!(
+                credential_id = %packet.credential_id,
+                rejected_key_id = packet.rejected_key_id.as_u64(),
+                new_min_key_id = next.as_u64(),
+                "handle_replay_detected: advancing sender key-id"
+            );
+            entry.sender().update_for_stale_key(next);
+        }
+
         Some(packet)
     }
 
@@ -1140,11 +1188,14 @@ where
     }
 
     fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]) {
-        let Some(control_socket) = self.control_socket.as_ref() else {
+        let control_socket = self.control_socket.get_or_init(control_socket);
+        let Some(control_socket) = control_socket.as_ref() else {
+            tracing::warn!(%dst, "send_control_packet: no control socket available");
             return;
         };
-        match control_socket.send_to(buffer, dst) {
+        match control_socket.send_to(dst, buffer) {
             Ok(_) => {
+                tracing::debug!(%dst, len = buffer.len(), "send_control_packet: sent");
                 // all done
                 match control::Packet::decode(s2n_codec::DecoderBufferMut::new(buffer))
                     .map(|(t, _)| t)
@@ -1185,10 +1236,6 @@ where
         }
     }
 
-    fn rehandshake_period(&self) -> Duration {
-        self.rehandshake_period
-    }
-
     fn check_dedup(
         &self,
         entry: &Entry,
@@ -1217,6 +1264,12 @@ where
                 Ok(())
             }
             Err(receiver::Error::AlreadyExists) => {
+                tracing::debug!(
+                    credential_id = %creds.id,
+                    key_id = key_id.as_u64(),
+                    ?queue_id,
+                    "check_dedup: replay definitely detected, sending control error"
+                );
                 self.send_control_error(entry, creds, queue_id, receiver::Error::AlreadyExists);
 
                 self.subscriber().on_replay_definitely_detected(

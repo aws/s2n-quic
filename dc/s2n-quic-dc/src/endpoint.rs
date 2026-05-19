@@ -382,14 +382,14 @@ where
         .unzip();
     let (invalidation_recv_txs, invalidation_recv_rxs): (Vec<_>, Vec<_>) =
         (0..layout.recv_dispatch.len())
-        .map(|i| {
-            let (tx, rx) = intrusive::sync::new::<tasks::Invalidation>();
-            let gauge = counter_registry
-                .register_queue_gauge_nominal("q.invalidation", format_args!("recv.{i}"));
-            let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
-            (tx, rx)
-        })
-        .unzip();
+            .map(|i| {
+                let (tx, rx) = intrusive::sync::new::<tasks::Invalidation>();
+                let gauge = counter_registry
+                    .register_queue_gauge_nominal("q.invalidation", format_args!("recv.{i}"));
+                let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
+                (tx, rx)
+            })
+            .unzip();
     let mut invalidation_send_rxs = invalidation_send_rxs.into_iter();
     let mut invalidation_recv_rxs = invalidation_recv_rxs.into_iter();
 

@@ -26,7 +26,7 @@ mod rehandshake;
 mod size_of;
 mod state;
 mod status;
-mod store;
+pub(crate) mod store;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
@@ -260,11 +260,11 @@ impl Map {
         &self,
         credentials: &Credentials,
         queue_id: Option<VarInt>,
-        control_out: &mut Vec<u8>,
+        control: store::ControlResponse<'_>,
     ) -> Option<(awslc::open::Application, Arc<Entry>)> {
         let entry = self
             .store
-            .pre_authentication(credentials, queue_id, control_out)?;
+            .pre_authentication(credentials, queue_id, control)?;
         let key_id = credentials.key_id;
         let opener = entry.secret().application_opener(key_id);
         Some((opener, entry))
@@ -274,11 +274,11 @@ impl Map {
         &self,
         credentials: &Credentials,
         queue_id: Option<VarInt>,
-        control_out: &mut Vec<u8>,
+        control: store::ControlResponse<'_>,
     ) -> Option<open::Once> {
         let entry = self
             .store
-            .pre_authentication(credentials, queue_id, control_out)?;
+            .pre_authentication(credentials, queue_id, control)?;
         let opener = entry.uni_opener(self.clone(), credentials, queue_id);
         Some(opener)
     }
@@ -287,11 +287,11 @@ impl Map {
         &self,
         credentials: &Credentials,
         queue_id: Option<VarInt>,
-        control_out: &mut Vec<u8>,
+        control: store::ControlResponse<'_>,
     ) -> Option<(entry::Bidirectional, dc::ApplicationParams)> {
         let entry = self
             .store
-            .pre_authentication(credentials, queue_id, control_out)?;
+            .pre_authentication(credentials, queue_id, control)?;
 
         let params = entry.parameters();
         let keys = entry.bidi_remote(self.clone(), credentials, queue_id);
@@ -303,7 +303,7 @@ impl Map {
         &self,
         credentials: &Credentials,
         queue_id: Option<VarInt>,
-        control_out: &mut Vec<u8>,
+        control: store::ControlResponse<'_>,
     ) -> Option<(
         ExportSecret,
         Ciphersuite,
@@ -312,7 +312,7 @@ impl Map {
     )> {
         let entry = self
             .store
-            .pre_authentication(credentials, queue_id, control_out)?;
+            .pre_authentication(credentials, queue_id, control)?;
         let params = entry.parameters();
         let keys = entry.bidi_remote(self.clone(), credentials, queue_id);
         let secret = entry.secret();
@@ -428,7 +428,7 @@ impl Map {
                 sender,
                 receiver::State::new(),
                 dc::testing::TEST_APPLICATION_PARAMS,
-                dc::testing::TEST_REHANDSHAKE_PERIOD,
+                crate::time::now(),
                 None,
             );
             let entry = Arc::new(entry);
@@ -492,7 +492,7 @@ impl Map {
             sender,
             super::receiver::State::new(),
             dc::testing::TEST_APPLICATION_PARAMS,
-            dc::testing::TEST_REHANDSHAKE_PERIOD,
+            crate::time::now(),
             None,
         );
 
@@ -517,10 +517,20 @@ impl Map {
             let mut generation = 0u64;
             let secret = loop {
                 let secret = deterministic_test_pair_secret(local_addr, peer_addr, generation);
-                let local_id =
-                    *schedule::Secret::new(ciphersuite, dc::SUPPORTED_VERSIONS[0], Type::Client, &secret).id();
-                let peer_id =
-                    *schedule::Secret::new(ciphersuite, dc::SUPPORTED_VERSIONS[0], Type::Server, &secret).id();
+                let local_id = *schedule::Secret::new(
+                    ciphersuite,
+                    dc::SUPPORTED_VERSIONS[0],
+                    Type::Client,
+                    &secret,
+                )
+                .id();
+                let peer_id = *schedule::Secret::new(
+                    ciphersuite,
+                    dc::SUPPORTED_VERSIONS[0],
+                    Type::Server,
+                    &secret,
+                )
+                .id();
 
                 let local_exists = self.store.get_by_id_untracked(&local_id).is_some();
                 let peer_exists = peer.store.get_by_id_untracked(&peer_id).is_some();
@@ -568,7 +578,7 @@ impl Map {
                 sender,
                 super::receiver::State::new(),
                 params,
-                dc::testing::TEST_REHANDSHAKE_PERIOD,
+                crate::time::now(),
                 None,
                 socket_sender_count,
             );

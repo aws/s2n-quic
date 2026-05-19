@@ -196,7 +196,7 @@ impl HandshakingPathInner {
             sender,
             receiver,
             self.parameters.clone(),
-            self.map.store.rehandshake_period(),
+            self.map.store.get_time(),
             self.application_data.take(),
             socket_sender_count,
         );

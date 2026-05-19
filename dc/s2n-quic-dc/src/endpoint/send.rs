@@ -974,8 +974,12 @@ impl Context {
         output: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
     ) -> usize {
         let mut drained = 0usize;
+        let mut discarded_bytes = 0usize;
         let range = self.inflight.get_range();
         for (_pn, packet) in self.inflight.remove_range(range) {
+            if let Some(tx_info) = &packet.transmission_info {
+                discarded_bytes += tx_info.sent_bytes as usize;
+            }
             for mut frame in packet.frames {
                 frame.status = reason.map_or(frame::TransmissionStatus::Pending, |reason| {
                     frame::TransmissionStatus::Failed(reason)
@@ -983,6 +987,9 @@ impl Context {
                 let _ = output.send(frame.into());
                 drained += 1;
             }
+        }
+        if discarded_bytes > 0 {
+            self.cca.on_packet_discarded(discarded_bytes);
         }
         for queue in &mut self.queues {
             while let Some(mut frame) = queue.pop_front() {
@@ -1226,6 +1233,7 @@ impl Cache {
         &mut self,
         id: &credentials::Id,
         sender_id: VarInt,
+        rejected_key_id: VarInt,
         retransmit: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
     ) -> Option<usize> {
         let sender_idx = sender_id.as_u64() as usize;
@@ -1237,7 +1245,7 @@ impl Cache {
             return None;
         }
 
-        let Some(ctx) = self.contexts.remove(id) else {
+        let Some(ctx) = self.contexts.get(id) else {
             tracing::trace!(
                 %id,
                 sender_idx = self.sender_idx,
@@ -1246,11 +1254,27 @@ impl Cache {
             );
             return None;
         };
+
+        // If the send context's key_id is already past the rejected one, this
+        // invalidation is stale (e.g. a delayed/replayed control packet) — ignore it.
+        if ctx.borrow().credentials.key_id > rejected_key_id {
+            tracing::trace!(
+                %id,
+                sender_idx = self.sender_idx,
+                rejected_key_id = rejected_key_id.as_u64(),
+                current_key_id = ctx.borrow().credentials.key_id.as_u64(),
+                "invalidate_stale_key: context already advanced past rejected key_id"
+            );
+            return None;
+        }
+
+        let ctx = self.contexts.remove(id).unwrap();
         let mut ctx = ctx.borrow_mut();
         tracing::debug!(
             %id,
             sender_idx = self.sender_idx,
             stale_sender_id = sender_idx,
+            rejected_key_id = rejected_key_id.as_u64(),
             "invalidating stale/replay send context for retransmission"
         );
         Some(ctx.drain_frames(None, retransmit))

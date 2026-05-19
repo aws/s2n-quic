@@ -20,8 +20,18 @@ impl Signer {
     ///
     /// Note that this signer cannot be used across restarts and will result in an endpoint
     /// producing invalid `UnknownPathSecret` packets.
+    ///
+    /// In Bach simulation tests the key is derived deterministically from the
+    /// current group's ID so that signers (and the stateless-reset tokens they
+    /// produce) are stable across runs and amenable to snapshot testing.
     pub fn random() -> Self {
         let mut secret = [0u8; 32];
+        #[cfg(any(test, feature = "testing"))]
+        if bach::is_active() {
+            let group_id = bach::group::current().id();
+            secret[..8].copy_from_slice(&group_id.to_be_bytes());
+            return Self::new(&secret);
+        }
         aws_lc_rs::rand::fill(&mut secret).unwrap();
         Self::new(&secret)
     }

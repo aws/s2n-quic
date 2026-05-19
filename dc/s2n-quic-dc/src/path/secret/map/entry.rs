@@ -24,7 +24,7 @@ use std::{
         atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering},
         Arc,
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 #[cfg(test)]
@@ -46,7 +46,7 @@ pub struct ApplicationDataError {
 
 #[derive(Debug)]
 pub struct Entry {
-    creation_time: Instant,
+    creation_time: Timestamp,
     peer: SocketAddr,
     secret: schedule::Secret,
     retired: IsRetired,
@@ -134,8 +134,7 @@ impl Entry {
         sender: sender::State,
         receiver: receiver::State,
         parameters: dc::ApplicationParams,
-        // FIXME: remove unused parameter
-        _: Duration,
+        creation_time: Timestamp,
         application_data: Option<ApplicationData>,
     ) -> Self {
         Self::new_with_socket_senders(
@@ -144,7 +143,7 @@ impl Entry {
             sender,
             receiver,
             parameters,
-            Duration::ZERO,
+            creation_time,
             application_data,
             0,
         )
@@ -156,8 +155,7 @@ impl Entry {
         sender: sender::State,
         receiver: receiver::State,
         parameters: dc::ApplicationParams,
-        // FIXME: remove unused parameter
-        _: Duration,
+        creation_time: Timestamp,
         application_data: Option<ApplicationData>,
         socket_sender_count: usize,
     ) -> Self {
@@ -167,7 +165,7 @@ impl Entry {
             .fetch_min(crate::endpoint::MAX_DATAGRAM_SIZE as _, Ordering::Relaxed);
 
         Self {
-            creation_time: Instant::now(),
+            creation_time,
             peer,
             secret,
             retired: Default::default(),
@@ -200,7 +198,7 @@ impl Entry {
             sender::State::new([0; control::TAG_LEN]),
             receiver,
             dc::testing::TEST_APPLICATION_PARAMS,
-            dc::testing::TEST_REHANDSHAKE_PERIOD,
+            crate::time::now(),
             None,
         ))
     }
@@ -230,7 +228,7 @@ impl Entry {
             sender::State::new([0; control::TAG_LEN]),
             receiver,
             dc::testing::TEST_APPLICATION_PARAMS,
-            dc::testing::TEST_REHANDSHAKE_PERIOD,
+            crate::time::now(),
             None,
             socket_sender_count,
         ))
@@ -257,7 +255,7 @@ impl Entry {
             sender::State::new([0; control::TAG_LEN]),
             receiver::State::new(),
             dc::testing::TEST_APPLICATION_PARAMS,
-            dc::testing::TEST_REHANDSHAKE_PERIOD,
+            crate::time::now(),
             None,
         ))
     }
@@ -554,8 +552,8 @@ impl Entry {
             .store(mtu, Ordering::Relaxed);
     }
 
-    pub fn age(&self) -> Duration {
-        self.creation_time.elapsed()
+    pub fn creation_time(&self) -> Timestamp {
+        self.creation_time
     }
 
     pub fn receiver(&self) -> &receiver::State {

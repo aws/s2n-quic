@@ -466,38 +466,82 @@ impl Cache {
         match self.senders.entry(key) {
             hash_map::Entry::Occupied(entry) => {
                 let ctx = entry.get().clone();
-                {
-                    let ctx_ref = ctx.borrow();
-                    if ctx_ref.key() != key || credentials.key_id != ctx_ref.current_key_id {
-                        tracing::warn!(
-                            ?credentials,
-                            ?remote_sender_id,
-                            context = ?*ctx_ref,
-                            "recv cache key does not match cached context key"
-                        );
-                    }
-                    debug_assert_eq!(
-                        ctx_ref.key(),
-                        key,
-                        "recv cache key does not match cached context key"
-                    );
-                    ctx_ref.invariants();
+                let cached_key_id = ctx.borrow().current_key_id;
+
+                if credentials.key_id == cached_key_id {
+                    ctx.borrow().invariants();
+                    let r = decrypt(&ctx.borrow().opener).ok_or(CacheError::DecryptFailed)?;
+                    return Ok((r, ctx, true));
                 }
 
-                // Invoke the decrypt callback with the cached opener.
-                // `post_authentication` is intentionally not called here: many packets
-                // legitimately share the same key_id within a session.  Per-packet replay
-                // protection is the responsibility of the `dedup_filter` in the Context.
-                let r = decrypt(&ctx.borrow().opener).ok_or(CacheError::DecryptFailed)?;
+                if credentials.key_id < cached_key_id {
+                    // The incoming key_id is older than what we already have —
+                    // this is a stale or replayed packet. Send a control error
+                    // and reject.
+                    path_secret_map
+                        .check_dedup(
+                            &ctx.borrow().path_entry,
+                            credentials,
+                            Some(remote_sender_id),
+                        )
+                        .map_err(|_| CacheError::ReplayDetected)?;
 
-                Ok((r, ctx, true))
+                    // If check_dedup somehow accepted it (shouldn't happen for
+                    // an older key_id), still reject since we can't decrypt with
+                    // the wrong opener.
+                    return Err(CacheError::ReplayDetected);
+                }
+
+                // key_id > cached: the peer advanced (e.g. stale-key recovery).
+                // Derive a fresh opener and decrypt before touching the cache.
+                let (opener, path_entry) = path_secret_map
+                    .opener_for_credentials(
+                        credentials,
+                        Some(remote_sender_id),
+                        crate::path::secret::map::store::ControlResponse::ReturnBuffer {
+                            out: control_out,
+                        },
+                    )
+                    .ok_or(CacheError::PathSecretNotFound)?;
+
+                let r = decrypt(&opener).ok_or(CacheError::DecryptFailed)?;
+
+                path_secret_map
+                    .check_dedup(&path_entry, credentials, Some(remote_sender_id))
+                    .map_err(|_| CacheError::ReplayDetected)?;
+
+                // Packet is authentic — replace the stale entry.
+                tracing::debug!(
+                    %credentials,
+                    %remote_sender_id,
+                    cached_key_id = cached_key_id.as_u64(),
+                    "recv cache key_id advanced — replacing entry"
+                );
+
+                let dest_sender_id = route.sender_id_for_ack(&credentials.id, remote_sender_id);
+                let new_ctx = Rc::new(RefCell::new(Context::new(
+                    path_entry,
+                    remote_sender_id,
+                    dest_sender_id,
+                    opener,
+                    credentials.key_id,
+                    clock.now(),
+                )));
+                new_ctx.borrow().invariants();
+                *entry.into_mut() = new_ctx.clone();
+                Ok((r, new_ctx, false))
             }
             hash_map::Entry::Vacant(entry) => {
                 tracing::debug!(%credentials, %remote_sender_id, worker_id = self.worker_id, "opener_for_credentials");
-                let (opener, path_entry) =
-                    path_secret_map
-                        .opener_for_credentials(credentials, None, control_out)
-                        .ok_or(CacheError::PathSecretNotFound)?;
+                let (opener, path_entry) = path_secret_map
+                    .opener_for_credentials(
+                        credentials,
+                        Some(remote_sender_id),
+                        crate::path::secret::map::store::ControlResponse::ReturnBuffer {
+                            out: control_out,
+                        },
+                    )
+                    .ok_or(CacheError::PathSecretNotFound)?;
 
                 // Decrypt before inserting: only create a Context if the packet is authentic.
                 let r = decrypt(&opener).ok_or(CacheError::DecryptFailed)?;
@@ -508,7 +552,7 @@ impl Cache {
                 // first established; subsequent packets (same key_id, different packet
                 // numbers) are deduplicated by the Context's `dedup_filter`.
                 path_secret_map
-                    .check_dedup(&path_entry, credentials, None)
+                    .check_dedup(&path_entry, credentials, Some(remote_sender_id))
                     .map_err(|_| CacheError::ReplayDetected)?;
 
                 let dest_sender_id = route.sender_id_for_ack(&credentials.id, remote_sender_id);
