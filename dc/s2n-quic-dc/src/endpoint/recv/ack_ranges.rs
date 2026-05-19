@@ -7,6 +7,7 @@
 //! for writing into the shared ACK state.
 
 use bytes::Bytes;
+use core::fmt;
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{
     ack,
@@ -23,12 +24,20 @@ use s2n_quic_core::{
 pub const PACKET_OVERHEAD: usize = 100;
 
 /// Tracks received packet numbers and encodes ACK range bodies for the shared state.
-#[derive(Debug)]
 pub(crate) struct AckRanges {
     packets: ack::Ranges,
     /// When the largest packet number was received — written to the shared state so
     /// the sender can compute ack_delay at assembly time.
     max_received_packet_time: Option<Timestamp>,
+}
+
+impl fmt::Debug for AckRanges {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AckRanges")
+            .field("range_count", &self.packets.interval_len())
+            .field("max_received_packet_time", &self.max_received_packet_time)
+            .finish()
+    }
 }
 
 impl Default for AckRanges {
