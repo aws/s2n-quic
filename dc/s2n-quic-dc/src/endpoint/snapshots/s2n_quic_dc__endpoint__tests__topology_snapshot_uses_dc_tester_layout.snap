@@ -2093,78 +2093,78 @@ channels:
       - q.idle_wheel.depth_dist [summary variant=recv.4 unit=count]: Distribution of observed queue depth values
       - q.idle_wheel.drain [counter variant=recv.4 unit=count]: Total queue dequeue events
       - q.idle_wheel.enq [counter variant=recv.4 unit=count]: Total queue enqueue events
-  - name: q.invalidation.worker.0
+  - name: q.invalidation.recv.0
     function: 
     description: 
     metrics:
-      - q.invalidation.depth [gauge variant=worker.0 unit=count]: Current queue depth
-      - q.invalidation.depth_dist [summary variant=worker.0 unit=count]: Distribution of observed queue depth values
-      - q.invalidation.drain [counter variant=worker.0 unit=count]: Total queue dequeue events
-      - q.invalidation.enq [counter variant=worker.0 unit=count]: Total queue enqueue events
-  - name: q.invalidation.worker.1
+      - q.invalidation.depth [gauge variant=recv.0 unit=count]: Current queue depth
+      - q.invalidation.depth_dist [summary variant=recv.0 unit=count]: Distribution of observed queue depth values
+      - q.invalidation.drain [counter variant=recv.0 unit=count]: Total queue dequeue events
+      - q.invalidation.enq [counter variant=recv.0 unit=count]: Total queue enqueue events
+  - name: q.invalidation.recv.1
     function: 
     description: 
     metrics:
-      - q.invalidation.depth [gauge variant=worker.1 unit=count]: Current queue depth
-      - q.invalidation.depth_dist [summary variant=worker.1 unit=count]: Distribution of observed queue depth values
-      - q.invalidation.drain [counter variant=worker.1 unit=count]: Total queue dequeue events
-      - q.invalidation.enq [counter variant=worker.1 unit=count]: Total queue enqueue events
-  - name: q.invalidation.worker.2
+      - q.invalidation.depth [gauge variant=recv.1 unit=count]: Current queue depth
+      - q.invalidation.depth_dist [summary variant=recv.1 unit=count]: Distribution of observed queue depth values
+      - q.invalidation.drain [counter variant=recv.1 unit=count]: Total queue dequeue events
+      - q.invalidation.enq [counter variant=recv.1 unit=count]: Total queue enqueue events
+  - name: q.invalidation.recv.2
     function: 
     description: 
     metrics:
-      - q.invalidation.depth [gauge variant=worker.2 unit=count]: Current queue depth
-      - q.invalidation.depth_dist [summary variant=worker.2 unit=count]: Distribution of observed queue depth values
-      - q.invalidation.drain [counter variant=worker.2 unit=count]: Total queue dequeue events
-      - q.invalidation.enq [counter variant=worker.2 unit=count]: Total queue enqueue events
-  - name: q.invalidation.worker.3
+      - q.invalidation.depth [gauge variant=recv.2 unit=count]: Current queue depth
+      - q.invalidation.depth_dist [summary variant=recv.2 unit=count]: Distribution of observed queue depth values
+      - q.invalidation.drain [counter variant=recv.2 unit=count]: Total queue dequeue events
+      - q.invalidation.enq [counter variant=recv.2 unit=count]: Total queue enqueue events
+  - name: q.invalidation.recv.3
     function: 
     description: 
     metrics:
-      - q.invalidation.depth [gauge variant=worker.3 unit=count]: Current queue depth
-      - q.invalidation.depth_dist [summary variant=worker.3 unit=count]: Distribution of observed queue depth values
-      - q.invalidation.drain [counter variant=worker.3 unit=count]: Total queue dequeue events
-      - q.invalidation.enq [counter variant=worker.3 unit=count]: Total queue enqueue events
-  - name: q.invalidation.worker.4
+      - q.invalidation.depth [gauge variant=recv.3 unit=count]: Current queue depth
+      - q.invalidation.depth_dist [summary variant=recv.3 unit=count]: Distribution of observed queue depth values
+      - q.invalidation.drain [counter variant=recv.3 unit=count]: Total queue dequeue events
+      - q.invalidation.enq [counter variant=recv.3 unit=count]: Total queue enqueue events
+  - name: q.invalidation.recv.4
     function: 
     description: 
     metrics:
-      - q.invalidation.depth [gauge variant=worker.4 unit=count]: Current queue depth
-      - q.invalidation.depth_dist [summary variant=worker.4 unit=count]: Distribution of observed queue depth values
-      - q.invalidation.drain [counter variant=worker.4 unit=count]: Total queue dequeue events
-      - q.invalidation.enq [counter variant=worker.4 unit=count]: Total queue enqueue events
-  - name: q.invalidation.worker.5
+      - q.invalidation.depth [gauge variant=recv.4 unit=count]: Current queue depth
+      - q.invalidation.depth_dist [summary variant=recv.4 unit=count]: Distribution of observed queue depth values
+      - q.invalidation.drain [counter variant=recv.4 unit=count]: Total queue dequeue events
+      - q.invalidation.enq [counter variant=recv.4 unit=count]: Total queue enqueue events
+  - name: q.invalidation.send.0
     function: 
     description: 
     metrics:
-      - q.invalidation.depth [gauge variant=worker.5 unit=count]: Current queue depth
-      - q.invalidation.depth_dist [summary variant=worker.5 unit=count]: Distribution of observed queue depth values
-      - q.invalidation.drain [counter variant=worker.5 unit=count]: Total queue dequeue events
-      - q.invalidation.enq [counter variant=worker.5 unit=count]: Total queue enqueue events
-  - name: q.invalidation.worker.6
+      - q.invalidation.depth [gauge variant=send.0 unit=count]: Current queue depth
+      - q.invalidation.depth_dist [summary variant=send.0 unit=count]: Distribution of observed queue depth values
+      - q.invalidation.drain [counter variant=send.0 unit=count]: Total queue dequeue events
+      - q.invalidation.enq [counter variant=send.0 unit=count]: Total queue enqueue events
+  - name: q.invalidation.send.1
     function: 
     description: 
     metrics:
-      - q.invalidation.depth [gauge variant=worker.6 unit=count]: Current queue depth
-      - q.invalidation.depth_dist [summary variant=worker.6 unit=count]: Distribution of observed queue depth values
-      - q.invalidation.drain [counter variant=worker.6 unit=count]: Total queue dequeue events
-      - q.invalidation.enq [counter variant=worker.6 unit=count]: Total queue enqueue events
-  - name: q.invalidation.worker.7
+      - q.invalidation.depth [gauge variant=send.1 unit=count]: Current queue depth
+      - q.invalidation.depth_dist [summary variant=send.1 unit=count]: Distribution of observed queue depth values
+      - q.invalidation.drain [counter variant=send.1 unit=count]: Total queue dequeue events
+      - q.invalidation.enq [counter variant=send.1 unit=count]: Total queue enqueue events
+  - name: q.invalidation.send.2
     function: 
     description: 
     metrics:
-      - q.invalidation.depth [gauge variant=worker.7 unit=count]: Current queue depth
-      - q.invalidation.depth_dist [summary variant=worker.7 unit=count]: Distribution of observed queue depth values
-      - q.invalidation.drain [counter variant=worker.7 unit=count]: Total queue dequeue events
-      - q.invalidation.enq [counter variant=worker.7 unit=count]: Total queue enqueue events
-  - name: q.invalidation.worker.8
+      - q.invalidation.depth [gauge variant=send.2 unit=count]: Current queue depth
+      - q.invalidation.depth_dist [summary variant=send.2 unit=count]: Distribution of observed queue depth values
+      - q.invalidation.drain [counter variant=send.2 unit=count]: Total queue dequeue events
+      - q.invalidation.enq [counter variant=send.2 unit=count]: Total queue enqueue events
+  - name: q.invalidation.send.3
     function: 
     description: 
     metrics:
-      - q.invalidation.depth [gauge variant=worker.8 unit=count]: Current queue depth
-      - q.invalidation.depth_dist [summary variant=worker.8 unit=count]: Distribution of observed queue depth values
-      - q.invalidation.drain [counter variant=worker.8 unit=count]: Total queue dequeue events
-      - q.invalidation.enq [counter variant=worker.8 unit=count]: Total queue enqueue events
+      - q.invalidation.depth [gauge variant=send.3 unit=count]: Current queue depth
+      - q.invalidation.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
+      - q.invalidation.drain [counter variant=send.3 unit=count]: Total queue dequeue events
+      - q.invalidation.enq [counter variant=send.3 unit=count]: Total queue enqueue events
   - name: q.resolver.send.0
     function: 
     description: 

@@ -20,7 +20,7 @@ use crate::{
     time::precision,
 };
 use core::task::{self, Poll};
-use s2n_quic_core::{ready, varint::VarInt};
+use s2n_quic_core::{packet::number::PacketNumber, ready, varint::VarInt};
 use std::{cell::RefCell, marker::PhantomData, rc::Rc, sync::Arc};
 
 #[cfg(test)]
@@ -827,6 +827,8 @@ pub(crate) struct AckProcessor<R, Clk, Rand, C> {
     completed_tx: C,
     cancelled_tx: C,
     counters: Arc<super::counters::Send>,
+    /// Storage space for packet number/recovery states
+    deferred: Vec<PacketNumber>,
 }
 
 impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
@@ -854,6 +856,7 @@ impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
             completed_tx,
             cancelled_tx,
             counters,
+            deferred: Vec::with_capacity(8),
         }
     }
 
@@ -933,6 +936,7 @@ where
                         &mut self.cancelled_tx,
                         &self.clock,
                         &mut self.random,
+                        &mut self.deferred,
                     );
                     self.counters.on_rtt(ctx.rtt_estimator.smoothed_rtt());
                     interest

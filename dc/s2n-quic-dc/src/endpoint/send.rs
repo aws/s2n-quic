@@ -29,8 +29,13 @@ use crate::{
 use core::time::Duration;
 use rustc_hash::FxHashMap;
 use s2n_quic_core::{
-    frame::ack::EcnCounts, packet::number::PacketNumberSpace, path::INITIAL_PTO_BACKOFF, random,
-    recovery::RttEstimator, time::Timestamp, varint::VarInt,
+    frame::ack::EcnCounts,
+    packet::number::{PacketNumber, PacketNumberSpace},
+    path::INITIAL_PTO_BACKOFF,
+    random,
+    recovery::RttEstimator,
+    time::Timestamp,
+    varint::VarInt,
 };
 use s2n_quic_platform::features::Gso;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
@@ -627,6 +632,7 @@ impl Context {
         cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
         clock: &Clk,
         random: &mut Rand,
+        deferred: &mut Vec<PacketNumber>,
     ) -> WheelInterest
     where
         Clk: s2n_quic_core::time::Clock + precision::Clock + ?Sized,
@@ -644,7 +650,7 @@ impl Context {
                 s2n_quic_core::frame::FrameMut::Ack(ack_frame) => {
                     super::ack::process_ack(
                         &ack_frame, ack_delay, self, counters, completed, lost, cancelled, clock,
-                        random,
+                        random, deferred,
                     );
                 }
                 s2n_quic_core::frame::FrameMut::Padding(_)

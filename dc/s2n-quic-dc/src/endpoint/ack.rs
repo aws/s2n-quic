@@ -17,7 +17,6 @@ use crate::{
     intrusive::Entry,
     socket::channel::UnboundedSender,
 };
-use arrayvec::ArrayVec;
 use core::time::Duration;
 use s2n_quic_core::{
     frame::{
@@ -47,6 +46,7 @@ pub(crate) fn process_ack<Clk, Rand>(
     cancelled: &mut impl UnboundedSender<Entry<Frame>>,
     clock: &Clk,
     random: &mut Rand,
+    deferred: &mut Vec<PacketNumber>,
 ) where
     Clk: s2n_quic_core::time::Clock + ?Sized,
     Rand: random::Generator,
@@ -82,13 +82,7 @@ pub(crate) fn process_ack<Clk, Rand>(
         // Shell entries (probed_to.is_some()) have empty `frames`; the live frames
         // reside at the tail of the probe chain at a higher PN. We defer chain
         // following until after the iterator is dropped (so the borrow on
-        // `context.inflight` is released) and use a small fixed-size ArrayVec
-        // (no heap allocation, no zeroed-memory initialisation) to record which
-        // chain heads to follow.
-        //
-        // The maximum number of shells in a single ACK range is bounded by the PTO
-        // backoff cap (16×, ~4 doublings), so 8 slots is more than sufficient.
-        let mut deferred: ArrayVec<PacketNumber, 8> = ArrayVec::new();
+        // `context.inflight` is released).
 
         for (num, mut packet) in context.inflight.remove_range(range) {
             packets_acked += 1;
@@ -122,7 +116,7 @@ pub(crate) fn process_ack<Clk, Rand>(
                 // If we somehow exceed capacity, the tail frames will remain in
                 // the inflight map and be completed when the probe entry itself
                 // is ACKed or swept by loss detection.
-                let _ = deferred.try_push(probe_pn);
+                deferred.push(probe_pn);
             } else {
                 for mut entry in packet.frames {
                     entry.status = TransmissionStatus::Acknowledged;
@@ -133,8 +127,8 @@ pub(crate) fn process_ack<Clk, Rand>(
         // remove_range iterator is dropped here; borrow on `context.inflight` released.
 
         // Phase 2: follow deferred probe chains and complete the tail frames.
-        for probe_pn in &deferred {
-            let removal = context.inflight.remove_chain(*probe_pn);
+        for probe_pn in deferred.drain(..) {
+            let removal = context.inflight.remove_chain(probe_pn);
             if removal.discarded_bytes > 0 {
                 context.cca.on_packet_discarded(removal.discarded_bytes);
             }

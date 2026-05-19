@@ -497,7 +497,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             .with_description("PTO wheel updates idle scheduling")
             .with_function("endpoint::tasks::send_worker");
 
-        let wheel: crate::time::wheel::Wheel<_, _, _> =
+        let wheel: crate::time::wheel::Wheel<_, _, _, 128> =
             crate::time::wheel::Wheel::new(pto_wheel_rx.into_list_receiver(), clock.timer());
         let rx = FlattenList::new(wheel);
         let rx = crate::counter::GaugedReceiver::new(rx, pto_wheel_receiver);

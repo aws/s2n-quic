@@ -135,6 +135,7 @@ fn stale_tx_wheel_after_ack_clears_probe() {
         let mut rng = Rng::new();
         let mut payload = encode_ack_payload(0);
 
+        let mut deferred = Vec::new();
         let _ = ctx_rc.borrow_mut().process_ack_payload(
             &mut payload,
             Duration::ZERO,
@@ -144,6 +145,7 @@ fn stale_tx_wheel_after_ack_clears_probe() {
             &mut cancelled,
             &clock,
             &mut rng,
+            &mut deferred,
         );
     });
 }

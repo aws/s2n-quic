@@ -67,7 +67,7 @@ impl Pool {
                         let current = hb.counter.load(Ordering::Relaxed);
                         if current == prev[worker_id] && current > 0 {
                             let task_idx = hb.current_task.load(Ordering::Relaxed);
-                            eprintln!(
+                            tracing::error!(
                                 "[watchdog] worker {worker_id} stuck in task {task_idx} \
                                  (heartbeat={current}, no progress in {timeout:?})"
                             );
