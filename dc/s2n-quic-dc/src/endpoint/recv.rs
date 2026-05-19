@@ -9,7 +9,7 @@ use crate::{
 };
 use rustc_hash::FxHashMap;
 use s2n_quic_core::{frame::ack::EcnCounts, varint::VarInt};
-use std::{cell::RefCell, collections::hash_map, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::hash_map, fmt, rc::Rc, sync::Arc};
 
 pub(crate) mod ack_ranges;
 mod dedup;
@@ -195,14 +195,13 @@ pub(crate) struct Context {
     // openers (e.g., HashMap<VarInt, Opener>) to handle in-flight packets during rotation.
     pub opener: crate::crypto::awslc::open::Application,
     /// The key_id this opener corresponds to
-    #[expect(dead_code)] // TODO implement key rotation
     pub current_key_id: VarInt,
     /// Sliding window for packet number deduplication.
     pub dedup_filter: dedup::StreamFilter,
     /// Lightweight ACK range tracker for the direct ACK path.
     pub ack_ranges: ack_ranges::AckRanges,
     /// Which local sender_id outgoing ACKs for this peer route through.
-    pub dest_sender_id: VarInt,
+    pub local_sender_id: VarInt,
     /// Accumulated ECN counts for received packets, reported back to the sender
     /// in each ACK frame so the sender can validate ECN support and detect congestion.
     pub ecn_counts: EcnCounts,
@@ -215,6 +214,20 @@ pub(crate) struct Context {
     pub flows: flow::Tracker,
     /// Intrusive links for recv-worker pending-ACK burst queue membership.
     pub ack_burst: intrusive::Links,
+}
+
+impl fmt::Debug for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Context")
+            .field("path_secret_id", self.path_entry.id())
+            .field("current_key_id", &self.current_key_id)
+            .field("remote_sender_id", &self.remote_sender_id)
+            .field("local_sender_id", &self.local_sender_id)
+            .field("ack_state", &self.ack_state)
+            .field("ack_ranges", &self.ack_ranges)
+            .field("dedup_filter", &self.dedup_filter)
+            .finish()
+    }
 }
 
 impl Context {
@@ -266,7 +279,7 @@ impl Context {
     pub fn new(
         path_entry: Arc<PathSecretEntry>,
         remote_sender_id: VarInt,
-        dest_sender_id: VarInt,
+        local_sender_id: VarInt,
         opener: crate::crypto::awslc::open::Application,
         key_id: VarInt,
         now: crate::time::precision::Timestamp,
@@ -284,7 +297,7 @@ impl Context {
             current_key_id: key_id,
             dedup_filter: Default::default(),
             ack_ranges: Default::default(),
-            dest_sender_id,
+            local_sender_id,
             ecn_counts: Default::default(),
             idle_wheel,
             created_at: now,
@@ -345,7 +358,7 @@ impl Context {
             largest_recv_time: largest_recv_time.into(),
             has_ecn,
             path_secret_entry: self.path_entry.clone(),
-            local_sender_id: self.dest_sender_id,
+            local_sender_id: self.local_sender_id,
             remote_sender_id: self.remote_sender_id,
             recv_worker_id,
         })
@@ -423,6 +436,14 @@ impl Cache {
                 let ctx = entry.get().clone();
                 {
                     let ctx_ref = ctx.borrow();
+                    if ctx_ref.key() != key || credentials.key_id != ctx_ref.current_key_id {
+                        tracing::warn!(
+                            ?credentials,
+                            ?remote_sender_id,
+                            context = ?*ctx_ref,
+                            "recv cache key does not match cached context key"
+                        );
+                    }
                     debug_assert_eq!(
                         ctx_ref.key(),
                         key,

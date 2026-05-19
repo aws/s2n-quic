@@ -166,7 +166,7 @@ fn completion_from_idle_state_is_ignored() {
             largest_recv_time: crate::time::precision::Clock::now(&Clock::default()),
             has_ecn: false,
             path_secret_entry: ctx.borrow().path_entry.clone(),
-            local_sender_id: ctx.borrow().dest_sender_id,
+            local_sender_id: ctx.borrow().local_sender_id,
             remote_sender_id: ctx.borrow().remote_sender_id,
             recv_worker_id: 0,
         };

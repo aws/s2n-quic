@@ -23,6 +23,7 @@ use s2n_quic_core::{
 pub const PACKET_OVERHEAD: usize = 100;
 
 /// Tracks received packet numbers and encodes ACK range bodies for the shared state.
+#[derive(Debug)]
 pub(crate) struct AckRanges {
     packets: ack::Ranges,
     /// When the largest packet number was received — written to the shared state so

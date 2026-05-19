@@ -225,7 +225,7 @@ fn ack_completion_after_recv_invalidation_does_not_resurrect_context() {
                 largest_recv_time: precision::Clock::now(&Clock::default()),
                 has_ecn: false,
                 path_secret_entry: c.path_entry.clone(),
-                local_sender_id: c.dest_sender_id,
+                local_sender_id: c.local_sender_id,
                 remote_sender_id: c.remote_sender_id,
                 recv_worker_id: 0,
             }

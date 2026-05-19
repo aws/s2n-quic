@@ -135,6 +135,7 @@ where
                 tracing::warn!(
                     error = %error,
                     ?packet,
+                    ?peer,
                     "failed to decrypt packet"
                 );
                 Error::Decryption {
