@@ -617,6 +617,7 @@ expression: logs
 0:00:02.000000000 [server] TRACE c#q.resolver_to_idle_wheel.receiver[send.0.task.wheel_drain]=1
 0:00:02.000000000 [server] TRACE c#q.resolver_to_idle_wheel.drain[send.0]=1
 0:00:02.000000000 [server] TRACE g#q.resolver_to_idle_wheel.depth[send.0]=0
+0:00:02.000000000 [server] DEBUG invalidating send context id=0xb6d78aa216b2b3ee46c3e60f161f7945 sender_idx=0
 0:00:02.000000000 [server] TRACE c#idle.send.expired=1
 0:00:02.000000000 [server] TRACE m#task.idle_wheel.drained[send.0]=0
 0:00:03.000000000 [server]  INFO [METRICS:server] idle.recv.expired=1,idle.send.expired=1,q.idle_wheel.depth=-1 recv.0,q.idle_wheel.drain=1 recv.0,q.idle_wheel.receiver=1 recv.0.task.wheel_drain,q.resolver_to_idle_wheel.drain=1 send.0,q.resolver_to_idle_wheel.receiver=1 send.0.task.wheel_drain,task.idle_wheel.drained=0*1 send.0,task.recv_idle_wheel.drained=0*1 recv.0

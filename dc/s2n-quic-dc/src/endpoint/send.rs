@@ -1079,6 +1079,11 @@ impl Default for Pto {
 }
 
 impl Pto {
+    /// Maximum PTO backoff multiplier. At the default base period (~170ms), 32× gives
+    /// ~6s between probes — aggressive enough for loss recovery while avoiding
+    /// excessive probing of unresponsive peers before the idle wheel fires.
+    const MAX_BACKOFF: u32 = 32;
+
     pub fn on_packet_sent(&mut self, now: precision::Timestamp) {
         self.last_sent_time = Some(now);
         // Reset arm_base so the next update_target re-anchors to this send time.
@@ -1117,8 +1122,8 @@ impl Pto {
             return false;
         }
 
-        // Time to probe: double backoff for next round (capped at 16×).
-        self.backoff = self.backoff.saturating_mul(2).min(16);
+        // Time to probe: double backoff for next round.
+        self.backoff = self.backoff.saturating_mul(2).min(Self::MAX_BACKOFF);
         self.firings_remaining = self.backoff - 1;
         true
     }
@@ -1208,10 +1213,6 @@ impl Cache {
 
     pub fn get(&self, id: &credentials::Id) -> Option<Rc<RefCell<Context>>> {
         self.contexts.get(id).cloned()
-    }
-
-    pub fn remove(&mut self, id: &credentials::Id) {
-        self.contexts.remove(id);
     }
 
     pub fn invalidate(

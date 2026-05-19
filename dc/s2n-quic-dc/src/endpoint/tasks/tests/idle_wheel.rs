@@ -7,9 +7,13 @@
 //! On expiry the callback re-checks PathSecretEntry.last_activity — if still idle, the
 //! context is evicted from the cache; if activity occurred, it is rescheduled.
 
-use super::helpers::{test_entry, RecvContextBuilder};
+use super::helpers::{test_entry, test_frame, RecvContextBuilder, TestReceiverExt, WakeNowSender};
 use crate::{
-    endpoint::{recv, send, tasks},
+    endpoint::{
+        frame::{self, Frame},
+        msg, recv, send, tasks,
+    },
+    intrusive::Entry,
     socket::channel::{intrusive::unsync, UnboundedSender as _},
     testing::{ext::*, sim},
     time::{bach::Clock, precision},
@@ -21,6 +25,7 @@ use std::{cell::RefCell, rc::Rc};
 fn setup_send() -> (
     Vec<Rc<RefCell<send::Cache>>>,
     unsync::Sender<send::IdleWheelAdapter>,
+    unsync::Receiver<crate::intrusive::EntryAdapter<Frame>>,
     Clock,
     crate::counter::Registry,
 ) {
@@ -30,6 +35,8 @@ fn setup_send() -> (
     let sender_idx_to_local = vec![0usize];
 
     let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter::<send::IdleWheelAdapter>();
+    let (completed_tx, completed_rx) = unsync::new::<Frame>();
+    let queue_dispatcher = msg::queue::Allocator::new().dispatcher();
     let q_gauge = registry.register_queue_gauge("test.idle_wheel");
 
     tasks::send_idle_wheel_drain(
@@ -39,6 +46,9 @@ fn setup_send() -> (
         q_gauge,
         send_caches.clone(),
         sender_idx_to_local,
+        completed_tx,
+        queue_dispatcher,
+        WakeNowSender,
         registry.register("idle.send.expired"),
         registry.register("idle.send.rescheduled"),
         registry.register_nominal_timer("idle.send.lifetime", "send.0"),
@@ -47,13 +57,13 @@ fn setup_send() -> (
     )
     .spawn();
 
-    (send_caches, idle_wheel_tx, clock, registry)
+    (send_caches, idle_wheel_tx, completed_rx, clock, registry)
 }
 
 #[test]
 fn send_idle_wheel_expires_inactive_context() {
     sim(|| {
-        let (send_caches, mut idle_wheel_tx, clock, _registry) = setup_send();
+        let (send_caches, mut idle_wheel_tx, mut completed_rx, clock, _registry) = setup_send();
 
         let pse = test_entry();
         // Simulate initial activity so is_idle_expired can fire
@@ -63,6 +73,9 @@ fn send_idle_wheel_expires_inactive_context() {
             .borrow_mut()
             .get_or_insert(&pse, &clock)
             .unwrap();
+
+        // Push a frame so invalidation has something to drain
+        ctx.borrow_mut().queues[1].push_back(test_frame(&pse));
 
         // Schedule into the idle wheel
         {
@@ -81,6 +94,16 @@ fn send_idle_wheel_expires_inactive_context() {
                 0,
                 "context should be evicted after idle timeout"
             );
+
+            // The drained frame should arrive on completed_rx marked as Failed(PeerDead)
+            let frame: Entry<Frame> = TestReceiverExt::recv(&mut completed_rx)
+                .await
+                .expect("should receive the drained frame on completed_rx");
+            assert_eq!(
+                frame.status,
+                frame::TransmissionStatus::Failed(frame::FailureReason::PeerDead),
+                "frame should be marked Failed(PeerDead)"
+            );
         }
         .primary()
         .spawn();
@@ -90,7 +113,7 @@ fn send_idle_wheel_expires_inactive_context() {
 #[test]
 fn send_idle_wheel_reschedules_active_context() {
     sim(|| {
-        let (send_caches, mut idle_wheel_tx, clock, _registry) = setup_send();
+        let (send_caches, mut idle_wheel_tx, _completed_rx, clock, _registry) = setup_send();
 
         let pse = test_entry();
         let ctx = send_caches[0]

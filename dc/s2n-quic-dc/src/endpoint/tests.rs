@@ -929,6 +929,290 @@ fn unregistered_acceptor_id_does_not_reach_registered_acceptor() {
     });
 }
 
+/// Verifies that a stream read eventually fails when all packets are dropped.
+///
+/// After the initial handshake succeeds (client sends "ping", server receives it
+/// and sends "pong"), 100% packet loss is enabled. The client's read should
+/// eventually surface a timeout/dead-peer error rather than hanging forever.
+///
+/// This exercises the idle-timeout → PeerDead → completion path: when the PTO
+/// can never elicit an ACK, the send context must eventually be declared dead
+/// and the outstanding frames failed.
+#[test]
+fn total_packet_loss_surfaces_read_timeout() {
+    // Snapshot disabled: the PTO wheel fires at a fixed base rate with a countdown
+    // for backoff, producing thousands of TRACE lines (~23MB) that change with any
+    // PTO tuning. The test's value is in the assertion, not the log trace.
+    let _guard = crate::testing::without_snapshots();
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+
+        // After the first successful exchange, drop ALL packets.
+        // We use a shared flag to enable the blackhole after setup.
+        let blackhole = Arc::new(AtomicUsize::new(0));
+        let blackhole_monitor = blackhole.clone();
+        {
+            bach::net::monitor::on_packet_sent(move |_packet| {
+                if blackhole_monitor.load(Ordering::Relaxed) > 0 {
+                    return bach::net::monitor::Command::Drop;
+                }
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        // ── Server ────────────────────────────────────────────────────────
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let stream = stream.validate().await.expect("server validate");
+                    let (mut reader, mut writer) = stream.into_split();
+
+                    // Read "ping" from the client.
+                    let mut buf = BytesMut::with_capacity(8);
+                    loop {
+                        let n = reader.read_into(&mut buf).await.expect("server read");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+                    assert_eq!(&buf[..], b"ping");
+
+                    // Send "pong" back — this will be the data the client is waiting for.
+                    let mut pong = Bytes::from_static(b"pong");
+                    writer
+                        .write_all_from_fin(&mut pong)
+                        .await
+                        .expect("server write");
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        // ── Client ────────────────────────────────────────────────────────
+        {
+            let blackhole = blackhole.clone();
+            async move {
+                let mut client = Client::new();
+
+                // First stream: normal exchange to confirm connectivity works.
+                let stream = client
+                    .connect("server:0", acceptor_id)
+                    .await
+                    .expect("connect failed");
+                let (mut reader, mut writer) = stream.into_split();
+
+                let mut ping = Bytes::from_static(b"ping");
+                writer
+                    .write_all_from_fin(&mut ping)
+                    .await
+                    .expect("client write");
+
+                let mut buf = BytesMut::with_capacity(8);
+                loop {
+                    let n = reader.read_into(&mut buf).await.expect("client read");
+                    if n == 0 {
+                        break;
+                    }
+                }
+                assert_eq!(&buf[..], b"pong");
+
+                tracing::info!("baseline exchange succeeded; enabling blackhole");
+
+                // Enable 100% packet loss.
+                blackhole.store(1, Ordering::Relaxed);
+
+                // Second stream: the server will never receive this, so the
+                // client write may or may not complete (it can buffer locally),
+                // but the read must eventually fail.
+                let stream2 = client
+                    .connect("server:0", acceptor_id)
+                    .await
+                    .expect("connect 2 failed");
+                let (mut reader2, mut writer2) = stream2.into_split();
+
+                let mut data = Bytes::from_static(b"hello");
+                // Write succeeds (buffered locally)
+                writer2.write_all_from(&mut data).await.unwrap();
+
+                // The read should eventually fail once the peer is declared dead.
+                // The idle timeout is 30s in test params; allow generous sim time.
+                let result = timeout(120.s(), reader2.read_into(&mut BytesMut::new())).await;
+
+                match result {
+                    Err(_elapsed) => {
+                        panic!(
+                            "read did not fail within 120s simulated time — \
+                             PTO is stuck without surfacing idle timeout"
+                        );
+                    }
+                    Ok(Ok(0)) => {
+                        panic!("read returned EOF — should have returned an error");
+                    }
+                    Ok(Ok(_n)) => {
+                        panic!("read returned data — blackhole should prevent delivery");
+                    }
+                    Ok(Err(e)) => {
+                        tracing::info!(?e, "read failed as expected");
+                        assert!(
+                            e.kind() == io::ErrorKind::TimedOut,
+                            "expected TimedOut error kind, got: {e:?}"
+                        );
+                    }
+                }
+
+                tracing::info!("total_packet_loss_surfaces_read_timeout passed");
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        }
+    });
+}
+
+/// When all packets are lost, a writer blocked on flow-control credits must eventually
+/// surface a timeout error rather than hanging forever.
+///
+/// Unlike `total_packet_loss_surfaces_read_timeout` which tests the reader path (small
+/// payload fits in early data), this test fills the initial credit window so the writer
+/// actually blocks waiting for MAX_DATA that never arrives.
+#[test]
+fn total_packet_loss_surfaces_write_timeout() {
+    // Snapshot disabled: the PTO wheel fires at a fixed base rate with a countdown
+    // for backoff, producing thousands of TRACE lines (~23MB) that change with any
+    // PTO tuning. The test's value is in the assertion, not the log trace.
+    let _guard = crate::testing::without_snapshots();
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+
+        let blackhole = Arc::new(AtomicUsize::new(0));
+        let blackhole_monitor = blackhole.clone();
+        {
+            bach::net::monitor::on_packet_sent(move |_packet| {
+                if blackhole_monitor.load(Ordering::Relaxed) > 0 {
+                    return bach::net::monitor::Command::Drop;
+                }
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        // ── Server ────────────────────────────────────────────────────────
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let stream = stream.validate().await.expect("server validate");
+                    let (mut reader, mut writer) = stream.into_split();
+
+                    let mut buf = BytesMut::with_capacity(8);
+                    loop {
+                        let n = reader.read_into(&mut buf).await.expect("server read");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+
+                    let mut pong = Bytes::from_static(b"pong");
+                    writer
+                        .write_all_from_fin(&mut pong)
+                        .await
+                        .expect("server write");
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        // ── Client ────────────────────────────────────────────────────────
+        {
+            let blackhole = blackhole.clone();
+            async move {
+                let mut client = Client::new();
+
+                // Baseline exchange to confirm connectivity.
+                let stream = client
+                    .connect("server:0", acceptor_id)
+                    .await
+                    .expect("connect failed");
+                let (mut reader, mut writer) = stream.into_split();
+
+                let mut ping = Bytes::from_static(b"ping");
+                writer
+                    .write_all_from_fin(&mut ping)
+                    .await
+                    .expect("client write");
+
+                let mut buf = BytesMut::with_capacity(8);
+                loop {
+                    let n = reader.read_into(&mut buf).await.expect("client read");
+                    if n == 0 {
+                        break;
+                    }
+                }
+                assert_eq!(&buf[..], b"pong");
+
+                tracing::info!("baseline exchange succeeded; enabling blackhole");
+                blackhole.store(1, Ordering::Relaxed);
+
+                // Second stream: write a payload larger than the initial credit window
+                // (1 MiB) so the writer blocks waiting for MAX_DATA.
+                let stream2 = client
+                    .connect("server:0", acceptor_id)
+                    .await
+                    .expect("connect 2 failed");
+                let (_reader2, mut writer2) = stream2.into_split();
+
+                // 2 MiB of generated data — exceeds the 1 MiB initial credit window
+                // without allocating a massive buffer upfront.
+                let mut data = s2n_quic_core::stream::testing::Data::new(2 * 1024 * 1024);
+                let result = timeout(120.s(), writer2.write_all_from(&mut data)).await;
+
+                match result {
+                    Err(_elapsed) => {
+                        panic!(
+                            "write did not fail within 120s simulated time — \
+                             idle timeout should have surfaced an error"
+                        );
+                    }
+                    Ok(Ok(_)) => {
+                        panic!("write_all_from completed — should have blocked on credits");
+                    }
+                    Ok(Err(e)) => {
+                        tracing::info!(?e, "write failed as expected");
+                        assert_eq!(
+                            e.kind(),
+                            io::ErrorKind::TimedOut,
+                            "expected TimedOut error kind, got: {e:?}"
+                        );
+                    }
+                }
+
+                tracing::info!("total_packet_loss_surfaces_write_timeout passed");
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        }
+    });
+}
+
 /// Fuzz test: one client sends concurrent requests to two servers under random
 /// packet loss. All streams must recover within a bounded time regardless of
 /// the loss pattern.

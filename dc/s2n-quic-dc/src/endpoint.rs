@@ -508,6 +508,7 @@ where
             frame_tx: frame_tx.clone(),
             ack_completions_tx: ack_completions_tx.clone(),
             waker_sink,
+            queue_dispatcher: queue_dispatcher.clone(),
             invalidation_rx: invalidation_send_rxs.next().unwrap(),
         });
     }
@@ -644,6 +645,7 @@ struct SendWorkerParts {
         >,
     >,
     waker_sink: waker::Sink,
+    queue_dispatcher: msg::queue::Dispatcher,
     invalidation_rx: sync_queue::Receiver<tasks::Invalidation>,
 }
 
@@ -832,6 +834,7 @@ where
                     sw.frame_tx,
                     sw.ack_completions_tx,
                     sw.waker_sink,
+                    sw.queue_dispatcher,
                     budgets,
                     counter_registry.clone(),
                 );

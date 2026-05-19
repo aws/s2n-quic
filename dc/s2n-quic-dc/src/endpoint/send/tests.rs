@@ -215,21 +215,29 @@ fn pto_third_timeout_fires_probe_again() {
 }
 
 #[test]
-fn pto_backoff_caps_at_sixteen() {
+fn pto_backoff_caps_at_max() {
     let mut pto = Pto::default();
     // Drive backoff to max by firing probes many times.
     for _ in 0..200 {
         pto.on_timeout();
-        if pto.backoff == 16 {
+        if pto.backoff == Pto::MAX_BACKOFF {
             break;
         }
     }
-    assert_eq!(pto.backoff, 16, "backoff should cap at 16");
+    assert_eq!(
+        pto.backoff,
+        Pto::MAX_BACKOFF,
+        "backoff should reach MAX_BACKOFF"
+    );
 
-    // Confirm it stays at 16
+    // Confirm it stays at the cap
     for _ in 0..20 {
         if pto.on_timeout() {
-            assert_eq!(pto.backoff, 16, "backoff should remain capped at 16");
+            assert_eq!(
+                pto.backoff,
+                Pto::MAX_BACKOFF,
+                "backoff should remain at MAX_BACKOFF"
+            );
         }
     }
 }

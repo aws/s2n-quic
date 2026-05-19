@@ -40,6 +40,9 @@ pub const CREDENTIAL_MISMATCH: VarInt = VarInt::from_u32(11);
 /// Flow validation failed during the retry handshake
 pub const FLOW_VALIDATION_FAILED: VarInt = VarInt::from_u32(12);
 
+/// The peer was declared dead after its idle timeout elapsed without activity
+pub const IDLE_TIMEOUT: VarInt = VarInt::from_u32(13);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     StreamIdError,
@@ -54,10 +57,18 @@ pub enum Error {
     StreamIdMismatch,
     CredentialMismatch,
     FlowValidationFailed,
+    IdleTimeout,
     Unknown(VarInt),
 }
 
 impl Error {
+    pub fn io_error_kind(self) -> std::io::ErrorKind {
+        match self {
+            Self::IdleTimeout => std::io::ErrorKind::TimedOut,
+            _ => std::io::ErrorKind::ConnectionReset,
+        }
+    }
+
     pub fn as_varint(self) -> VarInt {
         match self {
             Self::StreamIdError => STREAM_ID_ERROR,
@@ -72,6 +83,7 @@ impl Error {
             Self::StreamIdMismatch => STREAM_ID_MISMATCH,
             Self::CredentialMismatch => CREDENTIAL_MISMATCH,
             Self::FlowValidationFailed => FLOW_VALIDATION_FAILED,
+            Self::IdleTimeout => IDLE_TIMEOUT,
             Self::Unknown(code) => code,
         }
     }
@@ -92,6 +104,7 @@ impl From<VarInt> for Error {
             STREAM_ID_MISMATCH => Self::StreamIdMismatch,
             CREDENTIAL_MISMATCH => Self::CredentialMismatch,
             FLOW_VALIDATION_FAILED => Self::FlowValidationFailed,
+            IDLE_TIMEOUT => Self::IdleTimeout,
             _ => Self::Unknown(code),
         }
     }
@@ -152,6 +165,12 @@ impl fmt::Display for Error {
                 write!(
                     f,
                     "FLOW_VALIDATION_FAILED: flow validation failed during retry handshake"
+                )
+            }
+            Self::IdleTimeout => {
+                write!(
+                    f,
+                    "IDLE_TIMEOUT: peer declared dead after idle timeout elapsed"
                 )
             }
             Self::Unknown(code) => {

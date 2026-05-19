@@ -56,6 +56,22 @@ pub fn test_waker() -> (Waker, WakeCount) {
     (waker, handle)
 }
 
+/// Test sender that immediately wakes any `AutoWake` values it receives.
+///
+/// In production, wakers are offloaded to a drain task to avoid waking the application
+/// inside busy-poll loops. In tests we just fire them inline.
+pub struct WakeNowSender;
+
+impl crate::socket::channel::UnboundedSender<crate::flow::queue::AutoWake> for WakeNowSender {
+    fn send(
+        &mut self,
+        _value: crate::flow::queue::AutoWake,
+    ) -> Result<(), crate::flow::queue::AutoWake> {
+        // AutoWake fires on drop — just let it drop here
+        Ok(())
+    }
+}
+
 // ── Test Channels ────────────────────────────────────────────────────────
 
 /// A pre-loaded receiver that yields items from a VecDeque, returning None when empty.

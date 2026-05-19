@@ -4448,6 +4448,26 @@ bindings:
     channel: ch.router_to_batcher.p4
     function: endpoint::tasks::frame_dispatch
     description: Frame dispatch drains per-lane queues
+  - task: task.idle_wheel
+    direction: sends
+    channel: ch.ack_to_completion.send.0
+    function: endpoint::tasks::send_worker
+    description: Idle wheel emits PeerDead frames as completions
+  - task: task.idle_wheel
+    direction: sends
+    channel: ch.ack_to_completion.send.1
+    function: endpoint::tasks::send_worker
+    description: Idle wheel emits PeerDead frames as completions
+  - task: task.idle_wheel
+    direction: sends
+    channel: ch.ack_to_completion.send.2
+    function: endpoint::tasks::send_worker
+    description: Idle wheel emits PeerDead frames as completions
+  - task: task.idle_wheel
+    direction: sends
+    channel: ch.ack_to_completion.send.3
+    function: endpoint::tasks::send_worker
+    description: Idle wheel emits PeerDead frames as completions
   - task: task.invalidation
     direction: sends
     channel: ch.ack_to_completion.send.0

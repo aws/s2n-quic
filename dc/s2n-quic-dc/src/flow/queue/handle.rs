@@ -58,6 +58,15 @@ macro_rules! impl_recv {
             }
 
             #[inline]
+            pub fn try_swap(&self) -> Result<intrusive::Queue<$type_param>, Closed> {
+                unsafe {
+                    let queue = self.descriptor.$field().try_swap()?;
+                    probes::on_recv(self.descriptor.queue_id(), $half, queue.len());
+                    Ok(queue)
+                }
+            }
+
+            #[inline]
             pub async fn recv(&self) -> Result<intrusive::Entry<$type_param>, Closed> {
                 core::future::poll_fn(|cx| self.poll_recv(cx)).await
             }

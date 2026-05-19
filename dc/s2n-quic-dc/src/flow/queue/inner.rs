@@ -200,6 +200,18 @@ impl<T> Queue<T> {
     }
 
     #[inline]
+    pub fn try_swap(&self) -> Result<intrusive::Queue<T>, Closed> {
+        let mut inner = self.lock()?;
+
+        if inner.queue.is_empty() {
+            ensure!(inner.flags.contains(Flags::IS_OPEN), Err(Closed));
+            return Ok(Default::default());
+        }
+
+        Ok(core::mem::take(&mut inner.queue))
+    }
+
+    #[inline]
     pub fn poll_pop(&self, cx: &mut Context) -> Poll<Result<intrusive::Entry<T>, Closed>> {
         let mut inner = self.lock()?;
         if let Some(entry) = inner.queue.pop_front() {

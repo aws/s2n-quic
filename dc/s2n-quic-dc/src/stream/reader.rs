@@ -160,15 +160,17 @@ use super::coop::{self, Coop, HasCoop};
 #[must_use = "ReadToEnd indicates whether EOF was reached or another call is needed with more buffer capacity"]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReadToEnd {
-    Complete,
-    BufferFull,
+    /// EOF was reached. The `usize` is the number of bytes written into the buffer during this call.
+    Complete(usize),
+    /// The buffer ran out of capacity before EOF. The `usize` is the number of bytes written into the buffer during this call.
+    BufferFull(usize),
 }
 
 impl ReadToEnd {
     /// Returns `true` when [`Reader::read_to_end`] reached EOF.
     #[inline]
     pub fn is_complete(self) -> bool {
-        matches!(self, Self::Complete)
+        matches!(self, Self::Complete(_))
     }
 }
 
@@ -460,13 +462,16 @@ impl Reader {
     where
         S: buffer::writer::Storage,
     {
+        let mut len = 0;
         loop {
-            if !buf.track_write().has_remaining_capacity() {
-                return Ok(ReadToEnd::BufferFull);
+            if !buf.has_remaining_capacity() {
+                return Ok(ReadToEnd::BufferFull(len));
             }
 
-            if self.read_into(buf).await? == 0 {
-                return Ok(ReadToEnd::Complete);
+            let read_len = self.read_into(buf).await?;
+            len += read_len;
+            if read_len == 0 {
+                return Ok(ReadToEnd::Complete(len));
             }
         }
     }
@@ -491,6 +496,36 @@ impl HasCoop for Inner {
 }
 
 impl Inner {
+    /// Checks the stream queue for a pending reset that was never polled.
+    ///
+    /// If the peer was declared dead (idle timeout), the queue contains a Reset
+    /// we never consumed. Transitioning to reset here prevents the drop path
+    /// from sending STOP_SENDING to a dead peer.
+    fn drain_pending_reset(&mut self) {
+        if self.status.is_reset() {
+            return;
+        }
+        let Ok(queue) = self.stream_rx.try_swap() else {
+            return;
+        };
+        for entry in queue {
+            if matches!(&*entry, msg::Stream::Reset { .. }) {
+                self.status.on_reset().ok();
+                return;
+            }
+        }
+    }
+
+    fn reset_io_error(&self) -> io::Error {
+        self.reset_error_code.map_or_else(
+            || io::Error::from(io::ErrorKind::ConnectionReset),
+            |code| {
+                let err: Error = code.into();
+                io::Error::new(err.io_error_kind(), err)
+            },
+        )
+    }
+
     #[inline]
     fn ready_eof(&mut self) -> Poll<io::Result<usize>> {
         self.on_eof_returned();
@@ -563,11 +598,7 @@ impl Inner {
         // call returns the sticky error.
         if self.status.is_reset() && self.reassembler.is_empty() {
             self.reassembler.reset(); // free cursor metadata
-            let error = self.reset_error_code.map_or_else(
-                || io::Error::from(io::ErrorKind::ConnectionReset),
-                |code| io::Error::new(io::ErrorKind::ConnectionReset, Error::from(code)),
-            );
-            return Poll::Ready(Err(error));
+            return Poll::Ready(Err(self.reset_io_error()));
         }
 
         let mut tracker = buf.track_write();
@@ -578,11 +609,7 @@ impl Inner {
         // (BrokenPipe or ConnectionReset) while the reassembler still has data,
         // delivering all buffered bytes to the application first.
         let deferred_err = if self.status.is_reset() {
-            let e = self.reset_error_code.map_or_else(
-                || io::Error::from(io::ErrorKind::ConnectionReset),
-                |code| io::Error::new(io::ErrorKind::ConnectionReset, Error::from(code)),
-            );
-            Some(e)
+            Some(self.reset_io_error())
         } else {
             let stream_result = self.poll_stream_rx(cx, &mut tracker);
             match stream_result {
@@ -763,7 +790,7 @@ impl Inner {
                             }
                             let reset_error: Error = error_code.into();
                             return Poll::Ready(Err(io::Error::new(
-                                io::ErrorKind::ConnectionReset,
+                                reset_error.io_error_kind(),
                                 reset_error,
                             )));
                         }
@@ -999,6 +1026,8 @@ impl Drop for Reader {
             is_reading_complete = self.0.reassembler.is_reading_complete(),
             "Reader dropping"
         );
+
+        self.0.drain_pending_reset();
 
         if std::thread::panicking() {
             let error_code = error::ABNORMAL_TERMINATION;

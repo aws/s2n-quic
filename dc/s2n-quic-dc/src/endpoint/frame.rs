@@ -344,6 +344,13 @@ pub enum FailureReason {
     Cancelled,
 }
 
+/// Identifies a local flow queue that needs notification when a send context is invalidated.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LocalQueueTarget {
+    pub source_queue_id: VarInt,
+    pub stream_id: VarInt,
+}
+
 /// Routing metadata for a Frame.
 ///
 /// Describes what kind of frame this is and the per-frame routing fields. The
@@ -520,6 +527,57 @@ impl Header {
             | Self::FlowInitFin { .. }
             | Self::FlowInitValidate { .. }
             | Self::FlowValidateRequest { .. } => false,
+        }
+    }
+
+    /// Returns the local queue target for this frame, if applicable.
+    ///
+    /// Used to identify which flow queues need to be reset when a send context is
+    /// invalidated (e.g., peer declared dead). The returned `source_queue_id` is the
+    /// local queue that the writer reads control messages from.
+    #[inline]
+    pub fn local_queue_target(&self) -> Option<LocalQueueTarget> {
+        match self {
+            Self::FlowData {
+                queue_pair,
+                stream_id,
+                ..
+            }
+            | Self::FlowControl {
+                queue_pair,
+                stream_id,
+                ..
+            }
+            | Self::FlowMaxData {
+                queue_pair,
+                stream_id,
+                ..
+            }
+            | Self::FlowInitValidate {
+                queue_pair,
+                stream_id,
+                ..
+            }
+            | Self::FlowValidateRequest {
+                queue_pair,
+                stream_id,
+                ..
+            } => Some(LocalQueueTarget {
+                source_queue_id: queue_pair.source_queue_id,
+                stream_id: *stream_id,
+            }),
+            Self::FlowInit {
+                source_queue_id,
+                stream_id,
+                ..
+            } => Some(LocalQueueTarget {
+                source_queue_id: *source_queue_id,
+                stream_id: *stream_id,
+            }),
+            Self::FlowReset { .. }
+            | Self::FlowInitReset { .. }
+            | Self::FlowInitFin { .. }
+            | Self::Ack { .. } => None,
         }
     }
 

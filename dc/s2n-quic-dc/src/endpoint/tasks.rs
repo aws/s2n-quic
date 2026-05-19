@@ -211,12 +211,13 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     frame_tx: frame::SubmissionSender,
     ack_completions_tx: AckComp,
     waker_sink: WakerSink,
+    queue_dispatcher: msg::queue::Dispatcher,
     budgets: Budgets,
     counter_registry: crate::counter::Registry,
 ) where
     Socket: crate::socket::send::Socket + 'static,
     Clk: precision::Clock + s2n_quic_core::time::Clock + Clone + 'static,
-    WakerSink: UnboundedSender<crate::flow::queue::AutoWake> + 'static,
+    WakerSink: UnboundedSender<crate::flow::queue::AutoWake> + Clone + 'static,
     AckComp: UnboundedSender<Queue<msg::Sender>> + Clone + 'static,
 {
     // Per-socket unsync channel: wheel drain tasks route contexts here after expiration,
@@ -300,6 +301,13 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         q_ack_to_completion
             .sender("task.invalidation")
             .with_description("Invalidation task emits failed frames as completions")
+            .with_function("endpoint::tasks::send_worker"),
+    );
+    let idle_expired_completed_tx = crate::counter::GaugedSender::new(
+        completed_tx.clone(),
+        q_ack_to_completion
+            .sender("task.idle_wheel")
+            .with_description("Idle wheel emits PeerDead frames as completions")
             .with_function("endpoint::tasks::send_worker"),
     );
     let q_ack_to_cancelled = q_ack_to_cancelled.with_registration_metadata(
@@ -408,7 +416,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             .with_function("endpoint::tasks::send_worker");
 
         let rx = crate::counter::GaugedReceiver::new(completed_rx, completion_receiver);
-        let rx = completion_dispatcher(rx, waker_sink);
+        let rx = completion_dispatcher(rx, waker_sink.clone());
         let task_counter = counter_registry
             .register_nominal_task("task.completion", &variant)
             .with_registration_metadata(
@@ -542,6 +550,9 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             q_resolver_to_idle_wheel.clone(),
             send_caches.clone(),
             sender_idx_to_local.clone(),
+            idle_expired_completed_tx,
+            queue_dispatcher,
+            waker_sink,
             counter_registry.register("idle.send.expired"),
             counter_registry.register("idle.send.rescheduled"),
             counter_registry.register_nominal_timer("idle.send.lifetime", &variant),
@@ -980,13 +991,16 @@ where
     Map::new(rx, |_segments| {})
 }
 
-pub async fn send_idle_wheel_drain<Clk>(
+pub async fn send_idle_wheel_drain<Clk, WakerSink>(
     rx: intrusive::unsync::Receiver<send::IdleWheelAdapter>,
     idle_wheel_tx: intrusive::unsync::Sender<send::IdleWheelAdapter>,
     clock: Clk,
     input_gauge: crate::counter::QueueGauge,
     send_caches: Vec<Rc<RefCell<send::Cache>>>,
     sender_idx_to_local: Vec<usize>,
+    mut completed_tx: impl UnboundedSender<Entry<Frame>>,
+    mut queue_dispatcher: msg::queue::Dispatcher,
+    mut waker_sink: WakerSink,
     idle_expired: crate::counter::Counter,
     idle_rescheduled: crate::counter::Counter,
     idle_lifetime: crate::counter::Timer,
@@ -994,6 +1008,7 @@ pub async fn send_idle_wheel_drain<Clk>(
     task_counter: crate::counter::Task,
 ) where
     Clk: precision::Clock,
+    WakerSink: UnboundedSender<crate::flow::queue::AutoWake>,
 {
     let timer = clock.timer();
     wheel_drain::<_, _, _, { crate::time::wheel::SECOND_GRANULARITY }>(
@@ -1008,6 +1023,7 @@ pub async fn send_idle_wheel_drain<Clk>(
                     .with_description("Idle wheel re-enqueues active send contexts")
                     .with_function("endpoint::tasks::send_idle_wheel_drain"),
             );
+            let mut collecting_tx = QueueTargetCollector::new(&mut completed_tx);
             move |context: Rc<RefCell<send::Context>>| {
                 let now = clock.now();
                 let ctx = context.borrow();
@@ -1016,7 +1032,21 @@ pub async fn send_idle_wheel_drain<Clk>(
                     let local_id = sender_idx_to_local[ctx.sender_idx];
                     let lifetime = now.duration_since(ctx.created_at);
                     drop(ctx);
-                    send_caches[local_id].borrow_mut().remove(&id);
+
+                    collecting_tx.clear();
+                    send_caches[local_id].borrow_mut().invalidate(
+                        &id,
+                        frame::FailureReason::PeerDead,
+                        &mut collecting_tx,
+                    );
+
+                    reset_flow_queues(
+                        &mut queue_dispatcher,
+                        &id,
+                        collecting_tx.targets(),
+                        &mut waker_sink,
+                    );
+
                     idle_expired.add(1);
                     idle_lifetime.record(lifetime);
                 } else {
@@ -1032,6 +1062,81 @@ pub async fn send_idle_wheel_drain<Clk>(
         task_counter,
     )
     .await;
+}
+
+/// Sends resets to local flow queues associated with an invalidated send context.
+///
+/// For each target collected during frame drain, sends a reset to the queue. `send_both`
+/// validates internally — if the queue was recycled and the credentials/stream_id no
+/// longer match, the send silently no-ops.
+fn reset_flow_queues(
+    queue_dispatcher: &mut msg::queue::Dispatcher,
+    credential_id: &crate::credentials::Id,
+    queue_targets: &rustc_hash::FxHashSet<frame::LocalQueueTarget>,
+    waker_sink: &mut impl UnboundedSender<crate::flow::queue::AutoWake>,
+) {
+    use crate::{endpoint::error::IDLE_TIMEOUT, flow};
+
+    for target in queue_targets {
+        let request = flow::Request {
+            credential_id: *credential_id,
+            stream_id: target.stream_id,
+        };
+
+        let stream_entry = msg::Stream::Reset {
+            error_code: IDLE_TIMEOUT,
+        }
+        .into();
+        let control_entry = msg::Control::Reset {
+            error_code: IDLE_TIMEOUT,
+        }
+        .into();
+
+        // send_both validates internally; wakers are offloaded via waker_sink
+        let (waker_a, waker_b) = queue_dispatcher.send_both(
+            target.source_queue_id,
+            None,
+            &request,
+            stream_entry,
+            control_entry,
+        );
+        let _ = waker_sink.send(waker_a);
+        let _ = waker_sink.send(waker_b);
+    }
+}
+
+/// Wraps an `UnboundedSender<Entry<Frame>>` to collect unique queue targets as frames pass through.
+struct QueueTargetCollector<'a, S> {
+    inner: &'a mut S,
+    targets: rustc_hash::FxHashSet<frame::LocalQueueTarget>,
+}
+
+impl<'a, S> QueueTargetCollector<'a, S> {
+    fn new(inner: &'a mut S) -> Self {
+        Self {
+            inner,
+            targets: Default::default(),
+        }
+    }
+
+    fn clear(&mut self) {
+        self.targets.clear();
+    }
+
+    fn targets(&self) -> &rustc_hash::FxHashSet<frame::LocalQueueTarget> {
+        &self.targets
+    }
+}
+
+impl<S: UnboundedSender<Entry<Frame>>> UnboundedSender<Entry<Frame>>
+    for QueueTargetCollector<'_, S>
+{
+    fn send(&mut self, value: Entry<Frame>) -> Result<(), Entry<Frame>> {
+        if let Some(target) = value.header.local_queue_target() {
+            self.targets.insert(target);
+        }
+        self.inner.send(value)
+    }
 }
 
 pub async fn recv_idle_wheel_drain<Clk>(

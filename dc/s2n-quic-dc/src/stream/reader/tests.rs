@@ -340,7 +340,7 @@ fn basic_read() {
         async move {
             let mut buf = BytesMut::with_capacity(32);
             let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(outcome, ReadToEnd::Complete(11));
             assert_eq!(&buf[..], b"hello world");
             assert!(reader.0.status.is_complete());
         }
@@ -430,7 +430,7 @@ fn out_of_order_reassembly() {
         async move {
             let mut buf = BytesMut::with_capacity(32);
             let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(outcome, ReadToEnd::Complete(10));
             assert_eq!(&buf[..], b"helloworld");
         }
         .primary()
@@ -753,7 +753,7 @@ fn client_fin_within_window_does_not_send_max_data() {
         async move {
             let mut buf = BytesMut::with_capacity(32);
             let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(outcome, ReadToEnd::Complete(5));
             assert_eq!(&buf[..], payload);
         }
         .primary()
@@ -788,7 +788,7 @@ fn client_fin_observed_before_gap_fill_does_not_send_max_data() {
         async move {
             let mut buf = BytesMut::with_capacity(32);
             let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(outcome, ReadToEnd::Complete(5));
             assert_eq!(&buf[..], b"hello");
         }
         .primary()
@@ -854,7 +854,7 @@ fn server_validates_then_reads() {
             reader.validate().await.expect("validate failed");
             let mut buf = BytesMut::with_capacity(16);
             let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(outcome, ReadToEnd::Complete(5));
             assert_eq!(&buf[..], b"hello");
         }
         .primary()
@@ -896,7 +896,7 @@ fn server_early_data_before_validated_sends_max_data() {
             reader.validate().await.expect("validate failed");
             let mut buf = BytesMut::with_capacity(16);
             let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(outcome, ReadToEnd::Complete(5));
             assert_eq!(&buf[..], b"hello");
         }
         .primary()
@@ -930,7 +930,7 @@ fn server_init_with_fin_suppresses_max_data() {
             reader.validate().await.expect("validate failed");
             let mut buf = BytesMut::with_capacity(16);
             let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(outcome, ReadToEnd::Complete(5));
             assert_eq!(&buf[..], b"hello");
         }
         .primary()
@@ -967,7 +967,7 @@ fn server_init_with_fin_suppresses_max_data_large_payload() {
             reader.validate().await.expect("validate failed");
             let mut buf = BytesMut::with_capacity(payload.len() + 16);
             let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(outcome, ReadToEnd::Complete(payload.len()));
             assert_eq!(buf.len(), payload.len());
         }
         .primary()
@@ -1110,7 +1110,7 @@ fn server_flow_validated_and_data_same_batch() {
             reader.validate().await.expect("validate failed");
             let mut buf = BytesMut::with_capacity(16);
             let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(outcome, ReadToEnd::Complete(5));
             assert_eq!(&buf[..], b"hello");
         }
         .primary()
@@ -1253,7 +1253,7 @@ fn server_out_of_order_early_data_before_validated() {
             reader.validate().await.expect("validate failed");
             let mut buf = BytesMut::with_capacity(32);
             let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(outcome, ReadToEnd::Complete(11));
             assert_eq!(&buf[..], b"helloworld!");
         }
         .primary()
@@ -1466,7 +1466,7 @@ fn drop_after_fin_completion_sends_no_reset() {
         async move {
             let mut buf = BytesMut::with_capacity(16);
             let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete);
+            assert_eq!(outcome, ReadToEnd::Complete(2));
             assert_eq!(&buf[..], b"ok");
             drop(reader);
         }
@@ -1547,7 +1547,7 @@ fn read_to_end_empty_buffer_returns_buffer_full() {
                 .read_to_end(&mut limited)
                 .await
                 .expect("expected BufferFull for zero-capacity buffer");
-            assert_eq!(outcome, ReadToEnd::BufferFull);
+            assert_eq!(outcome, ReadToEnd::BufferFull(0));
             assert!(backing.is_empty());
         }
         .primary()
@@ -1577,7 +1577,7 @@ fn read_to_end_full_buffer_returns_buffer_full() {
                     .await
                     .expect("expected BufferFull once fixed-size buffer is full")
             };
-            assert_eq!(outcome, ReadToEnd::BufferFull);
+            assert_eq!(outcome, ReadToEnd::BufferFull(1));
             assert_eq!(&backing[..], b"h");
         }
         .primary()

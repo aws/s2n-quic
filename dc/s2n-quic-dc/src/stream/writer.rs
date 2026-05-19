@@ -501,6 +501,26 @@ impl Inner {
         Poll::Ready(Ok(written))
     }
 
+    /// Checks the control queue for a pending reset that was never polled.
+    ///
+    /// If the peer was declared dead (idle timeout), the queue contains a Reset
+    /// we never consumed. Transitioning to shutdown here prevents the drop path
+    /// from sending a FIN or FlowReset to a dead peer.
+    fn drain_pending_reset(&mut self) {
+        if self.status.is_shutdown() {
+            return;
+        }
+        let Ok(queue) = self.control_rx.try_swap() else {
+            return;
+        };
+        for entry in queue {
+            if matches!(&*entry, msg::Control::Reset { .. }) {
+                self.status.on_shutdown().ok();
+                return;
+            }
+        }
+    }
+
     fn shutdown(&mut self) -> io::Result<()> {
         if self.status.is_shutdown() {
             return Ok(());
@@ -1138,6 +1158,8 @@ impl Drop for Writer {
             remote_max_data = self.0.remote_max_data.as_u64(),
             "Writer dropping"
         );
+
+        self.0.drain_pending_reset();
 
         if std::thread::panicking() {
             self.0.completion_rx.cancel();
