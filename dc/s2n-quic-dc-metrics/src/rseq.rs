@@ -395,13 +395,13 @@ impl<T: Absorb> Channels<T> {
                 ldr {cpu_id:w}, [{rseq_ptr}, #{cpu_id_offset_start}]
 
                 cmp {cpu_id:w}, {per_cpu_len:w}
-                b.ge {fallback}
+                b.hs {fallback}
 
                 subs {loop_count}, {loop_count}, #1
                 b.eq {fallback}
 
                 adrp {tmp}, 9b
-                ldr {tmp}, [{tmp}, #:lo12:9b]
+                add {tmp}, {tmp}, :lo12:9b
                 str {tmp}, [{rseq_ptr}, #{rseq_cs_offset}]
 
                 2:
@@ -575,15 +575,15 @@ impl<T: Absorb> Channels<T> {
                 ldr {cpu_id:w}, [{rseq_ptr}, #{cpu_id_offset_start}]
 
                 cmp {cpu_id:w}, {per_cpu_len:w}
-                cset {fallback:w}, ge
-                b.ge 7f
+                cset {fallback:w}, hs
+                b.hs 7f
 
                 subs {loop_count}, {loop_count}, #1
                 cset {fallback:w}, eq
                 b.eq 7f
 
                 adrp {tmp}, 12b
-                ldr {tmp}, [{tmp}, #:lo12:12b]
+                add {tmp}, {tmp}, :lo12:12b
                 str {tmp}, [{rseq_ptr}, #{rseq_cs_offset}]
 
                 3:
