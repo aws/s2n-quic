@@ -10,13 +10,15 @@ use std::{
     panic::Location,
     pin::Pin,
     sync::{
-        atomic::{AtomicI64, AtomicU64, Ordering},
+        atomic::{AtomicI32, AtomicI64, AtomicU64, Ordering},
         Arc, Weak,
     },
     task::Context,
 };
 
 pub mod clock;
+#[cfg(target_os = "linux")]
+pub mod thread_dump;
 
 #[derive(Clone)]
 pub struct Pool {
@@ -35,6 +37,9 @@ pub struct Heartbeat {
     counter: AtomicU64,
     /// Index of the task currently being polled (-1 = between tasks).
     current_task: AtomicI64,
+    /// Linux thread ID (set by the worker on startup). Used for signal-based thread dumps.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    tid: AtomicI32,
 }
 
 impl Heartbeat {
@@ -42,6 +47,7 @@ impl Heartbeat {
         Self {
             counter: AtomicU64::new(0),
             current_task: AtomicI64::new(-1),
+            tid: AtomicI32::new(0),
         }
     }
 }
@@ -72,11 +78,29 @@ impl Pool {
                                 "[watchdog] worker {worker_id} stuck in task {task_idx} \
                                  (heartbeat={current}, no progress in {timeout:?})"
                             );
+
+                            #[cfg(target_os = "linux")]
+                            {
+                                let tid = hb.tid.load(Ordering::Acquire);
+                                let timeout = std::time::Duration::from_secs(10);
+                                if let Some(bt) = thread_dump::dump(tid, timeout) {
+                                    error!(
+                                        "[watchdog] worker {worker_id} (tid={tid}) backtrace:\n{bt}"
+                                    );
+                                } else {
+                                    error!(
+                                        "[watchdog] worker {worker_id} (tid={tid}) \
+                                         did not respond to dump request within {timeout:?}"
+                                    );
+                                }
+                            }
+
                             eprintln!(
                                 "[watchdog] process alive for debugger attach: pid={}",
                                 std::process::id()
                             );
-                            std::thread::sleep(std::time::Duration::from_secs(5));
+                            std::thread::sleep(std::time::Duration::from_secs(10));
+
                             std::process::abort();
                         }
                         prev[worker_id] = current;
@@ -245,6 +269,14 @@ impl Runner {
         let state = self.state;
         let heartbeat = self.heartbeat;
         let worker_id = self.worker_id;
+
+        #[cfg(target_os = "linux")]
+        {
+            thread_dump::install_handler();
+            let tid = unsafe { libc::gettid() };
+            heartbeat.tid.store(tid, Ordering::Release);
+        }
+
         let waker = s2n_quic_core::task::waker::noop();
         let mut cx = Context::from_waker(&waker);
         let mut tasks = Tasks::new();
