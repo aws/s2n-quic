@@ -599,6 +599,7 @@ where
         ups_rate,
         ups_dedup_capacity,
         ups_dedup_window,
+        acceptor_cleaner: acceptor_registry.cleaner(),
     });
 
     // Spawn all workers ---------------------------------------------------------
@@ -708,6 +709,7 @@ struct BackgroundParts<UpsSocket> {
     ups_rate: crate::socket::rate::Rate,
     ups_dedup_capacity: usize,
     ups_dedup_window: core::time::Duration,
+    acceptor_cleaner: acceptor::Cleaner<PendingValidation>,
 }
 
 type InvalidationSender = crate::socket::channel::GaugedSender<
@@ -1072,6 +1074,8 @@ where
                 let task_counter =
                     counter_registry.register_nominal_task("task.ups_send", "background");
                 local.spawn(rx.drain_budgeted_metered(None, task_counter));
+
+                local.spawn(bg.acceptor_cleaner);
             }
         });
     }

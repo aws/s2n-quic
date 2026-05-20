@@ -72,7 +72,7 @@ pub(crate) fn process<Clk, Route>(
     ack_burst_tx: &mut impl channel::UnboundedSender<Rc<RefCell<recv::Context>>>,
     idle_wheel_tx: &mut impl channel::UnboundedSender<Rc<RefCell<recv::Context>>>,
     path_secret_map: &PathSecretMap,
-    acceptor_registry: &acceptor::Registry<PendingValidation>,
+    acceptor_registry: &mut acceptor::LocalRegistry<PendingValidation>,
     frame_tx: &SubmissionSender,
     response_tx: &mut impl channel::UnboundedSender<PriorityInput>,
     sender_tx: &mut impl channel::UnboundedSender<Entry<msg::Sender>>,
@@ -332,7 +332,7 @@ fn dispatch_decoded_frame(
     payload: BytesMut,
     peer: &mut recv::Context,
     credentials: &Credentials,
-    acceptor_registry: &acceptor::Registry<PendingValidation>,
+    acceptor_registry: &mut acceptor::LocalRegistry<PendingValidation>,
     frame_tx: &SubmissionSender,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     sender_tx: &mut impl channel::UnboundedSender<Entry<msg::Sender>>,
@@ -532,7 +532,7 @@ fn handle_flow_init(
     stream_id: VarInt,
     is_fin: bool,
     buf: BytesMut,
-    acceptor_registry: &acceptor::Registry<PendingValidation>,
+    acceptor_registry: &mut acceptor::LocalRegistry<PendingValidation>,
     frame_tx: &SubmissionSender,
     queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
@@ -617,38 +617,21 @@ fn handle_flow_init(
             };
             match register_result {
                 Ok((queue_control, queue_stream)) => {
-                    let dispatched = acceptor_registry.with_acceptor(acceptor_id, |acceptor| {
-                        let (local_queue_id, stream) = {
-                            let _guard = counters.rx_init_create_stream_time.start();
-                            create_stream(queue_control, queue_stream, false)
-                        };
-                        let dispatch_result = {
-                            let _guard = counters.rx_init_dispatch_time.start();
-                            acceptor.handle_request(stream)
-                        };
-                        (local_queue_id, dispatch_result)
-                    });
-
-                    let Some((local_queue_id, dispatch_result)) = dispatched else {
-                        debug!(
-                            attempt_id = attempt_id.as_u64(),
-                            stream_id = stream_id.as_u64(),
-                            acceptor_id = acceptor_id.as_u64(),
-                            "FlowInit rejected - acceptor not found"
-                        );
-                        push_reset_frame(
-                            response_frames,
-                            counters,
-                            &peer.path_entry,
-                            peer_queue_id,
-                            stream_id,
-                            error::ACCEPTOR_NOT_FOUND,
-                        );
-                        return;
+                    let (local_queue_id, stream) = {
+                        let _guard = counters.rx_init_create_stream_time.start();
+                        create_stream(queue_control, queue_stream, false)
                     };
 
-                    match dispatch_result {
-                        Ok(waker) => {
+                    let send_result = {
+                        let _guard = counters.rx_init_dispatch_time.start();
+                        acceptor_registry.send(acceptor_id, stream)
+                    };
+
+                    match send_result {
+                        acceptor::SendResult::Ok { mut evicted, waker } => {
+                            if let Some(ref mut ev) = evicted {
+                                ev.reset(crate::stream::endpoint::Error::ServerBusy);
+                            }
                             counters.flow_accepted.add(1);
                             let _ = waker_sink.send(waker);
                             debug!(
@@ -659,15 +642,12 @@ fn handle_flow_init(
                                 "FlowInit accepted - dispatched to acceptor"
                             );
                         }
-                        Err(mut reject) => {
-                            reject.request.disable();
-                            counters.rx_init_acceptor_reset.add(1);
+                        acceptor::SendResult::NotFound => {
                             debug!(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 acceptor_id = acceptor_id.as_u64(),
-                                reset_code = reject.reset_code().as_u64(),
-                                "FlowInit rejected - acceptor requested reset"
+                                "FlowInit rejected - acceptor not found"
                             );
                             push_reset_frame(
                                 response_frames,
@@ -675,7 +655,44 @@ fn handle_flow_init(
                                 &peer.path_entry,
                                 peer_queue_id,
                                 stream_id,
-                                reject.reset_code(),
+                                error::ACCEPTOR_NOT_FOUND,
+                            );
+                        }
+                        acceptor::SendResult::Closed(mut stream, cleanup_waker) => {
+                            stream.disable();
+                            counters.rx_init_acceptor_closed.add(1);
+                            let _ = waker_sink.send(cleanup_waker);
+                            debug!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                acceptor_id = acceptor_id.as_u64(),
+                                "FlowInit rejected - acceptor channel closed"
+                            );
+                            push_reset_frame(
+                                response_frames,
+                                counters,
+                                &peer.path_entry,
+                                peer_queue_id,
+                                stream_id,
+                                error::ACCEPTOR_NOT_FOUND,
+                            );
+                        }
+                        acceptor::SendResult::NoSlots(mut stream) => {
+                            stream.disable();
+                            counters.rx_init_acceptor_no_slots.add(1);
+                            debug!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                acceptor_id = acceptor_id.as_u64(),
+                                "FlowInit rejected - acceptor has no active receivers"
+                            );
+                            push_reset_frame(
+                                response_frames,
+                                counters,
+                                &peer.path_entry,
+                                peer_queue_id,
+                                stream_id,
+                                error::ACCEPTOR_NOT_FOUND,
                             );
                         }
                     }
@@ -715,97 +732,49 @@ fn handle_flow_init(
             };
             match register_result {
                 Ok((queue_control, queue_stream)) => {
-                    let dispatched = acceptor_registry.with_acceptor(acceptor_id, |acceptor| {
-                        let (local_queue_id, stream) = {
-                            let _guard = counters.rx_init_create_stream_time.start();
-                            create_stream(queue_control, queue_stream, true)
-                        };
-                        let dispatch_result = {
-                            let _guard = counters.rx_init_dispatch_time.start();
-                            acceptor.handle_pending(stream)
-                        };
-                        (local_queue_id, dispatch_result)
-                    });
-
-                    let Some((local_queue_id, dispatch_result)) = dispatched else {
-                        counters.rx_init_no_acceptor.add(1);
-                        debug!(
-                            attempt_id = attempt_id.as_u64(),
-                            stream_id = stream_id.as_u64(),
-                            acceptor_id = acceptor_id.as_u64(),
-                            "FlowInit rejected - acceptor not found"
-                        );
-                        push_reset_frame(
-                            response_frames,
-                            counters,
-                            &peer.path_entry,
-                            peer_queue_id,
-                            stream_id,
-                            error::ACCEPTOR_NOT_FOUND,
-                        );
-                        return;
+                    let (local_queue_id, stream) = {
+                        let _guard = counters.rx_init_create_stream_time.start();
+                        create_stream(queue_control, queue_stream, true)
                     };
 
-                    match dispatch_result {
-                        Ok(acceptor::Dispatch { action, waker }) => {
-                            let _ = waker_sink.send(waker);
-                            match action {
-                                acceptor::PendingAction::Accepted => {
-                                    counters.rx_init_accepted.add(1);
-                                    counters.flow_accepted.add(1);
-                                    let request = flow::Request {
-                                        credential_id: credentials.id,
-                                        stream_id,
-                                    };
-                                    let stream_entry = msg::Stream::FlowValidated.into();
-                                    if let Ok(waker) = queue_dispatcher.send_stream(
-                                        local_queue_id,
-                                        Some(peer_queue_id),
-                                        &request,
-                                        stream_entry,
-                                    ) {
-                                        let _ = waker_sink.send(waker);
-                                    }
-                                    debug!(
-                                        attempt_id = attempt_id.as_u64(),
-                                        stream_id = stream_id.as_u64(),
-                                        acceptor_id = acceptor_id.as_u64(),
-                                        server_queue_id = local_queue_id.as_u64(),
-                                        "FlowInit accepted without retry"
-                                    );
-                                }
-                                acceptor::PendingAction::AcceptedWithRetry => {
-                                    counters.rx_init_accepted_retry.add(1);
-                                    counters.flow_pending.add(1);
-                                    debug!(
-                                        attempt_id = attempt_id.as_u64(),
-                                        stream_id = stream_id.as_u64(),
-                                        acceptor_id = acceptor_id.as_u64(),
-                                        server_queue_id = local_queue_id.as_u64(),
-                                        "FlowInit accepted with retry"
-                                    );
-                                    push_validate_request_frame(
-                                        response_frames,
-                                        counters,
-                                        &peer.path_entry,
-                                        source_sender_id,
-                                        local_queue_id,
-                                        peer_queue_id,
-                                        attempt_id,
-                                        stream_id,
-                                    );
-                                }
+                    let send_result = {
+                        let _guard = counters.rx_init_dispatch_time.start();
+                        acceptor_registry.send(acceptor_id, stream)
+                    };
+
+                    match send_result {
+                        acceptor::SendResult::Ok { mut evicted, waker } => {
+                            if let Some(ref mut ev) = evicted {
+                                ev.reset(crate::stream::endpoint::Error::ServerBusy);
                             }
-                        }
-                        Err(mut reject) => {
-                            reject.request.disable();
-                            counters.rx_init_reject.add(1);
+                            let _ = waker_sink.send(waker);
+                            counters.rx_init_accepted_retry.add(1);
+                            counters.flow_pending.add(1);
                             debug!(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 acceptor_id = acceptor_id.as_u64(),
-                                reset_code = reject.reset_code().as_u64(),
-                                "FlowInit rejected"
+                                server_queue_id = local_queue_id.as_u64(),
+                                "FlowInit accepted with retry"
+                            );
+                            push_validate_request_frame(
+                                response_frames,
+                                counters,
+                                &peer.path_entry,
+                                source_sender_id,
+                                local_queue_id,
+                                peer_queue_id,
+                                attempt_id,
+                                stream_id,
+                            );
+                        }
+                        acceptor::SendResult::NotFound => {
+                            counters.rx_init_no_acceptor.add(1);
+                            debug!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                acceptor_id = acceptor_id.as_u64(),
+                                "FlowInit rejected - acceptor not found"
                             );
                             push_reset_frame(
                                 response_frames,
@@ -813,7 +782,44 @@ fn handle_flow_init(
                                 &peer.path_entry,
                                 peer_queue_id,
                                 stream_id,
-                                reject.reset_code(),
+                                error::ACCEPTOR_NOT_FOUND,
+                            );
+                        }
+                        acceptor::SendResult::Closed(mut stream, cleanup_waker) => {
+                            stream.disable();
+                            counters.rx_init_acceptor_closed.add(1);
+                            let _ = waker_sink.send(cleanup_waker);
+                            debug!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                acceptor_id = acceptor_id.as_u64(),
+                                "FlowInit rejected - acceptor channel closed"
+                            );
+                            push_reset_frame(
+                                response_frames,
+                                counters,
+                                &peer.path_entry,
+                                peer_queue_id,
+                                stream_id,
+                                error::ACCEPTOR_NOT_FOUND,
+                            );
+                        }
+                        acceptor::SendResult::NoSlots(mut stream) => {
+                            stream.disable();
+                            counters.rx_init_acceptor_no_slots.add(1);
+                            debug!(
+                                attempt_id = attempt_id.as_u64(),
+                                stream_id = stream_id.as_u64(),
+                                acceptor_id = acceptor_id.as_u64(),
+                                "FlowInit rejected - acceptor has no active receivers"
+                            );
+                            push_reset_frame(
+                                response_frames,
+                                counters,
+                                &peer.path_entry,
+                                peer_queue_id,
+                                stream_id,
+                                error::ACCEPTOR_NOT_FOUND,
                             );
                         }
                     }

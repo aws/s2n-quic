@@ -176,6 +176,23 @@ impl<T> Clone for Sender<T> {
     }
 }
 
+/// Error returned by [`Sender::send`] when the item cannot be delivered.
+#[derive(Debug)]
+pub enum SendError<T> {
+    /// All receivers have been dropped. The channel is permanently closed.
+    Closed(T),
+    /// Receivers exist but none have polled yet (no registered slots).
+    NoSlots(T),
+}
+
+impl<T> SendError<T> {
+    pub fn into_inner(self) -> T {
+        match self {
+            Self::Closed(item) | Self::NoSlots(item) => item,
+        }
+    }
+}
+
 impl<T> Sender<T> {
     /// Send an item to the least-loaded receiver.
     ///
@@ -183,16 +200,25 @@ impl<T> Sender<T> {
     /// - `evicted`: item displaced from a full queue, caller should reset it
     /// - `waker`: if the receiver was parked, caller should forward to waker thread
     ///
-    /// Returns `Err(item)` if there are no receivers.
-    pub fn send(&mut self, item: T) -> Result<(Option<T>, Option<Waker>), T> {
+    /// Returns `Err(SendError::Closed)` if all receivers have been dropped.
+    /// Returns `Err(SendError::NoSlots)` if receivers exist but none have polled yet.
+    pub fn send(&mut self, item: T) -> Result<(Option<T>, Option<Waker>), SendError<T>> {
         self.refresh_cache();
 
         if self.cached_slots.is_empty() {
-            return Err(item);
+            if self.shared.receiver_count.load(Ordering::Relaxed) == 0 {
+                return Err(SendError::Closed(item));
+            }
+            return Err(SendError::NoSlots(item));
         }
 
         let idx = pick_index(&mut self.rng, &self.cached_slots);
-        self.cached_slots[idx].push(item)
+        self.cached_slots[idx].push(item).map_err(SendError::Closed)
+    }
+
+    /// Returns true if all receivers have been dropped.
+    pub fn is_closed(&self) -> bool {
+        self.shared.receiver_count.load(Ordering::Relaxed) == 0
     }
 
     fn refresh_cache(&mut self) {
@@ -272,6 +298,12 @@ impl<T> Receiver<T> {
             local: VecDeque::new(),
             registered: false,
         }
+    }
+
+    /// Eagerly register this receiver's slot so it participates in load
+    /// balancing immediately, without requiring a first poll.
+    pub fn register(&mut self) {
+        self.ensure_registered();
     }
 
     fn ensure_registered(&mut self) {
@@ -377,7 +409,7 @@ mod tests {
     /// Send an item and immediately fire any waker returned by the channel, so
     /// parked receiver tasks are rescheduled within the same bach step.
     fn send_wake<T>(sender: &mut Sender<T>, item: T) -> Result<Option<T>, T> {
-        let (evicted, waker) = sender.send(item)?;
+        let (evicted, waker) = sender.send(item).map_err(|e| e.into_inner())?;
         if let Some(w) = waker {
             w.wake();
         }
@@ -743,5 +775,80 @@ mod tests {
             .primary()
             .spawn();
         });
+    }
+
+    /// Demonstrates the unpolled-receiver backlog problem.
+    ///
+    /// Pattern: application spawns N tasks, cloning the receiver on each iteration.
+    /// The original receiver is never polled (and not dropped). Without lazy registration,
+    /// items would pile up in the original receiver's slot and get evicted. With lazy
+    /// registration, only the polled clones participate in load balancing.
+    #[test]
+    fn unpolled_original_receiver_does_not_accumulate_backlog() {
+        let evicted = Arc::new(AtomicUsize::new(0));
+
+        {
+            let evicted = evicted.clone();
+            sim(move || {
+                let (mut sender, rx) = new::<u32>(Config {
+                    capacity: 4,
+                    eviction: Eviction::Front,
+                });
+
+                // Simulate application pattern: clone into N workers, forget to drop original.
+                // The original `rx` is pushed into `workers` so it stays alive (held but
+                // never polled) for the entire test duration.
+                let mut workers: Vec<Receiver<u32>> = vec![rx.clone()];
+                for _ in 0..3 {
+                    let mut worker_rx = rx.clone();
+                    // Each worker polls immediately (registers its slot)
+                    async move { while worker_rx.recv().await.is_some() {} }
+                        .primary()
+                        .spawn();
+                }
+                // Original `rx` goes into workers — NOT polled, NOT dropped until the
+                // async block below drops `workers`.
+                workers.push(rx);
+
+                let evicted = evicted.clone();
+                async move {
+                    1.ms().sleep().await; // let workers register
+
+                    // Send more items than the capacity of a single slot
+                    for i in 0u32..20 {
+                        match sender.send(i) {
+                            Ok((Some(_), waker)) => {
+                                evicted.fetch_add(1, Ordering::Relaxed);
+                                if let Some(w) = waker {
+                                    w.wake();
+                                }
+                            }
+                            Ok((None, waker)) => {
+                                if let Some(w) = waker {
+                                    w.wake();
+                                }
+                            }
+                            Err(_) => panic!("send should not fail"),
+                        }
+                    }
+                    drop(sender);
+                    drop(workers);
+                }
+                .primary()
+                .spawn();
+            });
+        }
+
+        // With lazy registration, the unpolled original receiver never gets a slot,
+        // so all 20 items are distributed among the 3 active workers (capacity 4 each = 12).
+        // Some eviction is expected since 20 > 12, but NOT from an idle receiver's queue.
+        // The key assertion: eviction count should be much less than if all 20 items went
+        // to a single never-drained slot (which would evict 16 out of 20).
+        let evictions = evicted.load(Ordering::Relaxed);
+        assert!(
+            evictions <= 12,
+            "evictions ({evictions}) should reflect active-worker capacity overflow, \
+             not a single unpolled receiver accumulating all items"
+        );
     }
 }

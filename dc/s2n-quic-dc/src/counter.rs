@@ -2748,11 +2748,7 @@ impl Registry {
         self.gauge_handle(inner, metric_id)
     }
 
-    pub fn register_summary(
-        &self,
-        label: impl core::fmt::Display,
-        unit: Unit,
-    ) -> Summary {
+    pub fn register_summary(&self, label: impl core::fmt::Display, unit: Unit) -> Summary {
         let label = label.to_string();
         let metric_id = self.register_metric_metadata(
             &label,
@@ -2780,9 +2776,7 @@ impl Registry {
             Self::unit_str(unit),
             "",
         );
-        let summary = self
-            .inner
-            .register_summary(label, Some(variant), unit);
+        let summary = self.inner.register_summary(label, Some(variant), unit);
         self.summary_handle(summary, metric_id)
     }
 

@@ -647,9 +647,7 @@ impl AssemblerCounters {
             frame::Header::FlowInitReset { .. } => self.tx_frame_flow_init_reset.add(1),
             frame::Header::FlowInitFin { .. } => self.tx_frame_flow_init_fin.add(1),
             frame::Header::FlowInitValidate { .. } => self.tx_frame_flow_init_validate.add(1),
-            frame::Header::FlowValidateRequest { .. } => {
-                self.tx_frame_flow_validate_request.add(1)
-            }
+            frame::Header::FlowValidateRequest { .. } => self.tx_frame_flow_validate_request.add(1),
             frame::Header::Ack { .. } => self.tx_frame_ack.add(1),
         }
     }
@@ -662,15 +660,15 @@ impl AssemblerCounters {
         match header {
             frame::Header::FlowInit { .. } => self.tx_probe_frame_flow_init.add(1),
             frame::Header::FlowData { is_fin: false, .. } => self.tx_probe_frame_flow_data.add(1),
-            frame::Header::FlowData { is_fin: true, .. } => self.tx_probe_frame_flow_data_fin.add(1),
+            frame::Header::FlowData { is_fin: true, .. } => {
+                self.tx_probe_frame_flow_data_fin.add(1)
+            }
             frame::Header::FlowControl { .. } => self.tx_probe_frame_flow_control.add(1),
             frame::Header::FlowMaxData { .. } => self.tx_probe_frame_flow_max_data.add(1),
             frame::Header::FlowReset { .. } => self.tx_probe_frame_flow_reset.add(1),
             frame::Header::FlowInitReset { .. } => self.tx_probe_frame_flow_init_reset.add(1),
             frame::Header::FlowInitFin { .. } => self.tx_probe_frame_flow_init_fin.add(1),
-            frame::Header::FlowInitValidate { .. } => {
-                self.tx_probe_frame_flow_init_validate.add(1)
-            }
+            frame::Header::FlowInitValidate { .. } => self.tx_probe_frame_flow_init_validate.add(1),
             frame::Header::FlowValidateRequest { .. } => {
                 self.tx_probe_frame_flow_validate_request.add(1)
             }

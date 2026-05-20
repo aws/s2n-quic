@@ -1293,6 +1293,7 @@ where
         let mut response_tx = frame_tx.clone();
         let mut queue_dispatcher = queue_dispatcher;
         let counters = counters.clone();
+        let mut acceptor_local = acceptor_registry.local();
 
         move |packet| {
             counters.rx_data_pkt.add(1);
@@ -1302,7 +1303,7 @@ where
                 &mut ack_burst_tx,
                 &mut idle_wheel_tx,
                 &path_secret_map,
-                &acceptor_registry,
+                &mut acceptor_local,
                 &frame_tx,
                 &mut response_tx,
                 &mut ack_sender,

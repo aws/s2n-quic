@@ -494,25 +494,18 @@ impl Server {
     /// Register a channel-based acceptor for incoming streams.
     ///
     /// Returns an [`accept_channel::Receiver<PendingValidation>`] that yields accepted streams.
-    /// The acceptor is automatically unregistered when all receivers are dropped.
+    /// The acceptor is automatically cleaned up when all receivers are dropped.
     pub fn register_acceptor_channel(
         &self,
         acceptor_id: VarInt,
         capacity: usize,
     ) -> io::Result<accept_channel::Receiver<PendingValidation>> {
-        use crate::stream::server::ChannelAcceptor;
-
-        let (tx, rx) = accept_channel::new(capacity.into());
-        let acceptor = Arc::new(ChannelAcceptor::new(tx));
-        let handle = self
-            .endpoint
+        self.endpoint
             .acceptor_registry
-            .register(acceptor_id, acceptor.clone())
+            .register(acceptor_id, capacity.into())
             .ok_or_else(|| {
                 io::Error::new(io::ErrorKind::AddrInUse, "acceptor ID already registered")
-            })?;
-        acceptor.set_handle(handle);
-        Ok(rx)
+            })
     }
 }
 

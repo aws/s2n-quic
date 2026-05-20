@@ -10,7 +10,7 @@ pub struct Rng(u64);
 
 impl Rng {
     pub fn new() -> Self {
-        #[cfg(any(test, feature = "testing"))]
+        #[cfg(test)]
         if bolero::is_active() {
             use bach::rand::any;
             return Self(any::<u64>() | 1);
@@ -32,7 +32,7 @@ impl Rng {
 
     #[inline]
     pub fn next_u64(&mut self) -> u64 {
-        #[cfg(any(test, feature = "testing"))]
+        #[cfg(test)]
         if bolero::is_active() {
             use bach::rand::any;
             return any();
@@ -48,7 +48,7 @@ impl Rng {
     pub fn next_usize(&mut self, bound: usize) -> usize {
         debug_assert!(bound > 0);
 
-        #[cfg(any(test, feature = "testing"))]
+        #[cfg(test)]
         if bolero::is_active() {
             use bach::rand::Any;
             return (..bound).any();

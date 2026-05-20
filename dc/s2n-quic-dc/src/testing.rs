@@ -10,10 +10,7 @@ use s2n_quic::{provider::tls::Provider, server::Name};
 use s2n_quic_core::{crypto::tls::testing::certificates, time::StdClock};
 use std::{
     cell::Cell,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        OnceLock,
-    },
+    sync::{atomic::AtomicUsize, OnceLock},
     time::Duration,
 };
 
@@ -141,7 +138,7 @@ struct SnapshotModeGuard;
 #[cfg(test)]
 impl SnapshotModeGuard {
     fn enter() -> Self {
-        SNAPSHOT_MODE_DEPTH.fetch_add(1, Ordering::Relaxed);
+        SNAPSHOT_MODE_DEPTH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Self
     }
 }
@@ -149,7 +146,7 @@ impl SnapshotModeGuard {
 #[cfg(test)]
 impl Drop for SnapshotModeGuard {
     fn drop(&mut self) {
-        SNAPSHOT_MODE_DEPTH.fetch_sub(1, Ordering::Relaxed);
+        SNAPSHOT_MODE_DEPTH.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -330,7 +327,6 @@ fn is_tracing_disabled() -> bool {
 fn is_snapshots_disabled() -> bool {
     SNAPSHOT_DISABLED_DEPTH.with(|depth| depth.get() > 0)
 }
-
 
 #[cfg(test)]
 #[track_caller]

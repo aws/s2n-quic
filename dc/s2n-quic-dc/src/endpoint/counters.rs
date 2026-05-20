@@ -17,11 +17,10 @@ pub(crate) struct Dispatch {
     pub rx_init_dup: Counter,
     pub rx_init_too_old: Counter,
     pub rx_init_retx: Counter,
-    pub rx_init_accepted: Counter,
     pub rx_init_accepted_retry: Counter,
-    pub rx_init_reject: Counter,
     pub rx_init_no_acceptor: Counter,
-    pub rx_init_acceptor_reset: Counter,
+    pub rx_init_acceptor_closed: Counter,
+    pub rx_init_acceptor_no_slots: Counter,
 
     pub rx_validate_ok: Counter,
     pub rx_validate_failed: Counter,
@@ -107,11 +106,10 @@ impl Dispatch {
             rx_init_dup: counters.register("!rx.init.dup"),
             rx_init_too_old: counters.register("!rx.init.too_old"),
             rx_init_retx: counters.register("rx.init.retx"),
-            rx_init_accepted: counters.register("rx.init.accepted"),
             rx_init_accepted_retry: counters.register("rx.init.accepted_retry"),
-            rx_init_reject: counters.register("!rx.init.reject"),
             rx_init_no_acceptor: counters.register("!rx.init.no_acceptor"),
-            rx_init_acceptor_reset: counters.register("!rx.init.acceptor_reset"),
+            rx_init_acceptor_closed: counters.register("!rx.init.acceptor_closed"),
+            rx_init_acceptor_no_slots: counters.register("!rx.init.acceptor_no_slots"),
 
             rx_validate_ok: counters.register("rx.validate.ok"),
             rx_validate_failed: counters.register("!rx.validate.failed"),
@@ -465,9 +463,7 @@ impl Send {
             Header::FlowInitReset { .. } => self.tx_acked_frame_flow_init_reset.add(1),
             Header::FlowInitFin { .. } => self.tx_acked_frame_flow_init_fin.add(1),
             Header::FlowInitValidate { .. } => self.tx_acked_frame_flow_init_validate.add(1),
-            Header::FlowValidateRequest { .. } => {
-                self.tx_acked_frame_flow_validate_request.add(1)
-            }
+            Header::FlowValidateRequest { .. } => self.tx_acked_frame_flow_validate_request.add(1),
             // ACK frames are stripped before inflight insertion and are never ACKed as
             // inflight entries; this branch should be unreachable in practice.
             Header::Ack { .. } => {
