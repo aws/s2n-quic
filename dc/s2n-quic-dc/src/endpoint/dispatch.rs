@@ -539,6 +539,14 @@ fn handle_flow_init(
     response_frames: &mut PriorityInput,
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
+    trace!(
+        %credentials,
+        source_sender_id = source_sender_id.as_u64(),
+        attempt_id = attempt_id.as_u64(),
+        stream_id = stream_id.as_u64(),
+        dedup_right_edge = peer.attempt_dedup.right_edge_debug(),
+        "handle_flow_init: entering"
+    );
     let create_queue = |handle| {
         let (queue_control, queue_stream) =
             queue_dispatcher.alloc_or_grow(handle, Some(peer_queue_id));

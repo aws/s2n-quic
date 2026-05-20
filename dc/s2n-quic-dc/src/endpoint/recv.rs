@@ -125,6 +125,10 @@ impl AttemptDedup {
         }
     }
 
+    pub fn right_edge_debug(&self) -> u64 {
+        self.right_edge.unwrap_or(u64::MAX)
+    }
+
     pub fn check_attempt_id(&mut self, attempt_id: VarInt) -> Result<(), AttemptDedupError> {
         let id = attempt_id.as_u64();
 
