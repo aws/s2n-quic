@@ -7,6 +7,7 @@ expression: logs
 0:00:00.000000000 [main] TRACE m#test.pending.depth_dist=1
 0:00:00.000000000 [main] TRACE c#test.pending.drain=1
 0:00:00.000000000 [main] TRACE g#test.pending.depth=0
+0:00:00.000000000 [main] TRACE c#tx.frame[flow_data]=1
 0:00:00.000000000 [main] TRACE c#tx.data=1
 0:00:00.000000000 [main] TRACE c#test.inflight.enq=1
 0:00:00.000000000 [main] TRACE g#test.inflight.depth=1

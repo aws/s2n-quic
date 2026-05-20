@@ -184,6 +184,7 @@ where
                 is_ack_eliciting |= header.is_ack_eliciting();
                 ack_frame_count += 1;
                 metadata = next_metadata;
+                counters.on_tx_frame(&header);
                 packet_frames.push_back(frame.into());
 
                 // Return the entry to the recv worker via the completion channel.
@@ -211,6 +212,7 @@ where
                     source_control_port,
                     max_segment_len,
                     cancelled,
+                    counters,
                 ) {
                     ProbeResult::Assembled { old_pn } => {
                         is_ack_eliciting = true;
@@ -227,6 +229,7 @@ where
             // RFC 9002 §6.2.4. Otherwise only drain when the congestion window allows.
             let can_send_pending = context.has_pending_data()
                 && (context.pto.probe_state.is_requested() || context.can_send_pending_frames());
+            let phase3_is_probe = can_send_pending && context.pto.probe_state.is_requested();
 
             if can_send_pending {
                 while let Some(frame) = context.pop_pending() {
@@ -250,6 +253,10 @@ where
 
                     is_ack_eliciting |= frame.header.is_ack_eliciting();
                     metadata = next_metadata;
+                    counters.on_tx_frame(&frame.header);
+                    if phase3_is_probe {
+                        counters.on_probe_frame(&frame.header);
+                    }
                     packet_frames.push_back(frame);
 
                     if estimated_len == max_segment_len {
@@ -457,6 +464,7 @@ fn assemble_probe(
     source_control_port: u16,
     max_segment_len: usize,
     cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
+    counters: &AssemblerCounters,
 ) -> ProbeResult {
     while let Some((old_pn, mut probe_frames)) = context.inflight.take_oldest_for_probe() {
         let next_packet_number = context.next_packet_number + 4;
@@ -479,6 +487,8 @@ fn assemble_probe(
             if est_len <= max_segment_len {
                 probe_metadata = next;
                 has_frame = true;
+                counters.on_tx_frame(&frame.header);
+                counters.on_probe_frame(&frame.header);
                 packet_frames.push_back(frame);
             } else if !has_frame {
                 // First probe frame doesn't fit. This is only legitimate when

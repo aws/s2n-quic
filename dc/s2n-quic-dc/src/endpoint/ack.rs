@@ -120,6 +120,7 @@ pub(crate) fn process_ack<Clk, Rand>(
                 deferred.push(probe_pn);
             } else {
                 for mut entry in packet.frames {
+                    counters.on_acked_frame(&entry.header);
                     entry.status = TransmissionStatus::Acknowledged;
                     let _ = completed.send(entry);
                 }
@@ -134,6 +135,7 @@ pub(crate) fn process_ack<Clk, Rand>(
                 context.cca.on_packet_discarded(removal.discarded_bytes);
             }
             for mut entry in removal.frames {
+                counters.on_acked_frame(&entry.header);
                 entry.status = TransmissionStatus::Acknowledged;
                 let _ = completed.send(entry);
             }

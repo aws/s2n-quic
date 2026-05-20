@@ -339,6 +339,7 @@ expression: logs
 0:00:00.000021000 [client] TRACE g#q.wheel_to_assembler.depth[send.5]=0
 0:00:00.000021000 [client] TRACE c#send.pending.drain=1
 0:00:00.000021000 [client] TRACE g#send.pending.depth=0
+0:00:00.000021000 [client] TRACE c#tx.frame[flow_init]=1
 0:00:00.000021000 [client] TRACE c#tx.data=1
 0:00:00.000021000 [client] TRACE c#send.inflight.enq=1
 0:00:00.000021000 [client] TRACE g#send.inflight.depth=1
@@ -374,6 +375,7 @@ expression: logs
 0:00:00.000521000 [server] TRACE c#rx.peer_cache.miss=1
 0:00:00.000521000 [server] TRACE c#rx.ecn[ect0]=1
 0:00:00.000521000 [server] TRACE c#rx.init=1
+0:00:00.000521000 [server] TRACE c#rx.frame[flow_init]=1
 0:00:00.000521000 [server] TRACE c#flow.accepted=1
 0:00:00.000521000 [server] DEBUG FlowInit accepted - dispatched to acceptor attempt_id=0 stream_id=0 acceptor_id=1 server_queue_id=0
 0:00:00.000521000 [server] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
@@ -427,6 +429,7 @@ expression: logs
 0:00:00.000521000 [server] TRACE g#q.wheel_to_assembler.depth[send.5]=0
 0:00:00.000521000 [server] TRACE c#send.ack.drain=1
 0:00:00.000521000 [server] TRACE g#send.ack.depth=0
+0:00:00.000521000 [server] TRACE c#tx.frame[ack]=1
 0:00:00.000521000 [server] TRACE c#tx.data=1
 0:00:00.000521000 [server] TRACE c#q.dispatch.enq[recv.1]=1
 0:00:00.000521000 [server] TRACE g#q.dispatch.depth[recv.1]=1
@@ -480,6 +483,7 @@ expression: logs
 0:00:00.000541000 [server] TRACE g#q.wheel_to_assembler.depth[send.1]=0
 0:00:00.000541000 [server] TRACE c#send.pending.drain=1
 0:00:00.000541000 [server] TRACE g#send.pending.depth=0
+0:00:00.000541000 [server] TRACE c#tx.frame[flow_data]=1
 0:00:00.000541000 [server] TRACE c#tx.data=1
 0:00:00.000541000 [server] TRACE c#send.inflight.enq=1
 0:00:00.000541000 [server] TRACE g#send.inflight.depth=1
@@ -515,6 +519,7 @@ expression: logs
 0:00:00.001021000 [client] TRACE c#rx.peer_cache.miss=1
 0:00:00.001021000 [client] TRACE c#rx.ecn[ect0]=1
 0:00:00.001021000 [client] TRACE c#rx.pkt_control=1
+0:00:00.001021000 [client] TRACE c#rx.frame[ack]=1
 0:00:00.001021000 [client] TRACE c#q.ack.enq[send.1]=1
 0:00:00.001021000 [client] TRACE g#q.ack.depth[send.1]=1
 0:00:00.001021000 [client] TRACE m#q.ack.depth_dist[send.1]=1
@@ -527,6 +532,7 @@ expression: logs
 0:00:00.001021000 [client] TRACE c#tx.ack_received=1
 0:00:00.001021000 [client] TRACE c#send.inflight.drain=1
 0:00:00.001021000 [client] TRACE g#send.inflight.depth=0
+0:00:00.001021000 [client] TRACE c#tx.acked.frame[flow_init]=1
 0:00:00.001021000 [client] TRACE c#q.ack_to_completion.sender[send.1.task.ack_processor]=1
 0:00:00.001021000 [client] TRACE c#q.ack_to_completion.enq[send.1]=1
 0:00:00.001021000 [client] TRACE g#q.ack_to_completion.depth[send.1]=1
@@ -570,6 +576,7 @@ expression: logs
 0:00:00.001021000 [client] TRACE g#q.wheel_to_assembler.depth[send.5]=0
 0:00:00.001021000 [client] TRACE c#send.ack.drain=1
 0:00:00.001021000 [client] TRACE g#send.ack.depth=0
+0:00:00.001021000 [client] TRACE c#tx.frame[ack]=1
 0:00:00.001021000 [client] TRACE c#tx.data=1
 0:00:00.001021000 [client] TRACE c#q.dispatch.enq[recv.1]=1
 0:00:00.001021000 [client] TRACE g#q.dispatch.depth[recv.1]=1
@@ -604,6 +611,7 @@ expression: logs
 0:00:00.001041000 [client] TRACE c#rx.peer_cache.miss=1
 0:00:00.001041000 [client] TRACE c#rx.ecn[ect0]=1
 0:00:00.001041000 [client] TRACE c#rx.data=1
+0:00:00.001041000 [client] TRACE c#rx.frame[flow_data]=1
 0:00:00.001041000 [client] TRACE c#rx.data.ok=1
 0:00:00.001041000 [client] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.001041000 [client] TRACE m#task.packet_dispatch.drained[recv.3]=2
@@ -658,6 +666,7 @@ expression: logs
 0:00:00.001041000 [client] TRACE g#q.wheel_to_assembler.depth[send.7]=0
 0:00:00.001041000 [client] TRACE c#send.ack.drain=1
 0:00:00.001041000 [client] TRACE g#send.ack.depth=0
+0:00:00.001041000 [client] TRACE c#tx.frame[ack]=1
 0:00:00.001041000 [client] TRACE c#tx.data=1
 0:00:00.001041000 [client] TRACE c#q.dispatch.enq[recv.3]=1
 0:00:00.001041000 [client] TRACE g#q.dispatch.depth[recv.3]=1
@@ -711,6 +720,7 @@ expression: logs
 0:00:00.001061000 [client] TRACE g#q.wheel_to_assembler.depth[send.6]=0
 0:00:00.001061000 [client] TRACE c#send.pending.drain=1
 0:00:00.001061000 [client] TRACE g#send.pending.depth=0
+0:00:00.001061000 [client] TRACE c#tx.frame[flow_init]=1
 0:00:00.001061000 [client] TRACE c#tx.data=1
 0:00:00.001061000 [client] TRACE c#send.inflight.enq=1
 0:00:00.001061000 [client] TRACE g#send.inflight.depth=1
@@ -742,6 +752,7 @@ expression: logs
 0:00:00.001521000 [server] TRACE c#rx.peer_cache.hit=1
 0:00:00.001521000 [server] TRACE c#rx.ecn[ect0]=1
 0:00:00.001521000 [server] TRACE c#rx.pkt_control=1
+0:00:00.001521000 [server] TRACE c#rx.frame[ack]=1
 0:00:00.001521000 [server] TRACE c#q.ack.enq[send.1]=1
 0:00:00.001521000 [server] TRACE g#q.ack.depth[send.1]=1
 0:00:00.001521000 [server] TRACE m#q.ack.depth_dist[send.1]=1
@@ -784,6 +795,7 @@ expression: logs
 0:00:00.001521000 [server] TRACE g#q.wheel_to_assembler.depth[send.5]=0
 0:00:00.001521000 [server] TRACE c#send.ack.drain=1
 0:00:00.001521000 [server] TRACE g#send.ack.depth=0
+0:00:00.001521000 [server] TRACE c#tx.frame[ack]=1
 0:00:00.001521000 [server] TRACE c#tx.data=1
 0:00:00.001521000 [server] TRACE c#q.dispatch.enq[recv.1]=1
 0:00:00.001521000 [server] TRACE g#q.dispatch.depth[recv.1]=1
@@ -818,6 +830,7 @@ expression: logs
 0:00:00.001541000 [server] TRACE c#rx.peer_cache.miss=1
 0:00:00.001541000 [server] TRACE c#rx.ecn[ect0]=1
 0:00:00.001541000 [server] TRACE c#rx.pkt_control=1
+0:00:00.001541000 [server] TRACE c#rx.frame[ack]=1
 0:00:00.001541000 [server] TRACE c#q.ack.enq[send.1]=1
 0:00:00.001541000 [server] TRACE g#q.ack.depth[send.1]=1
 0:00:00.001541000 [server] TRACE m#q.ack.depth_dist[send.1]=1
@@ -830,6 +843,7 @@ expression: logs
 0:00:00.001541000 [server] TRACE c#tx.ack_received=1
 0:00:00.001541000 [server] TRACE c#send.inflight.drain=1
 0:00:00.001541000 [server] TRACE g#send.inflight.depth=0
+0:00:00.001541000 [server] TRACE c#tx.acked.frame[flow_data]=1
 0:00:00.001541000 [server] TRACE c#q.ack_to_completion.sender[send.1.task.ack_processor]=1
 0:00:00.001541000 [server] TRACE c#q.ack_to_completion.enq[send.1]=1
 0:00:00.001541000 [server] TRACE g#q.ack_to_completion.depth[send.1]=1
@@ -879,6 +893,7 @@ expression: logs
 0:00:00.001541000 [server] TRACE g#q.wheel_to_assembler.depth[send.6]=0
 0:00:00.001541000 [server] TRACE c#send.ack.drain=1
 0:00:00.001541000 [server] TRACE g#send.ack.depth=0
+0:00:00.001541000 [server] TRACE c#tx.frame[ack]=1
 0:00:00.001541000 [server] TRACE c#tx.data=1
 0:00:00.001541000 [server] TRACE c#q.dispatch.enq[recv.2]=1
 0:00:00.001541000 [server] TRACE g#q.dispatch.depth[recv.2]=1
@@ -913,6 +928,7 @@ expression: logs
 0:00:00.001561000 [server] TRACE c#rx.peer_cache.miss=1
 0:00:00.001561000 [server] TRACE c#rx.ecn[ect0]=1
 0:00:00.001561000 [server] TRACE c#rx.init=1
+0:00:00.001561000 [server] TRACE c#rx.frame[flow_init]=1
 0:00:00.001561000 [server] TRACE c#flow.accepted=1
 0:00:00.001561000 [server] DEBUG FlowInit accepted - dispatched to acceptor attempt_id=0 stream_id=1 acceptor_id=1 server_queue_id=1
 0:00:00.001561000 [server] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
@@ -959,6 +975,7 @@ expression: logs
 0:00:00.001561000 [server] TRACE g#q.wheel_to_assembler.depth[send.1]=0
 0:00:00.001561000 [server] TRACE c#send.ack.drain=1
 0:00:00.001561000 [server] TRACE g#send.ack.depth=0
+0:00:00.001561000 [server] TRACE c#tx.frame[ack]=1
 0:00:00.001561000 [server] TRACE c#tx.data=1
 0:00:00.001561000 [server] TRACE c#q.dispatch.enq[recv.1]=1
 0:00:00.001561000 [server] TRACE g#q.dispatch.depth[recv.1]=1
@@ -1012,6 +1029,7 @@ expression: logs
 0:00:00.001581000 [server] TRACE g#q.wheel_to_assembler.depth[send.7]=0
 0:00:00.001581000 [server] TRACE c#send.pending.drain=1
 0:00:00.001581000 [server] TRACE g#send.pending.depth=0
+0:00:00.001581000 [server] TRACE c#tx.frame[flow_data]=1
 0:00:00.001581000 [server] TRACE c#tx.data=1
 0:00:00.001581000 [server] TRACE c#send.inflight.enq=1
 0:00:00.001581000 [server] TRACE g#send.inflight.depth=1
@@ -1043,6 +1061,7 @@ expression: logs
 0:00:00.002021000 [client] TRACE c#rx.peer_cache.hit=1
 0:00:00.002021000 [client] TRACE c#rx.ecn[ect0]=1
 0:00:00.002021000 [client] TRACE c#rx.pkt_control=1
+0:00:00.002021000 [client] TRACE c#rx.frame[ack]=1
 0:00:00.002021000 [client] TRACE c#q.ack.enq[send.1]=1
 0:00:00.002021000 [client] TRACE g#q.ack.depth[send.1]=1
 0:00:00.002021000 [client] TRACE m#q.ack.depth_dist[send.1]=1
@@ -1076,6 +1095,7 @@ expression: logs
 0:00:00.002041000 [client] TRACE c#rx.peer_cache.miss=1
 0:00:00.002041000 [client] TRACE c#rx.ecn[ect0]=1
 0:00:00.002041000 [client] TRACE c#rx.pkt_control=1
+0:00:00.002041000 [client] TRACE c#rx.frame[ack]=1
 0:00:00.002041000 [client] TRACE c#q.ack.enq[send.3]=1
 0:00:00.002041000 [client] TRACE g#q.ack.depth[send.3]=1
 0:00:00.002041000 [client] TRACE m#q.ack.depth_dist[send.3]=1
@@ -1127,6 +1147,7 @@ expression: logs
 0:00:00.002041000 [client] TRACE g#q.wheel_to_assembler.depth[send.1]=0
 0:00:00.002041000 [client] TRACE c#send.ack.drain=1
 0:00:00.002041000 [client] TRACE g#send.ack.depth=0
+0:00:00.002041000 [client] TRACE c#tx.frame[ack]=1
 0:00:00.002041000 [client] TRACE c#tx.data=1
 0:00:00.002041000 [client] TRACE c#q.dispatch.enq[recv.1]=1
 0:00:00.002041000 [client] TRACE g#q.dispatch.depth[recv.1]=1
@@ -1157,6 +1178,7 @@ expression: logs
 0:00:00.002061000 [client] TRACE c#rx.peer_cache.hit=1
 0:00:00.002061000 [client] TRACE c#rx.ecn[ect0]=1
 0:00:00.002061000 [client] TRACE c#rx.pkt_control=1
+0:00:00.002061000 [client] TRACE c#rx.frame[ack]=1
 0:00:00.002061000 [client] TRACE c#q.ack.enq[send.2]=1
 0:00:00.002061000 [client] TRACE g#q.ack.depth[send.2]=1
 0:00:00.002061000 [client] TRACE m#q.ack.depth_dist[send.2]=1
@@ -1168,6 +1190,7 @@ expression: logs
 0:00:00.002061000 [client] TRACE c#tx.ack_received=1
 0:00:00.002061000 [client] TRACE c#send.inflight.drain=1
 0:00:00.002061000 [client] TRACE g#send.inflight.depth=0
+0:00:00.002061000 [client] TRACE c#tx.acked.frame[flow_init]=1
 0:00:00.002061000 [client] TRACE c#q.ack_to_completion.sender[send.2.task.ack_processor]=1
 0:00:00.002061000 [client] TRACE c#q.ack_to_completion.enq[send.2]=1
 0:00:00.002061000 [client] TRACE g#q.ack_to_completion.depth[send.2]=1
@@ -1210,6 +1233,7 @@ expression: logs
 0:00:00.002061000 [client] TRACE g#q.wheel_to_assembler.depth[send.7]=0
 0:00:00.002061000 [client] TRACE c#send.ack.drain=1
 0:00:00.002061000 [client] TRACE g#send.ack.depth=0
+0:00:00.002061000 [client] TRACE c#tx.frame[ack]=1
 0:00:00.002061000 [client] TRACE c#tx.data=1
 0:00:00.002061000 [client] TRACE c#q.dispatch.enq[recv.3]=1
 0:00:00.002061000 [client] TRACE g#q.dispatch.depth[recv.3]=1
@@ -1244,6 +1268,7 @@ expression: logs
 0:00:00.002081000 [client] TRACE c#rx.peer_cache.miss=1
 0:00:00.002081000 [client] TRACE c#rx.ecn[ect0]=1
 0:00:00.002081000 [client] TRACE c#rx.data=1
+0:00:00.002081000 [client] TRACE c#rx.frame[flow_data]=1
 0:00:00.002081000 [client] TRACE c#rx.data.ok=1
 0:00:00.002081000 [client] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.002081000 [client] TRACE m#task.packet_dispatch.drained[recv.2]=2
@@ -1291,6 +1316,7 @@ expression: logs
 0:00:00.002081000 [client] TRACE g#q.wheel_to_assembler.depth[send.6]=0
 0:00:00.002081000 [client] TRACE c#send.ack.drain=1
 0:00:00.002081000 [client] TRACE g#send.ack.depth=0
+0:00:00.002081000 [client] TRACE c#tx.frame[ack]=1
 0:00:00.002081000 [client] TRACE c#tx.data=1
 0:00:00.002081000 [client] TRACE c#q.dispatch.enq[recv.2]=1
 0:00:00.002081000 [client] TRACE g#q.dispatch.depth[recv.2]=1
@@ -1344,6 +1370,7 @@ expression: logs
 0:00:00.002101000 [client] TRACE g#q.wheel_to_assembler.depth[send.4]=0
 0:00:00.002101000 [client] TRACE c#send.pending.drain=1
 0:00:00.002101000 [client] TRACE g#send.pending.depth=0
+0:00:00.002101000 [client] TRACE c#tx.frame[flow_init]=1
 0:00:00.002101000 [client] TRACE c#tx.data=1
 0:00:00.002101000 [client] TRACE c#send.inflight.enq=1
 0:00:00.002101000 [client] TRACE g#send.inflight.depth=1
@@ -1379,6 +1406,7 @@ expression: logs
 0:00:00.002541000 [server] TRACE c#rx.peer_cache.miss=1
 0:00:00.002541000 [server] TRACE c#rx.ecn[ect0]=1
 0:00:00.002541000 [server] TRACE c#rx.pkt_control=1
+0:00:00.002541000 [server] TRACE c#rx.frame[ack]=1
 0:00:00.002541000 [server] TRACE c#q.ack.enq[send.2]=1
 0:00:00.002541000 [server] TRACE g#q.ack.depth[send.2]=1
 0:00:00.002541000 [server] TRACE m#q.ack.depth_dist[send.2]=1
@@ -1423,6 +1451,7 @@ expression: logs
 0:00:00.002541000 [server] TRACE g#q.wheel_to_assembler.depth[send.7]=0
 0:00:00.002541000 [server] TRACE c#send.ack.drain=1
 0:00:00.002541000 [server] TRACE g#send.ack.depth=0
+0:00:00.002541000 [server] TRACE c#tx.frame[ack]=1
 0:00:00.002541000 [server] TRACE c#tx.data=1
 0:00:00.002541000 [server] TRACE c#q.dispatch.enq[recv.3]=1
 0:00:00.002541000 [server] TRACE g#q.dispatch.depth[recv.3]=1
@@ -1453,6 +1482,7 @@ expression: logs
 0:00:00.002561000 [server] TRACE c#rx.peer_cache.hit=1
 0:00:00.002561000 [server] TRACE c#rx.ecn[ect0]=1
 0:00:00.002561000 [server] TRACE c#rx.pkt_control=1
+0:00:00.002561000 [server] TRACE c#rx.frame[ack]=1
 0:00:00.002561000 [server] TRACE c#q.ack.enq[send.1]=1
 0:00:00.002561000 [server] TRACE g#q.ack.depth[send.1]=1
 0:00:00.002561000 [server] TRACE m#q.ack.depth_dist[send.1]=1
@@ -1482,6 +1512,7 @@ expression: logs
 0:00:00.002581000 [server] TRACE c#rx.peer_cache.hit=1
 0:00:00.002581000 [server] TRACE c#rx.ecn[ect0]=1
 0:00:00.002581000 [server] TRACE c#rx.pkt_control=1
+0:00:00.002581000 [server] TRACE c#rx.frame[ack]=1
 0:00:00.002581000 [server] TRACE c#q.ack.enq[send.3]=1
 0:00:00.002581000 [server] TRACE g#q.ack.depth[send.3]=1
 0:00:00.002581000 [server] TRACE m#q.ack.depth_dist[send.3]=1
@@ -1493,6 +1524,7 @@ expression: logs
 0:00:00.002581000 [server] TRACE c#tx.ack_received=1
 0:00:00.002581000 [server] TRACE c#send.inflight.drain=1
 0:00:00.002581000 [server] TRACE g#send.inflight.depth=0
+0:00:00.002581000 [server] TRACE c#tx.acked.frame[flow_data]=1
 0:00:00.002581000 [server] TRACE c#q.ack_to_completion.sender[send.3.task.ack_processor]=1
 0:00:00.002581000 [server] TRACE c#q.ack_to_completion.enq[send.3]=1
 0:00:00.002581000 [server] TRACE g#q.ack_to_completion.depth[send.3]=1
@@ -1534,6 +1566,7 @@ expression: logs
 0:00:00.002581000 [server] TRACE g#q.wheel_to_assembler.depth[send.1]=0
 0:00:00.002581000 [server] TRACE c#send.ack.drain=1
 0:00:00.002581000 [server] TRACE g#send.ack.depth=0
+0:00:00.002581000 [server] TRACE c#tx.frame[ack]=1
 0:00:00.002581000 [server] TRACE c#tx.data=1
 0:00:00.002581000 [server] TRACE c#q.dispatch.enq[recv.1]=1
 0:00:00.002581000 [server] TRACE g#q.dispatch.depth[recv.1]=1
@@ -1568,6 +1601,7 @@ expression: logs
 0:00:00.002601000 [server] TRACE c#rx.peer_cache.miss=1
 0:00:00.002601000 [server] TRACE c#rx.ecn[ect0]=1
 0:00:00.002601000 [server] TRACE c#rx.init=1
+0:00:00.002601000 [server] TRACE c#rx.frame[flow_init]=1
 0:00:00.002601000 [server] TRACE c#flow.accepted=1
 0:00:00.002601000 [server] DEBUG FlowInit accepted - dispatched to acceptor attempt_id=0 stream_id=2 acceptor_id=1 server_queue_id=2
 0:00:00.002601000 [server] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
@@ -1621,6 +1655,7 @@ expression: logs
 0:00:00.002601000 [server] TRACE g#q.wheel_to_assembler.depth[send.2]=0
 0:00:00.002601000 [server] TRACE c#send.ack.drain=1
 0:00:00.002601000 [server] TRACE g#send.ack.depth=0
+0:00:00.002601000 [server] TRACE c#tx.frame[ack]=1
 0:00:00.002601000 [server] TRACE c#tx.data=1
 0:00:00.002601000 [server] TRACE c#q.dispatch.enq[recv.2]=1
 0:00:00.002601000 [server] TRACE g#q.dispatch.depth[recv.2]=1
@@ -1667,6 +1702,7 @@ expression: logs
 0:00:00.002621000 [server] TRACE g#q.wheel_to_assembler.depth[send.5]=0
 0:00:00.002621000 [server] TRACE c#send.pending.drain=1
 0:00:00.002621000 [server] TRACE g#send.pending.depth=0
+0:00:00.002621000 [server] TRACE c#tx.frame[flow_data]=1
 0:00:00.002621000 [server] TRACE c#tx.data=1
 0:00:00.002621000 [server] TRACE c#send.inflight.enq=1
 0:00:00.002621000 [server] TRACE g#send.inflight.depth=1
@@ -1698,6 +1734,7 @@ expression: logs
 0:00:00.003041000 [client] TRACE c#rx.peer_cache.hit=1
 0:00:00.003041000 [client] TRACE c#rx.ecn[ect0]=1
 0:00:00.003041000 [client] TRACE c#rx.pkt_control=1
+0:00:00.003041000 [client] TRACE c#rx.frame[ack]=1
 0:00:00.003041000 [client] TRACE c#q.ack.enq[send.1]=1
 0:00:00.003041000 [client] TRACE g#q.ack.depth[send.1]=1
 0:00:00.003041000 [client] TRACE m#q.ack.depth_dist[send.1]=1
@@ -1727,6 +1764,7 @@ expression: logs
 0:00:00.003081000 [client] TRACE c#rx.peer_cache.hit=1
 0:00:00.003081000 [client] TRACE c#rx.ecn[ect0]=1
 0:00:00.003081000 [client] TRACE c#rx.pkt_control=1
+0:00:00.003081000 [client] TRACE c#rx.frame[ack]=1
 0:00:00.003081000 [client] TRACE c#q.ack.enq[send.2]=1
 0:00:00.003081000 [client] TRACE g#q.ack.depth[send.2]=1
 0:00:00.003081000 [client] TRACE m#q.ack.depth_dist[send.2]=1
@@ -1760,6 +1798,7 @@ expression: logs
 0:00:00.003101000 [client] TRACE c#rx.peer_cache.miss=1
 0:00:00.003101000 [client] TRACE c#rx.ecn[ect0]=1
 0:00:00.003101000 [client] TRACE c#rx.pkt_control=1
+0:00:00.003101000 [client] TRACE c#rx.frame[ack]=1
 0:00:00.003101000 [client] TRACE c#q.ack.enq[send.0]=1
 0:00:00.003101000 [client] TRACE g#q.ack.depth[send.0]=1
 0:00:00.003101000 [client] TRACE m#q.ack.depth_dist[send.0]=1
@@ -1772,6 +1811,7 @@ expression: logs
 0:00:00.003101000 [client] TRACE c#tx.ack_received=1
 0:00:00.003101000 [client] TRACE c#send.inflight.drain=1
 0:00:00.003101000 [client] TRACE g#send.inflight.depth=0
+0:00:00.003101000 [client] TRACE c#tx.acked.frame[flow_init]=1
 0:00:00.003101000 [client] TRACE c#q.ack_to_completion.sender[send.0.task.ack_processor]=1
 0:00:00.003101000 [client] TRACE c#q.ack_to_completion.enq[send.0]=1
 0:00:00.003101000 [client] TRACE g#q.ack_to_completion.depth[send.0]=1
@@ -1815,6 +1855,7 @@ expression: logs
 0:00:00.003101000 [client] TRACE g#q.wheel_to_assembler.depth[send.7]=0
 0:00:00.003101000 [client] TRACE c#send.ack.drain=1
 0:00:00.003101000 [client] TRACE g#send.ack.depth=0
+0:00:00.003101000 [client] TRACE c#tx.frame[ack]=1
 0:00:00.003101000 [client] TRACE c#tx.data=1
 0:00:00.003101000 [client] TRACE c#q.dispatch.enq[recv.3]=1
 0:00:00.003101000 [client] TRACE g#q.dispatch.depth[recv.3]=1
@@ -1845,6 +1886,7 @@ expression: logs
 0:00:00.003121000 [client] TRACE c#rx.peer_cache.hit=1
 0:00:00.003121000 [client] TRACE c#rx.ecn[ect0]=1
 0:00:00.003121000 [client] TRACE c#rx.data=1
+0:00:00.003121000 [client] TRACE c#rx.frame[flow_data]=1
 0:00:00.003121000 [client] TRACE c#rx.data.ok=1
 0:00:00.003121000 [client] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.003121000 [client] TRACE m#task.packet_dispatch.drained[recv.1]=2
@@ -1884,6 +1926,7 @@ expression: logs
 0:00:00.003121000 [client] TRACE g#q.wheel_to_assembler.depth[send.5]=0
 0:00:00.003121000 [client] TRACE c#send.ack.drain=1
 0:00:00.003121000 [client] TRACE g#send.ack.depth=0
+0:00:00.003121000 [client] TRACE c#tx.frame[ack]=1
 0:00:00.003121000 [client] TRACE c#tx.data=1
 0:00:00.003121000 [client] TRACE c#q.dispatch.enq[recv.1]=1
 0:00:00.003121000 [client] TRACE g#q.dispatch.depth[recv.1]=1

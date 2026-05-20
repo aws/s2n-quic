@@ -558,6 +558,29 @@ pub(crate) struct AssemblerCounters {
     pub tx_probe: crate::counter::Counter,
     pub tx_frames_per_packet: crate::counter::Summary,
     pub tx_payload_size: crate::counter::Summary,
+
+    // Per-frame-type TX counters (one per transmitted frame, all phases).
+    pub tx_frame_flow_init: crate::counter::Counter,
+    pub tx_frame_flow_data: crate::counter::Counter,
+    pub tx_frame_flow_control: crate::counter::Counter,
+    pub tx_frame_flow_max_data: crate::counter::Counter,
+    pub tx_frame_flow_reset: crate::counter::Counter,
+    pub tx_frame_flow_init_reset: crate::counter::Counter,
+    pub tx_frame_flow_init_fin: crate::counter::Counter,
+    pub tx_frame_flow_init_validate: crate::counter::Counter,
+    pub tx_frame_flow_validate_request: crate::counter::Counter,
+    pub tx_frame_ack: crate::counter::Counter,
+
+    // Per-frame-type probe TX counters (Phase 2 retransmit + Phase 3 PTO bypass).
+    pub tx_probe_frame_flow_init: crate::counter::Counter,
+    pub tx_probe_frame_flow_data: crate::counter::Counter,
+    pub tx_probe_frame_flow_control: crate::counter::Counter,
+    pub tx_probe_frame_flow_max_data: crate::counter::Counter,
+    pub tx_probe_frame_flow_reset: crate::counter::Counter,
+    pub tx_probe_frame_flow_init_reset: crate::counter::Counter,
+    pub tx_probe_frame_flow_init_fin: crate::counter::Counter,
+    pub tx_probe_frame_flow_init_validate: crate::counter::Counter,
+    pub tx_probe_frame_flow_validate_request: crate::counter::Counter,
 }
 
 impl AssemblerCounters {
@@ -574,6 +597,81 @@ impl AssemblerCounters {
                 .register_summary("tx.frames_per_packet", crate::counter::Unit::Count),
             tx_payload_size: registry
                 .register_summary("tx.payload_size", crate::counter::Unit::Byte),
+
+            tx_frame_flow_init: registry.register_nominal("tx.frame", "flow_init"),
+            tx_frame_flow_data: registry.register_nominal("tx.frame", "flow_data"),
+            tx_frame_flow_control: registry.register_nominal("tx.frame", "flow_control"),
+            tx_frame_flow_max_data: registry.register_nominal("tx.frame", "flow_max_data"),
+            tx_frame_flow_reset: registry.register_nominal("tx.frame", "flow_reset"),
+            tx_frame_flow_init_reset: registry.register_nominal("tx.frame", "flow_init_reset"),
+            tx_frame_flow_init_fin: registry.register_nominal("tx.frame", "flow_init_fin"),
+            tx_frame_flow_init_validate: registry
+                .register_nominal("tx.frame", "flow_init_validate"),
+            tx_frame_flow_validate_request: registry
+                .register_nominal("tx.frame", "flow_validate_request"),
+            tx_frame_ack: registry.register_nominal("tx.frame", "ack"),
+
+            tx_probe_frame_flow_init: registry.register_nominal("tx.probe.frame", "flow_init"),
+            tx_probe_frame_flow_data: registry.register_nominal("tx.probe.frame", "flow_data"),
+            tx_probe_frame_flow_control: registry
+                .register_nominal("tx.probe.frame", "flow_control"),
+            tx_probe_frame_flow_max_data: registry
+                .register_nominal("tx.probe.frame", "flow_max_data"),
+            tx_probe_frame_flow_reset: registry.register_nominal("tx.probe.frame", "flow_reset"),
+            tx_probe_frame_flow_init_reset: registry
+                .register_nominal("tx.probe.frame", "flow_init_reset"),
+            tx_probe_frame_flow_init_fin: registry
+                .register_nominal("tx.probe.frame", "flow_init_fin"),
+            tx_probe_frame_flow_init_validate: registry
+                .register_nominal("tx.probe.frame", "flow_init_validate"),
+            tx_probe_frame_flow_validate_request: registry
+                .register_nominal("tx.probe.frame", "flow_validate_request"),
+        }
+    }
+
+    /// Bump the per-frame-type TX counter for the given frame header.
+    #[inline]
+    pub fn on_tx_frame(&self, header: &frame::Header) {
+        match header {
+            frame::Header::FlowInit { .. } => self.tx_frame_flow_init.add(1),
+            frame::Header::FlowData { .. } => self.tx_frame_flow_data.add(1),
+            frame::Header::FlowControl { .. } => self.tx_frame_flow_control.add(1),
+            frame::Header::FlowMaxData { .. } => self.tx_frame_flow_max_data.add(1),
+            frame::Header::FlowReset { .. } => self.tx_frame_flow_reset.add(1),
+            frame::Header::FlowInitReset { .. } => self.tx_frame_flow_init_reset.add(1),
+            frame::Header::FlowInitFin { .. } => self.tx_frame_flow_init_fin.add(1),
+            frame::Header::FlowInitValidate { .. } => self.tx_frame_flow_init_validate.add(1),
+            frame::Header::FlowValidateRequest { .. } => {
+                self.tx_frame_flow_validate_request.add(1)
+            }
+            frame::Header::Ack { .. } => self.tx_frame_ack.add(1),
+        }
+    }
+
+    /// Bump the per-frame-type probe TX counter for the given frame header.
+    /// Called for frames assembled as PTO probes (Phase 2 retransmit and Phase 3
+    /// CWND-bypass).
+    #[inline]
+    pub fn on_probe_frame(&self, header: &frame::Header) {
+        match header {
+            frame::Header::FlowInit { .. } => self.tx_probe_frame_flow_init.add(1),
+            frame::Header::FlowData { .. } => self.tx_probe_frame_flow_data.add(1),
+            frame::Header::FlowControl { .. } => self.tx_probe_frame_flow_control.add(1),
+            frame::Header::FlowMaxData { .. } => self.tx_probe_frame_flow_max_data.add(1),
+            frame::Header::FlowReset { .. } => self.tx_probe_frame_flow_reset.add(1),
+            frame::Header::FlowInitReset { .. } => self.tx_probe_frame_flow_init_reset.add(1),
+            frame::Header::FlowInitFin { .. } => self.tx_probe_frame_flow_init_fin.add(1),
+            frame::Header::FlowInitValidate { .. } => {
+                self.tx_probe_frame_flow_init_validate.add(1)
+            }
+            frame::Header::FlowValidateRequest { .. } => {
+                self.tx_probe_frame_flow_validate_request.add(1)
+            }
+            // ACK frames are stripped before inflight insertion and are never retransmitted
+            // as probes; this branch should be unreachable in practice.
+            frame::Header::Ack { .. } => {
+                debug_assert!(false, "ACK frames should never appear as inflight entries")
+            }
         }
     }
 }
