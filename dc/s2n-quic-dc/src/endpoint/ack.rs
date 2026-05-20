@@ -141,6 +141,7 @@ pub(crate) fn process_ack<Clk, Rand>(
     }
 
     counters.tx_ack_packets.record_value(packets_acked);
+    counters.on_inflight_drain_ack(packets_acked);
 
     // Finalize loss detection for the ACK-only RTT tracker. This must be called
     // after all ranges have been processed so that the loss heuristic does not
@@ -347,6 +348,7 @@ fn detect_loss<Rand>(
     }
 
     if lost_count + cancelled_count + ttl_exhausted_count > 0 {
+        counters.on_inflight_drain_loss((lost_count + cancelled_count + ttl_exhausted_count) as u64);
         debug!(
             lost_count,
             cancelled_count,

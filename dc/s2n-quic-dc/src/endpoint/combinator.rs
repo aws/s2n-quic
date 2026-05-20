@@ -956,7 +956,7 @@ where
                     match cache.get_or_insert(entry.path_secret_entry(), &self.clock) {
                         Ok(ctx) => ctx,
                         Err(error) => {
-                            warn!(?error, "dropping ack: send context not ready");
+                            warn!(?error, peer = %entry.path_secret_entry().peer(), "dropping ack: send context not ready");
                             return Poll::Ready(Some(None));
                         }
                     }

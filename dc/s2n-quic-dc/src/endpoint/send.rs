@@ -969,11 +969,14 @@ impl Context {
         self.inflight.invariants();
     }
 
+    /// Drains all inflight and pending frames from this context.
+    ///
+    /// Returns `(frames_drained, inflight_bytes_discarded)`.
     pub fn drain_frames(
         &mut self,
         reason: Option<frame::FailureReason>,
         output: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
-    ) -> usize {
+    ) -> (usize, usize) {
         let mut drained = 0usize;
         let mut discarded_bytes = 0usize;
         let range = self.inflight.get_range();
@@ -1001,7 +1004,7 @@ impl Context {
                 drained += 1;
             }
         }
-        drained
+        (drained, discarded_bytes)
     }
 }
 
@@ -1169,16 +1172,22 @@ pub(crate) struct Cache {
     ack_gauge: QueueGauge,
     pending_gauge: QueueGauge,
     sender_idx: usize,
+    send_counters: Arc<super::counters::Send>,
 }
 
 impl Cache {
-    pub fn new(counter_registry: &crate::counter::Registry, sender_idx: usize) -> Self {
+    pub fn new(
+        counter_registry: &crate::counter::Registry,
+        sender_idx: usize,
+        send_counters: Arc<super::counters::Send>,
+    ) -> Self {
         Self {
             contexts: FxHashMap::default(),
             inflight_gauge: counter_registry.register_queue_gauge("send.inflight"),
             ack_gauge: counter_registry.register_queue_gauge("send.ack"),
             pending_gauge: counter_registry.register_queue_gauge("send.pending"),
             sender_idx,
+            send_counters,
         }
     }
 
@@ -1207,6 +1216,7 @@ impl Cache {
                     self.sender_idx,
                     clock,
                 )?;
+                self.send_counters.on_context_created();
                 Ok(e.insert(Rc::new(RefCell::new(ctx))).clone())
             }
         }
@@ -1221,11 +1231,12 @@ impl Cache {
         id: &credentials::Id,
         reason: frame::FailureReason,
         cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
-    ) -> Option<usize> {
+    ) -> Option<(usize, usize)> {
         let Some(ctx) = self.contexts.remove(id) else {
             trace!(%id, sender_idx = self.sender_idx, "invalidate: no context found");
             return None;
         };
+        self.send_counters.on_context_removed();
         let mut ctx = ctx.borrow_mut();
         debug!(%id, sender_idx = self.sender_idx, "invalidating send context");
         Some(ctx.drain_frames(Some(reason), cancelled))
@@ -1237,7 +1248,7 @@ impl Cache {
         sender_id: VarInt,
         rejected_key_id: VarInt,
         retransmit: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
-    ) -> Option<usize> {
+    ) -> Option<(usize, usize)> {
         let sender_idx = sender_id.as_u64() as usize;
         debug_assert_eq!(
             self.sender_idx, sender_idx,
@@ -1271,6 +1282,7 @@ impl Cache {
         }
 
         let ctx = self.contexts.remove(id).unwrap();
+        self.send_counters.on_context_removed();
         let mut ctx = ctx.borrow_mut();
         debug!(
             %id,
@@ -1281,4 +1293,5 @@ impl Cache {
         );
         Some(ctx.drain_frames(None, retransmit))
     }
+
 }

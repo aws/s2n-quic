@@ -247,6 +247,8 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     // Map sender_idx → local socket position for this worker.
     let mut sender_idx_to_local: Vec<usize> = (0..total_sender_ids).map(|_| usize::MAX).collect();
 
+    let send_counters = endpoint::counters::Send::new(&counter_registry);
+
     // One send::Cache per socket, shared between the context resolver and ACK processor.
     let send_caches: Vec<Rc<RefCell<send::Cache>>> = send_sockets
         .iter()
@@ -257,6 +259,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             Rc::new(RefCell::new(send::Cache::new(
                 &counter_registry,
                 st.sender_idx,
+                send_counters.clone(),
             )))
         })
         .collect();
@@ -378,8 +381,6 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             .sender("task.ack_processor")
             .with_description("ACK processor emits cancelled frames")
             .with_function("endpoint::tasks::send_worker");
-
-        let send_counters = endpoint::counters::Send::new(&counter_registry);
         let rx = send_ack_processor(
             ack_rx,
             send_caches.clone(),
@@ -390,7 +391,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             frame_tx.clone(),
             crate::counter::GaugedSender::new(completed_tx, completion_sender),
             crate::counter::GaugedSender::new(cancelled_tx.clone(), cancelled_sender),
-            send_counters,
+            send_counters.clone(),
             crate::counter::GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
             crate::counter::GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
             crate::counter::GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
@@ -520,6 +521,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             crate::counter::GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
             tx_pto_check,
             tx_pto_requested,
+            send_counters.clone(),
         );
         let task_counter = counter_registry
             .register_nominal_task("task.pto_wheel", format!("send.{worker_id}"))
@@ -557,6 +559,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             counter_registry.register("idle.send.expired"),
             counter_registry.register("idle.send.rescheduled"),
             counter_registry.register_nominal_timer("idle.send.lifetime", &variant),
+            send_counters.clone(),
             budgets.idle_wheel,
             task_counter.clone(),
         );
@@ -662,6 +665,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             invalidation_completed_tx,
             retransmit_tx,
             invalidation_counters,
+            send_counters.clone(),
         );
         let variant = format!("send.{worker_id}");
         let task_counter = counter_registry
@@ -737,7 +741,7 @@ where
                 match cache.get_or_insert(batch.path_secret_entry(), &clock) {
                     Ok(ctx) => ctx,
                     Err(error) => {
-                        warn!(?error, "dropping batch: send context not ready");
+                        warn!(?error, peer = %batch.path_secret_entry().peer(), "dropping batch: send context not ready");
                         return None;
                     }
                 }
@@ -812,6 +816,7 @@ pub fn send_pto_timeout<CtxRx, Clk, TxW, PtoW, IdleW>(
     idle_wheel_tx: IdleW,
     tx_pto_check: crate::counter::Counter,
     tx_pto_requested: crate::counter::Counter,
+    send_counters: Arc<endpoint::counters::Send>,
 ) -> impl Receiver<()>
 where
     CtxRx: Receiver<Rc<RefCell<send::Context>>>,
@@ -830,6 +835,10 @@ where
                 let interest = ctx.on_pto_timeout(&clock);
                 if !requested && ctx.pto.probe_state.is_requested() {
                     tx_pto_requested.add(1);
+                    send_counters.tx_probe_backoff.record_value(ctx.pto.backoff as u64);
+                    if ctx.pto.backoff > 2 {
+                        send_counters.on_probe_no_response();
+                    }
                 }
                 interest
             };
@@ -1005,6 +1014,7 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
     idle_expired: crate::counter::Counter,
     idle_rescheduled: crate::counter::Counter,
     idle_lifetime: crate::counter::Timer,
+    send_counters: Arc<endpoint::counters::Send>,
     budget: usize,
     task_counter: crate::counter::Task,
 ) where
@@ -1035,11 +1045,16 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
                     drop(ctx);
 
                     collecting_tx.clear();
-                    send_caches[local_id].borrow_mut().invalidate(
+                    let result = send_caches[local_id].borrow_mut().invalidate(
                         &id,
                         frame::FailureReason::PeerDead,
                         &mut collecting_tx,
                     );
+
+                    if let Some((drained, discarded_bytes)) = result {
+                        send_counters.on_inflight_drain_expire(drained as u64);
+                        send_counters.on_inflight_leaked_on_invalidate(discarded_bytes as u64);
+                    }
 
                     reset_flow_queues(
                         &mut queue_dispatcher,
@@ -1576,6 +1591,7 @@ pub fn send_invalidation<R>(
     mut cancelled_tx: impl UnboundedSender<Entry<Frame>> + 'static,
     mut retransmit_tx: impl UnboundedSender<Entry<Frame>> + 'static,
     counters: SendInvalidationCounters,
+    send_counters: Arc<endpoint::counters::Send>,
 ) -> impl Receiver<()>
 where
     R: Receiver<Entry<Invalidation>>,
@@ -1586,7 +1602,7 @@ where
             Invalidation::UnknownPathSecret { credential_id } => {
                 counters.unknown_path_secret_events.add(1);
                 for cache in &send_caches {
-                    if let Some(drained) = cache.borrow_mut().invalidate(
+                    if let Some((drained, discarded_bytes)) = cache.borrow_mut().invalidate(
                         &credential_id,
                         frame::FailureReason::UnknownPathSecret,
                         &mut cancelled_tx,
@@ -1595,6 +1611,8 @@ where
                         counters
                             .unknown_path_secret_frames_failed
                             .add(drained as u64);
+                        send_counters.on_inflight_drain_invalidate(drained as u64);
+                        send_counters.on_inflight_leaked_on_invalidate(discarded_bytes as u64);
                     }
                 }
             }
@@ -1621,7 +1639,7 @@ where
                 let Some(cache) = cache else {
                     return;
                 };
-                if let Some(drained) = cache.borrow_mut().invalidate_stale_key(
+                if let Some((drained, discarded_bytes)) = cache.borrow_mut().invalidate_stale_key(
                     &credential_id,
                     sender_id,
                     rejected_key_id,
@@ -1629,6 +1647,8 @@ where
                 ) {
                     counters.stale_or_replay_contexts.add(1);
                     counters.stale_or_replay_frames_requeued.add(drained as u64);
+                    send_counters.on_inflight_drain_invalidate(drained as u64);
+                    send_counters.on_inflight_leaked_on_invalidate(discarded_bytes as u64);
                 }
             }
         },

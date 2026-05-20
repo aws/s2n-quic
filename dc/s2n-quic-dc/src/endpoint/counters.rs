@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    counter::{Counter, Registry, Summary, Timer, Unit},
+    counter::{Counter, Gauge, Registry, Summary, Timer, Unit},
     endpoint::frame::Header,
     flow::queue::ValidationError,
     packet::datagram::ResetTarget,
@@ -268,6 +268,15 @@ pub(crate) struct Send {
     pub tx_ecn_ect0: Counter,
     pub tx_ecn_ect1: Counter,
     pub tx_ecn_ce: Counter,
+
+    pub inflight_drain_ack: Counter,
+    pub inflight_drain_loss: Counter,
+    pub inflight_drain_invalidate: Counter,
+    pub inflight_drain_expire: Counter,
+    pub inflight_leaked_on_invalidate: Summary,
+    pub send_context_count: Gauge,
+    pub tx_probe_no_response: Counter,
+    pub tx_probe_backoff: Summary,
 }
 
 impl Send {
@@ -288,6 +297,16 @@ impl Send {
             tx_ecn_ect0: counters.register_nominal("tx.ecn", "ect0"),
             tx_ecn_ect1: counters.register_nominal("tx.ecn", "ect1"),
             tx_ecn_ce: counters.register_nominal("tx.ecn", "ce"),
+
+            inflight_drain_ack: counters.register_nominal("send.inflight.drain", "ack"),
+            inflight_drain_loss: counters.register_nominal("send.inflight.drain", "loss"),
+            inflight_drain_invalidate: counters.register_nominal("send.inflight.drain", "invalidate"),
+            inflight_drain_expire: counters.register_nominal("send.inflight.drain", "expire"),
+            inflight_leaked_on_invalidate: counters
+                .register_summary("send.inflight.leaked_on_invalidate", Unit::Byte),
+            send_context_count: counters.register_gauge("send.context.count"),
+            tx_probe_no_response: counters.register("tx.probe.no_response"),
+            tx_probe_backoff: counters.register_summary("tx.probe.backoff", Unit::Count),
         })
     }
 
@@ -341,5 +360,47 @@ impl Send {
         if ce > 0 {
             self.tx_ecn_ce.add(ce);
         }
+    }
+
+    #[inline]
+    pub fn on_inflight_drain_ack(&self, count: u64) {
+        self.inflight_drain_ack.add(count);
+    }
+
+    #[inline]
+    pub fn on_inflight_drain_loss(&self, count: u64) {
+        self.inflight_drain_loss.add(count);
+    }
+
+    #[inline]
+    pub fn on_inflight_drain_invalidate(&self, count: u64) {
+        self.inflight_drain_invalidate.add(count);
+    }
+
+    #[inline]
+    pub fn on_inflight_drain_expire(&self, count: u64) {
+        self.inflight_drain_expire.add(count);
+    }
+
+    #[inline]
+    pub fn on_inflight_leaked_on_invalidate(&self, bytes: u64) {
+        if bytes > 0 {
+            self.inflight_leaked_on_invalidate.record_value(bytes);
+        }
+    }
+
+    #[inline]
+    pub fn on_context_created(&self) {
+        self.send_context_count.add(1);
+    }
+
+    #[inline]
+    pub fn on_context_removed(&self) {
+        self.send_context_count.sub(1);
+    }
+
+    #[inline]
+    pub fn on_probe_no_response(&self) {
+        self.tx_probe_no_response.add(1);
     }
 }
