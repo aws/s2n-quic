@@ -338,11 +338,6 @@ pub fn setup_sim_endpoint(
         ups_socket,
     );
 
-    endpoint.counters.spawn_reporter_with_label(
-        core::time::Duration::from_secs(1),
-        bach::group::current().name(),
-    );
-
     // Register in the thread-local registry so `connect` can find it.
     register_endpoint_map(&endpoint.data_addrs, path_secret_map);
 

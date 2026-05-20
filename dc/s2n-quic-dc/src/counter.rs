@@ -18,7 +18,8 @@ use std::{
 };
 use tokio::sync::mpsc;
 
-pub use s2n_quic_dc_metrics::{Summary, Unit};
+use s2n_quic_dc_metrics::Summary as RawSummary;
+pub use s2n_quic_dc_metrics::Unit;
 
 /// Stable identifier for metric metadata tracked in [`Registry`].
 pub type MetricId = u64;
@@ -693,7 +694,7 @@ impl Sampler {
 /// Use [`Timer::unsampled`] to get a timer that records every call.
 #[derive(Clone)]
 pub struct Timer {
-    summary: Summary,
+    summary: RawSummary,
     metric_id: MetricId,
     metadata: Arc<Mutex<HashMap<MetricId, MetricMetadata>>>,
     sampler: Sampler,
@@ -782,13 +783,13 @@ impl Timer {
 }
 
 #[derive(Clone)]
-pub struct SummaryMetric {
-    summary: Summary,
+pub struct Summary {
+    summary: RawSummary,
     metric_id: MetricId,
     metadata: Arc<Mutex<HashMap<MetricId, MetricMetadata>>>,
 }
 
-impl SummaryMetric {
+impl Summary {
     #[inline]
     pub fn record_value(&self, value: u64) {
         #[cfg(any(test, feature = "metric-tracing"))]
@@ -814,7 +815,7 @@ impl SummaryMetric {
 }
 
 pub struct TimerGuard<'a> {
-    summary: &'a Summary,
+    summary: &'a RawSummary,
     #[allow(dead_code)]
     metric_label: String,
     #[allow(dead_code)]
@@ -874,7 +875,7 @@ impl Drop for TimerGuard<'_> {
 pub struct Task {
     registry: Registry,
     registration: Arc<Mutex<TaskRegistrationMetadata>>,
-    pub drained: SummaryMetric,
+    pub drained: Summary,
     pub time: Timer,
     pub next_poll_latency: Timer,
 }
@@ -997,7 +998,7 @@ pub struct QueueGauge {
     pub throughput: Counter,
     pub drain: Counter,
     pub depth: Gauge,
-    pub depth_distribution: SummaryMetric,
+    pub depth_distribution: Summary,
 }
 
 #[derive(Clone, Default)]
@@ -2366,6 +2367,16 @@ impl Registry {
     const COUNT_UNIT: &'static str = "count";
     const MICROSECOND_UNIT: &'static str = "microsecond";
 
+    fn unit_str(unit: Unit) -> Option<&'static str> {
+        match unit {
+            Unit::Count => Some("count"),
+            Unit::Microsecond => Some("microsecond"),
+            Unit::Byte => Some("byte"),
+            Unit::Second => Some("second"),
+            Unit::Percent => Some("percent"),
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             inner: s2n_quic_dc_metrics::Registry::new(),
@@ -2504,7 +2515,7 @@ impl Registry {
         }
     }
 
-    fn timer_handle(&self, summary: Summary, metric_id: MetricId) -> Timer {
+    fn timer_handle(&self, summary: RawSummary, metric_id: MetricId) -> Timer {
         Timer {
             summary,
             metric_id,
@@ -2514,8 +2525,8 @@ impl Registry {
         }
     }
 
-    fn summary_handle(&self, summary: Summary, metric_id: MetricId) -> SummaryMetric {
-        SummaryMetric {
+    fn summary_handle(&self, summary: RawSummary, metric_id: MetricId) -> Summary {
+        Summary {
             summary,
             metric_id,
             metadata: self.metric_metadata.clone(),
@@ -2737,8 +2748,21 @@ impl Registry {
         self.gauge_handle(inner, metric_id)
     }
 
-    pub fn register_summary(&self, label: impl core::fmt::Display, unit: Unit) -> Summary {
-        self.inner.register_summary(label.to_string(), None, unit)
+    pub fn register_summary(
+        &self,
+        label: impl core::fmt::Display,
+        unit: Unit,
+    ) -> Summary {
+        let label = label.to_string();
+        let metric_id = self.register_metric_metadata(
+            &label,
+            None,
+            MetricKind::Summary,
+            Self::unit_str(unit),
+            "",
+        );
+        let summary = self.inner.register_summary(label, None, unit);
+        self.summary_handle(summary, metric_id)
     }
 
     pub fn register_nominal_summary(
@@ -2747,8 +2771,19 @@ impl Registry {
         variant: impl core::fmt::Display,
         unit: Unit,
     ) -> Summary {
-        self.inner
-            .register_summary(label.to_string(), Some(variant.to_string()), unit)
+        let label = label.to_string();
+        let variant = variant.to_string();
+        let metric_id = self.register_metric_metadata(
+            &label,
+            Some(&variant),
+            MetricKind::Summary,
+            Self::unit_str(unit),
+            "",
+        );
+        let summary = self
+            .inner
+            .register_summary(label, Some(variant), unit);
+        self.summary_handle(summary, metric_id)
     }
 
     pub fn register_timer(&self, label: impl core::fmt::Display) -> Timer {
@@ -2771,13 +2806,6 @@ impl Registry {
         let drained_label = format!("{label}.drained");
         let time_label = format!("{label}.time");
         let next_poll_latency_label = format!("{label}.next_poll_latency");
-        let drained_id = self.register_metric_metadata(
-            &drained_label,
-            None,
-            MetricKind::Summary,
-            Some(Self::COUNT_UNIT),
-            Task::DRAINED_DESCRIPTION,
-        );
         let time_id = self.register_metric_metadata(
             &time_label,
             None,
@@ -2798,10 +2826,9 @@ impl Registry {
                 name: label.clone(),
                 ..Default::default()
             })),
-            drained: self.summary_handle(
-                self.register_summary(drained_label, Unit::Count),
-                drained_id,
-            ),
+            drained: self
+                .register_summary(drained_label, Unit::Count)
+                .with_description(Task::DRAINED_DESCRIPTION),
             time: self.timer_handle(
                 self.inner
                     .register_summary(time_label, None, Unit::Microsecond),
@@ -2846,13 +2873,6 @@ impl Registry {
         let drained_label = format!("{label}.drained");
         let time_label = format!("{label}.time");
         let next_poll_latency_label = format!("{label}.next_poll_latency");
-        let drained_id = self.register_metric_metadata(
-            &drained_label,
-            Some(&variant),
-            MetricKind::Summary,
-            Some(Self::COUNT_UNIT),
-            Task::DRAINED_DESCRIPTION,
-        );
         let time_id = self.register_metric_metadata(
             &time_label,
             Some(&variant),
@@ -2873,10 +2893,9 @@ impl Registry {
                 name: format!("{label}.{variant}"),
                 ..Default::default()
             })),
-            drained: self.summary_handle(
-                self.register_nominal_summary(drained_label, &variant, Unit::Count),
-                drained_id,
-            ),
+            drained: self
+                .register_nominal_summary(drained_label, &variant, Unit::Count)
+                .with_description(Task::DRAINED_DESCRIPTION),
             time: self.timer_handle(
                 self.inner
                     .register_summary(time_label, Some(variant.clone()), Unit::Microsecond),

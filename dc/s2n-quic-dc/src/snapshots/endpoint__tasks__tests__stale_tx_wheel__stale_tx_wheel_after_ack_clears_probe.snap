@@ -9,6 +9,9 @@ expression: logs
 0:00:00.000000000 [main] TRACE c#test.inflight.drain=1
 0:00:00.000000000 [main] TRACE g#test.inflight.depth=0
 0:00:00.000000000 [main] TRACE c#tx.acked.frame[flow_data]=1
+0:00:00.000000000 [main] TRACE m#tx.ack_packets=1
 0:00:00.000000000 [main] TRACE c#send.inflight.drain[ack]=1
 0:00:00.000000000 [main] DEBUG event=on_all_acked prev=Requested next=Idle location=dc/s2n-quic-dc/src/endpoint/send.rs
+0:00:00.000000000 [main] TRACE m#send.cwnd=14920
+0:00:00.000000000 [main] TRACE m#send.pacing_rate=42666666666
 0:00:00.000000000 [main] TRACE c#send.app_limited=1
