@@ -3,7 +3,7 @@ members = ["common/s2n-*", "quic/s2n-*", "dc/s2n-*", "tools/dc-tester", "xtask"]
 default-members = ["common/s2n-*", "quic/s2n-*", "dc/s2n-*"]
 resolver = "2"
 # don't include any workspaces outside of the main project
-exclude = ["examples", "tools/event-generator", "tools/memory-report", "tools/s2n-events", "tools/udp-attack", "tools/xdp"]
+exclude = ["examples", "tools/event-generator", "tools/memory-report", "tools/s2n-events", "tools/udp-attack", "tools/xdp", "quic/s2n-quic-sim"]
 
 # Patch bach to include:
 # - A fix for cancelled timer entries cascading in the wheel and exceeding
@@ -17,6 +17,10 @@ exclude = ["examples", "tools/event-generator", "tools/memory-report", "tools/s2
 #   https://github.com/camshaft/bach/commit/5a5ece139b71c226d18b2fb71af9a7f3ae4b09f2
 [patch.crates-io]
 bach = { git = "https://github.com/camshaft/bach", rev = "5a5ece139b71c226d18b2fb71af9a7f3ae4b09f2" }
+bolero = { git = "https://github.com/camshaft/bolero", rev = "71e5de0eceb043f3eda2f62ccd02d2be2b398c44" }
+bolero-engine = { git = "https://github.com/camshaft/bolero", rev = "71e5de0eceb043f3eda2f62ccd02d2be2b398c44" }
+bolero-generator = { git = "https://github.com/camshaft/bolero", rev = "71e5de0eceb043f3eda2f62ccd02d2be2b398c44" }
+bolero-generator-derive = { git = "https://github.com/camshaft/bolero", rev = "71e5de0eceb043f3eda2f62ccd02d2be2b398c44" }
 
 [profile.release-debug]
 inherits = "dev"

@@ -162,6 +162,16 @@ pub struct SimEndpointConfig {
     /// Number of send sockets.  Must be a power of two (≥ 1).
     pub num_send_sockets: usize,
 
+    /// Number of recv sockets (and recv_io workers).  Each recv socket gets its
+    /// own recv_io worker.
+    pub num_recv_sockets: usize,
+
+    /// Number of send workers.
+    pub num_send_workers: usize,
+
+    /// Number of recv dispatch workers.
+    pub num_recv_dispatch_workers: usize,
+
     /// Number of submission shards for the frame channel.  Must be a power of two.
     pub submission_shards: usize,
 
@@ -182,8 +192,11 @@ impl Default for SimEndpointConfig {
     fn default() -> Self {
         Self {
             bind_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), 0),
-            num_send_sockets: 1,
-            submission_shards: 1,
+            num_send_sockets: 8,
+            num_recv_sockets: 4,
+            num_send_workers: 4,
+            num_recv_dispatch_workers: 4,
+            submission_shards: 4,
             overall_send_rate: Rate::new(25.0),
             per_socket_send_rate: Rate::new(5.0),
             budgets: Budgets::default(),
@@ -196,7 +209,10 @@ impl Default for SimEndpointConfig {
 
 /// Builds a stream [`Endpoint`] wired to Bach simulated UDP sockets.
 ///
-/// All pipeline tasks are pinned to worker 0 (Bach is single-threaded).
+/// Pipeline workers are spread across emulated bach worker IDs to exercise
+/// multi-worker dispatch, fan-out, and affinity logic — even though bach is
+/// single-threaded underneath.
+///
 /// The returned `Endpoint` is ready for use inside a `testing::sim` closure.
 ///
 /// The endpoint's data address is automatically registered in the thread-local
@@ -210,6 +226,9 @@ pub fn setup_sim_endpoint(
     let SimEndpointConfig {
         bind_addr,
         num_send_sockets,
+        num_recv_sockets,
+        num_send_workers,
+        num_recv_dispatch_workers,
         submission_shards,
         overall_send_rate,
         per_socket_send_rate,
@@ -249,10 +268,20 @@ pub fn setup_sim_endpoint(
         })
         .collect();
 
-    // Bind a single recv socket.
-    let recv_socket =
-        bach::net::UdpSocket::new(&recv_bind_opts).expect("failed to bind recv socket");
-    let recv_sockets = vec![recv_socket];
+    // The first recv socket binds to the configured address (e.g. SERVER_PORT for
+    // servers) so that peer address lookup works.  Additional recv sockets use
+    // ephemeral ports on the same IP.
+    let recv_sockets: Vec<bach::net::UdpSocket> = (0..num_recv_sockets)
+        .enumerate()
+        .map(|(i, _)| {
+            let opts = if i == 0 {
+                &recv_bind_opts
+            } else {
+                &send_bind_opts
+            };
+            bach::net::UdpSocket::new(opts).expect("failed to bind recv socket")
+        })
+        .collect();
 
     let send_pool = Pool::new(mtu);
     let recv_pool = Pool::new(mtu);
@@ -260,17 +289,26 @@ pub fn setup_sim_endpoint(
     // Update path secret map so it knows how many sender slots to allocate.
     path_secret_map.set_socket_sender_count(num_send_sockets);
 
-    // All workers on index 0 — Bach is single-threaded.
+    // Assign distinct worker IDs to each pipeline stage.
+    let mut ids = 0usize..;
+    let frame_dispatch = ids.next().unwrap();
+    let send: Vec<usize> = (&mut ids).take(num_send_workers).collect();
+    let recv_io: Vec<usize> = (&mut ids).take(num_recv_sockets).collect();
+    let recv_dispatch: Vec<usize> = (&mut ids).take(num_recv_dispatch_workers).collect();
+    let waker_drain: Vec<usize> = (&mut ids).take(1).collect();
+    let background = ids.next().unwrap();
+    let worker_count = background + 1;
+
     let layout = WorkerLayout {
-        frame_dispatch: 0,
-        send: vec![0],
-        recv_io: vec![0],
-        recv_dispatch: vec![0],
-        waker_drain: vec![0],
-        background: 0,
+        frame_dispatch,
+        send,
+        recv_io,
+        recv_dispatch,
+        waker_drain,
+        background,
     };
 
-    let runtime = crate::runtime::bach::Handle::new(1);
+    let runtime = crate::runtime::bach::Handle::new(worker_count);
     let gso = s2n_quic_platform::features::Gso::default();
 
     let ups_socket =

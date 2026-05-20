@@ -11,16 +11,17 @@ pub struct Rng(u64);
 impl Rng {
     pub fn new() -> Self {
         #[cfg(any(test, feature = "testing"))]
-        if bach::is_active() {
-            if crate::testing::snapshots_enabled() {
-                let seed = bach::group::current()
-                    .id()
-                    .wrapping_mul(0x9E37_79B9_7F4A_7C15);
-                return Self(seed | 1);
-            }
-
+        if bolero::is_active() {
             use bach::rand::any;
             return Self(any::<u64>() | 1);
+        }
+
+        #[cfg(any(test, feature = "testing"))]
+        if bach::is_active() {
+            let seed = bach::group::current()
+                .id()
+                .wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            return Self(seed | 1);
         }
 
         let seed =
@@ -32,7 +33,7 @@ impl Rng {
     #[inline]
     pub fn next_u64(&mut self) -> u64 {
         #[cfg(any(test, feature = "testing"))]
-        if bach::is_active() && !crate::testing::snapshots_enabled() {
+        if bolero::is_active() {
             use bach::rand::any;
             return any();
         }
@@ -48,7 +49,7 @@ impl Rng {
         debug_assert!(bound > 0);
 
         #[cfg(any(test, feature = "testing"))]
-        if bach::is_active() && !crate::testing::snapshots_enabled() {
+        if bolero::is_active() {
             use bach::rand::Any;
             return (..bound).any();
         }

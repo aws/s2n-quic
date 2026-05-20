@@ -135,10 +135,6 @@ pub struct WithoutSnapshotsGuard {
     _depth: SnapshotDisabledGuard,
 }
 
-pub(crate) fn snapshots_enabled() -> bool {
-    SNAPSHOT_MODE_DEPTH.load(Ordering::Relaxed) > 0
-}
-
 #[cfg(test)]
 struct SnapshotModeGuard;
 
@@ -309,7 +305,7 @@ pub fn sim(f: impl FnOnce()) {
 
     #[cfg(test)]
     {
-        if !is_tracing_disabled() && !is_snapshots_disabled() && !is_bolero_fuzzing() {
+        if !is_tracing_disabled() && !is_snapshots_disabled() && !bolero::is_active() {
             return run_sim_with_snapshot(f);
         }
     }
@@ -335,10 +331,6 @@ fn is_snapshots_disabled() -> bool {
     SNAPSHOT_DISABLED_DEPTH.with(|depth| depth.get() > 0)
 }
 
-#[cfg(test)]
-fn is_bolero_fuzzing() -> bool {
-    std::env::var_os("BOLERO_RANDOM_SEED").is_some()
-}
 
 #[cfg(test)]
 #[track_caller]
