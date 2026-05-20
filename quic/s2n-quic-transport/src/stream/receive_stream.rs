@@ -762,14 +762,12 @@ impl ReceiveStream {
                     self.state = ReceiveStreamState::DataRead;
                     self.final_state_observed = true;
                     response.status = ops::Status::Finished;
-                    return Ok(response);
                 }
                 // If we've already buffered everything, transition to the final state
                 ReceiveStreamState::Receiving if self.receive_buffer.is_writing_complete() => {
                     self.state = ReceiveStreamState::DataRead;
                     self.final_state_observed = true;
                     response.status = ops::Status::Finished;
-                    return Ok(response);
                 }
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-3.5
                 //# If the stream is in the "Recv" or "Size Known" states, the transport
@@ -785,6 +783,8 @@ impl ReceiveStream {
                         error,
                         missing_data,
                     };
+
+                    response.status = ops::Status::Reset(error);
                 }
             }
 
@@ -795,9 +795,11 @@ impl ReceiveStream {
             // space which had been allocated but not used
             self.receive_buffer.reset();
 
-            // Mark the stream as reset. Note that the request doesn't have a flush so there's
-            // currently no way to wait for the reset to be acknowledged.
-            response.status = ops::Status::Reset(error);
+            // Stop synchronizing the stream flow control window and release all
+            // outstanding connection flow control credits so that other streams
+            // are not starved.
+            self.flow_controller.stop_sync();
+            self.flow_controller.release_outstanding_window();
 
             return Ok(response);
         }

@@ -1741,6 +1741,35 @@ fn do_not_send_flow_control_update_if_stream_is_reset_or_eof() {
 }
 
 #[test]
+fn stop_sending_releases_outstanding_connection_flow_control_credits() {
+    let test_env_config = conn_flow_control_test_env_config();
+    let mut test_env = setup_stream_test_env_with_config(test_env_config);
+
+    // Feed 2000 bytes of data
+    test_env.feed_data(VarInt::from_u32(0), 2000);
+
+    // Don't consume any data - all 2000 credits are held by the stream
+    assert_eq!(
+        VarInt::new(test_env_config.initial_connection_receive_window_size - 2000).unwrap(),
+        Into::<u64>::into(test_env.rx_connection_flow_controller.remaining_window())
+    );
+
+    // Call stop_sending - this simulates the Drop path.
+    // The receive buffer should be reset AND the outstanding flow control
+    // credits should be released back to the connection.
+    assert!(test_env
+        .stop_sending(ApplicationErrorCode::UNKNOWN)
+        .is_ok());
+
+    // After stop_sending, the full desired connection flow control window
+    // should be available again because all credits were released.
+    assert_eq!(
+        VarInt::from_u32(test_env_config.desired_connection_flow_control_window),
+        Into::<u64>::into(test_env.rx_connection_flow_controller.remaining_window())
+    );
+}
+
+#[test]
 fn stop_sending_will_trigger_a_stop_sending_frame() {
     for available_data in &[0, 1] {
         for consume_data in &[false, true] {
@@ -1975,6 +2004,49 @@ fn stop_sending_is_ignored_if_stream_has_already_received_all_data() {
     );
 
     test_env.assert_write_frames(0);
+}
+
+#[test]
+fn stop_sending_releases_credits_when_all_data_received_but_not_consumed() {
+    let test_env_config = conn_flow_control_test_env_config();
+    let mut test_env = setup_stream_test_env_with_config(test_env_config);
+
+    // Feed 2000 bytes and FIN so is_writing_complete() becomes true
+    test_env.feed_data(VarInt::from_u32(0), 2000);
+    let mut events = StreamEvents::new();
+    assert!(test_env
+        .stream
+        .on_data(
+            &stream_data(
+                test_env.stream.stream_id,
+                VarInt::from_u32(2000),
+                &[],
+                true
+            ),
+            &mut events,
+        )
+        .is_ok());
+    assert!(
+        test_env.stream.receive_stream.receive_buffer.is_writing_complete(),
+        "all data should be received"
+    );
+
+    // Don't consume any data - credits are held
+    assert_eq!(
+        VarInt::new(test_env_config.initial_connection_receive_window_size - 2000).unwrap(),
+        Into::<u64>::into(test_env.rx_connection_flow_controller.remaining_window())
+    );
+
+    // Call stop_sending - hits the is_writing_complete() branch
+    assert!(test_env
+        .stop_sending(ApplicationErrorCode::UNKNOWN)
+        .is_ok());
+
+    // Credits must be released
+    assert_eq!(
+        VarInt::from_u32(test_env_config.desired_connection_flow_control_window),
+        Into::<u64>::into(test_env.rx_connection_flow_controller.remaining_window())
+    );
 }
 
 #[test]
