@@ -375,6 +375,7 @@ expression: logs
 0:00:00.007016000 [client] TRACE c#tx.ecn[ect0]=1
 0:00:00.007016000 [client] TRACE c#send.inflight.drain=1
 0:00:00.007016000 [client] TRACE g#send.inflight.depth=0
+0:00:00.007016000 [client] TRACE c#send.app_limited=1
 0:00:00.007016000 [client] TRACE m#task.ack_processor.drained[send.0]=2
 0:00:00.007016000 [client] DEBUG event=on_flush prev=Scheduled next=Flushed location=dc/s2n-quic-dc/src/endpoint/recv.rs
 0:00:00.007016000 [client] TRACE c#q.ack.enq[send.0]=1

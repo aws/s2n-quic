@@ -264,10 +264,11 @@ struct TracingSink;
 impl ReporterOutputSink for TracingSink {
     fn emit(&mut self, payload: &ReportingPayload<'_>, prefix: Option<&str>) -> Result<(), String> {
         let raw = payload.raw_line;
+        // bypass crate::tracing suppression - metrics must always be emitted
         if let Some(prefix) = prefix.filter(|p| !p.is_empty()) {
-            info!("[METRICS:{prefix}] {raw}");
+            ::tracing::info!("[METRICS:{prefix}] {raw}");
         } else {
-            info!("[METRICS] {raw}");
+            ::tracing::info!("[METRICS] {raw}");
         }
         Ok(())
     }

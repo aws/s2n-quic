@@ -261,6 +261,10 @@ pub(crate) struct Send {
     pub tx_ack_no_ctx: Counter,
     pub tx_ack_packets: Summary,
     pub tx_rtt: Timer,
+    pub send_cwnd: Summary,
+    pub send_pacing_rate: Summary,
+    pub send_cca_limited: Counter,
+    pub send_app_limited: Counter,
     pub tx_ecn_ect0: Counter,
     pub tx_ecn_ect1: Counter,
     pub tx_ecn_ce: Counter,
@@ -277,6 +281,10 @@ impl Send {
             tx_ack_packets: counters
                 .register_summary("tx.ack_packets", crate::counter::Unit::Count),
             tx_rtt: counters.register_timer("tx.rtt"),
+            send_cwnd: counters.register_summary("send.cwnd", Unit::Byte),
+            send_pacing_rate: counters.register_summary("send.pacing_rate", Unit::Byte),
+            send_cca_limited: counters.register("send.cca_limited"),
+            send_app_limited: counters.register("send.app_limited"),
             tx_ecn_ect0: counters.register_nominal("tx.ecn", "ect0"),
             tx_ecn_ect1: counters.register_nominal("tx.ecn", "ect1"),
             tx_ecn_ce: counters.register_nominal("tx.ecn", "ce"),
@@ -306,6 +314,17 @@ impl Send {
     #[inline]
     pub fn on_rtt(&self, rtt: core::time::Duration) {
         self.tx_rtt.record(rtt);
+    }
+
+    #[inline]
+    pub fn on_cca_state(&self, cwnd_bytes: u32, pacing_rate_bytes_per_sec: u64, is_cca_limited: bool) {
+        self.send_cwnd.record_value(cwnd_bytes as u64);
+        self.send_pacing_rate.record_value(pacing_rate_bytes_per_sec);
+        if is_cca_limited {
+            self.send_cca_limited.add(1);
+        } else {
+            self.send_app_limited.add(1);
+        }
     }
 
     #[inline]

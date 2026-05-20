@@ -247,6 +247,13 @@ pub(crate) fn process_ack<Clk, Rand>(
         context.tx_wheel.target_time = None;
     }
 
+    // Sample CCA state after all mutations (ack, ECN, loss) have run.
+    counters.on_cca_state(
+        context.cca.congestion_window(),
+        context.cca.bandwidth().as_bytes_per_second(),
+        context.cca.is_congestion_limited(),
+    );
+
     // Publish the load score after ALL CCA mutations have run:
     // on_packet_ack, on_explicit_congestion (ECN), and on_packet_lost (loss detection).
     // This ensures pick-two sees the fully-updated pacing and congestion state.
