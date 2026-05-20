@@ -348,7 +348,8 @@ fn detect_loss<Rand>(
     }
 
     if lost_count + cancelled_count + ttl_exhausted_count > 0 {
-        counters.on_inflight_drain_loss((lost_count + cancelled_count + ttl_exhausted_count) as u64);
+        counters
+            .on_inflight_drain_loss((lost_count + cancelled_count + ttl_exhausted_count) as u64);
         debug!(
             lost_count,
             cancelled_count,

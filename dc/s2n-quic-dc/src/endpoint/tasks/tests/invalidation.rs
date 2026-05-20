@@ -39,7 +39,11 @@ struct SendSetup {
 fn setup_send() -> SendSetup {
     let registry = crate::counter::Registry::default();
     let clock = Clock::default();
-    let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(&registry, 0)))];
+    let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(
+        &registry,
+        0,
+        crate::endpoint::counters::Send::new(&registry),
+    )))];
 
     let pse = test_entry();
     pse.touch_activity(precision::Clock::now(&clock));
@@ -127,6 +131,7 @@ fn send_invalidation_purges_cache_and_emits_failed_frames() {
             cancelled_tx,
             retransmit_tx,
             invalidation_counters(),
+            crate::endpoint::counters::Send::new(&crate::counter::Registry::default()),
         );
 
         async move {
@@ -179,6 +184,7 @@ fn send_invalidation_noop_for_unknown_id() {
             cancelled_tx,
             retransmit_tx,
             invalidation_counters(),
+            crate::endpoint::counters::Send::new(&crate::counter::Registry::default()),
         );
 
         async move {
@@ -335,8 +341,16 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
         let registry = crate::counter::Registry::default();
         let clock = Clock::default();
         let send_caches = vec![
-            Rc::new(RefCell::new(send::Cache::new(&registry, 0))),
-            Rc::new(RefCell::new(send::Cache::new(&registry, 1))),
+            Rc::new(RefCell::new(send::Cache::new(
+                &registry,
+                0,
+                crate::endpoint::counters::Send::new(&registry),
+            ))),
+            Rc::new(RefCell::new(send::Cache::new(
+                &registry,
+                1,
+                crate::endpoint::counters::Send::new(&registry),
+            ))),
         ];
 
         let pse = test_entry();
@@ -366,6 +380,7 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
             cancelled_tx,
             retransmit_tx,
             invalidation_counters(),
+            crate::endpoint::counters::Send::new(&crate::counter::Registry::default()),
         );
 
         async move {

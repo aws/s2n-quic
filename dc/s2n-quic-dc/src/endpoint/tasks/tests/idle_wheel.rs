@@ -31,7 +31,11 @@ fn setup_send() -> (
 ) {
     let registry = crate::counter::Registry::default();
     let clock = Clock::default();
-    let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(&registry, 0)))];
+    let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(
+        &registry,
+        0,
+        crate::endpoint::counters::Send::new(&registry),
+    )))];
     let sender_idx_to_local = vec![0usize];
 
     let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter::<send::IdleWheelAdapter>();
@@ -52,6 +56,7 @@ fn setup_send() -> (
         registry.register("idle.send.expired"),
         registry.register("idle.send.rescheduled"),
         registry.register_nominal_timer("idle.send.lifetime", "send.0"),
+        crate::endpoint::counters::Send::new(&registry),
         32,
         registry.register_nominal_task("task.idle_wheel", "send.0"),
     )

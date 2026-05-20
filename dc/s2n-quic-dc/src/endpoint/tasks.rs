@@ -835,7 +835,9 @@ where
                 let interest = ctx.on_pto_timeout(&clock);
                 if !requested && ctx.pto.probe_state.is_requested() {
                     tx_pto_requested.add(1);
-                    send_counters.tx_probe_backoff.record_value(ctx.pto.backoff as u64);
+                    send_counters
+                        .tx_probe_backoff
+                        .record_value(ctx.pto.backoff as u64);
                     if ctx.pto.backoff > 2 {
                         send_counters.on_probe_no_response();
                     }

@@ -677,7 +677,11 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
     const OUT_OF_RANGE_SENDER_ID: u64 = 42; // total_sender_ids is 1, so any value > 0 is invalid.
 
     let registry = crate::counter::Registry::default();
-    let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(&registry, 0)))];
+    let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(
+        &registry,
+        0,
+        crate::endpoint::counters::Send::new(&registry),
+    )))];
     let sender_idx_to_local = vec![0];
     let (frame_tx, _frame_rx) = frame::submission_channel(1);
     let (tx_wheel_tx, _tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
@@ -705,7 +709,7 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
         frame_tx,
         frame::PriorityInput::default(),
         frame::PriorityInput::default(),
-        crate::stream::endpoint::counters::Send::new(&registry),
+        crate::endpoint::counters::Send::new(&registry),
     );
     let rx = crate::socket::channel::Flatten::new(processor);
     let mut router = crate::stream::endpoint::send::WheelRouter::new(

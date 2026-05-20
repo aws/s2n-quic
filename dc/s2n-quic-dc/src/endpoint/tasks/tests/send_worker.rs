@@ -21,7 +21,11 @@ fn send_ack_processor_ignores_invalid_sender_id() {
     let _guard = crate::testing::without_snapshots();
     sim(|| {
         let registry = crate::counter::Registry::default();
-        let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(&registry, 0)))];
+        let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(
+            &registry,
+            0,
+            crate::endpoint::counters::Send::new(&registry),
+        )))];
         let sender_idx_to_local = vec![0usize];
 
         let (mut ack_tx, ack_rx) = unsync::new::<msg::Sender>();
@@ -125,6 +129,7 @@ fn send_pto_timeout_routes_pending_context_to_tx_wheel() {
             idle_wheel_tx,
             registry.register("tx.pto_check"),
             registry.register("tx.pto_requested"),
+            crate::endpoint::counters::Send::new(&registry),
         );
 
         async move { rx.drain_budgeted(Some(32)).await }

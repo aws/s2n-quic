@@ -300,7 +300,8 @@ impl Send {
 
             inflight_drain_ack: counters.register_nominal("send.inflight.drain", "ack"),
             inflight_drain_loss: counters.register_nominal("send.inflight.drain", "loss"),
-            inflight_drain_invalidate: counters.register_nominal("send.inflight.drain", "invalidate"),
+            inflight_drain_invalidate: counters
+                .register_nominal("send.inflight.drain", "invalidate"),
             inflight_drain_expire: counters.register_nominal("send.inflight.drain", "expire"),
             inflight_leaked_on_invalidate: counters
                 .register_summary("send.inflight.leaked_on_invalidate", Unit::Byte),
@@ -336,9 +337,15 @@ impl Send {
     }
 
     #[inline]
-    pub fn on_cca_state(&self, cwnd_bytes: u32, pacing_rate_bytes_per_sec: u64, is_cca_limited: bool) {
+    pub fn on_cca_state(
+        &self,
+        cwnd_bytes: u32,
+        pacing_rate_bytes_per_sec: u64,
+        is_cca_limited: bool,
+    ) {
         self.send_cwnd.record_value(cwnd_bytes as u64);
-        self.send_pacing_rate.record_value(pacing_rate_bytes_per_sec);
+        self.send_pacing_rate
+            .record_value(pacing_rate_bytes_per_sec);
         if is_cca_limited {
             self.send_cca_limited.add(1);
         } else {

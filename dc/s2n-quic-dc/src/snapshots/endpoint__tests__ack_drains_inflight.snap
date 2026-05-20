@@ -115,6 +115,7 @@ expression: logs
 0:00:00.000021000 [client] TRACE c#q.resolver.receiver[send.0.task.context_resolver]=1
 0:00:00.000021000 [client] TRACE c#q.resolver.drain[send.0]=1
 0:00:00.000021000 [client] TRACE g#q.resolver.depth[send.0]=0
+0:00:00.000021000 [client] TRACE g#send.context.count=1
 0:00:00.000021000 [client] TRACE c#send.pending.enq=1
 0:00:00.000021000 [client] TRACE g#send.pending.depth=1
 0:00:00.000021000 [client] TRACE m#send.pending.depth_dist=1
@@ -192,6 +193,7 @@ expression: logs
 0:00:00.000521000 [server] TRACE c#q.ack.receiver[send.0.task.ack_processor]=1
 0:00:00.000521000 [server] TRACE c#q.ack.drain[send.0]=1
 0:00:00.000521000 [server] TRACE g#q.ack.depth[send.0]=0
+0:00:00.000521000 [server] TRACE g#send.context.count=1
 0:00:00.000521000 [server] TRACE c#send.ack.enq=1
 0:00:00.000521000 [server] TRACE g#send.ack.depth=1
 0:00:00.000521000 [server] TRACE m#send.ack.depth_dist=1
@@ -326,6 +328,7 @@ expression: logs
 0:00:00.001021000 [client] TRACE c#q.ack_to_completion.enq[send.0]=1
 0:00:00.001021000 [client] TRACE g#q.ack_to_completion.depth[send.0]=1
 0:00:00.001021000 [client] TRACE m#q.ack_to_completion.depth_dist[send.0]=1
+0:00:00.001021000 [client] TRACE c#send.inflight.drain[ack]=1
 0:00:00.001021000 [client] TRACE c#tx.ecn[ect0]=1
 0:00:00.001021000 [client] TRACE c#send.app_limited=1
 0:00:00.001021000 [client] TRACE m#task.ack_processor.drained[send.0]=2
@@ -519,6 +522,7 @@ expression: logs
 0:00:00.001521000 [server] TRACE c#q.ack.drain[send.0]=1
 0:00:00.001521000 [server] TRACE g#q.ack.depth[send.0]=0
 0:00:00.001521000 [server] TRACE c#tx.ack_received=1
+0:00:00.001521000 [server] TRACE c#send.inflight.drain[ack]=0
 0:00:00.001521000 [server] TRACE c#tx.ecn[ect0]=1
 0:00:00.001521000 [server] TRACE c#send.app_limited=1
 0:00:00.001521000 [server] TRACE m#task.ack_processor.drained[send.0]=2
@@ -595,6 +599,7 @@ expression: logs
 0:00:00.001541000 [server] TRACE c#q.ack_to_completion.enq[send.0]=1
 0:00:00.001541000 [server] TRACE g#q.ack_to_completion.depth[send.0]=1
 0:00:00.001541000 [server] TRACE m#q.ack_to_completion.depth_dist[send.0]=1
+0:00:00.001541000 [server] TRACE c#send.inflight.drain[ack]=1
 0:00:00.001541000 [server] TRACE c#tx.ecn[ect0]=1
 0:00:00.001541000 [server] TRACE c#send.app_limited=1
 0:00:00.001541000 [server] TRACE m#task.ack_processor.drained[send.0]=2
@@ -742,6 +747,7 @@ expression: logs
 0:00:00.002021000 [client] TRACE c#q.ack.drain[send.0]=1
 0:00:00.002021000 [client] TRACE g#q.ack.depth[send.0]=0
 0:00:00.002021000 [client] TRACE c#tx.ack_received=1
+0:00:00.002021000 [client] TRACE c#send.inflight.drain[ack]=0
 0:00:00.002021000 [client] TRACE c#tx.ecn[ect0]=1
 0:00:00.002021000 [client] TRACE c#send.app_limited=1
 0:00:00.002021000 [client] TRACE m#task.ack_processor.drained[send.0]=2
@@ -777,6 +783,7 @@ expression: logs
 0:00:00.002061000 [client] TRACE c#q.ack_to_completion.enq[send.0]=1
 0:00:00.002061000 [client] TRACE g#q.ack_to_completion.depth[send.0]=1
 0:00:00.002061000 [client] TRACE m#q.ack_to_completion.depth_dist[send.0]=1
+0:00:00.002061000 [client] TRACE c#send.inflight.drain[ack]=1
 0:00:00.002061000 [client] TRACE c#tx.ecn[ect0]=2
 0:00:00.002061000 [client] TRACE c#send.app_limited=1
 0:00:00.002061000 [client] TRACE m#task.ack_processor.drained[send.0]=2
@@ -969,6 +976,7 @@ expression: logs
 0:00:00.002561000 [server] TRACE c#q.ack.drain[send.0]=1
 0:00:00.002561000 [server] TRACE g#q.ack.depth[send.0]=0
 0:00:00.002561000 [server] TRACE c#tx.ack_received=1
+0:00:00.002561000 [server] TRACE c#send.inflight.drain[ack]=0
 0:00:00.002561000 [server] TRACE c#tx.ecn[ect0]=2
 0:00:00.002561000 [server] TRACE c#send.app_limited=1
 0:00:00.002561000 [server] TRACE m#task.ack_processor.drained[send.0]=2
@@ -1045,6 +1053,7 @@ expression: logs
 0:00:00.002581000 [server] TRACE c#q.ack_to_completion.enq[send.0]=1
 0:00:00.002581000 [server] TRACE g#q.ack_to_completion.depth[send.0]=1
 0:00:00.002581000 [server] TRACE m#q.ack_to_completion.depth_dist[send.0]=1
+0:00:00.002581000 [server] TRACE c#send.inflight.drain[ack]=1
 0:00:00.002581000 [server] TRACE c#tx.ecn[ect0]=1
 0:00:00.002581000 [server] TRACE c#send.app_limited=1
 0:00:00.002581000 [server] TRACE m#task.ack_processor.drained[send.0]=2
@@ -1192,6 +1201,7 @@ expression: logs
 0:00:00.003061000 [client] TRACE c#q.ack.drain[send.0]=1
 0:00:00.003061000 [client] TRACE g#q.ack.depth[send.0]=0
 0:00:00.003061000 [client] TRACE c#tx.ack_received=1
+0:00:00.003061000 [client] TRACE c#send.inflight.drain[ack]=0
 0:00:00.003061000 [client] TRACE c#tx.ecn[ect0]=1
 0:00:00.003061000 [client] TRACE c#send.app_limited=1
 0:00:00.003061000 [client] TRACE m#task.ack_processor.drained[send.0]=2
@@ -1227,6 +1237,7 @@ expression: logs
 0:00:00.003101000 [client] TRACE c#q.ack_to_completion.enq[send.0]=1
 0:00:00.003101000 [client] TRACE g#q.ack_to_completion.depth[send.0]=1
 0:00:00.003101000 [client] TRACE m#q.ack_to_completion.depth_dist[send.0]=1
+0:00:00.003101000 [client] TRACE c#send.inflight.drain[ack]=1
 0:00:00.003101000 [client] TRACE c#tx.ecn[ect0]=2
 0:00:00.003101000 [client] TRACE c#send.app_limited=1
 0:00:00.003101000 [client] TRACE m#task.ack_processor.drained[send.0]=2
