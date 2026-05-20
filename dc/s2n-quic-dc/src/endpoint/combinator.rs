@@ -562,6 +562,7 @@ pub(crate) struct AssemblerCounters {
     // Per-frame-type TX counters (one per transmitted frame, all phases).
     pub tx_frame_flow_init: crate::counter::Counter,
     pub tx_frame_flow_data: crate::counter::Counter,
+    pub tx_frame_flow_data_fin: crate::counter::Counter,
     pub tx_frame_flow_control: crate::counter::Counter,
     pub tx_frame_flow_max_data: crate::counter::Counter,
     pub tx_frame_flow_reset: crate::counter::Counter,
@@ -574,6 +575,7 @@ pub(crate) struct AssemblerCounters {
     // Per-frame-type probe TX counters (Phase 2 retransmit + Phase 3 PTO bypass).
     pub tx_probe_frame_flow_init: crate::counter::Counter,
     pub tx_probe_frame_flow_data: crate::counter::Counter,
+    pub tx_probe_frame_flow_data_fin: crate::counter::Counter,
     pub tx_probe_frame_flow_control: crate::counter::Counter,
     pub tx_probe_frame_flow_max_data: crate::counter::Counter,
     pub tx_probe_frame_flow_reset: crate::counter::Counter,
@@ -600,6 +602,7 @@ impl AssemblerCounters {
 
             tx_frame_flow_init: registry.register_nominal("tx.frame", "flow_init"),
             tx_frame_flow_data: registry.register_nominal("tx.frame", "flow_data"),
+            tx_frame_flow_data_fin: registry.register_nominal("tx.frame", "flow_data_fin"),
             tx_frame_flow_control: registry.register_nominal("tx.frame", "flow_control"),
             tx_frame_flow_max_data: registry.register_nominal("tx.frame", "flow_max_data"),
             tx_frame_flow_reset: registry.register_nominal("tx.frame", "flow_reset"),
@@ -613,6 +616,8 @@ impl AssemblerCounters {
 
             tx_probe_frame_flow_init: registry.register_nominal("tx.probe.frame", "flow_init"),
             tx_probe_frame_flow_data: registry.register_nominal("tx.probe.frame", "flow_data"),
+            tx_probe_frame_flow_data_fin: registry
+                .register_nominal("tx.probe.frame", "flow_data_fin"),
             tx_probe_frame_flow_control: registry
                 .register_nominal("tx.probe.frame", "flow_control"),
             tx_probe_frame_flow_max_data: registry
@@ -634,7 +639,8 @@ impl AssemblerCounters {
     pub fn on_tx_frame(&self, header: &frame::Header) {
         match header {
             frame::Header::FlowInit { .. } => self.tx_frame_flow_init.add(1),
-            frame::Header::FlowData { .. } => self.tx_frame_flow_data.add(1),
+            frame::Header::FlowData { is_fin: false, .. } => self.tx_frame_flow_data.add(1),
+            frame::Header::FlowData { is_fin: true, .. } => self.tx_frame_flow_data_fin.add(1),
             frame::Header::FlowControl { .. } => self.tx_frame_flow_control.add(1),
             frame::Header::FlowMaxData { .. } => self.tx_frame_flow_max_data.add(1),
             frame::Header::FlowReset { .. } => self.tx_frame_flow_reset.add(1),
@@ -655,7 +661,8 @@ impl AssemblerCounters {
     pub fn on_probe_frame(&self, header: &frame::Header) {
         match header {
             frame::Header::FlowInit { .. } => self.tx_probe_frame_flow_init.add(1),
-            frame::Header::FlowData { .. } => self.tx_probe_frame_flow_data.add(1),
+            frame::Header::FlowData { is_fin: false, .. } => self.tx_probe_frame_flow_data.add(1),
+            frame::Header::FlowData { is_fin: true, .. } => self.tx_probe_frame_flow_data_fin.add(1),
             frame::Header::FlowControl { .. } => self.tx_probe_frame_flow_control.add(1),
             frame::Header::FlowMaxData { .. } => self.tx_probe_frame_flow_max_data.add(1),
             frame::Header::FlowReset { .. } => self.tx_probe_frame_flow_reset.add(1),
