@@ -645,7 +645,6 @@ where
             waker_sink,
             ups_tx: ups_tx.clone(),
             invalidation_rx,
-            peer_dead_tx: peer_dead_tx.clone(),
         });
     }
 
@@ -776,7 +775,6 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     waker_sink: waker::Sink,
     ups_tx: UpsSender,
     invalidation_rx: sync_queue::Receiver<tasks::Invalidation>,
-    peer_dead_tx: PeerDeadSender,
 }
 
 /// Ingredients for the background worker (invalidation validation + future housekeeping).
@@ -995,8 +993,6 @@ where
                             clock,
                             q_recv_idle_wheel,
                             recv_cache,
-                            rd.peer_dead_tx.clone(),
-                            dead_peer_cooldown,
                             idle_expired,
                             idle_rescheduled,
                             idle_lifetime,

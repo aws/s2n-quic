@@ -1,5 +1,6 @@
 ---
 source: dc/s2n-quic-dc/src/testing.rs
+assertion_line: 352
 expression: logs
 ---
 0:00:00.000000000 [server] DEBUG s2n_quic_dc: capacity=50000
@@ -1438,9 +1439,6 @@ expression: logs
 0:00:01.000000000 [server] TRACE c#q.idle_wheel.receiver[recv.dispatch.1.task.wheel_drain]=1
 0:00:01.000000000 [server] TRACE c#q.idle_wheel.drain[recv.dispatch.1]=1
 0:00:01.000000000 [server] TRACE g#q.idle_wheel.depth[recv.dispatch.1]=-1
-0:00:01.000000000 [server] TRACE c#q.peer_dead.enq=1
-0:00:01.000000000 [server] TRACE g#q.peer_dead.depth=1
-0:00:01.000000000 [server] TRACE m#q.peer_dead.depth_dist=1
 0:00:01.000000000 [server] TRACE c#idle.recv.expired=1
 0:00:01.000000000 [server] TRACE c#q.idle_wheel.receiver[recv.dispatch.1.task.wheel_drain]=1
 0:00:01.000000000 [server] TRACE c#q.idle_wheel.drain[recv.dispatch.1]=1
@@ -1450,8 +1448,6 @@ expression: logs
 0:00:01.000000000 [server] TRACE c#q.resolver_to_idle_wheel.receiver[send.worker.1.task.wheel_drain]=1
 0:00:01.000000000 [server] TRACE c#q.resolver_to_idle_wheel.drain[send.worker.1]=1
 0:00:01.000000000 [server] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.1]=1
-0:00:01.000000000 [server] TRACE c#!send.routing_asymmetry[send.5]=1
-0:00:01.000000000 [server]  WARN send context idle but path still active — possible routing asymmetry id=0xda5bd0fb43ce4a38204b5bd6d2f25eff sender_idx=5 local_addr=10.0.0.1:49157 peer_addr=10.0.0.2:49160 ever_responded=true has_inflight=false pto_backoff=1 packets_sent=2
 0:00:01.000000000 [server] TRACE g#send.context.count[send.5]=0
 0:00:01.000000000 [server] DEBUG invalidating send context id=0xda5bd0fb43ce4a38204b5bd6d2f25eff sender_idx=5
 0:00:01.000000000 [server] TRACE c#send.inflight.drain.expire[send.5]=0
@@ -1459,8 +1455,6 @@ expression: logs
 0:00:01.000000000 [server] TRACE c#q.resolver_to_idle_wheel.receiver[send.worker.1.task.wheel_drain]=1
 0:00:01.000000000 [server] TRACE c#q.resolver_to_idle_wheel.drain[send.worker.1]=1
 0:00:01.000000000 [server] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.1]=0
-0:00:01.000000000 [server] TRACE c#!send.routing_asymmetry[send.1]=1
-0:00:01.000000000 [server]  WARN send context idle but path still active — possible routing asymmetry id=0xda5bd0fb43ce4a38204b5bd6d2f25eff sender_idx=1 local_addr=10.0.0.1:49153 peer_addr=10.0.0.2:49160 ever_responded=true has_inflight=false pto_backoff=1 packets_sent=2
 0:00:01.000000000 [server] TRACE g#send.context.count[send.1]=0
 0:00:01.000000000 [server] DEBUG invalidating send context id=0xda5bd0fb43ce4a38204b5bd6d2f25eff sender_idx=1
 0:00:01.000000000 [server] TRACE c#send.inflight.drain.expire[send.1]=0
@@ -1474,8 +1468,6 @@ expression: logs
 0:00:01.000000000 [server] TRACE c#q.resolver_to_idle_wheel.receiver[send.worker.2.task.wheel_drain]=1
 0:00:01.000000000 [server] TRACE c#q.resolver_to_idle_wheel.drain[send.worker.2]=1
 0:00:01.000000000 [server] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.2]=0
-0:00:01.000000000 [server] TRACE c#!send.routing_asymmetry[send.6]=1
-0:00:01.000000000 [server]  WARN send context idle but path still active — possible routing asymmetry id=0xda5bd0fb43ce4a38204b5bd6d2f25eff sender_idx=6 local_addr=10.0.0.1:49158 peer_addr=10.0.0.2:49160 ever_responded=true has_inflight=false pto_backoff=1 packets_sent=1
 0:00:01.000000000 [server] TRACE g#send.context.count[send.6]=0
 0:00:01.000000000 [server] DEBUG invalidating send context id=0xda5bd0fb43ce4a38204b5bd6d2f25eff sender_idx=6
 0:00:01.000000000 [server] TRACE c#send.inflight.drain.expire[send.6]=0
@@ -1489,19 +1481,13 @@ expression: logs
 0:00:01.000000000 [server] TRACE c#q.resolver_to_idle_wheel.receiver[send.worker.3.task.wheel_drain]=1
 0:00:01.000000000 [server] TRACE c#q.resolver_to_idle_wheel.drain[send.worker.3]=1
 0:00:01.000000000 [server] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.3]=0
-0:00:01.000000000 [server] TRACE c#!send.routing_asymmetry[send.7]=1
-0:00:01.000000000 [server]  WARN send context idle but path still active — possible routing asymmetry id=0xda5bd0fb43ce4a38204b5bd6d2f25eff sender_idx=7 local_addr=10.0.0.1:49159 peer_addr=10.0.0.2:49160 ever_responded=true has_inflight=false pto_backoff=1 packets_sent=1
 0:00:01.000000000 [server] TRACE g#send.context.count[send.7]=0
 0:00:01.000000000 [server] DEBUG invalidating send context id=0xda5bd0fb43ce4a38204b5bd6d2f25eff sender_idx=7
 0:00:01.000000000 [server] TRACE c#send.inflight.drain.expire[send.7]=0
 0:00:01.000000000 [server] TRACE c#idle.send.expired=1
 0:00:01.000000000 [server] TRACE m#task.idle_wheel.drained[send.worker.3]=0
-0:00:01.000000000 [server] TRACE c#peer_dead.events=1
-0:00:01.000000000 [server] TRACE c#peer_dead.broadcasted=1
-0:00:01.000000000 [server] TRACE m#task.peer_dead_broadcast.drained[background]=1
 0:00:01.000000000 [server] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.1]=0
 0:00:01.000000000 [server] TRACE m#task.idle_wheel.drained[send.worker.1]=0
-0:00:01.000000000 [server] TRACE m#task.peer_dead_broadcast.drained[background]=0
 0:00:03.001041000 [client] DEBUG event=on_send_flow_init prev=Init next=FlowInitSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:03.001041000 [client] DEBUG event=on_send_fin prev=FlowInitSent next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:03.001041000 [client] DEBUG Sent FlowInit with early data stream_id=1 bytes_read=5 is_fin=true

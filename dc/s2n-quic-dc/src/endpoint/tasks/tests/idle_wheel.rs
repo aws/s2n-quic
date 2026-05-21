@@ -202,7 +202,7 @@ fn send_idle_wheel_reschedules_active_context() {
 }
 
 #[test]
-fn send_idle_wheel_expires_reader_only_queue_with_reset() {
+fn send_idle_wheel_expires_reader_only_queue_no_reset_without_inflight() {
     let _guard = crate::testing::without_snapshots();
     sim(|| {
         let (send_caches, mut idle_wheel_tx, _completed_rx, clock, _registry, mut queue_allocator) =
@@ -219,6 +219,9 @@ fn send_idle_wheel_expires_reader_only_queue_with_reset() {
             .borrow_mut()
             .get_or_insert(&pse, &clock)
             .unwrap();
+
+        // No inflight packets — this is a naturally idle connection.
+        assert!(!ctx.borrow().inflight.has_inflight());
 
         {
             let mut c = ctx.borrow_mut();
@@ -238,34 +241,131 @@ fn send_idle_wheel_expires_reader_only_queue_with_reset() {
                 "context should be evicted after idle timeout"
             );
 
+            // Without inflight packets, the peer is not marked dead and no
+            // Reset is broadcast to the flow queues.
             let stream_queue_entries = queue_stream
                 .try_swap()
                 .expect("stream queue should still be open");
             assert!(
-                stream_queue_entries.iter().any(|entry| {
-                    matches!(
-                        &*entry,
-                        msg::Stream::Reset {
-                            error_code
-                        } if error_code.as_u64() == crate::endpoint::error::IDLE_TIMEOUT.as_u64()
-                    )
+                !stream_queue_entries.iter().any(|entry| {
+                    matches!(&*entry, msg::Stream::Reset { .. })
                 }),
-                "stream queue should receive idle-timeout reset"
+                "stream queue should NOT receive reset when idle expires without inflight"
             );
 
             let control_queue_entries = queue_control
                 .try_swap()
                 .expect("control queue should still be open");
             assert!(
-                control_queue_entries.iter().any(|entry| {
-                    matches!(
-                        &*entry,
-                        msg::Control::Reset {
-                            error_code
-                        } if error_code.as_u64() == crate::endpoint::error::IDLE_TIMEOUT.as_u64()
-                    )
+                !control_queue_entries.iter().any(|entry| {
+                    matches!(&*entry, msg::Control::Reset { .. })
                 }),
-                "control queue should receive idle-timeout reset"
+                "control queue should NOT receive reset when idle expires without inflight"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// When a send context goes idle with NO packets in flight, the peer must NOT be
+/// marked dead. An empty inflight set means both sides simply stopped talking —
+/// this is normal idle, not evidence of a dead peer.
+#[test]
+fn send_idle_wheel_no_inflight_does_not_mark_dead() {
+    sim(|| {
+        let (send_caches, mut idle_wheel_tx, _completed_rx, clock, _registry, _queue_allocator) =
+            setup_send();
+
+        let pse = test_entry();
+        pse.touch_activity(precision::Clock::now(&clock));
+
+        let ctx = send_caches[LocalSendSocketId::new(0)]
+            .borrow_mut()
+            .get_or_insert(&pse, &clock)
+            .unwrap();
+
+        // No frames queued, no inflight packets — purely idle.
+        assert!(!ctx.borrow().inflight.has_inflight());
+
+        {
+            let mut c = ctx.borrow_mut();
+            let timeout = c.path_secret_entry.idle_timeout();
+            c.idle_wheel.target_time = Some(precision::Clock::now(&clock) + timeout);
+        }
+        let _ = idle_wheel_tx.send(ctx);
+
+        let send_caches = send_caches.clone();
+        let pse = pse.clone();
+        async move {
+            // Idle timeout is 30s. Sleep just past it so the wheel fires.
+            31.s().sleep().await;
+
+            // The context should be evicted (cleanup is fine).
+            assert_eq!(
+                send_caches[LocalSendSocketId::new(0)]
+                    .borrow()
+                    .context_count(),
+                0,
+                "context should be evicted after idle timeout"
+            );
+
+            // Check immediately — well within the 30s cooldown window.
+            // The peer must NOT be marked dead when no packets were in flight.
+            let now = precision::Clock::now(&Clock::default());
+            assert!(
+                !pse.is_dead_during_cooldown(now, crate::endpoint::DEFAULT_DEAD_PEER_COOLDOWN),
+                "peer should NOT be marked dead when idle expires with no inflight packets"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// When a recv context goes idle, the peer must NOT be marked dead. The recv side
+/// has no way to distinguish "peer stopped sending because it has nothing to say"
+/// from "peer is actually dead". Only the send side (via unacknowledged inflight
+/// packets) has evidence of a dead peer.
+#[test]
+fn recv_idle_wheel_does_not_mark_dead() {
+    sim(|| {
+        let (recv_cache, mut idle_wheel_tx, clock, _registry, _queue_allocator) = setup_recv();
+
+        let ctx = RecvContextBuilder::default().build();
+        ctx.borrow()
+            .path_entry
+            .touch_activity(precision::Clock::now(&clock));
+        let pse = ctx.borrow().path_entry.clone();
+        let key = {
+            let c = ctx.borrow();
+            recv::Key {
+                id: *c.path_entry.id(),
+                remote_sender_id: c.remote_sender_id,
+            }
+        };
+        recv_cache.borrow_mut().senders.insert(key, ctx.clone());
+        let _ = idle_wheel_tx.send(ctx);
+
+        let recv_cache = recv_cache.clone();
+        async move {
+            // Idle timeout is 30s. Sleep just past it so the wheel fires,
+            // but stay within the 30s cooldown window to detect the mark.
+            31.s().sleep().await;
+
+            // The recv context should be evicted.
+            assert!(
+                recv_cache.borrow().senders.is_empty(),
+                "recv context should be evicted after idle timeout"
+            );
+
+            // Check immediately — well within the cooldown window.
+            // The peer must NOT be marked dead from the recv side.
+            let now = precision::Clock::now(&Clock::default());
+            assert!(
+                !pse.is_dead_during_cooldown(now, crate::endpoint::DEFAULT_DEAD_PEER_COOLDOWN),
+                "peer should NOT be marked dead when recv idle expires — \
+                 only the send side with inflight packets can determine peer death"
             );
         }
         .primary()
@@ -289,9 +389,7 @@ fn setup_recv() -> (
     )));
 
     let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter::<recv::IdleWheelAdapter>();
-    let (peer_dead_tx, peer_dead_rx) = unsync::new::<tasks::PeerDead>();
     let queue_allocator = msg::queue::Allocator::new();
-    let queue_dispatcher = queue_allocator.dispatcher();
     let q_gauge = registry.register_queue_gauge("test.recv_idle_wheel");
 
     tasks::recv_idle_wheel_drain(
@@ -300,8 +398,6 @@ fn setup_recv() -> (
         clock.clone(),
         q_gauge,
         recv_cache.clone(),
-        peer_dead_tx,
-        crate::endpoint::DEFAULT_DEAD_PEER_COOLDOWN,
         registry.register("idle.recv.expired"),
         registry.register("idle.recv.rescheduled"),
         registry.register_nominal_timer("idle.recv.lifetime", "recv.0"),
@@ -309,17 +405,6 @@ fn setup_recv() -> (
         registry.register_nominal_task("task.recv_idle_wheel", "recv.0"),
     )
     .spawn();
-
-    let rx = tasks::peer_dead_broadcast(
-        peer_dead_rx,
-        queue_dispatcher,
-        WakeNowSender,
-        tasks::PeerDeadCounters {
-            events: registry.register("test.peer_dead.recv.events"),
-            broadcasted: registry.register("test.peer_dead.recv.broadcasted"),
-        },
-    );
-    async move { rx.drain_budgeted(Some(32)).await }.spawn();
 
     (recv_cache, idle_wheel_tx, clock, registry, queue_allocator)
 }
@@ -408,7 +493,7 @@ fn recv_idle_wheel_reschedules_active_context() {
 }
 
 #[test]
-fn recv_idle_wheel_expires_reader_only_queue_with_reset() {
+fn recv_idle_wheel_expires_reader_only_queue_no_reset() {
     let _guard = crate::testing::without_snapshots();
     sim(|| {
         let (recv_cache, mut idle_wheel_tx, clock, _registry, mut queue_allocator) = setup_recv();
@@ -428,46 +513,40 @@ fn recv_idle_wheel_expires_reader_only_queue_with_reset() {
         let stream_id = VarInt::from_u8(9);
         let handle = flow::Handle::client(stream_id, path_entry);
         let (queue_control, queue_stream) = queue_allocator.alloc_or_grow(handle, None);
+        let dispatcher = queue_allocator.dispatcher();
 
         recv_cache.borrow_mut().senders.insert(key, ctx.clone());
         let _ = idle_wheel_tx.send(ctx);
 
         let recv_cache = recv_cache.clone();
         async move {
+            let _dispatcher = dispatcher;
             61.s().sleep().await;
             assert!(
                 recv_cache.borrow().senders.is_empty(),
                 "recv context should be evicted after idle timeout"
             );
 
+            // The recv side never marks the peer dead, so no Reset is
+            // broadcast to the flow queues.
             let stream_queue = queue_stream
                 .try_swap()
                 .expect("stream queue should still be open");
             assert!(
-                stream_queue.iter().any(|entry| {
-                    matches!(
-                        &*entry,
-                        msg::Stream::Reset {
-                            error_code
-                        } if error_code.as_u64() == crate::endpoint::error::IDLE_TIMEOUT.as_u64()
-                    )
-                }),
-                "stream queue should receive idle-timeout reset"
+                !stream_queue
+                    .iter()
+                    .any(|entry| { matches!(&*entry, msg::Stream::Reset { .. }) }),
+                "stream queue should NOT receive reset from recv idle expiry"
             );
 
             let control_queue = queue_control
                 .try_swap()
                 .expect("control queue should still be open");
             assert!(
-                control_queue.iter().any(|entry| {
-                    matches!(
-                        &*entry,
-                        msg::Control::Reset {
-                            error_code
-                        } if error_code.as_u64() == crate::endpoint::error::IDLE_TIMEOUT.as_u64()
-                    )
-                }),
-                "control queue should receive idle-timeout reset"
+                !control_queue
+                    .iter()
+                    .any(|entry| { matches!(&*entry, msg::Control::Reset { .. }) }),
+                "control queue should NOT receive reset from recv idle expiry"
             );
         }
         .primary()

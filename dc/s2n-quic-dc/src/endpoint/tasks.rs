@@ -1078,7 +1078,7 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
                 let packets_sent = ctx.next_packet_number.as_u64();
                 drop(ctx);
 
-                if path_active {
+                if path_active && has_inflight {
                     let cache = send_caches[local_id].borrow();
                     cache.send_counters().routing_asymmetry.add(1);
                     let local_addr = sender_local_addrs[local_id];
@@ -1088,17 +1088,17 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
                         %local_addr,
                         %peer_addr,
                         ever_responded,
-                        has_inflight,
                         pto_backoff,
                         packets_sent,
                         "send context idle but path still active — possible routing asymmetry"
                     );
                 }
 
-                // Only mark the peer dead if the entire path is idle. If the path
-                // is still active (routing asymmetry), killing the peer would
-                // incorrectly block new flows on a partially-working path.
-                let marked_dead = !path_active
+                // Mark the peer dead only when we have packets in flight that
+                // were never acknowledged — that's evidence the peer is
+                // unreachable. If there are no inflight packets, both sides
+                // simply stopped talking (natural idle) and we must not mark dead.
+                let marked_dead = has_inflight
                     && path_secret_entry.mark_dead_if_cooldown_elapsed(now, dead_peer_cooldown);
 
                 let result = send_caches[local_id].borrow_mut().invalidate(
@@ -1134,8 +1134,6 @@ pub async fn recv_idle_wheel_drain<Clk>(
     clock: Clk,
     input_gauge: QueueGauge,
     recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
-    mut peer_dead_tx: impl UnboundedSender<Entry<PeerDead>> + Clone + 'static,
-    dead_peer_cooldown: core::time::Duration,
     idle_expired: counter::Counter,
     idle_rescheduled: counter::Counter,
     idle_lifetime: counter::Timer,
@@ -1172,9 +1170,6 @@ pub async fn recv_idle_wheel_drain<Clk>(
                     }
                 }
 
-                let path_secret_entry = ctx.path_entry.clone();
-                let marked_dead =
-                    path_secret_entry.mark_dead_if_cooldown_elapsed(now, dead_peer_cooldown);
                 let key = endpoint::recv::Key {
                     id: *ctx.path_entry.id(),
                     remote_sender_id: ctx.remote_sender_id,
@@ -1182,9 +1177,11 @@ pub async fn recv_idle_wheel_drain<Clk>(
                 let lifetime = now.duration_since(ctx.created_at);
                 drop(ctx);
                 recv_cache.borrow_mut().remove(&key);
-                if marked_dead {
-                    let _ = peer_dead_tx.send(Entry::new(PeerDead { path_secret_entry }));
-                }
+                // The recv side does not mark the peer dead. An idle recv context
+                // only means the peer stopped sending — it cannot distinguish
+                // "nothing to say" from "actually unreachable". Only the send
+                // side (with unacknowledged inflight packets) has evidence of
+                // peer death.
                 idle_expired.add(1);
                 idle_lifetime.record(lifetime);
             }
