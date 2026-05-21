@@ -11,7 +11,11 @@
 
 use super::helpers::{test_batch, test_entry, TestReceiver, TestReceiverExt as _};
 use crate::{
-    endpoint::{combinator::FrameBatch, send, tasks},
+    endpoint::{
+        combinator::FrameBatch,
+        id::{Id, IdMap, LocalSendSocketId, LocalSenderId},
+        send, tasks,
+    },
     socket::channel::{intrusive::unsync, ReceiverExt as _, UnboundedSender as _},
     testing::{ext::*, sim},
     time::bach::Clock,
@@ -24,17 +28,18 @@ type BatchTx = unsync::Sender<crate::intrusive::EntryAdapter<FrameBatch>>;
 struct Harness {
     batch_tx: BatchTx,
     tx_wheel_rx: TxWheelRx,
-    send_caches: Vec<Rc<RefCell<send::Cache>>>,
+    send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
 }
 
 /// Spawns the context_resolver pipeline and returns a harness for driving it.
 fn setup() -> Harness {
     let registry = crate::counter::Registry::default();
-    let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSocketId, _> = vec![Rc::new(RefCell::new(send::Cache::new(
+    let send_caches: IdMap<LocalSendSocketId, _> = vec![Rc::new(RefCell::new(send::Cache::new(
         &registry,
-        crate::endpoint::id::SenderIdx::new(0),
-    )))].into();
-    let sender_idx_to_local = crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(1, crate::endpoint::id::LocalSocketId::new(0));
+        LocalSenderId::from_index(0),
+    )))]
+    .into();
+    let sender_idx_to_local = IdMap::<LocalSenderId, LocalSendSocketId>::new(1, LocalSendSocketId::new(0));
 
     let (tx_wheel_tx, tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
     let (pto_wheel_tx, _) = unsync::new_with_adapter::<send::PtoWheelAdapter>();
@@ -101,7 +106,7 @@ fn same_peer_reuses_context() {
         let _ = batch_tx.send(test_batch(&pse));
         drop(batch_tx);
 
-        let cache_ref = send_caches[0].clone();
+        let cache_ref = send_caches[LocalSendSocketId::new(0)].clone();
         async move {
             let _ctx = tx_wheel_rx.recv().await.unwrap();
             assert_eq!(cache_ref.borrow().context_count(), 1);
@@ -143,7 +148,7 @@ fn wheel_router_routes_all_interest_combinations() {
                 registry.register_queue_gauge("test.inflight"),
                 registry.register_queue_gauge("test.ack"),
                 registry.register_queue_gauge("test.pending"),
-                crate::endpoint::id::SenderIdx::new(0),
+                LocalSenderId::from_index(0),
                 &Clock::default(),
             )
             .unwrap();

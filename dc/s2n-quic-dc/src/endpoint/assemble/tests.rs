@@ -5,7 +5,7 @@ use super::*;
 use crate::{
     byte_vec::ByteVec,
     counter::Registry,
-    endpoint::frame::{Frame, Header, TransmissionStatus, DEFAULT_TTL},
+    endpoint::{frame::{Frame, Header, TransmissionStatus, DEFAULT_TTL}, id::Id},
     packet::datagram::ResetTarget,
     path::secret::map::Entry as PathSecretEntry,
     time::testing::Clock,
@@ -98,7 +98,7 @@ fn make_context(mtu: u16, registry: &Registry) -> (Context, Arc<PathSecretEntry>
             inflight_gauge,
             ack_gauge,
             pending_gauge,
-            crate::endpoint::id::SenderIdx::new(0),
+            crate::endpoint::id::LocalSenderId::from_index(0),
             &crate::time::bach::Clock::default(),
         )
         .unwrap(),
@@ -128,7 +128,7 @@ fn is_frame_encodable(
     MetadataEstimate::new()
         .with_frame_parts(&frame.header, payload_len(frame))
         .estimate_packet_len(
-            source_sender_id,
+            crate::endpoint::id::LocalSenderId::new(source_sender_id),
             source_control_port,
             credentials,
             TEST_CRYPTO_TAG_LEN,
@@ -145,7 +145,7 @@ fn to_frame(frame: &FrameInput, entry: &Arc<PathSecretEntry>) -> crate::intrusiv
 
     Frame {
         header: frame.header,
-        source_sender_id: VarInt::MAX,
+        source_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::MAX),
         payload: payload_vec(payload),
         path_secret_entry: entry.clone(),
         completion: None,
@@ -201,7 +201,7 @@ fn oracle(
         while let Some(frame) = frames.get(next_idx) {
             let next_metadata = metadata.with_frame_parts(&frame.header, payload_len(frame));
             let estimated_len = next_metadata.estimate_packet_len(
-                source_sender_id,
+                crate::endpoint::id::LocalSenderId::new(source_sender_id),
                 source_control_port,
                 credentials,
                 TEST_CRYPTO_TAG_LEN,
@@ -230,7 +230,7 @@ fn oracle(
         let real_pn = VarInt::new(packet_sizes.len() as u64).unwrap();
         let pn_saving = VarInt::MAX.encoding_size() - real_pn.encoding_size();
         let estimated = metadata.estimate_packet_len(
-            source_sender_id,
+            crate::endpoint::id::LocalSenderId::new(source_sender_id),
             source_control_port,
             credentials,
             TEST_CRYPTO_TAG_LEN,
@@ -296,7 +296,7 @@ fn assemble_accounts_for_header_overhead() {
                     reset_target: ResetTarget::Both,
                     error_code: VarInt::from_u8(1),
                 },
-                source_sender_id: VarInt::MAX,
+                source_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::MAX),
                 payload: ByteVec::new(),
                 path_secret_entry: entry.clone(),
                 completion: None,
@@ -313,7 +313,7 @@ fn assemble_accounts_for_header_overhead() {
     let segments = assemble(
         &mut context,
         &clock,
-        VarInt::from_u8(1),
+        crate::endpoint::id::LocalSenderId::new(VarInt::from_u8(1)),
         443,
         &gso,
         &pool,
@@ -321,7 +321,7 @@ fn assemble_accounts_for_header_overhead() {
         &mut cancelled,
         &mut ack_completions,
         &counters,
-        &crate::endpoint::counters::Send::new(&crate::counter::Registry::default(), 0),
+        &crate::endpoint::counters::Send::new(&crate::counter::Registry::default(), crate::endpoint::id::LocalSenderId::from_index(0)),
     )
     .expect("frames should assemble");
 
@@ -387,7 +387,7 @@ fn assemble_fuzz_respects_gso_invariants() {
             let segments = assemble(
                 &mut context,
                 &clock,
-                input.source_sender_id,
+                crate::endpoint::id::LocalSenderId::new(input.source_sender_id),
                 input.source_control_port,
                 &gso,
                 &pool,
@@ -395,7 +395,7 @@ fn assemble_fuzz_respects_gso_invariants() {
                 &mut cancelled,
                 &mut ack_completions,
                 &counters,
-                &crate::endpoint::counters::Send::new(&crate::counter::Registry::default(), 0),
+                &crate::endpoint::counters::Send::new(&crate::counter::Registry::default(), crate::endpoint::id::LocalSenderId::from_index(0)),
             )
             .expect("assemble should make progress for bounded test inputs");
 
@@ -433,7 +433,7 @@ fn encode_decode_round_trip() {
         inflight_gauge,
         ack_gauge,
         pending_gauge,
-        crate::endpoint::id::SenderIdx::new(0),
+        crate::endpoint::id::LocalSenderId::from_index(0),
         &crate::time::bach::Clock::default(),
     )
     .unwrap();
@@ -489,7 +489,7 @@ fn encode_decode_round_trip() {
     let encoded_len = encode_segment(
         &mut buf,
         443,                // source_control_port
-        VarInt::from_u8(7), // source_sender_id
+        crate::endpoint::id::LocalSenderId::new(VarInt::from_u8(7)), // source_sender_id
         context.next_packet_number,
         &context.sealer,
         &context.credentials,
@@ -653,7 +653,7 @@ fn assemble_probe_fuzz() {
             let _segments = assemble(
                 &mut context,
                 &clock,
-                input.source_sender_id,
+                crate::endpoint::id::LocalSenderId::new(input.source_sender_id),
                 input.source_control_port,
                 &gso,
                 &pool,
@@ -661,7 +661,7 @@ fn assemble_probe_fuzz() {
                 &mut cancelled,
                 &mut ack_completions,
                 &counters,
-                &crate::endpoint::counters::Send::new(&crate::counter::Registry::default(), 0),
+                &crate::endpoint::counters::Send::new(&crate::counter::Registry::default(), crate::endpoint::id::LocalSenderId::from_index(0)),
             );
 
             if !context.inflight.has_inflight() {
@@ -674,7 +674,7 @@ fn assemble_probe_fuzz() {
             let result = assemble(
                 &mut context,
                 &clock,
-                input.source_sender_id,
+                crate::endpoint::id::LocalSenderId::new(input.source_sender_id),
                 input.source_control_port,
                 &gso,
                 &pool,
@@ -682,7 +682,7 @@ fn assemble_probe_fuzz() {
                 &mut cancelled,
                 &mut ack_completions,
                 &counters,
-                &crate::endpoint::counters::Send::new(&crate::counter::Registry::default(), 0),
+                &crate::endpoint::counters::Send::new(&crate::counter::Registry::default(), crate::endpoint::id::LocalSenderId::from_index(0)),
             );
 
             // If a probe was assembled, verify GSO invariants.
@@ -726,7 +726,7 @@ fn encode_decode_fuzz_round_trip() {
                 inflight_gauge,
                 ack_gauge,
                 pending_gauge,
-                crate::endpoint::id::SenderIdx::new(0),
+                crate::endpoint::id::LocalSenderId::from_index(0),
                 &crate::time::bach::Clock::default(),
             )
             .unwrap();
@@ -750,7 +750,7 @@ fn encode_decode_fuzz_round_trip() {
                 }
                 let next_meta = meta.with_frame_parts(&frame.header, payload_len(frame));
                 let est = next_meta.estimate_packet_len(
-                    input.source_sender_id,
+                    crate::endpoint::id::LocalSenderId::new(input.source_sender_id),
                     input.source_control_port,
                     &context.credentials,
                     tag_len,
@@ -782,7 +782,7 @@ fn encode_decode_fuzz_round_trip() {
             let encoded_len = encode_segment(
                 &mut buf,
                 input.source_control_port,
-                input.source_sender_id,
+                crate::endpoint::id::LocalSenderId::new(input.source_sender_id),
                 context.next_packet_number,
                 &context.sealer,
                 &context.credentials,

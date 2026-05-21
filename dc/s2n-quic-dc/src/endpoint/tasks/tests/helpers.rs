@@ -5,6 +5,7 @@ use crate::{
     endpoint::{
         combinator::FrameBatch,
         frame::{self, Frame, Header},
+        id::Id,
         send,
     },
     intrusive::Entry,
@@ -233,7 +234,7 @@ pub fn test_frame_with_payload(pse: &Arc<PathSecretEntry>, payload_size: usize) 
             offset: VarInt::ZERO,
             is_fin: false,
         },
-        source_sender_id: VarInt::MAX,
+        source_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::MAX),
         payload: bytes::BytesMut::zeroed(payload_size).into(),
         path_secret_entry: pse.clone(),
         completion: None,
@@ -258,7 +259,7 @@ pub fn test_batch_with_payload(
     payload_size: usize,
 ) -> Entry<FrameBatch> {
     let mut batch = FrameBatch::single(test_frame_with_payload(pse, payload_size));
-    batch.set_sender_id(crate::endpoint::id::SenderIdx::new(0));
+    batch.set_sender_id(crate::endpoint::id::LocalSenderId::from_index(0));
     Entry::new(batch)
 }
 
@@ -278,7 +279,7 @@ pub fn build_send_context(
         registry.register_queue_gauge("test.inflight"),
         registry.register_queue_gauge("test.ack"),
         registry.register_queue_gauge("test.pending"),
-        crate::endpoint::id::SenderIdx::new(sender_idx),
+        crate::endpoint::id::LocalSenderId::from_index(sender_idx),
         clock,
     )
     .expect("test context should be constructible");

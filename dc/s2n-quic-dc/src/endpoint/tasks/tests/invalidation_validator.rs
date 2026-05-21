@@ -4,7 +4,10 @@
 use super::helpers::{TestReceiver, TestReceiverExt as _};
 use crate::{
     credentials::Id,
-    endpoint::tasks,
+    endpoint::{
+        id::SendWorkerId,
+        tasks,
+    },
     intrusive::Entry,
     packet::{secret_control, WireVersion},
     path::secret::{map::Map, schedule, stateless_reset},
@@ -128,9 +131,9 @@ fn unknown_path_secret_packet_broadcasts_validated_id() {
         let mut rx = tasks::invalidation_validator(
             input,
             map,
-            vec![tx_a],
-            vec![tx_b],
-            vec![0],
+            vec![tx_a].into(),
+            vec![tx_b].into(),
+            vec![SendWorkerId::new(0)].into(),
             validator_counters(),
         );
 
@@ -169,9 +172,9 @@ fn malformed_packet_is_ignored() {
         let mut rx = tasks::invalidation_validator(
             input,
             map,
-            vec![send_tx],
-            vec![],
-            vec![0],
+            vec![send_tx].into(),
+            vec![].into(),
+            vec![SendWorkerId::new(0)].into(),
             validator_counters(),
         );
 
@@ -211,14 +214,14 @@ fn stale_key_packet_broadcasts_validated_sender_target() {
         let input = TestReceiver::new([packet_entry(&payload, peer)]);
         let (tx_a, mut rx_a) = unsync::new::<tasks::Invalidation>();
         let (tx_b, mut rx_b) = unsync::new::<tasks::Invalidation>();
-        let mut sender_id_to_worker = vec![0usize; 8];
-        sender_id_to_worker[7] = 1;
+        let mut sender_id_to_worker = vec![SendWorkerId::new(0); 8];
+        sender_id_to_worker[7] = SendWorkerId::new(1);
         let mut rx = tasks::invalidation_validator(
             input,
             map,
-            vec![tx_a, tx_b],
-            vec![],
-            sender_id_to_worker,
+            vec![tx_a, tx_b].into(),
+            vec![].into(),
+            sender_id_to_worker.into(),
             validator_counters(),
         );
 
@@ -229,7 +232,7 @@ fn stale_key_packet_broadcasts_validated_sender_target() {
                 *rx_b.recv().await.expect("stale key should be propagated"),
                 tasks::Invalidation::StaleKey {
                     credential_id: local_id,
-                    sender_id,
+                    sender_id: crate::endpoint::id::LocalSenderId::new(sender_id),
                     rejected_key_id: s2n_quic_core::varint::VarInt::from_u8(3),
                 }
             );
@@ -264,14 +267,14 @@ fn replay_detected_packet_broadcasts_validated_sender_target() {
         let input = TestReceiver::new([packet_entry(&payload, peer)]);
         let (tx_a, mut rx_a) = unsync::new::<tasks::Invalidation>();
         let (tx_b, mut rx_b) = unsync::new::<tasks::Invalidation>();
-        let mut sender_id_to_worker = vec![0usize; 10];
-        sender_id_to_worker[9] = 1;
+        let mut sender_id_to_worker = vec![SendWorkerId::new(0); 10];
+        sender_id_to_worker[9] = SendWorkerId::new(1);
         let mut rx = tasks::invalidation_validator(
             input,
             map,
-            vec![tx_a, tx_b],
-            vec![],
-            sender_id_to_worker,
+            vec![tx_a, tx_b].into(),
+            vec![].into(),
+            sender_id_to_worker.into(),
             validator_counters(),
         );
 
@@ -285,7 +288,7 @@ fn replay_detected_packet_broadcasts_validated_sender_target() {
                     .expect("replay detected should be propagated"),
                 tasks::Invalidation::StaleKey {
                     credential_id: local_id,
-                    sender_id,
+                    sender_id: crate::endpoint::id::LocalSenderId::new(sender_id),
                     rejected_key_id: s2n_quic_core::varint::VarInt::from_u8(2),
                 }
             );

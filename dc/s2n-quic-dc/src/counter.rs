@@ -2759,12 +2759,10 @@ impl Registry {
             self.register_metric_metadata(&label, Some(&variant), MetricKind::Gauge, None, "");
         let inner = Arc::new(AtomicI64::new(0));
         let inner_clone = inner.clone();
-        self.inner.register_list_callback(
-            label,
-            Some(variant),
-            Unit::Count,
-            move || NonZeroDisplay(inner_clone.load(Ordering::Relaxed)),
-        );
+        self.inner
+            .register_list_callback(label, Some(variant), Unit::Count, move || {
+                NonZeroDisplay(inner_clone.load(Ordering::Relaxed))
+            });
         self.gauge_handle(inner, metric_id)
     }
 

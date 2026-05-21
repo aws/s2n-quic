@@ -4,7 +4,7 @@
 //! Contract tests for extracted send-worker pipeline helpers.
 use super::helpers::{test_batch, test_entry, TestReceiver, TestReceiverExt as _};
 use crate::{
-    endpoint::{frame, msg, send, tasks},
+    endpoint::{frame, id::Id, msg, send, tasks},
     socket::channel::{intrusive::unsync, ReceiverExt as _, UnboundedSender as _},
     testing::{ext::*, sim},
     time::{bach::Clock, precision},
@@ -21,11 +21,16 @@ fn send_ack_processor_ignores_invalid_sender_id() {
     let _guard = crate::testing::without_snapshots();
     sim(|| {
         let registry = crate::counter::Registry::default();
-        let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSocketId, _> = vec![Rc::new(RefCell::new(send::Cache::new(
-            &registry,
-            crate::endpoint::id::SenderIdx::new(0),
-        )))].into();
-        let sender_idx_to_local = crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(1, crate::endpoint::id::LocalSocketId::new(0));
+        let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSendSocketId, _> =
+            vec![Rc::new(RefCell::new(send::Cache::new(
+                &registry,
+                crate::endpoint::id::LocalSenderId::from_index(0),
+            )))]
+            .into();
+        let sender_idx_to_local = crate::endpoint::id::IdMap::<
+            crate::endpoint::id::LocalSenderId,
+            crate::endpoint::id::LocalSendSocketId,
+        >::new(1, crate::endpoint::id::LocalSendSocketId::new(0));
 
         let (mut ack_tx, ack_rx) = unsync::new::<msg::Sender>();
         let (tx_wheel_tx, mut tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
@@ -107,7 +112,7 @@ fn send_pto_timeout_routes_pending_context_to_tx_wheel() {
             registry.register_queue_gauge("test.inflight"),
             registry.register_queue_gauge("test.ack"),
             registry.register_queue_gauge("test.pending"),
-            crate::endpoint::id::SenderIdx::new(0),
+            crate::endpoint::id::LocalSenderId::from_index(0),
             &clock,
         )
         .expect("test context should be constructible");
@@ -127,8 +132,11 @@ fn send_pto_timeout_routes_pending_context_to_tx_wheel() {
             idle_wheel_tx,
             registry.register("tx.pto_check"),
             registry.register("tx.pto_requested"),
-            crate::endpoint::id::IdMap::<crate::endpoint::id::LocalSocketId, _>::from(vec![]),
-            crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(0, crate::endpoint::id::LocalSocketId::new(0)),
+            crate::endpoint::id::IdMap::<crate::endpoint::id::LocalSendSocketId, _>::from(vec![]),
+            crate::endpoint::id::IdMap::<
+                crate::endpoint::id::LocalSenderId,
+                crate::endpoint::id::LocalSendSocketId,
+            >::new(0, crate::endpoint::id::LocalSendSocketId::new(0)),
         );
 
         async move { rx.drain_budgeted(Some(32)).await }
@@ -165,7 +173,7 @@ fn send_tx_wheel_drain_routes_expired_context_to_matching_socket() {
             registry.register_queue_gauge("test.inflight"),
             registry.register_queue_gauge("test.ack"),
             registry.register_queue_gauge("test.pending"),
-            crate::endpoint::id::SenderIdx::new(1),
+            crate::endpoint::id::LocalSenderId::from_index(1),
             &clock,
         )
         .expect("test context should be constructible");
@@ -181,8 +189,20 @@ fn send_tx_wheel_drain_routes_expired_context_to_matching_socket() {
             tx_wheel_rx,
             clock,
             registry.register_queue_gauge("test.tx_wheel"),
-            vec![socket0_tx, socket1_tx],
-            { let mut m = crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(2, crate::endpoint::id::LocalSocketId::new(usize::MAX)); m[crate::endpoint::id::SenderIdx::new(0)] = crate::endpoint::id::LocalSocketId::new(0); m[crate::endpoint::id::SenderIdx::new(1)] = crate::endpoint::id::LocalSocketId::new(1); m },
+            vec![socket0_tx, socket1_tx].into(),
+            {
+                let mut m = crate::endpoint::id::IdMap::<
+                    crate::endpoint::id::LocalSenderId,
+                    crate::endpoint::id::LocalSendSocketId,
+                >::new(
+                    2, crate::endpoint::id::LocalSendSocketId::new(usize::MAX)
+                );
+                m[crate::endpoint::id::LocalSenderId::from_index(0)] =
+                    crate::endpoint::id::LocalSendSocketId::new(0);
+                m[crate::endpoint::id::LocalSenderId::from_index(1)] =
+                    crate::endpoint::id::LocalSendSocketId::new(1);
+                m
+            },
             32,
             registry.register_nominal_task("task.tx_wheel", "send.0"),
         )

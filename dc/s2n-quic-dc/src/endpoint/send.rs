@@ -18,7 +18,10 @@ use crate::{
     congestion,
     counter::QueueGauge,
     credentials::{self, Credentials},
-    endpoint::frame::{self, Frame, Priority},
+    endpoint::{
+        frame::{self, Frame, Priority},
+        id::LocalSenderId,
+    },
     intrusive::{self, Queue},
     msg::segment,
     path::secret::map::Entry as PathSecretEntry,
@@ -511,7 +514,7 @@ pub(crate) struct Context {
     ///
     /// Used by `publish_sender_load_score` to write the correct slot so the
     /// load-balancer pick-two logic has up-to-date per-socket load information.
-    pub sender_idx: crate::endpoint::id::SenderIdx,
+    pub sender_idx: LocalSenderId,
     /// Intrusive links and target time for the transmission pacing wheel
     pub tx_wheel: WheelLinks,
     /// Intrusive links and target time for the PTO (probe timeout) wheel
@@ -551,7 +554,7 @@ impl Context {
         inflight_gauge: QueueGauge,
         ack_gauge: QueueGauge,
         pending_gauge: QueueGauge,
-        sender_idx: crate::endpoint::id::SenderIdx,
+        sender_idx: LocalSenderId,
         clock: &impl precision::Clock,
     ) -> Result<Self, ContextError> {
         let (sealer, credentials) = entry.reusable_sealer();
@@ -566,7 +569,10 @@ impl Context {
         if addrs.is_empty() {
             return Err(ContextError::PeerDataAddrsEmpty);
         }
-        let peer_addr = std::net::SocketAddr::from(addrs[usize::from(sender_idx) % addrs.len()].unmap());
+        let peer_addr =
+            std::net::SocketAddr::from(addrs[usize::from(sender_idx) % addrs.len()].unmap());
+
+        ::tracing::debug!(%credentials, %peer_addr, %sender_idx, "deriving sealer for credentials");
 
         Ok(Self {
             path_secret_entry: entry.clone(),
@@ -1171,18 +1177,14 @@ pub(crate) struct Cache {
     inflight_gauge: QueueGauge,
     ack_gauge: QueueGauge,
     pending_gauge: QueueGauge,
-    sender_idx: crate::endpoint::id::SenderIdx,
+    sender_idx: LocalSenderId,
     send_counters: Rc<super::counters::Send>,
 }
 
 impl Cache {
-    pub fn new(
-        counter_registry: &crate::counter::Registry,
-        sender_idx: crate::endpoint::id::SenderIdx,
-    ) -> Self {
-        let idx = sender_idx.as_usize();
-        let variant = format!("send.{idx}");
-        let send_counters = super::counters::Send::new(counter_registry, idx);
+    pub fn new(counter_registry: &crate::counter::Registry, sender_idx: LocalSenderId) -> Self {
+        let variant = format!("send.{sender_idx}");
+        let send_counters = super::counters::Send::new(counter_registry, sender_idx);
         Self {
             contexts: FxHashMap::default(),
             inflight_gauge: counter_registry
@@ -1253,12 +1255,11 @@ impl Cache {
     pub fn invalidate_stale_key(
         &mut self,
         id: &credentials::Id,
-        sender_id: VarInt,
+        sender_idx: LocalSenderId,
         rejected_key_id: VarInt,
         retransmit: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
     ) -> Option<(usize, usize)> {
-        let sender_idx = crate::endpoint::id::SenderIdx::new(sender_id.as_u64() as usize);
-        debug_assert_eq!(
+        assert_eq!(
             self.sender_idx, sender_idx,
             "invalidate_stale_key called for wrong sender cache"
         );

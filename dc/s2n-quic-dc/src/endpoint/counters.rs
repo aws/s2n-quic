@@ -3,7 +3,7 @@
 
 use crate::{
     counter::{Counter, Gauge, Registry, Summary, Timer, Unit},
-    endpoint::frame::Header,
+    endpoint::{frame::Header, id::LocalSenderId},
     flow::queue::ValidationError,
     packet::datagram::ResetTarget,
 };
@@ -303,7 +303,7 @@ pub(crate) struct Send {
 }
 
 impl Send {
-    pub fn new(counters: &Registry, sender_idx: usize) -> Rc<Self> {
+    pub fn new(counters: &Registry, sender_idx: LocalSenderId) -> Rc<Self> {
         let v = format!("send.{sender_idx}");
         Rc::new(Self {
             lost: counters.register_nominal("!send.lost", &v),
@@ -325,11 +325,17 @@ impl Send {
             inflight_drain_invalidate: counters
                 .register_nominal("send.inflight.drain.invalidate", &v),
             inflight_drain_expire: counters.register_nominal("send.inflight.drain.expire", &v),
-            inflight_leaked_on_invalidate: counters
-                .register_nominal_summary("send.inflight.leaked_on_invalidate", &v, Unit::Byte),
+            inflight_leaked_on_invalidate: counters.register_nominal_summary(
+                "send.inflight.leaked_on_invalidate",
+                &v,
+                Unit::Byte,
+            ),
             probe_no_response: counters.register_nominal("tx.probe.no_response", &v),
-            tx_probe_backoff: counters
-                .register_nominal_summary("tx.probe.backoff", &v, Unit::Count),
+            tx_probe_backoff: counters.register_nominal_summary(
+                "tx.probe.backoff",
+                &v,
+                Unit::Count,
+            ),
             context_count: counters.register_nominal_gauge("send.context.count", &v),
             tx_packets: counters.register_nominal("tx.data", &v),
 

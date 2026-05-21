@@ -15,6 +15,7 @@
 
 use crate::{
     byte_vec::ByteVec,
+    endpoint::id::LocalSenderId,
     intrusive::{Entry, Queue},
     packet::datagram::{QueuePair, ResetTarget},
     path::secret::map::Entry as PathSecretEntry,
@@ -900,9 +901,9 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
 pub struct Frame {
     /// Routing metadata for this frame
     pub header: Header,
-    /// Source sender ID for the packet header. VarInt::MAX means no preference (round-robin).
+    /// Source sender ID for the packet header. LocalSenderId::UNSPECIFIED means no preference (round-robin).
     /// When set to a specific value, the frame is sticky-routed to that send socket.
-    pub source_sender_id: VarInt,
+    pub source_sender_id: LocalSenderId,
     /// Payload data (stream bytes for FlowData, control frame bytes for FlowControl,
     /// ACK frames for Control, empty for resets)
     pub payload: ByteVec,
@@ -937,7 +938,7 @@ impl Frame {
 
     #[inline]
     pub fn requires_sticky_sender(&self) -> bool {
-        self.source_sender_id != VarInt::MAX
+        self.source_sender_id != LocalSenderId::UNSPECIFIED
     }
 
     #[inline]
@@ -1002,7 +1003,7 @@ mod tests {
                 offset: VarInt::ZERO,
                 is_fin: false,
             },
-            source_sender_id: VarInt::MAX,
+            source_sender_id: LocalSenderId::UNSPECIFIED,
             payload,
             path_secret_entry: entry,
             completion: None,
@@ -1030,7 +1031,7 @@ mod tests {
                 stream_id: VarInt::from_u8(42),
                 is_fin: false,
             },
-            source_sender_id: VarInt::MAX,
+            source_sender_id: LocalSenderId::UNSPECIFIED,
             payload: ByteVec::new(),
             path_secret_entry: entry,
             completion: None,
@@ -1054,7 +1055,7 @@ mod tests {
                 reset_target: ResetTarget::Both,
                 error_code: VarInt::from_u8(1),
             },
-            source_sender_id: VarInt::MAX,
+            source_sender_id: LocalSenderId::UNSPECIFIED,
             payload: ByteVec::new(),
             path_secret_entry: entry,
             completion: None,
@@ -1084,7 +1085,7 @@ mod tests {
                 stream_id: VarInt::from_u8(42),
                 is_fin: false,
             },
-            source_sender_id: VarInt::from_u8(7),
+            source_sender_id: LocalSenderId::new(VarInt::from_u8(7)),
             payload: ByteVec::new(),
             path_secret_entry: entry,
             completion: None,

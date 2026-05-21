@@ -11,6 +11,7 @@ use super::helpers::{test_entry, test_frame, RecvContextBuilder, TestReceiverExt
 use crate::{
     endpoint::{
         frame::{self, Frame},
+        id::{Id, IdMap, LocalSendSocketId, LocalSenderId},
         msg, recv, send, tasks,
     },
     intrusive::Entry,
@@ -23,7 +24,7 @@ use std::{cell::RefCell, rc::Rc};
 // ── Send idle wheel tests ────────────────────────────────────────────────────
 
 fn setup_send() -> (
-    Vec<Rc<RefCell<send::Cache>>>,
+    IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
     unsync::Sender<send::IdleWheelAdapter>,
     unsync::Receiver<crate::intrusive::EntryAdapter<Frame>>,
     Clock,
@@ -31,11 +32,12 @@ fn setup_send() -> (
 ) {
     let registry = crate::counter::Registry::default();
     let clock = Clock::default();
-    let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSocketId, _> = vec![Rc::new(RefCell::new(send::Cache::new(
+    let send_caches: IdMap<LocalSendSocketId, _> = vec![Rc::new(RefCell::new(send::Cache::new(
         &registry,
-        crate::endpoint::id::SenderIdx::new(0),
-    )))].into();
-    let sender_idx_to_local = crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(1, crate::endpoint::id::LocalSocketId::new(0));
+        LocalSenderId::from_index(0),
+    )))]
+    .into();
+    let sender_idx_to_local = IdMap::<LocalSenderId, LocalSendSocketId>::new(1, LocalSendSocketId::new(0));
 
     let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter::<send::IdleWheelAdapter>();
     let (completed_tx, completed_rx) = unsync::new::<Frame>();
@@ -72,7 +74,7 @@ fn send_idle_wheel_expires_inactive_context() {
         // Simulate initial activity so is_idle_expired can fire
         pse.touch_activity(precision::Clock::now(&clock));
 
-        let ctx = send_caches[0]
+        let ctx = send_caches[LocalSendSocketId::new(0)]
             .borrow_mut()
             .get_or_insert(&pse, &clock)
             .unwrap();
@@ -93,7 +95,7 @@ fn send_idle_wheel_expires_inactive_context() {
             // Default idle_timeout is 60s. Advance past it.
             61.s().sleep().await;
             assert_eq!(
-                send_caches[0].borrow().context_count(),
+                send_caches[LocalSendSocketId::new(0)].borrow().context_count(),
                 0,
                 "context should be evicted after idle timeout"
             );
@@ -119,7 +121,7 @@ fn send_idle_wheel_reschedules_active_context() {
         let (send_caches, mut idle_wheel_tx, _completed_rx, clock, _registry) = setup_send();
 
         let pse = test_entry();
-        let ctx = send_caches[0]
+        let ctx = send_caches[LocalSendSocketId::new(0)]
             .borrow_mut()
             .get_or_insert(&pse, &clock)
             .unwrap();
@@ -145,7 +147,7 @@ fn send_idle_wheel_reschedules_active_context() {
             // At 70s total the context should still be alive (activity at 30s → expires at 90s)
             40.s().sleep().await;
             assert_eq!(
-                send_caches[0].borrow().context_count(),
+                send_caches[LocalSendSocketId::new(0)].borrow().context_count(),
                 1,
                 "context should still be alive after activity refresh"
             );
@@ -153,7 +155,7 @@ fn send_idle_wheel_reschedules_active_context() {
             // At 95s total (past 90s) it should be evicted
             25.s().sleep().await;
             assert_eq!(
-                send_caches[0].borrow().context_count(),
+                send_caches[LocalSendSocketId::new(0)].borrow().context_count(),
                 0,
                 "context should be evicted after extended idle"
             );
@@ -173,7 +175,9 @@ fn setup_recv() -> (
 ) {
     let registry = crate::counter::Registry::default();
     let clock = Clock::default();
-    let recv_cache = Rc::new(RefCell::new(recv::Cache::new(crate::endpoint::id::RecvDispatchWorkerId::new(0))));
+    let recv_cache = Rc::new(RefCell::new(recv::Cache::new(
+        crate::endpoint::id::RecvDispatchWorkerId::new(0),
+    )));
 
     let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter::<recv::IdleWheelAdapter>();
     let q_gauge = registry.register_queue_gauge("test.recv_idle_wheel");

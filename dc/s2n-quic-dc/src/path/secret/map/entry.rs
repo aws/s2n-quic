@@ -7,6 +7,7 @@ use super::{
 };
 use crate::{
     credentials::{self, Credentials},
+    endpoint::id::LocalSenderId,
     packet::{secret_control as control, WireVersion},
     path::secret::{
         open, receiver,
@@ -317,16 +318,19 @@ impl Entry {
             v6_addrs.push(SocketAddress::from(resolved).to_ipv6_mapped());
         }
 
+        ::tracing::debug!(peer = %self.peer, addrs = ?v6_addrs, "setting peer data addresses");
+
         let _ = self.peer_data_addrs.set(v6_addrs.into());
         true
     }
 
-    fn sender_index(&self, sender_idx: usize) -> Option<usize> {
+    fn sender_index(&self, sender_idx: LocalSenderId) -> Option<usize> {
         let len = self.sender_load_scores.len();
         if len == 0 {
             None
         } else {
-            Some(sender_idx % len)
+            debug_assert!(sender_idx.as_usize() < len);
+            Some(sender_idx.as_usize() % len)
         }
     }
 
@@ -364,7 +368,7 @@ impl Entry {
     /// A lower value means the sender is estimated to be less loaded.  Returns `0`
     /// (the lowest possible score) when the entry has no sender slots.
     #[inline]
-    pub fn sender_load_score(&self, sender_idx: usize) -> u64 {
+    pub fn sender_load_score(&self, sender_idx: LocalSenderId) -> u64 {
         let Some(sender_idx) = self.sender_index(sender_idx) else {
             return 0;
         };
@@ -382,7 +386,7 @@ impl Entry {
     /// stores the result atomically so the pick-two load balancer can read it lock-free.
     pub fn update_sender_load_score(
         &self,
-        sender_idx: usize,
+        sender_idx: LocalSenderId,
         base: Timestamp,
         queued_bytes: usize,
         bandwidth: Bandwidth,

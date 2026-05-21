@@ -12,7 +12,7 @@ use super::helpers::{
     build_send_context, test_batch, test_batch_with_payload, test_entry_at, TestReceiverExt as _,
 };
 use crate::{
-    endpoint::{combinator::AssemblerCounters, frame, msg, send, tasks},
+    endpoint::{combinator::AssemblerCounters, frame, id::Id, msg, send, tasks},
     socket::{
         channel::{intrusive::unsync, ReceiverExt as _, UnboundedSender as _},
         pool::Pool,
@@ -26,7 +26,6 @@ use bach::net::UdpSocket;
 use core::time::Duration;
 use s2n_quic_core::varint::VarInt;
 use s2n_quic_platform::features::Gso;
-use std::rc::Rc;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -112,14 +111,14 @@ async fn assembler_pipeline(
     clock: Clock,
 ) {
     let socket = UdpSocket::bind("0.0.0.0:0").await.unwrap();
-    let send_counters = Rc::new(crate::endpoint::counters::Send::new(
+    let send_counters = crate::endpoint::counters::Send::new(
         &crate::counter::Registry::default(),
-        0,
-    ));
+        crate::endpoint::id::LocalSenderId::from_index(0),
+    );
     let rx = tasks::send_socket_assembler(
         ctx_rx,
         clock,
-        VarInt::from_u8(0),
+        crate::endpoint::id::LocalSenderId::new(VarInt::from_u8(0)),
         0,
         Gso::default(),
         Pool::new(u16::MAX),
@@ -468,7 +467,7 @@ fn cancelled_frame_emitted_when_completion_is_cancelled() {
                             offset: VarInt::ZERO,
                             is_fin: false,
                         },
-                        source_sender_id: VarInt::MAX,
+                        source_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::MAX),
                         payload: Default::default(),
                         path_secret_entry: entry.clone(),
                         completion: Some(completion_sender),
@@ -477,7 +476,7 @@ fn cancelled_frame_emitted_when_completion_is_cancelled() {
                         transmission_time: None,
                     }),
                 );
-                batch.set_sender_id(crate::endpoint::id::SenderIdx::new(0));
+                batch.set_sender_id(crate::endpoint::id::LocalSenderId::from_index(0));
                 let _ = c.push_batch(batch, &clock);
                 c.tx_wheel.target_time = Some(clock.now());
             }

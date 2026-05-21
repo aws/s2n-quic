@@ -4,7 +4,7 @@
 use super::*;
 use crate::{
     byte_vec::ByteVec,
-    endpoint::frame::{Header, TransmissionStatus, DEFAULT_TTL},
+    endpoint::{frame::{Header, TransmissionStatus, DEFAULT_TTL}, id::Id},
     path::secret::map::Entry as PathSecretEntry,
     socket::channel::{intrusive::unsync, ByteCost},
     time::testing as test_clock_mod,
@@ -51,11 +51,11 @@ impl PathSecretMapEntry for TestItem {
 }
 
 impl StickyRoute for TestItem {
-    fn sticky_sender_idx(&self) -> Option<crate::endpoint::id::SenderIdx> {
-        self.sticky_sender.map(crate::endpoint::id::SenderIdx::new)
+    fn sticky_sender_idx(&self) -> Option<crate::endpoint::id::LocalSenderId> {
+        self.sticky_sender.map(crate::endpoint::id::LocalSenderId::from_index)
     }
 
-    fn set_sender_id(&mut self, _id: crate::endpoint::id::SenderIdx) {}
+    fn set_sender_id(&mut self, _id: crate::endpoint::id::LocalSenderId) {}
 }
 
 struct TestSender {
@@ -148,7 +148,7 @@ fn new_test_frame_with_header(
 
     Entry::new(Frame {
         header,
-        source_sender_id: VarInt::MAX,
+        source_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::MAX),
         payload,
         path_secret_entry,
         completion: None,
@@ -176,7 +176,7 @@ fn new_test_frame_with_sender_id(
             },
             stream_id: VarInt::from_u8(0),
         },
-        source_sender_id,
+        source_sender_id: crate::endpoint::id::LocalSenderId::new(source_sender_id),
         payload,
         path_secret_entry,
         completion: None,
@@ -224,14 +224,19 @@ fn try_send_pick_two(
         .collect();
     let score_delta =
         registry.register_summary("pick_two.score_delta", crate::counter::Unit::Microsecond);
-    PickTwo::<TestItem, TestReceiver<TestItem>, TestSender>::try_send_pick_two(
+    let pick_counters_map: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSenderId, _> = pick_counters.into();
+    let rejected_counters_map: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSenderId, _> = rejected_counters.into();
+    let mut senders_map: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSenderId, _> = std::mem::take(senders).into();
+    let result = PickTwo::<TestItem, TestReceiver<TestItem>, TestSender>::try_send_pick_two(
         value,
-        senders,
+        &mut senders_map,
         rng,
-        &pick_counters,
-        &rejected_counters,
+        &pick_counters_map,
+        &rejected_counters_map,
         &score_delta,
-    )
+    );
+    *senders = senders_map.into_iter().map(|(_, v)| v).collect();
+    result
 }
 
 #[test]
@@ -297,7 +302,7 @@ fn pick_two_drops_unsent_entry_on_shutdown() {
         },
     ];
     let registry = crate::counter::Registry::default();
-    let pick_two = PickTwo::new(rx, senders, crate::xorshift::Rng::new(), &registry);
+    let pick_two = PickTwo::new(rx, senders.into(), crate::xorshift::Rng::new(), &registry);
     let mut fut = core::pin::pin!(crate::socket::channel::ReceiverExt::drain_budgeted(
         pick_two, None
     ));
@@ -617,7 +622,10 @@ fn batch_frames_tracks_sticky_sender_from_first_frame() {
         panic!("expected batch");
     };
     assert_eq!(batch.len(), 2);
-    assert_eq!(batch.sender_id(), Some(crate::endpoint::id::SenderIdx::new(2)));
+    assert_eq!(
+        batch.sender_id(),
+        Some(crate::endpoint::id::LocalSenderId::from_index(2))
+    );
 }
 
 #[test]
@@ -639,14 +647,20 @@ fn batch_frames_breaks_on_conflicting_sticky_senders() {
         panic!("expected first batch");
     };
     assert_eq!(batch1.len(), 1);
-    assert_eq!(batch1.sender_id(), Some(crate::endpoint::id::SenderIdx::new(1)));
+    assert_eq!(
+        batch1.sender_id(),
+        Some(crate::endpoint::id::LocalSenderId::from_index(1))
+    );
 
     let second = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
     let Poll::Ready(Some(batch2)) = second else {
         panic!("expected second batch");
     };
     assert_eq!(batch2.len(), 1);
-    assert_eq!(batch2.sender_id(), Some(crate::endpoint::id::SenderIdx::new(2)));
+    assert_eq!(
+        batch2.sender_id(),
+        Some(crate::endpoint::id::LocalSenderId::from_index(2))
+    );
 }
 
 #[test]
@@ -669,7 +683,10 @@ fn batch_frames_adopts_sticky_from_later_frame() {
         panic!("expected batch");
     };
     assert_eq!(batch.len(), 3);
-    assert_eq!(batch.sender_id(), Some(crate::endpoint::id::SenderIdx::new(3)));
+    assert_eq!(
+        batch.sender_id(),
+        Some(crate::endpoint::id::LocalSenderId::from_index(3))
+    );
 }
 
 #[test]
@@ -677,11 +694,16 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
     const OUT_OF_RANGE_SENDER_ID: u64 = 42; // total_sender_ids is 1, so any value > 0 is invalid.
 
     let registry = crate::counter::Registry::default();
-    let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSocketId, _> = vec![Rc::new(RefCell::new(send::Cache::new(
-        &registry,
-        crate::endpoint::id::SenderIdx::new(0),
-    )))].into();
-    let sender_idx_to_local = crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(1, crate::endpoint::id::LocalSocketId::new(0));
+    let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSendSocketId, _> =
+        vec![Rc::new(RefCell::new(send::Cache::new(
+            &registry,
+            crate::endpoint::id::LocalSenderId::from_index(0),
+        )))]
+        .into();
+    let sender_idx_to_local = crate::endpoint::id::IdMap::<
+        crate::endpoint::id::LocalSenderId,
+        crate::endpoint::id::LocalSendSocketId,
+    >::new(1, crate::endpoint::id::LocalSendSocketId::new(0));
     let (frame_tx, _frame_rx) = frame::submission_channel(1);
     let (tx_wheel_tx, _tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
     let (pto_wheel_tx, _pto_wheel_rx) = unsync::new_with_adapter::<send::PtoWheelAdapter>();
@@ -690,7 +712,9 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
 
     let ack_rx = TestReceiver {
         values: VecDeque::from([Entry::new(msg::Sender::ReceivedAck {
-            local_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::new(OUT_OF_RANGE_SENDER_ID).expect("valid varint")),
+            local_sender_id: crate::endpoint::id::LocalSenderId::new(
+                VarInt::new(OUT_OF_RANGE_SENDER_ID).expect("valid varint"),
+            ),
             path_secret_entry,
             payload: BytesMut::new(),
             ack_delay: core::time::Duration::ZERO,

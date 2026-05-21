@@ -14,6 +14,7 @@ use crate::{
     endpoint::{
         counters,
         frame::{self, Frame, Header},
+        id::Id,
         inflight::{Packet, TransmissionInfo},
         send,
     },
@@ -58,7 +59,7 @@ fn inflight_frame(pse: &std::sync::Arc<crate::path::secret::map::Entry>) -> Entr
             offset: VarInt::ZERO,
             is_fin: false,
         },
-        source_sender_id: VarInt::MAX,
+        source_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::MAX),
         payload: bytes::BytesMut::zeroed(100).into(),
         path_secret_entry: pse.clone(),
         completion: None,
@@ -128,7 +129,7 @@ fn stale_tx_wheel_after_ack_clears_probe() {
         //   - has_pending_acks() = false
         //   - probe_state.is_requested() = false (cleared by on_all_acked)
         //   - has_pending_data() = false (no pending frames)
-        let send_counters = counters::Send::new(&registry, 0);
+        let send_counters = counters::Send::new(&registry, crate::endpoint::id::LocalSenderId::from_index(0));
         let mut completed = Queue::new();
         let mut lost = Queue::new();
         let mut cancelled = Queue::new();

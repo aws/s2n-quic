@@ -44,7 +44,7 @@ fn setup(num_workers: usize) -> (SubmissionSender, Vec<WorkerRx>) {
     tasks::frame_dispatch(
         &mut spawner,
         frame_rx,
-        workers,
+        workers.into(),
         crate::xorshift::Rng::new(),
         Clock::default(),
         Rate::new(100.0),

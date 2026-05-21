@@ -4,6 +4,7 @@
 use super::msg;
 use crate::{
     credentials::{self, Credentials},
+    endpoint::id::{Id, IdMap, LocalSenderId, RemoteSenderId, SendWorkerId},
     intrusive::Entry,
     socket::channel::UnboundedSender,
 };
@@ -57,17 +58,21 @@ pub(crate) trait SenderRoute: Clone + Copy + Send + 'static {
     fn sender_id_for_ack(
         &self,
         credentials_id: &credentials::Id,
-        source_sender_id: VarInt,
+        source_sender_id: RemoteSenderId,
     ) -> super::id::LocalSenderId {
-        let hash = hash_id_and_sender(credentials_id, source_sender_id);
+        let hash = hash_id_and_sender(credentials_id, source_sender_id.as_varint());
         super::id::LocalSenderId::new(unsafe { VarInt::new_unchecked(self.route(hash) as u64) })
     }
 
     /// Returns the local worker_id that is responsible for decoding/decrypting a packet
     #[inline]
-    fn worker_id_for_recv(&self, credentials: &Credentials, source_sender_id: VarInt) -> super::id::WorkerId {
-        let hash = hash_credentials_and_sender(credentials, source_sender_id);
-        super::id::WorkerId::new(self.route(hash))
+    fn worker_id_for_recv(
+        &self,
+        credentials: &Credentials,
+        source_sender_id: RemoteSenderId,
+    ) -> super::id::RecvDispatchWorkerId {
+        let hash = hash_credentials_and_sender(credentials, source_sender_id.as_varint());
+        super::id::RecvDispatchWorkerId::new(self.route(hash))
     }
 }
 
@@ -116,7 +121,7 @@ impl SenderRoute for ModuloRoute {
 /// channel sender. Single lookup, no indirection.
 #[derive(Clone)]
 pub(crate) struct AckSender<T> {
-    senders: Vec<T>,
+    senders: IdMap<LocalSenderId, T>,
 }
 
 impl<T: Clone> AckSender<T> {
@@ -125,10 +130,13 @@ impl<T: Clone> AckSender<T> {
     /// `worker_senders` has one entry per send worker. `sender_id_to_worker` maps
     /// each sender_idx to its owning worker. The result has one entry per sender_idx,
     /// each cloned from the appropriate worker's sender.
-    pub fn new(worker_senders: Vec<T>, sender_id_to_worker: &[usize]) -> Self {
+    pub fn new(
+        worker_senders: IdMap<SendWorkerId, T>,
+        sender_id_to_worker: &IdMap<LocalSenderId, SendWorkerId>,
+    ) -> Self {
         let senders = sender_id_to_worker
             .iter()
-            .map(|&worker_idx| worker_senders[worker_idx].clone())
+            .map(|(sender_id, &worker_idx)| (sender_id, worker_senders[worker_idx].clone()))
             .collect();
         Self { senders }
     }
@@ -141,11 +149,11 @@ where
     fn send(&mut self, msg: Entry<msg::Sender>) -> Result<(), Entry<msg::Sender>> {
         let sender_idx = msg.sender_idx();
         debug_assert!(
-            usize::from(sender_idx) < self.senders.len(),
+            sender_idx.as_usize() < self.senders.len(),
             "sender_idx {sender_idx} out of bounds (len {})",
             self.senders.len()
         );
-        let tx = unsafe { self.senders.get_unchecked_mut(usize::from(sender_idx)) };
+        let tx = &mut self.senders[sender_idx];
         tx.send(msg)
     }
 }
@@ -160,27 +168,31 @@ use crate::intrusive::Queue;
 /// `recv_worker_id`, and sends one queue per worker — one lock acquisition per
 /// destination worker per batch.
 pub(crate) struct AckCompletionSender<T> {
-    senders: Vec<T>,
+    senders: IdMap<super::id::RecvDispatchWorkerId, T>,
     /// Staging queues for partitioning, one per recv worker. Reused across sends
     /// to avoid repeated allocation.
-    staging: Vec<Queue<msg::Sender>>,
+    staging: IdMap<super::id::RecvDispatchWorkerId, Queue<msg::Sender>>,
 }
 
 impl<T: Clone> Clone for AckCompletionSender<T> {
     fn clone(&self) -> Self {
         Self {
             senders: self.senders.clone(),
-            staging: (0..self.staging.len()).map(|_| Queue::new()).collect(),
+            staging: super::id::RecvDispatchWorkerId::range(self.staging.len())
+                .map(|id| (id, Queue::new()))
+                .collect(),
         }
     }
 }
 
 impl<T: Clone> AckCompletionSender<T> {
-    pub fn new(senders: Vec<T>) -> Self {
+    pub fn new(senders: IdMap<super::id::RecvDispatchWorkerId, T>) -> Self {
         let len = senders.len();
         Self {
+            staging: super::id::RecvDispatchWorkerId::range(len)
+                .map(|id| (id, Queue::new()))
+                .collect(),
             senders,
-            staging: (0..len).map(|_| Queue::new()).collect(),
         }
     }
 }
@@ -193,17 +205,16 @@ where
         while let Some(entry) = queue.pop_front() {
             let worker_id = entry
                 .recv_worker_id()
-                .expect("completion entry must have a recv_worker_id")
-                .as_usize();
+                .expect("completion entry must have a recv_worker_id");
             debug_assert!(
-                worker_id < self.staging.len(),
+                worker_id.as_usize() < self.staging.len(),
                 "recv_worker_id {worker_id} out of bounds (len {})",
                 self.staging.len()
             );
-            unsafe { self.staging.get_unchecked_mut(worker_id) }.push_back(entry);
+            self.staging[worker_id].push_back(entry);
         }
 
-        for (tx, staging) in self.senders.iter_mut().zip(self.staging.iter_mut()) {
+        for ((_, tx), (_, staging)) in self.senders.iter_mut().zip(self.staging.iter_mut()) {
             if !staging.is_empty() {
                 let batch = core::mem::take(staging);
                 let _ = tx.send(batch);

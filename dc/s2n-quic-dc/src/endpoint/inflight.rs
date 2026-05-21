@@ -288,7 +288,10 @@ mod tests {
     use super::*;
     use crate::{
         byte_vec::ByteVec,
-        endpoint::frame::{Frame, Header, TransmissionStatus, DEFAULT_TTL},
+        endpoint::{
+            frame::{Frame, Header, TransmissionStatus, DEFAULT_TTL},
+            id::LocalSenderId,
+        },
         packet::datagram::QueuePair,
         path::secret::map::Entry as PathSecretEntry,
     };
@@ -326,7 +329,7 @@ mod tests {
                 offset: VarInt::ZERO,
                 is_fin: false,
             },
-            source_sender_id: VarInt::MAX,
+            source_sender_id: LocalSenderId::UNSPECIFIED,
             payload,
             path_secret_entry: entry,
             completion: None,

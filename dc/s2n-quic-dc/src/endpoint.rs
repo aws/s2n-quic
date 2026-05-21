@@ -5,11 +5,18 @@
 
 use crate::{
     acceptor,
-    endpoint::frame::SubmissionSender,
+    counter::GaugedQueueReceiver,
+    endpoint::{
+        frame::SubmissionSender,
+        id::{
+            Id, IdJoin, IdMap, LocalSendSocketId, LocalSenderId, RecvDispatchWorkerId,
+            RecvIoWorkerId, SendWorkerId,
+        },
+    },
     intrusive::Entry,
     packet,
     socket::{
-        channel::{intrusive::sync as sync_queue, UnboundedSender},
+        channel::{intrusive::sync as sync_queue, GaugedSender, UnboundedSender},
         pool::descriptor,
     },
     stream::PendingValidation,
@@ -17,7 +24,7 @@ use crate::{
     tracing::*,
 };
 use core::time::Duration;
-use s2n_quic_core::time;
+use s2n_quic_core::{time, varint::VarInt};
 use std::sync::{atomic::AtomicU64, Arc};
 
 pub(crate) mod ack;
@@ -54,10 +61,8 @@ pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 /// The maximum length of a single packet
 pub const MAX_DATAGRAM_SIZE: usize = 1 << 15; // 32k
 
-type BatchSender = crate::socket::channel::GaugedSender<
-    sync_queue::Sender<combinator::FrameBatch>,
-    Entry<combinator::FrameBatch>,
->;
+type BatchSender =
+    GaugedSender<sync_queue::Sender<combinator::FrameBatch>, Entry<combinator::FrameBatch>>;
 type BatchReceiver = sync_queue::Receiver<combinator::FrameBatch>;
 type AckMsgReceiver = sync_queue::Receiver<msg::Sender>;
 
@@ -248,6 +253,9 @@ where
 
     debug!(?config.layout, "setting up endpoint");
 
+    let send_sockets: IdMap<LocalSendSocketId, _> = send_sockets.into();
+    let recv_sockets: IdMap<id::LocalRecvSocketId, _> = recv_sockets.into();
+
     if num_recv_dispatch.is_power_of_two() {
         setup_endpoint_inner::<_, _, _, _, routing::PowerOfTwoRoute>(
             runtime,
@@ -270,8 +278,8 @@ where
 fn setup_endpoint_inner<SendSocket, RecvSocket, UpsSocket, R, RecvRoute>(
     runtime: R,
     config: Config,
-    send_sockets: Vec<SendSocket>,
-    recv_sockets: Vec<RecvSocket>,
+    send_sockets: IdMap<LocalSendSocketId, SendSocket>,
+    recv_sockets: IdMap<id::LocalRecvSocketId, RecvSocket>,
     ups_socket: UpsSocket,
 ) -> Endpoint
 where
@@ -329,7 +337,7 @@ where
     // individual recv workers directly.
     let data_addrs: Vec<std::net::SocketAddr> = recv_sockets
         .iter()
-        .map(|s| {
+        .map(|(_, s)| {
             s.local_addr()
                 .expect("recv socket must have a local address")
         })
@@ -347,55 +355,62 @@ where
 
     // Per-send-worker batch channels -----------------------------------------------
     let num_send_workers = layout.send.len();
-    let (worker_batch_txs, worker_batch_rxs): (Vec<_>, Vec<_>) = (0..num_send_workers)
-        .map(|i| {
+    let (worker_batch_txs, worker_batch_rxs): (
+        IdMap<id::SendWorkerId, _>,
+        IdMap<id::SendWorkerId, _>,
+    ) = SendWorkerId::range(num_send_workers)
+        .map(|id| {
             let (tx, rx) = intrusive::sync::new::<combinator::FrameBatch>();
             let gauge = counter_registry
-                .register_queue_gauge_nominal("q.resolver", format_args!("send.{i}"));
-            let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
-            (tx, rx)
+                .register_queue_gauge_nominal("q.resolver", format_args!("send.{id}"));
+            let tx = GaugedSender::new(tx, gauge);
+            ((id, tx), (id, rx))
         })
         .unzip();
-    let (worker_ack_txs, worker_ack_rxs): (Vec<_>, Vec<_>) = (0..num_send_workers)
-        .map(|i| {
-            let (tx, rx) = intrusive::sync::new::<msg::Sender>();
-            let gauge =
-                counter_registry.register_queue_gauge_nominal("q.ack", format_args!("send.{i}"));
-            let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
-            (tx, rx)
-        })
-        .unzip();
+    let (worker_ack_txs, worker_ack_rxs): (IdMap<id::SendWorkerId, _>, IdMap<id::SendWorkerId, _>) =
+        SendWorkerId::range(num_send_workers)
+            .map(|id| {
+                let (tx, rx) = intrusive::sync::new::<msg::Sender>();
+                let gauge = counter_registry
+                    .register_queue_gauge_nominal("q.ack", format_args!("send.{id}"));
+                let tx = GaugedSender::new(tx, gauge);
+                ((id, tx), (id, rx))
+            })
+            .unzip();
 
     // UPS channel: recv_dispatch workers → background (UnknownPathSecret responses)
     let (ups_tx, ups_rx) = intrusive::sync::new::<ups::Response>();
     let ups_queue_gauge = counter_registry.register_queue_gauge("q.ups");
-    let ups_tx = crate::socket::channel::GaugedSender::new(ups_tx, ups_queue_gauge.clone());
+    let ups_tx = GaugedSender::new(ups_tx, ups_queue_gauge.clone());
 
     // Invalidation channels: recv IO → background (raw segments) and background → workers
     let (invalidation_raw_tx, invalidation_raw_rx) = intrusive::sync::new::<descriptor::Filled>();
-    let (invalidation_send_txs, invalidation_send_rxs): (Vec<_>, Vec<_>) = (0..num_send_workers)
-        .map(|i| {
+    let (invalidation_send_txs, invalidation_send_rxs): (
+        IdMap<id::SendWorkerId, _>,
+        IdMap<id::SendWorkerId, _>,
+    ) = SendWorkerId::range(num_send_workers)
+        .map(|id| {
             let (tx, rx) = intrusive::sync::new::<tasks::Invalidation>();
             let gauge = counter_registry
-                .register_queue_gauge_nominal("q.invalidation", format_args!("send.{i}"));
-            let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
-            (tx, rx)
+                .register_queue_gauge_nominal("q.invalidation", format_args!("send.{id}"));
+            let tx = GaugedSender::new(tx, gauge);
+            ((id, tx), (id, rx))
         })
         .unzip();
-    let (invalidation_recv_txs, invalidation_recv_rxs): (Vec<_>, Vec<_>) =
-        (0..layout.recv_dispatch.len())
-            .map(|i| {
-                let (tx, rx) = intrusive::sync::new::<tasks::Invalidation>();
-                let gauge = counter_registry
-                    .register_queue_gauge_nominal("q.invalidation", format_args!("recv.{i}"));
-                let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
-                (tx, rx)
-            })
-            .unzip();
-    let mut invalidation_send_rxs = invalidation_send_rxs.into_iter();
-    let mut invalidation_recv_rxs = invalidation_recv_rxs.into_iter();
+    let (invalidation_recv_txs, invalidation_recv_rxs): (
+        IdMap<id::RecvDispatchWorkerId, _>,
+        IdMap<id::RecvDispatchWorkerId, _>,
+    ) = RecvDispatchWorkerId::range(layout.recv_dispatch.len())
+        .map(|id| {
+            let (tx, rx) = intrusive::sync::new::<tasks::Invalidation>();
+            let gauge = counter_registry
+                .register_queue_gauge_nominal("q.invalidation", format_args!("recv.{id}"));
+            let tx = GaugedSender::new(tx, gauge);
+            ((id, tx), (id, rx))
+        })
+        .unzip();
 
-    let mut sender_id_to_worker: Vec<usize> = Vec::with_capacity(num_send);
+    let mut sender_id_to_worker: IdMap<LocalSenderId, id::SendWorkerId> = IdMap::default();
 
     // Set the socket sender count on the map so path-secret entries allocate
     // per-socket transmission schedules for pick-two load balancing.
@@ -427,9 +442,14 @@ where
     };
 
     // Distribute send sockets across send workers round-robin.
-    for (sender_idx, socket) in send_sockets.into_iter().enumerate() {
-        let worker_id = layout.send[sender_idx % num_send_workers];
-        sender_id_to_worker.push(sender_idx % num_send_workers);
+    for (socket_id, socket) in send_sockets.into_iter() {
+        let raw_idx = socket_id.as_usize();
+        let sender_idx = LocalSenderId::new(VarInt::new(raw_idx as u64).unwrap());
+        let worker_id = layout.send[raw_idx % num_send_workers];
+        sender_id_to_worker.extend(core::iter::once((
+            sender_idx,
+            id::SendWorkerId::new(raw_idx % num_send_workers),
+        )));
         let socket = socket::MeteredSend::new(
             socket,
             counter_registry.register("socket.tx.ops"),
@@ -446,10 +466,10 @@ where
         });
     }
 
-    // Build per-socket-id senders: each socket ID maps to its owning worker's channel.
-    let socket_senders: Vec<BatchSender> = sender_id_to_worker
+    // Build per-socket senders: each socket ID maps to its owning worker's channel.
+    let socket_senders: IdMap<LocalSenderId, BatchSender> = sender_id_to_worker
         .iter()
-        .map(|&worker_idx| worker_batch_txs[worker_idx].clone())
+        .map(|(sender_id, &worker_idx)| (sender_id, worker_batch_txs[worker_idx].clone()))
         .collect();
 
     // Frame-dispatch task on its designated worker.
@@ -468,6 +488,17 @@ where
     let (mut waker_sinks, waker_drains) = waker::new(num_waker_slots, num_waker_drains);
     let send_waker_sinks = waker_sinks.split_off(num_recv_dispatch);
 
+    assert_eq!(send_waker_sinks.len(), num_send_workers);
+    let send_waker_sinks: IdMap<SendWorkerId, _> = SendWorkerId::range(send_waker_sinks.len())
+        .zip(send_waker_sinks)
+        .collect();
+
+    assert_eq!(waker_sinks.len(), num_recv_dispatch);
+    let waker_sinks: IdMap<RecvDispatchWorkerId, _> =
+        RecvDispatchWorkerId::range(num_recv_dispatch)
+            .zip(waker_sinks)
+            .collect();
+
     for (idx, drain) in waker_drains.into_iter().enumerate() {
         let worker_id = layout.waker_drain[idx % layout.waker_drain.len()];
         let prev = workers[worker_id].waker_drain.replace(drain);
@@ -479,39 +510,44 @@ where
 
     // ACK completion channels: one per recv dispatch worker. Send workers route completed
     // ACK entries back to the recv worker that submitted them.
-    let (ack_completion_txs, ack_completion_rxs): (Vec<_>, Vec<_>) = (0..num_recv_dispatch)
-        .map(|i| {
+    let (ack_completion_txs, ack_completion_rxs): (
+        IdMap<RecvDispatchWorkerId, _>,
+        IdMap<RecvDispatchWorkerId, _>,
+    ) = RecvDispatchWorkerId::range(num_recv_dispatch)
+        .map(|id| {
             let (tx, rx) = crate::socket::channel::intrusive::sync::new::<msg::Sender>();
             let gauge = counter_registry
-                .register_queue_gauge_nominal("q.dispatch", format_args!("recv.{i}"));
-            let tx = crate::socket::channel::GaugedSender::new(tx, gauge);
-            (tx, rx)
+                .register_queue_gauge_nominal("q.dispatch", format_args!("recv.{id}"));
+            let tx = GaugedSender::new(tx, gauge);
+            ((id, tx), (id, rx))
         })
         .unzip();
     let ack_completions_tx = routing::AckCompletionSender::new(ack_completion_txs);
 
     // Assign per-send-worker batch/ack receivers.
-    for (idx, ((batch_rx, ack_rx), waker_sink)) in worker_batch_rxs
-        .into_iter()
-        .zip(worker_ack_rxs.into_iter())
-        .zip(send_waker_sinks)
-        .enumerate()
+    for (send_worker_id, batch_rx, ack_rx, invalidation_rx, waker_sink) in (
+        worker_batch_rxs,
+        worker_ack_rxs,
+        invalidation_send_rxs,
+        send_waker_sinks,
+    )
+        .join()
     {
-        let worker_id = layout.send[idx];
+        let worker_id = layout.send[send_worker_id.as_usize()];
         workers[worker_id].send_worker = Some(SendWorkerParts {
-            idx,
+            idx: send_worker_id,
             batch_rx,
             batch_gauge: counter_registry
-                .register_queue_gauge_nominal("q.resolver", format_args!("send.{idx}")),
+                .register_queue_gauge_nominal("q.resolver", format_args!("send.{send_worker_id}")),
             ack_rx,
             ack_gauge: counter_registry
-                .register_queue_gauge_nominal("q.ack", format_args!("send.{idx}")),
+                .register_queue_gauge_nominal("q.ack", format_args!("send.{send_worker_id}")),
             random: crate::xorshift::Rng::new(),
             frame_tx: frame_tx.clone(),
             ack_completions_tx: ack_completions_tx.clone(),
             waker_sink,
             queue_dispatcher: queue_dispatcher.clone(),
-            invalidation_rx: invalidation_send_rxs.next().unwrap(),
+            invalidation_rx,
         });
     }
 
@@ -521,52 +557,58 @@ where
     // ── Recv dispatch queues ─────────────────────────────────────────────────
     // One dispatch queue per recv_dispatch worker. Recv IO tasks fan out to all of these
     // using a hash of (credentials.id, source_sender_id) for peer affinity.
-    let (dispatch_txs, dispatch_rxs): (Vec<PacketSender>, Vec<_>) = (0..num_recv_dispatch)
-        .map(|i| {
+    let (dispatch_txs, dispatch_rxs): (
+        IdMap<RecvDispatchWorkerId, PacketSender>,
+        IdMap<RecvDispatchWorkerId, PacketReceiver>,
+    ) = RecvDispatchWorkerId::range(num_recv_dispatch)
+        .map(|id| {
             let (tx, rx) =
                 intrusive::sync::new::<packet::datagram::decoder::Packet<descriptor::Filled>>();
             let gauge = counter_registry
-                .register_queue_gauge_nominal("q.dispatch_rx", format_args!("recv.{i}"));
-            (crate::socket::channel::GaugedSender::new(tx, gauge), rx)
+                .register_queue_gauge_nominal("q.dispatch_rx", format_args!("recv.{id}"));
+            ((id, GaugedSender::new(tx, gauge)), (id, rx))
         })
         .unzip();
 
     let ack_route = RecvRoute::new(num_send);
-    for (idx, ((dispatch_rx, ack_completion_rx), waker_sink)) in dispatch_rxs
-        .into_iter()
-        .zip(ack_completion_rxs)
-        .zip(waker_sinks)
-        .enumerate()
+    for (recv_dispatch_id, dispatch_rx, ack_completion_rx, invalidation_rx, waker_sink) in (
+        dispatch_rxs,
+        ack_completion_rxs,
+        invalidation_recv_rxs,
+        waker_sinks,
+    )
+        .join()
     {
-        let worker_id = layout.recv_dispatch[idx];
+        let worker_id = layout.recv_dispatch[recv_dispatch_id.as_usize()];
         workers[worker_id].recv_dispatch = Some(RecvDispatchParts {
             packet_rx: dispatch_rx,
-            packet_gauge: counter_registry
-                .register_queue_gauge_nominal("q.dispatch_rx", format_args!("recv.{idx}")),
+            packet_gauge: counter_registry.register_queue_gauge_nominal(
+                "q.dispatch_rx",
+                format_args!("recv.{recv_dispatch_id}"),
+            ),
             path_secret_map: path_secret_map.clone(),
             acceptor_registry: acceptor_registry.clone(),
             frame_tx: frame_tx.clone(),
             ack_sender: ack_sender.clone(),
             ack_completion_rx,
-            recv_dispatch_idx: idx,
+            recv_dispatch_idx: recv_dispatch_id,
             queue_dispatcher: queue_dispatcher.clone(),
             counters: counters.clone(),
             clock: clock.clone(),
             route: ack_route,
             waker_sink,
             ups_tx: ups_tx.clone(),
-            invalidation_rx: invalidation_recv_rxs.next().unwrap(),
+            invalidation_rx,
         });
     }
 
     // Assign each recv socket to its corresponding recv_io worker (1:1).
     let rx_ops_total = counter_registry.register("socket.rx.ops");
     let rx_bytes_total = counter_registry.register_bytes("socket.rx.bytes");
-    for (idx, (socket, &worker_id)) in recv_sockets
-        .into_iter()
-        .zip(layout.recv_io.iter())
-        .enumerate()
+    for ((recv_socket_id, socket), &worker_id) in
+        recv_sockets.into_iter().zip(layout.recv_io.iter())
     {
+        let recv_io_id = RecvIoWorkerId::new(recv_socket_id.as_usize());
         let router = worker::FanOutRouter::<_, RecvRoute, _>::new(
             dispatch_txs.clone(),
             invalidation_raw_tx.clone(),
@@ -574,13 +616,13 @@ where
         );
         let socket = socket::MeteredRecv::new(
             socket,
-            counter_registry.register_nominal("socket.rx.ops", format_args!("recv.{idx}")),
-            counter_registry.register_nominal("socket.rx.bytes", format_args!("recv.{idx}")),
+            counter_registry.register_nominal("socket.rx.ops", format_args!("recv.{recv_io_id}")),
+            counter_registry.register_nominal("socket.rx.bytes", format_args!("recv.{recv_io_id}")),
             rx_ops_total.clone(),
             rx_bytes_total.clone(),
         );
         workers[worker_id].recv_socket = Some(RecvSocketParts {
-            idx,
+            idx: recv_io_id,
             socket,
             recv_pool: recv_pool.clone(),
             router,
@@ -625,7 +667,7 @@ where
 struct FrameDispatchParts<Clk> {
     frame_rx: frame::SubmissionReceiver,
     /// Per-socket-id senders: indexed by socket ID, each routes to the owning worker.
-    socket_senders: Vec<BatchSender>,
+    socket_senders: IdMap<LocalSenderId, BatchSender>,
     /// Clock used by the pacing stage.
     clock: Clk,
     /// Overall bandwidth cap for the pacing stage.
@@ -634,7 +676,7 @@ struct FrameDispatchParts<Clk> {
 
 /// Per-worker state for context resolution and ACK processing.
 struct SendWorkerParts {
-    idx: usize,
+    idx: SendWorkerId,
     batch_rx: BatchReceiver,
     batch_gauge: crate::counter::QueueGauge,
     ack_rx: AckMsgReceiver,
@@ -642,10 +684,7 @@ struct SendWorkerParts {
     random: crate::xorshift::Rng,
     frame_tx: SubmissionSender,
     ack_completions_tx: routing::AckCompletionSender<
-        crate::socket::channel::GaugedSender<
-            sync_queue::Sender<msg::Sender>,
-            crate::intrusive::Queue<msg::Sender>,
-        >,
+        GaugedSender<sync_queue::Sender<msg::Sender>, crate::intrusive::Queue<msg::Sender>>,
     >,
     waker_sink: waker::Sink,
     queue_dispatcher: msg::queue::Dispatcher,
@@ -655,7 +694,7 @@ struct SendWorkerParts {
 /// Per-socket ingredients for the socket send task.
 pub(crate) struct SendSocketParts<Socket, Clk> {
     socket: Socket,
-    sender_idx: usize,
+    sender_idx: LocalSenderId,
     source_control_port: u16,
     gso: s2n_quic_platform::features::Gso,
     pool: crate::socket::pool::Pool,
@@ -663,7 +702,7 @@ pub(crate) struct SendSocketParts<Socket, Clk> {
     per_socket_send_rate: crate::socket::rate::Rate,
 }
 
-type PacketSender = crate::socket::channel::GaugedSender<
+type PacketSender = GaugedSender<
     sync_queue::Sender<packet::datagram::decoder::Packet<descriptor::Filled>>,
     Entry<packet::datagram::decoder::Packet<descriptor::Filled>>,
 >;
@@ -671,7 +710,7 @@ type PacketReceiver = sync_queue::Receiver<packet::datagram::decoder::Packet<des
 
 /// Ingredients for a recv IO worker (socket read + decode + fan-out).
 struct RecvSocketParts<Socket, Route, Inv> {
-    idx: usize,
+    idx: RecvIoWorkerId,
     socket: Socket,
     recv_pool: crate::socket::pool::Pool,
     router: worker::FanOutRouter<PacketSender, Route, Inv>,
@@ -687,7 +726,7 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     ack_sender: AckSnd,
     ack_completion_rx: sync_queue::Receiver<msg::Sender>,
     /// Index into the AckCompletionSender's staging array (0..num_recv_dispatch).
-    recv_dispatch_idx: usize,
+    recv_dispatch_idx: RecvDispatchWorkerId,
     queue_dispatcher: msg::queue::Dispatcher,
     counters: Arc<counters::Dispatch>,
     clock: Clk,
@@ -701,9 +740,9 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
 struct BackgroundParts<UpsSocket> {
     raw_rx: sync_queue::Receiver<descriptor::Filled>,
     path_secret_map: crate::path::secret::Map,
-    send_txs: Vec<InvalidationSender>,
-    recv_txs: Vec<InvalidationSender>,
-    sender_id_to_worker: Vec<usize>,
+    send_txs: IdMap<id::SendWorkerId, InvalidationSender>,
+    recv_txs: IdMap<id::RecvDispatchWorkerId, InvalidationSender>,
+    sender_id_to_worker: IdMap<LocalSenderId, id::SendWorkerId>,
     ups_rx: sync_queue::Receiver<ups::Response>,
     ups_queue_gauge: crate::counter::QueueGauge,
     ups_socket: UpsSocket,
@@ -713,13 +752,10 @@ struct BackgroundParts<UpsSocket> {
     acceptor_cleaner: acceptor::Cleaner<PendingValidation>,
 }
 
-type InvalidationSender = crate::socket::channel::GaugedSender<
-    sync_queue::Sender<tasks::Invalidation>,
-    Entry<tasks::Invalidation>,
->;
+type InvalidationSender =
+    GaugedSender<sync_queue::Sender<tasks::Invalidation>, Entry<tasks::Invalidation>>;
 
-type UpsSender =
-    crate::socket::channel::GaugedSender<sync_queue::Sender<ups::Response>, Entry<ups::Response>>;
+type UpsSender = GaugedSender<sync_queue::Sender<ups::Response>, Entry<ups::Response>>;
 
 // ── Worker ────────────────────────────────────────────────────────────────
 
@@ -813,13 +849,13 @@ where
             }
 
             if let Some(sw) = send_worker {
-                let batch_rx = crate::counter::GaugedQueueReceiver::new(
+                let batch_rx = GaugedQueueReceiver::new(
                     sw.batch_rx,
                     sw.batch_gauge
                         .receiver("task.context_resolver")
                         .with_function("endpoint::Worker::spawn"),
                 );
-                let ack_rx = crate::counter::GaugedQueueReceiver::new(
+                let ack_rx = GaugedQueueReceiver::new(
                     sw.ack_rx,
                     sw.ack_gauge
                         .receiver("task.ack_processor")
@@ -832,7 +868,7 @@ where
                     ack_rx,
                     sw.invalidation_rx,
                     total_sender_ids,
-                    send_sockets,
+                    send_sockets.into(),
                     clock.clone(),
                     sw.random,
                     sw.frame_tx,
@@ -863,7 +899,7 @@ where
             }
 
             if let Some(rd) = recv_dispatch {
-                let packet_rx = crate::counter::GaugedQueueReceiver::new(
+                let packet_rx = GaugedQueueReceiver::new(
                     rd.packet_rx,
                     rd.packet_gauge
                         .receiver("task.packet_dispatch")
@@ -871,7 +907,7 @@ where
                 );
                 let recv_dispatch_idx = rd.recv_dispatch_idx;
                 let recv_cache = std::rc::Rc::new(std::cell::RefCell::new(
-                    crate::stream::endpoint::recv::Cache::new(crate::endpoint::id::WorkerId::new(recv_dispatch_idx)),
+                    crate::stream::endpoint::recv::Cache::new(recv_dispatch_idx),
                 ));
                 let (ack_burst_tx, ack_burst_rx) =
                     crate::socket::channel::intrusive::unsync::new_with_adapter::<
@@ -879,7 +915,7 @@ where
                     >();
 
                 // Recv idle wheel — expires inactive recv contexts.
-                let variant = format!("recv.{recv_dispatch_idx}");
+                let variant = format!("recv.dispatch.{recv_dispatch_idx}");
                 let q_recv_idle_wheel =
                     counter_registry.register_queue_gauge_nominal("q.idle_wheel", &variant);
                 let (recv_idle_wheel_tx, recv_idle_wheel_rx) =
@@ -934,7 +970,7 @@ where
                     rd.waker_sink,
                     rd.ups_tx,
                 );
-                let variant = format!("recv.{recv_dispatch_idx}");
+                let variant = format!("recv.dispatch.{recv_dispatch_idx}");
                 let task_counter = counter_registry
                     .register_nominal_task("task.packet_dispatch", &variant)
                     .with_registration_metadata(
@@ -950,7 +986,7 @@ where
                 let rx = tasks::ack_burst(
                     crate::socket::channel::FlattenList::new(ack_burst_rx.into_list_receiver()),
                     rd.ack_sender.clone(),
-                    crate::endpoint::id::WorkerId::new(recv_dispatch_idx),
+                    recv_dispatch_idx,
                     rd.counters.clone(),
                 );
                 let task_counter = counter_registry
@@ -965,10 +1001,8 @@ where
                     Some(budgets.ack_burst),
                     task_counter,
                 );
-                let ack_completion_gauge = counter_registry.register_queue_gauge_nominal(
-                    "q.dispatch",
-                    format_args!("recv.{recv_dispatch_idx}"),
-                );
+                let ack_completion_gauge =
+                    counter_registry.register_queue_gauge_nominal("q.dispatch", &variant);
                 let ack_completion_rx = crate::counter::GaugedReceiver::new(
                     rd.ack_completion_rx,
                     ack_completion_gauge

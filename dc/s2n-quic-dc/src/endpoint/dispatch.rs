@@ -14,12 +14,12 @@ use crate::{
     endpoint::{
         counters, decode, error,
         frame::{Frame, Header, PriorityInput, SubmissionSender, DEFAULT_TTL},
+        id::LocalSenderId,
         msg,
         recv::{self, AttemptDedupError},
         routing,
     },
-    flow,
-    flow::queue::AutoWake,
+    flow::{self, queue::AutoWake},
     intrusive::Entry,
     packet::{
         self,
@@ -34,8 +34,6 @@ use bytes::BytesMut;
 use core::time::Duration;
 use s2n_quic_core::varint::VarInt;
 use std::{cell::RefCell, rc::Rc};
-
-const UNSET_SOURCE_SENDER_ID: VarInt = VarInt::MAX;
 
 pub(crate) enum Error {
     PeerStateLookup {
@@ -146,18 +144,19 @@ where
     };
     let (decrypted, peer_rc, cache_hit) = {
         let _guard = counters.rx_peer_lookup_time.start();
+        let remote_addr = packet.storage().remote_address().get();
         match recv_cache.get_or_insert(
             &credentials,
             crate::endpoint::id::RemoteSenderId::new(source_sender_id),
             path_secret_map,
             clock,
+            remote_addr,
             &mut control_out,
             route,
             decrypt_fn,
         ) {
             Ok(v) => v,
             Err(recv::CacheError::PathSecretNotFound) => {
-                let remote_addr = packet.storage().remote_address().get();
                 let mut dest_addr = crate::msg::addr::Addr::new(remote_addr);
                 dest_addr.set_port(packet.source_control_port());
                 return Err(Error::PeerStateLookup {
@@ -178,7 +177,6 @@ where
                 });
             }
             Err(recv::CacheError::ReplayDetected) => {
-                let remote_addr = packet.storage().remote_address().get();
                 let mut dest_addr = crate::msg::addr::Addr::new(remote_addr);
                 dest_addr.set_port(packet.source_control_port());
                 return Err(Error::StaleKey {
@@ -873,7 +871,7 @@ fn push_reset_frame_with_target(
             reset_target,
             error_code,
         },
-        source_sender_id: UNSET_SOURCE_SENDER_ID,
+        source_sender_id: LocalSenderId::UNSPECIFIED,
         payload: ByteVec::new(),
         path_secret_entry: path_secret_entry.clone(),
         completion: None,
@@ -905,7 +903,7 @@ fn push_validate_request_frame(
             attempt_id,
             stream_id,
         },
-        source_sender_id: UNSET_SOURCE_SENDER_ID,
+        source_sender_id: LocalSenderId::UNSPECIFIED,
         payload: ByteVec::new(),
         path_secret_entry: path_secret_entry.clone(),
         completion: None,
@@ -951,7 +949,7 @@ fn handle_flow_validate_request(
                     attempt_id,
                     stream_id,
                 },
-                source_sender_id: UNSET_SOURCE_SENDER_ID,
+                source_sender_id: LocalSenderId::UNSPECIFIED,
                 payload: ByteVec::new(),
                 path_secret_entry: path_secret_entry.clone(),
                 completion: None,
@@ -976,7 +974,7 @@ fn handle_flow_validate_request(
                     reset_target: ResetTarget::Both,
                     error_code: error::FLOW_VALIDATION_FAILED,
                 },
-                source_sender_id: UNSET_SOURCE_SENDER_ID,
+                source_sender_id: LocalSenderId::UNSPECIFIED,
                 payload: ByteVec::new(),
                 path_secret_entry: path_secret_entry.clone(),
                 completion: None,

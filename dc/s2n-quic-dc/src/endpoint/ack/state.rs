@@ -7,9 +7,8 @@
 //! an unsync channel. This avoids cross-task shared locks and naturally batches bursts:
 //! one pending entry per recv context per dispatch poll.
 
-use crate::{path::secret::map::Entry as PathSecretEntry, time::precision};
+use crate::{endpoint::id, path::secret::map::Entry as PathSecretEntry, time::precision};
 use bytes::Bytes;
-use s2n_quic_core::varint::VarInt;
 use std::sync::Arc;
 
 /// Notification sent on the direct channel from a recv dispatch worker to a send worker.
@@ -28,11 +27,11 @@ pub struct Submission {
     pub path_secret_entry: Arc<PathSecretEntry>,
     /// Which local sender_id this ACK should route through (determines the send socket
     /// and therefore the send::Context within the send worker's cache).
-    pub local_sender_id: crate::endpoint::id::LocalSenderId,
+    pub local_sender_id: id::LocalSenderId,
     /// The remote peer's sender_id — written into the outbound packet header so the
     /// peer can route the ACK to its loss detection context.
-    pub remote_sender_id: crate::endpoint::id::RemoteSenderId,
+    pub remote_sender_id: id::RemoteSenderId,
     /// Which recv dispatch worker submitted this entry. Used to route the completion
     /// notification back to the correct thread.
-    pub recv_worker_id: crate::endpoint::id::WorkerId,
+    pub recv_worker_id: id::RecvDispatchWorkerId,
 }

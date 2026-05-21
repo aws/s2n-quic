@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    counter::{self, GaugedReceiver, GaugedSender, QueueGauge},
     endpoint::{
         self,
         combinator::{
@@ -10,10 +11,11 @@ use crate::{
         },
         dispatch,
         frame::{self, Frame, Priority, PriorityStorage, SubmissionReceiver},
-        id::{IdMap, LocalSocketId, SenderIdx},
+        id::{IdJoin, IdMap, LocalSendSocketId, LocalSenderId, RecvDispatchWorkerId, SendWorkerId},
         msg, send, Budgets,
     },
     intrusive::{Entry, Queue},
+    packet::datagram::decoder::Packet,
     runtime::Spawner,
     socket::{
         channel::{
@@ -25,11 +27,16 @@ use crate::{
         pool::descriptor,
         rate::Rate,
     },
-    time::precision,
+    time::{
+        precision,
+        wheel::{self, Wheel},
+    },
     tracing::*,
 };
 use core::task::Poll;
-use s2n_quic_core::{assume, varint::VarInt};
+use rustc_hash::FxHashSet;
+use s2n_quic_core::varint::VarInt;
+use s2n_quic_platform::features::Gso;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 /// Default per-poll budget for [`socket_recv_task`]: process up to this many segments before
@@ -105,12 +112,12 @@ mod tests;
 pub fn frame_dispatch<S, Clk>(
     spawner: &mut impl Spawner,
     frame_rx: SubmissionReceiver,
-    worker_senders: Vec<S>,
+    worker_senders: IdMap<LocalSenderId, S>,
     rng: crate::xorshift::Rng,
     clock: Clk,
     overall_send_rate: Rate,
     budgets: Budgets,
-    counter_registry: crate::counter::Registry,
+    counter_registry: counter::Registry,
 ) where
     S: UnboundedSender<Entry<FrameBatch>> + 'static,
     Clk: precision::Clock + 'static,
@@ -166,7 +173,7 @@ pub fn frame_dispatch<S, Clk>(
                     .receiver("task.frame_dispatch")
                     .with_description("Frame dispatch drains per-lane queues")
                     .with_function("endpoint::tasks::frame_dispatch");
-                crate::counter::GaugedQueueReceiver::new(rx.into_list_receiver(), receiver)
+                counter::GaugedQueueReceiver::new(rx.into_list_receiver(), receiver)
             })
             .collect();
         let rx = PriorityRx::new(priority_batch_rxs);
@@ -202,12 +209,12 @@ pub fn frame_dispatch<S, Clk>(
 ///     → ACK processor (loss detection, retransmission)
 pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     spawner: &mut impl Spawner,
-    worker_id: usize,
+    worker_id: SendWorkerId,
     batch_rx: impl Receiver<Entry<FrameBatch>> + 'static,
     ack_rx: impl Receiver<Entry<msg::Sender>> + 'static,
     invalidation_rx: impl Receiver<Entry<Invalidation>> + 'static,
     total_sender_ids: usize,
-    send_sockets: Vec<endpoint::SendSocketParts<Socket, Clk>>,
+    send_sockets: IdMap<LocalSendSocketId, endpoint::SendSocketParts<Socket, Clk>>,
     clock: Clk,
     random: crate::xorshift::Rng,
     frame_tx: frame::SubmissionSender,
@@ -215,7 +222,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     waker_sink: WakerSink,
     queue_dispatcher: msg::queue::Dispatcher,
     budgets: Budgets,
-    counter_registry: crate::counter::Registry,
+    counter_registry: counter::Registry,
 ) where
     Socket: crate::socket::send::Socket + 'static,
     Clk: precision::Clock + s2n_quic_core::time::Clock + Clone + 'static,
@@ -224,46 +231,42 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
 {
     // Per-socket unsync channel: wheel drain tasks route contexts here after expiration,
     // per-socket assembler+send task drains them.
-    let (socket_context_txs, socket_context_rxs, q_wheel_to_assembler): (Vec<_>, Vec<_>, Vec<_>) =
-        send_sockets
-            .iter()
-            .map(|st| {
-                let (tx, rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
-                let gauge = counter_registry.register_queue_gauge_nominal(
-                    "q.wheel_to_assembler",
-                    format_args!("send.{}", st.sender_idx),
-                );
-                (tx, rx, gauge)
-            })
-            .fold(
-                (Vec::new(), Vec::new(), Vec::new()),
-                |(mut txs, mut rxs, mut gauges), (tx, rx, gauge)| {
-                    txs.push(tx);
-                    rxs.push(rx);
-                    gauges.push(gauge);
-                    (txs, rxs, gauges)
-                },
-            );
-
-    // Map sender_idx → local socket position for this worker.
-    let mut sender_idx_to_local: IdMap<SenderIdx, LocalSocketId> =
-        IdMap::new(total_sender_ids, LocalSocketId::new(usize::MAX));
-
-    // One send::Cache per socket, shared between the context resolver and ACK processor.
-    let send_caches: IdMap<LocalSocketId, Rc<RefCell<send::Cache>>> = send_sockets
+    let (socket_context_txs, socket_context_rxs, q_wheel_to_assembler): (
+        IdMap<_, _>,
+        IdMap<_, _>,
+        IdMap<_, _>,
+    ) = send_sockets
         .iter()
-        .enumerate()
-        .map(|(local_id, st)| {
-            sender_idx_to_local[SenderIdx::new(st.sender_idx)] = LocalSocketId::new(local_id);
-
-            Rc::new(RefCell::new(send::Cache::new(
-                &counter_registry,
-                SenderIdx::new(st.sender_idx),
-            )))
+        .map(|(id, st)| {
+            let (tx, rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
+            let gauge = counter_registry.register_queue_gauge_nominal(
+                "q.wheel_to_assembler",
+                format_args!("send.{}", st.sender_idx),
+            );
+            ((id, tx), (id, rx), (id, gauge))
         })
         .collect();
 
-    let variant = format!("send_worker.{worker_id}");
+    // Map sender_idx → local socket position for this worker.
+    let mut sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId> =
+        IdMap::new(total_sender_ids, LocalSendSocketId::new(usize::MAX));
+
+    // One send::Cache per socket, shared between the context resolver and ACK processor.
+    let send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>> = send_sockets
+        .iter()
+        .map(|(local_id, st)| {
+            sender_idx_to_local[st.sender_idx] = local_id;
+
+            let cache = Rc::new(RefCell::new(send::Cache::new(
+                &counter_registry,
+                st.sender_idx,
+            )));
+
+            (local_id, cache)
+        })
+        .collect();
+
+    let variant = format!("send.worker.{worker_id}");
     let q_resolver_to_tx_wheel =
         counter_registry.register_queue_gauge_nominal("q.resolver_to_tx_wheel", &variant);
     let (tx_wheel_tx, tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
@@ -299,14 +302,14 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         "Completed frame channel from ack/invalidation tasks to completion dispatcher",
         "endpoint::tasks::send_worker",
     );
-    let invalidation_completed_tx = crate::counter::GaugedSender::new(
+    let invalidation_completed_tx = GaugedSender::new(
         completed_tx.clone(),
         q_ack_to_completion
             .sender("task.invalidation")
             .with_description("Invalidation task emits failed frames as completions")
             .with_function("endpoint::tasks::send_worker"),
     );
-    let idle_expired_completed_tx = crate::counter::GaugedSender::new(
+    let idle_expired_completed_tx = GaugedSender::new(
         completed_tx.clone(),
         q_ack_to_completion
             .sender("task.idle_wheel")
@@ -340,9 +343,9 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             sender_idx_to_local.clone(),
             total_sender_ids,
             clock.clone(),
-            crate::counter::GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
-            crate::counter::GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
-            crate::counter::GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
+            GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
+            GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
+            GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
         );
         let task_counter = counter_registry
             .register_nominal_task("task.context_resolver", &variant)
@@ -388,12 +391,12 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             clock.clone(),
             random,
             frame_tx.clone(),
-            crate::counter::GaugedSender::new(completed_tx, completion_sender),
-            crate::counter::GaugedSender::new(cancelled_tx.clone(), cancelled_sender),
+            GaugedSender::new(completed_tx, completion_sender),
+            GaugedSender::new(cancelled_tx.clone(), cancelled_sender),
             counter_registry.register("!send.invalid_sender_idx"),
-            crate::counter::GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
-            crate::counter::GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
-            crate::counter::GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
+            GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
+            GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
+            GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
         );
         let task_counter = counter_registry
             .register_nominal_task("task.ack_processor", &variant)
@@ -416,7 +419,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             .with_description("Completion task drains completed frames")
             .with_function("endpoint::tasks::send_worker");
 
-        let rx = crate::counter::GaugedReceiver::new(completed_rx, completion_receiver);
+        let rx = GaugedReceiver::new(completed_rx, completion_receiver);
         let rx = completion_dispatcher(rx, waker_sink.clone());
         let task_counter = counter_registry
             .register_nominal_task("task.completion", &variant)
@@ -439,7 +442,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             .with_description("Cancelled task drains cancelled frames")
             .with_function("endpoint::tasks::send_worker");
 
-        let rx = crate::counter::GaugedReceiver::new(cancelled_rx, cancelled_receiver);
+        let rx = GaugedReceiver::new(cancelled_rx, cancelled_receiver);
         let rx = cancelled_drain(rx);
         let task_counter = counter_registry
             .register_nominal_task("task.cancelled", &variant)
@@ -458,21 +461,21 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     {
         // Task 5: TX wheel drain — routes expired contexts to per-socket assembler channels.
         let task_counter = counter_registry
-            .register_nominal_task("task.tx_wheel", format!("send.{worker_id}"))
+            .register_nominal_task("task.tx_wheel", &variant)
             .with_registration_metadata(
                 "task.tx_wheel",
                 "Drains tx timing wheel and routes expired contexts to assemblers",
                 "endpoint::tasks::send_worker",
             );
-        let socket_context_txs: Vec<_> = socket_context_txs
-            .into_iter()
-            .zip(q_wheel_to_assembler.iter().cloned())
-            .map(|(tx, gauge)| {
+        let socket_context_txs: IdMap<_, _> = (socket_context_txs, q_wheel_to_assembler.clone())
+            .join()
+            .map(|(id, tx, gauge)| {
                 let sender = gauge
                     .sender("task.tx_wheel")
                     .with_description("Tx wheel routes expired contexts to socket assembler")
                     .with_function("endpoint::tasks::send_worker");
-                crate::counter::GaugedSender::new(tx, sender)
+                let sender = GaugedSender::new(tx, sender);
+                (id, sender)
             })
             .collect();
         let tx_wheel_task = send_tx_wheel_drain(
@@ -506,25 +509,25 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             .with_description("PTO wheel updates idle scheduling")
             .with_function("endpoint::tasks::send_worker");
 
-        let wheel: crate::time::wheel::Wheel<_, _, _, 128> =
-            crate::time::wheel::Wheel::new(pto_wheel_rx.into_list_receiver(), clock.timer());
+        let wheel: Wheel<_, _, _, 128> =
+            Wheel::new(pto_wheel_rx.into_list_receiver(), clock.timer());
         let rx = FlattenList::new(wheel);
-        let rx = crate::counter::GaugedReceiver::new(rx, pto_wheel_receiver);
+        let rx = GaugedReceiver::new(rx, pto_wheel_receiver);
         let tx_pto_check = counter_registry.register("tx.pto_check");
         let tx_pto_requested = counter_registry.register("tx.pto_requested");
         let rx = send_pto_timeout(
             rx,
             clock.clone(),
-            crate::counter::GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
-            crate::counter::GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
-            crate::counter::GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
+            GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
+            GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
+            GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
             tx_pto_check,
             tx_pto_requested,
             send_caches.clone(),
             sender_idx_to_local.clone(),
         );
         let task_counter = counter_registry
-            .register_nominal_task("task.pto_wheel", format!("send.{worker_id}"))
+            .register_nominal_task("task.pto_wheel", &variant)
             .with_registration_metadata(
                 "task.pto_wheel",
                 "Handles probe-timeout expirations and wheel re-scheduling",
@@ -540,7 +543,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     {
         // Task 7: Idle wheel drain — reclaims resources for idle connections.
         let task_counter = counter_registry
-            .register_nominal_task("task.idle_wheel", format!("send.{worker_id}"))
+            .register_nominal_task("task.idle_wheel", &variant)
             .with_registration_metadata(
                 "task.idle_wheel",
                 "Expires or re-schedules idle send contexts",
@@ -567,12 +570,9 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
 
     // Per-socket assembler + send tasks.
     let asm_counters = AssemblerCounters::new(&counter_registry);
-    for ((st, context_rx), gauge) in send_sockets
-        .into_iter()
-        .zip(socket_context_rxs)
-        .zip(q_wheel_to_assembler)
+    for (local_id, st, context_rx, gauge) in
+        (send_sockets, socket_context_rxs, q_wheel_to_assembler).join()
     {
-        let source_sender_id = VarInt::new(st.sender_idx as u64).unwrap();
         let sender_idx = st.sender_idx;
         let task_name = format!("task.assembler.send.{sender_idx}");
         let gauge = gauge.with_registration_metadata(
@@ -586,21 +586,21 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             .with_function("endpoint::tasks::send_worker");
 
         let clock = st.clock.clone();
-        let tx_wheel_tx = crate::counter::GaugedSender::new(
+        let tx_wheel_tx = GaugedSender::new(
             tx_wheel_tx.clone(),
             q_resolver_to_tx_wheel
                 .sender(&task_name)
                 .with_description("Assembler schedules immediate transmit wheel work")
                 .with_function("endpoint::tasks::send_worker"),
         );
-        let pto_wheel_tx = crate::counter::GaugedSender::new(
+        let pto_wheel_tx = GaugedSender::new(
             pto_wheel_tx.clone(),
             q_resolver_to_pto_wheel
                 .sender(&task_name)
                 .with_description("Assembler schedules PTO wheel work")
                 .with_function("endpoint::tasks::send_worker"),
         );
-        let idle_wheel_tx = crate::counter::GaugedSender::new(
+        let idle_wheel_tx = GaugedSender::new(
             idle_wheel_tx.clone(),
             q_resolver_to_idle_wheel
                 .sender(&task_name)
@@ -610,13 +610,12 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         let cancelled_tx = cancelled_tx.clone().into_list_sender();
         let ack_completions_tx = ack_completions_tx.clone();
         let asm_counters = asm_counters.clone();
-        let local_id = sender_idx_to_local[SenderIdx::new(sender_idx)];
         let send_counters = send_caches[local_id].borrow().send_counters().clone();
-        let context_rx = crate::counter::GaugedReceiver::new(context_rx, assembler_receiver);
+        let context_rx = GaugedReceiver::new(context_rx, assembler_receiver);
         let rx = send_socket_assembler(
             context_rx,
             clock,
-            source_sender_id,
+            sender_idx,
             st.source_control_port,
             st.gso,
             st.pool,
@@ -668,7 +667,6 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             retransmit_tx,
             invalidation_counters,
         );
-        let variant = format!("send.{worker_id}");
         let task_counter = counter_registry
             .register_nominal_task("task.invalidation", &variant)
             .with_registration_metadata(
@@ -692,8 +690,8 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
 /// into the appropriate timing wheels (tx, pto, idle).
 pub fn context_resolver<BatchRx, Clk, TxW, PtoW, IdleW>(
     batch_rx: BatchRx,
-    mut send_caches: IdMap<LocalSocketId, Rc<RefCell<send::Cache>>>,
-    sender_idx_to_local: IdMap<SenderIdx, LocalSocketId>,
+    mut send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId>,
     total_sender_ids: usize,
     clock: Clk,
     tx_wheel_tx: TxW,
@@ -711,29 +709,21 @@ where
         batch_rx,
         move |batch: Entry<FrameBatch>| -> Option<(Rc<RefCell<send::Context>>, send::WheelInterest)> {
             let Some(sender_idx) = batch.sender_id() else {
-                unsafe {
-                    assume!(false, "batch needs an assigned sender id");
-                }
+                panic!("batch needs an assigned sender id");
             };
             let Some(local_id) = sender_idx_to_local.get(sender_idx).copied() else {
-                unsafe {
-                    assume!(
-                        false,
-                        "sender id {} is out of range of {}",
-                        sender_idx,
-                        total_sender_ids
-                    )
-                }
+                panic!(
+                    "sender id {} is out of range of {}",
+                    sender_idx,
+                    total_sender_ids
+                );
             };
             let Some(cache) = send_caches.get_mut(local_id) else {
-                unsafe {
-                    assume!(
-                        false,
-                        "sender id {} is out of range of {}",
-                        sender_idx,
-                        total_sender_ids
-                    )
-                }
+                panic!(
+                    "sender id {} is out of range of {}",
+                    sender_idx,
+                    total_sender_ids
+                );
             };
 
             let sender = {
@@ -767,15 +757,15 @@ where
 #[allow(clippy::too_many_arguments)]
 pub fn send_ack_processor<AckRx, Clk, Rand, C, TxW, PtoW, IdleW>(
     ack_rx: AckRx,
-    send_caches: IdMap<LocalSocketId, Rc<RefCell<send::Cache>>>,
-    sender_idx_to_local: IdMap<SenderIdx, LocalSocketId>,
+    send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId>,
     total_sender_ids: usize,
     clock: Clk,
     random: Rand,
     frame_tx: frame::SubmissionSender,
     completed_tx: C,
     cancelled_tx: C,
-    invalid_sender_idx: crate::counter::Counter,
+    invalid_sender_idx: counter::Counter,
     tx_wheel_tx: TxW,
     pto_wheel_tx: PtoW,
     idle_wheel_tx: IdleW,
@@ -815,10 +805,10 @@ pub fn send_pto_timeout<CtxRx, Clk, TxW, PtoW, IdleW>(
     tx_wheel_tx: TxW,
     pto_wheel_tx: PtoW,
     idle_wheel_tx: IdleW,
-    tx_pto_check: crate::counter::Counter,
-    tx_pto_requested: crate::counter::Counter,
-    send_caches: IdMap<LocalSocketId, Rc<RefCell<send::Cache>>>,
-    sender_idx_to_local: IdMap<SenderIdx, LocalSocketId>,
+    tx_pto_check: counter::Counter,
+    tx_pto_requested: counter::Counter,
+    send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId>,
 ) -> impl Receiver<()>
 where
     CtxRx: Receiver<Rc<RefCell<send::Context>>>,
@@ -885,17 +875,17 @@ where
 pub async fn send_tx_wheel_drain<Clk, TxW>(
     tx_wheel_rx: intrusive::unsync::Receiver<send::TxWheelAdapter>,
     clock: Clk,
-    input_gauge: crate::counter::QueueGauge,
-    socket_context_txs: Vec<TxW>,
-    sender_idx_to_local: IdMap<SenderIdx, LocalSocketId>,
+    input_gauge: QueueGauge,
+    socket_context_txs: IdMap<LocalSendSocketId, TxW>,
+    sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId>,
     budget: usize,
-    task_counter: crate::counter::Task,
+    task_counter: counter::Task,
 ) where
     Clk: precision::Clock,
     TxW: UnboundedSender<Rc<RefCell<send::Context>>>,
 {
     let timer = clock.timer();
-    wheel_drain::<_, _, _, { crate::time::wheel::MICROSECOND_GRANULARITY }>(
+    wheel_drain::<_, _, _, { wheel::MICROSECOND_GRANULARITY }>(
         tx_wheel_rx,
         timer,
         input_gauge,
@@ -922,19 +912,18 @@ pub async fn send_tx_wheel_drain<Clk, TxW>(
 async fn wheel_drain<A, T, F, const GRANULARITY_US: u64>(
     rx: intrusive::unsync::Receiver<A>,
     timer: T,
-    input_gauge: crate::counter::QueueGauge,
+    input_gauge: QueueGauge,
     mut on_expire: F,
     budget: usize,
-    task_counter: crate::counter::Task,
+    task_counter: counter::Task,
 ) where
-    A: crate::time::wheel::WheelAdapter,
+    A: wheel::WheelAdapter,
     T: precision::Timer,
     F: FnMut(A::Pointer),
 {
-    let wheel: crate::time::wheel::Wheel<A, T, _, GRANULARITY_US> =
-        crate::time::wheel::Wheel::new(rx.into_list_receiver(), timer);
+    let wheel: Wheel<A, T, _, GRANULARITY_US> = Wheel::new(rx.into_list_receiver(), timer);
     let rx = FlattenList::new(wheel);
-    let rx = crate::counter::GaugedReceiver::new(
+    let rx = GaugedReceiver::new(
         rx,
         input_gauge
             .receiver("task.wheel_drain")
@@ -964,9 +953,9 @@ async fn wheel_drain<A, T, F, const GRANULARITY_US: u64>(
 pub fn send_socket_assembler<ContextRx, Clk, Socket, C, A, TxW, PtoW, IdleW>(
     context_rx: ContextRx,
     clock: Clk,
-    source_sender_id: VarInt,
+    source_sender_id: LocalSenderId,
     source_control_port: u16,
-    gso: s2n_quic_platform::features::Gso,
+    gso: Gso,
     pool: crate::socket::pool::Pool,
     cancelled_tx: C,
     ack_completions_tx: A,
@@ -1014,28 +1003,28 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
     rx: intrusive::unsync::Receiver<send::IdleWheelAdapter>,
     idle_wheel_tx: intrusive::unsync::Sender<send::IdleWheelAdapter>,
     clock: Clk,
-    input_gauge: crate::counter::QueueGauge,
-    send_caches: IdMap<LocalSocketId, Rc<RefCell<send::Cache>>>,
-    sender_idx_to_local: IdMap<SenderIdx, LocalSocketId>,
+    input_gauge: QueueGauge,
+    send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId>,
     mut completed_tx: impl UnboundedSender<Entry<Frame>>,
     mut queue_dispatcher: msg::queue::Dispatcher,
     mut waker_sink: WakerSink,
-    idle_expired: crate::counter::Counter,
-    idle_rescheduled: crate::counter::Counter,
-    idle_lifetime: crate::counter::Timer,
+    idle_expired: counter::Counter,
+    idle_rescheduled: counter::Counter,
+    idle_lifetime: counter::Timer,
     budget: usize,
-    task_counter: crate::counter::Task,
+    task_counter: counter::Task,
 ) where
     Clk: precision::Clock,
     WakerSink: UnboundedSender<crate::flow::queue::AutoWake>,
 {
     let timer = clock.timer();
-    wheel_drain::<_, _, _, { crate::time::wheel::SECOND_GRANULARITY }>(
+    wheel_drain::<_, _, _, { wheel::SECOND_GRANULARITY }>(
         rx,
         timer,
         input_gauge.clone(),
         {
-            let mut idle_wheel_tx = crate::counter::GaugedSender::new(
+            let mut idle_wheel_tx = GaugedSender::new(
                 idle_wheel_tx,
                 input_gauge
                     .sender("task.send_idle_wheel_drain")
@@ -1098,7 +1087,7 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
 fn reset_flow_queues(
     queue_dispatcher: &mut msg::queue::Dispatcher,
     credential_id: &crate::credentials::Id,
-    queue_targets: &rustc_hash::FxHashSet<frame::LocalQueueTarget>,
+    queue_targets: &FxHashSet<frame::LocalQueueTarget>,
     waker_sink: &mut impl UnboundedSender<crate::flow::queue::AutoWake>,
 ) {
     use crate::{endpoint::error::IDLE_TIMEOUT, flow};
@@ -1134,7 +1123,7 @@ fn reset_flow_queues(
 /// Wraps an `UnboundedSender<Entry<Frame>>` to collect unique queue targets as frames pass through.
 struct QueueTargetCollector<'a, S> {
     inner: &'a mut S,
-    targets: rustc_hash::FxHashSet<frame::LocalQueueTarget>,
+    targets: FxHashSet<frame::LocalQueueTarget>,
 }
 
 impl<'a, S> QueueTargetCollector<'a, S> {
@@ -1149,7 +1138,7 @@ impl<'a, S> QueueTargetCollector<'a, S> {
         self.targets.clear();
     }
 
-    fn targets(&self) -> &rustc_hash::FxHashSet<frame::LocalQueueTarget> {
+    fn targets(&self) -> &FxHashSet<frame::LocalQueueTarget> {
         &self.targets
     }
 }
@@ -1169,23 +1158,23 @@ pub async fn recv_idle_wheel_drain<Clk>(
     rx: intrusive::unsync::Receiver<endpoint::recv::IdleWheelAdapter>,
     idle_wheel_tx: intrusive::unsync::Sender<endpoint::recv::IdleWheelAdapter>,
     clock: Clk,
-    input_gauge: crate::counter::QueueGauge,
+    input_gauge: QueueGauge,
     recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
-    idle_expired: crate::counter::Counter,
-    idle_rescheduled: crate::counter::Counter,
-    idle_lifetime: crate::counter::Timer,
+    idle_expired: counter::Counter,
+    idle_rescheduled: counter::Counter,
+    idle_lifetime: counter::Timer,
     budget: usize,
-    task_counter: crate::counter::Task,
+    task_counter: counter::Task,
 ) where
     Clk: precision::Clock,
 {
     let timer = clock.timer();
-    wheel_drain::<_, _, _, { crate::time::wheel::SECOND_GRANULARITY }>(
+    wheel_drain::<_, _, _, { wheel::SECOND_GRANULARITY }>(
         rx,
         timer,
         input_gauge.clone(),
         {
-            let mut idle_wheel_tx = crate::counter::GaugedSender::new(
+            let mut idle_wheel_tx = GaugedSender::new(
                 idle_wheel_tx,
                 input_gauge
                     .sender("task.recv_idle_wheel_drain")
@@ -1286,9 +1275,7 @@ pub fn packet_dispatch<
     ups_tx: UpsSender,
 ) -> impl Receiver<()>
 where
-    PacketRx: Receiver<
-        crate::intrusive::Entry<crate::packet::datagram::decoder::Packet<descriptor::Filled>>,
-    >,
+    PacketRx: Receiver<crate::intrusive::Entry<Packet<descriptor::Filled>>>,
     AckSender: UnboundedSender<Entry<msg::Sender>>,
     AckBurstSender: UnboundedSender<Rc<RefCell<endpoint::recv::Context>>>,
     IdleWheelSender: UnboundedSender<Rc<RefCell<endpoint::recv::Context>>>,
@@ -1411,7 +1398,7 @@ where
 pub fn ack_burst<AckBurstRx, AckTx>(
     ack_burst_rx: AckBurstRx,
     mut ack_sender: AckTx,
-    recv_worker_id: endpoint::id::WorkerId,
+    recv_worker_id: endpoint::id::RecvDispatchWorkerId,
     counters: Arc<endpoint::counters::Dispatch>,
 ) -> impl Receiver<()>
 where
@@ -1561,7 +1548,7 @@ struct FrameReceiver<Tx> {
     frame_rx: SubmissionReceiver,
     staging: PriorityStorage,
     priority_list_txs: [Tx; Priority::LEVELS],
-    q_router_to_batcher: [crate::counter::QueueGauge; Priority::LEVELS],
+    q_router_to_batcher: [QueueGauge; Priority::LEVELS],
 }
 
 impl<Tx> Receiver<()> for FrameReceiver<Tx>
@@ -1606,8 +1593,8 @@ where
 
 pub fn send_invalidation<R>(
     invalidation_rx: R,
-    send_caches: IdMap<LocalSocketId, Rc<RefCell<send::Cache>>>,
-    sender_idx_to_local: IdMap<SenderIdx, LocalSocketId>,
+    send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId>,
     mut cancelled_tx: impl UnboundedSender<Entry<Frame>> + 'static,
     mut retransmit_tx: impl UnboundedSender<Entry<Frame>> + 'static,
     counters: SendInvalidationCounters,
@@ -1620,7 +1607,7 @@ where
         move |entry: Entry<Invalidation>| match *entry {
             Invalidation::UnknownPathSecret { credential_id } => {
                 counters.unknown_path_secret_events.add(1);
-                for cache in &send_caches {
+                for (_, cache) in &send_caches {
                     let mut cache = cache.borrow_mut();
                     if let Some((drained, discarded_bytes)) = cache.invalidate(
                         &credential_id,
@@ -1643,9 +1630,8 @@ where
                 rejected_key_id,
             } => {
                 counters.stale_or_replay_events.add(1);
-                let sender_idx = SenderIdx::new(sender_id.as_u64() as usize);
-                let local_id = sender_idx_to_local.get(sender_idx).copied();
-                debug_assert!(
+                let local_id = sender_idx_to_local.get(sender_id).copied();
+                assert!(
                     local_id.is_some(),
                     "sender_id had no local sender_idx mapping; this should not occur in normal operation and may indicate sender_id_to_worker mapping drift"
                 );
@@ -1653,7 +1639,7 @@ where
                     return;
                 };
                 let cache = send_caches.get(local_id);
-                debug_assert!(
+                assert!(
                     cache.is_some(),
                     "sender_id resolved to a sender_idx not owned by this worker; this should not occur in normal operation and may indicate sender_id_to_worker mapping drift"
                 );
@@ -1685,11 +1671,20 @@ pub fn recv_invalidation<R>(
 where
     R: Receiver<Entry<Invalidation>>,
 {
-    Map::new(invalidation_rx, move |entry: Entry<Invalidation>| {
-        if let Invalidation::UnknownPathSecret { credential_id } = *entry {
-            recv_cache.borrow_mut().invalidate_by_id(&credential_id);
-        }
-    })
+    Map::new(
+        invalidation_rx,
+        move |entry: Entry<Invalidation>| match *entry {
+            Invalidation::UnknownPathSecret { credential_id } => {
+                recv_cache.borrow_mut().invalidate_by_id(&credential_id);
+            }
+            msg => {
+                debug_assert!(
+                    false,
+                    "recv invalidation only accepts UnknownPathSecret invalidations: {msg:?}"
+                );
+            }
+        },
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1699,7 +1694,7 @@ pub enum Invalidation {
     },
     StaleKey {
         credential_id: crate::credentials::Id,
-        sender_id: VarInt,
+        sender_id: LocalSenderId,
         /// The key_id that was rejected. Only invalidate send contexts whose
         /// key_id <= this value; contexts already advanced past it are fine.
         rejected_key_id: VarInt,
@@ -1709,9 +1704,9 @@ pub enum Invalidation {
 pub fn invalidation_validator<R, Tx>(
     raw_rx: R,
     path_secret_map: crate::path::secret::Map,
-    mut send_txs: Vec<Tx>,
-    mut recv_txs: Vec<Tx>,
-    sender_id_to_worker: Vec<usize>,
+    mut send_txs: IdMap<SendWorkerId, Tx>,
+    mut recv_txs: IdMap<RecvDispatchWorkerId, Tx>,
+    sender_id_to_worker: IdMap<LocalSenderId, SendWorkerId>,
     counters: ValidatorInvalidationCounters,
 ) -> impl Receiver<()>
 where
@@ -1762,10 +1757,12 @@ where
                     return;
                 };
                 let local_id = validated.credential_id.for_peer();
+                // convert to a local sender ID since we're receiving the packet
+                let sender_id = LocalSenderId::new(sender_id);
                 debug!(
                     %peer,
                     credential_id = %local_id,
-                    sender_id = sender_id.as_u64(),
+                    %sender_id,
                     sinks = send_txs.len(),
                     "validated stale key invalidation"
                 );
@@ -1787,10 +1784,12 @@ where
                     return;
                 };
                 let local_id = validated.credential_id.for_peer();
+                // convert to a local sender ID since we're receiving the packet
+                let sender_id = LocalSenderId::new(sender_id);
                 debug!(
                     %peer,
                     credential_id = %local_id,
-                    sender_id = sender_id.as_u64(),
+                    sender_id = %sender_id,
                     sinks = send_txs.len(),
                     "validated replay detected invalidation"
                 );
@@ -1807,17 +1806,16 @@ where
 
         match invalidation {
             Invalidation::UnknownPathSecret { .. } => {
-                for tx in &mut send_txs {
+                for (_, tx) in &mut send_txs {
                     let _ = tx.send(Entry::new(invalidation));
                 }
-                for tx in &mut recv_txs {
+                for (_, tx) in &mut recv_txs {
                     let _ = tx.send(Entry::new(invalidation));
                 }
             }
             Invalidation::StaleKey { sender_id, .. } => {
-                let sender_idx = sender_id.as_u64() as usize;
-                let worker_id = sender_id_to_worker.get(sender_idx).copied();
-                debug_assert!(
+                let worker_id = sender_id_to_worker.get(sender_id).copied();
+                assert!(
                     worker_id.is_some(),
                     "stale/replay invalidation sender_id had no sender_id_to_worker mapping; this indicates an invalid endpoint worker configuration"
                 );
@@ -1825,7 +1823,7 @@ where
                     return;
                 };
                 let tx = send_txs.get_mut(worker_id);
-                debug_assert!(
+                assert!(
                     tx.is_some(),
                     "stale/replay invalidation worker mapping exceeded send_txs length; sender_id_to_worker and send worker wiring are inconsistent"
                 );
@@ -1840,17 +1838,17 @@ where
 
 #[derive(Clone)]
 pub struct SendInvalidationCounters {
-    pub unknown_path_secret_events: crate::counter::Counter,
-    pub unknown_path_secret_contexts: crate::counter::Counter,
-    pub unknown_path_secret_frames_failed: crate::counter::Counter,
-    pub stale_or_replay_events: crate::counter::Counter,
-    pub stale_or_replay_contexts: crate::counter::Counter,
-    pub stale_or_replay_frames_requeued: crate::counter::Counter,
+    pub unknown_path_secret_events: counter::Counter,
+    pub unknown_path_secret_contexts: counter::Counter,
+    pub unknown_path_secret_frames_failed: counter::Counter,
+    pub stale_or_replay_events: counter::Counter,
+    pub stale_or_replay_contexts: counter::Counter,
+    pub stale_or_replay_frames_requeued: counter::Counter,
 }
 
 #[derive(Clone)]
 pub struct ValidatorInvalidationCounters {
-    pub unknown_path_secret_validated: crate::counter::Counter,
-    pub stale_key_validated: crate::counter::Counter,
-    pub replay_detected_validated: crate::counter::Counter,
+    pub unknown_path_secret_validated: counter::Counter,
+    pub stale_key_validated: counter::Counter,
+    pub replay_detected_validated: counter::Counter,
 }

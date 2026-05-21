@@ -9,126 +9,126 @@ tasks:
     budget: 256
     worker_id: 9
     metrics:
-      - task.ack_burst.drained [summary variant=recv.0 unit=count]: Number of items processed per poll for this task
-      - task.ack_burst.next_poll_latency [timer variant=recv.0 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_burst.time [timer variant=recv.0 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_burst.drained [summary variant=recv.dispatch.0 unit=count]: Number of items processed per poll for this task
+      - task.ack_burst.next_poll_latency [timer variant=recv.dispatch.0 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_burst.time [timer variant=recv.dispatch.0 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.ack_burst
     function: endpoint::Worker::spawn
     description: Encodes and submits ACK bursts from recv contexts
     budget: 256
     worker_id: 10
     metrics:
-      - task.ack_burst.drained [summary variant=recv.1 unit=count]: Number of items processed per poll for this task
-      - task.ack_burst.next_poll_latency [timer variant=recv.1 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_burst.time [timer variant=recv.1 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_burst.drained [summary variant=recv.dispatch.1 unit=count]: Number of items processed per poll for this task
+      - task.ack_burst.next_poll_latency [timer variant=recv.dispatch.1 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_burst.time [timer variant=recv.dispatch.1 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.ack_burst
     function: endpoint::Worker::spawn
     description: Encodes and submits ACK bursts from recv contexts
     budget: 256
     worker_id: 11
     metrics:
-      - task.ack_burst.drained [summary variant=recv.2 unit=count]: Number of items processed per poll for this task
-      - task.ack_burst.next_poll_latency [timer variant=recv.2 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_burst.time [timer variant=recv.2 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_burst.drained [summary variant=recv.dispatch.2 unit=count]: Number of items processed per poll for this task
+      - task.ack_burst.next_poll_latency [timer variant=recv.dispatch.2 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_burst.time [timer variant=recv.dispatch.2 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.ack_burst
     function: endpoint::Worker::spawn
     description: Encodes and submits ACK bursts from recv contexts
     budget: 256
     worker_id: 12
     metrics:
-      - task.ack_burst.drained [summary variant=recv.3 unit=count]: Number of items processed per poll for this task
-      - task.ack_burst.next_poll_latency [timer variant=recv.3 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_burst.time [timer variant=recv.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_burst.drained [summary variant=recv.dispatch.3 unit=count]: Number of items processed per poll for this task
+      - task.ack_burst.next_poll_latency [timer variant=recv.dispatch.3 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_burst.time [timer variant=recv.dispatch.3 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.ack_burst
     function: endpoint::Worker::spawn
     description: Encodes and submits ACK bursts from recv contexts
     budget: 256
     worker_id: 13
     metrics:
-      - task.ack_burst.drained [summary variant=recv.4 unit=count]: Number of items processed per poll for this task
-      - task.ack_burst.next_poll_latency [timer variant=recv.4 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_burst.time [timer variant=recv.4 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_burst.drained [summary variant=recv.dispatch.4 unit=count]: Number of items processed per poll for this task
+      - task.ack_burst.next_poll_latency [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_burst.time [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.ack_completion
     function: endpoint::Worker::spawn
     description: Finalizes ACK send completions and retries stale acknowledgements
     budget: 32
     worker_id: 9
     metrics:
-      - task.ack_completion.drained [summary variant=recv.0 unit=count]: Number of items processed per poll for this task
-      - task.ack_completion.next_poll_latency [timer variant=recv.0 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_completion.time [timer variant=recv.0 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_completion.drained [summary variant=recv.dispatch.0 unit=count]: Number of items processed per poll for this task
+      - task.ack_completion.next_poll_latency [timer variant=recv.dispatch.0 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_completion.time [timer variant=recv.dispatch.0 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.ack_completion
     function: endpoint::Worker::spawn
     description: Finalizes ACK send completions and retries stale acknowledgements
     budget: 32
     worker_id: 10
     metrics:
-      - task.ack_completion.drained [summary variant=recv.1 unit=count]: Number of items processed per poll for this task
-      - task.ack_completion.next_poll_latency [timer variant=recv.1 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_completion.time [timer variant=recv.1 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_completion.drained [summary variant=recv.dispatch.1 unit=count]: Number of items processed per poll for this task
+      - task.ack_completion.next_poll_latency [timer variant=recv.dispatch.1 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_completion.time [timer variant=recv.dispatch.1 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.ack_completion
     function: endpoint::Worker::spawn
     description: Finalizes ACK send completions and retries stale acknowledgements
     budget: 32
     worker_id: 11
     metrics:
-      - task.ack_completion.drained [summary variant=recv.2 unit=count]: Number of items processed per poll for this task
-      - task.ack_completion.next_poll_latency [timer variant=recv.2 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_completion.time [timer variant=recv.2 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_completion.drained [summary variant=recv.dispatch.2 unit=count]: Number of items processed per poll for this task
+      - task.ack_completion.next_poll_latency [timer variant=recv.dispatch.2 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_completion.time [timer variant=recv.dispatch.2 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.ack_completion
     function: endpoint::Worker::spawn
     description: Finalizes ACK send completions and retries stale acknowledgements
     budget: 32
     worker_id: 12
     metrics:
-      - task.ack_completion.drained [summary variant=recv.3 unit=count]: Number of items processed per poll for this task
-      - task.ack_completion.next_poll_latency [timer variant=recv.3 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_completion.time [timer variant=recv.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_completion.drained [summary variant=recv.dispatch.3 unit=count]: Number of items processed per poll for this task
+      - task.ack_completion.next_poll_latency [timer variant=recv.dispatch.3 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_completion.time [timer variant=recv.dispatch.3 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.ack_completion
     function: endpoint::Worker::spawn
     description: Finalizes ACK send completions and retries stale acknowledgements
     budget: 32
     worker_id: 13
     metrics:
-      - task.ack_completion.drained [summary variant=recv.4 unit=count]: Number of items processed per poll for this task
-      - task.ack_completion.next_poll_latency [timer variant=recv.4 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_completion.time [timer variant=recv.4 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_completion.drained [summary variant=recv.dispatch.4 unit=count]: Number of items processed per poll for this task
+      - task.ack_completion.next_poll_latency [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_completion.time [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.ack_processor
     function: endpoint::tasks::send_worker
     description: Processes ACK feedback and re-schedules contexts across wheels
     budget: 256
     worker_id: 1
     metrics:
-      - task.ack_processor.drained [summary variant=send.0 unit=count]: Number of items processed per poll for this task
-      - task.ack_processor.next_poll_latency [timer variant=send.0 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_processor.time [timer variant=send.0 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_processor.drained [summary variant=send.worker.0 unit=count]: Number of items processed per poll for this task
+      - task.ack_processor.next_poll_latency [timer variant=send.worker.0 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_processor.time [timer variant=send.worker.0 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.ack_processor
     function: endpoint::tasks::send_worker
     description: Processes ACK feedback and re-schedules contexts across wheels
     budget: 256
     worker_id: 2
     metrics:
-      - task.ack_processor.drained [summary variant=send.1 unit=count]: Number of items processed per poll for this task
-      - task.ack_processor.next_poll_latency [timer variant=send.1 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_processor.time [timer variant=send.1 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_processor.drained [summary variant=send.worker.1 unit=count]: Number of items processed per poll for this task
+      - task.ack_processor.next_poll_latency [timer variant=send.worker.1 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_processor.time [timer variant=send.worker.1 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.ack_processor
     function: endpoint::tasks::send_worker
     description: Processes ACK feedback and re-schedules contexts across wheels
     budget: 256
     worker_id: 3
     metrics:
-      - task.ack_processor.drained [summary variant=send.2 unit=count]: Number of items processed per poll for this task
-      - task.ack_processor.next_poll_latency [timer variant=send.2 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_processor.time [timer variant=send.2 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_processor.drained [summary variant=send.worker.2 unit=count]: Number of items processed per poll for this task
+      - task.ack_processor.next_poll_latency [timer variant=send.worker.2 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_processor.time [timer variant=send.worker.2 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.ack_processor
     function: endpoint::tasks::send_worker
     description: Processes ACK feedback and re-schedules contexts across wheels
     budget: 256
     worker_id: 4
     metrics:
-      - task.ack_processor.drained [summary variant=send.3 unit=count]: Number of items processed per poll for this task
-      - task.ack_processor.next_poll_latency [timer variant=send.3 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.ack_processor.time [timer variant=send.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.ack_processor.drained [summary variant=send.worker.3 unit=count]: Number of items processed per poll for this task
+      - task.ack_processor.next_poll_latency [timer variant=send.worker.3 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.ack_processor.time [timer variant=send.worker.3 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.assembler.send.0
     function: endpoint::tasks::send_worker
     description: Assembles and sends packets for one socket sender id
@@ -711,108 +711,108 @@ tasks:
     budget: 32
     worker_id: 1
     metrics:
-      - task.cancelled.drained [summary variant=send.0 unit=count]: Number of items processed per poll for this task
-      - task.cancelled.next_poll_latency [timer variant=send.0 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.cancelled.time [timer variant=send.0 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.cancelled.drained [summary variant=send.worker.0 unit=count]: Number of items processed per poll for this task
+      - task.cancelled.next_poll_latency [timer variant=send.worker.0 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.cancelled.time [timer variant=send.worker.0 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.cancelled
     function: endpoint::tasks::send_worker
     description: Drains cancelled frames that no longer have an owner
     budget: 32
     worker_id: 2
     metrics:
-      - task.cancelled.drained [summary variant=send.1 unit=count]: Number of items processed per poll for this task
-      - task.cancelled.next_poll_latency [timer variant=send.1 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.cancelled.time [timer variant=send.1 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.cancelled.drained [summary variant=send.worker.1 unit=count]: Number of items processed per poll for this task
+      - task.cancelled.next_poll_latency [timer variant=send.worker.1 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.cancelled.time [timer variant=send.worker.1 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.cancelled
     function: endpoint::tasks::send_worker
     description: Drains cancelled frames that no longer have an owner
     budget: 32
     worker_id: 3
     metrics:
-      - task.cancelled.drained [summary variant=send.2 unit=count]: Number of items processed per poll for this task
-      - task.cancelled.next_poll_latency [timer variant=send.2 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.cancelled.time [timer variant=send.2 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.cancelled.drained [summary variant=send.worker.2 unit=count]: Number of items processed per poll for this task
+      - task.cancelled.next_poll_latency [timer variant=send.worker.2 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.cancelled.time [timer variant=send.worker.2 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.cancelled
     function: endpoint::tasks::send_worker
     description: Drains cancelled frames that no longer have an owner
     budget: 32
     worker_id: 4
     metrics:
-      - task.cancelled.drained [summary variant=send.3 unit=count]: Number of items processed per poll for this task
-      - task.cancelled.next_poll_latency [timer variant=send.3 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.cancelled.time [timer variant=send.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.cancelled.drained [summary variant=send.worker.3 unit=count]: Number of items processed per poll for this task
+      - task.cancelled.next_poll_latency [timer variant=send.worker.3 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.cancelled.time [timer variant=send.worker.3 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.completion
     function: endpoint::tasks::send_worker
     description: Dispatches completion notifications back to writer wakers
     budget: 128
     worker_id: 1
     metrics:
-      - task.completion.drained [summary variant=send.0 unit=count]: Number of items processed per poll for this task
-      - task.completion.next_poll_latency [timer variant=send.0 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.completion.time [timer variant=send.0 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.completion.drained [summary variant=send.worker.0 unit=count]: Number of items processed per poll for this task
+      - task.completion.next_poll_latency [timer variant=send.worker.0 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.completion.time [timer variant=send.worker.0 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.completion
     function: endpoint::tasks::send_worker
     description: Dispatches completion notifications back to writer wakers
     budget: 128
     worker_id: 2
     metrics:
-      - task.completion.drained [summary variant=send.1 unit=count]: Number of items processed per poll for this task
-      - task.completion.next_poll_latency [timer variant=send.1 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.completion.time [timer variant=send.1 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.completion.drained [summary variant=send.worker.1 unit=count]: Number of items processed per poll for this task
+      - task.completion.next_poll_latency [timer variant=send.worker.1 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.completion.time [timer variant=send.worker.1 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.completion
     function: endpoint::tasks::send_worker
     description: Dispatches completion notifications back to writer wakers
     budget: 128
     worker_id: 3
     metrics:
-      - task.completion.drained [summary variant=send.2 unit=count]: Number of items processed per poll for this task
-      - task.completion.next_poll_latency [timer variant=send.2 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.completion.time [timer variant=send.2 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.completion.drained [summary variant=send.worker.2 unit=count]: Number of items processed per poll for this task
+      - task.completion.next_poll_latency [timer variant=send.worker.2 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.completion.time [timer variant=send.worker.2 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.completion
     function: endpoint::tasks::send_worker
     description: Dispatches completion notifications back to writer wakers
     budget: 128
     worker_id: 4
     metrics:
-      - task.completion.drained [summary variant=send.3 unit=count]: Number of items processed per poll for this task
-      - task.completion.next_poll_latency [timer variant=send.3 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.completion.time [timer variant=send.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.completion.drained [summary variant=send.worker.3 unit=count]: Number of items processed per poll for this task
+      - task.completion.next_poll_latency [timer variant=send.worker.3 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.completion.time [timer variant=send.worker.3 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.context_resolver
     function: endpoint::tasks::send_worker
     description: Resolves frame batches to send contexts and schedules wheels
     budget: 128
     worker_id: 1
     metrics:
-      - task.context_resolver.drained [summary variant=send.0 unit=count]: Number of items processed per poll for this task
-      - task.context_resolver.next_poll_latency [timer variant=send.0 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.context_resolver.time [timer variant=send.0 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.context_resolver.drained [summary variant=send.worker.0 unit=count]: Number of items processed per poll for this task
+      - task.context_resolver.next_poll_latency [timer variant=send.worker.0 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.context_resolver.time [timer variant=send.worker.0 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.context_resolver
     function: endpoint::tasks::send_worker
     description: Resolves frame batches to send contexts and schedules wheels
     budget: 128
     worker_id: 2
     metrics:
-      - task.context_resolver.drained [summary variant=send.1 unit=count]: Number of items processed per poll for this task
-      - task.context_resolver.next_poll_latency [timer variant=send.1 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.context_resolver.time [timer variant=send.1 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.context_resolver.drained [summary variant=send.worker.1 unit=count]: Number of items processed per poll for this task
+      - task.context_resolver.next_poll_latency [timer variant=send.worker.1 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.context_resolver.time [timer variant=send.worker.1 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.context_resolver
     function: endpoint::tasks::send_worker
     description: Resolves frame batches to send contexts and schedules wheels
     budget: 128
     worker_id: 3
     metrics:
-      - task.context_resolver.drained [summary variant=send.2 unit=count]: Number of items processed per poll for this task
-      - task.context_resolver.next_poll_latency [timer variant=send.2 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.context_resolver.time [timer variant=send.2 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.context_resolver.drained [summary variant=send.worker.2 unit=count]: Number of items processed per poll for this task
+      - task.context_resolver.next_poll_latency [timer variant=send.worker.2 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.context_resolver.time [timer variant=send.worker.2 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.context_resolver
     function: endpoint::tasks::send_worker
     description: Resolves frame batches to send contexts and schedules wheels
     budget: 128
     worker_id: 4
     metrics:
-      - task.context_resolver.drained [summary variant=send.3 unit=count]: Number of items processed per poll for this task
-      - task.context_resolver.next_poll_latency [timer variant=send.3 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.context_resolver.time [timer variant=send.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.context_resolver.drained [summary variant=send.worker.3 unit=count]: Number of items processed per poll for this task
+      - task.context_resolver.next_poll_latency [timer variant=send.worker.3 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.context_resolver.time [timer variant=send.worker.3 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.frame_dispatch
     function: endpoint::tasks::frame_dispatch
     description: Batches, paces, and routes frame batches to worker send sockets
@@ -828,117 +828,117 @@ tasks:
     budget: 1
     worker_id: 1
     metrics:
-      - task.idle_wheel.drained [summary variant=send.0 unit=count]: Number of items processed per poll for this task
-      - task.idle_wheel.next_poll_latency [timer variant=send.0 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.idle_wheel.time [timer variant=send.0 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.idle_wheel.drained [summary variant=send.worker.0 unit=count]: Number of items processed per poll for this task
+      - task.idle_wheel.next_poll_latency [timer variant=send.worker.0 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.idle_wheel.time [timer variant=send.worker.0 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.idle_wheel
     function: endpoint::tasks::send_worker
     description: Expires or re-schedules idle send contexts
     budget: 1
     worker_id: 2
     metrics:
-      - task.idle_wheel.drained [summary variant=send.1 unit=count]: Number of items processed per poll for this task
-      - task.idle_wheel.next_poll_latency [timer variant=send.1 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.idle_wheel.time [timer variant=send.1 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.idle_wheel.drained [summary variant=send.worker.1 unit=count]: Number of items processed per poll for this task
+      - task.idle_wheel.next_poll_latency [timer variant=send.worker.1 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.idle_wheel.time [timer variant=send.worker.1 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.idle_wheel
     function: endpoint::tasks::send_worker
     description: Expires or re-schedules idle send contexts
     budget: 1
     worker_id: 3
     metrics:
-      - task.idle_wheel.drained [summary variant=send.2 unit=count]: Number of items processed per poll for this task
-      - task.idle_wheel.next_poll_latency [timer variant=send.2 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.idle_wheel.time [timer variant=send.2 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.idle_wheel.drained [summary variant=send.worker.2 unit=count]: Number of items processed per poll for this task
+      - task.idle_wheel.next_poll_latency [timer variant=send.worker.2 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.idle_wheel.time [timer variant=send.worker.2 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.idle_wheel
     function: endpoint::tasks::send_worker
     description: Expires or re-schedules idle send contexts
     budget: 1
     worker_id: 4
     metrics:
-      - task.idle_wheel.drained [summary variant=send.3 unit=count]: Number of items processed per poll for this task
-      - task.idle_wheel.next_poll_latency [timer variant=send.3 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.idle_wheel.time [timer variant=send.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.idle_wheel.drained [summary variant=send.worker.3 unit=count]: Number of items processed per poll for this task
+      - task.idle_wheel.next_poll_latency [timer variant=send.worker.3 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.idle_wheel.time [timer variant=send.worker.3 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.invalidation
     function: endpoint::Worker::spawn
     description: Purges invalidated recv contexts
     budget: 1
     worker_id: 9
     metrics:
-      - task.invalidation.drained [summary variant=recv.0 unit=count]: Number of items processed per poll for this task
-      - task.invalidation.next_poll_latency [timer variant=recv.0 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.invalidation.time [timer variant=recv.0 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.invalidation.drained [summary variant=recv.dispatch.0 unit=count]: Number of items processed per poll for this task
+      - task.invalidation.next_poll_latency [timer variant=recv.dispatch.0 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.invalidation.time [timer variant=recv.dispatch.0 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.invalidation
     function: endpoint::Worker::spawn
     description: Purges invalidated recv contexts
     budget: 1
     worker_id: 10
     metrics:
-      - task.invalidation.drained [summary variant=recv.1 unit=count]: Number of items processed per poll for this task
-      - task.invalidation.next_poll_latency [timer variant=recv.1 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.invalidation.time [timer variant=recv.1 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.invalidation.drained [summary variant=recv.dispatch.1 unit=count]: Number of items processed per poll for this task
+      - task.invalidation.next_poll_latency [timer variant=recv.dispatch.1 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.invalidation.time [timer variant=recv.dispatch.1 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.invalidation
     function: endpoint::Worker::spawn
     description: Purges invalidated recv contexts
     budget: 1
     worker_id: 11
     metrics:
-      - task.invalidation.drained [summary variant=recv.2 unit=count]: Number of items processed per poll for this task
-      - task.invalidation.next_poll_latency [timer variant=recv.2 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.invalidation.time [timer variant=recv.2 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.invalidation.drained [summary variant=recv.dispatch.2 unit=count]: Number of items processed per poll for this task
+      - task.invalidation.next_poll_latency [timer variant=recv.dispatch.2 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.invalidation.time [timer variant=recv.dispatch.2 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.invalidation
     function: endpoint::Worker::spawn
     description: Purges invalidated recv contexts
     budget: 1
     worker_id: 12
     metrics:
-      - task.invalidation.drained [summary variant=recv.3 unit=count]: Number of items processed per poll for this task
-      - task.invalidation.next_poll_latency [timer variant=recv.3 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.invalidation.time [timer variant=recv.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.invalidation.drained [summary variant=recv.dispatch.3 unit=count]: Number of items processed per poll for this task
+      - task.invalidation.next_poll_latency [timer variant=recv.dispatch.3 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.invalidation.time [timer variant=recv.dispatch.3 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.invalidation
     function: endpoint::Worker::spawn
     description: Purges invalidated recv contexts
     budget: 1
     worker_id: 13
     metrics:
-      - task.invalidation.drained [summary variant=recv.4 unit=count]: Number of items processed per poll for this task
-      - task.invalidation.next_poll_latency [timer variant=recv.4 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.invalidation.time [timer variant=recv.4 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.invalidation.drained [summary variant=recv.dispatch.4 unit=count]: Number of items processed per poll for this task
+      - task.invalidation.next_poll_latency [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.invalidation.time [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.invalidation
     function: endpoint::tasks::send_worker
     description: Purges revoked path secrets from send cache and emits completions
     budget: 1
     worker_id: 1
     metrics:
-      - task.invalidation.drained [summary variant=send.0 unit=count]: Number of items processed per poll for this task
-      - task.invalidation.next_poll_latency [timer variant=send.0 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.invalidation.time [timer variant=send.0 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.invalidation.drained [summary variant=send.worker.0 unit=count]: Number of items processed per poll for this task
+      - task.invalidation.next_poll_latency [timer variant=send.worker.0 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.invalidation.time [timer variant=send.worker.0 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.invalidation
     function: endpoint::tasks::send_worker
     description: Purges revoked path secrets from send cache and emits completions
     budget: 1
     worker_id: 2
     metrics:
-      - task.invalidation.drained [summary variant=send.1 unit=count]: Number of items processed per poll for this task
-      - task.invalidation.next_poll_latency [timer variant=send.1 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.invalidation.time [timer variant=send.1 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.invalidation.drained [summary variant=send.worker.1 unit=count]: Number of items processed per poll for this task
+      - task.invalidation.next_poll_latency [timer variant=send.worker.1 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.invalidation.time [timer variant=send.worker.1 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.invalidation
     function: endpoint::tasks::send_worker
     description: Purges revoked path secrets from send cache and emits completions
     budget: 1
     worker_id: 3
     metrics:
-      - task.invalidation.drained [summary variant=send.2 unit=count]: Number of items processed per poll for this task
-      - task.invalidation.next_poll_latency [timer variant=send.2 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.invalidation.time [timer variant=send.2 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.invalidation.drained [summary variant=send.worker.2 unit=count]: Number of items processed per poll for this task
+      - task.invalidation.next_poll_latency [timer variant=send.worker.2 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.invalidation.time [timer variant=send.worker.2 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.invalidation
     function: endpoint::tasks::send_worker
     description: Purges revoked path secrets from send cache and emits completions
     budget: 1
     worker_id: 4
     metrics:
-      - task.invalidation.drained [summary variant=send.3 unit=count]: Number of items processed per poll for this task
-      - task.invalidation.next_poll_latency [timer variant=send.3 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.invalidation.time [timer variant=send.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.invalidation.drained [summary variant=send.worker.3 unit=count]: Number of items processed per poll for this task
+      - task.invalidation.next_poll_latency [timer variant=send.worker.3 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.invalidation.time [timer variant=send.worker.3 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.invalidation_validator
     function: endpoint::Worker::spawn
     description: Validates invalidation datagrams and fan-outs revocation events
@@ -954,45 +954,45 @@ tasks:
     budget: 4096
     worker_id: 9
     metrics:
-      - task.packet_dispatch.drained [summary variant=recv.0 unit=count]: Number of items processed per poll for this task
-      - task.packet_dispatch.next_poll_latency [timer variant=recv.0 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.packet_dispatch.time [timer variant=recv.0 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.packet_dispatch.drained [summary variant=recv.dispatch.0 unit=count]: Number of items processed per poll for this task
+      - task.packet_dispatch.next_poll_latency [timer variant=recv.dispatch.0 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.packet_dispatch.time [timer variant=recv.dispatch.0 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.packet_dispatch
     function: endpoint::Worker::spawn
     description: Decrypts, validates, and routes inbound packets
     budget: 4096
     worker_id: 10
     metrics:
-      - task.packet_dispatch.drained [summary variant=recv.1 unit=count]: Number of items processed per poll for this task
-      - task.packet_dispatch.next_poll_latency [timer variant=recv.1 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.packet_dispatch.time [timer variant=recv.1 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.packet_dispatch.drained [summary variant=recv.dispatch.1 unit=count]: Number of items processed per poll for this task
+      - task.packet_dispatch.next_poll_latency [timer variant=recv.dispatch.1 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.packet_dispatch.time [timer variant=recv.dispatch.1 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.packet_dispatch
     function: endpoint::Worker::spawn
     description: Decrypts, validates, and routes inbound packets
     budget: 4096
     worker_id: 11
     metrics:
-      - task.packet_dispatch.drained [summary variant=recv.2 unit=count]: Number of items processed per poll for this task
-      - task.packet_dispatch.next_poll_latency [timer variant=recv.2 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.packet_dispatch.time [timer variant=recv.2 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.packet_dispatch.drained [summary variant=recv.dispatch.2 unit=count]: Number of items processed per poll for this task
+      - task.packet_dispatch.next_poll_latency [timer variant=recv.dispatch.2 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.packet_dispatch.time [timer variant=recv.dispatch.2 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.packet_dispatch
     function: endpoint::Worker::spawn
     description: Decrypts, validates, and routes inbound packets
     budget: 4096
     worker_id: 12
     metrics:
-      - task.packet_dispatch.drained [summary variant=recv.3 unit=count]: Number of items processed per poll for this task
-      - task.packet_dispatch.next_poll_latency [timer variant=recv.3 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.packet_dispatch.time [timer variant=recv.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.packet_dispatch.drained [summary variant=recv.dispatch.3 unit=count]: Number of items processed per poll for this task
+      - task.packet_dispatch.next_poll_latency [timer variant=recv.dispatch.3 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.packet_dispatch.time [timer variant=recv.dispatch.3 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.packet_dispatch
     function: endpoint::Worker::spawn
     description: Decrypts, validates, and routes inbound packets
     budget: 4096
     worker_id: 13
     metrics:
-      - task.packet_dispatch.drained [summary variant=recv.4 unit=count]: Number of items processed per poll for this task
-      - task.packet_dispatch.next_poll_latency [timer variant=recv.4 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.packet_dispatch.time [timer variant=recv.4 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.packet_dispatch.drained [summary variant=recv.dispatch.4 unit=count]: Number of items processed per poll for this task
+      - task.packet_dispatch.next_poll_latency [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.packet_dispatch.time [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.priority_router
     function: endpoint::tasks::frame_dispatch
     description: Routes submissions into per-priority queues
@@ -1008,81 +1008,81 @@ tasks:
     budget: 32
     worker_id: 1
     metrics:
-      - task.pto_wheel.drained [summary variant=send.0 unit=count]: Number of items processed per poll for this task
-      - task.pto_wheel.next_poll_latency [timer variant=send.0 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.pto_wheel.time [timer variant=send.0 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.pto_wheel.drained [summary variant=send.worker.0 unit=count]: Number of items processed per poll for this task
+      - task.pto_wheel.next_poll_latency [timer variant=send.worker.0 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.pto_wheel.time [timer variant=send.worker.0 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.pto_wheel
     function: endpoint::tasks::send_worker
     description: Handles probe-timeout expirations and wheel re-scheduling
     budget: 32
     worker_id: 2
     metrics:
-      - task.pto_wheel.drained [summary variant=send.1 unit=count]: Number of items processed per poll for this task
-      - task.pto_wheel.next_poll_latency [timer variant=send.1 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.pto_wheel.time [timer variant=send.1 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.pto_wheel.drained [summary variant=send.worker.1 unit=count]: Number of items processed per poll for this task
+      - task.pto_wheel.next_poll_latency [timer variant=send.worker.1 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.pto_wheel.time [timer variant=send.worker.1 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.pto_wheel
     function: endpoint::tasks::send_worker
     description: Handles probe-timeout expirations and wheel re-scheduling
     budget: 32
     worker_id: 3
     metrics:
-      - task.pto_wheel.drained [summary variant=send.2 unit=count]: Number of items processed per poll for this task
-      - task.pto_wheel.next_poll_latency [timer variant=send.2 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.pto_wheel.time [timer variant=send.2 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.pto_wheel.drained [summary variant=send.worker.2 unit=count]: Number of items processed per poll for this task
+      - task.pto_wheel.next_poll_latency [timer variant=send.worker.2 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.pto_wheel.time [timer variant=send.worker.2 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.pto_wheel
     function: endpoint::tasks::send_worker
     description: Handles probe-timeout expirations and wheel re-scheduling
     budget: 32
     worker_id: 4
     metrics:
-      - task.pto_wheel.drained [summary variant=send.3 unit=count]: Number of items processed per poll for this task
-      - task.pto_wheel.next_poll_latency [timer variant=send.3 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.pto_wheel.time [timer variant=send.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.pto_wheel.drained [summary variant=send.worker.3 unit=count]: Number of items processed per poll for this task
+      - task.pto_wheel.next_poll_latency [timer variant=send.worker.3 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.pto_wheel.time [timer variant=send.worker.3 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.recv_idle_wheel
     function: endpoint::Worker::spawn
     description: Expires or re-schedules idle recv contexts
     budget: 1
     worker_id: 9
     metrics:
-      - task.recv_idle_wheel.drained [summary variant=recv.0 unit=count]: Number of items processed per poll for this task
-      - task.recv_idle_wheel.next_poll_latency [timer variant=recv.0 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.recv_idle_wheel.time [timer variant=recv.0 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.recv_idle_wheel.drained [summary variant=recv.dispatch.0 unit=count]: Number of items processed per poll for this task
+      - task.recv_idle_wheel.next_poll_latency [timer variant=recv.dispatch.0 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.recv_idle_wheel.time [timer variant=recv.dispatch.0 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.recv_idle_wheel
     function: endpoint::Worker::spawn
     description: Expires or re-schedules idle recv contexts
     budget: 1
     worker_id: 10
     metrics:
-      - task.recv_idle_wheel.drained [summary variant=recv.1 unit=count]: Number of items processed per poll for this task
-      - task.recv_idle_wheel.next_poll_latency [timer variant=recv.1 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.recv_idle_wheel.time [timer variant=recv.1 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.recv_idle_wheel.drained [summary variant=recv.dispatch.1 unit=count]: Number of items processed per poll for this task
+      - task.recv_idle_wheel.next_poll_latency [timer variant=recv.dispatch.1 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.recv_idle_wheel.time [timer variant=recv.dispatch.1 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.recv_idle_wheel
     function: endpoint::Worker::spawn
     description: Expires or re-schedules idle recv contexts
     budget: 1
     worker_id: 11
     metrics:
-      - task.recv_idle_wheel.drained [summary variant=recv.2 unit=count]: Number of items processed per poll for this task
-      - task.recv_idle_wheel.next_poll_latency [timer variant=recv.2 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.recv_idle_wheel.time [timer variant=recv.2 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.recv_idle_wheel.drained [summary variant=recv.dispatch.2 unit=count]: Number of items processed per poll for this task
+      - task.recv_idle_wheel.next_poll_latency [timer variant=recv.dispatch.2 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.recv_idle_wheel.time [timer variant=recv.dispatch.2 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.recv_idle_wheel
     function: endpoint::Worker::spawn
     description: Expires or re-schedules idle recv contexts
     budget: 1
     worker_id: 12
     metrics:
-      - task.recv_idle_wheel.drained [summary variant=recv.3 unit=count]: Number of items processed per poll for this task
-      - task.recv_idle_wheel.next_poll_latency [timer variant=recv.3 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.recv_idle_wheel.time [timer variant=recv.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.recv_idle_wheel.drained [summary variant=recv.dispatch.3 unit=count]: Number of items processed per poll for this task
+      - task.recv_idle_wheel.next_poll_latency [timer variant=recv.dispatch.3 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.recv_idle_wheel.time [timer variant=recv.dispatch.3 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.recv_idle_wheel
     function: endpoint::Worker::spawn
     description: Expires or re-schedules idle recv contexts
     budget: 1
     worker_id: 13
     metrics:
-      - task.recv_idle_wheel.drained [summary variant=recv.4 unit=count]: Number of items processed per poll for this task
-      - task.recv_idle_wheel.next_poll_latency [timer variant=recv.4 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.recv_idle_wheel.time [timer variant=recv.4 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.recv_idle_wheel.drained [summary variant=recv.dispatch.4 unit=count]: Number of items processed per poll for this task
+      - task.recv_idle_wheel.next_poll_latency [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.recv_idle_wheel.time [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.socket_recv
     function: endpoint::Worker::spawn
     description: Reads UDP datagrams and routes packets into dispatch queues
@@ -1125,36 +1125,36 @@ tasks:
     budget: 32
     worker_id: 1
     metrics:
-      - task.tx_wheel.drained [summary variant=send.0 unit=count]: Number of items processed per poll for this task
-      - task.tx_wheel.next_poll_latency [timer variant=send.0 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.tx_wheel.time [timer variant=send.0 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.tx_wheel.drained [summary variant=send.worker.0 unit=count]: Number of items processed per poll for this task
+      - task.tx_wheel.next_poll_latency [timer variant=send.worker.0 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.tx_wheel.time [timer variant=send.worker.0 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.tx_wheel
     function: endpoint::tasks::send_worker
     description: Drains tx timing wheel and routes expired contexts to assemblers
     budget: 32
     worker_id: 2
     metrics:
-      - task.tx_wheel.drained [summary variant=send.1 unit=count]: Number of items processed per poll for this task
-      - task.tx_wheel.next_poll_latency [timer variant=send.1 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.tx_wheel.time [timer variant=send.1 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.tx_wheel.drained [summary variant=send.worker.1 unit=count]: Number of items processed per poll for this task
+      - task.tx_wheel.next_poll_latency [timer variant=send.worker.1 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.tx_wheel.time [timer variant=send.worker.1 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.tx_wheel
     function: endpoint::tasks::send_worker
     description: Drains tx timing wheel and routes expired contexts to assemblers
     budget: 32
     worker_id: 3
     metrics:
-      - task.tx_wheel.drained [summary variant=send.2 unit=count]: Number of items processed per poll for this task
-      - task.tx_wheel.next_poll_latency [timer variant=send.2 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.tx_wheel.time [timer variant=send.2 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.tx_wheel.drained [summary variant=send.worker.2 unit=count]: Number of items processed per poll for this task
+      - task.tx_wheel.next_poll_latency [timer variant=send.worker.2 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.tx_wheel.time [timer variant=send.worker.2 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.tx_wheel
     function: endpoint::tasks::send_worker
     description: Drains tx timing wheel and routes expired contexts to assemblers
     budget: 32
     worker_id: 4
     metrics:
-      - task.tx_wheel.drained [summary variant=send.3 unit=count]: Number of items processed per poll for this task
-      - task.tx_wheel.next_poll_latency [timer variant=send.3 unit=microsecond]: Wall-clock latency between consecutive task polls
-      - task.tx_wheel.time [timer variant=send.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+      - task.tx_wheel.drained [summary variant=send.worker.3 unit=count]: Number of items processed per poll for this task
+      - task.tx_wheel.next_poll_latency [timer variant=send.worker.3 unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.tx_wheel.time [timer variant=send.worker.3 unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.waker_drain
     function: endpoint::Worker::spawn
     description: Invokes deferred wakers enqueued by dispatch workers
@@ -1165,166 +1165,166 @@ tasks:
       - task.waker_drain.next_poll_latency [timer variant=waker.14 unit=microsecond]: Wall-clock latency between consecutive task polls
       - task.waker_drain.time [timer variant=waker.14 unit=microsecond]: Wall-clock duration spent inside each task poll
 channels:
-  - name: ch.ack_to_cancelled.send.0
+  - name: ch.ack_to_cancelled.send.worker.0
     function: endpoint::tasks::send_worker
     description: Cancelled frame channel drained by cancelled task
     metrics:
-      - q.ack_to_cancelled.depth [gauge variant=send.0 unit=count]: Current queue depth
-      - q.ack_to_cancelled.depth_dist [summary variant=send.0 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_cancelled.drain [counter variant=send.0 unit=count]: Total queue dequeue events
-      - q.ack_to_cancelled.enq [counter variant=send.0 unit=count]: Total queue enqueue events
-  - name: ch.ack_to_cancelled.send.1
+      - q.ack_to_cancelled.depth [gauge variant=send.worker.0 unit=count]: Current queue depth
+      - q.ack_to_cancelled.depth_dist [summary variant=send.worker.0 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_cancelled.drain [counter variant=send.worker.0 unit=count]: Total queue dequeue events
+      - q.ack_to_cancelled.enq [counter variant=send.worker.0 unit=count]: Total queue enqueue events
+  - name: ch.ack_to_cancelled.send.worker.1
     function: endpoint::tasks::send_worker
     description: Cancelled frame channel drained by cancelled task
     metrics:
-      - q.ack_to_cancelled.depth [gauge variant=send.1 unit=count]: Current queue depth
-      - q.ack_to_cancelled.depth_dist [summary variant=send.1 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_cancelled.drain [counter variant=send.1 unit=count]: Total queue dequeue events
-      - q.ack_to_cancelled.enq [counter variant=send.1 unit=count]: Total queue enqueue events
-  - name: ch.ack_to_cancelled.send.2
+      - q.ack_to_cancelled.depth [gauge variant=send.worker.1 unit=count]: Current queue depth
+      - q.ack_to_cancelled.depth_dist [summary variant=send.worker.1 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_cancelled.drain [counter variant=send.worker.1 unit=count]: Total queue dequeue events
+      - q.ack_to_cancelled.enq [counter variant=send.worker.1 unit=count]: Total queue enqueue events
+  - name: ch.ack_to_cancelled.send.worker.2
     function: endpoint::tasks::send_worker
     description: Cancelled frame channel drained by cancelled task
     metrics:
-      - q.ack_to_cancelled.depth [gauge variant=send.2 unit=count]: Current queue depth
-      - q.ack_to_cancelled.depth_dist [summary variant=send.2 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_cancelled.drain [counter variant=send.2 unit=count]: Total queue dequeue events
-      - q.ack_to_cancelled.enq [counter variant=send.2 unit=count]: Total queue enqueue events
-  - name: ch.ack_to_cancelled.send.3
+      - q.ack_to_cancelled.depth [gauge variant=send.worker.2 unit=count]: Current queue depth
+      - q.ack_to_cancelled.depth_dist [summary variant=send.worker.2 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_cancelled.drain [counter variant=send.worker.2 unit=count]: Total queue dequeue events
+      - q.ack_to_cancelled.enq [counter variant=send.worker.2 unit=count]: Total queue enqueue events
+  - name: ch.ack_to_cancelled.send.worker.3
     function: endpoint::tasks::send_worker
     description: Cancelled frame channel drained by cancelled task
     metrics:
-      - q.ack_to_cancelled.depth [gauge variant=send.3 unit=count]: Current queue depth
-      - q.ack_to_cancelled.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_cancelled.drain [counter variant=send.3 unit=count]: Total queue dequeue events
-      - q.ack_to_cancelled.enq [counter variant=send.3 unit=count]: Total queue enqueue events
-  - name: ch.ack_to_completion.send.0
+      - q.ack_to_cancelled.depth [gauge variant=send.worker.3 unit=count]: Current queue depth
+      - q.ack_to_cancelled.depth_dist [summary variant=send.worker.3 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_cancelled.drain [counter variant=send.worker.3 unit=count]: Total queue dequeue events
+      - q.ack_to_cancelled.enq [counter variant=send.worker.3 unit=count]: Total queue enqueue events
+  - name: ch.ack_to_completion.send.worker.0
     function: endpoint::tasks::send_worker
     description: Completed frame channel from ack/invalidation tasks to completion dispatcher
     metrics:
-      - q.ack_to_completion.depth [gauge variant=send.0 unit=count]: Current queue depth
-      - q.ack_to_completion.depth_dist [summary variant=send.0 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_completion.drain [counter variant=send.0 unit=count]: Total queue dequeue events
-      - q.ack_to_completion.enq [counter variant=send.0 unit=count]: Total queue enqueue events
-  - name: ch.ack_to_completion.send.1
+      - q.ack_to_completion.depth [gauge variant=send.worker.0 unit=count]: Current queue depth
+      - q.ack_to_completion.depth_dist [summary variant=send.worker.0 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_completion.drain [counter variant=send.worker.0 unit=count]: Total queue dequeue events
+      - q.ack_to_completion.enq [counter variant=send.worker.0 unit=count]: Total queue enqueue events
+  - name: ch.ack_to_completion.send.worker.1
     function: endpoint::tasks::send_worker
     description: Completed frame channel from ack/invalidation tasks to completion dispatcher
     metrics:
-      - q.ack_to_completion.depth [gauge variant=send.1 unit=count]: Current queue depth
-      - q.ack_to_completion.depth_dist [summary variant=send.1 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_completion.drain [counter variant=send.1 unit=count]: Total queue dequeue events
-      - q.ack_to_completion.enq [counter variant=send.1 unit=count]: Total queue enqueue events
-  - name: ch.ack_to_completion.send.2
+      - q.ack_to_completion.depth [gauge variant=send.worker.1 unit=count]: Current queue depth
+      - q.ack_to_completion.depth_dist [summary variant=send.worker.1 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_completion.drain [counter variant=send.worker.1 unit=count]: Total queue dequeue events
+      - q.ack_to_completion.enq [counter variant=send.worker.1 unit=count]: Total queue enqueue events
+  - name: ch.ack_to_completion.send.worker.2
     function: endpoint::tasks::send_worker
     description: Completed frame channel from ack/invalidation tasks to completion dispatcher
     metrics:
-      - q.ack_to_completion.depth [gauge variant=send.2 unit=count]: Current queue depth
-      - q.ack_to_completion.depth_dist [summary variant=send.2 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_completion.drain [counter variant=send.2 unit=count]: Total queue dequeue events
-      - q.ack_to_completion.enq [counter variant=send.2 unit=count]: Total queue enqueue events
-  - name: ch.ack_to_completion.send.3
+      - q.ack_to_completion.depth [gauge variant=send.worker.2 unit=count]: Current queue depth
+      - q.ack_to_completion.depth_dist [summary variant=send.worker.2 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_completion.drain [counter variant=send.worker.2 unit=count]: Total queue dequeue events
+      - q.ack_to_completion.enq [counter variant=send.worker.2 unit=count]: Total queue enqueue events
+  - name: ch.ack_to_completion.send.worker.3
     function: endpoint::tasks::send_worker
     description: Completed frame channel from ack/invalidation tasks to completion dispatcher
     metrics:
-      - q.ack_to_completion.depth [gauge variant=send.3 unit=count]: Current queue depth
-      - q.ack_to_completion.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_completion.drain [counter variant=send.3 unit=count]: Total queue dequeue events
-      - q.ack_to_completion.enq [counter variant=send.3 unit=count]: Total queue enqueue events
-  - name: ch.resolver_to_idle_wheel.send.0
+      - q.ack_to_completion.depth [gauge variant=send.worker.3 unit=count]: Current queue depth
+      - q.ack_to_completion.depth_dist [summary variant=send.worker.3 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_completion.drain [counter variant=send.worker.3 unit=count]: Total queue dequeue events
+      - q.ack_to_completion.enq [counter variant=send.worker.3 unit=count]: Total queue enqueue events
+  - name: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Send context scheduling channel feeding the idle wheel
     metrics:
-      - q.resolver_to_idle_wheel.depth [gauge variant=send.0 unit=count]: Current queue depth
-      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.0 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_idle_wheel.drain [counter variant=send.0 unit=count]: Total queue dequeue events
-      - q.resolver_to_idle_wheel.enq [counter variant=send.0 unit=count]: Total queue enqueue events
-  - name: ch.resolver_to_idle_wheel.send.1
+      - q.resolver_to_idle_wheel.depth [gauge variant=send.worker.0 unit=count]: Current queue depth
+      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.worker.0 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_idle_wheel.drain [counter variant=send.worker.0 unit=count]: Total queue dequeue events
+      - q.resolver_to_idle_wheel.enq [counter variant=send.worker.0 unit=count]: Total queue enqueue events
+  - name: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Send context scheduling channel feeding the idle wheel
     metrics:
-      - q.resolver_to_idle_wheel.depth [gauge variant=send.1 unit=count]: Current queue depth
-      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.1 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_idle_wheel.drain [counter variant=send.1 unit=count]: Total queue dequeue events
-      - q.resolver_to_idle_wheel.enq [counter variant=send.1 unit=count]: Total queue enqueue events
-  - name: ch.resolver_to_idle_wheel.send.2
+      - q.resolver_to_idle_wheel.depth [gauge variant=send.worker.1 unit=count]: Current queue depth
+      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.worker.1 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_idle_wheel.drain [counter variant=send.worker.1 unit=count]: Total queue dequeue events
+      - q.resolver_to_idle_wheel.enq [counter variant=send.worker.1 unit=count]: Total queue enqueue events
+  - name: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Send context scheduling channel feeding the idle wheel
     metrics:
-      - q.resolver_to_idle_wheel.depth [gauge variant=send.2 unit=count]: Current queue depth
-      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.2 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_idle_wheel.drain [counter variant=send.2 unit=count]: Total queue dequeue events
-      - q.resolver_to_idle_wheel.enq [counter variant=send.2 unit=count]: Total queue enqueue events
-  - name: ch.resolver_to_idle_wheel.send.3
+      - q.resolver_to_idle_wheel.depth [gauge variant=send.worker.2 unit=count]: Current queue depth
+      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.worker.2 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_idle_wheel.drain [counter variant=send.worker.2 unit=count]: Total queue dequeue events
+      - q.resolver_to_idle_wheel.enq [counter variant=send.worker.2 unit=count]: Total queue enqueue events
+  - name: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Send context scheduling channel feeding the idle wheel
     metrics:
-      - q.resolver_to_idle_wheel.depth [gauge variant=send.3 unit=count]: Current queue depth
-      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_idle_wheel.drain [counter variant=send.3 unit=count]: Total queue dequeue events
-      - q.resolver_to_idle_wheel.enq [counter variant=send.3 unit=count]: Total queue enqueue events
-  - name: ch.resolver_to_pto_wheel.send.0
+      - q.resolver_to_idle_wheel.depth [gauge variant=send.worker.3 unit=count]: Current queue depth
+      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.worker.3 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_idle_wheel.drain [counter variant=send.worker.3 unit=count]: Total queue dequeue events
+      - q.resolver_to_idle_wheel.enq [counter variant=send.worker.3 unit=count]: Total queue enqueue events
+  - name: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Send context scheduling channel feeding the pto wheel
     metrics:
-      - q.resolver_to_pto_wheel.depth [gauge variant=send.0 unit=count]: Current queue depth
-      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.0 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_pto_wheel.drain [counter variant=send.0 unit=count]: Total queue dequeue events
-      - q.resolver_to_pto_wheel.enq [counter variant=send.0 unit=count]: Total queue enqueue events
-  - name: ch.resolver_to_pto_wheel.send.1
+      - q.resolver_to_pto_wheel.depth [gauge variant=send.worker.0 unit=count]: Current queue depth
+      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.worker.0 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_pto_wheel.drain [counter variant=send.worker.0 unit=count]: Total queue dequeue events
+      - q.resolver_to_pto_wheel.enq [counter variant=send.worker.0 unit=count]: Total queue enqueue events
+  - name: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Send context scheduling channel feeding the pto wheel
     metrics:
-      - q.resolver_to_pto_wheel.depth [gauge variant=send.1 unit=count]: Current queue depth
-      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.1 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_pto_wheel.drain [counter variant=send.1 unit=count]: Total queue dequeue events
-      - q.resolver_to_pto_wheel.enq [counter variant=send.1 unit=count]: Total queue enqueue events
-  - name: ch.resolver_to_pto_wheel.send.2
+      - q.resolver_to_pto_wheel.depth [gauge variant=send.worker.1 unit=count]: Current queue depth
+      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.worker.1 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_pto_wheel.drain [counter variant=send.worker.1 unit=count]: Total queue dequeue events
+      - q.resolver_to_pto_wheel.enq [counter variant=send.worker.1 unit=count]: Total queue enqueue events
+  - name: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Send context scheduling channel feeding the pto wheel
     metrics:
-      - q.resolver_to_pto_wheel.depth [gauge variant=send.2 unit=count]: Current queue depth
-      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.2 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_pto_wheel.drain [counter variant=send.2 unit=count]: Total queue dequeue events
-      - q.resolver_to_pto_wheel.enq [counter variant=send.2 unit=count]: Total queue enqueue events
-  - name: ch.resolver_to_pto_wheel.send.3
+      - q.resolver_to_pto_wheel.depth [gauge variant=send.worker.2 unit=count]: Current queue depth
+      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.worker.2 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_pto_wheel.drain [counter variant=send.worker.2 unit=count]: Total queue dequeue events
+      - q.resolver_to_pto_wheel.enq [counter variant=send.worker.2 unit=count]: Total queue enqueue events
+  - name: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Send context scheduling channel feeding the pto wheel
     metrics:
-      - q.resolver_to_pto_wheel.depth [gauge variant=send.3 unit=count]: Current queue depth
-      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_pto_wheel.drain [counter variant=send.3 unit=count]: Total queue dequeue events
-      - q.resolver_to_pto_wheel.enq [counter variant=send.3 unit=count]: Total queue enqueue events
-  - name: ch.resolver_to_tx_wheel.send.0
+      - q.resolver_to_pto_wheel.depth [gauge variant=send.worker.3 unit=count]: Current queue depth
+      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.worker.3 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_pto_wheel.drain [counter variant=send.worker.3 unit=count]: Total queue dequeue events
+      - q.resolver_to_pto_wheel.enq [counter variant=send.worker.3 unit=count]: Total queue enqueue events
+  - name: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Send context scheduling channel feeding the tx wheel
     metrics:
-      - q.resolver_to_tx_wheel.depth [gauge variant=send.0 unit=count]: Current queue depth
-      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.0 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_tx_wheel.drain [counter variant=send.0 unit=count]: Total queue dequeue events
-      - q.resolver_to_tx_wheel.enq [counter variant=send.0 unit=count]: Total queue enqueue events
-  - name: ch.resolver_to_tx_wheel.send.1
+      - q.resolver_to_tx_wheel.depth [gauge variant=send.worker.0 unit=count]: Current queue depth
+      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.worker.0 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_tx_wheel.drain [counter variant=send.worker.0 unit=count]: Total queue dequeue events
+      - q.resolver_to_tx_wheel.enq [counter variant=send.worker.0 unit=count]: Total queue enqueue events
+  - name: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Send context scheduling channel feeding the tx wheel
     metrics:
-      - q.resolver_to_tx_wheel.depth [gauge variant=send.1 unit=count]: Current queue depth
-      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.1 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_tx_wheel.drain [counter variant=send.1 unit=count]: Total queue dequeue events
-      - q.resolver_to_tx_wheel.enq [counter variant=send.1 unit=count]: Total queue enqueue events
-  - name: ch.resolver_to_tx_wheel.send.2
+      - q.resolver_to_tx_wheel.depth [gauge variant=send.worker.1 unit=count]: Current queue depth
+      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.worker.1 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_tx_wheel.drain [counter variant=send.worker.1 unit=count]: Total queue dequeue events
+      - q.resolver_to_tx_wheel.enq [counter variant=send.worker.1 unit=count]: Total queue enqueue events
+  - name: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Send context scheduling channel feeding the tx wheel
     metrics:
-      - q.resolver_to_tx_wheel.depth [gauge variant=send.2 unit=count]: Current queue depth
-      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.2 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_tx_wheel.drain [counter variant=send.2 unit=count]: Total queue dequeue events
-      - q.resolver_to_tx_wheel.enq [counter variant=send.2 unit=count]: Total queue enqueue events
-  - name: ch.resolver_to_tx_wheel.send.3
+      - q.resolver_to_tx_wheel.depth [gauge variant=send.worker.2 unit=count]: Current queue depth
+      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.worker.2 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_tx_wheel.drain [counter variant=send.worker.2 unit=count]: Total queue dequeue events
+      - q.resolver_to_tx_wheel.enq [counter variant=send.worker.2 unit=count]: Total queue enqueue events
+  - name: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Send context scheduling channel feeding the tx wheel
     metrics:
-      - q.resolver_to_tx_wheel.depth [gauge variant=send.3 unit=count]: Current queue depth
-      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_tx_wheel.drain [counter variant=send.3 unit=count]: Total queue dequeue events
-      - q.resolver_to_tx_wheel.enq [counter variant=send.3 unit=count]: Total queue enqueue events
+      - q.resolver_to_tx_wheel.depth [gauge variant=send.worker.3 unit=count]: Current queue depth
+      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.worker.3 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_tx_wheel.drain [counter variant=send.worker.3 unit=count]: Total queue dequeue events
+      - q.resolver_to_tx_wheel.enq [counter variant=send.worker.3 unit=count]: Total queue enqueue events
   - name: ch.router_to_batcher.p0
     function: endpoint::tasks::frame_dispatch
     description: Per-priority unsync queue from priority router to frame dispatch
@@ -1909,70 +1909,70 @@ channels:
       - q.ack.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
       - q.ack.drain [counter variant=send.3 unit=count]: Total queue dequeue events
       - q.ack.enq [counter variant=send.3 unit=count]: Total queue enqueue events
-  - name: q.ack_to_cancelled.send.0
+  - name: q.ack_to_cancelled.send.worker.0
     function: 
     description: 
     metrics:
-      - q.ack_to_cancelled.depth [gauge variant=send.0 unit=count]: Current queue depth
-      - q.ack_to_cancelled.depth_dist [summary variant=send.0 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_cancelled.drain [counter variant=send.0 unit=count]: Total queue dequeue events
-      - q.ack_to_cancelled.enq [counter variant=send.0 unit=count]: Total queue enqueue events
-  - name: q.ack_to_cancelled.send.1
+      - q.ack_to_cancelled.depth [gauge variant=send.worker.0 unit=count]: Current queue depth
+      - q.ack_to_cancelled.depth_dist [summary variant=send.worker.0 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_cancelled.drain [counter variant=send.worker.0 unit=count]: Total queue dequeue events
+      - q.ack_to_cancelled.enq [counter variant=send.worker.0 unit=count]: Total queue enqueue events
+  - name: q.ack_to_cancelled.send.worker.1
     function: 
     description: 
     metrics:
-      - q.ack_to_cancelled.depth [gauge variant=send.1 unit=count]: Current queue depth
-      - q.ack_to_cancelled.depth_dist [summary variant=send.1 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_cancelled.drain [counter variant=send.1 unit=count]: Total queue dequeue events
-      - q.ack_to_cancelled.enq [counter variant=send.1 unit=count]: Total queue enqueue events
-  - name: q.ack_to_cancelled.send.2
+      - q.ack_to_cancelled.depth [gauge variant=send.worker.1 unit=count]: Current queue depth
+      - q.ack_to_cancelled.depth_dist [summary variant=send.worker.1 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_cancelled.drain [counter variant=send.worker.1 unit=count]: Total queue dequeue events
+      - q.ack_to_cancelled.enq [counter variant=send.worker.1 unit=count]: Total queue enqueue events
+  - name: q.ack_to_cancelled.send.worker.2
     function: 
     description: 
     metrics:
-      - q.ack_to_cancelled.depth [gauge variant=send.2 unit=count]: Current queue depth
-      - q.ack_to_cancelled.depth_dist [summary variant=send.2 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_cancelled.drain [counter variant=send.2 unit=count]: Total queue dequeue events
-      - q.ack_to_cancelled.enq [counter variant=send.2 unit=count]: Total queue enqueue events
-  - name: q.ack_to_cancelled.send.3
+      - q.ack_to_cancelled.depth [gauge variant=send.worker.2 unit=count]: Current queue depth
+      - q.ack_to_cancelled.depth_dist [summary variant=send.worker.2 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_cancelled.drain [counter variant=send.worker.2 unit=count]: Total queue dequeue events
+      - q.ack_to_cancelled.enq [counter variant=send.worker.2 unit=count]: Total queue enqueue events
+  - name: q.ack_to_cancelled.send.worker.3
     function: 
     description: 
     metrics:
-      - q.ack_to_cancelled.depth [gauge variant=send.3 unit=count]: Current queue depth
-      - q.ack_to_cancelled.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_cancelled.drain [counter variant=send.3 unit=count]: Total queue dequeue events
-      - q.ack_to_cancelled.enq [counter variant=send.3 unit=count]: Total queue enqueue events
-  - name: q.ack_to_completion.send.0
+      - q.ack_to_cancelled.depth [gauge variant=send.worker.3 unit=count]: Current queue depth
+      - q.ack_to_cancelled.depth_dist [summary variant=send.worker.3 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_cancelled.drain [counter variant=send.worker.3 unit=count]: Total queue dequeue events
+      - q.ack_to_cancelled.enq [counter variant=send.worker.3 unit=count]: Total queue enqueue events
+  - name: q.ack_to_completion.send.worker.0
     function: 
     description: 
     metrics:
-      - q.ack_to_completion.depth [gauge variant=send.0 unit=count]: Current queue depth
-      - q.ack_to_completion.depth_dist [summary variant=send.0 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_completion.drain [counter variant=send.0 unit=count]: Total queue dequeue events
-      - q.ack_to_completion.enq [counter variant=send.0 unit=count]: Total queue enqueue events
-  - name: q.ack_to_completion.send.1
+      - q.ack_to_completion.depth [gauge variant=send.worker.0 unit=count]: Current queue depth
+      - q.ack_to_completion.depth_dist [summary variant=send.worker.0 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_completion.drain [counter variant=send.worker.0 unit=count]: Total queue dequeue events
+      - q.ack_to_completion.enq [counter variant=send.worker.0 unit=count]: Total queue enqueue events
+  - name: q.ack_to_completion.send.worker.1
     function: 
     description: 
     metrics:
-      - q.ack_to_completion.depth [gauge variant=send.1 unit=count]: Current queue depth
-      - q.ack_to_completion.depth_dist [summary variant=send.1 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_completion.drain [counter variant=send.1 unit=count]: Total queue dequeue events
-      - q.ack_to_completion.enq [counter variant=send.1 unit=count]: Total queue enqueue events
-  - name: q.ack_to_completion.send.2
+      - q.ack_to_completion.depth [gauge variant=send.worker.1 unit=count]: Current queue depth
+      - q.ack_to_completion.depth_dist [summary variant=send.worker.1 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_completion.drain [counter variant=send.worker.1 unit=count]: Total queue dequeue events
+      - q.ack_to_completion.enq [counter variant=send.worker.1 unit=count]: Total queue enqueue events
+  - name: q.ack_to_completion.send.worker.2
     function: 
     description: 
     metrics:
-      - q.ack_to_completion.depth [gauge variant=send.2 unit=count]: Current queue depth
-      - q.ack_to_completion.depth_dist [summary variant=send.2 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_completion.drain [counter variant=send.2 unit=count]: Total queue dequeue events
-      - q.ack_to_completion.enq [counter variant=send.2 unit=count]: Total queue enqueue events
-  - name: q.ack_to_completion.send.3
+      - q.ack_to_completion.depth [gauge variant=send.worker.2 unit=count]: Current queue depth
+      - q.ack_to_completion.depth_dist [summary variant=send.worker.2 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_completion.drain [counter variant=send.worker.2 unit=count]: Total queue dequeue events
+      - q.ack_to_completion.enq [counter variant=send.worker.2 unit=count]: Total queue enqueue events
+  - name: q.ack_to_completion.send.worker.3
     function: 
     description: 
     metrics:
-      - q.ack_to_completion.depth [gauge variant=send.3 unit=count]: Current queue depth
-      - q.ack_to_completion.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
-      - q.ack_to_completion.drain [counter variant=send.3 unit=count]: Total queue dequeue events
-      - q.ack_to_completion.enq [counter variant=send.3 unit=count]: Total queue enqueue events
+      - q.ack_to_completion.depth [gauge variant=send.worker.3 unit=count]: Current queue depth
+      - q.ack_to_completion.depth_dist [summary variant=send.worker.3 unit=count]: Distribution of observed queue depth values
+      - q.ack_to_completion.drain [counter variant=send.worker.3 unit=count]: Total queue dequeue events
+      - q.ack_to_completion.enq [counter variant=send.worker.3 unit=count]: Total queue enqueue events
   - name: q.dispatch.recv.0
     function: 
     description: 
@@ -2013,6 +2013,46 @@ channels:
       - q.dispatch.depth_dist [summary variant=recv.4 unit=count]: Distribution of observed queue depth values
       - q.dispatch.drain [counter variant=recv.4 unit=count]: Total queue dequeue events
       - q.dispatch.enq [counter variant=recv.4 unit=count]: Total queue enqueue events
+  - name: q.dispatch.recv.dispatch.0
+    function: 
+    description: 
+    metrics:
+      - q.dispatch.depth [gauge variant=recv.dispatch.0 unit=count]: Current queue depth
+      - q.dispatch.depth_dist [summary variant=recv.dispatch.0 unit=count]: Distribution of observed queue depth values
+      - q.dispatch.drain [counter variant=recv.dispatch.0 unit=count]: Total queue dequeue events
+      - q.dispatch.enq [counter variant=recv.dispatch.0 unit=count]: Total queue enqueue events
+  - name: q.dispatch.recv.dispatch.1
+    function: 
+    description: 
+    metrics:
+      - q.dispatch.depth [gauge variant=recv.dispatch.1 unit=count]: Current queue depth
+      - q.dispatch.depth_dist [summary variant=recv.dispatch.1 unit=count]: Distribution of observed queue depth values
+      - q.dispatch.drain [counter variant=recv.dispatch.1 unit=count]: Total queue dequeue events
+      - q.dispatch.enq [counter variant=recv.dispatch.1 unit=count]: Total queue enqueue events
+  - name: q.dispatch.recv.dispatch.2
+    function: 
+    description: 
+    metrics:
+      - q.dispatch.depth [gauge variant=recv.dispatch.2 unit=count]: Current queue depth
+      - q.dispatch.depth_dist [summary variant=recv.dispatch.2 unit=count]: Distribution of observed queue depth values
+      - q.dispatch.drain [counter variant=recv.dispatch.2 unit=count]: Total queue dequeue events
+      - q.dispatch.enq [counter variant=recv.dispatch.2 unit=count]: Total queue enqueue events
+  - name: q.dispatch.recv.dispatch.3
+    function: 
+    description: 
+    metrics:
+      - q.dispatch.depth [gauge variant=recv.dispatch.3 unit=count]: Current queue depth
+      - q.dispatch.depth_dist [summary variant=recv.dispatch.3 unit=count]: Distribution of observed queue depth values
+      - q.dispatch.drain [counter variant=recv.dispatch.3 unit=count]: Total queue dequeue events
+      - q.dispatch.enq [counter variant=recv.dispatch.3 unit=count]: Total queue enqueue events
+  - name: q.dispatch.recv.dispatch.4
+    function: 
+    description: 
+    metrics:
+      - q.dispatch.depth [gauge variant=recv.dispatch.4 unit=count]: Current queue depth
+      - q.dispatch.depth_dist [summary variant=recv.dispatch.4 unit=count]: Distribution of observed queue depth values
+      - q.dispatch.drain [counter variant=recv.dispatch.4 unit=count]: Total queue dequeue events
+      - q.dispatch.enq [counter variant=recv.dispatch.4 unit=count]: Total queue enqueue events
   - name: q.dispatch_rx.recv.0
     function: 
     description: 
@@ -2053,46 +2093,46 @@ channels:
       - q.dispatch_rx.depth_dist [summary variant=recv.4 unit=count]: Distribution of observed queue depth values
       - q.dispatch_rx.drain [counter variant=recv.4 unit=count]: Total queue dequeue events
       - q.dispatch_rx.enq [counter variant=recv.4 unit=count]: Total queue enqueue events
-  - name: q.idle_wheel.recv.0
+  - name: q.idle_wheel.recv.dispatch.0
     function: 
     description: 
     metrics:
-      - q.idle_wheel.depth [gauge variant=recv.0 unit=count]: Current queue depth
-      - q.idle_wheel.depth_dist [summary variant=recv.0 unit=count]: Distribution of observed queue depth values
-      - q.idle_wheel.drain [counter variant=recv.0 unit=count]: Total queue dequeue events
-      - q.idle_wheel.enq [counter variant=recv.0 unit=count]: Total queue enqueue events
-  - name: q.idle_wheel.recv.1
+      - q.idle_wheel.depth [gauge variant=recv.dispatch.0 unit=count]: Current queue depth
+      - q.idle_wheel.depth_dist [summary variant=recv.dispatch.0 unit=count]: Distribution of observed queue depth values
+      - q.idle_wheel.drain [counter variant=recv.dispatch.0 unit=count]: Total queue dequeue events
+      - q.idle_wheel.enq [counter variant=recv.dispatch.0 unit=count]: Total queue enqueue events
+  - name: q.idle_wheel.recv.dispatch.1
     function: 
     description: 
     metrics:
-      - q.idle_wheel.depth [gauge variant=recv.1 unit=count]: Current queue depth
-      - q.idle_wheel.depth_dist [summary variant=recv.1 unit=count]: Distribution of observed queue depth values
-      - q.idle_wheel.drain [counter variant=recv.1 unit=count]: Total queue dequeue events
-      - q.idle_wheel.enq [counter variant=recv.1 unit=count]: Total queue enqueue events
-  - name: q.idle_wheel.recv.2
+      - q.idle_wheel.depth [gauge variant=recv.dispatch.1 unit=count]: Current queue depth
+      - q.idle_wheel.depth_dist [summary variant=recv.dispatch.1 unit=count]: Distribution of observed queue depth values
+      - q.idle_wheel.drain [counter variant=recv.dispatch.1 unit=count]: Total queue dequeue events
+      - q.idle_wheel.enq [counter variant=recv.dispatch.1 unit=count]: Total queue enqueue events
+  - name: q.idle_wheel.recv.dispatch.2
     function: 
     description: 
     metrics:
-      - q.idle_wheel.depth [gauge variant=recv.2 unit=count]: Current queue depth
-      - q.idle_wheel.depth_dist [summary variant=recv.2 unit=count]: Distribution of observed queue depth values
-      - q.idle_wheel.drain [counter variant=recv.2 unit=count]: Total queue dequeue events
-      - q.idle_wheel.enq [counter variant=recv.2 unit=count]: Total queue enqueue events
-  - name: q.idle_wheel.recv.3
+      - q.idle_wheel.depth [gauge variant=recv.dispatch.2 unit=count]: Current queue depth
+      - q.idle_wheel.depth_dist [summary variant=recv.dispatch.2 unit=count]: Distribution of observed queue depth values
+      - q.idle_wheel.drain [counter variant=recv.dispatch.2 unit=count]: Total queue dequeue events
+      - q.idle_wheel.enq [counter variant=recv.dispatch.2 unit=count]: Total queue enqueue events
+  - name: q.idle_wheel.recv.dispatch.3
     function: 
     description: 
     metrics:
-      - q.idle_wheel.depth [gauge variant=recv.3 unit=count]: Current queue depth
-      - q.idle_wheel.depth_dist [summary variant=recv.3 unit=count]: Distribution of observed queue depth values
-      - q.idle_wheel.drain [counter variant=recv.3 unit=count]: Total queue dequeue events
-      - q.idle_wheel.enq [counter variant=recv.3 unit=count]: Total queue enqueue events
-  - name: q.idle_wheel.recv.4
+      - q.idle_wheel.depth [gauge variant=recv.dispatch.3 unit=count]: Current queue depth
+      - q.idle_wheel.depth_dist [summary variant=recv.dispatch.3 unit=count]: Distribution of observed queue depth values
+      - q.idle_wheel.drain [counter variant=recv.dispatch.3 unit=count]: Total queue dequeue events
+      - q.idle_wheel.enq [counter variant=recv.dispatch.3 unit=count]: Total queue enqueue events
+  - name: q.idle_wheel.recv.dispatch.4
     function: 
     description: 
     metrics:
-      - q.idle_wheel.depth [gauge variant=recv.4 unit=count]: Current queue depth
-      - q.idle_wheel.depth_dist [summary variant=recv.4 unit=count]: Distribution of observed queue depth values
-      - q.idle_wheel.drain [counter variant=recv.4 unit=count]: Total queue dequeue events
-      - q.idle_wheel.enq [counter variant=recv.4 unit=count]: Total queue enqueue events
+      - q.idle_wheel.depth [gauge variant=recv.dispatch.4 unit=count]: Current queue depth
+      - q.idle_wheel.depth_dist [summary variant=recv.dispatch.4 unit=count]: Distribution of observed queue depth values
+      - q.idle_wheel.drain [counter variant=recv.dispatch.4 unit=count]: Total queue dequeue events
+      - q.idle_wheel.enq [counter variant=recv.dispatch.4 unit=count]: Total queue enqueue events
   - name: q.invalidation.recv.0
     function: 
     description: 
@@ -2197,102 +2237,102 @@ channels:
       - q.resolver.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
       - q.resolver.drain [counter variant=send.3 unit=count]: Total queue dequeue events
       - q.resolver.enq [counter variant=send.3 unit=count]: Total queue enqueue events
-  - name: q.resolver_to_idle_wheel.send.0
+  - name: q.resolver_to_idle_wheel.send.worker.0
     function: 
     description: 
     metrics:
-      - q.resolver_to_idle_wheel.depth [gauge variant=send.0 unit=count]: Current queue depth
-      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.0 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_idle_wheel.drain [counter variant=send.0 unit=count]: Total queue dequeue events
-      - q.resolver_to_idle_wheel.enq [counter variant=send.0 unit=count]: Total queue enqueue events
-  - name: q.resolver_to_idle_wheel.send.1
+      - q.resolver_to_idle_wheel.depth [gauge variant=send.worker.0 unit=count]: Current queue depth
+      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.worker.0 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_idle_wheel.drain [counter variant=send.worker.0 unit=count]: Total queue dequeue events
+      - q.resolver_to_idle_wheel.enq [counter variant=send.worker.0 unit=count]: Total queue enqueue events
+  - name: q.resolver_to_idle_wheel.send.worker.1
     function: 
     description: 
     metrics:
-      - q.resolver_to_idle_wheel.depth [gauge variant=send.1 unit=count]: Current queue depth
-      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.1 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_idle_wheel.drain [counter variant=send.1 unit=count]: Total queue dequeue events
-      - q.resolver_to_idle_wheel.enq [counter variant=send.1 unit=count]: Total queue enqueue events
-  - name: q.resolver_to_idle_wheel.send.2
+      - q.resolver_to_idle_wheel.depth [gauge variant=send.worker.1 unit=count]: Current queue depth
+      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.worker.1 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_idle_wheel.drain [counter variant=send.worker.1 unit=count]: Total queue dequeue events
+      - q.resolver_to_idle_wheel.enq [counter variant=send.worker.1 unit=count]: Total queue enqueue events
+  - name: q.resolver_to_idle_wheel.send.worker.2
     function: 
     description: 
     metrics:
-      - q.resolver_to_idle_wheel.depth [gauge variant=send.2 unit=count]: Current queue depth
-      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.2 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_idle_wheel.drain [counter variant=send.2 unit=count]: Total queue dequeue events
-      - q.resolver_to_idle_wheel.enq [counter variant=send.2 unit=count]: Total queue enqueue events
-  - name: q.resolver_to_idle_wheel.send.3
+      - q.resolver_to_idle_wheel.depth [gauge variant=send.worker.2 unit=count]: Current queue depth
+      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.worker.2 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_idle_wheel.drain [counter variant=send.worker.2 unit=count]: Total queue dequeue events
+      - q.resolver_to_idle_wheel.enq [counter variant=send.worker.2 unit=count]: Total queue enqueue events
+  - name: q.resolver_to_idle_wheel.send.worker.3
     function: 
     description: 
     metrics:
-      - q.resolver_to_idle_wheel.depth [gauge variant=send.3 unit=count]: Current queue depth
-      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_idle_wheel.drain [counter variant=send.3 unit=count]: Total queue dequeue events
-      - q.resolver_to_idle_wheel.enq [counter variant=send.3 unit=count]: Total queue enqueue events
-  - name: q.resolver_to_pto_wheel.send.0
+      - q.resolver_to_idle_wheel.depth [gauge variant=send.worker.3 unit=count]: Current queue depth
+      - q.resolver_to_idle_wheel.depth_dist [summary variant=send.worker.3 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_idle_wheel.drain [counter variant=send.worker.3 unit=count]: Total queue dequeue events
+      - q.resolver_to_idle_wheel.enq [counter variant=send.worker.3 unit=count]: Total queue enqueue events
+  - name: q.resolver_to_pto_wheel.send.worker.0
     function: 
     description: 
     metrics:
-      - q.resolver_to_pto_wheel.depth [gauge variant=send.0 unit=count]: Current queue depth
-      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.0 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_pto_wheel.drain [counter variant=send.0 unit=count]: Total queue dequeue events
-      - q.resolver_to_pto_wheel.enq [counter variant=send.0 unit=count]: Total queue enqueue events
-  - name: q.resolver_to_pto_wheel.send.1
+      - q.resolver_to_pto_wheel.depth [gauge variant=send.worker.0 unit=count]: Current queue depth
+      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.worker.0 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_pto_wheel.drain [counter variant=send.worker.0 unit=count]: Total queue dequeue events
+      - q.resolver_to_pto_wheel.enq [counter variant=send.worker.0 unit=count]: Total queue enqueue events
+  - name: q.resolver_to_pto_wheel.send.worker.1
     function: 
     description: 
     metrics:
-      - q.resolver_to_pto_wheel.depth [gauge variant=send.1 unit=count]: Current queue depth
-      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.1 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_pto_wheel.drain [counter variant=send.1 unit=count]: Total queue dequeue events
-      - q.resolver_to_pto_wheel.enq [counter variant=send.1 unit=count]: Total queue enqueue events
-  - name: q.resolver_to_pto_wheel.send.2
+      - q.resolver_to_pto_wheel.depth [gauge variant=send.worker.1 unit=count]: Current queue depth
+      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.worker.1 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_pto_wheel.drain [counter variant=send.worker.1 unit=count]: Total queue dequeue events
+      - q.resolver_to_pto_wheel.enq [counter variant=send.worker.1 unit=count]: Total queue enqueue events
+  - name: q.resolver_to_pto_wheel.send.worker.2
     function: 
     description: 
     metrics:
-      - q.resolver_to_pto_wheel.depth [gauge variant=send.2 unit=count]: Current queue depth
-      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.2 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_pto_wheel.drain [counter variant=send.2 unit=count]: Total queue dequeue events
-      - q.resolver_to_pto_wheel.enq [counter variant=send.2 unit=count]: Total queue enqueue events
-  - name: q.resolver_to_pto_wheel.send.3
+      - q.resolver_to_pto_wheel.depth [gauge variant=send.worker.2 unit=count]: Current queue depth
+      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.worker.2 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_pto_wheel.drain [counter variant=send.worker.2 unit=count]: Total queue dequeue events
+      - q.resolver_to_pto_wheel.enq [counter variant=send.worker.2 unit=count]: Total queue enqueue events
+  - name: q.resolver_to_pto_wheel.send.worker.3
     function: 
     description: 
     metrics:
-      - q.resolver_to_pto_wheel.depth [gauge variant=send.3 unit=count]: Current queue depth
-      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_pto_wheel.drain [counter variant=send.3 unit=count]: Total queue dequeue events
-      - q.resolver_to_pto_wheel.enq [counter variant=send.3 unit=count]: Total queue enqueue events
-  - name: q.resolver_to_tx_wheel.send.0
+      - q.resolver_to_pto_wheel.depth [gauge variant=send.worker.3 unit=count]: Current queue depth
+      - q.resolver_to_pto_wheel.depth_dist [summary variant=send.worker.3 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_pto_wheel.drain [counter variant=send.worker.3 unit=count]: Total queue dequeue events
+      - q.resolver_to_pto_wheel.enq [counter variant=send.worker.3 unit=count]: Total queue enqueue events
+  - name: q.resolver_to_tx_wheel.send.worker.0
     function: 
     description: 
     metrics:
-      - q.resolver_to_tx_wheel.depth [gauge variant=send.0 unit=count]: Current queue depth
-      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.0 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_tx_wheel.drain [counter variant=send.0 unit=count]: Total queue dequeue events
-      - q.resolver_to_tx_wheel.enq [counter variant=send.0 unit=count]: Total queue enqueue events
-  - name: q.resolver_to_tx_wheel.send.1
+      - q.resolver_to_tx_wheel.depth [gauge variant=send.worker.0 unit=count]: Current queue depth
+      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.worker.0 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_tx_wheel.drain [counter variant=send.worker.0 unit=count]: Total queue dequeue events
+      - q.resolver_to_tx_wheel.enq [counter variant=send.worker.0 unit=count]: Total queue enqueue events
+  - name: q.resolver_to_tx_wheel.send.worker.1
     function: 
     description: 
     metrics:
-      - q.resolver_to_tx_wheel.depth [gauge variant=send.1 unit=count]: Current queue depth
-      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.1 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_tx_wheel.drain [counter variant=send.1 unit=count]: Total queue dequeue events
-      - q.resolver_to_tx_wheel.enq [counter variant=send.1 unit=count]: Total queue enqueue events
-  - name: q.resolver_to_tx_wheel.send.2
+      - q.resolver_to_tx_wheel.depth [gauge variant=send.worker.1 unit=count]: Current queue depth
+      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.worker.1 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_tx_wheel.drain [counter variant=send.worker.1 unit=count]: Total queue dequeue events
+      - q.resolver_to_tx_wheel.enq [counter variant=send.worker.1 unit=count]: Total queue enqueue events
+  - name: q.resolver_to_tx_wheel.send.worker.2
     function: 
     description: 
     metrics:
-      - q.resolver_to_tx_wheel.depth [gauge variant=send.2 unit=count]: Current queue depth
-      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.2 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_tx_wheel.drain [counter variant=send.2 unit=count]: Total queue dequeue events
-      - q.resolver_to_tx_wheel.enq [counter variant=send.2 unit=count]: Total queue enqueue events
-  - name: q.resolver_to_tx_wheel.send.3
+      - q.resolver_to_tx_wheel.depth [gauge variant=send.worker.2 unit=count]: Current queue depth
+      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.worker.2 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_tx_wheel.drain [counter variant=send.worker.2 unit=count]: Total queue dequeue events
+      - q.resolver_to_tx_wheel.enq [counter variant=send.worker.2 unit=count]: Total queue enqueue events
+  - name: q.resolver_to_tx_wheel.send.worker.3
     function: 
     description: 
     metrics:
-      - q.resolver_to_tx_wheel.depth [gauge variant=send.3 unit=count]: Current queue depth
-      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
-      - q.resolver_to_tx_wheel.drain [counter variant=send.3 unit=count]: Total queue dequeue events
-      - q.resolver_to_tx_wheel.enq [counter variant=send.3 unit=count]: Total queue enqueue events
+      - q.resolver_to_tx_wheel.depth [gauge variant=send.worker.3 unit=count]: Current queue depth
+      - q.resolver_to_tx_wheel.depth_dist [summary variant=send.worker.3 unit=count]: Distribution of observed queue depth values
+      - q.resolver_to_tx_wheel.drain [counter variant=send.worker.3 unit=count]: Total queue dequeue events
+      - q.resolver_to_tx_wheel.enq [counter variant=send.worker.3 unit=count]: Total queue enqueue events
   - name: q.router_to_batcher.p0
     function: 
     description: 
@@ -4392,127 +4432,127 @@ channels:
 bindings:
   - task: task.ack_completion
     direction: receives
-    channel: q.dispatch.recv.0
+    channel: q.dispatch.recv.dispatch.0
     function: endpoint::Worker::spawn
     description: Queue receives performed by task.ack_completion
   - task: task.ack_completion
     direction: receives
-    channel: q.dispatch.recv.1
+    channel: q.dispatch.recv.dispatch.1
     function: endpoint::Worker::spawn
     description: Queue receives performed by task.ack_completion
   - task: task.ack_completion
     direction: receives
-    channel: q.dispatch.recv.2
+    channel: q.dispatch.recv.dispatch.2
     function: endpoint::Worker::spawn
     description: Queue receives performed by task.ack_completion
   - task: task.ack_completion
     direction: receives
-    channel: q.dispatch.recv.3
+    channel: q.dispatch.recv.dispatch.3
     function: endpoint::Worker::spawn
     description: Queue receives performed by task.ack_completion
   - task: task.ack_completion
     direction: receives
-    channel: q.dispatch.recv.4
+    channel: q.dispatch.recv.dispatch.4
     function: endpoint::Worker::spawn
     description: Queue receives performed by task.ack_completion
   - task: task.ack_processor
     direction: sends
-    channel: ch.ack_to_cancelled.send.0
+    channel: ch.ack_to_cancelled.send.worker.0
     function: endpoint::tasks::send_worker
     description: ACK processor emits cancelled frames
   - task: task.ack_processor
     direction: sends
-    channel: ch.ack_to_cancelled.send.1
+    channel: ch.ack_to_cancelled.send.worker.1
     function: endpoint::tasks::send_worker
     description: ACK processor emits cancelled frames
   - task: task.ack_processor
     direction: sends
-    channel: ch.ack_to_cancelled.send.2
+    channel: ch.ack_to_cancelled.send.worker.2
     function: endpoint::tasks::send_worker
     description: ACK processor emits cancelled frames
   - task: task.ack_processor
     direction: sends
-    channel: ch.ack_to_cancelled.send.3
+    channel: ch.ack_to_cancelled.send.worker.3
     function: endpoint::tasks::send_worker
     description: ACK processor emits cancelled frames
   - task: task.ack_processor
     direction: sends
-    channel: ch.ack_to_completion.send.0
+    channel: ch.ack_to_completion.send.worker.0
     function: endpoint::tasks::send_worker
     description: ACK processor emits completed frames
   - task: task.ack_processor
     direction: sends
-    channel: ch.ack_to_completion.send.1
+    channel: ch.ack_to_completion.send.worker.1
     function: endpoint::tasks::send_worker
     description: ACK processor emits completed frames
   - task: task.ack_processor
     direction: sends
-    channel: ch.ack_to_completion.send.2
+    channel: ch.ack_to_completion.send.worker.2
     function: endpoint::tasks::send_worker
     description: ACK processor emits completed frames
   - task: task.ack_processor
     direction: sends
-    channel: ch.ack_to_completion.send.3
+    channel: ch.ack_to_completion.send.worker.3
     function: endpoint::tasks::send_worker
     description: ACK processor emits completed frames
   - task: task.ack_processor
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: ACK processor updates idle scheduling
   - task: task.ack_processor
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: ACK processor updates idle scheduling
   - task: task.ack_processor
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: ACK processor updates idle scheduling
   - task: task.ack_processor
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: ACK processor updates idle scheduling
   - task: task.ack_processor
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: ACK processor updates PTO scheduling
   - task: task.ack_processor
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: ACK processor updates PTO scheduling
   - task: task.ack_processor
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: ACK processor updates PTO scheduling
   - task: task.ack_processor
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: ACK processor updates PTO scheduling
   - task: task.ack_processor
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: ACK processor re-schedules transmission work
   - task: task.ack_processor
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: ACK processor re-schedules transmission work
   - task: task.ack_processor
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: ACK processor re-schedules transmission work
   - task: task.ack_processor
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: ACK processor re-schedules transmission work
   - task: task.ack_processor
@@ -4537,17 +4577,17 @@ bindings:
     description: Queue receives performed by task.ack_processor
   - task: task.assembler.send.0
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.0
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.0
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.0
@@ -4557,17 +4597,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.1
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.1
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.1
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.1
@@ -4577,17 +4617,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.10
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.10
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.10
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.10
@@ -4597,17 +4637,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.11
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.11
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.11
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.11
@@ -4617,17 +4657,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.12
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.12
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.12
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.12
@@ -4637,17 +4677,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.13
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.13
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.13
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.13
@@ -4657,17 +4697,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.14
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.14
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.14
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.14
@@ -4677,17 +4717,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.15
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.15
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.15
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.15
@@ -4697,17 +4737,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.16
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.16
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.16
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.16
@@ -4717,17 +4757,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.17
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.17
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.17
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.17
@@ -4737,17 +4777,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.18
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.18
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.18
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.18
@@ -4757,17 +4797,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.19
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.19
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.19
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.19
@@ -4777,17 +4817,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.2
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.2
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.2
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.2
@@ -4797,17 +4837,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.20
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.20
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.20
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.20
@@ -4817,17 +4857,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.21
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.21
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.21
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.21
@@ -4837,17 +4877,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.22
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.22
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.22
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.22
@@ -4857,17 +4897,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.23
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.23
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.23
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.23
@@ -4877,17 +4917,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.24
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.24
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.24
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.24
@@ -4897,17 +4937,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.25
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.25
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.25
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.25
@@ -4917,17 +4957,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.26
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.26
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.26
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.26
@@ -4937,17 +4977,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.27
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.27
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.27
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.27
@@ -4957,17 +4997,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.28
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.28
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.28
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.28
@@ -4977,17 +5017,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.29
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.29
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.29
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.29
@@ -4997,17 +5037,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.3
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.3
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.3
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.3
@@ -5017,17 +5057,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.30
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.30
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.30
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.30
@@ -5037,17 +5077,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.31
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.31
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.31
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.31
@@ -5057,17 +5097,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.32
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.32
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.32
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.32
@@ -5077,17 +5117,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.33
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.33
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.33
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.33
@@ -5097,17 +5137,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.34
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.34
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.34
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.34
@@ -5117,17 +5157,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.35
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.35
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.35
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.35
@@ -5137,17 +5177,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.36
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.36
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.36
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.36
@@ -5157,17 +5197,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.37
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.37
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.37
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.37
@@ -5177,17 +5217,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.38
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.38
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.38
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.38
@@ -5197,17 +5237,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.39
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.39
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.39
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.39
@@ -5217,17 +5257,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.4
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.4
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.4
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.4
@@ -5237,17 +5277,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.40
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.40
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.40
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.40
@@ -5257,17 +5297,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.41
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.41
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.41
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.41
@@ -5277,17 +5317,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.42
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.42
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.42
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.42
@@ -5297,17 +5337,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.43
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.43
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.43
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.43
@@ -5317,17 +5357,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.44
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.44
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.44
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.44
@@ -5337,17 +5377,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.45
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.45
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.45
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.45
@@ -5357,17 +5397,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.46
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.46
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.46
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.46
@@ -5377,17 +5417,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.47
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.47
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.47
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.47
@@ -5397,17 +5437,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.48
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.48
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.48
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.48
@@ -5417,17 +5457,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.49
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.49
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.49
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.49
@@ -5437,17 +5477,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.5
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.5
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.5
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.5
@@ -5457,17 +5497,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.50
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.50
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.50
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.50
@@ -5477,17 +5517,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.51
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.51
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.51
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.51
@@ -5497,17 +5537,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.52
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.52
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.52
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.52
@@ -5517,17 +5557,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.53
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.53
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.53
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.53
@@ -5537,17 +5577,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.54
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.54
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.54
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.54
@@ -5557,17 +5597,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.55
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.55
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.55
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.55
@@ -5577,17 +5617,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.56
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.56
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.56
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.56
@@ -5597,17 +5637,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.57
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.57
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.57
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.57
@@ -5617,17 +5657,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.58
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.58
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.58
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.58
@@ -5637,17 +5677,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.59
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.59
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.59
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.59
@@ -5657,17 +5697,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.6
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.6
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.6
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.6
@@ -5677,17 +5717,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.60
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.60
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.60
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.60
@@ -5697,17 +5737,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.61
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.61
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.61
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.61
@@ -5717,17 +5757,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.62
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.62
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.62
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.62
@@ -5737,17 +5777,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.63
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.63
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.63
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.63
@@ -5757,17 +5797,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.7
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.7
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.7
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.7
@@ -5777,17 +5817,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.8
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.8
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.8
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.8
@@ -5797,17 +5837,17 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.assembler.send.9
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler updates idle wheel scheduling
   - task: task.assembler.send.9
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules PTO wheel work
   - task: task.assembler.send.9
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Assembler schedules immediate transmit wheel work
   - task: task.assembler.send.9
@@ -5817,102 +5857,102 @@ bindings:
     description: Assembler drains contexts assigned to this socket
   - task: task.cancelled
     direction: receives
-    channel: ch.ack_to_cancelled.send.0
+    channel: ch.ack_to_cancelled.send.worker.0
     function: endpoint::tasks::send_worker
     description: Cancelled task drains cancelled frames
   - task: task.cancelled
     direction: receives
-    channel: ch.ack_to_cancelled.send.1
+    channel: ch.ack_to_cancelled.send.worker.1
     function: endpoint::tasks::send_worker
     description: Cancelled task drains cancelled frames
   - task: task.cancelled
     direction: receives
-    channel: ch.ack_to_cancelled.send.2
+    channel: ch.ack_to_cancelled.send.worker.2
     function: endpoint::tasks::send_worker
     description: Cancelled task drains cancelled frames
   - task: task.cancelled
     direction: receives
-    channel: ch.ack_to_cancelled.send.3
+    channel: ch.ack_to_cancelled.send.worker.3
     function: endpoint::tasks::send_worker
     description: Cancelled task drains cancelled frames
   - task: task.completion
     direction: receives
-    channel: ch.ack_to_completion.send.0
+    channel: ch.ack_to_completion.send.worker.0
     function: endpoint::tasks::send_worker
     description: Completion task drains completed frames
   - task: task.completion
     direction: receives
-    channel: ch.ack_to_completion.send.1
+    channel: ch.ack_to_completion.send.worker.1
     function: endpoint::tasks::send_worker
     description: Completion task drains completed frames
   - task: task.completion
     direction: receives
-    channel: ch.ack_to_completion.send.2
+    channel: ch.ack_to_completion.send.worker.2
     function: endpoint::tasks::send_worker
     description: Completion task drains completed frames
   - task: task.completion
     direction: receives
-    channel: ch.ack_to_completion.send.3
+    channel: ch.ack_to_completion.send.worker.3
     function: endpoint::tasks::send_worker
     description: Completion task drains completed frames
   - task: task.context_resolver
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Context resolver tracks idle expiry
   - task: task.context_resolver
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Context resolver tracks idle expiry
   - task: task.context_resolver
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Context resolver tracks idle expiry
   - task: task.context_resolver
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Context resolver tracks idle expiry
   - task: task.context_resolver
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Context resolver schedules PTO checks
   - task: task.context_resolver
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Context resolver schedules PTO checks
   - task: task.context_resolver
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Context resolver schedules PTO checks
   - task: task.context_resolver
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Context resolver schedules PTO checks
   - task: task.context_resolver
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: Context resolver schedules transmission work
   - task: task.context_resolver
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: Context resolver schedules transmission work
   - task: task.context_resolver
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: Context resolver schedules transmission work
   - task: task.context_resolver
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: Context resolver schedules transmission work
   - task: task.context_resolver
@@ -5962,42 +6002,42 @@ bindings:
     description: Frame dispatch drains per-lane queues
   - task: task.idle_wheel
     direction: sends
-    channel: ch.ack_to_completion.send.0
+    channel: ch.ack_to_completion.send.worker.0
     function: endpoint::tasks::send_worker
     description: Idle wheel emits PeerDead frames as completions
   - task: task.idle_wheel
     direction: sends
-    channel: ch.ack_to_completion.send.1
+    channel: ch.ack_to_completion.send.worker.1
     function: endpoint::tasks::send_worker
     description: Idle wheel emits PeerDead frames as completions
   - task: task.idle_wheel
     direction: sends
-    channel: ch.ack_to_completion.send.2
+    channel: ch.ack_to_completion.send.worker.2
     function: endpoint::tasks::send_worker
     description: Idle wheel emits PeerDead frames as completions
   - task: task.idle_wheel
     direction: sends
-    channel: ch.ack_to_completion.send.3
+    channel: ch.ack_to_completion.send.worker.3
     function: endpoint::tasks::send_worker
     description: Idle wheel emits PeerDead frames as completions
   - task: task.invalidation
     direction: sends
-    channel: ch.ack_to_completion.send.0
+    channel: ch.ack_to_completion.send.worker.0
     function: endpoint::tasks::send_worker
     description: Invalidation task emits failed frames as completions
   - task: task.invalidation
     direction: sends
-    channel: ch.ack_to_completion.send.1
+    channel: ch.ack_to_completion.send.worker.1
     function: endpoint::tasks::send_worker
     description: Invalidation task emits failed frames as completions
   - task: task.invalidation
     direction: sends
-    channel: ch.ack_to_completion.send.2
+    channel: ch.ack_to_completion.send.worker.2
     function: endpoint::tasks::send_worker
     description: Invalidation task emits failed frames as completions
   - task: task.invalidation
     direction: sends
-    channel: ch.ack_to_completion.send.3
+    channel: ch.ack_to_completion.send.worker.3
     function: endpoint::tasks::send_worker
     description: Invalidation task emits failed frames as completions
   - task: task.packet_dispatch
@@ -6027,82 +6067,82 @@ bindings:
     description: Queue receives performed by task.packet_dispatch
   - task: task.pto_wheel
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.0
+    channel: ch.resolver_to_idle_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: PTO wheel updates idle scheduling
   - task: task.pto_wheel
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.1
+    channel: ch.resolver_to_idle_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: PTO wheel updates idle scheduling
   - task: task.pto_wheel
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.2
+    channel: ch.resolver_to_idle_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: PTO wheel updates idle scheduling
   - task: task.pto_wheel
     direction: sends
-    channel: ch.resolver_to_idle_wheel.send.3
+    channel: ch.resolver_to_idle_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: PTO wheel updates idle scheduling
   - task: task.pto_wheel
     direction: receives
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: PTO wheel drains scheduled contexts
   - task: task.pto_wheel
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.0
+    channel: ch.resolver_to_pto_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: PTO wheel re-enqueues contexts after timeout processing
   - task: task.pto_wheel
     direction: receives
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: PTO wheel drains scheduled contexts
   - task: task.pto_wheel
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.1
+    channel: ch.resolver_to_pto_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: PTO wheel re-enqueues contexts after timeout processing
   - task: task.pto_wheel
     direction: receives
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: PTO wheel drains scheduled contexts
   - task: task.pto_wheel
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.2
+    channel: ch.resolver_to_pto_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: PTO wheel re-enqueues contexts after timeout processing
   - task: task.pto_wheel
     direction: receives
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: PTO wheel drains scheduled contexts
   - task: task.pto_wheel
     direction: sends
-    channel: ch.resolver_to_pto_wheel.send.3
+    channel: ch.resolver_to_pto_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: PTO wheel re-enqueues contexts after timeout processing
   - task: task.pto_wheel
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.0
+    channel: ch.resolver_to_tx_wheel.send.worker.0
     function: endpoint::tasks::send_worker
     description: PTO wheel requests probe transmissions
   - task: task.pto_wheel
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.1
+    channel: ch.resolver_to_tx_wheel.send.worker.1
     function: endpoint::tasks::send_worker
     description: PTO wheel requests probe transmissions
   - task: task.pto_wheel
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.2
+    channel: ch.resolver_to_tx_wheel.send.worker.2
     function: endpoint::tasks::send_worker
     description: PTO wheel requests probe transmissions
   - task: task.pto_wheel
     direction: sends
-    channel: ch.resolver_to_tx_wheel.send.3
+    channel: ch.resolver_to_tx_wheel.send.worker.3
     function: endpoint::tasks::send_worker
     description: PTO wheel requests probe transmissions
   - task: task.tx_wheel

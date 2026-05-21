@@ -6,6 +6,7 @@
 use crate::{
     counter::{Counter, Registry},
     credentials,
+    endpoint::id::{Id, IdMap, RecvDispatchWorkerId, RemoteSenderId},
     intrusive::Entry,
     packet::{self, datagram::RoutingInfo},
     socket::{channel, pool::descriptor, recv::router::Router},
@@ -22,20 +23,24 @@ use s2n_quic_core::varint::VarInt;
 /// This ensures that all packets from the same peer always land in the same
 /// dispatch task, maintaining coherent ACK space and packet-number deduplication.
 pub(crate) struct FanOutRouter<D, Route, Inv> {
-    txs: Vec<D>,
+    txs: IdMap<RecvDispatchWorkerId, D>,
     route: Route,
     invalidation_tx: Inv,
     decode_error_counter: Counter,
     routed_counter: Counter,
     route_send_err_counter: Counter,
-    per_worker_routed: Vec<Counter>,
+    per_worker_routed: IdMap<RecvDispatchWorkerId, Counter>,
 }
 
 impl<D, Route: routing::SenderRoute, Inv> FanOutRouter<D, Route, Inv> {
-    pub fn new(txs: Vec<D>, invalidation_tx: Inv, counters: &Registry) -> Self {
+    pub fn new(
+        txs: IdMap<RecvDispatchWorkerId, D>,
+        invalidation_tx: Inv,
+        counters: &Registry,
+    ) -> Self {
         let route = Route::new(txs.len());
-        let per_worker_routed = (0..txs.len())
-            .map(|i| counters.register_nominal("router.routed", format_args!("recv.{i}")))
+        let per_worker_routed = RecvDispatchWorkerId::range(txs.len())
+            .map(|id| (id, counters.register_nominal("router.routed", format_args!("recv.{id}"))))
             .collect();
         Self {
             txs,
@@ -68,6 +73,7 @@ where
             info!(?packet, "invalid packet routing info");
             return;
         };
+        let source_sender_id = RemoteSenderId::new(source_sender_id);
         let idx = self
             .route
             .worker_id_for_recv(packet.credentials(), source_sender_id);

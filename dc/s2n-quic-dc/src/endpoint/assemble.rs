@@ -13,6 +13,7 @@ use crate::{
     endpoint::{
         combinator::AssemblerCounters,
         frame::{self, Frame},
+        id::LocalSenderId,
         inflight, msg,
         send::{Context, PathInfo},
     },
@@ -55,7 +56,7 @@ mod tests;
 pub(crate) fn assemble<Clk>(
     context: &mut Context,
     clock: &Clk,
-    source_sender_id: VarInt,
+    source_sender_id: LocalSenderId,
     source_control_port: u16,
     gso: &Gso,
     pool: &pool::Pool,
@@ -173,7 +174,7 @@ where
 
                 let frame = Frame {
                     header,
-                    source_sender_id: submission.local_sender_id.as_varint(),
+                    source_sender_id: submission.local_sender_id,
                     payload: submission.body.clone().into(),
                     path_secret_entry: submission.path_secret_entry.clone(),
                     completion: None,
@@ -462,7 +463,7 @@ fn assemble_probe(
     context: &mut Context,
     metadata: &mut MetadataEstimate,
     packet_frames: &mut Queue<Frame>,
-    source_sender_id: VarInt,
+    source_sender_id: LocalSenderId,
     source_control_port: u16,
     max_segment_len: usize,
     cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
@@ -570,7 +571,7 @@ impl MetadataEstimate {
     #[inline]
     fn estimate_packet_len(
         &self,
-        source_sender_id: VarInt,
+        source_sender_id: LocalSenderId,
         source_control_port: u16,
         credentials: &Credentials,
         crypto_tag_len: usize,
@@ -578,7 +579,9 @@ impl MetadataEstimate {
         let header_len = VarInt::new(self.header_len as u64).expect("header length fits in VarInt");
         let payload_len =
             VarInt::new(self.payload_len as u64).expect("payload length fits in VarInt");
-        let routing_info = RoutingInfo::SenderId { source_sender_id };
+        let routing_info = RoutingInfo::SenderId {
+            source_sender_id: source_sender_id.as_varint(),
+        };
 
         crate::packet::datagram::Tag::default().encoding_size()
             + credentials.encoding_size()
@@ -610,7 +613,7 @@ impl MetadataEstimate {
 fn encode_segment<S: seal::Application>(
     buf: &mut [u8],
     source_control_port: u16,
-    source_sender_id: VarInt,
+    source_sender_id: LocalSenderId,
     packet_number: VarInt,
     sealer: &S,
     credentials: &Credentials,
@@ -618,7 +621,9 @@ fn encode_segment<S: seal::Application>(
     frames: &mut Queue<Frame>,
     header_buf: &mut Vec<u8>,
 ) -> usize {
-    let routing_info = RoutingInfo::SenderId { source_sender_id };
+    let routing_info = RoutingInfo::SenderId {
+        source_sender_id: source_sender_id.as_varint(),
+    };
 
     // Build the application header: per-frame metadata entries.
     // This also stamps assigned attempt_ids back into FlowInit frame headers so
@@ -653,24 +658,23 @@ fn encode_segment<S: seal::Application>(
 fn encode_frame_metadata(
     frames: &mut Queue<Frame>,
     flow_attempt_id: &mut VarInt,
-    source_sender_id: VarInt,
+    source_sender_id: LocalSenderId,
     header_buf: &mut Vec<u8>,
 ) -> usize {
     header_buf.clear();
-    let sender_idx = source_sender_id.as_u64() as usize;
     let mut total_payload_len = 0usize;
 
     for frame in frames.iter_mut() {
         if let frame::Header::FlowInit { stream_id, .. } = &frame.header {
             trace!(
                 stream_id = stream_id.as_u64(),
-                sender_idx,
+                %source_sender_id,
                 flow_attempt_id_counter = flow_attempt_id.as_u64(),
                 "encode_frame_metadata: encoding FlowInit"
             );
         }
         stamp_attempt_id(&mut frame.header, flow_attempt_id);
-        stamp_sender_id(frame, source_sender_id, sender_idx);
+        stamp_sender_id(frame, source_sender_id);
         push_frame_metadata(header_buf, &frame.header, frame.payload_len());
 
         total_payload_len += frame.payload_len();
@@ -757,32 +761,31 @@ fn stamp_attempt_id(header: &mut frame::Header, flow_attempt_id: &mut VarInt) {
 ///
 /// Frames that already carry a sticky sender_id (FlowInitReset, FlowInitFin) are
 /// validated to ensure they arrived at the correct assembler.
-fn stamp_sender_id(frame: &mut Frame, source_sender_id: VarInt, sender_idx: usize) {
+fn stamp_sender_id(frame: &mut Frame, source_sender_id: LocalSenderId) {
     match &frame.header {
         frame::Header::FlowInit { attempt_id, .. } => {
-            if frame.source_sender_id == VarInt::MAX {
+            if frame.source_sender_id == LocalSenderId::UNSPECIFIED {
                 frame.source_sender_id = source_sender_id;
             } else {
                 debug_assert_eq!(
-                    frame.source_sender_id,
-                    source_sender_id,
+                    frame.source_sender_id, source_sender_id,
                     "FlowInit routed to wrong sender: frame={} assembler={}",
-                    frame.source_sender_id.as_u64(),
-                    source_sender_id.as_u64(),
+                    frame.source_sender_id, source_sender_id,
                 );
             }
 
             if let Some(completion) = &frame.completion {
-                completion.set_init_sender_idx(sender_idx);
+                completion.set_init_sender_idx(source_sender_id);
                 completion.set_init_attempt_id(*attempt_id);
             }
         }
         _ => {
             debug_assert!(
-                frame.source_sender_id == VarInt::MAX || frame.source_sender_id == source_sender_id,
+                frame.source_sender_id == LocalSenderId::UNSPECIFIED
+                    || frame.source_sender_id == source_sender_id,
                 "frame routed to wrong sender: frame={} assembler={}",
-                frame.source_sender_id.as_u64(),
-                source_sender_id.as_u64(),
+                frame.source_sender_id,
+                source_sender_id,
             );
         }
     }

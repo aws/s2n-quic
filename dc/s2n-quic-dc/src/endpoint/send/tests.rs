@@ -10,6 +10,7 @@ use crate::{
     endpoint::{
         combinator::FrameBatch,
         frame::{Frame, Header, TransmissionStatus, DEFAULT_TTL},
+        id::Id,
     },
     packet::datagram::QueuePair,
     path::secret::map::Entry as PathSecretEntry,
@@ -54,7 +55,7 @@ fn make_frame(payload_len: usize) -> crate::intrusive::Entry<Frame> {
             offset: s2n_quic_core::varint::VarInt::ZERO,
             is_fin: false,
         },
-        source_sender_id: s2n_quic_core::varint::VarInt::MAX,
+        source_sender_id: crate::endpoint::id::LocalSenderId::new(s2n_quic_core::varint::VarInt::MAX),
         payload,
         path_secret_entry: make_path_secret_entry(),
         completion: None,
@@ -468,7 +469,7 @@ fn make_context_with_sender_slots(
         registry.register_queue_gauge("test.inflight"),
         registry.register_queue_gauge("test.ack"),
         registry.register_queue_gauge("test.pending"),
-        crate::endpoint::id::SenderIdx::new(0),
+        crate::endpoint::id::LocalSenderId::from_index(0),
         &crate::time::bach::Clock::default(),
     )
     .expect("Context::new should succeed with peer_data_addrs populated");
@@ -491,7 +492,7 @@ fn push_batch_immediately_refreshes_sender_load_score() {
 
     // Establish a baseline: score with no queued frames at this instant.
     ctx.publish_sender_load_score(now);
-    let score_empty_queue = entry.sender_load_score(0);
+    let score_empty_queue = entry.sender_load_score(crate::endpoint::id::LocalSenderId::from_index(0));
 
     // Enqueue a frame with a non-trivial payload.
     let frame = make_frame(512);
@@ -501,7 +502,7 @@ fn push_batch_immediately_refreshes_sender_load_score() {
     // push_batch must have refreshed the score and the new score must be strictly
     // higher than the empty-queue baseline — the difference is the drain delay for
     // the enqueued bytes.
-    let score_with_frame = entry.sender_load_score(0);
+    let score_with_frame = entry.sender_load_score(crate::endpoint::id::LocalSenderId::from_index(0));
     assert!(
         score_with_frame > score_empty_queue,
         "push_batch should include the enqueued frame's drain delay in the score; \
@@ -542,8 +543,8 @@ fn cwnd_limited_adds_rtt_penalty_to_load_score() {
     ctx_congested.publish_sender_load_score(now);
     ctx_idle.publish_sender_load_score(now);
 
-    let score_congested = entry_congested.sender_load_score(0);
-    let score_idle = entry_idle.sender_load_score(0);
+    let score_congested = entry_congested.sender_load_score(crate::endpoint::id::LocalSenderId::from_index(0));
+    let score_idle = entry_idle.sender_load_score(crate::endpoint::id::LocalSenderId::from_index(0));
 
     assert!(
         score_congested > score_idle,
@@ -608,8 +609,8 @@ fn edt_floor_raises_score_when_pacing_gated() {
     ctx_paced.publish_sender_load_score(now_before_edt);
     ctx_idle.publish_sender_load_score(now_before_edt);
 
-    let score_paced = entry_paced.sender_load_score(0);
-    let score_idle = entry_idle.sender_load_score(0);
+    let score_paced = entry_paced.sender_load_score(crate::endpoint::id::LocalSenderId::from_index(0));
+    let score_idle = entry_idle.sender_load_score(crate::endpoint::id::LocalSenderId::from_index(0));
 
     // The pacing-gated sender must not look cheaper than the idle sender.
     assert!(

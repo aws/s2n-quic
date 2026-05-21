@@ -82,6 +82,7 @@ use crate::{
     endpoint::{
         error::{self, Error},
         frame::{self, FailureReason, Frame, Header, SubmissionSender, DEFAULT_TTL},
+        id::LocalSenderId,
         msg,
     },
     intrusive,
@@ -923,7 +924,7 @@ impl Inner {
         };
 
         let frame = Frame {
-            source_sender_id: VarInt::MAX,
+            source_sender_id: LocalSenderId::UNSPECIFIED,
             header: Header::FlowMaxData {
                 queue_pair: QueuePair {
                     source_queue_id: self.stream_rx.queue_id(),
@@ -961,7 +962,7 @@ impl Inner {
         };
 
         let frame = Frame {
-            source_sender_id: VarInt::MAX,
+            source_sender_id: LocalSenderId::UNSPECIFIED,
             header: Header::FlowReset {
                 dest_queue_id: remote_queue_id,
                 stream_id: self.stream_id,

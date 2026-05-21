@@ -64,6 +64,7 @@ fn extract_credential_id(packet: &[u8]) -> Option<credentials::Id> {
 /// Maintains a fixed-capacity map of credential_id → last-sent timestamp.
 /// When the map exceeds capacity, it is cleared entirely (acceptable loss of
 /// dedup accuracy for simplicity).
+#[expect(dead_code)]
 pub struct DedupFilter {
     seen: HashMap<credentials::Id, Timestamp>,
     capacity: usize,

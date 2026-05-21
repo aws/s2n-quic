@@ -74,6 +74,7 @@ use crate::{
             self, FailureReason, Frame, Header, HomogeneousBatch, Priority, SubmissionSender,
             TransmissionStatus, DEFAULT_TTL, MAX_FLOW_DATA_HEADER_OVERHEAD,
         },
+        id::LocalSenderId,
         msg,
     },
     intrusive::{Entry, Queue},
@@ -548,7 +549,7 @@ impl Inner {
         };
 
         let frame = Frame {
-            source_sender_id: VarInt::MAX,
+            source_sender_id: LocalSenderId::UNSPECIFIED,
             header: Header::FlowReset {
                 dest_queue_id: remote_queue_id,
                 stream_id: self.stream_id,
@@ -605,7 +606,7 @@ impl Inner {
         let Some(attempt_id) = self.completion_rx.init_attempt_id() else {
             debug!(
                 stream_id = self.stream_id.as_u64(),
-                sender_idx,
+                ?sender_idx,
                 "FlowInit transmitted without attempt_id stamp - cancelling pending FlowInitReset"
             );
             self.completion_rx.cancel();
@@ -613,7 +614,7 @@ impl Inner {
         };
 
         let frame = Frame {
-            source_sender_id: VarInt::new(sender_idx as u64).unwrap_or(VarInt::MAX),
+            source_sender_id: sender_idx,
             header: Header::FlowInitReset {
                 attempt_id,
                 stream_id: self.stream_id,
@@ -631,7 +632,7 @@ impl Inner {
 
         debug!(
             stream_id = self.stream_id.as_u64(),
-            sender_idx,
+            ?sender_idx,
             attempt_id = attempt_id.as_u64(),
             error_code = error_code.as_u64(),
             "Sent FlowInitReset"
@@ -666,7 +667,7 @@ impl Inner {
         };
 
         let frame = Frame {
-            source_sender_id: VarInt::new(sender_idx as u64).unwrap_or(VarInt::MAX),
+            source_sender_id: sender_idx,
             header: Header::FlowInitFin {
                 stream_id: self.stream_id,
                 offset: self.next_offset,
@@ -683,7 +684,7 @@ impl Inner {
 
         debug!(
             stream_id = self.stream_id.as_u64(),
-            sender_idx,
+            ?sender_idx,
             offset = self.next_offset.as_u64(),
             "Sent FlowInitFin"
         );
@@ -711,7 +712,7 @@ impl Inner {
             };
 
             let frame = Frame {
-                source_sender_id: VarInt::MAX,
+                source_sender_id: LocalSenderId::UNSPECIFIED,
                 header: Header::FlowData {
                     queue_pair,
                     stream_id: self.stream_id,
@@ -934,7 +935,7 @@ impl Inner {
         let (payload, bytes_read, actual_fin) = self.prepare_early_data(buf, is_fin)?;
 
         let frame = Frame {
-            source_sender_id: VarInt::MAX,
+            source_sender_id: LocalSenderId::UNSPECIFIED,
             header: Header::FlowInit {
                 source_queue_id: self.control_rx.queue_id(),
                 dest_acceptor_id: self.acceptor_id,
@@ -1074,7 +1075,7 @@ impl Inner {
             };
 
             let frame = Frame {
-                source_sender_id: VarInt::MAX,
+                source_sender_id: LocalSenderId::UNSPECIFIED,
                 header: Header::FlowData {
                     queue_pair,
                     stream_id: self.stream_id,

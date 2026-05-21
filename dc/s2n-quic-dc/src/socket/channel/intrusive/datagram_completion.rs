@@ -12,7 +12,7 @@
 //! - Graceful shutdown: Receiver drops normally - transmit but silently drop completions
 //! - Panic/Cancel: Receiver panics or sender.cancel() - cancel all pending transmissions
 
-use crate::{flow::queue::AutoWake, intrusive};
+use crate::{endpoint::id::LocalSenderId, flow::queue::AutoWake, intrusive};
 use core::{
     mem::ManuallyDrop,
     sync::atomic::{AtomicU64, AtomicU8, Ordering},
@@ -147,11 +147,11 @@ impl<T> Sender<T> {
     /// reads this back via [`Receiver::init_sender_idx`] to route FlowInitReset and
     /// FlowInitFin through the same sender socket.
     #[inline]
-    pub fn set_init_sender_idx(&self, idx: usize) {
+    pub fn set_init_sender_idx(&self, id: LocalSenderId) {
         // Only stamp on the first transmission (compare-exchange from UNSET).
         let _ = self.shared.init_sender_idx.compare_exchange(
             UNSET_SENDER_IDX,
-            idx as u64,
+            id.as_varint().as_u64(),
             Ordering::Release,
             Ordering::Relaxed,
         );
@@ -159,11 +159,10 @@ impl<T> Sender<T> {
 
     /// Returns the sender-socket index stamped for the FlowInit, if any.
     #[inline]
-    pub fn init_sender_idx(&self) -> Option<usize> {
-        match self.shared.init_sender_idx.load(Ordering::Acquire) {
-            UNSET_SENDER_IDX => None,
-            idx => Some(idx as usize),
-        }
+    pub fn init_sender_idx(&self) -> Option<LocalSenderId> {
+        let v = self.shared.init_sender_idx.load(Ordering::Acquire);
+        let v = VarInt::new(v).ok()?;
+        Some(LocalSenderId::new(v))
     }
 
     /// Record the `attempt_id` assigned to the FlowInit frame by the assembler.
@@ -299,11 +298,10 @@ impl<T> Receiver<T> {
     ///
     /// Returns `None` if the FlowInit has not yet been picked up by any sender socket.
     #[inline]
-    pub fn init_sender_idx(&self) -> Option<usize> {
-        match self.shared.init_sender_idx.load(Ordering::Acquire) {
-            UNSET_SENDER_IDX => None,
-            idx => Some(idx as usize),
-        }
+    pub fn init_sender_idx(&self) -> Option<LocalSenderId> {
+        let v = self.shared.init_sender_idx.load(Ordering::Acquire);
+        let v = VarInt::new(v).ok()?;
+        Some(LocalSenderId::new(v))
     }
 
     /// Returns the `attempt_id` assigned to the FlowInit by the assembler, if known.

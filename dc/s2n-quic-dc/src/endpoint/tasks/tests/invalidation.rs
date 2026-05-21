@@ -6,6 +6,7 @@ use crate::{
     credentials,
     endpoint::{
         frame::{self, Frame},
+        id::{Id, IdMap, LocalSendSocketId, LocalSenderId},
         recv, send, tasks,
     },
     intrusive::Entry,
@@ -32,22 +33,23 @@ fn invalidation_counters() -> tasks::SendInvalidationCounters {
 // ── Send setup ──────────────────────────────────────────────────────────────
 
 struct SendSetup {
-    send_caches: Vec<Rc<RefCell<send::Cache>>>,
+    send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
     pse: Arc<crate::path::secret::map::Entry>,
 }
 
 fn setup_send() -> SendSetup {
     let registry = crate::counter::Registry::default();
     let clock = Clock::default();
-    let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSocketId, _> = vec![Rc::new(RefCell::new(send::Cache::new(
+    let send_caches: IdMap<LocalSendSocketId, _> = vec![Rc::new(RefCell::new(send::Cache::new(
         &registry,
-        crate::endpoint::id::SenderIdx::new(0),
-    )))].into();
+        LocalSenderId::from_index(0),
+    )))]
+    .into();
 
     let pse = test_entry();
     pse.touch_activity(precision::Clock::now(&clock));
 
-    let _ctx = send_caches[0]
+    let _ctx = send_caches[LocalSendSocketId::new(0)]
         .borrow_mut()
         .get_or_insert(&pse, &clock)
         .unwrap();
@@ -66,7 +68,7 @@ fn test_frame(pse: &Arc<crate::path::secret::map::Entry>) -> Entry<Frame> {
             offset: VarInt::ZERO,
             is_fin: false,
         },
-        source_sender_id: VarInt::from_u8(0),
+        source_sender_id: LocalSenderId::new(VarInt::from_u8(0)),
         payload: Default::default(),
         path_secret_entry: pse.clone(),
         completion: None,
@@ -79,7 +81,9 @@ fn test_frame(pse: &Arc<crate::path::secret::map::Entry>) -> Entry<Frame> {
 // ── Recv setup ──────────────────────────────────────────────────────────────
 
 fn setup_recv() -> (Rc<RefCell<recv::Cache>>, credentials::Id) {
-    let recv_cache = Rc::new(RefCell::new(recv::Cache::new(crate::endpoint::id::RecvDispatchWorkerId::new(0))));
+    let recv_cache = Rc::new(RefCell::new(recv::Cache::new(
+        crate::endpoint::id::RecvDispatchWorkerId::new(0),
+    )));
 
     let ctx_a = RecvContextBuilder::default()
         .remote_sender_id(VarInt::from_u8(0))
@@ -112,7 +116,10 @@ fn send_invalidation_purges_cache_and_emits_failed_frames() {
         let SendSetup { send_caches, pse } = setup_send();
 
         {
-            let ctx = send_caches[0].borrow().get(pse.id()).unwrap();
+            let ctx = send_caches[LocalSendSocketId::new(0)]
+                .borrow()
+                .get(pse.id())
+                .unwrap();
             ctx.borrow_mut().queues[1].push_back(test_frame(&pse));
         }
 
@@ -126,7 +133,7 @@ fn send_invalidation_purges_cache_and_emits_failed_frames() {
         let mut rx = tasks::send_invalidation(
             invalidation_rx,
             send_caches.clone(),
-            crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(1, crate::endpoint::id::LocalSocketId::new(0)),
+            IdMap::<LocalSenderId, LocalSendSocketId>::new(1, LocalSendSocketId::new(0)),
             cancelled_tx,
             retransmit_tx,
             invalidation_counters(),
@@ -137,7 +144,7 @@ fn send_invalidation_purges_cache_and_emits_failed_frames() {
             drop(rx);
 
             assert_eq!(
-                send_caches[0].borrow().context_count(),
+                send_caches[LocalSendSocketId::new(0)].borrow().context_count(),
                 0,
                 "cache should be empty after invalidation"
             );
@@ -178,7 +185,7 @@ fn send_invalidation_noop_for_unknown_id() {
         let mut rx = tasks::send_invalidation(
             invalidation_rx,
             send_caches.clone(),
-            crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(1, crate::endpoint::id::LocalSocketId::new(0)),
+            IdMap::<LocalSenderId, LocalSendSocketId>::new(1, LocalSendSocketId::new(0)),
             cancelled_tx,
             retransmit_tx,
             invalidation_counters(),
@@ -189,7 +196,7 @@ fn send_invalidation_noop_for_unknown_id() {
             drop(rx);
 
             assert_eq!(
-                send_caches[0].borrow().context_count(),
+                send_caches[LocalSendSocketId::new(0)].borrow().context_count(),
                 1,
                 "unrelated context should remain"
             );
@@ -318,7 +325,12 @@ fn ack_burst_after_recv_invalidation_emits_nothing() {
         let (sender, mut collected) = unsync::new::<crate::endpoint::msg::Sender>();
         let counters =
             crate::endpoint::counters::Dispatch::new(&crate::counter::Registry::default());
-        let mut ack_burst = tasks::ack_burst(ack_burst_rx, sender, crate::endpoint::id::RecvDispatchWorkerId::new(0), counters);
+        let mut ack_burst = tasks::ack_burst(
+            ack_burst_rx,
+            sender,
+            crate::endpoint::id::RecvDispatchWorkerId::new(0),
+            counters,
+        );
 
         async move {
             invalidation.recv().await;
@@ -337,21 +349,16 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
     sim(|| {
         let registry = crate::counter::Registry::default();
         let clock = Clock::default();
-        let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSocketId, _> = vec![
-            Rc::new(RefCell::new(send::Cache::new(
-                &registry,
-                crate::endpoint::id::SenderIdx::new(0),
-            ))),
-            Rc::new(RefCell::new(send::Cache::new(
-                &registry,
-                crate::endpoint::id::SenderIdx::new(1),
-            ))),
-        ].into();
+        let send_caches: IdMap<LocalSendSocketId, _> = vec![
+            Rc::new(RefCell::new(send::Cache::new(&registry, LocalSenderId::from_index(0)))),
+            Rc::new(RefCell::new(send::Cache::new(&registry, LocalSenderId::from_index(1)))),
+        ]
+        .into();
 
         let pse = test_entry();
         pse.touch_activity(precision::Clock::now(&clock));
 
-        for cache in &send_caches {
+        for (_id, cache) in &send_caches {
             let _ctx = cache.borrow_mut().get_or_insert(&pse, &clock).unwrap();
             let ctx = cache.borrow().get(pse.id()).unwrap();
             ctx.borrow_mut().queues[1].push_back(test_frame(&pse));
@@ -363,7 +370,7 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
         let invalidation_rx =
             super::helpers::TestReceiver::new(vec![Entry::new(tasks::Invalidation::StaleKey {
                 credential_id: id,
-                sender_id: VarInt::from_u8(1),
+                sender_id: LocalSenderId::new(VarInt::from_u8(1)),
                 // Cache[1]'s context uses key_id=1 (second call to next_key_id),
                 // so rejected_key_id must be >= 1 to trigger invalidation.
                 rejected_key_id: VarInt::from_u8(1),
@@ -371,7 +378,13 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
         let mut rx = tasks::send_invalidation(
             invalidation_rx,
             send_caches.clone(),
-            { let mut m = crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(2, crate::endpoint::id::LocalSocketId::new(usize::MAX)); m[crate::endpoint::id::SenderIdx::new(0)] = crate::endpoint::id::LocalSocketId::new(0); m[crate::endpoint::id::SenderIdx::new(1)] = crate::endpoint::id::LocalSocketId::new(1); m },
+            {
+                let mut m =
+                    IdMap::<LocalSenderId, LocalSendSocketId>::new(2, LocalSendSocketId::new(usize::MAX));
+                m[LocalSenderId::from_index(0)] = LocalSendSocketId::new(0);
+                m[LocalSenderId::from_index(1)] = LocalSendSocketId::new(1);
+                m
+            },
             cancelled_tx,
             retransmit_tx,
             invalidation_counters(),
@@ -381,8 +394,14 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
             rx.recv().await;
             drop(rx);
 
-            assert_eq!(send_caches[0].borrow().context_count(), 1);
-            assert_eq!(send_caches[1].borrow().context_count(), 0);
+            assert_eq!(
+                send_caches[LocalSendSocketId::new(0)].borrow().context_count(),
+                1
+            );
+            assert_eq!(
+                send_caches[LocalSendSocketId::new(1)].borrow().context_count(),
+                0
+            );
 
             let frame = retransmit_rx
                 .recv()

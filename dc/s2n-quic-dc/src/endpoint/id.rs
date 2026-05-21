@@ -29,74 +29,6 @@ use s2n_quic_core::varint::VarInt;
 
 // ── Sender IDs ──────────────────────────────────────────────────────────────
 
-/// Index into the local send cache array. Each send socket has a unique `SenderIdx`.
-///
-/// This is an internal routing concept — it determines which send::Cache and Assembler
-/// own a given flow. On the wire, this value is transmitted as a [`LocalSenderId`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SenderIdx(usize);
-
-impl SenderIdx {
-    #[inline]
-    pub const fn new(idx: usize) -> Self {
-        Self(idx)
-    }
-
-    #[inline]
-    pub const fn as_usize(self) -> usize {
-        self.0
-    }
-
-    #[inline]
-    pub fn to_local_sender_id(self) -> LocalSenderId {
-        LocalSenderId(VarInt::new(self.0 as u64).unwrap())
-    }
-}
-
-impl core::fmt::Display for SenderIdx {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<SenderIdx> for usize {
-    #[inline]
-    fn from(idx: SenderIdx) -> usize {
-        idx.0
-    }
-}
-
-impl<T> core::ops::Index<SenderIdx> for [T] {
-    type Output = T;
-    #[inline]
-    fn index(&self, idx: SenderIdx) -> &T {
-        &self[idx.0]
-    }
-}
-
-impl<T> core::ops::IndexMut<SenderIdx> for [T] {
-    #[inline]
-    fn index_mut(&mut self, idx: SenderIdx) -> &mut T {
-        &mut self[idx.0]
-    }
-}
-
-impl<T> core::ops::Index<SenderIdx> for Vec<T> {
-    type Output = T;
-    #[inline]
-    fn index(&self, idx: SenderIdx) -> &T {
-        &self.as_slice()[idx]
-    }
-}
-
-impl<T> core::ops::IndexMut<SenderIdx> for Vec<T> {
-    #[inline]
-    fn index_mut(&mut self, idx: SenderIdx) -> &mut T {
-        &mut self.as_mut_slice()[idx]
-    }
-}
-
-
 /// Our own sender identity on the wire.
 ///
 /// Encoded as `source_sender_id` in outgoing data/control packets. When a peer receives
@@ -106,6 +38,9 @@ impl<T> core::ops::IndexMut<SenderIdx> for Vec<T> {
 pub struct LocalSenderId(VarInt);
 
 impl LocalSenderId {
+    /// Sentinel value for an unspecified sender ID
+    pub const UNSPECIFIED: Self = Self(VarInt::MAX);
+
     #[inline]
     pub fn new(v: VarInt) -> Self {
         Self(v)
@@ -117,8 +52,8 @@ impl LocalSenderId {
     }
 
     #[inline]
-    pub fn to_sender_idx(self) -> SenderIdx {
-        SenderIdx(self.0.as_u64() as usize)
+    pub fn as_usize(self) -> usize {
+        self.0.as_u64() as _
     }
 }
 
@@ -135,6 +70,57 @@ impl EncoderValue for LocalSenderId {
     }
 }
 
+impl From<LocalSenderId> for usize {
+    #[inline]
+    fn from(idx: LocalSenderId) -> usize {
+        idx.as_usize()
+    }
+}
+
+impl<T> core::ops::Index<LocalSenderId> for [T] {
+    type Output = T;
+    #[inline]
+    fn index(&self, idx: LocalSenderId) -> &T {
+        &self[idx.as_usize()]
+    }
+}
+
+impl<T> core::ops::IndexMut<LocalSenderId> for [T] {
+    #[inline]
+    fn index_mut(&mut self, idx: LocalSenderId) -> &mut T {
+        &mut self[idx.as_usize()]
+    }
+}
+
+impl<T> core::ops::Index<LocalSenderId> for Vec<T> {
+    type Output = T;
+    #[inline]
+    fn index(&self, idx: LocalSenderId) -> &T {
+        &self.as_slice()[idx]
+    }
+}
+
+impl<T> core::ops::IndexMut<LocalSenderId> for Vec<T> {
+    #[inline]
+    fn index_mut(&mut self, idx: LocalSenderId) -> &mut T {
+        &mut self.as_mut_slice()[idx]
+    }
+}
+
+impl<V> core::ops::Index<LocalSenderId> for IdMap<LocalSenderId, V> {
+    type Output = V;
+    #[inline]
+    fn index(&self, idx: LocalSenderId) -> &V {
+        &self.values[idx.as_usize()]
+    }
+}
+
+impl<V> core::ops::IndexMut<LocalSenderId> for IdMap<LocalSenderId, V> {
+    #[inline]
+    fn index_mut(&mut self, idx: LocalSenderId) -> &mut V {
+        &mut self.values[idx.as_usize()]
+    }
+}
 
 /// The peer's sender identity read from an incoming packet.
 ///
@@ -169,70 +155,6 @@ impl EncoderValue for RemoteSenderId {
     #[inline]
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         self.0.encode(encoder);
-    }
-}
-
-
-/// Index of a send socket within a single send worker.
-///
-/// A send worker owns multiple sockets; `LocalSocketId` distinguishes them
-/// within that worker. This is the second step of the two-step lookup:
-/// `SenderIdx` → `LocalSocketId` → `send::Cache`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct LocalSocketId(usize);
-
-impl LocalSocketId {
-    #[inline]
-    pub const fn new(id: usize) -> Self {
-        Self(id)
-    }
-
-    #[inline]
-    pub const fn as_usize(self) -> usize {
-        self.0
-    }
-}
-
-impl From<LocalSocketId> for usize {
-    #[inline]
-    fn from(id: LocalSocketId) -> usize {
-        id.0
-    }
-}
-
-impl core::fmt::Display for LocalSocketId {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl<T> core::ops::Index<LocalSocketId> for [T] {
-    type Output = T;
-    #[inline]
-    fn index(&self, idx: LocalSocketId) -> &T {
-        &self[idx.0]
-    }
-}
-
-impl<T> core::ops::IndexMut<LocalSocketId> for [T] {
-    #[inline]
-    fn index_mut(&mut self, idx: LocalSocketId) -> &mut T {
-        &mut self[idx.0]
-    }
-}
-
-impl<T> core::ops::Index<LocalSocketId> for Vec<T> {
-    type Output = T;
-    #[inline]
-    fn index(&self, idx: LocalSocketId) -> &T {
-        &self.as_slice()[idx]
-    }
-}
-
-impl<T> core::ops::IndexMut<LocalSocketId> for Vec<T> {
-    #[inline]
-    fn index_mut(&mut self, idx: LocalSocketId) -> &mut T {
-        &mut self.as_mut_slice()[idx]
     }
 }
 
@@ -302,7 +224,47 @@ macro_rules! worker_id {
             }
         }
 
+        impl Id for $name {
+            #[inline]
+            fn from_index(idx: usize) -> Self {
+                Self(idx)
+            }
+
+            #[inline]
+            fn to_index(self) -> usize {
+                self.0
+            }
+        }
+
+        impl<V> core::ops::Index<$name> for IdMap<$name, V> {
+            type Output = V;
+            #[inline]
+            fn index(&self, idx: $name) -> &V {
+                &self.values[idx.as_usize()]
+            }
+        }
+
+        impl<V> core::ops::IndexMut<$name> for IdMap<$name, V> {
+            #[inline]
+            fn index_mut(&mut self, idx: $name) -> &mut V {
+                &mut self.values[idx.as_usize()]
+            }
+        }
     };
+}
+
+worker_id! {
+    /// Index of a send socket within a single send worker.
+    ///
+    /// A send worker owns multiple sockets; `LocalSocketId` distinguishes them
+    /// within that worker. This is the second step of the two-step lookup:
+    /// `SenderIdx` → `LocalSocketId` → `send::Cache`.
+    LocalSendSocketId
+}
+
+worker_id! {
+    /// Index of a recv socket within a single recv worker.
+    LocalRecvSocketId
 }
 
 worker_id! {
@@ -336,12 +298,34 @@ worker_id! {
     FrameDispatchWorkerId
 }
 
-/// Generic worker ID for cases where the specific worker type isn't yet distinguished.
+// ── ID trait ────────────────────────────────────────────────────────────────
+
+/// Trait for ID types that can be constructed from a positional index.
 ///
-/// Prefer the specific types above when the worker role is known.
-/// This exists as a migration aid — new code should use the specific types.
-#[deprecated(note = "use a specific worker ID type (SendWorkerId, RecvDispatchWorkerId, etc.)")]
-pub type WorkerId = RecvDispatchWorkerId;
+/// This allows [`IdMap`] iterators to yield `(K, &V)` pairs, propagating
+/// strongly-typed keys through iteration rather than discarding them.
+pub trait Id: Copy {
+    fn from_index(idx: usize) -> Self;
+    fn to_index(self) -> usize;
+
+    /// Returns an iterator over all IDs in `[0, count)`.
+    #[inline]
+    fn range(count: usize) -> impl Iterator<Item = Self> {
+        (0..count).map(Self::from_index)
+    }
+}
+
+impl Id for LocalSenderId {
+    #[inline]
+    fn from_index(idx: usize) -> Self {
+        Self::new(VarInt::new(idx as u64).unwrap())
+    }
+
+    #[inline]
+    fn to_index(self) -> usize {
+        self.as_usize()
+    }
+}
 
 // ── Typed ID Mapping ────────────────────────────────────────────────────────
 
@@ -353,9 +337,9 @@ pub type WorkerId = RecvDispatchWorkerId;
 /// # Example
 ///
 /// ```ignore
-/// let map: IdMap<SenderIdx, usize> = IdMap::new(64, usize::MAX);
-/// map[SenderIdx::new(3)] = 7;
-/// assert_eq!(map[SenderIdx::new(3)], 7);
+/// let map: IdMap<LocalSenderId, usize> = IdMap::new(64, usize::MAX);
+/// map[LocalSenderId::new(3)] = 7;
+/// assert_eq!(map[LocalSenderId::new(3)], 7);
 /// ```
 #[derive(Clone)]
 pub struct IdMap<K, V> {
@@ -405,41 +389,111 @@ impl<K, V> IdMap<K, V> {
         self.values.get_mut(key.into())
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &V> {
-        self.values.iter()
+    pub fn iter(&self) -> impl Iterator<Item = (K, &V)>
+    where
+        K: Id,
+    {
+        self.values.iter().enumerate().map(|(i, v)| (K::from_index(i), v))
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (K, &mut V)>
+    where
+        K: Id,
+    {
+        self.values.iter_mut().enumerate().map(|(i, v)| (K::from_index(i), v))
     }
 }
 
-impl<K: Into<usize>, V> core::ops::Index<K> for IdMap<K, V> {
-    type Output = V;
-    #[inline]
-    fn index(&self, idx: K) -> &V {
-        &self.values[idx.into()]
-    }
-}
-
-impl<K: Into<usize>, V> core::ops::IndexMut<K> for IdMap<K, V> {
-    #[inline]
-    fn index_mut(&mut self, idx: K) -> &mut V {
-        &mut self.values[idx.into()]
-    }
-}
-
-impl<'a, K, V> IntoIterator for &'a IdMap<K, V> {
-    type Item = &'a V;
-    type IntoIter = core::slice::Iter<'a, V>;
+impl<K: Id, V> IntoIterator for IdMap<K, V> {
+    type Item = (K, V);
+    type IntoIter = IdMapIntoIter<K, V>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.values.iter()
+        IdMapIntoIter {
+            inner: self.values.into_iter().enumerate(),
+            _key: core::marker::PhantomData,
+        }
     }
 }
 
-impl<'a, K, V> IntoIterator for &'a mut IdMap<K, V> {
-    type Item = &'a mut V;
-    type IntoIter = core::slice::IterMut<'a, V>;
+pub struct IdMapIntoIter<K, V> {
+    inner: core::iter::Enumerate<std::vec::IntoIter<V>>,
+    _key: core::marker::PhantomData<fn() -> K>,
+}
+
+impl<K: Id, V> Iterator for IdMapIntoIter<K, V> {
+    type Item = (K, V);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(i, v)| (K::from_index(i), v))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+impl<'a, K: Id, V> IntoIterator for &'a IdMap<K, V> {
+    type Item = (K, &'a V);
+    type IntoIter = IdMapIter<'a, K, V>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.values.iter_mut()
+        IdMapIter {
+            inner: self.values.iter().enumerate(),
+            _key: core::marker::PhantomData,
+        }
+    }
+}
+
+pub struct IdMapIter<'a, K, V> {
+    inner: core::iter::Enumerate<core::slice::Iter<'a, V>>,
+    _key: core::marker::PhantomData<fn() -> K>,
+}
+
+impl<'a, K: Id, V> Iterator for IdMapIter<'a, K, V> {
+    type Item = (K, &'a V);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(i, v)| (K::from_index(i), v))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+impl<'a, K: Id, V> IntoIterator for &'a mut IdMap<K, V> {
+    type Item = (K, &'a mut V);
+    type IntoIter = IdMapIterMut<'a, K, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IdMapIterMut {
+            inner: self.values.iter_mut().enumerate(),
+            _key: core::marker::PhantomData,
+        }
+    }
+}
+
+pub struct IdMapIterMut<'a, K, V> {
+    inner: core::iter::Enumerate<core::slice::IterMut<'a, V>>,
+    _key: core::marker::PhantomData<fn() -> K>,
+}
+
+impl<'a, K: Id, V> Iterator for IdMapIterMut<'a, K, V> {
+    type Item = (K, &'a mut V);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(i, v)| (K::from_index(i), v))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -452,11 +506,42 @@ impl<K, V> From<Vec<V>> for IdMap<K, V> {
     }
 }
 
-impl<K, V> core::iter::FromIterator<V> for IdMap<K, V> {
-    fn from_iter<I: IntoIterator<Item = V>>(iter: I) -> Self {
+impl<K: Id, V> core::iter::FromIterator<(K, V)> for IdMap<K, V> {
+    fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
+        let mut values = Vec::new();
+        for (k, v) in iter {
+            debug_assert_eq!(
+                k.to_index(),
+                values.len(),
+                "IdMap::from_iter: keys must be in sequential order"
+            );
+            values.push(v);
+        }
         Self {
-            values: iter.into_iter().collect(),
+            values,
             _key: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<K, V> Default for IdMap<K, V> {
+    fn default() -> Self {
+        Self {
+            values: Vec::new(),
+            _key: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<K: Id, V> Extend<(K, V)> for IdMap<K, V> {
+    fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
+        for (k, v) in iter {
+            debug_assert_eq!(
+                k.to_index(),
+                self.values.len(),
+                "IdMap::extend: keys must be in sequential order"
+            );
+            self.values.push(v);
         }
     }
 }
@@ -466,3 +551,87 @@ impl<K, V: core::fmt::Debug> core::fmt::Debug for IdMap<K, V> {
         f.debug_list().entries(self.values.iter()).finish()
     }
 }
+
+// ── Tuple zip iteration ──────────────────────────────────────────────────────
+
+/// Joins multiple `IdMap`s with the same key into a lockstep iterator.
+///
+/// Call `.join()` on a tuple of `IdMap`s to iterate them together,
+/// yielding `(K, A, B, ...)` on each step.
+pub trait IdJoin: Sized {
+    type Iter: Iterator;
+    fn join(self) -> Self::Iter;
+}
+
+macro_rules! impl_id_maps {
+    (($($T:ident),+), ($($idx:tt),+), $iter_name:ident) => {
+        impl<K: Id, $($T),+> IdJoin for ($(IdMap<K, $T>,)+) {
+            type Iter = $iter_name<K, $($T),+>;
+
+            fn join(self) -> Self::Iter {
+                let lens = [$(self.$idx.values.len(),)+];
+                let first = lens[0];
+                debug_assert!(
+                    lens.iter().all(|&l| l == first),
+                    "IdMaps: all maps must have the same length"
+                );
+                $iter_name {
+                    idx: 0,
+                    len: first,
+                    values: ($(self.$idx.values,)+),
+                    _key: core::marker::PhantomData,
+                }
+            }
+        }
+
+        pub struct $iter_name<K, $($T),+> {
+            idx: usize,
+            len: usize,
+            values: ($(Vec<$T>,)+),
+            _key: core::marker::PhantomData<fn() -> K>,
+        }
+
+        impl<K: Id, $($T),+> Iterator for $iter_name<K, $($T),+> {
+            type Item = (K, $($T),+);
+
+            #[inline]
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.idx >= self.len {
+                    return None;
+                }
+                let i = self.idx;
+                self.idx += 1;
+                unsafe {
+                    Some((
+                        K::from_index(i),
+                        $(self.values.$idx.as_ptr().add(i).read(),)+
+                    ))
+                }
+            }
+
+            #[inline]
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                let remaining = self.len - self.idx;
+                (remaining, Some(remaining))
+            }
+        }
+
+        impl<K, $($T),+> Drop for $iter_name<K, $($T),+> {
+            fn drop(&mut self) {
+                while self.idx < self.len {
+                    let i = self.idx;
+                    self.idx += 1;
+                    unsafe {
+                        $(core::ptr::drop_in_place(self.values.$idx.as_mut_ptr().add(i));)+
+                    }
+                }
+                $(unsafe { self.values.$idx.set_len(0); })+
+            }
+        }
+    };
+}
+
+impl_id_maps!((A, B), (0, 1), IdMapTupleIter2);
+impl_id_maps!((A, B, C), (0, 1, 2), IdMapTupleIter3);
+impl_id_maps!((A, B, C, D), (0, 1, 2, 3), IdMapTupleIter4);
+impl_id_maps!((A, B, C, D, E), (0, 1, 2, 3, 4), IdMapTupleIter5);
