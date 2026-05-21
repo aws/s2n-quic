@@ -95,7 +95,9 @@ impl Dedup {
                     key_id,
                     queue_id,
                     map,
-                }) => map.store.check_dedup(&entry, key_id, queue_id),
+                }) => map
+                    .store
+                    .check_dedup(&entry, key_id, queue_id, &mut Vec::new()),
                 None => {
                     // Dedup has been poisoned! TODO log this
                     Err(crypto::open::Error::ReplayPotentiallyDetected { gap: None })

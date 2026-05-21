@@ -26,6 +26,7 @@ use bach::net::UdpSocket;
 use core::time::Duration;
 use s2n_quic_core::varint::VarInt;
 use s2n_quic_platform::features::Gso;
+use std::rc::Rc;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -111,6 +112,10 @@ async fn assembler_pipeline(
     clock: Clock,
 ) {
     let socket = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+    let send_counters = Rc::new(crate::endpoint::counters::Send::new(
+        &crate::counter::Registry::default(),
+        0,
+    ));
     let rx = tasks::send_socket_assembler(
         ctx_rx,
         clock,
@@ -121,6 +126,7 @@ async fn assembler_pipeline(
         cancelled_tx,
         ack_completions_tx,
         asm_counters,
+        send_counters,
         Rate::new(100.0),
         socket,
         tx_wheel_tx,
@@ -471,7 +477,7 @@ fn cancelled_frame_emitted_when_completion_is_cancelled() {
                         transmission_time: None,
                     }),
                 );
-                batch.set_sender_id(0);
+                batch.set_sender_id(crate::endpoint::id::SenderIdx::new(0));
                 let _ = c.push_batch(batch, &clock);
                 c.tx_wheel.target_time = Some(clock.now());
             }

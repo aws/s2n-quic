@@ -51,11 +51,11 @@ impl PathSecretMapEntry for TestItem {
 }
 
 impl StickyRoute for TestItem {
-    fn sticky_sender_idx(&self) -> Option<usize> {
-        self.sticky_sender
+    fn sticky_sender_idx(&self) -> Option<crate::endpoint::id::SenderIdx> {
+        self.sticky_sender.map(crate::endpoint::id::SenderIdx::new)
     }
 
-    fn set_sender_id(&mut self, _id: usize) {}
+    fn set_sender_id(&mut self, _id: crate::endpoint::id::SenderIdx) {}
 }
 
 struct TestSender {
@@ -617,7 +617,7 @@ fn batch_frames_tracks_sticky_sender_from_first_frame() {
         panic!("expected batch");
     };
     assert_eq!(batch.len(), 2);
-    assert_eq!(batch.sender_id(), Some(2));
+    assert_eq!(batch.sender_id(), Some(crate::endpoint::id::SenderIdx::new(2)));
 }
 
 #[test]
@@ -639,14 +639,14 @@ fn batch_frames_breaks_on_conflicting_sticky_senders() {
         panic!("expected first batch");
     };
     assert_eq!(batch1.len(), 1);
-    assert_eq!(batch1.sender_id(), Some(1));
+    assert_eq!(batch1.sender_id(), Some(crate::endpoint::id::SenderIdx::new(1)));
 
     let second = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
     let Poll::Ready(Some(batch2)) = second else {
         panic!("expected second batch");
     };
     assert_eq!(batch2.len(), 1);
-    assert_eq!(batch2.sender_id(), Some(2));
+    assert_eq!(batch2.sender_id(), Some(crate::endpoint::id::SenderIdx::new(2)));
 }
 
 #[test]
@@ -669,7 +669,7 @@ fn batch_frames_adopts_sticky_from_later_frame() {
         panic!("expected batch");
     };
     assert_eq!(batch.len(), 3);
-    assert_eq!(batch.sender_id(), Some(3));
+    assert_eq!(batch.sender_id(), Some(crate::endpoint::id::SenderIdx::new(3)));
 }
 
 #[test]
@@ -677,11 +677,11 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
     const OUT_OF_RANGE_SENDER_ID: u64 = 42; // total_sender_ids is 1, so any value > 0 is invalid.
 
     let registry = crate::counter::Registry::default();
-    let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(
+    let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSocketId, _> = vec![Rc::new(RefCell::new(send::Cache::new(
         &registry,
         crate::endpoint::id::SenderIdx::new(0),
-    )))];
-    let sender_idx_to_local = vec![0];
+    )))].into();
+    let sender_idx_to_local = crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(1, crate::endpoint::id::LocalSocketId::new(0));
     let (frame_tx, _frame_rx) = frame::submission_channel(1);
     let (tx_wheel_tx, _tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
     let (pto_wheel_tx, _pto_wheel_rx) = unsync::new_with_adapter::<send::PtoWheelAdapter>();

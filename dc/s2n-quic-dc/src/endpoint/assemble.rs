@@ -63,6 +63,7 @@ pub(crate) fn assemble<Clk>(
     cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
     ack_completions: &mut impl UnboundedSender<intrusive::Entry<msg::Sender>>,
     counters: &AssemblerCounters,
+    send_counters: &crate::endpoint::counters::Send,
 ) -> Option<Segments>
 where
     Clk: precision::Clock + ?Sized,
@@ -305,6 +306,7 @@ where
                 .tx_payload_size
                 .record_value(metadata.payload_len as u64);
             counters.tx_data.add(1);
+            send_counters.on_tx_packet();
 
             if probe_from_pn.is_some() {
                 counters.tx_probe.add(1);

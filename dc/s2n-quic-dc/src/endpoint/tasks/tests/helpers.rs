@@ -258,7 +258,7 @@ pub fn test_batch_with_payload(
     payload_size: usize,
 ) -> Entry<FrameBatch> {
     let mut batch = FrameBatch::single(test_frame_with_payload(pse, payload_size));
-    batch.set_sender_id(0);
+    batch.set_sender_id(crate::endpoint::id::SenderIdx::new(0));
     Entry::new(batch)
 }
 

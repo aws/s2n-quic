@@ -31,11 +31,11 @@ fn setup_send() -> (
 ) {
     let registry = crate::counter::Registry::default();
     let clock = Clock::default();
-    let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(
+    let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSocketId, _> = vec![Rc::new(RefCell::new(send::Cache::new(
         &registry,
         crate::endpoint::id::SenderIdx::new(0),
-    )))];
-    let sender_idx_to_local = vec![0usize];
+    )))].into();
+    let sender_idx_to_local = crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(1, crate::endpoint::id::LocalSocketId::new(0));
 
     let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter::<send::IdleWheelAdapter>();
     let (completed_tx, completed_rx) = unsync::new::<Frame>();

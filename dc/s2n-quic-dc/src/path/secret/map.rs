@@ -605,8 +605,10 @@ impl Map {
         entry: &Arc<Entry>,
         credentials: &Credentials,
         queue_id: Option<VarInt>,
+        control_out: &mut Vec<u8>,
     ) -> crypto::open::Result {
-        self.store.check_dedup(entry, credentials.key_id, queue_id)
+        self.store
+            .check_dedup(entry, credentials.key_id, queue_id, control_out)
     }
 
     #[allow(clippy::type_complexity)]

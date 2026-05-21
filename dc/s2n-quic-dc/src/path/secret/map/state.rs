@@ -1241,6 +1241,7 @@ where
         entry: &Entry,
         key_id: s2n_quic_core::varint::VarInt,
         queue_id: Option<VarInt>,
+        control_out: &mut Vec<u8>,
     ) -> crypto::open::Result {
         let creds = &Credentials {
             id: *entry.id(),
@@ -1263,14 +1264,17 @@ where
                     });
                 Ok(())
             }
-            Err(receiver::Error::AlreadyExists) => {
+            Err(error @ receiver::Error::AlreadyExists) => {
                 debug!(
                     credential_id = %creds.id,
                     key_id = key_id.as_u64(),
                     ?queue_id,
-                    "check_dedup: replay definitely detected, sending control error"
+                    "check_dedup: replay definitely detected"
                 );
-                self.send_control_error(entry, creds, queue_id, receiver::Error::AlreadyExists);
+
+                let mut buffer = [0; control::MAX_PACKET_SIZE];
+                let len = error.to_packet(entry, creds, queue_id, &mut buffer).len();
+                control_out.extend_from_slice(&buffer[..len]);
 
                 self.subscriber().on_replay_definitely_detected(
                     event::builder::ReplayDefinitelyDetected {
@@ -1281,8 +1285,10 @@ where
 
                 Err(crypto::open::Error::ReplayDefinitelyDetected)
             }
-            Err(receiver::Error::Unknown) => {
-                self.send_control_error(entry, creds, queue_id, receiver::Error::Unknown);
+            Err(error @ receiver::Error::Unknown) => {
+                let mut buffer = [0; control::MAX_PACKET_SIZE];
+                let len = error.to_packet(entry, creds, queue_id, &mut buffer).len();
+                control_out.extend_from_slice(&buffer[..len]);
 
                 let gap = (*entry.receiver().minimum_unseen_key_id())
                     // This should never be negative, but saturate anyway to avoid

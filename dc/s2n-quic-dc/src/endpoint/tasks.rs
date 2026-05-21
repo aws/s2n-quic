@@ -10,6 +10,7 @@ use crate::{
         },
         dispatch,
         frame::{self, Frame, Priority, PriorityStorage, SubmissionReceiver},
+        id::{IdMap, LocalSocketId, SenderIdx},
         msg, send, Budgets,
     },
     intrusive::{Entry, Queue},
@@ -245,23 +246,24 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             );
 
     // Map sender_idx → local socket position for this worker.
-    let mut sender_idx_to_local: Vec<usize> = (0..total_sender_ids).map(|_| usize::MAX).collect();
+    let mut sender_idx_to_local: IdMap<SenderIdx, LocalSocketId> =
+        IdMap::new(total_sender_ids, LocalSocketId::new(usize::MAX));
 
     // One send::Cache per socket, shared between the context resolver and ACK processor.
-    let send_caches: Vec<Rc<RefCell<send::Cache>>> = send_sockets
+    let send_caches: IdMap<LocalSocketId, Rc<RefCell<send::Cache>>> = send_sockets
         .iter()
         .enumerate()
         .map(|(local_id, st)| {
-            sender_idx_to_local[st.sender_idx] = local_id;
+            sender_idx_to_local[SenderIdx::new(st.sender_idx)] = LocalSocketId::new(local_id);
 
             Rc::new(RefCell::new(send::Cache::new(
                 &counter_registry,
-                endpoint::id::SenderIdx::new(st.sender_idx),
+                SenderIdx::new(st.sender_idx),
             )))
         })
         .collect();
 
-    let variant = format!("send.{worker_id}");
+    let variant = format!("send_worker.{worker_id}");
     let q_resolver_to_tx_wheel =
         counter_registry.register_queue_gauge_nominal("q.resolver_to_tx_wheel", &variant);
     let (tx_wheel_tx, tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
@@ -608,6 +610,8 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         let cancelled_tx = cancelled_tx.clone().into_list_sender();
         let ack_completions_tx = ack_completions_tx.clone();
         let asm_counters = asm_counters.clone();
+        let local_id = sender_idx_to_local[SenderIdx::new(sender_idx)];
+        let send_counters = send_caches[local_id].borrow().send_counters().clone();
         let context_rx = crate::counter::GaugedReceiver::new(context_rx, assembler_receiver);
         let rx = send_socket_assembler(
             context_rx,
@@ -619,6 +623,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             cancelled_tx,
             ack_completions_tx,
             asm_counters,
+            send_counters,
             st.per_socket_send_rate,
             st.socket,
             tx_wheel_tx,
@@ -687,8 +692,8 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
 /// into the appropriate timing wheels (tx, pto, idle).
 pub fn context_resolver<BatchRx, Clk, TxW, PtoW, IdleW>(
     batch_rx: BatchRx,
-    mut send_caches: Vec<Rc<RefCell<send::Cache>>>,
-    sender_idx_to_local: Vec<usize>,
+    mut send_caches: IdMap<LocalSocketId, Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: IdMap<SenderIdx, LocalSocketId>,
     total_sender_ids: usize,
     clock: Clk,
     tx_wheel_tx: TxW,
@@ -762,8 +767,8 @@ where
 #[allow(clippy::too_many_arguments)]
 pub fn send_ack_processor<AckRx, Clk, Rand, C, TxW, PtoW, IdleW>(
     ack_rx: AckRx,
-    send_caches: Vec<Rc<RefCell<send::Cache>>>,
-    sender_idx_to_local: Vec<usize>,
+    send_caches: IdMap<LocalSocketId, Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: IdMap<SenderIdx, LocalSocketId>,
     total_sender_ids: usize,
     clock: Clk,
     random: Rand,
@@ -812,8 +817,8 @@ pub fn send_pto_timeout<CtxRx, Clk, TxW, PtoW, IdleW>(
     idle_wheel_tx: IdleW,
     tx_pto_check: crate::counter::Counter,
     tx_pto_requested: crate::counter::Counter,
-    send_caches: Vec<Rc<RefCell<send::Cache>>>,
-    sender_idx_to_local: Vec<usize>,
+    send_caches: IdMap<LocalSocketId, Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: IdMap<SenderIdx, LocalSocketId>,
 ) -> impl Receiver<()>
 where
     CtxRx: Receiver<Rc<RefCell<send::Context>>>,
@@ -882,7 +887,7 @@ pub async fn send_tx_wheel_drain<Clk, TxW>(
     clock: Clk,
     input_gauge: crate::counter::QueueGauge,
     socket_context_txs: Vec<TxW>,
-    sender_idx_to_local: Vec<usize>,
+    sender_idx_to_local: IdMap<SenderIdx, LocalSocketId>,
     budget: usize,
     task_counter: crate::counter::Task,
 ) where
@@ -966,6 +971,7 @@ pub fn send_socket_assembler<ContextRx, Clk, Socket, C, A, TxW, PtoW, IdleW>(
     cancelled_tx: C,
     ack_completions_tx: A,
     asm_counters: AssemblerCounters,
+    send_counters: Rc<endpoint::counters::Send>,
     per_socket_send_rate: Rate,
     socket: Socket,
     tx_wheel_tx: TxW,
@@ -992,6 +998,7 @@ where
         cancelled_tx,
         ack_completions_tx,
         asm_counters,
+        send_counters,
     );
     let rx = send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx);
     let rx = Flatten::new(rx);
@@ -1008,8 +1015,8 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
     idle_wheel_tx: intrusive::unsync::Sender<send::IdleWheelAdapter>,
     clock: Clk,
     input_gauge: crate::counter::QueueGauge,
-    send_caches: Vec<Rc<RefCell<send::Cache>>>,
-    sender_idx_to_local: Vec<usize>,
+    send_caches: IdMap<LocalSocketId, Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: IdMap<SenderIdx, LocalSocketId>,
     mut completed_tx: impl UnboundedSender<Entry<Frame>>,
     mut queue_dispatcher: msg::queue::Dispatcher,
     mut waker_sink: WakerSink,
@@ -1474,10 +1481,19 @@ fn on_packet_dispatch_error(
             );
         }
         dispatch::Error::StaleKey {
+            dest_addr,
             credentials,
             packet_number,
+            control_out,
         } => {
             counters.rx_process_err_stale_key.add(1);
+            if !control_out.is_empty() {
+                let response = endpoint::ups::Response {
+                    dest_addr,
+                    packet: control_out,
+                };
+                let _ = ups_tx.send(Entry::new(response));
+            }
             debug!(
                 ?credentials,
                 pn = packet_number.as_u64(),
@@ -1590,8 +1606,8 @@ where
 
 pub fn send_invalidation<R>(
     invalidation_rx: R,
-    send_caches: Vec<Rc<RefCell<send::Cache>>>,
-    sender_idx_to_local: Vec<usize>,
+    send_caches: IdMap<LocalSocketId, Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: IdMap<SenderIdx, LocalSocketId>,
     mut cancelled_tx: impl UnboundedSender<Entry<Frame>> + 'static,
     mut retransmit_tx: impl UnboundedSender<Entry<Frame>> + 'static,
     counters: SendInvalidationCounters,
@@ -1627,7 +1643,7 @@ where
                 rejected_key_id,
             } => {
                 counters.stale_or_replay_events.add(1);
-                let sender_idx = sender_id.as_u64() as usize;
+                let sender_idx = SenderIdx::new(sender_id.as_u64() as usize);
                 let local_id = sender_idx_to_local.get(sender_idx).copied();
                 debug_assert!(
                     local_id.is_some(),

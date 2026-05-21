@@ -39,10 +39,10 @@ struct SendSetup {
 fn setup_send() -> SendSetup {
     let registry = crate::counter::Registry::default();
     let clock = Clock::default();
-    let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(
+    let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSocketId, _> = vec![Rc::new(RefCell::new(send::Cache::new(
         &registry,
         crate::endpoint::id::SenderIdx::new(0),
-    )))];
+    )))].into();
 
     let pse = test_entry();
     pse.touch_activity(precision::Clock::now(&clock));
@@ -126,7 +126,7 @@ fn send_invalidation_purges_cache_and_emits_failed_frames() {
         let mut rx = tasks::send_invalidation(
             invalidation_rx,
             send_caches.clone(),
-            vec![0],
+            crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(1, crate::endpoint::id::LocalSocketId::new(0)),
             cancelled_tx,
             retransmit_tx,
             invalidation_counters(),
@@ -178,7 +178,7 @@ fn send_invalidation_noop_for_unknown_id() {
         let mut rx = tasks::send_invalidation(
             invalidation_rx,
             send_caches.clone(),
-            vec![0],
+            crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(1, crate::endpoint::id::LocalSocketId::new(0)),
             cancelled_tx,
             retransmit_tx,
             invalidation_counters(),
@@ -337,7 +337,7 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
     sim(|| {
         let registry = crate::counter::Registry::default();
         let clock = Clock::default();
-        let send_caches = vec![
+        let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSocketId, _> = vec![
             Rc::new(RefCell::new(send::Cache::new(
                 &registry,
                 crate::endpoint::id::SenderIdx::new(0),
@@ -346,7 +346,7 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
                 &registry,
                 crate::endpoint::id::SenderIdx::new(1),
             ))),
-        ];
+        ].into();
 
         let pse = test_entry();
         pse.touch_activity(precision::Clock::now(&clock));
@@ -371,7 +371,7 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
         let mut rx = tasks::send_invalidation(
             invalidation_rx,
             send_caches.clone(),
-            vec![0, 1],
+            { let mut m = crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(2, crate::endpoint::id::LocalSocketId::new(usize::MAX)); m[crate::endpoint::id::SenderIdx::new(0)] = crate::endpoint::id::LocalSocketId::new(0); m[crate::endpoint::id::SenderIdx::new(1)] = crate::endpoint::id::LocalSocketId::new(1); m },
             cancelled_tx,
             retransmit_tx,
             invalidation_counters(),

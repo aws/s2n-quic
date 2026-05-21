@@ -173,6 +173,69 @@ impl EncoderValue for RemoteSenderId {
 }
 
 
+/// Index of a send socket within a single send worker.
+///
+/// A send worker owns multiple sockets; `LocalSocketId` distinguishes them
+/// within that worker. This is the second step of the two-step lookup:
+/// `SenderIdx` → `LocalSocketId` → `send::Cache`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LocalSocketId(usize);
+
+impl LocalSocketId {
+    #[inline]
+    pub const fn new(id: usize) -> Self {
+        Self(id)
+    }
+
+    #[inline]
+    pub const fn as_usize(self) -> usize {
+        self.0
+    }
+}
+
+impl From<LocalSocketId> for usize {
+    #[inline]
+    fn from(id: LocalSocketId) -> usize {
+        id.0
+    }
+}
+
+impl core::fmt::Display for LocalSocketId {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl<T> core::ops::Index<LocalSocketId> for [T] {
+    type Output = T;
+    #[inline]
+    fn index(&self, idx: LocalSocketId) -> &T {
+        &self[idx.0]
+    }
+}
+
+impl<T> core::ops::IndexMut<LocalSocketId> for [T] {
+    #[inline]
+    fn index_mut(&mut self, idx: LocalSocketId) -> &mut T {
+        &mut self[idx.0]
+    }
+}
+
+impl<T> core::ops::Index<LocalSocketId> for Vec<T> {
+    type Output = T;
+    #[inline]
+    fn index(&self, idx: LocalSocketId) -> &T {
+        &self.as_slice()[idx]
+    }
+}
+
+impl<T> core::ops::IndexMut<LocalSocketId> for Vec<T> {
+    #[inline]
+    fn index_mut(&mut self, idx: LocalSocketId) -> &mut T {
+        &mut self.as_mut_slice()[idx]
+    }
+}
+
 // ── Worker IDs ──────────────────────────────────────────────────────────────
 //
 // Each worker type gets its own newtype so you can't accidentally pass a
@@ -279,3 +342,127 @@ worker_id! {
 /// This exists as a migration aid — new code should use the specific types.
 #[deprecated(note = "use a specific worker ID type (SendWorkerId, RecvDispatchWorkerId, etc.)")]
 pub type WorkerId = RecvDispatchWorkerId;
+
+// ── Typed ID Mapping ────────────────────────────────────────────────────────
+
+/// A typed lookup table mapping one ID type to another.
+///
+/// Replaces raw `Vec<usize>` with compile-time-checked indexing. The key type
+/// (`K`) is used as the index; the value type (`V`) is returned from lookups.
+///
+/// # Example
+///
+/// ```ignore
+/// let map: IdMap<SenderIdx, usize> = IdMap::new(64, usize::MAX);
+/// map[SenderIdx::new(3)] = 7;
+/// assert_eq!(map[SenderIdx::new(3)], 7);
+/// ```
+#[derive(Clone)]
+pub struct IdMap<K, V> {
+    values: Vec<V>,
+    _key: core::marker::PhantomData<fn(K) -> K>,
+}
+
+impl<K, V: Clone> IdMap<K, V> {
+    /// Create a new map with `len` slots, all initialized to `default`.
+    pub fn new(len: usize, default: V) -> Self {
+        Self {
+            values: vec![default; len],
+            _key: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<K, V: Default + Clone> IdMap<K, V> {
+    pub fn with_default(len: usize) -> Self {
+        Self {
+            values: vec![V::default(); len],
+            _key: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<K, V> IdMap<K, V> {
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+
+    pub fn get(&self, key: K) -> Option<&V>
+    where
+        K: Into<usize>,
+    {
+        self.values.get(key.into())
+    }
+
+    pub fn get_mut(&mut self, key: K) -> Option<&mut V>
+    where
+        K: Into<usize>,
+    {
+        self.values.get_mut(key.into())
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &V> {
+        self.values.iter()
+    }
+}
+
+impl<K: Into<usize>, V> core::ops::Index<K> for IdMap<K, V> {
+    type Output = V;
+    #[inline]
+    fn index(&self, idx: K) -> &V {
+        &self.values[idx.into()]
+    }
+}
+
+impl<K: Into<usize>, V> core::ops::IndexMut<K> for IdMap<K, V> {
+    #[inline]
+    fn index_mut(&mut self, idx: K) -> &mut V {
+        &mut self.values[idx.into()]
+    }
+}
+
+impl<'a, K, V> IntoIterator for &'a IdMap<K, V> {
+    type Item = &'a V;
+    type IntoIter = core::slice::Iter<'a, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.values.iter()
+    }
+}
+
+impl<'a, K, V> IntoIterator for &'a mut IdMap<K, V> {
+    type Item = &'a mut V;
+    type IntoIter = core::slice::IterMut<'a, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.values.iter_mut()
+    }
+}
+
+impl<K, V> From<Vec<V>> for IdMap<K, V> {
+    fn from(values: Vec<V>) -> Self {
+        Self {
+            values,
+            _key: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<K, V> core::iter::FromIterator<V> for IdMap<K, V> {
+    fn from_iter<I: IntoIterator<Item = V>>(iter: I) -> Self {
+        Self {
+            values: iter.into_iter().collect(),
+            _key: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<K, V: core::fmt::Debug> core::fmt::Debug for IdMap<K, V> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_list().entries(self.values.iter()).finish()
+    }
+}

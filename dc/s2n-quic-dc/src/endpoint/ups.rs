@@ -86,23 +86,9 @@ impl DedupFilter {
     }
 
     /// Returns `true` if the response should be sent, `false` if suppressed.
-    pub fn check(&mut self, response: &Response, now: Timestamp) -> bool {
-        let Some(credential_id) = extract_credential_id(&response.packet) else {
-            return true;
-        };
-
-        if let Some(&last_sent) = self.seen.get(&credential_id) {
-            if now.duration_since(last_sent) < self.window {
-                self.counters.suppressed.add(1);
-                return false;
-            }
-        }
-
-        if self.seen.len() >= self.capacity {
-            self.seen.clear();
-        }
-        self.seen.insert(credential_id, now);
-
+    pub fn check(&mut self, _response: &Response, _now: Timestamp) -> bool {
+        // Dedup disabled: stale key and replay control packets must always be sent
+        // to ensure the peer learns about invalidated flows promptly.
         true
     }
 }

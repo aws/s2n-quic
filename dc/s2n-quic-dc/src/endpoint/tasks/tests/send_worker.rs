@@ -21,11 +21,11 @@ fn send_ack_processor_ignores_invalid_sender_id() {
     let _guard = crate::testing::without_snapshots();
     sim(|| {
         let registry = crate::counter::Registry::default();
-        let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(
+        let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSocketId, _> = vec![Rc::new(RefCell::new(send::Cache::new(
             &registry,
             crate::endpoint::id::SenderIdx::new(0),
-        )))];
-        let sender_idx_to_local = vec![0usize];
+        )))].into();
+        let sender_idx_to_local = crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(1, crate::endpoint::id::LocalSocketId::new(0));
 
         let (mut ack_tx, ack_rx) = unsync::new::<msg::Sender>();
         let (tx_wheel_tx, mut tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
@@ -127,8 +127,8 @@ fn send_pto_timeout_routes_pending_context_to_tx_wheel() {
             idle_wheel_tx,
             registry.register("tx.pto_check"),
             registry.register("tx.pto_requested"),
-            vec![],
-            vec![],
+            crate::endpoint::id::IdMap::<crate::endpoint::id::LocalSocketId, _>::from(vec![]),
+            crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(0, crate::endpoint::id::LocalSocketId::new(0)),
         );
 
         async move { rx.drain_budgeted(Some(32)).await }
@@ -182,7 +182,7 @@ fn send_tx_wheel_drain_routes_expired_context_to_matching_socket() {
             clock,
             registry.register_queue_gauge("test.tx_wheel"),
             vec![socket0_tx, socket1_tx],
-            vec![0usize, 1usize],
+            { let mut m = crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(2, crate::endpoint::id::LocalSocketId::new(usize::MAX)); m[crate::endpoint::id::SenderIdx::new(0)] = crate::endpoint::id::LocalSocketId::new(0); m[crate::endpoint::id::SenderIdx::new(1)] = crate::endpoint::id::LocalSocketId::new(1); m },
             32,
             registry.register_nominal_task("task.tx_wheel", "send.0"),
         )

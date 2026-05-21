@@ -111,17 +111,17 @@ impl FrameBatch {
 
     /// Returns the sticky sender index if this batch requires sticky routing.
     #[inline]
-    pub fn sender_id(&self) -> Option<usize> {
+    pub fn sender_id(&self) -> Option<super::id::SenderIdx> {
         if self.sender_id != VarInt::MAX {
-            Some(self.sender_id.as_u64() as usize)
+            Some(super::id::SenderIdx::new(self.sender_id.as_u64() as usize))
         } else {
             None
         }
     }
 
     #[inline]
-    pub fn set_sender_id(&mut self, id: usize) {
-        self.sender_id = VarInt::new(id as u64).unwrap_or(VarInt::MAX);
+    pub fn set_sender_id(&mut self, id: super::id::SenderIdx) {
+        self.sender_id = VarInt::new(id.as_usize() as u64).unwrap_or(VarInt::MAX);
     }
 
     /// Returns the total number of frames across all priority levels.
@@ -351,31 +351,31 @@ where
 /// Items that may carry a sticky sender preference, bypassing pick-two routing.
 pub trait StickyRoute {
     /// Returns `Some(idx)` if this item must be routed to a specific sender.
-    fn sticky_sender_idx(&self) -> Option<usize>;
+    fn sticky_sender_idx(&self) -> Option<super::id::SenderIdx>;
 
-    fn set_sender_id(&mut self, id: usize);
+    fn set_sender_id(&mut self, id: super::id::SenderIdx);
 }
 
 impl StickyRoute for FrameBatch {
     #[inline]
-    fn sticky_sender_idx(&self) -> Option<usize> {
+    fn sticky_sender_idx(&self) -> Option<super::id::SenderIdx> {
         FrameBatch::sender_id(self)
     }
 
     #[inline]
-    fn set_sender_id(&mut self, id: usize) {
+    fn set_sender_id(&mut self, id: super::id::SenderIdx) {
         FrameBatch::set_sender_id(self, id);
     }
 }
 
 impl<T: StickyRoute> StickyRoute for crate::intrusive::Entry<T> {
     #[inline]
-    fn sticky_sender_idx(&self) -> Option<usize> {
+    fn sticky_sender_idx(&self) -> Option<super::id::SenderIdx> {
         (**self).sticky_sender_idx()
     }
 
     #[inline]
-    fn set_sender_id(&mut self, id: usize) {
+    fn set_sender_id(&mut self, id: super::id::SenderIdx) {
         (**self).set_sender_id(id);
     }
 }
@@ -452,7 +452,7 @@ where
             let entry = value.path_secret_entry();
             let len = entry.socket_sender_count();
 
-            if len <= 1 {
+            let raw = if len <= 1 {
                 0
             } else {
                 let idx1 = rng.next_usize(len);
@@ -479,11 +479,12 @@ where
                     rejected_counters[idx1].record_value(delta);
                     idx2
                 }
-            }
+            };
+            super::id::SenderIdx::new(raw)
         };
 
         debug_assert!(
-            chosen_idx < senders.len(),
+            usize::from(chosen_idx) < senders.len(),
             "sender index out of bounds: chosen={} senders={}",
             chosen_idx,
             senders.len()
@@ -546,6 +547,7 @@ pub(crate) struct Assembler<R, Clk, C, A> {
     cancelled_tx: C,
     ack_completions_tx: A,
     pub(crate) counters: AssemblerCounters,
+    send_counters: Rc<super::counters::Send>,
 }
 
 #[derive(Clone)]
@@ -698,6 +700,7 @@ impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
         cancelled_tx: C,
         ack_completions_tx: A,
         counters: AssemblerCounters,
+        send_counters: Rc<super::counters::Send>,
     ) -> Self {
         Self {
             inner,
@@ -710,6 +713,7 @@ impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
             cancelled_tx,
             ack_completions_tx,
             counters,
+            send_counters,
         }
     }
 }
@@ -747,6 +751,7 @@ where
                 &mut cancelled,
                 &mut ack_completions,
                 &self.counters,
+                &self.send_counters,
             );
             if !cancelled.is_empty() {
                 let _ = self.cancelled_tx.send(cancelled);
@@ -922,8 +927,8 @@ where
 /// either loss detection (ReceivedAck) or direct ACK state (PendingAck).
 pub(crate) struct AckProcessor<R, Clk, Rand, C> {
     inner: R,
-    send_caches: Vec<Rc<RefCell<send::Cache>>>,
-    sender_idx_to_local: Vec<usize>,
+    send_caches: super::id::IdMap<super::id::LocalSocketId, Rc<RefCell<send::Cache>>>,
+    sender_idx_to_local: super::id::IdMap<super::id::SenderIdx, super::id::LocalSocketId>,
     total_sender_ids: usize,
     clock: Clk,
     random: Rand,
@@ -939,8 +944,8 @@ impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         inner: R,
-        send_caches: Vec<Rc<RefCell<send::Cache>>>,
-        sender_idx_to_local: Vec<usize>,
+        send_caches: super::id::IdMap<super::id::LocalSocketId, Rc<RefCell<send::Cache>>>,
+        sender_idx_to_local: super::id::IdMap<super::id::SenderIdx, super::id::LocalSocketId>,
         total_sender_ids: usize,
         clock: Clk,
         random: Rand,
@@ -969,7 +974,7 @@ impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
             self.invalid_sender_idx.add(1);
             return None;
         }
-        let Some(local_id) = self.sender_idx_to_local.get(usize::from(sender_idx)).copied() else {
+        let Some(local_id) = self.sender_idx_to_local.get(sender_idx).copied() else {
             self.invalid_sender_idx.add(1);
             return None;
         };

@@ -30,11 +30,11 @@ struct Harness {
 /// Spawns the context_resolver pipeline and returns a harness for driving it.
 fn setup() -> Harness {
     let registry = crate::counter::Registry::default();
-    let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(
+    let send_caches: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSocketId, _> = vec![Rc::new(RefCell::new(send::Cache::new(
         &registry,
         crate::endpoint::id::SenderIdx::new(0),
-    )))];
-    let sender_idx_to_local = vec![0];
+    )))].into();
+    let sender_idx_to_local = crate::endpoint::id::IdMap::<crate::endpoint::id::SenderIdx, crate::endpoint::id::LocalSocketId>::new(1, crate::endpoint::id::LocalSocketId::new(0));
 
     let (tx_wheel_tx, tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
     let (pto_wheel_tx, _) = unsync::new_with_adapter::<send::PtoWheelAdapter>();

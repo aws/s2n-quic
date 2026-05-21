@@ -55,8 +55,10 @@ pub(crate) enum Error {
     /// or outside the replay window (possible replay / too old).  The peer should be
     /// notified to trigger a re-handshake.
     StaleKey {
+        dest_addr: crate::msg::addr::Addr,
         credentials: Credentials,
         packet_number: VarInt,
+        control_out: Vec<u8>,
     },
     MissingSenderId,
 }
@@ -176,16 +178,14 @@ where
                 });
             }
             Err(recv::CacheError::ReplayDetected) => {
-                // TODO: `check_dedup` already sends a StaleKey/ReplayDetected control
-                // packet to the peer via the map's background socket, but that path is
-                // best-effort and may not reach the peer.  We should also populate
-                // `control_out` with the appropriate stale-key notification and return
-                // it via the UPS in-band path (mirroring the `PeerStateLookup` arm
-                // above) so that the peer has a reliable mechanism to learn about the
-                // stale key and trigger a re-handshake.
+                let remote_addr = packet.storage().remote_address().get();
+                let mut dest_addr = crate::msg::addr::Addr::new(remote_addr);
+                dest_addr.set_port(packet.source_control_port());
                 return Err(Error::StaleKey {
+                    dest_addr,
                     credentials,
                     packet_number,
+                    control_out,
                 });
             }
         }

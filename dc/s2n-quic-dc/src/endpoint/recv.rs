@@ -489,6 +489,7 @@ impl Cache {
                             &ctx.borrow().path_entry,
                             credentials,
                             Some(remote_sender_id.as_varint()),
+                            control_out,
                         )
                         .map_err(|_| CacheError::ReplayDetected)?;
 
@@ -513,7 +514,7 @@ impl Cache {
                 let r = decrypt(&opener).ok_or(CacheError::DecryptFailed)?;
 
                 path_secret_map
-                    .check_dedup(&path_entry, credentials, Some(remote_sender_id.as_varint()))
+                    .check_dedup(&path_entry, credentials, Some(remote_sender_id.as_varint()), control_out)
                     .map_err(|_| CacheError::ReplayDetected)?;
 
                 // Packet is authentic — replace the stale entry.
@@ -558,7 +559,7 @@ impl Cache {
                 // first established; subsequent packets (same key_id, different packet
                 // numbers) are deduplicated by the Context's `dedup_filter`.
                 path_secret_map
-                    .check_dedup(&path_entry, credentials, Some(remote_sender_id.as_varint()))
+                    .check_dedup(&path_entry, credentials, Some(remote_sender_id.as_varint()), control_out)
                     .map_err(|_| CacheError::ReplayDetected)?;
 
                 let dest_sender_id = route.sender_id_for_ack(&credentials.id, remote_sender_id.as_varint());

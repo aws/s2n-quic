@@ -321,6 +321,7 @@ fn assemble_accounts_for_header_overhead() {
         &mut cancelled,
         &mut ack_completions,
         &counters,
+        &crate::endpoint::counters::Send::new(&crate::counter::Registry::default(), 0),
     )
     .expect("frames should assemble");
 
@@ -394,6 +395,7 @@ fn assemble_fuzz_respects_gso_invariants() {
                 &mut cancelled,
                 &mut ack_completions,
                 &counters,
+                &crate::endpoint::counters::Send::new(&crate::counter::Registry::default(), 0),
             )
             .expect("assemble should make progress for bounded test inputs");
 
@@ -659,6 +661,7 @@ fn assemble_probe_fuzz() {
                 &mut cancelled,
                 &mut ack_completions,
                 &counters,
+                &crate::endpoint::counters::Send::new(&crate::counter::Registry::default(), 0),
             );
 
             if !context.inflight.has_inflight() {
@@ -679,6 +682,7 @@ fn assemble_probe_fuzz() {
                 &mut cancelled,
                 &mut ack_completions,
                 &counters,
+                &crate::endpoint::counters::Send::new(&crate::counter::Registry::default(), 0),
             );
 
             // If a probe was assembled, verify GSO invariants.

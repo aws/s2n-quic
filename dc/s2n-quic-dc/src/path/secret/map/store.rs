@@ -94,6 +94,7 @@ pub trait Store: 'static + Send + Sync + time::Clock {
         entry: &Entry,
         key_id: VarInt,
         queue_id: Option<VarInt>,
+        control_out: &mut Vec<u8>,
     ) -> crate::crypto::open::Result;
 
     #[cfg(any(test, feature = "testing"))]
