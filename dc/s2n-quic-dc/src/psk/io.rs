@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 use super::{client, server};
-use crate::{path::secret, tracing::*};
+use crate::{
+    path::secret::{self, map::HandshakingPath},
+    tracing::*,
+};
 use cfg_if::cfg_if;
 use rand::RngExt;
 use s2n_quic::{
@@ -11,8 +14,12 @@ use s2n_quic::{
         tls::Provider as Prov,
     },
     server::Name,
+    Connection,
 };
-use s2n_quic_core::inet::SocketAddress;
+use s2n_quic_core::{
+    event::api::{self as events, Subscriber as CoreSub},
+    inet::SocketAddress,
+};
 use std::{
     hash::BuildHasher,
     io,
@@ -41,6 +48,45 @@ pub const DEFAULT_PTO_JITTER_PERCENTAGE: u8 = 33;
 const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(1);
 
 const BUFFER_SIZE: usize = 16 * 1024;
+
+struct DcPathCapture;
+
+pub(crate) struct DcPathContext {
+    path: Option<HandshakingPath>,
+}
+
+impl DcPathCapture {
+    fn take_entry(conn: &mut Connection) -> Option<Arc<secret::map::Entry>> {
+        conn.query_event_context_mut(|ctx: &mut DcPathContext| {
+            ctx.path.as_ref().and_then(|p| p.entry())
+        })
+        .ok()
+        .flatten()
+    }
+}
+
+impl CoreSub for DcPathCapture {
+    type ConnectionContext = DcPathContext;
+
+    fn create_connection_context(
+        &mut self,
+        _meta: &events::ConnectionMeta,
+        _info: &events::ConnectionInfo,
+    ) -> Self::ConnectionContext {
+        DcPathContext { path: None }
+    }
+
+    fn on_dc_path_created(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::DcPathCreated,
+    ) {
+        if let Some(path) = event.path.downcast_ref::<Option<HandshakingPath>>() {
+            context.path = path.clone();
+        }
+    }
+}
 
 /// Wire format: `u8 count` followed by `count` addresses, each 18 bytes (16 IPv6 + 2 port).
 /// IPv4 addresses are encoded as IPv4-mapped IPv6.
@@ -136,7 +182,7 @@ impl Server {
             .with_bidirectional_remote_data_window(builder.data_window)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
-        let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
+        let event = ((ConfirmComplete, (MtuConfirmComplete, DcPathCapture)), subscriber);
 
         cfg_if!(
             if #[cfg(any(test, feature = "testing"))] {
@@ -240,14 +286,10 @@ pub(super) async fn server<
 
             match tokio::time::timeout_at(deadline, initial_exchange).await {
                 Ok(Ok(((), peer_data_addrs))) => {
-                    if let Ok(peer_address) = connection.remote_addr() {
-                        if let Some(entry) = map_clone.get_raw(peer_address) {
-                            entry.set_peer_data_addrs(&peer_data_addrs);
-                        } else {
-                            panic!("no entry found for peer address: {:?}", peer_address)
-                        }
+                    if let Some(entry) = DcPathCapture::take_entry(&mut connection) {
+                        entry.set_peer_data_addrs(&peer_data_addrs);
                     } else {
-                        panic!("failed to get peer address")
+                        warn!("no dc path entry available for connection");
                     }
 
                     let _ = tokio::time::timeout_at(
@@ -313,7 +355,7 @@ impl Client {
             .with_bidirectional_remote_data_window(builder.data_window)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
-        let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
+        let event = ((ConfirmComplete, (MtuConfirmComplete, DcPathCapture)), subscriber);
 
         let client = client
             .with_limits(connection_limits)?
@@ -536,9 +578,11 @@ impl HandshakeQueue {
             confirm_result?;
             let peer_data_addrs = addr_result?;
 
-            map.get_raw(peer)
-                .unwrap()
-                .set_peer_data_addrs(&peer_data_addrs);
+            if let Some(entry) = DcPathCapture::take_entry(&mut connection) {
+                entry.set_peer_data_addrs(&peer_data_addrs);
+            } else {
+                warn!("no dc path entry available for connection to {peer}");
+            }
 
             // Don't wait for the connection to fully close, just wait until dc.complete to
             // drop the permit.
