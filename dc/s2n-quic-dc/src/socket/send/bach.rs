@@ -14,6 +14,13 @@ use std::{
     net::SocketAddr,
 };
 
+impl crate::socket::LocalAddr for UdpSocket {
+    #[inline]
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        UdpSocket::local_addr(self)
+    }
+}
+
 impl super::Socket for UdpSocket {
     #[inline]
     fn send_msg(
@@ -39,10 +46,5 @@ impl super::Socket for UdpSocket {
         }
 
         UdpSocket::try_send_msg(self, dest, payload, opts)
-    }
-
-    #[inline]
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        UdpSocket::local_addr(self)
     }
 }

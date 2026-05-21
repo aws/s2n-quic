@@ -569,6 +569,12 @@ pub mod inspector {
         }
     }
 
+    impl crate::socket::LocalAddr for PanicSendSocket {
+        fn local_addr(&self) -> std::io::Result<SocketAddr> {
+            Ok(self.addr)
+        }
+    }
+
     impl crate::socket::send::Socket for PanicSendSocket {
         fn send_msg(
             &self,
@@ -579,7 +585,9 @@ pub mod inspector {
         ) -> std::io::Result<usize> {
             panic!("send_msg should not be called during topology snapshot");
         }
+    }
 
+    impl crate::socket::LocalAddr for PanicRecvSocket {
         fn local_addr(&self) -> std::io::Result<SocketAddr> {
             Ok(self.addr)
         }
@@ -594,10 +602,6 @@ pub mod inspector {
             _buffer: &mut [std::io::IoSliceMut],
         ) -> core::task::Poll<std::io::Result<usize>> {
             panic!("poll_recv should not be called during topology snapshot");
-        }
-
-        fn local_addr(&self) -> std::io::Result<SocketAddr> {
-            Ok(self.addr)
         }
     }
 

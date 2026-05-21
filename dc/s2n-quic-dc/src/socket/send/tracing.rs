@@ -8,6 +8,13 @@ use std::io::{self, IoSlice};
 
 pub struct Tracing<S>(pub S);
 
+impl<S: crate::socket::LocalAddr> crate::socket::LocalAddr for Tracing<S> {
+    #[inline]
+    fn local_addr(&self) -> io::Result<std::net::SocketAddr> {
+        self.0.local_addr()
+    }
+}
+
 impl<S: Socket> Socket for Tracing<S> {
     #[inline]
     fn send_msg(
@@ -31,10 +38,5 @@ impl<S: Socket> Socket for Tracing<S> {
         );
 
         result
-    }
-
-    #[inline]
-    fn local_addr(&self) -> io::Result<std::net::SocketAddr> {
-        self.0.local_addr()
     }
 }

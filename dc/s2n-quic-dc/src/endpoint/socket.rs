@@ -110,28 +110,44 @@ impl RecvConfig {
     }
 }
 
-/// Wraps a send socket to count calls and bytes at the I/O boundary.
-pub(crate) struct MeteredSend<S> {
+/// Wraps a socket to count ops, bytes, and errors at the I/O boundary.
+pub(crate) struct Metered<S> {
     inner: S,
-    tx_counter: crate::counter::Counter,
-    tx_bytes_counter: crate::counter::Counter,
+    ops: crate::counter::Counter,
+    bytes: crate::counter::Counter,
+    errors: crate::counter::Counter,
 }
 
-impl<S> MeteredSend<S> {
+impl<S: std::fmt::Debug> std::fmt::Debug for Metered<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl<S> Metered<S> {
     pub fn new(
         inner: S,
-        tx_counter: crate::counter::Counter,
-        tx_bytes_counter: crate::counter::Counter,
+        ops: crate::counter::Counter,
+        bytes: crate::counter::Counter,
+        errors: crate::counter::Counter,
     ) -> Self {
         Self {
             inner,
-            tx_counter,
-            tx_bytes_counter,
+            ops,
+            bytes,
+            errors,
         }
     }
 }
 
-impl<S: crate::socket::send::Socket> crate::socket::send::Socket for MeteredSend<S> {
+impl<S: crate::socket::LocalAddr> crate::socket::LocalAddr for Metered<S> {
+    #[inline]
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.inner.local_addr()
+    }
+}
+
+impl<S: crate::socket::send::Socket> crate::socket::send::Socket for Metered<S> {
     #[inline]
     fn send_msg(
         &self,
@@ -141,47 +157,20 @@ impl<S: crate::socket::send::Socket> crate::socket::send::Socket for MeteredSend
         ecn: s2n_quic_core::inet::ExplicitCongestionNotification,
     ) -> io::Result<usize> {
         let result = self.inner.send_msg(addr, payload, segment_size, ecn);
-        if let Ok(sent) = &result {
-            self.tx_counter.add(1);
-            self.tx_bytes_counter.add(*sent as u64);
+        match &result {
+            Ok(sent) => {
+                self.ops.add(1);
+                self.bytes.add(*sent as u64);
+            }
+            Err(_) => {
+                self.errors.add(1);
+            }
         }
         result
     }
-
-    #[inline]
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.inner.local_addr()
-    }
 }
 
-/// Wraps a recv socket to count calls and bytes at the I/O boundary.
-pub(crate) struct MeteredRecv<S> {
-    inner: S,
-    rx_counter: crate::counter::Counter,
-    rx_bytes_counter: crate::counter::Counter,
-    rx_counter_total: crate::counter::Counter,
-    rx_bytes_counter_total: crate::counter::Counter,
-}
-
-impl<S> MeteredRecv<S> {
-    pub fn new(
-        inner: S,
-        rx_counter: crate::counter::Counter,
-        rx_bytes_counter: crate::counter::Counter,
-        rx_counter_total: crate::counter::Counter,
-        rx_bytes_counter_total: crate::counter::Counter,
-    ) -> Self {
-        Self {
-            inner,
-            rx_counter,
-            rx_bytes_counter,
-            rx_counter_total,
-            rx_bytes_counter_total,
-        }
-    }
-}
-
-impl<S: crate::socket::recv::Socket> crate::socket::recv::Socket for MeteredRecv<S> {
+impl<S: crate::socket::recv::Socket> crate::socket::recv::Socket for Metered<S> {
     #[inline]
     fn poll_recv(
         &self,
@@ -191,17 +180,16 @@ impl<S: crate::socket::recv::Socket> crate::socket::recv::Socket for MeteredRecv
         buffer: &mut [io::IoSliceMut],
     ) -> core::task::Poll<io::Result<usize>> {
         let result = self.inner.poll_recv(cx, addr, cmsg, buffer);
-        if let core::task::Poll::Ready(Ok(received)) = &result {
-            self.rx_counter.add(1);
-            self.rx_bytes_counter.add(*received as u64);
-            self.rx_counter_total.add(1);
-            self.rx_bytes_counter_total.add(*received as u64);
+        match &result {
+            core::task::Poll::Ready(Ok(received)) => {
+                self.ops.add(1);
+                self.bytes.add(*received as u64);
+            }
+            core::task::Poll::Ready(Err(_)) => {
+                self.errors.add(1);
+            }
+            core::task::Poll::Pending => {}
         }
         result
-    }
-
-    #[inline]
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.inner.local_addr()
     }
 }

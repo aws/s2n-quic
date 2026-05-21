@@ -16,6 +16,12 @@ impl<T: udp::Socket> udp::Socket for BusyPoll<T> {
     }
 }
 
+impl<T: udp::Socket> super::LocalAddr for BusyPoll<T> {
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.0.local_addr()
+    }
+}
+
 impl<T: udp::Socket> AsRawFd for BusyPoll<T> {
     fn as_raw_fd(&self) -> RawFd {
         self.0.as_raw_fd()

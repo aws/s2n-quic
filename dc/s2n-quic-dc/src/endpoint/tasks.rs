@@ -1072,6 +1072,10 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
                 let path_active = !ctx.path_secret_entry.is_idle_expired(now);
                 let sender_idx = ctx.sender_idx;
                 let peer_addr = ctx.peer_addr;
+                let ever_responded = ctx.last_peer_activity.nanos != ctx.created_at.nanos;
+                let has_inflight = ctx.inflight.has_inflight();
+                let pto_backoff = ctx.pto.backoff;
+                let packets_sent = ctx.next_packet_number.as_u64();
                 drop(ctx);
 
                 if path_active {
@@ -1083,6 +1087,10 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
                         %sender_idx,
                         %local_addr,
                         %peer_addr,
+                        ever_responded,
+                        has_inflight,
+                        pto_backoff,
+                        packets_sent,
                         "send context idle but path still active — possible routing asymmetry"
                     );
                 }
@@ -1091,8 +1099,7 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
                 // is still active (routing asymmetry), killing the peer would
                 // incorrectly block new flows on a partially-working path.
                 let marked_dead = !path_active
-                    && path_secret_entry
-                        .mark_dead_if_cooldown_elapsed(now, dead_peer_cooldown);
+                    && path_secret_entry.mark_dead_if_cooldown_elapsed(now, dead_peer_cooldown);
 
                 let result = send_caches[local_id].borrow_mut().invalidate(
                     &id,

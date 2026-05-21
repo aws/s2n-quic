@@ -10,10 +10,10 @@ use crate::{
 };
 use core::task::{Context, Poll};
 use s2n_quic_core::ensure;
-use std::{io, io::IoSliceMut, net::SocketAddr};
+use std::{io, io::IoSliceMut};
 
 /// A socket that can receive packets
-pub trait Socket: Send + 'static {
+pub trait Socket: crate::socket::LocalAddr + Send + 'static {
     /// Polls for receiving data
     fn poll_recv(
         &self,
@@ -22,9 +22,6 @@ pub trait Socket: Send + 'static {
         cmsg: &mut cmsg::Receiver,
         buffer: &mut [IoSliceMut],
     ) -> Poll<io::Result<usize>>;
-
-    /// Returns the local address for the socket
-    fn local_addr(&self) -> io::Result<SocketAddr>;
 }
 
 impl<T> Socket for BusyPoll<T>
@@ -61,10 +58,5 @@ where
                 Err(err) => return Err(err).into(),
             }
         }
-    }
-
-    #[inline]
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.0.local_addr()
     }
 }

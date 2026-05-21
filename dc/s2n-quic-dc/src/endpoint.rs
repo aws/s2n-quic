@@ -255,15 +255,51 @@ where
     UpsSocket: crate::socket::send::Socket + Send + 'static,
     R: crate::runtime::Runtime,
 {
-    let num_recv_dispatch = config.layout.recv_dispatch.len();
+    use crate::counter::Registry as CounterRegistry;
 
-    let send_sockets: IdMap<LocalSendSocketId, _> = send_sockets.into();
-    let recv_sockets: IdMap<id::LocalRecvSocketId, _> = recv_sockets.into();
+    let num_recv_dispatch = config.layout.recv_dispatch.len();
+    let counter_registry = CounterRegistry::default();
+
+    let send_sockets: IdMap<_, _> = LocalSendSocketId::range(send_sockets.len())
+        .zip(send_sockets)
+        .map(|(key, socket)| {
+            let local_addr = socket
+                .local_addr()
+                .expect("send socket must have a local address");
+            let socket = crate::socket::cached_addr::CachedAddr::new(socket, local_addr);
+            let socket = crate::socket::tracing::Tracing::new(socket, key);
+            let socket = socket::Metered::new(
+                socket,
+                counter_registry.register_nominal("socket.tx.ops", format_args!("send.{key}")),
+                counter_registry.register_nominal("socket.tx.bytes", format_args!("send.{key}")),
+                counter_registry.register_nominal("!socket.tx.errors", format_args!("send.{key}")),
+            );
+            (key, socket)
+        })
+        .collect();
+
+    let recv_sockets: IdMap<_, _> = id::LocalRecvSocketId::range(recv_sockets.len())
+        .zip(recv_sockets)
+        .map(|(key, socket)| {
+            let local_addr = socket
+                .local_addr()
+                .expect("recv socket must have a local address");
+            let socket = crate::socket::cached_addr::CachedAddr::new(socket, local_addr);
+            let socket = crate::socket::tracing::Tracing::new(socket, key);
+            let socket = socket::Metered::new(
+                socket,
+                counter_registry.register_nominal("socket.rx.ops", format_args!("recv.{key}")),
+                counter_registry.register_nominal("socket.rx.bytes", format_args!("recv.{key}")),
+                counter_registry.register_nominal("!socket.rx.errors", format_args!("recv.{key}")),
+            );
+            (key, socket)
+        })
+        .collect();
 
     debug!(
         ?config.layout,
-        send_sockets = ?send_sockets.iter().map(|(id, socket)| (id, socket.local_addr())).collect::<Vec<_>>(),
-        recv_sockets = ?recv_sockets.iter().map(|(id, socket)| (id, socket.local_addr())).collect::<Vec<_>>(),
+        ?send_sockets,
+        ?recv_sockets,
         "setting up endpoint"
     );
 
@@ -271,6 +307,7 @@ where
         setup_endpoint_inner::<_, _, _, _, routing::PowerOfTwoRoute>(
             runtime,
             config,
+            counter_registry,
             send_sockets,
             recv_sockets,
             ups_socket,
@@ -279,6 +316,7 @@ where
         setup_endpoint_inner::<_, _, _, _, routing::ModuloRoute>(
             runtime,
             config,
+            counter_registry,
             send_sockets,
             recv_sockets,
             ups_socket,
@@ -289,6 +327,7 @@ where
 fn setup_endpoint_inner<SendSocket, RecvSocket, UpsSocket, R, RecvRoute>(
     runtime: R,
     config: Config,
+    counter_registry: crate::counter::Registry,
     send_sockets: IdMap<LocalSendSocketId, SendSocket>,
     recv_sockets: IdMap<id::LocalRecvSocketId, RecvSocket>,
     ups_socket: UpsSocket,
@@ -300,7 +339,7 @@ where
     R: crate::runtime::Runtime,
     RecvRoute: routing::SenderRoute,
 {
-    use crate::{counter::Registry as CounterRegistry, socket::channel::intrusive};
+    use crate::socket::channel::intrusive;
 
     let Config {
         layout,
@@ -362,7 +401,6 @@ where
     // Shared flow-queue allocator and dispatch counters -------------------------
     let queue_allocator = msg::queue::Allocator::new();
     let queue_dispatcher = queue_allocator.dispatcher();
-    let counter_registry = CounterRegistry::default();
     let counters = counters::Dispatch::new(&counter_registry);
 
     // Per-send-worker batch channels -----------------------------------------------
@@ -434,17 +472,7 @@ where
     path_secret_map.set_socket_sender_count(num_send);
 
     // Build workers -------------------------------------------------------------
-    let mut workers: Vec<
-        Worker<
-            socket::MeteredSend<SendSocket>,
-            socket::MeteredRecv<RecvSocket>,
-            UpsSocket,
-            R::Clock,
-            _,
-            RecvRoute,
-            _,
-        >,
-    > = {
+    let mut workers: Vec<Worker<SendSocket, RecvSocket, UpsSocket, R::Clock, _, RecvRoute, _>> = {
         let mut v = Vec::with_capacity(num_workers);
         v.extend((0..num_workers).map(|id| {
             Worker::new(
@@ -468,11 +496,6 @@ where
             sender_idx,
             id::SendWorkerId::new(raw_idx % num_send_workers),
         )));
-        let socket = socket::MeteredSend::new(
-            socket,
-            counter_registry.register("socket.tx.ops"),
-            counter_registry.register_bytes("socket.tx.bytes"),
-        );
         workers[worker_id].send_sockets.push(SendSocketParts {
             socket,
             sender_idx,
@@ -627,8 +650,6 @@ where
     }
 
     // Assign each recv socket to its corresponding recv_io worker (1:1).
-    let rx_ops_total = counter_registry.register("socket.rx.ops");
-    let rx_bytes_total = counter_registry.register_bytes("socket.rx.bytes");
     for ((recv_socket_id, socket), &worker_id) in
         recv_sockets.into_iter().zip(layout.recv_io.iter())
     {
@@ -637,13 +658,6 @@ where
             dispatch_txs.clone(),
             invalidation_raw_tx.clone(),
             &counter_registry,
-        );
-        let socket = socket::MeteredRecv::new(
-            socket,
-            counter_registry.register_nominal("socket.rx.ops", format_args!("recv.{recv_io_id}")),
-            counter_registry.register_nominal("socket.rx.bytes", format_args!("recv.{recv_io_id}")),
-            rx_ops_total.clone(),
-            rx_bytes_total.clone(),
         );
         workers[worker_id].recv_socket = Some(RecvSocketParts {
             idx: recv_io_id,

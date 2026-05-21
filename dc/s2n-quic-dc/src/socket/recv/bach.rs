@@ -5,10 +5,7 @@ use crate::msg::{addr::Addr, cmsg};
 use bach::net::{socket::RecvOptions, UdpSocket};
 use core::task::{Context, Poll};
 use s2n_quic_core::{ensure, inet::ExplicitCongestionNotification, ready};
-use std::{
-    io::{self, IoSliceMut},
-    net::SocketAddr,
-};
+use std::io::{self, IoSliceMut};
 
 impl super::Socket for UdpSocket {
     #[inline]
@@ -36,10 +33,5 @@ impl super::Socket for UdpSocket {
         cmsg.set_ecn(ExplicitCongestionNotification::new(res.ecn));
 
         Ok(res.len).into()
-    }
-
-    #[inline]
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        UdpSocket::local_addr(self)
     }
 }

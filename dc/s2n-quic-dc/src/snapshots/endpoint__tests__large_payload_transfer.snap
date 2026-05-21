@@ -3,10 +3,10 @@ source: dc/s2n-quic-dc/src/testing.rs
 expression: logs
 ---
 0:00:00.000000000 [server] DEBUG s2n_quic_dc: capacity=50000
-0:00:00.000000000 [server] DEBUG setting up endpoint config.layout=WorkerLayout { frame_dispatch: 0, send: [1, 2, 3, 4], recv_io: [5, 6, 7, 8], recv_dispatch: [9, 10, 11, 12], waker_drain: [13], background: 14 } send_sockets=[(LocalSendSocketId(0), Ok(10.0.0.1:49152)), (LocalSendSocketId(1), Ok(10.0.0.1:49153)), (LocalSendSocketId(2), Ok(10.0.0.1:49154)), (LocalSendSocketId(3), Ok(10.0.0.1:49155)), (LocalSendSocketId(4), Ok(10.0.0.1:49156)), (LocalSendSocketId(5), Ok(10.0.0.1:49157)), (LocalSendSocketId(6), Ok(10.0.0.1:49158)), (LocalSendSocketId(7), Ok(10.0.0.1:49159))] recv_sockets=[(LocalRecvSocketId(0), Ok(10.0.0.1:4433)), (LocalRecvSocketId(1), Ok(10.0.0.1:49160)), (LocalRecvSocketId(2), Ok(10.0.0.1:49161)), (LocalRecvSocketId(3), Ok(10.0.0.1:49162))]
+0:00:00.000000000 [server] DEBUG setting up endpoint config.layout=WorkerLayout { frame_dispatch: 0, send: [1, 2, 3, 4], recv_io: [5, 6, 7, 8], recv_dispatch: [9, 10, 11, 12], waker_drain: [13], background: 14 } send_sockets=[10.0.0.1:49152, 10.0.0.1:49153, 10.0.0.1:49154, 10.0.0.1:49155, 10.0.0.1:49156, 10.0.0.1:49157, 10.0.0.1:49158, 10.0.0.1:49159] recv_sockets=[10.0.0.1:4433, 10.0.0.1:49160, 10.0.0.1:49161, 10.0.0.1:49162]
 0:00:00.000000000 [server] DEBUG grow epoch=8
 0:00:00.000000000 [client] DEBUG s2n_quic_dc: capacity=50000
-0:00:00.000000000 [client] DEBUG setting up endpoint config.layout=WorkerLayout { frame_dispatch: 0, send: [1, 2, 3, 4], recv_io: [5, 6, 7, 8], recv_dispatch: [9, 10, 11, 12], waker_drain: [13], background: 14 } send_sockets=[(LocalSendSocketId(0), Ok(10.0.0.2:49152)), (LocalSendSocketId(1), Ok(10.0.0.2:49153)), (LocalSendSocketId(2), Ok(10.0.0.2:49154)), (LocalSendSocketId(3), Ok(10.0.0.2:49155)), (LocalSendSocketId(4), Ok(10.0.0.2:49156)), (LocalSendSocketId(5), Ok(10.0.0.2:49157)), (LocalSendSocketId(6), Ok(10.0.0.2:49158)), (LocalSendSocketId(7), Ok(10.0.0.2:49159))] recv_sockets=[(LocalRecvSocketId(0), Ok(10.0.0.2:49160)), (LocalRecvSocketId(1), Ok(10.0.0.2:49161)), (LocalRecvSocketId(2), Ok(10.0.0.2:49162)), (LocalRecvSocketId(3), Ok(10.0.0.2:49163))]
+0:00:00.000000000 [client] DEBUG setting up endpoint config.layout=WorkerLayout { frame_dispatch: 0, send: [1, 2, 3, 4], recv_io: [5, 6, 7, 8], recv_dispatch: [9, 10, 11, 12], waker_drain: [13], background: 14 } send_sockets=[10.0.0.2:49152, 10.0.0.2:49153, 10.0.0.2:49154, 10.0.0.2:49155, 10.0.0.2:49156, 10.0.0.2:49157, 10.0.0.2:49158, 10.0.0.2:49159] recv_sockets=[10.0.0.2:49160, 10.0.0.2:49161, 10.0.0.2:49162, 10.0.0.2:49163]
 0:00:00.000000000 [client] DEBUG grow epoch=8
 0:00:00.000000000 [server] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [server] TRACE m#task.frame_dispatch.drained=0
@@ -362,16 +362,14 @@ expression: logs
 0:00:00.000021000 [client] TRACE c#q.resolver_to_pto_wheel.enq[send.worker.1]=1
 0:00:00.000021000 [client] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.1]=1
 0:00:00.000021000 [client] TRACE m#q.resolver_to_pto_wheel.depth_dist[send.worker.1]=1
-0:00:00.000021000 [client] TRACE c#socket.tx.ops=1
-0:00:00.000021000 [client] TRACE c#socket.tx.bytes=1413
+0:00:00.000021000 [client] TRACE c#socket.tx.ops[send.5]=1
+0:00:00.000021000 [client] TRACE c#socket.tx.bytes[send.5]=1413
 0:00:00.000021000 [client] TRACE m#task.assembler.drained[send.5]=1
 0:00:00.000021000 [client] TRACE m#task.tx_wheel.drained[send.worker.1]=0
 0:00:00.000021000 [client] TRACE m#task.pto_wheel.drained[send.worker.1]=1
 0:00:00.000021000 [client] TRACE m#task.pto_wheel.drained[send.worker.1]=0
 0:00:00.000521000 [server] TRACE c#socket.rx.ops[recv.1]=1
 0:00:00.000521000 [server] TRACE c#socket.rx.bytes[recv.1]=1413
-0:00:00.000521000 [server] TRACE c#socket.rx.ops=1
-0:00:00.000521000 [server] TRACE c#socket.rx.bytes=1413
 0:00:00.000521000 [server] TRACE c#router.routed=1
 0:00:00.000521000 [server] TRACE c#router.routed[recv.1]=1
 0:00:00.000521000 [server] TRACE c#q.dispatch_rx.enq[recv.1]=1
@@ -450,8 +448,8 @@ expression: logs
 0:00:00.000521000 [server] TRACE g#q.dispatch.depth[recv.dispatch.1]=1
 0:00:00.000521000 [server] TRACE m#q.dispatch.depth_dist[recv.dispatch.1]=1
 0:00:00.000521000 [server] TRACE m#asm.segments=1
-0:00:00.000521000 [server] TRACE c#socket.tx.ops=1
-0:00:00.000521000 [server] TRACE c#socket.tx.bytes=54
+0:00:00.000521000 [server] TRACE c#socket.tx.ops[send.5]=1
+0:00:00.000521000 [server] TRACE c#socket.tx.bytes[send.5]=54
 0:00:00.000521000 [server] TRACE m#task.assembler.drained[send.5]=1
 0:00:00.000521000 [server] TRACE m#task.tx_wheel.drained[send.worker.1]=0
 0:00:00.000521000 [server] TRACE c#q.router_to_batcher.receiver[p1.task.frame_dispatch]=1
@@ -517,16 +515,14 @@ expression: logs
 0:00:00.000541000 [server] TRACE c#q.resolver_to_pto_wheel.enq[send.worker.1]=1
 0:00:00.000541000 [server] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.1]=1
 0:00:00.000541000 [server] TRACE m#q.resolver_to_pto_wheel.depth_dist[send.worker.1]=1
-0:00:00.000541000 [server] TRACE c#socket.tx.ops=1
-0:00:00.000541000 [server] TRACE c#socket.tx.bytes=50
+0:00:00.000541000 [server] TRACE c#socket.tx.ops[send.1]=1
+0:00:00.000541000 [server] TRACE c#socket.tx.bytes[send.1]=50
 0:00:00.000541000 [server] TRACE m#task.assembler.drained[send.1]=1
 0:00:00.000541000 [server] TRACE m#task.tx_wheel.drained[send.worker.1]=0
 0:00:00.000541000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=1
 0:00:00.000541000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=0
 0:00:00.001021000 [client] TRACE c#socket.rx.ops[recv.1]=1
 0:00:00.001021000 [client] TRACE c#socket.rx.bytes[recv.1]=54
-0:00:00.001021000 [client] TRACE c#socket.rx.ops=1
-0:00:00.001021000 [client] TRACE c#socket.rx.bytes=54
 0:00:00.001021000 [client] TRACE c#router.routed=1
 0:00:00.001021000 [client] TRACE c#router.routed[recv.1]=1
 0:00:00.001021000 [client] TRACE c#q.dispatch_rx.enq[recv.1]=1
@@ -616,8 +612,8 @@ expression: logs
 0:00:00.001021000 [client] TRACE g#q.dispatch.depth[recv.dispatch.1]=1
 0:00:00.001021000 [client] TRACE m#q.dispatch.depth_dist[recv.dispatch.1]=1
 0:00:00.001021000 [client] TRACE m#asm.segments=1
-0:00:00.001021000 [client] TRACE c#socket.tx.ops=1
-0:00:00.001021000 [client] TRACE c#socket.tx.bytes=54
+0:00:00.001021000 [client] TRACE c#socket.tx.ops[send.5]=1
+0:00:00.001021000 [client] TRACE c#socket.tx.bytes[send.5]=54
 0:00:00.001021000 [client] TRACE m#task.assembler.drained[send.5]=1
 0:00:00.001021000 [client] TRACE m#task.tx_wheel.drained[send.worker.1]=0
 0:00:00.001021000 [client] TRACE c#q.dispatch.receiver[recv.dispatch.1.task.ack_completion]=1
@@ -627,8 +623,6 @@ expression: logs
 0:00:00.001021000 [client] TRACE m#task.ack_completion.drained[recv.dispatch.1]=1
 0:00:00.001041000 [client] TRACE c#socket.rx.ops[recv.1]=1
 0:00:00.001041000 [client] TRACE c#socket.rx.bytes[recv.1]=50
-0:00:00.001041000 [client] TRACE c#socket.rx.ops=1
-0:00:00.001041000 [client] TRACE c#socket.rx.bytes=50
 0:00:00.001041000 [client] TRACE c#router.routed=1
 0:00:00.001041000 [client] TRACE c#router.routed[recv.3]=1
 0:00:00.001041000 [client] TRACE c#q.dispatch_rx.enq[recv.3]=1
@@ -720,8 +714,8 @@ expression: logs
 0:00:00.001041000 [client] TRACE g#q.dispatch.depth[recv.dispatch.3]=1
 0:00:00.001041000 [client] TRACE m#q.dispatch.depth_dist[recv.dispatch.3]=1
 0:00:00.001041000 [client] TRACE m#asm.segments=1
-0:00:00.001041000 [client] TRACE c#socket.tx.ops=1
-0:00:00.001041000 [client] TRACE c#socket.tx.bytes=54
+0:00:00.001041000 [client] TRACE c#socket.tx.ops[send.7]=1
+0:00:00.001041000 [client] TRACE c#socket.tx.bytes[send.7]=54
 0:00:00.001041000 [client] TRACE m#task.assembler.drained[send.7]=1
 0:00:00.001041000 [client] TRACE m#task.tx_wheel.drained[send.worker.3]=0
 0:00:00.001041000 [client] TRACE c#q.dispatch.receiver[recv.dispatch.3.task.ack_completion]=1
@@ -792,8 +786,8 @@ expression: logs
 0:00:00.001061000 [client] TRACE c#q.resolver_to_tx_wheel.enq[send.worker.2]=1
 0:00:00.001061000 [client] TRACE g#q.resolver_to_tx_wheel.depth[send.worker.2]=1
 0:00:00.001061000 [client] TRACE m#q.resolver_to_tx_wheel.depth_dist[send.worker.2]=1
-0:00:00.001061000 [client] TRACE c#socket.tx.ops=1
-0:00:00.001061000 [client] TRACE c#socket.tx.bytes=1414
+0:00:00.001061000 [client] TRACE c#socket.tx.ops[send.6]=1
+0:00:00.001061000 [client] TRACE c#socket.tx.bytes[send.6]=1414
 0:00:00.001061000 [client] TRACE m#task.assembler.drained[send.6]=1
 0:00:00.001061000 [client] TRACE c#q.resolver_to_tx_wheel.receiver[send.worker.2.task.wheel_drain]=1
 0:00:00.001061000 [client] TRACE c#q.resolver_to_tx_wheel.drain[send.worker.2]=1
@@ -823,15 +817,13 @@ expression: logs
 0:00:00.001061000 [client] TRACE g#send.inflight.depth[send.6]=2
 0:00:00.001061000 [client] TRACE m#send.inflight.depth_dist[send.6]=2
 0:00:00.001061000 [client] TRACE m#asm.segments=1
-0:00:00.001061000 [client] TRACE c#socket.tx.ops=1
-0:00:00.001061000 [client] TRACE c#socket.tx.bytes=1428
+0:00:00.001061000 [client] TRACE c#socket.tx.ops[send.6]=1
+0:00:00.001061000 [client] TRACE c#socket.tx.bytes[send.6]=1428
 0:00:00.001061000 [client] TRACE m#task.assembler.drained[send.6]=1
 0:00:00.001061000 [client] TRACE m#task.tx_wheel.drained[send.worker.2]=0
 0:00:00.001061000 [client] TRACE m#task.pto_wheel.drained[send.worker.2]=0
 0:00:00.001521000 [server] TRACE c#socket.rx.ops[recv.1]=1
 0:00:00.001521000 [server] TRACE c#socket.rx.bytes[recv.1]=54
-0:00:00.001521000 [server] TRACE c#socket.rx.ops=1
-0:00:00.001521000 [server] TRACE c#socket.rx.bytes=54
 0:00:00.001521000 [server] TRACE c#router.routed=1
 0:00:00.001521000 [server] TRACE c#router.routed[recv.1]=1
 0:00:00.001521000 [server] TRACE c#q.dispatch_rx.enq[recv.1]=1
@@ -903,8 +895,8 @@ expression: logs
 0:00:00.001521000 [server] TRACE g#q.dispatch.depth[recv.dispatch.1]=1
 0:00:00.001521000 [server] TRACE m#q.dispatch.depth_dist[recv.dispatch.1]=1
 0:00:00.001521000 [server] TRACE m#asm.segments=1
-0:00:00.001521000 [server] TRACE c#socket.tx.ops=1
-0:00:00.001521000 [server] TRACE c#socket.tx.bytes=54
+0:00:00.001521000 [server] TRACE c#socket.tx.ops[send.5]=1
+0:00:00.001521000 [server] TRACE c#socket.tx.bytes[send.5]=54
 0:00:00.001521000 [server] TRACE m#task.assembler.drained[send.5]=1
 0:00:00.001521000 [server] TRACE m#task.tx_wheel.drained[send.worker.1]=0
 0:00:00.001521000 [server] TRACE c#q.dispatch.receiver[recv.dispatch.1.task.ack_completion]=1
@@ -914,8 +906,6 @@ expression: logs
 0:00:00.001521000 [server] TRACE m#task.ack_completion.drained[recv.dispatch.1]=1
 0:00:00.001541000 [server] TRACE c#socket.rx.ops[recv.3]=1
 0:00:00.001541000 [server] TRACE c#socket.rx.bytes[recv.3]=54
-0:00:00.001541000 [server] TRACE c#socket.rx.ops=1
-0:00:00.001541000 [server] TRACE c#socket.rx.bytes=54
 0:00:00.001541000 [server] TRACE c#router.routed=1
 0:00:00.001541000 [server] TRACE c#router.routed[recv.2]=1
 0:00:00.001541000 [server] TRACE c#q.dispatch_rx.enq[recv.2]=1
@@ -1012,8 +1002,8 @@ expression: logs
 0:00:00.001541000 [server] TRACE g#q.dispatch.depth[recv.dispatch.2]=1
 0:00:00.001541000 [server] TRACE m#q.dispatch.depth_dist[recv.dispatch.2]=1
 0:00:00.001541000 [server] TRACE m#asm.segments=1
-0:00:00.001541000 [server] TRACE c#socket.tx.ops=1
-0:00:00.001541000 [server] TRACE c#socket.tx.bytes=54
+0:00:00.001541000 [server] TRACE c#socket.tx.ops[send.6]=1
+0:00:00.001541000 [server] TRACE c#socket.tx.bytes[send.6]=54
 0:00:00.001541000 [server] TRACE m#task.assembler.drained[send.6]=1
 0:00:00.001541000 [server] TRACE m#task.tx_wheel.drained[send.worker.2]=0
 0:00:00.001541000 [server] TRACE c#q.dispatch.receiver[recv.dispatch.2.task.ack_completion]=1
@@ -1023,8 +1013,6 @@ expression: logs
 0:00:00.001541000 [server] TRACE m#task.ack_completion.drained[recv.dispatch.2]=1
 0:00:00.001561000 [server] TRACE c#socket.rx.ops[recv.2]=1
 0:00:00.001561000 [server] TRACE c#socket.rx.bytes[recv.2]=1414
-0:00:00.001561000 [server] TRACE c#socket.rx.ops=1
-0:00:00.001561000 [server] TRACE c#socket.rx.bytes=1414
 0:00:00.001561000 [server] TRACE c#router.routed=1
 0:00:00.001561000 [server] TRACE c#router.routed[recv.1]=1
 0:00:00.001561000 [server] TRACE c#q.dispatch_rx.enq[recv.1]=1
@@ -1032,8 +1020,6 @@ expression: logs
 0:00:00.001561000 [server] TRACE m#q.dispatch_rx.depth_dist[recv.1]=1
 0:00:00.001561000 [server] TRACE c#socket.rx.ops[recv.2]=1
 0:00:00.001561000 [server] TRACE c#socket.rx.bytes[recv.2]=1428
-0:00:00.001561000 [server] TRACE c#socket.rx.ops=1
-0:00:00.001561000 [server] TRACE c#socket.rx.bytes=1428
 0:00:00.001561000 [server] TRACE c#router.routed=1
 0:00:00.001561000 [server] TRACE c#router.routed[recv.1]=1
 0:00:00.001561000 [server] TRACE c#q.dispatch_rx.enq[recv.1]=1
@@ -1135,8 +1121,8 @@ expression: logs
 0:00:00.001561000 [server] TRACE g#q.dispatch.depth[recv.dispatch.1]=1
 0:00:00.001561000 [server] TRACE m#q.dispatch.depth_dist[recv.dispatch.1]=1
 0:00:00.001561000 [server] TRACE m#asm.segments=1
-0:00:00.001561000 [server] TRACE c#socket.tx.ops=1
-0:00:00.001561000 [server] TRACE c#socket.tx.bytes=54
+0:00:00.001561000 [server] TRACE c#socket.tx.ops[send.1]=1
+0:00:00.001561000 [server] TRACE c#socket.tx.bytes[send.1]=54
 0:00:00.001561000 [server] TRACE m#task.assembler.drained[send.1]=1
 0:00:00.001561000 [server] TRACE m#task.tx_wheel.drained[send.worker.1]=0
 0:00:00.001561000 [server] TRACE c#q.dispatch.receiver[recv.dispatch.1.task.ack_completion]=1
@@ -1207,8 +1193,8 @@ expression: logs
 0:00:00.001581000 [server] TRACE c#q.resolver_to_tx_wheel.enq[send.worker.3]=1
 0:00:00.001581000 [server] TRACE g#q.resolver_to_tx_wheel.depth[send.worker.3]=1
 0:00:00.001581000 [server] TRACE m#q.resolver_to_tx_wheel.depth_dist[send.worker.3]=1
-0:00:00.001581000 [server] TRACE c#socket.tx.ops=1
-0:00:00.001581000 [server] TRACE c#socket.tx.bytes=1413
+0:00:00.001581000 [server] TRACE c#socket.tx.ops[send.7]=1
+0:00:00.001581000 [server] TRACE c#socket.tx.bytes[send.7]=1413
 0:00:00.001581000 [server] TRACE m#task.assembler.drained[send.7]=1
 0:00:00.001581000 [server] TRACE c#q.resolver_to_tx_wheel.receiver[send.worker.3.task.wheel_drain]=1
 0:00:00.001581000 [server] TRACE c#q.resolver_to_tx_wheel.drain[send.worker.3]=1
@@ -1244,8 +1230,8 @@ expression: logs
 0:00:00.001581000 [server] TRACE c#q.resolver_to_tx_wheel.enq[send.worker.3]=1
 0:00:00.001581000 [server] TRACE g#q.resolver_to_tx_wheel.depth[send.worker.3]=1
 0:00:00.001581000 [server] TRACE m#q.resolver_to_tx_wheel.depth_dist[send.worker.3]=1
-0:00:00.001581000 [server] TRACE c#socket.tx.ops=1
-0:00:00.001581000 [server] TRACE c#socket.tx.bytes=1414
+0:00:00.001581000 [server] TRACE c#socket.tx.ops[send.7]=1
+0:00:00.001581000 [server] TRACE c#socket.tx.bytes[send.7]=1414
 0:00:00.001581000 [server] TRACE m#task.assembler.drained[send.7]=1
 0:00:00.001581000 [server] TRACE c#q.resolver_to_tx_wheel.receiver[send.worker.3.task.wheel_drain]=1
 0:00:00.001581000 [server] TRACE c#q.resolver_to_tx_wheel.drain[send.worker.3]=1
@@ -1275,14 +1261,12 @@ expression: logs
 0:00:00.001581000 [server] TRACE g#send.inflight.depth[send.7]=3
 0:00:00.001581000 [server] TRACE m#send.inflight.depth_dist[send.7]=3
 0:00:00.001581000 [server] TRACE m#asm.segments=1
-0:00:00.001581000 [server] TRACE c#socket.tx.ops=1
-0:00:00.001581000 [server] TRACE c#socket.tx.bytes=1428
+0:00:00.001581000 [server] TRACE c#socket.tx.ops[send.7]=1
+0:00:00.001581000 [server] TRACE c#socket.tx.bytes[send.7]=1428
 0:00:00.001581000 [server] TRACE m#task.assembler.drained[send.7]=1
 0:00:00.001581000 [server] TRACE m#task.tx_wheel.drained[send.worker.3]=0
 0:00:00.002021000 [client] TRACE c#socket.rx.ops[recv.1]=1
 0:00:00.002021000 [client] TRACE c#socket.rx.bytes[recv.1]=54
-0:00:00.002021000 [client] TRACE c#socket.rx.ops=1
-0:00:00.002021000 [client] TRACE c#socket.rx.bytes=54
 0:00:00.002021000 [client] TRACE c#router.routed=1
 0:00:00.002021000 [client] TRACE c#router.routed[recv.1]=1
 0:00:00.002021000 [client] TRACE c#q.dispatch_rx.enq[recv.1]=1
@@ -1315,8 +1299,6 @@ expression: logs
 0:00:00.002021000 [client] TRACE m#task.ack_processor.drained[send.worker.1]=2
 0:00:00.002041000 [client] TRACE c#socket.rx.ops[recv.2]=1
 0:00:00.002041000 [client] TRACE c#socket.rx.bytes[recv.2]=54
-0:00:00.002041000 [client] TRACE c#socket.rx.ops=1
-0:00:00.002041000 [client] TRACE c#socket.rx.bytes=54
 0:00:00.002041000 [client] TRACE c#router.routed=1
 0:00:00.002041000 [client] TRACE c#router.routed[recv.1]=1
 0:00:00.002041000 [client] TRACE c#q.dispatch_rx.enq[recv.1]=1
@@ -1402,8 +1384,8 @@ expression: logs
 0:00:00.002041000 [client] TRACE g#q.dispatch.depth[recv.dispatch.1]=1
 0:00:00.002041000 [client] TRACE m#q.dispatch.depth_dist[recv.dispatch.1]=1
 0:00:00.002041000 [client] TRACE m#asm.segments=1
-0:00:00.002041000 [client] TRACE c#socket.tx.ops=1
-0:00:00.002041000 [client] TRACE c#socket.tx.bytes=54
+0:00:00.002041000 [client] TRACE c#socket.tx.ops[send.1]=1
+0:00:00.002041000 [client] TRACE c#socket.tx.bytes[send.1]=54
 0:00:00.002041000 [client] TRACE m#task.assembler.drained[send.1]=1
 0:00:00.002041000 [client] TRACE m#task.tx_wheel.drained[send.worker.1]=0
 0:00:00.002041000 [client] TRACE c#q.dispatch.receiver[recv.dispatch.1.task.ack_completion]=1
@@ -1413,8 +1395,6 @@ expression: logs
 0:00:00.002041000 [client] TRACE m#task.ack_completion.drained[recv.dispatch.1]=1
 0:00:00.002061000 [client] TRACE c#socket.rx.ops[recv.1]=1
 0:00:00.002061000 [client] TRACE c#socket.rx.bytes[recv.1]=54
-0:00:00.002061000 [client] TRACE c#socket.rx.ops=1
-0:00:00.002061000 [client] TRACE c#socket.rx.bytes=54
 0:00:00.002061000 [client] TRACE c#router.routed=1
 0:00:00.002061000 [client] TRACE c#router.routed[recv.3]=1
 0:00:00.002061000 [client] TRACE c#q.dispatch_rx.enq[recv.3]=1
@@ -1516,8 +1496,8 @@ expression: logs
 0:00:00.002061000 [client] TRACE g#q.dispatch.depth[recv.dispatch.3]=1
 0:00:00.002061000 [client] TRACE m#q.dispatch.depth_dist[recv.dispatch.3]=1
 0:00:00.002061000 [client] TRACE m#asm.segments=1
-0:00:00.002061000 [client] TRACE c#socket.tx.ops=1
-0:00:00.002061000 [client] TRACE c#socket.tx.bytes=54
+0:00:00.002061000 [client] TRACE c#socket.tx.ops[send.7]=1
+0:00:00.002061000 [client] TRACE c#socket.tx.bytes[send.7]=54
 0:00:00.002061000 [client] TRACE m#task.assembler.drained[send.7]=1
 0:00:00.002061000 [client] TRACE m#task.tx_wheel.drained[send.worker.3]=0
 0:00:00.002061000 [client] TRACE c#q.dispatch.receiver[recv.dispatch.3.task.ack_completion]=1
@@ -1527,8 +1507,6 @@ expression: logs
 0:00:00.002061000 [client] TRACE m#task.ack_completion.drained[recv.dispatch.3]=1
 0:00:00.002081000 [client] TRACE c#socket.rx.ops[recv.3]=1
 0:00:00.002081000 [client] TRACE c#socket.rx.bytes[recv.3]=1413
-0:00:00.002081000 [client] TRACE c#socket.rx.ops=1
-0:00:00.002081000 [client] TRACE c#socket.rx.bytes=1413
 0:00:00.002081000 [client] TRACE c#router.routed=1
 0:00:00.002081000 [client] TRACE c#router.routed[recv.2]=1
 0:00:00.002081000 [client] TRACE c#q.dispatch_rx.enq[recv.2]=1
@@ -1536,8 +1514,6 @@ expression: logs
 0:00:00.002081000 [client] TRACE m#q.dispatch_rx.depth_dist[recv.2]=1
 0:00:00.002081000 [client] TRACE c#socket.rx.ops[recv.3]=1
 0:00:00.002081000 [client] TRACE c#socket.rx.bytes[recv.3]=1414
-0:00:00.002081000 [client] TRACE c#socket.rx.ops=1
-0:00:00.002081000 [client] TRACE c#socket.rx.bytes=1414
 0:00:00.002081000 [client] TRACE c#router.routed=1
 0:00:00.002081000 [client] TRACE c#router.routed[recv.2]=1
 0:00:00.002081000 [client] TRACE c#q.dispatch_rx.enq[recv.2]=1
@@ -1545,8 +1521,6 @@ expression: logs
 0:00:00.002081000 [client] TRACE m#q.dispatch_rx.depth_dist[recv.2]=2
 0:00:00.002081000 [client] TRACE c#socket.rx.ops[recv.3]=1
 0:00:00.002081000 [client] TRACE c#socket.rx.bytes[recv.3]=1428
-0:00:00.002081000 [client] TRACE c#socket.rx.ops=1
-0:00:00.002081000 [client] TRACE c#socket.rx.bytes=1428
 0:00:00.002081000 [client] TRACE c#router.routed=1
 0:00:00.002081000 [client] TRACE c#router.routed[recv.2]=1
 0:00:00.002081000 [client] TRACE c#q.dispatch_rx.enq[recv.2]=1
@@ -1642,8 +1616,8 @@ expression: logs
 0:00:00.002081000 [client] TRACE g#q.dispatch.depth[recv.dispatch.2]=1
 0:00:00.002081000 [client] TRACE m#q.dispatch.depth_dist[recv.dispatch.2]=1
 0:00:00.002081000 [client] TRACE m#asm.segments=1
-0:00:00.002081000 [client] TRACE c#socket.tx.ops=1
-0:00:00.002081000 [client] TRACE c#socket.tx.bytes=54
+0:00:00.002081000 [client] TRACE c#socket.tx.ops[send.6]=1
+0:00:00.002081000 [client] TRACE c#socket.tx.bytes[send.6]=54
 0:00:00.002081000 [client] TRACE m#task.assembler.drained[send.6]=1
 0:00:00.002081000 [client] TRACE m#task.tx_wheel.drained[send.worker.2]=0
 0:00:00.002081000 [client] TRACE c#q.dispatch.receiver[recv.dispatch.2.task.ack_completion]=1
