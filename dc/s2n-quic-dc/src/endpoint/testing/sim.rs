@@ -20,6 +20,9 @@
 //! [`Server`] binds its recv/send sockets to the well-known port [`SERVER_PORT`] so
 //! the client can resolve the peer address purely by group name (via `bach::net::lookup_host`).
 //!
+//! For scenarios where one node should act as both server and client on the
+//! same endpoint and path-secret map, use [`Peer`].
+//!
 //! For lower-level access, [`setup_sim_endpoint`], [`connect`], and
 //! [`insert_fake_path_pair`] are also available.
 
@@ -453,6 +456,122 @@ pub fn lookup_sim_map(addr: SocketAddr) -> Option<PathSecretMap> {
     SIM_MAP_REGISTRY.with(|r| r.borrow().get(&addr).cloned())
 }
 
+async fn connect_stream<A>(
+    endpoint: &Arc<Endpoint>,
+    queue_allocator: &mut msg::queue::Allocator,
+    peer: A,
+    acceptor_id: VarInt,
+) -> io::Result<Stream>
+where
+    A: bach::net::ToSocketAddrs,
+{
+    // Yield so the server group has had a chance to bind its socket.
+    bach::task::yield_now().await;
+
+    // Resolve hostname → SocketAddr (e.g. "server:4433" → <server-ip>:4433).
+    let mut peer_addr = bach::net::lookup_host(peer)
+        .await
+        .map_err(|e| io::Error::new(io::ErrorKind::AddrNotAvailable, e))?
+        .next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::AddrNotAvailable, "no address found for peer"))?;
+
+    if peer_addr.port() == 0 {
+        // If the peer didn't specify a port, use the default.
+        peer_addr.set_port(SERVER_PORT);
+    }
+
+    // Auto-insert path secrets (idempotent: re-uses existing entry if present).
+    let path_secret_entry = connect(endpoint, peer_addr);
+
+    // Allocate a fresh stream ID and flow queues.
+    let stream_id = VarInt::new(endpoint.next_stream_id.fetch_add(1, Ordering::Relaxed))
+        .expect("stream_id overflow");
+
+    let handle = flow::Handle::client(stream_id, path_secret_entry.clone());
+    let (queue_control, queue_stream) = queue_allocator.alloc_or_grow(handle, None);
+
+    // Build Reader + Writer and wrap them in a Stream.
+    let frame_tx = endpoint.frame_tx.clone();
+    let writer = Writer::new_client(
+        frame_tx.clone(),
+        path_secret_entry.clone(),
+        stream_id,
+        acceptor_id,
+        queue_control,
+    );
+    let reader = Reader::new_client(frame_tx, path_secret_entry, stream_id, queue_stream);
+
+    Ok(Stream::new(reader, writer))
+}
+
+// ── Peer ───────────────────────────────────────────────────────────────────
+
+/// High-level sim peer that combines server + client behavior on one endpoint.
+///
+/// [`Peer::new`] returns the per-group endpoint wrapper that can both register
+/// acceptors and initiate outbound connects while sharing one underlying
+/// endpoint and path-secret map.
+///
+/// When no endpoint exists yet for the current Bach group, it is created with
+/// a bind hint of [`SERVER_PORT`]. If a [`Client`] or [`Server`] already
+/// created the group endpoint first, [`Peer::new`] reuses that existing
+/// endpoint and its original bind address.
+pub struct Peer {
+    endpoint: Arc<Endpoint>,
+    queue_allocator: msg::queue::Allocator,
+}
+
+impl Peer {
+    /// Returns the sim peer for the current Bach group, creating it if needed.
+    pub fn new() -> Self {
+        let bind_addr = SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), SERVER_PORT);
+        let endpoint = get_or_create_group_endpoint(bind_addr);
+        let queue_allocator = endpoint.queue_allocator.clone();
+        Self {
+            endpoint,
+            queue_allocator,
+        }
+    }
+
+    /// Returns the first bound data address (for use as a connection target).
+    pub fn data_addr(&self) -> SocketAddr {
+        self.endpoint.data_addrs[0]
+    }
+
+    /// Returns all recv data addresses advertised to peers.
+    pub fn data_addrs(&self) -> &[SocketAddr] {
+        &self.endpoint.data_addrs
+    }
+
+    /// Register a channel-based acceptor for incoming streams.
+    pub fn register_acceptor_channel(
+        &self,
+        acceptor_id: VarInt,
+        capacity: usize,
+    ) -> io::Result<accept_channel::Receiver<PendingValidation>> {
+        self.endpoint
+            .acceptor_registry
+            .register(acceptor_id, capacity.into())
+            .ok_or_else(|| {
+                io::Error::new(io::ErrorKind::AddrInUse, "acceptor ID already registered")
+            })
+    }
+
+    /// Connect to a peer, returning a bidirectional [`Stream`].
+    pub async fn connect<A>(&mut self, peer: A, acceptor_id: VarInt) -> io::Result<Stream>
+    where
+        A: bach::net::ToSocketAddrs,
+    {
+        connect_stream(&self.endpoint, &mut self.queue_allocator, peer, acceptor_id).await
+    }
+}
+
+impl Default for Peer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ── Server ─────────────────────────────────────────────────────────────────
 
 /// High-level sim server that lazily creates one [`Endpoint`] per Bach group.
@@ -571,45 +690,7 @@ impl Client {
     where
         A: bach::net::ToSocketAddrs,
     {
-        // Yield so the server group has had a chance to bind its socket.
-        bach::task::yield_now().await;
-
-        // Resolve hostname → SocketAddr (e.g. "server:4433" → <server-ip>:4433).
-        let mut peer_addr = bach::net::lookup_host(peer)
-            .await
-            .map_err(|e| io::Error::new(io::ErrorKind::AddrNotAvailable, e))?
-            .next()
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::AddrNotAvailable, "no address found for peer")
-            })?;
-
-        if peer_addr.port() == 0 {
-            // If the peer didn't specify a port, use the default.
-            peer_addr.set_port(SERVER_PORT);
-        }
-
-        // Auto-insert path secrets (idempotent: re-uses existing entry if present).
-        let path_secret_entry = connect(&self.endpoint, peer_addr);
-
-        // Allocate a fresh stream ID and flow queues.
-        let stream_id = VarInt::new(self.endpoint.next_stream_id.fetch_add(1, Ordering::Relaxed))
-            .expect("stream_id overflow");
-
-        let handle = flow::Handle::client(stream_id, path_secret_entry.clone());
-        let (queue_control, queue_stream) = self.queue_allocator.alloc_or_grow(handle, None);
-
-        // Build Reader + Writer and wrap them in a Stream.
-        let frame_tx = self.endpoint.frame_tx.clone();
-        let writer = Writer::new_client(
-            frame_tx.clone(),
-            path_secret_entry.clone(),
-            stream_id,
-            acceptor_id,
-            queue_control,
-        );
-        let reader = Reader::new_client(frame_tx, path_secret_entry, stream_id, queue_stream);
-
-        Ok(Stream::new(reader, writer))
+        connect_stream(&self.endpoint, &mut self.queue_allocator, peer, acceptor_id).await
     }
 }
 

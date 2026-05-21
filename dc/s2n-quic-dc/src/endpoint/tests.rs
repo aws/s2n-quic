@@ -8,7 +8,7 @@
 //! group so it is treated as a separate machine from the network perspective.
 
 use crate::{
-    stream::endpoint::testing::sim::{Client, Server, SERVER_PORT},
+    stream::endpoint::testing::sim::{Client, Peer, Server, SERVER_PORT},
     tracing::*,
 };
 use bach::time::timeout;
@@ -17,7 +17,7 @@ use s2n_quic_core::varint::VarInt;
 use std::{
     io,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
     time::Duration,
@@ -1366,6 +1366,153 @@ fn multi_server_concurrent_loss_sim() {
         .group("client")
         .primary()
         .spawn();
+    });
+}
+
+#[test]
+fn five_node_random_chatter_settles_after_stop() {
+    use crate::testing::ext::*;
+
+    const NODE_NAMES: [&str; 5] = ["node_0", "node_1", "node_2", "node_3", "node_4"];
+    const CHAT_SECONDS: usize = 60;
+    const SETTLE_WINDOW: Duration = Duration::from_secs(5);
+    const MAX_PAYLOAD_SIZE: usize = 256;
+
+    let _no_snap = crate::testing::without_snapshots();
+    crate::testing::sim(|| {
+        let acceptor_id = VarInt::from_u8(7);
+        let monitor_active = Arc::new(AtomicBool::new(false));
+        let packets_after_stop = Arc::new(AtomicUsize::new(0));
+
+        {
+            let monitor_active = monitor_active.clone();
+            let packets_after_stop = packets_after_stop.clone();
+            bach::net::monitor::on_packet_sent(move |_packet| {
+                if monitor_active.load(Ordering::Relaxed) {
+                    packets_after_stop.fetch_add(1, Ordering::Relaxed);
+                }
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        let mut node_handles = Vec::with_capacity(NODE_NAMES.len());
+        for (node_idx, node_name) in NODE_NAMES.iter().enumerate() {
+            let handle = async move {
+                let mut peer = Peer::new();
+                let mut acceptor = peer
+                    .register_acceptor_channel(acceptor_id, 256)
+                    .expect("acceptor registration");
+
+                async move {
+                    while let Some(stream) = acceptor.recv().await {
+                        async move {
+                            let stream = stream.validate().await.expect("server validate");
+                            let (mut reader, mut writer) = stream.into_split();
+                            let mut buf = BytesMut::with_capacity(MAX_PAYLOAD_SIZE);
+
+                            loop {
+                                if reader.read_into(&mut buf).await.expect("server read") == 0 {
+                                    break;
+                                }
+                            }
+                            assert!(
+                                buf.len() <= MAX_PAYLOAD_SIZE,
+                                "unexpected oversized request payload"
+                            );
+                            let request = core::str::from_utf8(&buf)
+                                .expect("request payload should be valid UTF-8");
+                            assert!(
+                                request.contains("->") && request.contains('@'),
+                                "unexpected request payload format: {request}"
+                            );
+
+                            let mut response_data = buf.freeze();
+                            writer
+                                .write_all_from_fin(&mut response_data)
+                                .await
+                                .expect("server write");
+                        }
+                        .spawn();
+                    }
+                }
+                .spawn();
+
+                let rejection_sampling_threshold =
+                    ((u8::MAX as usize + 1) / NODE_NAMES.len()) * NODE_NAMES.len();
+                for tick in 0..CHAT_SECONDS {
+                    let selected_peer_idx = loop {
+                        let raw = bach::rand::any::<u8>() as usize;
+                        // Rejection sampling to avoid modulo bias.
+                        if raw >= rejection_sampling_threshold {
+                            continue;
+                        }
+                        let candidate_peer_idx = raw % NODE_NAMES.len();
+                        if candidate_peer_idx != node_idx {
+                            break candidate_peer_idx;
+                        }
+                    };
+
+                    let remote = format!("{}:0", NODE_NAMES[selected_peer_idx]);
+                    let stream = peer
+                        .connect(remote, acceptor_id)
+                        .await
+                        .expect("client connect");
+                    let (mut reader, mut writer) = stream.into_split();
+
+                    let payload = format!("{node_idx}->{selected_peer_idx}@{tick}");
+                    let mut data = Bytes::copy_from_slice(payload.as_bytes());
+                    writer
+                        .write_all_from_fin(&mut data)
+                        .await
+                        .expect("client write");
+
+                    let mut buf = BytesMut::with_capacity(MAX_PAYLOAD_SIZE);
+                    loop {
+                        if reader.read_into(&mut buf).await.expect("client read") == 0 {
+                            break;
+                        }
+                    }
+                    assert!(
+                        buf.len() <= MAX_PAYLOAD_SIZE,
+                        "unexpected oversized response payload"
+                    );
+
+                    assert_eq!(
+                        &buf[..],
+                        payload.as_bytes(),
+                        "echo mismatch for node {node_idx} tick {tick}"
+                    );
+                    1.s().sleep().await;
+                }
+                SETTLE_WINDOW.sleep().await;
+            }
+            .group(*node_name)
+            .spawn();
+            node_handles.push(handle);
+        }
+
+        {
+            let monitor_active = monitor_active.clone();
+            let packets_after_stop = packets_after_stop.clone();
+            let node_handles = node_handles;
+            async move {
+                Duration::from_secs(CHAT_SECONDS as u64).sleep().await;
+                monitor_active.store(true, Ordering::Relaxed);
+                SETTLE_WINDOW.sleep().await;
+                for handle in node_handles {
+                    handle.await.expect("node task should complete");
+                }
+                let sent = packets_after_stop.load(Ordering::Relaxed);
+                monitor_active.store(false, Ordering::Relaxed);
+                assert_eq!(
+                    sent, 0,
+                    "endpoints sent {sent} packet(s) after chatter stopped"
+                );
+            }
+            .group("observer")
+            .primary()
+            .spawn();
+        }
     });
 }
 
