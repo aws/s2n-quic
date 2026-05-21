@@ -503,7 +503,7 @@ impl Entry {
         let last = self.last_activity();
         let elapsed = now.nanos_since(last);
         let timeout = self.idle_timeout();
-        elapsed > timeout.as_nanos() as u64
+        elapsed >= timeout.as_nanos() as u64
     }
 
     pub fn uni_sealer(&self) -> (seal::Once, Credentials) {

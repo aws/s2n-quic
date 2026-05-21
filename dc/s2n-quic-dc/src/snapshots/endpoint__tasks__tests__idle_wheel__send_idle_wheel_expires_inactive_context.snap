@@ -15,20 +15,10 @@ expression: logs
 0:00:30.000000000 [main] TRACE c#test.idle_wheel.receiver[task.wheel_drain]=1
 0:00:30.000000000 [main] TRACE c#test.idle_wheel.drain=1
 0:00:30.000000000 [main] TRACE g#test.idle_wheel.depth=-1
-0:00:30.000000000 [main] TRACE c#test.idle_wheel.sender[task.send_idle_wheel_drain]=1
-0:00:30.000000000 [main] TRACE c#test.idle_wheel.enq=1
-0:00:30.000000000 [main] TRACE g#test.idle_wheel.depth=0
-0:00:30.000000000 [main] TRACE m#test.idle_wheel.depth_dist=0
-0:00:30.000000000 [main] TRACE c#idle.send.rescheduled=1
-0:00:30.000000000 [main] TRACE m#task.idle_wheel.drained[send.0]=1
+0:00:30.000000000 [main] TRACE g#send.context.count[send.0]=0
+0:00:30.000000000 [main] DEBUG invalidating send context id=0x25a69ae25d5f3678f5373f68bc3c106d sender_idx=0
+0:00:30.000000000 [main] TRACE c#send.pending.drain[send.0]=1
+0:00:30.000000000 [main] TRACE g#send.pending.depth[send.0]=0
+0:00:30.000000000 [main] TRACE c#send.inflight.drain.expire[send.0]=1
+0:00:30.000000000 [main] TRACE c#idle.send.expired=1
 0:00:30.000000000 [main] TRACE m#task.idle_wheel.drained[send.0]=0
-0:01:00.000000000 [main] TRACE c#test.idle_wheel.receiver[task.wheel_drain]=1
-0:01:00.000000000 [main] TRACE c#test.idle_wheel.drain=1
-0:01:00.000000000 [main] TRACE g#test.idle_wheel.depth=-1
-0:01:00.000000000 [main] TRACE g#send.context.count[send.0]=0
-0:01:00.000000000 [main] DEBUG invalidating send context id=0x25a69ae25d5f3678f5373f68bc3c106d sender_idx=0
-0:01:00.000000000 [main] TRACE c#send.pending.drain[send.0]=1
-0:01:00.000000000 [main] TRACE g#send.pending.depth[send.0]=0
-0:01:00.000000000 [main] TRACE c#send.inflight.drain.expire[send.0]=1
-0:01:00.000000000 [main] TRACE c#idle.send.expired=1
-0:01:00.000000000 [main] TRACE m#task.idle_wheel.drained[send.0]=0

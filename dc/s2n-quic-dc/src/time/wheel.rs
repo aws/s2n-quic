@@ -53,6 +53,9 @@ pub const MICROSECOND_GRANULARITY: u64 = 1;
 /// Base tick granularity of 1 second — used for coarse background wheels (idle timeout).
 pub const SECOND_GRANULARITY: u64 = 1_000_000;
 
+/// SECOND_GRANULARITY expressed in nanoseconds for timestamp comparisons.
+pub const SECOND_GRANULARITY_NANOS: u64 = 1_000_000_000;
+
 // ── Conversion utilities ───────────────────────────────────────────────────
 
 /// Convert a tick count to a timestamp given a granularity.

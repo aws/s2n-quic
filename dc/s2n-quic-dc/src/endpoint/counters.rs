@@ -286,6 +286,7 @@ pub(crate) struct Send {
     pub inflight_leaked_on_invalidate: Summary,
     pub probe_no_response: Counter,
     pub tx_probe_backoff: Summary,
+    pub routing_asymmetry: Counter,
     pub context_count: Gauge,
     pub tx_packets: Counter,
 
@@ -336,6 +337,7 @@ impl Send {
                 &v,
                 Unit::Count,
             ),
+            routing_asymmetry: counters.register_nominal("!send.routing_asymmetry", &v),
             context_count: counters.register_nominal_gauge("send.context.count", &v),
             tx_packets: counters.register_nominal("tx.data", &v),
 

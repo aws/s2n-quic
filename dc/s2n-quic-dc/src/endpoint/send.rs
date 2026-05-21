@@ -361,6 +361,14 @@ pub struct WheelInterest {
     pub idle_timeout: bool,
 }
 
+impl WheelInterest {
+    pub const NONE: Self = Self {
+        transmission: false,
+        pto: false,
+        idle_timeout: false,
+    };
+}
+
 pub trait WheelRoutable {
     type Output;
     fn split(self) -> ((Rc<RefCell<Context>>, WheelInterest), Self::Output);
@@ -524,6 +532,11 @@ pub(crate) struct Context {
     /// Last-seen ECN counts from peer ACK frames; used to compute deltas for the CCA.
     pub peer_ecn_counts: EcnCounts,
     pub created_at: precision::Timestamp,
+    /// Last time this send context observed peer activity (ACK receipt).
+    pub last_peer_activity: precision::Timestamp,
+    /// Set when the context is invalidated (removed from cache). Prevents wheels
+    /// from rearming after expiry.
+    pub invalidated: bool,
     /// RTT sampler for ACK-only (read-heavy) sends.
     ///
     /// When `inflight` is empty we have no ack-eliciting packets in flight and
@@ -593,6 +606,8 @@ impl Context {
             idle_wheel: WheelLinks::new(),
             peer_ecn_counts: EcnCounts::default(),
             created_at: clock.now(),
+            last_peer_activity: clock.now(),
+            invalidated: false,
             rtt_tracker: AckRttTracker::default(),
         })
     }
@@ -645,6 +660,7 @@ impl Context {
         Clk: s2n_quic_core::time::Clock + precision::Clock + ?Sized,
         Rand: random::Generator,
     {
+        self.last_peer_activity = clock.now();
         let frames_iter = crate::packet::control::decoder::ControlFramesMut::new(payload);
 
         for frame in frames_iter {
@@ -673,11 +689,24 @@ impl Context {
         interest
     }
 
+    /// Returns true if this send context has not received any peer activity
+    /// (ACKs) within the idle timeout window.
+    #[inline]
+    pub fn is_peer_idle(&self, now: precision::Timestamp) -> bool {
+        let elapsed = now.nanos_since(self.last_peer_activity);
+        let timeout = self.path_secret_entry.idle_timeout();
+        elapsed >= timeout.as_nanos() as u64
+    }
+
     /// Compute wheel interest after a state change
     pub(crate) fn wheel_interest<Clk>(&mut self, clock: &Clk) -> WheelInterest
     where
         Clk: precision::Clock + ?Sized,
     {
+        if self.invalidated {
+            return WheelInterest::NONE;
+        }
+
         if !self.inflight.has_inflight() {
             self.pto.on_ack_received(false);
             self.pto_wheel.target_time = None;
@@ -1248,6 +1277,7 @@ impl Cache {
         };
         self.send_counters.on_context_removed();
         let mut ctx = ctx.borrow_mut();
+        ctx.invalidated = true;
         debug!(%id, sender_idx = %self.sender_idx, "invalidating send context");
         Some(ctx.drain_frames(Some(reason), cancelled))
     }
@@ -1293,6 +1323,7 @@ impl Cache {
         let ctx = self.contexts.remove(id).unwrap();
         self.send_counters.on_context_removed();
         let mut ctx = ctx.borrow_mut();
+        ctx.invalidated = true;
         debug!(
             %id,
             sender_idx = %self.sender_idx,

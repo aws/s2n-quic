@@ -251,6 +251,19 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     let mut sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId> =
         IdMap::new(total_sender_ids, LocalSendSocketId::new(usize::MAX));
 
+    // Collect send socket local addresses for diagnostics (routing asymmetry logs).
+    let sender_local_addrs: IdMap<LocalSendSocketId, std::net::SocketAddr> = send_sockets
+        .iter()
+        .map(|(id, st)| {
+            (
+                id,
+                st.socket
+                    .local_addr()
+                    .unwrap_or_else(|_| std::net::SocketAddr::from(([0, 0, 0, 0], 0))),
+            )
+        })
+        .collect();
+
     // One send::Cache per socket, shared between the context resolver and ACK processor.
     let send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>> = send_sockets
         .iter()
@@ -556,6 +569,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             q_resolver_to_idle_wheel.clone(),
             send_caches.clone(),
             sender_idx_to_local.clone(),
+            sender_local_addrs.clone(),
             idle_expired_completed_tx,
             peer_dead_tx.clone(),
             dead_peer_cooldown,
@@ -1006,6 +1020,7 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
     input_gauge: QueueGauge,
     send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
     sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId>,
+    sender_local_addrs: IdMap<LocalSendSocketId, std::net::SocketAddr>,
     mut completed_tx: impl UnboundedSender<Entry<Frame>>,
     mut peer_dead_tx: WakerSink,
     dead_peer_cooldown: core::time::Duration,
@@ -1034,41 +1049,70 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
             move |context: Rc<RefCell<send::Context>>| {
                 let now = clock.now();
                 let ctx = context.borrow();
-                if ctx.path_secret_entry.is_idle_expired(now) {
-                    let id = *ctx.path_secret_entry.id();
-                    let path_secret_entry = ctx.path_secret_entry.clone();
-                    let marked_dead =
-                        path_secret_entry.mark_dead_if_cooldown_elapsed(now, dead_peer_cooldown);
-                    let local_id = sender_idx_to_local[ctx.sender_idx];
-                    let lifetime = now.duration_since(ctx.created_at);
-                    drop(ctx);
 
-                    let result = send_caches[local_id].borrow_mut().invalidate(
-                        &id,
-                        frame::FailureReason::PeerDead,
-                        &mut completed_tx,
-                    );
-
-                    if let Some((drained, discarded_bytes)) = result {
-                        let cache = send_caches[local_id].borrow();
-                        let counters = cache.send_counters();
-                        counters.on_inflight_drain_expire(drained as u64);
-                        counters.on_inflight_leaked_on_invalidate(discarded_bytes as u64);
+                // Compute the reschedule target. If it's in a future wheel tick,
+                // reschedule and return early.
+                if !ctx.is_peer_idle(now) {
+                    let target = ctx.last_peer_activity + ctx.path_secret_entry.idle_timeout();
+                    if target.nanos_since(now) >= wheel::SECOND_GRANULARITY_NANOS {
+                        drop(ctx);
+                        context.borrow_mut().idle_wheel.target_time = Some(target);
+                        let _ = UnboundedSender::send(&mut idle_wheel_tx, context);
+                        idle_rescheduled.add(1);
+                        return;
                     }
-
-                    if marked_dead {
-                        let _ = peer_dead_tx.send(Entry::new(PeerDead { path_secret_entry }));
-                    }
-
-                    idle_expired.add(1);
-                    idle_lifetime.record(lifetime);
-                } else {
-                    let timeout = ctx.path_secret_entry.idle_timeout();
-                    drop(ctx);
-                    context.borrow_mut().idle_wheel.target_time = Some(now + timeout);
-                    let _ = UnboundedSender::send(&mut idle_wheel_tx, context);
-                    idle_rescheduled.add(1);
                 }
+
+                // Expired: either is_peer_idle fired, or the target landed on
+                // the current tick (within wheel granularity).
+                let id = *ctx.path_secret_entry.id();
+                let path_secret_entry = ctx.path_secret_entry.clone();
+                let local_id = sender_idx_to_local[ctx.sender_idx];
+                let lifetime = now.duration_since(ctx.created_at);
+                let path_active = !ctx.path_secret_entry.is_idle_expired(now);
+                let sender_idx = ctx.sender_idx;
+                let peer_addr = ctx.peer_addr;
+                drop(ctx);
+
+                if path_active {
+                    let cache = send_caches[local_id].borrow();
+                    cache.send_counters().routing_asymmetry.add(1);
+                    let local_addr = sender_local_addrs[local_id];
+                    warn!(
+                        %id,
+                        %sender_idx,
+                        %local_addr,
+                        %peer_addr,
+                        "send context idle but path still active — possible routing asymmetry"
+                    );
+                }
+
+                // Only mark the peer dead if the entire path is idle. If the path
+                // is still active (routing asymmetry), killing the peer would
+                // incorrectly block new flows on a partially-working path.
+                let marked_dead = !path_active
+                    && path_secret_entry
+                        .mark_dead_if_cooldown_elapsed(now, dead_peer_cooldown);
+
+                let result = send_caches[local_id].borrow_mut().invalidate(
+                    &id,
+                    frame::FailureReason::PeerDead,
+                    &mut completed_tx,
+                );
+
+                if let Some((drained, discarded_bytes)) = result {
+                    let cache = send_caches[local_id].borrow();
+                    let counters = cache.send_counters();
+                    counters.on_inflight_drain_expire(drained as u64);
+                    counters.on_inflight_leaked_on_invalidate(discarded_bytes as u64);
+                }
+
+                if marked_dead {
+                    let _ = peer_dead_tx.send(Entry::new(PeerDead { path_secret_entry }));
+                }
+
+                idle_expired.add(1);
+                idle_lifetime.record(lifetime);
             }
         },
         budget,
@@ -1109,29 +1153,33 @@ pub async fn recv_idle_wheel_drain<Clk>(
             move |context: Rc<RefCell<endpoint::recv::Context>>| {
                 let now = clock.now();
                 let ctx = context.borrow();
-                if ctx.path_entry.is_idle_expired(now) {
-                    let path_secret_entry = ctx.path_entry.clone();
-                    let marked_dead =
-                        path_secret_entry.mark_dead_if_cooldown_elapsed(now, dead_peer_cooldown);
-                    let key = endpoint::recv::Key {
-                        id: *ctx.path_entry.id(),
-                        remote_sender_id: ctx.remote_sender_id,
-                    };
-                    let lifetime = now.duration_since(ctx.created_at);
-                    drop(ctx);
-                    recv_cache.borrow_mut().remove(&key);
-                    if marked_dead {
-                        let _ = peer_dead_tx.send(Entry::new(PeerDead { path_secret_entry }));
+
+                if !ctx.path_entry.is_idle_expired(now) {
+                    let target = ctx.path_entry.last_activity() + ctx.path_entry.idle_timeout();
+                    if target.nanos_since(now) >= wheel::SECOND_GRANULARITY_NANOS {
+                        drop(ctx);
+                        context.borrow_mut().idle_wheel.target_time = Some(target);
+                        let _ = UnboundedSender::send(&mut idle_wheel_tx, context);
+                        idle_rescheduled.add(1);
+                        return;
                     }
-                    idle_expired.add(1);
-                    idle_lifetime.record(lifetime);
-                } else {
-                    let timeout = ctx.path_entry.idle_timeout();
-                    drop(ctx);
-                    context.borrow_mut().idle_wheel.target_time = Some(now + timeout);
-                    let _ = UnboundedSender::send(&mut idle_wheel_tx, context);
-                    idle_rescheduled.add(1);
                 }
+
+                let path_secret_entry = ctx.path_entry.clone();
+                let marked_dead =
+                    path_secret_entry.mark_dead_if_cooldown_elapsed(now, dead_peer_cooldown);
+                let key = endpoint::recv::Key {
+                    id: *ctx.path_entry.id(),
+                    remote_sender_id: ctx.remote_sender_id,
+                };
+                let lifetime = now.duration_since(ctx.created_at);
+                drop(ctx);
+                recv_cache.borrow_mut().remove(&key);
+                if marked_dead {
+                    let _ = peer_dead_tx.send(Entry::new(PeerDead { path_secret_entry }));
+                }
+                idle_expired.add(1);
+                idle_lifetime.record(lifetime);
             }
         },
         budget,
