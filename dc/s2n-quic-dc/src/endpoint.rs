@@ -517,7 +517,7 @@ where
         .map(|id| {
             let (tx, rx) = crate::socket::channel::intrusive::sync::new::<msg::Sender>();
             let gauge = counter_registry
-                .register_queue_gauge_nominal("q.dispatch", format_args!("recv.{id}"));
+                .register_queue_gauge_nominal("q.dispatch", format_args!("recv.dispatch.{id}"));
             let tx = GaugedSender::new(tx, gauge);
             ((id, tx), (id, rx))
         })

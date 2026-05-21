@@ -243,7 +243,11 @@ pub(super) async fn server<
                     if let Ok(peer_address) = connection.remote_addr() {
                         if let Some(entry) = map_clone.get_raw(peer_address) {
                             entry.set_peer_data_addrs(&peer_data_addrs);
+                        } else {
+                            panic!("no entry found for peer address: {:?}", peer_address)
                         }
+                    } else {
+                        panic!("failed to get peer address")
                     }
 
                     let _ = tokio::time::timeout_at(
