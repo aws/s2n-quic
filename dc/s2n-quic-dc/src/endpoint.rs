@@ -58,6 +58,8 @@ pub use s2n_quic_platform::features::Gso;
 
 /// The maximum time a stream will be open without activity from the peer
 pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+/// Cooldown after a peer is marked dead before new flows are allowed.
+pub const DEFAULT_DEAD_PEER_COOLDOWN: Duration = Duration::from_secs(30);
 /// The maximum length of a single packet
 pub const MAX_DATAGRAM_SIZE: usize = 1 << 15; // 32k
 
@@ -82,6 +84,8 @@ pub struct Endpoint {
     /// Recv socket addresses advertised to peers during handshake.
     /// Each recv worker has its own distinct address.
     pub data_addrs: Vec<std::net::SocketAddr>,
+    /// Cooldown period during which new flows are rejected after a peer is marked dead.
+    pub dead_peer_cooldown: Duration,
 }
 
 // ── Pipeline Setup ────────────────────────────────────────────────────────
@@ -214,6 +218,8 @@ pub struct Config {
     pub ups_dedup_capacity: usize,
     /// Dedup suppression window for UnknownPathSecret responses.
     pub ups_dedup_window: core::time::Duration,
+    /// Cooldown period during which new flows are rejected after a peer is marked dead.
+    pub dead_peer_cooldown: core::time::Duration,
 }
 
 // ── setup_endpoint ────────────────────────────────────────────────────────
@@ -310,6 +316,7 @@ where
         ups_rate,
         ups_dedup_capacity,
         ups_dedup_window,
+        dead_peer_cooldown,
     } = config;
 
     let clock = runtime.clock();
@@ -414,6 +421,11 @@ where
             ((id, tx), (id, rx))
         })
         .unzip();
+    let (peer_dead_tx, peer_dead_rx) = intrusive::sync::new::<tasks::PeerDead>();
+    let peer_dead_tx = GaugedSender::new(
+        peer_dead_tx,
+        counter_registry.register_queue_gauge("q.peer_dead"),
+    );
 
     let mut sender_id_to_worker: IdMap<LocalSenderId, id::SendWorkerId> = IdMap::default();
 
@@ -440,6 +452,7 @@ where
                 budgets,
                 num_send,
                 clock.clone(),
+                dead_peer_cooldown,
                 counter_registry.clone(),
             )
         }));
@@ -486,12 +499,17 @@ where
     });
 
     // ── Waker offload ─────────────────────────────────────────────────────────
-    // One slot per producer (recv_dispatch + send workers), partitioned across waker_drain workers.
+    // One slot per producer (recv_dispatch + send workers + background peer-dead fanout task),
+    // partitioned across waker_drain workers.
     let num_recv_dispatch = layout.recv_dispatch.len();
-    let num_waker_slots = num_recv_dispatch + num_send_workers;
+    let num_waker_slots = num_recv_dispatch + num_send_workers + 1;
     let num_waker_drains = layout.waker_drain.len().max(1);
     let (mut waker_sinks, waker_drains) = waker::new(num_waker_slots, num_waker_drains);
-    let send_waker_sinks = waker_sinks.split_off(num_recv_dispatch);
+    let mut send_and_bg_waker_sinks = waker_sinks.split_off(num_recv_dispatch);
+    let bg_waker_sink = send_and_bg_waker_sinks
+        .pop()
+        .expect("background waker sink must exist");
+    let send_waker_sinks = send_and_bg_waker_sinks;
 
     assert_eq!(send_waker_sinks.len(), num_send_workers);
     let send_waker_sinks: IdMap<SendWorkerId, _> = SendWorkerId::range(send_waker_sinks.len())
@@ -551,8 +569,8 @@ where
             frame_tx: frame_tx.clone(),
             ack_completions_tx: ack_completions_tx.clone(),
             waker_sink,
-            queue_dispatcher: queue_dispatcher.clone(),
             invalidation_rx,
+            peer_dead_tx: peer_dead_tx.clone(),
         });
     }
 
@@ -604,6 +622,7 @@ where
             waker_sink,
             ups_tx: ups_tx.clone(),
             invalidation_rx,
+            peer_dead_tx: peer_dead_tx.clone(),
         });
     }
 
@@ -637,6 +656,7 @@ where
     // Background worker — invalidation validation + future housekeeping.
     workers[layout.background].background = Some(BackgroundParts {
         raw_rx: invalidation_raw_rx,
+        peer_dead_rx,
         path_secret_map: path_secret_map.clone(),
         send_txs: invalidation_send_txs,
         recv_txs: invalidation_recv_txs,
@@ -648,6 +668,8 @@ where
         ups_dedup_capacity,
         ups_dedup_window,
         acceptor_cleaner: acceptor_registry.cleaner(),
+        queue_dispatcher: queue_dispatcher.clone(),
+        waker_sink: bg_waker_sink,
     });
 
     // Spawn all workers ---------------------------------------------------------
@@ -663,6 +685,7 @@ where
         counters: counter_registry,
         next_stream_id: AtomicU64::new(0),
         data_addrs,
+        dead_peer_cooldown,
     }
 }
 
@@ -692,8 +715,8 @@ struct SendWorkerParts {
         GaugedSender<sync_queue::Sender<msg::Sender>, crate::intrusive::Queue<msg::Sender>>,
     >,
     waker_sink: waker::Sink,
-    queue_dispatcher: msg::queue::Dispatcher,
     invalidation_rx: sync_queue::Receiver<tasks::Invalidation>,
+    peer_dead_tx: PeerDeadSender,
 }
 
 /// Per-socket ingredients for the socket send task.
@@ -739,11 +762,13 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     waker_sink: waker::Sink,
     ups_tx: UpsSender,
     invalidation_rx: sync_queue::Receiver<tasks::Invalidation>,
+    peer_dead_tx: PeerDeadSender,
 }
 
 /// Ingredients for the background worker (invalidation validation + future housekeeping).
 struct BackgroundParts<UpsSocket> {
     raw_rx: sync_queue::Receiver<descriptor::Filled>,
+    peer_dead_rx: sync_queue::Receiver<tasks::PeerDead>,
     path_secret_map: crate::path::secret::Map,
     send_txs: IdMap<id::SendWorkerId, InvalidationSender>,
     recv_txs: IdMap<id::RecvDispatchWorkerId, InvalidationSender>,
@@ -755,10 +780,13 @@ struct BackgroundParts<UpsSocket> {
     ups_dedup_capacity: usize,
     ups_dedup_window: core::time::Duration,
     acceptor_cleaner: acceptor::Cleaner<PendingValidation>,
+    queue_dispatcher: msg::queue::Dispatcher,
+    waker_sink: waker::Sink,
 }
 
 type InvalidationSender =
     GaugedSender<sync_queue::Sender<tasks::Invalidation>, Entry<tasks::Invalidation>>;
+type PeerDeadSender = GaugedSender<sync_queue::Sender<tasks::PeerDead>, Entry<tasks::PeerDead>>;
 
 type UpsSender = GaugedSender<sync_queue::Sender<ups::Response>, Entry<ups::Response>>;
 
@@ -768,6 +796,7 @@ struct Worker<SendSocket, RecvSocket, UpsSocket, Clk, AckSnd, Route, Inv> {
     id: usize,
     budgets: Budgets,
     total_sender_ids: usize,
+    dead_peer_cooldown: core::time::Duration,
     clock: Clk,
     counter_registry: crate::counter::Registry,
     frame_dispatch: Option<FrameDispatchParts<Clk>>,
@@ -802,12 +831,14 @@ where
         budgets: Budgets,
         total_sender_ids: usize,
         clock: Clk,
+        dead_peer_cooldown: core::time::Duration,
         counter_registry: crate::counter::Registry,
     ) -> Self {
         Self {
             id,
             budgets,
             total_sender_ids,
+            dead_peer_cooldown,
             clock,
             counter_registry,
             frame_dispatch: None,
@@ -828,6 +859,7 @@ where
             id,
             budgets,
             total_sender_ids,
+            dead_peer_cooldown,
             clock,
             counter_registry,
             frame_dispatch,
@@ -879,7 +911,8 @@ where
                     sw.frame_tx,
                     sw.ack_completions_tx,
                     sw.waker_sink,
-                    sw.queue_dispatcher,
+                    sw.peer_dead_tx,
+                    dead_peer_cooldown,
                     budgets,
                     counter_registry.clone(),
                 );
@@ -948,6 +981,8 @@ where
                             clock,
                             q_recv_idle_wheel,
                             recv_cache,
+                            rd.peer_dead_tx.clone(),
+                            dead_peer_cooldown,
                             idle_expired,
                             idle_rescheduled,
                             idle_lifetime,
@@ -1087,6 +1122,29 @@ where
                     .with_registration_metadata(
                         "task.invalidation_validator",
                         "Validates invalidation datagrams and fan-outs revocation events",
+                        "endpoint::Worker::spawn",
+                    );
+                local.spawn_receiver_task(
+                    rx.drain_budgeted_metered(None, task_counter.clone()),
+                    None,
+                    task_counter,
+                );
+
+                let peer_dead_counters = tasks::PeerDeadCounters {
+                    events: counter_registry.register("peer_dead.events"),
+                    broadcasted: counter_registry.register("peer_dead.broadcasted"),
+                };
+                let rx = tasks::peer_dead_broadcast(
+                    bg.peer_dead_rx,
+                    bg.queue_dispatcher,
+                    bg.waker_sink,
+                    peer_dead_counters,
+                );
+                let task_counter = counter_registry
+                    .register_nominal_task("task.peer_dead_broadcast", "background")
+                    .with_registration_metadata(
+                        "task.peer_dead_broadcast",
+                        "Marks peers dead and performs credential-wide reset fanout",
                         "endpoint::Worker::spawn",
                     );
                 local.spawn_receiver_task(

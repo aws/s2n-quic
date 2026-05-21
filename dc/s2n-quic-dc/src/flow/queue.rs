@@ -247,6 +247,32 @@ where
         res.unwrap_or_default()
     }
 
+    #[inline]
+    /// Sends to both stream+control halves for every queue matching `params`.
+    ///
+    /// # Performance
+    ///
+    /// This is a global scan. Internally it walks the entire sender table and runs
+    /// per-queue validation, so the cost is O(total_queues) and can be very high at
+    /// large concurrency. Use sparingly for rare control-plane events only.
+    pub fn send_both_by_request(
+        &mut self,
+        params: &K::Request,
+        mut stream_data: impl FnMut() -> intrusive::Entry<S>,
+        mut control_data: impl FnMut() -> intrusive::Entry<C>,
+        mut on_waker: impl FnMut(AutoWake, AutoWake),
+    ) {
+        self.senders.for_each_sender(|sender| {
+            let stream_waker = sender
+                .send_stream(stream_data(), None, params)
+                .unwrap_or_default();
+            let control_waker = sender
+                .send_control(control_data(), None, params)
+                .unwrap_or_default();
+            on_waker(stream_waker, control_waker);
+        });
+    }
+
     /// Validates the queue's key against the provided parameters by checking the stream queue.
     #[inline]
     pub fn validate_stream(

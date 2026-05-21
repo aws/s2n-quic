@@ -61,6 +61,7 @@ fn topology_snapshot_uses_dc_tester_layout() {
             ups_rate: Rate::new(0.001),
             ups_dedup_capacity: 1024,
             ups_dedup_window: core::time::Duration::from_secs(1),
+            dead_peer_cooldown: endpoint::DEFAULT_DEAD_PEER_COOLDOWN,
         },
         64,
         4,
@@ -1074,6 +1075,133 @@ fn total_packet_loss_surfaces_read_timeout() {
                 }
 
                 info!("total_packet_loss_surfaces_read_timeout passed");
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        }
+    });
+}
+
+/// After idle-timeout peer-dead detection triggers, new flows to that peer are blocked for the
+/// configured dead-peer cooldown period.
+#[test]
+fn peer_dead_cooldown_blocks_new_connects() {
+    // Snapshot disabled: this test intentionally drives timeout and loss behavior.
+    let _guard = crate::testing::without_snapshots();
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+        let blackhole = Arc::new(AtomicUsize::new(0));
+        let blackhole_monitor = blackhole.clone();
+        {
+            bach::net::monitor::on_packet_sent(move |_packet| {
+                if blackhole_monitor.load(Ordering::Relaxed) > 0 {
+                    return bach::net::monitor::Command::Drop;
+                }
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        // ── Server ────────────────────────────────────────────────────────
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let stream = stream.validate().await.expect("server validate");
+                    let (mut reader, mut writer) = stream.into_split();
+
+                    let mut buf = BytesMut::with_capacity(8);
+                    loop {
+                        let n = reader.read_into(&mut buf).await.expect("server read");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+                    assert_eq!(&buf[..], b"ping");
+
+                    let mut pong = Bytes::from_static(b"pong");
+                    writer
+                        .write_all_from_fin(&mut pong)
+                        .await
+                        .expect("server write");
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        // ── Client ────────────────────────────────────────────────────────
+        {
+            let blackhole = blackhole.clone();
+            async move {
+                let mut client = Client::new();
+
+                // Baseline exchange to establish path state.
+                let stream = client
+                    .connect("server:0", acceptor_id)
+                    .await
+                    .expect("connect failed");
+                let (mut reader, mut writer) = stream.into_split();
+
+                let mut ping = Bytes::from_static(b"ping");
+                writer
+                    .write_all_from_fin(&mut ping)
+                    .await
+                    .expect("client write");
+
+                let mut buf = BytesMut::with_capacity(8);
+                loop {
+                    let n = reader.read_into(&mut buf).await.expect("client read");
+                    if n == 0 {
+                        break;
+                    }
+                }
+                assert_eq!(&buf[..], b"pong");
+
+                // Trigger peer-dead by dropping all packets for a new stream.
+                blackhole.store(1, Ordering::Relaxed);
+
+                let stream2 = client
+                    .connect("server:0", acceptor_id)
+                    .await
+                    .expect("connect 2 failed");
+                let (mut reader2, mut writer2) = stream2.into_split();
+
+                let mut data = Bytes::from_static(b"hello");
+                writer2.write_all_from(&mut data).await.unwrap();
+
+                let result = timeout(120.s(), reader2.read_into(&mut BytesMut::new())).await;
+                match result {
+                    Ok(Err(e)) => {
+                        assert_eq!(
+                            e.kind(),
+                            io::ErrorKind::TimedOut,
+                            "expected timed out after peer dead detection"
+                        );
+                    }
+                    other => panic!("expected timed out read error, got: {other:?}"),
+                }
+
+                // During cooldown, opening a new flow must fail immediately.
+                let connect3 = client.connect("server:0", acceptor_id).await;
+                match connect3 {
+                    Err(e) => {
+                        assert_eq!(
+                            e.kind(),
+                            io::ErrorKind::TimedOut,
+                            "expected connect rejection during dead-peer cooldown"
+                        );
+                    }
+                    Ok(_) => panic!("connect succeeded during dead-peer cooldown"),
+                }
             }
             .group("client")
             .primary()

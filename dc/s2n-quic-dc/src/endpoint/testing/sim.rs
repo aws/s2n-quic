@@ -189,6 +189,9 @@ pub struct SimEndpointConfig {
 
     /// Maximum transfer unit for the send / recv buffer pools (bytes).
     pub mtu: u16,
+
+    /// Cooldown period for peers marked dead before new flows are allowed.
+    pub dead_peer_cooldown: core::time::Duration,
 }
 
 impl Default for SimEndpointConfig {
@@ -204,6 +207,7 @@ impl Default for SimEndpointConfig {
             per_socket_send_rate: Rate::new(5.0),
             budgets: Budgets::default(),
             mtu: 1500,
+            dead_peer_cooldown: crate::stream::endpoint::DEFAULT_DEAD_PEER_COOLDOWN,
         }
     }
 }
@@ -237,6 +241,7 @@ pub fn setup_sim_endpoint(
         per_socket_send_rate,
         budgets,
         mtu,
+        dead_peer_cooldown,
     } = config;
 
     assert!(
@@ -331,6 +336,7 @@ pub fn setup_sim_endpoint(
         ups_rate: crate::socket::rate::Rate::new(0.001),
         ups_dedup_capacity: 1024,
         ups_dedup_window: core::time::Duration::from_secs(1),
+        dead_peer_cooldown,
     };
 
     let endpoint = setup_endpoint(
@@ -473,7 +479,9 @@ where
         .await
         .map_err(|e| io::Error::new(io::ErrorKind::AddrNotAvailable, e))?
         .next()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::AddrNotAvailable, "no address found for peer"))?;
+        .ok_or_else(|| {
+            io::Error::new(io::ErrorKind::AddrNotAvailable, "no address found for peer")
+        })?;
 
     if peer_addr.port() == 0 {
         // If the peer didn't specify a port, use the default.
@@ -482,6 +490,15 @@ where
 
     // Auto-insert path secrets (idempotent: re-uses existing entry if present).
     let path_secret_entry = connect(endpoint, peer_addr);
+
+    let now = crate::time::now();
+    let now = crate::time::precision::Timestamp::from(now);
+    if path_secret_entry.is_dead_during_cooldown(now, endpoint.dead_peer_cooldown) {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "peer is in dead cooldown window",
+        ));
+    }
 
     // Allocate a fresh stream ID and flow queues.
     let stream_id = VarInt::new(endpoint.next_stream_id.fetch_add(1, Ordering::Relaxed))

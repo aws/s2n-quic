@@ -22,7 +22,7 @@ use std::{
     any::Any,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering},
+        atomic::{AtomicI64, AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering},
         Arc,
     },
     time::Duration,
@@ -59,6 +59,7 @@ pub struct Entry {
     accessed: AtomicU8,
     application_data: Option<ApplicationData>,
     last_activity: AtomicU64,
+    dead_at: AtomicI64,
     /// The peer's data recv addresses, learned via the post-handshake exchange.
     peer_data_addrs: PeerDataAddrs,
     /// Per-socket-sender load scores encoded as u64 nanoseconds.
@@ -90,6 +91,7 @@ impl SizeOf for Entry {
             accessed,
             application_data,
             last_activity,
+            dead_at,
             peer_data_addrs,
             sender_load_scores,
         } = self;
@@ -103,6 +105,7 @@ impl SizeOf for Entry {
             + accessed.size()
             + application_data.size()
             + last_activity.size()
+            + dead_at.size()
             + std::mem::size_of::<PeerDataAddrs>()
             + peer_data_addrs.get().map_or(0, |a| {
                 a.len() * std::mem::size_of::<s2n_quic_core::inet::SocketAddressV6>()
@@ -127,8 +130,19 @@ impl SizeOf for ApplicationData {
 impl SizeOf for AtomicU8 {}
 impl SizeOf for AtomicU16 {}
 impl SizeOf for AtomicU32 {}
+impl SizeOf for AtomicI64 {}
 
 impl Entry {
+    #[inline]
+    fn timestamp_to_millis(timestamp: crate::time::precision::Timestamp) -> i64 {
+        (timestamp.nanos / 1_000_000).min(i64::MAX as u64) as i64
+    }
+
+    #[inline]
+    fn duration_to_millis(duration: Duration) -> i64 {
+        duration.as_millis().min(i64::MAX as u128) as i64
+    }
+
     pub fn new(
         peer: SocketAddr,
         secret: schedule::Secret,
@@ -176,6 +190,7 @@ impl Entry {
             accessed: AtomicU8::new(0),
             application_data,
             last_activity: AtomicU64::new(0),
+            dead_at: AtomicI64::new(-1),
             peer_data_addrs: PeerDataAddrs::default(),
             sender_load_scores: Self::init_load_scores(socket_sender_count),
         }
@@ -448,6 +463,40 @@ impl Entry {
     pub fn last_activity(&self) -> crate::time::precision::Timestamp {
         let nanos = self.last_activity.load(Ordering::Acquire);
         crate::time::precision::Timestamp { nanos }
+    }
+
+    /// Marks the entry as dead at `now` unless it was already marked dead within `cooldown`.
+    ///
+    /// Returns `true` when the mark was updated and downstream dead-peer fanout work should run.
+    #[inline]
+    pub fn mark_dead_if_cooldown_elapsed(
+        &self,
+        now: crate::time::precision::Timestamp,
+        cooldown: Duration,
+    ) -> bool {
+        let now_ms = Self::timestamp_to_millis(now);
+        let cooldown_ms = Self::duration_to_millis(cooldown);
+        self.dead_at
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |previous| {
+                if previous >= 0 && now_ms.saturating_sub(previous) < cooldown_ms {
+                    None
+                } else {
+                    Some(now_ms)
+                }
+            })
+            .is_ok()
+    }
+
+    #[inline]
+    pub fn is_dead_during_cooldown(
+        &self,
+        now: crate::time::precision::Timestamp,
+        cooldown: Duration,
+    ) -> bool {
+        let now_ms = Self::timestamp_to_millis(now);
+        let cooldown_ms = Self::duration_to_millis(cooldown);
+        let dead_at = self.dead_at.load(Ordering::Acquire);
+        dead_at >= 0 && now_ms.saturating_sub(dead_at) < cooldown_ms
     }
 
     pub fn is_idle_expired(&self, now: crate::time::precision::Timestamp) -> bool {

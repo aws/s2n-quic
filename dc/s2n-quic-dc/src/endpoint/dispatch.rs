@@ -932,7 +932,7 @@ fn handle_flow_validate_request(
 
     let request = flow::Request {
         credential_id: credentials.id,
-        stream_id,
+        stream_id: Some(stream_id),
     };
 
     match queue_dispatcher.validate_stream(local_queue_id, &request) {
@@ -1005,7 +1005,7 @@ fn handle_flow_init_validate(
 
     let request = flow::Request {
         credential_id: credentials.id,
-        stream_id,
+        stream_id: Some(stream_id),
     };
 
     match queue_dispatcher.validate_stream(local_queue_id, &request) {
@@ -1085,7 +1085,7 @@ fn handle_flow_data(
 
     let request = flow::Request {
         credential_id: credentials.id,
-        stream_id,
+        stream_id: Some(stream_id),
     };
 
     let payload_len = buf.len();
@@ -1265,7 +1265,7 @@ fn dispatch_control_message(
 
     let request = flow::Request {
         credential_id: credentials.id,
-        stream_id,
+        stream_id: Some(stream_id),
     };
 
     match queue_dispatcher.send_control(
@@ -1361,7 +1361,7 @@ fn handle_flow_reset(
 
     let request = flow::Request {
         credential_id: credentials.id,
-        stream_id,
+        stream_id: Some(stream_id),
     };
 
     match reset_target {
@@ -1486,7 +1486,7 @@ fn handle_flow_init_reset(
 
     let request = flow::Request {
         credential_id: credentials.id,
-        stream_id,
+        stream_id: Some(stream_id),
     };
 
     let stream_entry = msg::Stream::Reset { error_code }.into();
@@ -1570,7 +1570,7 @@ fn dispatch_flow_init_fin(
 ) {
     let request = flow::Request {
         credential_id: credentials.id,
-        stream_id,
+        stream_id: Some(stream_id),
     };
 
     let stream_entry = msg::Stream::Data {

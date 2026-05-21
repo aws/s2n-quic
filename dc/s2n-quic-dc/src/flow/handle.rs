@@ -112,7 +112,8 @@ impl DropChannel {
 #[derive(Debug, Clone, Copy)]
 pub struct Request {
     pub credential_id: credentials::Id,
-    pub stream_id: VarInt,
+    /// When `None`, only credential validation is performed.
+    pub stream_id: Option<VarInt>,
 }
 
 impl crate::flow::queue::Key for Handle {
@@ -124,7 +125,10 @@ impl crate::flow::queue::Key for Handle {
         if self.credential_id() != &params.credential_id {
             return Err(ValidationError::CredentialMismatch);
         }
-        if self.stream_id != params.stream_id {
+        if params
+            .stream_id
+            .is_some_and(|stream_id| self.stream_id != stream_id)
+        {
             return Err(ValidationError::StreamIdMismatch);
         }
         Ok(())

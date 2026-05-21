@@ -40,6 +40,20 @@ impl<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> Clone
 
 impl<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> Senders<S, C, Key, PAGE_SIZE> {
     #[inline]
+    fn refresh_pages(&mut self) {
+        let Ok(senders) = self.state.pages.read() else {
+            return;
+        };
+
+        if self.local.len() == senders.pages.len() {
+            return;
+        }
+
+        self.local
+            .extend_from_slice(&senders.pages[self.local.len()..]);
+    }
+
+    #[inline]
     pub fn lookup<T, F, V>(&mut self, queue_id: VarInt, entry: T, f: F) -> Result<V, Error<T>>
     where
         F: FnOnce(&Sender<S, C, Key>, T) -> Result<V, Error<T>>,
@@ -52,17 +66,10 @@ impl<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> Senders<S, C,
         let offset = queue_id % PAGE_SIZE;
 
         if self.local.len() <= page {
-            let Ok(senders) = self.state.pages.read() else {
-                return Err(Error::Unallocated(entry));
-            };
-
-            // the senders haven't been updated
-            if self.local.len() == senders.pages.len() {
+            self.refresh_pages();
+            if self.local.len() <= page {
                 return Err(Error::Unallocated(entry));
             }
-
-            self.local
-                .extend_from_slice(&senders.pages[self.local.len()..]);
         }
 
         let Some(page) = self.local.get(page) else {
@@ -72,6 +79,25 @@ impl<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> Senders<S, C,
             return Err(Error::Unallocated(entry));
         };
         f(sender, entry)
+    }
+
+    #[inline]
+    /// Iterates every currently known sender page entry and invokes `f`.
+    ///
+    /// # Performance
+    ///
+    /// This is intentionally expensive: it performs an O(total_queues) walk across
+    /// the entire sender table and should only be used for rare control-plane fanout
+    /// operations (for example, credential-wide invalidations). Never call this on
+    /// hot data-path packet/frame processing.
+    pub fn for_each_sender(&mut self, mut f: impl FnMut(&Sender<S, C, Key>)) {
+        self.refresh_pages();
+
+        for page in &self.local {
+            for sender in page.iter() {
+                f(sender);
+            }
+        }
     }
 }
 

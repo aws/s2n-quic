@@ -76,6 +76,7 @@ expression: logs
 0:00:00.000000000 [server] TRACE m#task.invalidation.drained[recv.dispatch.3]=0
 0:00:00.000000000 [server] TRACE m#task.waker_drain.drained[waker.13]=0
 0:00:00.000000000 [server] TRACE m#task.invalidation_validator.drained[background]=0
+0:00:00.000000000 [server] TRACE m#task.peer_dead_broadcast.drained[background]=0
 0:00:00.000000000 [server] TRACE m#task.ups_send.drained[background]=0
 0:00:00.000000000 [client] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [client] TRACE m#task.frame_dispatch.drained=0
@@ -145,6 +146,7 @@ expression: logs
 0:00:00.000000000 [client] TRACE m#task.invalidation.drained[recv.dispatch.3]=0
 0:00:00.000000000 [client] TRACE m#task.waker_drain.drained[waker.13]=0
 0:00:00.000000000 [client] TRACE m#task.invalidation_validator.drained[background]=0
+0:00:00.000000000 [client] TRACE m#task.peer_dead_broadcast.drained[background]=0
 0:00:00.000000000 [client] TRACE m#task.ups_send.drained[background]=0
 0:00:00.000000000 [client] DEBUG s2n_quic_dc: acquire=1µs duration=1µs
 0:00:00.000000000 [client] DEBUG s2n_quic_dc: peer_address=10.0.0.1:4433 credential_id=[90, 91, 208, 251, 67, 206, 74, 56, 32, 75, 91, 214, 210, 242, 94, 255]
@@ -226,6 +228,7 @@ expression: logs
 0:00:00.000000000 [server] TRACE m#task.invalidation.drained[recv.dispatch.3]=0
 0:00:00.000000000 [server] TRACE m#task.waker_drain.drained[waker.13]=0
 0:00:00.000000000 [server] TRACE m#task.invalidation_validator.drained[background]=0
+0:00:00.000000000 [server] TRACE m#task.peer_dead_broadcast.drained[background]=0
 0:00:00.000000000 [server] TRACE m#task.ups_send.drained[background]=0
 0:00:00.000000000 [client] TRACE c#q.router_to_batcher.enq[p4]=1
 0:00:00.000000000 [client] TRACE g#q.router_to_batcher.depth[p4]=1
@@ -301,6 +304,7 @@ expression: logs
 0:00:00.000000000 [client] TRACE m#task.invalidation.drained[recv.dispatch.3]=0
 0:00:00.000000000 [client] TRACE m#task.waker_drain.drained[waker.13]=0
 0:00:00.000000000 [client] TRACE m#task.invalidation_validator.drained[background]=0
+0:00:00.000000000 [client] TRACE m#task.peer_dead_broadcast.drained[background]=0
 0:00:00.000000000 [client] TRACE m#task.ups_send.drained[background]=0
 0:00:00.000000000 [client] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [client] TRACE m#task.frame_dispatch.drained=0

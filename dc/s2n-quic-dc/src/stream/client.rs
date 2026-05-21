@@ -127,6 +127,14 @@ impl Client {
             .await?;
 
         let path_secret_entry = peer.into_raw();
+        let now = crate::time::now();
+        let now = crate::time::precision::Timestamp::from(now);
+        if path_secret_entry.is_dead_during_cooldown(now, self.endpoint.dead_peer_cooldown) {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "peer is in dead cooldown window",
+            ));
+        }
 
         let stream_id =
             VarInt::new(self.endpoint.next_stream_id.fetch_add(1, Ordering::Relaxed)).unwrap();

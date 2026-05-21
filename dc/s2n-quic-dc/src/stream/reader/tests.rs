@@ -84,7 +84,7 @@ impl PairBuilder {
         let queue_id = stream_rx.queue_id();
         let request = flow::Request {
             credential_id: *path_secret_entry.id(),
-            stream_id,
+            stream_id: Some(stream_id),
         };
 
         let (frame_tx, frame_rx) = frame::submission_channel(1);

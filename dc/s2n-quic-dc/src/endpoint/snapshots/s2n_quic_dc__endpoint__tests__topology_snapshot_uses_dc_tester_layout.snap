@@ -993,6 +993,15 @@ tasks:
       - task.packet_dispatch.drained [summary variant=recv.dispatch.4 unit=count]: Number of items processed per poll for this task
       - task.packet_dispatch.next_poll_latency [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock latency between consecutive task polls
       - task.packet_dispatch.time [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock duration spent inside each task poll
+  - name: task.peer_dead_broadcast
+    function: endpoint::Worker::spawn
+    description: Marks peers dead and performs credential-wide reset fanout
+    budget: none
+    worker_id: 15
+    metrics:
+      - task.peer_dead_broadcast.drained [summary variant=background unit=count]: Number of items processed per poll for this task
+      - task.peer_dead_broadcast.next_poll_latency [timer variant=background unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.peer_dead_broadcast.time [timer variant=background unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.priority_router
     function: endpoint::tasks::frame_dispatch
     description: Routes submissions into per-priority queues
@@ -2165,6 +2174,14 @@ channels:
       - q.invalidation.depth_dist [summary variant=send.3 unit=count]: Distribution of observed queue depth values
       - q.invalidation.drain [counter variant=send.3 unit=count]: Total queue dequeue events
       - q.invalidation.enq [counter variant=send.3 unit=count]: Total queue enqueue events
+  - name: q.peer_dead
+    function: 
+    description: 
+    metrics:
+      - q.peer_dead.depth [gauge unit=count]: Current queue depth
+      - q.peer_dead.depth_dist [summary unit=count]: Distribution of observed queue depth values
+      - q.peer_dead.drain [counter unit=count]: Total queue dequeue events
+      - q.peer_dead.enq [counter unit=count]: Total queue enqueue events
   - name: q.resolver.send.0
     function: 
     description: 
