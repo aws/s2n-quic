@@ -8,7 +8,7 @@ use crate::{
     packet::datagram::ResetTarget,
 };
 use s2n_quic_core::{frame::ack::EcnCounts, inet::ExplicitCongestionNotification};
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 
 /// Counters for the datagram receive/dispatch pipeline.
 pub(crate) struct Dispatch {
@@ -260,14 +260,16 @@ impl Dispatch {
     }
 }
 
-/// Counters for the send/ACK-processing path.
+/// Per-sender-socket counters for the send/ACK-processing path.
+///
+/// One instance per `SenderIdx`. All metrics are registered with a nominal variant
+/// (`send.{idx}`) so you can query per-sender or aggregate across all senders.
 pub(crate) struct Send {
     pub lost: Counter,
     pub ttl_exhausted: Counter,
-    pub invalid_sender_idx: Counter,
-    pub tx_ack_received: Counter,
-    pub tx_ack_no_ctx: Counter,
-    pub tx_ack_packets: Summary,
+    pub ack_received: Counter,
+    pub ack_no_ctx: Counter,
+    pub ack_packets: Summary,
     pub tx_rtt: Timer,
     pub send_cwnd: Summary,
     pub send_pacing_rate: Summary,
@@ -282,9 +284,10 @@ pub(crate) struct Send {
     pub inflight_drain_invalidate: Counter,
     pub inflight_drain_expire: Counter,
     pub inflight_leaked_on_invalidate: Summary,
-    pub send_context_count: Gauge,
-    pub tx_probe_no_response: Counter,
+    pub probe_no_response: Counter,
     pub tx_probe_backoff: Summary,
+    pub context_count: Gauge,
+    pub tx_packets: Counter,
 
     // Per-frame-type ACK counters (bumped when each inflight frame is acknowledged).
     pub tx_acked_frame_flow_init: Counter,
@@ -300,52 +303,53 @@ pub(crate) struct Send {
 }
 
 impl Send {
-    pub fn new(counters: &Registry) -> Arc<Self> {
-        Arc::new(Self {
-            lost: counters.register("!send.lost"),
-            ttl_exhausted: counters.register("!send.ttl_exhausted"),
-            invalid_sender_idx: counters.register("!send.invalid_sender_idx"),
-            tx_ack_received: counters.register("tx.ack_received"),
-            tx_ack_no_ctx: counters.register("!tx.ack_no_ctx"),
-            tx_ack_packets: counters
-                .register_summary("tx.ack_packets", crate::counter::Unit::Count),
-            tx_rtt: counters.register_timer("tx.rtt"),
-            send_cwnd: counters.register_summary("send.cwnd", Unit::Byte),
-            send_pacing_rate: counters.register_summary("send.pacing_rate", Unit::Byte),
-            send_cca_limited: counters.register("send.cca_limited"),
-            send_app_limited: counters.register("send.app_limited"),
-            tx_ecn_ect0: counters.register_nominal("tx.ecn", "ect0"),
-            tx_ecn_ect1: counters.register_nominal("tx.ecn", "ect1"),
-            tx_ecn_ce: counters.register_nominal("tx.ecn", "ce"),
+    pub fn new(counters: &Registry, sender_idx: usize) -> Rc<Self> {
+        let v = format!("send.{sender_idx}");
+        Rc::new(Self {
+            lost: counters.register_nominal("!send.lost", &v),
+            ttl_exhausted: counters.register_nominal("!send.ttl_exhausted", &v),
+            ack_received: counters.register_nominal("tx.ack_received", &v),
+            ack_no_ctx: counters.register_nominal("!tx.ack_no_ctx", &v),
+            ack_packets: counters.register_nominal_summary("tx.ack_packets", &v, Unit::Count),
+            tx_rtt: counters.register_nominal_timer("tx.rtt", &v),
+            send_cwnd: counters.register_nominal_summary("send.cwnd", &v, Unit::Byte),
+            send_pacing_rate: counters.register_nominal_summary("send.pacing_rate", &v, Unit::Byte),
+            send_cca_limited: counters.register_nominal("send.cca_limited", &v),
+            send_app_limited: counters.register_nominal("send.app_limited", &v),
+            tx_ecn_ect0: counters.register_nominal("tx.ecn.ect0", &v),
+            tx_ecn_ect1: counters.register_nominal("tx.ecn.ect1", &v),
+            tx_ecn_ce: counters.register_nominal("tx.ecn.ce", &v),
 
-            inflight_drain_ack: counters.register_nominal("send.inflight.drain", "ack"),
-            inflight_drain_loss: counters.register_nominal("send.inflight.drain", "loss"),
+            inflight_drain_ack: counters.register_nominal("send.inflight.drain.ack", &v),
+            inflight_drain_loss: counters.register_nominal("send.inflight.drain.loss", &v),
             inflight_drain_invalidate: counters
-                .register_nominal("send.inflight.drain", "invalidate"),
-            inflight_drain_expire: counters.register_nominal("send.inflight.drain", "expire"),
+                .register_nominal("send.inflight.drain.invalidate", &v),
+            inflight_drain_expire: counters.register_nominal("send.inflight.drain.expire", &v),
             inflight_leaked_on_invalidate: counters
-                .register_summary("send.inflight.leaked_on_invalidate", Unit::Byte),
-            send_context_count: counters.register_gauge("send.context.count"),
-            tx_probe_no_response: counters.register("tx.probe.no_response"),
-            tx_probe_backoff: counters.register_summary("tx.probe.backoff", Unit::Count),
+                .register_nominal_summary("send.inflight.leaked_on_invalidate", &v, Unit::Byte),
+            probe_no_response: counters.register_nominal("tx.probe.no_response", &v),
+            tx_probe_backoff: counters
+                .register_nominal_summary("tx.probe.backoff", &v, Unit::Count),
+            context_count: counters.register_nominal_gauge("send.context.count", &v),
+            tx_packets: counters.register_nominal("tx.data", &v),
 
-            tx_acked_frame_flow_init: counters.register_nominal("tx.acked.frame", "flow_init"),
-            tx_acked_frame_flow_data: counters.register_nominal("tx.acked.frame", "flow_data"),
+            tx_acked_frame_flow_init: counters.register_nominal("tx.acked.frame.flow_init", &v),
+            tx_acked_frame_flow_data: counters.register_nominal("tx.acked.frame.flow_data", &v),
             tx_acked_frame_flow_data_fin: counters
-                .register_nominal("tx.acked.frame", "flow_data_fin"),
+                .register_nominal("tx.acked.frame.flow_data_fin", &v),
             tx_acked_frame_flow_control: counters
-                .register_nominal("tx.acked.frame", "flow_control"),
+                .register_nominal("tx.acked.frame.flow_control", &v),
             tx_acked_frame_flow_max_data: counters
-                .register_nominal("tx.acked.frame", "flow_max_data"),
-            tx_acked_frame_flow_reset: counters.register_nominal("tx.acked.frame", "flow_reset"),
+                .register_nominal("tx.acked.frame.flow_max_data", &v),
+            tx_acked_frame_flow_reset: counters.register_nominal("tx.acked.frame.flow_reset", &v),
             tx_acked_frame_flow_init_reset: counters
-                .register_nominal("tx.acked.frame", "flow_init_reset"),
+                .register_nominal("tx.acked.frame.flow_init_reset", &v),
             tx_acked_frame_flow_init_fin: counters
-                .register_nominal("tx.acked.frame", "flow_init_fin"),
+                .register_nominal("tx.acked.frame.flow_init_fin", &v),
             tx_acked_frame_flow_init_validate: counters
-                .register_nominal("tx.acked.frame", "flow_init_validate"),
+                .register_nominal("tx.acked.frame.flow_init_validate", &v),
             tx_acked_frame_flow_validate_request: counters
-                .register_nominal("tx.acked.frame", "flow_validate_request"),
+                .register_nominal("tx.acked.frame.flow_validate_request", &v),
         })
     }
 
@@ -355,18 +359,13 @@ impl Send {
     }
 
     #[inline]
-    pub fn on_invalid_sender_idx(&self) {
-        self.invalid_sender_idx.add(1);
-    }
-
-    #[inline]
     pub fn on_received_ack(&self) {
-        self.tx_ack_received.add(1);
+        self.ack_received.add(1);
     }
 
     #[inline]
     pub fn on_received_ack_no_ctx(&self) {
-        self.tx_ack_no_ctx.add(1);
+        self.ack_no_ctx.add(1);
     }
 
     #[inline]
@@ -435,22 +434,25 @@ impl Send {
     }
 
     #[inline]
+    pub fn on_probe_no_response(&self) {
+        self.probe_no_response.add(1);
+    }
+
+    #[inline]
     pub fn on_context_created(&self) {
-        self.send_context_count.add(1);
+        self.context_count.add(1);
     }
 
     #[inline]
     pub fn on_context_removed(&self) {
-        self.send_context_count.sub(1);
+        self.context_count.sub(1);
     }
 
     #[inline]
-    pub fn on_probe_no_response(&self) {
-        self.tx_probe_no_response.add(1);
+    pub fn on_tx_packet(&self) {
+        self.tx_packets.add(1);
     }
 
-    /// Bump the per-frame-type ACK counter for the given frame header.
-    /// Called inline as each inflight frame is acknowledged.
     #[inline]
     pub fn on_acked_frame(&self, header: &Header) {
         match header {

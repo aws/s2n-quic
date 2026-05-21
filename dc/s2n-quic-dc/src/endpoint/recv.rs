@@ -204,8 +204,9 @@ pub(crate) enum AttemptDedupError {
 pub(crate) struct Context {
     pub path_entry: Arc<PathSecretEntry>,
     /// The remote peer's sender_id (from the packet routing info).
-    /// Used as `dest_sender_id` in outgoing ACK frames.
-    pub remote_sender_id: VarInt,
+    /// Echoed back as `dest_sender_id` in outgoing ACK frames so the peer
+    /// can route the ACK to its loss detection context.
+    pub remote_sender_id: crate::endpoint::id::RemoteSenderId,
     // TODO: Support key rotation by maintaining multiple openers indexed by key_id.
     // Currently we only track the latest key, which means packets with old key_ids
     // after rotation will fail to decrypt. Need to maintain a small cache of recent
@@ -218,7 +219,7 @@ pub(crate) struct Context {
     /// Lightweight ACK range tracker for the direct ACK path.
     pub ack_ranges: ack_ranges::AckRanges,
     /// Which local sender_id outgoing ACKs for this peer route through.
-    pub local_sender_id: VarInt,
+    pub local_sender_id: crate::endpoint::id::LocalSenderId,
     /// Accumulated ECN counts for received packets, reported back to the sender
     /// in each ACK frame so the sender can validate ECN support and detect congestion.
     pub ecn_counts: EcnCounts,
@@ -295,8 +296,8 @@ impl Context {
 
     pub fn new(
         path_entry: Arc<PathSecretEntry>,
-        remote_sender_id: VarInt,
-        local_sender_id: VarInt,
+        remote_sender_id: crate::endpoint::id::RemoteSenderId,
+        local_sender_id: crate::endpoint::id::LocalSenderId,
         opener: crate::crypto::awslc::open::Application,
         key_id: VarInt,
         now: crate::time::precision::Timestamp,
@@ -333,7 +334,7 @@ impl Context {
     /// whether ack_state went back to Scheduled (new packets arrived) and re-submits.
     ///
     /// Returns `None` if there are no ranges or an ACK is already in flight.
-    pub fn encode_and_flush(&mut self, recv_worker_id: usize) -> Option<ack_state::Submission> {
+    pub fn encode_and_flush(&mut self, recv_worker_id: crate::endpoint::id::WorkerId) -> Option<ack_state::Submission> {
         if !self.ack_state.is_scheduled() {
             return None;
         }
@@ -381,7 +382,7 @@ impl Context {
         })
     }
 
-    pub fn on_ack_completion(&mut self, recv_worker_id: usize) -> Option<ack_state::Submission> {
+    pub fn on_ack_completion(&mut self, recv_worker_id: crate::endpoint::id::WorkerId) -> Option<ack_state::Submission> {
         if !(self.ack_state.is_flushed() || self.ack_state.is_flushed_stale()) {
             warn!(
                 ?self.ack_state,
@@ -406,23 +407,23 @@ impl Context {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Key {
     pub id: credentials::Id,
-    pub remote_sender_id: VarInt,
+    pub remote_sender_id: crate::endpoint::id::RemoteSenderId,
 }
 
 impl core::hash::Hash for Key {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        state.write_u64(self.id.to_hash() ^ self.remote_sender_id.as_u64());
+        state.write_u64(self.id.to_hash() ^ self.remote_sender_id.as_varint().as_u64());
     }
 }
 
 /// Per-worker sender state cache.
 pub(crate) struct Cache {
     pub senders: FxHashMap<Key, Rc<RefCell<Context>>>,
-    pub worker_id: usize,
+    pub worker_id: crate::endpoint::id::WorkerId,
 }
 
 impl Cache {
-    pub fn new(worker_id: usize) -> Self {
+    pub fn new(worker_id: crate::endpoint::id::WorkerId) -> Self {
         Self {
             senders: FxHashMap::default(),
             worker_id,
@@ -451,7 +452,7 @@ impl Cache {
     pub fn get_or_insert<Clk, Route, F, R>(
         &mut self,
         credentials: &Credentials,
-        remote_sender_id: VarInt,
+        remote_sender_id: crate::endpoint::id::RemoteSenderId,
         path_secret_map: &path::secret::map::Map,
         clock: &Clk,
         control_out: &mut Vec<u8>,
@@ -487,7 +488,7 @@ impl Cache {
                         .check_dedup(
                             &ctx.borrow().path_entry,
                             credentials,
-                            Some(remote_sender_id),
+                            Some(remote_sender_id.as_varint()),
                         )
                         .map_err(|_| CacheError::ReplayDetected)?;
 
@@ -502,7 +503,7 @@ impl Cache {
                 let (opener, path_entry) = path_secret_map
                     .opener_for_credentials(
                         credentials,
-                        Some(remote_sender_id),
+                        Some(remote_sender_id.as_varint()),
                         crate::path::secret::map::store::ControlResponse::ReturnBuffer {
                             out: control_out,
                         },
@@ -512,7 +513,7 @@ impl Cache {
                 let r = decrypt(&opener).ok_or(CacheError::DecryptFailed)?;
 
                 path_secret_map
-                    .check_dedup(&path_entry, credentials, Some(remote_sender_id))
+                    .check_dedup(&path_entry, credentials, Some(remote_sender_id.as_varint()))
                     .map_err(|_| CacheError::ReplayDetected)?;
 
                 // Packet is authentic — replace the stale entry.
@@ -523,7 +524,7 @@ impl Cache {
                     "recv cache key_id advanced — replacing entry"
                 );
 
-                let dest_sender_id = route.sender_id_for_ack(&credentials.id, remote_sender_id);
+                let dest_sender_id = route.sender_id_for_ack(&credentials.id, remote_sender_id.as_varint());
                 let new_ctx = Rc::new(RefCell::new(Context::new(
                     path_entry,
                     remote_sender_id,
@@ -537,11 +538,11 @@ impl Cache {
                 Ok((r, new_ctx, false))
             }
             hash_map::Entry::Vacant(entry) => {
-                debug!(%credentials, %remote_sender_id, worker_id = self.worker_id, "opener_for_credentials");
+                debug!(%credentials, %remote_sender_id, worker_id = %self.worker_id, "opener_for_credentials");
                 let (opener, path_entry) = path_secret_map
                     .opener_for_credentials(
                         credentials,
-                        Some(remote_sender_id),
+                        Some(remote_sender_id.as_varint()),
                         crate::path::secret::map::store::ControlResponse::ReturnBuffer {
                             out: control_out,
                         },
@@ -557,10 +558,10 @@ impl Cache {
                 // first established; subsequent packets (same key_id, different packet
                 // numbers) are deduplicated by the Context's `dedup_filter`.
                 path_secret_map
-                    .check_dedup(&path_entry, credentials, Some(remote_sender_id))
+                    .check_dedup(&path_entry, credentials, Some(remote_sender_id.as_varint()))
                     .map_err(|_| CacheError::ReplayDetected)?;
 
-                let dest_sender_id = route.sender_id_for_ack(&credentials.id, remote_sender_id);
+                let dest_sender_id = route.sender_id_for_ack(&credentials.id, remote_sender_id.as_varint());
 
                 let ctx = Rc::new(RefCell::new(Context::new(
                     path_entry,
@@ -585,7 +586,7 @@ impl Cache {
         let before = self.senders.len();
         self.senders.retain(|key, _| key.id != *id);
         let removed = before - self.senders.len();
-        debug!(%id, removed, worker_id = self.worker_id, "invalidating recv contexts");
+        debug!(%id, removed, worker_id = %self.worker_id, "invalidating recv contexts");
     }
 }
 

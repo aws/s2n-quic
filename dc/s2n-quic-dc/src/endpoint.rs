@@ -28,6 +28,7 @@ pub(crate) mod decode;
 pub(crate) mod dispatch;
 pub(crate) mod error;
 pub(crate) mod frame;
+pub mod id;
 pub(crate) mod inflight;
 pub(crate) mod msg;
 pub(crate) mod recv;
@@ -870,7 +871,7 @@ where
                 );
                 let recv_dispatch_idx = rd.recv_dispatch_idx;
                 let recv_cache = std::rc::Rc::new(std::cell::RefCell::new(
-                    crate::stream::endpoint::recv::Cache::new(recv_dispatch_idx),
+                    crate::stream::endpoint::recv::Cache::new(crate::endpoint::id::WorkerId::new(recv_dispatch_idx)),
                 ));
                 let (ack_burst_tx, ack_burst_rx) =
                     crate::socket::channel::intrusive::unsync::new_with_adapter::<
@@ -949,7 +950,7 @@ where
                 let rx = tasks::ack_burst(
                     crate::socket::channel::FlattenList::new(ack_burst_rx.into_list_receiver()),
                     rd.ack_sender.clone(),
-                    recv_dispatch_idx,
+                    crate::endpoint::id::WorkerId::new(recv_dispatch_idx),
                     rd.counters.clone(),
                 );
                 let task_counter = counter_registry

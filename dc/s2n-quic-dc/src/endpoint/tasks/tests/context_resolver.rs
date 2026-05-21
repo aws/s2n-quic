@@ -32,8 +32,7 @@ fn setup() -> Harness {
     let registry = crate::counter::Registry::default();
     let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(
         &registry,
-        0,
-        crate::endpoint::counters::Send::new(&registry),
+        crate::endpoint::id::SenderIdx::new(0),
     )))];
     let sender_idx_to_local = vec![0];
 
@@ -144,7 +143,7 @@ fn wheel_router_routes_all_interest_combinations() {
                 registry.register_queue_gauge("test.inflight"),
                 registry.register_queue_gauge("test.ack"),
                 registry.register_queue_gauge("test.pending"),
-                0,
+                crate::endpoint::id::SenderIdx::new(0),
                 &Clock::default(),
             )
             .unwrap();

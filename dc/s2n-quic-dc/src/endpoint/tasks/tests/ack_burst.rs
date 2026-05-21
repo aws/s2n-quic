@@ -33,7 +33,7 @@ fn setup(
     let (sender, output_rx) = unsync::new::<msg::Sender>();
     let input = TestReceiver::new(contexts);
     let counters = crate::endpoint::counters::Dispatch::new(&crate::counter::Registry::default());
-    let rx = tasks::ack_burst(input, sender, 0, counters);
+    let rx = tasks::ack_burst(input, sender, crate::endpoint::id::RecvDispatchWorkerId::new(0), counters);
     async move { rx.drain_budgeted(Some(32)).await }
         .primary()
         .spawn();

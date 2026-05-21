@@ -106,7 +106,7 @@ pub(crate) fn process_ack<Clk, Rand>(
 
             trace!(
                 credentials = %context.credentials.id,
-                sender_idx = context.sender_idx,
+                sender_idx = %context.sender_idx,
                 packet_number = num.as_u64(),
                 "packet ACKed"
             );
@@ -142,7 +142,7 @@ pub(crate) fn process_ack<Clk, Rand>(
         }
     }
 
-    counters.tx_ack_packets.record_value(packets_acked);
+    counters.ack_packets.record_value(packets_acked);
     counters.on_inflight_drain_ack(packets_acked);
 
     // Finalize loss detection for the ACK-only RTT tracker. This must be called
@@ -188,7 +188,7 @@ pub(crate) fn process_ack<Clk, Rand>(
 
         trace!(
             credentials = %context.credentials.id,
-            sender_idx = context.sender_idx,
+            sender_idx = %context.sender_idx,
             ?rtt_sample,
             "RTT updated from ack-only packet (read-heavy path)"
         );
@@ -329,7 +329,7 @@ fn detect_loss<Rand>(
                 debug_assert_ne!(entry.ttl, 0, "frame TTL should never be exhausted");
                 error!(
                     credentials = %context.credentials.id,
-                    sender_idx = context.sender_idx,
+                    sender_idx = %context.sender_idx,
                     frame = ?*entry,
                     "frame TTL exhausted - this should never happen"
                 );

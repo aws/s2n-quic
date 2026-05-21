@@ -41,8 +41,7 @@ fn setup_send() -> SendSetup {
     let clock = Clock::default();
     let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(
         &registry,
-        0,
-        crate::endpoint::counters::Send::new(&registry),
+        crate::endpoint::id::SenderIdx::new(0),
     )))];
 
     let pse = test_entry();
@@ -80,7 +79,7 @@ fn test_frame(pse: &Arc<crate::path::secret::map::Entry>) -> Entry<Frame> {
 // ── Recv setup ──────────────────────────────────────────────────────────────
 
 fn setup_recv() -> (Rc<RefCell<recv::Cache>>, credentials::Id) {
-    let recv_cache = Rc::new(RefCell::new(recv::Cache::new(0)));
+    let recv_cache = Rc::new(RefCell::new(recv::Cache::new(crate::endpoint::id::RecvDispatchWorkerId::new(0))));
 
     let ctx_a = RecvContextBuilder::default()
         .remote_sender_id(VarInt::from_u8(0))
@@ -92,11 +91,11 @@ fn setup_recv() -> (Rc<RefCell<recv::Cache>>, credentials::Id) {
     let id = *ctx_a.borrow().path_entry.id();
     let key_a = recv::Key {
         id,
-        remote_sender_id: VarInt::from_u8(0),
+        remote_sender_id: crate::endpoint::id::RemoteSenderId::new(VarInt::from_u8(0)),
     };
     let key_b = recv::Key {
         id,
-        remote_sender_id: VarInt::from_u8(1),
+        remote_sender_id: crate::endpoint::id::RemoteSenderId::new(VarInt::from_u8(1)),
     };
 
     recv_cache.borrow_mut().senders.insert(key_a, ctx_a);
@@ -131,7 +130,6 @@ fn send_invalidation_purges_cache_and_emits_failed_frames() {
             cancelled_tx,
             retransmit_tx,
             invalidation_counters(),
-            crate::endpoint::counters::Send::new(&crate::counter::Registry::default()),
         );
 
         async move {
@@ -184,7 +182,6 @@ fn send_invalidation_noop_for_unknown_id() {
             cancelled_tx,
             retransmit_tx,
             invalidation_counters(),
-            crate::endpoint::counters::Send::new(&crate::counter::Registry::default()),
         );
 
         async move {
@@ -276,7 +273,7 @@ fn ack_completion_after_recv_invalidation_does_not_resurrect_context() {
                 path_secret_entry: c.path_entry.clone(),
                 local_sender_id: c.local_sender_id,
                 remote_sender_id: c.remote_sender_id,
-                recv_worker_id: 0,
+                recv_worker_id: crate::endpoint::id::RecvDispatchWorkerId::new(0),
             }
         };
 
@@ -321,7 +318,7 @@ fn ack_burst_after_recv_invalidation_emits_nothing() {
         let (sender, mut collected) = unsync::new::<crate::endpoint::msg::Sender>();
         let counters =
             crate::endpoint::counters::Dispatch::new(&crate::counter::Registry::default());
-        let mut ack_burst = tasks::ack_burst(ack_burst_rx, sender, 0, counters);
+        let mut ack_burst = tasks::ack_burst(ack_burst_rx, sender, crate::endpoint::id::RecvDispatchWorkerId::new(0), counters);
 
         async move {
             invalidation.recv().await;
@@ -343,13 +340,11 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
         let send_caches = vec![
             Rc::new(RefCell::new(send::Cache::new(
                 &registry,
-                0,
-                crate::endpoint::counters::Send::new(&registry),
+                crate::endpoint::id::SenderIdx::new(0),
             ))),
             Rc::new(RefCell::new(send::Cache::new(
                 &registry,
-                1,
-                crate::endpoint::counters::Send::new(&registry),
+                crate::endpoint::id::SenderIdx::new(1),
             ))),
         ];
 
@@ -380,7 +375,6 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
             cancelled_tx,
             retransmit_tx,
             invalidation_counters(),
-            crate::endpoint::counters::Send::new(&crate::counter::Registry::default()),
         );
 
         async move {

@@ -37,7 +37,7 @@ fn setup_flushed_context() -> (Rc<RefCell<recv::Context>>, ack_state::Submission
         let now = clock.get_time();
         c.ack_ranges.on_packet_received(VarInt::from_u8(1), now);
         c.ack_state.on_ack_eliciting().unwrap();
-        c.encode_and_flush(0).expect("should produce submission")
+        c.encode_and_flush(crate::endpoint::id::RecvDispatchWorkerId::new(0)).expect("should produce submission")
     };
     (ctx, submission)
 }
@@ -61,7 +61,7 @@ fn cache_with_context(
     ctx: Rc<RefCell<recv::Context>>,
     submission: &ack_state::Submission,
 ) -> Rc<RefCell<recv::Cache>> {
-    let cache = Rc::new(RefCell::new(recv::Cache::new(0)));
+    let cache = Rc::new(RefCell::new(recv::Cache::new(crate::endpoint::id::RecvDispatchWorkerId::new(0))));
     let key = recv::Key {
         id: *submission.path_secret_entry.id(),
         remote_sender_id: submission.remote_sender_id,
@@ -138,7 +138,7 @@ fn unknown_context_silently_dropped() {
         let (_ctx, submission) = setup_flushed_context();
 
         // Empty cache — context won't be found
-        let cache = Rc::new(RefCell::new(recv::Cache::new(0)));
+        let cache = Rc::new(RefCell::new(recv::Cache::new(crate::endpoint::id::RecvDispatchWorkerId::new(0))));
         let entry = crate::intrusive::Entry::new(msg::Sender::PendingAck(submission));
 
         let Harness { mut output_rx } = setup(cache, [entry]);
@@ -168,7 +168,7 @@ fn completion_from_idle_state_is_ignored() {
             path_secret_entry: ctx.borrow().path_entry.clone(),
             local_sender_id: ctx.borrow().local_sender_id,
             remote_sender_id: ctx.borrow().remote_sender_id,
-            recv_worker_id: 0,
+            recv_worker_id: crate::endpoint::id::RecvDispatchWorkerId::new(0),
         };
         let cache = cache_with_context(ctx, &submission);
         let entry = crate::intrusive::Entry::new(msg::Sender::PendingAck(submission));
@@ -213,7 +213,7 @@ fn stale_resubmit_then_next_completion_settles() {
             );
 
             // Drive a second completion for the re-submitted ACK.
-            let cache = Rc::new(RefCell::new(recv::Cache::new(0)));
+            let cache = Rc::new(RefCell::new(recv::Cache::new(crate::endpoint::id::RecvDispatchWorkerId::new(0))));
             let key = {
                 let c = ctx.borrow();
                 recv::Key {

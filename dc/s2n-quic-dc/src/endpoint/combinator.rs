@@ -930,7 +930,7 @@ pub(crate) struct AckProcessor<R, Clk, Rand, C> {
     frame_tx: frame::SubmissionSender,
     completed_tx: C,
     cancelled_tx: C,
-    counters: Arc<super::counters::Send>,
+    invalid_sender_idx: crate::counter::Counter,
     /// Storage space for packet number/recovery states
     deferred: Vec<PacketNumber>,
 }
@@ -947,7 +947,7 @@ impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
         frame_tx: frame::SubmissionSender,
         completed_tx: C,
         cancelled_tx: C,
-        counters: Arc<super::counters::Send>,
+        invalid_sender_idx: crate::counter::Counter,
     ) -> Self {
         Self {
             inner,
@@ -959,22 +959,22 @@ impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
             frame_tx,
             completed_tx,
             cancelled_tx,
-            counters,
+            invalid_sender_idx,
             deferred: Vec::with_capacity(8),
         }
     }
 
-    fn resolve_cache(&mut self, sender_idx: usize) -> Option<&mut Rc<RefCell<send::Cache>>> {
-        if sender_idx >= self.total_sender_ids {
-            self.counters.on_invalid_sender_idx();
+    fn resolve_cache(&mut self, sender_idx: super::id::SenderIdx) -> Option<&mut Rc<RefCell<send::Cache>>> {
+        if usize::from(sender_idx) >= self.total_sender_ids {
+            self.invalid_sender_idx.add(1);
             return None;
         }
-        let Some(local_id) = self.sender_idx_to_local.get(sender_idx).copied() else {
-            self.counters.on_invalid_sender_idx();
+        let Some(local_id) = self.sender_idx_to_local.get(usize::from(sender_idx)).copied() else {
+            self.invalid_sender_idx.add(1);
             return None;
         };
         let Some(cache) = self.send_caches.get_mut(local_id) else {
-            self.counters.on_invalid_sender_idx();
+            self.invalid_sender_idx.add(1);
             return None;
         };
         Some(cache)
@@ -1001,14 +1001,16 @@ where
 
         let sender_idx = entry.sender_idx();
         let is_ack = matches!(&*entry, msg::Sender::ReceivedAck { .. });
-        if is_ack {
-            self.counters.on_received_ack();
-        }
 
         let cache = match self.resolve_cache(sender_idx) {
             Some(cache) => cache.clone(),
             None => return Poll::Ready(Some(None)),
         };
+
+        let counters = cache.borrow().send_counters().clone();
+        if is_ack {
+            counters.on_received_ack();
+        }
 
         let dispatch = match &mut *entry {
             msg::Sender::ReceivedAck {
@@ -1023,7 +1025,7 @@ where
                 };
 
                 let Some(ctx_rc) = ctx_rc else {
-                    self.counters.on_received_ack_no_ctx();
+                    counters.on_received_ack_no_ctx();
                     return Poll::Ready(Some(None));
                 };
 
@@ -1034,7 +1036,7 @@ where
                     let interest = ctx.process_ack_payload(
                         payload,
                         *ack_delay,
-                        &self.counters,
+                        &counters,
                         &mut self.completed_tx,
                         &mut lost_queue,
                         &mut self.cancelled_tx,
@@ -1042,12 +1044,12 @@ where
                         &mut self.random,
                         &mut self.deferred,
                     );
-                    self.counters.on_rtt(ctx.rtt_estimator.smoothed_rtt());
+                    counters.on_rtt(ctx.rtt_estimator.smoothed_rtt());
                     interest
                 };
 
                 if !lost_queue.is_empty() {
-                    self.counters.on_lost(lost_queue.len() as u64);
+                    counters.on_lost(lost_queue.len() as u64);
                     let _ = self.frame_tx.send_batch(lost_queue);
                 }
 

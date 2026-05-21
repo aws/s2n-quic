@@ -23,8 +23,7 @@ fn send_ack_processor_ignores_invalid_sender_id() {
         let registry = crate::counter::Registry::default();
         let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(
             &registry,
-            0,
-            crate::endpoint::counters::Send::new(&registry),
+            crate::endpoint::id::SenderIdx::new(0),
         )))];
         let sender_idx_to_local = vec![0usize];
 
@@ -36,7 +35,6 @@ fn send_ack_processor_ignores_invalid_sender_id() {
         let (completed_tx, mut completed_rx) = unsync::new::<frame::Frame>();
         let (cancelled_tx, mut cancelled_rx) = unsync::new::<frame::Frame>();
         let (frame_tx, _frame_rx) = frame::submission_channel(1);
-        let counters = crate::endpoint::counters::Send::new(&registry);
 
         let rx = tasks::send_ack_processor(
             ack_rx,
@@ -48,7 +46,7 @@ fn send_ack_processor_ignores_invalid_sender_id() {
             frame_tx,
             completed_tx,
             cancelled_tx,
-            counters,
+            registry.register("!send.invalid_sender_idx"),
             tx_wheel_tx,
             pto_wheel_tx,
             idle_wheel_tx,
@@ -61,7 +59,7 @@ fn send_ack_processor_ignores_invalid_sender_id() {
         async move {
             let entry = test_entry();
             let _ = ack_tx.send(crate::intrusive::Entry::new(msg::Sender::ReceivedAck {
-                local_sender_id: VarInt::from_u8(3),
+                local_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::from_u8(3)),
                 path_secret_entry: entry,
                 payload: BytesMut::new(),
                 ack_delay: Duration::ZERO,
@@ -109,7 +107,7 @@ fn send_pto_timeout_routes_pending_context_to_tx_wheel() {
             registry.register_queue_gauge("test.inflight"),
             registry.register_queue_gauge("test.ack"),
             registry.register_queue_gauge("test.pending"),
-            0,
+            crate::endpoint::id::SenderIdx::new(0),
             &clock,
         )
         .expect("test context should be constructible");
@@ -129,7 +127,8 @@ fn send_pto_timeout_routes_pending_context_to_tx_wheel() {
             idle_wheel_tx,
             registry.register("tx.pto_check"),
             registry.register("tx.pto_requested"),
-            crate::endpoint::counters::Send::new(&registry),
+            vec![],
+            vec![],
         );
 
         async move { rx.drain_budgeted(Some(32)).await }
@@ -166,7 +165,7 @@ fn send_tx_wheel_drain_routes_expired_context_to_matching_socket() {
             registry.register_queue_gauge("test.inflight"),
             registry.register_queue_gauge("test.ack"),
             registry.register_queue_gauge("test.pending"),
-            1,
+            crate::endpoint::id::SenderIdx::new(1),
             &clock,
         )
         .expect("test context should be constructible");

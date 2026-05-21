@@ -49,22 +49,25 @@ pub(crate) trait SenderRoute: Clone + Copy + Send + 'static {
     fn new(count: usize) -> Self;
     fn route(&self, hash: u64) -> usize;
 
-    /// Returns the sender_id that should be used to send ACK packets back to the peer
+    /// Returns the local sender_id that should be used to send ACK packets back to the peer.
+    ///
+    /// This determines which of OUR send sockets carries the ACK, ensuring stable
+    /// (credentials, sender_id) tuples for consistent RTT measurements.
     #[inline]
     fn sender_id_for_ack(
         &self,
         credentials_id: &credentials::Id,
         source_sender_id: VarInt,
-    ) -> VarInt {
+    ) -> super::id::LocalSenderId {
         let hash = hash_id_and_sender(credentials_id, source_sender_id);
-        unsafe { VarInt::new_unchecked(self.route(hash) as u64) }
+        super::id::LocalSenderId::new(unsafe { VarInt::new_unchecked(self.route(hash) as u64) })
     }
 
     /// Returns the local worker_id that is responsible for decoding/decrypting a packet
     #[inline]
-    fn worker_id_for_recv(&self, credentials: &Credentials, source_sender_id: VarInt) -> usize {
+    fn worker_id_for_recv(&self, credentials: &Credentials, source_sender_id: VarInt) -> super::id::WorkerId {
         let hash = hash_credentials_and_sender(credentials, source_sender_id);
-        self.route(hash)
+        super::id::WorkerId::new(self.route(hash))
     }
 }
 
@@ -138,11 +141,11 @@ where
     fn send(&mut self, msg: Entry<msg::Sender>) -> Result<(), Entry<msg::Sender>> {
         let sender_idx = msg.sender_idx();
         debug_assert!(
-            sender_idx < self.senders.len(),
+            usize::from(sender_idx) < self.senders.len(),
             "sender_idx {sender_idx} out of bounds (len {})",
             self.senders.len()
         );
-        let tx = unsafe { self.senders.get_unchecked_mut(sender_idx) };
+        let tx = unsafe { self.senders.get_unchecked_mut(usize::from(sender_idx)) };
         tx.send(msg)
     }
 }
@@ -190,7 +193,8 @@ where
         while let Some(entry) = queue.pop_front() {
             let worker_id = entry
                 .recv_worker_id()
-                .expect("completion entry must have a recv_worker_id");
+                .expect("completion entry must have a recv_worker_id")
+                .as_usize();
             debug_assert!(
                 worker_id < self.staging.len(),
                 "recv_worker_id {worker_id} out of bounds (len {})",

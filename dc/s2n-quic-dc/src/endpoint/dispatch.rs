@@ -146,7 +146,7 @@ where
         let _guard = counters.rx_peer_lookup_time.start();
         match recv_cache.get_or_insert(
             &credentials,
-            source_sender_id,
+            crate::endpoint::id::RemoteSenderId::new(source_sender_id),
             path_secret_map,
             clock,
             &mut control_out,
@@ -505,7 +505,7 @@ fn dispatch_decoded_frame(
         } => {
             let ack_delay = Duration::from_micros(ack_delay_micros.as_u64());
             let message = msg::Sender::ReceivedAck {
-                local_sender_id: dest_sender_id,
+                local_sender_id: crate::endpoint::id::LocalSenderId::new(dest_sender_id),
                 path_secret_entry: peer.path_entry.clone(),
                 payload,
                 ack_delay,

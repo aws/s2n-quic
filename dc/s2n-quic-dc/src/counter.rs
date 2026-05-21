@@ -2748,6 +2748,26 @@ impl Registry {
         self.gauge_handle(inner, metric_id)
     }
 
+    pub fn register_nominal_gauge(
+        &self,
+        label: impl core::fmt::Display,
+        variant: impl core::fmt::Display,
+    ) -> Gauge {
+        let label = label.to_string();
+        let variant = variant.to_string();
+        let metric_id =
+            self.register_metric_metadata(&label, Some(&variant), MetricKind::Gauge, None, "");
+        let inner = Arc::new(AtomicI64::new(0));
+        let inner_clone = inner.clone();
+        self.inner.register_list_callback(
+            label,
+            Some(variant),
+            Unit::Count,
+            move || NonZeroDisplay(inner_clone.load(Ordering::Relaxed)),
+        );
+        self.gauge_handle(inner, metric_id)
+    }
+
     pub fn register_summary(&self, label: impl core::fmt::Display, unit: Unit) -> Summary {
         let label = label.to_string();
         let metric_id = self.register_metric_metadata(

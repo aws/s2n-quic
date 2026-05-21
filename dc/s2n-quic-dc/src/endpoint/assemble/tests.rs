@@ -98,7 +98,7 @@ fn make_context(mtu: u16, registry: &Registry) -> (Context, Arc<PathSecretEntry>
             inflight_gauge,
             ack_gauge,
             pending_gauge,
-            0,
+            crate::endpoint::id::SenderIdx::new(0),
             &crate::time::bach::Clock::default(),
         )
         .unwrap(),
@@ -431,7 +431,7 @@ fn encode_decode_round_trip() {
         inflight_gauge,
         ack_gauge,
         pending_gauge,
-        0,
+        crate::endpoint::id::SenderIdx::new(0),
         &crate::time::bach::Clock::default(),
     )
     .unwrap();
@@ -722,7 +722,7 @@ fn encode_decode_fuzz_round_trip() {
                 inflight_gauge,
                 ack_gauge,
                 pending_gauge,
-                0,
+                crate::endpoint::id::SenderIdx::new(0),
                 &crate::time::bach::Clock::default(),
             )
             .unwrap();

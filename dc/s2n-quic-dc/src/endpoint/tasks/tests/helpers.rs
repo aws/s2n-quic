@@ -138,16 +138,16 @@ impl<T, R: Receiver<T>> TestReceiverExt<T> for R {}
 
 pub struct RecvContextBuilder {
     peer: SocketAddr,
-    remote_sender_id: VarInt,
-    dest_sender_id: VarInt,
+    remote_sender_id: crate::endpoint::id::RemoteSenderId,
+    local_sender_id: crate::endpoint::id::LocalSenderId,
 }
 
 impl Default for RecvContextBuilder {
     fn default() -> Self {
         Self {
             peer: "127.0.0.1:4433".parse().unwrap(),
-            remote_sender_id: VarInt::from_u8(0),
-            dest_sender_id: VarInt::from_u8(1),
+            remote_sender_id: crate::endpoint::id::RemoteSenderId::new(VarInt::from_u8(0)),
+            local_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::from_u8(1)),
         }
     }
 }
@@ -160,13 +160,13 @@ impl RecvContextBuilder {
     }
 
     pub fn remote_sender_id(mut self, id: VarInt) -> Self {
-        self.remote_sender_id = id;
+        self.remote_sender_id = crate::endpoint::id::RemoteSenderId::new(id);
         self
     }
 
     #[expect(dead_code)]
-    pub fn dest_sender_id(mut self, id: VarInt) -> Self {
-        self.dest_sender_id = id;
+    pub fn local_sender_id(mut self, id: VarInt) -> Self {
+        self.local_sender_id = crate::endpoint::id::LocalSenderId::new(id);
         self
     }
 
@@ -178,7 +178,7 @@ impl RecvContextBuilder {
         Rc::new(RefCell::new(recv::Context::new(
             entry,
             self.remote_sender_id,
-            self.dest_sender_id,
+            self.local_sender_id,
             opener,
             VarInt::ZERO,
             crate::time::precision::Clock::now(&clock),
@@ -278,7 +278,7 @@ pub fn build_send_context(
         registry.register_queue_gauge("test.inflight"),
         registry.register_queue_gauge("test.ack"),
         registry.register_queue_gauge("test.pending"),
-        sender_idx,
+        crate::endpoint::id::SenderIdx::new(sender_idx),
         clock,
     )
     .expect("test context should be constructible");

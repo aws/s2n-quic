@@ -679,8 +679,7 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
     let registry = crate::counter::Registry::default();
     let send_caches = vec![Rc::new(RefCell::new(send::Cache::new(
         &registry,
-        0,
-        crate::endpoint::counters::Send::new(&registry),
+        crate::endpoint::id::SenderIdx::new(0),
     )))];
     let sender_idx_to_local = vec![0];
     let (frame_tx, _frame_rx) = frame::submission_channel(1);
@@ -691,7 +690,7 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
 
     let ack_rx = TestReceiver {
         values: VecDeque::from([Entry::new(msg::Sender::ReceivedAck {
-            local_sender_id: VarInt::new(OUT_OF_RANGE_SENDER_ID).expect("valid varint"),
+            local_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::new(OUT_OF_RANGE_SENDER_ID).expect("valid varint")),
             path_secret_entry,
             payload: BytesMut::new(),
             ack_delay: core::time::Duration::ZERO,
@@ -709,7 +708,7 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
         frame_tx,
         frame::PriorityInput::default(),
         frame::PriorityInput::default(),
-        crate::endpoint::counters::Send::new(&registry),
+        registry.register("!send.invalid_sender_idx"),
     );
     let rx = crate::socket::channel::Flatten::new(processor);
     let mut router = crate::stream::endpoint::send::WheelRouter::new(

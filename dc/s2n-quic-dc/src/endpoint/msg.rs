@@ -39,7 +39,7 @@ pub enum Control {
 pub enum Sender {
     /// Inbound ACK from the peer — decoded payload drives loss detection and CCA updates.
     ReceivedAck {
-        local_sender_id: VarInt,
+        local_sender_id: super::id::LocalSenderId,
         path_secret_entry: Arc<PathSecretEntry>,
         payload: BytesMut,
         /// Wire-time ACK delay: time from when the largest acknowledged packet was received
@@ -55,12 +55,12 @@ pub enum Sender {
 impl Sender {
     /// Returns the send socket index this message should route to.
     #[inline]
-    pub fn sender_idx(&self) -> usize {
+    pub fn sender_idx(&self) -> super::id::SenderIdx {
         match self {
             Self::ReceivedAck {
                 local_sender_id, ..
-            } => local_sender_id.as_u64() as usize,
-            Self::PendingAck(submission) => submission.local_sender_id.as_u64() as usize,
+            } => local_sender_id.to_sender_idx(),
+            Self::PendingAck(submission) => submission.local_sender_id.to_sender_idx(),
         }
     }
 
@@ -77,7 +77,7 @@ impl Sender {
 
     /// Returns the recv dispatch worker ID for completion routing, if applicable.
     #[inline]
-    pub fn recv_worker_id(&self) -> Option<usize> {
+    pub fn recv_worker_id(&self) -> Option<super::id::WorkerId> {
         match self {
             Self::ReceivedAck { .. } => None,
             Self::PendingAck(submission) => Some(submission.recv_worker_id),

@@ -511,7 +511,7 @@ pub(crate) struct Context {
     ///
     /// Used by `publish_sender_load_score` to write the correct slot so the
     /// load-balancer pick-two logic has up-to-date per-socket load information.
-    pub sender_idx: usize,
+    pub sender_idx: crate::endpoint::id::SenderIdx,
     /// Intrusive links and target time for the transmission pacing wheel
     pub tx_wheel: WheelLinks,
     /// Intrusive links and target time for the PTO (probe timeout) wheel
@@ -551,7 +551,7 @@ impl Context {
         inflight_gauge: QueueGauge,
         ack_gauge: QueueGauge,
         pending_gauge: QueueGauge,
-        sender_idx: usize,
+        sender_idx: crate::endpoint::id::SenderIdx,
         clock: &impl precision::Clock,
     ) -> Result<Self, ContextError> {
         let (sealer, credentials) = entry.reusable_sealer();
@@ -566,7 +566,7 @@ impl Context {
         if addrs.is_empty() {
             return Err(ContextError::PeerDataAddrsEmpty);
         }
-        let peer_addr = std::net::SocketAddr::from(addrs[sender_idx % addrs.len()].unmap());
+        let peer_addr = std::net::SocketAddr::from(addrs[usize::from(sender_idx) % addrs.len()].unmap());
 
         Ok(Self {
             path_secret_entry: entry.clone(),
@@ -799,7 +799,7 @@ impl Context {
         };
 
         self.path_secret_entry.update_sender_load_score(
-            self.sender_idx,
+            self.sender_idx.into(),
             base + congestion_penalty,
             total_cost,
             self.cca.bandwidth(),
@@ -953,7 +953,7 @@ impl Context {
             let sender_slots = self.path_secret_entry.socket_sender_count();
             if sender_slots > 0 {
                 assert!(
-                    self.sender_idx < sender_slots,
+                    usize::from(self.sender_idx) < sender_slots,
                     "sender_idx ({}) out of range for sender_load_scores_len ({sender_slots})",
                     self.sender_idx
                 );
@@ -1171,21 +1171,24 @@ pub(crate) struct Cache {
     inflight_gauge: QueueGauge,
     ack_gauge: QueueGauge,
     pending_gauge: QueueGauge,
-    sender_idx: usize,
-    send_counters: Arc<super::counters::Send>,
+    sender_idx: crate::endpoint::id::SenderIdx,
+    send_counters: Rc<super::counters::Send>,
 }
 
 impl Cache {
     pub fn new(
         counter_registry: &crate::counter::Registry,
-        sender_idx: usize,
-        send_counters: Arc<super::counters::Send>,
+        sender_idx: crate::endpoint::id::SenderIdx,
     ) -> Self {
+        let idx = sender_idx.as_usize();
+        let variant = format!("send.{idx}");
+        let send_counters = super::counters::Send::new(counter_registry, idx);
         Self {
             contexts: FxHashMap::default(),
-            inflight_gauge: counter_registry.register_queue_gauge("send.inflight"),
-            ack_gauge: counter_registry.register_queue_gauge("send.ack"),
-            pending_gauge: counter_registry.register_queue_gauge("send.pending"),
+            inflight_gauge: counter_registry
+                .register_queue_gauge_nominal("send.inflight", &variant),
+            ack_gauge: counter_registry.register_queue_gauge_nominal("send.ack", &variant),
+            pending_gauge: counter_registry.register_queue_gauge_nominal("send.pending", &variant),
             sender_idx,
             send_counters,
         }
@@ -1226,6 +1229,11 @@ impl Cache {
         self.contexts.get(id).cloned()
     }
 
+    #[inline]
+    pub fn send_counters(&self) -> &Rc<super::counters::Send> {
+        &self.send_counters
+    }
+
     pub fn invalidate(
         &mut self,
         id: &credentials::Id,
@@ -1233,12 +1241,12 @@ impl Cache {
         cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
     ) -> Option<(usize, usize)> {
         let Some(ctx) = self.contexts.remove(id) else {
-            trace!(%id, sender_idx = self.sender_idx, "invalidate: no context found");
+            trace!(%id, sender_idx = %self.sender_idx, "invalidate: no context found");
             return None;
         };
         self.send_counters.on_context_removed();
         let mut ctx = ctx.borrow_mut();
-        debug!(%id, sender_idx = self.sender_idx, "invalidating send context");
+        debug!(%id, sender_idx = %self.sender_idx, "invalidating send context");
         Some(ctx.drain_frames(Some(reason), cancelled))
     }
 
@@ -1249,7 +1257,7 @@ impl Cache {
         rejected_key_id: VarInt,
         retransmit: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
     ) -> Option<(usize, usize)> {
-        let sender_idx = sender_id.as_u64() as usize;
+        let sender_idx = crate::endpoint::id::SenderIdx::new(sender_id.as_u64() as usize);
         debug_assert_eq!(
             self.sender_idx, sender_idx,
             "invalidate_stale_key called for wrong sender cache"
@@ -1261,8 +1269,8 @@ impl Cache {
         let Some(ctx) = self.contexts.get(id) else {
             trace!(
                 %id,
-                sender_idx = self.sender_idx,
-                stale_sender_id = sender_idx,
+                sender_idx = %self.sender_idx,
+                stale_sender_id = %sender_idx,
                 "invalidate_stale_key: no context found"
             );
             return None;
@@ -1273,7 +1281,7 @@ impl Cache {
         if ctx.borrow().credentials.key_id > rejected_key_id {
             trace!(
                 %id,
-                sender_idx = self.sender_idx,
+                sender_idx = %self.sender_idx,
                 rejected_key_id = rejected_key_id.as_u64(),
                 current_key_id = ctx.borrow().credentials.key_id.as_u64(),
                 "invalidate_stale_key: context already advanced past rejected key_id"
@@ -1286,8 +1294,8 @@ impl Cache {
         let mut ctx = ctx.borrow_mut();
         debug!(
             %id,
-            sender_idx = self.sender_idx,
-            stale_sender_id = sender_idx,
+            sender_idx = %self.sender_idx,
+            stale_sender_id = %sender_idx,
             rejected_key_id = rejected_key_id.as_u64(),
             "invalidating stale/replay send context for retransmission"
         );

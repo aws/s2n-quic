@@ -150,7 +150,7 @@ where
                 let ack_delay = VarInt::new(ack_delay_micros).unwrap_or(VarInt::from_u32(u32::MAX));
 
                 let header = frame::Header::Ack {
-                    dest_sender_id: submission.remote_sender_id,
+                    dest_sender_id: submission.remote_sender_id.as_varint(),
                     ack_delay,
                     has_ecn: submission.has_ecn,
                     is_ack_eliciting: context.pto.probe_state.is_requested() || make_ack_eliciting,
@@ -172,7 +172,7 @@ where
 
                 let frame = Frame {
                     header,
-                    source_sender_id: submission.local_sender_id,
+                    source_sender_id: submission.local_sender_id.as_varint(),
                     payload: submission.body.clone().into(),
                     path_secret_entry: submission.path_secret_entry.clone(),
                     completion: None,

@@ -28,11 +28,11 @@ pub struct Submission {
     pub path_secret_entry: Arc<PathSecretEntry>,
     /// Which local sender_id this ACK should route through (determines the send socket
     /// and therefore the send::Context within the send worker's cache).
-    pub local_sender_id: VarInt,
+    pub local_sender_id: crate::endpoint::id::LocalSenderId,
     /// The remote peer's sender_id — written into the outbound packet header so the
     /// peer can route the ACK to its loss detection context.
-    pub remote_sender_id: VarInt,
+    pub remote_sender_id: crate::endpoint::id::RemoteSenderId,
     /// Which recv dispatch worker submitted this entry. Used to route the completion
     /// notification back to the correct thread.
-    pub recv_worker_id: usize,
+    pub recv_worker_id: crate::endpoint::id::WorkerId,
 }
