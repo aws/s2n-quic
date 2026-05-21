@@ -37,7 +37,8 @@ fn setup_send() -> (
         LocalSenderId::from_index(0),
     )))]
     .into();
-    let sender_idx_to_local = IdMap::<LocalSenderId, LocalSendSocketId>::new(1, LocalSendSocketId::new(0));
+    let sender_idx_to_local =
+        IdMap::<LocalSenderId, LocalSendSocketId>::new(1, LocalSendSocketId::new(0));
 
     let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter::<send::IdleWheelAdapter>();
     let (completed_tx, completed_rx) = unsync::new::<Frame>();
@@ -95,7 +96,9 @@ fn send_idle_wheel_expires_inactive_context() {
             // Default idle_timeout is 60s. Advance past it.
             61.s().sleep().await;
             assert_eq!(
-                send_caches[LocalSendSocketId::new(0)].borrow().context_count(),
+                send_caches[LocalSendSocketId::new(0)]
+                    .borrow()
+                    .context_count(),
                 0,
                 "context should be evicted after idle timeout"
             );
@@ -147,7 +150,9 @@ fn send_idle_wheel_reschedules_active_context() {
             // At 70s total the context should still be alive (activity at 30s → expires at 90s)
             40.s().sleep().await;
             assert_eq!(
-                send_caches[LocalSendSocketId::new(0)].borrow().context_count(),
+                send_caches[LocalSendSocketId::new(0)]
+                    .borrow()
+                    .context_count(),
                 1,
                 "context should still be alive after activity refresh"
             );
@@ -155,7 +160,9 @@ fn send_idle_wheel_reschedules_active_context() {
             // At 95s total (past 90s) it should be evicted
             25.s().sleep().await;
             assert_eq!(
-                send_caches[LocalSendSocketId::new(0)].borrow().context_count(),
+                send_caches[LocalSendSocketId::new(0)]
+                    .borrow()
+                    .context_count(),
                 0,
                 "context should be evicted after extended idle"
             );

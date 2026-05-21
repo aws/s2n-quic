@@ -242,7 +242,8 @@ impl Pusher {
             for frame in queue.iter() {
                 if let Header::FlowInit { attempt_id, .. } = frame.header {
                     if let Some(completion) = &frame.completion {
-                        completion.set_init_sender_idx(crate::endpoint::id::LocalSenderId::from_index(0));
+                        completion
+                            .set_init_sender_idx(crate::endpoint::id::LocalSenderId::from_index(0));
                         let stamped_attempt_id = if attempt_id == VarInt::MAX {
                             let assigned = self.flow_attempt_id;
                             self.flow_attempt_id += 1;

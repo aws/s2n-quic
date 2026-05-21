@@ -393,14 +393,20 @@ impl<K, V> IdMap<K, V> {
     where
         K: Id,
     {
-        self.values.iter().enumerate().map(|(i, v)| (K::from_index(i), v))
+        self.values
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (K::from_index(i), v))
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (K, &mut V)>
     where
         K: Id,
     {
-        self.values.iter_mut().enumerate().map(|(i, v)| (K::from_index(i), v))
+        self.values
+            .iter_mut()
+            .enumerate()
+            .map(|(i, v)| (K::from_index(i), v))
     }
 }
 

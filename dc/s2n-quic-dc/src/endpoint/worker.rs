@@ -40,7 +40,12 @@ impl<D, Route: routing::SenderRoute, Inv> FanOutRouter<D, Route, Inv> {
     ) -> Self {
         let route = Route::new(txs.len());
         let per_worker_routed = RecvDispatchWorkerId::range(txs.len())
-            .map(|id| (id, counters.register_nominal("router.routed", format_args!("recv.{id}"))))
+            .map(|id| {
+                (
+                    id,
+                    counters.register_nominal("router.routed", format_args!("recv.{id}")),
+                )
+            })
             .collect();
         Self {
             txs,

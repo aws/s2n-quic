@@ -144,7 +144,9 @@ fn send_invalidation_purges_cache_and_emits_failed_frames() {
             drop(rx);
 
             assert_eq!(
-                send_caches[LocalSendSocketId::new(0)].borrow().context_count(),
+                send_caches[LocalSendSocketId::new(0)]
+                    .borrow()
+                    .context_count(),
                 0,
                 "cache should be empty after invalidation"
             );
@@ -196,7 +198,9 @@ fn send_invalidation_noop_for_unknown_id() {
             drop(rx);
 
             assert_eq!(
-                send_caches[LocalSendSocketId::new(0)].borrow().context_count(),
+                send_caches[LocalSendSocketId::new(0)]
+                    .borrow()
+                    .context_count(),
                 1,
                 "unrelated context should remain"
             );
@@ -350,8 +354,14 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
         let registry = crate::counter::Registry::default();
         let clock = Clock::default();
         let send_caches: IdMap<LocalSendSocketId, _> = vec![
-            Rc::new(RefCell::new(send::Cache::new(&registry, LocalSenderId::from_index(0)))),
-            Rc::new(RefCell::new(send::Cache::new(&registry, LocalSenderId::from_index(1)))),
+            Rc::new(RefCell::new(send::Cache::new(
+                &registry,
+                LocalSenderId::from_index(0),
+            ))),
+            Rc::new(RefCell::new(send::Cache::new(
+                &registry,
+                LocalSenderId::from_index(1),
+            ))),
         ]
         .into();
 
@@ -379,8 +389,10 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
             invalidation_rx,
             send_caches.clone(),
             {
-                let mut m =
-                    IdMap::<LocalSenderId, LocalSendSocketId>::new(2, LocalSendSocketId::new(usize::MAX));
+                let mut m = IdMap::<LocalSenderId, LocalSendSocketId>::new(
+                    2,
+                    LocalSendSocketId::new(usize::MAX),
+                );
                 m[LocalSenderId::from_index(0)] = LocalSendSocketId::new(0);
                 m[LocalSenderId::from_index(1)] = LocalSendSocketId::new(1);
                 m
@@ -395,11 +407,15 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
             drop(rx);
 
             assert_eq!(
-                send_caches[LocalSendSocketId::new(0)].borrow().context_count(),
+                send_caches[LocalSendSocketId::new(0)]
+                    .borrow()
+                    .context_count(),
                 1
             );
             assert_eq!(
-                send_caches[LocalSendSocketId::new(1)].borrow().context_count(),
+                send_caches[LocalSendSocketId::new(1)]
+                    .borrow()
+                    .context_count(),
                 0
             );
 

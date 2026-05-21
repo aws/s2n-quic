@@ -129,7 +129,8 @@ fn stale_tx_wheel_after_ack_clears_probe() {
         //   - has_pending_acks() = false
         //   - probe_state.is_requested() = false (cleared by on_all_acked)
         //   - has_pending_data() = false (no pending frames)
-        let send_counters = counters::Send::new(&registry, crate::endpoint::id::LocalSenderId::from_index(0));
+        let send_counters =
+            counters::Send::new(&registry, crate::endpoint::id::LocalSenderId::from_index(0));
         let mut completed = Queue::new();
         let mut lost = Queue::new();
         let mut cancelled = Queue::new();

@@ -251,10 +251,15 @@ where
 {
     let num_recv_dispatch = config.layout.recv_dispatch.len();
 
-    debug!(?config.layout, "setting up endpoint");
-
     let send_sockets: IdMap<LocalSendSocketId, _> = send_sockets.into();
     let recv_sockets: IdMap<id::LocalRecvSocketId, _> = recv_sockets.into();
+
+    debug!(
+        ?config.layout,
+        send_sockets = ?send_sockets.iter().map(|(id, socket)| (id, socket.local_addr())).collect::<Vec<_>>(),
+        recv_sockets = ?recv_sockets.iter().map(|(id, socket)| (id, socket.local_addr())).collect::<Vec<_>>(),
+        "setting up endpoint"
+    );
 
     if num_recv_dispatch.is_power_of_two() {
         setup_endpoint_inner::<_, _, _, _, routing::PowerOfTwoRoute>(

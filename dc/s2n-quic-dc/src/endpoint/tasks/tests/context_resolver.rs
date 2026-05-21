@@ -39,7 +39,8 @@ fn setup() -> Harness {
         LocalSenderId::from_index(0),
     )))]
     .into();
-    let sender_idx_to_local = IdMap::<LocalSenderId, LocalSendSocketId>::new(1, LocalSendSocketId::new(0));
+    let sender_idx_to_local =
+        IdMap::<LocalSenderId, LocalSendSocketId>::new(1, LocalSendSocketId::new(0));
 
     let (tx_wheel_tx, tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
     let (pto_wheel_tx, _) = unsync::new_with_adapter::<send::PtoWheelAdapter>();

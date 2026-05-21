@@ -50,7 +50,8 @@ fn completion_dispatcher_forwards_completed_frame_and_wakes() {
             let mut completion_rx = frame::completion_channel();
             let mut submitted = test_frame(&pse).into_inner();
             submitted.status = frame::TransmissionStatus::Acknowledged;
-            submitted.source_sender_id = crate::endpoint::id::LocalSenderId::new(VarInt::from_u8(7));
+            submitted.source_sender_id =
+                crate::endpoint::id::LocalSenderId::new(VarInt::from_u8(7));
             submitted.completion = Some(completion_rx.sender());
 
             let expected_source_sender_id = submitted.source_sender_id;

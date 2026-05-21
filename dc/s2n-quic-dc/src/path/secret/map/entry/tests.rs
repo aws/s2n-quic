@@ -59,7 +59,10 @@ fn allocates_sender_schedule_slots() {
 fn empty_sender_schedule_is_supported() {
     let entry = test_entry_with_senders(0);
     assert_eq!(entry.socket_sender_count(), 0);
-    assert_eq!(entry.sender_load_score(crate::endpoint::id::LocalSenderId::from_index(0)), 0);
+    assert_eq!(
+        entry.sender_load_score(crate::endpoint::id::LocalSenderId::from_index(0)),
+        0
+    );
 }
 
 #[test]

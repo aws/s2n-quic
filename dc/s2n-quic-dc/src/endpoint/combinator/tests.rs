@@ -4,7 +4,10 @@
 use super::*;
 use crate::{
     byte_vec::ByteVec,
-    endpoint::{frame::{Header, TransmissionStatus, DEFAULT_TTL}, id::Id},
+    endpoint::{
+        frame::{Header, TransmissionStatus, DEFAULT_TTL},
+        id::Id,
+    },
     path::secret::map::Entry as PathSecretEntry,
     socket::channel::{intrusive::unsync, ByteCost},
     time::testing as test_clock_mod,
@@ -52,7 +55,8 @@ impl PathSecretMapEntry for TestItem {
 
 impl StickyRoute for TestItem {
     fn sticky_sender_idx(&self) -> Option<crate::endpoint::id::LocalSenderId> {
-        self.sticky_sender.map(crate::endpoint::id::LocalSenderId::from_index)
+        self.sticky_sender
+            .map(crate::endpoint::id::LocalSenderId::from_index)
     }
 
     fn set_sender_id(&mut self, _id: crate::endpoint::id::LocalSenderId) {}
@@ -224,9 +228,12 @@ fn try_send_pick_two(
         .collect();
     let score_delta =
         registry.register_summary("pick_two.score_delta", crate::counter::Unit::Microsecond);
-    let pick_counters_map: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSenderId, _> = pick_counters.into();
-    let rejected_counters_map: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSenderId, _> = rejected_counters.into();
-    let mut senders_map: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSenderId, _> = std::mem::take(senders).into();
+    let pick_counters_map: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSenderId, _> =
+        pick_counters.into();
+    let rejected_counters_map: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSenderId, _> =
+        rejected_counters.into();
+    let mut senders_map: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSenderId, _> =
+        std::mem::take(senders).into();
     let result = PickTwo::<TestItem, TestReceiver<TestItem>, TestSender>::try_send_pick_two(
         value,
         &mut senders_map,
