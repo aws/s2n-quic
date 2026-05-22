@@ -43,65 +43,11 @@ pub struct TestPairIds {
     pub peer: crate::credentials::Id,
 }
 
-#[cfg(any(test, feature = "testing"))]
-#[inline]
-fn deterministic_test_pair_secret(
-    local_addr: SocketAddr,
-    peer_addr: SocketAddr,
-    generation: u64,
-) -> [u8; 32] {
-    #[inline]
-    fn mix(state: &mut u64, bytes: &[u8]) {
-        for &byte in bytes {
-            *state ^= byte as u64;
-            *state = state.wrapping_mul(0x1000_0000_01B3);
-        }
-    }
-
-    #[inline]
-    fn mix_addr(state: &mut u64, addr: SocketAddr) {
-        match addr {
-            SocketAddr::V4(addr) => {
-                mix(state, &[4]);
-                mix(state, &addr.ip().octets());
-                mix(state, &addr.port().to_be_bytes());
-            }
-            SocketAddr::V6(addr) => {
-                mix(state, &[6]);
-                mix(state, &addr.ip().octets());
-                mix(state, &addr.port().to_be_bytes());
-                mix(state, &addr.flowinfo().to_be_bytes());
-                mix(state, &addr.scope_id().to_be_bytes());
-            }
-        }
-    }
-
-    // FNV-1a with a fixed offset basis and deterministic address encoding.
-    let mut state = 0xCBF2_9CE4_8422_2325;
-    mix_addr(&mut state, local_addr);
-    mix_addr(&mut state, peer_addr);
-    mix(&mut state, &generation.to_be_bytes());
-
-    // Normalize to an odd state for stable deterministic secret derivation.
-    let mut state = state | 1;
-
-    let mut secret = [0u8; 32];
-    for chunk in secret.chunks_exact_mut(8) {
-        // splitmix64-style step for stable diffusion from the address-derived seed
-        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^= z >> 31;
-        chunk.copy_from_slice(&z.to_be_bytes());
-    }
-
-    secret
-}
-
 pub use entry::Entry;
 use store::Store;
 
+#[cfg(any(test, feature = "testing"))]
+pub use entry::TestEntryBuilder;
 pub use entry::{
     ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, ControlPair,
     PeerDataAddrs, MAX_PEER_DATA_ADDRS,
@@ -465,51 +411,12 @@ impl Map {
 
     #[doc(hidden)]
     #[cfg(any(test, feature = "testing"))]
-    pub fn test_insert(&self, peer: SocketAddr) {
-        let receiver = super::receiver::State::new();
-        let entry = Entry::fake(peer, Some(receiver));
+    pub fn test_insert(&self, peer: SocketAddr, endpoint_type: s2n_quic_core::endpoint::Type) {
+        let entry = Entry::builder(peer)
+            .endpoint_type(endpoint_type)
+            .socket_sender_count(self.store.socket_sender_count())
+            .build();
         self.store.test_insert(entry);
-    }
-
-    /// Insert a deterministic test entry for cross-process testing.
-    ///
-    /// Uses a fixed secret so that client and server processes can
-    /// communicate with matching credentials.
-    #[doc(hidden)]
-    #[cfg(any(test, feature = "testing"))]
-    pub fn test_insert_deterministic(
-        &self,
-        peer: SocketAddr,
-        endpoint_type: s2n_quic_core::endpoint::Type,
-    ) {
-        use crate::path::secret::{schedule, sender};
-        use s2n_quic_core::dc;
-
-        // Use a fixed deterministic secret for demo purposes
-        let secret = [42u8; 32];
-
-        let secret = schedule::Secret::new(
-            schedule::Ciphersuite::AES_GCM_128_SHA256,
-            dc::SUPPORTED_VERSIONS[0],
-            endpoint_type,
-            &secret,
-        );
-
-        let id = *secret.id();
-        let srt = self.store.signer().sign(&id);
-        let sender = sender::State::new(srt);
-
-        let entry = Entry::new(
-            peer,
-            secret,
-            sender,
-            super::receiver::State::new(),
-            dc::testing::TEST_APPLICATION_PARAMS,
-            crate::time::now(),
-            None,
-        );
-
-        self.store.test_insert(Arc::new(entry));
     }
 
     #[cfg(any(test, feature = "testing"))]
@@ -521,90 +428,66 @@ impl Map {
         peer_addr: SocketAddr,
         peer_params: Option<dc::ApplicationParams>,
     ) -> TestPairIds {
-        use crate::path::secret::{schedule, sender};
         use s2n_quic_core::endpoint::Type;
 
-        let ciphersuite = schedule::Ciphersuite::AES_GCM_128_SHA256;
+        let mut local_builder = Entry::builder(peer_addr)
+            .local(local_addr)
+            .endpoint_type(Type::Client)
+            .socket_sender_count(self.store.socket_sender_count())
+            .signer(peer.store.signer());
+        if let Some(params) = local_params {
+            local_builder = local_builder.params(params);
+        }
 
-        let secret = if bach::is_active() {
-            let mut generation = 0u64;
-            let secret = loop {
-                let secret = deterministic_test_pair_secret(local_addr, peer_addr, generation);
-                let local_id = *schedule::Secret::new(
-                    ciphersuite,
-                    dc::SUPPORTED_VERSIONS[0],
-                    Type::Client,
-                    &secret,
-                )
-                .id();
-                let peer_id = *schedule::Secret::new(
-                    ciphersuite,
-                    dc::SUPPORTED_VERSIONS[0],
-                    Type::Server,
-                    &secret,
-                )
-                .id();
+        let mut peer_builder = Entry::builder(local_addr)
+            .local(peer_addr)
+            .endpoint_type(Type::Server)
+            .socket_sender_count(peer.store.socket_sender_count())
+            .signer(self.store.signer());
+        if let Some(params) = peer_params {
+            peer_builder = peer_builder.params(params);
+        }
 
-                let local_exists = self.store.get_by_id_untracked(&local_id).is_some();
-                let peer_exists = peer.store.get_by_id_untracked(&peer_id).is_some();
+        // Bump generation until we find one that doesn't collide with existing entries.
+        let mut generation = 0u64;
+        let (local_entry, peer_entry) = loop {
+            local_builder = local_builder.generation(generation);
+            peer_builder = peer_builder.generation(generation);
 
-                if !local_exists && !peer_exists {
-                    break secret;
-                }
+            let local_entry = local_builder.build();
+            let peer_entry = peer_builder.build();
 
-                generation = generation.wrapping_add(1);
-            };
-            trace!(
-                %local_addr,
-                %peer_addr,
-                generation,
-                "using deterministic test pair secret for bach sim"
+            debug_assert_eq!(
+                local_entry.secret().peer_id(),
+                *peer_entry.id(),
+                "local's peer_id must match peer's id"
             );
-            secret
-        } else {
-            let mut secret = [0; 32];
-            aws_lc_rs::rand::fill(&mut secret).unwrap();
-            secret
+            debug_assert_eq!(
+                peer_entry.secret().peer_id(),
+                *local_entry.id(),
+                "peer's peer_id must match local's id"
+            );
+
+            let local_exists = self.store.get_by_id_untracked(local_entry.id()).is_some();
+            let peer_exists = peer.store.get_by_id_untracked(peer_entry.id()).is_some();
+
+            if !local_exists && !peer_exists {
+                break (local_entry, peer_entry);
+            }
+
+            generation = generation.wrapping_add(1);
         };
 
-        let insert = |map: &Self,
-                      peer: &Self,
-                      peer_addr,
-                      params: Option<dc::ApplicationParams>,
-                      endpoint| {
-            let secret =
-                schedule::Secret::new(ciphersuite, dc::SUPPORTED_VERSIONS[0], endpoint, &secret);
-            let id = *secret.id();
+        let local_id = *local_entry.id();
+        self.store.test_insert(local_entry);
 
-            let srt = peer.store.signer().sign(&id);
+        let peer_id = *peer_entry.id();
+        peer.store.test_insert(peer_entry);
 
-            let sender = sender::State::new(srt);
-
-            let params = params.unwrap_or(dc::testing::TEST_APPLICATION_PARAMS);
-
-            // Use the map's configured socket sender count so that entries
-            // created in tests have the correct sender-slot allocation.
-            let socket_sender_count = map.store.socket_sender_count();
-            let entry = Entry::new_with_socket_senders(
-                peer_addr,
-                secret,
-                sender,
-                super::receiver::State::new(),
-                params,
-                crate::time::now(),
-                None,
-                socket_sender_count,
-            );
-            let entry = Arc::new(entry);
-            map.store.test_insert(entry);
-
-            id
-        };
-
-        let local = insert(self, peer, peer_addr, peer_params, Type::Client);
-        let peer = insert(peer, self, local_addr, local_params, Type::Server);
-
-        TestPairIds { local, peer }
+        TestPairIds {
+            local: local_id,
+            peer: peer_id,
+        }
     }
 
     /// Called after successful decryption to record the key_id as seen and detect replays.

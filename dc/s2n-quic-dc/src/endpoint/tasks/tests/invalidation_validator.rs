@@ -7,16 +7,15 @@ use crate::{
     endpoint::{id::SendWorkerId, tasks},
     intrusive::Entry,
     packet::{secret_control, WireVersion},
-    path::secret::{map::Map, schedule, stateless_reset},
+    path::secret::{map::Map, stateless_reset},
     socket::{channel::intrusive::unsync, pool::Pool},
     testing::{ext::*, sim},
 };
 use s2n_codec::EncoderBuffer;
-use s2n_quic_core::{dc, endpoint::Type, time::NoopClock};
-use std::net::SocketAddr;
+use s2n_quic_core::{endpoint::Type, time::NoopClock};
+use std::{net::SocketAddr, sync::Arc};
 
 const SIGNER_SECRET: &[u8] = b"invalidation-validator-test-signer";
-const DETERMINISTIC_SECRET: [u8; 32] = [42u8; 32];
 
 fn validator_counters() -> tasks::ValidatorInvalidationCounters {
     let registry = crate::counter::Registry::default();
@@ -27,24 +26,48 @@ fn validator_counters() -> tasks::ValidatorInvalidationCounters {
     }
 }
 
-fn setup_map_with_entry(peer: SocketAddr) -> (Map, Id) {
-    let map = Map::new(
+struct TestSetup {
+    local_map: Map,
+    local_id: Id,
+    local_entry: Arc<crate::path::secret::map::Entry>,
+    peer_entry: Arc<crate::path::secret::map::Entry>,
+}
+
+fn setup(local_addr: SocketAddr, peer_addr: SocketAddr) -> TestSetup {
+    let local_map = Map::new(
         stateless_reset::Signer::new(SIGNER_SECRET),
         16,
         true,
         NoopClock,
         crate::event::tracing::Subscriber::default(),
     );
-    map.test_stop_cleaner();
-    map.test_insert_deterministic(peer, Type::Client);
+    local_map.test_stop_cleaner();
 
-    let secret = schedule::Secret::new(
-        schedule::Ciphersuite::AES_GCM_128_SHA256,
-        dc::SUPPORTED_VERSIONS[0],
-        Type::Client,
-        &DETERMINISTIC_SECRET,
+    let peer_map = Map::new(
+        stateless_reset::Signer::new(b"peer-signer"),
+        16,
+        true,
+        NoopClock,
+        crate::event::tracing::Subscriber::default(),
     );
-    (map, *secret.id())
+    peer_map.test_stop_cleaner();
+
+    let ids = local_map.test_insert_pair(local_addr, None, &peer_map, peer_addr, None);
+
+    let local_entry = local_map
+        .get_by_id(&ids.local)
+        .expect("local entry should exist");
+    let peer_entry = peer_map
+        .get_by_id(&ids.peer)
+        .expect("peer entry should exist");
+
+    let local_id = *local_entry.id();
+    TestSetup {
+        local_map,
+        local_id,
+        local_entry,
+        peer_entry,
+    }
 }
 
 fn encode_unknown_path_secret(
@@ -115,11 +138,17 @@ fn packet_entry(
 #[test]
 fn unknown_path_secret_packet_broadcasts_validated_id() {
     sim(|| {
+        let local_addr: SocketAddr = "127.0.0.1:3333".parse().unwrap();
         let peer: SocketAddr = "127.0.0.1:4444".parse().unwrap();
-        let (map, local_id) = setup_map_with_entry(peer);
+        let TestSetup {
+            local_map: map,
+            local_id,
+            local_entry,
+            ..
+        } = setup(local_addr, peer);
 
         let wire_id = local_id.for_peer();
-        let stateless_reset = stateless_reset::Signer::new(SIGNER_SECRET).sign(&local_id);
+        let stateless_reset = local_entry.sender().stateless_reset;
         let payload = encode_unknown_path_secret(wire_id, stateless_reset);
         let input = TestReceiver::new([packet_entry(&payload, peer)]);
 
@@ -161,8 +190,9 @@ fn unknown_path_secret_packet_broadcasts_validated_id() {
 #[test]
 fn malformed_packet_is_ignored() {
     sim(|| {
+        let local_addr: SocketAddr = "127.0.0.1:3333".parse().unwrap();
         let peer: SocketAddr = "127.0.0.1:5555".parse().unwrap();
-        let (map, _local_id) = setup_map_with_entry(peer);
+        let TestSetup { local_map: map, .. } = setup(local_addr, peer);
 
         let input = TestReceiver::new([packet_entry(&[0x12, 0x34, 0x56], peer)]);
         let (send_tx, mut output_rx) = unsync::new::<tasks::Invalidation>();
@@ -191,14 +221,14 @@ fn malformed_packet_is_ignored() {
 #[test]
 fn stale_key_packet_broadcasts_validated_sender_target() {
     sim(|| {
+        let local_addr: SocketAddr = "127.0.0.1:3333".parse().unwrap();
         let peer: SocketAddr = "127.0.0.1:6666".parse().unwrap();
-        let (map, local_id) = setup_map_with_entry(peer);
-        let peer_secret = schedule::Secret::new(
-            schedule::Ciphersuite::AES_GCM_128_SHA256,
-            dc::SUPPORTED_VERSIONS[0],
-            Type::Server,
-            &DETERMINISTIC_SECRET,
-        );
+        let TestSetup {
+            local_map: map,
+            local_id,
+            peer_entry,
+            ..
+        } = setup(local_addr, peer);
 
         let wire_id = local_id.for_peer();
         let sender_id = s2n_quic_core::varint::VarInt::from_u8(7);
@@ -206,7 +236,7 @@ fn stale_key_packet_broadcasts_validated_sender_target() {
             wire_id,
             sender_id,
             s2n_quic_core::varint::VarInt::from_u8(3),
-            peer_secret.control_sealer(),
+            peer_entry.control_sealer(),
         );
         let input = TestReceiver::new([packet_entry(&payload, peer)]);
         let (tx_a, mut rx_a) = unsync::new::<tasks::Invalidation>();
@@ -244,14 +274,14 @@ fn stale_key_packet_broadcasts_validated_sender_target() {
 #[test]
 fn replay_detected_packet_broadcasts_validated_sender_target() {
     sim(|| {
+        let local_addr: SocketAddr = "127.0.0.1:3333".parse().unwrap();
         let peer: SocketAddr = "127.0.0.1:7777".parse().unwrap();
-        let (map, local_id) = setup_map_with_entry(peer);
-        let peer_secret = schedule::Secret::new(
-            schedule::Ciphersuite::AES_GCM_128_SHA256,
-            dc::SUPPORTED_VERSIONS[0],
-            Type::Server,
-            &DETERMINISTIC_SECRET,
-        );
+        let TestSetup {
+            local_map: map,
+            local_id,
+            peer_entry,
+            ..
+        } = setup(local_addr, peer);
 
         let wire_id = local_id.for_peer();
         let sender_id = s2n_quic_core::varint::VarInt::from_u8(9);
@@ -259,7 +289,7 @@ fn replay_detected_packet_broadcasts_validated_sender_target() {
             wire_id,
             sender_id,
             s2n_quic_core::varint::VarInt::from_u8(2),
-            peer_secret.control_sealer(),
+            peer_entry.control_sealer(),
         );
         let input = TestReceiver::new([packet_entry(&payload, peer)]);
         let (tx_a, mut rx_a) = unsync::new::<tasks::Invalidation>();

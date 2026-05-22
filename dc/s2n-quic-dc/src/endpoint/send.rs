@@ -546,6 +546,13 @@ pub(crate) struct Context {
     pub rtt_tracker: AckRttTracker,
 }
 
+impl crate::socket::channel::ByteCost for Context {
+    #[inline]
+    fn byte_cost(&self) -> u64 {
+        self.queues.iter().map(|q| q.byte_cost() as u64).sum()
+    }
+}
+
 #[derive(Debug)]
 pub enum ContextError {
     PeerDataAddrsNotReady,
@@ -814,7 +821,8 @@ impl Context {
     /// on enqueue).
     #[inline]
     pub fn publish_sender_load_score(&self, now: s2n_quic_core::time::Timestamp) {
-        let total_cost: usize = self.queues.iter().map(|q| q.byte_cost()).sum();
+        use crate::socket::channel::ByteCost as _;
+        let total_cost = self.byte_cost() as usize;
 
         // Use earliest_departure_time as the base if it is in the future so that
         // pacing-limited senders appear more loaded than idle ones.

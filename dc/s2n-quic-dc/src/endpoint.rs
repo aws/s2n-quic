@@ -33,6 +33,7 @@ pub(crate) mod combinator;
 pub(crate) mod counters;
 pub(crate) mod decode;
 pub(crate) mod dispatch;
+pub(crate) mod edt;
 pub(crate) mod error;
 pub(crate) mod frame;
 pub mod id;
@@ -519,6 +520,7 @@ where
         socket_senders,
         clock: clock.clone(),
         overall_send_rate,
+        per_socket_send_rate,
     });
 
     // ── Waker offload ─────────────────────────────────────────────────────────
@@ -714,6 +716,8 @@ struct FrameDispatchParts<Clk> {
     clock: Clk,
     /// Overall bandwidth cap for the pacing stage.
     overall_send_rate: crate::socket::rate::Rate,
+    /// Per-socket bandwidth cap used for socket-level EDT in pick-two.
+    per_socket_send_rate: crate::socket::rate::Rate,
 }
 
 /// Per-worker state for context resolution and ACK processing.
@@ -894,6 +898,7 @@ where
                     crate::xorshift::Rng::new(),
                     fd.clock,
                     fd.overall_send_rate,
+                    fd.per_socket_send_rate,
                     budgets,
                     counter_registry.clone(),
                 );

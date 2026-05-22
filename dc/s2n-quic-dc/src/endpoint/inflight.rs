@@ -311,7 +311,7 @@ mod tests {
     }
 
     fn fake_entry() -> Arc<PathSecretEntry> {
-        PathSecretEntry::fake("127.0.0.1:9999".parse().unwrap(), None)
+        PathSecretEntry::builder("127.0.0.1:9999".parse().unwrap()).build()
     }
 
     /// Create a Packet containing one FlowData (ack-eliciting) frame.

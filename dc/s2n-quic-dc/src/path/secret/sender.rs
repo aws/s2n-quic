@@ -11,7 +11,7 @@ type StatelessReset = [u8; secret_control::TAG_LEN];
 #[derive(Debug)]
 pub struct State {
     current_id: AtomicU64,
-    pub(super) stateless_reset: StatelessReset,
+    pub(crate) stateless_reset: StatelessReset,
 }
 
 impl super::map::SizeOf for StatelessReset {}

@@ -36,7 +36,7 @@ fn make_pending_frames() -> PendingFrames {
 }
 
 fn make_path_secret_entry() -> Arc<PathSecretEntry> {
-    PathSecretEntry::fake("127.0.0.1:9999".parse().unwrap(), None)
+    PathSecretEntry::builder("127.0.0.1:9999".parse().unwrap()).build()
 }
 
 fn make_frame(payload_len: usize) -> crate::intrusive::Entry<Frame> {
@@ -464,7 +464,9 @@ fn make_context_with_sender_slots(
     registry: &Registry,
 ) -> (Context, Arc<PathSecretEntry>) {
     let peer: std::net::SocketAddr = "127.0.0.1:9999".parse().unwrap();
-    let entry = PathSecretEntry::fake_with_socket_senders(peer, None, sender_count);
+    let entry = PathSecretEntry::builder(peer)
+        .socket_sender_count(sender_count)
+        .build();
     entry.set_peer_data_addrs(&[peer]);
     let ctx = Context::new(
         &entry,

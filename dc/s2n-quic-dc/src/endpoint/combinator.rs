@@ -395,9 +395,11 @@ impl<T: StickyRoute> StickyRoute for crate::intrusive::Entry<T> {
 /// selects the sender with the lowest load score.
 ///
 /// Implements `Receiver<()>` so it can be drained via `ReceiverExt::drain_budgeted`.
-pub struct PickTwo<T, R, S> {
+pub struct PickTwo<T, R, S, Clk> {
     rx: R,
     senders: IdMap<LocalSenderId, S>,
+    socket_edts: crate::endpoint::edt::Local,
+    clock: Clk,
     rng: crate::xorshift::Rng,
     pick_counters: IdMap<LocalSenderId, crate::counter::Counter>,
     rejected_counters: IdMap<LocalSenderId, crate::counter::Summary>,
@@ -405,18 +407,22 @@ pub struct PickTwo<T, R, S> {
     value: PhantomData<fn() -> T>,
 }
 
-impl<T, R, S> PickTwo<T, R, S>
+impl<T, R, S, Clk> PickTwo<T, R, S, Clk>
 where
     T: ByteCost + PathSecretMapEntry + StickyRoute,
     R: Receiver<T>,
     S: UnboundedSender<T>,
+    Clk: precision::Clock,
 {
     pub fn new(
         rx: R,
         senders: IdMap<LocalSenderId, S>,
+        clock: Clk,
+        per_socket_send_rate: Rate,
         rng: crate::xorshift::Rng,
         counter_registry: &crate::counter::Registry,
     ) -> Self {
+        let socket_edts = crate::endpoint::edt::Local::new(senders.len(), per_socket_send_rate);
         let pick_counters = senders
             .iter()
             .map(|(id, _)| {
@@ -441,6 +447,8 @@ where
         Self {
             rx,
             senders,
+            socket_edts,
+            clock,
             rng,
             pick_counters,
             rejected_counters,
@@ -452,18 +460,25 @@ where
     fn try_send_pick_two(
         mut value: T,
         senders: &mut IdMap<LocalSenderId, S>,
+        socket_edts: &mut crate::endpoint::edt::Local,
+        now: precision::Timestamp,
         rng: &mut crate::xorshift::Rng,
         pick_counters: &IdMap<LocalSenderId, crate::counter::Counter>,
         rejected_counters: &IdMap<LocalSenderId, crate::counter::Summary>,
         score_delta: &crate::counter::Summary,
     ) -> Result<(), T> {
         debug_assert!(!senders.is_empty());
+        debug_assert_eq!(senders.len(), pick_counters.len());
+        debug_assert_eq!(senders.len(), rejected_counters.len());
+        debug_assert_eq!(senders.len(), socket_edts.len());
+        let entry = value.path_secret_entry();
+        debug_assert_eq!(senders.len(), entry.socket_sender_count());
+
+        let byte_cost = value.byte_cost();
         let chosen_idx = if let Some(sticky_idx) = value.sticky_sender_idx() {
             sticky_idx
         } else {
-            let entry = value.path_secret_entry();
-            let len = entry.socket_sender_count();
-
+            let len = senders.len();
             if len <= 1 {
                 LocalSenderId::from_index(0)
             } else {
@@ -478,8 +493,12 @@ where
                     LocalSenderId::from_index(raw2)
                 };
 
-                let score1 = entry.sender_load_score(idx1);
-                let score2 = entry.sender_load_score(idx2);
+                let score1 = entry
+                    .sender_load_score(idx1)
+                    .saturating_add(socket_edts.load_score(idx1));
+                let score2 = entry
+                    .sender_load_score(idx2)
+                    .saturating_add(socket_edts.load_score(idx2));
 
                 let delta = score1.abs_diff(score2);
                 score_delta.record_value(delta);
@@ -501,6 +520,7 @@ where
             senders.len()
         );
 
+        socket_edts.advance(chosen_idx, now, byte_cost);
         pick_counters[chosen_idx].add(1);
         value.set_sender_id(chosen_idx);
 
@@ -508,20 +528,24 @@ where
     }
 }
 
-impl<T, R, S> Receiver<()> for PickTwo<T, R, S>
+impl<T, R, S, Clk> Receiver<()> for PickTwo<T, R, S, Clk>
 where
     T: ByteCost + PathSecretMapEntry + StickyRoute,
     R: Receiver<T>,
     S: UnboundedSender<T>,
+    Clk: precision::Clock,
 {
     fn poll_recv(&mut self, cx: &mut task::Context<'_>, budget: &mut Budget) -> Poll<Option<()>> {
         let Some(value) = ready!(self.rx.poll_recv(cx, budget)) else {
             return Poll::Ready(None);
         };
 
+        let now = self.clock.now();
         match Self::try_send_pick_two(
             value,
             &mut self.senders,
+            &mut self.socket_edts,
+            now,
             &mut self.rng,
             &self.pick_counters,
             &self.rejected_counters,

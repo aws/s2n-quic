@@ -931,7 +931,7 @@ mod tests {
 
     #[test]
     fn flow_data() {
-        let entry = PathSecretEntry::fake("127.0.0.1:8080".parse().unwrap(), None);
+        let entry = PathSecretEntry::builder("127.0.0.1:8080".parse().unwrap()).build();
         let mut payload = ByteVec::new();
         payload.push_back(bytes::Bytes::from_static(b"hello"));
 
@@ -963,7 +963,7 @@ mod tests {
 
     #[test]
     fn flow_init_priority() {
-        let entry = PathSecretEntry::fake("127.0.0.1:8080".parse().unwrap(), None);
+        let entry = PathSecretEntry::builder("127.0.0.1:8080".parse().unwrap()).build();
 
         let frame = Frame {
             header: Header::FlowInit {
@@ -988,7 +988,7 @@ mod tests {
 
     #[test]
     fn flow_reset() {
-        let entry = PathSecretEntry::fake("10.0.0.1:9000".parse().unwrap(), None);
+        let entry = PathSecretEntry::builder("10.0.0.1:9000".parse().unwrap()).build();
 
         let frame = Frame {
             header: Header::FlowReset {
@@ -1017,7 +1017,7 @@ mod tests {
 
     #[test]
     fn sticky_sender_after_assignment() {
-        let entry = PathSecretEntry::fake("127.0.0.1:8080".parse().unwrap(), None);
+        let entry = PathSecretEntry::builder("127.0.0.1:8080".parse().unwrap()).build();
 
         let frame = Frame {
             header: Header::FlowInit {

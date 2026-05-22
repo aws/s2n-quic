@@ -160,7 +160,7 @@ impl Entry {
             parameters,
             creation_time,
             application_data,
-            0,
+            1,
         )
     }
 
@@ -197,83 +197,8 @@ impl Entry {
     }
 
     #[cfg(any(test, feature = "testing"))]
-    pub fn fake(peer: SocketAddr, receiver: Option<receiver::State>) -> Arc<Entry> {
-        let receiver = receiver.unwrap_or_default();
-
-        let mut secret = [0; 32];
-        aws_lc_rs::rand::fill(&mut secret).unwrap();
-
-        Arc::new(Entry::new(
-            peer,
-            schedule::Secret::new(
-                schedule::Ciphersuite::AES_GCM_128_SHA256,
-                dc::SUPPORTED_VERSIONS[0],
-                s2n_quic_core::endpoint::Type::Client,
-                &secret,
-            ),
-            sender::State::new([0; control::TAG_LEN]),
-            receiver,
-            dc::testing::TEST_APPLICATION_PARAMS,
-            crate::time::now(),
-            None,
-        ))
-    }
-
-    /// Like [`fake`] but pre-allocates `socket_sender_count` sender slots so
-    /// `update_sender_load_score` / `sender_load_score`
-    /// can be exercised in unit tests.
-    #[cfg(any(test, feature = "testing"))]
-    pub fn fake_with_socket_senders(
-        peer: SocketAddr,
-        receiver: Option<receiver::State>,
-        socket_sender_count: usize,
-    ) -> Arc<Entry> {
-        let receiver = receiver.unwrap_or_default();
-
-        let mut secret = [0; 32];
-        aws_lc_rs::rand::fill(&mut secret).unwrap();
-
-        Arc::new(Entry::new_with_socket_senders(
-            peer,
-            schedule::Secret::new(
-                schedule::Ciphersuite::AES_GCM_128_SHA256,
-                dc::SUPPORTED_VERSIONS[0],
-                s2n_quic_core::endpoint::Type::Client,
-                &secret,
-            ),
-            sender::State::new([0; control::TAG_LEN]),
-            receiver,
-            dc::testing::TEST_APPLICATION_PARAMS,
-            crate::time::now(),
-            None,
-            socket_sender_count,
-        ))
-    }
-
-    /// Create a deterministic entry for cross-process testing.
-    ///
-    /// Uses a fixed secret so client and server can communicate.
-    #[cfg(any(test, feature = "testing"))]
-    pub fn fake_deterministic(
-        peer: SocketAddr,
-        endpoint_type: s2n_quic_core::endpoint::Type,
-    ) -> Arc<Entry> {
-        let secret = [42; 32];
-
-        Arc::new(Entry::new(
-            peer,
-            schedule::Secret::new(
-                schedule::Ciphersuite::AES_GCM_128_SHA256,
-                dc::SUPPORTED_VERSIONS[0],
-                endpoint_type,
-                &secret,
-            ),
-            sender::State::new([0; control::TAG_LEN]),
-            receiver::State::new(),
-            dc::testing::TEST_APPLICATION_PARAMS,
-            crate::time::now(),
-            None,
-        ))
+    pub fn builder(peer: SocketAddr) -> TestEntryBuilder<'static> {
+        TestEntryBuilder::new(peer)
     }
 
     pub fn peer(&self) -> &SocketAddr {
@@ -632,6 +557,159 @@ impl Entry {
     #[cfg(test)]
     pub fn reset_sender_counter(&self) {
         self.sender.reset_counter();
+    }
+}
+
+#[cfg(any(test, feature = "testing"))]
+pub struct TestEntryBuilder<'a> {
+    local: SocketAddr,
+    peer: SocketAddr,
+    endpoint_type: s2n_quic_core::endpoint::Type,
+    socket_sender_count: usize,
+    generation: u64,
+    params: Option<dc::ApplicationParams>,
+    signer: Option<&'a super::stateless_reset::Signer>,
+}
+
+#[cfg(any(test, feature = "testing"))]
+impl<'a> TestEntryBuilder<'a> {
+    fn new(peer: SocketAddr) -> Self {
+        Self {
+            local: peer,
+            peer,
+            endpoint_type: s2n_quic_core::endpoint::Type::Client,
+            socket_sender_count: 0,
+            generation: 0,
+            params: None,
+            signer: None,
+        }
+    }
+
+    pub fn local(mut self, addr: SocketAddr) -> Self {
+        self.local = addr;
+        self
+    }
+
+    pub fn endpoint_type(mut self, endpoint_type: s2n_quic_core::endpoint::Type) -> Self {
+        self.endpoint_type = endpoint_type;
+        self
+    }
+
+    pub fn socket_sender_count(mut self, count: usize) -> Self {
+        self.socket_sender_count = count;
+        self
+    }
+
+    pub fn generation(mut self, generation: u64) -> Self {
+        self.generation = generation;
+        self
+    }
+
+    pub fn params(mut self, params: dc::ApplicationParams) -> Self {
+        self.params = Some(params);
+        self
+    }
+
+    fn secret_bytes(&self) -> [u8; 32] {
+        use s2n_quic_core::endpoint::Type;
+
+        let (client_addr, server_addr) = match self.endpoint_type {
+            Type::Client => (self.local, self.peer),
+            Type::Server => (self.peer, self.local),
+        };
+        Self::deterministic_secret(client_addr, server_addr, self.generation)
+    }
+
+    pub fn signer(mut self, signer: &'a super::stateless_reset::Signer) -> Self {
+        self.signer = Some(signer);
+        self
+    }
+
+    pub fn build(&self) -> Arc<Entry> {
+        let secret_bytes = self.secret_bytes();
+        let default_signer;
+        let signer = match self.signer {
+            Some(s) => s,
+            None => {
+                default_signer = super::stateless_reset::Signer::new(&secret_bytes);
+                &default_signer
+            }
+        };
+
+        let params = self
+            .params
+            .clone()
+            .unwrap_or(dc::testing::TEST_APPLICATION_PARAMS);
+
+        let secret = schedule::Secret::new(
+            schedule::Ciphersuite::AES_GCM_128_SHA256,
+            dc::SUPPORTED_VERSIONS[0],
+            self.endpoint_type,
+            &secret_bytes,
+        );
+
+        let stateless_reset = signer.sign(secret.id());
+
+        Arc::new(Entry::new_with_socket_senders(
+            self.peer,
+            secret,
+            sender::State::new(stateless_reset),
+            receiver::State::new(),
+            params,
+            crate::time::now(),
+            None,
+            self.socket_sender_count,
+        ))
+    }
+
+    fn deterministic_secret(
+        client_addr: SocketAddr,
+        server_addr: SocketAddr,
+        generation: u64,
+    ) -> [u8; 32] {
+        fn mix(state: &mut u64, bytes: &[u8]) {
+            for &byte in bytes {
+                *state ^= byte as u64;
+                *state = state.wrapping_mul(0x1000_0000_01B3);
+            }
+        }
+
+        fn mix_addr(state: &mut u64, addr: SocketAddr) {
+            match addr {
+                SocketAddr::V4(addr) => {
+                    mix(state, &[4]);
+                    mix(state, &addr.ip().octets());
+                    mix(state, &addr.port().to_be_bytes());
+                }
+                SocketAddr::V6(addr) => {
+                    mix(state, &[6]);
+                    mix(state, &addr.ip().octets());
+                    mix(state, &addr.port().to_be_bytes());
+                    mix(state, &addr.flowinfo().to_be_bytes());
+                    mix(state, &addr.scope_id().to_be_bytes());
+                }
+            }
+        }
+
+        fn splitmix64(state: &mut u64) -> u64 {
+            *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = *state;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        }
+
+        let mut state: u64 = 0xCBF2_9CE4_8422_2325; // FNV offset basis
+
+        mix_addr(&mut state, client_addr);
+        mix_addr(&mut state, server_addr);
+        mix(&mut state, &generation.to_be_bytes());
+
+        let mut output = [0u8; 32];
+        for chunk in output.chunks_exact_mut(8) {
+            chunk.copy_from_slice(&splitmix64(&mut state).to_le_bytes());
+        }
+        output
     }
 }
 

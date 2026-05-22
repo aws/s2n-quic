@@ -63,7 +63,9 @@ impl PairBuilder {
         let stream_id = VarInt::from_u8(42);
         let acceptor_id = VarInt::from_u8(7);
         let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
-        let path_secret_entry = PathSecretEntry::fake_deterministic(peer, self.ep_type);
+        let path_secret_entry = PathSecretEntry::builder(peer)
+            .endpoint_type(self.ep_type)
+            .build();
 
         let allocator = msg::queue::Allocator::new();
         let dispatcher = allocator.dispatcher();

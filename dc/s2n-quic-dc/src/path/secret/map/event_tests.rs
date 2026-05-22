@@ -49,7 +49,10 @@ fn init_uninit() {
 #[test]
 fn insert_one() {
     let map = map(10);
-    map.test_insert("127.0.0.1:4567".parse().unwrap());
+    map.test_insert(
+        "127.0.0.1:4567".parse().unwrap(),
+        s2n_quic_core::endpoint::Type::Client,
+    );
 }
 
 #[test]

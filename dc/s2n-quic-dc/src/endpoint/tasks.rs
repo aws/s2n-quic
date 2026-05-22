@@ -115,11 +115,12 @@ pub fn frame_dispatch<S, Clk>(
     rng: crate::xorshift::Rng,
     clock: Clk,
     overall_send_rate: Rate,
+    per_socket_send_rate: Rate,
     budgets: Budgets,
     counter_registry: counter::Registry,
 ) where
     S: UnboundedSender<Entry<FrameBatch>> + 'static,
-    Clk: precision::Clock + 'static,
+    Clk: precision::Clock + Clone + 'static,
 {
     let mut priority_batch_rxs = Vec::with_capacity(Priority::LEVELS);
     let priority_txs_raw: [_; Priority::LEVELS] = core::array::from_fn(|_| {
@@ -178,8 +179,16 @@ pub fn frame_dispatch<S, Clk>(
         let rx = PriorityRx::new(priority_batch_rxs);
         let rx = BatchFramesByPathSecret::new(rx, &clock, overall_send_rate);
         let rx = Map::new(rx, Entry::new);
+        let pick_two_clock = clock.clone();
         let rx = Paced::new(rx, clock, overall_send_rate);
-        let rx = PickTwo::new(rx, worker_senders, rng, &counter_registry);
+        let rx = PickTwo::new(
+            rx,
+            worker_senders,
+            pick_two_clock,
+            per_socket_send_rate,
+            rng,
+            &counter_registry,
+        );
         let task_counter = counter_registry
             .register_task("task.frame_dispatch")
             .with_registration_metadata(

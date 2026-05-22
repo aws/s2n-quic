@@ -8,7 +8,7 @@
 //! (frames for the same peer are coalesced), and pick-two load balancing across workers.
 //! These tests verify end-to-end behavior of the two cooperating subtasks.
 
-use super::helpers::{test_entry, test_frame, TestReceiverExt as _};
+use super::helpers::{test_frame, TestReceiverExt as _};
 use crate::{
     endpoint::{
         combinator::FrameBatch,
@@ -48,6 +48,7 @@ fn setup(num_workers: usize) -> (SubmissionSender, Vec<WorkerRx>) {
         crate::xorshift::Rng::new(),
         Clock::default(),
         Rate::new(100.0),
+        Rate::new(100.0),
         Budgets::default(),
         crate::counter::Registry::default(),
     );
@@ -63,7 +64,9 @@ fn single_frame_arrives_at_worker() {
         let mut worker_rx = rxs.pop().unwrap();
 
         async move {
-            let pse = test_entry();
+            let pse = crate::path::secret::map::Entry::builder("127.0.0.1:4433".parse().unwrap())
+                .socket_sender_count(1)
+                .build();
             let mut input = PriorityInput::default();
             input.push(test_frame(&pse));
             frame_tx.send_batch(input).unwrap();
@@ -88,7 +91,9 @@ fn same_peer_frames_batched() {
         let mut worker_rx = rxs.pop().unwrap();
 
         async move {
-            let pse = test_entry();
+            let pse = crate::path::secret::map::Entry::builder("127.0.0.1:4433".parse().unwrap())
+                .socket_sender_count(1)
+                .build();
             let mut input = PriorityInput::default();
             for _ in 0..5 {
                 input.push(test_frame(&pse));
@@ -116,7 +121,9 @@ fn multiple_workers_receive_frames() {
 
         // Submit one frame
         async move {
-            let pse = test_entry();
+            let pse = crate::path::secret::map::Entry::builder("127.0.0.1:4433".parse().unwrap())
+                .socket_sender_count(2)
+                .build();
             let mut input = PriorityInput::default();
             input.push(test_frame(&pse));
             frame_tx.send_batch(input).unwrap();

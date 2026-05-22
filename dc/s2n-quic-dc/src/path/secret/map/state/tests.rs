@@ -13,8 +13,10 @@ use std::{
     net::{Ipv4Addr, SocketAddrV4},
 };
 
-fn fake_entry(port: u16) -> Arc<Entry> {
-    Entry::fake((Ipv4Addr::LOCALHOST, port).into(), None)
+fn fake_entry(generation: u64) -> Arc<Entry> {
+    Entry::builder((Ipv4Addr::LOCALHOST, 1).into())
+        .generation(generation)
+        .build()
 }
 
 #[test]
@@ -33,8 +35,8 @@ fn cleans_after_delay() {
     map.cleaner.stop();
 
     let first = fake_entry(1);
-    let second = fake_entry(1);
-    let third = fake_entry(1);
+    let second = fake_entry(2);
+    let third = fake_entry(3);
     map.test_insert(first.clone());
     map.test_insert(second.clone());
 
@@ -369,7 +371,7 @@ fn no_memory_growth() {
 
     for idx in 0..500_000 {
         // FIXME: this ends up 2**16 peers in the `peers` map
-        map.test_insert(fake_entry(idx as u16));
+        map.test_insert(fake_entry(idx as u64));
     }
 }
 

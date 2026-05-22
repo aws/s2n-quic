@@ -42,7 +42,9 @@ fn entry_size() {
     // This gates to running only on specific GHA to reduce false positives.
     if should_check {
         assert_eq!(
-            Entry::fake((std::net::Ipv4Addr::LOCALHOST, 0).into(), None).size(),
+            Entry::builder((std::net::Ipv4Addr::LOCALHOST, 0).into())
+                .build()
+                .size(),
             // Includes per-entry sender scheduling storage metadata (Box<[AtomicU64]>).
             323
         );

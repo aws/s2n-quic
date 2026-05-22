@@ -118,10 +118,10 @@ impl<T> Receiver<T> for BudgetAwareTestReceiver<T> {
 }
 
 fn test_path_secret_entry() -> Arc<PathSecretEntry> {
-    let peer = "127.0.0.1:4433"
-        .parse()
-        .expect("failed to parse hardcoded loopback address 127.0.0.1:4433");
-    PathSecretEntry::fake_with_socket_senders(peer, None, 2)
+    let peer: std::net::SocketAddr = "127.0.0.1:4433".parse().unwrap();
+    PathSecretEntry::builder(peer)
+        .socket_sender_count(2)
+        .build()
 }
 
 fn new_test_item(
@@ -213,6 +213,8 @@ fn try_send_pick_two(
     senders: &mut Vec<TestSender>,
     rng: &mut crate::xorshift::Rng,
 ) -> Result<(), TestItem> {
+    use crate::time::precision::Clock as _;
+
     let registry = crate::counter::Registry::default();
     let pick_counters: Vec<_> = (0..senders.len())
         .map(|i| registry.register_nominal("pick_two.chosen", format_args!("send.{i}")))
@@ -234,9 +236,20 @@ fn try_send_pick_two(
         rejected_counters.into();
     let mut senders_map: crate::endpoint::id::IdMap<crate::endpoint::id::LocalSenderId, _> =
         std::mem::take(senders).into();
-    let result = PickTwo::<TestItem, TestReceiver<TestItem>, TestSender>::try_send_pick_two(
+    let mut socket_edts =
+        crate::endpoint::edt::Local::new(senders_map.len(), crate::socket::rate::Rate::new(10.0));
+    let clock = test_clock();
+    let now = clock.now();
+    let result = PickTwo::<
+        TestItem,
+        TestReceiver<TestItem>,
+        TestSender,
+        test_clock_mod::Clock,
+    >::try_send_pick_two(
         value,
         &mut senders_map,
+        &mut socket_edts,
+        now,
         rng,
         &pick_counters_map,
         &rejected_counters_map,
@@ -309,7 +322,14 @@ fn pick_two_drops_unsent_entry_on_shutdown() {
         },
     ];
     let registry = crate::counter::Registry::default();
-    let pick_two = PickTwo::new(rx, senders.into(), crate::xorshift::Rng::new(), &registry);
+    let pick_two = PickTwo::new(
+        rx,
+        senders.into(),
+        test_clock(),
+        crate::socket::rate::Rate::new(10.0),
+        crate::xorshift::Rng::new(),
+        &registry,
+    );
     let mut fut = core::pin::pin!(crate::socket::channel::ReceiverExt::drain_budgeted(
         pick_two, None
     ));
