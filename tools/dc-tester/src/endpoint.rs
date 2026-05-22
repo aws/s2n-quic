@@ -6,7 +6,7 @@ use s2n_quic_dc::{
     busy_poll,
     path::secret::{self, stateless_reset::Signer},
     runtime,
-    socket::rate::Rate,
+    socket::{rate::Rate, LocalAddr},
     stream::endpoint::{self, socket},
 };
 use std::{io, net::SocketAddr, sync::Arc};
@@ -30,7 +30,6 @@ pub fn create(
     let recv_sockets = socket::RecvConfig::new(config.recv_io_workers, bind_addr).busy_poll()?;
 
     {
-        use s2n_quic_dc::socket::recv::Socket as _;
         let recv_port = recv_sockets.first().unwrap().local_addr().unwrap().port();
         info!(
             recv_io_workers = config.recv_io_workers,
@@ -44,7 +43,6 @@ pub fn create(
         socket::SendConfig::new(config.send_sockets, bind_addr, gso.clone()).busy_poll()?;
 
     {
-        use s2n_quic_dc::socket::send::Socket as _;
         let send_ports: Vec<u16> = send_sockets
             .iter()
             .map(|s| s.local_addr().unwrap().port())
@@ -89,6 +87,7 @@ pub fn create(
         ups_rate: Rate::new(0.001), // 1 Mbps — small budget; UPS is low-volume control traffic
         ups_dedup_capacity: 1024,
         ups_dedup_window: core::time::Duration::from_secs(1),
+        dead_peer_cooldown: core::time::Duration::from_secs(5),
     };
 
     let inner = endpoint::setup_endpoint(

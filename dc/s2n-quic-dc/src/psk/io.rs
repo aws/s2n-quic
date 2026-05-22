@@ -182,7 +182,10 @@ impl Server {
             .with_bidirectional_remote_data_window(builder.data_window)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
-        let event = ((ConfirmComplete, (MtuConfirmComplete, DcPathCapture)), subscriber);
+        let event = (
+            (ConfirmComplete, (MtuConfirmComplete, DcPathCapture)),
+            subscriber,
+        );
 
         cfg_if!(
             if #[cfg(any(test, feature = "testing"))] {
@@ -355,7 +358,10 @@ impl Client {
             .with_bidirectional_remote_data_window(builder.data_window)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
-        let event = ((ConfirmComplete, (MtuConfirmComplete, DcPathCapture)), subscriber);
+        let event = (
+            (ConfirmComplete, (MtuConfirmComplete, DcPathCapture)),
+            subscriber,
+        );
 
         let client = client
             .with_limits(connection_limits)?

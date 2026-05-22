@@ -77,7 +77,7 @@ impl EndpointConfig {
     }
 
     fn default_bandwidth() -> f64 {
-        25.0
+        30.0
     }
 
     fn default_per_socket_bandwidth() -> f64 {

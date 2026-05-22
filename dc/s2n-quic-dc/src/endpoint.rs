@@ -670,6 +670,7 @@ where
     workers[layout.background].background = Some(BackgroundParts {
         raw_rx: invalidation_raw_rx,
         peer_dead_rx,
+        peer_dead_queue_gauge: counter_registry.register_queue_gauge("q.peer_dead"),
         path_secret_map: path_secret_map.clone(),
         send_txs: invalidation_send_txs,
         recv_txs: invalidation_recv_txs,
@@ -781,6 +782,7 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
 struct BackgroundParts<UpsSocket> {
     raw_rx: sync_queue::Receiver<descriptor::Filled>,
     peer_dead_rx: sync_queue::Receiver<tasks::PeerDead>,
+    peer_dead_queue_gauge: crate::counter::QueueGauge,
     path_secret_map: crate::path::secret::Map,
     send_txs: IdMap<id::SendWorkerId, InvalidationSender>,
     recv_txs: IdMap<id::RecvDispatchWorkerId, InvalidationSender>,
@@ -1144,8 +1146,14 @@ where
                     events: counter_registry.register("peer_dead.events"),
                     broadcasted: counter_registry.register("peer_dead.broadcasted"),
                 };
-                let rx = tasks::peer_dead_broadcast(
+                let peer_dead_rx = crate::counter::GaugedReceiver::new(
                     bg.peer_dead_rx,
+                    bg.peer_dead_queue_gauge
+                        .receiver("task.peer_dead_broadcast")
+                        .with_function("endpoint::Worker::spawn"),
+                );
+                let rx = tasks::peer_dead_broadcast(
+                    peer_dead_rx,
                     bg.queue_dispatcher,
                     bg.waker_sink,
                     peer_dead_counters,

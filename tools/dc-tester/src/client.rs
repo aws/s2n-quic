@@ -518,11 +518,22 @@ async fn execute_single_message_instrumented(
         io::Result::Ok(response_size)
     };
 
-    let (bytes_sent, bytes_received) = tokio::try_join!(send, recv)?;
+    let (bytes_sent, bytes_received) =
+        if request_size >= SPAWN_THRESHOLD && response_size >= SPAWN_THRESHOLD {
+            let send = tokio::spawn(send);
+            let recv = tokio::spawn(recv);
+            tokio::try_join!(async { send.await.expect("send task panicked") }, async {
+                recv.await.expect("recv task panicked")
+            },)?
+        } else {
+            tokio::try_join!(send, recv)?
+        };
     send_timer.record(send_start.elapsed());
     recv_timer.record(send_start.elapsed());
     Ok((bytes_sent, bytes_received))
 }
+
+pub(crate) const SPAWN_THRESHOLD: u64 = 1024 * 1024;
 
 async fn send_recv(
     stream: s2n_quic_dc::stream::Stream,
@@ -597,6 +608,16 @@ async fn send_recv(
         io::Result::Ok(response_size)
     };
 
-    let (bytes_sent, bytes_received) = tokio::try_join!(send, recv)?;
-    Ok((bytes_sent, bytes_received))
+    if request_size >= SPAWN_THRESHOLD && response_size >= SPAWN_THRESHOLD {
+        let send = tokio::spawn(send);
+        let recv = tokio::spawn(recv);
+        let (bytes_sent, bytes_received) =
+            tokio::try_join!(async { send.await.expect("send task panicked") }, async {
+                recv.await.expect("recv task panicked")
+            },)?;
+        Ok((bytes_sent, bytes_received))
+    } else {
+        let (bytes_sent, bytes_received) = tokio::try_join!(send, recv)?;
+        Ok((bytes_sent, bytes_received))
+    }
 }

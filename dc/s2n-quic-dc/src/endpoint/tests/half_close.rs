@@ -39,8 +39,13 @@
 //! * **Known bug (ignored)** – writer drop during `FlowInitSent` leaves server
 //!   reader hanging.
 use crate::tracing::*;
+use bach::time::timeout;
 use bytes::{Bytes, BytesMut};
 use s2n_quic_core::varint::VarInt;
+use std::{
+    sync::atomic::{AtomicU32, Ordering},
+    time::Duration,
+};
 
 /// Acceptor ID used by every test in this module.
 const ACCEPTOR_ID: VarInt = VarInt::from_u32(1);
@@ -895,5 +900,156 @@ fn writer_drop_in_flow_init_sent_hangs_server_reader() {
         .group("client")
         .primary()
         .spawn();
+    });
+}
+
+// ── flow_init_fin_lost_when_flow_init_dropped ────────────────────────────────
+
+/// Demonstrates that FlowInitFin is permanently lost when the FlowInit packet
+/// is dropped but the FlowInitFin packet is acknowledged.
+///
+/// The scenario:
+/// 1. Client writes early data (FlowInit with is_fin=false) in one packet.
+/// 2. Client calls shutdown() → sends FlowInitFin in a subsequent packet.
+/// 3. The FlowInit packet is lost, but FlowInitFin arrives at the server.
+/// 4. Server doesn't recognize the stream_id (FlowInit hasn't arrived yet),
+///    so it drops the FlowInitFin frame — but ACKs the packet at the
+///    transport level (the packet was authenticated and deduped).
+/// 5. Client sees the ACK → removes FlowInitFin from inflight; won't retransmit.
+/// 6. Client PTO fires → retransmits FlowInit → server creates the stream.
+/// 7. Server reader hangs forever: the FIN will never arrive because it was
+///    already acknowledged and the client won't send it again.
+///
+/// This is a high-severity availability bug: the server-side reader blocks
+/// indefinitely waiting for a FIN that will never come.
+#[test]
+#[ignore = "FIX THIS!"]
+fn flow_init_fin_lost_when_flow_init_dropped() {
+    use crate::testing::ext::*;
+    use std::sync::Arc;
+
+    let _guard = crate::testing::without_snapshots();
+    crate::testing::sim(|| {
+        // Drop the first client packet (FlowInit) but allow the second
+        // (FlowInitFin) through.  Track both events for assertion.
+        let client_pkt_count = Arc::new(AtomicU32::new(0));
+        let client_pkt_count_monitor = client_pkt_count.clone();
+        let drop_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let drop_active_monitor = drop_active.clone();
+        {
+            bach::net::monitor::on_packet_sent(move |packet| {
+                if !drop_active_monitor.load(Ordering::Relaxed) {
+                    return bach::net::monitor::Command::Pass;
+                }
+
+                // Identify client→server packets by differing source/dest IPs.
+                let is_client_to_server = packet.source().ip() != packet.destination().ip();
+                if !is_client_to_server {
+                    return bach::net::monitor::Command::Pass;
+                }
+
+                client_pkt_count_monitor.fetch_add(1, Ordering::Relaxed);
+                bach::net::monitor::Command::Drop
+            });
+        }
+
+        // ── Server ────────────────────────────────────────────────────────
+        async move {
+            let server = crate::stream::endpoint::testing::sim::Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(ACCEPTOR_ID, 8)
+                .expect("acceptor registration");
+
+            while let Some(pending) = acceptor.recv().await {
+                async move {
+                    let stream = pending.validate().await.expect("validate");
+                    let (mut reader, _writer) = stream.into_split();
+
+                    // The server should read the early data AND observe EOF (FIN).
+                    // If the bug is present, this read_to_eof will hang forever
+                    // because the FlowInitFin was dropped and won't be retransmitted.
+                    let result = timeout(Duration::from_secs(10), async {
+                        let mut buf = BytesMut::with_capacity(16);
+                        loop {
+                            let n = reader.read_into(&mut buf).await.expect("server read");
+                            if n == 0 {
+                                break;
+                            }
+                        }
+                        buf
+                    })
+                    .await;
+
+                    match result {
+                        Ok(buf) => {
+                            assert_eq!(&buf[..], b"early", "server should read early data");
+                            info!("server reader reached EOF as expected");
+                        }
+                        Err(_) => {
+                            panic!(
+                                "BUG: server reader hung for 10s waiting for FIN. \
+                                 FlowInitFin was acknowledged at the packet level but the \
+                                 frame was dropped because FlowInit hadn't arrived yet. \
+                                 After PTO retransmitted FlowInit, the stream was created \
+                                 but the FIN will never arrive — permanent stream hang."
+                            );
+                        }
+                    }
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        // ── Client ────────────────────────────────────────────────────────
+        {
+            let drop_active = drop_active.clone();
+            async move {
+                let mut client = crate::stream::endpoint::testing::sim::Client::new();
+                let stream = client
+                    .connect("server:0", ACCEPTOR_ID)
+                    .await
+                    .expect("connect");
+                let (_reader, mut writer) = stream.into_split();
+
+                // Activate the drop window BEFORE the FlowInit is sent.
+                // All client→server packets will be dropped until we disable it.
+                drop_active.store(true, Ordering::Relaxed);
+
+                // Write early data WITHOUT fin — this queues the FlowInit frame.
+                let mut data = Bytes::from_static(b"early");
+                writer
+                    .write_from(&mut data)
+                    .await
+                    .expect("write early data");
+
+                // Wait long enough for the FlowInit to be transmitted AND for
+                // several PTO retransmissions to fire (all will be dropped).
+                // With 2ms initial RTT, PTO fires at ~6ms, ~18ms, ~42ms, ~90ms.
+                // At 200ms, we've dropped the original + multiple retransmissions.
+                Duration::from_millis(200).sleep().await;
+
+                // Disable drops — the FlowInitFin will get through, and eventually
+                // the next PTO retransmission of FlowInit will also get through.
+                drop_active.store(false, Ordering::Relaxed);
+
+                // Shutdown the writer → sends FlowInitFin in a new packet.
+                // The server hasn't seen the FlowInit yet (all copies were dropped),
+                // so it will drop the FlowInitFin (unknown stream_id) but ACK the
+                // packet at the transport level.
+                writer.shutdown().expect("shutdown");
+
+                // Wait for the exchange to settle. The next PTO retransmission of
+                // FlowInit will eventually fire and reach the server, creating the
+                // stream. But by then the FlowInitFin has been ACKed and will never
+                // be retransmitted — the server reader hangs forever.
+                Duration::from_secs(15).sleep().await;
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        }
     });
 }

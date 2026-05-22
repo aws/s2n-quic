@@ -6042,6 +6042,11 @@ bindings:
     channel: q.dispatch_rx.recv.4
     function: endpoint::Worker::spawn
     description: Queue receives performed by task.packet_dispatch
+  - task: task.peer_dead_broadcast
+    direction: receives
+    channel: q.peer_dead
+    function: endpoint::Worker::spawn
+    description: Queue receives performed by task.peer_dead_broadcast
   - task: task.pto_wheel
     direction: sends
     channel: ch.resolver_to_idle_wheel.send.worker.0

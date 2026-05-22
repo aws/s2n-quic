@@ -22,7 +22,7 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
     let server = s2n_quic_dc::stream::Server::new(endpoint, handshake);
 
     // Register channel acceptor with ID 0
-    let accept_rx = server.register_acceptor_channel(VarInt::ZERO, (u32::MAX as usize).into())?;
+    let accept_rx = server.register_acceptor(VarInt::ZERO, (u32::MAX as usize).into())?;
 
     info!(
         %address,
@@ -86,8 +86,6 @@ async fn handle_connection(
     // Read the 8-byte response size header (required by the send half to know how many bytes to write)
     let response_size = reader.read_u64().await?;
 
-    // Read the remaining request body and write the response concurrently so both
-    // halves are exercised at the same time, covering more half-close code paths.
     let recv = async move {
         let mut total_received = 8u64;
         let mut receiver = Data::new(u64::MAX);
@@ -98,13 +96,10 @@ async fn handle_connection(
             }
             total_received += n as u64;
         }
-        // reader drops here; if the request wasn't fully drained, drop sends STOP_SENDING
         io::Result::Ok(total_received)
     };
 
     let send = async move {
-        // write_from_fin transmits FIN on the final chunk; writer drop calls shutdown()
-        // as a fallback if FIN hasn't been sent yet (e.g. empty response)
         let mut response = Data::new(response_size);
         while !response.is_finished() {
             writer.write_from_fin(&mut response).await?;
@@ -112,6 +107,14 @@ async fn handle_connection(
         io::Result::Ok(response_size)
     };
 
-    let (total_received, bytes_sent) = tokio::try_join!(recv, send)?;
+    let (total_received, bytes_sent) = if response_size >= super::client::SPAWN_THRESHOLD {
+        let recv = tokio::spawn(recv);
+        let send = tokio::spawn(send);
+        tokio::try_join!(async { recv.await.expect("recv task panicked") }, async {
+            send.await.expect("send task panicked")
+        },)?
+    } else {
+        tokio::try_join!(recv, send)?
+    };
     Ok((total_received, bytes_sent))
 }
