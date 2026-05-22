@@ -33,7 +33,6 @@ pub(crate) struct Dispatch {
     pub rx_data_half_closed: Counter,
     pub rx_data_credential_mismatch: Counter,
     pub rx_data_stream_id_mismatch: Counter,
-    pub rx_data_tombstone: Counter,
     pub rx_data_perm_closed: Counter,
 
     pub rx_flow_control_ok: Counter,
@@ -41,7 +40,6 @@ pub(crate) struct Dispatch {
     pub rx_flow_control_half_closed: Counter,
     pub rx_flow_control_credential_mismatch: Counter,
     pub rx_flow_control_stream_id_mismatch: Counter,
-    pub rx_flow_control_tombstone: Counter,
     pub rx_flow_control_perm_closed: Counter,
 
     pub rx_reset_both: Counter,
@@ -125,7 +123,6 @@ impl Dispatch {
             rx_data_credential_mismatch: counters
                 .register_nominal("!rx.data", "credential_mismatch"),
             rx_data_stream_id_mismatch: counters.register_nominal("!rx.data", "stream_id_mismatch"),
-            rx_data_tombstone: counters.register_nominal("rx.data", "tombstone"),
             rx_data_perm_closed: counters.register("rx.data.perm_closed"),
 
             rx_flow_control_ok: counters.register("rx.flow_control.ok"),
@@ -137,7 +134,6 @@ impl Dispatch {
                 .register_nominal("!rx.flow_control", "credential_mismatch"),
             rx_flow_control_stream_id_mismatch: counters
                 .register_nominal("!rx.flow_control", "stream_id_mismatch"),
-            rx_flow_control_tombstone: counters.register_nominal("rx.flow_control", "tombstone"),
             rx_flow_control_perm_closed: counters.register("rx.flow_control.perm_closed"),
 
             rx_reset_both: counters.register("rx.reset.both"),
@@ -202,7 +198,6 @@ impl Dispatch {
         match reason {
             ValidationError::CredentialMismatch => self.rx_data_credential_mismatch.add(1),
             ValidationError::StreamIdMismatch => self.rx_data_stream_id_mismatch.add(1),
-            ValidationError::Tombstone => self.rx_data_tombstone.add(1),
         }
     }
 
@@ -211,7 +206,6 @@ impl Dispatch {
         match reason {
             ValidationError::CredentialMismatch => self.rx_flow_control_credential_mismatch.add(1),
             ValidationError::StreamIdMismatch => self.rx_flow_control_stream_id_mismatch.add(1),
-            ValidationError::Tombstone => self.rx_flow_control_tombstone.add(1),
         }
     }
 

@@ -156,6 +156,18 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
     }
 
     #[inline]
+    pub fn queue_id(&self) -> VarInt {
+        // SAFETY: `Sender` holds a sender reference for a live descriptor handle.
+        unsafe { self.descriptor.queue_id() }
+    }
+
+    #[inline]
+    pub(super) fn try_queue_id(&self) -> Option<VarInt> {
+        // SAFETY: `Sender` holds a sender reference for a live descriptor handle.
+        unsafe { self.descriptor.try_queue_id() }
+    }
+
+    #[inline]
     pub fn send_stream(
         &self,
         entry: intrusive::Entry<S>,
@@ -178,7 +190,7 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
                 },
                 || self.descriptor.validate(params),
             )?;
-            probes::on_send(self.descriptor.queue_id(), Half::Stream, false);
+            probes::on_send(self.queue_id(), Half::Stream, false);
             Ok(waker)
         }
     }
@@ -206,7 +218,7 @@ impl<S: 'static, C: 'static, Key: 'static> Sender<S, C, Key> {
                 },
                 || self.descriptor.validate(params),
             )?;
-            probes::on_send(self.descriptor.queue_id(), Half::Control, false);
+            probes::on_send(self.queue_id(), Half::Control, false);
             Ok(waker)
         }
     }

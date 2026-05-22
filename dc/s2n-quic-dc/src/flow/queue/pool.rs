@@ -4,9 +4,10 @@ use super::{
     descriptor::{Descriptor, DescriptorInner},
     free_list::{self, FreeVec},
     handle::{Control, Sender, Stream},
+    queue_id,
     sender::{self, Senders},
 };
-use crate::tracing::*;
+use crate::{counter, tracing::*};
 use s2n_quic_core::varint::VarInt;
 use std::{alloc::Layout, marker::PhantomData, ptr::NonNull, sync::Arc};
 
@@ -15,8 +16,8 @@ pub struct Pool<S: 'static + Send, C: 'static + Send, Key: 'static + Send, const
     free: Arc<FreeVec<S, C, Key>>,
     /// Holds the backing memory allocated as long as there's at least one reference
     memory_handle: Arc<free_list::Memory<S, C, Key>>,
-    epoch: VarInt,
-    base: VarInt,
+    epoch_summary: Option<counter::Summary>,
+    epoch: usize,
 }
 
 impl<S: 'static + Send, C: 'static + Send, Key: 'static + Send, const PAGE_SIZE: usize> Clone
@@ -28,8 +29,8 @@ impl<S: 'static + Send, C: 'static + Send, Key: 'static + Send, const PAGE_SIZE:
             free: self.free.clone(),
             memory_handle: self.memory_handle.clone(),
             senders: self.senders.clone(),
+            epoch_summary: self.epoch_summary.clone(),
             epoch: self.epoch,
-            base: self.base,
         }
     }
 }
@@ -41,16 +42,16 @@ where
     Key: 'static + Send + Sync,
 {
     #[inline]
-    pub fn new() -> Self {
-        let epoch = VarInt::ZERO;
+    pub fn new(epoch_summary: Option<counter::Summary>) -> Self {
+        let epoch = 0;
         let senders = sender::State::new(epoch);
         let (free, memory_handle) = FreeVec::new(PAGE_SIZE);
         let mut pool = Pool {
             free,
             memory_handle,
             senders,
+            epoch_summary,
             epoch,
-            base: epoch,
         };
         pool.grow();
         pool
@@ -63,7 +64,6 @@ where
             // make sure the memory lives as long as this sender is alive
             memory_handle: self.memory_handle.clone(),
             local: Default::default(),
-            base: self.base,
         }
     }
 
@@ -95,6 +95,11 @@ where
 
     #[inline(never)] // this should happen rarely
     fn grow(&mut self) {
+        assert!(
+            self.epoch + PAGE_SIZE <= queue_id::MAX_SLOTS,
+            "flow queue slot space exhausted"
+        );
+
         let (region, layout) = Region::alloc(PAGE_SIZE);
 
         let ptr = region.ptr;
@@ -157,6 +162,13 @@ where
         let target_epoch = self.epoch + PAGE_SIZE;
         senders.epoch = target_epoch;
         self.epoch = target_epoch;
+        // Unit tests rely on deterministic snapshots and `counter::Summary::record_value`
+        // emits metric trace lines under `cfg(test)`. Keep recording enabled for
+        // non-test builds where this metric is consumed operationally.
+        #[cfg(not(test))]
+        if let Some(summary) = &self.epoch_summary {
+            summary.record_value(target_epoch as u64);
+        }
 
         // update the sender list with the newly allocated channels
         senders.pages.push(pending_senders);
@@ -164,7 +176,7 @@ where
         // we don't need to synchronize with the senders any more so drop the local
         drop(senders);
 
-        debug!(%epoch, "grow");
+        debug!(epoch = epoch, "grow");
 
         // push all of the descriptors into the free list
         self.free.record_region(region, pending_desc);

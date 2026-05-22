@@ -5,7 +5,7 @@
 //!
 //! This provides queue infrastructure similar to `stream::recv::dispatch` but
 //! is generic over the stream and control data types.
-use crate::{credentials::Credentials, intrusive, tracing::*};
+use crate::{counter, credentials::Credentials, intrusive, tracing::*};
 use s2n_quic_core::varint::VarInt;
 
 mod descriptor;
@@ -14,6 +14,7 @@ mod handle;
 mod inner;
 mod pool;
 mod probes;
+mod queue_id;
 mod sender;
 
 // Re-export the Key trait
@@ -67,7 +68,19 @@ where
 {
     pub fn new() -> Self {
         Self {
-            pool: pool::Pool::new(),
+            pool: pool::Pool::new(None),
+        }
+    }
+
+    #[inline]
+    pub fn new_with_registry(registry: &counter::Registry) -> Self {
+        let epoch_summary = registry
+            .register_summary("flow.queue.epoch", counter::Unit::Count)
+            .with_description(
+                "Upper bound of allocated queue slots (epoch) after each allocator growth",
+            );
+        Self {
+            pool: pool::Pool::new(Some(epoch_summary)),
         }
     }
 

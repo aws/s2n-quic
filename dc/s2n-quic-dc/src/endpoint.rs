@@ -399,7 +399,7 @@ where
     let (frame_tx, frame_rx) = frame::submission_channel(submission_shards);
 
     // Shared flow-queue allocator and dispatch counters -------------------------
-    let queue_allocator = msg::queue::Allocator::new();
+    let queue_allocator = msg::queue::Allocator::new_with_registry(&counter_registry);
     let queue_dispatcher = queue_allocator.dispatcher();
     let counters = counters::Dispatch::new(&counter_registry);
 

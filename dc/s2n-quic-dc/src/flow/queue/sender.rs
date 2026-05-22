@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{free_list, handle::Sender, inner::Error};
+use super::{free_list, handle::Sender, inner::Error, queue_id};
 use s2n_quic_core::varint::VarInt;
 use std::sync::{Arc, RwLock};
 
@@ -11,7 +11,7 @@ pub struct State<S: 'static, C: 'static, Key: 'static> {
 
 impl<S: 'static, C: 'static, Key: 'static> State<S, C, Key> {
     #[inline]
-    pub fn new(epoch: VarInt) -> Arc<Self> {
+    pub fn new(epoch: usize) -> Arc<Self> {
         Arc::new(Self {
             pages: RwLock::new(SenderPages::new(epoch)),
         })
@@ -22,7 +22,6 @@ pub struct Senders<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize>
     pub(super) state: Arc<State<S, C, Key>>,
     pub(super) local: Vec<Arc<[Sender<S, C, Key>]>>,
     pub(super) memory_handle: Arc<free_list::Memory<S, C, Key>>,
-    pub(super) base: VarInt,
 }
 
 impl<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> Clone
@@ -33,7 +32,6 @@ impl<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> Clone
             state: self.state.clone(),
             memory_handle: self.memory_handle.clone(),
             local: self.local.clone(),
-            base: self.base,
         }
     }
 }
@@ -58,12 +56,9 @@ impl<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> Senders<S, C,
     where
         F: FnOnce(&Sender<S, C, Key>, T) -> Result<V, Error<T>>,
     {
-        let Some(queue_id) = queue_id.checked_sub(self.base) else {
-            return Err(Error::Unallocated(entry));
-        };
-        let queue_id = queue_id.as_u64() as usize;
-        let page = queue_id / PAGE_SIZE;
-        let offset = queue_id % PAGE_SIZE;
+        let slot = queue_id::index(queue_id);
+        let page = slot / PAGE_SIZE;
+        let offset = slot % PAGE_SIZE;
 
         if self.local.len() <= page {
             self.refresh_pages();
@@ -78,6 +73,15 @@ impl<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> Senders<S, C,
         let Some(sender) = page.get(offset) else {
             return Err(Error::Unallocated(entry));
         };
+
+        let Some(current_queue_id) = sender.try_queue_id() else {
+            return Err(Error::Unallocated(entry));
+        };
+
+        if current_queue_id != queue_id {
+            return Err(Error::Unallocated(entry));
+        }
+
         f(sender, entry)
     }
 
@@ -103,12 +107,12 @@ impl<S: 'static, C: 'static, Key: 'static, const PAGE_SIZE: usize> Senders<S, C,
 
 pub(super) struct SenderPages<S: 'static, C: 'static, Key: 'static> {
     pub(super) pages: Vec<Arc<[Sender<S, C, Key>]>>,
-    pub(super) epoch: VarInt,
+    pub(super) epoch: usize,
 }
 
 impl<S: 'static, C: 'static, Key: 'static> SenderPages<S, C, Key> {
     #[inline]
-    pub(super) fn new(epoch: VarInt) -> Self {
+    pub(super) fn new(epoch: usize) -> Self {
         Self {
             pages: Vec::with_capacity(8),
             epoch,

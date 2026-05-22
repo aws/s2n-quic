@@ -298,7 +298,15 @@ impl<T> Queue<T> {
     }
 
     #[inline]
-    pub fn close_receiver<C>(&self, control: &Queue<C>, half: Half) -> ControlFlow<()> {
+    pub fn close_receiver<C, F>(
+        &self,
+        control: &Queue<C>,
+        half: Half,
+        on_last_receiver: F,
+    ) -> ControlFlow<()>
+    where
+        F: FnOnce(),
+    {
         #[cfg(debug_assertions)]
         {
             assert_eq!(self.half, Half::Stream);
@@ -321,29 +329,42 @@ impl<T> Queue<T> {
         };
 
         match half {
-            Half::Stream => Self::close_receiver_inner(stream_inner, control_inner),
-            Half::Control => Self::close_receiver_inner(control_inner, stream_inner),
+            Half::Stream => {
+                Self::close_receiver_inner(stream_inner, control_inner, on_last_receiver)
+            }
+            Half::Control => {
+                Self::close_receiver_inner(control_inner, stream_inner, on_last_receiver)
+            }
         }
     }
 
-    fn close_receiver_inner<Closing, Other>(
+    fn close_receiver_inner<Closing, Other, F>(
         mut closing: MutexGuard<'_, Inner<Closing>>,
         other: MutexGuard<'_, Inner<Other>>,
-    ) -> ControlFlow<()> {
+        on_last_receiver: F,
+    ) -> ControlFlow<()>
+    where
+        F: FnOnce(),
+    {
         debug_assert!(
             closing.flags.contains(Flags::HAS_RECEIVER),
             "receiver already closed:\n{closing:?}\nother: {other:?}"
         );
 
-        // observe the other half receiver status before dropping the `other` lock
+        // observe the other half receiver status while holding both locks
         let has_other_receiver = other.flags.contains(Flags::HAS_RECEIVER);
-        drop(other);
 
         let waker = closing.take_waker();
         // Clear both HAS_RECEIVER and HAS_OBSERVED so recycled descriptors get fresh state
         closing
             .flags
             .remove(Flags::HAS_RECEIVER | Flags::HAS_OBSERVED);
+
+        if !has_other_receiver {
+            on_last_receiver();
+        }
+
+        drop(other);
         // take the queue items out of the lock to avoid mutex poisoning.
         // note that most of the time this should be empty, which would be a no-op
         let queue = core::mem::take(&mut closing.queue);

@@ -4,13 +4,12 @@
 use super::{
     free_list::FreeList,
     inner::{Half, Queue},
-    probes,
+    probes, queue_id,
 };
 use s2n_quic_core::{ensure, varint::VarInt};
 use std::{
     cell::UnsafeCell,
     marker::PhantomData,
-    mem::MaybeUninit,
     ptr::NonNull,
     sync::{
         atomic::{AtomicU64, AtomicUsize, Ordering},
@@ -37,19 +36,15 @@ pub enum ValidationError {
     CredentialMismatch,
     /// The stream_id in the packet doesn't match the queue's stream
     StreamIdMismatch,
-    /// The packet matches the previous occupant of this queue (stale retransmit)
-    Tombstone,
 }
 
 impl ValidationError {
-    /// Returns the reset error code to send to the peer, or `None` for tombstone
-    /// (which should be silently dropped).
-    pub fn as_reset_code(self) -> Option<VarInt> {
+    /// Returns the reset error code to send to the peer.
+    pub fn as_reset_code(self) -> VarInt {
         use crate::stream::endpoint::error;
         match self {
-            Self::CredentialMismatch => Some(error::CREDENTIAL_MISMATCH),
-            Self::StreamIdMismatch => Some(error::STREAM_ID_MISMATCH),
-            Self::Tombstone => None,
+            Self::CredentialMismatch => error::CREDENTIAL_MISMATCH,
+            Self::StreamIdMismatch => error::STREAM_ID_MISMATCH,
         }
     }
 }
@@ -114,9 +109,28 @@ impl<S: 'static, C: 'static, Key: 'static> Descriptor<S, C, Key> {
     /// # Safety
     ///
     /// The caller needs to guarantee the [`Descriptor`] is still allocated.
+    /// While allocated, `queue_id` is always initialized to a valid `VarInt`.
     #[inline]
     pub unsafe fn queue_id(&self) -> VarInt {
-        self.inner().id
+        let v = self.inner().queue_id.load(Ordering::Relaxed);
+        debug_assert!(
+            VarInt::new(v).is_ok(),
+            "queue id should be initialized while allocated"
+        );
+        // SAFETY: callers must only invoke this for allocated descriptors, and
+        // allocation initializes `queue_id` with a valid VarInt encoding.
+        unsafe { VarInt::new_unchecked(v) }
+    }
+
+    /// Returns the queue ID if this descriptor is currently allocated.
+    ///
+    /// # Safety
+    ///
+    /// The caller needs to guarantee the [`Descriptor`] is still allocated.
+    #[inline]
+    pub unsafe fn try_queue_id(&self) -> Option<VarInt> {
+        let v = self.inner().queue_id.load(Ordering::Relaxed);
+        VarInt::new(v).ok()
     }
 
     /// Returns the peer's queue ID, or `None` if not yet observed.
@@ -171,7 +185,8 @@ impl<S: 'static, C: 'static, Key: 'static> Descriptor<S, C, Key> {
     #[inline]
     pub unsafe fn init_key(&self, key: Key) {
         let inner = self.inner();
-        (*inner.keys.get()).push(key);
+        debug_assert!((*inner.key.get()).is_none());
+        *inner.key.get() = Some(key);
     }
 
     /// # Safety
@@ -183,6 +198,15 @@ impl<S: 'static, C: 'static, Key: 'static> Descriptor<S, C, Key> {
     #[inline]
     pub unsafe fn into_receiver_pair(self, remote_queue_id: Option<VarInt>) -> (Self, Self) {
         let inner = self.inner();
+
+        let generation = {
+            let next_generation = &mut *inner.next_generation.get();
+            let current = *next_generation;
+            *next_generation = current.wrapping_add(1);
+            current
+        };
+        let queue_id = queue_id::encode(inner.id.as_u64() as usize, generation);
+        inner.queue_id.store(queue_id.as_u64(), Ordering::Relaxed);
 
         let has_remote_queue_id = remote_queue_id.is_some();
         if let Some(id) = remote_queue_id {
@@ -249,7 +273,12 @@ impl<S: 'static, C: 'static, Key: 'static> Descriptor<S, C, Key> {
 
         ensure!(inner
             .stream
-            .close_receiver(&inner.control, half)
+            .close_receiver(&inner.control, half, || {
+                inner
+                    .queue_id
+                    .store(REMOTE_QUEUE_ID_UNKNOWN, Ordering::Relaxed);
+                inner.clear_key();
+            })
             .is_continue());
 
         probes::on_receiver_free(inner.id, half);
@@ -261,13 +290,12 @@ impl<S: 'static, C: 'static, Key: 'static> Descriptor<S, C, Key> {
         drop(storage);
     }
 
-    /// Validate the request against the current key. If validation fails, checks
-    /// the tombstone (previous occupant) to distinguish stale retransmits from
-    /// genuine errors.
+    /// Validate the request against the current key.
     ///
     /// # Safety
     ///
-    /// The caller needs to guarantee the [`Descriptor`] is still allocated.
+    /// The caller needs to guarantee the [`Descriptor`] is still allocated and key
+    /// access is synchronized by the queue mutex from the push path.
     #[inline]
     pub unsafe fn validate(
         &self,
@@ -277,17 +305,10 @@ impl<S: 'static, C: 'static, Key: 'static> Descriptor<S, C, Key> {
         Key: super::descriptor::Key,
     {
         let inner = self.inner();
-        let keys = &*inner.keys.get();
-        let result = keys.current().validate(params);
-        match result {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                if keys.tombstone_contains(params) {
-                    return Err(ValidationError::Tombstone);
-                }
-                Err(e)
-            }
-        }
+        let key = (*inner.key.get())
+            .as_ref()
+            .expect("queue key should be initialized while allocated");
+        key.validate(params)
     }
 }
 
@@ -299,13 +320,16 @@ const REMOTE_QUEUE_ID_UNKNOWN: u64 = u64::MAX;
 
 pub(super) struct DescriptorInner<S, C, Key> {
     id: VarInt,
+    queue_id: AtomicU64,
     /// The peer's queue ID, written once by the dispatcher on first observation.
     /// Initialized to `u64::MAX` (unknown) and set via a relaxed store.
     remote_queue_id: AtomicU64,
-    /// Ring buffer holding the current key and previous occupants (tombstones).
-    /// The slot at `keys.current()` is the active key; all other initialized
-    /// slots are tombstones for recognizing stale retransmissions.
-    keys: UnsafeCell<KeyRing<Key>>,
+    /// Current allocation key.
+    ///
+    /// Access must be synchronized by holding the queue mutex so key reads and key
+    /// clearing cannot race with queue allocation state transitions.
+    key: UnsafeCell<Option<Key>>,
+    next_generation: UnsafeCell<u64>,
     stream: Queue<S>,
     control: Queue<C>,
     /// A reference back to the free list
@@ -313,204 +337,46 @@ pub(super) struct DescriptorInner<S, C, Key> {
     senders: AtomicUsize,
 }
 
-const KEY_RING_LEN: usize = 8;
-const KEY_RING_INDEX_MASK: u16 = (KEY_RING_LEN - 1) as u16;
-
-/// Ring buffer of keys: one current + N-1 tombstones. Power-of-2 sized for fast masking.
-struct KeyRing<Key> {
-    entries: [MaybeUninit<Key>; KEY_RING_LEN],
-    /// Packed state: bits [0,3) = current index, bits [3,11) = init mask per slot.
-    state: u16,
-}
-
-impl<Key> KeyRing<Key> {
-    const LEN: usize = KEY_RING_LEN;
-
-    fn new() -> Self {
-        Self {
-            entries: [const { MaybeUninit::uninit() }; KEY_RING_LEN],
-            state: 0,
-        }
-    }
-
-    fn init_bit(idx: usize) -> u16 {
-        1u16 << (3 + idx)
-    }
-
-    fn is_init(&self, idx: usize) -> bool {
-        self.state & Self::init_bit(idx) != 0
-    }
-
-    fn current_index(&self) -> usize {
-        self.next_index().wrapping_sub(1) & KEY_RING_INDEX_MASK as usize
-    }
-
-    fn next_index(&self) -> usize {
-        (self.state & KEY_RING_INDEX_MASK) as usize
-    }
-
-    /// Returns a reference to the current (active) key.
-    fn current(&self) -> &Key {
-        let idx = self.current_index();
-        debug_assert!(self.is_init(idx));
-        unsafe { self.entries[idx].assume_init_ref() }
-    }
-
-    fn push(&mut self, key: Key) {
-        let idx = self.next_index();
-        let bit = Self::init_bit(idx);
-
-        if self.state & bit != 0 {
-            unsafe { self.entries[idx].assume_init_drop() };
-        }
-
-        self.entries[idx] = MaybeUninit::new(key);
-        self.state |= bit;
-        let next = (idx + 1) & KEY_RING_INDEX_MASK as usize;
-        self.state = (self.state & !KEY_RING_INDEX_MASK) | next as u16;
-    }
-
-    /// Check if any tombstone (non-current initialized slot) matches the params.
-    fn tombstone_contains(&self, params: &<Key as super::descriptor::Key>::Request) -> bool
-    where
-        Key: super::descriptor::Key,
-    {
-        let current = self.current_index();
-        for i in 0..Self::LEN {
-            if i == current {
-                continue;
-            }
-            if self.is_init(i) {
-                let key = unsafe { self.entries[i].assume_init_ref() };
-                if key.validate(params).is_ok() {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-}
-
-impl<Key> Drop for KeyRing<Key> {
-    fn drop(&mut self) {
-        for i in 0..Self::LEN {
-            if self.is_init(i) {
-                unsafe { self.entries[i].assume_init_drop() };
-            }
-        }
-    }
-}
-
 impl<S, C, Key> DescriptorInner<S, C, Key> {
-    pub(super) fn new(id: VarInt, free_list: Arc<dyn FreeList<S, C, Key>>) -> Self {
+    pub(super) fn new(index: usize, free_list: Arc<dyn FreeList<S, C, Key>>) -> Self {
         let stream = Queue::new(Half::Stream);
         let control = Queue::new(Half::Control);
         Self {
-            id,
+            id: VarInt::new(index as u64).unwrap(),
+            queue_id: AtomicU64::new(REMOTE_QUEUE_ID_UNKNOWN),
             remote_queue_id: AtomicU64::new(REMOTE_QUEUE_ID_UNKNOWN),
-            keys: UnsafeCell::new(KeyRing::new()),
+            key: UnsafeCell::new(None),
+            next_generation: UnsafeCell::new(0),
             stream,
             control,
             senders: AtomicUsize::new(0),
             free_list,
         }
     }
+
+    #[inline]
+    fn clear_key(&self) {
+        unsafe { *self.key.get() = None };
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    #[derive(Clone, Debug)]
-    struct TestKey(u64);
-
-    impl Key for TestKey {
-        type Request = u64;
-
-        fn validate(&self, params: &u64) -> Result<(), ValidationError> {
-            if self.0 == *params {
-                Ok(())
-            } else {
-                Err(ValidationError::StreamIdMismatch)
-            }
-        }
-    }
-
-    const LEN: usize = KeyRing::<TestKey>::LEN;
+    use super::queue_id;
 
     #[test]
-    fn empty_ring_tombstone_contains_nothing() {
-        let ring = KeyRing::<TestKey>::new();
-        assert!(!ring.tombstone_contains(&42));
+    fn queue_id_preserves_slot_bits() {
+        let index = (1usize << queue_id::INDEX_BITS) - 1;
+        let queue_id = queue_id::encode(index, 0);
+        assert_eq!(queue_id::index(queue_id), index);
     }
 
     #[test]
-    fn current_key_accessible() {
-        let mut ring = KeyRing::<TestKey>::new();
-        ring.push(TestKey(7));
-        assert_eq!(ring.current().0, 7);
-    }
-
-    #[test]
-    fn previous_key_becomes_tombstone() {
-        let mut ring = KeyRing::<TestKey>::new();
-        ring.push(TestKey(1));
-        ring.push(TestKey(2));
-        assert_eq!(ring.current().0, 2);
-        assert!(ring.tombstone_contains(&1));
-    }
-
-    #[test]
-    fn current_is_not_tombstone() {
-        let mut ring = KeyRing::<TestKey>::new();
-        ring.push(TestKey(1));
-        assert!(!ring.tombstone_contains(&1));
-    }
-
-    #[test]
-    fn full_cycle_evicts_oldest() {
-        let mut ring = KeyRing::<TestKey>::new();
-        for i in 0..LEN as u64 + 1 {
-            ring.push(TestKey(i));
-        }
-        // Current is LEN, tombstones are 1..LEN, oldest (0) evicted
-        assert_eq!(ring.current().0, LEN as u64);
-        assert!(!ring.tombstone_contains(&0));
-        for i in 1..LEN as u64 {
-            assert!(ring.tombstone_contains(&i), "should contain {i}");
-        }
-    }
-
-    #[test]
-    fn many_generations() {
-        let mut ring = KeyRing::<TestKey>::new();
-        for i in 0..LEN as u64 * 3 {
-            ring.push(TestKey(i));
-        }
-        let last = LEN as u64 * 3 - 1;
-        assert_eq!(ring.current().0, last);
-        // LEN-1 tombstones visible
-        for i in (last - LEN as u64 + 1)..last {
-            assert!(ring.tombstone_contains(&i), "should contain {i}");
-        }
-        // Older ones evicted
-        assert!(!ring.tombstone_contains(&(last - LEN as u64)));
-    }
-
-    #[test]
-    fn drop_runs_cleanly() {
-        let mut ring = KeyRing::<TestKey>::new();
-        ring.push(TestKey(1));
-        ring.push(TestKey(2));
-        drop(ring);
-    }
-
-    #[test]
-    fn drop_many_generations() {
-        let mut ring = KeyRing::<TestKey>::new();
-        for i in 0..LEN as u64 * 2 {
-            ring.push(TestKey(i));
-        }
-        drop(ring);
+    fn queue_id_preserves_generation_bits() {
+        let index = 1234;
+        let generation = queue_id::GENERATION_MASK;
+        let queue_id = queue_id::encode(index, generation);
+        assert_eq!(queue_id::generation(queue_id), generation);
+        assert_eq!(queue_id::index(queue_id), index);
     }
 }
