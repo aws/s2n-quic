@@ -1,0 +1,489 @@
+name: ci-autofix
+
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited, labeled, unlabeled]
+  schedule:
+    - cron: '15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-autofix-${{ github.event_name }}-${{ github.event.workflow_run.id || github.event.pull_request.number || 'maintenance' }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch-autofix:
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Gate autofix dispatch
+        id: gate
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const run = context.payload.workflow_run;
+
+            const skip = (reason) => {
+              core.info(reason);
+              core.setOutput('proceed', 'false');
+              core.setOutput('reason', reason);
+            };
+
+            if (!run) return skip('Missing workflow_run payload.');
+            if (run.name !== 'ci') return skip(`Ignoring workflow ${run.name}.`);
+            if (run.conclusion !== 'failure') return skip(`Conclusion was ${run.conclusion}.`);
+            if (run.head_branch !== 'main') return skip(`Branch was ${run.head_branch}.`);
+            if (run.event !== 'push') return skip(`Event was ${run.event}; only push/main is eligible.`);
+
+            const actor = run.actor?.login || 'unknown';
+            const actorType = run.actor?.type || '';
+            if (run.run_attempt > 1 && actorType.toLowerCase() === 'bot') {
+              return skip(`Ignoring bot-initiated rerun attempt ${run.run_attempt} by ${actor}.`);
+            }
+
+            const sha = run.head_sha;
+            const workflowName = run.name;
+            const dedupeNeedle = `workflow:${workflowName} sha:${sha}`;
+
+            const openIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              labels: 'ci-autofix,autofix-in-progress',
+              per_page: 100,
+            });
+
+            const duplicateIssue = openIssues.find(issue => !issue.pull_request && (issue.body || '').includes(dedupeNeedle));
+            if (duplicateIssue) {
+              return skip(`Open autofix issue already exists: #${duplicateIssue.number}.`);
+            }
+
+            const openPRs = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            const duplicatePR = openPRs.find(pr => {
+              const title = pr.title || '';
+              const body = pr.body || '';
+              const labels = (pr.labels || []).map(l => l.name || '');
+              const isAutofixCandidate = labels.includes('ci-autofix')
+                || title.startsWith('[ci-autofix]')
+                || (pr.head?.ref || '').startsWith('copilot/ci-autofix/');
+              const shortSha = sha.slice(0, 12);
+              return isAutofixCandidate && (
+                body.includes(sha) ||
+                body.includes(shortSha) ||
+                title.includes(sha) ||
+                title.includes(shortSha)
+              );
+            });
+
+            if (duplicatePR) {
+              return skip(`Open autofix PR already exists: #${duplicatePR.number}.`);
+            }
+
+            core.setOutput('proceed', 'true');
+            core.setOutput('reason', 'Eligible failed main CI run.');
+            core.setOutput('run_id', String(run.id));
+            core.setOutput('run_attempt', String(run.run_attempt));
+            core.setOutput('run_url', run.html_url);
+            core.setOutput('sha', sha);
+            core.setOutput('short_sha', sha.slice(0, 12));
+            core.setOutput('workflow_name', workflowName);
+
+      - name: Collect failure context
+        if: steps.gate.outputs.proceed == 'true'
+        id: context
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_AUTOFIX_MAX_LOG_LINES: ${{ vars.CI_AUTOFIX_MAX_LOG_LINES }}
+          RUN_ID: ${{ steps.gate.outputs.run_id }}
+          RUN_URL: ${{ steps.gate.outputs.run_url }}
+          SHA: ${{ steps.gate.outputs.sha }}
+          SHORT_SHA: ${{ steps.gate.outputs.short_sha }}
+          WORKFLOW_NAME: ${{ steps.gate.outputs.workflow_name }}
+          WORKFLOW_RUN_ATTEMPT: ${{ steps.gate.outputs.run_attempt }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$RUNNER_TEMP/ci-autofix"
+          JOBS_JSON="$RUNNER_TEMP/ci-autofix/jobs.json"
+          JOBS_SUMMARY="$RUNNER_TEMP/ci-autofix/failed-jobs.md"
+          LOG_RAW="$RUNNER_TEMP/ci-autofix/failed.log"
+          LOG_SNIPPET="$RUNNER_TEMP/ci-autofix/failed-snippet.txt"
+          TASK_FILE="$RUNNER_TEMP/ci-autofix/task.md"
+          # Default to 220 (110 head + 110 tail); override with repository variable
+          # CI_AUTOFIX_MAX_LOG_LINES when needed.
+          MAX_LOG_LINES="${CI_AUTOFIX_MAX_LOG_LINES:-220}"
+
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" \
+            | jq -s '{jobs: (map(.jobs // []) | add)}' > "$JOBS_JSON"
+
+          jq -r '
+            .jobs
+            | map(select(.conclusion == "failure"))
+            | if length == 0 then "- No failed jobs found in run metadata." else
+                .[]
+                | "- Job: \(.name)\n  - id: \(.id)\n  - url: \(.html_url)\n  - started_at: \(.started_at)\n  - completed_at: \(.completed_at)\n  - failed steps: " +
+                  ((.steps // [])
+                    | map(select(.conclusion == "failure") | .name)
+                    | if length == 0 then "(none listed)" else join(", ") end)
+              end
+          ' "$JOBS_JSON" > "$JOBS_SUMMARY"
+
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed > "$LOG_RAW" || true
+
+          {
+            echo "----- START OF FAILED LOG EXCERPT -----"
+            if [ -s "$LOG_RAW" ]; then
+              HEAD_LOG_LINES=$(((MAX_LOG_LINES + 1) / 2))
+              TAIL_LOG_LINES=$((MAX_LOG_LINES / 2))
+              # For odd MAX_LOG_LINES values this uses one extra line in the head.
+              sed -n "1,${HEAD_LOG_LINES}p" "$LOG_RAW"
+              echo "----- MIDDLE LOG CONTENT OMITTED -----"
+              tail -n "$TAIL_LOG_LINES" "$LOG_RAW"
+            else
+              echo "No failed log output captured by gh run view --log-failed"
+            fi
+            echo "----- END OF FAILED LOG EXCERPT -----"
+          } > "$LOG_SNIPPET"
+
+          {
+            echo "# CI autofix task"
+            echo
+            echo "workflow:$WORKFLOW_NAME sha:$SHA"
+            echo "run:$RUN_URL"
+            echo "attempt:$WORKFLOW_RUN_ATTEMPT"
+            echo
+            echo "## Failure context"
+            cat "$JOBS_SUMMARY"
+            echo
+            echo "## Key failed log snippet"
+            echo '```text'
+            cat "$LOG_SNIPPET"
+            echo '```'
+            echo
+            echo "## Acceptance criteria"
+            echo "1. Reproduce and fix the failing CI condition with the smallest possible code change."
+            echo "2. Keep scope tightly limited to the failure root cause."
+            echo "3. Open a PR (do not push to main) from branch: copilot/ci-autofix/$SHORT_SHA."
+            echo "4. PR title must be exactly: [ci-autofix] ci failure on $SHORT_SHA."
+            echo "5. Add labels: ci-autofix and bot."
+            echo "6. PR body must include this run URL: $RUN_URL."
+            echo "7. Ensure required checks pass before merge."
+            echo "8. Add or update tests when applicable to cover the fix."
+          } > "$TASK_FILE"
+
+          echo "task_file=$TASK_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Create Copilot delegation issue
+        if: steps.gate.outputs.proceed == 'true'
+        id: create_issue
+        uses: actions/github-script@v8
+        env:
+          TASK_FILE: ${{ steps.context.outputs.task_file }}
+          RUN_URL: ${{ steps.gate.outputs.run_url }}
+          SHA: ${{ steps.gate.outputs.sha }}
+          SHORT_SHA: ${{ steps.gate.outputs.short_sha }}
+          WORKFLOW_NAME: ${{ steps.gate.outputs.workflow_name }}
+          RUN_ID: ${{ steps.gate.outputs.run_id }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const desiredLabels = [
+              { name: 'ci-autofix', color: '5319e7', description: 'Automated CI failure autofix attempt' },
+              { name: 'autofix-in-progress', color: 'fbca04', description: 'Autofix issue is active' },
+              { name: 'bot', color: '0e8a16', description: 'Work initiated by automation' },
+            ];
+
+            for (const label of desiredLabels) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: label.name });
+              } catch (err) {
+                if (err.status === 404) {
+                  await github.rest.issues.createLabel({ owner, repo, ...label });
+                } else {
+                  throw err;
+                }
+              }
+            }
+
+            const taskBody = fs.readFileSync(process.env.TASK_FILE, 'utf8');
+            const title = `[ci-autofix] ci failure on ${process.env.SHORT_SHA}`;
+
+            const body = [
+              '<!-- ci-autofix-managed -->',
+              `<!-- ci-autofix-workflow:${process.env.WORKFLOW_NAME} -->`,
+              `<!-- ci-autofix-sha:${process.env.SHA} -->`,
+              `<!-- ci-autofix-run-id:${process.env.RUN_ID} -->`,
+              `<!-- ci-autofix-run-url:${process.env.RUN_URL} -->`,
+              '',
+              '@copilot Please take this issue and open a PR that satisfies all acceptance criteria below.',
+              '',
+              taskBody,
+            ].join('\n');
+
+            const created = await github.rest.issues.create({
+              owner,
+              repo,
+              title,
+              body,
+              labels: ['ci-autofix', 'autofix-in-progress', 'bot'],
+            });
+
+            core.setOutput('issue_number', String(created.data.number));
+            core.setOutput('issue_url', created.data.html_url);
+
+      - name: Emit dispatch summary
+        run: |
+          {
+            echo "## ci-autofix dispatch"
+            echo "- proceed: ${{ steps.gate.outputs.proceed }}"
+            echo "- reason: ${{ steps.gate.outputs.reason }}"
+            echo "- run: ${{ steps.gate.outputs.run_url || 'n/a' }}"
+            if [ "${{ steps.gate.outputs.proceed }}" = "true" ]; then
+              echo "- issue: #${{ steps.create_issue.outputs.issue_number }} (${{ steps.create_issue.outputs.issue_url }})"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  validate-autofix-pr:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: read
+    steps:
+      - name: Validate autofix PR metadata and policy
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const pr = context.payload.pull_request;
+            const labels = (pr.labels || []).map(l => l.name || '');
+            const isAutofix = labels.includes('ci-autofix') || (pr.title || '').startsWith('[ci-autofix]');
+            if (!isAutofix) {
+              core.info('PR is not marked as ci-autofix; skipping policy enforcement.');
+              return;
+            }
+
+            const titleMatch = (pr.title || '').match(/^\[ci-autofix\] ci failure on ([a-f0-9]{12})$/);
+            const expectedShortSha = titleMatch?.[1];
+            const errors = [];
+            if (!titleMatch) {
+              errors.push('PR title must match `[ci-autofix] ci failure on <12-char-sha>`.');
+            }
+            if (!(pr.head.ref || '').startsWith('copilot/ci-autofix/')) {
+              errors.push('PR head branch must start with `copilot/ci-autofix/`.');
+            }
+            if (!labels.includes('ci-autofix')) {
+              errors.push('PR must include label `ci-autofix`.');
+            }
+            if (!labels.includes('bot')) {
+              errors.push('PR must include label `bot`.');
+            }
+            const runUrlMarkerMatch = (pr.body || '').match(/<!--\s*ci-autofix-run-url:https:\/\/github\.com\/[^\/]+\/[^\/]+\/actions\/runs\/(\d+)\s*-->/i);
+            if (!runUrlMarkerMatch) {
+              errors.push('PR body must include `<!-- ci-autofix-run-url:https://github.com/<owner>/<repo>/actions/runs/<run-id> -->`.');
+            } else {
+              const runId = Number(runUrlMarkerMatch[1]);
+              if (!Number.isInteger(runId) || runId <= 0) {
+                errors.push('PR body has an invalid ci-autofix run id marker.');
+              } else if (expectedShortSha) {
+                const run = await github.rest.actions.getWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: runId,
+                });
+                const runHeadSha = run.data.head_sha || '';
+                if (!runHeadSha.startsWith(expectedShortSha)) {
+                  errors.push(`Run id ${runId} does not match title SHA ${expectedShortSha}.`);
+                }
+              }
+            }
+            if (pr.base.ref !== 'main') {
+              errors.push('Autofix PR must target `main`.');
+            }
+
+            if (errors.length > 0) {
+              core.setFailed(errors.join('\n'));
+            }
+
+  request-autofix-reviewers:
+    if: github.event_name == 'pull_request_target' && (vars.CI_AUTOFIX_REVIEWERS != '' || vars.CI_AUTOFIX_REVIEW_TEAMS != '')
+    needs: validate-autofix-pr
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Request reviewers/teams if configured
+        uses: actions/github-script@v8
+        env:
+          REVIEWERS: ${{ vars.CI_AUTOFIX_REVIEWERS }}
+          TEAMS: ${{ vars.CI_AUTOFIX_REVIEW_TEAMS }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const pr = context.payload.pull_request;
+            const labels = (pr.labels || []).map(l => l.name || '');
+            const isAutofix = labels.includes('ci-autofix') || (pr.title || '').startsWith('[ci-autofix]');
+            if (!isAutofix) {
+              core.info('PR is not marked as ci-autofix; skipping reviewer request.');
+              return;
+            }
+
+            const reviewers = (process.env.REVIEWERS || '').split(',').map(v => v.trim()).filter(Boolean);
+            const team_reviewers = (process.env.TEAMS || '').split(',').map(v => v.trim()).filter(Boolean);
+            if (reviewers.length === 0 && team_reviewers.length === 0) {
+              core.info('No reviewers configured via vars.CI_AUTOFIX_REVIEWERS or vars.CI_AUTOFIX_REVIEW_TEAMS.');
+              return;
+            }
+
+            await github.rest.pulls.requestReviewers({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              reviewers,
+              team_reviewers,
+            });
+
+  stale-cleanup:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Auto-close stale autofix issues/PRs when failure is no longer reproducible
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const openIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              labels: 'ci-autofix,autofix-in-progress',
+              per_page: 100,
+            });
+            const openPRs = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            let closedIssues = 0;
+            let closedPRs = 0;
+            const closedPrNumbers = new Set();
+            const parseTimestampOrDefault = (value, fallback = 0) => {
+              const ts = Date.parse(value || '');
+              return Number.isNaN(ts) ? fallback : ts;
+            };
+
+            for (const issue of openIssues) {
+              if (issue.pull_request) continue;
+              const body = issue.body || '';
+              const shaMatch = body.match(/<!-- ci-autofix-sha:([a-f0-9]{40}) -->/);
+              const workflowMatch = body.match(/<!-- ci-autofix-workflow:([^>]+) -->/);
+              if (!shaMatch || !workflowMatch) continue;
+
+              const sha = shaMatch[1];
+              const workflowName = workflowMatch[1].trim();
+              if (workflowName !== 'ci') continue;
+
+              const workflowId = `${workflowName}.yml`;
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: workflowId,
+                branch: 'main',
+                head_sha: sha,
+                status: 'completed',
+                per_page: 20,
+              });
+
+              const workflowRuns = (runs.data.workflow_runs || []).toSorted((a, b) => {
+                const aTs = parseTimestampOrDefault(a.created_at, 0);
+                const bTs = parseTimestampOrDefault(b.created_at, 0);
+                return bTs - aTs;
+              });
+              const latestRun = workflowRuns[0];
+              if (!latestRun || latestRun.conclusion !== 'success') continue;
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body: `Closing as stale: CI is now passing for sha ${sha}.`,
+              });
+
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'completed',
+              });
+              closedIssues += 1;
+
+              for (const pr of openPRs) {
+                if (closedPrNumbers.has(pr.number)) continue;
+                const labels = (pr.labels || []).map(l => l.name || '');
+                const prBody = pr.body || '';
+                const title = pr.title || '';
+                const isAutofixCandidate = labels.includes('ci-autofix')
+                  || title.startsWith('[ci-autofix]')
+                  || (pr.head?.ref || '').startsWith('copilot/ci-autofix/');
+                const shaNeedle = sha.slice(0, 12);
+                const looksRelated = isAutofixCandidate && (
+                  prBody.includes(sha) ||
+                  prBody.includes(shaNeedle) ||
+                  title.includes(sha) ||
+                  title.includes(shaNeedle)
+                );
+                if (!looksRelated) continue;
+
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: pr.number,
+                  body: `Closing as stale because CI is now passing for base sha ${sha}.`,
+                });
+
+                await github.rest.pulls.update({
+                  owner,
+                  repo,
+                  pull_number: pr.number,
+                  state: 'closed',
+                });
+                closedPrNumbers.add(pr.number);
+                closedPRs += 1;
+              }
+            }
+
+            core.summary
+              .addHeading('ci-autofix stale cleanup')
+              .addRaw(`Closed issues: ${closedIssues}\n`, true)
+              .addRaw(`Closed PRs: ${closedPRs}\n`, true)
+              .write();
