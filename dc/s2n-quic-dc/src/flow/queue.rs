@@ -21,15 +21,14 @@ mod sender;
 pub use descriptor::{Key, ValidationError};
 pub use inner::AutoWake;
 
-/// Allocate this many channels at a time
+/// Size of the first allocated page of queue slots.
 ///
-/// With `debug_assertions`, we allocate smaller pages to try and cover more
-/// branches in the allocator logic around growth.
-const PAGE_SIZE: usize = if cfg!(debug_assertions) {
-    8
-} else {
-    u16::MAX as _
-};
+/// Subsequent pages double in size so the pool converges quickly to the right
+/// capacity, similar to how `std::vec::Vec` grows.
+///
+/// In test builds a smaller value is used to exercise growth branches without
+/// the overhead of allocating 65 535 slots per test endpoint.
+const INITIAL_PAGE_SIZE: usize = if cfg!(test) { 8 } else { u16::MAX as _ };
 
 pub type Error<T> = inner::Error<T>;
 pub type Control<S, C, K> = handle::Control<S, C, K>;
@@ -44,7 +43,7 @@ where
     C: 'static + Send + Sync,
     K: 'static + Send + Sync,
 {
-    pool: pool::Pool<S, C, K, PAGE_SIZE>,
+    pool: pool::Pool<S, C, K, INITIAL_PAGE_SIZE>,
 }
 
 impl<S, C, K> Clone for Allocator<S, C, K>
@@ -119,9 +118,9 @@ where
     C: 'static + Send + Sync,
     K: 'static + Send + Sync,
 {
-    senders: sender::Senders<S, C, K, PAGE_SIZE>,
+    senders: sender::Senders<S, C, K, INITIAL_PAGE_SIZE>,
     is_open: bool,
-    pool: pool::Pool<S, C, K, PAGE_SIZE>,
+    pool: pool::Pool<S, C, K, INITIAL_PAGE_SIZE>,
 }
 
 impl<S, C, K> Clone for Dispatch<S, C, K>

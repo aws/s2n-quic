@@ -4,6 +4,7 @@ expression: logs
 ---
 0:00:00.000000000 [peer] DEBUG s2n_quic_dc: capacity=50000
 0:00:00.000000000 [peer] DEBUG setting up endpoint config.layout=WorkerLayout { frame_dispatch: 0, send: [1, 2, 3, 4], recv_io: [5, 6, 7, 8], recv_dispatch: [9, 10, 11, 12], waker_drain: [13], background: 14 } send_sockets=[10.0.0.1:49152, 10.0.0.1:49153, 10.0.0.1:49154, 10.0.0.1:49155, 10.0.0.1:49156, 10.0.0.1:49157, 10.0.0.1:49158, 10.0.0.1:49159] recv_sockets=[10.0.0.1:4433, 10.0.0.1:49160, 10.0.0.1:49161, 10.0.0.1:49162]
+0:00:00.000000000 [peer] TRACE m#flow.queue.epoch=8
 0:00:00.000000000 [peer] DEBUG grow epoch=8
 0:00:00.000000000 [peer] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [peer] TRACE m#task.frame_dispatch.drained=0

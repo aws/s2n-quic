@@ -11,7 +11,7 @@ use crate::{counter, tracing::*};
 use s2n_quic_core::varint::VarInt;
 use std::{alloc::Layout, marker::PhantomData, ptr::NonNull, sync::Arc};
 
-pub struct Pool<S: 'static + Send, C: 'static + Send, Key: 'static + Send, const PAGE_SIZE: usize> {
+pub struct Pool<S: 'static + Send, C: 'static + Send, Key: 'static + Send, const INITIAL_PAGE_SIZE: usize> {
     pub(super) senders: Arc<sender::State<S, C, Key>>,
     free: Arc<FreeVec<S, C, Key>>,
     /// Holds the backing memory allocated as long as there's at least one reference
@@ -20,8 +20,8 @@ pub struct Pool<S: 'static + Send, C: 'static + Send, Key: 'static + Send, const
     epoch: usize,
 }
 
-impl<S: 'static + Send, C: 'static + Send, Key: 'static + Send, const PAGE_SIZE: usize> Clone
-    for Pool<S, C, Key, PAGE_SIZE>
+impl<S: 'static + Send, C: 'static + Send, Key: 'static + Send, const INITIAL_PAGE_SIZE: usize> Clone
+    for Pool<S, C, Key, INITIAL_PAGE_SIZE>
 {
     #[inline]
     fn clone(&self) -> Self {
@@ -35,7 +35,7 @@ impl<S: 'static + Send, C: 'static + Send, Key: 'static + Send, const PAGE_SIZE:
     }
 }
 
-impl<S, C, Key, const PAGE_SIZE: usize> Pool<S, C, Key, PAGE_SIZE>
+impl<S, C, Key, const INITIAL_PAGE_SIZE: usize> Pool<S, C, Key, INITIAL_PAGE_SIZE>
 where
     S: 'static + Send + Sync,
     C: 'static + Send + Sync,
@@ -45,7 +45,7 @@ where
     pub fn new(epoch_summary: Option<counter::Summary>) -> Self {
         let epoch = 0;
         let senders = sender::State::new(epoch);
-        let (free, memory_handle) = FreeVec::new(PAGE_SIZE);
+        let (free, memory_handle) = FreeVec::new(INITIAL_PAGE_SIZE);
         let mut pool = Pool {
             free,
             memory_handle,
@@ -58,7 +58,7 @@ where
     }
 
     #[inline]
-    pub fn senders(&self) -> Senders<S, C, Key, PAGE_SIZE> {
+    pub fn senders(&self) -> Senders<S, C, Key, INITIAL_PAGE_SIZE> {
         Senders {
             state: self.senders.clone(),
             // make sure the memory lives as long as this sender is alive
@@ -95,19 +95,21 @@ where
 
     #[inline(never)] // this should happen rarely
     fn grow(&mut self) {
-        assert!(
-            self.epoch + PAGE_SIZE <= queue_id::MAX_SLOTS,
-            "flow queue slot space exhausted"
-        );
+        // Page sizes double with each grow: page 0 has INITIAL_PAGE_SIZE slots,
+        // page 1 has 2×, page 2 has 4×, etc.  After n grows the epoch is
+        // (2^(n+1) − 1) × INITIAL_PAGE_SIZE, so the next page size is always
+        // epoch + INITIAL_PAGE_SIZE (capped at remaining slot space).
+        let page_size = (self.epoch + INITIAL_PAGE_SIZE).min(queue_id::MAX_SLOTS - self.epoch);
+        assert!(page_size > 0, "flow queue slot space exhausted");
 
-        let (region, layout) = Region::alloc(PAGE_SIZE);
+        let (region, layout) = Region::alloc(page_size);
 
         let ptr = region.ptr;
 
         let mut pending_desc = vec![];
         let mut pending_senders = vec![];
 
-        for idx in 0..PAGE_SIZE {
+        for idx in 0..page_size {
             let offset = layout.size() * idx;
 
             unsafe {
@@ -159,13 +161,9 @@ where
         }
 
         // update the epoch with the latest value
-        let target_epoch = self.epoch + PAGE_SIZE;
+        let target_epoch = self.epoch + page_size;
         senders.epoch = target_epoch;
         self.epoch = target_epoch;
-        // Unit tests rely on deterministic snapshots and `counter::Summary::record_value`
-        // emits metric trace lines under `cfg(test)`. Keep recording enabled for
-        // non-test builds where this metric is consumed operationally.
-        #[cfg(not(test))]
         if let Some(summary) = &self.epoch_summary {
             summary.record_value(target_epoch as u64);
         }
