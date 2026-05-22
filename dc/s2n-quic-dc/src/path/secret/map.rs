@@ -452,6 +452,17 @@ impl Map {
         self.store.reset_all_senders();
     }
 
+    /// Look up a path secret entry by credential ID.
+    ///
+    /// This is available for testing only; production code should use
+    /// [`opener_for_credentials`](Self::opener_for_credentials) which also
+    /// performs pre-authentication.
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "testing"))]
+    pub fn get_by_id(&self, id: &Id) -> Option<Arc<Entry>> {
+        self.store.get_by_id_untracked(id)
+    }
+
     #[doc(hidden)]
     #[cfg(any(test, feature = "testing"))]
     pub fn test_insert(&self, peer: SocketAddr) {

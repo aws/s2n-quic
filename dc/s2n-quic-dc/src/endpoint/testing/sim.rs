@@ -377,6 +377,17 @@ pub fn connect(
 
     // Fast path: already connected.
     if let Some(entry) = local_map.get_raw(peer_addr) {
+        // Self-connect: get_raw resolves to the Server entry (the address index is
+        // overwritten by the second insert in insert_fake_path_pair).  Always select
+        // the Client entry so the Writer seals packets with the correct keys.
+        if local_addr == peer_addr {
+            let client_id = entry
+                .id()
+                .for_endpoint(s2n_quic_core::endpoint::Type::Client);
+            return local_map
+                .get_by_id(&client_id)
+                .expect("self-connect Client entry must exist when get_raw succeeds");
+        }
         return entry;
     }
 
@@ -390,19 +401,36 @@ pub fn connect(
             )
         });
 
-    insert_fake_path_pair(local_map, local_addr, &peer_map, peer_addr);
+    let ids = insert_fake_path_pair(local_map, local_addr, &peer_map, peer_addr);
 
-    let entry = local_map
-        .get_raw(peer_addr)
-        .expect("path-secret entry just inserted by insert_fake_path_pair");
+    // For self-connect (local_addr == peer_addr, same map), get_raw returns the last-inserted
+    // entry which is the Server entry — wrong for the Writer side.  Look up the Client entry
+    // (ids.local) explicitly so the Writer seals packets with the correct Client-type keys.
+    let entry = if local_addr == peer_addr {
+        local_map
+            .get_by_id(&ids.local)
+            .expect("client entry just inserted by insert_fake_path_pair")
+    } else {
+        local_map
+            .get_raw(peer_addr)
+            .expect("path-secret entry just inserted by insert_fake_path_pair")
+    };
 
     // Set the peer's full recv address list (simulates the post-handshake exchange).
     let peer_data_addrs = lookup_peer_data_addrs(peer_addr);
     entry.set_peer_data_addrs(&peer_data_addrs);
 
-    // Also set our addrs on the peer's entry for us.
-    if let Some(peer_entry) = peer_map.get_raw(local_addr) {
-        peer_entry.set_peer_data_addrs(&local_endpoint.data_addrs);
+    if local_addr == peer_addr {
+        // Self-connect: also set peer_data_addrs on the Server entry so that the
+        // acceptor-side Writer can route the echo packets back.
+        if let Some(server_entry) = local_map.get_by_id(&ids.peer) {
+            server_entry.set_peer_data_addrs(&peer_data_addrs);
+        }
+    } else {
+        // Also set our addrs on the peer's entry for us.
+        if let Some(peer_entry) = peer_map.get_raw(local_addr) {
+            peer_entry.set_peer_data_addrs(&local_endpoint.data_addrs);
+        }
     }
 
     entry

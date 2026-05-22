@@ -1497,6 +1497,85 @@ fn multi_server_concurrent_loss_sim() {
     });
 }
 
+/// Verifies that a single [`Peer`] endpoint can connect to and communicate with
+/// itself without getting confused about how to route packets.
+///
+/// The same endpoint acts as both sender ("client") and receiver ("server").
+/// Path-secret entries for the self-connection use opposite endpoint types
+/// (Client for sealing, Server for opening), so this test exercises that the
+/// routing logic correctly selects the Client entry for the outbound Writer and
+/// the Server entry for the inbound acceptor path.
+#[test]
+fn peer_self_loopback() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+
+        async move {
+            let mut peer = Peer::new();
+            let mut acceptor = peer
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            // Spawn the acceptor side as a background task so the connect below
+            // can proceed on the same cooperative Bach thread.
+            async move {
+                while let Some(stream) = acceptor.recv().await {
+                    async move {
+                        let stream = stream.validate().await.expect("server validate");
+                        let (mut reader, mut writer) = stream.into_split();
+
+                        let mut buf = BytesMut::with_capacity(8);
+                        loop {
+                            if reader.read_into(&mut buf).await.expect("server read") == 0 {
+                                break;
+                            }
+                        }
+                        assert_eq!(&buf[..], b"ping");
+
+                        let mut pong = Bytes::from_static(b"pong");
+                        writer
+                            .write_all_from_fin(&mut pong)
+                            .await
+                            .expect("server write");
+                    }
+                    .spawn();
+                }
+            }
+            .spawn();
+
+            // Connect to self: "peer:0" resolves to this group's IP, port is
+            // rewritten to SERVER_PORT by connect_stream.
+            let stream = peer
+                .connect("peer:0", acceptor_id)
+                .await
+                .expect("self-connect failed");
+
+            let (mut reader, mut writer) = stream.into_split();
+
+            let mut ping = Bytes::from_static(b"ping");
+            writer
+                .write_all_from_fin(&mut ping)
+                .await
+                .expect("client write");
+
+            let mut buf = BytesMut::with_capacity(8);
+            loop {
+                if reader.read_into(&mut buf).await.expect("client read") == 0 {
+                    break;
+                }
+            }
+            assert_eq!(&buf[..], b"pong");
+
+            info!("peer_self_loopback passed");
+        }
+        .group("peer")
+        .primary()
+        .spawn();
+    });
+}
+
 #[test]
 fn five_node_random_chatter_settles_after_stop() {
     use crate::testing::ext::*;
