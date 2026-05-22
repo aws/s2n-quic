@@ -26,8 +26,22 @@ pub fn create(
     let subscriber = s2n_quic_dc::event::tracing::Subscriber::default();
     let map = secret::Map::new(signer, 50_000, true, clock, subscriber);
 
-    // Create recv sockets first to determine the data port
-    let recv_sockets = socket::RecvConfig::new(config.recv_io_workers, bind_addr).busy_poll()?;
+    let gso = endpoint::Gso::default();
+    let num_sockets = config.recv_io_workers.max(config.send_sockets);
+    let bind_addrs = (0..num_sockets)
+        .map(|_| {
+            let mut addr = bind_addr;
+            addr.set_port(0);
+            addr.into()
+        })
+        .collect();
+    let socket_config = socket::Config::new(
+        bind_addrs,
+        config.send_sockets,
+        config.recv_io_workers,
+        gso.clone(),
+    );
+    let (send_sockets, recv_sockets) = socket_config.busy_poll()?;
 
     {
         let recv_port = recv_sockets.first().unwrap().local_addr().unwrap().port();
@@ -36,11 +50,6 @@ pub fn create(
             recv_port, "Recv sockets bound"
         );
     }
-
-    // Create send sockets
-    let gso = endpoint::Gso::default();
-    let send_sockets =
-        socket::SendConfig::new(config.send_sockets, bind_addr, gso.clone()).busy_poll()?;
 
     {
         let send_ports: Vec<u16> = send_sockets

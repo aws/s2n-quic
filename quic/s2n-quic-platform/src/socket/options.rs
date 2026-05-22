@@ -4,6 +4,7 @@
 use crate::syscall;
 use s2n_quic_core::inet::SocketAddress;
 use std::{
+    ffi::CString,
     io,
     net::{SocketAddr, TcpListener, UdpSocket},
 };
@@ -24,6 +25,7 @@ pub enum ReusePort {
 #[non_exhaustive]
 pub struct Options {
     pub addr: SocketAddr,
+    pub bind_interface: Option<CString>,
     pub reuse_address: bool,
     pub reuse_port: ReusePort,
     pub gro: bool,
@@ -40,6 +42,7 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             addr: SocketAddress::default().into(),
+            bind_interface: None,
             reuse_address: false,
             reuse_port: Default::default(),
             gro: true,
@@ -113,10 +116,49 @@ impl Options {
             set_reuse_port(socket)?;
         }
 
+        if let Some(interface_name) = &self.bind_interface {
+            bind_to_interface(socket, interface_name)?;
+        }
+
         socket.bind(&self.addr.into())?;
 
         if let ReusePort::AfterBind = self.reuse_port {
             set_reuse_port(socket)?;
+        }
+
+        #[cfg(target_os = "linux")]
+        fn bind_to_interface(
+            socket: &socket2::Socket,
+            interface_name: &CString,
+        ) -> io::Result<()> {
+            use std::os::fd::AsRawFd;
+
+            let ret = unsafe {
+                libc::setsockopt(
+                    socket.as_raw_fd(),
+                    libc::SOL_SOCKET,
+                    libc::SO_BINDTODEVICE,
+                    interface_name.as_ptr() as *const _,
+                    interface_name.as_bytes_with_nul().len() as _,
+                )
+            };
+
+            if ret < 0 {
+                return Err(io::Error::last_os_error());
+            }
+
+            Ok(())
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn bind_to_interface(
+            _socket: &socket2::Socket,
+            _interface_name: &CString,
+        ) -> io::Result<()> {
+            Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "binding to a NIC is only supported on Linux",
+            ))
         }
 
         Ok(())
