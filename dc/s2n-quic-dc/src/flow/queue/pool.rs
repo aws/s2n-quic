@@ -11,7 +11,12 @@ use crate::{counter, tracing::*};
 use s2n_quic_core::varint::VarInt;
 use std::{alloc::Layout, marker::PhantomData, ptr::NonNull, sync::Arc};
 
-pub struct Pool<S: 'static + Send, C: 'static + Send, Key: 'static + Send, const INITIAL_PAGE_SIZE: usize> {
+pub struct Pool<
+    S: 'static + Send,
+    C: 'static + Send,
+    Key: 'static + Send,
+    const INITIAL_PAGE_SIZE: usize,
+> {
     pub(super) senders: Arc<sender::State<S, C, Key>>,
     free: Arc<FreeVec<S, C, Key>>,
     /// Holds the backing memory allocated as long as there's at least one reference
@@ -20,8 +25,8 @@ pub struct Pool<S: 'static + Send, C: 'static + Send, Key: 'static + Send, const
     epoch: usize,
 }
 
-impl<S: 'static + Send, C: 'static + Send, Key: 'static + Send, const INITIAL_PAGE_SIZE: usize> Clone
-    for Pool<S, C, Key, INITIAL_PAGE_SIZE>
+impl<S: 'static + Send, C: 'static + Send, Key: 'static + Send, const INITIAL_PAGE_SIZE: usize>
+    Clone for Pool<S, C, Key, INITIAL_PAGE_SIZE>
 {
     #[inline]
     fn clone(&self) -> Self {

@@ -36,7 +36,9 @@ impl<S: 'static, C: 'static, Key: 'static, const INITIAL_PAGE_SIZE: usize> Clone
     }
 }
 
-impl<S: 'static, C: 'static, Key: 'static, const INITIAL_PAGE_SIZE: usize> Senders<S, C, Key, INITIAL_PAGE_SIZE> {
+impl<S: 'static, C: 'static, Key: 'static, const INITIAL_PAGE_SIZE: usize>
+    Senders<S, C, Key, INITIAL_PAGE_SIZE>
+{
     #[inline]
     fn refresh_pages(&mut self) {
         let Ok(senders) = self.state.pages.read() else {
