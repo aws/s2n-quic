@@ -13,7 +13,7 @@ use crate::{
 };
 use bach::time::timeout;
 use bytes::{Bytes, BytesMut};
-use s2n_quic_core::varint::VarInt;
+use s2n_quic_core::{stream::testing::Data, varint::VarInt};
 use std::{
     io,
     sync::{
@@ -1829,7 +1829,7 @@ fn zombie_flow_not_invalidated_when_path_has_other_activity() {
                     .await
                     .expect("connect zombie");
                 let (_reader_z, mut writer_z) = stream_z.into_split();
-                let mut data = Bytes::from(vec![42u8; 1024]);
+                let mut data = Data::new(1024);
                 writer_z
                     .write_all_from_fin(&mut data)
                     .await

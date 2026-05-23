@@ -41,7 +41,7 @@
 use crate::tracing::*;
 use bach::time::timeout;
 use bytes::{Bytes, BytesMut};
-use s2n_quic_core::varint::VarInt;
+use s2n_quic_core::{stream::testing::Data, varint::VarInt};
 use std::{
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
@@ -336,9 +336,9 @@ fn writer_drop_sends_fin() {
                     let (mut reader, mut writer) = stream.into_split();
 
                     // Server reads client data to EOF.
-                    let mut buf = BytesMut::with_capacity(PAYLOAD_LEN + 8);
+                    let mut buf = Data::new(PAYLOAD_LEN as u64);
                     read_to_eof!(reader, buf);
-                    assert_eq!(buf.len(), PAYLOAD_LEN);
+                    assert!(buf.is_finished());
 
                     // Confirm the stream completed cleanly with an echo.
                     let mut echo = Bytes::from_static(b"ok");
@@ -363,8 +363,7 @@ fn writer_drop_sends_fin() {
             // The second write_from call in write_all_from will suspend in
             // FlowInitSent until MAX_DATA arrives, leaving the writer in Open
             // state when write_all_from returns.
-            let data = vec![0xAAu8; PAYLOAD_LEN];
-            let mut data = Bytes::from(data);
+            let mut data = Data::new(PAYLOAD_LEN as u64);
             writer
                 .write_all_from(&mut data)
                 .await
@@ -434,10 +433,9 @@ fn reader_drop_before_eof_sends_stop_sending() {
                     assert_eq!(&req_buf[..], b"req");
 
                     // Stream back a response without FIN until ConnectionReset.
-                    let chunk = vec![0xABu8; CHUNK_SIZE];
                     let mut got_stop_sending = false;
                     for _ in 0..MAX_WRITES {
-                        let mut data = Bytes::from(chunk.clone());
+                        let mut data = Data::new(CHUNK_SIZE as u64);
                         match writer.write_from(&mut data).await {
                             Ok(_) => {}
                             Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => {
@@ -557,10 +555,9 @@ fn server_reader_drop_sends_stop_sending() {
             // writer returns ConnectionReset.  We need enough writes to exceed
             // the 1 MiB remote_max_data window so the task yields (allowing
             // STOP_SENDING to be processed) before the loop ends.
-            let chunk = vec![0xCDu8; CHUNK_SIZE];
             let mut got_stop_sending = false;
             for _ in 0..MAX_WRITES {
-                let mut data = Bytes::from(chunk.clone());
+                let mut data = Data::new(CHUNK_SIZE as u64);
                 match writer.write_from(&mut data).await {
                     Ok(_) => {}
                     Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => {

@@ -23,7 +23,6 @@ use crate::{
     xorshift,
 };
 use bach::time::{timeout, Instant};
-use bytes::BytesMut;
 use core::ops::Range;
 use s2n_quic_core::{stream::testing::Data, varint::VarInt};
 use std::{
@@ -827,7 +826,7 @@ fn ack_only_probe_does_not_create_ack_loop() {
                         async move {
                             let stream = stream.validate().await.expect("server validate");
                             let (mut reader, _writer) = stream.into_split();
-                            let mut buf = BytesMut::with_capacity(BODY_LEN);
+                            let mut buf = Data::new(BODY_LEN as u64);
                             loop {
                                 let n = reader.read_into(&mut buf).await.expect("server read");
                                 if n == 0 {
