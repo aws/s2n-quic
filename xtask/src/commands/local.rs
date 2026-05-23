@@ -58,9 +58,9 @@ pub struct Local {
     #[arg(long, default_value = "dc-tester")]
     kind: String,
 
-    /// Generate flamegraph profile on client node(s)
+    /// Enable dial9 runtime telemetry (CPU flamegraphs + Tokio task traces) on all nodes
     #[arg(long)]
-    flamegraph: bool,
+    dial9: bool,
 
     /// Workload names to run on client (defaults to first in config if omitted)
     #[arg(long, short)]
@@ -147,6 +147,20 @@ impl Local {
             }
         }
 
+        let dial9_run_id = if self.dial9 {
+            let run_id = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            let trace_dir = format!("/tmp/dial9-traces/{run_id}");
+            base_env.insert("DIAL9_ENABLED".into(), "1".into());
+            base_env.insert("DIAL9_TRACE_DIR".into(), trace_dir);
+            base_env.insert("DIAL9_CPU_PROFILE_ENABLED".into(), "1".into());
+            Some(run_id)
+        } else {
+            None
+        };
+
         // Start servers
         for i in 0..self.servers {
             let node = &nodes[i % nodes.len()];
@@ -222,7 +236,6 @@ impl Local {
                 args,
                 env_vars,
                 color,
-                flamegraph: self.flamegraph,
             });
         }
 
@@ -293,7 +306,6 @@ impl Local {
                 args,
                 env_vars,
                 color,
-                flamegraph: self.flamegraph,
             });
         }
 
@@ -333,7 +345,29 @@ impl Local {
                 !claudecode
             }),
         };
-        run_processes(sh.clone(), processes, run_config)
+        let result = run_processes(sh.clone(), processes, run_config);
+
+        if let Some(run_id) = dial9_run_id {
+            let local_trace_dir = format!("/tmp/dial9-traces/{run_id}");
+            std::fs::create_dir_all(&local_trace_dir).ok();
+
+            for node in nodes.nodes.iter() {
+                if let Node::Remote(remote) = node {
+                    let src = format!(
+                        "{}:/tmp/dial9-traces/{run_id}/",
+                        remote.ssh_target()
+                    );
+                    let dest = format!("{}/{}/", local_trace_dir, remote.host);
+                    std::fs::create_dir_all(&dest).ok();
+                    let _ = cmd!(sh, "rsync -avz {src} {dest}").quiet().run();
+                }
+            }
+
+            eprintln!("Dial9 traces: {local_trace_dir}");
+            eprintln!("View with: dial9 serve {local_trace_dir}");
+        }
+
+        result
     }
 
     fn binary_info(&self) -> Result<(PathBuf, String)> {
@@ -760,7 +794,6 @@ struct ProcessConfig {
     args: Vec<String>,
     env_vars: HashMap<String, String>,
     color: Color,
-    flamegraph: bool,
 }
 
 fn colors() -> impl Iterator<Item = Color> {
@@ -933,23 +966,6 @@ async fn spawn_process(
                 remote_cmd.push_str(&format!("export {}='{}'; ", key, value));
             }
             remote_cmd.push_str(&format!("cd {}; ", remote.dir.display()));
-
-            // Wrap with perf if flamegraph is enabled
-            if config.flamegraph {
-                let timestamp = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
-                let perf_out = format!(
-                    "/tmp/perf-{}-{}.data",
-                    config.label.replace(':', "-"),
-                    timestamp
-                );
-                remote_cmd.push_str(&format!(
-                    "perf record -F 999 --call-graph dwarf -o {} -- ",
-                    perf_out
-                ));
-            }
 
             remote_cmd.push_str(&format!("{}", config.binary.display()));
             for arg in &config.args {

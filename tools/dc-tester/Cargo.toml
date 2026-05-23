@@ -15,6 +15,10 @@ s2n-quic-dc = { path = "../../dc/s2n-quic-dc", features = ["tokio"] }
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing", "state-tracing"] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
+dial9-tokio-telemetry = { version = "0.3", features = ["tracing-layer", "cpu-profiling"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }

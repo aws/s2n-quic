@@ -1,5 +1,5 @@
 [build]
-rustflags = ['--cfg', 's2n_internal_dev']
+rustflags = ['--cfg', 's2n_internal_dev', '--cfg', 'tokio_unstable', '-Cforce-frame-pointers=yes']
 rustdocflags = ['--cfg', 's2n_internal_dev']
 
 [alias]

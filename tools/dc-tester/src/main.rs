@@ -108,10 +108,9 @@ fn main() -> std::io::Result<()> {
 
     eprintln!("CPUs: {available_cpus}, busy_poll: {busy_poll_workers}, tokio: {tokio_threads}");
 
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(tokio_threads)
-        .enable_all()
-        .build()?;
+    std::env::set_var("TOKIO_WORKER_THREADS", tokio_threads.to_string());
+    let dial9_config = dial9_tokio_telemetry::Dial9Config::from_env();
+    let runtime = dial9_tokio_telemetry::TracedRuntime::new(dial9_config);
 
     runtime.block_on(async move {
         net_stats::spawn();
@@ -167,7 +166,9 @@ fn main() -> std::io::Result<()> {
 }
 
 fn init_tracing() {
-    use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::{
+        fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer,
+    };
 
     let filter = EnvFilter::builder()
         .with_default_directive(tracing::Level::INFO.into())
@@ -175,8 +176,10 @@ fn init_tracing() {
         .from_env()
         .unwrap();
 
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(false)
+    let fmt_layer = fmt::layer().with_target(false).with_filter(filter);
+
+    tracing_subscriber::registry()
+        .with(fmt_layer)
+        .with(dial9_tokio_telemetry::tracing_layer::Dial9TokioLayer::new())
         .init();
 }
