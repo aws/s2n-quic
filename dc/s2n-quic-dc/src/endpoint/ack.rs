@@ -264,15 +264,17 @@ pub(crate) fn process_ack<Clk, Rand>(
     context.invariants();
 }
 
-/// Detect lost packets using the QUIC PN-threshold algorithm.
+/// Detect lost packets using QUIC PN-threshold and time-threshold algorithms.
 ///
-/// Packets with number <= max_acked_pn - 3 are declared lost. For each lost packet,
+/// Packets sent before `max_acked_pn` are declared lost when either:
+/// - packet number <= max_acked_pn - 3, or
+/// - time_sent <= max_tx_time - loss_time_threshold()
+///
+/// For each lost packet,
 /// frames are individually evaluated:
 /// - should_transmit false → sent to `cancelled` (writer already gone, no notification)
 /// - TTL exhausted → sent to `completed` (writer needs failure notification)
 /// - Otherwise → decrement TTL and send to `lost` for retransmission
-///
-/// TODO: Add time-based loss detection (kTimeThreshold = 9/8 * max(smoothed_rtt, latest_rtt)).
 fn detect_loss<Rand>(
     context: &mut send::Context,
     max_acked_pn: VarInt,
@@ -286,18 +288,21 @@ fn detect_loss<Rand>(
 ) where
     Rand: random::Generator,
 {
-    // TODO: use max_tx_time for time-based loss detection
-    let _ = max_tx_time;
-
     let pn_threshold = max_acked_pn.checked_sub(VarInt::from_u8(3));
+    let time_threshold = context.rtt_estimator.loss_time_threshold();
+    let time_loss_cutoff = max_tx_time.checked_sub(time_threshold);
 
-    let lost_min = PacketNumberSpace::Initial.new_packet_number(VarInt::ZERO);
-    let lost_max = pn_threshold.map(|v| PacketNumberSpace::Initial.new_packet_number(v));
+    let largest_acked = PacketNumberSpace::Initial.new_packet_number(max_acked_pn);
+    let pn_loss_cutoff = pn_threshold.map(|v| PacketNumberSpace::Initial.new_packet_number(v));
 
-    let Some(lost_max) = lost_max else {
+    let Some(lost_max) = context
+        .inflight
+        .loss_cutoff(largest_acked, pn_loss_cutoff, time_loss_cutoff)
+    else {
         return;
     };
 
+    let lost_min = PacketNumberSpace::Initial.new_packet_number(VarInt::ZERO);
     let range = PacketNumberRange::new(lost_min, lost_max);
     let mut lost_count = 0usize;
     let mut cancelled_count = 0usize;
@@ -357,9 +362,150 @@ fn detect_loss<Rand>(
             cancelled_count,
             ttl_exhausted_count,
             max_acked = max_acked_pn.as_u64(),
-            threshold = pn_threshold.map(|v| v.as_u64()),
+            pn_threshold = pn_threshold.map(|v| v.as_u64()),
+            time_threshold = ?time_threshold,
+            time_cutoff = ?time_loss_cutoff,
             rtt = ?context.rtt_estimator.smoothed_rtt(),
             "Loss detection triggered"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        byte_vec::ByteVec,
+        counter::Registry,
+        endpoint::{
+            frame::{Frame, Header, TransmissionStatus, DEFAULT_TTL},
+            id::LocalSenderId,
+            inflight::{Packet, TransmissionInfo},
+        },
+        packet::datagram::QueuePair,
+        path::secret::map::Entry as PathSecretEntry,
+        xorshift,
+    };
+    use bytes::Bytes;
+    use std::sync::Arc;
+
+    #[derive(Default)]
+    struct CollectFrames(Vec<Entry<Frame>>);
+
+    impl UnboundedSender<Entry<Frame>> for CollectFrames {
+        fn send(&mut self, value: Entry<Frame>) -> Result<(), Entry<Frame>> {
+            self.0.push(value);
+            Ok(())
+        }
+    }
+
+    fn make_ts(millis: u64) -> s2n_quic_core::time::Timestamp {
+        unsafe { s2n_quic_core::time::Timestamp::from_duration(Duration::from_millis(millis)) }
+    }
+
+    fn make_pn(n: u64) -> s2n_quic_core::packet::number::PacketNumber {
+        PacketNumberSpace::Initial.new_packet_number(VarInt::new(n).unwrap())
+    }
+
+    fn make_path_secret_entry() -> Arc<PathSecretEntry> {
+        let peer: std::net::SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        let entry = PathSecretEntry::builder(peer).socket_sender_count(1).build();
+        entry.set_peer_data_addrs(&[peer]);
+        entry
+    }
+
+    fn make_context(entry: &Arc<PathSecretEntry>) -> send::Context {
+        let registry = Registry::default();
+        send::Context::new(
+            entry,
+            registry.register_queue_gauge("test.inflight"),
+            registry.register_queue_gauge("test.ack"),
+            registry.register_queue_gauge("test.pending"),
+            LocalSenderId::new(VarInt::ZERO),
+            &crate::time::bach::Clock::default(),
+        )
+        .expect("context should initialize in tests")
+    }
+
+    fn make_packet(
+        context: &mut send::Context,
+        entry: Arc<PathSecretEntry>,
+        time_sent: s2n_quic_core::time::Timestamp,
+    ) -> Packet {
+        let mut payload = ByteVec::new();
+        payload.push_back(Bytes::from_static(b"x"));
+
+        let mut frames = crate::intrusive::Queue::new();
+        frames.push_back(
+            Frame {
+                header: Header::FlowData {
+                    queue_pair: QueuePair {
+                        source_queue_id: VarInt::from_u8(1),
+                        dest_queue_id: VarInt::from_u8(2),
+                    },
+                    stream_id: VarInt::from_u8(1),
+                    offset: VarInt::ZERO,
+                    is_fin: false,
+                },
+                source_sender_id: LocalSenderId::UNSPECIFIED,
+                payload,
+                path_secret_entry: entry,
+                completion: None,
+                status: TransmissionStatus::Pending,
+                ttl: DEFAULT_TTL,
+                transmission_time: None,
+            }
+            .into(),
+        );
+
+        let cc_info = context
+            .cca
+            .on_packet_sent(time_sent, 100, false, &context.rtt_estimator);
+        Packet::new(
+            frames,
+            TransmissionInfo {
+                cc_info,
+                time_sent,
+                sent_bytes: 100,
+            },
+        )
+    }
+
+    #[test]
+    fn detect_loss_applies_time_threshold_without_pn_threshold() {
+        let entry = make_path_secret_entry();
+        let mut context = make_context(&entry);
+        let counters =
+            super::super::counters::Send::new(&Registry::default(), LocalSenderId::new(VarInt::ZERO));
+        let mut completed = CollectFrames::default();
+        let mut lost = CollectFrames::default();
+        let mut cancelled = CollectFrames::default();
+        let mut random = xorshift::Rng::with_seed(1);
+
+        // With max_acked=2, PN threshold underflows (no PN-based loss), but packet 1 is
+        // old enough relative to packet 2's tx time to be declared lost by time threshold.
+        let packet1 = make_packet(&mut context, entry.clone(), make_ts(100));
+        context.inflight.insert(make_pn(1), packet1);
+        let packet2 = make_packet(&mut context, entry.clone(), make_ts(104));
+        context.inflight.insert(make_pn(2), packet2);
+        context.next_packet_number = VarInt::from_u8(3);
+
+        detect_loss(
+            &mut context,
+            VarInt::from_u8(2),
+            make_ts(104),
+            &counters,
+            &mut completed,
+            &mut lost,
+            &mut cancelled,
+            make_ts(110),
+            &mut random,
+        );
+
+        assert_eq!(lost.0.len(), 1, "old packet should be declared lost by time");
+        assert!(cancelled.0.is_empty());
+        assert!(completed.0.is_empty());
+        assert!(context.inflight.remove(make_pn(1)).is_none());
+        assert!(context.inflight.remove(make_pn(2)).is_some());
     }
 }

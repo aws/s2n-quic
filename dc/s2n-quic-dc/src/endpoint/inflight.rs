@@ -134,6 +134,27 @@ impl Map {
         Some(unsafe { VarInt::new_unchecked(max) })
     }
 
+    /// Returns the largest packet number in the contiguous lost prefix, if any.
+    ///
+    /// The scan stops as soon as a packet is not considered lost and therefore only
+    /// walks the front prefix instead of the full map.
+    #[inline]
+    pub fn loss_cutoff(
+        &self,
+        largest_acked: PacketNumber,
+        pn_threshold: Option<PacketNumber>,
+        time_threshold: Option<s2n_quic_core::time::Timestamp>,
+    ) -> Option<PacketNumber> {
+        self.inner
+            .contiguous_prefix_cutoff(largest_acked, |pn, packet| {
+            let lost_by_pn = pn_threshold.is_some_and(|threshold| pn <= threshold);
+            let lost_by_time = time_threshold
+                .zip(packet.transmission_info.as_ref())
+                .is_some_and(|(threshold, tx_info)| tx_info.time_sent <= threshold);
+            lost_by_pn || lost_by_time
+        })
+    }
+
     /// Find the oldest inflight packet number that has data frames available for probing.
     ///
     /// Returns `None` if all inflight entries are shells or if the map is empty.
@@ -316,6 +337,10 @@ mod tests {
 
     /// Create a Packet containing one FlowData (ack-eliciting) frame.
     fn make_packet(entry: Arc<PathSecretEntry>) -> Packet {
+        make_packet_at(entry, Duration::from_millis(100))
+    }
+
+    fn make_packet_at(entry: Arc<PathSecretEntry>, at: Duration) -> Packet {
         let mut frames = Queue::new();
         let mut payload = ByteVec::new();
         payload.push_back(bytes::Bytes::from_static(b"x"));
@@ -341,8 +366,7 @@ mod tests {
 
         let mut cca = crate::congestion::Controller::new(1500);
         let rtt = RttEstimator::new(Duration::from_millis(2));
-        let now =
-            unsafe { s2n_quic_core::time::Timestamp::from_duration(Duration::from_millis(100)) };
+        let now = unsafe { s2n_quic_core::time::Timestamp::from_duration(at) };
         let cc_info = cca.on_packet_sent(now, 100, false, &rtt);
         Packet::new(
             frames,
@@ -381,6 +405,30 @@ mod tests {
         map.insert(pn2, make_packet(fake_entry()));
         // Should return the lowest (oldest) PN
         assert_eq!(map.oldest_non_shell_pn(), Some(pn1));
+    }
+
+    #[test]
+    fn loss_cutoff_uses_time_threshold_prefix() {
+        let mut map = Map::new(make_gauge());
+        let pn1 = make_pn(1);
+        let pn2 = make_pn(2);
+        let pn3 = make_pn(3);
+        map.insert(
+            pn1,
+            make_packet_at(fake_entry(), Duration::from_millis(100)),
+        );
+        map.insert(
+            pn2,
+            make_packet_at(fake_entry(), Duration::from_millis(104)),
+        );
+        map.insert(
+            pn3,
+            make_packet_at(fake_entry(), Duration::from_millis(110)),
+        );
+
+        let threshold =
+            unsafe { s2n_quic_core::time::Timestamp::from_duration(Duration::from_millis(105)) };
+        assert_eq!(map.loss_cutoff(pn3, None, Some(threshold)), Some(pn2));
     }
 
     // ── take_oldest_for_probe ─────────────────────────────────────────────────
