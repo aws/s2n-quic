@@ -20,11 +20,12 @@ use crate::{
     stream::endpoint::testing::sim::{Client, Server, SERVER_PORT},
     testing::{ext::*, sim, without_tracing},
     tracing::*,
+    xorshift,
 };
 use bach::time::{timeout, Instant};
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use core::ops::Range;
-use s2n_quic_core::varint::VarInt;
+use s2n_quic_core::{stream::testing::Data, varint::VarInt};
 use std::{
     collections::HashSet,
     sync::{
@@ -179,7 +180,8 @@ impl DroppedPackets {
 
                     let (mut reader, mut writer) = stream.into_split();
 
-                    let mut body = Bytes::from(vec![42u8; body_len]);
+                    // Use Data to send without allocating the full body buffer.
+                    let mut body = Data::new(body_len as u64);
 
                     timeout(TRANSFER_TIMEOUT, async {
                         writer
@@ -187,15 +189,10 @@ impl DroppedPackets {
                             .await
                             .expect("client write");
 
-                        let mut response = BytesMut::with_capacity(body_len);
-                        loop {
-                            let n = reader.read_into(&mut response).await.expect("client read");
-                            if n == 0 {
-                                break;
-                            }
-                        }
-                        assert_eq!(response.len(), body_len);
-                        assert!(response.iter().all(|&b| b == 42u8));
+                        // Receive and validate the echoed response.
+                        let mut rx = Data::new(body_len as u64);
+                        let _ = reader.read_to_end(&mut rx).await.expect("client read");
+                        assert!(rx.is_finished(), "client did not receive complete echo");
                     })
                     .await
                     .expect("transfer timed out");
@@ -221,15 +218,13 @@ impl DroppedPackets {
                             let stream = stream.validate().await.expect("server validate");
                             let (mut reader, mut writer) = stream.into_split();
 
-                            let mut request = BytesMut::with_capacity(body_len);
-                            loop {
-                                let n = reader.read_into(&mut request).await.expect("server read");
-                                if n == 0 {
-                                    break;
-                                }
-                            }
+                            // Receive and validate the client data.
+                            let mut rx = Data::new(body_len as u64);
+                            let _ = reader.read_to_end(&mut rx).await.expect("server read");
+                            assert!(rx.is_finished(), "server did not receive complete request");
 
-                            let mut response = request.freeze();
+                            // Echo back using Data — no need to buffer the whole payload.
+                            let mut response = Data::new(body_len as u64);
                             writer
                                 .write_all_from_fin(&mut response)
                                 .await
@@ -857,7 +852,7 @@ fn ack_only_probe_does_not_create_ack_loop() {
                         .await
                         .expect("connect");
                     let (_reader, mut writer) = stream.into_split();
-                    let mut body = Bytes::from(vec![1u8; BODY_LEN]);
+                    let mut body = Data::new(BODY_LEN as u64);
                     writer
                         .write_all_from_fin(&mut body)
                         .await
@@ -905,4 +900,185 @@ fn init_uniqueness_fuzz() {
         .for_each(|actions| {
             sim_init_uniqueness(&actions, 10_000);
         });
+}
+
+// ── Symmetric 5-tuple routing ────────────────────────────────────────────────
+
+/// Verifies that data and ACK packets form symmetric 5-tuples.
+///
+/// For each data packet A:src_port → B:dst_port, the corresponding ACK must
+/// flow B:dst_port → A:src_port (same ports, reversed direction). This is
+/// required for conntrack/middlebox compatibility.
+///
+/// The test captures all packet (source, destination) port pairs from the
+/// network monitor, grouped by direction. It then asserts that for every
+/// port pair seen in one direction, the reverse pair exists in the other
+/// direction.
+#[test]
+fn symmetric_5tuple_routing() {
+    use std::net::SocketAddr;
+
+    let forward_tuples: Arc<Mutex<HashSet<(SocketAddr, SocketAddr)>>> =
+        Arc::new(Mutex::new(HashSet::new()));
+    let reverse_tuples: Arc<Mutex<HashSet<(SocketAddr, SocketAddr)>>> =
+        Arc::new(Mutex::new(HashSet::new()));
+
+    let forward = forward_tuples.clone();
+    let reverse = reverse_tuples.clone();
+
+    let _guard = without_tracing();
+    sim(|| {
+        // Capture all packet 5-tuples from the network.
+        {
+            let forward = forward.clone();
+            let reverse = reverse.clone();
+            bach::net::monitor::on_packet_sent(move |packet| {
+                let src = packet.source();
+                let dst = packet.destination();
+                // Classify by direction: server→client or client→server.
+                // Server is at 10.0.0.1, client at 10.0.0.2 in the sim.
+                if src.ip() == std::net::IpAddr::from([10, 0, 0, 1u8]) {
+                    forward.lock().unwrap().insert((src, dst));
+                } else {
+                    reverse.lock().unwrap().insert((src, dst));
+                }
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        let acceptor_id = VarInt::from_u8(1);
+
+        // Server: validate and echo back.
+        {
+            let acceptor_id = acceptor_id;
+            async move {
+                let server = Server::new();
+                let mut acceptor = server
+                    .register_acceptor_channel(acceptor_id, 8)
+                    .expect("acceptor registration");
+
+                while let Some(stream) = acceptor.recv().await {
+                    async move {
+                        let stream = stream.validate().await.expect("validate");
+                        let (mut reader, mut writer) = stream.into_split();
+
+                        // Receive and validate the client data.
+                        let mut rx = Data::new(1 << 20);
+                        let _ = reader.read_to_end(&mut rx).await.expect("read");
+                        assert!(rx.is_finished(), "server did not receive full request");
+
+                        // Echo back using Data — no allocation needed.
+                        let mut response = Data::new(1 << 20);
+                        writer
+                            .write_all_from_fin(&mut response)
+                            .await
+                            .expect("write");
+                    }
+                    .spawn();
+                }
+            }
+            .group("server")
+            .spawn();
+        }
+
+        // Client: send 1 MiB and validate the echo back.
+        // Using 1 MiB of data ensures all 8 send sockets are exercised,
+        // giving full ECMP coverage across all 5-tuple pairs.
+        {
+            async move {
+                let mut client = Client::new();
+                let stream = client
+                    .connect("server:0", acceptor_id)
+                    .await
+                    .expect("connect");
+                let (mut reader, mut writer) = stream.into_split();
+
+                // Send 1 MiB without allocating the full buffer.
+                let mut body = Data::new(1 << 20);
+                writer
+                    .write_all_from_fin(&mut body)
+                    .await
+                    .expect("client write");
+
+                // Receive and validate the echoed response.
+                let mut rx = Data::new(1 << 20);
+                let _ = reader.read_to_end(&mut rx).await.expect("client read");
+                assert!(rx.is_finished(), "client did not receive full echo");
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        }
+    });
+
+    let forward = forward_tuples.lock().unwrap();
+    let reverse = reverse_tuples.lock().unwrap();
+
+    assert!(!forward.is_empty(), "no server→client packets observed");
+    assert!(!reverse.is_empty(), "no client→server packets observed");
+
+    // For every (src, dst) pair in one direction, the reverse (dst, src) must
+    // exist in the other direction. This proves symmetric 5-tuples.
+    let mut violations = Vec::new();
+    for &(src, dst) in forward.iter() {
+        if !reverse.contains(&(dst, src)) {
+            violations.push(format!(
+                "server→client {src} → {dst} has no symmetric client→server {dst} → {src}"
+            ));
+        }
+    }
+    for &(src, dst) in reverse.iter() {
+        if !forward.contains(&(dst, src)) {
+            violations.push(format!(
+                "client→server {src} → {dst} has no symmetric server→client {dst} → {src}"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "5-tuple symmetry violated — middleboxes will not be able to correlate \
+         these flows:\n{}",
+        violations.join("\n")
+    );
+}
+
+// ── Loss distribution benchmark ──────────────────────────────────────────────
+
+/// Runs many deterministic loss patterns and snapshots the latency distribution.
+///
+/// This test generates 200 loss patterns from a seeded PRNG so the set is
+/// reproducible. Each pattern is a sequence of (pass, drop) run-lengths with
+/// values 0..=10 and total vector length 4..=20. The snapshot captures
+/// p50/p90/p99/max so that changes in routing or recovery logic are explicitly
+/// visible as snapshot diffs.
+#[test]
+fn loss_latency_distribution() {
+    let _guard = without_tracing();
+
+    let mut rng = xorshift::Rng::with_seed(0xdeadbeef_cafebabe);
+    let next = |rng: &mut xorshift::Rng| -> u8 { (rng.next_u64() % 11) as u8 };
+
+    let patterns: Vec<DroppedPackets> = (0..200)
+        .map(|_| {
+            let len = 4 + (next(&mut rng) as usize % 17);
+            let counts: Vec<u8> = (0..len).map(|_| next(&mut rng)).collect();
+            DroppedPackets { counts }
+        })
+        .collect();
+
+    let mut durations: Vec<Duration> = patterns.into_iter().map(|p| p.sim(1 << 18)).collect();
+
+    durations.sort();
+    let n = durations.len();
+    let p50 = durations[n / 2];
+    let p90 = durations[n * 9 / 10];
+    let p99 = durations[n * 99 / 100];
+    let max = durations[n - 1];
+    let sum: Duration = durations.iter().sum();
+    let mean = sum / n as u32;
+
+    insta::assert_snapshot!(format!(
+        "n={n}\nmean={mean:?}\np50={p50:?}\np90={p90:?}\np99={p99:?}\nmax={max:?}"
+    ));
 }

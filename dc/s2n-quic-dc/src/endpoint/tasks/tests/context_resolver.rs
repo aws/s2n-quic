@@ -42,6 +42,14 @@ fn setup() -> Harness {
     let sender_idx_to_local =
         IdMap::<LocalSenderId, LocalSendSocketId>::new(1, LocalSendSocketId::new(0));
 
+    let (immediate_tx_raw, _immediate_rx) = unsync::new_with_adapter::<send::TxImmediateAdapter>();
+    let socket_immediate_txs: IdMap<LocalSendSocketId, _> =
+        core::iter::once((LocalSendSocketId::new(0), immediate_tx_raw)).collect();
+    let mut sender_idx_to_local_imm: IdMap<LocalSenderId, LocalSendSocketId> =
+        IdMap::new(1, LocalSendSocketId::new(0));
+    sender_idx_to_local_imm[LocalSenderId::from_index(0)] = LocalSendSocketId::new(0);
+    let immediate_tx = send::ImmediateSender::new(socket_immediate_txs, sender_idx_to_local_imm);
+
     let (tx_wheel_tx, tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
     let (pto_wheel_tx, _) = unsync::new_with_adapter::<send::PtoWheelAdapter>();
     let (idle_wheel_tx, _) = unsync::new_with_adapter::<send::IdleWheelAdapter>();
@@ -54,6 +62,7 @@ fn setup() -> Harness {
         sender_idx_to_local,
         1,
         Clock::default(),
+        immediate_tx,
         tx_wheel_tx,
         pto_wheel_tx,
         idle_wheel_tx,
@@ -158,41 +167,49 @@ fn wheel_router_routes_all_interest_combinations() {
 
         let interests = [
             send::WheelInterest {
+                immediate: false,
                 transmission: false,
                 pto: false,
                 idle_timeout: false,
             },
             send::WheelInterest {
+                immediate: false,
                 transmission: true,
                 pto: false,
                 idle_timeout: false,
             },
             send::WheelInterest {
+                immediate: false,
                 transmission: false,
                 pto: true,
                 idle_timeout: false,
             },
             send::WheelInterest {
+                immediate: false,
                 transmission: false,
                 pto: false,
                 idle_timeout: true,
             },
             send::WheelInterest {
+                immediate: false,
                 transmission: true,
                 pto: true,
                 idle_timeout: false,
             },
             send::WheelInterest {
+                immediate: false,
                 transmission: true,
                 pto: false,
                 idle_timeout: true,
             },
             send::WheelInterest {
+                immediate: false,
                 transmission: false,
                 pto: true,
                 idle_timeout: true,
             },
             send::WheelInterest {
+                immediate: false,
                 transmission: true,
                 pto: true,
                 idle_timeout: true,
@@ -202,7 +219,9 @@ fn wheel_router_routes_all_interest_combinations() {
         let (tx_sender, mut tx_items) = unsync::new_with_adapter::<send::TxWheelAdapter>();
         let (pto_sender, mut pto_items) = unsync::new_with_adapter::<send::PtoWheelAdapter>();
         let (idle_sender, mut idle_items) = unsync::new_with_adapter::<send::IdleWheelAdapter>();
-        let mut router = send::WheelRouter::new(input, tx_sender, pto_sender, idle_sender);
+        let (imm_sender, mut imm_items) = unsync::new_with_adapter::<send::TxImmediateAdapter>();
+        let mut router =
+            send::WheelRouter::new(input, imm_sender, tx_sender, pto_sender, idle_sender);
 
         async move {
             while router.recv().await.is_some() {}
@@ -219,9 +238,16 @@ fn wheel_router_routes_all_interest_combinations() {
             while idle_items.recv().await.is_some() {
                 idle += 1;
             }
+            let mut imm = 0usize;
+            while imm_items.recv().await.is_some() {
+                imm += 1;
+            }
             assert_eq!(tx, 4);
             assert_eq!(pto, 4);
             assert_eq!(idle, 4);
+            // None of the test interests have immediate=true, so the immediate
+            // channel must receive zero items.
+            assert_eq!(imm, 0);
         }
         .primary()
         .spawn();

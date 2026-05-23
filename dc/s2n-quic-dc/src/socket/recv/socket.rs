@@ -24,6 +24,19 @@ pub trait Socket: crate::socket::LocalAddr + Send + 'static {
     ) -> Poll<io::Result<usize>>;
 }
 
+impl<T: Socket + Sync> Socket for std::sync::Arc<T> {
+    #[inline]
+    fn poll_recv(
+        &self,
+        cx: &mut Context,
+        addr: &mut Addr,
+        cmsg: &mut cmsg::Receiver,
+        buffer: &mut [IoSliceMut],
+    ) -> Poll<io::Result<usize>> {
+        (**self).poll_recv(cx, addr, cmsg, buffer)
+    }
+}
+
 impl<T> Socket for BusyPoll<T>
 where
     T: udp::Socket,

@@ -165,9 +165,11 @@ pub struct SimEndpointConfig {
     /// Number of send sockets.  Must be a power of two (≥ 1).
     pub num_send_sockets: usize,
 
-    /// Number of recv sockets (and recv_io workers).  Each recv socket gets its
-    /// own recv_io worker.
+    /// Number of recv sockets.  Distributed round-robin across recv_io workers.
     pub num_recv_sockets: usize,
+
+    /// Number of recv_io workers.  Each worker handles one or more recv sockets.
+    pub num_recv_io_workers: usize,
 
     /// Number of send workers.
     pub num_send_workers: usize,
@@ -199,7 +201,13 @@ impl Default for SimEndpointConfig {
         Self {
             bind_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), 0),
             num_send_sockets: 8,
-            num_recv_sockets: 4,
+            // TODO: support asymmetric send/recv socket counts — currently both sides
+            // must be equal so that the shared-bidirectional-socket setup in
+            // setup_sim_endpoint mirrors production Config::create(). Unequal counts
+            // are structurally valid but the sim harness does not yet wire them up
+            // correctly for symmetric-5-tuple routing tests.
+            num_recv_sockets: 8,
+            num_recv_io_workers: 2,
             num_send_workers: 4,
             num_recv_dispatch_workers: 4,
             submission_shards: 4,
@@ -234,6 +242,7 @@ pub fn setup_sim_endpoint(
         bind_addr,
         num_send_sockets,
         num_recv_sockets,
+        num_recv_io_workers,
         num_send_workers,
         num_recv_dispatch_workers,
         submission_shards,
@@ -268,28 +277,37 @@ pub fn setup_sim_endpoint(
         o
     };
 
-    let send_sockets: Vec<Arc<bach::net::UdpSocket>> = (0..num_send_sockets)
-        .map(|_| {
-            let sock =
-                bach::net::UdpSocket::new(&send_bind_opts).expect("failed to bind send socket");
-            Arc::new(sock)
-        })
-        .collect();
+    // Share the first min(send, recv) sockets between send and recv (bidirectional),
+    // mirroring production Config::create() which uses try_clone(). This ensures
+    // symmetric 5-tuple routing works: send_socket[i] and recv_socket[i] share the
+    // same port for i < shared_count.
+    let shared_count = num_send_sockets.min(num_recv_sockets);
+    let mut send_sockets: Vec<Arc<bach::net::UdpSocket>> = Vec::with_capacity(num_send_sockets);
+    let mut recv_sockets: Vec<Arc<bach::net::UdpSocket>> = Vec::with_capacity(num_recv_sockets);
 
-    // The first recv socket binds to the configured address (e.g. SERVER_PORT for
-    // servers) so that peer address lookup works.  Additional recv sockets use
-    // ephemeral ports on the same IP.
-    let recv_sockets: Vec<bach::net::UdpSocket> = (0..num_recv_sockets)
-        .enumerate()
-        .map(|(i, _)| {
-            let opts = if i == 0 {
-                &recv_bind_opts
-            } else {
-                &send_bind_opts
-            };
-            bach::net::UdpSocket::new(opts).expect("failed to bind recv socket")
-        })
-        .collect();
+    // Shared sockets: same underlying socket for both send and recv.
+    for i in 0..shared_count {
+        let opts = if i == 0 {
+            &recv_bind_opts
+        } else {
+            &send_bind_opts
+        };
+        let sock = Arc::new(bach::net::UdpSocket::new(opts).expect("failed to bind shared socket"));
+        send_sockets.push(sock.clone());
+        recv_sockets.push(sock);
+    }
+
+    // Extra send-only sockets.
+    for _ in shared_count..num_send_sockets {
+        let sock = bach::net::UdpSocket::new(&send_bind_opts).expect("failed to bind send socket");
+        send_sockets.push(Arc::new(sock));
+    }
+
+    // Extra recv-only sockets.
+    for _ in shared_count..num_recv_sockets {
+        let sock = bach::net::UdpSocket::new(&send_bind_opts).expect("failed to bind recv socket");
+        recv_sockets.push(Arc::new(sock));
+    }
 
     let send_pool = Pool::new(mtu);
     let recv_pool = Pool::new(mtu);
@@ -301,7 +319,7 @@ pub fn setup_sim_endpoint(
     let mut ids = 0usize..;
     let frame_dispatch = ids.next().unwrap();
     let send: Vec<usize> = (&mut ids).take(num_send_workers).collect();
-    let recv_io: Vec<usize> = (&mut ids).take(num_recv_sockets).collect();
+    let recv_io: Vec<usize> = (&mut ids).take(num_recv_io_workers).collect();
     let recv_dispatch: Vec<usize> = (&mut ids).take(num_recv_dispatch_workers).collect();
     let waker_drain: Vec<usize> = (&mut ids).take(1).collect();
     let background = ids.next().unwrap();

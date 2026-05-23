@@ -41,6 +41,26 @@ fn send_ack_processor_ignores_invalid_sender_id() {
         let (cancelled_tx, mut cancelled_rx) = unsync::new::<frame::Frame>();
         let (frame_tx, _frame_rx) = frame::submission_channel(1);
 
+        let (immediate_tx_raw, _immediate_rx) =
+            unsync::new_with_adapter::<send::TxImmediateAdapter>();
+        let socket_immediate_txs: crate::endpoint::id::IdMap<
+            crate::endpoint::id::LocalSendSocketId,
+            _,
+        > = core::iter::once((
+            crate::endpoint::id::LocalSendSocketId::new(0),
+            immediate_tx_raw,
+        ))
+        .collect();
+        let mut sender_idx_to_local_imm =
+            crate::endpoint::id::IdMap::<
+                crate::endpoint::id::LocalSenderId,
+                crate::endpoint::id::LocalSendSocketId,
+            >::new(1, crate::endpoint::id::LocalSendSocketId::new(0));
+        sender_idx_to_local_imm[crate::endpoint::id::LocalSenderId::from_index(0)] =
+            crate::endpoint::id::LocalSendSocketId::new(0);
+        let immediate_tx =
+            send::ImmediateSender::new(socket_immediate_txs, sender_idx_to_local_imm);
+
         let rx = tasks::send_ack_processor(
             ack_rx,
             send_caches,
@@ -52,6 +72,7 @@ fn send_ack_processor_ignores_invalid_sender_id() {
             completed_tx,
             cancelled_tx,
             registry.register("!send.invalid_sender_idx"),
+            immediate_tx,
             tx_wheel_tx,
             pto_wheel_tx,
             idle_wheel_tx,
@@ -124,9 +145,30 @@ fn send_pto_timeout_routes_pending_context_to_tx_wheel() {
         let (idle_wheel_tx, mut idle_wheel_rx) =
             unsync::new_with_adapter::<send::IdleWheelAdapter>();
 
+        let (pto_immediate_tx_raw, _pto_immediate_rx) =
+            unsync::new_with_adapter::<send::TxImmediateAdapter>();
+        let pto_socket_immediate_txs: crate::endpoint::id::IdMap<
+            crate::endpoint::id::LocalSendSocketId,
+            _,
+        > = core::iter::once((
+            crate::endpoint::id::LocalSendSocketId::new(0),
+            pto_immediate_tx_raw,
+        ))
+        .collect();
+        let mut pto_sender_idx_to_local =
+            crate::endpoint::id::IdMap::<
+                crate::endpoint::id::LocalSenderId,
+                crate::endpoint::id::LocalSendSocketId,
+            >::new(1, crate::endpoint::id::LocalSendSocketId::new(0));
+        pto_sender_idx_to_local[crate::endpoint::id::LocalSenderId::from_index(0)] =
+            crate::endpoint::id::LocalSendSocketId::new(0);
+        let pto_immediate_tx =
+            send::ImmediateSender::new(pto_socket_immediate_txs, pto_sender_idx_to_local);
+
         let rx = tasks::send_pto_timeout(
             input,
             clock,
+            pto_immediate_tx,
             tx_wheel_tx,
             pto_wheel_tx,
             idle_wheel_tx,

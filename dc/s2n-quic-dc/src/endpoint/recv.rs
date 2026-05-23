@@ -538,7 +538,7 @@ impl Cache {
                     "recv cache key_id advanced — replacing entry"
                 );
 
-                let dest_sender_id = route.sender_id_for_ack(&credentials.id, remote_sender_id);
+                let dest_sender_id = route.sender_id_for_ack(remote_sender_id);
                 let new_ctx = Rc::new(RefCell::new(Context::new(
                     path_entry,
                     remote_sender_id,
@@ -581,7 +581,7 @@ impl Cache {
                     )
                     .map_err(|_| CacheError::ReplayDetected)?;
 
-                let dest_sender_id = route.sender_id_for_ack(&credentials.id, remote_sender_id);
+                let dest_sender_id = route.sender_id_for_ack(remote_sender_id);
 
                 let ctx = Rc::new(RefCell::new(Context::new(
                     path_entry,

@@ -52,16 +52,13 @@ pub(crate) trait SenderRoute: Clone + Copy + Send + 'static {
 
     /// Returns the local sender_id that should be used to send ACK packets back to the peer.
     ///
-    /// This determines which of OUR send sockets carries the ACK, ensuring stable
-    /// (credentials, sender_id) tuples for consistent RTT measurements.
+    /// Uses `source_sender_id % num_send` so the ACK goes from the same shared port that
+    /// received the data, achieving symmetric 5-tuples for conntrack compatibility.
     #[inline]
-    fn sender_id_for_ack(
-        &self,
-        credentials_id: &credentials::Id,
-        source_sender_id: RemoteSenderId,
-    ) -> super::id::LocalSenderId {
-        let hash = hash_id_and_sender(credentials_id, source_sender_id.as_varint());
-        super::id::LocalSenderId::new(unsafe { VarInt::new_unchecked(self.route(hash) as u64) })
+    fn sender_id_for_ack(&self, source_sender_id: RemoteSenderId) -> super::id::LocalSenderId {
+        super::id::LocalSenderId::new(unsafe {
+            VarInt::new_unchecked(self.route(source_sender_id.as_varint().as_u64()) as u64)
+        })
     }
 
     /// Returns the local worker_id that is responsible for decoding/decrypting a packet

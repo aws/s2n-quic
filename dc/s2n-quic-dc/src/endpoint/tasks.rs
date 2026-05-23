@@ -21,8 +21,8 @@ use crate::{
         channel::{
             intrusive::{self, unsync},
             Budget, FilterMap, Flatten, FlattenList, FlattenSegments, InspectErr, Map, Paced,
-            Priority as PriorityRx, Receiver, ReceiverExt as _, RouterAdapter, SocketReceiver,
-            SocketSender, UnboundedSender,
+            Priority as PriorityRx, PrioritySelect, Receiver, ReceiverExt as _, RouterAdapter,
+            SocketReceiver, SocketSender, UnboundedSender,
         },
         pool::descriptor,
         rate::Rate,
@@ -256,6 +256,16 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         })
         .collect();
 
+    // Per-socket immediate channel: bypasses the tx wheel for urgent transmissions
+    // (ACKs, PTO probes arriving while context is already wheel-scheduled).
+    let (socket_immediate_txs, socket_immediate_rxs): (IdMap<_, _>, IdMap<_, _>) = send_sockets
+        .iter()
+        .map(|(id, _st)| {
+            let (tx, rx) = unsync::new_with_adapter::<send::TxImmediateAdapter>();
+            ((id, tx), (id, rx))
+        })
+        .collect();
+
     // Map sender_idx → local socket position for this worker.
     let mut sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId> =
         IdMap::new(total_sender_ids, LocalSendSocketId::new(usize::MAX));
@@ -287,6 +297,9 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             (local_id, cache)
         })
         .collect();
+
+    let immediate_tx =
+        send::ImmediateSender::new(socket_immediate_txs, sender_idx_to_local.clone());
 
     let variant = format!("send.worker.{worker_id}");
     let q_resolver_to_tx_wheel =
@@ -365,6 +378,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             sender_idx_to_local.clone(),
             total_sender_ids,
             clock.clone(),
+            immediate_tx.clone(),
             GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
             GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
             GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
@@ -416,6 +430,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             GaugedSender::new(completed_tx, completion_sender),
             GaugedSender::new(cancelled_tx.clone(), cancelled_sender),
             counter_registry.register("!send.invalid_sender_idx"),
+            immediate_tx.clone(),
             GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
             GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
             GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
@@ -540,6 +555,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         let rx = send_pto_timeout(
             rx,
             clock.clone(),
+            immediate_tx.clone(),
             GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
             GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
             GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
@@ -593,8 +609,13 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
 
     // Per-socket assembler + send tasks.
     let asm_counters = AssemblerCounters::new(&counter_registry);
-    for (local_id, st, context_rx, gauge) in
-        (send_sockets, socket_context_rxs, q_wheel_to_assembler).join()
+    for (local_id, st, immediate_rx, context_rx, gauge) in (
+        send_sockets,
+        socket_immediate_rxs,
+        socket_context_rxs,
+        q_wheel_to_assembler,
+    )
+        .join()
     {
         let sender_idx = st.sender_idx;
         let task_name = format!("task.assembler.send.{sender_idx}");
@@ -636,6 +657,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
         let send_counters = send_caches[local_id].borrow().send_counters().clone();
         let context_rx = GaugedReceiver::new(context_rx, assembler_receiver);
         let rx = send_socket_assembler(
+            immediate_rx,
             context_rx,
             clock,
             sender_idx,
@@ -648,6 +670,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             send_counters,
             st.per_socket_send_rate,
             st.socket,
+            immediate_tx.clone(),
             tx_wheel_tx,
             pto_wheel_tx,
             idle_wheel_tx,
@@ -711,12 +734,13 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
 /// For each `FrameBatch`, looks up the peer's `send::Context` (creating one if needed),
 /// pushes the batch's frames into the context's pending queues, and enqueues the context
 /// into the appropriate timing wheels (tx, pto, idle).
-pub fn context_resolver<BatchRx, Clk, TxW, PtoW, IdleW>(
+pub fn context_resolver<BatchRx, Clk, ImmW, TxW, PtoW, IdleW>(
     batch_rx: BatchRx,
     mut send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
     sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId>,
     total_sender_ids: usize,
     clock: Clk,
+    immediate_tx: ImmW,
     tx_wheel_tx: TxW,
     pto_wheel_tx: PtoW,
     idle_wheel_tx: IdleW,
@@ -724,6 +748,7 @@ pub fn context_resolver<BatchRx, Clk, TxW, PtoW, IdleW>(
 where
     BatchRx: Receiver<Entry<FrameBatch>>,
     Clk: precision::Clock + s2n_quic_core::time::Clock,
+    ImmW: UnboundedSender<Rc<RefCell<send::Context>>>,
     TxW: UnboundedSender<Rc<RefCell<send::Context>>>,
     PtoW: UnboundedSender<Rc<RefCell<send::Context>>>,
     IdleW: UnboundedSender<Rc<RefCell<send::Context>>>,
@@ -770,7 +795,7 @@ where
         },
     );
     let rx = Flatten::new(rx);
-    send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx)
+    send::WheelRouter::new(rx, immediate_tx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx)
 }
 
 /// Builds the ACK-processing receiver pipeline used by the send worker.
@@ -778,7 +803,7 @@ where
 /// This pipeline decodes incoming ACK messages, updates send context state, and routes
 /// the resulting wheel interest to tx/pto/idle schedulers.
 #[allow(clippy::too_many_arguments)]
-pub fn send_ack_processor<AckRx, Clk, Rand, C, TxW, PtoW, IdleW>(
+pub fn send_ack_processor<AckRx, Clk, Rand, C, ImmW, TxW, PtoW, IdleW>(
     ack_rx: AckRx,
     send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
     sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId>,
@@ -789,6 +814,7 @@ pub fn send_ack_processor<AckRx, Clk, Rand, C, TxW, PtoW, IdleW>(
     completed_tx: C,
     cancelled_tx: C,
     invalid_sender_idx: counter::Counter,
+    immediate_tx: ImmW,
     tx_wheel_tx: TxW,
     pto_wheel_tx: PtoW,
     idle_wheel_tx: IdleW,
@@ -798,6 +824,7 @@ where
     Clk: precision::Clock + s2n_quic_core::time::Clock,
     Rand: s2n_quic_core::random::Generator,
     C: UnboundedSender<Entry<Frame>>,
+    ImmW: UnboundedSender<Rc<RefCell<send::Context>>>,
     TxW: UnboundedSender<Rc<RefCell<send::Context>>>,
     PtoW: UnboundedSender<Rc<RefCell<send::Context>>>,
     IdleW: UnboundedSender<Rc<RefCell<send::Context>>>,
@@ -815,16 +842,17 @@ where
         invalid_sender_idx,
     );
     let rx = Flatten::new(rx);
-    send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx)
+    send::WheelRouter::new(rx, immediate_tx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx)
 }
 
 /// Builds the send-worker PTO timeout receiver pipeline.
 ///
 /// For each context emitted by the PTO wheel, updates probe state and routes the resulting
 /// wheel interest to tx/pto/idle schedulers.
-pub fn send_pto_timeout<CtxRx, Clk, TxW, PtoW, IdleW>(
+pub fn send_pto_timeout<CtxRx, Clk, ImmW, TxW, PtoW, IdleW>(
     pto_context_rx: CtxRx,
     clock: Clk,
+    immediate_tx: ImmW,
     tx_wheel_tx: TxW,
     pto_wheel_tx: PtoW,
     idle_wheel_tx: IdleW,
@@ -836,6 +864,7 @@ pub fn send_pto_timeout<CtxRx, Clk, TxW, PtoW, IdleW>(
 where
     CtxRx: Receiver<Rc<RefCell<send::Context>>>,
     Clk: precision::Clock,
+    ImmW: UnboundedSender<Rc<RefCell<send::Context>>>,
     TxW: UnboundedSender<Rc<RefCell<send::Context>>>,
     PtoW: UnboundedSender<Rc<RefCell<send::Context>>>,
     IdleW: UnboundedSender<Rc<RefCell<send::Context>>>,
@@ -865,7 +894,7 @@ where
             (context, wheel_interest)
         },
     );
-    send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx)
+    send::WheelRouter::new(rx, immediate_tx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx)
 }
 
 /// Builds a receiver that dispatches completed frames back to their owning writers.
@@ -973,7 +1002,8 @@ async fn wheel_drain<A, T, F, const GRANULARITY_US: u64>(
 /// [`Assembler`]: crate::endpoint::combinator::Assembler
 /// [`send::WheelRouter`]: crate::endpoint::send::WheelRouter
 /// [`Segments`]: crate::socket::pool::descriptor::Segments
-pub fn send_socket_assembler<ContextRx, Clk, Socket, C, A, TxW, PtoW, IdleW>(
+pub fn send_socket_assembler<ImmediateRx, ContextRx, Clk, Socket, C, A, ImmW, TxW, PtoW, IdleW>(
+    immediate_rx: ImmediateRx,
     context_rx: ContextRx,
     clock: Clk,
     source_sender_id: LocalSenderId,
@@ -986,20 +1016,24 @@ pub fn send_socket_assembler<ContextRx, Clk, Socket, C, A, TxW, PtoW, IdleW>(
     send_counters: Rc<endpoint::counters::Send>,
     per_socket_send_rate: Rate,
     socket: Socket,
+    immediate_tx: ImmW,
     tx_wheel_tx: TxW,
     pto_wheel_tx: PtoW,
     idle_wheel_tx: IdleW,
 ) -> impl Receiver<()>
 where
+    ImmediateRx: Receiver<Rc<RefCell<send::Context>>>,
     ContextRx: Receiver<Rc<RefCell<send::Context>>>,
     Clk: precision::Clock + Clone,
     Socket: crate::socket::send::Socket,
     C: UnboundedSender<Queue<Frame>>,
     A: UnboundedSender<Queue<msg::Sender>>,
+    ImmW: UnboundedSender<Rc<RefCell<send::Context>>>,
     TxW: UnboundedSender<Rc<RefCell<send::Context>>>,
     PtoW: UnboundedSender<Rc<RefCell<send::Context>>>,
     IdleW: UnboundedSender<Rc<RefCell<send::Context>>>,
 {
+    let context_rx = PrioritySelect::new(immediate_rx, context_rx);
     let rx = Assembler::new(
         context_rx,
         clock.clone(),
@@ -1012,7 +1046,7 @@ where
         asm_counters,
         send_counters,
     );
-    let rx = send::WheelRouter::new(rx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx);
+    let rx = send::WheelRouter::new(rx, immediate_tx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx);
     let rx = Flatten::new(rx);
     let rx = Paced::new(rx, clock, per_socket_send_rate);
     let rx = SocketSender::new(rx, socket);

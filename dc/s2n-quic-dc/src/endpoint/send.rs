@@ -356,6 +356,7 @@ impl AckRttTracker {
 #[must_use = "WheelInterest must be dispatched; ignoring it silently skips wheel scheduling"]
 #[derive(Clone, Copy, Debug)]
 pub struct WheelInterest {
+    pub immediate: bool,
     pub transmission: bool,
     pub pto: bool,
     pub idle_timeout: bool,
@@ -363,6 +364,7 @@ pub struct WheelInterest {
 
 impl WheelInterest {
     pub const NONE: Self = Self {
+        immediate: false,
         transmission: false,
         pto: false,
         idle_timeout: false,
@@ -393,18 +395,26 @@ impl<T> WheelRoutable for (Rc<RefCell<Context>>, WheelInterest, T) {
 /// A `Receiver<I::Output>` that takes `WheelRoutable` items from an inner receiver,
 /// dispatches each context into the appropriate timing wheel senders, and forwards
 /// the remaining output downstream.
-pub struct WheelRouter<I, R, TxW, PtoW, IdleW> {
+pub struct WheelRouter<I, R, ImmW, TxW, PtoW, IdleW> {
     inner: R,
+    immediate: ImmW,
     tx_wheel: TxW,
     pto_wheel: PtoW,
     idle_wheel: IdleW,
     _item: core::marker::PhantomData<fn() -> I>,
 }
 
-impl<I, R, TxW, PtoW, IdleW> WheelRouter<I, R, TxW, PtoW, IdleW> {
-    pub fn new(inner: R, tx_wheel: TxW, pto_wheel: PtoW, idle_wheel: IdleW) -> Self {
+impl<I, R, ImmW, TxW, PtoW, IdleW> WheelRouter<I, R, ImmW, TxW, PtoW, IdleW> {
+    pub fn new(
+        inner: R,
+        immediate: ImmW,
+        tx_wheel: TxW,
+        pto_wheel: PtoW,
+        idle_wheel: IdleW,
+    ) -> Self {
         Self {
             inner,
+            immediate,
             tx_wheel,
             pto_wheel,
             idle_wheel,
@@ -413,11 +423,12 @@ impl<I, R, TxW, PtoW, IdleW> WheelRouter<I, R, TxW, PtoW, IdleW> {
     }
 }
 
-impl<I, R, TxW, PtoW, IdleW> crate::socket::channel::Receiver<I::Output>
-    for WheelRouter<I, R, TxW, PtoW, IdleW>
+impl<I, R, ImmW, TxW, PtoW, IdleW> crate::socket::channel::Receiver<I::Output>
+    for WheelRouter<I, R, ImmW, TxW, PtoW, IdleW>
 where
     I: WheelRoutable,
     R: crate::socket::channel::Receiver<I>,
+    ImmW: UnboundedSender<Rc<RefCell<Context>>>,
     TxW: UnboundedSender<Rc<RefCell<Context>>>,
     PtoW: UnboundedSender<Rc<RefCell<Context>>>,
     IdleW: UnboundedSender<Rc<RefCell<Context>>>,
@@ -439,6 +450,9 @@ where
         }
         if interest.pto {
             let _ = self.pto_wheel.send(context.clone());
+        }
+        if interest.immediate {
+            let _ = self.immediate.send(context.clone());
         }
         if interest.transmission {
             let _ = self.tx_wheel.send(context);
@@ -523,6 +537,8 @@ pub(crate) struct Context {
     /// Used by `publish_sender_load_score` to write the correct slot so the
     /// load-balancer pick-two logic has up-to-date per-socket load information.
     pub sender_idx: LocalSenderId,
+    /// Intrusive links for the immediate transmission queue (ACKs, probes)
+    pub tx_immediate: crate::intrusive::Links,
     /// Intrusive links and target time for the transmission pacing wheel
     pub tx_wheel: WheelLinks,
     /// Intrusive links and target time for the PTO (probe timeout) wheel
@@ -608,6 +624,7 @@ impl Context {
             queues: core::array::from_fn(|_| PendingFrames::new(pending_gauge.clone())),
             pending_acks: PendingAcks::new(ack_gauge),
             sender_idx,
+            tx_immediate: crate::intrusive::Links::new(),
             tx_wheel: WheelLinks::new(),
             pto_wheel: WheelLinks::new(),
             idle_wheel: WheelLinks::new(),
@@ -726,28 +743,30 @@ impl Context {
             "probe_state is Requested but nothing to probe with"
         );
 
-        let transmission = if
-        // Check we have queued packets and we're not already linked
-        !self.is_tx_scheduled()
-            && (self.has_pending_acks()
-                || self.pto.probe_state.is_requested()
-                || (self.has_pending_data() && self.can_send_pending_frames()))
-        {
-            // Probes bypass pacing: if one is pending schedule immediately so the
-            // assembler can encode it without waiting for the CCA departure time.
-            let target = if self.pto.probe_state.is_requested() {
-                None
-            } else {
-                self.cca
+        let needs_urgent = self.has_pending_acks() || self.pto.probe_state.is_requested();
+
+        // Urgent work (ACK to send or PTO probe) always routes to the immediate
+        // queue to bypass EDT pacing. This avoids putting ACKs in the "slow lane"
+        // behind the tx_wheel, regardless of whether the context is already
+        // tx-scheduled.
+        let immediate = needs_urgent && !self.is_immediate_scheduled();
+
+        let transmission =
+            if
+            // Check we have queued data packets and we're not already linked
+            !self.is_tx_scheduled() && self.has_pending_data() && self.can_send_pending_frames()
+            {
+                // Non-urgent pending data follows CCA pacing via the tx_wheel.
+                let target = self
+                    .cca
                     .earliest_departure_time()
-                    .map(precision::Timestamp::from)
+                    .map(precision::Timestamp::from);
+                // If target time is `None` then the wheel will schedule it immediately
+                self.tx_wheel.target_time = target;
+                true
+            } else {
+                false
             };
-            // If target time is `None` then the wheel will schedule it immediately
-            self.tx_wheel.target_time = target;
-            true
-        } else {
-            false
-        };
 
         let pto = if !self.is_pto_scheduled() && self.inflight.has_inflight() {
             if let Some(target) = self.pto.next_target(clock, &self.rtt_estimator) {
@@ -770,6 +789,7 @@ impl Context {
         };
 
         let interest = WheelInterest {
+            immediate,
             transmission,
             pto,
             idle_timeout,
@@ -881,6 +901,11 @@ impl Context {
     }
 
     #[inline]
+    pub fn is_immediate_scheduled(&self) -> bool {
+        self.tx_immediate.is_linked()
+    }
+
+    #[inline]
     pub fn is_pto_scheduled(&self) -> bool {
         self.pto_wheel.is_scheduled()
     }
@@ -945,14 +970,11 @@ impl Context {
                 "has_pending predicate drifted from queue contents"
             );
 
-            if self.tx_wheel.is_scheduled() && self.tx_wheel.target_time.is_some() {
-                assert!(
-                    self.has_pending_acks()
-                        || self.pto.probe_state.is_requested()
-                        || (self.has_pending_data() && self.can_send_pending_frames()),
-                    "tx wheel scheduled without any sendable work"
-                );
-            }
+            // NOTE: the assembler only piggybacks data on the immediate path when the
+            // CCA pacing EDT has already elapsed (`now >= tx_wheel.target_time`).
+            // It remains possible for tx_wheel to be scheduled with no pending data
+            // if the data was sent when the EDT elapsed; the wheel will fire and find
+            // nothing to do.  A stricter invariant is therefore not enforceable here.
 
             if self.pto_wheel.is_scheduled() {
                 if self.pto_wheel.target_time.is_some() {
@@ -1067,9 +1089,54 @@ pub(crate) use crate::time::wheel::WheelLinks;
 // field for its wheel, and tells the timing wheel how to read/write target_time.
 // The pointer type is Rc<RefCell<Context>> for all three.
 
+crate::rc_adapter!(
+    pub(crate) struct TxImmediateAdapter {
+        tx_immediate: RefCell<Context>,
+    }
+);
 crate::context_wheel_adapter!(TxWheelAdapter, Context, tx_wheel);
 crate::context_wheel_adapter!(PtoWheelAdapter, Context, pto_wheel);
 crate::context_wheel_adapter!(IdleWheelAdapter, Context, idle_wheel);
+
+// ── Immediate Sender ─────────────────────────────────────────────────────
+
+/// Routes contexts to per-socket immediate channels based on sender_idx.
+pub(crate) struct ImmediateSender<T> {
+    senders: super::id::IdMap<super::id::LocalSendSocketId, T>,
+    sender_idx_to_local: super::id::IdMap<LocalSenderId, super::id::LocalSendSocketId>,
+}
+
+impl<T: Clone> Clone for ImmediateSender<T> {
+    fn clone(&self) -> Self {
+        Self {
+            senders: self.senders.clone(),
+            sender_idx_to_local: self.sender_idx_to_local.clone(),
+        }
+    }
+}
+
+impl<T> ImmediateSender<T> {
+    pub fn new(
+        senders: super::id::IdMap<super::id::LocalSendSocketId, T>,
+        sender_idx_to_local: super::id::IdMap<LocalSenderId, super::id::LocalSendSocketId>,
+    ) -> Self {
+        Self {
+            senders,
+            sender_idx_to_local,
+        }
+    }
+}
+
+impl<T> UnboundedSender<Rc<RefCell<Context>>> for ImmediateSender<T>
+where
+    T: UnboundedSender<Rc<RefCell<Context>>>,
+{
+    fn send(&mut self, context: Rc<RefCell<Context>>) -> Result<(), Rc<RefCell<Context>>> {
+        let sender_idx = context.borrow().sender_idx;
+        let local_id = self.sender_idx_to_local[sender_idx];
+        self.senders[local_id].send(context)
+    }
+}
 
 /// PTO (Probe Timeout) state for tail loss recovery.
 ///

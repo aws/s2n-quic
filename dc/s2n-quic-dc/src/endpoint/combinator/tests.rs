@@ -762,8 +762,10 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
         registry.register("!send.invalid_sender_idx"),
     );
     let rx = crate::socket::channel::Flatten::new(processor);
+    let (immediate_tx, _immediate_rx) = unsync::new_with_adapter::<send::TxImmediateAdapter>();
     let mut router = crate::stream::endpoint::send::WheelRouter::new(
         rx,
+        immediate_tx,
         tx_wheel_tx,
         pto_wheel_tx,
         idle_wheel_tx,

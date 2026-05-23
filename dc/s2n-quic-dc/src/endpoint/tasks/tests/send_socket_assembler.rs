@@ -44,6 +44,10 @@ struct AssemblerChannels {
     ctx_tx: unsync::Sender<send::TxWheelAdapter>,
     /// Receive contexts out of the pipeline input (consumed by the assembler).
     ctx_rx: unsync::Receiver<send::TxWheelAdapter>,
+    /// Immediate-tx input receiver for the assembler (priority path).
+    immediate_rx: unsync::Receiver<send::TxImmediateAdapter>,
+    /// Immediate-tx sender (routed by sender_idx).
+    immediate_tx: send::ImmediateSender<unsync::Sender<send::TxImmediateAdapter>>,
     /// Cancelled-frame sink passed to the assembler.
     cancelled_tx: unsync::ListSender<crate::intrusive::EntryAdapter<frame::Frame>>,
     /// ACK-completion sink passed to the assembler.
@@ -69,16 +73,28 @@ struct AssemblerChannels {
 }
 
 fn assembler_channels(registry: &crate::counter::Registry) -> AssemblerChannels {
+    use crate::endpoint::id::{Id, IdMap, LocalSendSocketId, LocalSenderId};
     let (ctx_tx, ctx_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
+    let (immediate_tx_raw, immediate_rx) = unsync::new_with_adapter::<send::TxImmediateAdapter>();
     let (tx_wheel_tx, tx_wheel_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
     let (pto_wheel_tx, pto_wheel_rx) = unsync::new_with_adapter::<send::PtoWheelAdapter>();
     let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter::<send::IdleWheelAdapter>();
     let (cancelled_tx, cancelled_rx) = unsync::new::<frame::Frame>();
     let (ack_completions_tx, ack_completions_rx) = unsync::new::<msg::Sender>();
     let asm_counters = AssemblerCounters::new(registry);
+
+    let socket_immediate_txs: IdMap<LocalSendSocketId, _> =
+        core::iter::once((LocalSendSocketId::new(0), immediate_tx_raw)).collect();
+    let mut sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId> =
+        IdMap::new(1, LocalSendSocketId::new(0));
+    sender_idx_to_local[LocalSenderId::from_index(0)] = LocalSendSocketId::new(0);
+    let immediate_tx = send::ImmediateSender::new(socket_immediate_txs, sender_idx_to_local);
+
     AssemblerChannels {
         ctx_tx,
         ctx_rx,
+        immediate_rx,
+        immediate_tx,
         cancelled_tx: cancelled_tx.into_list_sender(),
         ack_completions_tx: ack_completions_tx.into_list_sender(),
         asm_counters,
@@ -101,10 +117,12 @@ fn assembler_channels(registry: &crate::counter::Registry) -> AssemblerChannels 
 /// fields extracted from an [`AssemblerChannels`] destructuring; the assertion-side
 /// receivers are kept in the calling scope for post-drain assertions.
 async fn assembler_pipeline(
+    immediate_rx: unsync::Receiver<send::TxImmediateAdapter>,
     ctx_rx: unsync::Receiver<send::TxWheelAdapter>,
     cancelled_tx: unsync::ListSender<crate::intrusive::EntryAdapter<frame::Frame>>,
     ack_completions_tx: unsync::ListSender<crate::intrusive::EntryAdapter<msg::Sender>>,
     asm_counters: AssemblerCounters,
+    immediate_tx: send::ImmediateSender<unsync::Sender<send::TxImmediateAdapter>>,
     tx_wheel_tx: unsync::Sender<send::TxWheelAdapter>,
     pto_wheel_tx: unsync::Sender<send::PtoWheelAdapter>,
     idle_wheel_tx: unsync::Sender<send::IdleWheelAdapter>,
@@ -116,6 +134,7 @@ async fn assembler_pipeline(
         crate::endpoint::id::LocalSenderId::from_index(0),
     );
     let rx = tasks::send_socket_assembler(
+        immediate_rx,
         ctx_rx,
         clock,
         crate::endpoint::id::LocalSenderId::new(VarInt::from_u8(0)),
@@ -128,6 +147,7 @@ async fn assembler_pipeline(
         send_counters,
         Rate::new(100.0),
         socket,
+        immediate_tx,
         tx_wheel_tx,
         pto_wheel_tx,
         idle_wheel_tx,
@@ -156,6 +176,8 @@ fn sends_encrypted_packet_to_peer() {
         let AssemblerChannels {
             mut ctx_tx,
             ctx_rx,
+            immediate_rx,
+            immediate_tx,
             cancelled_tx,
             ack_completions_tx,
             asm_counters,
@@ -185,10 +207,12 @@ fn sends_encrypted_packet_to_peer() {
         let asm_clock = clock.clone();
         async move {
             assembler_pipeline(
+                immediate_rx,
                 ctx_rx,
                 cancelled_tx,
                 ack_completions_tx,
                 asm_counters,
+                immediate_tx,
                 tx_wheel_tx,
                 pto_wheel_tx,
                 idle_wheel_tx,
@@ -256,6 +280,8 @@ fn reassembles_context_to_tx_wheel_when_data_remains() {
         let AssemblerChannels {
             mut ctx_tx,
             ctx_rx,
+            immediate_rx,
+            immediate_tx,
             cancelled_tx,
             ack_completions_tx,
             asm_counters,
@@ -295,10 +321,12 @@ fn reassembles_context_to_tx_wheel_when_data_remains() {
         let asm_clock = clock.clone();
         async move {
             assembler_pipeline(
+                immediate_rx,
                 ctx_rx,
                 cancelled_tx,
                 ack_completions_tx,
                 asm_counters,
+                immediate_tx,
                 tx_wheel_tx,
                 pto_wheel_tx,
                 idle_wheel_tx,
@@ -373,6 +401,8 @@ fn cancelled_frame_emitted_when_completion_is_cancelled() {
         let AssemblerChannels {
             mut ctx_tx,
             ctx_rx,
+            immediate_rx,
+            immediate_tx,
             cancelled_tx,
             ack_completions_tx,
             asm_counters,
@@ -407,10 +437,12 @@ fn cancelled_frame_emitted_when_completion_is_cancelled() {
         let asm_clock = clock.clone();
         async move {
             assembler_pipeline(
+                immediate_rx,
                 ctx_rx,
                 cancelled_tx,
                 ack_completions_tx,
                 asm_counters,
+                immediate_tx,
                 tx_wheel_tx,
                 pto_wheel_tx,
                 idle_wheel_tx,
@@ -498,6 +530,8 @@ fn shuts_down_on_closed_input() {
         let AssemblerChannels {
             ctx_tx,
             ctx_rx,
+            immediate_rx,
+            immediate_tx,
             cancelled_tx,
             ack_completions_tx,
             asm_counters,
@@ -512,10 +546,12 @@ fn shuts_down_on_closed_input() {
 
         async move {
             assembler_pipeline(
+                immediate_rx,
                 ctx_rx,
                 cancelled_tx,
                 ack_completions_tx,
                 asm_counters,
+                immediate_tx,
                 tx_wheel_tx,
                 pto_wheel_tx,
                 idle_wheel_tx,

@@ -15,7 +15,7 @@ use crate::{
     intrusive::{Entry, Queue},
     path::secret::map::Entry as PathSecretEntry,
     socket::{
-        channel::{Budget, ByteCost, Receiver, UnboundedSender},
+        channel::{Budget, ByteCost, ImmediateQueueStatus, Receiver, UnboundedSender},
         pool::descriptor,
         rate::Rate,
     },
@@ -755,7 +755,7 @@ impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
 
 impl<R, Clk, C, A> Receiver<AssemblerOutput> for Assembler<R, Clk, C, A>
 where
-    R: Receiver<Rc<RefCell<send::Context>>>,
+    R: Receiver<(Rc<RefCell<send::Context>>, ImmediateQueueStatus)>,
     Clk: precision::Clock,
     C: UnboundedSender<Queue<Frame>>,
     A: UnboundedSender<Queue<msg::Sender>>,
@@ -767,7 +767,8 @@ where
     ) -> Poll<Option<AssemblerOutput>> {
         use crate::stream::endpoint::assemble;
 
-        let Some(context) = ready!(self.inner.poll_recv(cx, budget)) else {
+        let Some((context, immediate_queue_status)) = ready!(self.inner.poll_recv(cx, budget))
+        else {
             return Poll::Ready(None);
         };
 
@@ -777,6 +778,7 @@ where
             let mut ack_completions = Queue::new();
             let segments = assemble::assemble(
                 &mut *context,
+                immediate_queue_status,
                 &self.clock,
                 self.source_sender_id,
                 self.source_control_port,

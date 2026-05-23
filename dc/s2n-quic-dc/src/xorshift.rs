@@ -30,6 +30,14 @@ impl Rng {
         Self(seed | 1)
     }
 
+    /// Creates a new `Rng` from a fixed seed, bypassing all environment-based
+    /// seed selection.  Use this when you need a fully deterministic sequence
+    /// that is independent of the Bach group or OS randomness (e.g. in
+    /// snapshot-locked tests).
+    pub fn with_seed(seed: u64) -> Self {
+        Self(seed | 1)
+    }
+
     #[inline]
     pub fn next_u64(&mut self) -> u64 {
         #[cfg(test)]

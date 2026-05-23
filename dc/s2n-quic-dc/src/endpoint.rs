@@ -9,8 +9,8 @@ use crate::{
     endpoint::{
         frame::SubmissionSender,
         id::{
-            Id, IdJoin, IdMap, LocalSendSocketId, LocalSenderId, RecvDispatchWorkerId,
-            RecvIoWorkerId, SendWorkerId,
+            Id, IdJoin, IdMap, LocalRecvSocketId, LocalSendSocketId, LocalSenderId,
+            RecvDispatchWorkerId, SendWorkerId,
         },
     },
     intrusive::Entry,
@@ -377,8 +377,8 @@ where
         "at least one send worker is required"
     );
     assert!(
-        layout.recv_io.len() == recv_sockets.len(),
-        "recv_io worker count must match recv socket count"
+        !layout.recv_io.is_empty(),
+        "at least one recv_io worker is required"
     );
     assert!(
         !layout.recv_dispatch.is_empty(),
@@ -650,18 +650,18 @@ where
         });
     }
 
-    // Assign each recv socket to its corresponding recv_io worker (1:1).
-    for ((recv_socket_id, socket), &worker_id) in
-        recv_sockets.into_iter().zip(layout.recv_io.iter())
-    {
-        let recv_io_id = RecvIoWorkerId::new(recv_socket_id.as_usize());
+    // Distribute recv sockets across recv_io workers round-robin.
+    let num_recv_io_workers = layout.recv_io.len();
+    for (recv_socket_id, socket) in recv_sockets.into_iter() {
+        let raw_idx = recv_socket_id.as_usize();
+        let worker_id = layout.recv_io[raw_idx % num_recv_io_workers];
         let router = worker::FanOutRouter::<_, RecvRoute, _>::new(
             dispatch_txs.clone(),
             invalidation_raw_tx.clone(),
             &counter_registry,
         );
-        workers[worker_id].recv_socket = Some(RecvSocketParts {
-            idx: recv_io_id,
+        workers[worker_id].recv_sockets.push(RecvSocketParts {
+            idx: recv_socket_id,
             socket,
             recv_pool: recv_pool.clone(),
             router,
@@ -756,7 +756,7 @@ type PacketReceiver = sync_queue::Receiver<packet::datagram::decoder::Packet<des
 
 /// Ingredients for a recv IO worker (socket read + decode + fan-out).
 struct RecvSocketParts<Socket, Route, Inv> {
-    idx: RecvIoWorkerId,
+    idx: LocalRecvSocketId,
     socket: Socket,
     recv_pool: crate::socket::pool::Pool,
     router: worker::FanOutRouter<PacketSender, Route, Inv>,
@@ -822,8 +822,8 @@ struct Worker<SendSocket, RecvSocket, UpsSocket, Clk, AckSnd, Route, Inv> {
     send_worker: Option<SendWorkerParts>,
     /// Send sockets assigned to this worker.
     send_sockets: Vec<SendSocketParts<SendSocket, Clk>>,
-    /// Recv IO: socket read + decode + fan-out (at most one per worker).
-    recv_socket: Option<RecvSocketParts<RecvSocket, Route, Inv>>,
+    /// Recv IO: socket read + decode + fan-out (one or more per worker).
+    recv_sockets: Vec<RecvSocketParts<RecvSocket, Route, Inv>>,
     /// Recv dispatch: decrypt + dedup + frame routing (at most one per worker).
     recv_dispatch: Option<RecvDispatchParts<Clk, AckSnd, Route>>,
     /// Waker drain task assigned to this worker.
@@ -862,7 +862,7 @@ where
             frame_dispatch: None,
             send_worker: None,
             send_sockets: Vec::new(),
-            recv_socket: None,
+            recv_sockets: Vec::new(),
             recv_dispatch: None,
             waker_drain: None,
             background: None,
@@ -883,7 +883,7 @@ where
             frame_dispatch,
             send_worker,
             send_sockets,
-            recv_socket,
+            recv_sockets,
             recv_dispatch,
             waker_drain,
             background,
@@ -937,7 +937,7 @@ where
                 );
             }
 
-            if let Some(rs) = recv_socket {
+            for rs in recv_sockets {
                 let recv_idx = rs.idx;
                 let variant = format!("recv.{recv_idx}");
                 let rx = tasks::socket_recv(rs.socket, rs.recv_pool, rs.router);
