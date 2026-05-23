@@ -7,6 +7,7 @@ mod buffer;
 mod frame;
 mod inet;
 mod packet;
+mod packet_number_map;
 mod sync;
 mod varint;
 mod xdp;
@@ -16,6 +17,7 @@ pub fn benchmarks(c: &mut Criterion) {
     frame::benchmarks(c);
     inet::benchmarks(c);
     packet::benchmarks(c);
+    packet_number_map::benchmarks(c);
     sync::benchmarks(c);
     varint::benchmarks(c);
     xdp::benchmarks(c);

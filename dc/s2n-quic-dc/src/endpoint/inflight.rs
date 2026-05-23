@@ -10,7 +10,7 @@
 
 use crate::{congestion, counter::QueueGauge, endpoint::frame::Frame, intrusive::Queue};
 use s2n_quic_core::{
-    packet::number::{Map as Inner, PacketNumber, PacketNumberRange},
+    packet::number::{map::SortedVecMap as Inner, PacketNumber, PacketNumberRange},
     varint::VarInt,
 };
 
@@ -120,7 +120,7 @@ impl Map {
 
     #[inline]
     pub fn has_inflight(&self) -> bool {
-        self.inner.iter().next().is_some()
+        !self.inner.is_empty()
     }
 
     #[inline]

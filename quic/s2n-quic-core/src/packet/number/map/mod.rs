@@ -1,6 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+pub mod sorted_vec;
+pub use sorted_vec::SortedVecMap;
+
 use crate::packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace};
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
