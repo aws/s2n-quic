@@ -143,7 +143,7 @@ jobs:
             CLIPPY_FIX_FLAG='--fix --allow-dirty'
           fi
 
-          cargo clippy --all-features --all-targets -p s2n-quic-core $CLIPPY_FIX_FLAG -- -D warnings
+          cargo clippy --all-features --all-targets -p s2n-quic-core -p s2n-quic-dc $CLIPPY_FIX_FLAG -- -D warnings
 
       - name: Create clippy pull request
         if: steps.should_fix.outputs.SHOULD_FIX == 'true'

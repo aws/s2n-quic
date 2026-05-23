@@ -118,7 +118,6 @@ impl ShardedPagePool {
         }
         None
     }
-
 }
 
 fn possible_cpus() -> usize {

@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use criterion::{BenchmarkId, Criterion, Throughput};
-use s2n_quic_core::packet::number::{
-    map::SortedVecMap, Map, PacketNumberRange, PacketNumberSpace,
+use s2n_quic_core::{
+    packet::number::{map::SortedVecMap, Map, PacketNumberRange, PacketNumberSpace},
+    varint::VarInt,
 };
-use s2n_quic_core::varint::VarInt;
 use std::hint::black_box;
 
 pub fn benchmarks(c: &mut Criterion) {
@@ -25,7 +25,7 @@ fn remove_range_sparse(c: &mut Criterion) {
     let cases: &[(usize, u64, u64)] = &[
         (50, 500, 200),
         (100, 2000, 1000),
-        (439, 5000, 2000),  // production p50
+        (439, 5000, 2000), // production p50
         (439, 11000, 5000),
         (953, 11000, 5000), // production p99
     ];
@@ -237,8 +237,7 @@ fn sparse_ack_range(span: u64, ack_range: u64) -> PacketNumberRange {
 
 fn dense_ack_range(ack_range: u64) -> PacketNumberRange {
     let start = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(0));
-    let end =
-        PacketNumberSpace::Initial.new_packet_number(VarInt::new(ack_range - 1).unwrap());
+    let end = PacketNumberSpace::Initial.new_packet_number(VarInt::new(ack_range - 1).unwrap());
     PacketNumberRange::new(start, end)
 }
 

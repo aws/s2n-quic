@@ -44,7 +44,7 @@ impl<V> SortedVecMap<V> {
     #[inline]
     pub fn insert(&mut self, packet_number: PacketNumber, value: V) {
         debug_assert!(
-            self.entries.back().map_or(true, |(last, _)| packet_number > *last),
+            self.entries.back().is_none_or(|(last, _)| packet_number > *last),
             "packet numbers must be monotonically increasing"
         );
         self.entries.push_back((packet_number, value));
