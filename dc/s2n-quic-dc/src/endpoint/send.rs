@@ -863,7 +863,7 @@ impl Context {
         };
 
         self.path_secret_entry.update_sender_load_score(
-            self.sender_idx.into(),
+            self.sender_idx,
             base + congestion_penalty,
             total_cost,
             self.cca.bandwidth(),
@@ -977,14 +977,13 @@ impl Context {
             // if the data was sent when the EDT elapsed; the wheel will fire and find
             // nothing to do.  A stricter invariant is therefore not enforceable here.
 
-            if self.pto_wheel.is_scheduled() {
-                if self.pto_wheel.target_time.is_some() {
+            if self.pto_wheel.is_scheduled()
+                && self.pto_wheel.target_time.is_some() {
                     assert!(
                         self.inflight.has_inflight(),
                         "pto wheel scheduled with target_time but no inflight packets"
                     );
                 }
-            }
 
             if self.idle_wheel.is_scheduled() {
                 assert!(
@@ -1054,7 +1053,7 @@ impl Context {
                 frame.status = reason.map_or(frame::TransmissionStatus::Pending, |reason| {
                     frame::TransmissionStatus::Failed(reason)
                 });
-                let _ = output.send(frame.into());
+                let _ = output.send(frame);
                 drained += 1;
             }
         }

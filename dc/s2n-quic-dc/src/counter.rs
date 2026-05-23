@@ -1145,11 +1145,11 @@ impl QueueGauge {
             Some("count"),
             description,
         );
-        let counter = self.registry.counter_handle(
+        
+        self.registry.counter_handle(
             self.registry.inner.register_counter(label, variant),
             metric_id,
-        );
-        counter
+        )
     }
 
     pub fn sender(&self, task_name: impl core::fmt::Display) -> QueueSender {
@@ -2978,7 +2978,7 @@ async fn report_loop<F, Fut>(
             SparseMode::Never => false,
             SparseMode::Always => true,
             SparseMode::Once => tick == 0,
-            SparseMode::Every(n) => tick % n == 0,
+            SparseMode::Every(n) => tick.is_multiple_of(*n),
         };
         report_once(&inner, include_sparse, prefix.as_deref(), &mut sinks);
         tick += 1;

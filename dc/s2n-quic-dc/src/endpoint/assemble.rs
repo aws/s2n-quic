@@ -262,7 +262,7 @@ where
             // PTO probes are exempt in all cases: RFC 9002 §6.2.4 requires probes
             // to bypass both CWND and pacing so tail-loss recovery is not delayed.
             let edt_elapsed = !context.tx_wheel.is_scheduled()
-                || context.tx_wheel.target_time.map_or(false, |t| now >= t);
+                || context.tx_wheel.target_time.is_some_and(|t| now >= t);
             let can_piggyback_data = match immediate_queue_status {
                 ImmediateQueueStatus::HasMore | ImmediateQueueStatus::BudgetExhausted => false,
                 ImmediateQueueStatus::Empty => edt_elapsed,

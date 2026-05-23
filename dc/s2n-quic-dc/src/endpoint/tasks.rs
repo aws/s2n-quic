@@ -961,7 +961,7 @@ async fn wheel_drain<A, T, F, const GRANULARITY_US: u64>(
     rx: intrusive::unsync::Receiver<A>,
     timer: T,
     input_gauge: QueueGauge,
-    mut on_expire: F,
+    on_expire: F,
     budget: usize,
     task_counter: counter::Task,
 ) where
@@ -977,7 +977,7 @@ async fn wheel_drain<A, T, F, const GRANULARITY_US: u64>(
             .receiver("task.wheel_drain")
             .with_function("endpoint::tasks::wheel_drain"),
     );
-    let rx = Map::new(rx, |item| on_expire(item));
+    let rx = Map::new(rx, on_expire);
     rx.drain_budgeted_metered(Some(budget), task_counter).await;
 }
 

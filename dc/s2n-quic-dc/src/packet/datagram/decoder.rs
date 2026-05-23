@@ -229,28 +229,28 @@ impl<S: storage::Bytes> Deref for Packet<S> {
 impl<S: storage::Bytes> Packet<S> {
     #[inline]
     pub fn application_header(&self) -> &[u8] {
-        let header = self.meta.header.get(&*self.storage);
+        let header = self.meta.header.get(&self.storage);
         self.meta.application_header.get(header)
     }
 
     #[inline]
     pub fn header(&self) -> &[u8] {
-        self.meta.header.get(&*self.storage)
+        self.meta.header.get(&self.storage)
     }
 
     #[inline]
     pub fn payload(&self) -> &[u8] {
-        self.meta.payload.get(&*self.storage)
+        self.meta.payload.get(&self.storage)
     }
 
     #[inline]
     pub fn payload_mut(&mut self) -> &mut [u8] {
-        self.meta.payload.get_mut(&mut *self.storage)
+        self.meta.payload.get_mut(&mut self.storage)
     }
 
     #[inline]
     pub fn auth_tag(&self) -> &[u8] {
-        self.meta.auth_tag.get(&*self.storage)
+        self.meta.auth_tag.get(&self.storage)
     }
 
     /// Decrypt the packet payload in place using the provided opener.
@@ -343,9 +343,9 @@ impl<S: storage::Bytes> Packet<S> {
     #[inline]
     pub fn from_parts(meta: Meta, storage: S) -> Result<Self, (Meta, S)> {
         // Validate storage by attempting to get the ranges
-        let _ = meta.header.get(&*storage);
-        let _ = meta.payload.get(&*storage);
-        let _ = meta.auth_tag.get(&*storage);
+        let _ = meta.header.get(&storage);
+        let _ = meta.payload.get(&storage);
+        let _ = meta.auth_tag.get(&storage);
 
         Ok(Self { meta, storage })
     }
@@ -375,9 +375,9 @@ impl<S: storage::Bytes> Packet<S> {
         new_storage: S2,
     ) -> Result<Packet<S2>, (Meta, S2)> {
         // Validate new storage by attempting to get the ranges
-        let _ = self.meta.header.get(&*new_storage);
-        let _ = self.meta.payload.get(&*new_storage);
-        let _ = self.meta.auth_tag.get(&*new_storage);
+        let _ = self.meta.header.get(&new_storage);
+        let _ = self.meta.payload.get(&new_storage);
+        let _ = self.meta.auth_tag.get(&new_storage);
 
         Ok(Packet {
             meta: self.meta,

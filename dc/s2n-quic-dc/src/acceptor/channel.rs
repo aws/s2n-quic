@@ -351,7 +351,7 @@ impl<T> Receiver<T> {
         if inner
             .waker
             .as_ref()
-            .map_or(true, |w| !w.will_wake(cx.waker()))
+            .is_none_or(|w| !w.will_wake(cx.waker()))
         {
             inner.waker = Some(cx.waker().clone());
         }

@@ -192,7 +192,7 @@ pub struct Packet<S: storage::Bytes> {
 
 impl<S: storage::Bytes> fmt::Debug for Packet<S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let header = self.meta.header.get(&*self.storage);
+        let header = self.meta.header.get(&self.storage);
 
         let mut s = f.debug_struct("control::Packet");
 
@@ -208,7 +208,7 @@ impl<S: storage::Bytes> fmt::Debug for Packet<S> {
             s.field("control_data", &self.meta.control_data.get(header));
         }
 
-        s.field("auth_tag", &self.meta.auth_tag.get(&*self.storage))
+        s.field("auth_tag", &self.meta.auth_tag.get(&self.storage))
             .finish()
     }
 }
@@ -225,19 +225,19 @@ impl<S: storage::Bytes> Deref for Packet<S> {
 impl<S: storage::Bytes> Packet<S> {
     #[inline]
     pub fn control_data(&self) -> &[u8] {
-        let header = self.meta.header.get(&*self.storage);
+        let header = self.meta.header.get(&self.storage);
         self.meta.control_data.get(header)
     }
 
     #[inline]
     pub fn control_data_mut(&mut self) -> &mut [u8] {
-        let header = self.meta.header.get_mut(&mut *self.storage);
+        let header = self.meta.header.get_mut(&mut self.storage);
         self.meta.control_data.get_mut(header)
     }
 
     #[inline]
     pub fn control_frames_mut(&mut self) -> ControlFramesMut<'_> {
-        let header = self.meta.header.get_mut(&mut *self.storage);
+        let header = self.meta.header.get_mut(&mut self.storage);
         ControlFramesMut {
             buffer: self.meta.control_data.get_mut(header),
         }
@@ -245,12 +245,12 @@ impl<S: storage::Bytes> Packet<S> {
 
     #[inline]
     pub fn header(&self) -> &[u8] {
-        self.meta.header.get(&*self.storage)
+        self.meta.header.get(&self.storage)
     }
 
     #[inline]
     pub fn auth_tag(&self) -> &[u8] {
-        self.meta.auth_tag.get(&*self.storage)
+        self.meta.auth_tag.get(&self.storage)
     }
 
     /// Create a packet from metadata and storage, validating that the storage is compatible
@@ -258,8 +258,8 @@ impl<S: storage::Bytes> Packet<S> {
     pub fn from_parts(meta: Meta, storage: S) -> Result<Self, (Meta, S)> {
         // Validate storage by attempting to get the ranges
         // This will panic in debug mode if ranges are invalid
-        let _ = meta.header.get(&*storage);
-        let _ = meta.auth_tag.get(&*storage);
+        let _ = meta.header.get(&storage);
+        let _ = meta.auth_tag.get(&storage);
 
         Ok(Self { meta, storage })
     }
@@ -289,8 +289,8 @@ impl<S: storage::Bytes> Packet<S> {
         O: crate::crypto::open::Application,
     {
         let packet_number = self.packet_number().as_u64();
-        let header = self.meta.header.get(&*self.storage);
-        let tag = self.meta.auth_tag.get(&*self.storage);
+        let header = self.meta.header.get(&self.storage);
+        let tag = self.meta.auth_tag.get(&self.storage);
 
         // Control packets use KeyPhase::Zero
         use crate::crypto::KeyPhase;
@@ -304,7 +304,7 @@ impl<S: storage::Bytes> Packet<S> {
             header,
             &[],
             tag,
-            &mut crate::crypto::UninitSlice::new(&mut []),
+            crate::crypto::UninitSlice::new(&mut []),
         )
     }
 
@@ -315,8 +315,8 @@ impl<S: storage::Bytes> Packet<S> {
         new_storage: S2,
     ) -> Result<Packet<S2>, (Meta, S2)> {
         // Validate new storage by attempting to get the ranges
-        let _ = self.meta.header.get(&*new_storage);
-        let _ = self.meta.auth_tag.get(&*new_storage);
+        let _ = self.meta.header.get(&new_storage);
+        let _ = self.meta.auth_tag.get(&new_storage);
 
         Ok(Packet {
             meta: self.meta,

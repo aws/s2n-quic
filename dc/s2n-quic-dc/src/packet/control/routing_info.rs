@@ -10,9 +10,11 @@ use s2n_quic_core::varint::VarInt;
 /// When true, the routing type and fields are encoded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
+#[derive(Default)]
 pub enum RoutingInfo {
     /// No routing information - packet is routed based on socket address only.
     /// This variant is never encoded; it's represented by has_routing_info=false in the tag.
+    #[default]
     None,
     /// Route to a specific sender socket by global sender ID
     /// Used for control packets (ACKs) to route back to the originating socket
@@ -24,11 +26,6 @@ pub enum RoutingInfo {
     },
 }
 
-impl Default for RoutingInfo {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 impl RoutingInfo {
     const SENDER_TYPE: u8 = 0;

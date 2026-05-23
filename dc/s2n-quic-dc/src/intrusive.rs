@@ -570,7 +570,7 @@ impl<A: Adapter> List<A> {
     /// Drain all entries from the list
     pub fn drain(&mut self) -> IntoIter<A> {
         IntoIter {
-            list: core::mem::replace(self, List::new()),
+            list: std::mem::take(self),
         }
     }
 }
@@ -1114,7 +1114,7 @@ mod tests {
                         assert_eq!(oracle.len(), subject.len());
                     }
                     Operation::Prepend => {
-                        let mut temp = oracle_other.drain(..).collect::<VecDeque<_>>();
+                        let mut temp = std::mem::take(&mut oracle_other);
                         temp.extend(oracle.drain(..));
                         oracle = temp;
                         subject.prepend(&mut subject_other);

@@ -832,7 +832,7 @@ impl Inner {
                 for msg in queue {
                     match msg.into_inner() {
                         msg::Control::Frames { mut payload } => {
-                            if self.handle_control_frames(&mut *payload).is_err() {
+                            if self.handle_control_frames(&mut payload).is_err() {
                                 let error_code = error::FRAME_DECODE_ERROR;
                                 self.reset_error_code = Some(error_code);
                                 self.status.on_shutdown().ok();
@@ -904,9 +904,9 @@ impl Inner {
     fn handle_control_frames(&mut self, payload: &mut [u8]) -> Result<(), s2n_codec::DecoderError> {
         use s2n_quic_core::frame::{FrameMut, MaxData};
 
-        let mut frames_iter = control::decoder::ControlFramesMut::new(payload);
+        let frames_iter = control::decoder::ControlFramesMut::new(payload);
 
-        while let Some(frame) = frames_iter.next() {
+        for frame in frames_iter {
             match frame? {
                 FrameMut::MaxData(MaxData { maximum_data }) => {
                     self.apply_max_data(maximum_data);

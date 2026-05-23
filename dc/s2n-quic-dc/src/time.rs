@@ -37,7 +37,7 @@ pub fn now() -> Timestamp {
 
     #[cfg(feature = "tokio")]
     {
-        return tokio::Clock::default().get_time();
+        tokio::Clock::default().get_time()
     }
 
     #[cfg(not(feature = "tokio"))]

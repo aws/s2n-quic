@@ -896,7 +896,7 @@ impl Frame {
     pub fn should_transmit(&self) -> bool {
         self.completion
             .as_ref()
-            .map_or(true, |c| c.should_transmit())
+            .is_none_or(|c| c.should_transmit())
     }
 }
 

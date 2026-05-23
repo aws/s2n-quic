@@ -555,6 +555,12 @@ pub struct WheelLinks {
     pub target_time: Option<precision::Timestamp>,
 }
 
+impl Default for WheelLinks {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WheelLinks {
     pub const fn new() -> Self {
         Self {

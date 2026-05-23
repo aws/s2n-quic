@@ -139,7 +139,7 @@ impl Cleaner {
         #[cfg(any(test, feature = "testing"))]
         if bach::is_active() {
             let state = Arc::downgrade(&state);
-            bach::spawn(background_worker(state, |d| bach::time::sleep(d)));
+            bach::spawn(background_worker(state, bach::time::sleep));
             return;
         }
 

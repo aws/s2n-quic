@@ -18,6 +18,12 @@ fn epoch() -> Instant {
 #[derive(Clone, Copy, Debug)]
 pub struct Clock(Instant);
 
+impl Default for Clock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Clock {
     pub fn new() -> Self {
         Self(epoch())
@@ -34,7 +40,7 @@ impl precision::Clock for Clock {
 
     fn timer(&self) -> Self::Timer {
         Timer {
-            clock: self.clone(),
+            clock: *self,
             target: None,
             armed: false,
         }

@@ -1,8 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#[cfg(any(test, feature = "testing"))]
-use crate::tracing::*;
 use crate::{
     credentials::{Credentials, Id},
     crypto::{self, awslc},

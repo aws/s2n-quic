@@ -205,7 +205,7 @@ impl Tracker {
 
         match self.map.borrow_mut().entry(stream_id) {
             hash_map::Entry::Occupied(entry) => {
-                return Err(*entry.get());
+                Err(*entry.get())
             }
             hash_map::Entry::Vacant(entry) => {
                 let handle = Handle {

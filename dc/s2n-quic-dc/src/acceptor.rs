@@ -265,7 +265,7 @@ impl<T: Send + 'static> std::future::Future for Cleaner<T> {
             if guard
                 .waker
                 .as_ref()
-                .map_or(true, |w| !w.will_wake(new_waker))
+                .is_none_or(|w| !w.will_wake(new_waker))
             {
                 guard.waker = Some(new_waker.clone());
             }

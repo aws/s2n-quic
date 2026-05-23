@@ -12,7 +12,7 @@ use crate::{
     testing::{ext::*, sim},
 };
 use s2n_codec::EncoderBuffer;
-use s2n_quic_core::{endpoint::Type, time::NoopClock};
+use s2n_quic_core::time::NoopClock;
 use std::{net::SocketAddr, sync::Arc};
 
 const SIGNER_SECRET: &[u8] = b"invalidation-validator-test-signer";

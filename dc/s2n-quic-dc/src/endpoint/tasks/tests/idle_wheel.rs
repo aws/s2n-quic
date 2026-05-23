@@ -249,7 +249,7 @@ fn send_idle_wheel_expires_reader_only_queue_no_reset_without_inflight() {
             assert!(
                 !stream_queue_entries
                     .iter()
-                    .any(|entry| { matches!(&*entry, msg::Stream::Reset { .. }) }),
+                    .any(|entry| { matches!(entry, msg::Stream::Reset { .. }) }),
                 "stream queue should NOT receive reset when idle expires without inflight"
             );
 
@@ -259,7 +259,7 @@ fn send_idle_wheel_expires_reader_only_queue_no_reset_without_inflight() {
             assert!(
                 !control_queue_entries
                     .iter()
-                    .any(|entry| { matches!(&*entry, msg::Control::Reset { .. }) }),
+                    .any(|entry| { matches!(entry, msg::Control::Reset { .. }) }),
                 "control queue should NOT receive reset when idle expires without inflight"
             );
         }
@@ -535,7 +535,7 @@ fn recv_idle_wheel_expires_reader_only_queue_no_reset() {
             assert!(
                 !stream_queue
                     .iter()
-                    .any(|entry| { matches!(&*entry, msg::Stream::Reset { .. }) }),
+                    .any(|entry| { matches!(entry, msg::Stream::Reset { .. }) }),
                 "stream queue should NOT receive reset from recv idle expiry"
             );
 
@@ -545,7 +545,7 @@ fn recv_idle_wheel_expires_reader_only_queue_no_reset() {
             assert!(
                 !control_queue
                     .iter()
-                    .any(|entry| { matches!(&*entry, msg::Control::Reset { .. }) }),
+                    .any(|entry| { matches!(entry, msg::Control::Reset { .. }) }),
                 "control queue should NOT receive reset from recv idle expiry"
             );
         }

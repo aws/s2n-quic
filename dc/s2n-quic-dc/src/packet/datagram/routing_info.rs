@@ -22,9 +22,11 @@ pub enum ResetTarget {
 /// When true, the routing type and fields are encoded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
+#[derive(Default)]
 pub enum RoutingInfo {
     /// No routing information - packet is routed based on socket address only.
     /// This variant is never encoded; it's represented by has_routing_info=false in the tag.
+    #[default]
     None,
     /// Identifies the source sender for aggregated frame packets.
     ///
@@ -76,11 +78,6 @@ impl<'a> s2n_codec::DecoderValue<'a> for QueuePair {
     }
 }
 
-impl Default for RoutingInfo {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 impl RoutingInfo {
     const SENDER_ID_TYPE: u8 = 11;

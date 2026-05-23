@@ -673,7 +673,7 @@ fn paced_throughput_test() {
 
             // Should take around 5 seconds due to pacing
             assert!(
-                elapsed_sec >= 4.5 && elapsed_sec <= 6.0,
+                (4.5..=6.0).contains(&elapsed_sec),
                 "elapsed: {:.2}s",
                 elapsed_sec
             );

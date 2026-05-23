@@ -94,7 +94,7 @@ pub(crate) fn process_ack<Clk, Rand>(
 
                 if cca_args
                     .as_ref()
-                    .map_or(true, |(prev_time, _): &(_, congestion::PacketInfo)| {
+                    .is_none_or(|(prev_time, _): &(_, congestion::PacketInfo)| {
                         *prev_time < time_sent
                     })
                 {

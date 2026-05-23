@@ -304,6 +304,25 @@ pub(crate) struct ChainRemoval {
     pub discarded_bytes: usize,
 }
 
+pub(crate) struct RemoveRange<'a, I> {
+    inner: I,
+    gauge: &'a QueueGauge,
+}
+
+impl<'a, I> Iterator for RemoveRange<'a, I>
+where
+    I: Iterator<Item = (PacketNumber, Packet)>,
+{
+    type Item = (VarInt, Packet);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (num, packet) = self.inner.next()?;
+        self.gauge.dequeue();
+        let num = unsafe { VarInt::new_unchecked(num.as_u64()) };
+        Some((num, packet))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -650,24 +669,5 @@ mod tests {
         map.set_probed_to(pn1, pn2); // now pn1 is a valid shell (probed_to is Some)
                                      // Should not panic: pn1 has probed_to, pn2 has non-empty frames
         map.invariants();
-    }
-}
-
-pub(crate) struct RemoveRange<'a, I> {
-    inner: I,
-    gauge: &'a QueueGauge,
-}
-
-impl<'a, I> Iterator for RemoveRange<'a, I>
-where
-    I: Iterator<Item = (PacketNumber, Packet)>,
-{
-    type Item = (VarInt, Packet);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let (num, packet) = self.inner.next()?;
-        self.gauge.dequeue();
-        let num = unsafe { VarInt::new_unchecked(num.as_u64()) };
-        Some((num, packet))
     }
 }

@@ -342,7 +342,7 @@ impl<T> Receiver<T> {
         if guard
             .recv_waker
             .as_ref()
-            .map_or(true, |w| !w.will_wake(cx.waker()))
+            .is_none_or(|w| !w.will_wake(cx.waker()))
         {
             guard.recv_waker = Some(cx.waker().clone());
         }

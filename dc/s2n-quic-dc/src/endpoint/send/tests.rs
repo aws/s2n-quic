@@ -530,7 +530,7 @@ fn cwnd_limited_adds_rtt_penalty_to_load_score() {
 
     // Fill up ctx_congested's inflight past cwnd to trigger is_congestion_limited().
     // Send two packets that each exceed half the current cwnd.
-    let rtt_clone = ctx_congested.rtt_estimator.clone();
+    let rtt_clone = ctx_congested.rtt_estimator;
     let cwnd = ctx_congested.cca.congestion_window();
     let pkt_size = ((cwnd / 2).saturating_add(1)).clamp(1, u16::MAX as u32) as u16;
     let _ = ctx_congested
@@ -590,7 +590,7 @@ fn edt_floor_raises_score_when_pacing_gated() {
     // Two back-to-back sends of a full quantum push EDT strictly into the future:
     //   send #1 – BBR initialises next_packet_departure_time = t0 + INITIAL_INTERVAL (= t0)
     //   send #2 – BBR advances EDT = max(EDT, t0) + interval = t0 + interval > t0
-    let rtt_clone = ctx_paced.rtt_estimator.clone();
+    let rtt_clone = ctx_paced.rtt_estimator;
     let quantum = ctx_paced.cca.send_quantum().min(u16::MAX as usize) as u16;
     let _ = ctx_paced.cca.on_packet_sent(t0, quantum, true, &rtt_clone);
     let _ = ctx_paced.cca.on_packet_sent(t0, quantum, true, &rtt_clone);

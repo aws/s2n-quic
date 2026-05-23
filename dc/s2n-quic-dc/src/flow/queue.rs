@@ -59,6 +59,17 @@ where
     }
 }
 
+impl<S, C, K> Default for Allocator<S, C, K>
+where
+    S: 'static + Send + Sync,
+    C: 'static + Send + Sync,
+    K: 'static + Send + Sync,
+ {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<S, C, K> Allocator<S, C, K>
 where
     S: 'static + Send + Sync,

@@ -302,7 +302,7 @@ impl Runner {
             };
 
             for _ in 0..ITERATIONS {
-                tasks.poll(&mut cx, &*heartbeat);
+                tasks.poll(&mut cx, &heartbeat);
             }
 
             // Yield to allow other threads (especially SCHED_OTHER threads like Tokio runtime)
@@ -368,7 +368,7 @@ impl Tasks {
         });
 
         // clear out the free slots
-        while self.slots.last().map_or(false, Option::is_none) {
+        while self.slots.last().is_some_and(Option::is_none) {
             let slot = self.slots.pop().unwrap();
             debug_assert!(slot.is_none());
         }

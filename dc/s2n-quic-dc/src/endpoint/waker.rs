@@ -62,7 +62,7 @@ impl Slot {
         if guard
             .drain_waker
             .as_ref()
-            .map_or(true, |w| !w.will_wake(cx.waker()))
+            .is_none_or(|w| !w.will_wake(cx.waker()))
         {
             guard.drain_waker = Some(cx.waker().clone());
         }
@@ -180,7 +180,7 @@ impl channel::Receiver<Waker> for Drain {
 
         // Register so the last Sink drop wakes us.
         let mut guard = self.alive.drain_waker.lock();
-        if guard.as_ref().map_or(true, |w| !w.will_wake(cx.waker())) {
+        if guard.as_ref().is_none_or(|w| !w.will_wake(cx.waker())) {
             *guard = Some(cx.waker().clone());
         }
 

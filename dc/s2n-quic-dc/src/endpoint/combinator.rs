@@ -845,7 +845,7 @@ where
             let mut cancelled = Queue::new();
             let mut ack_completions = Queue::new();
             let segments = assemble::assemble(
-                &mut *context,
+                &mut context,
                 immediate_queue_status,
                 &self.clock,
                 self.source_sender_id,
@@ -994,7 +994,7 @@ where
             }
 
             if self.batch.is_empty() {
-                self.batch.push_back(Entry::from(frame));
+                self.batch.push_back(frame);
                 continue;
             }
 
@@ -1008,12 +1008,12 @@ where
                 );
 
             if is_same_queue {
-                self.batch.push_back(Entry::from(frame));
+                self.batch.push_back(frame);
                 continue;
             }
 
             let waker = self.flush();
-            self.batch.push_back(Entry::from(frame));
+            self.batch.push_back(frame);
 
             if waker.is_some() {
                 return Poll::Ready(Some(waker));

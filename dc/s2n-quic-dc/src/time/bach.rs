@@ -53,7 +53,7 @@ impl super::macros::InstantHandle for Handle {
     /// elapsed duration from start.
     fn sleep(&self, amount: Duration) -> (time::Sleep, Duration) {
         let now = Instant::now();
-        let sleep = sleep_until((now + amount).into());
+        let sleep = sleep_until(now + amount);
         let target = now.saturating_duration_since(self.root);
         (sleep, target)
     }

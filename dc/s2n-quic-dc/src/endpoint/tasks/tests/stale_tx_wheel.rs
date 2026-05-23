@@ -85,7 +85,7 @@ fn stale_tx_wheel_after_ack_clears_probe() {
         let now = clock.get_time();
         {
             let mut ctx = ctx_rc.borrow_mut();
-            let rtt = ctx.rtt_estimator.clone();
+            let rtt = ctx.rtt_estimator;
             let cc_info = ctx.cca.on_packet_sent(now, 200, false, &rtt);
             let mut frames = Queue::new();
             frames.push_back(inflight_frame(&entry));
