@@ -21,7 +21,7 @@ jobs:
     permissions:
       actions: read
       issues: write
-      pull-requests: read
+      pull-requests: write
     steps:
       - name: Gate autofix dispatch
         id: gate
@@ -103,6 +103,25 @@ jobs:
             core.setOutput('sha', sha);
             core.setOutput('short_sha', sha.slice(0, 12));
             core.setOutput('workflow_name', workflowName);
+            core.setOutput('repo_has_issues', context.payload.repository?.has_issues ? 'true' : 'false');
+
+            const associatedPulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner,
+              repo,
+              commit_sha: sha,
+            });
+
+            const sourcePR = (associatedPulls.data || [])
+              .filter(pr => pr.base?.ref === 'main')
+              .sort((a, b) => {
+                const aTs = Date.parse(a.merged_at || a.updated_at || '') || 0;
+                const bTs = Date.parse(b.merged_at || b.updated_at || '') || 0;
+                return bTs - aTs;
+              })[0];
+
+            if (sourcePR) {
+              core.setOutput('source_pr_number', String(sourcePR.number));
+            }
 
       - name: Collect failure context
         if: steps.gate.outputs.proceed == 'true'
@@ -189,9 +208,9 @@ jobs:
 
           echo "task_file=$TASK_FILE" >> "$GITHUB_OUTPUT"
 
-      - name: Create Copilot delegation issue
+      - name: Create Copilot delegation
         if: steps.gate.outputs.proceed == 'true'
-        id: create_issue
+        id: create_dispatch
         uses: actions/github-script@v8
         env:
           TASK_FILE: ${{ steps.context.outputs.task_file }}
@@ -200,12 +219,15 @@ jobs:
           SHORT_SHA: ${{ steps.gate.outputs.short_sha }}
           WORKFLOW_NAME: ${{ steps.gate.outputs.workflow_name }}
           RUN_ID: ${{ steps.gate.outputs.run_id }}
+          REPO_HAS_ISSUES: ${{ steps.gate.outputs.repo_has_issues }}
+          SOURCE_PR_NUMBER: ${{ steps.gate.outputs.source_pr_number }}
         with:
           github-token: ${{ github.token }}
           script: |
             const fs = require('fs');
             const owner = context.repo.owner;
             const repo = context.repo.repo;
+            const repoHasIssues = (process.env.REPO_HAS_ISSUES || '').toLowerCase() === 'true';
 
             const desiredLabels = [
               { name: 'ci-autofix', color: '5319e7', description: 'Automated CI failure autofix attempt' },
@@ -235,21 +257,60 @@ jobs:
               `<!-- ci-autofix-run-id:${process.env.RUN_ID} -->`,
               `<!-- ci-autofix-run-url:${process.env.RUN_URL} -->`,
               '',
-              '@copilot Please take this issue and open a PR that satisfies all acceptance criteria below.',
+              '@copilot Please take this and open a PR that satisfies all acceptance criteria below.',
               '',
               taskBody,
             ].join('\n');
 
-            const created = await github.rest.issues.create({
+            if (repoHasIssues) {
+              const created = await github.rest.issues.create({
+                owner,
+                repo,
+                title,
+                body,
+                labels: ['ci-autofix', 'autofix-in-progress', 'bot'],
+              });
+
+              core.setOutput('target_type', 'issue');
+              core.setOutput('target_number', String(created.data.number));
+              core.setOutput('target_url', created.data.html_url);
+              return;
+            }
+
+            const sourcePrNumber = Number(process.env.SOURCE_PR_NUMBER || 0);
+            if (!Number.isInteger(sourcePrNumber) || sourcePrNumber <= 0) {
+              core.setFailed(
+                'Repository issues are disabled and no source pull request could be determined for the failing merge commit.'
+              );
+              return;
+            }
+
+            const dedupeMarker = `<!-- ci-autofix-run-id:${process.env.RUN_ID} -->`;
+            const existingComments = await github.paginate(github.rest.issues.listComments, {
               owner,
               repo,
-              title,
+              issue_number: sourcePrNumber,
+              per_page: 100,
+            });
+            const duplicateComment = existingComments.find(comment => (comment.body || '').includes(dedupeMarker));
+            if (duplicateComment) {
+              core.info(`Copilot delegation comment already exists on PR #${sourcePrNumber}.`);
+              core.setOutput('target_type', 'pull_request_comment');
+              core.setOutput('target_number', String(sourcePrNumber));
+              core.setOutput('target_url', duplicateComment.html_url);
+              return;
+            }
+
+            const createdComment = await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: sourcePrNumber,
               body,
-              labels: ['ci-autofix', 'autofix-in-progress', 'bot'],
             });
 
-            core.setOutput('issue_number', String(created.data.number));
-            core.setOutput('issue_url', created.data.html_url);
+            core.setOutput('target_type', 'pull_request_comment');
+            core.setOutput('target_number', String(sourcePrNumber));
+            core.setOutput('target_url', createdComment.data.html_url);
 
       - name: Emit dispatch summary
         run: |
@@ -259,7 +320,8 @@ jobs:
             echo "- reason: ${{ steps.gate.outputs.reason }}"
             echo "- run: ${{ steps.gate.outputs.run_url || 'n/a' }}"
             if [ "${{ steps.gate.outputs.proceed }}" = "true" ]; then
-              echo "- issue: #${{ steps.create_issue.outputs.issue_number }} (${{ steps.create_issue.outputs.issue_url }})"
+              echo "- dispatch target: ${{ steps.create_dispatch.outputs.target_type || 'n/a' }}"
+              echo "- target reference: #${{ steps.create_dispatch.outputs.target_number }} (${{ steps.create_dispatch.outputs.target_url }})"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
