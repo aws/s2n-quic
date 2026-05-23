@@ -127,10 +127,7 @@ impl Options {
         }
 
         #[cfg(target_os = "linux")]
-        fn bind_to_interface(
-            socket: &socket2::Socket,
-            interface_name: &CString,
-        ) -> io::Result<()> {
+        fn bind_to_interface(socket: &socket2::Socket, interface_name: &CString) -> io::Result<()> {
             use std::os::fd::AsRawFd;
 
             let ret = unsafe {
