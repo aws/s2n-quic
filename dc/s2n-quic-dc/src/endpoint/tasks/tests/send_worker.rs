@@ -227,10 +227,7 @@ fn send_tx_wheel_drain_routes_expired_context_to_matching_socket() {
         let (socket0_tx, mut socket0_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
         let (socket1_tx, mut socket1_rx) = unsync::new_with_adapter::<send::TxWheelAdapter>();
 
-        tasks::send_tx_wheel_drain(
-            tx_wheel_rx,
-            clock,
-            registry.register_queue_gauge("test.tx_wheel"),
+        let socket_context_tx = crate::endpoint::combinator::MappedSender::new(
             vec![socket0_tx, socket1_tx].into(),
             {
                 let mut m = crate::endpoint::id::IdMap::<
@@ -245,6 +242,13 @@ fn send_tx_wheel_drain_routes_expired_context_to_matching_socket() {
                     crate::endpoint::id::LocalSendSocketId::new(1);
                 m
             },
+        );
+
+        tasks::send_tx_wheel_drain(
+            tx_wheel_rx,
+            clock,
+            registry.register_queue_gauge("test.tx_wheel"),
+            socket_context_tx,
             32,
             registry.register_nominal_task("task.tx_wheel", "send.0"),
         )

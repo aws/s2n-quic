@@ -6,7 +6,7 @@ use crate::{
     byte_vec::ByteVec,
     endpoint::{
         frame::{Header, TransmissionStatus, DEFAULT_TTL},
-        id::Id,
+        id::{Id, LocalSendSocketId, LocalSenderId},
     },
     path::secret::map::Entry as PathSecretEntry,
     socket::channel::{intrusive::unsync, ByteCost},
@@ -16,8 +16,10 @@ use bytes::{Bytes, BytesMut};
 use core::task::Poll;
 use s2n_quic_core::varint::VarInt;
 use std::{
+    cell::RefCell,
     collections::VecDeque,
     future::Future,
+    rc::Rc,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -204,6 +206,74 @@ fn with_noop_context<R>(f: impl FnOnce(&mut task::Context<'_>) -> R) -> R {
     let waker = s2n_quic_core::task::waker::noop();
     let mut cx = task::Context::from_waker(&waker);
     f(&mut cx)
+}
+
+// ── MappedSender tests ─────────────────────────────────────────────────────
+
+#[derive(Debug)]
+struct MappedItem {
+    sender_id: LocalSenderId,
+    value: usize,
+}
+
+impl HasId<LocalSenderId> for MappedItem {
+    fn id(&self) -> LocalSenderId {
+        self.sender_id
+    }
+}
+
+struct MappedItemSender {
+    sink: Rc<RefCell<Vec<usize>>>,
+}
+
+impl UnboundedSender<MappedItem> for MappedItemSender {
+    fn send(&mut self, value: MappedItem) -> Result<(), MappedItem> {
+        self.sink.borrow_mut().push(value.value);
+        Ok(())
+    }
+}
+
+#[test]
+fn mapped_sender_routes_items_through_id_map() {
+    let sink0 = Rc::new(RefCell::new(Vec::new()));
+    let sink1 = Rc::new(RefCell::new(Vec::new()));
+
+    let senders: crate::endpoint::id::IdMap<LocalSendSocketId, MappedItemSender> = [
+        (
+            LocalSendSocketId::new(0),
+            MappedItemSender {
+                sink: sink0.clone(),
+            },
+        ),
+        (
+            LocalSendSocketId::new(1),
+            MappedItemSender {
+                sink: sink1.clone(),
+            },
+        ),
+    ]
+    .into_iter()
+    .collect();
+
+    let mut sender_idx_to_local: crate::endpoint::id::IdMap<LocalSenderId, LocalSendSocketId> =
+        crate::endpoint::id::IdMap::new(2, LocalSendSocketId::new(usize::MAX));
+    sender_idx_to_local[LocalSenderId::from_index(0)] = LocalSendSocketId::new(1);
+    sender_idx_to_local[LocalSenderId::from_index(1)] = LocalSendSocketId::new(0);
+
+    let mut tx = MappedSender::new(senders, sender_idx_to_local);
+    tx.send(MappedItem {
+        sender_id: LocalSenderId::from_index(0),
+        value: 10,
+    })
+    .unwrap();
+    tx.send(MappedItem {
+        sender_id: LocalSenderId::from_index(1),
+        value: 20,
+    })
+    .unwrap();
+
+    assert_eq!(&*sink0.borrow(), &[20]);
+    assert_eq!(&*sink1.borrow(), &[10]);
 }
 
 // ── PickTwo tests ─────────────────────────────────────────────────────────

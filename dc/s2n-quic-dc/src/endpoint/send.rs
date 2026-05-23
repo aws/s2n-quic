@@ -19,8 +19,9 @@ use crate::{
     counter::QueueGauge,
     credentials::{self, Credentials},
     endpoint::{
+        combinator::HasId,
         frame::{self, Frame, Priority},
-        id::LocalSenderId,
+        id::{LocalSendSocketId, LocalSenderId},
     },
     intrusive::{self, Queue},
     msg::segment,
@@ -1100,43 +1101,16 @@ crate::context_wheel_adapter!(IdleWheelAdapter, Context, idle_wheel);
 
 // ── Immediate Sender ─────────────────────────────────────────────────────
 
+impl HasId<LocalSenderId> for Rc<RefCell<Context>> {
+    #[inline]
+    fn id(&self) -> LocalSenderId {
+        self.borrow().sender_idx
+    }
+}
+
 /// Routes contexts to per-socket immediate channels based on sender_idx.
-pub(crate) struct ImmediateSender<T> {
-    senders: super::id::IdMap<super::id::LocalSendSocketId, T>,
-    sender_idx_to_local: super::id::IdMap<LocalSenderId, super::id::LocalSendSocketId>,
-}
-
-impl<T: Clone> Clone for ImmediateSender<T> {
-    fn clone(&self) -> Self {
-        Self {
-            senders: self.senders.clone(),
-            sender_idx_to_local: self.sender_idx_to_local.clone(),
-        }
-    }
-}
-
-impl<T> ImmediateSender<T> {
-    pub fn new(
-        senders: super::id::IdMap<super::id::LocalSendSocketId, T>,
-        sender_idx_to_local: super::id::IdMap<LocalSenderId, super::id::LocalSendSocketId>,
-    ) -> Self {
-        Self {
-            senders,
-            sender_idx_to_local,
-        }
-    }
-}
-
-impl<T> UnboundedSender<Rc<RefCell<Context>>> for ImmediateSender<T>
-where
-    T: UnboundedSender<Rc<RefCell<Context>>>,
-{
-    fn send(&mut self, context: Rc<RefCell<Context>>) -> Result<(), Rc<RefCell<Context>>> {
-        let sender_idx = context.borrow().sender_idx;
-        let local_id = self.sender_idx_to_local[sender_idx];
-        self.senders[local_id].send(context)
-    }
-}
+pub(crate) type ImmediateSender<T> =
+    super::combinator::MappedSender<Rc<RefCell<Context>>, LocalSenderId, LocalSendSocketId, T>;
 
 /// PTO (Probe Timeout) state for tail loss recovery.
 ///
