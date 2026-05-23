@@ -118,6 +118,18 @@ impl ShardedPagePool {
         }
         None
     }
+
+    fn drain(&self, mut f: impl FnMut(Box<Page>)) {
+        for shard in &self.shards {
+            let mut cursor = shard.head.swap(ptr::null_mut(), Ordering::Acquire);
+            while !cursor.is_null() {
+                let next = unsafe { (*cursor).next };
+                unsafe { (*cursor).next = ptr::null_mut() };
+                f(unsafe { Box::from_raw(cursor) });
+                cursor = next;
+            }
+        }
+    }
 }
 
 fn possible_cpus() -> usize {
@@ -190,6 +202,8 @@ pub(crate) struct Channels<T: Absorb> {
 
     empty_pages: ShardedPagePool,
 
+    full_pages: ShardedPagePool,
+
     // What we aggregate events into.
     aggregate: Mutex<Vec<T>>,
 }
@@ -249,6 +263,7 @@ impl<T: Absorb> Channels<T> {
             per_cpu: init_per_cpu(),
             fallback: Default::default(),
             empty_pages: ShardedPagePool::new(),
+            full_pages: ShardedPagePool::new(),
 
             aggregate: Mutex::new(Vec::new()),
         }
@@ -269,12 +284,20 @@ impl<T: Absorb> Channels<T> {
     #[cfg(not(target_os = "linux"))]
     pub(crate) fn steal_pages(&self) {
         let mut aggregate = self.aggregate.lock().unwrap();
+        self.full_pages.drain(|page| {
+            Self::aggregate_page(&mut aggregate, page, &self.empty_pages);
+        });
         self.drain_fallback(&mut aggregate);
     }
 
     #[cfg(target_os = "linux")]
     pub(crate) fn steal_pages(&self) {
         let mut aggregate = self.aggregate.lock().unwrap();
+
+        // Drain any full pages enqueued by send_event_slow
+        self.full_pages.drain(|page| {
+            Self::aggregate_page(&mut aggregate, page, &self.empty_pages);
+        });
 
         if self.must_use_fallback {
             self.drain_fallback(&mut aggregate);
@@ -702,21 +725,18 @@ impl<T: Absorb> Channels<T> {
             assert!(!taken.is_null());
 
             // We failed to xchg `taken` with the page in the per_cpu[current] slot. As such
-            // `taken` is still owned by us. Aggregate inline — this is a very slow path that
-            // should basically never happen in production.
-            let page = unsafe { Box::from_raw(taken) };
-            let mut aggregate = self.aggregate.lock().unwrap();
-            Self::aggregate_page(&mut aggregate, page, &self.empty_pages);
+            // `taken` is still owned by us. Enqueue for background aggregation.
+            self.full_pages
+                .push(unsafe { Box::from_raw(taken) }, cpu_hint);
         } else {
             if taken.is_null() {
                 return;
             }
 
-            // The old page was swapped out successfully. Aggregate inline to keep
-            // send_event_slow results immediately visible to callers (e.g. tests).
-            let page = unsafe { Box::from_raw(taken) };
-            let mut aggregate = self.aggregate.lock().unwrap();
-            Self::aggregate_page(&mut aggregate, page, &self.empty_pages);
+            // The old page was swapped out successfully. Enqueue for background aggregation
+            // rather than blocking the recording thread on the aggregate mutex.
+            self.full_pages
+                .push(unsafe { Box::from_raw(taken) }, cpu_hint);
         }
     }
 }
@@ -1089,6 +1109,7 @@ mod tests {
         unsafe {
             channels.send_event_slow(NonNull::from(&mut rseq), 0u64);
         }
+        channels.steal_pages();
         assert_eq!(channels.get_mut(0, std::mem::take).value, 1);
         drop(channels);
 
@@ -1100,6 +1121,7 @@ mod tests {
         unsafe {
             channels.send_event_slow(NonNull::from(&mut rseq), 0u64);
         }
+        channels.steal_pages();
         assert_eq!(channels.get_mut(0, std::mem::take).value, 1);
         drop(channels);
 
@@ -1120,11 +1142,6 @@ mod tests {
             // Didn't fallback.
             assert_eq!(channels.fallback.len(), 0);
 
-            // And no events were sent on the channel -- we allocated a page and added it (this is
-            // actually sort of tested above) but because no page existed, there wasn't anything to
-            // take out and send.
-            assert_eq!(channels.get_mut(0, std::mem::take).value, 0);
-
             // Only allocated exactly one CPU, at the right index.
             assert!(!channels.per_cpu[idx as usize].get_mut().is_null());
             for (cpu_idx, cpu) in channels.per_cpu.iter_mut().enumerate() {
@@ -1134,6 +1151,9 @@ mod tests {
                 assert!(cpu.get_mut().is_null());
             }
 
+            channels.steal_pages();
+            assert_eq!(channels.get_mut(0, std::mem::take).value, 1);
+
             // Repeating the slow-send on the same CPU *will* persist exactly one event.
             unsafe {
                 channels.send_event_slow(NonNull::from(&mut rseq), 0u64);
@@ -1142,15 +1162,10 @@ mod tests {
             // Didn't fallback.
             assert_eq!(channels.fallback.len(), 0);
 
-            // And no events were sent on the channel -- we allocated a page and added it (this is
-            // actually sort of tested above) but because no page existed, there wasn't anything to
-            // take out and send.
+            channels.steal_pages();
             assert_eq!(channels.get_mut(0, std::mem::take).value, 1);
 
-            // And a new page is now persisted.
-            let taken = std::mem::take(channels.per_cpu[idx as usize].get_mut());
-            assert!(!taken.is_null());
-            drop(unsafe { Box::from_raw(taken) });
+            // Pages are consumed when we aggregate.
             for cpu in channels.per_cpu.iter_mut() {
                 assert!(cpu.get_mut().is_null());
             }
