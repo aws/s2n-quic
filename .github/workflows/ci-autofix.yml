@@ -269,7 +269,12 @@ jobs:
                 title,
                 body,
                 labels: ['ci-autofix', 'autofix-in-progress', 'bot'],
-                assignees: ['Copilot'],
+              });
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: created.data.number,
+                body: '@copilot Please take this and open a PR that satisfies all acceptance criteria below.',
               });
 
               core.setOutput('target_type', 'issue');
