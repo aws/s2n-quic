@@ -269,6 +269,7 @@ jobs:
                 title,
                 body,
                 labels: ['ci-autofix', 'autofix-in-progress', 'bot'],
+                assignees: ['Copilot'],
               });
 
               core.setOutput('target_type', 'issue');
