@@ -824,7 +824,10 @@ fn writer_drop_in_flow_init_sent_hangs_server_reader() {
     use std::time::Duration;
 
     crate::testing::sim(|| {
-        use crate::{stream::endpoint::testing::sim::SERVER_PORT, testing::ext::*};
+        use crate::testing::ext::*;
+        use std::net::IpAddr;
+
+        let server_ip = IpAddr::from([10, 0, 0, 1u8]);
 
         // Suppress the very first server→client packet (the `MAX_DATA` /
         // `FlowControl` response to `FlowInit`).  This keeps the client writer
@@ -832,7 +835,7 @@ fn writer_drop_in_flow_init_sent_hangs_server_reader() {
         {
             let mut server_pkt_count = 0u32;
             bach::net::monitor::on_packet_sent(move |packet| {
-                if packet.source().port() == SERVER_PORT {
+                if packet.source().ip() == server_ip {
                     server_pkt_count += 1;
                     if server_pkt_count == 1 {
                         return bach::net::monitor::Command::Drop;

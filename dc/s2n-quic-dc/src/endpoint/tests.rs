@@ -283,16 +283,19 @@ fn server_response_loss_triggers_pto() {
 /// client should PTO-retransmit and the server should still see "ping".
 #[test]
 fn client_request_loss_triggers_pto() {
+    use std::net::IpAddr;
+
     crate::testing::sim(|| {
         use crate::testing::ext::*;
 
         let acceptor_id = VarInt::from_u8(1);
+        let server_ip = IpAddr::from([10, 0, 0, 1u8]);
 
         // Drop the first packet from the client to the server.
         {
             let mut client_pkt_count = 0u32;
             bach::net::monitor::on_packet_sent(move |packet| {
-                if packet.source().port() != SERVER_PORT {
+                if packet.source().ip() != server_ip {
                     client_pkt_count += 1;
                     if client_pkt_count == 1 {
                         info!(
@@ -1922,7 +1925,7 @@ fn concurrent_tiny_streams_batch_into_minimal_packets() {
 #[ignore = "TODO need to figure out what's going on here"]
 fn zombie_flow_not_invalidated_when_path_has_other_activity() {
     use crate::testing::ext::*;
-    use std::sync::atomic::AtomicBool;
+    use std::{net::IpAddr, sync::atomic::AtomicBool};
 
     let zombie_still_probing = Arc::new(AtomicBool::new(false));
     let zombie_still_probing_inner = zombie_still_probing.clone();
@@ -1930,6 +1933,7 @@ fn zombie_flow_not_invalidated_when_path_has_other_activity() {
     let _no_snap = crate::testing::without_snapshots();
     crate::testing::sim(|| {
         let acceptor_id = VarInt::from_u8(1);
+        let server_ip = IpAddr::from([10, 0, 0, 1u8]);
 
         // Track packets: count server→client drops after zombie starts
         let zombie_active = Arc::new(AtomicBool::new(false));
@@ -1941,9 +1945,7 @@ fn zombie_flow_not_invalidated_when_path_has_other_activity() {
             // Once zombie is active, drop all server→client packets.
             // This means the zombie flow's probes never get responses,
             // BUT new flow inits from client→server still work (they go the other direction).
-            if zombie_active_monitor.load(Ordering::Relaxed)
-                && packet.destination().port() != SERVER_PORT
-            {
+            if zombie_active_monitor.load(Ordering::Relaxed) && packet.source().ip() == server_ip {
                 probes_counter.fetch_add(1, Ordering::Relaxed);
                 return bach::net::monitor::Command::Drop;
             }

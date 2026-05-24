@@ -17,7 +17,7 @@
 //! throughput is immediately visible.
 use crate::{
     endpoint::routing::hash_id_and_sender,
-    stream::endpoint::testing::sim::{Client, Server, SERVER_PORT},
+    stream::endpoint::testing::sim::{Client, Server},
     testing::{ext::*, sim, without_tracing},
     tracing::*,
     xorshift,
@@ -119,7 +119,7 @@ impl DroppedPackets {
 
     /// Runs a 256 KiB echo simulation with this packet-drop pattern.
     ///
-    /// Only server→client packets (source port [`SERVER_PORT`]) are subject to
+    /// Only server→client packets (source IP `10.0.0.1`) are subject to
     /// the drop pattern, mirroring the convention used in
     /// `stream::tests::deterministic`.
     ///
@@ -130,6 +130,7 @@ impl DroppedPackets {
         const TRANSFER_TIMEOUT: Duration = Duration::from_secs(30);
 
         let acceptor_id = VarInt::from_u8(1);
+        let server_ip = std::net::IpAddr::from([10, 0, 0, 1u8]);
 
         let end_time: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
         let end_time_inner = end_time.clone();
@@ -144,7 +145,7 @@ impl DroppedPackets {
                 );
                 let mut enabled = self.enabled_iter().enumerate();
                 bach::net::monitor::on_packet_sent(move |packet| {
-                    if packet.destination().port() != SERVER_PORT {
+                    if packet.source().ip() == server_ip {
                         if let Some((idx, enabled)) = enabled.next() {
                             if !enabled {
                                 info!(
