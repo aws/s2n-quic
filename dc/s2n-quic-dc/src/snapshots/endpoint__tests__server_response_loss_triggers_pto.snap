@@ -529,6 +529,7 @@ expression: logs
 0:00:00.000541000 [server] TRACE m#task.assembler.drained[send.1]=1
 0:00:00.000541000 [server] TRACE m#task.tx_wheel.drained[send.worker.1]=0
 0:00:00.000541000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=1
+0:00:00.000541000 [server]  INFO dropping server packet #2 (source=10.0.0.1:49152, len=52)
 0:00:00.000541000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=0
 0:00:00.001021000 [client] TRACE c#socket.rx.ops[recv.5]=1
 0:00:00.001021000 [client] TRACE c#socket.rx.bytes[recv.5]=54
@@ -580,77 +581,120 @@ expression: logs
 0:00:00.001021000 [client] TRACE g#q.ack_to_completion.depth[send.worker.1]=0
 0:00:00.001021000 [client] TRACE m#task.completion.drained[send.worker.1]=1
 0:00:00.001021000 [client] TRACE m#task.waker_drain.drained[waker.11]=1
-0:00:00.001041000 [client] TRACE c#socket.rx.ops[recv.1]=1
-0:00:00.001041000 [client] TRACE c#socket.rx.bytes[recv.1]=52
-0:00:00.001041000 [client] TRACE c#router.routed=1
-0:00:00.001041000 [client] TRACE c#router.routed[recv.0]=1
-0:00:00.001041000 [client] TRACE c#q.dispatch_rx.enq[recv.0]=1
-0:00:00.001041000 [client] TRACE g#q.dispatch_rx.depth[recv.0]=1
-0:00:00.001041000 [client] TRACE m#q.dispatch_rx.depth_dist[recv.0]=1
-0:00:00.001041000 [client] TRACE m#task.socket_recv.drained[recv.1]=0
-0:00:00.001041000 [client] TRACE c#q.dispatch_rx.receiver[recv.0.task.packet_dispatch]=1
-0:00:00.001041000 [client] TRACE c#q.dispatch_rx.drain[recv.0]=1
-0:00:00.001041000 [client] TRACE g#q.dispatch_rx.depth[recv.0]=0
-0:00:00.001041000 [client] TRACE c#rx.data_pkt=1
-0:00:00.001041000 [client] DEBUG deriving opener for credentials credentials=0x7da2b021bc51ec6a354acc13cf843ec7:1 peer_addr=10.0.0.1:49152 sender_id=1 recv_worker_id=0
-0:00:00.001041000 [client] DEBUG s2n_quic_dc: credential_id=[125, 162, 176, 33, 188, 81, 236, 106, 53, 74, 204, 19, 207, 132, 62, 199] hit=true
-0:00:00.001041000 [client] DEBUG s2n_quic_dc: credential_id=[125, 162, 176, 33, 188, 81, 236, 106, 53, 74, 204, 19, 207, 132, 62, 199] age=1.04ms
-0:00:00.001041000 [client] DEBUG s2n_quic_dc: credential_id=[125, 162, 176, 33, 188, 81, 236, 106, 53, 74, 204, 19, 207, 132, 62, 199] key_id=1 gap=1 forward_shift=0
-0:00:00.001041000 [client] TRACE c#rx.peer_cache.miss=1
-0:00:00.001041000 [client] TRACE c#rx.ecn[ect0]=1
-0:00:00.001041000 [client] TRACE m#rx.packet_size=4
-0:00:00.001041000 [client] TRACE c#rx.frame[flow_data_fin]=1
-0:00:00.001041000 [client] TRACE c#rx.data.ok=1
-0:00:00.001041000 [client] TRACE m#rx.frames_per_packet=1
-0:00:00.001041000 [client] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
-0:00:00.001041000 [client] TRACE m#task.packet_dispatch.drained[recv.dispatch.0]=2
-0:00:00.001041000 [client] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.0]=1
-0:00:00.001041000 [client] TRACE m#task.waker_drain.drained[waker.11]=1
-0:00:00.001041000 [client] DEBUG event=on_flush prev=Scheduled next=Flushed location=dc/s2n-quic-dc/src/endpoint/recv.rs
-0:00:00.001041000 [client] TRACE c#q.ack.enq[send.1]=1
-0:00:00.001041000 [client] TRACE g#q.ack.depth[send.1]=1
-0:00:00.001041000 [client] TRACE m#q.ack.depth_dist[send.1]=1
-0:00:00.001041000 [client] TRACE m#task.ack_burst.drained[recv.dispatch.0]=1
-0:00:00.001041000 [client] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.0]=0
-0:00:00.001041000 [client] DEBUG Reader complete - all data consumed stream_id=0 final_size=Some(4) consumed_len=4
-0:00:00.001041000 [client] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs
-0:00:00.001041000 [client]  INFO server_response_loss_triggers_pto passed
-0:00:00.001041000 [client] DEBUG Writer dropping stream_id=0 status=FinSent next_offset=4 inflight_bytes=4 remote_max_data=0
-0:00:00.001041000 [client] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.001041000 [client] DEBUG Reader dropping stream_id=0 status=Complete final_size=Some(4) consumed_len=4 total_received_len=4 is_writing_complete=true is_reading_complete=true
-0:00:00.001041000 [client] TRACE c#q.ack.receiver[send.1.task.ack_processor]=1
-0:00:00.001041000 [client] TRACE c#q.ack.drain[send.1]=1
-0:00:00.001041000 [client] TRACE g#q.ack.depth[send.1]=0
-0:00:00.001041000 [client] DEBUG deriving sealer for credentials credentials=0xfda2b021bc51ec6a354acc13cf843ec7:1 peer_addr=10.0.0.1:49152 sender_idx=1
-0:00:00.001041000 [client] TRACE g#send.context.count[send.1]=1
-0:00:00.001041000 [client] TRACE c#send.ack.enq[send.1]=1
-0:00:00.001041000 [client] TRACE g#send.ack.depth[send.1]=1
-0:00:00.001041000 [client] TRACE m#send.ack.depth_dist[send.1]=1
-0:00:00.001041000 [client] TRACE c#q.resolver_to_idle_wheel.sender[send.worker.1.task.ack_processor]=1
-0:00:00.001041000 [client] TRACE c#q.resolver_to_idle_wheel.enq[send.worker.1]=1
-0:00:00.001041000 [client] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.1]=2
-0:00:00.001041000 [client] TRACE m#q.resolver_to_idle_wheel.depth_dist[send.worker.1]=2
-0:00:00.001041000 [client] TRACE m#task.ack_processor.drained[send.worker.1]=2
-0:00:00.001041000 [client] TRACE m#task.idle_wheel.drained[send.worker.1]=1
-0:00:00.001041000 [client] TRACE m#asm.max_datagram_size=1472
-0:00:00.001041000 [client] TRACE c#send.ack.drain[send.1]=1
-0:00:00.001041000 [client] TRACE g#send.ack.depth[send.1]=0
-0:00:00.001041000 [client] TRACE c#tx.frame[ack]=1
-0:00:00.001041000 [client] TRACE m#tx.packet_size=54
-0:00:00.001041000 [client] TRACE m#tx.frames_per_packet=1
-0:00:00.001041000 [client] TRACE m#tx.payload_size=8
-0:00:00.001041000 [client] TRACE c#tx.data=1
-0:00:00.001041000 [client] TRACE c#tx.data[send.1]=1
-0:00:00.001041000 [client] TRACE c#q.dispatch.enq[recv.dispatch.0]=1
-0:00:00.001041000 [client] TRACE g#q.dispatch.depth[recv.dispatch.0]=1
-0:00:00.001041000 [client] TRACE m#q.dispatch.depth_dist[recv.dispatch.0]=1
-0:00:00.001041000 [client] TRACE m#asm.segments=1
-0:00:00.001041000 [client] TRACE c#socket.tx.ops[send.1]=1
-0:00:00.001041000 [client] TRACE c#socket.tx.bytes[send.1]=54
-0:00:00.001041000 [client] TRACE m#task.assembler.drained[send.1]=1
-0:00:00.001041000 [client] TRACE m#task.idle_wheel.drained[send.worker.1]=0
-0:00:00.001041000 [client] TRACE c#q.dispatch.receiver[recv.dispatch.0.task.ack_completion]=1
-0:00:00.001041000 [client] TRACE c#q.dispatch.drain[recv.dispatch.0]=1
-0:00:00.001041000 [client] TRACE g#q.dispatch.depth[recv.dispatch.0]=0
-0:00:00.001041000 [client] DEBUG event=on_flush_complete prev=Flushed next=Idle location=dc/s2n-quic-dc/src/endpoint/recv.rs
-0:00:00.001041000 [client] TRACE m#task.ack_completion.drained[recv.dispatch.0]=1
+0:00:00.006016000 [client] TRACE c#q.resolver_to_pto_wheel.receiver[send.worker.1.task.pto_wheel]=1
+0:00:00.006016000 [client] TRACE c#q.resolver_to_pto_wheel.drain[send.worker.1]=1
+0:00:00.006016000 [client] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.1]=0
+0:00:00.006016000 [client] TRACE c#tx.pto_check=1
+0:00:00.006016000 [client] TRACE m#task.pto_wheel.drained[send.worker.1]=0
+0:00:00.006528000 [server] TRACE c#q.resolver_to_pto_wheel.receiver[send.worker.1.task.pto_wheel]=1
+0:00:00.006528000 [server] TRACE c#q.resolver_to_pto_wheel.drain[send.worker.1]=1
+0:00:00.006528000 [server] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.1]=0
+0:00:00.006528000 [server] TRACE c#tx.pto_check=1
+0:00:00.006528000 [server] TRACE c#q.resolver_to_pto_wheel.sender[send.worker.1.task.pto_wheel]=1
+0:00:00.006528000 [server] TRACE c#q.resolver_to_pto_wheel.enq[send.worker.1]=1
+0:00:00.006528000 [server] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.1]=1
+0:00:00.006528000 [server] TRACE m#q.resolver_to_pto_wheel.depth_dist[send.worker.1]=1
+0:00:00.006528000 [server] TRACE c#q.resolver_to_pto_wheel.receiver[send.worker.1.task.pto_wheel]=1
+0:00:00.006528000 [server] TRACE c#q.resolver_to_pto_wheel.drain[send.worker.1]=1
+0:00:00.006528000 [server] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.1]=0
+0:00:00.006528000 [server] TRACE c#tx.pto_check=1
+0:00:00.006528000 [server] DEBUG event=request prev=Idle next=Requested location=dc/s2n-quic-dc/src/endpoint/send.rs
+0:00:00.006528000 [server] TRACE c#tx.pto_requested=1
+0:00:00.006528000 [server] TRACE m#tx.probe.backoff[send.1]=2
+0:00:00.006528000 [server] TRACE c#q.resolver_to_pto_wheel.sender[send.worker.1.task.pto_wheel]=1
+0:00:00.006528000 [server] TRACE c#q.resolver_to_pto_wheel.enq[send.worker.1]=1
+0:00:00.006528000 [server] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.1]=1
+0:00:00.006528000 [server] TRACE m#q.resolver_to_pto_wheel.depth_dist[send.worker.1]=1
+0:00:00.006528000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=2
+0:00:00.006528000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=0
+0:00:00.006528000 [server] TRACE m#asm.max_datagram_size=1472
+0:00:00.006528000 [server] TRACE c#tx.frame[flow_data_fin]=1
+0:00:00.006528000 [server] TRACE c#tx.probe.frame[flow_data_fin]=1
+0:00:00.006528000 [server] TRACE m#tx.packet_size=52
+0:00:00.006528000 [server] TRACE m#tx.frames_per_packet=1
+0:00:00.006528000 [server] TRACE m#tx.payload_size=4
+0:00:00.006528000 [server] TRACE c#tx.data=1
+0:00:00.006528000 [server] TRACE c#tx.data[send.1]=1
+0:00:00.006528000 [server] TRACE c#tx.probe=1
+0:00:00.006528000 [server] DEBUG event=on_transmit prev=Requested next=Idle location=dc/s2n-quic-dc/src/endpoint/assemble.rs
+0:00:00.006528000 [server] TRACE c#send.inflight.enq[send.1]=1
+0:00:00.006528000 [server] TRACE g#send.inflight.depth[send.1]=2
+0:00:00.006528000 [server] TRACE m#send.inflight.depth_dist[send.1]=2
+0:00:00.006528000 [server] TRACE m#asm.segments=1
+0:00:00.006528000 [server] TRACE c#socket.tx.ops[send.1]=1
+0:00:00.006528000 [server] TRACE c#socket.tx.bytes[send.1]=52
+0:00:00.006528000 [server] TRACE m#task.assembler.drained[send.1]=1
+0:00:00.007028000 [client] TRACE c#socket.rx.ops[recv.1]=1
+0:00:00.007028000 [client] TRACE c#socket.rx.bytes[recv.1]=52
+0:00:00.007028000 [client] TRACE c#router.routed=1
+0:00:00.007028000 [client] TRACE c#router.routed[recv.0]=1
+0:00:00.007028000 [client] TRACE c#q.dispatch_rx.enq[recv.0]=1
+0:00:00.007028000 [client] TRACE g#q.dispatch_rx.depth[recv.0]=1
+0:00:00.007028000 [client] TRACE m#q.dispatch_rx.depth_dist[recv.0]=1
+0:00:00.007028000 [client] TRACE m#task.socket_recv.drained[recv.1]=0
+0:00:00.007028000 [client] TRACE c#q.dispatch_rx.receiver[recv.0.task.packet_dispatch]=1
+0:00:00.007028000 [client] TRACE c#q.dispatch_rx.drain[recv.0]=1
+0:00:00.007028000 [client] TRACE g#q.dispatch_rx.depth[recv.0]=0
+0:00:00.007028000 [client] TRACE c#rx.data_pkt=1
+0:00:00.007028000 [client] DEBUG deriving opener for credentials credentials=0x7da2b021bc51ec6a354acc13cf843ec7:1 peer_addr=10.0.0.1:49152 sender_id=1 recv_worker_id=0
+0:00:00.007028000 [client] DEBUG s2n_quic_dc: credential_id=[125, 162, 176, 33, 188, 81, 236, 106, 53, 74, 204, 19, 207, 132, 62, 199] hit=true
+0:00:00.007028000 [client] DEBUG s2n_quic_dc: credential_id=[125, 162, 176, 33, 188, 81, 236, 106, 53, 74, 204, 19, 207, 132, 62, 199] age=7.027ms
+0:00:00.007028000 [client] DEBUG s2n_quic_dc: credential_id=[125, 162, 176, 33, 188, 81, 236, 106, 53, 74, 204, 19, 207, 132, 62, 199] key_id=1 gap=1 forward_shift=0
+0:00:00.007028000 [client] TRACE c#rx.peer_cache.miss=1
+0:00:00.007028000 [client] TRACE c#rx.ecn[ect0]=1
+0:00:00.007028000 [client] TRACE m#rx.packet_size=4
+0:00:00.007028000 [client] TRACE c#rx.frame[flow_data_fin]=1
+0:00:00.007028000 [client] TRACE c#rx.data.ok=1
+0:00:00.007028000 [client] TRACE m#rx.frames_per_packet=1
+0:00:00.007028000 [client] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
+0:00:00.007028000 [client] TRACE m#task.packet_dispatch.drained[recv.dispatch.0]=2
+0:00:00.007028000 [client] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.0]=1
+0:00:00.007028000 [client] TRACE m#task.waker_drain.drained[waker.11]=1
+0:00:00.007028000 [client] DEBUG event=on_flush prev=Scheduled next=Flushed location=dc/s2n-quic-dc/src/endpoint/recv.rs
+0:00:00.007028000 [client] TRACE c#q.ack.enq[send.1]=1
+0:00:00.007028000 [client] TRACE g#q.ack.depth[send.1]=1
+0:00:00.007028000 [client] TRACE m#q.ack.depth_dist[send.1]=1
+0:00:00.007028000 [client] TRACE m#task.ack_burst.drained[recv.dispatch.0]=1
+0:00:00.007028000 [client] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.0]=0
+0:00:00.007028000 [client] DEBUG Reader complete - all data consumed stream_id=0 final_size=Some(4) consumed_len=4
+0:00:00.007028000 [client] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs
+0:00:00.007028000 [client]  INFO server_response_loss_triggers_pto passed
+0:00:00.007028000 [client] DEBUG Writer dropping stream_id=0 status=FinSent next_offset=4 inflight_bytes=4 remote_max_data=0
+0:00:00.007028000 [client] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.007028000 [client] DEBUG Reader dropping stream_id=0 status=Complete final_size=Some(4) consumed_len=4 total_received_len=4 is_writing_complete=true is_reading_complete=true
+0:00:00.007028000 [client] TRACE c#q.ack.receiver[send.1.task.ack_processor]=1
+0:00:00.007028000 [client] TRACE c#q.ack.drain[send.1]=1
+0:00:00.007028000 [client] TRACE g#q.ack.depth[send.1]=0
+0:00:00.007028000 [client] DEBUG deriving sealer for credentials credentials=0xfda2b021bc51ec6a354acc13cf843ec7:1 peer_addr=10.0.0.1:49152 sender_idx=1
+0:00:00.007028000 [client] TRACE g#send.context.count[send.1]=1
+0:00:00.007028000 [client] TRACE c#send.ack.enq[send.1]=1
+0:00:00.007028000 [client] TRACE g#send.ack.depth[send.1]=1
+0:00:00.007028000 [client] TRACE m#send.ack.depth_dist[send.1]=1
+0:00:00.007028000 [client] TRACE c#q.resolver_to_idle_wheel.sender[send.worker.1.task.ack_processor]=1
+0:00:00.007028000 [client] TRACE c#q.resolver_to_idle_wheel.enq[send.worker.1]=1
+0:00:00.007028000 [client] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.1]=2
+0:00:00.007028000 [client] TRACE m#q.resolver_to_idle_wheel.depth_dist[send.worker.1]=2
+0:00:00.007028000 [client] TRACE m#task.ack_processor.drained[send.worker.1]=2
+0:00:00.007028000 [client] TRACE m#task.idle_wheel.drained[send.worker.1]=1
+0:00:00.007028000 [client] TRACE m#asm.max_datagram_size=1472
+0:00:00.007028000 [client] TRACE c#send.ack.drain[send.1]=1
+0:00:00.007028000 [client] TRACE g#send.ack.depth[send.1]=0
+0:00:00.007028000 [client] TRACE c#tx.frame[ack]=1
+0:00:00.007028000 [client] TRACE m#tx.packet_size=54
+0:00:00.007028000 [client] TRACE m#tx.frames_per_packet=1
+0:00:00.007028000 [client] TRACE m#tx.payload_size=8
+0:00:00.007028000 [client] TRACE c#tx.data=1
+0:00:00.007028000 [client] TRACE c#tx.data[send.1]=1
+0:00:00.007028000 [client] TRACE c#q.dispatch.enq[recv.dispatch.0]=1
+0:00:00.007028000 [client] TRACE g#q.dispatch.depth[recv.dispatch.0]=1
+0:00:00.007028000 [client] TRACE m#q.dispatch.depth_dist[recv.dispatch.0]=1
+0:00:00.007028000 [client] TRACE m#asm.segments=1
+0:00:00.007028000 [client] TRACE c#socket.tx.ops[send.1]=1
+0:00:00.007028000 [client] TRACE c#socket.tx.bytes[send.1]=54
+0:00:00.007028000 [client] TRACE m#task.assembler.drained[send.1]=1
+0:00:00.007028000 [client] TRACE m#task.idle_wheel.drained[send.worker.1]=0
+0:00:00.007028000 [client] TRACE c#q.dispatch.receiver[recv.dispatch.0.task.ack_completion]=1
+0:00:00.007028000 [client] TRACE c#q.dispatch.drain[recv.dispatch.0]=1
+0:00:00.007028000 [client] TRACE g#q.dispatch.depth[recv.dispatch.0]=0
+0:00:00.007028000 [client] DEBUG event=on_flush_complete prev=Flushed next=Idle location=dc/s2n-quic-dc/src/endpoint/recv.rs
+0:00:00.007028000 [client] TRACE m#task.ack_completion.drained[recv.dispatch.0]=1

@@ -165,26 +165,33 @@ fn ping_pong() {
 
 /// Verifies that PTO retransmission recovers from lost server responses.
 ///
-/// The server sends "pong" back to the client but the first response packet is
-/// dropped by the network monitor. The server's PTO mechanism should detect the
-/// missing ACK and retransmit, allowing the exchange to complete.
+/// The server sends an ACK-only packet first and then the response packet.
+/// This test drops the second server packet (the response) so PTO must
+/// retransmit before the client can complete.
 #[test]
 fn server_response_loss_triggers_pto() {
+    use std::net::IpAddr;
+
+    let server_to_client_packets = Arc::new(AtomicUsize::new(0));
+    let dropped_server_packets = Arc::new(AtomicUsize::new(0));
+
     crate::testing::sim(|| {
         use crate::testing::ext::*;
 
         let acceptor_id = VarInt::from_u8(1);
-
-        // Drop the first packet sent from the server to the client.
-        // The server binds to SERVER_PORT, so we identify its packets by source port.
+        let server_ip = IpAddr::from([10, 0, 0, 1u8]);
+        // Drop the second packet sent from the server to the client.
+        // In this scenario, packet #1 is ACK-only and packet #2 carries "pong".
         {
-            let mut server_pkt_count = 0u32;
+            let server_to_client_packets = server_to_client_packets.clone();
+            let dropped_server_packets = dropped_server_packets.clone();
             bach::net::monitor::on_packet_sent(move |packet| {
-                if packet.source().port() == SERVER_PORT {
-                    server_pkt_count += 1;
-                    if server_pkt_count == 1 {
+                if packet.source().ip() == server_ip {
+                    let packet_idx = server_to_client_packets.fetch_add(1, Ordering::Relaxed) + 1;
+                    if packet_idx == 2 {
+                        dropped_server_packets.fetch_add(1, Ordering::Relaxed);
                         info!(
-                            "dropping server packet #{server_pkt_count} (source={:?}, len={})",
+                            "dropping server packet #{packet_idx} (source={:?}, len={})",
                             packet.source(),
                             packet.transport.payload().len()
                         );
@@ -260,6 +267,14 @@ fn server_response_loss_triggers_pto() {
         .primary()
         .spawn();
     });
+
+    let dropped = dropped_server_packets.load(Ordering::Relaxed);
+    let server_packets = server_to_client_packets.load(Ordering::Relaxed);
+    assert_eq!(dropped, 1, "expected exactly one dropped server packet");
+    assert_eq!(
+        server_packets, 3,
+        "expected exactly three server packets after dropping the response packet"
+    );
 }
 
 /// Verifies that the client's initial packet loss is recovered by PTO.
@@ -520,24 +535,31 @@ fn large_payload_transfer() {
 
 /// Verifies that multiple consecutive packet drops are recovered by PTO.
 ///
-/// The first two response packets from the server are dropped; PTO backoff
-/// should recover on the third attempt.
+/// The first two server packets to the client are dropped and PTO recovery is
+/// locked to the resulting deterministic packet behavior.
 #[test]
 fn multiple_packet_loss_recovered_by_pto() {
+    use std::net::IpAddr;
+
+    let server_to_client_packets = Arc::new(AtomicUsize::new(0));
+    let dropped_server_packets = Arc::new(AtomicUsize::new(0));
+
     crate::testing::sim(|| {
         use crate::testing::ext::*;
 
         let acceptor_id = VarInt::from_u8(1);
-
+        let server_ip = IpAddr::from([10, 0, 0, 1u8]);
         // Drop the first two packets from the server.
         {
-            let mut server_pkt_count = 0u32;
+            let server_to_client_packets = server_to_client_packets.clone();
+            let dropped_server_packets = dropped_server_packets.clone();
             bach::net::monitor::on_packet_sent(move |packet| {
-                if packet.source().port() == SERVER_PORT {
-                    server_pkt_count += 1;
-                    if server_pkt_count <= 2 {
+                if packet.source().ip() == server_ip {
+                    let packet_idx = server_to_client_packets.fetch_add(1, Ordering::Relaxed) + 1;
+                    if packet_idx <= 2 {
+                        dropped_server_packets.fetch_add(1, Ordering::Relaxed);
                         info!(
-                            "dropping server packet #{server_pkt_count} len={}",
+                            "dropping server packet #{packet_idx} len={}",
                             packet.transport.payload().len()
                         );
                         return bach::net::monitor::Command::Drop;
@@ -610,6 +632,14 @@ fn multiple_packet_loss_recovered_by_pto() {
         .primary()
         .spawn();
     });
+
+    let dropped = dropped_server_packets.load(Ordering::Relaxed);
+    let server_packets = server_to_client_packets.load(Ordering::Relaxed);
+    assert_eq!(dropped, 2, "expected exactly two dropped server packets");
+    assert_eq!(
+        server_packets, 4,
+        "expected exactly four server packets after dropping the first two server packets"
+    );
 }
 
 /// Verifies that ACKs are sent back and the sender's inflight map is drained.
