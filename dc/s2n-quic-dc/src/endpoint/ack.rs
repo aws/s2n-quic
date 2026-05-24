@@ -237,6 +237,10 @@ pub(crate) fn process_ack<Clk, Rand>(
     context.pto.on_ack_received(has_remaining_inflight);
     if !has_remaining_inflight {
         context.pto_wheel.target_time = None;
+        // Inflight just drained — we already have a fresh RTT sample from the data
+        // ACK (or ack-only probe). Suppress the rtt_tracker so the next ACK-only
+        // send doesn't redundantly probe and trigger an ACK ping-pong.
+        context.rtt_tracker.suppress();
     }
 
     // If the tx wheel entry is now stale (scheduling reason removed by the ACK), clear

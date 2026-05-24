@@ -654,8 +654,15 @@ fn make_varint(n: u64) -> VarInt {
 fn ack_rtt_tracker_initially_not_pending() {
     let tracker = AckRttTracker::default();
     assert!(
+        tracker.is_pending(),
+        "fresh AckRttTracker starts suppressed (sampled=true) to avoid probing before first data send"
+    );
+    // After clear() (simulating data entering inflight), it becomes available.
+    let mut tracker = tracker;
+    tracker.clear();
+    assert!(
         !tracker.is_pending(),
-        "fresh AckRttTracker should have no pending sample"
+        "after clear(), tracker should allow probing"
     );
 }
 
@@ -854,6 +861,7 @@ fn ack_rtt_tracker_on_non_eliciting_sent_updates_latest() {
 #[test]
 fn ack_rtt_tracker_on_non_eliciting_sent_noop_when_no_probe() {
     let mut tracker = AckRttTracker::default();
+    tracker.clear(); // simulate data cycle making tracker available
     // No probe in-flight (stable=None).
     tracker.on_non_eliciting_sent(make_varint(5), make_ts(100));
     assert!(!tracker.is_pending(), "no-op when stable=None");

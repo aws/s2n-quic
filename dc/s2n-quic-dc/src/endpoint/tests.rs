@@ -1723,6 +1723,140 @@ fn five_node_random_chatter_settles_after_stop() {
     });
 }
 
+/// Verifies that multiple concurrent tiny streams are batched into minimal packets.
+///
+/// Three concurrent streams from one client endpoint, each sending 10 bytes. The
+/// server echoes 10 bytes back on each. Because all streams share the same endpoint
+/// and their frames become ready at the same simulated tick, the send pipeline
+/// batches them into far fewer packets than the naive per-stream case.
+///
+/// Ideal packet flow (3 total, vs 12 without batching):
+///
+/// 1. client→server: all 3 FlowInit + data + FIN frames (1 packet)
+/// 2. server→client: all 3 ACK + data + FIN response frames (1 packet)
+/// 3. client→server: all 3 final ACK frames (1 packet)
+///
+/// Current sim produces 4 packets: the server's ACK is sent in a separate packet
+/// from its data response because they fire in different sim ticks (zero-contention
+/// scheduling). Under production load these naturally coalesce into one packet.
+#[test]
+fn concurrent_tiny_streams_batch_into_minimal_packets() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+        const NUM_STREAMS: usize = 3;
+
+        let total_packets = Arc::new(AtomicUsize::new(0));
+        {
+            let total_packets = total_packets.clone();
+            bach::net::monitor::on_packet_sent(move |_packet| {
+                total_packets.fetch_add(1, Ordering::Relaxed);
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        // ── Server ────────────────────────────────────────────────────────
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 16)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let stream = stream.validate().await.expect("server validate");
+                    let (mut reader, mut writer) = stream.into_split();
+
+                    let mut buf = BytesMut::with_capacity(16);
+                    loop {
+                        let n = reader.read_into(&mut buf).await.expect("server read");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+
+                    let mut echo = Bytes::copy_from_slice(&buf);
+                    writer
+                        .write_all_from_fin(&mut echo)
+                        .await
+                        .expect("server write");
+                }
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        // ── Client ────────────────────────────────────────────────────────
+        {
+            let total_packets = total_packets.clone();
+            async move {
+                let mut client = Client::new();
+
+                // Connect all streams first, then write concurrently so their
+                // frames are all queued in the same send cycle.
+                let mut streams = Vec::with_capacity(NUM_STREAMS);
+                for i in 0..NUM_STREAMS {
+                    let stream = client
+                        .connect("server:0", acceptor_id)
+                        .await
+                        .expect("connect failed");
+                    streams.push((i, stream));
+                }
+
+                let mut handles = Vec::with_capacity(NUM_STREAMS);
+                for (i, stream) in streams {
+                    handles.push(
+                        async move {
+                            let (mut reader, mut writer) = stream.into_split();
+
+                            // 10 bytes of data
+                            let payload = vec![i as u8; 10];
+                            let mut data = Bytes::from(payload.clone());
+                            writer
+                                .write_all_from_fin(&mut data)
+                                .await
+                                .expect("client write");
+
+                            let mut buf = BytesMut::with_capacity(16);
+                            loop {
+                                let n =
+                                    reader.read_into(&mut buf).await.expect("client read");
+                                if n == 0 {
+                                    break;
+                                }
+                            }
+                            assert_eq!(
+                                &buf[..],
+                                &payload[..],
+                                "echo mismatch for stream {i}"
+                            );
+                        }
+                        .spawn(),
+                    );
+                }
+
+                for handle in handles {
+                    handle.await.expect("stream task join");
+                }
+
+                // Allow background ACKs to flush.
+                Duration::from_millis(100).sleep().await;
+
+                let packets = total_packets.load(Ordering::Relaxed);
+                assert!(
+                    packets <= 4,
+                    "expected at most 4 packets (3 streams batched; ideal is 3), got {packets}"
+                );
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        }
+    });
+}
+
 /// Verifies end-to-end stale-key recovery: after the server's recv-cache entry
 /// is evicted by the idle wheel, the client's next stream initially fails
 /// (stale key detected), but the server sends a StaleKey control packet back,

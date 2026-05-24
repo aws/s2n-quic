@@ -219,7 +219,7 @@ impl PendingAcks {
 ///
 /// The tracker is also cleared whenever a data-carrying packet is inserted into
 /// the inflight map, because those packets will produce RTT samples on their own.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct AckRttTracker {
     /// Oldest pending ack-eliciting ACK-only transmission.
     /// Set once; not replaced until acknowledged or declared lost.
@@ -229,7 +229,21 @@ pub(crate) struct AckRttTracker {
     latest: Option<(VarInt, Timestamp)>,
     /// Set to `true` after a sample has been successfully consumed. Prevents
     /// re-probing until [`clear`] is called, breaking any potential ACK loop.
+    ///
+    /// Starts `true` so that a brand-new context doesn't probe on its first ACK
+    /// (the first data send will produce an RTT sample naturally). Reset to `false`
+    /// by [`clear`] when data enters inflight.
     sampled: bool,
+}
+
+impl Default for AckRttTracker {
+    fn default() -> Self {
+        Self {
+            stable: None,
+            latest: None,
+            sampled: true,
+        }
+    }
 }
 
 impl AckRttTracker {
@@ -270,6 +284,16 @@ impl AckRttTracker {
         if self.stable.is_some() {
             self.latest = Some((packet_number, time_sent));
         }
+    }
+
+    /// Suppress further probing until [`clear`] is called.
+    ///
+    /// Called when inflight drains to empty after an ACK that already produced an
+    /// RTT sample via the normal data path. Prevents the immediately following
+    /// ACK-only send from redundantly probing.
+    #[inline]
+    pub fn suppress(&mut self) {
+        self.sampled = true;
     }
 
     /// Clear all slots and reset the `sampled` flag.
