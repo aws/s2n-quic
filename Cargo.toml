@@ -15,8 +15,10 @@ exclude = ["examples", "tools/event-generator", "tools/memory-report", "tools/s2
 # - Relax Send bounds on spawn/primary ext traits for !Send futures in
 #   single-threaded simulation.
 #   https://github.com/camshaft/bach/commit/5a5ece139b71c226d18b2fb71af9a7f3ae4b09f2
+# - Add synchronous host lookup for packet monitors via `bach::net::try_lookup`.
+#   https://github.com/camshaft/bach/commit/8bddd1958ff66460ea7d0e060bf07b999262aadb
 [patch.crates-io]
-bach = { git = "https://github.com/camshaft/bach", rev = "5a5ece139b71c226d18b2fb71af9a7f3ae4b09f2" }
+bach = { git = "https://github.com/camshaft/bach", rev = "8bddd1958ff66460ea7d0e060bf07b999262aadb" }
 bolero = { git = "https://github.com/camshaft/bolero", rev = "71e5de0eceb043f3eda2f62ccd02d2be2b398c44" }
 bolero-engine = { git = "https://github.com/camshaft/bolero", rev = "71e5de0eceb043f3eda2f62ccd02d2be2b398c44" }
 bolero-generator = { git = "https://github.com/camshaft/bolero", rev = "71e5de0eceb043f3eda2f62ccd02d2be2b398c44" }

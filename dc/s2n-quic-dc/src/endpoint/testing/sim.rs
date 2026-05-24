@@ -37,7 +37,7 @@ use crate::{
         PendingValidation, Reader, Stream, Writer,
     },
 };
-use core::net::SocketAddr;
+use core::net::{IpAddr, SocketAddr};
 use s2n_quic_core::varint::VarInt;
 use std::{
     cell::RefCell,
@@ -116,6 +116,44 @@ fn lookup_peer_data_addrs(any_addr: SocketAddr) -> Vec<SocketAddr> {
 /// client.connect("server:4433", acceptor_id).await
 /// ```
 pub const SERVER_PORT: u16 = 4433;
+
+/// Lazily resolves and caches a Bach group host address for monitor filters.
+///
+/// Resolution happens on first use via [`bach::net::try_lookup`] and then the
+/// cached address is re-used for subsequent packet checks.
+///
+/// Packet checks intentionally compare only the IP (not the full socket
+/// address), since endpoints can bind multiple ports on the same host IP.
+#[derive(Clone, Debug)]
+pub struct MonitorHostAddr {
+    host: &'static str,
+    addr: Option<SocketAddr>,
+}
+
+impl MonitorHostAddr {
+    pub fn new(host: &'static str) -> Self {
+        Self { host, addr: None }
+    }
+
+    fn addr(&mut self) -> SocketAddr {
+        *self.addr.get_or_insert_with(|| {
+            bach::net::try_lookup((self.host, SERVER_PORT)).unwrap_or_else(|err| {
+                panic!(
+                    "failed to resolve monitor host '{}' on port {}: {err}",
+                    self.host, SERVER_PORT
+                )
+            })
+        })
+    }
+
+    pub fn ip(&mut self) -> IpAddr {
+        self.addr().ip()
+    }
+
+    pub fn is_packet_source(&mut self, packet: &bach::net::monitor::Packet) -> bool {
+        packet.source().ip() == self.ip()
+    }
+}
 
 /// Returns the shared [`Endpoint`] for the current Bach group, creating it lazily.
 ///

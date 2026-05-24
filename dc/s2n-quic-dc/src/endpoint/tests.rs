@@ -8,7 +8,7 @@
 //! group so it is treated as a separate machine from the network perspective.
 
 use crate::{
-    stream::endpoint::testing::sim::{Client, Peer, Server, SERVER_PORT},
+    stream::endpoint::testing::sim::{Client, MonitorHostAddr, Peer, Server, SERVER_PORT},
     tracing::*,
 };
 use bach::time::timeout;
@@ -170,8 +170,6 @@ fn ping_pong() {
 /// retransmit before the client can complete.
 #[test]
 fn server_response_loss_triggers_pto() {
-    use std::net::IpAddr;
-
     let server_to_client_packets = Arc::new(AtomicUsize::new(0));
     let dropped_server_packets = Arc::new(AtomicUsize::new(0));
 
@@ -179,14 +177,14 @@ fn server_response_loss_triggers_pto() {
         use crate::testing::ext::*;
 
         let acceptor_id = VarInt::from_u8(1);
-        let server_ip = IpAddr::from([10, 0, 0, 1u8]);
+        let mut server_addr = MonitorHostAddr::new("server");
         // Drop the second packet sent from the server to the client.
         // In this scenario, packet #1 is ACK-only and packet #2 carries "pong".
         {
             let server_to_client_packets = server_to_client_packets.clone();
             let dropped_server_packets = dropped_server_packets.clone();
             bach::net::monitor::on_packet_sent(move |packet| {
-                if packet.source().ip() == server_ip {
+                if server_addr.is_packet_source(packet) {
                     let packet_idx = server_to_client_packets.fetch_add(1, Ordering::Relaxed) + 1;
                     if packet_idx == 2 {
                         dropped_server_packets.fetch_add(1, Ordering::Relaxed);
@@ -283,19 +281,17 @@ fn server_response_loss_triggers_pto() {
 /// client should PTO-retransmit and the server should still see "ping".
 #[test]
 fn client_request_loss_triggers_pto() {
-    use std::net::IpAddr;
-
     crate::testing::sim(|| {
         use crate::testing::ext::*;
 
         let acceptor_id = VarInt::from_u8(1);
-        let server_ip = IpAddr::from([10, 0, 0, 1u8]);
+        let mut server_addr = MonitorHostAddr::new("server");
 
         // Drop the first packet from the client to the server.
         {
             let mut client_pkt_count = 0u32;
             bach::net::monitor::on_packet_sent(move |packet| {
-                if packet.source().ip() != server_ip {
+                if !server_addr.is_packet_source(packet) {
                     client_pkt_count += 1;
                     if client_pkt_count == 1 {
                         info!(
@@ -542,8 +538,6 @@ fn large_payload_transfer() {
 /// locked to the resulting deterministic packet behavior.
 #[test]
 fn multiple_packet_loss_recovered_by_pto() {
-    use std::net::IpAddr;
-
     let server_to_client_packets = Arc::new(AtomicUsize::new(0));
     let dropped_server_packets = Arc::new(AtomicUsize::new(0));
 
@@ -551,13 +545,13 @@ fn multiple_packet_loss_recovered_by_pto() {
         use crate::testing::ext::*;
 
         let acceptor_id = VarInt::from_u8(1);
-        let server_ip = IpAddr::from([10, 0, 0, 1u8]);
+        let mut server_addr = MonitorHostAddr::new("server");
         // Drop the first two packets from the server.
         {
             let server_to_client_packets = server_to_client_packets.clone();
             let dropped_server_packets = dropped_server_packets.clone();
             bach::net::monitor::on_packet_sent(move |packet| {
-                if packet.source().ip() == server_ip {
+                if server_addr.is_packet_source(packet) {
                     let packet_idx = server_to_client_packets.fetch_add(1, Ordering::Relaxed) + 1;
                     if packet_idx <= 2 {
                         dropped_server_packets.fetch_add(1, Ordering::Relaxed);
@@ -1925,7 +1919,7 @@ fn concurrent_tiny_streams_batch_into_minimal_packets() {
 #[ignore = "TODO need to figure out what's going on here"]
 fn zombie_flow_not_invalidated_when_path_has_other_activity() {
     use crate::testing::ext::*;
-    use std::{net::IpAddr, sync::atomic::AtomicBool};
+    use std::sync::atomic::AtomicBool;
 
     let zombie_still_probing = Arc::new(AtomicBool::new(false));
     let zombie_still_probing_inner = zombie_still_probing.clone();
@@ -1933,7 +1927,7 @@ fn zombie_flow_not_invalidated_when_path_has_other_activity() {
     let _no_snap = crate::testing::without_snapshots();
     crate::testing::sim(|| {
         let acceptor_id = VarInt::from_u8(1);
-        let server_ip = IpAddr::from([10, 0, 0, 1u8]);
+        let mut server_addr = MonitorHostAddr::new("server");
 
         // Track packets: count server→client drops after zombie starts
         let zombie_active = Arc::new(AtomicBool::new(false));
@@ -1945,7 +1939,8 @@ fn zombie_flow_not_invalidated_when_path_has_other_activity() {
             // Once zombie is active, drop all server→client packets.
             // This means the zombie flow's probes never get responses,
             // BUT new flow inits from client→server still work (they go the other direction).
-            if zombie_active_monitor.load(Ordering::Relaxed) && packet.source().ip() == server_ip {
+            if zombie_active_monitor.load(Ordering::Relaxed) && server_addr.is_packet_source(packet)
+            {
                 probes_counter.fetch_add(1, Ordering::Relaxed);
                 return bach::net::monitor::Command::Drop;
             }

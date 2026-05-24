@@ -17,7 +17,7 @@
 //! throughput is immediately visible.
 use crate::{
     endpoint::routing::hash_id_and_sender,
-    stream::endpoint::testing::sim::{Client, Server},
+    stream::endpoint::testing::sim::{Client, MonitorHostAddr, Server},
     testing::{ext::*, sim, without_tracing},
     tracing::*,
     xorshift,
@@ -119,7 +119,7 @@ impl DroppedPackets {
 
     /// Runs a 256 KiB echo simulation with this packet-drop pattern.
     ///
-    /// Only server→client packets (source IP `10.0.0.1`) are subject to
+    /// Only server→client packets are subject to
     /// the drop pattern, mirroring the convention used in
     /// `stream::tests::deterministic`.
     ///
@@ -130,7 +130,7 @@ impl DroppedPackets {
         const TRANSFER_TIMEOUT: Duration = Duration::from_secs(30);
 
         let acceptor_id = VarInt::from_u8(1);
-        let server_ip = std::net::IpAddr::from([10, 0, 0, 1u8]);
+        let mut server_addr = MonitorHostAddr::new("server");
 
         let end_time: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
         let end_time_inner = end_time.clone();
@@ -145,7 +145,7 @@ impl DroppedPackets {
                 );
                 let mut enabled = self.enabled_iter().enumerate();
                 bach::net::monitor::on_packet_sent(move |packet| {
-                    if packet.source().ip() == server_ip {
+                    if server_addr.is_packet_source(packet) {
                         if let Some((idx, enabled)) = enabled.next() {
                             if !enabled {
                                 info!(
@@ -932,12 +932,12 @@ fn symmetric_5tuple_routing() {
         {
             let forward = forward.clone();
             let reverse = reverse.clone();
+            let mut server_addr = MonitorHostAddr::new("server");
             bach::net::monitor::on_packet_sent(move |packet| {
                 let src = packet.source();
                 let dst = packet.destination();
                 // Classify by direction: server→client or client→server.
-                // Server is at 10.0.0.1, client at 10.0.0.2 in the sim.
-                if src.ip() == std::net::IpAddr::from([10, 0, 0, 1u8]) {
+                if server_addr.is_packet_source(packet) {
                     forward.lock().unwrap().insert((src, dst));
                 } else {
                     reverse.lock().unwrap().insert((src, dst));
