@@ -5,7 +5,6 @@ mod busy_poll;
 mod client;
 mod config;
 mod endpoint;
-mod net_stats;
 mod psk;
 mod server;
 mod stats;
@@ -113,8 +112,6 @@ fn main() -> std::io::Result<()> {
     let runtime = dial9_tokio_telemetry::TracedRuntime::new(dial9_config);
 
     runtime.block_on(async move {
-        net_stats::spawn();
-
         let spawner = busy_poll::create_pool(busy_poll_workers);
         let data_bind: SocketAddr = "[::]:0".parse().unwrap();
         let endpoint = endpoint::create(
@@ -126,6 +123,7 @@ fn main() -> std::io::Result<()> {
 
         let mut reporter_config = s2n_quic_dc::counter::ReporterConfig::new(Duration::from_secs(1));
         reporter_config.sparse_mode = s2n_quic_dc::counter::SparseMode::Once;
+        reporter_config.os_stats = true;
         endpoint
             .counters
             .clone()

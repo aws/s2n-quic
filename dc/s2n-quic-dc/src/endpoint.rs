@@ -30,7 +30,7 @@ use std::sync::{atomic::AtomicU64, Arc};
 pub(crate) mod ack;
 pub(crate) mod assemble;
 pub(crate) mod combinator;
-pub(crate) mod counters;
+pub mod counters;
 pub(crate) mod decode;
 pub(crate) mod dispatch;
 pub(crate) mod edt;

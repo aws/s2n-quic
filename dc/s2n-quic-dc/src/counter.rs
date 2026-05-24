@@ -142,6 +142,10 @@ pub struct ReporterConfig {
     pub include_sparse: bool,
     pub sparse_mode: SparseMode,
     pub sinks: Vec<ReporterSink>,
+    /// When `true`, OS-level networking statistics are collected from `/proc` once per interval
+    /// in the same background thread as the reporter, immediately before metrics are emitted.
+    /// Only supported on Linux; ignored on other platforms.
+    pub os_stats: bool,
 }
 
 impl ReporterConfig {
@@ -152,6 +156,7 @@ impl ReporterConfig {
             include_sparse: false,
             sparse_mode: SparseMode::Never,
             sinks: vec![ReporterSink::Tracing],
+            os_stats: false,
         }
     }
 }
@@ -632,6 +637,12 @@ impl Gauge {
     #[inline]
     pub fn get(&self) -> i64 {
         self.inner.load(Ordering::Relaxed)
+    }
+
+    /// Sets the gauge to an absolute value.
+    #[inline]
+    pub fn set(&self, v: i64) {
+        self.inner.store(v, Ordering::Relaxed);
     }
 
     #[inline]
@@ -1145,7 +1156,7 @@ impl QueueGauge {
             Some("count"),
             description,
         );
-        
+
         self.registry.counter_handle(
             self.registry.inner.register_counter(label, variant),
             metric_id,
@@ -2942,7 +2953,7 @@ impl Registry {
         let interval = config.interval;
         let prefix = config.prefix.clone();
         let sparse_mode = config.sparse_mode.clone();
-        let sinks = build_sinks(&config.sinks);
+        let mut sinks = build_sinks(&config.sinks);
 
         #[cfg(any(test, feature = "testing"))]
         if bach::is_active() {
@@ -2952,12 +2963,42 @@ impl Registry {
             return;
         }
 
-        tokio::spawn(report_loop(inner, sparse_mode, prefix, sinks, move || {
-            tokio::time::sleep(interval)
-        }));
+        let os_collector = if config.os_stats {
+            Some(crate::endpoint::counters::os::Collector::new(self.clone()))
+        } else {
+            None
+        };
+
+        if let Err(error) = std::thread::Builder::new()
+            .name("s2n-quic-dc-reporter".into())
+            .spawn(move || {
+                let mut tick: u64 = 0;
+                let mut os_collector = os_collector;
+                loop {
+                    std::thread::sleep(interval);
+                    if !inner.is_open() {
+                        break;
+                    }
+                    if let Some(collector) = &mut os_collector {
+                        collector.record_delta();
+                    }
+                    let include_sparse = match &sparse_mode {
+                        SparseMode::Never => false,
+                        SparseMode::Always => true,
+                        SparseMode::Once => tick == 0,
+                        SparseMode::Every(n) => tick.is_multiple_of(*n),
+                    };
+                    report_once(&inner, include_sparse, prefix.as_deref(), &mut sinks);
+                    tick += 1;
+                }
+            })
+        {
+            warn!(%error, "failed to spawn s2n-quic-dc reporter thread");
+        }
     }
 }
 
+#[cfg(any(test, feature = "testing"))]
 async fn report_loop<F, Fut>(
     inner: s2n_quic_dc_metrics::Registry,
     sparse_mode: SparseMode,
