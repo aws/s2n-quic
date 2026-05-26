@@ -192,6 +192,8 @@ impl Entry {
             .max_datagram_size
             .fetch_min(crate::endpoint::MAX_DATAGRAM_SIZE as _, Ordering::Relaxed);
 
+        // TODO: max_queues should be min(local_preference, remote_preference) once
+        // the handshake negotiates it. For now we use the peer's advertised value as-is.
         let max_queues = parameters.max_queues;
         let queue_state = match secret.id().endpoint_type() {
             s2n_quic_core::endpoint::Type::Client => {
