@@ -321,7 +321,9 @@ impl Layer {
     pub fn first(&self, parent: LayerIndex) -> LayerIndex {
         let block_index = parent.expand();
         let block = &self.blocks[block_index];
-        let bit = block.first().expect("empty block but higher layer indicated otherwise");
+        let bit = block
+            .first()
+            .expect("empty block but higher layer indicated otherwise");
         LayerIndex {
             block: block_index,
             bit,

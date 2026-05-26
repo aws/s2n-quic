@@ -37,7 +37,6 @@ use super::{
 use crate::{endpoint::msg, intrusive};
 use s2n_quic_core::varint::VarInt;
 
-
 // ── BindResult ────────────────────────────────────────────────────────────────
 
 /// Outcome of `ServerDispatch::bind_and_send_stream`.
@@ -125,10 +124,8 @@ impl ServerDispatch {
                     slot_ptr,
                     OnFree::Server(self.freed.clone(), state.clone()),
                 );
-                let control = ControlReceiver::new(
-                    slot_ptr,
-                    OnFree::Server(self.freed.clone(), state),
-                );
+                let control =
+                    ControlReceiver::new(slot_ptr, OnFree::Server(self.freed.clone(), state));
                 Ok(BindResult::NewBinding {
                     waker,
                     stream,
@@ -184,8 +181,10 @@ impl ServerDispatch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::path::secret::map::Entry as PathSecretEntry;
-    use crate::queue::{freed::freed_batch_channel, testing::*};
+    use crate::{
+        path::secret::map::Entry as PathSecretEntry,
+        queue::{freed::freed_batch_channel, testing::*},
+    };
     use s2n_quic_core::varint::VarInt;
     use std::sync::Arc;
 
@@ -213,7 +212,10 @@ mod tests {
     fn bind_and_send_existing() {
         let (mut server, _rx) = test_server(10);
         let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
-        let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+        let Ok(BindResult::NewBinding {
+            stream, control, ..
+        }) = result
+        else {
             panic!("expected NewBinding");
         };
 
@@ -236,7 +238,10 @@ mod tests {
     fn bind_and_send_stale() {
         let (mut server, _rx) = test_server(10);
         let result = server.bind_and_send_stream(v(0), v(5), make_stream_entry());
-        let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+        let Ok(BindResult::NewBinding {
+            stream, control, ..
+        }) = result
+        else {
             panic!("expected NewBinding");
         };
         // Drop receivers → slot reclaimed
@@ -259,7 +264,10 @@ mod tests {
     fn send_stream_bound() {
         let (mut server, _rx) = test_server(10);
         let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
-        let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+        let Ok(BindResult::NewBinding {
+            stream, control, ..
+        }) = result
+        else {
             panic!("expected NewBinding");
         };
 
@@ -281,11 +289,21 @@ mod tests {
     fn close_broadcasts_all() {
         let (mut server, _rx) = test_server(10);
         let r0 = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
-        let Ok(BindResult::NewBinding { stream: s0, control: c0, .. }) = r0 else {
+        let Ok(BindResult::NewBinding {
+            stream: s0,
+            control: c0,
+            ..
+        }) = r0
+        else {
             panic!("expected NewBinding");
         };
         let r1 = server.bind_and_send_stream(v(1), v(2), make_stream_entry());
-        let Ok(BindResult::NewBinding { stream: s1, control: c1, .. }) = r1 else {
+        let Ok(BindResult::NewBinding {
+            stream: s1,
+            control: c1,
+            ..
+        }) = r1
+        else {
             panic!("expected NewBinding");
         };
 
@@ -306,7 +324,10 @@ mod tests {
     fn bind_recycle() {
         let (mut server, _rx) = test_server(10);
         let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
-        let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+        let Ok(BindResult::NewBinding {
+            stream, control, ..
+        }) = result
+        else {
             panic!("expected NewBinding");
         };
         drop(stream);
@@ -326,7 +347,10 @@ mod tests {
         sim(|| {
             let (mut server, _rx) = test_server(10);
             let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
-            let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+            let Ok(BindResult::NewBinding {
+                stream, control, ..
+            }) = result
+            else {
                 panic!("expected NewBinding");
             };
 
@@ -347,7 +371,10 @@ mod tests {
         sim(|| {
             let (mut server, mut rx) = test_server(10);
             let result = server.bind_and_send_stream(v(3), v(1), make_stream_entry());
-            let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+            let Ok(BindResult::NewBinding {
+                stream, control, ..
+            }) = result
+            else {
                 panic!("expected NewBinding");
             };
 
@@ -376,7 +403,10 @@ mod tests {
         sim(|| {
             let (mut server, _rx) = test_server(10);
             let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
-            let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+            let Ok(BindResult::NewBinding {
+                stream, control, ..
+            }) = result
+            else {
                 panic!("expected NewBinding");
             };
 
@@ -412,7 +442,10 @@ mod tests {
         sim(|| {
             let (mut server, _rx) = test_server(10);
             let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
-            let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+            let Ok(BindResult::NewBinding {
+                stream, control, ..
+            }) = result
+            else {
                 panic!("expected NewBinding");
             };
 
@@ -438,4 +471,3 @@ mod tests {
         });
     }
 }
-

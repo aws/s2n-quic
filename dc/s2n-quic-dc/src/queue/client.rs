@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn send_stream_unallocated() {
-        let mut alloc = test_allocator(10);
+        let alloc = test_allocator(10);
         let mut dispatch = alloc.dispatcher();
         let result = dispatch.send_stream(v(999), v(1), make_stream_entry());
         assert!(matches!(result, Err(Error::Unallocated(_))));
@@ -372,11 +372,7 @@ mod tests {
         let result = alloc.try_alloc().unwrap();
         let mut dispatch = alloc.dispatcher();
 
-        let send_result = dispatch.send_stream(
-            result.local_queue_id,
-            v(99),
-            make_stream_entry(),
-        );
+        let send_result = dispatch.send_stream(result.local_queue_id, v(99), make_stream_entry());
         assert!(matches!(send_result, Err(Error::FutureBinding(_))));
     }
 
@@ -391,8 +387,14 @@ mod tests {
         dispatch.close(&mut |aw| wakes.push(aw));
 
         // Receivers should see Closed
-        assert!(matches!(r1.stream.try_recv(), Err(super::super::half::Closed)));
-        assert!(matches!(r2.stream.try_recv(), Err(super::super::half::Closed)));
+        assert!(matches!(
+            r1.stream.try_recv(),
+            Err(super::super::half::Closed)
+        ));
+        assert!(matches!(
+            r2.stream.try_recv(),
+            Err(super::super::half::Closed)
+        ));
     }
 
     // ── Bach async tests ─────────────────────────────────────────────────────

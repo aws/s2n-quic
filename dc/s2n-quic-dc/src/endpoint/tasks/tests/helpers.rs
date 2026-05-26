@@ -236,6 +236,7 @@ pub fn test_frame_with_payload(pse: &Arc<PathSecretEntry>, payload_size: usize) 
             binding_id: VarInt::from_u8(1),
             offset: VarInt::ZERO,
             is_fin: false,
+            dest_acceptor_id: None,
         },
         source_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::MAX),
         payload: bytes::BytesMut::zeroed(payload_size).into(),

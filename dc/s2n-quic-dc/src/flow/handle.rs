@@ -204,9 +204,7 @@ impl Tracker {
         self.drain_drops();
 
         match self.map.borrow_mut().entry(binding_id) {
-            hash_map::Entry::Occupied(entry) => {
-                Err(*entry.get())
-            }
+            hash_map::Entry::Occupied(entry) => Err(*entry.get()),
             hash_map::Entry::Vacant(entry) => {
                 let handle = Handle {
                     binding_id,

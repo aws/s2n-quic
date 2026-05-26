@@ -404,6 +404,7 @@ fn dispatch_decoded_frame(
             binding_id,
             offset,
             is_fin,
+            dest_acceptor_id: _,
         } => {
             handle_queue_data(
                 credentials,

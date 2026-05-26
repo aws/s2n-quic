@@ -64,7 +64,7 @@ where
     S: 'static + Send + Sync,
     C: 'static + Send + Sync,
     K: 'static + Send + Sync,
- {
+{
     fn default() -> Self {
         Self::new()
     }

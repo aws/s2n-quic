@@ -54,6 +54,7 @@ fn make_frame(payload_len: usize) -> crate::intrusive::Entry<Frame> {
             binding_id: s2n_quic_core::varint::VarInt::from_u8(3),
             offset: s2n_quic_core::varint::VarInt::ZERO,
             is_fin: false,
+            dest_acceptor_id: None,
         },
         source_sender_id: crate::endpoint::id::LocalSenderId::new(
             s2n_quic_core::varint::VarInt::MAX,
@@ -862,7 +863,7 @@ fn ack_rtt_tracker_on_non_eliciting_sent_updates_latest() {
 fn ack_rtt_tracker_on_non_eliciting_sent_noop_when_no_probe() {
     let mut tracker = AckRttTracker::default();
     tracker.clear(); // simulate data cycle making tracker available
-    // No probe in-flight (stable=None).
+                     // No probe in-flight (stable=None).
     tracker.on_non_eliciting_sent(make_varint(5), make_ts(100));
     assert!(!tracker.is_pending(), "no-op when stable=None");
 }

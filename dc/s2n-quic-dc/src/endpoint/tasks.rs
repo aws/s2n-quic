@@ -515,8 +515,10 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
                 (id, sender)
             })
             .collect();
-        let socket_context_tx =
-            endpoint::combinator::MappedSender::new(socket_context_txs, sender_idx_to_local.clone());
+        let socket_context_tx = endpoint::combinator::MappedSender::new(
+            socket_context_txs,
+            sender_idx_to_local.clone(),
+        );
         let tx_wheel_task = send_tx_wheel_drain(
             tx_wheel_rx,
             clock.clone(),

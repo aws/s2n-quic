@@ -203,7 +203,11 @@ impl core::fmt::Debug for ControlReceiver {
 fn reclaim(queue_id: VarInt, on_free: &OnFree) {
     match on_free {
         OnFree::Client { local_free, .. } => {
-            local_free.free.lock().unwrap().push_freed(queue_id.as_u64() as usize);
+            local_free
+                .free
+                .lock()
+                .unwrap()
+                .push_freed(queue_id.as_u64() as usize);
         }
         OnFree::Server(freed_sender, _state) => {
             freed_sender.record(queue_id);

@@ -361,12 +361,17 @@ pub enum Header {
         binding_id: VarInt,
         is_fin: bool,
     },
-    /// Stream data routed via queue pair
+    /// Stream data routed via queue pair.
+    ///
+    /// When `dest_acceptor_id` is `Some`, this is an "init" frame that can create
+    /// a new binding on the server if the queue is unbound. Once the server confirms
+    /// the binding (via MaxData), subsequent frames omit the acceptor_id.
     QueueData {
         queue_pair: QueuePair,
         binding_id: VarInt,
         offset: VarInt,
         is_fin: bool,
+        dest_acceptor_id: Option<VarInt>,
     },
     /// Flow control (MAX_DATA and other control frames)
     QueueControl {
@@ -467,6 +472,8 @@ impl Header {
     const ACK_ECN_TYPE: u8 = 15;
     const ACK_ELICITING_TYPE: u8 = 16;
     const ACK_ECN_ELICITING_TYPE: u8 = 17;
+    const QUEUE_DATA_INIT_NO_FIN_TYPE: u8 = 18;
+    const QUEUE_DATA_INIT_WITH_FIN_TYPE: u8 = 19;
 
     #[inline]
     pub fn priority(&self) -> Priority {
@@ -482,7 +489,9 @@ impl Header {
             Self::QueueControl { .. } | Self::QueueMaxData { .. } => Priority::QueueControl,
             Self::QueueReset { .. } => Priority::QueueReset,
             Self::QueueInitReset { .. } | Self::QueueInitFin { .. } => Priority::QueueInit,
-            Self::QueueInitValidate { .. } | Self::QueueValidateRequest { .. } => Priority::QueueRetry,
+            Self::QueueInitValidate { .. } | Self::QueueValidateRequest { .. } => {
+                Priority::QueueRetry
+            }
             // Ack frames are assembled directly from pending_acks, never queued by priority.
             Self::Ack { .. } => Priority::QueueControl,
         }
@@ -594,14 +603,19 @@ impl EncoderValue for Header {
                 binding_id,
                 offset,
                 is_fin,
+                dest_acceptor_id,
             } => {
-                let tag = if *is_fin {
-                    Self::QUEUE_DATA_WITH_FIN_TYPE
-                } else {
-                    Self::QUEUE_DATA_NO_FIN_TYPE
+                let tag = match (dest_acceptor_id.is_some(), *is_fin) {
+                    (true, false) => Self::QUEUE_DATA_INIT_NO_FIN_TYPE,
+                    (true, true) => Self::QUEUE_DATA_INIT_WITH_FIN_TYPE,
+                    (false, false) => Self::QUEUE_DATA_NO_FIN_TYPE,
+                    (false, true) => Self::QUEUE_DATA_WITH_FIN_TYPE,
                 };
                 encoder.encode(&tag);
                 encoder.encode(queue_pair);
+                if let Some(acceptor_id) = dest_acceptor_id {
+                    encoder.encode(acceptor_id);
+                }
                 encoder.encode(binding_id);
                 encoder.encode(offset);
             }
@@ -725,6 +739,23 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                     buffer,
                 ))
             }
+            Self::QUEUE_DATA_INIT_NO_FIN_TYPE | Self::QUEUE_DATA_INIT_WITH_FIN_TYPE => {
+                let (queue_pair, buffer) = buffer.decode()?;
+                let (dest_acceptor_id, buffer) = buffer.decode::<VarInt>()?;
+                let (binding_id, buffer) = buffer.decode()?;
+                let (offset, buffer) = buffer.decode()?;
+                let is_fin = tag == Self::QUEUE_DATA_INIT_WITH_FIN_TYPE;
+                Ok((
+                    Self::QueueData {
+                        queue_pair,
+                        binding_id,
+                        offset,
+                        is_fin,
+                        dest_acceptor_id: Some(dest_acceptor_id),
+                    },
+                    buffer,
+                ))
+            }
             Self::QUEUE_DATA_NO_FIN_TYPE | Self::QUEUE_DATA_WITH_FIN_TYPE => {
                 let (queue_pair, buffer) = buffer.decode()?;
                 let (binding_id, buffer) = buffer.decode()?;
@@ -736,6 +767,7 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                         binding_id,
                         offset,
                         is_fin,
+                        dest_acceptor_id: None,
                     },
                     buffer,
                 ))
@@ -894,9 +926,7 @@ impl Frame {
     /// completion sender (best-effort frames are always transmittable).
     #[inline]
     pub fn should_transmit(&self) -> bool {
-        self.completion
-            .as_ref()
-            .is_none_or(|c| c.should_transmit())
+        self.completion.as_ref().is_none_or(|c| c.should_transmit())
     }
 }
 
@@ -944,6 +974,7 @@ mod tests {
                 binding_id: VarInt::from_u8(42),
                 offset: VarInt::ZERO,
                 is_fin: false,
+                dest_acceptor_id: None,
             },
             source_sender_id: LocalSenderId::UNSPECIFIED,
             payload,

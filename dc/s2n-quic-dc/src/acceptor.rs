@@ -262,11 +262,7 @@ impl<T: Send + 'static> std::future::Future for Cleaner<T> {
         let needs_cleanup = {
             let mut guard = self.shared.cleaner.lock().unwrap();
             let new_waker = cx.waker();
-            if guard
-                .waker
-                .as_ref()
-                .is_none_or(|w| !w.will_wake(new_waker))
-            {
+            if guard.waker.as_ref().is_none_or(|w| !w.will_wake(new_waker)) {
                 guard.waker = Some(new_waker.clone());
             }
             std::mem::take(&mut guard.needs_cleanup)

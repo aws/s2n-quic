@@ -310,7 +310,11 @@ mod tests {
         for i in 0..pt.total_slots() {
             let slot = view.get(i).expect("slot should exist");
             let qid = slot.queue_id();
-            assert_eq!(qid.as_u64() as usize, i, "slot at {i} should have queue_id {i}");
+            assert_eq!(
+                qid.as_u64() as usize,
+                i,
+                "slot at {i} should have queue_id {i}"
+            );
         }
     }
 

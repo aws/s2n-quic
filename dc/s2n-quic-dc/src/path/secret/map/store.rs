@@ -54,7 +54,11 @@ pub trait Store: 'static + Send + Sync + time::Clock {
 
     fn handle_unexpected_packet(&self, packet: &Packet, peer: &SocketAddr);
 
-    fn sign_queue_reset_packet(&self, packet: &control::QueueReset, out: &mut [u8]) -> Option<usize>;
+    fn sign_queue_reset_packet(
+        &self,
+        packet: &control::QueueReset,
+        out: &mut [u8],
+    ) -> Option<usize>;
 
     fn handle_queue_reset_packet<'a>(
         &self,

@@ -81,7 +81,8 @@ impl Slot {
     #[inline]
     pub(crate) fn mark_unallocated(&self) {
         let prev = self.binding_id.load(Ordering::Relaxed);
-        self.binding_id.store(prev | UNALLOCATED_BIT, Ordering::Relaxed);
+        self.binding_id
+            .store(prev | UNALLOCATED_BIT, Ordering::Relaxed);
     }
 
     /// Push to the stream half, validating binding_id inside the lock.
@@ -292,7 +293,12 @@ mod tests {
         let raw = slot.binding_id.load(Ordering::Relaxed);
         assert_eq!(raw, 1);
         assert!(slot.stream.inner.lock().flags.contains(Flags::HAS_RECEIVER));
-        assert!(slot.control.inner.lock().flags.contains(Flags::HAS_RECEIVER));
+        assert!(slot
+            .control
+            .inner
+            .lock()
+            .flags
+            .contains(Flags::HAS_RECEIVER));
     }
 
     #[test]

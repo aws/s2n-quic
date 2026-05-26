@@ -140,7 +140,11 @@ fn process_operation(
                 RangeValue::Range(range) => {
                     if let Ok(modified) = subject.insert(range.clone()) {
                         let oracle_modified = oracle.insert(range.clone());
-                        assert_eq!(modified, oracle_modified, "insert modified mismatch for {:?}", range);
+                        assert_eq!(
+                            modified, oracle_modified,
+                            "insert modified mismatch for {:?}",
+                            range
+                        );
                         let second = subject.insert(range.clone()).unwrap();
                         assert!(!second, "second insert of same range should not modify");
                     }
@@ -148,7 +152,11 @@ fn process_operation(
                 RangeValue::RangeInclusive(range) => {
                     if let Ok(modified) = subject.insert(range.clone()) {
                         let oracle_modified = oracle.insert(range.clone());
-                        assert_eq!(modified, oracle_modified, "insert modified mismatch for {:?}", range);
+                        assert_eq!(
+                            modified, oracle_modified,
+                            "insert modified mismatch for {:?}",
+                            range
+                        );
                         let second = subject.insert(range.clone()).unwrap();
                         assert!(!second, "second insert of same range should not modify");
                     }

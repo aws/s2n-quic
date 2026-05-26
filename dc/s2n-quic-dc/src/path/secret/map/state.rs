@@ -942,7 +942,11 @@ where
         }
     }
 
-    fn sign_queue_reset_packet(&self, packet: &control::QueueReset, out: &mut [u8]) -> Option<usize> {
+    fn sign_queue_reset_packet(
+        &self,
+        packet: &control::QueueReset,
+        out: &mut [u8],
+    ) -> Option<usize> {
         let Some(entry) = self.ids.get(packet.credentials.id) else {
             return None;
         };

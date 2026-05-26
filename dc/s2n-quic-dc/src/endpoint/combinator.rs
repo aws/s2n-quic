@@ -752,7 +752,9 @@ impl AssemblerCounters {
             frame::Header::QueueInitReset { .. } => self.tx_frame_queue_init_reset.add(1),
             frame::Header::QueueInitFin { .. } => self.tx_frame_queue_init_fin.add(1),
             frame::Header::QueueInitValidate { .. } => self.tx_frame_queue_init_validate.add(1),
-            frame::Header::QueueValidateRequest { .. } => self.tx_frame_queue_validate_request.add(1),
+            frame::Header::QueueValidateRequest { .. } => {
+                self.tx_frame_queue_validate_request.add(1)
+            }
             frame::Header::Ack { .. } => self.tx_frame_ack.add(1),
         }
     }
@@ -773,7 +775,9 @@ impl AssemblerCounters {
             frame::Header::QueueReset { .. } => self.tx_probe_frame_queue_reset.add(1),
             frame::Header::QueueInitReset { .. } => self.tx_probe_frame_queue_init_reset.add(1),
             frame::Header::QueueInitFin { .. } => self.tx_probe_frame_queue_init_fin.add(1),
-            frame::Header::QueueInitValidate { .. } => self.tx_probe_frame_queue_init_validate.add(1),
+            frame::Header::QueueInitValidate { .. } => {
+                self.tx_probe_frame_queue_init_validate.add(1)
+            }
             frame::Header::QueueValidateRequest { .. } => {
                 self.tx_probe_frame_queue_validate_request.add(1)
             }

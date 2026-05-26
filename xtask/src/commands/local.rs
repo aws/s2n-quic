@@ -353,10 +353,7 @@ impl Local {
 
             for node in nodes.nodes.iter() {
                 if let Node::Remote(remote) = node {
-                    let src = format!(
-                        "{}:/tmp/dial9-traces/{run_id}/",
-                        remote.ssh_target()
-                    );
+                    let src = format!("{}:/tmp/dial9-traces/{run_id}/", remote.ssh_target());
                     let dest = format!("{}/{}/", local_trace_dir, remote.host);
                     std::fs::create_dir_all(&dest).ok();
                     let _ = cmd!(sh, "rsync -avz {src} {dest}").quiet().run();

@@ -147,12 +147,12 @@ impl Map {
     ) -> Option<PacketNumber> {
         self.inner
             .contiguous_prefix_cutoff(largest_acked, |pn, packet| {
-            let lost_by_pn = pn_threshold.is_some_and(|threshold| pn <= threshold);
-            let lost_by_time = time_threshold
-                .zip(packet.transmission_info.as_ref())
-                .is_some_and(|(threshold, tx_info)| tx_info.time_sent <= threshold);
-            lost_by_pn || lost_by_time
-        })
+                let lost_by_pn = pn_threshold.is_some_and(|threshold| pn <= threshold);
+                let lost_by_time = time_threshold
+                    .zip(packet.transmission_info.as_ref())
+                    .is_some_and(|(threshold, tx_info)| tx_info.time_sent <= threshold);
+                lost_by_pn || lost_by_time
+            })
     }
 
     /// Find the oldest inflight packet number that has data frames available for probing.
@@ -372,6 +372,7 @@ mod tests {
                 binding_id: VarInt::from_u8(1),
                 offset: VarInt::ZERO,
                 is_fin: false,
+                dest_acceptor_id: None,
             },
             source_sender_id: LocalSenderId::UNSPECIFIED,
             payload,

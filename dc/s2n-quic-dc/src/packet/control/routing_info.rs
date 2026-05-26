@@ -26,7 +26,6 @@ pub enum RoutingInfo {
     },
 }
 
-
 impl RoutingInfo {
     const SENDER_TYPE: u8 = 0;
 

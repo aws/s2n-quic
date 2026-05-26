@@ -44,7 +44,9 @@ impl<V> SortedVecMap<V> {
     #[inline]
     pub fn insert(&mut self, packet_number: PacketNumber, value: V) {
         debug_assert!(
-            self.entries.back().is_none_or(|(last, _)| packet_number > *last),
+            self.entries
+                .back()
+                .is_none_or(|(last, _)| packet_number > *last),
             "packet numbers must be monotonically increasing"
         );
         self.entries.push_back((packet_number, value));
@@ -398,7 +400,10 @@ mod tests {
         }
         // Predicate always true → cutoff is exactly at max_pn (PN 15)
         let max_pn = space.new_packet_number(VarInt::new(15).unwrap());
-        assert_eq!(map.contiguous_prefix_cutoff(max_pn, |_, _| true), Some(max_pn));
+        assert_eq!(
+            map.contiguous_prefix_cutoff(max_pn, |_, _| true),
+            Some(max_pn)
+        );
     }
 
     #[test]
@@ -501,8 +506,7 @@ mod tests {
                 let optimized = map.contiguous_prefix_cutoff(max_pn, |_, v| *v <= threshold);
                 let reference = reference_prefix_cutoff(&map, max_pn, |_, v| *v <= threshold);
                 assert_eq!(
-                    reference,
-                    optimized,
+                    reference, optimized,
                     "n={n}, max_pn_idx={max_pn_idx}, threshold={threshold}"
                 );
             })
@@ -544,8 +548,7 @@ mod tests {
                     map.insert(pn, current_pn);
                 }
 
-                let max_pn =
-                    space.new_packet_number(VarInt::new(input.max_pn as u64).unwrap());
+                let max_pn = space.new_packet_number(VarInt::new(input.max_pn as u64).unwrap());
                 let threshold = input.threshold as u64;
 
                 let optimized = map.contiguous_prefix_cutoff(max_pn, |_, v| *v <= threshold);

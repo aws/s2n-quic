@@ -1848,17 +1848,12 @@ fn concurrent_tiny_streams_batch_into_minimal_packets() {
 
                             let mut buf = BytesMut::with_capacity(16);
                             loop {
-                                let n =
-                                    reader.read_into(&mut buf).await.expect("client read");
+                                let n = reader.read_into(&mut buf).await.expect("client read");
                                 if n == 0 {
                                     break;
                                 }
                             }
-                            assert_eq!(
-                                &buf[..],
-                                &payload[..],
-                                "echo mismatch for stream {i}"
-                            );
+                            assert_eq!(&buf[..], &payload[..], "echo mismatch for stream {i}");
                         }
                         .spawn(),
                     );

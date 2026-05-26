@@ -78,7 +78,6 @@ impl<'a> s2n_codec::DecoderValue<'a> for QueuePair {
     }
 }
 
-
 impl RoutingInfo {
     const SENDER_ID_TYPE: u8 = 11;
 

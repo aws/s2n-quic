@@ -38,8 +38,8 @@ pub use handle::{AllocResult, ControlReceiver, StreamReceiver};
 pub use server::BindResult;
 
 pub use client::{ClientAllocator, ClientDispatch};
+pub use freed::{freed_batch_channel, FreedBatch, FreedBatchRx, FreedBatchTx, FreedSender};
 pub use server::ServerDispatch;
-pub use freed::{FreedBatch, FreedBatchRx, FreedBatchTx, FreedSender, freed_batch_channel};
 
 // ── Error ─────────────────────────────────────────────────────────────────────
 

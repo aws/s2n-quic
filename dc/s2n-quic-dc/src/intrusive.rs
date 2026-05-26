@@ -27,7 +27,9 @@ impl ListId {
             Self(COUNTER.fetch_add(1, Ordering::Relaxed))
         }
         #[cfg(not(debug_assertions))]
-        { Self }
+        {
+            Self
+        }
     }
 }
 
@@ -41,9 +43,13 @@ struct LinkTag;
 impl LinkTag {
     const fn new() -> Self {
         #[cfg(debug_assertions)]
-        { Self(Cell::new(0)) }
+        {
+            Self(Cell::new(0))
+        }
         #[cfg(not(debug_assertions))]
-        { Self }
+        {
+            Self
+        }
     }
 
     #[inline(always)]

@@ -174,10 +174,7 @@ impl<T> Half<T> {
     }
 
     #[inline]
-    pub(crate) fn poll_swap(
-        &self,
-        cx: &mut Context,
-    ) -> Poll<Result<intrusive::Queue<T>, Closed>> {
+    pub(crate) fn poll_swap(&self, cx: &mut Context) -> Poll<Result<intrusive::Queue<T>, Closed>> {
         let mut inner = self.inner.lock();
         if !inner.queue.is_empty() {
             let q = core::mem::take(&mut inner.queue);
@@ -275,8 +272,7 @@ impl<T> fmt::Debug for Half<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::endpoint::msg;
-    use crate::queue::testing::*;
+    use crate::{endpoint::msg, queue::testing::*};
     use core::task::Poll;
     use std::sync::Arc;
 
@@ -579,8 +575,7 @@ mod tests {
             let half2 = half.clone();
 
             async move {
-                let result =
-                    core::future::poll_fn(|cx| half.poll_pop(cx)).await;
+                let result = core::future::poll_fn(|cx| half.poll_pop(cx)).await;
                 assert!(result.is_ok());
             }
             .primary()
@@ -605,8 +600,7 @@ mod tests {
             let half2 = half.clone();
 
             async move {
-                let result =
-                    core::future::poll_fn(|cx| half.poll_pop(cx)).await;
+                let result = core::future::poll_fn(|cx| half.poll_pop(cx)).await;
                 assert!(matches!(result, Err(Closed)));
             }
             .primary()

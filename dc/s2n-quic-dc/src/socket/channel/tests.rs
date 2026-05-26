@@ -455,8 +455,7 @@ fn priority_select_on_consumed_notifies_last_ready_receiver() {
 fn priority_select_has_more_when_priority_queue_not_empty() {
     let _no_snap = crate::testing::without_snapshots();
     sim(|| {
-        use crate::socket::channel::intrusive::unsync as ch_unsync;
-        use crate::testing::ext::*;
+        use crate::{socket::channel::intrusive::unsync as ch_unsync, testing::ext::*};
 
         async {
             // Use unsync channels so we can enqueue multiple items at once.

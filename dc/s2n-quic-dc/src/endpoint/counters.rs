@@ -124,7 +124,8 @@ impl Dispatch {
             rx_data_half_closed: counters.register_nominal("!rx.data", "half_closed"),
             rx_data_credential_mismatch: counters
                 .register_nominal("!rx.data", "credential_mismatch"),
-            rx_data_binding_id_mismatch: counters.register_nominal("!rx.data", "binding_id_mismatch"),
+            rx_data_binding_id_mismatch: counters
+                .register_nominal("!rx.data", "binding_id_mismatch"),
             rx_data_perm_closed: counters.register("rx.data.perm_closed"),
 
             rx_queue_control_ok: counters.register("rx.queue_control.ok"),
@@ -469,7 +470,9 @@ impl Send {
             Header::QueueInitReset { .. } => self.tx_acked_frame_queue_init_reset.add(1),
             Header::QueueInitFin { .. } => self.tx_acked_frame_queue_init_fin.add(1),
             Header::QueueInitValidate { .. } => self.tx_acked_frame_queue_init_validate.add(1),
-            Header::QueueValidateRequest { .. } => self.tx_acked_frame_queue_validate_request.add(1),
+            Header::QueueValidateRequest { .. } => {
+                self.tx_acked_frame_queue_validate_request.add(1)
+            }
             // ACK frames are stripped before inflight insertion and are never ACKed as
             // inflight entries; this branch should be unreachable in practice.
             Header::Ack { .. } => {

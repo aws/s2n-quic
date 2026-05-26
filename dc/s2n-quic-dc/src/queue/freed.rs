@@ -214,8 +214,7 @@ mod tests {
 
     fn test_sender() -> (FreedSender, FreedBatchRx) {
         let (tx, rx) = freed_batch_channel();
-        let path_entry =
-            PathSecretEntry::builder("127.0.0.1:4433".parse().unwrap()).build();
+        let path_entry = PathSecretEntry::builder("127.0.0.1:4433".parse().unwrap()).build();
         (FreedSender::new(path_entry, tx), rx)
     }
 

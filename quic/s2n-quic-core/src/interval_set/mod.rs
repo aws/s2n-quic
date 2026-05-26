@@ -330,7 +330,10 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert!(!set.contains(&5));
     /// ```
     #[inline]
-    pub fn insert_front<R: RangeBounds<T>>(&mut self, interval: R) -> Result<bool, IntervalSetError> {
+    pub fn insert_front<R: RangeBounds<T>>(
+        &mut self,
+        interval: R,
+    ) -> Result<bool, IntervalSetError> {
         let interval = Interval::from_range_bounds(interval)?;
 
         if self.intervals.is_empty() {

@@ -136,8 +136,12 @@ impl Client {
             ));
         }
 
-        let binding_id =
-            VarInt::new(self.endpoint.next_binding_id.fetch_add(1, Ordering::Relaxed)).unwrap();
+        let binding_id = VarInt::new(
+            self.endpoint
+                .next_binding_id
+                .fetch_add(1, Ordering::Relaxed),
+        )
+        .unwrap();
 
         let handle = flow::Handle::client(binding_id, path_secret_entry.clone());
 
