@@ -454,3 +454,23 @@ struct PathSecretMapAddressWriteLock {
     #[measure("duration", Duration)]
     duration: core::time::Duration,
 }
+
+#[event("path_secret_map:datagram_encrypt")]
+#[subject(endpoint)]
+/// Emitted when a dcQUIC datagram is encrypted
+struct PathSecretMapDatagramEncrypt {
+    /// The wire size of the encrypted datagram packet
+    #[measure("packet_len", Bytes)]
+    #[counter("packet_len.total", Bytes)]
+    packet_len: usize,
+}
+
+#[event("path_secret_map:datagram_decrypt")]
+#[subject(endpoint)]
+/// Emitted when a dcQUIC datagram is decrypted
+struct PathSecretMapDatagramDecrypt {
+    /// The wire size of the encrypted datagram packet
+    #[measure("packet_len", Bytes)]
+    #[counter("packet_len.total", Bytes)]
+    packet_len: usize,
+}

@@ -2554,6 +2554,42 @@ pub mod api {
     impl Event for PathSecretMapAddressWriteLock {
         const NAME: &'static str = "path_secret_map:address_cache_write_lock";
     }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Emitted when a dcQUIC datagram is encrypted"]
+    pub struct PathSecretMapDatagramEncrypt {
+        #[doc = " The wire size of the encrypted datagram packet"]
+        pub packet_len: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PathSecretMapDatagramEncrypt {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PathSecretMapDatagramEncrypt");
+            fmt.field("packet_len", &self.packet_len);
+            fmt.finish()
+        }
+    }
+    impl Event for PathSecretMapDatagramEncrypt {
+        const NAME: &'static str = "path_secret_map:datagram_encrypt";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Emitted when a dcQUIC datagram is decrypted"]
+    pub struct PathSecretMapDatagramDecrypt {
+        #[doc = " The wire size of the encrypted datagram packet"]
+        pub packet_len: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PathSecretMapDatagramDecrypt {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PathSecretMapDatagramDecrypt");
+            fmt.field("packet_len", &self.packet_len);
+            fmt.finish()
+        }
+    }
+    impl Event for PathSecretMapDatagramDecrypt {
+        const NAME: &'static str = "path_secret_map:datagram_decrypt";
+    }
     impl IntoEvent<builder::AcceptorPacketDropReason> for s2n_codec::DecoderError {
         fn into_event(self) -> builder::AcceptorPacketDropReason {
             use builder::AcceptorPacketDropReason as Reason;
@@ -3863,6 +3899,26 @@ pub mod tracing {
             let parent = self.parent(meta);
             let api::PathSecretMapAddressWriteLock { acquire, duration } = event;
             tracing :: event ! (target : "path_secret_map_address_write_lock" , parent : parent , tracing :: Level :: DEBUG , { acquire = tracing :: field :: debug (acquire) , duration = tracing :: field :: debug (duration) });
+        }
+        #[inline]
+        fn on_path_secret_map_datagram_encrypt(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapDatagramEncrypt,
+        ) {
+            let parent = self.parent(meta);
+            let api::PathSecretMapDatagramEncrypt { packet_len } = event;
+            tracing :: event ! (target : "path_secret_map_datagram_encrypt" , parent : parent , tracing :: Level :: DEBUG , { packet_len = tracing :: field :: debug (packet_len) });
+        }
+        #[inline]
+        fn on_path_secret_map_datagram_decrypt(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapDatagramDecrypt,
+        ) {
+            let parent = self.parent(meta);
+            let api::PathSecretMapDatagramDecrypt { packet_len } = event;
+            tracing :: event ! (target : "path_secret_map_datagram_decrypt" , parent : parent , tracing :: Level :: DEBUG , { packet_len = tracing :: field :: debug (packet_len) });
         }
     }
 }
@@ -6257,6 +6313,36 @@ pub mod builder {
             }
         }
     }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when a dcQUIC datagram is encrypted"]
+    pub struct PathSecretMapDatagramEncrypt {
+        #[doc = " The wire size of the encrypted datagram packet"]
+        pub packet_len: usize,
+    }
+    impl IntoEvent<api::PathSecretMapDatagramEncrypt> for PathSecretMapDatagramEncrypt {
+        #[inline]
+        fn into_event(self) -> api::PathSecretMapDatagramEncrypt {
+            let PathSecretMapDatagramEncrypt { packet_len } = self;
+            api::PathSecretMapDatagramEncrypt {
+                packet_len: packet_len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when a dcQUIC datagram is decrypted"]
+    pub struct PathSecretMapDatagramDecrypt {
+        #[doc = " The wire size of the encrypted datagram packet"]
+        pub packet_len: usize,
+    }
+    impl IntoEvent<api::PathSecretMapDatagramDecrypt> for PathSecretMapDatagramDecrypt {
+        #[inline]
+        fn into_event(self) -> api::PathSecretMapDatagramDecrypt {
+            let PathSecretMapDatagramDecrypt { packet_len } = self;
+            api::PathSecretMapDatagramDecrypt {
+                packet_len: packet_len.into_event(),
+            }
+        }
+    }
 }
 pub use traits::*;
 mod traits {
@@ -7315,6 +7401,26 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `PathSecretMapDatagramEncrypt` event is triggered"]
+        #[inline]
+        fn on_path_secret_map_datagram_encrypt(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapDatagramEncrypt,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `PathSecretMapDatagramDecrypt` event is triggered"]
+        #[inline]
+        fn on_path_secret_map_datagram_decrypt(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapDatagramDecrypt,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = r" Called for each event that relates to the endpoint and all connections"]
         #[inline]
         fn on_event<M: Meta, E: Event>(&self, meta: &M, event: &E) {
@@ -8168,6 +8274,24 @@ mod traits {
         ) {
             self.as_ref()
                 .on_path_secret_map_address_write_lock(meta, event);
+        }
+        #[inline]
+        fn on_path_secret_map_datagram_encrypt(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapDatagramEncrypt,
+        ) {
+            self.as_ref()
+                .on_path_secret_map_datagram_encrypt(meta, event);
+        }
+        #[inline]
+        fn on_path_secret_map_datagram_decrypt(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapDatagramDecrypt,
+        ) {
+            self.as_ref()
+                .on_path_secret_map_datagram_decrypt(meta, event);
         }
         #[inline]
         fn on_event<M: Meta, E: Event>(&self, meta: &M, event: &E) {
@@ -9075,6 +9199,24 @@ mod traits {
             (self.1).on_path_secret_map_address_write_lock(meta, event);
         }
         #[inline]
+        fn on_path_secret_map_datagram_encrypt(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapDatagramEncrypt,
+        ) {
+            (self.0).on_path_secret_map_datagram_encrypt(meta, event);
+            (self.1).on_path_secret_map_datagram_encrypt(meta, event);
+        }
+        #[inline]
+        fn on_path_secret_map_datagram_decrypt(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapDatagramDecrypt,
+        ) {
+            (self.0).on_path_secret_map_datagram_decrypt(meta, event);
+            (self.1).on_path_secret_map_datagram_decrypt(meta, event);
+        }
+        #[inline]
         fn on_event<M: Meta, E: Event>(&self, meta: &M, event: &E) {
             self.0.on_event(meta, event);
             self.1.on_event(meta, event);
@@ -9264,6 +9406,10 @@ mod traits {
             &self,
             event: builder::PathSecretMapAddressWriteLock,
         );
+        #[doc = "Publishes a `PathSecretMapDatagramEncrypt` event to the publisher's subscriber"]
+        fn on_path_secret_map_datagram_encrypt(&self, event: builder::PathSecretMapDatagramEncrypt);
+        #[doc = "Publishes a `PathSecretMapDatagramDecrypt` event to the publisher's subscriber"]
+        fn on_path_secret_map_datagram_decrypt(&self, event: builder::PathSecretMapDatagramDecrypt);
         #[doc = r" Returns the QUIC version, if any"]
         fn quic_version(&self) -> Option<u32>;
     }
@@ -9760,6 +9906,26 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_path_secret_map_address_write_lock(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_path_secret_map_datagram_encrypt(
+            &self,
+            event: builder::PathSecretMapDatagramEncrypt,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_path_secret_map_datagram_encrypt(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_path_secret_map_datagram_decrypt(
+            &self,
+            event: builder::PathSecretMapDatagramDecrypt,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_path_secret_map_datagram_decrypt(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -10271,6 +10437,8 @@ pub mod testing {
             pub path_secret_map_cleaner_cycled: AtomicU64,
             pub path_secret_map_id_write_lock: AtomicU64,
             pub path_secret_map_address_write_lock: AtomicU64,
+            pub path_secret_map_datagram_encrypt: AtomicU64,
+            pub path_secret_map_datagram_decrypt: AtomicU64,
         }
         impl Drop for Subscriber {
             fn drop(&mut self) {
@@ -10364,6 +10532,8 @@ pub mod testing {
                     path_secret_map_cleaner_cycled: AtomicU64::new(0),
                     path_secret_map_id_write_lock: AtomicU64::new(0),
                     path_secret_map_address_write_lock: AtomicU64::new(0),
+                    path_secret_map_datagram_encrypt: AtomicU64::new(0),
+                    path_secret_map_datagram_decrypt: AtomicU64::new(0),
                 }
             }
         }
@@ -11098,6 +11268,30 @@ pub mod testing {
                 let out = format!("{meta:?} {event:?}");
                 self.output.lock().unwrap().push(out);
             }
+            fn on_path_secret_map_datagram_encrypt(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::PathSecretMapDatagramEncrypt,
+            ) {
+                self.path_secret_map_datagram_encrypt
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_path_secret_map_datagram_decrypt(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::PathSecretMapDatagramDecrypt,
+            ) {
+                self.path_secret_map_datagram_decrypt
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
         }
     }
     #[derive(Debug)]
@@ -11199,6 +11393,8 @@ pub mod testing {
         pub path_secret_map_cleaner_cycled: AtomicU64,
         pub path_secret_map_id_write_lock: AtomicU64,
         pub path_secret_map_address_write_lock: AtomicU64,
+        pub path_secret_map_datagram_encrypt: AtomicU64,
+        pub path_secret_map_datagram_decrypt: AtomicU64,
     }
     impl Drop for Subscriber {
         fn drop(&mut self) {
@@ -11325,6 +11521,8 @@ pub mod testing {
                 path_secret_map_cleaner_cycled: AtomicU64::new(0),
                 path_secret_map_id_write_lock: AtomicU64::new(0),
                 path_secret_map_address_write_lock: AtomicU64::new(0),
+                path_secret_map_datagram_encrypt: AtomicU64::new(0),
+                path_secret_map_datagram_decrypt: AtomicU64::new(0),
             }
         }
     }
@@ -12528,6 +12726,30 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
+        fn on_path_secret_map_datagram_encrypt(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapDatagramEncrypt,
+        ) {
+            self.path_secret_map_datagram_encrypt
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_path_secret_map_datagram_decrypt(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapDatagramDecrypt,
+        ) {
+            self.path_secret_map_datagram_decrypt
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
     }
     #[derive(Debug)]
     pub struct Publisher {
@@ -12628,6 +12850,8 @@ pub mod testing {
         pub path_secret_map_cleaner_cycled: AtomicU64,
         pub path_secret_map_id_write_lock: AtomicU64,
         pub path_secret_map_address_write_lock: AtomicU64,
+        pub path_secret_map_datagram_encrypt: AtomicU64,
+        pub path_secret_map_datagram_decrypt: AtomicU64,
     }
     impl Publisher {
         #[doc = r" Creates a publisher with snapshot assertions enabled"]
@@ -12744,6 +12968,8 @@ pub mod testing {
                 path_secret_map_cleaner_cycled: AtomicU64::new(0),
                 path_secret_map_id_write_lock: AtomicU64::new(0),
                 path_secret_map_address_write_lock: AtomicU64::new(0),
+                path_secret_map_datagram_encrypt: AtomicU64::new(0),
+                path_secret_map_datagram_decrypt: AtomicU64::new(0),
             }
         }
     }
@@ -13270,6 +13496,28 @@ pub mod testing {
             event: builder::PathSecretMapAddressWriteLock,
         ) {
             self.path_secret_map_address_write_lock
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_path_secret_map_datagram_encrypt(
+            &self,
+            event: builder::PathSecretMapDatagramEncrypt,
+        ) {
+            self.path_secret_map_datagram_encrypt
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_path_secret_map_datagram_decrypt(
+            &self,
+            event: builder::PathSecretMapDatagramDecrypt,
+        ) {
+            self.path_secret_map_datagram_decrypt
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);

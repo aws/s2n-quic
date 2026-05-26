@@ -157,4 +157,8 @@ pub trait Store: 'static + Send + Sync {
     fn reset_all_senders(&self);
 
     fn on_dc_connection_timeout(&self, peer_address: &SocketAddr);
+
+    fn on_datagram_encrypt(&self, packet_len: usize);
+
+    fn on_datagram_decrypt(&self, packet_len: usize);
 }

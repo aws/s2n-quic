@@ -228,6 +228,16 @@ impl Map {
         self.store.on_dc_connection_timeout(peer_address);
     }
 
+    /// Emits a datagram encrypt event with the wire packet length
+    pub(crate) fn on_datagram_encrypt(&self, packet_len: usize) {
+        self.store.on_datagram_encrypt(packet_len);
+    }
+
+    /// Emits a datagram decrypt event with the wire packet length
+    pub(crate) fn on_datagram_decrypt(&self, packet_len: usize) {
+        self.store.on_datagram_decrypt(packet_len);
+    }
+
     pub fn handle_control_packet(&self, packet: &control::Packet, peer: &SocketAddr) {
         match packet {
             control::Packet::StaleKey(packet) => {
