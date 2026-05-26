@@ -6,6 +6,7 @@ pub mod tracing;
 
 pub mod acceptor;
 pub mod allocator;
+pub mod bitset;
 pub mod busy_poll;
 pub mod byte_vec;
 pub mod congestion;
@@ -18,6 +19,8 @@ pub mod endpoint;
 pub mod event;
 pub mod flow;
 pub mod intrusive;
+pub mod queue;
+pub mod sync;
 pub mod msg;
 pub mod packet;
 pub mod path;

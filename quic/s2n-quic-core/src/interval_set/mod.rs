@@ -295,21 +295,25 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert!(set.contains(&3));
     /// assert!(!set.contains(&5));
     /// ```
+    /// Inserts the supplied `interval` into the set.
+    ///
+    /// Returns `Ok(true)` if the set was modified, `Ok(false)` if the interval
+    /// was already fully contained.
     #[inline]
-    pub fn insert<R: RangeBounds<T>>(&mut self, interval: R) -> Result<(), IntervalSetError> {
+    pub fn insert<R: RangeBounds<T>>(&mut self, interval: R) -> Result<bool, IntervalSetError> {
         let interval = Interval::from_range_bounds(interval)?;
 
         if self.intervals.is_empty() {
             self.intervals.push_front(interval);
-            return Ok(());
+            return Ok(true);
         }
 
         let index = self.index_for(&interval);
-        insert(&mut self.intervals, interval, index, self.limit)?;
+        let (_index, modified) = insert(&mut self.intervals, interval, index, self.limit)?;
 
         self.check_integrity();
 
-        Ok(())
+        Ok(modified)
     }
 
     /// Inserts the supplied `interval` at the beginning of the `IntervalSet`.
@@ -326,19 +330,19 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert!(!set.contains(&5));
     /// ```
     #[inline]
-    pub fn insert_front<R: RangeBounds<T>>(&mut self, interval: R) -> Result<(), IntervalSetError> {
+    pub fn insert_front<R: RangeBounds<T>>(&mut self, interval: R) -> Result<bool, IntervalSetError> {
         let interval = Interval::from_range_bounds(interval)?;
 
         if self.intervals.is_empty() {
             self.intervals.push_front(interval);
-            return Ok(());
+            return Ok(true);
         }
 
-        insert(&mut self.intervals, interval, 0, self.limit)?;
+        let (_index, modified) = insert(&mut self.intervals, interval, 0, self.limit)?;
 
         self.check_integrity();
 
-        Ok(())
+        Ok(modified)
     }
 
     /// Inserts a single `value` into the `IntervalSet`
@@ -354,7 +358,7 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert!(!set.contains(&2));
     /// ```
     #[inline]
-    pub fn insert_value(&mut self, value: T) -> Result<(), IntervalSetError> {
+    pub fn insert_value(&mut self, value: T) -> Result<bool, IntervalSetError> {
         self.insert((Bound::Included(value), Bound::Included(value)))
     }
 
@@ -379,7 +383,10 @@ impl<T: IntervalBound> IntervalSet<T> {
             return Ok(());
         }
 
-        self.set_operation(other, insert)
+        self.set_operation(other, |ranges, interval, index, limit| {
+            let (idx, _modified) = insert(ranges, interval, index, limit)?;
+            Ok(idx)
+        })
     }
 
     /// Removes the supplied `interval` from the `IntervalSet`

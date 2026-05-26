@@ -134,23 +134,40 @@ fn process_operation(
         IntervalSet::new()
     };
 
-    macro_rules! perform_operation {
-        ($operation:ident, $range:expr) => {{
+    macro_rules! perform_insert {
+        ($range:expr) => {{
             match $range {
                 RangeValue::Range(range) => {
-                    // if the operation didn't exceed the limit then apply it
-                    // to the oracle
-                    if subject.$operation(range.clone()).is_ok() {
-                        oracle.$operation(range.clone());
-                        subject.$operation(range.clone()).unwrap();
+                    if let Ok(modified) = subject.insert(range.clone()) {
+                        let oracle_modified = oracle.insert(range.clone());
+                        assert_eq!(modified, oracle_modified, "insert modified mismatch for {:?}", range);
+                        let second = subject.insert(range.clone()).unwrap();
+                        assert!(!second, "second insert of same range should not modify");
                     }
                 }
                 RangeValue::RangeInclusive(range) => {
-                    // if the operation didn't exceed the limit then apply it
-                    // to the oracle
-                    if subject.$operation(range.clone()).is_ok() {
-                        oracle.$operation(range.clone());
-                        subject.$operation(range.clone()).unwrap();
+                    if let Ok(modified) = subject.insert(range.clone()) {
+                        let oracle_modified = oracle.insert(range.clone());
+                        assert_eq!(modified, oracle_modified, "insert modified mismatch for {:?}", range);
+                        let second = subject.insert(range.clone()).unwrap();
+                        assert!(!second, "second insert of same range should not modify");
+                    }
+                }
+            }
+        }};
+    }
+
+    macro_rules! perform_remove {
+        ($range:expr) => {{
+            match $range {
+                RangeValue::Range(range) => {
+                    if subject.remove(range.clone()).is_ok() {
+                        oracle.remove(range.clone());
+                    }
+                }
+                RangeValue::RangeInclusive(range) => {
+                    if subject.remove(range.clone()).is_ok() {
+                        oracle.remove(range.clone());
                     }
                 }
             }
@@ -160,10 +177,10 @@ fn process_operation(
     for operation in operations {
         match operation {
             Operation::Insert { range } => {
-                perform_operation!(insert, range);
+                perform_insert!(range);
             }
             Operation::Remove { range } => {
-                perform_operation!(remove, range);
+                perform_remove!(range);
             }
         }
 
@@ -199,10 +216,12 @@ impl Oracle {
         }
     }
 
-    fn insert<V: Iterator<Item = RangeBound>>(&mut self, values: V) {
+    fn insert<V: Iterator<Item = RangeBound>>(&mut self, values: V) -> bool {
+        let mut modified = false;
         for value in values {
-            self.data.insert(value);
+            modified |= self.data.insert(value);
         }
+        modified
     }
 
     fn remove<V: Iterator<Item = RangeBound>>(&mut self, values: V) {

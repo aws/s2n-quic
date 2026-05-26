@@ -7,6 +7,64 @@ use std::{
     ptr::NonNull,
 };
 
+// ── List identity tracking ────────────────────────────────────────────────
+
+/// Identifies a specific list instance.  Zero-sized in release builds.
+#[derive(Clone, Copy)]
+#[cfg(debug_assertions)]
+struct ListId(u64);
+
+#[derive(Clone, Copy)]
+#[cfg(not(debug_assertions))]
+struct ListId;
+
+impl ListId {
+    fn next() -> Self {
+        #[cfg(debug_assertions)]
+        {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static COUNTER: AtomicU64 = AtomicU64::new(1);
+            Self(COUNTER.fetch_add(1, Ordering::Relaxed))
+        }
+        #[cfg(not(debug_assertions))]
+        { Self }
+    }
+}
+
+/// Tracks which list owns a node.  Zero-sized in release builds.
+#[cfg(debug_assertions)]
+struct LinkTag(Cell<u64>);
+
+#[cfg(not(debug_assertions))]
+struct LinkTag;
+
+impl LinkTag {
+    const fn new() -> Self {
+        #[cfg(debug_assertions)]
+        { Self(Cell::new(0)) }
+        #[cfg(not(debug_assertions))]
+        { Self }
+    }
+
+    #[inline(always)]
+    fn stamp(&self, _id: ListId) {
+        #[cfg(debug_assertions)]
+        self.0.set(_id.0);
+    }
+
+    #[inline(always)]
+    fn clear(&self) {
+        #[cfg(debug_assertions)]
+        self.0.set(0);
+    }
+
+    #[inline(always)]
+    fn assert_belongs_to(&self, _id: ListId) {
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(self.0.get(), _id.0, "node belongs to a different list");
+    }
+}
+
 // ── Adapter Trait ──────────────────────────────────────────────────────────
 
 /// Links embedded in a value for intrusive list membership.
@@ -16,6 +74,7 @@ use std::{
 pub struct Links {
     prev: Cell<Option<NonNull<()>>>,
     next: Cell<Option<NonNull<()>>>,
+    tag: LinkTag,
 }
 
 impl Links {
@@ -23,10 +82,10 @@ impl Links {
         Self {
             prev: Cell::new(None),
             next: Cell::new(None),
+            tag: LinkTag::new(),
         }
     }
 
-    /// Returns true if this entry is currently linked in a list
     #[inline(always)]
     pub fn is_linked(&self) -> bool {
         self.prev.get().is_some() || self.next.get().is_some()
@@ -34,10 +93,24 @@ impl Links {
 
     #[inline(always)]
     fn assert_unlinked(&self) {
-        if cfg!(debug_assertions) {
-            debug_assert!(self.prev.get().is_none());
-            debug_assert!(self.next.get().is_none());
-        }
+        debug_assert!(!self.is_linked());
+    }
+
+    #[inline(always)]
+    fn stamp(&self, id: ListId) {
+        self.tag.stamp(id);
+    }
+
+    #[inline(always)]
+    fn clear(&self) {
+        self.prev.set(None);
+        self.next.set(None);
+        self.tag.clear();
+    }
+
+    #[inline(always)]
+    fn assert_belongs_to(&self, id: ListId) {
+        self.tag.assert_belongs_to(id);
     }
 }
 
@@ -307,6 +380,7 @@ pub struct List<A: Adapter> {
     head: Option<NonNull<A::Value>>,
     tail: Option<NonNull<A::Value>>,
     len: usize,
+    id: ListId,
     _phantom: core::marker::PhantomData<A>,
 }
 
@@ -315,11 +389,12 @@ unsafe impl<A: Adapter> Sync for List<A> where A::Pointer: Sync {}
 
 impl<A: Adapter> List<A> {
     /// Create a new empty list
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             head: None,
             tail: None,
             len: 0,
+            id: ListId::next(),
             _phantom: core::marker::PhantomData,
         }
     }
@@ -343,6 +418,7 @@ impl<A: Adapter> List<A> {
         unsafe {
             let links = A::links(new_tail.as_ptr());
             (*links).assert_unlinked();
+            (*links).stamp(self.id);
 
             if let Some(tail) = self.tail {
                 // Non-empty list: link after current tail
@@ -376,6 +452,7 @@ impl<A: Adapter> List<A> {
         unsafe {
             let links = A::links(new_head.as_ptr());
             (*links).assert_unlinked();
+            (*links).stamp(self.id);
 
             if let Some(head) = self.head {
                 // Non-empty list: link before current head
@@ -423,9 +500,7 @@ impl<A: Adapter> List<A> {
                 self.tail = None;
             }
 
-            (*links).prev.set(None);
-            (*links).next.set(None);
-
+            (*links).clear();
             self.len -= 1;
 
             Some(A::from_raw(head.as_ptr()))
@@ -455,13 +530,85 @@ impl<A: Adapter> List<A> {
                 self.head = None;
             }
 
-            (*links).prev.set(None);
-            (*links).next.set(None);
-
+            (*links).clear();
             self.len -= 1;
 
             Some(A::from_raw(tail.as_ptr()))
         }
+    }
+
+    /// Remove a specific node from the list by pointer.
+    ///
+    /// Returns `Some(pointer)` if the node was linked and removed, or `None`
+    /// if the node was not linked (already removed by a concurrent drain).
+    ///
+    /// # Safety
+    ///
+    /// The provided pointer must reference a node that, if linked, belongs to
+    /// THIS list.  Passing a node from a different list is undefined behavior
+    /// (caught by debug_assert in debug builds).
+    pub unsafe fn remove(&mut self, ptr: &A::Pointer) -> Option<A::Pointer> {
+        let node = NonNull::new_unchecked(A::as_ptr(ptr) as *mut A::Value);
+        let links = A::links(node.as_ptr());
+
+        if !(*links).is_linked() {
+            return None;
+        }
+
+        (*links).assert_belongs_to(self.id);
+
+        let prev_raw = (*links).prev.get();
+        let next_raw = (*links).next.get();
+
+        let prev = prev_raw.map(|p| NonNull::new_unchecked(p.as_ptr() as *mut A::Value));
+        let next = next_raw.map(|p| NonNull::new_unchecked(p.as_ptr() as *mut A::Value));
+
+        let is_head = prev.map_or(false, |p| p == node);
+        let is_tail = next.map_or(false, |p| p == node);
+
+        match (is_head, is_tail) {
+            (true, true) => {
+                // Singleton: clear list
+                self.head = None;
+                self.tail = None;
+            }
+            (true, false) => {
+                // Head but not tail: advance head
+                self.head = next;
+                if let Some(new_head) = next {
+                    let new_head_links = A::links(new_head.as_ptr());
+                    (*new_head_links)
+                        .prev
+                        .set(Some(NonNull::new_unchecked(new_head.as_ptr() as *mut ())));
+                }
+            }
+            (false, true) => {
+                // Tail but not head: retreat tail
+                self.tail = prev;
+                if let Some(new_tail) = prev {
+                    let new_tail_links = A::links(new_tail.as_ptr());
+                    (*new_tail_links)
+                        .next
+                        .set(Some(NonNull::new_unchecked(new_tail.as_ptr() as *mut ())));
+                }
+            }
+            (false, false) => {
+                // Interior: patch neighbors
+                if let Some(prev_node) = prev {
+                    let prev_links = A::links(prev_node.as_ptr());
+                    (*prev_links).next.set(next_raw);
+                }
+                if let Some(next_node) = next {
+                    let next_links = A::links(next_node.as_ptr());
+                    (*next_links).prev.set(prev_raw);
+                }
+            }
+        }
+
+        (*links).clear();
+        self.len -= 1;
+
+        Some(A::from_raw(node.as_ptr()))
     }
 
     /// Append another list to the back of this list
@@ -1063,6 +1210,155 @@ mod tests {
         PopBack,
         Append,
         Prepend,
+    }
+
+    // ── Remove tests using Arc-based adapter ──────────────────────────────
+
+    struct ArcNode {
+        links: Links,
+        value: u64,
+    }
+
+    struct ArcAdapter;
+
+    impl Adapter for ArcAdapter {
+        type Value = ArcNode;
+        type Target = ArcNode;
+        type Pointer = std::sync::Arc<ArcNode>;
+
+        unsafe fn links(value: *mut Self::Value) -> *mut Links {
+            &raw mut (*value).links
+        }
+        unsafe fn target(value: *mut Self::Value) -> *mut Self::Target {
+            value
+        }
+        fn as_ptr(ptr: &Self::Pointer) -> *const Self::Value {
+            std::sync::Arc::as_ptr(ptr)
+        }
+        fn into_raw(ptr: Self::Pointer) -> *mut Self::Value {
+            std::sync::Arc::into_raw(ptr) as *mut Self::Value
+        }
+        unsafe fn from_raw(ptr: *mut Self::Value) -> Self::Pointer {
+            std::sync::Arc::from_raw(ptr)
+        }
+    }
+
+    fn arc_node(value: u64) -> std::sync::Arc<ArcNode> {
+        std::sync::Arc::new(ArcNode {
+            links: Links::new(),
+            value,
+        })
+    }
+
+    #[test]
+    fn remove_singleton() {
+        let mut list: List<ArcAdapter> = List::new();
+        let n1 = arc_node(1);
+        list.push_back(n1.clone());
+        assert_eq!(list.len(), 1);
+
+        let removed = unsafe { list.remove(&n1) };
+        assert!(removed.is_some());
+        assert_eq!(list.len(), 0);
+        assert!(list.is_empty());
+        assert!(!n1.links.is_linked());
+    }
+
+    #[test]
+    fn remove_head() {
+        let mut list: List<ArcAdapter> = List::new();
+        let n1 = arc_node(1);
+        let n2 = arc_node(2);
+        let n3 = arc_node(3);
+        list.push_back(n1.clone());
+        list.push_back(n2.clone());
+        list.push_back(n3.clone());
+
+        let removed = unsafe { list.remove(&n1) };
+        assert!(removed.is_some());
+        assert_eq!(list.len(), 2);
+        assert_eq!(list.pop_front().unwrap().value, 2);
+        assert_eq!(list.pop_front().unwrap().value, 3);
+    }
+
+    #[test]
+    fn remove_tail() {
+        let mut list: List<ArcAdapter> = List::new();
+        let n1 = arc_node(1);
+        let n2 = arc_node(2);
+        let n3 = arc_node(3);
+        list.push_back(n1.clone());
+        list.push_back(n2.clone());
+        list.push_back(n3.clone());
+
+        let removed = unsafe { list.remove(&n3) };
+        assert!(removed.is_some());
+        assert_eq!(list.len(), 2);
+        assert_eq!(list.pop_back().unwrap().value, 2);
+        assert_eq!(list.pop_back().unwrap().value, 1);
+    }
+
+    #[test]
+    fn remove_interior() {
+        let mut list: List<ArcAdapter> = List::new();
+        let n1 = arc_node(1);
+        let n2 = arc_node(2);
+        let n3 = arc_node(3);
+        list.push_back(n1.clone());
+        list.push_back(n2.clone());
+        list.push_back(n3.clone());
+
+        let removed = unsafe { list.remove(&n2) };
+        assert!(removed.is_some());
+        assert_eq!(list.len(), 2);
+        assert_eq!(list.pop_front().unwrap().value, 1);
+        assert_eq!(list.pop_front().unwrap().value, 3);
+    }
+
+    #[test]
+    fn remove_not_linked() {
+        let mut list: List<ArcAdapter> = List::new();
+        let n1 = arc_node(1);
+        // never pushed
+        let removed = unsafe { list.remove(&n1) };
+        assert!(removed.is_none());
+        assert_eq!(list.len(), 0);
+    }
+
+    #[test]
+    fn remove_already_popped() {
+        let mut list: List<ArcAdapter> = List::new();
+        let n1 = arc_node(1);
+        let n2 = arc_node(2);
+        list.push_back(n1.clone());
+        list.push_back(n2.clone());
+
+        // Pop n1 via pop_front
+        let _ = list.pop_front();
+        assert!(!n1.links.is_linked());
+
+        // Try to remove n1 again — should return None
+        let removed = unsafe { list.remove(&n1) };
+        assert!(removed.is_none());
+        assert_eq!(list.len(), 1);
+    }
+
+    #[test]
+    fn remove_all_then_reuse() {
+        let mut list: List<ArcAdapter> = List::new();
+        let n1 = arc_node(1);
+        let n2 = arc_node(2);
+        list.push_back(n1.clone());
+        list.push_back(n2.clone());
+
+        unsafe { list.remove(&n1) };
+        unsafe { list.remove(&n2) };
+        assert!(list.is_empty());
+
+        // Re-push after removal
+        list.push_back(n1.clone());
+        assert_eq!(list.len(), 1);
+        assert_eq!(list.pop_front().unwrap().value, 1);
     }
 
     #[test]

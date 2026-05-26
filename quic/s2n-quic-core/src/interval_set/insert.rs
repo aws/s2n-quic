@@ -15,7 +15,7 @@ pub(crate) fn insert<T: IntervalBound + Ord>(
     mut range: Interval<T>,
     start_index: usize,
     limit: Option<NonZeroUsize>,
-) -> Result<usize, IntervalSetError> {
+) -> Result<(usize, bool), IntervalSetError> {
     // this range is intentionally invalid and will only be
     // valid if the `scan` method finds a match
     #[allow(clippy::reversed_empty_ranges)]
@@ -26,10 +26,11 @@ pub(crate) fn insert<T: IntervalBound + Ord>(
     let iter = ranges.iter().enumerate().skip(start_index);
 
     if let Some(index) = insertion.scan(iter, &mut range) {
-        return Ok(index);
+        return Ok((index, false));
     }
 
-    insertion.apply(ranges, range, limit)
+    let index = insertion.apply(ranges, range, limit)?;
+    Ok((index, true))
 }
 
 /// A structure to keep temporary state for an insertion
