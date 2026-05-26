@@ -136,17 +136,17 @@ impl Client {
             ));
         }
 
-        let stream_id =
-            VarInt::new(self.endpoint.next_stream_id.fetch_add(1, Ordering::Relaxed)).unwrap();
+        let binding_id =
+            VarInt::new(self.endpoint.next_binding_id.fetch_add(1, Ordering::Relaxed)).unwrap();
 
-        let handle = flow::Handle::client(stream_id, path_secret_entry.clone());
+        let handle = flow::Handle::client(binding_id, path_secret_entry.clone());
 
         let (queue_control, queue_stream) = self.queue_allocator.alloc_or_grow(handle, None);
 
         let writer = Writer::new_client(
             self.endpoint.frame_tx.clone(),
             path_secret_entry.clone(),
-            stream_id,
+            binding_id,
             acceptor_id,
             queue_control,
         );
@@ -154,7 +154,7 @@ impl Client {
         let reader = Reader::new_client(
             self.endpoint.frame_tx.clone(),
             path_secret_entry,
-            stream_id,
+            binding_id,
             queue_stream,
         );
 

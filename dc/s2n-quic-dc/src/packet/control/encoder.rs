@@ -17,7 +17,7 @@ use s2n_quic_core::{assume, varint::VarInt};
 pub fn estimate_len(
     _packet_number: VarInt,
     source_queue_id: Option<VarInt>,
-    stream_id: Option<stream::Id>,
+    binding_id: Option<stream::Id>,
     routing_info: RoutingInfo,
     control_data_len: VarInt,
     crypto_tag_len: usize,
@@ -27,7 +27,7 @@ pub fn estimate_len(
     // Tag
     let mut tag = Tag::default();
     tag.set_has_source_queue_id(source_queue_id.is_some());
-    tag.set_is_stream(stream_id.is_some());
+    tag.set_is_stream(binding_id.is_some());
     tag.set_has_routing_info(!matches!(routing_info, RoutingInfo::None));
     encoder.encode(&tag);
 
@@ -40,8 +40,8 @@ pub fn estimate_len(
     // Wire version
     encoder.encode(&WireVersion::ZERO);
 
-    // Optional stream_id
-    encoder.encode(&stream_id);
+    // Optional binding_id
+    encoder.encode(&binding_id);
 
     // Optional source_queue_id
     encoder.encode(&source_queue_id);
@@ -70,7 +70,7 @@ pub fn estimate_len(
 pub fn encode<CD, C>(
     mut encoder: EncoderBuffer,
     source_queue_id: Option<VarInt>,
-    stream_id: Option<stream::Id>,
+    binding_id: Option<stream::Id>,
     packet_number: VarInt,
     routing_info: RoutingInfo,
     control_data_len: VarInt,
@@ -84,7 +84,7 @@ where
 {
     let mut tag = Tag::default();
     tag.set_has_source_queue_id(source_queue_id.is_some());
-    tag.set_is_stream(stream_id.is_some());
+    tag.set_is_stream(binding_id.is_some());
     tag.set_has_routing_info(!matches!(routing_info, RoutingInfo::None));
     encoder.encode(&tag);
 
@@ -94,7 +94,7 @@ where
     // wire version - we only support `0` currently
     encoder.encode(&WireVersion::ZERO);
 
-    encoder.encode(&stream_id);
+    encoder.encode(&binding_id);
     encoder.encode(&source_queue_id);
 
     encoder.encode(&packet_number);
@@ -143,7 +143,7 @@ where
 pub fn encode_with_application<CD, C>(
     mut encoder: EncoderBuffer,
     source_queue_id: Option<VarInt>,
-    stream_id: Option<stream::Id>,
+    binding_id: Option<stream::Id>,
     packet_number: VarInt,
     routing_info: RoutingInfo,
     control_data_len: VarInt,
@@ -157,7 +157,7 @@ where
 {
     let mut tag = Tag::default();
     tag.set_has_source_queue_id(source_queue_id.is_some());
-    tag.set_is_stream(stream_id.is_some());
+    tag.set_is_stream(binding_id.is_some());
     tag.set_has_routing_info(!matches!(routing_info, RoutingInfo::None));
     encoder.encode(&tag);
 
@@ -167,7 +167,7 @@ where
     // wire version - we only support `0` currently
     encoder.encode(&WireVersion::ZERO);
 
-    encoder.encode(&stream_id);
+    encoder.encode(&binding_id);
     encoder.encode(&source_queue_id);
 
     encoder.encode(&packet_number);

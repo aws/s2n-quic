@@ -93,7 +93,7 @@ expression: logs
 0:00:00.000000000 [peer] DEBUG setting peer data addresses peer=10.0.0.1:4433 addrs=[SocketAddressV6([::ffff:10.0.0.1]:4433), SocketAddressV6([::ffff:10.0.0.1]:49152), SocketAddressV6([::ffff:10.0.0.1]:49153), SocketAddressV6([::ffff:10.0.0.1]:49154), SocketAddressV6([::ffff:10.0.0.1]:49155), SocketAddressV6([::ffff:10.0.0.1]:49156), SocketAddressV6([::ffff:10.0.0.1]:49157), SocketAddressV6([::ffff:10.0.0.1]:49158)]
 0:00:00.000000000 [peer] DEBUG event=on_send_queue_init prev=Init next=QueueBindSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [peer] DEBUG event=on_send_fin prev=QueueBindSent next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000000000 [peer] DEBUG Sent QueueInit with early data stream_id=0 bytes_read=4 is_fin=true
+0:00:00.000000000 [peer] DEBUG Sent QueueInit with early data binding_id=0 bytes_read=4 is_fin=true
 0:00:00.000000000 [peer] TRACE c#q.router_to_batcher.enq[p4]=1
 0:00:00.000000000 [peer] TRACE g#q.router_to_batcher.depth[p4]=1
 0:00:00.000000000 [peer] TRACE m#q.router_to_batcher.depth_dist[p4]=1
@@ -257,7 +257,7 @@ expression: logs
 0:00:00.000521000 [peer] TRACE m#rx.packet_size=4
 0:00:00.000521000 [peer] TRACE c#rx.frame[queue_init]=1
 0:00:00.000521000 [peer] TRACE c#queue.accepted=1
-0:00:00.000521000 [peer] DEBUG QueueInit accepted - dispatched to acceptor attempt_id=0 stream_id=0 acceptor_id=1 server_queue_id=1
+0:00:00.000521000 [peer] DEBUG QueueInit accepted - dispatched to acceptor attempt_id=0 binding_id=0 acceptor_id=1 server_queue_id=1
 0:00:00.000521000 [peer] TRACE m#rx.frames_per_packet=1
 0:00:00.000521000 [peer] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.000521000 [peer] TRACE m#task.packet_dispatch.drained[recv.dispatch.1]=2
@@ -282,12 +282,12 @@ expression: logs
 0:00:00.000521000 [peer] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.1]=2
 0:00:00.000521000 [peer] TRACE m#q.resolver_to_idle_wheel.depth_dist[send.worker.1]=2
 0:00:00.000521000 [peer] TRACE m#task.ack_processor.drained[send.worker.1]=2
-0:00:00.000521000 [peer] DEBUG Reader complete - all data consumed stream_id=0 final_size=Some(4) consumed_len=4
+0:00:00.000521000 [peer] DEBUG Reader complete - all data consumed binding_id=0 final_size=Some(4) consumed_len=4
 0:00:00.000521000 [peer] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs
 0:00:00.000521000 [peer] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000521000 [peer] DEBUG Writer dropping stream_id=0 status=FinSent next_offset=4 inflight_bytes=4 remote_max_data=1048576
+0:00:00.000521000 [peer] DEBUG Writer dropping binding_id=0 status=FinSent next_offset=4 inflight_bytes=4 remote_max_data=1048576
 0:00:00.000521000 [peer] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000521000 [peer] DEBUG Reader dropping stream_id=0 status=Complete final_size=Some(4) consumed_len=4 total_received_len=4 is_writing_complete=true is_reading_complete=true
+0:00:00.000521000 [peer] DEBUG Reader dropping binding_id=0 status=Complete final_size=Some(4) consumed_len=4 total_received_len=4 is_writing_complete=true is_reading_complete=true
 0:00:00.000521000 [peer] TRACE m#task.idle_wheel.drained[send.worker.1]=1
 0:00:00.000521000 [peer] TRACE m#asm.max_datagram_size=1472
 0:00:00.000521000 [peer] TRACE c#send.ack.drain[send.1]=1
@@ -461,12 +461,12 @@ expression: logs
 0:00:00.001041000 [peer] TRACE m#q.ack.depth_dist[send.3]=1
 0:00:00.001041000 [peer] TRACE m#task.ack_burst.drained[recv.dispatch.0]=1
 0:00:00.001041000 [peer] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.0]=0
-0:00:00.001041000 [peer] DEBUG Reader complete - all data consumed stream_id=0 final_size=Some(4) consumed_len=4
+0:00:00.001041000 [peer] DEBUG Reader complete - all data consumed binding_id=0 final_size=Some(4) consumed_len=4
 0:00:00.001041000 [peer] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs
 0:00:00.001041000 [peer]  INFO peer_self_loopback passed
-0:00:00.001041000 [peer] DEBUG Writer dropping stream_id=0 status=FinSent next_offset=4 inflight_bytes=4 remote_max_data=0
+0:00:00.001041000 [peer] DEBUG Writer dropping binding_id=0 status=FinSent next_offset=4 inflight_bytes=4 remote_max_data=0
 0:00:00.001041000 [peer] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.001041000 [peer] DEBUG Reader dropping stream_id=0 status=Complete final_size=Some(4) consumed_len=4 total_received_len=4 is_writing_complete=true is_reading_complete=true
+0:00:00.001041000 [peer] DEBUG Reader dropping binding_id=0 status=Complete final_size=Some(4) consumed_len=4 total_received_len=4 is_writing_complete=true is_reading_complete=true
 0:00:00.001041000 [peer] TRACE c#q.ack.receiver[send.3.task.ack_processor]=1
 0:00:00.001041000 [peer] TRACE c#q.ack.drain[send.3]=1
 0:00:00.001041000 [peer] TRACE g#q.ack.depth[send.3]=0

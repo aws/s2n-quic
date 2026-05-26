@@ -41,7 +41,7 @@ pub enum Error<T> {
     Unallocated(T),
     /// The queue exists but this half has no receiver
     HalfClosed(T),
-    /// The queue key validation failed (credential or stream_id mismatch)
+    /// The queue key validation failed (credential or binding_id mismatch)
     ValidationFailed(T, super::descriptor::ValidationError),
     /// The sender has been dropped and no more packets will be sent
     PermanentlyClosed,

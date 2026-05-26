@@ -5,7 +5,7 @@ use s2n_quic_core::varint::VarInt;
 use std::fmt;
 
 /// Stream ID was reused before the previous flow completed
-pub const STREAM_ID_ERROR: VarInt = VarInt::from_u32(1);
+pub const BINDING_ID_ERROR: VarInt = VarInt::from_u32(1);
 
 /// The acceptor ID specified in QueueInit was not found
 pub const ACCEPTOR_NOT_FOUND: VarInt = VarInt::from_u32(2);
@@ -31,8 +31,8 @@ pub const SERVER_BUSY: VarInt = VarInt::from_u32(8);
 /// The sender exceeded advertised flow-control credit
 pub const QUEUE_CONTROL_ERROR: VarInt = VarInt::from_u32(9);
 
-/// The stream_id in the packet doesn't match the queue's current occupant
-pub const STREAM_ID_MISMATCH: VarInt = VarInt::from_u32(10);
+/// The binding_id in the packet doesn't match the queue's current occupant
+pub const BINDING_ID_MISMATCH: VarInt = VarInt::from_u32(10);
 
 /// The credential_id in the packet doesn't match the queue's owner
 pub const CREDENTIAL_MISMATCH: VarInt = VarInt::from_u32(11);
@@ -45,7 +45,7 @@ pub const IDLE_TIMEOUT: VarInt = VarInt::from_u32(13);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
-    StreamIdError,
+    BindingIdError,
     AcceptorNotFound,
     QueueUnallocated,
     FrameDecodeError,
@@ -54,7 +54,7 @@ pub enum Error {
     RetransmissionsExhausted,
     ServerBusy,
     QueueControlError,
-    StreamIdMismatch,
+    BindingIdMismatch,
     CredentialMismatch,
     QueueValidationFailed,
     IdleTimeout,
@@ -71,7 +71,7 @@ impl Error {
 
     pub fn as_varint(self) -> VarInt {
         match self {
-            Self::StreamIdError => STREAM_ID_ERROR,
+            Self::BindingIdError => BINDING_ID_ERROR,
             Self::AcceptorNotFound => ACCEPTOR_NOT_FOUND,
             Self::QueueUnallocated => QUEUE_UNALLOCATED,
             Self::FrameDecodeError => FRAME_DECODE_ERROR,
@@ -80,7 +80,7 @@ impl Error {
             Self::RetransmissionsExhausted => RETRANSMISSIONS_EXHAUSTED,
             Self::ServerBusy => SERVER_BUSY,
             Self::QueueControlError => QUEUE_CONTROL_ERROR,
-            Self::StreamIdMismatch => STREAM_ID_MISMATCH,
+            Self::BindingIdMismatch => BINDING_ID_MISMATCH,
             Self::CredentialMismatch => CREDENTIAL_MISMATCH,
             Self::QueueValidationFailed => QUEUE_VALIDATION_FAILED,
             Self::IdleTimeout => IDLE_TIMEOUT,
@@ -92,7 +92,7 @@ impl Error {
 impl From<VarInt> for Error {
     fn from(code: VarInt) -> Self {
         match code {
-            STREAM_ID_ERROR => Self::StreamIdError,
+            BINDING_ID_ERROR => Self::BindingIdError,
             ACCEPTOR_NOT_FOUND => Self::AcceptorNotFound,
             QUEUE_UNALLOCATED => Self::QueueUnallocated,
             FRAME_DECODE_ERROR => Self::FrameDecodeError,
@@ -101,7 +101,7 @@ impl From<VarInt> for Error {
             RETRANSMISSIONS_EXHAUSTED => Self::RetransmissionsExhausted,
             SERVER_BUSY => Self::ServerBusy,
             QUEUE_CONTROL_ERROR => Self::QueueControlError,
-            STREAM_ID_MISMATCH => Self::StreamIdMismatch,
+            BINDING_ID_MISMATCH => Self::BindingIdMismatch,
             CREDENTIAL_MISMATCH => Self::CredentialMismatch,
             QUEUE_VALIDATION_FAILED => Self::QueueValidationFailed,
             IDLE_TIMEOUT => Self::IdleTimeout,
@@ -113,10 +113,10 @@ impl From<VarInt> for Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::StreamIdError => {
+            Self::BindingIdError => {
                 write!(
                     f,
-                    "STREAM_ID_ERROR: stream ID reused before previous flow completed"
+                    "BINDING_ID_ERROR: stream ID reused before previous flow completed"
                 )
             }
             Self::AcceptorNotFound => {
@@ -149,10 +149,10 @@ impl fmt::Display for Error {
                     "QUEUE_CONTROL_ERROR: sender exceeded advertised flow-control credit"
                 )
             }
-            Self::StreamIdMismatch => {
+            Self::BindingIdMismatch => {
                 write!(
                     f,
-                    "STREAM_ID_MISMATCH: packet stream_id does not match queue occupant"
+                    "BINDING_ID_MISMATCH: packet binding_id does not match queue occupant"
                 )
             }
             Self::CredentialMismatch => {

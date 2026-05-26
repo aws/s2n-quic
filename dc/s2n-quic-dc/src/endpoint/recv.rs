@@ -228,7 +228,7 @@ pub(crate) struct Context {
     pub created_at: crate::time::precision::Timestamp,
     pub ack_state: AckState,
     pub attempt_dedup: AttemptDedup,
-    /// Map from stream_id to allocated queue_id for this sender.
+    /// Map from binding_id to allocated queue_id for this sender.
     /// Shared with queue handles so they can remove entries when closed.
     pub flows: flow::Tracker,
     /// Intrusive links for recv-worker pending-ACK burst queue membership.

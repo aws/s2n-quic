@@ -34,8 +34,8 @@ pub trait Key: 'static + Send {
 pub enum ValidationError {
     /// The credential_id in the packet doesn't match the queue's owner
     CredentialMismatch,
-    /// The stream_id in the packet doesn't match the queue's stream
-    StreamIdMismatch,
+    /// The binding_id in the packet doesn't match the queue's stream
+    BindingIdMismatch,
 }
 
 impl ValidationError {
@@ -44,7 +44,7 @@ impl ValidationError {
         use crate::stream::endpoint::error;
         match self {
             Self::CredentialMismatch => error::CREDENTIAL_MISMATCH,
-            Self::StreamIdMismatch => error::STREAM_ID_MISMATCH,
+            Self::BindingIdMismatch => error::BINDING_ID_MISMATCH,
         }
     }
 }

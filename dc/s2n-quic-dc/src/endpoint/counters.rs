@@ -34,14 +34,14 @@ pub(crate) struct Dispatch {
     pub rx_data_unallocated: Counter,
     pub rx_data_half_closed: Counter,
     pub rx_data_credential_mismatch: Counter,
-    pub rx_data_stream_id_mismatch: Counter,
+    pub rx_data_binding_id_mismatch: Counter,
     pub rx_data_perm_closed: Counter,
 
     pub rx_queue_control_ok: Counter,
     pub rx_queue_control_unallocated: Counter,
     pub rx_queue_control_half_closed: Counter,
     pub rx_queue_control_credential_mismatch: Counter,
-    pub rx_queue_control_stream_id_mismatch: Counter,
+    pub rx_queue_control_binding_id_mismatch: Counter,
     pub rx_queue_control_perm_closed: Counter,
 
     pub rx_reset_both: Counter,
@@ -124,7 +124,7 @@ impl Dispatch {
             rx_data_half_closed: counters.register_nominal("!rx.data", "half_closed"),
             rx_data_credential_mismatch: counters
                 .register_nominal("!rx.data", "credential_mismatch"),
-            rx_data_stream_id_mismatch: counters.register_nominal("!rx.data", "stream_id_mismatch"),
+            rx_data_binding_id_mismatch: counters.register_nominal("!rx.data", "binding_id_mismatch"),
             rx_data_perm_closed: counters.register("rx.data.perm_closed"),
 
             rx_queue_control_ok: counters.register("rx.queue_control.ok"),
@@ -134,8 +134,8 @@ impl Dispatch {
                 .register_nominal("!rx.queue_control", "half_closed"),
             rx_queue_control_credential_mismatch: counters
                 .register_nominal("!rx.queue_control", "credential_mismatch"),
-            rx_queue_control_stream_id_mismatch: counters
-                .register_nominal("!rx.queue_control", "stream_id_mismatch"),
+            rx_queue_control_binding_id_mismatch: counters
+                .register_nominal("!rx.queue_control", "binding_id_mismatch"),
             rx_queue_control_perm_closed: counters.register("rx.queue_control.perm_closed"),
 
             rx_reset_both: counters.register("rx.reset.both"),
@@ -199,7 +199,7 @@ impl Dispatch {
     pub fn on_data_validation_failed(&self, reason: ValidationError) {
         match reason {
             ValidationError::CredentialMismatch => self.rx_data_credential_mismatch.add(1),
-            ValidationError::StreamIdMismatch => self.rx_data_stream_id_mismatch.add(1),
+            ValidationError::BindingIdMismatch => self.rx_data_binding_id_mismatch.add(1),
         }
     }
 
@@ -207,7 +207,7 @@ impl Dispatch {
     pub fn on_queue_control_validation_failed(&self, reason: ValidationError) {
         match reason {
             ValidationError::CredentialMismatch => self.rx_queue_control_credential_mismatch.add(1),
-            ValidationError::StreamIdMismatch => self.rx_queue_control_stream_id_mismatch.add(1),
+            ValidationError::BindingIdMismatch => self.rx_queue_control_binding_id_mismatch.add(1),
         }
     }
 

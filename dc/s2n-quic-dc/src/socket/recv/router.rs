@@ -64,13 +64,13 @@ pub trait Router {
                 match packet {
                     packet::Packet::Control(control_packet) => {
                         let tag = control_packet.tag();
-                        let stream_id = control_packet.stream_id().copied();
+                        let binding_id = control_packet.binding_id().copied();
                         let credentials = *control_packet.credentials();
 
                         // #[cfg(debug_assertions)]
                         // let _span = tracing::info_span!("recv::control", peer_addr = %remote_address, flow_id = %credentials).entered();
 
-                        trace!(?tag, ?stream_id, %credentials, "parsed_control_packet");
+                        trace!(?tag, ?binding_id, %credentials, "parsed_control_packet");
                         let meta = *control_packet.meta();
                         self.handle_control_packet(remote_address, ecn, control_packet);
 
@@ -80,16 +80,16 @@ pub trait Router {
                     }
                     packet::Packet::Stream(stream_packet) => {
                         let tag = stream_packet.tag();
-                        let stream_id = *stream_packet.stream_id();
+                        let binding_id = *stream_packet.binding_id();
                         let credentials = *stream_packet.credentials();
 
                         // #[cfg(debug_assertions)]
                         // let _span = tracing::info_span!("recv::stream", peer_addr = %remote_address, flow_id = %credentials).entered();
 
-                        trace!(?tag, ?stream_id, %credentials, "parsed_stream_packet");
+                        trace!(?tag, ?binding_id, %credentials, "parsed_stream_packet");
 
                         self.handle_stream_packet(remote_address, ecn, stream_packet);
-                        self.dispatch_stream_packet(tag, stream_id, credentials, segment);
+                        self.dispatch_stream_packet(tag, binding_id, credentials, segment);
                     }
                     packet::Packet::Datagram(datagram_packet) => {
                         let tag = datagram_packet.tag();
@@ -175,7 +175,7 @@ pub trait Router {
             unhandled_packet = "control",
             router = core::any::type_name::<Self>(),
             tag = ?meta.tag(),
-            id = ?meta.stream_id(),
+            id = ?meta.binding_id(),
             credentials = %meta.credentials(),
             remote_address = %segment.remote_address(),
             packet_len = segment.len()

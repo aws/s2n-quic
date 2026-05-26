@@ -3,6 +3,6 @@ source: dc/s2n-quic-dc/src/testing.rs
 expression: logs
 ---
 0:00:00.000000000 [main] DEBUG grow epoch=8
-0:00:00.000000000 [main] DEBUG Reader dropping stream_id=1 status=Open final_size=None consumed_len=9 total_received_len=9 is_writing_complete=false is_reading_complete=false
-0:00:00.000000000 [main] DEBUG Sent QueueReset stream_id=1 error_code=6 reset_target=Control
-0:00:00.000000000 [main] DEBUG Reader dropped before FIN received - sent STOP_SENDING stream_id=1
+0:00:00.000000000 [main] DEBUG Reader dropping binding_id=1 status=Open final_size=None consumed_len=9 total_received_len=9 is_writing_complete=false is_reading_complete=false
+0:00:00.000000000 [main] DEBUG Sent QueueReset binding_id=1 error_code=6 reset_target=Control
+0:00:00.000000000 [main] DEBUG Reader dropped before FIN received - sent STOP_SENDING binding_id=1

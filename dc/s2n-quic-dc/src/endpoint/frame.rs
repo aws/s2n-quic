@@ -358,20 +358,20 @@ pub enum Header {
         source_queue_id: VarInt,
         dest_acceptor_id: VarInt,
         attempt_id: VarInt,
-        stream_id: VarInt,
+        binding_id: VarInt,
         is_fin: bool,
     },
     /// Stream data routed via queue pair
     QueueData {
         queue_pair: QueuePair,
-        stream_id: VarInt,
+        binding_id: VarInt,
         offset: VarInt,
         is_fin: bool,
     },
     /// Flow control (MAX_DATA and other control frames)
     QueueControl {
         queue_pair: QueuePair,
-        stream_id: VarInt,
+        binding_id: VarInt,
     },
     /// Inline window update: MAX_DATA value carried directly in the header.
     ///
@@ -385,13 +385,13 @@ pub enum Header {
     /// non-MAX_DATA control messages.
     QueueMaxData {
         queue_pair: QueuePair,
-        stream_id: VarInt,
+        binding_id: VarInt,
         maximum_data: VarInt,
     },
     /// Reset a flow
     QueueReset {
         dest_queue_id: VarInt,
-        stream_id: VarInt,
+        binding_id: VarInt,
         reset_target: ResetTarget,
         error_code: VarInt,
     },
@@ -399,8 +399,8 @@ pub enum Header {
     ///
     /// Sent when the client needs to reset a stream while in the QueueBindSent state —
     /// i.e., the QueueInit was transmitted but no MAX_DATA (and thus no server queue ID)
-    /// has been received yet. The server looks up the stream_id in its per-peer
-    /// stream_id → queue_id map and dispatches the reset to the appropriate queues.
+    /// has been received yet. The server looks up the binding_id in its per-peer
+    /// binding_id → queue_id map and dispatches the reset to the appropriate queues.
     ///
     /// `attempt_id` is the same value stamped into the QueueInit frame.  The server uses
     /// it to mark the attempt as finalized so that any later QueueInit duplicate with the
@@ -408,33 +408,33 @@ pub enum Header {
     /// stream that the client has already aborted).
     QueueInitReset {
         attempt_id: VarInt,
-        stream_id: VarInt,
+        binding_id: VarInt,
         error_code: VarInt,
     },
     /// Graceful FIN before flow establishment (client doesn't know server's queue ID yet).
     ///
     /// Sent when the client has written early data in a QueueInit (is_fin=false) and then
     /// wants to signal the end of the write side before MAX_DATA arrives. The server
-    /// looks up the stream_id → queue_id mapping and dispatches a FIN at `offset` to the
+    /// looks up the binding_id → queue_id mapping and dispatches a FIN at `offset` to the
     /// stream queue.  `offset` is the total number of payload bytes already sent in the
     /// QueueInit so the reader can close the stream correctly.
     ///
     /// If the server has not yet registered the stream (QueueInit not yet received), it
-    /// buffers this `(stream_id, offset)` so it can apply the FIN as soon as the matching
+    /// buffers this `(binding_id, offset)` so it can apply the FIN as soon as the matching
     /// QueueInit is processed.
-    QueueInitFin { stream_id: VarInt, offset: VarInt },
+    QueueInitFin { binding_id: VarInt, offset: VarInt },
     /// Client response to a QueueValidateRequest
     QueueInitValidate {
         queue_pair: QueuePair,
         attempt_id: VarInt,
-        stream_id: VarInt,
+        binding_id: VarInt,
     },
     /// Server challenge when deduplication can't be guaranteed
     QueueValidateRequest {
         dest_sender_id: VarInt,
         queue_pair: QueuePair,
         attempt_id: VarInt,
-        stream_id: VarInt,
+        binding_id: VarInt,
     },
     /// ACK frame with ack_delay lifted into the header (direct routing path).
     ///
@@ -553,7 +553,7 @@ impl EncoderValue for Header {
                 source_queue_id,
                 dest_acceptor_id,
                 attempt_id,
-                stream_id,
+                binding_id,
                 is_fin,
             } => {
                 let tag = if *is_fin {
@@ -565,33 +565,33 @@ impl EncoderValue for Header {
                 encoder.encode(source_queue_id);
                 encoder.encode(dest_acceptor_id);
                 encoder.encode(attempt_id);
-                encoder.encode(stream_id);
+                encoder.encode(binding_id);
             }
             Self::QueueValidateRequest {
                 dest_sender_id,
                 queue_pair,
                 attempt_id,
-                stream_id,
+                binding_id,
             } => {
                 encoder.encode(&Self::QUEUE_VALIDATE_REQUEST_TYPE);
                 encoder.encode(dest_sender_id);
                 encoder.encode(queue_pair);
                 encoder.encode(attempt_id);
-                encoder.encode(stream_id);
+                encoder.encode(binding_id);
             }
             Self::QueueInitValidate {
                 queue_pair,
                 attempt_id,
-                stream_id,
+                binding_id,
             } => {
                 encoder.encode(&Self::QUEUE_INIT_VALIDATE_TYPE);
                 encoder.encode(queue_pair);
                 encoder.encode(attempt_id);
-                encoder.encode(stream_id);
+                encoder.encode(binding_id);
             }
             Self::QueueData {
                 queue_pair,
-                stream_id,
+                binding_id,
                 offset,
                 is_fin,
             } => {
@@ -602,30 +602,30 @@ impl EncoderValue for Header {
                 };
                 encoder.encode(&tag);
                 encoder.encode(queue_pair);
-                encoder.encode(stream_id);
+                encoder.encode(binding_id);
                 encoder.encode(offset);
             }
             Self::QueueControl {
                 queue_pair,
-                stream_id,
+                binding_id,
             } => {
                 encoder.encode(&Self::QUEUE_CONTROL_TYPE);
                 encoder.encode(queue_pair);
-                encoder.encode(stream_id);
+                encoder.encode(binding_id);
             }
             Self::QueueMaxData {
                 queue_pair,
-                stream_id,
+                binding_id,
                 maximum_data,
             } => {
                 encoder.encode(&Self::QUEUE_MAX_DATA_TYPE);
                 encoder.encode(queue_pair);
-                encoder.encode(stream_id);
+                encoder.encode(binding_id);
                 encoder.encode(maximum_data);
             }
             Self::QueueReset {
                 dest_queue_id,
-                stream_id,
+                binding_id,
                 reset_target,
                 error_code,
             } => {
@@ -636,22 +636,22 @@ impl EncoderValue for Header {
                 };
                 encoder.encode(&reset_type);
                 encoder.encode(dest_queue_id);
-                encoder.encode(stream_id);
+                encoder.encode(binding_id);
                 encoder.encode(error_code);
             }
             Self::QueueInitReset {
                 attempt_id,
-                stream_id,
+                binding_id,
                 error_code,
             } => {
                 encoder.encode(&Self::QUEUE_INIT_RESET_TYPE);
                 encoder.encode(attempt_id);
-                encoder.encode(stream_id);
+                encoder.encode(binding_id);
                 encoder.encode(error_code);
             }
-            Self::QueueInitFin { stream_id, offset } => {
+            Self::QueueInitFin { binding_id, offset } => {
                 encoder.encode(&Self::QUEUE_INIT_FIN_TYPE);
-                encoder.encode(stream_id);
+                encoder.encode(binding_id);
                 encoder.encode(offset);
             }
             Self::Ack {
@@ -684,14 +684,14 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                 let (source_queue_id, buffer) = buffer.decode()?;
                 let (dest_acceptor_id, buffer) = buffer.decode()?;
                 let (attempt_id, buffer) = buffer.decode()?;
-                let (stream_id, buffer) = buffer.decode()?;
+                let (binding_id, buffer) = buffer.decode()?;
                 let is_fin = tag == Self::QUEUE_INIT_WITH_FIN_TYPE;
                 Ok((
                     Self::QueueInit {
                         source_queue_id,
                         dest_acceptor_id,
                         attempt_id,
-                        stream_id,
+                        binding_id,
                         is_fin,
                     },
                     buffer,
@@ -701,13 +701,13 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                 let (dest_sender_id, buffer) = buffer.decode()?;
                 let (queue_pair, buffer) = buffer.decode()?;
                 let (attempt_id, buffer) = buffer.decode()?;
-                let (stream_id, buffer) = buffer.decode()?;
+                let (binding_id, buffer) = buffer.decode()?;
                 Ok((
                     Self::QueueValidateRequest {
                         dest_sender_id,
                         queue_pair,
                         attempt_id,
-                        stream_id,
+                        binding_id,
                     },
                     buffer,
                 ))
@@ -715,25 +715,25 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
             Self::QUEUE_INIT_VALIDATE_TYPE => {
                 let (queue_pair, buffer) = buffer.decode()?;
                 let (attempt_id, buffer) = buffer.decode()?;
-                let (stream_id, buffer) = buffer.decode()?;
+                let (binding_id, buffer) = buffer.decode()?;
                 Ok((
                     Self::QueueInitValidate {
                         queue_pair,
                         attempt_id,
-                        stream_id,
+                        binding_id,
                     },
                     buffer,
                 ))
             }
             Self::QUEUE_DATA_NO_FIN_TYPE | Self::QUEUE_DATA_WITH_FIN_TYPE => {
                 let (queue_pair, buffer) = buffer.decode()?;
-                let (stream_id, buffer) = buffer.decode()?;
+                let (binding_id, buffer) = buffer.decode()?;
                 let (offset, buffer) = buffer.decode()?;
                 let is_fin = tag == Self::QUEUE_DATA_WITH_FIN_TYPE;
                 Ok((
                     Self::QueueData {
                         queue_pair,
-                        stream_id,
+                        binding_id,
                         offset,
                         is_fin,
                     },
@@ -742,23 +742,23 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
             }
             Self::QUEUE_CONTROL_TYPE => {
                 let (queue_pair, buffer) = buffer.decode()?;
-                let (stream_id, buffer) = buffer.decode()?;
+                let (binding_id, buffer) = buffer.decode()?;
                 Ok((
                     Self::QueueControl {
                         queue_pair,
-                        stream_id,
+                        binding_id,
                     },
                     buffer,
                 ))
             }
             Self::QUEUE_MAX_DATA_TYPE => {
                 let (queue_pair, buffer) = buffer.decode()?;
-                let (stream_id, buffer) = buffer.decode()?;
+                let (binding_id, buffer) = buffer.decode()?;
                 let (maximum_data, buffer) = buffer.decode()?;
                 Ok((
                     Self::QueueMaxData {
                         queue_pair,
-                        stream_id,
+                        binding_id,
                         maximum_data,
                     },
                     buffer,
@@ -774,12 +774,12 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                     _ => unreachable!(),
                 };
                 let (dest_queue_id, buffer) = buffer.decode()?;
-                let (stream_id, buffer) = buffer.decode()?;
+                let (binding_id, buffer) = buffer.decode()?;
                 let (error_code, buffer) = buffer.decode()?;
                 Ok((
                     Self::QueueReset {
                         dest_queue_id,
-                        stream_id,
+                        binding_id,
                         reset_target,
                         error_code,
                     },
@@ -788,21 +788,21 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
             }
             Self::QUEUE_INIT_RESET_TYPE => {
                 let (attempt_id, buffer) = buffer.decode()?;
-                let (stream_id, buffer) = buffer.decode()?;
+                let (binding_id, buffer) = buffer.decode()?;
                 let (error_code, buffer) = buffer.decode()?;
                 Ok((
                     Self::QueueInitReset {
                         attempt_id,
-                        stream_id,
+                        binding_id,
                         error_code,
                     },
                     buffer,
                 ))
             }
             Self::QUEUE_INIT_FIN_TYPE => {
-                let (stream_id, buffer) = buffer.decode()?;
+                let (binding_id, buffer) = buffer.decode()?;
                 let (offset, buffer) = buffer.decode()?;
-                Ok((Self::QueueInitFin { stream_id, offset }, buffer))
+                Ok((Self::QueueInitFin { binding_id, offset }, buffer))
             }
             Self::ACK_TYPE
             | Self::ACK_ECN_TYPE
@@ -941,7 +941,7 @@ mod tests {
                     source_queue_id: VarInt::from_u8(1),
                     dest_queue_id: VarInt::from_u8(2),
                 },
-                stream_id: VarInt::from_u8(42),
+                binding_id: VarInt::from_u8(42),
                 offset: VarInt::ZERO,
                 is_fin: false,
             },
@@ -970,7 +970,7 @@ mod tests {
                 source_queue_id: VarInt::from_u8(1),
                 dest_acceptor_id: VarInt::from_u8(10),
                 attempt_id: VarInt::MAX,
-                stream_id: VarInt::from_u8(42),
+                binding_id: VarInt::from_u8(42),
                 is_fin: false,
             },
             source_sender_id: LocalSenderId::UNSPECIFIED,
@@ -993,7 +993,7 @@ mod tests {
         let frame = Frame {
             header: Header::QueueReset {
                 dest_queue_id: VarInt::from_u8(3),
-                stream_id: VarInt::from_u8(42),
+                binding_id: VarInt::from_u8(42),
                 reset_target: ResetTarget::Both,
                 error_code: VarInt::from_u8(1),
             },
@@ -1024,7 +1024,7 @@ mod tests {
                 source_queue_id: VarInt::from_u8(1),
                 dest_acceptor_id: VarInt::from_u8(10),
                 attempt_id: VarInt::from_u8(0),
-                stream_id: VarInt::from_u8(42),
+                binding_id: VarInt::from_u8(42),
                 is_fin: false,
             },
             source_sender_id: LocalSenderId::new(VarInt::from_u8(7)),

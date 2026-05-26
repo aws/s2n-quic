@@ -51,7 +51,7 @@ fn make_frame(payload_len: usize) -> crate::intrusive::Entry<Frame> {
                 source_queue_id: s2n_quic_core::varint::VarInt::from_u8(1),
                 dest_queue_id: s2n_quic_core::varint::VarInt::from_u8(2),
             },
-            stream_id: s2n_quic_core::varint::VarInt::from_u8(3),
+            binding_id: s2n_quic_core::varint::VarInt::from_u8(3),
             offset: s2n_quic_core::varint::VarInt::ZERO,
             is_fin: false,
         },

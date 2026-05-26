@@ -296,7 +296,7 @@ fn assemble_accounts_for_header_overhead() {
             Frame {
                 header: Header::QueueReset {
                     dest_queue_id: VarInt::from_u8(1),
-                    stream_id: VarInt::from_u8(1),
+                    binding_id: VarInt::from_u8(1),
                     reset_target: ResetTarget::Both,
                     error_code: VarInt::from_u8(1),
                 },
@@ -458,7 +458,7 @@ fn encode_decode_round_trip() {
                     source_queue_id: VarInt::from_u8(1),
                     dest_queue_id: VarInt::from_u8(2),
                 },
-                stream_id: VarInt::from_u8(42),
+                binding_id: VarInt::from_u8(42),
                 offset: VarInt::ZERO,
                 is_fin: false,
             },
@@ -467,7 +467,7 @@ fn encode_decode_round_trip() {
         FrameInput {
             header: Header::QueueReset {
                 dest_queue_id: VarInt::from_u8(3),
-                stream_id: VarInt::from_u8(10),
+                binding_id: VarInt::from_u8(10),
                 reset_target: ResetTarget::Both,
                 error_code: VarInt::from_u8(1),
             },
@@ -479,7 +479,7 @@ fn encode_decode_round_trip() {
                     source_queue_id: VarInt::from_u8(4),
                     dest_queue_id: VarInt::from_u8(5),
                 },
-                stream_id: VarInt::from_u8(20),
+                binding_id: VarInt::from_u8(20),
                 offset: VarInt::from_u8(11),
                 is_fin: true,
             },

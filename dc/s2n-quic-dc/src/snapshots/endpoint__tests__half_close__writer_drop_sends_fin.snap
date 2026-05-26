@@ -169,7 +169,7 @@ expression: logs
 0:00:00.000000000 [client] DEBUG setting peer data addresses peer=10.0.0.1:4433 addrs=[SocketAddressV6([::ffff:10.0.0.1]:4433), SocketAddressV6([::ffff:10.0.0.1]:49152), SocketAddressV6([::ffff:10.0.0.1]:49153), SocketAddressV6([::ffff:10.0.0.1]:49154), SocketAddressV6([::ffff:10.0.0.1]:49155), SocketAddressV6([::ffff:10.0.0.1]:49156), SocketAddressV6([::ffff:10.0.0.1]:49157), SocketAddressV6([::ffff:10.0.0.1]:49158)]
 0:00:00.000000000 [client] DEBUG setting peer data addresses peer=10.0.0.2:49152 addrs=[SocketAddressV6([::ffff:10.0.0.2]:49152), SocketAddressV6([::ffff:10.0.0.2]:49153), SocketAddressV6([::ffff:10.0.0.2]:49154), SocketAddressV6([::ffff:10.0.0.2]:49155), SocketAddressV6([::ffff:10.0.0.2]:49156), SocketAddressV6([::ffff:10.0.0.2]:49157), SocketAddressV6([::ffff:10.0.0.2]:49158), SocketAddressV6([::ffff:10.0.0.2]:49159)]
 0:00:00.000000000 [client] DEBUG event=on_send_queue_init prev=Init next=QueueBindSent location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000000000 [client] DEBUG Sent QueueInit with early data stream_id=0 bytes_read=1363 is_fin=false
+0:00:00.000000000 [client] DEBUG Sent QueueInit with early data binding_id=0 bytes_read=1363 is_fin=false
 0:00:00.000000000 [server] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [server] TRACE m#task.frame_dispatch.drained=0
 0:00:00.000000000 [server] TRACE m#task.context_resolver.drained[send.worker.0]=0
@@ -407,7 +407,7 @@ expression: logs
 0:00:00.000521000 [server] TRACE m#rx.packet_size=1363
 0:00:00.000521000 [server] TRACE c#rx.frame[queue_init]=1
 0:00:00.000521000 [server] TRACE c#queue.accepted=1
-0:00:00.000521000 [server] DEBUG QueueInit accepted - dispatched to acceptor attempt_id=0 stream_id=0 acceptor_id=1 server_queue_id=0
+0:00:00.000521000 [server] DEBUG QueueInit accepted - dispatched to acceptor attempt_id=0 binding_id=0 acceptor_id=1 server_queue_id=0
 0:00:00.000521000 [server] TRACE m#rx.frames_per_packet=1
 0:00:00.000521000 [server] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.000521000 [server] TRACE m#task.packet_dispatch.drained[recv.dispatch.2]=2
@@ -605,11 +605,11 @@ expression: logs
 0:00:00.001041000 [client] TRACE m#q.ack.depth_dist[send.1]=1
 0:00:00.001041000 [client] TRACE m#task.ack_burst.drained[recv.dispatch.0]=1
 0:00:00.001041000 [client] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.0]=0
-0:00:00.001041000 [client] DEBUG poll_remote_budget received messages stream_id=0 status=QueueBindSent msg_count=1
+0:00:00.001041000 [client] DEBUG poll_remote_budget received messages binding_id=0 status=QueueBindSent msg_count=1
 0:00:00.001041000 [client] DEBUG event=on_queue_confirmed prev=QueueBindSent next=Open location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.001041000 [client] DEBUG Flow established stream_id=0
-0:00:00.001041000 [client] DEBUG Writer dropping stream_id=0 status=Open next_offset=1500 inflight_bytes=137 remote_max_data=1049939
-0:00:00.001041000 [client] DEBUG Sent FIN stream_id=0
+0:00:00.001041000 [client] DEBUG Flow established binding_id=0
+0:00:00.001041000 [client] DEBUG Writer dropping binding_id=0 status=Open next_offset=1500 inflight_bytes=137 remote_max_data=1049939
+0:00:00.001041000 [client] DEBUG Sent FIN binding_id=0
 0:00:00.001041000 [client] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.001041000 [client] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.001041000 [client] TRACE c#q.ack.receiver[send.1.task.ack_processor]=1
@@ -808,12 +808,12 @@ expression: logs
 0:00:00.001561000 [server] TRACE m#q.ack.depth_dist[send.2]=1
 0:00:00.001561000 [server] TRACE m#task.ack_burst.drained[recv.dispatch.2]=1
 0:00:00.001561000 [server] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.2]=0
-0:00:00.001561000 [server] DEBUG Reader complete - all data consumed stream_id=0 final_size=Some(1500) consumed_len=1500
+0:00:00.001561000 [server] DEBUG Reader complete - all data consumed binding_id=0 final_size=Some(1500) consumed_len=1500
 0:00:00.001561000 [server] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs
 0:00:00.001561000 [server] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.001561000 [server] DEBUG Writer dropping stream_id=0 status=FinSent next_offset=2 inflight_bytes=2 remote_max_data=1048576
+0:00:00.001561000 [server] DEBUG Writer dropping binding_id=0 status=FinSent next_offset=2 inflight_bytes=2 remote_max_data=1048576
 0:00:00.001561000 [server] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.001561000 [server] DEBUG Reader dropping stream_id=0 status=Complete final_size=Some(1500) consumed_len=1500 total_received_len=1500 is_writing_complete=true is_reading_complete=true
+0:00:00.001561000 [server] DEBUG Reader dropping binding_id=0 status=Complete final_size=Some(1500) consumed_len=1500 total_received_len=1500 is_writing_complete=true is_reading_complete=true
 0:00:00.001561000 [server] TRACE c#q.ack.receiver[send.2.task.ack_processor]=1
 0:00:00.001561000 [server] TRACE c#q.ack.drain[send.2]=1
 0:00:00.001561000 [server] TRACE g#q.ack.depth[send.2]=0
@@ -1007,9 +1007,9 @@ expression: logs
 0:00:00.002081000 [client] TRACE m#q.ack.depth_dist[send.3]=1
 0:00:00.002081000 [client] TRACE m#task.ack_burst.drained[recv.dispatch.1]=1
 0:00:00.002081000 [client] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.1]=0
-0:00:00.002081000 [client] DEBUG Reader complete - all data consumed stream_id=0 final_size=Some(2) consumed_len=2
+0:00:00.002081000 [client] DEBUG Reader complete - all data consumed binding_id=0 final_size=Some(2) consumed_len=2
 0:00:00.002081000 [client] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs
-0:00:00.002081000 [client] DEBUG Reader dropping stream_id=0 status=Complete final_size=Some(2) consumed_len=2 total_received_len=2 is_writing_complete=true is_reading_complete=true
+0:00:00.002081000 [client] DEBUG Reader dropping binding_id=0 status=Complete final_size=Some(2) consumed_len=2 total_received_len=2 is_writing_complete=true is_reading_complete=true
 0:00:00.002081000 [client] TRACE c#q.ack.receiver[send.3.task.ack_processor]=1
 0:00:00.002081000 [client] TRACE c#q.ack.drain[send.3]=1
 0:00:00.002081000 [client] TRACE g#q.ack.depth[send.3]=0

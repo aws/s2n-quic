@@ -1643,7 +1643,7 @@ where
 
         let request = flow::Request {
             credential_id,
-            stream_id: None,
+            binding_id: None,
         };
 
         queue_dispatcher.send_both_by_request(

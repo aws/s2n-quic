@@ -56,7 +56,7 @@ pub struct Owned {
     pub wire_version: WireVersion,
     pub credentials: Credentials,
     pub source_queue_id: Option<VarInt>,
-    pub stream_id: stream::Id,
+    pub binding_id: stream::Id,
     pub original_packet_number: PacketNumber,
     pub packet_number: PacketNumber,
     pub retransmission_packet_number_offset: u8,
@@ -79,7 +79,7 @@ impl<'a> From<Packet<'a>> for Owned {
             wire_version: packet.wire_version,
             credentials: packet.credentials,
             source_queue_id: packet.source_queue_id,
-            stream_id: packet.stream_id,
+            binding_id: packet.binding_id,
             original_packet_number: packet.original_packet_number,
             packet_number: packet.packet_number,
             retransmission_packet_number_offset: packet.retransmission_packet_number_offset,
@@ -99,7 +99,7 @@ pub struct Packet<'a> {
     wire_version: WireVersion,
     credentials: Credentials,
     source_queue_id: Option<VarInt>,
-    stream_id: stream::Id,
+    binding_id: stream::Id,
     original_packet_number: PacketNumber,
     packet_number: PacketNumber,
     retransmission_packet_number_offset: u8,
@@ -120,7 +120,7 @@ impl fmt::Debug for Packet<'_> {
             .field("wire_version", &self.wire_version)
             .field("credentials", &self.credentials)
             .field("source_queue_id", &self.source_queue_id)
-            .field("stream_id", &self.stream_id)
+            .field("binding_id", &self.binding_id)
             .field("packet_number", &self.packet_number())
             .field("stream_offset", &self.stream_offset)
             .field("final_offset", &self.final_offset)
@@ -153,8 +153,8 @@ impl Packet<'_> {
     }
 
     #[inline]
-    pub fn stream_id(&self) -> &stream::Id {
-        &self.stream_id
+    pub fn binding_id(&self) -> &stream::Id {
+        &self.binding_id
     }
 
     #[inline]
@@ -427,10 +427,10 @@ impl Packet<'_> {
 
         let (_source_control_port, buffer) = buffer.decode::<u16>()?;
 
-        let (stream_id, buffer) = buffer.decode::<stream::Id>()?;
+        let (binding_id, buffer) = buffer.decode::<stream::Id>()?;
 
         decoder_invariant!(
-            stream_id.is_reliable,
+            binding_id.is_reliable,
             "only reliable streams can be retransmitted"
         );
 
@@ -506,7 +506,7 @@ impl Packet<'_> {
             wire_version,
             credentials,
             source_queue_id,
-            stream_id,
+            binding_id,
             original_packet_number,
             packet_number,
             retransmission_packet_number_offset,
@@ -540,7 +540,7 @@ impl Packet<'_> {
             // been replaced with `source_queue_id`, which is more flexible
             let (_source_control_port, buffer) = buffer.decode::<u16>()?;
 
-            let (stream_id, buffer) = buffer.decode::<stream::Id>()?;
+            let (binding_id, buffer) = buffer.decode::<stream::Id>()?;
 
             let (source_queue_id, buffer) = if tag.has_source_queue_id() {
                 let (v, buffer) = buffer.decode()?;
@@ -552,7 +552,7 @@ impl Packet<'_> {
             let (original_packet_number, buffer) = buffer.decode::<VarInt>()?;
 
             let retransmission_packet_number_offset = (start_len - buffer.len()) as u8;
-            let (packet_number, buffer) = if stream_id.is_reliable {
+            let (packet_number, buffer) = if binding_id.is_reliable {
                 let (rel, buffer) = buffer.decode::<RelativeRetransmissionOffset>()?;
                 let rel = VarInt::from_u32(rel);
                 let pn = original_packet_number.checked_add(rel).ok_or(
@@ -602,7 +602,7 @@ impl Packet<'_> {
                 wire_version,
                 credentials,
                 source_queue_id,
-                stream_id,
+                binding_id,
                 original_packet_number,
                 packet_number,
                 retransmission_packet_number_offset,
@@ -653,7 +653,7 @@ impl Packet<'_> {
             wire_version,
             credentials,
             source_queue_id,
-            stream_id,
+            binding_id,
             original_packet_number,
             packet_number,
             retransmission_packet_number_offset,

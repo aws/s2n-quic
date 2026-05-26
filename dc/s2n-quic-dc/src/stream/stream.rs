@@ -54,8 +54,8 @@ impl PendingValidation {
 
     /// Returns the stream identifier.
     #[inline]
-    pub fn stream_id(&self) -> u64 {
-        self.stream.stream_id()
+    pub fn binding_id(&self) -> u64 {
+        self.stream.binding_id()
     }
 
     /// Returns the handshake peer address used to identify this stream.
@@ -165,8 +165,8 @@ impl Stream {
     ///
     /// This is the same ID that the client assigned when opening the stream,
     /// and is echoed by the server side once the stream is accepted.
-    pub fn stream_id(&self) -> u64 {
-        self.read.stream_id()
+    pub fn binding_id(&self) -> u64 {
+        self.read.binding_id()
     }
 
     /// Returns borrowed access to the read and write halves.

@@ -81,7 +81,7 @@ pub struct Endpoint {
     /// Counters associated with this endpoint
     pub counters: crate::counter::Registry,
     /// Endpoint-wide stream ID counter
-    pub next_stream_id: AtomicU64,
+    pub next_binding_id: AtomicU64,
     /// Recv socket addresses advertised to peers during handshake.
     /// Each recv worker has its own distinct address.
     pub data_addrs: Vec<std::net::SocketAddr>,
@@ -699,7 +699,7 @@ where
         queue_allocator,
         acceptor_registry,
         counters: counter_registry,
-        next_stream_id: AtomicU64::new(0),
+        next_binding_id: AtomicU64::new(0),
         data_addrs,
         dead_peer_cooldown,
     }

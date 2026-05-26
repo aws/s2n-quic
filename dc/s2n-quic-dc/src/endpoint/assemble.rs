@@ -704,9 +704,9 @@ fn encode_frame_metadata(
     let mut total_payload_len = 0usize;
 
     for frame in frames.iter_mut() {
-        if let frame::Header::QueueInit { stream_id, .. } = &frame.header {
+        if let frame::Header::QueueInit { binding_id, .. } = &frame.header {
             trace!(
-                stream_id = stream_id.as_u64(),
+                binding_id = binding_id.as_u64(),
                 %source_sender_id,
                 queue_attempt_id_counter = queue_attempt_id.as_u64(),
                 "encode_frame_metadata: encoding QueueInit"
@@ -766,7 +766,7 @@ fn push_frame_metadata(header_buf: &mut Vec<u8>, header: &frame::Header, payload
 fn stamp_attempt_id(header: &mut frame::Header, queue_attempt_id: &mut VarInt) {
     if let frame::Header::QueueInit {
         attempt_id,
-        stream_id,
+        binding_id,
         ..
     } = header
     {
@@ -774,13 +774,13 @@ fn stamp_attempt_id(header: &mut frame::Header, queue_attempt_id: &mut VarInt) {
             *attempt_id = *queue_attempt_id;
             *queue_attempt_id += 1;
             trace!(
-                stream_id = stream_id.as_u64(),
+                binding_id = binding_id.as_u64(),
                 attempt_id = attempt_id.as_u64(),
                 "stamp_attempt_id: assigned new attempt_id"
             );
         } else {
             trace!(
-                stream_id = stream_id.as_u64(),
+                binding_id = binding_id.as_u64(),
                 attempt_id = attempt_id.as_u64(),
                 "stamp_attempt_id: retransmit with existing attempt_id"
             );

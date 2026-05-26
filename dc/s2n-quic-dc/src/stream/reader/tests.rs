@@ -70,7 +70,7 @@ impl PairBuilder {
     }
 
     fn build(self) -> (Reader, Pusher) {
-        let stream_id = VarInt::from_u8(1);
+        let binding_id = VarInt::from_u8(1);
         let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
         let path_secret_entry = PathSecretEntry::builder(peer)
             .endpoint_type(self.ep_type)
@@ -78,7 +78,7 @@ impl PairBuilder {
 
         let allocator = msg::queue::Allocator::new();
         let dispatcher = allocator.dispatcher();
-        let handle = flow::Handle::client(stream_id, path_secret_entry.clone());
+        let handle = flow::Handle::client(binding_id, path_secret_entry.clone());
         let (_control, stream_rx) = dispatcher
             .alloc(handle, Some(VarInt::from_u8(2)))
             .expect("queue alloc should succeed");
@@ -86,19 +86,19 @@ impl PairBuilder {
         let queue_id = stream_rx.queue_id();
         let request = flow::Request {
             credential_id: *path_secret_entry.id(),
-            stream_id: Some(stream_id),
+            binding_id: Some(binding_id),
         };
 
         let (frame_tx, frame_rx) = frame::submission_channel(1);
 
         let reader = match self.ep_type {
             endpoint::Type::Client => {
-                Reader::new_client(frame_tx, path_secret_entry, stream_id, stream_rx)
+                Reader::new_client(frame_tx, path_secret_entry, binding_id, stream_rx)
             }
             endpoint::Type::Server => Reader::new_server_pending(
                 frame_tx,
                 path_secret_entry,
-                stream_id,
+                binding_id,
                 stream_rx,
                 self.peer_fin_received,
             ),

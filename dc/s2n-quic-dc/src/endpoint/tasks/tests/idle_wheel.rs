@@ -211,8 +211,8 @@ fn send_idle_wheel_expires_reader_only_queue_no_reset_without_inflight() {
         let pse = test_entry();
         pse.touch_activity(precision::Clock::now(&clock));
 
-        let stream_id = VarInt::from_u8(7);
-        let handle = flow::Handle::client(stream_id, pse.clone());
+        let binding_id = VarInt::from_u8(7);
+        let handle = flow::Handle::client(binding_id, pse.clone());
         let (queue_control, queue_stream) = queue_allocator.alloc_or_grow(handle, None);
 
         let ctx = send_caches[LocalSendSocketId::new(0)]
@@ -510,8 +510,8 @@ fn recv_idle_wheel_expires_reader_only_queue_no_reset() {
             }
         };
         let path_entry = ctx.borrow().path_entry.clone();
-        let stream_id = VarInt::from_u8(9);
-        let handle = flow::Handle::client(stream_id, path_entry);
+        let binding_id = VarInt::from_u8(9);
+        let handle = flow::Handle::client(binding_id, path_entry);
         let (queue_control, queue_stream) = queue_allocator.alloc_or_grow(handle, None);
         let dispatcher = queue_allocator.dispatcher();
 

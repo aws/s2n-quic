@@ -24,7 +24,7 @@ pub const MAX_HEADER_LEN: usize = 64;
 pub fn encode<H, CD, P, C>(
     mut encoder: EncoderBuffer,
     source_queue_id: Option<VarInt>,
-    stream_id: stream::Id,
+    binding_id: stream::Id,
     packet_number: VarInt,
     next_expected_control_packet: VarInt,
     header_len: VarInt,
@@ -49,7 +49,7 @@ where
         crypto.key_phase(),
         credentials,
         source_queue_id,
-        stream_id,
+        binding_id,
         packet_number,
         next_expected_control_packet,
         header_len,
@@ -107,7 +107,7 @@ where
 pub fn probe<H, CD, P, C>(
     mut encoder: EncoderBuffer,
     source_queue_id: Option<VarInt>,
-    stream_id: stream::Id,
+    binding_id: stream::Id,
     packet_number: VarInt,
     next_expected_control_packet: VarInt,
     header_len: VarInt,
@@ -132,7 +132,7 @@ where
         KeyPhase::Zero,
         credentials,
         source_queue_id,
-        stream_id,
+        binding_id,
         packet_number,
         next_expected_control_packet,
         header_len,
@@ -181,7 +181,7 @@ fn encode_header<H, CD, P>(
     key_phase: KeyPhase,
     credentials: &Credentials,
     source_queue_id: Option<VarInt>,
-    stream_id: stream::Id,
+    binding_id: stream::Id,
     packet_number: VarInt,
     next_expected_control_packet: VarInt,
     header_len: VarInt,
@@ -218,11 +218,11 @@ where
     // been replaced with `source_queue_id`, which is more flexible
     encoder.encode(&0u16);
 
-    encoder.encode(&stream_id);
+    encoder.encode(&binding_id);
     encoder.encode(&source_queue_id);
 
     encoder.encode(&packet_number);
-    if stream_id.is_reliable {
+    if binding_id.is_reliable {
         encoder.encode(&RelativeRetransmissionOffset::default());
     }
     encoder.encode(&next_expected_control_packet);

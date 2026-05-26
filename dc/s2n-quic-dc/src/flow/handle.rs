@@ -11,21 +11,21 @@ use std::{
     sync::Arc,
 };
 
-/// Flow handle that validates credentials and stream_id
+/// Flow handle that validates credentials and binding_id
 ///
 /// This is used as the Key type in the queue system to ensure that
 /// packets routed to a flow actually belong to that flow.
 #[derive(Debug, Clone)]
 pub struct Handle {
     /// Global stream identifier (client-wide)
-    stream_id: VarInt,
+    binding_id: VarInt,
     /// Inner state (server-side with drop channel, or client-side with path entry)
     inner: HandleInner,
 }
 
 #[derive(Clone)]
 enum HandleInner {
-    /// Server-side handle — sends stream_id to drop channel on drop
+    /// Server-side handle — sends binding_id to drop channel on drop
     Server {
         credential_id: credentials::Id,
         drop_channel: Arc<DropChannel>,
@@ -56,9 +56,9 @@ impl HandleInner {
 
 impl Handle {
     /// Create a client-side handle with path secret entry
-    pub fn client(stream_id: VarInt, path_entry: Arc<crate::path::secret::map::Entry>) -> Self {
+    pub fn client(binding_id: VarInt, path_entry: Arc<crate::path::secret::map::Entry>) -> Self {
         Self {
-            stream_id,
+            binding_id,
             inner: HandleInner::Client { path_entry },
         }
     }
@@ -67,20 +67,20 @@ impl Handle {
         self.inner.credential_id()
     }
 
-    pub fn stream_id(&self) -> VarInt {
-        self.stream_id
+    pub fn binding_id(&self) -> VarInt {
+        self.binding_id
     }
 }
 
 impl Drop for Handle {
     fn drop(&mut self) {
         if let HandleInner::Server { drop_channel, .. } = &self.inner {
-            drop_channel.push(self.stream_id);
+            drop_channel.push(self.binding_id);
         }
     }
 }
 
-/// Thread-safe drop notification channel. Handle::drop pushes stream_ids here;
+/// Thread-safe drop notification channel. Handle::drop pushes binding_ids here;
 /// the owning dispatch worker drains them.
 pub struct DropChannel {
     pending: parking_lot::Mutex<VecDeque<VarInt>>,
@@ -93,8 +93,8 @@ impl DropChannel {
         }
     }
 
-    fn push(&self, stream_id: VarInt) {
-        self.pending.lock().push_back(stream_id);
+    fn push(&self, binding_id: VarInt) {
+        self.pending.lock().push_back(binding_id);
     }
 
     fn drain_into(&self, buf: &mut VecDeque<VarInt>) {
@@ -113,7 +113,7 @@ impl DropChannel {
 pub struct Request {
     pub credential_id: credentials::Id,
     /// When `None`, only credential validation is performed.
-    pub stream_id: Option<VarInt>,
+    pub binding_id: Option<VarInt>,
 }
 
 impl crate::flow::queue::Key for Handle {
@@ -126,10 +126,10 @@ impl crate::flow::queue::Key for Handle {
             return Err(ValidationError::CredentialMismatch);
         }
         if params
-            .stream_id
-            .is_some_and(|stream_id| self.stream_id != stream_id)
+            .binding_id
+            .is_some_and(|binding_id| self.binding_id != binding_id)
         {
-            return Err(ValidationError::StreamIdMismatch);
+            return Err(ValidationError::BindingIdMismatch);
         }
         Ok(())
     }
@@ -180,36 +180,36 @@ impl Tracker {
             return;
         }
         let mut map = self.map.borrow_mut();
-        for stream_id in buf.drain(..) {
-            map.remove(&stream_id);
+        for binding_id in buf.drain(..) {
+            map.remove(&binding_id);
         }
     }
 
-    /// Look up the queue_id associated with a stream_id, if one exists.
+    /// Look up the queue_id associated with a binding_id, if one exists.
     ///
-    /// Returns `None` if no flow has been registered for this stream_id, or if
+    /// Returns `None` if no flow has been registered for this binding_id, or if
     /// the entry was already dropped.
     #[inline]
-    pub fn lookup(&self, stream_id: VarInt) -> Option<VarInt> {
+    pub fn lookup(&self, binding_id: VarInt) -> Option<VarInt> {
         self.drain_drops();
-        self.map.borrow().get(&stream_id).copied()
+        self.map.borrow().get(&binding_id).copied()
     }
 
     #[inline]
     pub fn try_register<Q>(
         &self,
-        stream_id: VarInt,
+        binding_id: VarInt,
         create_queue: impl FnOnce(Handle) -> (VarInt, Q),
     ) -> Result<Q, VarInt> {
         self.drain_drops();
 
-        match self.map.borrow_mut().entry(stream_id) {
+        match self.map.borrow_mut().entry(binding_id) {
             hash_map::Entry::Occupied(entry) => {
                 Err(*entry.get())
             }
             hash_map::Entry::Vacant(entry) => {
                 let handle = Handle {
-                    stream_id,
+                    binding_id,
                     inner: HandleInner::Server {
                         credential_id: self.credentials,
                         drop_channel: self.drop_channel.clone(),

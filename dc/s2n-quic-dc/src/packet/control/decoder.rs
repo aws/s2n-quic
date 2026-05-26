@@ -55,7 +55,7 @@ pub struct Meta {
     wire_version: WireVersion,
     credentials: Credentials,
     source_queue_id: Option<VarInt>,
-    stream_id: Option<stream::Id>,
+    binding_id: Option<stream::Id>,
     packet_number: PacketNumber,
     routing_info: RoutingInfo,
     header: CheckedRange,
@@ -85,8 +85,8 @@ impl Meta {
     }
 
     #[inline]
-    pub fn stream_id(&self) -> Option<&stream::Id> {
-        self.stream_id.as_ref()
+    pub fn binding_id(&self) -> Option<&stream::Id> {
+        self.binding_id.as_ref()
     }
 
     #[inline]
@@ -134,9 +134,9 @@ impl Meta {
         let (credentials, buffer) = buffer.decode()?;
         let (wire_version, buffer) = buffer.decode()?;
 
-        let (stream_id, buffer) = if tag.is_stream() {
-            let (stream_id, buffer) = buffer.decode()?;
-            (Some(stream_id), buffer)
+        let (binding_id, buffer) = if tag.is_stream() {
+            let (binding_id, buffer) = buffer.decode()?;
+            (Some(binding_id), buffer)
         } else {
             (None, buffer)
         };
@@ -175,7 +175,7 @@ impl Meta {
             wire_version,
             credentials,
             source_queue_id,
-            stream_id,
+            binding_id,
             packet_number,
             routing_info,
             header,
@@ -200,7 +200,7 @@ impl<S: storage::Bytes> fmt::Debug for Packet<S> {
             .field("wire_version", &self.meta.wire_version)
             .field("credentials", &self.meta.credentials)
             .field("source_queue_id", &self.meta.source_queue_id)
-            .field("stream_id", &self.meta.stream_id)
+            .field("binding_id", &self.meta.binding_id)
             .field("packet_number", &self.meta.packet_number)
             .field("routing_info", &self.meta.routing_info);
 

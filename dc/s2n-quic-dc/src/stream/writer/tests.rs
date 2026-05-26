@@ -60,7 +60,7 @@ impl PairBuilder {
     }
 
     fn build(self) -> (Writer, Pusher) {
-        let stream_id = VarInt::from_u8(42);
+        let binding_id = VarInt::from_u8(42);
         let acceptor_id = VarInt::from_u8(7);
         let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
         let path_secret_entry = PathSecretEntry::builder(peer)
@@ -70,11 +70,11 @@ impl PairBuilder {
         let allocator = msg::queue::Allocator::new();
         let dispatcher = allocator.dispatcher();
         let handle = match self.ep_type {
-            endpoint::Type::Client => flow::Handle::client(stream_id, path_secret_entry.clone()),
+            endpoint::Type::Client => flow::Handle::client(binding_id, path_secret_entry.clone()),
             endpoint::Type::Server => {
                 let tracker = flow::Tracker::new(*path_secret_entry.id());
                 tracker
-                    .try_register(stream_id, |handle| (VarInt::ZERO, handle))
+                    .try_register(binding_id, |handle| (VarInt::ZERO, handle))
                     .expect("server handle registration should succeed")
             }
         };
@@ -85,7 +85,7 @@ impl PairBuilder {
         let queue_id = control_rx.queue_id();
         let request = flow::Request {
             credential_id: *path_secret_entry.id(),
-            stream_id: Some(stream_id),
+            binding_id: Some(binding_id),
         };
 
         let (frame_tx, frame_rx) = frame::submission_channel(1);
@@ -94,12 +94,12 @@ impl PairBuilder {
             endpoint::Type::Client => Writer::new_client(
                 frame_tx,
                 path_secret_entry,
-                stream_id,
+                binding_id,
                 acceptor_id,
                 control_rx,
             ),
             endpoint::Type::Server => {
-                Writer::new_server(frame_tx, path_secret_entry, stream_id, control_rx)
+                Writer::new_server(frame_tx, path_secret_entry, binding_id, control_rx)
             }
         };
 
@@ -784,7 +784,7 @@ fn panic_drop_sends_abnormal_termination_reset() {
 // QueueInitReset is for error/abnormal termination; QueueInitFin is for graceful close.
 
 /// Panic drop while in QueueBindSent: QueueInitReset is sent so the server can
-/// look up the stream via stream_id and terminate both queues.
+/// look up the stream via binding_id and terminate both queues.
 #[test]
 fn client_panic_drop_during_queue_init_sent_sends_queue_init_reset() {
     crate::testing::sim(|| {
@@ -843,7 +843,7 @@ fn client_panic_drop_during_queue_init_sent_sends_queue_init_reset() {
 }
 
 /// TransmissionError during QueueBindSent: QueueInitReset is sent so the server
-/// can look up the stream by stream_id and terminate the queues.
+/// can look up the stream by binding_id and terminate the queues.
 #[test]
 fn client_transmission_error_during_queue_init_sent_sends_queue_init_reset() {
     crate::testing::sim(|| {

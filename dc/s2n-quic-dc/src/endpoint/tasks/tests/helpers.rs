@@ -233,7 +233,7 @@ pub fn test_frame_with_payload(pse: &Arc<PathSecretEntry>, payload_size: usize) 
                 source_queue_id: VarInt::from_u8(1),
                 dest_queue_id: VarInt::from_u8(2),
             },
-            stream_id: VarInt::from_u8(1),
+            binding_id: VarInt::from_u8(1),
             offset: VarInt::ZERO,
             is_fin: false,
         },

@@ -638,11 +638,11 @@ fn sim_init_uniqueness(actions: &PacketActions, n: usize) {
                             Err(_) => return,
                         };
 
-                        let id = stream.stream_id();
+                        let id = stream.binding_id();
                         let first_time = seen_ids_sv.lock().unwrap().insert(id);
                         assert!(
                             first_time,
-                            "stream_id {id} was delivered to the server acceptor twice — \
+                            "binding_id {id} was delivered to the server acceptor twice — \
                          init-protocol deduplication is broken"
                         );
 

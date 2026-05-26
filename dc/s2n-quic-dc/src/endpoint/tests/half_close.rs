@@ -911,7 +911,7 @@ fn writer_drop_in_queue_init_sent_hangs_server_reader() {
 /// 1. Client writes early data (QueueInit with is_fin=false) in one packet.
 /// 2. Client calls shutdown() → sends QueueInitFin in a subsequent packet.
 /// 3. The QueueInit packet is lost, but QueueInitFin arrives at the server.
-/// 4. Server doesn't recognize the stream_id (QueueInit hasn't arrived yet),
+/// 4. Server doesn't recognize the binding_id (QueueInit hasn't arrived yet),
 ///    so it drops the QueueInitFin frame — but ACKs the packet at the
 ///    transport level (the packet was authenticated and deduped).
 /// 5. Client sees the ACK → removes QueueInitFin from inflight; won't retransmit.
@@ -1036,7 +1036,7 @@ fn queue_init_fin_lost_when_queue_init_dropped() {
 
                 // Shutdown the writer → sends QueueInitFin in a new packet.
                 // The server hasn't seen the QueueInit yet (all copies were dropped),
-                // so it will drop the QueueInitFin (unknown stream_id) but ACK the
+                // so it will drop the QueueInitFin (unknown binding_id) but ACK the
                 // packet at the transport level.
                 writer.shutdown().expect("shutdown");
 
