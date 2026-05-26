@@ -60,6 +60,7 @@ pub enum BindResult {
 /// Stored on the path secret Entry. Contains the page table (slot storage) and
 /// the freed-slot accumulator. Does not hold any channel references — those are
 /// passed in at call sites by the recv::Context.
+#[derive(Debug)]
 pub struct ServerState {
     pub(crate) pages: PageTable,
     pub(crate) freed: FreedInner,

@@ -76,6 +76,17 @@ pub struct Entry {
     /// *wall-clock time*.  Comparisons between two scores for the same peer at the same
     /// instant are always valid; absolute values have no external meaning.
     sender_load_scores: Box<[AtomicU64]>,
+    /// Per-peer queue state — client or server depending on role.
+    queue_state: QueueState,
+}
+
+/// Per-peer queue slot state, determined by role (derived from credential_id).
+#[derive(Debug)]
+pub enum QueueState {
+    /// Client: allocates local slots and tracks peer's available slots.
+    Client(Arc<crate::queue::ClientState>),
+    /// Server: owns the page table that the client addresses into.
+    Server(Arc<crate::queue::ServerState>),
 }
 
 impl SizeOf for Entry {
@@ -94,6 +105,7 @@ impl SizeOf for Entry {
             dead_at,
             peer_data_addrs,
             sender_load_scores,
+            queue_state: _,
         } = self;
         creation_time.size()
             + peer.size()
@@ -112,6 +124,7 @@ impl SizeOf for Entry {
             })
             + std::mem::size_of::<Box<[AtomicU64]>>()
             + sender_load_scores.len() * std::mem::size_of::<AtomicU64>()
+            + std::mem::size_of::<QueueState>()
     }
 }
 
@@ -179,6 +192,16 @@ impl Entry {
             .max_datagram_size
             .fetch_min(crate::endpoint::MAX_DATAGRAM_SIZE as _, Ordering::Relaxed);
 
+        let max_queues = parameters.max_queues;
+        let queue_state = match secret.id().endpoint_type() {
+            s2n_quic_core::endpoint::Type::Client => {
+                QueueState::Client(Arc::new(crate::queue::ClientState::new(max_queues)))
+            }
+            s2n_quic_core::endpoint::Type::Server => {
+                QueueState::Server(Arc::new(crate::queue::ServerState::new(max_queues)))
+            }
+        };
+
         Self {
             creation_time,
             peer,
@@ -193,6 +216,7 @@ impl Entry {
             dead_at: AtomicI64::new(-1),
             peer_data_addrs: PeerDataAddrs::default(),
             sender_load_scores: Self::init_load_scores(socket_sender_count),
+            queue_state,
         }
     }
 
@@ -355,6 +379,10 @@ impl Entry {
 
     pub fn secret(&self) -> &schedule::Secret {
         &self.secret
+    }
+
+    pub fn queue_state(&self) -> &QueueState {
+        &self.queue_state
     }
 
     pub fn set_accessed_id(&self) {

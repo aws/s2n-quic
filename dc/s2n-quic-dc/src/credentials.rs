@@ -37,6 +37,15 @@ impl Id {
     }
 
     #[inline]
+    pub fn endpoint_type(&self) -> endpoint::Type {
+        if self.0[0] & Self::ENDPOINT_BIT != 0 {
+            endpoint::Type::Server
+        } else {
+            endpoint::Type::Client
+        }
+    }
+
+    #[inline]
     pub fn for_peer(self) -> Self {
         let mut id = self;
         id.0[0] ^= Self::ENDPOINT_BIT;

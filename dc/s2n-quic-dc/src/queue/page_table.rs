@@ -22,6 +22,7 @@ pub(crate) const INITIAL_PAGE_SIZE: usize = if cfg!(test) { 8 } else { 1 << 16 }
 
 // ── PageTable ───────────────────────────────────────────────────────────────
 
+#[derive(Debug)]
 pub(crate) struct PageTable {
     pub(crate) pages: RwLock<PageList>,
 }
@@ -57,6 +58,15 @@ impl PageTable {
 pub(crate) struct PageList {
     pages: Vec<Pin<Box<[Slot]>>>,
     pub(crate) total_slots: usize,
+}
+
+impl core::fmt::Debug for PageList {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PageList")
+            .field("page_count", &self.pages.len())
+            .field("total_slots", &self.total_slots)
+            .finish()
+    }
 }
 
 impl PageList {

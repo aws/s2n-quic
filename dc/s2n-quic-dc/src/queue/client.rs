@@ -36,6 +36,7 @@ use std::sync::{
 /// The bitset starts with capacity 1 and grows on demand so that fresh
 /// allocators pay no up-front memory cost.
 /// Fresh slots beyond the current high-water mark are allocated by bumping.
+#[derive(Debug)]
 pub struct ClientFreeList {
     freed: bitset::HierarchicalBitSet,
     high_water_mark: usize,
@@ -88,6 +89,7 @@ impl ClientFreeList {
 // ── ClientState (shared, one Arc per peer) ──────────────────────────────────
 
 /// Shared client-side queue state for a single peer connection.
+#[derive(Debug)]
 pub struct ClientState {
     pub(crate) pages: PageTable,
     /// Monotonically increasing binding_id generator.  Starts at 1 so that
@@ -100,13 +102,13 @@ pub struct ClientState {
 }
 
 impl ClientState {
-    pub fn new(max_peer_queues: VarInt) -> Arc<Self> {
-        Arc::new(Self {
+    pub fn new(max_peer_queues: VarInt) -> Self {
+        Self {
             pages: PageTable::new(),
             next_binding: AtomicU64::new(1),
             free: Mutex::new(ClientFreeList::new()),
             peer_free: sync::free_list::FreeList::new(max_peer_queues),
-        })
+        }
     }
 
     fn next_binding_id(&self) -> VarInt {
@@ -267,7 +269,7 @@ mod tests {
     }
 
     fn test_allocator(max_queues: u64) -> ClientAllocator {
-        let state = ClientState::new(VarInt::new(max_queues).unwrap());
+        let state = Arc::new(ClientState::new(VarInt::new(max_queues).unwrap()));
         ClientAllocator::new(state)
     }
 
