@@ -181,3 +181,261 @@ impl ServerDispatch {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::path::secret::map::Entry as PathSecretEntry;
+    use crate::queue::{freed::freed_batch_channel, testing::*};
+    use s2n_quic_core::varint::VarInt;
+    use std::sync::Arc;
+
+    fn v(n: u64) -> VarInt {
+        VarInt::new(n).unwrap()
+    }
+
+    fn test_server(max_queues: u64) -> (ServerDispatch, crate::queue::freed::FreedBatchRx) {
+        let (tx, rx) = freed_batch_channel();
+        let path_entry: Arc<PathSecretEntry> =
+            PathSecretEntry::builder("127.0.0.1:4433".parse().unwrap()).build();
+        let freed = FreedSender::new(path_entry, tx);
+        let dispatch = ServerDispatch::new(freed, VarInt::new(max_queues).unwrap());
+        (dispatch, rx)
+    }
+
+    #[test]
+    fn bind_and_send_new() {
+        let (mut server, _rx) = test_server(10);
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+        assert!(matches!(result, Ok(BindResult::NewBinding { .. })));
+    }
+
+    #[test]
+    fn bind_and_send_existing() {
+        let (mut server, _rx) = test_server(10);
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+        let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+            panic!("expected NewBinding");
+        };
+
+        // Second send with same binding
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+        assert!(matches!(result, Ok(BindResult::Bound(_))));
+
+        drop(stream);
+        drop(control);
+    }
+
+    #[test]
+    fn bind_and_send_cap_exceeded() {
+        let (mut server, _rx) = test_server(5);
+        let result = server.bind_and_send_stream(v(5), v(1), make_stream_entry());
+        assert!(matches!(result, Err(Error::CapExceeded(_))));
+    }
+
+    #[test]
+    fn bind_and_send_stale() {
+        let (mut server, _rx) = test_server(10);
+        let result = server.bind_and_send_stream(v(0), v(5), make_stream_entry());
+        let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+            panic!("expected NewBinding");
+        };
+        // Drop receivers → slot reclaimed
+        drop(stream);
+        drop(control);
+
+        let result = server.bind_and_send_stream(v(0), v(4), make_stream_entry());
+        assert!(matches!(result, Err(Error::StaleBinding(_))));
+    }
+
+    #[test]
+    fn bind_and_send_triggers_growth() {
+        let (mut server, _rx) = test_server(100);
+        // In test mode INITIAL_PAGE_SIZE=8, so queue_id=50 forces growth
+        let result = server.bind_and_send_stream(v(50), v(1), make_stream_entry());
+        assert!(matches!(result, Ok(BindResult::NewBinding { .. })));
+    }
+
+    #[test]
+    fn send_stream_bound() {
+        let (mut server, _rx) = test_server(10);
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+        let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+            panic!("expected NewBinding");
+        };
+
+        let result = server.send_stream(v(0), v(1), make_stream_entry());
+        assert!(result.is_ok());
+
+        drop(stream);
+        drop(control);
+    }
+
+    #[test]
+    fn send_stream_unbound() {
+        let (mut server, _rx) = test_server(10);
+        let result = server.send_stream(v(0), v(1), make_stream_entry());
+        assert!(matches!(result, Err(Error::Unallocated(_))));
+    }
+
+    #[test]
+    fn close_broadcasts_all() {
+        let (mut server, _rx) = test_server(10);
+        let r0 = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+        let Ok(BindResult::NewBinding { stream: s0, control: c0, .. }) = r0 else {
+            panic!("expected NewBinding");
+        };
+        let r1 = server.bind_and_send_stream(v(1), v(2), make_stream_entry());
+        let Ok(BindResult::NewBinding { stream: s1, control: c1, .. }) = r1 else {
+            panic!("expected NewBinding");
+        };
+
+        // Drain the entries that were pushed during bind
+        let _ = s0.try_recv();
+        let _ = s1.try_recv();
+
+        let mut wakes = vec![];
+        server.close(&mut |aw| wakes.push(aw));
+
+        assert!(matches!(s0.try_recv(), Err(crate::queue::half::Closed)));
+        assert!(matches!(s1.try_recv(), Err(crate::queue::half::Closed)));
+        drop(c0);
+        drop(c1);
+    }
+
+    #[test]
+    fn bind_recycle() {
+        let (mut server, _rx) = test_server(10);
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+        let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+            panic!("expected NewBinding");
+        };
+        drop(stream);
+        drop(control);
+
+        // Re-bind with higher binding_id
+        let result = server.bind_and_send_stream(v(0), v(2), make_stream_entry());
+        assert!(matches!(result, Ok(BindResult::NewBinding { .. })));
+    }
+
+    // ── Bach async integration tests ─────────────────────────────────────────
+
+    #[test]
+    fn server_bind_wakes_receiver() {
+        use crate::testing::{ext::*, sim};
+
+        sim(|| {
+            let (mut server, _rx) = test_server(10);
+            let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+            let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+                panic!("expected NewBinding");
+            };
+
+            async move {
+                let entry = stream.recv().await;
+                assert!(entry.is_ok());
+                drop(control);
+            }
+            .primary()
+            .spawn();
+        });
+    }
+
+    #[test]
+    fn server_drop_receivers_records_freed() {
+        use crate::testing::{ext::*, sim};
+
+        sim(|| {
+            let (mut server, mut rx) = test_server(10);
+            let result = server.bind_and_send_stream(v(3), v(1), make_stream_entry());
+            let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+                panic!("expected NewBinding");
+            };
+
+            async move {
+                let _entry = stream.recv().await;
+                drop(stream);
+                drop(control);
+                bach::task::yield_now().await;
+
+                // Freed channel should have a token
+                let batch = rx.try_recv().unwrap();
+                let mut dest = s2n_quic_core::interval_set::IntervalSet::new();
+                let id = batch.take(&mut dest);
+                assert!(id.is_some());
+                assert!(dest.contains(&v(3)));
+            }
+            .primary()
+            .spawn();
+        });
+    }
+
+    #[test]
+    fn concurrent_push_and_recv() {
+        use crate::testing::{ext::*, sim};
+
+        sim(|| {
+            let (mut server, _rx) = test_server(10);
+            let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+            let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+                panic!("expected NewBinding");
+            };
+
+            let stream = Arc::new(stream);
+            let stream2 = stream.clone();
+
+            async move {
+                for _ in 0..50 {
+                    let entry = stream.recv().await;
+                    assert!(entry.is_ok());
+                }
+                drop(control);
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                for _ in 0..50 {
+                    bach::task::yield_now().await;
+                    assert!(server.send_stream(v(0), v(1), make_stream_entry()).is_ok());
+                }
+                drop(stream2);
+            }
+            .primary()
+            .spawn();
+        });
+    }
+
+    #[test]
+    fn broadcast_close_racing_recv() {
+        use crate::testing::{ext::*, sim};
+
+        sim(|| {
+            let (mut server, _rx) = test_server(10);
+            let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+            let Ok(BindResult::NewBinding { stream, control, .. }) = result else {
+                panic!("expected NewBinding");
+            };
+
+            async move {
+                loop {
+                    match stream.recv().await {
+                        Ok(_) => continue,
+                        Err(crate::queue::half::Closed) => break,
+                    }
+                }
+                drop(control);
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                1.ms().sleep().await;
+                let mut wakes = vec![];
+                server.close(&mut |aw| wakes.push(aw));
+            }
+            .primary()
+            .spawn();
+        });
+    }
+}
+

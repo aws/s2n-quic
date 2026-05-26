@@ -206,3 +206,179 @@ impl FreedSender {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use s2n_quic_core::varint::VarInt;
+
+    fn test_sender() -> (FreedSender, FreedBatchRx) {
+        let (tx, rx) = freed_batch_channel();
+        let path_entry =
+            PathSecretEntry::builder("127.0.0.1:4433".parse().unwrap()).build();
+        (FreedSender::new(path_entry, tx), rx)
+    }
+
+    #[test]
+    fn record_first_submits_token() {
+        let (sender, mut rx) = test_sender();
+        sender.record(VarInt::from_u8(5));
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn record_second_no_resubmit() {
+        let (sender, mut rx) = test_sender();
+        sender.record(VarInt::from_u8(5));
+        sender.record(VarInt::from_u8(6));
+        // Only one token in the channel
+        assert!(rx.try_recv().is_ok());
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn take_drains_accumulated() {
+        let (sender, mut rx) = test_sender();
+        sender.record(VarInt::from_u8(5));
+        sender.record(VarInt::from_u8(6));
+        sender.record(VarInt::from_u8(7));
+        let batch = rx.try_recv().unwrap();
+        let mut dest = IntervalSet::new();
+        let request_id = batch.take(&mut dest);
+        assert!(request_id.is_some());
+        assert!(dest.contains(&VarInt::from_u8(5)));
+        assert!(dest.contains(&VarInt::from_u8(6)));
+        assert!(dest.contains(&VarInt::from_u8(7)));
+    }
+
+    #[test]
+    fn take_empty_returns_none() {
+        let (sender, mut rx) = test_sender();
+        sender.record(VarInt::from_u8(1));
+        let batch = rx.try_recv().unwrap();
+        // First take drains
+        let mut dest = IntervalSet::new();
+        batch.take(&mut dest);
+        // Second take is empty
+        let result = batch.take(&mut dest);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn take_request_id_increments() {
+        let (sender, mut rx) = test_sender();
+        let (tx, _) = freed_batch_channel();
+
+        sender.record(VarInt::from_u8(1));
+        let batch = rx.try_recv().unwrap();
+        let mut dest = IntervalSet::new();
+        let id0 = batch.take(&mut dest).unwrap();
+        assert_eq!(id0, VarInt::from_u8(0));
+        batch.check_and_resubmit(&tx);
+
+        sender.record(VarInt::from_u8(2));
+        let batch = rx.try_recv().unwrap();
+        dest.clear();
+        let id1 = batch.take(&mut dest).unwrap();
+        assert_eq!(id1, VarInt::from_u8(1));
+    }
+
+    #[test]
+    fn put_back_merges() {
+        let (sender, mut rx) = test_sender();
+        sender.record(VarInt::from_u8(10));
+        sender.record(VarInt::from_u8(20));
+        let batch = rx.try_recv().unwrap();
+
+        let mut dest = IntervalSet::new();
+        batch.take(&mut dest);
+        assert_eq!(dest.count(), 2);
+
+        // Simulate partial send: put back id=20
+        let mut remainder = IntervalSet::new();
+        let _ = remainder.insert_value(VarInt::from_u8(20));
+        batch.put_back(&mut remainder);
+        assert!(remainder.is_empty());
+
+        // Record more while batch is still in flight
+        sender.record(VarInt::from_u8(30));
+
+        // Take again should include put-back + new
+        dest.clear();
+        let id = batch.take(&mut dest);
+        assert!(id.is_some());
+        assert!(dest.contains(&VarInt::from_u8(20)));
+        assert!(dest.contains(&VarInt::from_u8(30)));
+    }
+
+    #[test]
+    fn check_and_resubmit_clears_when_empty() {
+        let (sender, mut rx) = test_sender();
+        let (tx, _rx2) = freed_batch_channel();
+
+        sender.record(VarInt::from_u8(1));
+        let batch = rx.try_recv().unwrap();
+        let mut dest = IntervalSet::new();
+        batch.take(&mut dest);
+        batch.check_and_resubmit(&tx);
+
+        // in_flight cleared → next record submits fresh token
+        sender.record(VarInt::from_u8(2));
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn check_and_resubmit_resubmits_when_more() {
+        let (sender, mut rx) = test_sender();
+        let (tx, mut rx2) = freed_batch_channel();
+
+        sender.record(VarInt::from_u8(1));
+        let batch = rx.try_recv().unwrap();
+        let mut dest = IntervalSet::new();
+        batch.take(&mut dest);
+
+        // Record more during serialization
+        sender.record(VarInt::from_u8(2));
+
+        // check_and_resubmit sees non-empty → resubmits to tx
+        batch.check_and_resubmit(&tx);
+        assert!(rx2.try_recv().is_ok());
+    }
+
+    #[test]
+    fn record_after_channel_closed() {
+        let (sender, rx) = test_sender();
+        drop(rx);
+        // Should not panic
+        sender.record(VarInt::from_u8(1));
+        // in_flight should be cleared
+        let state = sender.inner.state.lock().unwrap();
+        assert!(!state.in_flight);
+    }
+
+    #[test]
+    fn request_id_saturates() {
+        let (sender, mut rx) = test_sender();
+        let (tx, _) = freed_batch_channel();
+
+        // Set next_request_id near max
+        {
+            let mut state = sender.inner.state.lock().unwrap();
+            state.next_request_id = VarInt::new(VarInt::MAX.as_u64() - 1).unwrap();
+        }
+
+        sender.record(VarInt::from_u8(1));
+        let batch = rx.try_recv().unwrap();
+        let mut dest = IntervalSet::new();
+        let id = batch.take(&mut dest).unwrap();
+        assert_eq!(id.as_u64(), VarInt::MAX.as_u64() - 1);
+        batch.check_and_resubmit(&tx);
+
+        sender.record(VarInt::from_u8(2));
+        let batch = rx.try_recv().unwrap();
+        dest.clear();
+        let id = batch.take(&mut dest).unwrap();
+        // Should be VarInt::MAX (saturated)
+        assert_eq!(id, VarInt::MAX);
+    }
+}

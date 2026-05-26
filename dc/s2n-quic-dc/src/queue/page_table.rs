@@ -313,4 +313,35 @@ mod tests {
             assert_eq!(qid.as_u64() as usize, i, "slot at {i} should have queue_id {i}");
         }
     }
+
+    #[test]
+    fn sender_view_refresh_on_growth() {
+        let pt = PageTable::new();
+        let mut view = pt.sender_view();
+        // Access within initial range works
+        assert!(view.get(0).is_some());
+        // Beyond initial range is None
+        assert!(view.get(INITIAL_PAGE_SIZE).is_none());
+        // Grow the table
+        pt.grow_to_fit(INITIAL_PAGE_SIZE);
+        // View auto-refreshes on cache miss
+        assert!(view.get(INITIAL_PAGE_SIZE).is_some());
+    }
+
+    #[test]
+    fn sender_view_out_of_range_none() {
+        let pt = PageTable::new();
+        let mut view = pt.sender_view();
+        assert!(view.get(INITIAL_PAGE_SIZE * 100).is_none());
+    }
+
+    #[test]
+    fn for_each_slot_visits_all() {
+        let pt = PageTable::new();
+        pt.grow_to_fit(3 * INITIAL_PAGE_SIZE);
+        let mut view = pt.sender_view();
+        let mut count = 0;
+        view.for_each_slot(|_| count += 1);
+        assert_eq!(count, pt.total_slots());
+    }
 }

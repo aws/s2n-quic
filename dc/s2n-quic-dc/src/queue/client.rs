@@ -252,3 +252,179 @@ impl ClientDispatch {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::queue::testing::*;
+    use s2n_quic_core::varint::VarInt;
+
+    fn v(n: u64) -> VarInt {
+        VarInt::new(n).unwrap()
+    }
+
+    fn test_allocator(max_queues: u64) -> ClientAllocator {
+        let peer_free = sync::free_list::FreeList::new(VarInt::new(max_queues).unwrap());
+        ClientAllocator::new(peer_free)
+    }
+
+    // ── ClientFreeList ───────────────────────────────────────────────────────
+
+    #[test]
+    fn pop_bumps_high_water_mark() {
+        let mut fl = ClientFreeList::new();
+        assert_eq!(fl.pop(), Some(0));
+        assert_eq!(fl.pop(), Some(1));
+        assert_eq!(fl.pop(), Some(2));
+    }
+
+    #[test]
+    fn push_freed_then_pop_recycles() {
+        let mut fl = ClientFreeList::new();
+        assert_eq!(fl.pop(), Some(0));
+        fl.push_freed(0);
+        assert_eq!(fl.pop(), Some(0));
+    }
+
+    #[test]
+    fn pop_prefers_recycled() {
+        let mut fl = ClientFreeList::new();
+        for _ in 0..5 {
+            fl.pop();
+        }
+        fl.push_freed(2);
+        assert_eq!(fl.pop(), Some(2));
+    }
+
+    #[test]
+    fn push_freed_grows_bitset() {
+        let mut fl = ClientFreeList::new();
+        fl.push_freed(1000);
+        assert_eq!(fl.pop(), Some(1000));
+    }
+
+    #[test]
+    fn close_makes_pop_none() {
+        let mut fl = ClientFreeList::new();
+        fl.close();
+        assert_eq!(fl.pop(), None);
+    }
+
+    // ── ClientAllocator ──────────────────────────────────────────────────────
+
+    #[test]
+    fn try_alloc_returns_result() {
+        let mut alloc = test_allocator(10);
+        let result = alloc.try_alloc();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn try_alloc_binding_starts_at_1() {
+        let mut alloc = test_allocator(10);
+        let result = alloc.try_alloc().unwrap();
+        assert_eq!(result.binding_id, v(1));
+    }
+
+    #[test]
+    fn try_alloc_binding_increments() {
+        let mut alloc = test_allocator(10);
+        let r1 = alloc.try_alloc().unwrap();
+        let r2 = alloc.try_alloc().unwrap();
+        assert_eq!(r1.binding_id, v(1));
+        assert_eq!(r2.binding_id, v(2));
+    }
+
+    #[test]
+    fn close_prevents_alloc() {
+        let mut alloc = test_allocator(10);
+        alloc.close();
+        assert!(alloc.try_alloc().is_none());
+    }
+
+    // ── ClientDispatch ───────────────────────────────────────────────────────
+
+    #[test]
+    fn send_stream_to_allocated() {
+        let mut alloc = test_allocator(10);
+        let result = alloc.try_alloc().unwrap();
+        let mut dispatch = alloc.dispatcher();
+
+        let send_result = dispatch.send_stream(
+            result.local_queue_id,
+            result.binding_id,
+            make_stream_entry(),
+        );
+        assert!(send_result.is_ok());
+    }
+
+    #[test]
+    fn send_stream_unallocated() {
+        let mut alloc = test_allocator(10);
+        let mut dispatch = alloc.dispatcher();
+        let result = dispatch.send_stream(v(999), v(1), make_stream_entry());
+        assert!(matches!(result, Err(Error::Unallocated(_))));
+    }
+
+    #[test]
+    fn send_stream_wrong_binding() {
+        let mut alloc = test_allocator(10);
+        let result = alloc.try_alloc().unwrap();
+        let mut dispatch = alloc.dispatcher();
+
+        let send_result = dispatch.send_stream(
+            result.local_queue_id,
+            v(99),
+            make_stream_entry(),
+        );
+        assert!(matches!(send_result, Err(Error::FutureBinding(_))));
+    }
+
+    #[test]
+    fn close_broadcasts() {
+        let mut alloc = test_allocator(10);
+        let r1 = alloc.try_alloc().unwrap();
+        let r2 = alloc.try_alloc().unwrap();
+        let mut dispatch = alloc.dispatcher();
+
+        let mut wakes = vec![];
+        dispatch.close(&mut |aw| wakes.push(aw));
+
+        // Receivers should see Closed
+        assert!(matches!(r1.stream.try_recv(), Err(super::super::half::Closed)));
+        assert!(matches!(r2.stream.try_recv(), Err(super::super::half::Closed)));
+    }
+
+    // ── Bach async tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn client_alloc_dispatch_recv_round_trip() {
+        use crate::testing::{ext::*, sim};
+
+        sim(|| {
+            let mut alloc = test_allocator(10);
+            let result = alloc.try_alloc().unwrap();
+            let mut dispatch = alloc.dispatcher();
+
+            let stream = result.stream;
+            let binding_id = result.binding_id;
+            let local_queue_id = result.local_queue_id;
+
+            async move {
+                let entry = stream.recv().await;
+                assert!(entry.is_ok());
+                drop(result.control);
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                bach::task::yield_now().await;
+                let aw = dispatch.send_stream(local_queue_id, binding_id, make_stream_entry());
+                assert!(aw.is_ok());
+            }
+            .primary()
+            .spawn();
+        });
+    }
+}

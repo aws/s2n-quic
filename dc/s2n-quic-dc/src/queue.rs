@@ -28,6 +28,9 @@ pub(crate) mod page_table;
 pub(crate) mod server;
 pub(crate) mod slot;
 
+#[cfg(test)]
+pub(crate) mod testing;
+
 // Public API surface
 
 pub use half::{AutoWake, Closed};

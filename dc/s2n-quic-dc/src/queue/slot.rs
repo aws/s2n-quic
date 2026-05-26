@@ -267,3 +267,200 @@ impl core::fmt::Debug for Slot {
             .finish()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::queue::testing::*;
+
+    fn v(n: u64) -> VarInt {
+        VarInt::new(n).unwrap()
+    }
+
+    #[test]
+    fn new_slot_is_unallocated() {
+        let slot = Slot::with_queue_id(v(5));
+        assert_eq!(slot.queue_id(), v(5));
+        let raw = slot.binding_id.load(Ordering::Relaxed);
+        assert_ne!(raw & UNALLOCATED_BIT, 0);
+    }
+
+    #[test]
+    fn allocate_and_open_sets_binding() {
+        let slot = Slot::with_queue_id(v(0));
+        assert!(slot.allocate_and_open(v(1)).is_ok());
+        let raw = slot.binding_id.load(Ordering::Relaxed);
+        assert_eq!(raw, 1);
+        assert!(slot.stream.inner.lock().flags.contains(Flags::HAS_RECEIVER));
+        assert!(slot.control.inner.lock().flags.contains(Flags::HAS_RECEIVER));
+    }
+
+    #[test]
+    fn allocate_and_open_fails_after_close() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.broadcast_close();
+        assert!(slot.allocate_and_open(v(1)).is_err());
+    }
+
+    #[test]
+    fn push_stream_matching_binding() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(1)).unwrap();
+        let result = slot.push_stream(v(1), make_stream_entry());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn push_stream_stale_binding() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(5)).unwrap();
+        let result = slot.push_stream(v(3), make_stream_entry());
+        assert!(matches!(result, Err(super::super::Error::StaleBinding(_))));
+    }
+
+    #[test]
+    fn push_stream_future_binding() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(5)).unwrap();
+        let result = slot.push_stream(v(7), make_stream_entry());
+        assert!(matches!(result, Err(super::super::Error::FutureBinding(_))));
+    }
+
+    #[test]
+    fn push_stream_to_unallocated_stale() {
+        let slot = Slot::with_queue_id(v(0));
+        // fresh slot stored=0 with UNALLOCATED_BIT, push with binding=0 → 0<=0 → StaleBinding
+        let result = slot.push_stream(v(0), make_stream_entry());
+        assert!(matches!(result, Err(super::super::Error::StaleBinding(_))));
+    }
+
+    #[test]
+    fn push_stream_to_unallocated_future() {
+        let slot = Slot::with_queue_id(v(0));
+        // fresh slot, push binding=1 → 1 > 0 but UNALLOCATED → Unallocated
+        let result = slot.push_stream(v(1), make_stream_entry());
+        assert!(matches!(result, Err(super::super::Error::Unallocated(_))));
+    }
+
+    #[test]
+    fn push_control_matching_binding() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(1)).unwrap();
+        let result = slot.push_control(v(1), make_control_entry());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn mark_unallocated_preserves_binding() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(5)).unwrap();
+        slot.mark_unallocated();
+        let raw = slot.binding_id.load(Ordering::Relaxed);
+        assert_ne!(raw & UNALLOCATED_BIT, 0);
+        assert_eq!(raw & !UNALLOCATED_BIT, 5);
+    }
+
+    #[test]
+    fn mark_unallocated_rejects_old_binding() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(5)).unwrap();
+        slot.mark_unallocated();
+        let result = slot.push_stream(v(5), make_stream_entry());
+        assert!(matches!(result, Err(super::super::Error::StaleBinding(_))));
+    }
+
+    #[test]
+    fn bind_and_push_fresh_slot_new_binding() {
+        let slot = Slot::with_queue_id(v(0));
+        let result = slot.bind_and_push_stream(v(1), make_stream_entry());
+        assert!(matches!(result, Ok(BindState::NewBinding(_))));
+    }
+
+    #[test]
+    fn bind_and_push_already_bound_matching() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(1)).unwrap();
+        let result = slot.bind_and_push_stream(v(1), make_stream_entry());
+        assert!(matches!(result, Ok(BindState::AlreadyBound(_))));
+    }
+
+    #[test]
+    fn bind_and_push_stale_on_allocated() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(5)).unwrap();
+        let result = slot.bind_and_push_stream(v(3), make_stream_entry());
+        assert!(matches!(result, Err(super::super::Error::StaleBinding(_))));
+    }
+
+    #[test]
+    fn bind_and_push_future_on_allocated() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(5)).unwrap();
+        let result = slot.bind_and_push_stream(v(7), make_stream_entry());
+        assert!(matches!(result, Err(super::super::Error::FutureBinding(_))));
+    }
+
+    fn simulate_receiver_drop(slot: &Slot) {
+        slot.stream.inner.lock().flags.remove(Flags::HAS_RECEIVER);
+        slot.control.inner.lock().flags.remove(Flags::HAS_RECEIVER);
+        slot.mark_unallocated();
+    }
+
+    #[test]
+    fn bind_and_push_stale_on_recycled() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(5)).unwrap();
+        simulate_receiver_drop(&slot);
+        let result = slot.bind_and_push_stream(v(4), make_stream_entry());
+        assert!(matches!(result, Err(super::super::Error::StaleBinding(_))));
+    }
+
+    #[test]
+    fn bind_and_push_equal_on_recycled() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(5)).unwrap();
+        simulate_receiver_drop(&slot);
+        let result = slot.bind_and_push_stream(v(5), make_stream_entry());
+        assert!(matches!(result, Err(super::super::Error::StaleBinding(_))));
+    }
+
+    #[test]
+    fn bind_and_push_new_binding_after_recycle() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(5)).unwrap();
+        simulate_receiver_drop(&slot);
+        let result = slot.bind_and_push_stream(v(6), make_stream_entry());
+        assert!(matches!(result, Ok(BindState::NewBinding(_))));
+    }
+
+    #[test]
+    fn bind_and_push_after_broadcast_close() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.broadcast_close();
+        let result = slot.bind_and_push_stream(v(1), make_stream_entry());
+        assert!(matches!(result, Err(super::super::Error::SenderClosed)));
+    }
+
+    #[test]
+    fn bind_and_push_half_closed() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(1)).unwrap();
+        // Close stream receiver
+        slot.stream.inner.lock().flags.remove(Flags::HAS_RECEIVER);
+        let result = slot.bind_and_push_stream(v(1), make_stream_entry());
+        assert!(matches!(result, Err(super::super::Error::HalfClosed(_))));
+    }
+
+    #[test]
+    fn broadcast_close_both_halves() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(1)).unwrap();
+        let (sw, cw) = slot.broadcast_close();
+        // Both are AutoWake (possibly empty since no waker was registered)
+        drop(sw);
+        drop(cw);
+        // Subsequent push fails
+        let result = slot.push_stream(v(1), make_stream_entry());
+        assert!(matches!(result, Err(super::super::Error::SenderClosed)));
+    }
+}

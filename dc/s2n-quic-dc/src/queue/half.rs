@@ -271,3 +271,354 @@ impl<T> fmt::Debug for Half<T> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::endpoint::msg;
+    use crate::queue::testing::*;
+    use core::task::Poll;
+    use std::sync::Arc;
+
+    fn open_half() -> Half<msg::Stream> {
+        let half = Half::new();
+        half.inner.lock().flags.insert(Flags::HAS_RECEIVER);
+        half
+    }
+
+    fn push_ok(half: &Half<msg::Stream>, entry: crate::intrusive::Entry<msg::Stream>) -> AutoWake {
+        match half.push(entry) {
+            Ok(aw) => aw,
+            Err(_) => panic!("push failed"),
+        }
+    }
+
+    #[test]
+    fn push_to_open_half() {
+        let half = open_half();
+        let result = half.push(make_stream_entry());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn push_without_receiver_returns_half_closed() {
+        let half = Half::<msg::Stream>::new();
+        let result = half.push(make_stream_entry());
+        assert!(matches!(result, Err(Error::HalfClosed(_))));
+    }
+
+    #[test]
+    fn push_after_broadcast_close_returns_sender_closed() {
+        let half = open_half();
+        half.broadcast_close();
+        let result = half.push(make_stream_entry());
+        assert!(matches!(result, Err(Error::SenderClosed)));
+    }
+
+    #[test]
+    fn pop_fifo_order() {
+        let half = open_half();
+        for i in 0..3u8 {
+            let entry = crate::intrusive::Entry::new(msg::Stream::Data {
+                offset: s2n_quic_core::varint::VarInt::from_u8(i),
+                fin: false,
+                payload: bytes::BytesMut::from(&[i][..]),
+            });
+            push_ok(&half, entry);
+        }
+
+        for i in 0..3u8 {
+            let entry = half.pop().unwrap().unwrap();
+            match &*entry {
+                msg::Stream::Data { offset, .. } => {
+                    assert_eq!(offset.as_u64(), i as u64);
+                }
+                _ => panic!("unexpected variant"),
+            }
+        }
+    }
+
+    #[test]
+    fn pop_empty_open_returns_none() {
+        let half = open_half();
+        assert!(matches!(half.pop(), Ok(None)));
+    }
+
+    #[test]
+    fn pop_empty_closed_returns_err() {
+        let half = open_half();
+        half.broadcast_close();
+        assert!(matches!(half.pop(), Err(Closed)));
+    }
+
+    #[test]
+    fn pop_drains_remaining_after_close() {
+        let half = open_half();
+        push_ok(&half, make_stream_entry());
+        half.broadcast_close();
+        assert!(half.pop().unwrap().is_some());
+        assert!(matches!(half.pop(), Err(Closed)));
+    }
+
+    #[test]
+    fn try_swap_returns_full_queue() {
+        let half = open_half();
+        push_ok(&half, make_stream_entry());
+        push_ok(&half, make_stream_entry());
+        let q = half.try_swap().unwrap();
+        assert_eq!(q.len(), 2);
+        let q2 = half.try_swap().unwrap();
+        assert_eq!(q2.len(), 0);
+    }
+
+    #[test]
+    fn try_swap_after_close_empty_returns_closed() {
+        let half = open_half();
+        half.broadcast_close();
+        assert!(matches!(half.try_swap(), Err(Closed)));
+    }
+
+    #[test]
+    fn poll_pop_pending_when_empty() {
+        let half = open_half();
+        let (waker, count) = test_waker();
+        let mut cx = test_context(&waker);
+        assert!(matches!(half.poll_pop(&mut cx), Poll::Pending));
+        assert!(half.inner.lock().waker.is_some());
+        assert_eq!(count.load(core::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn poll_pop_ready_with_data() {
+        let half = open_half();
+        push_ok(&half, make_stream_entry());
+        let (waker, _) = test_waker();
+        let mut cx = test_context(&waker);
+        assert!(matches!(half.poll_pop(&mut cx), Poll::Ready(Ok(_))));
+    }
+
+    #[test]
+    fn poll_pop_ready_closed() {
+        let half = open_half();
+        half.broadcast_close();
+        let (waker, _) = test_waker();
+        let mut cx = test_context(&waker);
+        assert!(matches!(half.poll_pop(&mut cx), Poll::Ready(Err(Closed))));
+    }
+
+    #[test]
+    fn poll_swap_pending_when_empty() {
+        let half = open_half();
+        let (waker, _) = test_waker();
+        let mut cx = test_context(&waker);
+        assert!(matches!(half.poll_swap(&mut cx), Poll::Pending));
+        assert!(half.inner.lock().waker.is_some());
+    }
+
+    #[test]
+    fn poll_swap_ready_with_data_registers_waker() {
+        let half = open_half();
+        push_ok(&half, make_stream_entry());
+        let (waker, _) = test_waker();
+        let mut cx = test_context(&waker);
+        let result = half.poll_swap(&mut cx);
+        assert!(matches!(result, Poll::Ready(Ok(_))));
+        // Sender alive → waker re-registered for next batch
+        assert!(half.inner.lock().waker.is_some());
+    }
+
+    #[test]
+    fn auto_wake_fires_on_drop() {
+        let (waker, count) = test_waker();
+        let aw = AutoWake(Some(waker));
+        drop(aw);
+        assert_eq!(count.load(core::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn auto_wake_take_prevents_fire() {
+        let (waker, count) = test_waker();
+        let mut aw = AutoWake(Some(waker));
+        let _ = aw.take();
+        drop(aw);
+        assert_eq!(count.load(core::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn broadcast_close_returns_stored_waker() {
+        let half = open_half();
+        let (waker, count) = test_waker();
+        let mut cx = test_context(&waker);
+        assert!(matches!(half.poll_pop(&mut cx), Poll::Pending));
+        let aw = half.broadcast_close();
+        assert!(aw.is_some());
+        drop(aw);
+        assert_eq!(count.load(core::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn push_wakes_stored_waker() {
+        let half = open_half();
+        let (waker, count) = test_waker();
+        let mut cx = test_context(&waker);
+        assert!(matches!(half.poll_pop(&mut cx), Poll::Pending));
+        let aw = push_ok(&half, make_stream_entry());
+        drop(aw);
+        assert_eq!(count.load(core::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn waker_replaced_on_different_waker() {
+        let half = open_half();
+        let (w1, count1) = test_waker();
+        let (w2, count2) = test_waker();
+
+        let mut cx1 = test_context(&w1);
+        assert!(matches!(half.poll_pop(&mut cx1), Poll::Pending));
+
+        let mut cx2 = test_context(&w2);
+        assert!(matches!(half.poll_pop(&mut cx2), Poll::Pending));
+
+        let aw = push_ok(&half, make_stream_entry());
+        drop(aw);
+        // W2 should fire, not W1
+        assert_eq!(count1.load(core::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(count2.load(core::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn close_stream_first_not_last() {
+        let stream = Half::<msg::Stream>::new();
+        let control = Half::<msg::Control>::new();
+        {
+            let mut s = stream.inner.lock();
+            s.flags.insert(Flags::HAS_RECEIVER);
+        }
+        {
+            let mut c = control.inner.lock();
+            c.flags.insert(Flags::HAS_RECEIVER);
+        }
+        let mut called = false;
+        let is_last = close_receiver(&stream, &control, true, || called = true);
+        assert!(!is_last);
+        assert!(!called);
+        assert!(!stream.inner.lock().flags.contains(Flags::HAS_RECEIVER));
+        assert!(control.inner.lock().flags.contains(Flags::HAS_RECEIVER));
+    }
+
+    #[test]
+    fn close_control_first_not_last() {
+        let stream = Half::<msg::Stream>::new();
+        let control = Half::<msg::Control>::new();
+        {
+            let mut s = stream.inner.lock();
+            s.flags.insert(Flags::HAS_RECEIVER);
+        }
+        {
+            let mut c = control.inner.lock();
+            c.flags.insert(Flags::HAS_RECEIVER);
+        }
+        let mut called = false;
+        let is_last = close_receiver(&stream, &control, false, || called = true);
+        assert!(!is_last);
+        assert!(!called);
+        assert!(stream.inner.lock().flags.contains(Flags::HAS_RECEIVER));
+        assert!(!control.inner.lock().flags.contains(Flags::HAS_RECEIVER));
+    }
+
+    #[test]
+    fn close_stream_last_calls_on_last() {
+        let stream = Half::<msg::Stream>::new();
+        let control = Half::<msg::Control>::new();
+        {
+            let mut s = stream.inner.lock();
+            s.flags.insert(Flags::HAS_RECEIVER);
+        }
+        // control has no HAS_RECEIVER
+        let mut called = false;
+        let is_last = close_receiver(&stream, &control, true, || called = true);
+        assert!(is_last);
+        assert!(called);
+    }
+
+    #[test]
+    fn close_control_last_calls_on_last() {
+        let stream = Half::<msg::Stream>::new();
+        let control = Half::<msg::Control>::new();
+        {
+            let mut c = control.inner.lock();
+            c.flags.insert(Flags::HAS_RECEIVER);
+        }
+        // stream has no HAS_RECEIVER
+        let mut called = false;
+        let is_last = close_receiver(&stream, &control, false, || called = true);
+        assert!(is_last);
+        assert!(called);
+    }
+
+    #[test]
+    fn close_receiver_drains_queue() {
+        let stream = Half::<msg::Stream>::new();
+        let control = Half::<msg::Control>::new();
+        {
+            let mut s = stream.inner.lock();
+            s.flags.insert(Flags::HAS_RECEIVER);
+            s.queue.push_back(make_stream_entry());
+            s.queue.push_back(make_stream_entry());
+        }
+        close_receiver(&stream, &control, true, || {});
+        assert_eq!(stream.inner.lock().queue.len(), 0);
+    }
+
+    #[test]
+    fn push_wakes_blocked_poll_pop() {
+        use crate::testing::{ext::*, sim};
+
+        sim(|| {
+            let half = Arc::new(open_half());
+            let half2 = half.clone();
+
+            async move {
+                let result =
+                    core::future::poll_fn(|cx| half.poll_pop(cx)).await;
+                assert!(result.is_ok());
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                bach::task::yield_now().await;
+                let aw = push_ok(&half2, make_stream_entry());
+                drop(aw);
+            }
+            .primary()
+            .spawn();
+        });
+    }
+
+    #[test]
+    fn broadcast_close_wakes_pending_receiver() {
+        use crate::testing::{ext::*, sim};
+
+        sim(|| {
+            let half = Arc::new(open_half());
+            let half2 = half.clone();
+
+            async move {
+                let result =
+                    core::future::poll_fn(|cx| half.poll_pop(cx)).await;
+                assert!(matches!(result, Err(Closed)));
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                bach::task::yield_now().await;
+                let aw = half2.broadcast_close();
+                drop(aw);
+            }
+            .primary()
+            .spawn();
+        });
+    }
+}
