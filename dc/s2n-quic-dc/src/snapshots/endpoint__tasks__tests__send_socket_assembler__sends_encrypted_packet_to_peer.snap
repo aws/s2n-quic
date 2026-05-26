@@ -10,7 +10,7 @@ expression: logs
 0:00:00.000000000 [main] TRACE m#asm.max_datagram_size=1472
 0:00:00.000000000 [main] TRACE c#test.pending.drain=1
 0:00:00.000000000 [main] TRACE g#test.pending.depth=0
-0:00:00.000000000 [main] TRACE c#tx.frame[flow_data]=1
+0:00:00.000000000 [main] TRACE c#tx.frame[queue_data]=1
 0:00:00.000000000 [main] TRACE m#tx.packet_size=48
 0:00:00.000000000 [main] TRACE m#tx.frames_per_packet=1
 0:00:00.000000000 [main] TRACE m#tx.payload_size=0

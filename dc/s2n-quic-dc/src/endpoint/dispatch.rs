@@ -65,7 +65,7 @@ pub(crate) enum Error {
 ///
 /// Authenticates (decrypt), deduplicates by packet number, updates ACK state, then
 /// dispatches each frame in the packet to its type-specific handler. Response frames
-/// (ACKs, FlowValidateRequest, FlowReset) are emitted to `response_tx`.
+/// (ACKs, QueueValidateRequest, QueueReset) are emitted to `response_tx`.
 pub(crate) fn process<Clk, Route>(
     packet: Entry<packet::datagram::decoder::Packet<descriptor::Filled>>,
     recv_cache: &mut recv::Cache,
@@ -322,7 +322,7 @@ where
 ///
 /// This routes each decoded frame to the same handler as its single-frame
 /// `RoutingInfo` counterpart, using the packet-level `source_sender_id` for
-/// frame types that require it (e.g., FlowInit).
+/// frame types that require it (e.g., QueueInit).
 #[allow(clippy::too_many_arguments)]
 fn dispatch_decoded_frame(
     header: Header,
@@ -339,14 +339,14 @@ fn dispatch_decoded_frame(
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
     match header {
-        Header::FlowInit {
+        Header::QueueInit {
             source_queue_id,
             dest_acceptor_id,
             attempt_id,
             stream_id,
             is_fin,
         } => {
-            handle_flow_init(
+            handle_queue_init(
                 peer,
                 credentials,
                 source_sender_id,
@@ -364,13 +364,13 @@ fn dispatch_decoded_frame(
                 waker_sink,
             );
         }
-        Header::FlowValidateRequest {
+        Header::QueueValidateRequest {
             dest_sender_id,
             queue_pair,
             attempt_id,
             stream_id,
         } => {
-            handle_flow_validate_request(
+            handle_queue_validate_request(
                 &peer.path_entry,
                 credentials,
                 dest_sender_id,
@@ -382,12 +382,12 @@ fn dispatch_decoded_frame(
                 response_frames,
             );
         }
-        Header::FlowInitValidate {
+        Header::QueueInitValidate {
             queue_pair,
             attempt_id,
             stream_id,
         } => {
-            handle_flow_init_validate(
+            handle_queue_init_validate(
                 &peer.path_entry,
                 credentials,
                 queue_pair,
@@ -399,13 +399,13 @@ fn dispatch_decoded_frame(
                 waker_sink,
             );
         }
-        Header::FlowData {
+        Header::QueueData {
             queue_pair,
             stream_id,
             offset,
             is_fin,
         } => {
-            handle_flow_data(
+            handle_queue_data(
                 credentials,
                 queue_pair,
                 stream_id,
@@ -417,11 +417,11 @@ fn dispatch_decoded_frame(
                 waker_sink,
             );
         }
-        Header::FlowControl {
+        Header::QueueControl {
             queue_pair,
             stream_id,
         } => {
-            handle_flow_control(
+            handle_queue_control(
                 credentials,
                 queue_pair,
                 stream_id,
@@ -431,12 +431,12 @@ fn dispatch_decoded_frame(
                 waker_sink,
             );
         }
-        Header::FlowMaxData {
+        Header::QueueMaxData {
             queue_pair,
             stream_id,
             maximum_data,
         } => {
-            handle_flow_max_data(
+            handle_queue_max_data(
                 credentials,
                 queue_pair,
                 stream_id,
@@ -446,13 +446,13 @@ fn dispatch_decoded_frame(
                 waker_sink,
             );
         }
-        Header::FlowReset {
+        Header::QueueReset {
             dest_queue_id,
             stream_id,
             reset_target,
             error_code,
         } => {
-            handle_flow_reset(
+            handle_queue_reset(
                 credentials,
                 dest_queue_id,
                 stream_id,
@@ -463,12 +463,12 @@ fn dispatch_decoded_frame(
                 waker_sink,
             );
         }
-        Header::FlowInitReset {
+        Header::QueueInitReset {
             attempt_id,
             stream_id,
             error_code,
         } => {
-            handle_flow_init_reset(
+            handle_queue_init_reset(
                 peer,
                 credentials,
                 attempt_id,
@@ -479,8 +479,8 @@ fn dispatch_decoded_frame(
                 waker_sink,
             );
         }
-        Header::FlowInitFin { stream_id, offset } => {
-            handle_flow_init_fin(
+        Header::QueueInitFin { stream_id, offset } => {
+            handle_queue_init_fin(
                 peer,
                 credentials,
                 stream_id,
@@ -514,7 +514,7 @@ fn dispatch_decoded_frame(
     }
 }
 
-fn handle_flow_init(
+fn handle_queue_init(
     peer: &mut recv::Context,
     credentials: &Credentials,
     source_sender_id: VarInt,
@@ -537,7 +537,7 @@ fn handle_flow_init(
         attempt_id = attempt_id.as_u64(),
         stream_id = stream_id.as_u64(),
         dedup_right_edge = peer.attempt_dedup.right_edge_debug(),
-        "handle_flow_init: entering"
+        "handle_queue_init: entering"
     );
     let create_queue = |handle| {
         let (queue_control, queue_stream) =
@@ -554,7 +554,7 @@ fn handle_flow_init(
             error!(
                 attempt_id = attempt_id.as_u64(),
                 stream_id = stream_id.as_u64(),
-                "create_stream called more than once for FlowInit"
+                "create_stream called more than once for QueueInit"
             );
         }
         if let Some(p) = payload {
@@ -624,14 +624,14 @@ fn handle_flow_init(
                             if let Some(ref mut ev) = evicted {
                                 ev.reset(crate::stream::endpoint::Error::ServerBusy);
                             }
-                            counters.flow_accepted.add(1);
+                            counters.queue_accepted.add(1);
                             let _ = waker_sink.send(waker);
                             debug!(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 acceptor_id = acceptor_id.as_u64(),
                                 server_queue_id = local_queue_id.as_u64(),
-                                "FlowInit accepted - dispatched to acceptor"
+                                "QueueInit accepted - dispatched to acceptor"
                             );
                         }
                         acceptor::SendResult::NotFound => {
@@ -639,7 +639,7 @@ fn handle_flow_init(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 acceptor_id = acceptor_id.as_u64(),
-                                "FlowInit rejected - acceptor not found"
+                                "QueueInit rejected - acceptor not found"
                             );
                             push_reset_frame(
                                 response_frames,
@@ -658,7 +658,7 @@ fn handle_flow_init(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 acceptor_id = acceptor_id.as_u64(),
-                                "FlowInit rejected - acceptor channel closed"
+                                "QueueInit rejected - acceptor channel closed"
                             );
                             push_reset_frame(
                                 response_frames,
@@ -676,7 +676,7 @@ fn handle_flow_init(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 acceptor_id = acceptor_id.as_u64(),
-                                "FlowInit rejected - acceptor has no active receivers"
+                                "QueueInit rejected - acceptor has no active receivers"
                             );
                             push_reset_frame(
                                 response_frames,
@@ -694,7 +694,7 @@ fn handle_flow_init(
                         attempt_id = attempt_id.as_u64(),
                         stream_id = stream_id.as_u64(),
                         local_queue_id = local_queue_id.as_u64(),
-                        "FlowInit rejected - stream_id reused by client"
+                        "QueueInit rejected - stream_id reused by client"
                     );
                     push_reset_frame(
                         response_frames,
@@ -712,7 +712,7 @@ fn handle_flow_init(
             trace!(
                 attempt_id = attempt_id.as_u64(),
                 stream_id = stream_id.as_u64(),
-                "Duplicate FlowInit attempt_id - dropping"
+                "Duplicate QueueInit attempt_id - dropping"
             );
         }
         Err(AttemptDedupError::TooOld) => {
@@ -741,13 +741,13 @@ fn handle_flow_init(
                             }
                             let _ = waker_sink.send(waker);
                             counters.rx_init_accepted_retry.add(1);
-                            counters.flow_pending.add(1);
+                            counters.queue_pending.add(1);
                             debug!(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 acceptor_id = acceptor_id.as_u64(),
                                 server_queue_id = local_queue_id.as_u64(),
-                                "FlowInit accepted with retry"
+                                "QueueInit accepted with retry"
                             );
                             push_validate_request_frame(
                                 response_frames,
@@ -766,7 +766,7 @@ fn handle_flow_init(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 acceptor_id = acceptor_id.as_u64(),
-                                "FlowInit rejected - acceptor not found"
+                                "QueueInit rejected - acceptor not found"
                             );
                             push_reset_frame(
                                 response_frames,
@@ -785,7 +785,7 @@ fn handle_flow_init(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 acceptor_id = acceptor_id.as_u64(),
-                                "FlowInit rejected - acceptor channel closed"
+                                "QueueInit rejected - acceptor channel closed"
                             );
                             push_reset_frame(
                                 response_frames,
@@ -803,7 +803,7 @@ fn handle_flow_init(
                                 attempt_id = attempt_id.as_u64(),
                                 stream_id = stream_id.as_u64(),
                                 acceptor_id = acceptor_id.as_u64(),
-                                "FlowInit rejected - acceptor has no active receivers"
+                                "QueueInit rejected - acceptor has no active receivers"
                             );
                             push_reset_frame(
                                 response_frames,
@@ -822,7 +822,7 @@ fn handle_flow_init(
                         attempt_id = attempt_id.as_u64(),
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
-                        "FlowInit retransmission of existing flow - dropping"
+                        "QueueInit retransmission of existing flow - dropping"
                     );
                 }
             }
@@ -859,7 +859,7 @@ fn push_reset_frame_with_target(
     error_code: VarInt,
 ) {
     let frame = Frame {
-        header: Header::FlowReset {
+        header: Header::QueueReset {
             dest_queue_id,
             stream_id,
             reset_target,
@@ -888,7 +888,7 @@ fn push_validate_request_frame(
     stream_id: VarInt,
 ) {
     let frame = Frame {
-        header: Header::FlowValidateRequest {
+        header: Header::QueueValidateRequest {
             dest_sender_id,
             queue_pair: QueuePair {
                 source_queue_id,
@@ -909,9 +909,9 @@ fn push_validate_request_frame(
     response_frames.push(frame.into());
 }
 
-// ── FlowValidateRequest ───────────────────────────────────────────────────
+// ── QueueValidateRequest ───────────────────────────────────────────────────
 
-fn handle_flow_validate_request(
+fn handle_queue_validate_request(
     path_secret_entry: &std::sync::Arc<PathSecretEntry>,
     credentials: &Credentials,
     _dest_sender_id: VarInt,
@@ -935,10 +935,10 @@ fn handle_flow_validate_request(
             debug!(
                 attempt_id = attempt_id.as_u64(),
                 stream_id = stream_id.as_u64(),
-                "FlowValidateRequest validated"
+                "QueueValidateRequest validated"
             );
             let frame = Frame {
-                header: Header::FlowInitValidate {
+                header: Header::QueueInitValidate {
                     queue_pair: queue_pair.reverse(),
                     attempt_id,
                     stream_id,
@@ -959,14 +959,14 @@ fn handle_flow_validate_request(
             warn!(
                 attempt_id = attempt_id.as_u64(),
                 stream_id = stream_id.as_u64(),
-                "FlowValidateRequest validation failed"
+                "QueueValidateRequest validation failed"
             );
             let frame = Frame {
-                header: Header::FlowReset {
+                header: Header::QueueReset {
                     dest_queue_id: queue_pair.source_queue_id,
                     stream_id,
                     reset_target: ResetTarget::Both,
-                    error_code: error::FLOW_VALIDATION_FAILED,
+                    error_code: error::QUEUE_VALIDATION_FAILED,
                 },
                 source_sender_id: LocalSenderId::UNSPECIFIED,
                 payload: ByteVec::new(),
@@ -982,9 +982,9 @@ fn handle_flow_validate_request(
     }
 }
 
-// ── FlowInitValidate ──────────────────────────────────────────────────────
+// ── QueueInitValidate ──────────────────────────────────────────────────────
 
-fn handle_flow_init_validate(
+fn handle_queue_init_validate(
     path_secret_entry: &std::sync::Arc<PathSecretEntry>,
     credentials: &Credentials,
     queue_pair: QueuePair,
@@ -1006,7 +1006,7 @@ fn handle_flow_init_validate(
         Ok(()) => {
             counters.rx_init_validate_ok.add(1);
 
-            let stream_entry = msg::Stream::FlowValidated.into();
+            let stream_entry = msg::Stream::QueueValidated.into();
             match queue_dispatcher.send_stream(
                 local_queue_id,
                 Some(queue_pair.source_queue_id),
@@ -1018,7 +1018,7 @@ fn handle_flow_init_validate(
                     debug!(
                         attempt_id = attempt_id.as_u64(),
                         stream_id = stream_id.as_u64(),
-                        "FlowInitValidate validated"
+                        "QueueInitValidate validated"
                     );
                 }
                 Err(_) => {
@@ -1027,7 +1027,7 @@ fn handle_flow_init_validate(
                         attempt_id = attempt_id.as_u64(),
                         stream_id = stream_id.as_u64(),
                         queue_id = local_queue_id.as_u64(),
-                        "FlowInitValidate failed to send FlowValidated - sending reset"
+                        "QueueInitValidate failed to send QueueValidated - sending reset"
                     );
                     push_reset_frame(
                         response_frames,
@@ -1035,7 +1035,7 @@ fn handle_flow_init_validate(
                         path_secret_entry,
                         queue_pair.source_queue_id,
                         stream_id,
-                        error::FLOW_VALIDATION_FAILED,
+                        error::QUEUE_VALIDATION_FAILED,
                     );
                 }
             }
@@ -1046,7 +1046,7 @@ fn handle_flow_init_validate(
                 attempt_id = attempt_id.as_u64(),
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "FlowInitValidate validation failed - sending reset"
+                "QueueInitValidate validation failed - sending reset"
             );
             push_reset_frame(
                 response_frames,
@@ -1054,15 +1054,15 @@ fn handle_flow_init_validate(
                 path_secret_entry,
                 queue_pair.source_queue_id,
                 stream_id,
-                error::FLOW_VALIDATION_FAILED,
+                error::QUEUE_VALIDATION_FAILED,
             );
         }
     }
 }
 
-// ── FlowData ──────────────────────────────────────────────────────────────
+// ── QueueData ──────────────────────────────────────────────────────────────
 
-fn handle_flow_data(
+fn handle_queue_data(
     credentials: &Credentials,
     queue_pair: QueuePair,
     stream_id: VarInt,
@@ -1103,7 +1103,7 @@ fn handle_flow_data(
                 offset = offset.as_u64(),
                 payload_len,
                 is_fin,
-                "FlowData dispatched"
+                "QueueData dispatched"
             );
         }
         Err(flow::queue::Error::Unallocated(_)) => {
@@ -1111,7 +1111,7 @@ fn handle_flow_data(
             debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "FlowData for unallocated queue - dropping"
+                "QueueData for unallocated queue - dropping"
             );
         }
         Err(flow::queue::Error::HalfClosed(_)) => {
@@ -1119,7 +1119,7 @@ fn handle_flow_data(
             trace!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "FlowData for half-closed stream - dropping"
+                "QueueData for half-closed stream - dropping"
             );
         }
         Err(flow::queue::Error::ValidationFailed(_, reason)) => {
@@ -1128,7 +1128,7 @@ fn handle_flow_data(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 ?reason,
-                "FlowData validation failed - dropping"
+                "QueueData validation failed - dropping"
             );
         }
         Err(flow::queue::Error::PermanentlyClosed) => {
@@ -1136,15 +1136,15 @@ fn handle_flow_data(
             trace!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "FlowData for permanently closed queue"
+                "QueueData for permanently closed queue"
             );
         }
     }
 }
 
-// ── FlowControl ───────────────────────────────────────────────────────────
+// ── QueueControl ───────────────────────────────────────────────────────────
 
-fn handle_flow_control(
+fn handle_queue_control(
     credentials: &Credentials,
     queue_pair: QueuePair,
     stream_id: VarInt,
@@ -1168,14 +1168,14 @@ fn handle_flow_control(
             stream_id = stream_id.as_u64(),
             queue_id = queue_pair.dest_queue_id.as_u64(),
             payload_len,
-            "FlowControl dispatched"
+            "QueueControl dispatched"
         );
     }
 }
 
-// ── FlowMaxData ───────────────────────────────────────────────────────────
+// ── QueueMaxData ───────────────────────────────────────────────────────────
 
-fn handle_flow_max_data(
+fn handle_queue_max_data(
     credentials: &Credentials,
     queue_pair: QueuePair,
     stream_id: VarInt,
@@ -1198,7 +1198,7 @@ fn handle_flow_max_data(
             stream_id = stream_id.as_u64(),
             queue_id = queue_pair.dest_queue_id.as_u64(),
             maximum_data = maximum_data.as_u64(),
-            "FlowMaxData dispatched"
+            "QueueMaxData dispatched"
         );
     }
 }
@@ -1232,11 +1232,11 @@ fn dispatch_control_message(
     ) {
         Ok(waker) => {
             let _ = waker_sink.send(waker);
-            counters.rx_flow_control_ok.add(1);
+            counters.rx_queue_control_ok.add(1);
             true
         }
         Err(flow::queue::Error::Unallocated(_)) => {
-            counters.rx_flow_control_unallocated.add(1);
+            counters.rx_queue_control_unallocated.add(1);
             debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
@@ -1245,7 +1245,7 @@ fn dispatch_control_message(
             false
         }
         Err(flow::queue::Error::HalfClosed(_)) => {
-            counters.rx_flow_control_half_closed.add(1);
+            counters.rx_queue_control_half_closed.add(1);
             trace!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
@@ -1254,7 +1254,7 @@ fn dispatch_control_message(
             false
         }
         Err(flow::queue::Error::ValidationFailed(_, reason)) => {
-            counters.on_flow_control_validation_failed(reason);
+            counters.on_queue_control_validation_failed(reason);
             debug!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
@@ -1264,7 +1264,7 @@ fn dispatch_control_message(
             false
         }
         Err(flow::queue::Error::PermanentlyClosed) => {
-            counters.rx_flow_control_perm_closed.add(1);
+            counters.rx_queue_control_perm_closed.add(1);
             trace!(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
@@ -1275,9 +1275,9 @@ fn dispatch_control_message(
     }
 }
 
-// ── FlowReset ─────────────────────────────────────────────────────────────
+// ── QueueReset ─────────────────────────────────────────────────────────────
 
-fn handle_flow_reset(
+fn handle_queue_reset(
     credentials: &Credentials,
     dest_queue_id: VarInt,
     stream_id: VarInt,
@@ -1313,7 +1313,7 @@ fn handle_flow_reset(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 error_code = error_code.as_u64(),
-                "FlowReset(Both) dispatched"
+                "QueueReset(Both) dispatched"
             );
         }
         ResetTarget::Stream => {
@@ -1329,7 +1329,7 @@ fn handle_flow_reset(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 error_code = error_code.as_u64(),
-                "FlowReset(Stream) dispatched"
+                "QueueReset(Stream) dispatched"
             );
         }
         ResetTarget::Control => {
@@ -1345,27 +1345,27 @@ fn handle_flow_reset(
                 stream_id = stream_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
                 error_code = error_code.as_u64(),
-                "FlowReset(Control) dispatched"
+                "QueueReset(Control) dispatched"
             );
         }
     }
 }
 
-// ── FlowInitReset ─────────────────────────────────────────────────────────
+// ── QueueInitReset ─────────────────────────────────────────────────────────
 
-/// Handle a FlowInitReset frame from a client that doesn't yet know the server's queue ID.
+/// Handle a QueueInitReset frame from a client that doesn't yet know the server's queue ID.
 ///
-/// The client is in `FlowInitSent` state — it transmitted a FlowInit but has not yet
+/// The client is in `QueueBindSent` state — it transmitted a QueueInit but has not yet
 /// received MAX_DATA (and thus doesn't know the server's queue ID). Rather than
-/// silently dropping the reset, it sends a FlowInitReset containing only the stream_id.
+/// silently dropping the reset, it sends a QueueInitReset containing only the stream_id.
 ///
 /// We look up the stream_id in the per-peer `flows` tracker to find the local queue_id,
 /// then dispatch a Reset to both stream and control queues. If the stream_id is not
-/// found (FlowInit not yet registered or already closed), we mark the attempt_id as
-/// finalized in the dedup window so that any later FlowInit with this attempt_id is
+/// found (QueueInit not yet registered or already closed), we mark the attempt_id as
+/// finalized in the dedup window so that any later QueueInit with this attempt_id is
 /// silently rejected — the server will never create a stream that the client has
 /// already aborted. We never send a reset back in response.
-fn handle_flow_init_reset(
+fn handle_queue_init_reset(
     peer: &mut recv::Context,
     credentials: &Credentials,
     attempt_id: VarInt,
@@ -1379,34 +1379,34 @@ fn handle_flow_init_reset(
         if attempt_id == VarInt::MAX {
             debug!(
                 stream_id = stream_id.as_u64(),
-                "FlowInitReset for unknown stream_id has sentinel attempt_id - ignoring dedup update"
+                "QueueInitReset for unknown stream_id has sentinel attempt_id - ignoring dedup update"
             );
             counters.rx_init_reset_unknown.add(1);
             return;
         }
 
-        // Stream not found: mark attempt_id as seen so a later FlowInit with
+        // Stream not found: mark attempt_id as seen so a later QueueInit with
         // the same attempt_id is rejected.
         match peer.attempt_dedup.check_attempt_id(attempt_id) {
             Ok(()) => {
                 debug!(
                     attempt_id = attempt_id.as_u64(),
                     stream_id = stream_id.as_u64(),
-                    "FlowInitReset for unknown stream_id - attempt_id marked as seen"
+                    "QueueInitReset for unknown stream_id - attempt_id marked as seen"
                 );
             }
             Err(AttemptDedupError::Duplicate) => {
                 debug!(
                     attempt_id = attempt_id.as_u64(),
                     stream_id = stream_id.as_u64(),
-                    "FlowInitReset for unknown stream_id - attempt_id already marked (duplicate reset)"
+                    "QueueInitReset for unknown stream_id - attempt_id already marked (duplicate reset)"
                 );
             }
             Err(AttemptDedupError::TooOld) => {
                 debug!(
                     attempt_id = attempt_id.as_u64(),
                     stream_id = stream_id.as_u64(),
-                    "FlowInitReset for unknown stream_id - attempt_id outside dedup window"
+                    "QueueInitReset for unknown stream_id - attempt_id outside dedup window"
                 );
             }
         }
@@ -1431,29 +1431,29 @@ fn handle_flow_init_reset(
         stream_id = stream_id.as_u64(),
         queue_id = local_queue_id.as_u64(),
         error_code = error_code.as_u64(),
-        "FlowInitReset dispatched"
+        "QueueInitReset dispatched"
     );
 }
 
-// ── FlowInitFin ───────────────────────────────────────────────────────────
+// ── QueueInitFin ───────────────────────────────────────────────────────────
 
-/// Handle a FlowInitFin frame: graceful FIN from a client that doesn't yet know
+/// Handle a QueueInitFin frame: graceful FIN from a client that doesn't yet know
 /// the server's queue ID.
 ///
-/// The client is in `FlowInitSent` state — it transmitted a FlowInit (with early
+/// The client is in `QueueBindSent` state — it transmitted a QueueInit (with early
 /// data, `is_fin=false`) but has not yet received MAX_DATA. Rather than leaving the
-/// server reader blocked indefinitely, the client sends FlowInitFin with the total
+/// server reader blocked indefinitely, the client sends QueueInitFin with the total
 /// byte offset it has written so the server can deliver a proper EOF to the reader.
 ///
 /// We look up the stream_id in the per-peer `flows` tracker, then dispatch a
 /// zero-payload FIN data chunk at `offset` to the stream queue.
 ///
-/// If the stream_id is not found (FlowInit not yet received or already closed), we
+/// If the stream_id is not found (QueueInit not yet received or already closed), we
 /// currently drop the signal and count it in `rx_init_fin_unknown`.
 ///
 /// TODO: replace this with a bounded/robust mechanism for handling pre-establishment
 /// FIN reordering without unbounded per-peer state growth.
-fn handle_flow_init_fin(
+fn handle_queue_init_fin(
     peer: &mut recv::Context,
     credentials: &Credentials,
     stream_id: VarInt,
@@ -1467,12 +1467,12 @@ fn handle_flow_init_fin(
         debug!(
             stream_id = stream_id.as_u64(),
             offset = offset.as_u64(),
-            "FlowInitFin for unknown stream_id - dropping"
+            "QueueInitFin for unknown stream_id - dropping"
         );
         return;
     };
 
-    dispatch_flow_init_fin(
+    dispatch_queue_init_fin(
         credentials,
         local_queue_id,
         stream_id,
@@ -1485,12 +1485,12 @@ fn handle_flow_init_fin(
         stream_id = stream_id.as_u64(),
         queue_id = local_queue_id.as_u64(),
         offset = offset.as_u64(),
-        "FlowInitFin dispatched"
+        "QueueInitFin dispatched"
     );
 }
 
 /// Dispatch a zero-payload FIN data chunk to the stream queue.
-fn dispatch_flow_init_fin(
+fn dispatch_queue_init_fin(
     credentials: &Credentials,
     local_queue_id: VarInt,
     stream_id: VarInt,

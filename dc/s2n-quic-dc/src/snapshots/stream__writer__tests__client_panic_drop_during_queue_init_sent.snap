@@ -1,0 +1,10 @@
+---
+source: dc/s2n-quic-dc/src/testing.rs
+expression: logs
+---
+0:00:00.000000000 [main] DEBUG grow epoch=8
+0:00:00.000000000 [main] DEBUG event=on_send_queue_init prev=Init next=QueueBindSent location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.000000000 [main] DEBUG Sent QueueInit with early data stream_id=42 bytes_read=5 is_fin=false
+0:00:00.000000000 [main] DEBUG Writer dropping stream_id=42 status=QueueBindSent next_offset=5 inflight_bytes=5 remote_max_data=0
+0:00:00.000000000 [main] DEBUG Sent QueueInitReset stream_id=42 sender_idx=LocalSenderId(VarInt(0)) attempt_id=0 error_code=5
+0:00:00.000000000 [main] DEBUG Writer dropped during panic - sent QueueReset and cancelled transmissions stream_id=42

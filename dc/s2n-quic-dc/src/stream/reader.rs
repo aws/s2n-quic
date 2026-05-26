@@ -725,7 +725,7 @@ impl Inner {
                                     remote_max_data = self.remote_max_data.as_u64(),
                                     "Peer exceeded advertised receive window"
                                 );
-                                return self.flow_control_error();
+                                return self.queue_control_error();
                             }
 
                             trace!(
@@ -763,13 +763,13 @@ impl Inner {
                                 return self.protocol_error();
                             }
                         }
-                        msg::Stream::FlowValidated => {
+                        msg::Stream::QueueValidated => {
                             if self.status.on_validated().is_ok() {
                                 debug!(stream_id = self.stream_id.as_u64(), "Flow validated");
                             } else {
                                 debug!(
                                     stream_id = self.stream_id.as_u64(),
-                                    "FlowValidated received in unexpected state"
+                                    "QueueValidated received in unexpected state"
                                 );
                             }
                         }
@@ -818,8 +818,8 @@ impl Inner {
         Poll::Ready(Err(io::Error::new(io::ErrorKind::InvalidData, reset_error)))
     }
 
-    fn flow_control_error(&mut self) -> Poll<io::Result<()>> {
-        let error_code = error::FLOW_CONTROL_ERROR;
+    fn queue_control_error(&mut self) -> Poll<io::Result<()>> {
+        let error_code = error::QUEUE_CONTROL_ERROR;
         self.reset_error_code = Some(error_code);
         self.status.on_reset().ok();
         self.reassembler.reset();
@@ -925,7 +925,7 @@ impl Inner {
 
         let frame = Frame {
             source_sender_id: LocalSenderId::UNSPECIFIED,
-            header: Header::FlowMaxData {
+            header: Header::QueueMaxData {
                 queue_pair: QueuePair {
                     source_queue_id: self.stream_rx.queue_id(),
                     dest_queue_id: remote_queue_id,
@@ -963,7 +963,7 @@ impl Inner {
 
         let frame = Frame {
             source_sender_id: LocalSenderId::UNSPECIFIED,
-            header: Header::FlowReset {
+            header: Header::QueueReset {
                 dest_queue_id: remote_queue_id,
                 stream_id: self.stream_id,
                 reset_target,
@@ -983,7 +983,7 @@ impl Inner {
             stream_id = self.stream_id.as_u64(),
             error_code = error_code.as_u64(),
             ?reset_target,
-            "Sent FlowReset"
+            "Sent QueueReset"
         );
 
         Ok(())
@@ -1035,7 +1035,7 @@ impl Drop for Reader {
             let _ = self.0.send_reset_frame(error_code, ResetTarget::Both);
             debug!(
                 stream_id = self.0.stream_id.as_u64(),
-                "Reader dropped during panic - sent FlowReset"
+                "Reader dropped during panic - sent QueueReset"
             );
         } else if !self.0.reassembler.is_writing_complete() && !self.0.status.is_reset() {
             let error_code = error::STOP_SENDING;

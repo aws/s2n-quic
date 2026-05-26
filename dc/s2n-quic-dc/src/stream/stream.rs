@@ -137,13 +137,13 @@ impl Stream {
     }
 
     /// Resets both halves of the stream and tries to notify the peer with a
-    /// `FlowReset`.
+    /// `QueueReset`.
     ///
     /// This transitions both the Reader and Writer to their terminal states so
     /// their Drop impls are no-ops. Reset notification is attempted from the
     /// Reader side; if the read half is already terminal or the flow is not yet
     /// fully established, this may become a local-only reset with no
-    /// `FlowReset` emitted.
+    /// `QueueReset` emitted.
     ///
     /// Use this when the entire stream should fail immediately and any queued or
     /// future I/O should stop.

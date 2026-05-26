@@ -157,7 +157,7 @@ async fn assembler_pipeline(
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
-/// A fully-assembled `Context` with one queued FlowData frame is fed through the
+/// A fully-assembled `Context` with one queued QueueData frame is fed through the
 /// pipeline.
 ///
 /// Output-channel assertions after the drain:
@@ -237,11 +237,11 @@ fn sends_encrypted_packet_to_peer() {
             );
             assert!(
                 cancelled_rx.recv().await.is_none(),
-                "FlowData frame should not be cancelled"
+                "QueueData frame should not be cancelled"
             );
             assert!(
                 ack_completions_rx.recv().await.is_none(),
-                "no ACK completions for a plain FlowData frame"
+                "no ACK completions for a plain QueueData frame"
             );
             debug!("all output assertions passed");
         }
@@ -356,7 +356,7 @@ fn reassembles_context_to_tx_wheel_when_data_remains() {
             );
             assert!(
                 ack_completions_rx.recv().await.is_none(),
-                "no ACK completions for FlowData frames"
+                "no ACK completions for QueueData frames"
             );
         }
         .spawn();
@@ -490,7 +490,7 @@ fn cancelled_frame_emitted_when_completion_is_cancelled() {
                 let mut c = ctx.borrow_mut();
                 let mut batch = crate::endpoint::combinator::FrameBatch::single(
                     crate::intrusive::Entry::new(frame::Frame {
-                        header: frame::Header::FlowData {
+                        header: frame::Header::QueueData {
                             queue_pair: crate::packet::datagram::QueuePair {
                                 source_queue_id: VarInt::from_u8(1),
                                 dest_queue_id: VarInt::from_u8(2),

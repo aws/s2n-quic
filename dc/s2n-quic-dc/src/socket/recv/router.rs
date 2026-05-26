@@ -106,18 +106,18 @@ pub trait Router {
                         let packet = meta.with_storage(segment).expect("storage should be valid");
                         self.dispatch_datagram_packet(packet);
                     }
-                    packet::Packet::FlowReset(packet) => {
+                    packet::Packet::QueueReset(packet) => {
                         let tag = packet.tag();
                         let queue_id = packet.queue_id();
                         let credentials = *packet.credentials();
                         let trigger = packet.trigger();
 
                         // #[cfg(debug_assertions)]
-                        // let _span = tracing::info_span!("recv::flow_reset", peer_addr = %remote_address, flow_id = %credentials).entered();
+                        // let _span = tracing::info_span!("recv::queue_reset", peer_addr = %remote_address, flow_id = %credentials).entered();
 
-                        trace!(?tag, ?queue_id, %credentials, ?trigger, "parsed_flow_reset_packet");
-                        self.handle_flow_reset_packet(remote_address, ecn, packet);
-                        self.dispatch_flow_reset_packet(
+                        trace!(?tag, ?queue_id, %credentials, ?trigger, "parsed_queue_reset_packet");
+                        self.handle_queue_reset_packet(remote_address, ecn, packet);
+                        self.dispatch_queue_reset_packet(
                             tag,
                             queue_id,
                             credentials,
@@ -240,27 +240,27 @@ pub trait Router {
     }
 
     #[inline(always)]
-    fn handle_flow_reset_packet(
+    fn handle_queue_reset_packet(
         &mut self,
         remote_address: SocketAddress,
         ecn: ExplicitCongestionNotification,
-        packet: packet::secret_control::flow_reset::Packet,
+        packet: packet::secret_control::queue_reset::Packet,
     ) {
         let _ = ecn;
-        self.on_unhandled_packet(remote_address, packet::Packet::FlowReset(packet));
+        self.on_unhandled_packet(remote_address, packet::Packet::QueueReset(packet));
     }
 
     #[inline]
-    fn dispatch_flow_reset_packet(
+    fn dispatch_queue_reset_packet(
         &mut self,
-        tag: packet::secret_control::flow_reset::Tag,
+        tag: packet::secret_control::queue_reset::Tag,
         queue_id: VarInt,
         credentials: Credentials,
-        trigger: packet::secret_control::flow_reset::Trigger,
+        trigger: packet::secret_control::queue_reset::Trigger,
         segment: descriptor::Filled,
     ) {
         warn!(
-            unhandled_packet = "flow_reset",
+            unhandled_packet = "queue_reset",
             router = core::any::type_name::<Self>(),
             ?tag,
             queue_id = queue_id.as_u64(),

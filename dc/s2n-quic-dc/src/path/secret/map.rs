@@ -293,20 +293,20 @@ impl Map {
         }
     }
 
-    pub fn sign_flow_reset_packet(
+    pub fn sign_queue_reset_packet(
         &self,
-        packet: &control::FlowReset,
+        packet: &control::QueueReset,
         out: &mut [u8],
     ) -> Option<usize> {
-        self.store.sign_flow_reset_packet(packet, out)
+        self.store.sign_queue_reset_packet(packet, out)
     }
 
-    pub fn handle_flow_reset_packet<'a>(
+    pub fn handle_queue_reset_packet<'a>(
         &self,
-        packet: &'a control::flow_reset::Packet,
+        packet: &'a control::queue_reset::Packet,
         peer: &SocketAddr,
-    ) -> Option<&'a control::FlowReset> {
-        self.store.handle_flow_reset_packet(packet, peer)
+    ) -> Option<&'a control::QueueReset> {
+        self.store.handle_queue_reset_packet(packet, peer)
     }
 
     pub fn handle_stale_key_packet<'a>(

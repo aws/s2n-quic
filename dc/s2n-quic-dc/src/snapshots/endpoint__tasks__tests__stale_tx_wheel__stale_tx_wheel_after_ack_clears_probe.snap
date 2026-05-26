@@ -10,7 +10,7 @@ expression: logs
 0:00:00.000000000 [main] DEBUG event=request prev=Idle next=Requested location=dc/s2n-quic-dc/src/endpoint/tasks/tests/stale_tx_wheel.rs
 0:00:00.000000000 [main] TRACE c#test.inflight.drain=1
 0:00:00.000000000 [main] TRACE g#test.inflight.depth=0
-0:00:00.000000000 [main] TRACE c#tx.acked.frame.flow_data[send.0]=1
+0:00:00.000000000 [main] TRACE c#tx.acked.frame.queue_data[send.0]=1
 0:00:00.000000000 [main] TRACE m#tx.ack_packets[send.0]=1
 0:00:00.000000000 [main] TRACE c#send.inflight.drain.ack[send.0]=1
 0:00:00.000000000 [main] DEBUG event=on_all_acked prev=Requested next=Idle location=dc/s2n-quic-dc/src/endpoint/send.rs

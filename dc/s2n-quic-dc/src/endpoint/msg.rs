@@ -11,7 +11,7 @@ use s2n_quic_core::varint::VarInt;
 use std::sync::Arc;
 
 pub enum Stream {
-    FlowValidated,
+    QueueValidated,
     Data {
         offset: VarInt,
         fin: bool,
@@ -28,7 +28,7 @@ pub enum Control {
     },
     /// Inline window update: the new `maximum_data` value advertised by the reader.
     ///
-    /// This is the fast path dispatched from a [`Header::FlowMaxData`] frame,
+    /// This is the fast path dispatched from a [`Header::QueueMaxData`] frame,
     /// avoiding payload allocation and QUIC frame decoding for the common
     /// flow-control case.
     MaxData {

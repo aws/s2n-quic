@@ -354,7 +354,7 @@ mod tests {
         PathSecretEntry::builder("127.0.0.1:9999".parse().unwrap()).build()
     }
 
-    /// Create a Packet containing one FlowData (ack-eliciting) frame.
+    /// Create a Packet containing one QueueData (ack-eliciting) frame.
     fn make_packet(entry: Arc<PathSecretEntry>) -> Packet {
         make_packet_at(entry, Duration::from_millis(100))
     }
@@ -364,7 +364,7 @@ mod tests {
         let mut payload = ByteVec::new();
         payload.push_back(bytes::Bytes::from_static(b"x"));
         let frame = Frame {
-            header: Header::FlowData {
+            header: Header::QueueData {
                 queue_pair: QueuePair {
                     source_queue_id: VarInt::from_u8(1),
                     dest_queue_id: VarInt::from_u8(2),

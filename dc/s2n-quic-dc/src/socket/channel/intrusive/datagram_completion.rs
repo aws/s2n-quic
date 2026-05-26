@@ -46,15 +46,15 @@ struct Shared<T> {
     /// - bit 0: should_transmit
     /// - bit 1: receiver_alive
     flags: AtomicU8,
-    /// Index of the sender socket that transmitted the first FlowInit frame for this
-    /// completion channel.  Stamped by the assembler when it picks up the FlowInit frame.
-    /// `UNSET_SENDER_IDX` means the FlowInit has not yet been transmitted by any sender.
+    /// Index of the sender socket that transmitted the first QueueInit frame for this
+    /// completion channel.  Stamped by the assembler when it picks up the QueueInit frame.
+    /// `UNSET_SENDER_IDX` means the QueueInit has not yet been transmitted by any sender.
     init_sender_idx: AtomicU64,
-    /// The `attempt_id` assigned to the FlowInit frame when it was first transmitted.
+    /// The `attempt_id` assigned to the QueueInit frame when it was first transmitted.
     /// Stamped alongside `init_sender_idx` by the assembler.  The writer includes this
-    /// value in subsequent FlowInitReset frames so the server can mark the attempt as
-    /// finalized in its dedup window and reject any late-arriving FlowInit duplicate.
-    /// `UNSET_SENDER_IDX` means the FlowInit has not yet been transmitted.
+    /// value in subsequent QueueInitReset frames so the server can mark the attempt as
+    /// finalized in its dedup window and reject any late-arriving QueueInit duplicate.
+    /// `UNSET_SENDER_IDX` means the QueueInit has not yet been transmitted.
     init_attempt_id: AtomicU64,
     inner: Mutex<Inner<T>>,
 }
@@ -141,11 +141,11 @@ impl<T> Sender<T> {
         self.shared.mode
     }
 
-    /// Record which sender-socket index transmitted the FlowInit frame for this channel.
+    /// Record which sender-socket index transmitted the QueueInit frame for this channel.
     ///
-    /// Called by the assembler the first time it picks up a FlowInit frame. The writer
-    /// reads this back via [`Receiver::init_sender_idx`] to route FlowInitReset and
-    /// FlowInitFin through the same sender socket.
+    /// Called by the assembler the first time it picks up a QueueInit frame. The writer
+    /// reads this back via [`Receiver::init_sender_idx`] to route QueueInitReset and
+    /// QueueInitFin through the same sender socket.
     #[inline]
     pub fn set_init_sender_idx(&self, id: LocalSenderId) {
         // Only stamp on the first transmission (compare-exchange from UNSET).
@@ -157,7 +157,7 @@ impl<T> Sender<T> {
         );
     }
 
-    /// Returns the sender-socket index stamped for the FlowInit, if any.
+    /// Returns the sender-socket index stamped for the QueueInit, if any.
     #[inline]
     pub fn init_sender_idx(&self) -> Option<LocalSenderId> {
         let v = self.shared.init_sender_idx.load(Ordering::Acquire);
@@ -165,10 +165,10 @@ impl<T> Sender<T> {
         Some(LocalSenderId::new(v))
     }
 
-    /// Record the `attempt_id` assigned to the FlowInit frame by the assembler.
+    /// Record the `attempt_id` assigned to the QueueInit frame by the assembler.
     ///
     /// Stamped alongside [`set_init_sender_idx`].  The writer includes this value in
-    /// FlowInitReset frames so the server can mark the attempt as finalized in its
+    /// QueueInitReset frames so the server can mark the attempt as finalized in its
     /// dedup window.
     #[inline]
     pub fn set_init_attempt_id(&self, id: VarInt) {
@@ -180,7 +180,7 @@ impl<T> Sender<T> {
         );
     }
 
-    /// Returns the `attempt_id` stamped for the FlowInit, if any.
+    /// Returns the `attempt_id` stamped for the QueueInit, if any.
     #[inline]
     pub fn init_attempt_id(&self) -> Option<VarInt> {
         match self.shared.init_attempt_id.load(Ordering::Acquire) {
@@ -294,9 +294,9 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Returns the sender-socket index that transmitted the FlowInit frame, if known.
+    /// Returns the sender-socket index that transmitted the QueueInit frame, if known.
     ///
-    /// Returns `None` if the FlowInit has not yet been picked up by any sender socket.
+    /// Returns `None` if the QueueInit has not yet been picked up by any sender socket.
     #[inline]
     pub fn init_sender_idx(&self) -> Option<LocalSenderId> {
         let v = self.shared.init_sender_idx.load(Ordering::Acquire);
@@ -304,9 +304,9 @@ impl<T> Receiver<T> {
         Some(LocalSenderId::new(v))
     }
 
-    /// Returns the `attempt_id` assigned to the FlowInit by the assembler, if known.
+    /// Returns the `attempt_id` assigned to the QueueInit by the assembler, if known.
     ///
-    /// Returns `None` if the FlowInit has not yet been transmitted.
+    /// Returns `None` if the QueueInit has not yet been transmitted.
     #[inline]
     pub fn init_attempt_id(&self) -> Option<VarInt> {
         match self.shared.init_attempt_id.load(Ordering::Acquire) {

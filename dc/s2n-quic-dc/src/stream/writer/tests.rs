@@ -110,7 +110,7 @@ impl PairBuilder {
             frame_rx,
             frame_storage: PriorityStorage::default(),
             assembler: PayloadAssembler::default(),
-            flow_attempt_id: VarInt::ZERO,
+            queue_attempt_id: VarInt::ZERO,
         };
 
         (writer, pusher)
@@ -149,7 +149,7 @@ impl PayloadAssembler {
     /// carries a contiguous offset and valid FIN semantics.
     ///
     /// `header_filter` is called with each frame's header to perform
-    /// variant-specific assertions (e.g. ensuring only FlowData is emitted).
+    /// variant-specific assertions (e.g. ensuring only QueueData is emitted).
     /// It must return `(offset, is_fin)` for the frame.
     fn push(
         &mut self,
@@ -173,19 +173,19 @@ impl PayloadAssembler {
         }
     }
 
-    /// Feeds frames expecting only `Header::FlowData` variants.
-    fn push_flow_data(&mut self, frames: &intrusive::Queue<Frame>) {
+    /// Feeds frames expecting only `Header::QueueData` variants.
+    fn push_queue_data(&mut self, frames: &intrusive::Queue<Frame>) {
         self.push(frames, |header| match *header {
-            Header::FlowData { offset, is_fin, .. } => (offset, is_fin),
-            _ => panic!("expected FlowData frame, got {header:?}"),
+            Header::QueueData { offset, is_fin, .. } => (offset, is_fin),
+            _ => panic!("expected QueueData frame, got {header:?}"),
         });
     }
 
-    /// Feeds frames expecting only `Header::FlowInit` variants.
-    fn push_flow_init(&mut self, frames: &intrusive::Queue<Frame>) {
+    /// Feeds frames expecting only `Header::QueueInit` variants.
+    fn push_queue_init(&mut self, frames: &intrusive::Queue<Frame>) {
         self.push(frames, |header| match *header {
-            Header::FlowInit { is_fin, .. } => (VarInt::ZERO, is_fin),
-            _ => panic!("expected FlowInit frame, got {header:?}"),
+            Header::QueueInit { is_fin, .. } => (VarInt::ZERO, is_fin),
+            _ => panic!("expected QueueInit frame, got {header:?}"),
         });
     }
 
@@ -205,7 +205,7 @@ struct Pusher {
     frame_rx: SubmissionReceiver,
     frame_storage: PriorityStorage,
     assembler: PayloadAssembler,
-    flow_attempt_id: VarInt,
+    queue_attempt_id: VarInt,
 }
 
 impl Pusher {
@@ -240,15 +240,15 @@ impl Pusher {
         core::future::poll_fn(|cx| self.frame_rx.poll_swap(cx, &mut self.frame_storage)).await;
         let mut combined_frames = intrusive::Queue::default();
         for (_priority, mut queue) in self.frame_storage.drain() {
-            // Stamp FlowInit completion metadata to simulate the assembler.
+            // Stamp QueueInit completion metadata to simulate the assembler.
             for frame in queue.iter() {
-                if let Header::FlowInit { attempt_id, .. } = frame.header {
+                if let Header::QueueInit { attempt_id, .. } = frame.header {
                     if let Some(completion) = &frame.completion {
                         completion
                             .set_init_sender_idx(crate::endpoint::id::LocalSenderId::from_index(0));
                         let stamped_attempt_id = if attempt_id == VarInt::MAX {
-                            let assigned = self.flow_attempt_id;
-                            self.flow_attempt_id += 1;
+                            let assigned = self.queue_attempt_id;
+                            self.queue_attempt_id += 1;
                             assigned
                         } else {
                             attempt_id
@@ -295,7 +295,7 @@ impl Pusher {
 // ─── Bach async tests ─────────────────────────────────────────────────────────
 
 #[test]
-fn client_write_all_from_fin_sends_flow_init_with_early_data_and_fin() {
+fn client_write_all_from_fin_sends_queue_init_with_early_data_and_fin() {
     sim(|| {
         let (mut writer, mut pusher) = make_client_pair();
 
@@ -305,7 +305,7 @@ fn client_write_all_from_fin_sends_flow_init_with_early_data_and_fin() {
             let frame = frames.front().unwrap();
             assert!(matches!(
                 frame.header,
-                Header::FlowInit { is_fin: true, .. }
+                Header::QueueInit { is_fin: true, .. }
             ));
             assert_eq!(frame.payload, &b"hello"[..]);
         }
@@ -361,12 +361,12 @@ fn client_second_write_blocks_until_max_data() {
             let frame = frames.front().unwrap();
             assert!(matches!(
                 frame.header,
-                Header::FlowInit { is_fin: false, .. }
+                Header::QueueInit { is_fin: false, .. }
             ));
             assert_eq!(frame.payload, &b"hello"[..]);
 
             // Give the app task a scheduling opportunity to attempt a second
-            // write while Writer is still in `Status::FlowInitSent` (before any
+            // write while Writer is still in `Status::QueueBindSent` (before any
             // remote MAX_DATA credit is injected).
             bach::task::yield_now().await;
             pusher.push_max_data(VarInt::from_u16(4096));
@@ -376,7 +376,7 @@ fn client_second_write_blocks_until_max_data() {
             let frame = next.front().unwrap();
             assert!(matches!(
                 frame.header,
-                Header::FlowData { is_fin: true, .. }
+                Header::QueueData { is_fin: true, .. }
             ));
             assert_eq!(frame.payload, &b"!"[..]);
         }
@@ -412,14 +412,14 @@ fn client_second_write_blocks_until_max_data() {
 }
 
 #[test]
-fn server_first_write_emits_flow_data_not_flow_init() {
+fn server_first_write_emits_queue_data_not_queue_init() {
     sim(|| {
         let (mut writer, mut pusher) = make_server_pair();
 
         async move {
             let frames = pusher.recv_frames().await;
-            assert!(!frames.is_empty(), "expected at least one FlowData frame");
-            pusher.assembler.push_flow_data(&frames);
+            assert!(!frames.is_empty(), "expected at least one QueueData frame");
+            pusher.assembler.push_queue_data(&frames);
             pusher.assembler.assert_payload(b"hello");
         }
         .primary()
@@ -439,15 +439,15 @@ fn server_first_write_emits_flow_data_not_flow_init() {
 }
 
 #[test]
-fn server_flow_control_budget_caps_transmitted_bytes() {
+fn server_queue_control_budget_caps_transmitted_bytes() {
     sim(|| {
         let (mut writer, mut pusher) = make_server_pair();
         writer.0.remote_max_data = VarInt::from_u8(3);
 
         async move {
             let frames = pusher.recv_frames().await;
-            assert!(!frames.is_empty(), "expected at least one FlowData frame");
-            pusher.assembler.push_flow_data(&frames);
+            assert!(!frames.is_empty(), "expected at least one QueueData frame");
+            pusher.assembler.push_queue_data(&frames);
             pusher.assembler.assert_payload(b"abc");
 
             let extra = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
@@ -480,21 +480,21 @@ fn client_preserves_max_data_on_out_of_order_lower_update() {
 
         async move {
             let init = pusher.recv_frames().await;
-            assert_eq!(init.len(), 1, "expected exactly one FlowInit frame");
+            assert_eq!(init.len(), 1, "expected exactly one QueueInit frame");
             let init_frame = init.front().unwrap();
             assert!(matches!(
                 init_frame.header,
-                Header::FlowInit { is_fin: false, .. }
+                Header::QueueInit { is_fin: false, .. }
             ));
             assert_eq!(init_frame.payload, &b"abc"[..]);
 
             pusher.push_max_data(VarInt::from_u8(8));
             pusher.push_max_data(VarInt::from_u8(3));
 
-            // The FlowInit consumed 3 bytes, so the assembler starts at offset 3.
+            // The QueueInit consumed 3 bytes, so the assembler starts at offset 3.
             pusher.assembler.expected_offset = 3;
             let next = pusher.recv_frames().await;
-            pusher.assembler.push_flow_data(&next);
+            pusher.assembler.push_queue_data(&next);
             pusher.assembler.assert_payload(b"defgh");
         }
         .primary()
@@ -531,7 +531,7 @@ fn server_write_from_fin_blocks_while_budget_exhausted_then_sends_single_fin_fra
             let first_frame = first.front().unwrap();
             assert!(matches!(
                 first_frame.header,
-                Header::FlowData {
+                Header::QueueData {
                     is_fin: false,
                     offset,
                     ..
@@ -552,7 +552,7 @@ fn server_write_from_fin_blocks_while_budget_exhausted_then_sends_single_fin_fra
             let second_frame = second.front().unwrap();
             assert!(matches!(
                 second_frame.header,
-                Header::FlowData {
+                Header::QueueData {
                     is_fin: true,
                     offset,
                     ..
@@ -599,7 +599,7 @@ fn client_fin_write_then_drop_emits_no_extra_packet() {
         async move {
             let first = pusher.recv_frames().await;
             assert!(!first.is_empty(), "expected at least one frame");
-            pusher.assembler.push_flow_init(&first);
+            pusher.assembler.push_queue_init(&first);
             pusher.assembler.assert_payload(b"hi");
             pusher.assembler.assert_fin_count(1);
 
@@ -634,7 +634,7 @@ fn server_fin_write_then_drop_emits_no_extra_packet() {
         async move {
             let first = pusher.recv_frames().await;
             assert!(!first.is_empty(), "expected at least one frame");
-            pusher.assembler.push_flow_data(&first);
+            pusher.assembler.push_queue_data(&first);
             pusher.assembler.assert_payload(b"hi");
             pusher.assembler.assert_fin_count(1);
 
@@ -676,18 +676,18 @@ fn transmission_error_completion_causes_broken_pipe_and_reset() {
             let reset = pusher
                 .recv_frames_timeout(Duration::from_secs(1))
                 .await
-                .expect("expected FlowReset after transmission failure");
+                .expect("expected QueueReset after transmission failure");
             assert_eq!(reset.len(), 1, "expected exactly one reset frame");
             assert!(
                 matches!(
                     reset.front().unwrap().header,
-                    Header::FlowReset {
+                    Header::QueueReset {
                         reset_target: ResetTarget::Both,
                         error_code,
                         ..
                     } if error_code == error::RETRANSMISSIONS_EXHAUSTED
                 ),
-                "expected retransmission-exhausted FlowReset"
+                "expected retransmission-exhausted QueueReset"
             );
         }
         .primary()
@@ -722,7 +722,7 @@ fn drop_open_writer_sends_fin_packet() {
             assert_eq!(frames.len(), 1, "expected exactly one FIN frame on drop");
             assert!(matches!(
                 frames.front().unwrap().header,
-                Header::FlowData {
+                Header::QueueData {
                     is_fin: true,
                     offset,
                     ..
@@ -751,13 +751,13 @@ fn panic_drop_sends_abnormal_termination_reset() {
             assert!(
                 matches!(
                     frames.front().unwrap().header,
-                    Header::FlowReset {
+                    Header::QueueReset {
                         reset_target: ResetTarget::Both,
                         error_code,
                         ..
                     } if error_code == error::ABNORMAL_TERMINATION
                 ),
-                "expected FlowReset(Both, ABNORMAL_TERMINATION) when dropping during panic"
+                "expected QueueReset(Both, ABNORMAL_TERMINATION) when dropping during panic"
             );
         }
         .primary()
@@ -775,48 +775,48 @@ fn panic_drop_sends_abnormal_termination_reset() {
     });
 }
 
-// ─── FlowInitReset / FlowInitFin tests ───────────────────────────────────────
+// ─── QueueInitReset / QueueInitFin tests ───────────────────────────────────────
 //
-// The tests below document the behavior of the FlowInitReset and FlowInitFin
+// The tests below document the behavior of the QueueInitReset and QueueInitFin
 // messages, which are sent when the client needs to notify the server while in
-// FlowInitSent state (before MAX_DATA arrives and the server queue ID becomes known).
+// QueueBindSent state (before MAX_DATA arrives and the server queue ID becomes known).
 //
-// FlowInitReset is for error/abnormal termination; FlowInitFin is for graceful close.
+// QueueInitReset is for error/abnormal termination; QueueInitFin is for graceful close.
 
-/// Panic drop while in FlowInitSent: FlowInitReset is sent so the server can
+/// Panic drop while in QueueBindSent: QueueInitReset is sent so the server can
 /// look up the stream via stream_id and terminate both queues.
 #[test]
-fn client_panic_drop_during_flow_init_sent_sends_flow_init_reset() {
+fn client_panic_drop_during_queue_init_sent_sends_queue_init_reset() {
     crate::testing::sim(|| {
         use crate::testing::ext::*;
 
         let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
 
         async move {
-            // FlowInit arrives first
+            // QueueInit arrives first
             let frames = pusher.recv_frames().await;
             assert_eq!(frames.len(), 1);
             assert!(matches!(
                 frames.front().unwrap().header,
-                Header::FlowInit { is_fin: false, .. }
+                Header::QueueInit { is_fin: false, .. }
             ));
 
-            // FlowInitReset follows on panic
+            // QueueInitReset follows on panic
             let reset = pusher
                 .recv_frames_timeout(Duration::from_secs(1))
                 .await
-                .expect("expected FlowInitReset after panic drop");
+                .expect("expected QueueInitReset after panic drop");
             assert_eq!(reset.len(), 1);
             assert!(
                 matches!(
                     reset.front().unwrap().header,
-                    Header::FlowInitReset {
+                    Header::QueueInitReset {
                         attempt_id,
                         error_code,
                         ..
                     } if error_code == error::ABNORMAL_TERMINATION && attempt_id != VarInt::MAX
                 ),
-                "expected FlowInitReset(ABNORMAL_TERMINATION) with non-sentinel attempt_id on panic in FlowInitSent"
+                "expected QueueInitReset(ABNORMAL_TERMINATION) with non-sentinel attempt_id on panic in QueueBindSent"
             );
         }
         .primary()
@@ -826,14 +826,14 @@ fn client_panic_drop_during_flow_init_sent_sends_flow_init_reset() {
             let mut payload = Bytes::from_static(b"hello");
             let written = writer.write_from(&mut payload).await.expect("first write");
             assert_eq!(written, 5);
-            assert!(writer.0.status.is_flow_init_sent());
+            assert!(writer.0.status.is_queue_init_sent());
 
-            // yield so the pusher receives FlowInit before the panic triggers FlowInitReset
+            // yield so the pusher receives QueueInit before the panic triggers QueueInitReset
             bach::task::yield_now().await;
 
             let panic_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
                 let _writer = writer;
-                panic!("intentional test panic during FlowInitSent");
+                panic!("intentional test panic during QueueBindSent");
             }));
             assert!(panic_result.is_err());
         }
@@ -842,10 +842,10 @@ fn client_panic_drop_during_flow_init_sent_sends_flow_init_reset() {
     });
 }
 
-/// TransmissionError during FlowInitSent: FlowInitReset is sent so the server
+/// TransmissionError during QueueBindSent: QueueInitReset is sent so the server
 /// can look up the stream by stream_id and terminate the queues.
 #[test]
-fn client_transmission_error_during_flow_init_sent_sends_flow_init_reset() {
+fn client_transmission_error_during_queue_init_sent_sends_queue_init_reset() {
     crate::testing::sim(|| {
         use crate::testing::ext::*;
 
@@ -859,22 +859,22 @@ fn client_transmission_error_during_flow_init_sent_sends_flow_init_reset() {
                 frame::TransmissionStatus::Failed(frame::FailureReason::TransmissionError),
             );
 
-            // FlowInitReset should be emitted
+            // QueueInitReset should be emitted
             let reset = pusher
                 .recv_frames_timeout(Duration::from_secs(1))
                 .await
-                .expect("expected FlowInitReset after TransmissionError in FlowInitSent");
+                .expect("expected QueueInitReset after TransmissionError in QueueBindSent");
             assert_eq!(reset.len(), 1);
             assert!(
                 matches!(
                     reset.front().unwrap().header,
-                    Header::FlowInitReset {
+                    Header::QueueInitReset {
                         attempt_id,
                         error_code,
                         ..
                     } if error_code == error::RETRANSMISSIONS_EXHAUSTED && attempt_id != VarInt::MAX
                 ),
-                "expected FlowInitReset(RETRANSMISSIONS_EXHAUSTED) with non-sentinel attempt_id"
+                "expected QueueInitReset(RETRANSMISSIONS_EXHAUSTED) with non-sentinel attempt_id"
             );
         }
         .primary()
@@ -900,10 +900,10 @@ fn client_transmission_error_during_flow_init_sent_sends_flow_init_reset() {
     });
 }
 
-/// PeerDead completion failure during FlowInitSent: no FlowInitReset because the
+/// PeerDead completion failure during QueueBindSent: no QueueInitReset because the
 /// peer is unreachable (it makes no difference whether we send it or not).
 #[test]
-fn client_peer_dead_during_flow_init_sent_no_reset() {
+fn client_peer_dead_during_queue_init_sent_no_reset() {
     crate::testing::sim(|| {
         use crate::testing::ext::*;
 
@@ -917,9 +917,9 @@ fn client_peer_dead_during_flow_init_sent_no_reset() {
                 frame::TransmissionStatus::Failed(frame::FailureReason::PeerDead),
             );
 
-            // PeerDead: no FlowInitReset (peer can't receive it)
+            // PeerDead: no QueueInitReset (peer can't receive it)
             let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
-            assert!(extra.is_none(), "no FlowInitReset for PeerDead");
+            assert!(extra.is_none(), "no QueueInitReset for PeerDead");
         }
         .primary()
         .spawn();
@@ -944,35 +944,35 @@ fn client_peer_dead_during_flow_init_sent_no_reset() {
     });
 }
 
-/// Dropping a client writer while in FlowInitSent (before MAX_DATA arrives):
-/// the drop calls shutdown() → send_fin_packet() → send_flow_init_fin_frame(),
-/// which sends FlowInitFin to let the server deliver EOF to the reader.
+/// Dropping a client writer while in QueueBindSent (before MAX_DATA arrives):
+/// the drop calls shutdown() → send_fin_packet() → send_queue_init_fin_frame(),
+/// which sends QueueInitFin to let the server deliver EOF to the reader.
 #[test]
-fn client_drop_in_flow_init_sent_sends_flow_init_fin() {
+fn client_drop_in_queue_init_sent_sends_queue_init_fin() {
     sim(|| {
         let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
 
         async move {
-            // FlowInit frame arrives first
+            // QueueInit frame arrives first
             let frames = pusher.recv_frames().await;
             assert_eq!(frames.len(), 1);
             assert!(matches!(
                 frames.front().unwrap().header,
-                Header::FlowInit { is_fin: false, .. }
+                Header::QueueInit { is_fin: false, .. }
             ));
 
-            // FlowInitFin arrives when the writer is dropped
+            // QueueInitFin arrives when the writer is dropped
             let fin_frames = pusher
                 .recv_frames_timeout(Duration::from_secs(1))
                 .await
-                .expect("expected FlowInitFin on drop in FlowInitSent");
+                .expect("expected QueueInitFin on drop in QueueBindSent");
             assert_eq!(fin_frames.len(), 1);
             assert!(
                 matches!(
                     fin_frames.front().unwrap().header,
-                    Header::FlowInitFin { offset, .. } if offset == VarInt::from_u8(5)
+                    Header::QueueInitFin { offset, .. } if offset == VarInt::from_u8(5)
                 ),
-                "expected FlowInitFin(offset=5) from normal drop in FlowInitSent"
+                "expected QueueInitFin(offset=5) from normal drop in QueueBindSent"
             );
         }
         .primary()
@@ -982,8 +982,8 @@ fn client_drop_in_flow_init_sent_sends_flow_init_fin() {
             let mut payload = Bytes::from_static(b"hello");
             let written = writer.write_from(&mut payload).await.expect("first write");
             assert_eq!(written, 5);
-            assert!(writer.0.status.is_flow_init_sent());
-            // yield so pusher receives FlowInit before drop
+            assert!(writer.0.status.is_queue_init_sent());
+            // yield so pusher receives QueueInit before drop
             bach::task::yield_now().await;
             drop(writer);
         }
@@ -992,10 +992,10 @@ fn client_drop_in_flow_init_sent_sends_flow_init_fin() {
     });
 }
 
-/// PeerDead completion failure during FlowInitSent: no FlowInitReset because the
+/// PeerDead completion failure during QueueBindSent: no QueueInitReset because the
 /// peer is unreachable (it makes no difference whether we send it or not).
 #[test]
-fn client_peer_dead_during_flow_init_sent_no_reset_silent() {
+fn client_peer_dead_during_queue_init_sent_no_reset_silent() {
     sim(|| {
         let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
 
@@ -1007,11 +1007,11 @@ fn client_peer_dead_during_flow_init_sent_no_reset_silent() {
                 frame::TransmissionStatus::Failed(frame::FailureReason::PeerDead),
             );
 
-            // No FlowReset emitted (remote_queue_id is None)
+            // No QueueReset emitted (remote_queue_id is None)
             let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
             assert!(
                 extra.is_none(),
-                "no FlowReset possible during FlowInitSent (remote_queue_id unknown)"
+                "no QueueReset possible during QueueBindSent (remote_queue_id unknown)"
             );
         }
         .primary()
@@ -1037,11 +1037,11 @@ fn client_peer_dead_during_flow_init_sent_no_reset_silent() {
     });
 }
 
-/// TransmissionError during FlowInitSent (legacy test, superseded by
-/// client_transmission_error_during_flow_init_sent_sends_flow_init_reset).
+/// TransmissionError during QueueBindSent (legacy test, superseded by
+/// client_transmission_error_during_queue_init_sent_sends_queue_init_reset).
 /// This test verifies the application-facing error behavior remains correct.
 #[test]
-fn client_transmission_error_during_flow_init_sent() {
+fn client_transmission_error_during_queue_init_sent() {
     sim(|| {
         let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
 
@@ -1053,11 +1053,11 @@ fn client_transmission_error_during_flow_init_sent() {
                 frame::TransmissionStatus::Failed(frame::FailureReason::TransmissionError),
             );
 
-            // FlowInitReset is emitted; consume it so the test doesn't leave stale frames.
+            // QueueInitReset is emitted; consume it so the test doesn't leave stale frames.
             let _reset = pusher
                 .recv_frames_timeout(Duration::from_secs(1))
                 .await
-                .expect("expected FlowInitReset");
+                .expect("expected QueueInitReset");
         }
         .primary()
         .spawn();
@@ -1082,20 +1082,20 @@ fn client_transmission_error_during_flow_init_sent() {
     });
 }
 
-/// Control channel closed while writer is in FlowInitSent (endpoint died).
+/// Control channel closed while writer is in QueueBindSent (endpoint died).
 /// Next write attempt returns ConnectionReset.
 #[test]
-fn client_control_channel_closed_during_flow_init_sent() {
+fn client_control_channel_closed_during_queue_init_sent() {
     sim(|| {
         let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
 
         async move {
-            // Wait for the FlowInit frame (proves writer reached FlowInitSent)
+            // Wait for the QueueInit frame (proves writer reached QueueBindSent)
             let frames = pusher.recv_frames().await;
             assert_eq!(frames.len(), 1);
             assert!(matches!(
                 frames.front().unwrap().header,
-                Header::FlowInit { .. }
+                Header::QueueInit { .. }
             ));
             // Now close the channel by dropping the pusher
             drop(pusher);
@@ -1107,7 +1107,7 @@ fn client_control_channel_closed_during_flow_init_sent() {
             let mut payload = Bytes::from_static(b"hello");
             let written = writer.write_from(&mut payload).await.expect("first write");
             assert_eq!(written, 5);
-            assert!(writer.0.status.is_flow_init_sent());
+            assert!(writer.0.status.is_queue_init_sent());
 
             // Next write detects closed control channel
             let mut retry = Bytes::from_static(b"!");
@@ -1122,10 +1122,10 @@ fn client_control_channel_closed_during_flow_init_sent() {
     });
 }
 
-/// Explicit shutdown() while in FlowInitSent: send_fin_packet() now sends a
-/// FlowInitFin so the server can deliver EOF to the reader at the correct offset.
+/// Explicit shutdown() while in QueueBindSent: send_fin_packet() now sends a
+/// QueueInitFin so the server can deliver EOF to the reader at the correct offset.
 #[test]
-fn client_shutdown_during_flow_init_sent() {
+fn client_shutdown_during_queue_init_sent() {
     sim(|| {
         let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
 
@@ -1134,21 +1134,21 @@ fn client_shutdown_during_flow_init_sent() {
             assert_eq!(frames.len(), 1);
             assert!(matches!(
                 frames.front().unwrap().header,
-                Header::FlowInit { is_fin: false, .. }
+                Header::QueueInit { is_fin: false, .. }
             ));
 
-            // FlowInitFin arrives after explicit shutdown()
+            // QueueInitFin arrives after explicit shutdown()
             let fin_frames = pusher
                 .recv_frames_timeout(Duration::from_secs(1))
                 .await
-                .expect("expected FlowInitFin after shutdown in FlowInitSent");
+                .expect("expected QueueInitFin after shutdown in QueueBindSent");
             assert_eq!(fin_frames.len(), 1);
             assert!(
                 matches!(
                     fin_frames.front().unwrap().header,
-                    Header::FlowInitFin { offset, .. } if offset == VarInt::from_u8(5)
+                    Header::QueueInitFin { offset, .. } if offset == VarInt::from_u8(5)
                 ),
-                "expected FlowInitFin(offset=5) after explicit shutdown() in FlowInitSent"
+                "expected QueueInitFin(offset=5) after explicit shutdown() in QueueBindSent"
             );
         }
         .primary()
@@ -1158,9 +1158,9 @@ fn client_shutdown_during_flow_init_sent() {
             let mut payload = Bytes::from_static(b"hello");
             let written = writer.write_from(&mut payload).await.expect("first write");
             assert_eq!(written, 5);
-            assert!(writer.0.status.is_flow_init_sent());
+            assert!(writer.0.status.is_queue_init_sent());
 
-            // yield so pusher receives FlowInit before shutdown sends FlowInitFin
+            // yield so pusher receives QueueInit before shutdown sends QueueInitFin
             bach::task::yield_now().await;
 
             writer.shutdown().expect("shutdown should succeed");
@@ -1179,10 +1179,10 @@ fn client_shutdown_during_flow_init_sent() {
     });
 }
 
-/// Empty-buffer write_from_fin sends FlowInit with empty payload and FIN=true.
-/// Tests the Init → FlowInitSent → FinSent transition in a single call.
+/// Empty-buffer write_from_fin sends QueueInit with empty payload and FIN=true.
+/// Tests the Init → QueueBindSent → FinSent transition in a single call.
 #[test]
-fn client_empty_fin_flow_init() {
+fn client_empty_fin_queue_init() {
     sim(|| {
         let (mut writer, mut pusher) = make_client_pair();
 
@@ -1192,7 +1192,7 @@ fn client_empty_fin_flow_init() {
             let frame = frames.front().unwrap();
             assert!(matches!(
                 frame.header,
-                Header::FlowInit { is_fin: true, .. }
+                Header::QueueInit { is_fin: true, .. }
             ));
             assert!(frame.payload.is_empty(), "expected empty payload with FIN");
 
@@ -1219,7 +1219,7 @@ fn client_empty_fin_flow_init() {
 }
 
 /// Server writer receives Reset while in Open state (actively writing).
-/// Existing test only covers client during FlowInitSent.
+/// Existing test only covers client during QueueBindSent.
 #[test]
 fn server_reset_received_while_open() {
     sim(|| {
@@ -1266,9 +1266,9 @@ fn client_peer_dead_completion_surfaces_timed_out() {
                 frame::TransmissionStatus::Failed(frame::FailureReason::PeerDead),
             );
 
-            // PeerDead does not emit FlowReset (peer can't receive it)
+            // PeerDead does not emit QueueReset (peer can't receive it)
             let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
-            assert!(extra.is_none(), "no FlowReset for PeerDead");
+            assert!(extra.is_none(), "no QueueReset for PeerDead");
         }
         .primary()
         .spawn();
@@ -1307,7 +1307,7 @@ fn server_unknown_path_secret_completion_surfaces_connection_refused() {
             );
 
             let extra = pusher.recv_frames_timeout(Duration::from_secs(1)).await;
-            assert!(extra.is_none(), "no FlowReset for UnknownPathSecret");
+            assert!(extra.is_none(), "no QueueReset for UnknownPathSecret");
         }
         .primary()
         .spawn();
@@ -1372,7 +1372,7 @@ fn server_local_inflight_budget_blocks_write() {
 
         async move {
             let first = pusher.recv_frames().await;
-            pusher.assembler.push_flow_data(&first);
+            pusher.assembler.push_queue_data(&first);
             pusher.assembler.assert_payload(b"abc");
 
             // Writer is blocked — no more frames
@@ -1387,7 +1387,7 @@ fn server_local_inflight_budget_blocks_write() {
 
             // Writer unblocks and sends more data
             let second = pusher.recv_frames().await;
-            pusher.assembler.push_flow_data(&second);
+            pusher.assembler.push_queue_data(&second);
             pusher.assembler.assert_payload(b"abcdef");
         }
         .primary()
@@ -1417,7 +1417,7 @@ fn server_shutdown_idempotent() {
             assert_eq!(frames.len(), 1);
             assert!(matches!(
                 frames.front().unwrap().header,
-                Header::FlowData {
+                Header::QueueData {
                     is_fin: true,
                     offset,
                     ..
@@ -1445,40 +1445,40 @@ fn server_shutdown_idempotent() {
     });
 }
 
-/// Panic drop during FlowInitSent (legacy test, superseded by
-/// client_panic_drop_during_flow_init_sent_sends_flow_init_reset).
-/// This verifies that FlowInitReset can be sent even when panicking, and that
+/// Panic drop during QueueBindSent (legacy test, superseded by
+/// client_panic_drop_during_queue_init_sent_sends_queue_init_reset).
+/// This verifies that QueueInitReset can be sent even when panicking, and that
 /// the frame observable from the test matches expectations.
 #[test]
-fn client_panic_drop_during_flow_init_sent() {
+fn client_panic_drop_during_queue_init_sent() {
     sim(|| {
         let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
 
         async move {
-            // FlowInit arrives
+            // QueueInit arrives
             let frames = pusher.recv_frames().await;
             assert_eq!(frames.len(), 1);
             assert!(matches!(
                 frames.front().unwrap().header,
-                Header::FlowInit { is_fin: false, .. }
+                Header::QueueInit { is_fin: false, .. }
             ));
 
-            // FlowInitReset arrives after panic
+            // QueueInitReset arrives after panic
             let reset = pusher
                 .recv_frames_timeout(Duration::from_secs(1))
                 .await
-                .expect("expected FlowInitReset on panic in FlowInitSent");
+                .expect("expected QueueInitReset on panic in QueueBindSent");
             assert_eq!(reset.len(), 1);
             assert!(
                 matches!(
                     reset.front().unwrap().header,
-                    Header::FlowInitReset {
+                    Header::QueueInitReset {
                         attempt_id,
                         error_code,
                         ..
                     } if error_code == error::ABNORMAL_TERMINATION && attempt_id != VarInt::MAX
                 ),
-                "expected FlowInitReset(ABNORMAL_TERMINATION) with non-sentinel attempt_id"
+                "expected QueueInitReset(ABNORMAL_TERMINATION) with non-sentinel attempt_id"
             );
         }
         .primary()
@@ -1488,14 +1488,14 @@ fn client_panic_drop_during_flow_init_sent() {
             let mut payload = Bytes::from_static(b"hello");
             let written = writer.write_from(&mut payload).await.expect("first write");
             assert_eq!(written, 5);
-            assert!(writer.0.status.is_flow_init_sent());
+            assert!(writer.0.status.is_queue_init_sent());
 
-            // yield so the pusher receives FlowInit before the panic triggers FlowInitReset
+            // yield so the pusher receives QueueInit before the panic triggers QueueInitReset
             bach::task::yield_now().await;
 
             let panic_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
                 let _writer = writer;
-                panic!("intentional test panic during FlowInitSent");
+                panic!("intentional test panic during QueueBindSent");
             }));
             assert!(panic_result.is_err());
         }
@@ -1504,55 +1504,55 @@ fn client_panic_drop_during_flow_init_sent() {
     });
 }
 
-/// Client sends early data in FlowInitSent then requests graceful close via
-/// write_from_fin() — the second call sees FlowInitSent and emits FlowInitFin.
+/// Client sends early data in QueueBindSent then requests graceful close via
+/// write_from_fin() — the second call sees QueueBindSent and emits QueueInitFin.
 ///
-/// This covers the scenario: client writes some data in the FlowInit (is_fin=false)
+/// This covers the scenario: client writes some data in the QueueInit (is_fin=false)
 /// and then signals the end of the write side before MAX_DATA arrives from the server.
 #[test]
-fn client_write_from_fin_in_flow_init_sent_sends_flow_init_fin() {
+fn client_write_from_fin_in_queue_init_sent_sends_queue_init_fin() {
     crate::testing::sim(|| {
         use crate::testing::ext::*;
 
         let (mut writer, mut pusher) = PairBuilder::client_no_remote_queue_id().build();
 
         async move {
-            // First batch: FlowInit with early data, no FIN
+            // First batch: QueueInit with early data, no FIN
             let frames = pusher.recv_frames().await;
             assert_eq!(frames.len(), 1);
             assert!(
                 matches!(
                     frames.front().unwrap().header,
-                    Header::FlowInit { is_fin: false, .. }
+                    Header::QueueInit { is_fin: false, .. }
                 ),
-                "expected FlowInit(is_fin=false) with early data"
+                "expected QueueInit(is_fin=false) with early data"
             );
 
-            // Second batch: FlowInitFin at the correct write offset
+            // Second batch: QueueInitFin at the correct write offset
             let fin_frames = pusher
                 .recv_frames_timeout(Duration::from_secs(1))
                 .await
-                .expect("expected FlowInitFin after write_from_fin in FlowInitSent");
+                .expect("expected QueueInitFin after write_from_fin in QueueBindSent");
             assert_eq!(fin_frames.len(), 1);
             assert!(
                 matches!(
                     fin_frames.front().unwrap().header,
-                    Header::FlowInitFin { offset, .. } if offset == VarInt::from_u8(5)
+                    Header::QueueInitFin { offset, .. } if offset == VarInt::from_u8(5)
                 ),
-                "expected FlowInitFin(offset=5) — offset must equal early data length"
+                "expected QueueInitFin(offset=5) — offset must equal early data length"
             );
         }
         .primary()
         .spawn();
 
         async move {
-            // First write: early data in FlowInit, no FIN
+            // First write: early data in QueueInit, no FIN
             let mut data = Bytes::from_static(b"hello");
             let n = writer.write_from(&mut data).await.expect("first write");
             assert_eq!(n, 5);
-            assert!(writer.0.status.is_flow_init_sent());
+            assert!(writer.0.status.is_queue_init_sent());
 
-            // yield so the pusher can receive FlowInit before we send FlowInitFin
+            // yield so the pusher can receive QueueInit before we send QueueInitFin
             bach::task::yield_now().await;
 
             // Graceful close — MAX_DATA not received yet

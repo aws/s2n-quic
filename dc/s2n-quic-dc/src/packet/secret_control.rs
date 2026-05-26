@@ -17,7 +17,7 @@ mod encoder;
 const UNKNOWN_PATH_SECRET: u8 = 0b0110_0000;
 const STALE_KEY: u8 = 0b0110_0001;
 const REPLAY_DETECTED: u8 = 0b0110_0010;
-const FLOW_RESET: u8 = 0b0110_0111 | HAS_QUEUE_ID; // FlowReset tags always have queue IDs
+const QUEUE_RESET: u8 = 0b0110_0111 | HAS_QUEUE_ID; // QueueReset tags always have queue IDs
 
 /// Indicates if the packet has a queue_id field
 ///
@@ -135,12 +135,12 @@ macro_rules! impl_tests {
     };
 }
 
-pub mod flow_reset;
+pub mod queue_reset;
 pub mod replay_detected;
 pub mod stale_key;
 pub mod unknown_path_secret;
 
-pub use flow_reset::FlowReset;
+pub use queue_reset::QueueReset;
 pub use replay_detected::ReplayDetected;
 pub use stale_key::StaleKey;
 pub use unknown_path_secret::UnknownPathSecret;

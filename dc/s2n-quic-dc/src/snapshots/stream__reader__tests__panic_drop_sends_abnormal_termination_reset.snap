@@ -4,5 +4,5 @@ expression: logs
 ---
 0:00:00.000000000 [main] DEBUG grow epoch=8
 0:00:00.000000000 [main] DEBUG Reader dropping stream_id=1 status=Open final_size=None consumed_len=0 total_received_len=0 is_writing_complete=false is_reading_complete=false
-0:00:00.000000000 [main] DEBUG Sent FlowReset stream_id=1 error_code=5 reset_target=Both
-0:00:00.000000000 [main] DEBUG Reader dropped during panic - sent FlowReset stream_id=1
+0:00:00.000000000 [main] DEBUG Sent QueueReset stream_id=1 error_code=5 reset_target=Both
+0:00:00.000000000 [main] DEBUG Reader dropped during panic - sent QueueReset stream_id=1

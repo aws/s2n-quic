@@ -12,8 +12,8 @@
 //! ## Protocol note
 //!
 //! The *client* is always the stream initiator: the first write from the
-//! client writer sends a `FlowInit` packet that establishes the stream on the
-//! server.  Until `FlowInit` arrives the server acceptor never sees the
+//! client writer sends a `QueueInit` packet that establishes the stream on the
+//! server.  Until `QueueInit` arrives the server acceptor never sees the
 //! stream.  Every test below therefore has the client write at least one byte
 //! before relying on the server to accept the stream.
 //!
@@ -36,7 +36,7 @@
 //! * **Reader drop after EOF is clean** – dropping a `Reader` that already
 //!   reached EOF does NOT send `STOP_SENDING`.
 //! * **Write after shutdown returns BrokenPipe** – writes after FIN fail fast.
-//! * **Known bug (ignored)** – writer drop during `FlowInitSent` leaves server
+//! * **Known bug (ignored)** – writer drop during `QueueBindSent` leaves server
 //!   reader hanging.
 use crate::tracing::*;
 use bach::time::timeout;
@@ -146,7 +146,7 @@ fn client_write_half_close() {
 ///
 /// The expected flow:
 /// 1. Client sends a small initial request + FIN (establishes the stream via
-///    FlowInit).
+///    QueueInit).
 /// 2. Server accepts and immediately sends a greeting + FIN (server write
 ///    half-close), then reads client data to EOF.
 /// 3. Client reads the greeting to EOF.
@@ -203,7 +203,7 @@ fn server_write_half_close() {
             let (mut reader, mut writer) = stream.into_split();
 
             // Client sends its request + FIN (establishes the stream on the
-            // server side via FlowInit, marks client write side as done).
+            // server side via QueueInit, marks client write side as done).
             let mut req = Bytes::from_static(b"req");
             writer.write_all_from_fin(&mut req).await.expect("req");
             drop(writer);
@@ -271,7 +271,7 @@ fn both_sides_half_close() {
             let (mut reader, mut writer) = stream.into_split();
 
             // Client sends its data + FIN (establishes the stream on the
-            // server side via FlowInit).
+            // server side via QueueInit).
             let mut data = Bytes::from_static(b"from_client");
             writer
                 .write_all_from_fin(&mut data)
@@ -302,14 +302,14 @@ fn both_sides_half_close() {
 ///
 /// ## Payload size requirement
 ///
-/// The FlowInit early-data capacity is limited to roughly the packet MTU minus
+/// The QueueInit early-data capacity is limited to roughly the packet MTU minus
 /// header overhead (~1363 bytes).  When the payload fits entirely in the
-/// FlowInit, `write_all_from` returns while the writer is still in
-/// `FlowInitSent` state (waiting for MAX_DATA).  `shutdown()` only handles
-/// `Init` and `Open`; it is a no-op in `FlowInitSent` (see the `#[ignore]`
-/// test `writer_drop_in_flow_init_sent_hangs_server_reader`).
+/// QueueInit, `write_all_from` returns while the writer is still in
+/// `QueueBindSent` state (waiting for MAX_DATA).  `shutdown()` only handles
+/// `Init` and `Open`; it is a no-op in `QueueBindSent` (see the `#[ignore]`
+/// test `writer_drop_in_queue_init_sent_hangs_server_reader`).
 ///
-/// By sending slightly more data than the FlowInit can carry, the second write
+/// By sending slightly more data than the QueueInit can carry, the second write
 /// in `write_all_from` suspends until MAX_DATA arrives, which advances the
 /// state to `Open`.  Once `write_all_from` returns the writer is therefore in
 /// `Open` state and `drop(writer)` → `shutdown()` → `send_fin_packet()` works
@@ -319,8 +319,8 @@ fn writer_drop_sends_fin() {
     crate::testing::sim(|| {
         use crate::testing::ext::*;
 
-        // Payload slightly above the FlowInit early-data MTU so the second
-        // write_from call suspends in FlowInitSent until MAX_DATA arrives,
+        // Payload slightly above the QueueInit early-data MTU so the second
+        // write_from call suspends in QueueBindSent until MAX_DATA arrives,
         // advancing the writer to Open state before write_all_from returns.
         const PAYLOAD_LEN: usize = 1500;
 
@@ -359,9 +359,9 @@ fn writer_drop_sends_fin() {
                 .expect("connect");
             let (mut reader, mut writer) = stream.into_split();
 
-            // Send a payload that overflows the FlowInit early-data MTU.
+            // Send a payload that overflows the QueueInit early-data MTU.
             // The second write_from call in write_all_from will suspend in
-            // FlowInitSent until MAX_DATA arrives, leaving the writer in Open
+            // QueueBindSent until MAX_DATA arrives, leaving the writer in Open
             // state when write_all_from returns.
             let mut data = Data::new(PAYLOAD_LEN as u64);
             writer
@@ -370,7 +370,7 @@ fn writer_drop_sends_fin() {
                 .expect("write without fin");
 
             // Dropping the writer (in Open state) calls shutdown() →
-            // send_fin_packet() → queues a FIN FlowData to the server.
+            // send_fin_packet() → queues a FIN QueueData to the server.
             drop(writer);
 
             // Read server echo to confirm the stream completed cleanly.
@@ -481,7 +481,7 @@ fn reader_drop_before_eof_sends_stop_sending() {
             assert!(n > 0, "expected at least one byte from server");
 
             // Dropping the reader while the server still has more to send
-            // causes Reader::drop to emit a STOP_SENDING FlowReset.
+            // causes Reader::drop to emit a STOP_SENDING QueueReset.
             drop(reader);
         }
         .group("client")
@@ -801,26 +801,26 @@ fn write_after_shutdown_returns_broken_pipe() {
     });
 }
 
-// ── writer_drop_in_flow_init_sent ──────────────────────────────────────────
+// ── writer_drop_in_queue_init_sent ──────────────────────────────────────────
 
 /// **Known bug (ignored):** When the client writer is dropped while still in
-/// `FlowInitSent` state (the `FlowInit` packet was sent but `MAX_DATA` has not
+/// `QueueBindSent` state (the `QueueInit` packet was sent but `MAX_DATA` has not
 /// yet been received), `shutdown()` is called but `send_fin_packet()` is a
-/// no-op for `FlowInitSent`.  No FIN or `FlowReset` reaches the server, so
+/// no-op for `QueueBindSent`.  No FIN or `QueueReset` reaches the server, so
 /// the server reader hangs forever.
 ///
 /// # Expected behaviour after the fix
 ///
-/// * `send_fin_packet()` should handle `FlowInitSent` by re-sending the
-///   `FlowInit` with `is_fin: true` (or sending a `FlowReset`), so that the
+/// * `send_fin_packet()` should handle `QueueBindSent` by re-sending the
+///   `QueueInit` with `is_fin: true` (or sending a `QueueReset`), so that the
 ///   server reader is unblocked.
 /// * Once fixed, change the assertion to `result.is_ok()` and remove the
 ///   `#[ignore]`.
 ///
 /// See the TODO comment in `stream/writer.rs` for the full fix description.
 #[test]
-#[ignore = "known bug: writer drop in FlowInitSent does not notify server reader (stream/writer.rs TODO)"]
-fn writer_drop_in_flow_init_sent_hangs_server_reader() {
+#[ignore = "known bug: writer drop in QueueBindSent does not notify server reader (stream/writer.rs TODO)"]
+fn writer_drop_in_queue_init_sent_hangs_server_reader() {
     use std::time::Duration;
 
     crate::testing::sim(|| {
@@ -829,8 +829,8 @@ fn writer_drop_in_flow_init_sent_hangs_server_reader() {
         let mut server_addr = crate::stream::endpoint::testing::sim::MonitorHostAddr::new("server");
 
         // Suppress the very first server→client packet (the `MAX_DATA` /
-        // `FlowControl` response to `FlowInit`).  This keeps the client writer
-        // in `FlowInitSent` state indefinitely.
+        // `QueueControl` response to `QueueInit`).  This keeps the client writer
+        // in `QueueBindSent` state indefinitely.
         {
             let mut server_pkt_count = 0u32;
             bach::net::monitor::on_packet_sent(move |packet| {
@@ -866,7 +866,7 @@ fn writer_drop_in_flow_init_sent_hangs_server_reader() {
                     // TODO: flip to `result.is_ok()` once the bug is fixed.
                     assert!(
                         result.is_err(),
-                        "server reader unexpectedly completed – was the FlowInitSent bug fixed?"
+                        "server reader unexpectedly completed – was the QueueBindSent bug fixed?"
                     );
                 }
                 .primary()
@@ -884,12 +884,12 @@ fn writer_drop_in_flow_init_sent_hangs_server_reader() {
                 .expect("connect");
             let (_reader, mut writer) = stream.into_split();
 
-            // Write early data so the FlowInit is sent → writer enters
-            // FlowInitSent.  MAX_DATA is suppressed, so it stays there.
+            // Write early data so the QueueInit is sent → writer enters
+            // QueueBindSent.  MAX_DATA is suppressed, so it stays there.
             let mut data = Bytes::from_static(b"early");
             let _ = writer.write_from(&mut data).await;
 
-            // Drop the writer while in FlowInitSent.  `shutdown()` is called
+            // Drop the writer while in QueueBindSent.  `shutdown()` is called
             // but `send_fin_packet()` is a no-op.  Server reader never sees FIN.
             drop(writer);
 
@@ -902,20 +902,20 @@ fn writer_drop_in_flow_init_sent_hangs_server_reader() {
     });
 }
 
-// ── flow_init_fin_lost_when_flow_init_dropped ────────────────────────────────
+// ── queue_init_fin_lost_when_queue_init_dropped ────────────────────────────────
 
-/// Demonstrates that FlowInitFin is permanently lost when the FlowInit packet
-/// is dropped but the FlowInitFin packet is acknowledged.
+/// Demonstrates that QueueInitFin is permanently lost when the QueueInit packet
+/// is dropped but the QueueInitFin packet is acknowledged.
 ///
 /// The scenario:
-/// 1. Client writes early data (FlowInit with is_fin=false) in one packet.
-/// 2. Client calls shutdown() → sends FlowInitFin in a subsequent packet.
-/// 3. The FlowInit packet is lost, but FlowInitFin arrives at the server.
-/// 4. Server doesn't recognize the stream_id (FlowInit hasn't arrived yet),
-///    so it drops the FlowInitFin frame — but ACKs the packet at the
+/// 1. Client writes early data (QueueInit with is_fin=false) in one packet.
+/// 2. Client calls shutdown() → sends QueueInitFin in a subsequent packet.
+/// 3. The QueueInit packet is lost, but QueueInitFin arrives at the server.
+/// 4. Server doesn't recognize the stream_id (QueueInit hasn't arrived yet),
+///    so it drops the QueueInitFin frame — but ACKs the packet at the
 ///    transport level (the packet was authenticated and deduped).
-/// 5. Client sees the ACK → removes FlowInitFin from inflight; won't retransmit.
-/// 6. Client PTO fires → retransmits FlowInit → server creates the stream.
+/// 5. Client sees the ACK → removes QueueInitFin from inflight; won't retransmit.
+/// 6. Client PTO fires → retransmits QueueInit → server creates the stream.
 /// 7. Server reader hangs forever: the FIN will never arrive because it was
 ///    already acknowledged and the client won't send it again.
 ///
@@ -923,14 +923,14 @@ fn writer_drop_in_flow_init_sent_hangs_server_reader() {
 /// indefinitely waiting for a FIN that will never come.
 #[test]
 #[ignore = "FIX THIS!"]
-fn flow_init_fin_lost_when_flow_init_dropped() {
+fn queue_init_fin_lost_when_queue_init_dropped() {
     use crate::testing::ext::*;
     use std::sync::Arc;
 
     let _guard = crate::testing::without_snapshots();
     crate::testing::sim(|| {
-        // Drop the first client packet (FlowInit) but allow the second
-        // (FlowInitFin) through.  Track both events for assertion.
+        // Drop the first client packet (QueueInit) but allow the second
+        // (QueueInitFin) through.  Track both events for assertion.
         let client_pkt_count = Arc::new(AtomicU32::new(0));
         let client_pkt_count_monitor = client_pkt_count.clone();
         let drop_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -966,7 +966,7 @@ fn flow_init_fin_lost_when_flow_init_dropped() {
 
                     // The server should read the early data AND observe EOF (FIN).
                     // If the bug is present, this read_to_eof will hang forever
-                    // because the FlowInitFin was dropped and won't be retransmitted.
+                    // because the QueueInitFin was dropped and won't be retransmitted.
                     let result = timeout(Duration::from_secs(10), async {
                         let mut buf = BytesMut::with_capacity(16);
                         loop {
@@ -987,9 +987,9 @@ fn flow_init_fin_lost_when_flow_init_dropped() {
                         Err(_) => {
                             panic!(
                                 "BUG: server reader hung for 10s waiting for FIN. \
-                                 FlowInitFin was acknowledged at the packet level but the \
-                                 frame was dropped because FlowInit hadn't arrived yet. \
-                                 After PTO retransmitted FlowInit, the stream was created \
+                                 QueueInitFin was acknowledged at the packet level but the \
+                                 frame was dropped because QueueInit hadn't arrived yet. \
+                                 After PTO retransmitted QueueInit, the stream was created \
                                  but the FIN will never arrive — permanent stream hang."
                             );
                         }
@@ -1013,36 +1013,36 @@ fn flow_init_fin_lost_when_flow_init_dropped() {
                     .expect("connect");
                 let (_reader, mut writer) = stream.into_split();
 
-                // Activate the drop window BEFORE the FlowInit is sent.
+                // Activate the drop window BEFORE the QueueInit is sent.
                 // All client→server packets will be dropped until we disable it.
                 drop_active.store(true, Ordering::Relaxed);
 
-                // Write early data WITHOUT fin — this queues the FlowInit frame.
+                // Write early data WITHOUT fin — this queues the QueueInit frame.
                 let mut data = Bytes::from_static(b"early");
                 writer
                     .write_from(&mut data)
                     .await
                     .expect("write early data");
 
-                // Wait long enough for the FlowInit to be transmitted AND for
+                // Wait long enough for the QueueInit to be transmitted AND for
                 // several PTO retransmissions to fire (all will be dropped).
                 // With 2ms initial RTT, PTO fires at ~6ms, ~18ms, ~42ms, ~90ms.
                 // At 200ms, we've dropped the original + multiple retransmissions.
                 Duration::from_millis(200).sleep().await;
 
-                // Disable drops — the FlowInitFin will get through, and eventually
-                // the next PTO retransmission of FlowInit will also get through.
+                // Disable drops — the QueueInitFin will get through, and eventually
+                // the next PTO retransmission of QueueInit will also get through.
                 drop_active.store(false, Ordering::Relaxed);
 
-                // Shutdown the writer → sends FlowInitFin in a new packet.
-                // The server hasn't seen the FlowInit yet (all copies were dropped),
-                // so it will drop the FlowInitFin (unknown stream_id) but ACK the
+                // Shutdown the writer → sends QueueInitFin in a new packet.
+                // The server hasn't seen the QueueInit yet (all copies were dropped),
+                // so it will drop the QueueInitFin (unknown stream_id) but ACK the
                 // packet at the transport level.
                 writer.shutdown().expect("shutdown");
 
                 // Wait for the exchange to settle. The next PTO retransmission of
-                // FlowInit will eventually fire and reach the server, creating the
-                // stream. But by then the FlowInitFin has been ACKed and will never
+                // QueueInit will eventually fire and reach the server, creating the
+                // stream. But by then the QueueInitFin has been ACKed and will never
                 // be retransmitted — the server reader hangs forever.
                 Duration::from_secs(15).sleep().await;
             }

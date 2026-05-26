@@ -31,7 +31,7 @@ pub enum Tag {
     Stream(super::stream::Tag),
     Datagram(super::datagram::Tag),
     Control(super::control::Tag),
-    FlowReset(super::secret_control::flow_reset::Tag),
+    QueueReset(super::secret_control::queue_reset::Tag),
     StaleKey(super::secret_control::stale_key::Tag),
     ReplayDetected(super::secret_control::replay_detected::Tag),
     UnknownPathSecret(super::secret_control::unknown_path_secret::Tag),
@@ -44,7 +44,7 @@ impl From<Tag> for u8 {
             Tag::Stream(v) => v.into(),
             Tag::Datagram(v) => v.into(),
             Tag::Control(v) => v.into(),
-            Tag::FlowReset(v) => v.into(),
+            Tag::QueueReset(v) => v.into(),
             Tag::StaleKey(v) => v.into(),
             Tag::ReplayDetected(v) => v.into(),
             Tag::UnknownPathSecret(v) => v.into(),
@@ -68,9 +68,9 @@ decoder_value!(
                     let (tag, buffer) = buffer.decode()?;
                     Ok((Self::Control(tag), buffer))
                 }
-                super::secret_control::flow_reset::Tag::VALUE => {
+                super::secret_control::queue_reset::Tag::VALUE => {
                     let (tag, buffer) = buffer.decode()?;
-                    Ok((Self::FlowReset(tag), buffer))
+                    Ok((Self::QueueReset(tag), buffer))
                 }
                 super::secret_control::stale_key::Tag::VALUE
                 | super::secret_control::stale_key::Tag::VALUE_WITH_QUEUE_ID => {

@@ -216,19 +216,19 @@ pub fn test_entry() -> Arc<PathSecretEntry> {
     pse
 }
 
-/// Creates a minimal FlowData frame for testing pipeline plumbing.
+/// Creates a minimal QueueData frame for testing pipeline plumbing.
 pub fn test_frame(pse: &Arc<PathSecretEntry>) -> Entry<Frame> {
     test_frame_with_payload(pse, 0)
 }
 
-/// Creates a FlowData frame whose application payload is `payload_size` zero bytes.
+/// Creates a QueueData frame whose application payload is `payload_size` zero bytes.
 ///
 /// Use a payload large enough that two frames together exceed one MTU: the assembler
 /// will only be able to pack the first into a single segment and will push the second
 /// back, causing it to re-arm the TX wheel.
 pub fn test_frame_with_payload(pse: &Arc<PathSecretEntry>, payload_size: usize) -> Entry<Frame> {
     Entry::new(Frame {
-        header: Header::FlowData {
+        header: Header::QueueData {
             queue_pair: QueuePair {
                 source_queue_id: VarInt::from_u8(1),
                 dest_queue_id: VarInt::from_u8(2),

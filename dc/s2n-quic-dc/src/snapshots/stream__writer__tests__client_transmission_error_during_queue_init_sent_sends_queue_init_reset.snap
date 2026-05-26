@@ -1,0 +1,11 @@
+---
+source: dc/s2n-quic-dc/src/testing.rs
+expression: logs
+---
+0:00:00.000000000 [main] DEBUG grow epoch=8
+0:00:00.000000000 [main] DEBUG event=on_send_queue_init prev=Init next=QueueBindSent location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.000000000 [main] DEBUG Sent QueueInit with early data stream_id=42 bytes_read=5 is_fin=false
+0:00:00.000000000 [main] DEBUG Transmission failed stream_id=42 reason=TransmissionError
+0:00:00.000000000 [main] DEBUG Sent QueueInitReset stream_id=42 sender_idx=LocalSenderId(VarInt(0)) attempt_id=0 error_code=7
+0:00:00.000000000 [main] DEBUG event=on_shutdown prev=QueueBindSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.000000000 [main] DEBUG Writer dropping stream_id=42 status=Shutdown next_offset=5 inflight_bytes=0 remote_max_data=0

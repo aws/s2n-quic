@@ -125,7 +125,7 @@ where
 // ── FrameBatch ────────────────────────────────────────────────────────────
 
 /// Conservative packet-level overhead estimate for stream frame batches.
-const MAX_FRAME_BATCH_PACKET_OVERHEAD: u64 = frame::MAX_FLOW_DATA_HEADER_OVERHEAD as u64;
+const MAX_FRAME_BATCH_PACKET_OVERHEAD: u64 = frame::MAX_QUEUE_DATA_HEADER_OVERHEAD as u64;
 
 /// A queue of frames grouped for a single path-secret entry, stored in per-priority buckets.
 ///
@@ -665,29 +665,29 @@ pub(crate) struct AssemblerCounters {
     pub tx_payload_size: crate::counter::Summary,
 
     // Per-frame-type TX counters (one per transmitted frame, all phases).
-    pub tx_frame_flow_init: crate::counter::Counter,
-    pub tx_frame_flow_data: crate::counter::Counter,
-    pub tx_frame_flow_data_fin: crate::counter::Counter,
-    pub tx_frame_flow_control: crate::counter::Counter,
-    pub tx_frame_flow_max_data: crate::counter::Counter,
-    pub tx_frame_flow_reset: crate::counter::Counter,
-    pub tx_frame_flow_init_reset: crate::counter::Counter,
-    pub tx_frame_flow_init_fin: crate::counter::Counter,
-    pub tx_frame_flow_init_validate: crate::counter::Counter,
-    pub tx_frame_flow_validate_request: crate::counter::Counter,
+    pub tx_frame_queue_init: crate::counter::Counter,
+    pub tx_frame_queue_data: crate::counter::Counter,
+    pub tx_frame_queue_data_fin: crate::counter::Counter,
+    pub tx_frame_queue_control: crate::counter::Counter,
+    pub tx_frame_queue_max_data: crate::counter::Counter,
+    pub tx_frame_queue_reset: crate::counter::Counter,
+    pub tx_frame_queue_init_reset: crate::counter::Counter,
+    pub tx_frame_queue_init_fin: crate::counter::Counter,
+    pub tx_frame_queue_init_validate: crate::counter::Counter,
+    pub tx_frame_queue_validate_request: crate::counter::Counter,
     pub tx_frame_ack: crate::counter::Counter,
 
     // Per-frame-type probe TX counters (Phase 2 retransmit + Phase 3 PTO bypass).
-    pub tx_probe_frame_flow_init: crate::counter::Counter,
-    pub tx_probe_frame_flow_data: crate::counter::Counter,
-    pub tx_probe_frame_flow_data_fin: crate::counter::Counter,
-    pub tx_probe_frame_flow_control: crate::counter::Counter,
-    pub tx_probe_frame_flow_max_data: crate::counter::Counter,
-    pub tx_probe_frame_flow_reset: crate::counter::Counter,
-    pub tx_probe_frame_flow_init_reset: crate::counter::Counter,
-    pub tx_probe_frame_flow_init_fin: crate::counter::Counter,
-    pub tx_probe_frame_flow_init_validate: crate::counter::Counter,
-    pub tx_probe_frame_flow_validate_request: crate::counter::Counter,
+    pub tx_probe_frame_queue_init: crate::counter::Counter,
+    pub tx_probe_frame_queue_data: crate::counter::Counter,
+    pub tx_probe_frame_queue_data_fin: crate::counter::Counter,
+    pub tx_probe_frame_queue_control: crate::counter::Counter,
+    pub tx_probe_frame_queue_max_data: crate::counter::Counter,
+    pub tx_probe_frame_queue_reset: crate::counter::Counter,
+    pub tx_probe_frame_queue_init_reset: crate::counter::Counter,
+    pub tx_probe_frame_queue_init_fin: crate::counter::Counter,
+    pub tx_probe_frame_queue_init_validate: crate::counter::Counter,
+    pub tx_probe_frame_queue_validate_request: crate::counter::Counter,
 }
 
 impl AssemblerCounters {
@@ -705,37 +705,37 @@ impl AssemblerCounters {
             tx_payload_size: registry
                 .register_summary("tx.payload_size", crate::counter::Unit::Byte),
 
-            tx_frame_flow_init: registry.register_nominal("tx.frame", "flow_init"),
-            tx_frame_flow_data: registry.register_nominal("tx.frame", "flow_data"),
-            tx_frame_flow_data_fin: registry.register_nominal("tx.frame", "flow_data_fin"),
-            tx_frame_flow_control: registry.register_nominal("tx.frame", "flow_control"),
-            tx_frame_flow_max_data: registry.register_nominal("tx.frame", "flow_max_data"),
-            tx_frame_flow_reset: registry.register_nominal("tx.frame", "flow_reset"),
-            tx_frame_flow_init_reset: registry.register_nominal("tx.frame", "flow_init_reset"),
-            tx_frame_flow_init_fin: registry.register_nominal("tx.frame", "flow_init_fin"),
-            tx_frame_flow_init_validate: registry
-                .register_nominal("tx.frame", "flow_init_validate"),
-            tx_frame_flow_validate_request: registry
-                .register_nominal("tx.frame", "flow_validate_request"),
+            tx_frame_queue_init: registry.register_nominal("tx.frame", "queue_init"),
+            tx_frame_queue_data: registry.register_nominal("tx.frame", "queue_data"),
+            tx_frame_queue_data_fin: registry.register_nominal("tx.frame", "queue_data_fin"),
+            tx_frame_queue_control: registry.register_nominal("tx.frame", "queue_control"),
+            tx_frame_queue_max_data: registry.register_nominal("tx.frame", "queue_max_data"),
+            tx_frame_queue_reset: registry.register_nominal("tx.frame", "queue_reset"),
+            tx_frame_queue_init_reset: registry.register_nominal("tx.frame", "queue_init_reset"),
+            tx_frame_queue_init_fin: registry.register_nominal("tx.frame", "queue_init_fin"),
+            tx_frame_queue_init_validate: registry
+                .register_nominal("tx.frame", "queue_init_validate"),
+            tx_frame_queue_validate_request: registry
+                .register_nominal("tx.frame", "queue_validate_request"),
             tx_frame_ack: registry.register_nominal("tx.frame", "ack"),
 
-            tx_probe_frame_flow_init: registry.register_nominal("tx.probe.frame", "flow_init"),
-            tx_probe_frame_flow_data: registry.register_nominal("tx.probe.frame", "flow_data"),
-            tx_probe_frame_flow_data_fin: registry
-                .register_nominal("tx.probe.frame", "flow_data_fin"),
-            tx_probe_frame_flow_control: registry
-                .register_nominal("tx.probe.frame", "flow_control"),
-            tx_probe_frame_flow_max_data: registry
-                .register_nominal("tx.probe.frame", "flow_max_data"),
-            tx_probe_frame_flow_reset: registry.register_nominal("tx.probe.frame", "flow_reset"),
-            tx_probe_frame_flow_init_reset: registry
-                .register_nominal("tx.probe.frame", "flow_init_reset"),
-            tx_probe_frame_flow_init_fin: registry
-                .register_nominal("tx.probe.frame", "flow_init_fin"),
-            tx_probe_frame_flow_init_validate: registry
-                .register_nominal("tx.probe.frame", "flow_init_validate"),
-            tx_probe_frame_flow_validate_request: registry
-                .register_nominal("tx.probe.frame", "flow_validate_request"),
+            tx_probe_frame_queue_init: registry.register_nominal("tx.probe.frame", "queue_init"),
+            tx_probe_frame_queue_data: registry.register_nominal("tx.probe.frame", "queue_data"),
+            tx_probe_frame_queue_data_fin: registry
+                .register_nominal("tx.probe.frame", "queue_data_fin"),
+            tx_probe_frame_queue_control: registry
+                .register_nominal("tx.probe.frame", "queue_control"),
+            tx_probe_frame_queue_max_data: registry
+                .register_nominal("tx.probe.frame", "queue_max_data"),
+            tx_probe_frame_queue_reset: registry.register_nominal("tx.probe.frame", "queue_reset"),
+            tx_probe_frame_queue_init_reset: registry
+                .register_nominal("tx.probe.frame", "queue_init_reset"),
+            tx_probe_frame_queue_init_fin: registry
+                .register_nominal("tx.probe.frame", "queue_init_fin"),
+            tx_probe_frame_queue_init_validate: registry
+                .register_nominal("tx.probe.frame", "queue_init_validate"),
+            tx_probe_frame_queue_validate_request: registry
+                .register_nominal("tx.probe.frame", "queue_validate_request"),
         }
     }
 
@@ -743,16 +743,16 @@ impl AssemblerCounters {
     #[inline]
     pub fn on_tx_frame(&self, header: &frame::Header) {
         match header {
-            frame::Header::FlowInit { .. } => self.tx_frame_flow_init.add(1),
-            frame::Header::FlowData { is_fin: false, .. } => self.tx_frame_flow_data.add(1),
-            frame::Header::FlowData { is_fin: true, .. } => self.tx_frame_flow_data_fin.add(1),
-            frame::Header::FlowControl { .. } => self.tx_frame_flow_control.add(1),
-            frame::Header::FlowMaxData { .. } => self.tx_frame_flow_max_data.add(1),
-            frame::Header::FlowReset { .. } => self.tx_frame_flow_reset.add(1),
-            frame::Header::FlowInitReset { .. } => self.tx_frame_flow_init_reset.add(1),
-            frame::Header::FlowInitFin { .. } => self.tx_frame_flow_init_fin.add(1),
-            frame::Header::FlowInitValidate { .. } => self.tx_frame_flow_init_validate.add(1),
-            frame::Header::FlowValidateRequest { .. } => self.tx_frame_flow_validate_request.add(1),
+            frame::Header::QueueInit { .. } => self.tx_frame_queue_init.add(1),
+            frame::Header::QueueData { is_fin: false, .. } => self.tx_frame_queue_data.add(1),
+            frame::Header::QueueData { is_fin: true, .. } => self.tx_frame_queue_data_fin.add(1),
+            frame::Header::QueueControl { .. } => self.tx_frame_queue_control.add(1),
+            frame::Header::QueueMaxData { .. } => self.tx_frame_queue_max_data.add(1),
+            frame::Header::QueueReset { .. } => self.tx_frame_queue_reset.add(1),
+            frame::Header::QueueInitReset { .. } => self.tx_frame_queue_init_reset.add(1),
+            frame::Header::QueueInitFin { .. } => self.tx_frame_queue_init_fin.add(1),
+            frame::Header::QueueInitValidate { .. } => self.tx_frame_queue_init_validate.add(1),
+            frame::Header::QueueValidateRequest { .. } => self.tx_frame_queue_validate_request.add(1),
             frame::Header::Ack { .. } => self.tx_frame_ack.add(1),
         }
     }
@@ -763,19 +763,19 @@ impl AssemblerCounters {
     #[inline]
     pub fn on_probe_frame(&self, header: &frame::Header) {
         match header {
-            frame::Header::FlowInit { .. } => self.tx_probe_frame_flow_init.add(1),
-            frame::Header::FlowData { is_fin: false, .. } => self.tx_probe_frame_flow_data.add(1),
-            frame::Header::FlowData { is_fin: true, .. } => {
-                self.tx_probe_frame_flow_data_fin.add(1)
+            frame::Header::QueueInit { .. } => self.tx_probe_frame_queue_init.add(1),
+            frame::Header::QueueData { is_fin: false, .. } => self.tx_probe_frame_queue_data.add(1),
+            frame::Header::QueueData { is_fin: true, .. } => {
+                self.tx_probe_frame_queue_data_fin.add(1)
             }
-            frame::Header::FlowControl { .. } => self.tx_probe_frame_flow_control.add(1),
-            frame::Header::FlowMaxData { .. } => self.tx_probe_frame_flow_max_data.add(1),
-            frame::Header::FlowReset { .. } => self.tx_probe_frame_flow_reset.add(1),
-            frame::Header::FlowInitReset { .. } => self.tx_probe_frame_flow_init_reset.add(1),
-            frame::Header::FlowInitFin { .. } => self.tx_probe_frame_flow_init_fin.add(1),
-            frame::Header::FlowInitValidate { .. } => self.tx_probe_frame_flow_init_validate.add(1),
-            frame::Header::FlowValidateRequest { .. } => {
-                self.tx_probe_frame_flow_validate_request.add(1)
+            frame::Header::QueueControl { .. } => self.tx_probe_frame_queue_control.add(1),
+            frame::Header::QueueMaxData { .. } => self.tx_probe_frame_queue_max_data.add(1),
+            frame::Header::QueueReset { .. } => self.tx_probe_frame_queue_reset.add(1),
+            frame::Header::QueueInitReset { .. } => self.tx_probe_frame_queue_init_reset.add(1),
+            frame::Header::QueueInitFin { .. } => self.tx_probe_frame_queue_init_fin.add(1),
+            frame::Header::QueueInitValidate { .. } => self.tx_probe_frame_queue_init_validate.add(1),
+            frame::Header::QueueValidateRequest { .. } => {
+                self.tx_probe_frame_queue_validate_request.add(1)
             }
             // ACK frames are stripped before inflight insertion and are never retransmitted
             // as probes; this branch should be unreachable in practice.

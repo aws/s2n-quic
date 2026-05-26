@@ -168,9 +168,9 @@ expression: logs
 0:00:00.000000000 [client] DEBUG s2n_quic_dc: peer_address=10.0.0.2:49152 credential_id=[253, 162, 176, 33, 188, 81, 236, 106, 53, 74, 204, 19, 207, 132, 62, 199]
 0:00:00.000000000 [client] DEBUG setting peer data addresses peer=10.0.0.1:4433 addrs=[SocketAddressV6([::ffff:10.0.0.1]:4433), SocketAddressV6([::ffff:10.0.0.1]:49152), SocketAddressV6([::ffff:10.0.0.1]:49153), SocketAddressV6([::ffff:10.0.0.1]:49154), SocketAddressV6([::ffff:10.0.0.1]:49155), SocketAddressV6([::ffff:10.0.0.1]:49156), SocketAddressV6([::ffff:10.0.0.1]:49157), SocketAddressV6([::ffff:10.0.0.1]:49158)]
 0:00:00.000000000 [client] DEBUG setting peer data addresses peer=10.0.0.2:49152 addrs=[SocketAddressV6([::ffff:10.0.0.2]:49152), SocketAddressV6([::ffff:10.0.0.2]:49153), SocketAddressV6([::ffff:10.0.0.2]:49154), SocketAddressV6([::ffff:10.0.0.2]:49155), SocketAddressV6([::ffff:10.0.0.2]:49156), SocketAddressV6([::ffff:10.0.0.2]:49157), SocketAddressV6([::ffff:10.0.0.2]:49158), SocketAddressV6([::ffff:10.0.0.2]:49159)]
-0:00:00.000000000 [client] DEBUG event=on_send_flow_init prev=Init next=FlowInitSent location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000000000 [client] DEBUG event=on_send_fin prev=FlowInitSent next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000000000 [client] DEBUG Sent FlowInit with early data stream_id=0 bytes_read=4 is_fin=true
+0:00:00.000000000 [client] DEBUG event=on_send_queue_init prev=Init next=QueueBindSent location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.000000000 [client] DEBUG event=on_send_fin prev=QueueBindSent next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.000000000 [client] DEBUG Sent QueueInit with early data stream_id=0 bytes_read=4 is_fin=true
 0:00:00.000000000 [server] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [server] TRACE m#task.frame_dispatch.drained=0
 0:00:00.000000000 [server] TRACE m#task.context_resolver.drained[send.worker.0]=0
@@ -367,7 +367,7 @@ expression: logs
 0:00:00.000021000 [client] TRACE m#asm.max_datagram_size=1472
 0:00:00.000021000 [client] TRACE c#send.pending.drain[send.5]=1
 0:00:00.000021000 [client] TRACE g#send.pending.depth[send.5]=0
-0:00:00.000021000 [client] TRACE c#tx.frame[flow_init]=1
+0:00:00.000021000 [client] TRACE c#tx.frame[queue_init]=1
 0:00:00.000021000 [client] TRACE m#tx.packet_size=52
 0:00:00.000021000 [client] TRACE m#tx.frames_per_packet=1
 0:00:00.000021000 [client] TRACE m#tx.payload_size=4
@@ -406,9 +406,9 @@ expression: logs
 0:00:00.000521000 [server] TRACE c#rx.peer_cache.miss=1
 0:00:00.000521000 [server] TRACE c#rx.ecn[ect0]=1
 0:00:00.000521000 [server] TRACE m#rx.packet_size=4
-0:00:00.000521000 [server] TRACE c#rx.frame[flow_init]=1
-0:00:00.000521000 [server] TRACE c#flow.accepted=1
-0:00:00.000521000 [server] DEBUG FlowInit accepted - dispatched to acceptor attempt_id=0 stream_id=0 acceptor_id=1 server_queue_id=0
+0:00:00.000521000 [server] TRACE c#rx.frame[queue_init]=1
+0:00:00.000521000 [server] TRACE c#queue.accepted=1
+0:00:00.000521000 [server] DEBUG QueueInit accepted - dispatched to acceptor attempt_id=0 stream_id=0 acceptor_id=1 server_queue_id=0
 0:00:00.000521000 [server] TRACE m#rx.frames_per_packet=1
 0:00:00.000521000 [server] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.000521000 [server] TRACE m#task.packet_dispatch.drained[recv.dispatch.2]=2
@@ -511,7 +511,7 @@ expression: logs
 0:00:00.000541000 [server] TRACE m#asm.max_datagram_size=1472
 0:00:00.000541000 [server] TRACE c#send.pending.drain[send.1]=1
 0:00:00.000541000 [server] TRACE g#send.pending.depth[send.1]=0
-0:00:00.000541000 [server] TRACE c#tx.frame[flow_data_fin]=1
+0:00:00.000541000 [server] TRACE c#tx.frame[queue_data_fin]=1
 0:00:00.000541000 [server] TRACE m#tx.packet_size=52
 0:00:00.000541000 [server] TRACE m#tx.frames_per_packet=1
 0:00:00.000541000 [server] TRACE m#tx.payload_size=4
@@ -554,8 +554,8 @@ expression: logs
 0:00:00.006016000 [client] TRACE m#task.pto_wheel.drained[send.worker.1]=2
 0:00:00.006016000 [client] TRACE m#task.pto_wheel.drained[send.worker.1]=0
 0:00:00.006016000 [client] TRACE m#asm.max_datagram_size=1472
-0:00:00.006016000 [client] TRACE c#tx.frame[flow_init]=1
-0:00:00.006016000 [client] TRACE c#tx.probe.frame[flow_init]=1
+0:00:00.006016000 [client] TRACE c#tx.frame[queue_init]=1
+0:00:00.006016000 [client] TRACE c#tx.probe.frame[queue_init]=1
 0:00:00.006016000 [client] TRACE m#tx.packet_size=52
 0:00:00.006016000 [client] TRACE m#tx.frames_per_packet=1
 0:00:00.006016000 [client] TRACE m#tx.payload_size=4
@@ -585,7 +585,7 @@ expression: logs
 0:00:00.006516000 [server] TRACE c#rx.peer_cache.hit=1
 0:00:00.006516000 [server] TRACE c#rx.ecn[ect0]=1
 0:00:00.006516000 [server] TRACE m#rx.packet_size=4
-0:00:00.006516000 [server] TRACE c#rx.frame[flow_init]=1
+0:00:00.006516000 [server] TRACE c#rx.frame[queue_init]=1
 0:00:00.006516000 [server] TRACE c#!rx.init.dup=1
 0:00:00.006516000 [server] TRACE m#rx.frames_per_packet=1
 0:00:00.006516000 [server] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
@@ -645,8 +645,8 @@ expression: logs
 0:00:00.006528000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=2
 0:00:00.006528000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=0
 0:00:00.006528000 [server] TRACE m#asm.max_datagram_size=1472
-0:00:00.006528000 [server] TRACE c#tx.frame[flow_data_fin]=1
-0:00:00.006528000 [server] TRACE c#tx.probe.frame[flow_data_fin]=1
+0:00:00.006528000 [server] TRACE c#tx.frame[queue_data_fin]=1
+0:00:00.006528000 [server] TRACE c#tx.probe.frame[queue_data_fin]=1
 0:00:00.006528000 [server] TRACE m#tx.packet_size=52
 0:00:00.006528000 [server] TRACE m#tx.frames_per_packet=1
 0:00:00.006528000 [server] TRACE m#tx.payload_size=4
@@ -693,7 +693,7 @@ expression: logs
 0:00:00.007016000 [client] TRACE c#tx.ack_received[send.5]=1
 0:00:00.007016000 [client] TRACE c#send.inflight.drain[send.5]=1
 0:00:00.007016000 [client] TRACE g#send.inflight.depth[send.5]=1
-0:00:00.007016000 [client] TRACE c#tx.acked.frame.flow_init[send.5]=1
+0:00:00.007016000 [client] TRACE c#tx.acked.frame.queue_init[send.5]=1
 0:00:00.007016000 [client] TRACE c#q.ack_to_completion.sender[send.worker.1.task.ack_processor]=1
 0:00:00.007016000 [client] TRACE c#q.ack_to_completion.enq[send.worker.1]=1
 0:00:00.007016000 [client] TRACE g#q.ack_to_completion.depth[send.worker.1]=1
@@ -732,7 +732,7 @@ expression: logs
 0:00:00.007028000 [client] TRACE c#rx.peer_cache.miss=1
 0:00:00.007028000 [client] TRACE c#rx.ecn[ect0]=1
 0:00:00.007028000 [client] TRACE m#rx.packet_size=4
-0:00:00.007028000 [client] TRACE c#rx.frame[flow_data_fin]=1
+0:00:00.007028000 [client] TRACE c#rx.frame[queue_data_fin]=1
 0:00:00.007028000 [client] TRACE c#rx.data.ok=1
 0:00:00.007028000 [client] TRACE m#rx.frames_per_packet=1
 0:00:00.007028000 [client] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs

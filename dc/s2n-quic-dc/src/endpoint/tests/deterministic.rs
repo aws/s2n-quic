@@ -584,7 +584,7 @@ fn install_init_monitors(actions: &PacketActions) {
 /// conditions.
 fn sim_init_uniqueness(actions: &PacketActions, n: usize) {
     // Generous timeout: even with the maximum 250 ms per-packet delay the
-    // entire population of FlowInit packets arrives within ~300 ms of sim
+    // entire population of QueueInit packets arrives within ~300 ms of sim
     // time, well inside the 5-second window.
     const ACCEPT_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -728,9 +728,9 @@ fn init_uniqueness_baseline() {
     sim_init_uniqueness(&actions, N);
 }
 
-/// All FlowInit packets duplicated, no extra delay.
+/// All QueueInit packets duplicated, no extra delay.
 ///
-/// Every stream's FlowInit arrives at the server twice at approximately the
+/// Every stream's QueueInit arrives at the server twice at approximately the
 /// same network latency.  The init-protocol deduplication must discard the
 /// second copy so the server acceptor sees each stream ID only once.
 #[test]
@@ -744,7 +744,7 @@ fn init_uniqueness_all_duplicated() {
     sim_init_uniqueness(&actions, N);
 }
 
-/// Reordered FlowInit packets with selective duplication.
+/// Reordered QueueInit packets with selective duplication.
 ///
 /// Odd-indexed packets are delayed by 250 ms, causing them to arrive after
 /// even-indexed packets (which have no extra delay).  Every third packet is

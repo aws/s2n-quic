@@ -138,7 +138,7 @@ fn ping_pong() {
             assert_eq!(reader.peer_addr(), peer_addr);
             assert_eq!(writer.peer_addr(), peer_addr);
 
-            // Send "ping" + FIN in the FlowInit packet.
+            // Send "ping" + FIN in the QueueInit packet.
             let mut ping = Bytes::from_static(b"ping");
             writer
                 .write_all_from_fin(&mut ping)
@@ -277,7 +277,7 @@ fn server_response_loss_triggers_pto() {
 
 /// Verifies that the client's initial packet loss is recovered by PTO.
 ///
-/// The first packet from the client (FlowInit + ping data) is dropped. The
+/// The first packet from the client (QueueInit + ping data) is dropped. The
 /// client should PTO-retransmit and the server should still see "ping".
 #[test]
 fn client_request_loss_triggers_pto() {
@@ -816,7 +816,7 @@ fn duplicated_client_init_accepts_only_once() {
             let mut duplicated_first_client_packet = false;
             bach::net::monitor::on_packet_sent(move |packet| {
                 // Test-setup assumption: the first non-duplicate packet emitted is the client's
-                // FlowInit packet, so duplicating that first original packet exercises init dedup.
+                // QueueInit packet, so duplicating that first original packet exercises init dedup.
                 if !packet.is_duplicate && !duplicated_first_client_packet {
                     duplicated_first_client_packet = true;
                     duplicated_packets_monitor.fetch_add(1, Ordering::Relaxed);
@@ -1759,7 +1759,7 @@ fn five_node_random_chatter_settles_after_stop() {
 ///
 /// Ideal packet flow (3 total, vs 12 without batching):
 ///
-/// 1. client→server: all 3 FlowInit + data + FIN frames (1 packet)
+/// 1. client→server: all 3 QueueInit + data + FIN frames (1 packet)
 /// 2. server→client: all 3 ACK + data + FIN response frames (1 packet)
 /// 3. client→server: all 3 final ACK frames (1 packet)
 ///

@@ -7,7 +7,7 @@ use std::fmt;
 /// Stream ID was reused before the previous flow completed
 pub const STREAM_ID_ERROR: VarInt = VarInt::from_u32(1);
 
-/// The acceptor ID specified in FlowInit was not found
+/// The acceptor ID specified in QueueInit was not found
 pub const ACCEPTOR_NOT_FOUND: VarInt = VarInt::from_u32(2);
 
 /// The queue ID is not allocated (no stream is registered at this slot)
@@ -29,7 +29,7 @@ pub const RETRANSMISSIONS_EXHAUSTED: VarInt = VarInt::from_u32(7);
 pub const SERVER_BUSY: VarInt = VarInt::from_u32(8);
 
 /// The sender exceeded advertised flow-control credit
-pub const FLOW_CONTROL_ERROR: VarInt = VarInt::from_u32(9);
+pub const QUEUE_CONTROL_ERROR: VarInt = VarInt::from_u32(9);
 
 /// The stream_id in the packet doesn't match the queue's current occupant
 pub const STREAM_ID_MISMATCH: VarInt = VarInt::from_u32(10);
@@ -38,7 +38,7 @@ pub const STREAM_ID_MISMATCH: VarInt = VarInt::from_u32(10);
 pub const CREDENTIAL_MISMATCH: VarInt = VarInt::from_u32(11);
 
 /// Flow validation failed during the retry handshake
-pub const FLOW_VALIDATION_FAILED: VarInt = VarInt::from_u32(12);
+pub const QUEUE_VALIDATION_FAILED: VarInt = VarInt::from_u32(12);
 
 /// The peer was declared dead after its idle timeout elapsed without activity
 pub const IDLE_TIMEOUT: VarInt = VarInt::from_u32(13);
@@ -53,10 +53,10 @@ pub enum Error {
     StopSending,
     RetransmissionsExhausted,
     ServerBusy,
-    FlowControlError,
+    QueueControlError,
     StreamIdMismatch,
     CredentialMismatch,
-    FlowValidationFailed,
+    QueueValidationFailed,
     IdleTimeout,
     Unknown(VarInt),
 }
@@ -79,10 +79,10 @@ impl Error {
             Self::StopSending => STOP_SENDING,
             Self::RetransmissionsExhausted => RETRANSMISSIONS_EXHAUSTED,
             Self::ServerBusy => SERVER_BUSY,
-            Self::FlowControlError => FLOW_CONTROL_ERROR,
+            Self::QueueControlError => QUEUE_CONTROL_ERROR,
             Self::StreamIdMismatch => STREAM_ID_MISMATCH,
             Self::CredentialMismatch => CREDENTIAL_MISMATCH,
-            Self::FlowValidationFailed => FLOW_VALIDATION_FAILED,
+            Self::QueueValidationFailed => QUEUE_VALIDATION_FAILED,
             Self::IdleTimeout => IDLE_TIMEOUT,
             Self::Unknown(code) => code,
         }
@@ -100,10 +100,10 @@ impl From<VarInt> for Error {
             STOP_SENDING => Self::StopSending,
             RETRANSMISSIONS_EXHAUSTED => Self::RetransmissionsExhausted,
             SERVER_BUSY => Self::ServerBusy,
-            FLOW_CONTROL_ERROR => Self::FlowControlError,
+            QUEUE_CONTROL_ERROR => Self::QueueControlError,
             STREAM_ID_MISMATCH => Self::StreamIdMismatch,
             CREDENTIAL_MISMATCH => Self::CredentialMismatch,
-            FLOW_VALIDATION_FAILED => Self::FlowValidationFailed,
+            QUEUE_VALIDATION_FAILED => Self::QueueValidationFailed,
             IDLE_TIMEOUT => Self::IdleTimeout,
             _ => Self::Unknown(code),
         }
@@ -143,10 +143,10 @@ impl fmt::Display for Error {
             Self::ServerBusy => {
                 write!(f, "SERVER_BUSY: server accept queue overflowed")
             }
-            Self::FlowControlError => {
+            Self::QueueControlError => {
                 write!(
                     f,
-                    "FLOW_CONTROL_ERROR: sender exceeded advertised flow-control credit"
+                    "QUEUE_CONTROL_ERROR: sender exceeded advertised flow-control credit"
                 )
             }
             Self::StreamIdMismatch => {
@@ -161,10 +161,10 @@ impl fmt::Display for Error {
                     "CREDENTIAL_MISMATCH: packet credential_id does not match queue owner"
                 )
             }
-            Self::FlowValidationFailed => {
+            Self::QueueValidationFailed => {
                 write!(
                     f,
-                    "FLOW_VALIDATION_FAILED: flow validation failed during retry handshake"
+                    "QUEUE_VALIDATION_FAILED: queue validation failed during retry handshake"
                 )
             }
             Self::IdleTimeout => {

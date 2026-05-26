@@ -8,7 +8,7 @@
 //! The Client holds its own clone of the queue allocator to avoid synchronization on the hot path.
 //!
 //! Flow initialization is lazy: `connect` allocates local queues and returns immediately.
-//! The [`Writer`](crate::stream::Writer) sends `FlowInit` on the first write, potentially
+//! The [`Writer`](crate::stream::Writer) sends `QueueInit` on the first write, potentially
 //! with early data.
 
 use crate::{
@@ -41,7 +41,7 @@ pub mod rpc;
 /// # Expectations and guarantees
 ///
 /// - Every clone shares the same underlying endpoint and path-secret map.
-/// - Flow initialization is lazy. The [`Writer`](crate::stream::Writer) sends `FlowInit`
+/// - Flow initialization is lazy. The [`Writer`](crate::stream::Writer) sends `QueueInit`
 ///   (with optional early data) on the first write after `connect` returns.
 /// - The TLS handshake, if needed, is performed inside `connect` and is transparent to
 ///   the caller.
@@ -110,7 +110,7 @@ impl Client {
     ///
     /// # Semantics
     ///
-    /// - Flow initialization is lazy. The [`Writer`](crate::stream::Writer) sends `FlowInit`
+    /// - Flow initialization is lazy. The [`Writer`](crate::stream::Writer) sends `QueueInit`
     ///   (possibly with early data) on the first write.
     /// - A successful return does not mean the server has accepted the stream yet; it only
     ///   means local setup succeeded.

@@ -20,7 +20,7 @@
 //!    after calling shutdown() without blocking transmission.
 //!
 //! 2. **Abnormal (panic) closure**: When the Writer is dropped during a panic, both
-//!    `should_transmit` and `receiver_alive` flags are cleared, and a FlowReset with
+//!    `should_transmit` and `receiver_alive` flags are cleared, and a QueueReset with
 //!    ABNORMAL_TERMINATION is sent to the peer. The pipeline will cancel all pending
 //!    transmissions and not attempt to send them. This ensures the peer is notified when
 //!    the sender crashes.
@@ -42,7 +42,7 @@
 //   transmission_time. We also need to remember the last transmission time so we don't go
 //   backward if we do another burst.
 //
-// * MTU estimation is overly conservative. MAX_FLOW_DATA_HEADER_OVERHEAD assumes worst-case
+// * MTU estimation is overly conservative. MAX_QUEUE_DATA_HEADER_OVERHEAD assumes worst-case
 //   VarInt sizes for all fields (8 bytes each), but many fields have known values at frame
 //   construction time (stream_id, queue_ids, offset). We should compute the actual header
 //   size using the known varint-encoded lengths for fields we know, and only use worst-case
@@ -63,7 +63,7 @@
 // Testing:
 //
 // * Deterministic tests using bach for: flow control stalls and recovery, FIN delivery,
-//   early data with FlowInit, completion failure handling, panic-drop behavior, and
+//   early data with QueueInit, completion failure handling, panic-drop behavior, and
 //   multi-stream contention on shared pipeline resources.
 use super::coop::{self, Coop, HasCoop};
 use crate::{
@@ -72,7 +72,7 @@ use crate::{
         error::{self, Error},
         frame::{
             self, FailureReason, Frame, Header, HomogeneousBatch, Priority, SubmissionSender,
-            TransmissionStatus, DEFAULT_TTL, MAX_FLOW_DATA_HEADER_OVERHEAD,
+            TransmissionStatus, DEFAULT_TTL, MAX_QUEUE_DATA_HEADER_OVERHEAD,
         },
         id::LocalSenderId,
         msg,
@@ -171,11 +171,11 @@ struct Inner {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Status {
-    /// Initial state before sending FlowInit
+    /// Initial state before sending QueueInit
     #[default]
     Init,
-    /// FlowInit sent, waiting for acknowledgment
-    FlowInitSent,
+    /// QueueInit sent, waiting for acknowledgment
+    QueueBindSent,
     /// Flow established and open for writes
     Open,
     /// FIN sent
@@ -186,17 +186,17 @@ enum Status {
 
 impl Status {
     is!(is_init, Init);
-    is!(is_flow_init_sent, FlowInitSent);
+    is!(is_queue_init_sent, QueueBindSent);
     is!(is_open, Open);
     is!(is_fin_sent, FinSent);
     is!(is_shutdown, Shutdown);
     is!(is_terminal, FinSent | Shutdown);
 
     event! {
-        on_send_flow_init(Init => FlowInitSent);
-        on_flow_established(FlowInitSent => Open);
-        on_send_fin(FlowInitSent | Open => FinSent);
-        on_shutdown(Init | FlowInitSent | Open | FinSent => Shutdown);
+        on_send_queue_init(Init => QueueBindSent);
+        on_queue_confirmed(QueueBindSent => Open);
+        on_send_fin(QueueBindSent | Open => FinSent);
+        on_shutdown(Init | QueueBindSent | Open | FinSent => Shutdown);
     }
 }
 
@@ -211,7 +211,7 @@ impl Writer {
         let completion_rx = frame::completion_channel();
         let parameters = path_secret_entry.parameters();
         let mtu = parameters.max_datagram_size();
-        let packet_size = mtu.saturating_sub(MAX_FLOW_DATA_HEADER_OVERHEAD);
+        let packet_size = mtu.saturating_sub(MAX_QUEUE_DATA_HEADER_OVERHEAD);
         let max_inflight_bytes = parameters.local_send_max_data.as_u64();
         let remote_max_data = VarInt::ZERO;
 
@@ -242,7 +242,7 @@ impl Writer {
         let completion_rx = frame::completion_channel();
         let parameters = path_secret_entry.parameters();
         let mtu = parameters.max_datagram_size();
-        let packet_size = mtu.saturating_sub(MAX_FLOW_DATA_HEADER_OVERHEAD);
+        let packet_size = mtu.saturating_sub(MAX_QUEUE_DATA_HEADER_OVERHEAD);
         let max_inflight_bytes = parameters.local_send_max_data.as_u64();
         let initial_remote_max_data = parameters.remote_max_data;
 
@@ -400,7 +400,7 @@ impl Writer {
     ///
     /// - Success does not guarantee a FIN frame was emitted immediately. In
     ///   particular, if shutdown happens while the writer is still waiting for
-    ///   flow establishment (`FlowInitSent`), the local shutdown succeeds but
+    ///   flow establishment (`QueueBindSent`), the local shutdown succeeds but
     ///   no FIN can be sent yet because the peer queue ID is still unknown.
     /// - Even when a FIN frame is emitted, success only means it was queued
     ///   locally. It does not mean the peer has observed it yet.
@@ -468,7 +468,7 @@ impl Inner {
         let _ = self.poll_remote_budget(cx)?;
 
         if self.status.is_init() {
-            let (written, is_fin) = self.send_flow_init_with_early_data(buf, is_fin)?;
+            let (written, is_fin) = self.send_queue_init_with_early_data(buf, is_fin)?;
 
             if written > 0 || is_fin {
                 return Poll::Ready(Ok(written));
@@ -477,16 +477,16 @@ impl Inner {
             return Poll::Pending;
         }
 
-        if self.status.is_flow_init_sent() {
+        if self.status.is_queue_init_sent() {
             if is_fin && buf.buffer_is_empty() {
                 // Buffer is empty and the caller wants to close the write side.
-                // Send FlowInitFin so the server can deliver EOF before MAX_DATA arrives.
+                // Send QueueInitFin so the server can deliver EOF before MAX_DATA arrives.
                 self.send_fin_packet()?;
                 return Poll::Ready(Ok(0));
             }
             trace!(
                 stream_id = self.stream_id.as_u64(),
-                "Writer blocked in FlowInitSent - waiting for remote MAX_DATA"
+                "Writer blocked in QueueBindSent - waiting for remote MAX_DATA"
             );
             return Poll::Pending;
         }
@@ -505,7 +505,7 @@ impl Inner {
     ///
     /// If the peer was declared dead (idle timeout), the queue contains a Reset
     /// we never consumed. Transitioning to shutdown here prevents the drop path
-    /// from sending a FIN or FlowReset to a dead peer.
+    /// from sending a FIN or QueueReset to a dead peer.
     fn drain_pending_reset(&mut self) {
         if self.status.is_shutdown() {
             return;
@@ -543,14 +543,14 @@ impl Inner {
         reset_target: ResetTarget,
     ) -> io::Result<()> {
         let Some(remote_queue_id) = self.control_rx.remote_queue_id() else {
-            // The server's queue ID is not yet known (still in FlowInitSent or Init state).
-            // Use FlowInitReset so the server can look up the stream via stream_id.
-            return self.send_flow_init_reset_frame(error_code);
+            // The server's queue ID is not yet known (still in QueueBindSent or Init state).
+            // Use QueueInitReset so the server can look up the stream via stream_id.
+            return self.send_queue_init_reset_frame(error_code);
         };
 
         let frame = Frame {
             source_sender_id: LocalSenderId::UNSPECIFIED,
-            header: Header::FlowReset {
+            header: Header::QueueReset {
                 dest_queue_id: remote_queue_id,
                 stream_id: self.stream_id,
                 reset_target,
@@ -570,44 +570,44 @@ impl Inner {
             stream_id = self.stream_id.as_u64(),
             error_code = error_code.as_u64(),
             ?reset_target,
-            "Sent FlowReset"
+            "Sent QueueReset"
         );
 
         Ok(())
     }
 
-    fn send_flow_init_reset_frame(&mut self, error_code: VarInt) -> io::Result<()> {
-        // Only meaningful when the server already received our FlowInit and registered
+    fn send_queue_init_reset_frame(&mut self, error_code: VarInt) -> io::Result<()> {
+        // Only meaningful when the server already received our QueueInit and registered
         // a stream entry. In Init state the server doesn't know about us yet.
-        if !self.status.is_flow_init_sent() {
+        if !self.status.is_queue_init_sent() {
             debug!(
                 stream_id = self.stream_id.as_u64(),
-                "Not sending FlowInitReset - FlowInit was never sent"
+                "Not sending QueueInitReset - QueueInit was never sent"
             );
             return Ok(());
         }
 
-        // The completion channel records which sender socket transmitted the FlowInit.
-        // We must route FlowInitReset through the same socket so it reaches the same
+        // The completion channel records which sender socket transmitted the QueueInit.
+        // We must route QueueInitReset through the same socket so it reaches the same
         // server-side recv::Context (which is keyed by sender ID).
         let Some(sender_idx) = self.completion_rx.init_sender_idx() else {
-            // FlowInit is still queued and has not been transmitted by any sender socket.
-            // Cancel it so the server never sees this stream — no FlowInitReset needed.
+            // QueueInit is still queued and has not been transmitted by any sender socket.
+            // Cancel it so the server never sees this stream — no QueueInitReset needed.
             debug!(
                 stream_id = self.stream_id.as_u64(),
-                "FlowInit not yet transmitted - cancelling pending FlowInit instead of sending FlowInitReset"
+                "QueueInit not yet transmitted - cancelling pending QueueInit instead of sending QueueInitReset"
             );
             self.completion_rx.cancel();
             return Ok(());
         };
 
         // Include the actual attempt_id so the server can mark it as seen in its dedup
-        // window, preventing a late-arriving FlowInit duplicate from creating a new stream.
+        // window, preventing a late-arriving QueueInit duplicate from creating a new stream.
         let Some(attempt_id) = self.completion_rx.init_attempt_id() else {
             debug!(
                 stream_id = self.stream_id.as_u64(),
                 ?sender_idx,
-                "FlowInit transmitted without attempt_id stamp - cancelling pending FlowInitReset"
+                "QueueInit transmitted without attempt_id stamp - cancelling pending QueueInitReset"
             );
             self.completion_rx.cancel();
             return Ok(());
@@ -615,7 +615,7 @@ impl Inner {
 
         let frame = Frame {
             source_sender_id: sender_idx,
-            header: Header::FlowInitReset {
+            header: Header::QueueInitReset {
                 attempt_id,
                 stream_id: self.stream_id,
                 error_code,
@@ -635,31 +635,31 @@ impl Inner {
             ?sender_idx,
             attempt_id = attempt_id.as_u64(),
             error_code = error_code.as_u64(),
-            "Sent FlowInitReset"
+            "Sent QueueInitReset"
         );
 
         Ok(())
     }
 
-    fn send_flow_init_fin_frame(&mut self) -> io::Result<()> {
-        // Only meaningful when the server already received our FlowInit.
-        if !self.status.is_flow_init_sent() {
+    fn send_queue_init_fin_frame(&mut self) -> io::Result<()> {
+        // Only meaningful when the server already received our QueueInit.
+        if !self.status.is_queue_init_sent() {
             debug!(
                 stream_id = self.stream_id.as_u64(),
-                "Not sending FlowInitFin - FlowInit was never sent"
+                "Not sending QueueInitFin - QueueInit was never sent"
             );
             return Ok(());
         }
 
-        // The completion channel records which sender socket transmitted the FlowInit.
-        // We must route FlowInitFin through the same socket so it reaches the same
+        // The completion channel records which sender socket transmitted the QueueInit.
+        // We must route QueueInitFin through the same socket so it reaches the same
         // server-side recv::Context (keyed by sender ID).
         let Some(sender_idx) = self.completion_rx.init_sender_idx() else {
-            // FlowInit is still queued and has not been transmitted by any sender socket.
-            // Cancel it so the server never sees this stream — no FlowInitFin needed.
+            // QueueInit is still queued and has not been transmitted by any sender socket.
+            // Cancel it so the server never sees this stream — no QueueInitFin needed.
             debug!(
                 stream_id = self.stream_id.as_u64(),
-                "FlowInit not yet transmitted - cancelling pending FlowInit instead of sending FlowInitFin"
+                "QueueInit not yet transmitted - cancelling pending QueueInit instead of sending QueueInitFin"
             );
             self.completion_rx.cancel();
             self.status.on_send_fin().unwrap();
@@ -668,7 +668,7 @@ impl Inner {
 
         let frame = Frame {
             source_sender_id: sender_idx,
-            header: Header::FlowInitFin {
+            header: Header::QueueInitFin {
                 stream_id: self.stream_id,
                 offset: self.next_offset,
             },
@@ -686,7 +686,7 @@ impl Inner {
             stream_id = self.stream_id.as_u64(),
             ?sender_idx,
             offset = self.next_offset.as_u64(),
-            "Sent FlowInitFin"
+            "Sent QueueInitFin"
         );
 
         self.status.on_send_fin().unwrap();
@@ -696,12 +696,12 @@ impl Inner {
 
     fn send_fin_packet(&mut self) -> io::Result<()> {
         if self.status.is_init() {
-            self.send_flow_init_with_early_data(&mut buffer::reader::storage::Empty, true)?;
-        } else if self.status.is_flow_init_sent() {
-            // FlowInit was sent but MAX_DATA (server queue ID) not yet received.
-            // Use FlowInitFin so the server can look up the stream via stream_id and
+            self.send_queue_init_with_early_data(&mut buffer::reader::storage::Empty, true)?;
+        } else if self.status.is_queue_init_sent() {
+            // QueueInit was sent but MAX_DATA (server queue ID) not yet received.
+            // Use QueueInitFin so the server can look up the stream via stream_id and
             // deliver EOF to the reader at the correct offset.
-            self.send_flow_init_fin_frame()?;
+            self.send_queue_init_fin_frame()?;
         } else if self.status.is_open() {
             let queue_pair = QueuePair {
                 source_queue_id: self.control_rx.queue_id(),
@@ -713,7 +713,7 @@ impl Inner {
 
             let frame = Frame {
                 source_sender_id: LocalSenderId::UNSPECIFIED,
-                header: Header::FlowData {
+                header: Header::QueueData {
                     queue_pair,
                     stream_id: self.stream_id,
                     offset: self.next_offset,
@@ -893,9 +893,9 @@ impl Inner {
         );
     }
 
-    /// Transitions the writer to `Open` if it is currently `FlowInitSent`.
+    /// Transitions the writer to `Open` if it is currently `QueueBindSent`.
     fn try_establish_flow(&mut self) {
-        if self.status.on_flow_established().is_ok() {
+        if self.status.on_queue_confirmed().is_ok() {
             debug_assert!(self.control_rx.remote_queue_id().is_some());
             debug!(stream_id = self.stream_id.as_u64(), "Flow established");
         }
@@ -924,7 +924,7 @@ impl Inner {
         Ok(())
     }
 
-    fn send_flow_init_with_early_data<S>(
+    fn send_queue_init_with_early_data<S>(
         &mut self,
         buf: &mut S,
         is_fin: bool,
@@ -936,7 +936,7 @@ impl Inner {
 
         let frame = Frame {
             source_sender_id: LocalSenderId::UNSPECIFIED,
-            header: Header::FlowInit {
+            header: Header::QueueInit {
                 source_queue_id: self.control_rx.queue_id(),
                 dest_acceptor_id: self.acceptor_id,
                 attempt_id: VarInt::MAX,
@@ -953,7 +953,7 @@ impl Inner {
 
         self.send_frame(frame)?;
 
-        self.status.on_send_flow_init().unwrap();
+        self.status.on_send_queue_init().unwrap();
 
         if actual_fin {
             self.status.on_send_fin().unwrap();
@@ -963,7 +963,7 @@ impl Inner {
             stream_id = self.stream_id.as_u64(),
             bytes_read,
             is_fin = actual_fin,
-            "Sent FlowInit with early data"
+            "Sent QueueInit with early data"
         );
 
         Ok((bytes_read, actual_fin))
@@ -1076,7 +1076,7 @@ impl Inner {
 
             let frame = Frame {
                 source_sender_id: LocalSenderId::UNSPECIFIED,
-                header: Header::FlowData {
+                header: Header::QueueData {
                     queue_pair,
                     stream_id: self.stream_id,
                     offset,
@@ -1100,7 +1100,7 @@ impl Inner {
                 offset = offset.as_u64(),
                 payload_len,
                 is_fin = include_fin,
-                "Sending FlowData"
+                "Sending QueueData"
             );
 
             if include_fin {
@@ -1142,7 +1142,7 @@ impl Inner {
         self.frame_tx
             .send_batch(HomogeneousBatch {
                 queue,
-                priority: Priority::FlowData,
+                priority: Priority::QueueData,
             })
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))
     }
@@ -1168,7 +1168,7 @@ impl Drop for Writer {
             let _ = self.0.send_reset_frame(error_code, ResetTarget::Both);
             debug!(
                 stream_id = self.0.stream_id.as_u64(),
-                "Writer dropped during panic - sent FlowReset and cancelled transmissions"
+                "Writer dropped during panic - sent QueueReset and cancelled transmissions"
             );
         } else {
             let _ = self.shutdown();

@@ -176,8 +176,8 @@ impl Pusher {
         self.push(msg::Stream::Reset { error_code });
     }
 
-    fn push_flow_validated(&mut self) {
-        self.push(msg::Stream::FlowValidated);
+    fn push_queue_validated(&mut self) {
+        self.push(msg::Stream::QueueValidated);
     }
 
     /// Asynchronously wait for frames submitted by the Reader.
@@ -237,9 +237,9 @@ impl Pusher {
     }
 }
 
-fn decode_max_data_from_flow_control(frame: &Frame) -> Option<VarInt> {
+fn decode_max_data_from_queue_control(frame: &Frame) -> Option<VarInt> {
     match frame.header {
-        Header::FlowMaxData { maximum_data, .. } => Some(maximum_data),
+        Header::QueueMaxData { maximum_data, .. } => Some(maximum_data),
         _ => None,
     }
 }
@@ -603,7 +603,7 @@ fn reset_after_partial_data_byte_at_a_time_drains_before_error() {
     });
 }
 
-/// The Reader must emit a `MAX_DATA` (FlowControl) frame after the application
+/// The Reader must emit a `MAX_DATA` (QueueControl) frame after the application
 /// consumes enough bytes to cross the replenishment threshold (> window / 2).
 ///
 /// The endpoint task waits for the MAX_DATA frame asynchronously — mirroring
@@ -625,7 +625,7 @@ fn max_data_sent_after_consuming() {
             let frames = pusher.recv_frames().await;
             assert_eq!(frames.len(), 1, "expected exactly one outbound frame");
             assert_eq!(
-                frames.front().and_then(decode_max_data_from_flow_control),
+                frames.front().and_then(decode_max_data_from_queue_control),
                 Some(expected_max_data),
                 "expected exactly one MAX_DATA frame with the computed limit"
             );
@@ -691,9 +691,9 @@ fn max_data_transmission_failure_surfaces_error() {
 }
 
 /// If the peer sends beyond the client's advertised receive window, the Reader
-/// errors and emits a FlowReset.
+/// errors and emits a QueueReset.
 #[test]
-fn flow_control_violation_errors_reader_and_sends_reset() {
+fn queue_control_violation_errors_reader_and_sends_reset() {
     sim(|| {
         let (mut reader, mut pusher) = make_pair();
         let payload = vec![0u8; reader.0.window_size as usize + 1];
@@ -706,13 +706,13 @@ fn flow_control_violation_errors_reader_and_sends_reset() {
             assert!(
                 matches!(
                     frames.front().unwrap().header,
-                    Header::FlowReset {
+                    Header::QueueReset {
                         reset_target: ResetTarget::Both,
                         error_code,
                         ..
-                    } if error_code == error::FLOW_CONTROL_ERROR
+                    } if error_code == error::QUEUE_CONTROL_ERROR
                 ),
-                "expected exactly one FlowReset(Both, FLOW_CONTROL_ERROR) frame"
+                "expected exactly one QueueReset(Both, QUEUE_CONTROL_ERROR) frame"
             );
         }
         .primary()
@@ -824,7 +824,7 @@ fn server_read_before_validate_fails() {
     });
 }
 
-/// A server-side stream becomes readable once `FlowValidated` is received.
+/// A server-side stream becomes readable once `QueueValidated` is received.
 #[test]
 fn server_validates_then_reads() {
     sim(|| {
@@ -832,7 +832,7 @@ fn server_validates_then_reads() {
         let expected_max_data = VarInt::new(reader.0.window_size + 5).unwrap();
 
         async move {
-            pusher.push_flow_validated();
+            pusher.push_queue_validated();
             // Encourage task interleaving so validation/read processing can run
             // before we assert on emitted flow-control frames.
             bach::task::yield_now().await;
@@ -844,7 +844,7 @@ fn server_validates_then_reads() {
                 .expect("expected server flow update after validating/reading");
             assert_eq!(frames.len(), 1, "expected exactly one outbound frame");
             assert_eq!(
-                frames.front().and_then(decode_max_data_from_flow_control),
+                frames.front().and_then(decode_max_data_from_queue_control),
                 Some(expected_max_data),
                 "expected exactly one MAX_DATA frame with the computed limit"
             );
@@ -864,7 +864,7 @@ fn server_validates_then_reads() {
     });
 }
 
-/// When early data arrives before FlowValidated (as happens with AcceptedWithRetry),
+/// When early data arrives before QueueValidated (as happens with AcceptedWithRetry),
 /// the reader must still emit MAX_DATA after validate() + read() — even though
 /// poll_stream_rx returns Pending on the read call (channel already drained by validate).
 #[test]
@@ -874,11 +874,11 @@ fn server_early_data_before_validated_sends_max_data() {
         let expected_max_data = VarInt::new(reader.0.window_size + 5).unwrap();
 
         async move {
-            // Push early data FIRST (mimics FlowInit payload arriving before validation)
+            // Push early data FIRST (mimics QueueInit payload arriving before validation)
             pusher.push_data(0, b"hello", true);
             bach::task::yield_now().await;
-            // Then FlowValidated arrives (after the validation round-trip)
-            pusher.push_flow_validated();
+            // Then QueueValidated arrives (after the validation round-trip)
+            pusher.push_queue_validated();
             bach::task::yield_now().await;
 
             let frames = pusher
@@ -887,7 +887,7 @@ fn server_early_data_before_validated_sends_max_data() {
                 .expect("expected MAX_DATA after reading early data");
             assert_eq!(frames.len(), 1);
             assert_eq!(
-                frames.front().and_then(decode_max_data_from_flow_control),
+                frames.front().and_then(decode_max_data_from_queue_control),
                 Some(expected_max_data),
             );
         }
@@ -915,7 +915,7 @@ fn server_init_with_fin_suppresses_max_data() {
         let (mut reader, mut pusher) = PairBuilder::server().peer_fin_received(true).build();
 
         async move {
-            pusher.push_flow_validated();
+            pusher.push_queue_validated();
             bach::task::yield_now().await;
             pusher.push_data(0, b"hello", true);
             bach::task::yield_now().await;
@@ -951,7 +951,7 @@ fn server_init_with_fin_suppresses_max_data_large_payload() {
 
         let payload_clone = payload.clone();
         async move {
-            pusher.push_flow_validated();
+            pusher.push_queue_validated();
             bach::task::yield_now().await;
             pusher.push_data(0, &payload_clone, true);
             bach::task::yield_now().await;
@@ -1040,13 +1040,13 @@ fn server_validate_returns_ok_after_external_reset() {
             assert!(
                 matches!(
                     frames.front().unwrap().header,
-                    Header::FlowReset {
+                    Header::QueueReset {
                         reset_target: ResetTarget::Both,
                         error_code,
                         ..
                     } if error_code == VarInt::from_u8(77)
                 ),
-                "expected FlowReset(Both) from send_reset"
+                "expected QueueReset(Both) from send_reset"
             );
             // No STOP_SENDING on drop since status is already Reset
             let extra = pusher.recv_frames_timeout(1.s()).await;
@@ -1079,19 +1079,19 @@ fn server_validate_returns_ok_after_external_reset() {
     });
 }
 
-/// FlowValidated and Data arrive in the same queue batch. The `interpose` flag
+/// QueueValidated and Data arrive in the same queue batch. The `interpose` flag
 /// is captured once as `false` (PendingValidation at start of poll_stream_rx),
 /// so data goes into the reassembler even though status transitions to Open
 /// mid-batch. Subsequent read_into must drain and emit MAX_DATA.
 #[test]
-fn server_flow_validated_and_data_same_batch() {
+fn server_queue_validated_and_data_same_batch() {
     sim(|| {
         let (mut reader, mut pusher) = make_server_pair();
         let expected_max_data = VarInt::new(reader.0.window_size + 5).unwrap();
 
         async move {
             // Same batch: no yield between pushes
-            pusher.push_flow_validated();
+            pusher.push_queue_validated();
             pusher.push_data(0, b"hello", true);
             bach::task::yield_now().await;
 
@@ -1101,7 +1101,7 @@ fn server_flow_validated_and_data_same_batch() {
                 .expect("expected MAX_DATA after same-batch validate+data");
             assert_eq!(frames.len(), 1);
             assert_eq!(
-                frames.front().and_then(decode_max_data_from_flow_control),
+                frames.front().and_then(decode_max_data_from_queue_control),
                 Some(expected_max_data),
             );
         }
@@ -1120,18 +1120,18 @@ fn server_flow_validated_and_data_same_batch() {
     });
 }
 
-/// Reset arrives before FlowValidated in the same batch. The Reset causes
-/// poll_stream_rx to return immediately, so FlowValidated is never processed.
+/// Reset arrives before QueueValidated in the same batch. The Reset causes
+/// poll_stream_rx to return immediately, so QueueValidated is never processed.
 /// Status goes directly PendingValidation → Reset.
 #[test]
-fn server_reset_before_flow_validated_same_batch() {
+fn server_reset_before_queue_validated_same_batch() {
     sim(|| {
         let (mut reader, mut pusher) = make_server_pair();
 
         async move {
-            // Reset first, then FlowValidated in same batch
+            // Reset first, then QueueValidated in same batch
             pusher.push_reset(VarInt::from_u8(5));
-            pusher.push_flow_validated();
+            pusher.push_queue_validated();
         }
         .primary()
         .spawn();
@@ -1157,17 +1157,17 @@ fn server_reset_before_flow_validated_same_batch() {
     });
 }
 
-/// FlowValidated arrives before Reset in the same batch. FlowValidated
+/// QueueValidated arrives before Reset in the same batch. QueueValidated
 /// transitions to Open, then Reset transitions Open → Reset. End state is
 /// the same as the reversed ordering (test above).
 #[test]
-fn server_flow_validated_then_reset_same_batch() {
+fn server_queue_validated_then_reset_same_batch() {
     sim(|| {
         let (mut reader, mut pusher) = make_server_pair();
 
         async move {
-            // FlowValidated first, then Reset in same batch
-            pusher.push_flow_validated();
+            // QueueValidated first, then Reset in same batch
+            pusher.push_queue_validated();
             pusher.push_reset(VarInt::from_u8(5));
         }
         .primary()
@@ -1221,7 +1221,7 @@ fn server_channel_closed_during_validate() {
     });
 }
 
-/// Multiple out-of-order chunks arrive before FlowValidated. After validation,
+/// Multiple out-of-order chunks arrive before QueueValidated. After validation,
 /// reassembly produces the correct ordered stream and MAX_DATA reflects total
 /// consumed bytes.
 #[test]
@@ -1236,7 +1236,7 @@ fn server_out_of_order_early_data_before_validated() {
             pusher.push_data(0, b"hello", false);
             pusher.push_data(10, b"!", true);
             bach::task::yield_now().await;
-            pusher.push_flow_validated();
+            pusher.push_queue_validated();
             bach::task::yield_now().await;
 
             let frames = pusher
@@ -1244,7 +1244,7 @@ fn server_out_of_order_early_data_before_validated() {
                 .await
                 .expect("expected MAX_DATA after reading out-of-order early data");
             assert_eq!(
-                frames.front().and_then(decode_max_data_from_flow_control),
+                frames.front().and_then(decode_max_data_from_queue_control),
                 Some(expected_max_data),
             );
         }
@@ -1276,7 +1276,7 @@ fn server_drop_during_pending_validation_sends_stop_sending() {
             assert!(
                 matches!(
                     frames.front().unwrap().header,
-                    Header::FlowReset {
+                    Header::QueueReset {
                         reset_target: ResetTarget::Control,
                         error_code,
                         ..
@@ -1298,7 +1298,7 @@ fn server_drop_during_pending_validation_sends_stop_sending() {
 }
 
 /// Application-initiated rejection: `send_reset` on a PendingValidation reader
-/// emits FlowReset(Both), transitions to Reset, and suppresses further frames
+/// emits QueueReset(Both), transitions to Reset, and suppresses further frames
 /// on drop.
 #[test]
 fn server_send_reset_on_pending_reader() {
@@ -1311,13 +1311,13 @@ fn server_send_reset_on_pending_reader() {
             assert!(
                 matches!(
                     frames.front().unwrap().header,
-                    Header::FlowReset {
+                    Header::QueueReset {
                         reset_target: ResetTarget::Both,
                         error_code,
                         ..
                     } if error_code == VarInt::from_u8(42)
                 ),
-                "expected FlowReset(Both, 42) from send_reset"
+                "expected QueueReset(Both, 42) from send_reset"
             );
             // Drop must NOT emit additional STOP_SENDING (status is already Reset)
             let extra = pusher.recv_frames_timeout(1.s()).await;
@@ -1348,7 +1348,7 @@ fn server_validate_idempotent_when_already_open() {
         let (mut reader, mut pusher) = make_server_pair();
 
         async move {
-            pusher.push_flow_validated();
+            pusher.push_queue_validated();
         }
         .primary()
         .spawn();
@@ -1369,7 +1369,7 @@ fn server_validate_idempotent_when_already_open() {
 }
 
 /// Dropping the Reader before a FIN is received must send a `STOP_SENDING`
-/// (FlowReset) frame so the peer knows to stop.
+/// (QueueReset) frame so the peer knows to stop.
 ///
 /// The endpoint task waits for the frame asynchronously, mirroring how a
 /// real endpoint would process control frames from the application side.
@@ -1386,13 +1386,13 @@ fn drop_before_fin_sends_stop_sending() {
             assert!(
                 matches!(
                     frames.front().unwrap().header,
-                    Header::FlowReset {
+                    Header::QueueReset {
                         reset_target: ResetTarget::Control,
                         error_code,
                         ..
                     } if error_code == error::STOP_SENDING
                 ),
-                "expected exactly one FlowReset(Control, STOP_SENDING) on drop"
+                "expected exactly one QueueReset(Control, STOP_SENDING) on drop"
             );
         }
         .primary()
@@ -1421,13 +1421,13 @@ fn panic_drop_sends_abnormal_termination_reset() {
             assert!(
                 matches!(
                     frames.front().unwrap().header,
-                    Header::FlowReset {
+                    Header::QueueReset {
                         reset_target: ResetTarget::Both,
                         error_code,
                         ..
                     } if error_code == error::ABNORMAL_TERMINATION
                 ),
-                "expected exactly one FlowReset(Both, ABNORMAL_TERMINATION) on panic drop"
+                "expected exactly one QueueReset(Both, ABNORMAL_TERMINATION) on panic drop"
             );
         }
         .primary()
@@ -1480,7 +1480,7 @@ fn drop_after_fin_completion_sends_no_reset() {
 /// Flow-control violations should emit exactly one reset frame even if the app
 /// performs additional reads after the initial error.
 #[test]
-fn flow_control_violation_emits_single_reset_frame() {
+fn queue_control_violation_emits_single_reset_frame() {
     sim(|| {
         let (mut reader, mut pusher) = make_pair();
         let payload = vec![0u8; reader.0.window_size as usize + 1];
@@ -1492,13 +1492,13 @@ fn flow_control_violation_emits_single_reset_frame() {
             assert!(
                 matches!(
                     frames.front().unwrap().header,
-                    Header::FlowReset {
+                    Header::QueueReset {
                         reset_target: ResetTarget::Both,
                         error_code,
                         ..
-                    } if error_code == error::FLOW_CONTROL_ERROR
+                    } if error_code == error::QUEUE_CONTROL_ERROR
                 ),
-                "expected one FLOW_CONTROL_ERROR reset"
+                "expected one QUEUE_CONTROL_ERROR reset"
             );
 
             let extra = pusher.recv_frames_timeout(1.s()).await;

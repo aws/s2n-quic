@@ -26,7 +26,7 @@ pub enum Kind {
     Stream,
     Datagram,
     Control,
-    FlowReset,
+    QueueReset,
     StaleKey,
     ReplayDetected,
     UnknownPathSecret,
@@ -37,7 +37,7 @@ pub enum Packet<'a> {
     Stream(stream::decoder::Packet<'a>),
     Datagram(datagram::decoder::Packet<&'a mut [u8]>),
     Control(control::decoder::Packet<&'a mut [u8]>),
-    FlowReset(secret_control::flow_reset::Packet<'a>),
+    QueueReset(secret_control::queue_reset::Packet<'a>),
     StaleKey(secret_control::stale_key::Packet<'a>),
     ReplayDetected(secret_control::replay_detected::Packet<'a>),
     UnknownPathSecret(secret_control::unknown_path_secret::Packet<'a>),
@@ -50,7 +50,7 @@ impl Packet<'_> {
             Packet::Stream(_) => Kind::Stream,
             Packet::Datagram(_) => Kind::Datagram,
             Packet::Control(_) => Kind::Control,
-            Packet::FlowReset(_) => Kind::FlowReset,
+            Packet::QueueReset(_) => Kind::QueueReset,
             Packet::StaleKey(_) => Kind::StaleKey,
             Packet::ReplayDetected(_) => Kind::ReplayDetected,
             Packet::UnknownPathSecret(_) => Kind::UnknownPathSecret,
@@ -79,9 +79,9 @@ impl<'a> s2n_codec::DecoderParameterizedValueMut<'a> for Packet<'a> {
                 let (packet, decoder) = datagram::decoder::Packet::decode(decoder, (), tag_len)?;
                 Ok((Self::Datagram(packet), decoder))
             }
-            Tag::FlowReset(_) => {
-                let (packet, decoder) = secret_control::flow_reset::Packet::decode(decoder)?;
-                Ok((Self::FlowReset(packet), decoder))
+            Tag::QueueReset(_) => {
+                let (packet, decoder) = secret_control::queue_reset::Packet::decode(decoder)?;
+                Ok((Self::QueueReset(packet), decoder))
             }
             Tag::StaleKey(_) => {
                 let (packet, decoder) = secret_control::stale_key::Packet::decode(decoder)?;

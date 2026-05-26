@@ -4,8 +4,8 @@
 use super::*;
 use crate::credentials::Credentials;
 
-impl_tag!(FLOW_RESET);
-impl_packet!(FlowReset, {
+impl_tag!(QUEUE_RESET);
+impl_packet!(QueueReset, {
     #[inline]
     pub const fn queue_id(&self) -> VarInt {
         self.value.queue_id
@@ -32,9 +32,9 @@ impl_packet!(FlowReset, {
     }
 });
 
-/// Indicates which packet type triggered the FlowReset.
+/// Indicates which packet type triggered the QueueReset.
 ///
-/// When an unroutable packet is received, a FlowReset is generated and sent back
+/// When an unroutable packet is received, a QueueReset is generated and sent back
 /// to the originator. The `Trigger` field tells the receiver which half of the
 /// stream caused the reset, so it can be routed to the correct worker:
 ///
@@ -43,27 +43,27 @@ impl_packet!(FlowReset, {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
 pub enum Trigger {
-    /// The FlowReset was triggered by an unroutable stream packet.
+    /// The QueueReset was triggered by an unroutable stream packet.
     ///
-    /// This means the send worker's data was rejected, so the FlowReset should
+    /// This means the send worker's data was rejected, so the QueueReset should
     /// be routed to the control queue (send worker).
     #[default]
     Stream = 0,
-    /// The FlowReset was triggered by an unroutable control packet.
+    /// The QueueReset was triggered by an unroutable control packet.
     ///
-    /// This means the recv worker's ACKs were rejected, so the FlowReset should
+    /// This means the recv worker's ACKs were rejected, so the QueueReset should
     /// be routed to the stream queue (recv worker).
     Control = 1,
 }
 
 impl Trigger {
-    /// Returns `true` if the FlowReset was triggered by a stream packet
+    /// Returns `true` if the QueueReset was triggered by a stream packet
     #[inline]
     pub const fn is_stream(&self) -> bool {
         matches!(self, Self::Stream)
     }
 
-    /// Returns `true` if the FlowReset was triggered by a control packet
+    /// Returns `true` if the QueueReset was triggered by a control packet
     #[inline]
     pub const fn is_control(&self) -> bool {
         matches!(self, Self::Control)
@@ -93,7 +93,7 @@ impl<'a> DecoderValue<'a> for Trigger {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
-pub struct FlowReset {
+pub struct QueueReset {
     pub credentials: Credentials,
     pub wire_version: WireVersion,
     pub queue_id: VarInt,
@@ -101,7 +101,7 @@ pub struct FlowReset {
     pub trigger: Trigger,
 }
 
-impl FlowReset {
+impl QueueReset {
     #[inline]
     pub fn encode<C>(&self, mut encoder: EncoderBuffer, crypto: &C) -> usize
     where
@@ -118,7 +118,7 @@ impl FlowReset {
     }
 }
 
-impl<'a> DecoderValue<'a> for FlowReset {
+impl<'a> DecoderValue<'a> for QueueReset {
     #[inline]
     fn decode(buffer: DecoderBuffer<'a>) -> R<'a, Self> {
         let (_tag, buffer) = buffer.decode::<Tag>()?;

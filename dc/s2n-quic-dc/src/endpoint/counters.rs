@@ -37,12 +37,12 @@ pub(crate) struct Dispatch {
     pub rx_data_stream_id_mismatch: Counter,
     pub rx_data_perm_closed: Counter,
 
-    pub rx_flow_control_ok: Counter,
-    pub rx_flow_control_unallocated: Counter,
-    pub rx_flow_control_half_closed: Counter,
-    pub rx_flow_control_credential_mismatch: Counter,
-    pub rx_flow_control_stream_id_mismatch: Counter,
-    pub rx_flow_control_perm_closed: Counter,
+    pub rx_queue_control_ok: Counter,
+    pub rx_queue_control_unallocated: Counter,
+    pub rx_queue_control_half_closed: Counter,
+    pub rx_queue_control_credential_mismatch: Counter,
+    pub rx_queue_control_stream_id_mismatch: Counter,
+    pub rx_queue_control_perm_closed: Counter,
 
     pub rx_reset_both: Counter,
     pub rx_reset_stream: Counter,
@@ -57,8 +57,8 @@ pub(crate) struct Dispatch {
     pub rx_res_reset_stream: Counter,
     pub rx_res_reset_control: Counter,
 
-    pub flow_accepted: Counter,
-    pub flow_pending: Counter,
+    pub queue_accepted: Counter,
+    pub queue_pending: Counter,
 
     pub rx_process_err_peer_lookup: Counter,
     pub rx_process_err_decryption: Counter,
@@ -85,16 +85,16 @@ pub(crate) struct Dispatch {
     pub rx_ecn_not_ect: Counter,
 
     // Per-frame-type RX counters for inbound frames observed by the dispatch path.
-    pub rx_frame_flow_init: Counter,
-    pub rx_frame_flow_data: Counter,
-    pub rx_frame_flow_data_fin: Counter,
-    pub rx_frame_flow_control: Counter,
-    pub rx_frame_flow_max_data: Counter,
-    pub rx_frame_flow_reset: Counter,
-    pub rx_frame_flow_init_reset: Counter,
-    pub rx_frame_flow_init_fin: Counter,
-    pub rx_frame_flow_init_validate: Counter,
-    pub rx_frame_flow_validate_request: Counter,
+    pub rx_frame_queue_init: Counter,
+    pub rx_frame_queue_data: Counter,
+    pub rx_frame_queue_data_fin: Counter,
+    pub rx_frame_queue_control: Counter,
+    pub rx_frame_queue_max_data: Counter,
+    pub rx_frame_queue_reset: Counter,
+    pub rx_frame_queue_init_reset: Counter,
+    pub rx_frame_queue_init_fin: Counter,
+    pub rx_frame_queue_init_validate: Counter,
+    pub rx_frame_queue_validate_request: Counter,
     pub rx_frame_ack: Counter,
 }
 
@@ -127,16 +127,16 @@ impl Dispatch {
             rx_data_stream_id_mismatch: counters.register_nominal("!rx.data", "stream_id_mismatch"),
             rx_data_perm_closed: counters.register("rx.data.perm_closed"),
 
-            rx_flow_control_ok: counters.register("rx.flow_control.ok"),
-            rx_flow_control_unallocated: counters
-                .register_nominal("!rx.flow_control", "unallocated"),
-            rx_flow_control_half_closed: counters
-                .register_nominal("!rx.flow_control", "half_closed"),
-            rx_flow_control_credential_mismatch: counters
-                .register_nominal("!rx.flow_control", "credential_mismatch"),
-            rx_flow_control_stream_id_mismatch: counters
-                .register_nominal("!rx.flow_control", "stream_id_mismatch"),
-            rx_flow_control_perm_closed: counters.register("rx.flow_control.perm_closed"),
+            rx_queue_control_ok: counters.register("rx.queue_control.ok"),
+            rx_queue_control_unallocated: counters
+                .register_nominal("!rx.queue_control", "unallocated"),
+            rx_queue_control_half_closed: counters
+                .register_nominal("!rx.queue_control", "half_closed"),
+            rx_queue_control_credential_mismatch: counters
+                .register_nominal("!rx.queue_control", "credential_mismatch"),
+            rx_queue_control_stream_id_mismatch: counters
+                .register_nominal("!rx.queue_control", "stream_id_mismatch"),
+            rx_queue_control_perm_closed: counters.register("rx.queue_control.perm_closed"),
 
             rx_reset_both: counters.register("rx.reset.both"),
             rx_reset_stream: counters.register("rx.reset.stream"),
@@ -151,8 +151,8 @@ impl Dispatch {
             rx_res_reset_stream: counters.register("rx.res.reset.stream"),
             rx_res_reset_control: counters.register("rx.res.reset.control"),
 
-            flow_accepted: counters.register("flow.accepted"),
-            flow_pending: counters.register("flow.pending"),
+            queue_accepted: counters.register("queue.accepted"),
+            queue_pending: counters.register("queue.pending"),
 
             rx_process_err_peer_lookup: counters.register("!rx.process.err.peer_lookup"),
             rx_process_err_decryption: counters.register("!rx.process.err.decrypt"),
@@ -179,18 +179,18 @@ impl Dispatch {
             rx_ecn_ce: counters.register_nominal("rx.ecn", "ce"),
             rx_ecn_not_ect: counters.register_nominal("rx.ecn", "not_ect"),
 
-            rx_frame_flow_init: counters.register_nominal("rx.frame", "flow_init"),
-            rx_frame_flow_data: counters.register_nominal("rx.frame", "flow_data"),
-            rx_frame_flow_data_fin: counters.register_nominal("rx.frame", "flow_data_fin"),
-            rx_frame_flow_control: counters.register_nominal("rx.frame", "flow_control"),
-            rx_frame_flow_max_data: counters.register_nominal("rx.frame", "flow_max_data"),
-            rx_frame_flow_reset: counters.register_nominal("rx.frame", "flow_reset"),
-            rx_frame_flow_init_reset: counters.register_nominal("rx.frame", "flow_init_reset"),
-            rx_frame_flow_init_fin: counters.register_nominal("rx.frame", "flow_init_fin"),
-            rx_frame_flow_init_validate: counters
-                .register_nominal("rx.frame", "flow_init_validate"),
-            rx_frame_flow_validate_request: counters
-                .register_nominal("rx.frame", "flow_validate_request"),
+            rx_frame_queue_init: counters.register_nominal("rx.frame", "queue_init"),
+            rx_frame_queue_data: counters.register_nominal("rx.frame", "queue_data"),
+            rx_frame_queue_data_fin: counters.register_nominal("rx.frame", "queue_data_fin"),
+            rx_frame_queue_control: counters.register_nominal("rx.frame", "queue_control"),
+            rx_frame_queue_max_data: counters.register_nominal("rx.frame", "queue_max_data"),
+            rx_frame_queue_reset: counters.register_nominal("rx.frame", "queue_reset"),
+            rx_frame_queue_init_reset: counters.register_nominal("rx.frame", "queue_init_reset"),
+            rx_frame_queue_init_fin: counters.register_nominal("rx.frame", "queue_init_fin"),
+            rx_frame_queue_init_validate: counters
+                .register_nominal("rx.frame", "queue_init_validate"),
+            rx_frame_queue_validate_request: counters
+                .register_nominal("rx.frame", "queue_validate_request"),
             rx_frame_ack: counters.register_nominal("rx.frame", "ack"),
         })
     }
@@ -204,10 +204,10 @@ impl Dispatch {
     }
 
     #[inline]
-    pub fn on_flow_control_validation_failed(&self, reason: ValidationError) {
+    pub fn on_queue_control_validation_failed(&self, reason: ValidationError) {
         match reason {
-            ValidationError::CredentialMismatch => self.rx_flow_control_credential_mismatch.add(1),
-            ValidationError::StreamIdMismatch => self.rx_flow_control_stream_id_mismatch.add(1),
+            ValidationError::CredentialMismatch => self.rx_queue_control_credential_mismatch.add(1),
+            ValidationError::StreamIdMismatch => self.rx_queue_control_stream_id_mismatch.add(1),
         }
     }
 
@@ -224,16 +224,16 @@ impl Dispatch {
     #[inline]
     pub fn on_received_frame(&self, header: &Header) {
         match header {
-            Header::FlowInit { .. } => self.rx_frame_flow_init.add(1),
-            Header::FlowValidateRequest { .. } => self.rx_frame_flow_validate_request.add(1),
-            Header::FlowInitValidate { .. } => self.rx_frame_flow_init_validate.add(1),
-            Header::FlowData { is_fin: false, .. } => self.rx_frame_flow_data.add(1),
-            Header::FlowData { is_fin: true, .. } => self.rx_frame_flow_data_fin.add(1),
-            Header::FlowControl { .. } => self.rx_frame_flow_control.add(1),
-            Header::FlowMaxData { .. } => self.rx_frame_flow_max_data.add(1),
-            Header::FlowReset { .. } => self.rx_frame_flow_reset.add(1),
-            Header::FlowInitReset { .. } => self.rx_frame_flow_init_reset.add(1),
-            Header::FlowInitFin { .. } => self.rx_frame_flow_init_fin.add(1),
+            Header::QueueInit { .. } => self.rx_frame_queue_init.add(1),
+            Header::QueueValidateRequest { .. } => self.rx_frame_queue_validate_request.add(1),
+            Header::QueueInitValidate { .. } => self.rx_frame_queue_init_validate.add(1),
+            Header::QueueData { is_fin: false, .. } => self.rx_frame_queue_data.add(1),
+            Header::QueueData { is_fin: true, .. } => self.rx_frame_queue_data_fin.add(1),
+            Header::QueueControl { .. } => self.rx_frame_queue_control.add(1),
+            Header::QueueMaxData { .. } => self.rx_frame_queue_max_data.add(1),
+            Header::QueueReset { .. } => self.rx_frame_queue_reset.add(1),
+            Header::QueueInitReset { .. } => self.rx_frame_queue_init_reset.add(1),
+            Header::QueueInitFin { .. } => self.rx_frame_queue_init_fin.add(1),
             Header::Ack { .. } => self.rx_frame_ack.add(1),
         };
     }
@@ -241,9 +241,9 @@ impl Dispatch {
     #[inline]
     pub fn on_response_frame(&self, header: &Header) {
         match header {
-            Header::FlowValidateRequest { .. } => self.rx_res_validate.add(1),
-            Header::FlowInitValidate { .. } => self.rx_res_init_validate.add(1),
-            Header::FlowReset { reset_target, .. } => {
+            Header::QueueValidateRequest { .. } => self.rx_res_validate.add(1),
+            Header::QueueInitValidate { .. } => self.rx_res_init_validate.add(1),
+            Header::QueueReset { reset_target, .. } => {
                 self.rx_res_reset.add(1);
                 match reset_target {
                     ResetTarget::Both => self.rx_res_reset_both.add(1),
@@ -287,16 +287,16 @@ pub(crate) struct Send {
     pub tx_packets: Counter,
 
     // Per-frame-type ACK counters (bumped when each inflight frame is acknowledged).
-    pub tx_acked_frame_flow_init: Counter,
-    pub tx_acked_frame_flow_data: Counter,
-    pub tx_acked_frame_flow_data_fin: Counter,
-    pub tx_acked_frame_flow_control: Counter,
-    pub tx_acked_frame_flow_max_data: Counter,
-    pub tx_acked_frame_flow_reset: Counter,
-    pub tx_acked_frame_flow_init_reset: Counter,
-    pub tx_acked_frame_flow_init_fin: Counter,
-    pub tx_acked_frame_flow_init_validate: Counter,
-    pub tx_acked_frame_flow_validate_request: Counter,
+    pub tx_acked_frame_queue_init: Counter,
+    pub tx_acked_frame_queue_data: Counter,
+    pub tx_acked_frame_queue_data_fin: Counter,
+    pub tx_acked_frame_queue_control: Counter,
+    pub tx_acked_frame_queue_max_data: Counter,
+    pub tx_acked_frame_queue_reset: Counter,
+    pub tx_acked_frame_queue_init_reset: Counter,
+    pub tx_acked_frame_queue_init_fin: Counter,
+    pub tx_acked_frame_queue_init_validate: Counter,
+    pub tx_acked_frame_queue_validate_request: Counter,
 }
 
 impl Send {
@@ -337,23 +337,23 @@ impl Send {
             context_count: counters.register_nominal_gauge("send.context.count", &v),
             tx_packets: counters.register_nominal("tx.data", &v),
 
-            tx_acked_frame_flow_init: counters.register_nominal("tx.acked.frame.flow_init", &v),
-            tx_acked_frame_flow_data: counters.register_nominal("tx.acked.frame.flow_data", &v),
-            tx_acked_frame_flow_data_fin: counters
-                .register_nominal("tx.acked.frame.flow_data_fin", &v),
-            tx_acked_frame_flow_control: counters
-                .register_nominal("tx.acked.frame.flow_control", &v),
-            tx_acked_frame_flow_max_data: counters
-                .register_nominal("tx.acked.frame.flow_max_data", &v),
-            tx_acked_frame_flow_reset: counters.register_nominal("tx.acked.frame.flow_reset", &v),
-            tx_acked_frame_flow_init_reset: counters
-                .register_nominal("tx.acked.frame.flow_init_reset", &v),
-            tx_acked_frame_flow_init_fin: counters
-                .register_nominal("tx.acked.frame.flow_init_fin", &v),
-            tx_acked_frame_flow_init_validate: counters
-                .register_nominal("tx.acked.frame.flow_init_validate", &v),
-            tx_acked_frame_flow_validate_request: counters
-                .register_nominal("tx.acked.frame.flow_validate_request", &v),
+            tx_acked_frame_queue_init: counters.register_nominal("tx.acked.frame.queue_init", &v),
+            tx_acked_frame_queue_data: counters.register_nominal("tx.acked.frame.queue_data", &v),
+            tx_acked_frame_queue_data_fin: counters
+                .register_nominal("tx.acked.frame.queue_data_fin", &v),
+            tx_acked_frame_queue_control: counters
+                .register_nominal("tx.acked.frame.queue_control", &v),
+            tx_acked_frame_queue_max_data: counters
+                .register_nominal("tx.acked.frame.queue_max_data", &v),
+            tx_acked_frame_queue_reset: counters.register_nominal("tx.acked.frame.queue_reset", &v),
+            tx_acked_frame_queue_init_reset: counters
+                .register_nominal("tx.acked.frame.queue_init_reset", &v),
+            tx_acked_frame_queue_init_fin: counters
+                .register_nominal("tx.acked.frame.queue_init_fin", &v),
+            tx_acked_frame_queue_init_validate: counters
+                .register_nominal("tx.acked.frame.queue_init_validate", &v),
+            tx_acked_frame_queue_validate_request: counters
+                .register_nominal("tx.acked.frame.queue_validate_request", &v),
         })
     }
 
@@ -460,16 +460,16 @@ impl Send {
     #[inline]
     pub fn on_acked_frame(&self, header: &Header) {
         match header {
-            Header::FlowInit { .. } => self.tx_acked_frame_flow_init.add(1),
-            Header::FlowData { is_fin: false, .. } => self.tx_acked_frame_flow_data.add(1),
-            Header::FlowData { is_fin: true, .. } => self.tx_acked_frame_flow_data_fin.add(1),
-            Header::FlowControl { .. } => self.tx_acked_frame_flow_control.add(1),
-            Header::FlowMaxData { .. } => self.tx_acked_frame_flow_max_data.add(1),
-            Header::FlowReset { .. } => self.tx_acked_frame_flow_reset.add(1),
-            Header::FlowInitReset { .. } => self.tx_acked_frame_flow_init_reset.add(1),
-            Header::FlowInitFin { .. } => self.tx_acked_frame_flow_init_fin.add(1),
-            Header::FlowInitValidate { .. } => self.tx_acked_frame_flow_init_validate.add(1),
-            Header::FlowValidateRequest { .. } => self.tx_acked_frame_flow_validate_request.add(1),
+            Header::QueueInit { .. } => self.tx_acked_frame_queue_init.add(1),
+            Header::QueueData { is_fin: false, .. } => self.tx_acked_frame_queue_data.add(1),
+            Header::QueueData { is_fin: true, .. } => self.tx_acked_frame_queue_data_fin.add(1),
+            Header::QueueControl { .. } => self.tx_acked_frame_queue_control.add(1),
+            Header::QueueMaxData { .. } => self.tx_acked_frame_queue_max_data.add(1),
+            Header::QueueReset { .. } => self.tx_acked_frame_queue_reset.add(1),
+            Header::QueueInitReset { .. } => self.tx_acked_frame_queue_init_reset.add(1),
+            Header::QueueInitFin { .. } => self.tx_acked_frame_queue_init_fin.add(1),
+            Header::QueueInitValidate { .. } => self.tx_acked_frame_queue_init_validate.add(1),
+            Header::QueueValidateRequest { .. } => self.tx_acked_frame_queue_validate_request.add(1),
             // ACK frames are stripped before inflight insertion and are never ACKed as
             // inflight entries; this branch should be unreachable in practice.
             Header::Ack { .. } => {

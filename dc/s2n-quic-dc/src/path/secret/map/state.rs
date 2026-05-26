@@ -927,7 +927,7 @@ where
             Packet::Control(_) => {
                 // no action for now. FIXME: Add metrics.
             }
-            Packet::FlowReset(_) => {
+            Packet::QueueReset(_) => {
                 // no action for now. FIXME: Add metrics.
             }
             Packet::StaleKey(packet) => {
@@ -942,7 +942,7 @@ where
         }
     }
 
-    fn sign_flow_reset_packet(&self, packet: &control::FlowReset, out: &mut [u8]) -> Option<usize> {
+    fn sign_queue_reset_packet(&self, packet: &control::QueueReset, out: &mut [u8]) -> Option<usize> {
         let Some(entry) = self.ids.get(packet.credentials.id) else {
             return None;
         };
@@ -950,11 +950,11 @@ where
         Some(len)
     }
 
-    fn handle_flow_reset_packet<'a>(
+    fn handle_queue_reset_packet<'a>(
         &self,
-        packet: &'a control::flow_reset::Packet,
+        packet: &'a control::queue_reset::Packet,
         peer: &SocketAddr,
-    ) -> Option<&'a control::FlowReset> {
+    ) -> Option<&'a control::QueueReset> {
         let _peer_address = SocketAddress::from(*peer);
         // let peer_address = peer_address.into_event();
 
