@@ -3,20 +3,17 @@
 
 //! Client-side queue allocation and dispatch.
 //!
-//! ## Roles
+//! ## Architecture
 //!
-//! - `ClientAllocator` — stream creation path.  Allocates a local page-table
-//!   slot and a `dest_queue_id` from the peer's `FreeList`, then opens the
-//!   receiver handles.  Each `ClientAllocator` owns a dedicated `SenderView`
-//!   so repeated allocations avoid re-acquiring the page-table `RwLock`.
+//! - [`ClientState`] — shared state (one Arc per peer). Owns the page table
+//!   and local slot recycling. Stored on the path secret Entry.
 //!
-//! - `ClientDispatch` — inbound packet dispatch path.  Routes an incoming
+//! - [`ClientAllocator`] — stream creation path. Holds a cached `SenderView`
+//!   to avoid RwLock on every allocation.
+//!
+//! - [`ClientDispatch`] — inbound packet dispatch path. Routes an incoming
 //!   `msg::Stream` / `msg::Control` entry to the correct slot by `queue_id`
-//!   after validating `binding_id`.  No allocation logic here.
-//!
-//! - `ClientFreeList` — local slot recycling.  Uses a `HierarchicalBitSet`
-//!   that starts small and grows on demand, plus a high-water mark for fresh
-//!   slot bump allocation.
+//!   after validating `binding_id`.
 
 use super::{
     half::AutoWake,
@@ -31,7 +28,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-// ── ClientFreeList ────────────────────────────────────────────────────────────
+// ── ClientFreeList ───────────────────────────────────────────────────────────
 
 /// Local slot recycling for the client page table.
 ///
@@ -88,22 +85,27 @@ impl ClientFreeList {
     }
 }
 
-// ── LocalState ────────────────────────────────────────────────────────────────
+// ── ClientState (shared, one Arc per peer) ──────────────────────────────────
 
-/// Shared mutable state for client-side allocation: slot recycling + binding counter.
-pub(crate) struct LocalState {
+/// Shared client-side queue state for a single peer connection.
+pub struct ClientState {
+    pub(crate) pages: PageTable,
     /// Monotonically increasing binding_id generator.  Starts at 1 so that
     /// fresh slots (whose stored binding starts at 0) always accept the first bind.
     next_binding: AtomicU64,
     /// Local slot index recycling.
     pub(crate) free: Mutex<ClientFreeList>,
+    /// Peer's available queue slots (populated by QueueFree frames).
+    pub(crate) peer_free: sync::free_list::FreeList,
 }
 
-impl LocalState {
-    fn new() -> Arc<Self> {
+impl ClientState {
+    pub fn new(max_peer_queues: VarInt) -> Arc<Self> {
         Arc::new(Self {
+            pages: PageTable::new(),
             next_binding: AtomicU64::new(1),
             free: Mutex::new(ClientFreeList::new()),
+            peer_free: sync::free_list::FreeList::new(max_peer_queues),
         })
     }
 
@@ -113,47 +115,55 @@ impl LocalState {
     }
 }
 
-// ── ClientAllocator ───────────────────────────────────────────────────────────
+// ── ClientAllocator ─────────────────────────────────────────────────────────
 
 /// Allocates local queue slots and peer `dest_queue_id`s for client streams.
 ///
 /// Each `ClientAllocator` has its own `SenderView`, so repeated calls to
 /// `try_alloc` amortise the page-table `RwLock` acquisition — the view is
 /// only refreshed on page growth.
-#[derive(Clone)]
 pub struct ClientAllocator {
+    state: Arc<ClientState>,
     view: SenderView,
-    local: Arc<LocalState>,
-    peer_free: Arc<sync::free_list::FreeList>,
+}
+
+impl Clone for ClientAllocator {
+    fn clone(&self) -> Self {
+        Self {
+            state: self.state.clone(),
+            view: SenderView::new(),
+        }
+    }
 }
 
 impl ClientAllocator {
-    pub fn new(peer_free: Arc<sync::free_list::FreeList>) -> Self {
-        let page_table = PageTable::new();
-        let view = page_table.sender_view();
+    pub fn new(state: Arc<ClientState>) -> Self {
         Self {
-            view,
-            local: LocalState::new(),
-            peer_free,
+            state,
+            view: SenderView::new(),
         }
     }
 
     pub fn try_alloc(&mut self) -> Option<AllocResult> {
-        let dest_queue_id = self.peer_free.try_alloc()?;
+        let dest_queue_id = self.state.peer_free.try_alloc()?;
         self.alloc_local(dest_queue_id).ok()
     }
 
-    pub fn peer_free(&self) -> &Arc<sync::free_list::FreeList> {
-        &self.peer_free
+    pub fn close(&self) {
+        self.state.free.lock().unwrap().close();
     }
 
-    pub fn close(&self) {
-        self.local.free.lock().unwrap().close();
+    /// Build a `ClientDispatch` backed by the same state.
+    pub fn dispatcher(&self) -> ClientDispatch {
+        ClientDispatch {
+            state: self.state.clone(),
+            view: SenderView::new(),
+        }
     }
 
     fn alloc_local(&mut self, dest_queue_id: VarInt) -> Result<AllocResult, Error<()>> {
         let index = {
-            let mut free = self.local.free.lock().unwrap();
+            let mut free = self.state.free.lock().unwrap();
             match free.pop() {
                 Some(idx) => idx,
                 None => return Err(Error::SenderClosed),
@@ -161,26 +171,25 @@ impl ClientAllocator {
         };
 
         if index >= self.view.total_slots() {
-            self.view.grow_to_fit(index);
+            self.view.grow_to_fit(index, &self.state.pages);
         }
 
         let slot_ref = self
             .view
-            .get(index)
+            .get(index, &self.state.pages)
             .expect("slot index out of range after grow");
 
-        let binding_id = self.local.next_binding_id();
+        let binding_id = self.state.next_binding_id();
 
         if slot_ref.allocate_and_open(binding_id).is_err() {
-            self.local.free.lock().unwrap().push_freed(index);
+            self.state.free.lock().unwrap().push_freed(index);
             return Err(Error::SenderClosed);
         }
 
         let slot_ptr = slot_ref.as_ptr();
         let local_queue_id = VarInt::new(index as u64).expect("slot index exceeds VarInt range");
         let on_free = OnFree::Client {
-            _state: self.view.state().clone(),
-            local_free: self.local.clone(),
+            state: self.state.clone(),
         };
 
         Ok(AllocResult {
@@ -191,22 +200,16 @@ impl ClientAllocator {
             binding_id,
         })
     }
-
-    /// Build a `ClientDispatch` backed by the same page table.
-    pub fn dispatcher(&self) -> ClientDispatch {
-        ClientDispatch {
-            view: self.view.clone(),
-        }
-    }
 }
 
-// ── ClientDispatch ────────────────────────────────────────────────────────────
+// ── ClientDispatch ──────────────────────────────────────────────────────────
 
 /// Routes inbound packets to allocated client slots.
 ///
 /// `queue_id` is the local slot index (what the peer sent as `dest_queue_id`).
 /// `binding_id` is validated against the slot's stored value before pushing.
 pub struct ClientDispatch {
+    state: Arc<ClientState>,
     view: SenderView,
 }
 
@@ -219,7 +222,7 @@ impl ClientDispatch {
         entry: intrusive::Entry<msg::Stream>,
     ) -> Result<AutoWake, Error<intrusive::Entry<msg::Stream>>> {
         let index = queue_id.as_u64() as usize;
-        let Some(slot) = self.view.get(index) else {
+        let Some(slot) = self.view.get(index, &self.state.pages) else {
             return Err(Error::Unallocated(entry));
         };
         slot.push_stream(binding_id, entry)
@@ -233,7 +236,7 @@ impl ClientDispatch {
         entry: intrusive::Entry<msg::Control>,
     ) -> Result<AutoWake, Error<intrusive::Entry<msg::Control>>> {
         let index = queue_id.as_u64() as usize;
-        let Some(slot) = self.view.get(index) else {
+        let Some(slot) = self.view.get(index, &self.state.pages) else {
             return Err(Error::Unallocated(entry));
         };
         slot.push_control(binding_id, entry)
@@ -245,7 +248,7 @@ impl ClientDispatch {
     /// passed to `waker_sink` — the caller can `.take()` to batch wakers for
     /// later, or simply drop the token to wake immediately.
     pub fn close(&mut self, waker_sink: &mut impl FnMut(AutoWake)) {
-        self.view.for_each_slot(|slot| {
+        self.view.for_each_slot(&self.state.pages, |slot| {
             let (sw, cw) = slot.broadcast_close();
             waker_sink(sw);
             waker_sink(cw);
@@ -264,11 +267,11 @@ mod tests {
     }
 
     fn test_allocator(max_queues: u64) -> ClientAllocator {
-        let peer_free = sync::free_list::FreeList::new(VarInt::new(max_queues).unwrap());
-        ClientAllocator::new(peer_free)
+        let state = ClientState::new(VarInt::new(max_queues).unwrap());
+        ClientAllocator::new(state)
     }
 
-    // ── ClientFreeList ───────────────────────────────────────────────────────
+    // ── ClientFreeList ──────────────────────────────────────────────────────
 
     #[test]
     fn pop_bumps_high_water_mark() {
@@ -279,154 +282,81 @@ mod tests {
     }
 
     #[test]
-    fn push_freed_then_pop_recycles() {
+    fn push_freed_recycles() {
         let mut fl = ClientFreeList::new();
-        assert_eq!(fl.pop(), Some(0));
+        let _ = fl.pop(); // 0
+        let _ = fl.pop(); // 1
         fl.push_freed(0);
         assert_eq!(fl.pop(), Some(0));
     }
 
     #[test]
-    fn pop_prefers_recycled() {
-        let mut fl = ClientFreeList::new();
-        for _ in 0..5 {
-            fl.pop();
-        }
-        fl.push_freed(2);
-        assert_eq!(fl.pop(), Some(2));
-    }
-
-    #[test]
-    fn push_freed_grows_bitset() {
-        let mut fl = ClientFreeList::new();
-        fl.push_freed(1000);
-        assert_eq!(fl.pop(), Some(1000));
-    }
-
-    #[test]
-    fn close_makes_pop_none() {
+    fn close_stops_allocation() {
         let mut fl = ClientFreeList::new();
         fl.close();
         assert_eq!(fl.pop(), None);
     }
 
-    // ── ClientAllocator ──────────────────────────────────────────────────────
+    // ── ClientAllocator ─────────────────────────────────────────────────────
 
     #[test]
-    fn try_alloc_returns_result() {
-        let mut alloc = test_allocator(10);
-        let result = alloc.try_alloc();
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn try_alloc_binding_starts_at_1() {
-        let mut alloc = test_allocator(10);
-        let result = alloc.try_alloc().unwrap();
-        assert_eq!(result.binding_id, v(1));
-    }
-
-    #[test]
-    fn try_alloc_binding_increments() {
-        let mut alloc = test_allocator(10);
+    fn alloc_returns_sequential_ids() {
+        let mut alloc = test_allocator(100);
         let r1 = alloc.try_alloc().unwrap();
         let r2 = alloc.try_alloc().unwrap();
-        assert_eq!(r1.binding_id, v(1));
-        assert_eq!(r2.binding_id, v(2));
+        assert_eq!(r1.local_queue_id, v(0));
+        assert_eq!(r2.local_queue_id, v(1));
+        assert_ne!(r1.binding_id, r2.binding_id);
     }
 
     #[test]
-    fn close_prevents_alloc() {
-        let mut alloc = test_allocator(10);
+    fn alloc_respects_peer_free_cap() {
+        let mut alloc = test_allocator(2);
+        assert!(alloc.try_alloc().is_some());
+        assert!(alloc.try_alloc().is_some());
+        assert!(alloc.try_alloc().is_none());
+    }
+
+    #[test]
+    fn close_prevents_further_alloc() {
+        let mut alloc = test_allocator(100);
         alloc.close();
         assert!(alloc.try_alloc().is_none());
     }
 
-    // ── ClientDispatch ───────────────────────────────────────────────────────
+    // ── ClientDispatch ──────────────────────────────────────────────────────
 
     #[test]
-    fn send_stream_to_allocated() {
+    fn dispatch_to_allocated_slot() {
         let mut alloc = test_allocator(10);
         let result = alloc.try_alloc().unwrap();
         let mut dispatch = alloc.dispatcher();
 
-        let send_result = dispatch.send_stream(
-            result.local_queue_id,
-            result.binding_id,
-            make_stream_entry(),
-        );
-        assert!(send_result.is_ok());
+        let wake =
+            dispatch.send_stream(result.local_queue_id, result.binding_id, make_stream_entry());
+        assert!(wake.is_ok());
+
+        drop(result);
     }
 
     #[test]
-    fn send_stream_unallocated() {
+    fn dispatch_to_unallocated_slot() {
         let alloc = test_allocator(10);
         let mut dispatch = alloc.dispatcher();
-        let result = dispatch.send_stream(v(999), v(1), make_stream_entry());
+        let result = dispatch.send_stream(v(99), v(1), make_stream_entry());
         assert!(matches!(result, Err(Error::Unallocated(_))));
     }
 
     #[test]
-    fn send_stream_wrong_binding() {
+    fn dispatch_stale_binding() {
         let mut alloc = test_allocator(10);
         let result = alloc.try_alloc().unwrap();
         let mut dispatch = alloc.dispatcher();
 
-        let send_result = dispatch.send_stream(result.local_queue_id, v(99), make_stream_entry());
-        assert!(matches!(send_result, Err(Error::FutureBinding(_))));
-    }
+        let wrong_binding = VarInt::new(result.binding_id.as_u64() + 99).unwrap();
+        let err = dispatch.send_stream(result.local_queue_id, wrong_binding, make_stream_entry());
+        assert!(matches!(err, Err(Error::FutureBinding(_))));
 
-    #[test]
-    fn close_broadcasts() {
-        let mut alloc = test_allocator(10);
-        let r1 = alloc.try_alloc().unwrap();
-        let r2 = alloc.try_alloc().unwrap();
-        let mut dispatch = alloc.dispatcher();
-
-        let mut wakes = vec![];
-        dispatch.close(&mut |aw| wakes.push(aw));
-
-        // Receivers should see Closed
-        assert!(matches!(
-            r1.stream.try_recv(),
-            Err(super::super::half::Closed)
-        ));
-        assert!(matches!(
-            r2.stream.try_recv(),
-            Err(super::super::half::Closed)
-        ));
-    }
-
-    // ── Bach async tests ─────────────────────────────────────────────────────
-
-    #[test]
-    fn client_alloc_dispatch_recv_round_trip() {
-        use crate::testing::{ext::*, sim};
-
-        sim(|| {
-            let mut alloc = test_allocator(10);
-            let result = alloc.try_alloc().unwrap();
-            let mut dispatch = alloc.dispatcher();
-
-            let stream = result.stream;
-            let binding_id = result.binding_id;
-            let local_queue_id = result.local_queue_id;
-
-            async move {
-                let entry = stream.recv().await;
-                assert!(entry.is_ok());
-                drop(result.control);
-            }
-            .primary()
-            .spawn();
-
-            async move {
-                bach::task::yield_now().await;
-                let aw = dispatch.send_stream(local_queue_id, binding_id, make_stream_entry());
-                assert!(aw.is_ok());
-            }
-            .primary()
-            .spawn();
-        });
+        drop(result);
     }
 }

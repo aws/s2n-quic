@@ -10,9 +10,7 @@
 //!   also keeps the underlying page table alive.
 
 use super::{
-    freed::FreedSender,
     half::{self, Closed},
-    page_table::State,
     slot::Slot,
 };
 use crate::{endpoint::msg, intrusive};
@@ -27,18 +25,24 @@ use std::sync::Arc;
 
 /// Reclamation strategy chosen at construction time.
 ///
-/// The `OnFree` value also acts as the lifetime guard: it holds an `Arc<State>`
-/// that keeps the pinned page table alive for at least as long as the receiver.
+/// The `OnFree` value also acts as the lifetime guard: it holds an Arc to the
+/// owning state struct, keeping the pinned page table alive for at least as
+/// long as the receiver.
 #[derive(Clone)]
 pub(crate) enum OnFree {
     /// Client: return the local slot index to the client free list.
-    /// `_state` keeps the pinned page table alive for the receiver's lifetime.
+    /// The Arc keeps the page table alive.
     Client {
-        _state: Arc<State>,
-        local_free: Arc<super::client::LocalState>,
+        state: Arc<super::client::ClientState>,
     },
     /// Server: notify the client that this queue_id is available again.
-    Server(FreedSender, Arc<State>),
+    /// The Arc<ServerState> keeps the page table and freed state alive.
+    /// endpoint_tx is late-bound from the bind_and_send_stream call site.
+    Server {
+        server_state: Arc<super::server::ServerState>,
+        path_entry: Arc<crate::path::secret::map::Entry>,
+        endpoint_tx: super::freed::FreedBatchTx,
+    },
 }
 
 // ── StreamReceiver ────────────────────────────────────────────────────────────
@@ -202,15 +206,21 @@ impl core::fmt::Debug for ControlReceiver {
 
 fn reclaim(queue_id: VarInt, on_free: &OnFree) {
     match on_free {
-        OnFree::Client { local_free, .. } => {
-            local_free
+        OnFree::Client { state } => {
+            state
                 .free
                 .lock()
                 .unwrap()
                 .push_freed(queue_id.as_u64() as usize);
         }
-        OnFree::Server(freed_sender, _state) => {
-            freed_sender.record(queue_id);
+        OnFree::Server {
+            server_state,
+            path_entry,
+            endpoint_tx,
+        } => {
+            server_state
+                .freed
+                .record(queue_id, server_state, path_entry, endpoint_tx);
         }
     }
 }

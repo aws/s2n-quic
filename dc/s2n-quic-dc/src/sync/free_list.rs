@@ -55,10 +55,10 @@ impl std::fmt::Debug for Inner {
 }
 
 impl FreeList {
-    pub fn new(initial_max_queues: VarInt) -> Arc<Self> {
+    pub fn new(initial_max_queues: VarInt) -> Self {
         let max = initial_max_queues.as_u64();
         let capacity = max.min(HierarchicalBitSet::MAX_CAPACITY as u64) as u32;
-        Arc::new(Self {
+        Self {
             high_water_mark: AtomicU64::new(0),
             max_queues: AtomicU64::new(max),
             inner: Mutex::new(Inner {
@@ -67,7 +67,7 @@ impl FreeList {
                 waiters: WaiterList::new(),
                 closed: false,
             }),
-        })
+        }
     }
 
     #[inline]

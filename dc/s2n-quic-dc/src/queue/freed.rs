@@ -41,18 +41,22 @@ use tokio::sync::mpsc;
 /// calling `check_and_resubmit` will leave `in_flight` permanently set,
 /// preventing future freed-ID emission for this peer.
 pub struct FreedBatch {
-    inner: Arc<FreedInner>,
+    pub server_state: Arc<super::server::ServerState>,
     pub path_entry: Arc<PathSecretEntry>,
 }
 
 impl FreedBatch {
+    fn freed_state(&self) -> &Mutex<FreedState> {
+        &self.server_state.freed.state
+    }
+
     /// Swap the pending freed set with the caller's buffer, returning a request_id.
     ///
     /// After this call, `dest` contains the IDs to encode.  The caller should
     /// clear `dest` after encoding to preserve its allocation for the next swap.
     /// Returns `None` if there is nothing to send.
     pub fn take(&self, dest: &mut IntervalSet<VarInt>) -> Option<VarInt> {
-        let mut state = self.inner.state.lock().unwrap();
+        let mut state = self.freed_state().lock().unwrap();
         if state.freed.is_empty() {
             return None;
         }
@@ -65,7 +69,7 @@ impl FreedBatch {
     /// Used when encoding hit the MTU budget and there are leftover ranges
     /// that need to be sent in a subsequent batch.
     pub fn put_back(&self, remainder: &mut IntervalSet<VarInt>) {
-        let mut state = self.inner.state.lock().unwrap();
+        let mut state = self.freed_state().lock().unwrap();
         let _ = state.freed.union(remainder);
         remainder.clear();
     }
@@ -78,7 +82,7 @@ impl FreedBatch {
     /// This MUST be called exactly once per token received from the channel.
     /// Failure to call this permanently blocks freed-ID emission for this peer.
     pub fn check_and_resubmit(self, tx: &FreedBatchTx) {
-        let mut state = self.inner.state.lock().unwrap();
+        let mut state = self.freed_state().lock().unwrap();
         if state.freed.is_empty() {
             state.in_flight = false;
         } else {
@@ -99,27 +103,53 @@ pub fn freed_batch_channel() -> (FreedBatchTx, FreedBatchRx) {
 
 // ── Per-peer accumulator ──────────────────────────────────────────────────────
 
-/// Shareable per-peer freed-queue state.
-///
-/// Cloned into each `StreamReceiver` / `ControlReceiver` that belongs to the
-/// same peer so that the receiver Drop path can cheaply record a freed ID.
-#[derive(Clone)]
-pub struct FreedSender {
-    inner: Arc<FreedInner>,
-    path_entry: Arc<PathSecretEntry>,
-    endpoint_tx: FreedBatchTx,
-}
 
-impl core::fmt::Debug for FreedSender {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("FreedSender")
-            .field("inner", &self.inner)
-            .finish_non_exhaustive()
-    }
-}
-
-pub(crate) struct FreedInner {
+pub struct FreedInner {
     state: Mutex<FreedState>,
+}
+
+impl FreedInner {
+    pub fn new() -> Self {
+        Self {
+            state: Mutex::new(FreedState {
+                freed: IntervalSet::new(),
+                next_request_id: VarInt::from_u8(0),
+                in_flight: false,
+            }),
+        }
+    }
+
+    /// Record that `queue_id` has been freed and, if no token is in-flight,
+    /// submit a fresh batch token via `endpoint_tx`.
+    ///
+    /// `server_state` is an Arc clone of the owning ServerState (which contains
+    /// this FreedInner). This is the single Arc that keeps everything alive.
+    pub fn record(
+        &self,
+        queue_id: VarInt,
+        server_state: &Arc<super::server::ServerState>,
+        path_entry: &Arc<PathSecretEntry>,
+        endpoint_tx: &FreedBatchTx,
+    ) {
+        let mut state = self.state.lock().unwrap();
+
+        let _ = state.freed.insert_value(queue_id);
+
+        if state.in_flight {
+            return;
+        }
+
+        state.in_flight = true;
+        drop(state);
+
+        let token = FreedBatch {
+            server_state: server_state.clone(),
+            path_entry: path_entry.clone(),
+        };
+        if endpoint_tx.send(token).is_err() {
+            self.state.lock().unwrap().in_flight = false;
+        }
+    }
 }
 
 impl core::fmt::Debug for FreedInner {
@@ -161,86 +191,42 @@ impl FreedState {
     }
 }
 
-impl FreedSender {
-    pub fn new(path_entry: Arc<PathSecretEntry>, endpoint_tx: FreedBatchTx) -> Self {
-        Self {
-            inner: Arc::new(FreedInner {
-                state: Mutex::new(FreedState {
-                    freed: IntervalSet::new(),
-                    next_request_id: VarInt::from_u8(0),
-                    in_flight: false,
-                }),
-            }),
-            path_entry,
-            endpoint_tx,
-        }
-    }
-
-    /// Record that `queue_id` has been freed and, if no token is in-flight,
-    /// submit a fresh one.
-    ///
-    /// Called on the application / receiver-drop path; designed to be cheap
-    /// (a single lock + an optional channel send).
-    pub fn record(&self, queue_id: VarInt) {
-        let mut state = self.inner.state.lock().unwrap();
-
-        let _ = state.freed.insert_value(queue_id);
-
-        if state.in_flight {
-            // A token is already outstanding; our ID will be included when
-            // `take_snapshot` is called at serialisation time.
-            return;
-        }
-
-        // No token in flight — submit one now.
-        state.in_flight = true;
-        drop(state);
-
-        let token = FreedBatch {
-            inner: self.inner.clone(),
-            path_entry: self.path_entry.clone(),
-        };
-        if self.endpoint_tx.send(token).is_err() {
-            // Channel closed — clear in_flight so we don't permanently block.
-            self.inner.state.lock().unwrap().in_flight = false;
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::queue::server::ServerState;
     use s2n_quic_core::varint::VarInt;
 
-    fn test_sender() -> (FreedSender, FreedBatchRx) {
+    fn test_setup() -> (Arc<ServerState>, Arc<PathSecretEntry>, FreedBatchTx, FreedBatchRx) {
         let (tx, rx) = freed_batch_channel();
         let path_entry = PathSecretEntry::builder("127.0.0.1:4433".parse().unwrap()).build();
-        (FreedSender::new(path_entry, tx), rx)
+        let state = Arc::new(ServerState::new(VarInt::from_u8(100)));
+        (state, path_entry, tx, rx)
     }
 
     #[test]
     fn record_first_submits_token() {
-        let (sender, mut rx) = test_sender();
-        sender.record(VarInt::from_u8(5));
+        let (state, path_entry, tx, mut rx) = test_setup();
+        state.freed.record(VarInt::from_u8(5), &state, &path_entry, &tx);
         assert!(rx.try_recv().is_ok());
     }
 
     #[test]
     fn record_second_no_resubmit() {
-        let (sender, mut rx) = test_sender();
-        sender.record(VarInt::from_u8(5));
-        sender.record(VarInt::from_u8(6));
-        // Only one token in the channel
+        let (state, path_entry, tx, mut rx) = test_setup();
+        state.freed.record(VarInt::from_u8(5), &state, &path_entry, &tx);
+        state.freed.record(VarInt::from_u8(6), &state, &path_entry, &tx);
         assert!(rx.try_recv().is_ok());
         assert!(rx.try_recv().is_err());
     }
 
     #[test]
     fn take_drains_accumulated() {
-        let (sender, mut rx) = test_sender();
-        sender.record(VarInt::from_u8(5));
-        sender.record(VarInt::from_u8(6));
-        sender.record(VarInt::from_u8(7));
+        let (state, path_entry, tx, mut rx) = test_setup();
+        state.freed.record(VarInt::from_u8(5), &state, &path_entry, &tx);
+        state.freed.record(VarInt::from_u8(6), &state, &path_entry, &tx);
+        state.freed.record(VarInt::from_u8(7), &state, &path_entry, &tx);
         let batch = rx.try_recv().unwrap();
         let mut dest = IntervalSet::new();
         let request_id = batch.take(&mut dest);
@@ -252,30 +238,27 @@ mod tests {
 
     #[test]
     fn take_empty_returns_none() {
-        let (sender, mut rx) = test_sender();
-        sender.record(VarInt::from_u8(1));
+        let (state, path_entry, tx, mut rx) = test_setup();
+        state.freed.record(VarInt::from_u8(1), &state, &path_entry, &tx);
         let batch = rx.try_recv().unwrap();
-        // First take drains
         let mut dest = IntervalSet::new();
         batch.take(&mut dest);
-        // Second take is empty
         let result = batch.take(&mut dest);
         assert!(result.is_none());
     }
 
     #[test]
     fn take_request_id_increments() {
-        let (sender, mut rx) = test_sender();
-        let (tx, _) = freed_batch_channel();
+        let (state, path_entry, tx, mut rx) = test_setup();
 
-        sender.record(VarInt::from_u8(1));
+        state.freed.record(VarInt::from_u8(1), &state, &path_entry, &tx);
         let batch = rx.try_recv().unwrap();
         let mut dest = IntervalSet::new();
         let id0 = batch.take(&mut dest).unwrap();
         assert_eq!(id0, VarInt::from_u8(0));
         batch.check_and_resubmit(&tx);
 
-        sender.record(VarInt::from_u8(2));
+        state.freed.record(VarInt::from_u8(2), &state, &path_entry, &tx);
         let batch = rx.try_recv().unwrap();
         dest.clear();
         let id1 = batch.take(&mut dest).unwrap();
@@ -284,25 +267,22 @@ mod tests {
 
     #[test]
     fn put_back_merges() {
-        let (sender, mut rx) = test_sender();
-        sender.record(VarInt::from_u8(10));
-        sender.record(VarInt::from_u8(20));
+        let (state, path_entry, tx, mut rx) = test_setup();
+        state.freed.record(VarInt::from_u8(10), &state, &path_entry, &tx);
+        state.freed.record(VarInt::from_u8(20), &state, &path_entry, &tx);
         let batch = rx.try_recv().unwrap();
 
         let mut dest = IntervalSet::new();
         batch.take(&mut dest);
         assert_eq!(dest.count(), 2);
 
-        // Simulate partial send: put back id=20
         let mut remainder = IntervalSet::new();
         let _ = remainder.insert_value(VarInt::from_u8(20));
         batch.put_back(&mut remainder);
         assert!(remainder.is_empty());
 
-        // Record more while batch is still in flight
-        sender.record(VarInt::from_u8(30));
+        state.freed.record(VarInt::from_u8(30), &state, &path_entry, &tx);
 
-        // Take again should include put-back + new
         dest.clear();
         let id = batch.take(&mut dest);
         assert!(id.is_some());
@@ -312,72 +292,63 @@ mod tests {
 
     #[test]
     fn check_and_resubmit_clears_when_empty() {
-        let (sender, mut rx) = test_sender();
-        let (tx, _rx2) = freed_batch_channel();
+        let (state, path_entry, tx, mut rx) = test_setup();
 
-        sender.record(VarInt::from_u8(1));
+        state.freed.record(VarInt::from_u8(1), &state, &path_entry, &tx);
         let batch = rx.try_recv().unwrap();
         let mut dest = IntervalSet::new();
         batch.take(&mut dest);
         batch.check_and_resubmit(&tx);
 
-        // in_flight cleared → next record submits fresh token
-        sender.record(VarInt::from_u8(2));
+        state.freed.record(VarInt::from_u8(2), &state, &path_entry, &tx);
         assert!(rx.try_recv().is_ok());
     }
 
     #[test]
     fn check_and_resubmit_resubmits_when_more() {
-        let (sender, mut rx) = test_sender();
-        let (tx, mut rx2) = freed_batch_channel();
+        let (state, path_entry, tx, mut rx) = test_setup();
+        let (tx2, mut rx2) = freed_batch_channel();
 
-        sender.record(VarInt::from_u8(1));
+        state.freed.record(VarInt::from_u8(1), &state, &path_entry, &tx);
         let batch = rx.try_recv().unwrap();
         let mut dest = IntervalSet::new();
         batch.take(&mut dest);
 
-        // Record more during serialization
-        sender.record(VarInt::from_u8(2));
+        state.freed.record(VarInt::from_u8(2), &state, &path_entry, &tx);
 
-        // check_and_resubmit sees non-empty → resubmits to tx
-        batch.check_and_resubmit(&tx);
+        batch.check_and_resubmit(&tx2);
         assert!(rx2.try_recv().is_ok());
     }
 
     #[test]
     fn record_after_channel_closed() {
-        let (sender, rx) = test_sender();
+        let (state, path_entry, tx, rx) = test_setup();
         drop(rx);
-        // Should not panic
-        sender.record(VarInt::from_u8(1));
-        // in_flight should be cleared
-        let state = sender.inner.state.lock().unwrap();
-        assert!(!state.in_flight);
+        state.freed.record(VarInt::from_u8(1), &state, &path_entry, &tx);
+        let inner_state = state.freed.state.lock().unwrap();
+        assert!(!inner_state.in_flight);
     }
 
     #[test]
     fn request_id_saturates() {
-        let (sender, mut rx) = test_sender();
-        let (tx, _) = freed_batch_channel();
+        let (state, path_entry, tx, mut rx) = test_setup();
 
-        // Set next_request_id near max
         {
-            let mut state = sender.inner.state.lock().unwrap();
-            state.next_request_id = VarInt::new(VarInt::MAX.as_u64() - 1).unwrap();
+            let mut inner = state.freed.state.lock().unwrap();
+            inner.next_request_id = VarInt::new(VarInt::MAX.as_u64() - 1).unwrap();
         }
 
-        sender.record(VarInt::from_u8(1));
+        state.freed.record(VarInt::from_u8(1), &state, &path_entry, &tx);
         let batch = rx.try_recv().unwrap();
         let mut dest = IntervalSet::new();
         let id = batch.take(&mut dest).unwrap();
         assert_eq!(id.as_u64(), VarInt::MAX.as_u64() - 1);
         batch.check_and_resubmit(&tx);
 
-        sender.record(VarInt::from_u8(2));
+        state.freed.record(VarInt::from_u8(2), &state, &path_entry, &tx);
         let batch = rx.try_recv().unwrap();
         dest.clear();
         let id = batch.take(&mut dest).unwrap();
-        // Should be VarInt::MAX (saturated)
         assert_eq!(id, VarInt::MAX);
     }
 }

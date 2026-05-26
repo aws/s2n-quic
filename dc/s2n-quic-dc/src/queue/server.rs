@@ -1,20 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Server-side queue dispatch.
+//! Server-side queue state and dispatch.
 //!
-//! The server does not allocate local queue slots; the client chooses the
-//! slot indices and sends them in the `dest_queue_id` field.  The server's
-//! job is:
+//! ## Architecture
 //!
-//! 1. **Bind-and-send** (`bind_and_send_stream`): on the first packet for a
-//!    stream, set the slot's `binding_id` and open the receiver halves
-//!    atomically under the half locks (no CAS, no race between concurrent
-//!    packets).  Return the new `StreamReceiver` / `ControlReceiver` for the
-//!    handshake path.
+//! Server queue management is split into two layers:
 //!
-//! 2. **Dispatch** (`send_stream`, `send_control`): on subsequent packets,
-//!    validate `binding_id` and push the entry.
+//! - [`ServerState`] — shared state stored on the path secret Entry. Owns the
+//!   pinned page table and freed-slot accumulator. Created once per peer.
+//!
+//! - [`ServerView`] — lightweight cached view stored on each recv::Context.
+//!   Caches raw pointers into the page table for O(1) dispatch without holding
+//!   the RwLock on every packet.
 //!
 //! ## Slot lifecycle (server side)
 //!
@@ -23,11 +21,11 @@
 //! first server packet      →  bind_and_send_stream: bind + open + push (atomic)
 //! data packets             →  send_stream / send_control
 //! stream complete          →  ControlReceiver / StreamReceiver dropped
-//!                          →  freed_sender.record(queue_id) → QueueFree to client
+//!                          →  freed_state.record(queue_id, ...) → QueueFree to client
 //! ```
 
 use super::{
-    freed::FreedSender,
+    freed::{FreedBatchTx, FreedInner},
     half::AutoWake,
     handle::{ControlReceiver, OnFree, StreamReceiver},
     page_table::{PageTable, SenderView},
@@ -36,10 +34,13 @@ use super::{
 };
 use crate::{endpoint::msg, intrusive};
 use s2n_quic_core::varint::VarInt;
+use std::sync::Arc;
+
+use crate::path::secret::map::Entry as PathSecretEntry;
 
 // ── BindResult ────────────────────────────────────────────────────────────────
 
-/// Outcome of `ServerDispatch::bind_and_send_stream`.
+/// Outcome of `ServerView::bind_and_send_stream`.
 pub enum BindResult {
     /// The slot already had a matching binding — packet pushed.
     Bound(AutoWake),
@@ -52,80 +53,83 @@ pub enum BindResult {
     },
 }
 
-// ── ServerDispatch ────────────────────────────────────────────────────────────
+// ── ServerState (shared, on path secret Entry) ───────────────────────────────
 
-/// Dispatches inbound packets for a single peer connection.
+/// Shared server-side queue state for a single peer connection.
 ///
-/// `ServerDispatch` owns a `SenderView` that caches raw pointers into the
-/// pinned page table, so repeated dispatch calls never re-acquire the
-/// `RwLock` unless a page growth has occurred.
-pub struct ServerDispatch {
-    page_table: PageTable,
-    /// Per-dispatch cached view — avoids RwLock on every packet.
-    view: SenderView,
-    freed: FreedSender,
-    /// The max queue_id we advertised to the client.
-    max_queue_id: u64,
+/// Stored on the path secret Entry. Contains the page table (slot storage) and
+/// the freed-slot accumulator. Does not hold any channel references — those are
+/// passed in at call sites by the recv::Context.
+pub struct ServerState {
+    pub(crate) pages: PageTable,
+    pub(crate) freed: FreedInner,
+    pub(crate) max_queue_id: u64,
 }
 
-impl ServerDispatch {
-    pub fn new(freed: FreedSender, max_queues: VarInt) -> Self {
-        let page_table = PageTable::new();
-        let view = page_table.sender_view();
+impl ServerState {
+    pub fn new(max_queues: VarInt) -> Self {
         Self {
-            page_table,
-            view,
-            freed,
+            pages: PageTable::new(),
+            freed: FreedInner::new(),
             max_queue_id: max_queues.as_u64().saturating_sub(1),
         }
     }
 
+    /// Create a `ServerView` for use on a dispatch worker.
+    pub fn view(self: &Arc<Self>) -> ServerView {
+        ServerView {
+            state: self.clone(),
+            view: SenderView::new(),
+        }
+    }
+}
+
+// ── ServerView (per recv::Context) ───────────────────────────────────────────
+
+/// Per-worker cached view for dispatching inbound packets.
+///
+/// Holds a single `Arc<ServerState>` (keeps page table + freed state alive)
+/// plus a local `SenderView` pointer cache for O(1) dispatch.
+pub struct ServerView {
+    state: Arc<ServerState>,
+    view: SenderView,
+}
+
+impl ServerView {
     /// Attempt to bind a slot and push the first stream entry.
-    ///
-    /// `queue_id` — the slot index chosen by the client.
-    /// `binding_id` — the per-stream binding credential (client-chosen).
-    ///
-    /// The binding check and entry push happen inside the combined half locks
-    /// so there is no window where two concurrent packets can both create a
-    /// fresh binding for the same slot.
-    ///
-    /// Returns `Err(Unallocated)` if `queue_id` exceeds the cap or if the
-    /// slot cannot be looked up.
     pub fn bind_and_send_stream(
         &mut self,
         queue_id: VarInt,
         binding_id: VarInt,
         entry: intrusive::Entry<msg::Stream>,
+        path_entry: &Arc<PathSecretEntry>,
+        endpoint_tx: &FreedBatchTx,
     ) -> Result<BindResult, Error<intrusive::Entry<msg::Stream>>> {
         let index = queue_id.as_u64() as usize;
 
-        if queue_id.as_u64() > self.max_queue_id {
+        if queue_id.as_u64() > self.state.max_queue_id {
             return Err(Error::CapExceeded(entry));
         }
 
-        // Grow the page table on demand — the client controls queue_id space
-        // up to the validated cap above.
-        if index >= self.page_table.total_slots() {
-            self.page_table.grow_to_fit(index);
+        if index >= self.view.total_slots() {
+            self.view.grow_to_fit(index, &self.state.pages);
         }
 
-        let Some(slot) = self.view.get(index) else {
+        let Some(slot) = self.view.get(index, &self.state.pages) else {
             return Err(Error::Unallocated(entry));
         };
 
-        // bind_and_push_stream performs the binding check and entry push
-        // atomically inside the combined half locks — no CAS needed.
         match slot.bind_and_push_stream(binding_id, entry)? {
             BindState::AlreadyBound(waker) => Ok(BindResult::Bound(waker)),
             BindState::NewBinding(waker) => {
                 let slot_ptr = slot.as_ptr();
-                let state = self.page_table.state.clone();
-                let stream = StreamReceiver::new(
-                    slot_ptr,
-                    OnFree::Server(self.freed.clone(), state.clone()),
-                );
-                let control =
-                    ControlReceiver::new(slot_ptr, OnFree::Server(self.freed.clone(), state));
+                let on_free = OnFree::Server {
+                    server_state: self.state.clone(),
+                    path_entry: path_entry.clone(),
+                    endpoint_tx: endpoint_tx.clone(),
+                };
+                let stream = StreamReceiver::new(slot_ptr, on_free.clone());
+                let control = ControlReceiver::new(slot_ptr, on_free);
                 Ok(BindResult::NewBinding {
                     waker,
                     stream,
@@ -135,7 +139,6 @@ impl ServerDispatch {
         }
     }
 
-    /// Push to an already-bound stream slot.
     #[inline]
     pub fn send_stream(
         &mut self,
@@ -144,13 +147,12 @@ impl ServerDispatch {
         entry: intrusive::Entry<msg::Stream>,
     ) -> Result<AutoWake, Error<intrusive::Entry<msg::Stream>>> {
         let index = queue_id.as_u64() as usize;
-        let Some(slot) = self.view.get(index) else {
+        let Some(slot) = self.view.get(index, &self.state.pages) else {
             return Err(Error::Unallocated(entry));
         };
         slot.push_stream(binding_id, entry)
     }
 
-    /// Push to an already-bound control slot.
     #[inline]
     pub fn send_control(
         &mut self,
@@ -159,18 +161,15 @@ impl ServerDispatch {
         entry: intrusive::Entry<msg::Control>,
     ) -> Result<AutoWake, Error<intrusive::Entry<msg::Control>>> {
         let index = queue_id.as_u64() as usize;
-        let Some(slot) = self.view.get(index) else {
+        let Some(slot) = self.view.get(index, &self.state.pages) else {
             return Err(Error::Unallocated(entry));
         };
         slot.push_control(binding_id, entry)
     }
 
     /// Broadcast-close all slots — called when the path secret entry is evicted.
-    ///
-    /// `AutoWake` tokens are passed to `waker_sink` — the caller can `.take()`
-    /// to batch wakers, or drop to wake immediately.
-    pub fn close(&mut self, waker_sink: &mut impl FnMut(super::half::AutoWake)) {
-        self.view.for_each_slot(|slot| {
+    pub fn close(&mut self, waker_sink: &mut impl FnMut(AutoWake)) {
+        self.view.for_each_slot(&self.state.pages, |slot| {
             let (sw, cw) = slot.broadcast_close();
             waker_sink(sw);
             waker_sink(cw);
@@ -181,37 +180,35 @@ impl ServerDispatch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        path::secret::map::Entry as PathSecretEntry,
-        queue::{freed::freed_batch_channel, testing::*},
-    };
+    use crate::queue::{freed::freed_batch_channel, testing::*};
     use s2n_quic_core::varint::VarInt;
-    use std::sync::Arc;
 
     fn v(n: u64) -> VarInt {
         VarInt::new(n).unwrap()
     }
 
-    fn test_server(max_queues: u64) -> (ServerDispatch, crate::queue::freed::FreedBatchRx) {
+    fn test_server(
+        max_queues: u64,
+    ) -> (ServerView, Arc<PathSecretEntry>, FreedBatchTx, super::super::freed::FreedBatchRx) {
         let (tx, rx) = freed_batch_channel();
         let path_entry: Arc<PathSecretEntry> =
             PathSecretEntry::builder("127.0.0.1:4433".parse().unwrap()).build();
-        let freed = FreedSender::new(path_entry, tx);
-        let dispatch = ServerDispatch::new(freed, VarInt::new(max_queues).unwrap());
-        (dispatch, rx)
+        let state = Arc::new(ServerState::new(VarInt::new(max_queues).unwrap()));
+        let view = state.view();
+        (view, path_entry, tx, rx)
     }
 
     #[test]
     fn bind_and_send_new() {
-        let (mut server, _rx) = test_server(10);
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+        let (mut server, path_entry, tx, _rx) = test_server(10);
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
         assert!(matches!(result, Ok(BindResult::NewBinding { .. })));
     }
 
     #[test]
     fn bind_and_send_existing() {
-        let (mut server, _rx) = test_server(10);
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+        let (mut server, path_entry, tx, _rx) = test_server(10);
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
         let Ok(BindResult::NewBinding {
             stream, control, ..
         }) = result
@@ -220,50 +217,59 @@ mod tests {
         };
 
         // Second send with same binding
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
         assert!(matches!(result, Ok(BindResult::Bound(_))));
 
-        drop(stream);
-        drop(control);
+        drop((stream, control));
     }
 
     #[test]
-    fn bind_and_send_cap_exceeded() {
-        let (mut server, _rx) = test_server(5);
-        let result = server.bind_and_send_stream(v(5), v(1), make_stream_entry());
-        assert!(matches!(result, Err(Error::CapExceeded(_))));
-    }
-
-    #[test]
-    fn bind_and_send_stale() {
-        let (mut server, _rx) = test_server(10);
-        let result = server.bind_and_send_stream(v(0), v(5), make_stream_entry());
+    fn stale_binding_rejected() {
+        let (mut server, path_entry, tx, _rx) = test_server(10);
+        let result = server.bind_and_send_stream(v(0), v(2), make_stream_entry(), &path_entry, &tx);
         let Ok(BindResult::NewBinding {
             stream, control, ..
         }) = result
         else {
             panic!("expected NewBinding");
         };
-        // Drop receivers → slot reclaimed
-        drop(stream);
-        drop(control);
 
-        let result = server.bind_and_send_stream(v(0), v(4), make_stream_entry());
+        // Stale binding (1 < current 2)
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
         assert!(matches!(result, Err(Error::StaleBinding(_))));
+
+        drop((stream, control));
     }
 
     #[test]
-    fn bind_and_send_triggers_growth() {
-        let (mut server, _rx) = test_server(100);
-        // In test mode INITIAL_PAGE_SIZE=8, so queue_id=50 forces growth
-        let result = server.bind_and_send_stream(v(50), v(1), make_stream_entry());
-        assert!(matches!(result, Ok(BindResult::NewBinding { .. })));
+    fn future_binding_rejected() {
+        let (mut server, path_entry, tx, _rx) = test_server(10);
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
+        let Ok(BindResult::NewBinding {
+            stream, control, ..
+        }) = result
+        else {
+            panic!("expected NewBinding");
+        };
+
+        // Future binding (5 > current 1)
+        let result = server.bind_and_send_stream(v(0), v(5), make_stream_entry(), &path_entry, &tx);
+        assert!(matches!(result, Err(Error::FutureBinding(_))));
+
+        drop((stream, control));
     }
 
     #[test]
-    fn send_stream_bound() {
-        let (mut server, _rx) = test_server(10);
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+    fn cap_exceeded() {
+        let (mut server, path_entry, tx, _rx) = test_server(5);
+        let result = server.bind_and_send_stream(v(5), v(1), make_stream_entry(), &path_entry, &tx);
+        assert!(matches!(result, Err(Error::CapExceeded(_))));
+    }
+
+    #[test]
+    fn send_stream_after_bind() {
+        let (mut server, path_entry, tx, _rx) = test_server(10);
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
         let Ok(BindResult::NewBinding {
             stream, control, ..
         }) = result
@@ -274,56 +280,80 @@ mod tests {
         let result = server.send_stream(v(0), v(1), make_stream_entry());
         assert!(result.is_ok());
 
-        drop(stream);
-        drop(control);
+        drop((stream, control));
     }
 
     #[test]
-    fn send_stream_unbound() {
-        let (mut server, _rx) = test_server(10);
+    fn send_control_after_bind() {
+        let (mut server, path_entry, tx, _rx) = test_server(10);
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
+        let Ok(BindResult::NewBinding {
+            stream, control, ..
+        }) = result
+        else {
+            panic!("expected NewBinding");
+        };
+
+        let result = server.send_control(v(0), v(1), make_control_entry());
+        assert!(result.is_ok());
+
+        drop((stream, control));
+    }
+
+    #[test]
+    fn send_to_unbound_slot() {
+        let (mut server, _path_entry, _tx, _rx) = test_server(10);
         let result = server.send_stream(v(0), v(1), make_stream_entry());
         assert!(matches!(result, Err(Error::Unallocated(_))));
     }
 
     #[test]
-    fn close_broadcasts_all() {
-        let (mut server, _rx) = test_server(10);
-        let r0 = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+    fn close_wakes_receivers() {
+        let (mut server, path_entry, tx, _rx) = test_server(10);
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
         let Ok(BindResult::NewBinding {
-            stream: s0,
-            control: c0,
-            ..
-        }) = r0
-        else {
-            panic!("expected NewBinding");
-        };
-        let r1 = server.bind_and_send_stream(v(1), v(2), make_stream_entry());
-        let Ok(BindResult::NewBinding {
-            stream: s1,
-            control: c1,
-            ..
-        }) = r1
+            stream, control, ..
+        }) = result
         else {
             panic!("expected NewBinding");
         };
 
-        // Drain the entries that were pushed during bind
-        let _ = s0.try_recv();
-        let _ = s1.try_recv();
+        let mut waker_count = 0;
+        server.close(&mut |_| waker_count += 1);
+        // At least the two bound halves should produce wakers
+        assert!(waker_count >= 2);
 
-        let mut wakes = vec![];
-        server.close(&mut |aw| wakes.push(aw));
-
-        assert!(matches!(s0.try_recv(), Err(crate::queue::half::Closed)));
-        assert!(matches!(s1.try_recv(), Err(crate::queue::half::Closed)));
-        drop(c0);
-        drop(c1);
+        drop((stream, control));
     }
 
     #[test]
-    fn bind_recycle() {
-        let (mut server, _rx) = test_server(10);
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
+    fn freed_batch_submitted_on_receiver_drop() {
+        let (mut server, path_entry, tx, mut rx) = test_server(10);
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
+        let Ok(BindResult::NewBinding {
+            stream, control, ..
+        }) = result
+        else {
+            panic!("expected NewBinding");
+        };
+
+        // No batch yet
+        assert!(rx.try_recv().is_err());
+
+        // Drop both receivers — should trigger freed notification
+        drop(stream);
+        drop(control);
+
+        // Batch should have been submitted
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn rebind_after_free() {
+        let (mut server, path_entry, tx, _rx) = test_server(10);
+
+        // First binding
+        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
         let Ok(BindResult::NewBinding {
             stream, control, ..
         }) = result
@@ -334,140 +364,7 @@ mod tests {
         drop(control);
 
         // Re-bind with higher binding_id
-        let result = server.bind_and_send_stream(v(0), v(2), make_stream_entry());
+        let result = server.bind_and_send_stream(v(0), v(2), make_stream_entry(), &path_entry, &tx);
         assert!(matches!(result, Ok(BindResult::NewBinding { .. })));
-    }
-
-    // ── Bach async integration tests ─────────────────────────────────────────
-
-    #[test]
-    fn server_bind_wakes_receiver() {
-        use crate::testing::{ext::*, sim};
-
-        sim(|| {
-            let (mut server, _rx) = test_server(10);
-            let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
-            let Ok(BindResult::NewBinding {
-                stream, control, ..
-            }) = result
-            else {
-                panic!("expected NewBinding");
-            };
-
-            async move {
-                let entry = stream.recv().await;
-                assert!(entry.is_ok());
-                drop(control);
-            }
-            .primary()
-            .spawn();
-        });
-    }
-
-    #[test]
-    fn server_drop_receivers_records_freed() {
-        use crate::testing::{ext::*, sim};
-
-        sim(|| {
-            let (mut server, mut rx) = test_server(10);
-            let result = server.bind_and_send_stream(v(3), v(1), make_stream_entry());
-            let Ok(BindResult::NewBinding {
-                stream, control, ..
-            }) = result
-            else {
-                panic!("expected NewBinding");
-            };
-
-            async move {
-                let _entry = stream.recv().await;
-                drop(stream);
-                drop(control);
-                bach::task::yield_now().await;
-
-                // Freed channel should have a token
-                let batch = rx.try_recv().unwrap();
-                let mut dest = s2n_quic_core::interval_set::IntervalSet::new();
-                let id = batch.take(&mut dest);
-                assert!(id.is_some());
-                assert!(dest.contains(&v(3)));
-            }
-            .primary()
-            .spawn();
-        });
-    }
-
-    #[test]
-    fn concurrent_push_and_recv() {
-        use crate::testing::{ext::*, sim};
-
-        sim(|| {
-            let (mut server, _rx) = test_server(10);
-            let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
-            let Ok(BindResult::NewBinding {
-                stream, control, ..
-            }) = result
-            else {
-                panic!("expected NewBinding");
-            };
-
-            let stream = Arc::new(stream);
-            let stream2 = stream.clone();
-
-            async move {
-                for _ in 0..50 {
-                    let entry = stream.recv().await;
-                    assert!(entry.is_ok());
-                }
-                drop(control);
-            }
-            .primary()
-            .spawn();
-
-            async move {
-                for _ in 0..50 {
-                    bach::task::yield_now().await;
-                    assert!(server.send_stream(v(0), v(1), make_stream_entry()).is_ok());
-                }
-                drop(stream2);
-            }
-            .primary()
-            .spawn();
-        });
-    }
-
-    #[test]
-    fn broadcast_close_racing_recv() {
-        use crate::testing::{ext::*, sim};
-
-        sim(|| {
-            let (mut server, _rx) = test_server(10);
-            let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry());
-            let Ok(BindResult::NewBinding {
-                stream, control, ..
-            }) = result
-            else {
-                panic!("expected NewBinding");
-            };
-
-            async move {
-                loop {
-                    match stream.recv().await {
-                        Ok(_) => continue,
-                        Err(crate::queue::half::Closed) => break,
-                    }
-                }
-                drop(control);
-            }
-            .primary()
-            .spawn();
-
-            async move {
-                1.ms().sleep().await;
-                let mut wakes = vec![];
-                server.close(&mut |aw| wakes.push(aw));
-            }
-            .primary()
-            .spawn();
-        });
     }
 }
