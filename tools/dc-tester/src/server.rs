@@ -3,7 +3,7 @@
 
 use s2n_quic_core::{stream::testing::Data, varint::VarInt};
 use s2n_quic_dc::stream::endpoint::Endpoint;
-use std::{io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{io, net::SocketAddr, sync::Arc};
 use tokio::{io::AsyncReadExt as _, task::JoinSet};
 use tracing::{error, info};
 
@@ -74,13 +74,7 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
     res
 }
 
-async fn handle_connection(
-    stream: s2n_quic_dc::stream::PendingValidation,
-) -> io::Result<(u64, u64)> {
-    let stream = tokio::time::timeout(Duration::from_secs(1), stream.validate())
-        .await
-        .unwrap_or_else(|_| Err(io::ErrorKind::TimedOut.into()))?;
-
+async fn handle_connection(stream: s2n_quic_dc::stream::Stream) -> io::Result<(u64, u64)> {
     let (mut reader, mut writer) = stream.into_split();
 
     // Read the 8-byte response size header (required by the send half to know how many bytes to write)

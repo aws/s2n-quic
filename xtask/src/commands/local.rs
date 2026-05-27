@@ -316,7 +316,10 @@ impl Local {
             .unwrap_or("default");
         let log_dir = self.log_dir.unwrap_or_else(|| {
             let date = chrono_date();
-            PathBuf::from("logs").join(workload_name).join(date)
+            PathBuf::from("logs")
+                .join(&self.profile)
+                .join(workload_name)
+                .join(date)
         });
 
         let timeout = self
