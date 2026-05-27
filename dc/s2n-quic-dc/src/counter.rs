@@ -395,11 +395,11 @@ fn parse_scalar_value(value: &str) -> Option<(&str, Option<&str>)> {
     }
 }
 
-fn convert_to_microseconds(value: u64, unit: &str) -> Option<u64> {
+fn convert_to_nanos(value: u64, unit: &str) -> Option<u64> {
     match unit {
-        "us" => Some(value),
-        "ms" => Some(value * 1_000),
-        "s" => Some(value * 1_000_000),
+        "us" => Some(value * 1_000),
+        "ms" => Some(value * 1_000_000),
+        "s" => Some(value * 1_000_000_000),
         _ => None,
     }
 }
@@ -432,7 +432,7 @@ fn encode_statsd_lines(samples: &[RawMetricSample<'_>], prefix: Option<&str>) ->
             let (count, min, max) = histogram_count_min_max(&buckets);
             lines.push(format!("{metric}.count:{count}|c{tag}"));
 
-            if let Some(min) = convert_to_microseconds(min, unit) {
+            if let Some(min) = convert_to_nanos(min, unit) {
                 lines.push(format!("{metric}.min:{min}|g{tag}"));
             } else {
                 lines.push(format!("{metric}.min:{min}|g{tag}"));
@@ -440,14 +440,14 @@ fn encode_statsd_lines(samples: &[RawMetricSample<'_>], prefix: Option<&str>) ->
 
             for percentile in STATSD_HISTOGRAM_PERCENTILES {
                 let value = histogram_value_at_percentile(&buckets, percentile);
-                if let Some(value) = convert_to_microseconds(value, unit) {
+                if let Some(value) = convert_to_nanos(value, unit) {
                     lines.push(format!("{metric}.p{percentile}:{value}|g{tag}"));
                 } else {
                     lines.push(format!("{metric}.p{percentile}:{value}|g{tag}"));
                 }
             }
 
-            if let Some(max) = convert_to_microseconds(max, unit) {
+            if let Some(max) = convert_to_nanos(max, unit) {
                 lines.push(format!("{metric}.max:{max}|g{tag}"));
             } else {
                 lines.push(format!("{metric}.max:{max}|g{tag}"));
@@ -3261,12 +3261,12 @@ mod tests {
         assert!(lines.contains(&"svc.q.packet.depth.distribution:875|d".to_string()));
         assert!(lines.contains(&"svc.rx.ecn:500|c|#variant:ect0".to_string()));
         assert!(lines.contains(&"svc.task.time.count:3|c|#variant:packet_dispatch.0".to_string()));
-        assert!(lines.contains(&"svc.task.time.min:5|g|#variant:packet_dispatch.0".to_string()));
-        assert!(lines.contains(&"svc.task.time.p50:5|g|#variant:packet_dispatch.0".to_string()));
-        assert!(lines.contains(&"svc.task.time.p90:10|g|#variant:packet_dispatch.0".to_string()));
-        assert!(lines.contains(&"svc.task.time.p95:10|g|#variant:packet_dispatch.0".to_string()));
-        assert!(lines.contains(&"svc.task.time.p99:10|g|#variant:packet_dispatch.0".to_string()));
-        assert!(lines.contains(&"svc.task.time.max:10|g|#variant:packet_dispatch.0".to_string()));
+        assert!(lines.contains(&"svc.task.time.min:5000|g|#variant:packet_dispatch.0".to_string()));
+        assert!(lines.contains(&"svc.task.time.p50:5000|g|#variant:packet_dispatch.0".to_string()));
+        assert!(lines.contains(&"svc.task.time.p90:10000|g|#variant:packet_dispatch.0".to_string()));
+        assert!(lines.contains(&"svc.task.time.p95:10000|g|#variant:packet_dispatch.0".to_string()));
+        assert!(lines.contains(&"svc.task.time.p99:10000|g|#variant:packet_dispatch.0".to_string()));
+        assert!(lines.contains(&"svc.task.time.max:10000|g|#variant:packet_dispatch.0".to_string()));
     }
 
     #[test]
