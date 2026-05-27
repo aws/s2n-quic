@@ -82,7 +82,6 @@ use crate::{
     endpoint::{
         error::{self, Error},
         frame::{self, FailureReason, Frame, Header, SubmissionSender, DEFAULT_TTL},
-        id::LocalSenderId,
         msg,
     },
     intrusive,
@@ -211,9 +210,6 @@ struct Inner {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Status {
-    /// Server-only: awaiting client validation before releasing credits
-    #[expect(dead_code)]
-    PendingValidation,
     /// Flow is open for reads
     #[default]
     Open,
@@ -224,15 +220,13 @@ enum Status {
 }
 
 impl Status {
-    is!(is_pending_validation, PendingValidation);
     is!(is_open, Open);
     is!(is_reset, Reset);
     is!(is_complete, Complete);
     is!(is_terminal, Reset | Complete);
 
     event! {
-        on_validated(PendingValidation => Open);
-        on_reset(PendingValidation | Open => Reset);
+        on_reset(Open => Reset);
         on_complete(Open => Complete);
     }
 }
@@ -292,31 +286,6 @@ impl Reader {
             eof_counter: 0,
             coop: Coop::default(),
         }))
-    }
-
-    /// Waits for the reader to become valid for application use.
-    ///
-    /// Client-side readers are already validated, so this is usually a no-op.
-    /// Server-side readers may need to wait until the transport confirms that
-    /// the incoming flow is acceptable.
-    ///
-    /// # Guarantees
-    ///
-    /// - Once this returns `Ok(())`, subsequent reads will no longer fail with
-    ///   "stream not yet validated".
-    /// - Calling it multiple times is harmless.
-    ///
-    /// # Footguns
-    ///
-    /// This method has no built-in timeout. If validation is part of a request
-    /// deadline, wrap it in your own timeout.
-    pub(crate) async fn validate(&mut self) -> io::Result<()> {
-        core::future::poll_fn(|cx| self.0.poll_validate(cx)).await
-    }
-
-    #[inline]
-    pub(crate) fn is_validated(&self) -> bool {
-        !self.0.status.is_pending_validation()
     }
 
     /// Returns the stream identifier assigned when the flow was created.
@@ -523,27 +492,6 @@ impl Inner {
     fn on_eof_returned(&mut self) {}
 
     #[inline]
-    fn poll_validate(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        self.poll_completions(cx)?;
-
-        if !self.status.is_pending_validation() {
-            return Poll::Ready(Ok(()));
-        }
-
-        let mut app_buf = buffer::writer::storage::Empty;
-        match self.poll_stream_rx(cx, &mut app_buf)? {
-            Poll::Ready(()) => {
-                if self.status.is_pending_validation() {
-                    Poll::Pending
-                } else {
-                    Poll::Ready(Ok(()))
-                }
-            }
-            Poll::Pending => Poll::Pending,
-        }
-    }
-
-    #[inline]
     fn poll_read_into<S>(&mut self, cx: &mut Context, buf: &mut S) -> Poll<io::Result<usize>>
     where
         S: buffer::writer::Storage,
@@ -604,13 +552,6 @@ impl Inner {
             }
         };
 
-        if self.status.is_pending_validation() {
-            return Poll::Ready(Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "stream not yet validated - call validate() first",
-            )));
-        }
-
         if tracker.has_remaining_capacity() {
             self.reassembler.infallible_copy_into(&mut tracker);
         }
@@ -657,8 +598,6 @@ impl Inner {
     where
         S: buffer::writer::Storage + ?Sized,
     {
-        let interpose = !self.status.is_pending_validation();
-
         match self.stream_rx.poll_swap(cx) {
             Poll::Ready(Ok(queue)) => {
                 for msg in queue {
@@ -722,31 +661,15 @@ impl Inner {
                                 }
                             };
 
-                            if let Err(err) = write_data_reader(
-                                &mut self.reassembler,
-                                &mut reader,
-                                app_buf,
-                                interpose,
-                            ) {
+                            if let Err(err) =
+                                write_data_reader(&mut self.reassembler, &mut reader, app_buf)
+                            {
                                 debug!(
                                     binding_id = self.stream_rx.binding_id().as_u64(),
                                     ?err,
                                     "Failed to write to reassembler"
                                 );
                                 return self.protocol_error();
-                            }
-                        }
-                        msg::Stream::QueueValidated => {
-                            if self.status.on_validated().is_ok() {
-                                debug!(
-                                    binding_id = self.stream_rx.binding_id().as_u64(),
-                                    "Flow validated"
-                                );
-                            } else {
-                                debug!(
-                                    binding_id = self.stream_rx.binding_id().as_u64(),
-                                    "QueueValidated received in unexpected state"
-                                );
                             }
                         }
                         msg::Stream::Reset { error_code } => {
@@ -896,7 +819,6 @@ impl Inner {
 
     fn send_max_data_frame(&mut self, maximum_data: VarInt) -> io::Result<()> {
         let frame = Frame {
-            source_sender_id: LocalSenderId::UNSPECIFIED,
             header: Header::QueueMaxData {
                 queue_pair: QueuePair {
                     source_queue_id: self.stream_rx.queue_id(),
@@ -930,7 +852,6 @@ impl Inner {
         reset_target: ResetTarget,
     ) -> io::Result<()> {
         let frame = Frame {
-            source_sender_id: LocalSenderId::UNSPECIFIED,
             header: Header::QueueReset {
                 dest_queue_id: self.dest_queue_id,
                 binding_id: self.stream_rx.binding_id(),
@@ -970,13 +891,12 @@ fn write_data_reader<S, R>(
     reassembler: &mut Reassembler,
     reader: &mut R,
     app_buf: &mut S,
-    interpose: bool,
 ) -> Result<(), buffer::Error<R::Error>>
 where
     S: buffer::writer::Storage + ?Sized,
     R: buffer::reader::Reader + ?Sized,
 {
-    if interpose && reassembler.is_empty() {
+    if reassembler.is_empty() {
         let mut interposer = Interposer::new(app_buf, reassembler);
         interposer.read_from(reader)
     } else {

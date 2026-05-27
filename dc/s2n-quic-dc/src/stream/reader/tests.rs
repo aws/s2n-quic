@@ -191,7 +191,7 @@ fn write_data_reader_bypasses_reassembler_for_in_order_data() {
     let mut reader = Data::new(8);
     let mut app_buf: Vec<u8> = Vec::new();
 
-    write_data_reader(&mut reassembler, &mut reader, &mut app_buf, true).unwrap();
+    write_data_reader(&mut reassembler, &mut reader, &mut app_buf).unwrap();
 
     assert_eq!(app_buf, Data::send_one_at(0, 8));
     assert_eq!(reassembler.consumed_len(), 8);
@@ -207,7 +207,7 @@ fn write_data_reader_keeps_out_of_order_data_in_reassembler() {
     let mut app_buf: Vec<u8> = Vec::new();
 
     reader.seek_forward(4);
-    write_data_reader(&mut reassembler, &mut reader, &mut app_buf, true).unwrap();
+    write_data_reader(&mut reassembler, &mut reader, &mut app_buf).unwrap();
 
     // Nothing was delivered to the application yet — the tail (offset 4-7) is
     // buffered in the reassembler, but there is a gap at 0-3.  `is_empty()` and
@@ -243,7 +243,7 @@ fn write_data_reader_does_not_interpose_when_reassembler_has_head_data() {
         .unwrap();
     reader.seek_forward(4);
 
-    write_data_reader(&mut reassembler, &mut reader, &mut app_buf, true).unwrap();
+    write_data_reader(&mut reassembler, &mut reader, &mut app_buf).unwrap();
 
     // The interposer bypass is skipped because the reassembler already holds
     // data at the head (offset 0-3).  Both head and tail (reader, offset 4-7)

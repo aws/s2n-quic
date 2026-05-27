@@ -33,7 +33,6 @@ fn test_clock() -> test_clock_mod::Clock {
 struct TestItem {
     path_secret_entry: Arc<PathSecretEntry>,
     byte_cost: u64,
-    sticky_sender: Option<usize>,
     drop_counter: Arc<AtomicUsize>,
 }
 
@@ -55,12 +54,7 @@ impl PathSecretMapEntry for TestItem {
     }
 }
 
-impl StickyRoute for TestItem {
-    fn sticky_sender_idx(&self) -> Option<crate::endpoint::id::LocalSenderId> {
-        self.sticky_sender
-            .map(crate::endpoint::id::LocalSenderId::from_index)
-    }
-
+impl AssignSender for TestItem {
     fn set_sender_id(&mut self, _id: crate::endpoint::id::LocalSenderId) {}
 }
 
@@ -133,13 +127,22 @@ fn new_test_item(
     TestItem {
         path_secret_entry,
         byte_cost: 123,
-        sticky_sender: None,
         drop_counter,
     }
 }
 
 fn new_test_frame(path_secret_entry: Arc<PathSecretEntry>, payload_len: usize) -> Entry<Frame> {
-    new_test_frame_with_sender_id(path_secret_entry, payload_len, VarInt::MAX)
+    new_test_frame_with_header(
+        path_secret_entry,
+        payload_len,
+        Header::QueueControl {
+            queue_pair: crate::packet::datagram::QueuePair {
+                source_queue_id: VarInt::from_u8(0),
+                dest_queue_id: VarInt::from_u8(1),
+            },
+            binding_id: VarInt::from_u8(0),
+        },
+    )
 }
 
 fn new_test_frame_with_header(
@@ -154,35 +157,6 @@ fn new_test_frame_with_header(
 
     Entry::new(Frame {
         header,
-        source_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::MAX),
-        payload,
-        path_secret_entry,
-        completion: None,
-        status: TransmissionStatus::Pending,
-        ttl: DEFAULT_TTL,
-        transmission_time: None,
-    })
-}
-
-fn new_test_frame_with_sender_id(
-    path_secret_entry: Arc<PathSecretEntry>,
-    payload_len: usize,
-    source_sender_id: VarInt,
-) -> Entry<Frame> {
-    let mut payload = ByteVec::new();
-    if payload_len > 0 {
-        payload.push_back(Bytes::from(vec![0u8; payload_len]));
-    }
-
-    Entry::new(Frame {
-        header: Header::QueueControl {
-            queue_pair: crate::packet::datagram::QueuePair {
-                source_queue_id: VarInt::from_u8(0),
-                dest_queue_id: VarInt::from_u8(1),
-            },
-            binding_id: VarInt::from_u8(0),
-        },
-        source_sender_id: crate::endpoint::id::LocalSenderId::new(source_sender_id),
         payload,
         path_secret_entry,
         completion: None,
@@ -195,7 +169,7 @@ fn new_test_frame_with_sender_id(
 fn drive_completion_dispatcher(
     dispatcher: &mut CompletionDispatcher<TestReceiver<Entry<Frame>>>,
     budget_capacity: usize,
-) -> Poll<Option<crate::flow::queue::AutoWake>> {
+) -> Poll<Option<crate::queue::AutoWake>> {
     with_noop_context(|cx| {
         let mut budget = Budget::new(budget_capacity);
         dispatcher.poll_recv(cx, &mut budget)
@@ -405,50 +379,6 @@ fn pick_two_drops_unsent_entry_on_shutdown() {
     ));
     let result = with_noop_context(|cx| fut.as_mut().poll(cx));
     assert_eq!(result, Poll::Ready(()));
-    assert_eq!(drop_counter.load(Ordering::Relaxed), 1);
-}
-
-#[test]
-fn sticky_sender_bypasses_pick_two() {
-    let mut item = new_test_item(test_path_secret_entry(), Arc::new(AtomicUsize::new(0)));
-    item.sticky_sender = Some(1);
-    let mut senders = vec![
-        TestSender {
-            accept: true,
-            calls: 0,
-        },
-        TestSender {
-            accept: true,
-            calls: 0,
-        },
-    ];
-    let result = try_send_pick_two(item, &mut senders, &mut crate::xorshift::Rng::new());
-    assert!(result.is_ok());
-    assert_eq!(senders[0].calls, 0);
-    assert_eq!(senders[1].calls, 1);
-}
-
-#[test]
-fn sticky_sender_error_returns_value() {
-    let drop_counter = Arc::new(AtomicUsize::new(0));
-    let mut item = new_test_item(test_path_secret_entry(), drop_counter.clone());
-    item.sticky_sender = Some(0);
-    let mut senders = vec![
-        TestSender {
-            accept: false,
-            calls: 0,
-        },
-        TestSender {
-            accept: true,
-            calls: 0,
-        },
-    ];
-    let result = try_send_pick_two(item, &mut senders, &mut crate::xorshift::Rng::new());
-    assert!(result.is_err());
-    assert_eq!(senders[0].calls, 1);
-    assert_eq!(senders[1].calls, 0);
-
-    drop(result);
     assert_eq!(drop_counter.load(Ordering::Relaxed), 1);
 }
 
@@ -700,92 +630,6 @@ fn batch_frames_forwards_on_consumed() {
 
     batcher.on_consumed(321);
     assert_eq!(batcher.inner.consumed, 321);
-}
-
-#[test]
-fn batch_frames_tracks_sticky_sender_from_first_frame() {
-    let path = test_path_secret_entry();
-    path.update_max_datagram_size(4_096);
-
-    let rx = TestReceiver {
-        values: VecDeque::from([
-            new_test_frame_with_sender_id(path.clone(), 16, VarInt::from_u8(2)),
-            new_test_frame(path.clone(), 16),
-        ]),
-        consumed: 0,
-    };
-    let mut batcher = BatchFramesByPathSecret::new(rx, &test_clock(), Rate::new(10.0));
-
-    let first = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
-    let Poll::Ready(Some(batch)) = first else {
-        panic!("expected batch");
-    };
-    assert_eq!(batch.len(), 2);
-    assert_eq!(
-        batch.sender_id(),
-        Some(crate::endpoint::id::LocalSenderId::from_index(2))
-    );
-}
-
-#[test]
-fn batch_frames_breaks_on_conflicting_sticky_senders() {
-    let path = test_path_secret_entry();
-    path.update_max_datagram_size(4_096);
-
-    let rx = TestReceiver {
-        values: VecDeque::from([
-            new_test_frame_with_sender_id(path.clone(), 16, VarInt::from_u8(1)),
-            new_test_frame_with_sender_id(path.clone(), 16, VarInt::from_u8(2)),
-        ]),
-        consumed: 0,
-    };
-    let mut batcher = BatchFramesByPathSecret::new(rx, &test_clock(), Rate::new(10.0));
-
-    let first = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
-    let Poll::Ready(Some(batch1)) = first else {
-        panic!("expected first batch");
-    };
-    assert_eq!(batch1.len(), 1);
-    assert_eq!(
-        batch1.sender_id(),
-        Some(crate::endpoint::id::LocalSenderId::from_index(1))
-    );
-
-    let second = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
-    let Poll::Ready(Some(batch2)) = second else {
-        panic!("expected second batch");
-    };
-    assert_eq!(batch2.len(), 1);
-    assert_eq!(
-        batch2.sender_id(),
-        Some(crate::endpoint::id::LocalSenderId::from_index(2))
-    );
-}
-
-#[test]
-fn batch_frames_adopts_sticky_from_later_frame() {
-    let path = test_path_secret_entry();
-    path.update_max_datagram_size(4_096);
-
-    let rx = TestReceiver {
-        values: VecDeque::from([
-            new_test_frame(path.clone(), 16),
-            new_test_frame_with_sender_id(path.clone(), 16, VarInt::from_u8(3)),
-            new_test_frame(path.clone(), 16),
-        ]),
-        consumed: 0,
-    };
-    let mut batcher = BatchFramesByPathSecret::new(rx, &test_clock(), Rate::new(10.0));
-
-    let first = with_noop_context(|cx| batcher.poll_recv(cx, &mut Budget::new(usize::MAX)));
-    let Poll::Ready(Some(batch)) = first else {
-        panic!("expected batch");
-    };
-    assert_eq!(batch.len(), 3);
-    assert_eq!(
-        batch.sender_id(),
-        Some(crate::endpoint::id::LocalSenderId::from_index(3))
-    );
 }
 
 #[test]

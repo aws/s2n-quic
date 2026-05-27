@@ -14,7 +14,6 @@ use crate::{
     endpoint::{
         counters, decode, error,
         frame::{Frame, Header, SubmissionSender, DEFAULT_TTL},
-        id::LocalSenderId,
         msg, recv, routing,
     },
     intrusive::Entry,
@@ -25,7 +24,7 @@ use crate::{
     path::secret::{map::Entry as PathSecretEntry, Map as PathSecretMap},
     queue::AutoWake,
     socket::{channel, pool::descriptor},
-    stream::{PendingValidation, Reader, Stream, Writer},
+    stream::{Reader, Stream, Writer},
     tracing::*,
 };
 use bytes::BytesMut;
@@ -70,7 +69,7 @@ pub(crate) fn process<Clk, Route>(
     ack_burst_tx: &mut impl channel::UnboundedSender<Rc<RefCell<recv::Context>>>,
     idle_wheel_tx: &mut impl channel::UnboundedSender<Rc<RefCell<recv::Context>>>,
     path_secret_map: &PathSecretMap,
-    acceptor_registry: &mut acceptor::LocalRegistry<PendingValidation>,
+    acceptor_registry: &mut acceptor::LocalRegistry<Stream>,
     frame_tx: &mut SubmissionSender,
     sender_tx: &mut impl channel::UnboundedSender<Entry<msg::Sender>>,
     freed_batch_tx: &mut crate::queue::FreedBatchTx,
@@ -323,7 +322,7 @@ fn dispatch_decoded_frame(
     payload: BytesMut,
     peer: &mut recv::Context,
     credentials: &Credentials,
-    acceptor_registry: &mut acceptor::LocalRegistry<PendingValidation>,
+    acceptor_registry: &mut acceptor::LocalRegistry<Stream>,
     frame_tx: &mut SubmissionSender,
     freed_batch_tx: &mut crate::queue::FreedBatchTx,
     sender_tx: &mut impl channel::UnboundedSender<Entry<msg::Sender>>,
@@ -331,15 +330,6 @@ fn dispatch_decoded_frame(
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
     match header {
-        Header::QueueInit { .. } => {
-            todo!("remove QueueInit path")
-        }
-        Header::QueueValidateRequest { .. } => {
-            todo!("remove QueueValidateRequest path")
-        }
-        Header::QueueInitValidate { .. } => {
-            todo!("remove QueueInitValidate path")
-        }
         Header::QueueData {
             queue_pair,
             binding_id,
@@ -404,12 +394,6 @@ fn dispatch_decoded_frame(
                 counters,
                 waker_sink,
             );
-        }
-        Header::QueueInitReset { .. } => {
-            todo!("remove QueueInitReset path")
-        }
-        Header::QueueInitFin { .. } => {
-            todo!("remove QueueInitFin path")
         }
         Header::QueueFree {
             free_request_id,
@@ -617,7 +601,7 @@ fn handle_queue_data_init(
     is_fin: bool,
     acceptor_id: VarInt,
     buf: BytesMut,
-    acceptor_registry: &mut acceptor::LocalRegistry<PendingValidation>,
+    acceptor_registry: &mut acceptor::LocalRegistry<Stream>,
     frame_tx: &mut SubmissionSender,
     freed_batch_tx: &mut crate::queue::FreedBatchTx,
     counters: &counters::Dispatch,
@@ -684,9 +668,9 @@ fn handle_queue_data_init(
                 stream,
                 peer_fin,
             );
-            let pending = PendingValidation::new(Stream::new(reader, writer));
+            let new_stream = Stream::new(reader, writer);
 
-            match acceptor_sender.send(pending) {
+            match acceptor_sender.send(new_stream) {
                 Ok((mut evicted, acceptor_waker)) => {
                     if let Some(ref mut ev) = evicted {
                         ev.reset(crate::stream::endpoint::Error::ServerBusy);
@@ -740,7 +724,6 @@ fn send_reset(
     frame_tx: &mut SubmissionSender,
 ) {
     let frame = Frame {
-        source_sender_id: LocalSenderId::UNSPECIFIED,
         header: Header::QueueReset {
             dest_queue_id,
             binding_id,

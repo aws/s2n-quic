@@ -11,7 +11,7 @@
 //! Each producer gets its own `Slot` (mutex-guarded Vec) so there is no cross-producer contention.
 //! The drain task swaps the Vec out in O(1) and iterates the local copy.
 
-use crate::{flow::queue::AutoWake, socket::channel};
+use crate::{queue::AutoWake, socket::channel};
 use core::task::{Poll, Waker};
 use parking_lot::Mutex;
 use std::{

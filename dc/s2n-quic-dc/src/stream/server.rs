@@ -10,7 +10,7 @@
 
 use crate::{
     acceptor::channel as accept_channel,
-    stream::{endpoint::Endpoint, PendingValidation},
+    stream::{endpoint::Endpoint, Stream},
 };
 use s2n_quic_core::varint::VarInt;
 use std::{io, sync::Arc};
@@ -35,13 +35,11 @@ use std::{io, sync::Arc};
 ///
 /// - The PSK provider's map **must** be the same `Arc` instance as the endpoint's map.
 ///   [`new`](Self::new) panics if they differ.
-/// - Streams arrive as [`PendingValidation`]; callers must call
-///   [`validate`](PendingValidation::validate) before reading from or writing to the stream.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use s2n_quic_dc::stream::{PendingValidation, Server, Stream};
+/// use s2n_quic_dc::stream::{Server, Stream};
 /// use s2n_quic_core::varint::VarInt;
 ///
 /// async fn accept_loop(
@@ -50,11 +48,9 @@ use std::{io, sync::Arc};
 /// ) -> std::io::Result<()> {
 ///     let config = s2n_quic_dc::acceptor::channel::Config::default();
 ///     let mut rx = server.register_acceptor(acceptor_id, config)?;
-///     while let Some(pending) = rx.recv().await {
+///     while let Some(stream) = rx.recv().await {
 ///         tokio::spawn(async move {
-///             if let Ok(stream) = pending.validate().await {
-///                 handle_stream(stream).await;
-///             }
+///             handle_stream(stream).await;
 ///         });
 ///     }
 ///     Ok(())
@@ -85,9 +81,7 @@ impl Server {
 
     /// Registers a channel-based acceptor and returns a receiver.
     ///
-    /// Incoming [`PendingValidation`] streams are placed in a bounded queue. Callers read
-    /// from the returned receiver and call [`validate`](PendingValidation::validate) before
-    /// using each stream.
+    /// Incoming streams are placed in a bounded queue.
     ///
     /// Cloning the receiver scales out acceptance across multiple tasks: incoming streams
     /// are distributed across all live receivers using pick-two load balancing.
@@ -105,7 +99,7 @@ impl Server {
         &self,
         acceptor_id: VarInt,
         config: accept_channel::Config,
-    ) -> io::Result<accept_channel::Receiver<PendingValidation>> {
+    ) -> io::Result<accept_channel::Receiver<Stream>> {
         self.endpoint
             .acceptor_registry
             .register(acceptor_id, config)

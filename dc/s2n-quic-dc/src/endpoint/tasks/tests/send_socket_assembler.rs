@@ -502,7 +502,6 @@ fn cancelled_frame_emitted_when_completion_is_cancelled() {
                             is_fin: false,
                             dest_acceptor_id: None,
                         },
-                        source_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::MAX),
                         payload: Default::default(),
                         path_secret_entry: entry.clone(),
                         completion: Some(completion_sender),

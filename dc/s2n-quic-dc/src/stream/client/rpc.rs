@@ -185,7 +185,7 @@ mod tests {
 
                 while let Some(stream) = acceptor.recv().await {
                     async move {
-                        let stream = stream.validate().await.expect("server validate");
+                        let stream = stream;
                         let (mut reader, mut writer) = stream.into_split();
 
                         let mut request = BytesMut::with_capacity(8);
@@ -262,7 +262,7 @@ mod tests {
 
                 while let Some(stream) = acceptor.recv().await {
                     async move {
-                        let stream = stream.validate().await.expect("server validate");
+                        let stream = stream;
                         let (mut reader, _) = stream.into_split();
                         let mut request = BytesMut::new();
                         while reader.read_into(&mut request).await.expect("server read") != 0 {}
@@ -344,7 +344,7 @@ mod tests {
 
                 while let Some(stream) = acceptor.recv().await {
                     async move {
-                        let stream = stream.validate().await.expect("server validate");
+                        let stream = stream;
                         let (mut reader, mut writer) = stream.into_split();
 
                         let mut request = BytesMut::new();

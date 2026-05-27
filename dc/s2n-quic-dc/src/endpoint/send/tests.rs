@@ -56,9 +56,6 @@ fn make_frame(payload_len: usize) -> crate::intrusive::Entry<Frame> {
             is_fin: false,
             dest_acceptor_id: None,
         },
-        source_sender_id: crate::endpoint::id::LocalSenderId::new(
-            s2n_quic_core::varint::VarInt::MAX,
-        ),
         payload,
         path_secret_entry: make_path_secret_entry(),
         completion: None,

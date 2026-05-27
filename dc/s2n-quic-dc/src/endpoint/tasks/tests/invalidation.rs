@@ -69,7 +69,6 @@ fn test_frame(pse: &Arc<crate::path::secret::map::Entry>) -> Entry<Frame> {
             is_fin: false,
             dest_acceptor_id: None,
         },
-        source_sender_id: LocalSenderId::new(VarInt::from_u8(0)),
         payload: Default::default(),
         path_secret_entry: pse.clone(),
         completion: None,

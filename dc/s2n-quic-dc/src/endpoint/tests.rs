@@ -95,7 +95,7 @@ fn ping_pong() {
             // Accept one stream.
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
 
                     // Read "ping" (the client sends FIN with the data so we
@@ -209,7 +209,7 @@ fn server_response_loss_triggers_pto() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
 
                     let mut buf = BytesMut::with_capacity(8);
@@ -314,7 +314,7 @@ fn client_request_loss_triggers_pto() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
                     let mut buf = BytesMut::with_capacity(8);
                     loop {
@@ -391,7 +391,7 @@ fn multiple_sequential_streams() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
                     let mut buf = BytesMut::with_capacity(32);
                     loop {
@@ -472,7 +472,7 @@ fn large_payload_transfer() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
                     let mut buf = BytesMut::with_capacity(PAYLOAD_SIZE + 64);
                     loop {
@@ -575,7 +575,7 @@ fn multiple_packet_loss_recovered_by_pto() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
                     let mut buf = BytesMut::with_capacity(8);
                     loop {
@@ -659,7 +659,7 @@ fn ack_drains_inflight() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
                     let mut buf = BytesMut::with_capacity(64);
                     loop {
@@ -736,7 +736,7 @@ fn bidirectional_simultaneous_send() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
 
                     // Send server data immediately (don't wait for client data first)
@@ -838,7 +838,7 @@ fn duplicated_client_init_accepts_only_once() {
                 .expect("first stream should be accepted within timeout")
                 .expect("server should accept one stream");
 
-            let stream = stream.validate().await.expect("server validate");
+            let stream = stream;
             let (mut reader, mut writer) = stream.into_split();
 
             let mut buf = BytesMut::with_capacity(8);
@@ -1002,7 +1002,7 @@ fn total_packet_loss_surfaces_read_timeout() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
 
                     // Read "ping" from the client.
@@ -1140,7 +1140,7 @@ fn peer_dead_cooldown_blocks_new_connects() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
 
                     let mut buf = BytesMut::with_capacity(8);
@@ -1274,7 +1274,7 @@ fn total_packet_loss_surfaces_write_timeout() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
 
                     let mut buf = BytesMut::with_capacity(8);
@@ -1413,7 +1413,7 @@ fn multi_server_concurrent_loss_sim() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server_a validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
                     let mut buf = BytesMut::with_capacity(64);
                     loop {
@@ -1443,7 +1443,7 @@ fn multi_server_concurrent_loss_sim() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server_b validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
                     let mut buf = BytesMut::with_capacity(64);
                     loop {
@@ -1550,7 +1550,7 @@ fn peer_self_loopback() {
             async move {
                 while let Some(stream) = acceptor.recv().await {
                     async move {
-                        let stream = stream.validate().await.expect("server validate");
+                        let stream = stream;
                         let (mut reader, mut writer) = stream.into_split();
 
                         let mut buf = BytesMut::with_capacity(8);
@@ -1640,7 +1640,7 @@ fn five_node_random_chatter_settles_after_stop() {
                 async move {
                     while let Some(stream) = acceptor.recv().await {
                         async move {
-                            let stream = stream.validate().await.expect("server validate");
+                            let stream = stream;
                             let (mut reader, mut writer) = stream.into_split();
                             let mut buf = BytesMut::with_capacity(MAX_PAYLOAD_SIZE);
 
@@ -1792,7 +1792,7 @@ fn concurrent_tiny_streams_batch_into_minimal_packets() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("server validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
 
                     let mut buf = BytesMut::with_capacity(16);
@@ -1959,7 +1959,7 @@ fn zombie_flow_not_invalidated_when_path_has_other_activity() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
                     let mut buf = BytesMut::with_capacity(2048);
                     loop {
@@ -2073,7 +2073,7 @@ fn stale_key_detected_after_recv_cache_eviction() {
 
             while let Some(stream) = acceptor.recv().await {
                 async move {
-                    let stream = stream.validate().await.expect("validate");
+                    let stream = stream;
                     let (mut reader, mut writer) = stream.into_split();
                     let mut buf = BytesMut::with_capacity(32);
                     loop {

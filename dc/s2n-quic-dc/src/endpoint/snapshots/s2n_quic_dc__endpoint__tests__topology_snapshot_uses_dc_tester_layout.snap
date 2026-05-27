@@ -1375,22 +1375,6 @@ channels:
       - q.router_to_batcher.depth_dist [summary variant=p3 unit=count]: Distribution of observed queue depth values
       - q.router_to_batcher.drain [counter variant=p3 unit=count]: Total queue dequeue events
       - q.router_to_batcher.enq [counter variant=p3 unit=count]: Total queue enqueue events
-  - name: ch.router_to_batcher.p4
-    function: endpoint::tasks::frame_dispatch
-    description: Per-priority unsync queue from priority router to frame dispatch
-    metrics:
-      - q.router_to_batcher.depth [gauge variant=p4 unit=count]: Current queue depth
-      - q.router_to_batcher.depth_dist [summary variant=p4 unit=count]: Distribution of observed queue depth values
-      - q.router_to_batcher.drain [counter variant=p4 unit=count]: Total queue dequeue events
-      - q.router_to_batcher.enq [counter variant=p4 unit=count]: Total queue enqueue events
-  - name: ch.router_to_batcher.p5
-    function: endpoint::tasks::frame_dispatch
-    description: Per-priority unsync queue from priority router to frame dispatch
-    metrics:
-      - q.router_to_batcher.depth [gauge variant=p5 unit=count]: Current queue depth
-      - q.router_to_batcher.depth_dist [summary variant=p5 unit=count]: Distribution of observed queue depth values
-      - q.router_to_batcher.drain [counter variant=p5 unit=count]: Total queue dequeue events
-      - q.router_to_batcher.enq [counter variant=p5 unit=count]: Total queue enqueue events
   - name: ch.wheel_to_assembler.send.0
     function: endpoint::tasks::send_worker
     description: Per-socket queue from tx wheel to assembler+socket sender task
@@ -2359,22 +2343,6 @@ channels:
       - q.router_to_batcher.depth_dist [summary variant=p3 unit=count]: Distribution of observed queue depth values
       - q.router_to_batcher.drain [counter variant=p3 unit=count]: Total queue dequeue events
       - q.router_to_batcher.enq [counter variant=p3 unit=count]: Total queue enqueue events
-  - name: q.router_to_batcher.p4
-    function: 
-    description: 
-    metrics:
-      - q.router_to_batcher.depth [gauge variant=p4 unit=count]: Current queue depth
-      - q.router_to_batcher.depth_dist [summary variant=p4 unit=count]: Distribution of observed queue depth values
-      - q.router_to_batcher.drain [counter variant=p4 unit=count]: Total queue dequeue events
-      - q.router_to_batcher.enq [counter variant=p4 unit=count]: Total queue enqueue events
-  - name: q.router_to_batcher.p5
-    function: 
-    description: 
-    metrics:
-      - q.router_to_batcher.depth [gauge variant=p5 unit=count]: Current queue depth
-      - q.router_to_batcher.depth_dist [summary variant=p5 unit=count]: Distribution of observed queue depth values
-      - q.router_to_batcher.drain [counter variant=p5 unit=count]: Total queue dequeue events
-      - q.router_to_batcher.enq [counter variant=p5 unit=count]: Total queue enqueue events
   - name: q.ups
     function: 
     description: 
@@ -5995,16 +5963,6 @@ bindings:
   - task: task.frame_dispatch
     direction: receives
     channel: ch.router_to_batcher.p3
-    function: endpoint::tasks::frame_dispatch
-    description: Frame dispatch drains per-lane queues
-  - task: task.frame_dispatch
-    direction: receives
-    channel: ch.router_to_batcher.p4
-    function: endpoint::tasks::frame_dispatch
-    description: Frame dispatch drains per-lane queues
-  - task: task.frame_dispatch
-    direction: receives
-    channel: ch.router_to_batcher.p5
     function: endpoint::tasks::frame_dispatch
     description: Frame dispatch drains per-lane queues
   - task: task.idle_wheel

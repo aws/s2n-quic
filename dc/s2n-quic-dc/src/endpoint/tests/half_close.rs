@@ -88,7 +88,7 @@ fn client_write_half_close() {
 
             while let Some(pending) = acceptor.recv().await {
                 async move {
-                    let stream = pending.validate().await.expect("validate");
+                    let stream = pending;
                     let (mut reader, mut writer) = stream.into_split();
 
                     // Drain the client's half-closed write side.
@@ -171,7 +171,7 @@ fn server_write_half_close() {
 
             while let Some(pending) = acceptor.recv().await {
                 async move {
-                    let stream = pending.validate().await.expect("validate");
+                    let stream = pending;
                     let (mut reader, mut writer) = stream.into_split();
 
                     // Server immediately half-closes its write side.
@@ -239,7 +239,7 @@ fn both_sides_half_close() {
 
             while let Some(pending) = acceptor.recv().await {
                 async move {
-                    let stream = pending.validate().await.expect("validate");
+                    let stream = pending;
                     let (mut reader, mut writer) = stream.into_split();
 
                     // Server sends its data + FIN immediately.
@@ -332,7 +332,7 @@ fn writer_drop_sends_fin() {
 
             while let Some(pending) = acceptor.recv().await {
                 async move {
-                    let stream = pending.validate().await.expect("validate");
+                    let stream = pending;
                     let (mut reader, mut writer) = stream.into_split();
 
                     // Server reads client data to EOF.
@@ -424,7 +424,7 @@ fn reader_drop_before_eof_sends_stop_sending() {
 
             while let Some(pending) = acceptor.recv().await {
                 async move {
-                    let stream = pending.validate().await.expect("validate");
+                    let stream = pending;
                     let (mut reader, mut writer) = stream.into_split();
 
                     // Read the client's request to EOF.
@@ -526,7 +526,7 @@ fn server_reader_drop_sends_stop_sending() {
 
             while let Some(pending) = acceptor.recv().await {
                 async move {
-                    let stream = pending.validate().await.expect("validate");
+                    let stream = pending;
                     let (_reader, mut writer) = stream.into_split();
 
                     // Immediately write a short response + FIN and let the
@@ -609,7 +609,7 @@ fn shutdown_is_idempotent() {
 
             while let Some(pending) = acceptor.recv().await {
                 async move {
-                    let stream = pending.validate().await.expect("validate");
+                    let stream = pending;
                     let (mut reader, mut writer) = stream.into_split();
 
                     let mut buf = BytesMut::with_capacity(16);
@@ -677,7 +677,7 @@ fn reader_drop_after_eof_does_not_send_stop_sending() {
 
             while let Some(pending) = acceptor.recv().await {
                 async move {
-                    let stream = pending.validate().await.expect("validate");
+                    let stream = pending;
                     let (mut reader, mut writer) = stream.into_split();
 
                     // Read the client request to EOF.
@@ -746,7 +746,7 @@ fn write_after_shutdown_returns_broken_pipe() {
 
             while let Some(pending) = acceptor.recv().await {
                 async move {
-                    let stream = pending.validate().await.expect("validate");
+                    let stream = pending;
                     let (mut reader, mut writer) = stream.into_split();
 
                     let mut buf = BytesMut::with_capacity(16);
@@ -842,7 +842,7 @@ fn writer_drop_in_queue_init_sent_hangs_server_reader() {
 
             while let Some(pending) = acceptor.recv().await {
                 async move {
-                    let stream = pending.validate().await.expect("validate");
+                    let stream = pending;
                     let (mut reader, _writer) = stream.into_split();
 
                     // Server reader should unblock (EOF or reset) after the
@@ -949,7 +949,7 @@ fn queue_init_fin_lost_when_queue_init_dropped() {
 
             while let Some(pending) = acceptor.recv().await {
                 async move {
-                    let stream = pending.validate().await.expect("validate");
+                    let stream = pending;
                     let (mut reader, _writer) = stream.into_split();
 
                     // The server should read the early data AND observe EOF (FIN).

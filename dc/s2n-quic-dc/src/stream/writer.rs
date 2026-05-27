@@ -74,7 +74,6 @@ use crate::{
             self, FailureReason, Frame, Header, HomogeneousBatch, Priority, SubmissionSender,
             TransmissionStatus, DEFAULT_TTL, MAX_QUEUE_DATA_HEADER_OVERHEAD,
         },
-        id::LocalSenderId,
         msg,
     },
     intrusive::{Entry, Queue},
@@ -565,7 +564,6 @@ impl Inner {
         reset_target: ResetTarget,
     ) -> io::Result<()> {
         let frame = Frame {
-            source_sender_id: LocalSenderId::UNSPECIFIED,
             header: Header::QueueReset {
                 dest_queue_id: self.dest_queue_id,
                 binding_id: self.control_rx.binding_id(),
@@ -595,7 +593,6 @@ impl Inner {
 
     fn send_fin_packet(&mut self) -> io::Result<()> {
         let frame = Frame {
-            source_sender_id: LocalSenderId::UNSPECIFIED,
             header: Header::QueueData {
                 queue_pair: self.queue_pair(),
                 binding_id: self.control_rx.binding_id(),
@@ -819,7 +816,6 @@ impl Inner {
         let (payload, bytes_read, actual_fin) = self.prepare_early_data(buf, is_fin)?;
 
         let frame = Frame {
-            source_sender_id: LocalSenderId::UNSPECIFIED,
             header: Header::QueueData {
                 queue_pair: self.queue_pair(),
                 binding_id: self.control_rx.binding_id(),
@@ -951,7 +947,6 @@ impl Inner {
             let include_fin = is_fin && is_last_chunk;
 
             let frame = Frame {
-                source_sender_id: LocalSenderId::UNSPECIFIED,
                 header: Header::QueueData {
                     queue_pair: self.queue_pair(),
                     binding_id: self.control_rx.binding_id(),

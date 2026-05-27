@@ -12,21 +12,18 @@
 //! - Graceful shutdown: Receiver drops normally - transmit but silently drop completions
 //! - Panic/Cancel: Receiver panics or sender.cancel() - cancel all pending transmissions
 
-use crate::{endpoint::id::LocalSenderId, flow::queue::AutoWake, intrusive};
+use crate::{intrusive, queue::AutoWake};
 use core::{
     mem::ManuallyDrop,
-    sync::atomic::{AtomicU64, AtomicU8, Ordering},
+    sync::atomic::{AtomicU8, Ordering},
     task::Poll,
 };
 use parking_lot::Mutex;
-use s2n_quic_core::varint::VarInt;
 use std::sync::Arc;
 
 const SHOULD_TRANSMIT: u8 = 0b01;
 const RECEIVER_ALIVE: u8 = 0b10;
 const INITIAL_STATE: u8 = SHOULD_TRANSMIT | RECEIVER_ALIVE;
-/// Sentinel meaning "not yet assigned"
-const UNSET_SENDER_IDX: u64 = u64::MAX;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SubscriptionMode {
@@ -46,16 +43,6 @@ struct Shared<T> {
     /// - bit 0: should_transmit
     /// - bit 1: receiver_alive
     flags: AtomicU8,
-    /// Index of the sender socket that transmitted the first QueueInit frame for this
-    /// completion channel.  Stamped by the assembler when it picks up the QueueInit frame.
-    /// `UNSET_SENDER_IDX` means the QueueInit has not yet been transmitted by any sender.
-    init_sender_idx: AtomicU64,
-    /// The `attempt_id` assigned to the QueueInit frame when it was first transmitted.
-    /// Stamped alongside `init_sender_idx` by the assembler.  The writer includes this
-    /// value in subsequent QueueInitReset frames so the server can mark the attempt as
-    /// finalized in its dedup window and reject any late-arriving QueueInit duplicate.
-    /// `UNSET_SENDER_IDX` means the QueueInit has not yet been transmitted.
-    init_attempt_id: AtomicU64,
     inner: Mutex<Inner<T>>,
 }
 
@@ -67,8 +54,6 @@ pub fn new_with_mode<T>(mode: SubscriptionMode) -> Receiver<T> {
     let shared = Arc::new(Shared {
         mode,
         flags: AtomicU8::new(INITIAL_STATE),
-        init_sender_idx: AtomicU64::new(UNSET_SENDER_IDX),
-        init_attempt_id: AtomicU64::new(UNSET_SENDER_IDX),
         inner: Mutex::new(Inner {
             queue: intrusive::Queue::new(),
             recv_waker: None,
@@ -139,54 +124,6 @@ impl<T> Sender<T> {
     #[inline]
     pub fn subscription_mode(&self) -> SubscriptionMode {
         self.shared.mode
-    }
-
-    /// Record which sender-socket index transmitted the QueueInit frame for this channel.
-    ///
-    /// Called by the assembler the first time it picks up a QueueInit frame. The writer
-    /// reads this back via [`Receiver::init_sender_idx`] to route QueueInitReset and
-    /// QueueInitFin through the same sender socket.
-    #[inline]
-    pub fn set_init_sender_idx(&self, id: LocalSenderId) {
-        // Only stamp on the first transmission (compare-exchange from UNSET).
-        let _ = self.shared.init_sender_idx.compare_exchange(
-            UNSET_SENDER_IDX,
-            id.as_varint().as_u64(),
-            Ordering::Release,
-            Ordering::Relaxed,
-        );
-    }
-
-    /// Returns the sender-socket index stamped for the QueueInit, if any.
-    #[inline]
-    pub fn init_sender_idx(&self) -> Option<LocalSenderId> {
-        let v = self.shared.init_sender_idx.load(Ordering::Acquire);
-        let v = VarInt::new(v).ok()?;
-        Some(LocalSenderId::new(v))
-    }
-
-    /// Record the `attempt_id` assigned to the QueueInit frame by the assembler.
-    ///
-    /// Stamped alongside [`set_init_sender_idx`].  The writer includes this value in
-    /// QueueInitReset frames so the server can mark the attempt as finalized in its
-    /// dedup window.
-    #[inline]
-    pub fn set_init_attempt_id(&self, id: VarInt) {
-        let _ = self.shared.init_attempt_id.compare_exchange(
-            UNSET_SENDER_IDX,
-            id.as_u64(),
-            Ordering::Release,
-            Ordering::Relaxed,
-        );
-    }
-
-    /// Returns the `attempt_id` stamped for the QueueInit, if any.
-    #[inline]
-    pub fn init_attempt_id(&self) -> Option<VarInt> {
-        match self.shared.init_attempt_id.load(Ordering::Acquire) {
-            UNSET_SENDER_IDX => None,
-            id => VarInt::new(id).ok(),
-        }
     }
 
     /// Send a completion notification, returning the receiver waker rather than invoking it.
@@ -291,27 +228,6 @@ impl<T> Receiver<T> {
     pub fn sender(&self) -> Sender<T> {
         Sender {
             shared: ManuallyDrop::new(Arc::clone(&self.shared)),
-        }
-    }
-
-    /// Returns the sender-socket index that transmitted the QueueInit frame, if known.
-    ///
-    /// Returns `None` if the QueueInit has not yet been picked up by any sender socket.
-    #[inline]
-    pub fn init_sender_idx(&self) -> Option<LocalSenderId> {
-        let v = self.shared.init_sender_idx.load(Ordering::Acquire);
-        let v = VarInt::new(v).ok()?;
-        Some(LocalSenderId::new(v))
-    }
-
-    /// Returns the `attempt_id` assigned to the QueueInit by the assembler, if known.
-    ///
-    /// Returns `None` if the QueueInit has not yet been transmitted.
-    #[inline]
-    pub fn init_attempt_id(&self) -> Option<VarInt> {
-        match self.shared.init_attempt_id.load(Ordering::Acquire) {
-            UNSET_SENDER_IDX => None,
-            id => VarInt::new(id).ok(),
         }
     }
 

@@ -215,7 +215,7 @@ impl DroppedPackets {
 
                     while let Some(stream) = acceptor.recv().await {
                         async move {
-                            let stream = stream.validate().await.expect("server validate");
+                            let stream = stream;
                             let (mut reader, mut writer) = stream.into_split();
 
                             // Receive and validate the client data.
@@ -633,10 +633,7 @@ fn sim_init_uniqueness(actions: &PacketActions, n: usize) {
                     let seen_ids_sv = seen_ids_sv.clone();
                     let validated_count = validated_count_inner.clone();
                     async move {
-                        let mut stream = match stream.validate().await {
-                            Ok(stream) => stream,
-                            Err(_) => return,
-                        };
+                        let mut stream = stream;
 
                         let mut res: Vec<u8> = vec![];
                         stream.read_into(&mut res).await.unwrap();
@@ -824,7 +821,7 @@ fn ack_only_probe_does_not_create_ack_loop() {
 
                     while let Some(stream) = acceptor.recv().await {
                         async move {
-                            let stream = stream.validate().await.expect("server validate");
+                            let stream = stream;
                             let (mut reader, _writer) = stream.into_split();
                             let mut buf = Data::new(BODY_LEN as u64);
                             loop {
@@ -957,7 +954,6 @@ fn symmetric_5tuple_routing() {
 
                 while let Some(stream) = acceptor.recv().await {
                     async move {
-                        let stream = stream.validate().await.expect("validate");
                         let (mut reader, mut writer) = stream.into_split();
 
                         // Receive and validate the client data.

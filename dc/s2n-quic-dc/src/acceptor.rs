@@ -19,7 +19,7 @@
 
 pub mod channel;
 
-use crate::flow::queue::AutoWake;
+use crate::queue::AutoWake;
 use channel::{Config, Receiver, Sender};
 use core::task::Waker;
 use s2n_quic_core::varint::VarInt;

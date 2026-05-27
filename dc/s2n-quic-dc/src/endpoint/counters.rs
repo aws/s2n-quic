@@ -56,16 +56,11 @@ pub(crate) struct Dispatch {
     pub rx_ecn_not_ect: Counter,
 
     // Per-frame-type RX counters for inbound frames observed by the dispatch path.
-    pub rx_frame_queue_init: Counter,
     pub rx_frame_queue_data: Counter,
     pub rx_frame_queue_data_fin: Counter,
     pub rx_frame_queue_control: Counter,
     pub rx_frame_queue_max_data: Counter,
     pub rx_frame_queue_reset: Counter,
-    pub rx_frame_queue_init_reset: Counter,
-    pub rx_frame_queue_init_fin: Counter,
-    pub rx_frame_queue_init_validate: Counter,
-    pub rx_frame_queue_validate_request: Counter,
     pub rx_frame_queue_free: Counter,
     pub rx_queue_free_slots: Summary,
     pub rx_queue_free_ranges: Summary,
@@ -121,18 +116,11 @@ impl Dispatch {
             rx_ecn_ce: counters.register_nominal("rx.ecn", "ce"),
             rx_ecn_not_ect: counters.register_nominal("rx.ecn", "not_ect"),
 
-            rx_frame_queue_init: counters.register_nominal("rx.frame", "queue_init"),
             rx_frame_queue_data: counters.register_nominal("rx.frame", "queue_data"),
             rx_frame_queue_data_fin: counters.register_nominal("rx.frame", "queue_data_fin"),
             rx_frame_queue_control: counters.register_nominal("rx.frame", "queue_control"),
             rx_frame_queue_max_data: counters.register_nominal("rx.frame", "queue_max_data"),
             rx_frame_queue_reset: counters.register_nominal("rx.frame", "queue_reset"),
-            rx_frame_queue_init_reset: counters.register_nominal("rx.frame", "queue_init_reset"),
-            rx_frame_queue_init_fin: counters.register_nominal("rx.frame", "queue_init_fin"),
-            rx_frame_queue_init_validate: counters
-                .register_nominal("rx.frame", "queue_init_validate"),
-            rx_frame_queue_validate_request: counters
-                .register_nominal("rx.frame", "queue_validate_request"),
             rx_frame_queue_free: counters.register_nominal("rx.frame", "queue_free"),
             rx_queue_free_slots: counters.register_summary("rx.queue_free.slots", Unit::Count),
             rx_queue_free_ranges: counters.register_summary("rx.queue_free.ranges", Unit::Count),
@@ -153,16 +141,11 @@ impl Dispatch {
     #[inline]
     pub fn on_received_frame(&self, header: &Header) {
         match header {
-            Header::QueueInit { .. } => self.rx_frame_queue_init.add(1),
-            Header::QueueValidateRequest { .. } => self.rx_frame_queue_validate_request.add(1),
-            Header::QueueInitValidate { .. } => self.rx_frame_queue_init_validate.add(1),
             Header::QueueData { is_fin: false, .. } => self.rx_frame_queue_data.add(1),
             Header::QueueData { is_fin: true, .. } => self.rx_frame_queue_data_fin.add(1),
             Header::QueueControl { .. } => self.rx_frame_queue_control.add(1),
             Header::QueueMaxData { .. } => self.rx_frame_queue_max_data.add(1),
             Header::QueueReset { .. } => self.rx_frame_queue_reset.add(1),
-            Header::QueueInitReset { .. } => self.rx_frame_queue_init_reset.add(1),
-            Header::QueueInitFin { .. } => self.rx_frame_queue_init_fin.add(1),
             Header::QueueFree { .. } => self.rx_frame_queue_free.add(1),
             Header::Ack { .. } => self.rx_frame_ack.add(1),
         };
@@ -200,16 +183,11 @@ pub(crate) struct Send {
     pub tx_packets: Counter,
 
     // Per-frame-type ACK counters (bumped when each inflight frame is acknowledged).
-    pub tx_acked_frame_queue_init: Counter,
     pub tx_acked_frame_queue_data: Counter,
     pub tx_acked_frame_queue_data_fin: Counter,
     pub tx_acked_frame_queue_control: Counter,
     pub tx_acked_frame_queue_max_data: Counter,
     pub tx_acked_frame_queue_reset: Counter,
-    pub tx_acked_frame_queue_init_reset: Counter,
-    pub tx_acked_frame_queue_init_fin: Counter,
-    pub tx_acked_frame_queue_init_validate: Counter,
-    pub tx_acked_frame_queue_validate_request: Counter,
     pub tx_acked_frame_queue_free: Counter,
 }
 
@@ -251,7 +229,6 @@ impl Send {
             context_count: counters.register_nominal_gauge("send.context.count", &v),
             tx_packets: counters.register_nominal("tx.data", &v),
 
-            tx_acked_frame_queue_init: counters.register_nominal("tx.acked.frame.queue_init", &v),
             tx_acked_frame_queue_data: counters.register_nominal("tx.acked.frame.queue_data", &v),
             tx_acked_frame_queue_data_fin: counters
                 .register_nominal("tx.acked.frame.queue_data_fin", &v),
@@ -260,14 +237,6 @@ impl Send {
             tx_acked_frame_queue_max_data: counters
                 .register_nominal("tx.acked.frame.queue_max_data", &v),
             tx_acked_frame_queue_reset: counters.register_nominal("tx.acked.frame.queue_reset", &v),
-            tx_acked_frame_queue_init_reset: counters
-                .register_nominal("tx.acked.frame.queue_init_reset", &v),
-            tx_acked_frame_queue_init_fin: counters
-                .register_nominal("tx.acked.frame.queue_init_fin", &v),
-            tx_acked_frame_queue_init_validate: counters
-                .register_nominal("tx.acked.frame.queue_init_validate", &v),
-            tx_acked_frame_queue_validate_request: counters
-                .register_nominal("tx.acked.frame.queue_validate_request", &v),
             tx_acked_frame_queue_free: counters.register_nominal("tx.acked.frame.queue_free", &v),
         })
     }
@@ -375,21 +344,12 @@ impl Send {
     #[inline]
     pub fn on_acked_frame(&self, header: &Header) {
         match header {
-            Header::QueueInit { .. } => self.tx_acked_frame_queue_init.add(1),
             Header::QueueData { is_fin: false, .. } => self.tx_acked_frame_queue_data.add(1),
             Header::QueueData { is_fin: true, .. } => self.tx_acked_frame_queue_data_fin.add(1),
             Header::QueueControl { .. } => self.tx_acked_frame_queue_control.add(1),
             Header::QueueMaxData { .. } => self.tx_acked_frame_queue_max_data.add(1),
             Header::QueueReset { .. } => self.tx_acked_frame_queue_reset.add(1),
-            Header::QueueInitReset { .. } => self.tx_acked_frame_queue_init_reset.add(1),
-            Header::QueueInitFin { .. } => self.tx_acked_frame_queue_init_fin.add(1),
-            Header::QueueInitValidate { .. } => self.tx_acked_frame_queue_init_validate.add(1),
-            Header::QueueValidateRequest { .. } => {
-                self.tx_acked_frame_queue_validate_request.add(1)
-            }
             Header::QueueFree { .. } => self.tx_acked_frame_queue_free.add(1),
-            // ACK frames are stripped before inflight insertion and are never ACKed as
-            // inflight entries; this branch should be unreachable in practice.
             Header::Ack { .. } => {
                 debug_assert!(false, "ACK frames should never appear as inflight entries")
             }

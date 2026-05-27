@@ -11,7 +11,6 @@ use s2n_quic_core::varint::VarInt;
 use std::sync::Arc;
 
 pub enum Stream {
-    QueueValidated,
     Data {
         offset: VarInt,
         fin: bool,
@@ -100,10 +99,4 @@ impl Sender {
             Self::PendingFreed { .. } => None,
         }
     }
-}
-
-pub mod queue {
-    use crate::flow;
-
-    pub type Allocator = flow::queue::Allocator<super::Stream, super::Control, flow::Handle>;
 }

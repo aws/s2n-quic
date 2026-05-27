@@ -13,9 +13,8 @@ use crate::{
         frame::{self, Frame},
         id::{Id, IdMap, LocalSendSocketId, LocalSenderId},
         inflight::{Packet, TransmissionInfo},
-        msg, recv, send, tasks,
+        recv, send, tasks,
     },
-    flow,
     intrusive::{Entry, Queue},
     socket::channel::{intrusive::unsync, ReceiverExt as _, UnboundedSender as _},
     testing::{ext::*, sim},
@@ -298,7 +297,7 @@ fn send_idle_wheel_no_inflight_does_not_mark_dead() {
 #[test]
 fn recv_idle_wheel_does_not_mark_dead() {
     sim(|| {
-        let (recv_cache, mut idle_wheel_tx, clock, _registry, _queue_allocator) = setup_recv();
+        let (recv_cache, mut idle_wheel_tx, clock, _registry) = setup_recv();
 
         let ctx = RecvContextBuilder::default().build();
         ctx.borrow()
@@ -348,7 +347,6 @@ fn setup_recv() -> (
     unsync::Sender<recv::IdleWheelAdapter>,
     Clock,
     crate::counter::Registry,
-    msg::queue::Allocator,
 ) {
     let registry = crate::counter::Registry::default();
     let clock = Clock::default();
@@ -357,7 +355,6 @@ fn setup_recv() -> (
     )));
 
     let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter::<recv::IdleWheelAdapter>();
-    let queue_allocator = msg::queue::Allocator::new();
     let q_gauge = registry.register_queue_gauge("test.recv_idle_wheel");
 
     tasks::recv_idle_wheel_drain(
@@ -374,13 +371,13 @@ fn setup_recv() -> (
     )
     .spawn();
 
-    (recv_cache, idle_wheel_tx, clock, registry, queue_allocator)
+    (recv_cache, idle_wheel_tx, clock, registry)
 }
 
 #[test]
 fn recv_idle_wheel_expires_inactive_context() {
     sim(|| {
-        let (recv_cache, mut idle_wheel_tx, clock, _registry, _queue_allocator) = setup_recv();
+        let (recv_cache, mut idle_wheel_tx, clock, _registry) = setup_recv();
 
         let ctx = RecvContextBuilder::default().build();
         // Simulate initial activity
@@ -413,7 +410,7 @@ fn recv_idle_wheel_expires_inactive_context() {
 #[test]
 fn recv_idle_wheel_reschedules_active_context() {
     sim(|| {
-        let (recv_cache, mut idle_wheel_tx, clock, _registry, _queue_allocator) = setup_recv();
+        let (recv_cache, mut idle_wheel_tx, clock, _registry) = setup_recv();
 
         let ctx = RecvContextBuilder::default().build();
         let key = {
@@ -453,68 +450,6 @@ fn recv_idle_wheel_reschedules_active_context() {
             assert!(
                 recv_cache.borrow().senders.is_empty(),
                 "recv context should be evicted after last_activity + idle_timeout"
-            );
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-#[test]
-fn recv_idle_wheel_expires_reader_only_queue_no_reset() {
-    let _guard = crate::testing::without_snapshots();
-    sim(|| {
-        let (recv_cache, mut idle_wheel_tx, clock, _registry, mut queue_allocator) = setup_recv();
-
-        let ctx = RecvContextBuilder::default().build();
-        ctx.borrow()
-            .path_entry
-            .touch_activity(precision::Clock::now(&clock));
-        let key = {
-            let c = ctx.borrow();
-            recv::Key {
-                id: *c.path_entry.id(),
-                remote_sender_id: c.remote_sender_id,
-            }
-        };
-        let path_entry = ctx.borrow().path_entry.clone();
-        let binding_id = VarInt::from_u8(9);
-        let handle = flow::Handle::client(binding_id, path_entry);
-        let (queue_control, queue_stream) = queue_allocator.alloc_or_grow(handle, None);
-        let dispatcher = queue_allocator.dispatcher();
-
-        recv_cache.borrow_mut().senders.insert(key, ctx.clone());
-        let _ = idle_wheel_tx.send(ctx);
-
-        let recv_cache = recv_cache.clone();
-        async move {
-            let _dispatcher = dispatcher;
-            61.s().sleep().await;
-            assert!(
-                recv_cache.borrow().senders.is_empty(),
-                "recv context should be evicted after idle timeout"
-            );
-
-            // The recv side never marks the peer dead, so no Reset is
-            // broadcast to the flow queues.
-            let stream_queue = queue_stream
-                .try_swap()
-                .expect("stream queue should still be open");
-            assert!(
-                !stream_queue
-                    .iter()
-                    .any(|entry| { matches!(entry, msg::Stream::Reset { .. }) }),
-                "stream queue should NOT receive reset from recv idle expiry"
-            );
-
-            let control_queue = queue_control
-                .try_swap()
-                .expect("control queue should still be open");
-            assert!(
-                !control_queue
-                    .iter()
-                    .any(|entry| { matches!(entry, msg::Control::Reset { .. }) }),
-                "control queue should NOT receive reset from recv idle expiry"
             );
         }
         .primary()

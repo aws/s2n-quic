@@ -546,8 +546,6 @@ pub(crate) struct Context {
     pub peer_addr: std::net::SocketAddr,
     /// Next packet number to assign
     pub next_packet_number: VarInt,
-    /// Next attempt ID for QueueInit deduplication (per-sender counter)
-    pub queue_attempt_id_counter: VarInt,
     pub cca: congestion::Controller,
     pub rtt_estimator: RttEstimator,
     pub inflight: inflight::Map,
@@ -645,7 +643,6 @@ impl Context {
             credentials,
             peer_addr,
             next_packet_number: VarInt::ZERO,
-            queue_attempt_id_counter: VarInt::ZERO,
             cca,
             rtt_estimator,
             inflight,

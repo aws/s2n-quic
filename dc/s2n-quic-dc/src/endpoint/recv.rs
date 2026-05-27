@@ -7,7 +7,7 @@ use crate::{
         id::{LocalSenderId, RecvDispatchWorkerId, RemoteSenderId},
         msg,
     },
-    flow, intrusive,
+    intrusive,
     path::{
         self,
         secret::map::{entry::QueueState, Entry as PathSecretEntry},
@@ -191,7 +191,6 @@ pub(crate) struct Context {
     pub ack_state: AckState,
     /// Map from binding_id to allocated queue_id for this sender.
     /// Shared with queue handles so they can remove entries when closed.
-    pub flows: flow::Tracker,
     /// Cached queue dispatch view (client or server depending on role).
     pub queue_view: QueueView,
     /// Intrusive links for recv-worker pending-ACK burst queue membership.
@@ -224,12 +223,6 @@ impl Context {
     #[inline]
     pub fn invariants(&self) {
         if cfg!(debug_assertions) {
-            assert_eq!(
-                self.flows.credential_id(),
-                self.path_entry.id(),
-                "flow tracker credential does not match path entry id"
-            );
-
             if self.ack_ranges.is_empty() {
                 assert!(
                     self.ack_ranges.largest_recv_time().is_none(),
@@ -270,8 +263,6 @@ impl Context {
         let mut idle_wheel = crate::time::wheel::WheelLinks::new();
         idle_wheel.target_time = Some(now + idle_timeout);
 
-        let flows = flow::Tracker::new(*path_entry.id());
-
         let queue_view = match path_entry.queue_state() {
             QueueState::Client(state) => {
                 QueueView::Client(queue::ClientDispatch::new(state.clone()))
@@ -291,7 +282,6 @@ impl Context {
             idle_wheel,
             created_at: now,
             ack_state: AckState::Idle,
-            flows,
             queue_view,
             ack_burst: intrusive::Links::new(),
         }
@@ -503,7 +493,7 @@ impl Cache {
                 // Packet is authentic — replace the entry with a fresh context.
                 // Key advancement means the peer abandoned its old sender context
                 // (e.g., idle timeout recreation), so the old PN space is dead.
-                // Transfer flows and queue_view since those are independent of PN space.
+                // Transfer queue_view since it's independent of PN space.
                 debug!(
                     %credentials,
                     %remote_sender_id,
@@ -524,11 +514,6 @@ impl Cache {
 
                 {
                     let mut old = ctx.borrow_mut();
-                    let id = *old.path_entry.id();
-                    new_ctx_inner.flows = core::mem::replace(
-                        &mut old.flows,
-                        flow::Tracker::new(id),
-                    );
                     core::mem::swap(&mut new_ctx_inner.queue_view, &mut old.queue_view);
                 }
 

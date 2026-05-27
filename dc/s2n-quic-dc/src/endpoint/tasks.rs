@@ -236,7 +236,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
 ) where
     Socket: crate::socket::send::Socket + 'static,
     Clk: precision::Clock + s2n_quic_core::time::Clock + Clone + 'static,
-    WakerSink: UnboundedSender<crate::flow::queue::AutoWake> + Clone + 'static,
+    WakerSink: UnboundedSender<crate::queue::AutoWake> + Clone + 'static,
     AckComp: UnboundedSender<Queue<msg::Sender>> + Clone + 'static,
 {
     // Per-socket unsync channel: wheel drain tasks route contexts here after expiration,
@@ -912,10 +912,10 @@ pub fn completion_dispatcher<R, WakerSink>(
 ) -> impl Receiver<()>
 where
     R: Receiver<Entry<Frame>>,
-    WakerSink: UnboundedSender<crate::flow::queue::AutoWake>,
+    WakerSink: UnboundedSender<crate::queue::AutoWake>,
 {
     let rx = CompletionDispatcher::new(completed_rx);
-    Map::new(rx, move |waker: crate::flow::queue::AutoWake| {
+    Map::new(rx, move |waker: crate::queue::AutoWake| {
         let _ = waker_sink.send(waker);
     })
 }
@@ -1323,7 +1323,7 @@ pub fn packet_dispatch<
     mut ack_burst_tx: AckBurstSender,
     mut idle_wheel_tx: IdleWheelSender,
     path_secret_map: crate::path::secret::Map,
-    acceptor_registry: crate::acceptor::Registry<crate::stream::PendingValidation>,
+    acceptor_registry: crate::acceptor::Registry<crate::stream::Stream>,
     mut frame_tx: frame::SubmissionSender,
     mut ack_sender: AckSender,
     mut freed_batch_tx: crate::queue::FreedBatchTx,
@@ -1339,7 +1339,7 @@ where
     AckBurstSender: UnboundedSender<Rc<RefCell<endpoint::recv::Context>>>,
     IdleWheelSender: UnboundedSender<Rc<RefCell<endpoint::recv::Context>>>,
     UpsSender: UnboundedSender<Entry<endpoint::ups::Response>>,
-    WakerSink: UnboundedSender<crate::flow::queue::AutoWake>,
+    WakerSink: UnboundedSender<crate::queue::AutoWake>,
     Clk: s2n_quic_core::time::Clock + precision::Clock,
     Route: endpoint::routing::SenderRoute,
 {

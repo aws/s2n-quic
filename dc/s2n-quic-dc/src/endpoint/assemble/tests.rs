@@ -149,7 +149,6 @@ fn to_frame(frame: &FrameInput, entry: &Arc<PathSecretEntry>) -> crate::intrusiv
 
     Frame {
         header: frame.header,
-        source_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::MAX),
         payload: payload_vec(payload),
         path_secret_entry: entry.clone(),
         completion: None,
@@ -302,7 +301,6 @@ fn assemble_accounts_for_header_overhead() {
                     error_code: VarInt::from_u8(1),
                     dest_acceptor_id: None,
                 },
-                source_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::MAX),
                 payload: ByteVec::new(),
                 path_secret_entry: entry.clone(),
                 completion: None,
@@ -502,7 +500,6 @@ fn encode_decode_round_trip() {
 
     let mut buf = vec![0u8; 65536];
     let mut header_buf = Vec::new();
-    let mut queue_attempt_id = VarInt::ZERO;
     let tag_len = crate::crypto::seal::Application::tag_len(&context.sealer);
     let encoded_len = encode_segment(
         &mut buf,
@@ -511,7 +508,6 @@ fn encode_decode_round_trip() {
         context.next_packet_number,
         &context.sealer,
         &context.credentials,
-        &mut queue_attempt_id,
         &mut packet_frames,
         &mut header_buf,
     );
@@ -804,7 +800,6 @@ fn encode_decode_fuzz_round_trip() {
 
             let mut buf = vec![0u8; 65536];
             let mut header_buf = Vec::new();
-            let mut queue_attempt_id = VarInt::ZERO;
 
             let encoded_len = encode_segment(
                 &mut buf,
@@ -813,7 +808,6 @@ fn encode_decode_fuzz_round_trip() {
                 context.next_packet_number,
                 &context.sealer,
                 &context.credentials,
-                &mut queue_attempt_id,
                 &mut packet_frames,
                 &mut header_buf,
             );

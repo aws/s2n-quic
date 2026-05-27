@@ -36,7 +36,7 @@ use crate::{
     socket::{pool::Pool, rate::Rate},
     stream::{
         endpoint::{setup_endpoint, Budgets, Config, Endpoint, WorkerLayout},
-        PendingValidation, Reader, Stream, Writer,
+        Reader, Stream, Writer,
     },
 };
 use core::net::{IpAddr, SocketAddr};
@@ -276,7 +276,7 @@ impl Default for SimEndpointConfig {
 pub fn setup_sim_endpoint(
     config: SimEndpointConfig,
     path_secret_map: PathSecretMap,
-    acceptor_registry: acceptor::Registry<PendingValidation>,
+    acceptor_registry: acceptor::Registry<Stream>,
 ) -> Endpoint {
     let SimEndpointConfig {
         bind_addr,
@@ -661,7 +661,7 @@ impl Peer {
         &self,
         acceptor_id: VarInt,
         capacity: usize,
-    ) -> io::Result<accept_channel::Receiver<PendingValidation>> {
+    ) -> io::Result<accept_channel::Receiver<Stream>> {
         self.endpoint
             .acceptor_registry
             .register(acceptor_id, capacity.into())
@@ -696,7 +696,7 @@ impl Default for Peer {
 /// ```
 ///
 /// Acceptors are registered via [`Server::register_acceptor_channel`], which
-/// returns an [`mpmc::Receiver<PendingValidation>`] that yields accepted streams.
+/// returns an [`mpmc::Receiver<Stream>`] that yields accepted streams.
 pub struct Server {
     endpoint: Arc<Endpoint>,
 }
@@ -725,13 +725,13 @@ impl Server {
 
     /// Register a channel-based acceptor for incoming streams.
     ///
-    /// Returns an [`accept_channel::Receiver<PendingValidation>`] that yields accepted streams.
+    /// Returns an [`accept_channel::Receiver<Stream>`] that yields accepted streams.
     /// The acceptor is automatically cleaned up when all receivers are dropped.
     pub fn register_acceptor_channel(
         &self,
         acceptor_id: VarInt,
         capacity: usize,
-    ) -> io::Result<accept_channel::Receiver<PendingValidation>> {
+    ) -> io::Result<accept_channel::Receiver<Stream>> {
         self.endpoint
             .acceptor_registry
             .register(acceptor_id, capacity.into())

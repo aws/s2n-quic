@@ -455,7 +455,6 @@ mod tests {
                     is_fin: false,
                     dest_acceptor_id: None,
                 },
-                source_sender_id: LocalSenderId::UNSPECIFIED,
                 payload,
                 path_secret_entry: entry,
                 completion: None,

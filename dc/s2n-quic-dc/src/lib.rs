@@ -17,7 +17,6 @@ pub mod crypto;
 pub mod datagram;
 pub mod endpoint;
 pub mod event;
-pub mod flow;
 pub mod intrusive;
 pub mod msg;
 pub mod packet;

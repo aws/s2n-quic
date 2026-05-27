@@ -63,11 +63,8 @@ pub fn test_waker() -> (Waker, WakeCount) {
 /// inside busy-poll loops. In tests we just fire them inline.
 pub struct WakeNowSender;
 
-impl crate::socket::channel::UnboundedSender<crate::flow::queue::AutoWake> for WakeNowSender {
-    fn send(
-        &mut self,
-        _value: crate::flow::queue::AutoWake,
-    ) -> Result<(), crate::flow::queue::AutoWake> {
+impl crate::socket::channel::UnboundedSender<crate::queue::AutoWake> for WakeNowSender {
+    fn send(&mut self, _value: crate::queue::AutoWake) -> Result<(), crate::queue::AutoWake> {
         // AutoWake fires on drop — just let it drop here
         Ok(())
     }
@@ -238,7 +235,6 @@ pub fn test_frame_with_payload(pse: &Arc<PathSecretEntry>, payload_size: usize) 
             is_fin: false,
             dest_acceptor_id: None,
         },
-        source_sender_id: crate::endpoint::id::LocalSenderId::new(VarInt::MAX),
         payload: bytes::BytesMut::zeroed(payload_size).into(),
         path_secret_entry: pse.clone(),
         completion: None,

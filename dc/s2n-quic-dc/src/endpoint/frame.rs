@@ -15,7 +15,6 @@
 
 use crate::{
     byte_vec::ByteVec,
-    endpoint::id::LocalSenderId,
     intrusive::{Entry, Queue},
     packet::datagram::{QueuePair, ResetTarget},
     path::secret::map::Entry as PathSecretEntry,
@@ -35,22 +34,18 @@ pub const MAX_QUEUE_DATA_HEADER_OVERHEAD: u16 = 109;
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Priority {
-    QueueFree = 0,
-    QueueReset = 1,
-    QueueControl = 2,
-    QueueData = 3,
-    QueueRetry = 4,
-    QueueInit = 5,
+    QueueReset = 0,
+    QueueControl = 1,
+    QueueData = 2,
+    QueueInit = 3,
 }
 
 impl Priority {
-    pub const LEVELS: usize = 6;
+    pub const LEVELS: usize = 4;
     pub const ALL: [Self; Self::LEVELS] = [
-        Self::QueueFree,
         Self::QueueReset,
         Self::QueueControl,
         Self::QueueData,
-        Self::QueueRetry,
         Self::QueueInit,
     ];
 
@@ -355,14 +350,6 @@ pub enum FailureReason {
 #[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Header {
-    /// Initialize a new flow with the server
-    QueueInit {
-        source_queue_id: VarInt,
-        dest_acceptor_id: VarInt,
-        attempt_id: VarInt,
-        binding_id: VarInt,
-        is_fin: bool,
-    },
     /// Stream data routed via queue pair.
     ///
     /// When `dest_acceptor_id` is `Some`, this is an "init" frame that can create
@@ -403,47 +390,6 @@ pub enum Header {
         error_code: VarInt,
         dest_acceptor_id: Option<VarInt>,
     },
-    /// Reset a flow before flow establishment (client doesn't know server's queue ID yet).
-    ///
-    /// Sent when the client needs to reset a stream while in the QueueBindSent state —
-    /// i.e., the QueueInit was transmitted but no MAX_DATA (and thus no server queue ID)
-    /// has been received yet. The server looks up the binding_id in its per-peer
-    /// binding_id → queue_id map and dispatches the reset to the appropriate queues.
-    ///
-    /// `attempt_id` is the same value stamped into the QueueInit frame.  The server uses
-    /// it to mark the attempt as finalized so that any later QueueInit duplicate with the
-    /// same `attempt_id` is silently dropped (preventing the server from accepting a
-    /// stream that the client has already aborted).
-    QueueInitReset {
-        attempt_id: VarInt,
-        binding_id: VarInt,
-        error_code: VarInt,
-    },
-    /// Graceful FIN before flow establishment (client doesn't know server's queue ID yet).
-    ///
-    /// Sent when the client has written early data in a QueueInit (is_fin=false) and then
-    /// wants to signal the end of the write side before MAX_DATA arrives. The server
-    /// looks up the binding_id → queue_id mapping and dispatches a FIN at `offset` to the
-    /// stream queue.  `offset` is the total number of payload bytes already sent in the
-    /// QueueInit so the reader can close the stream correctly.
-    ///
-    /// If the server has not yet registered the stream (QueueInit not yet received), it
-    /// buffers this `(binding_id, offset)` so it can apply the FIN as soon as the matching
-    /// QueueInit is processed.
-    QueueInitFin { binding_id: VarInt, offset: VarInt },
-    /// Client response to a QueueValidateRequest
-    QueueInitValidate {
-        queue_pair: QueuePair,
-        attempt_id: VarInt,
-        binding_id: VarInt,
-    },
-    /// Server challenge when deduplication can't be guaranteed
-    QueueValidateRequest {
-        dest_sender_id: VarInt,
-        queue_pair: QueuePair,
-        attempt_id: VarInt,
-        binding_id: VarInt,
-    },
     /// Free queue slots (server→client credit return).
     ///
     /// Uses sorted delta encoding in the payload. The free_request_id is
@@ -466,50 +412,36 @@ pub enum Header {
 }
 
 impl Header {
-    const QUEUE_INIT_TYPE: u8 = 1;
-    const QUEUE_VALIDATE_REQUEST_TYPE: u8 = 2;
-    const QUEUE_INIT_VALIDATE_TYPE: u8 = 3;
-    const QUEUE_DATA_NO_FIN_TYPE: u8 = 4;
-    const QUEUE_DATA_WITH_FIN_TYPE: u8 = 5;
-    const QUEUE_CONTROL_TYPE: u8 = 6;
+    const QUEUE_DATA_NO_FIN_TYPE: u8 = 1;
+    const QUEUE_DATA_WITH_FIN_TYPE: u8 = 2;
+    const QUEUE_DATA_INIT_NO_FIN_TYPE: u8 = 3;
+    const QUEUE_DATA_INIT_WITH_FIN_TYPE: u8 = 4;
+    const QUEUE_CONTROL_TYPE: u8 = 5;
+    const QUEUE_MAX_DATA_TYPE: u8 = 6;
     const QUEUE_RESET_BOTH_TYPE: u8 = 7;
-    const QUEUE_INIT_WITH_FIN_TYPE: u8 = 8;
-    const QUEUE_RESET_STREAM_TYPE: u8 = 9;
-    const QUEUE_RESET_CONTROL_TYPE: u8 = 10;
-    const QUEUE_MAX_DATA_TYPE: u8 = 11;
-    const QUEUE_INIT_RESET_TYPE: u8 = 12;
-    const QUEUE_INIT_FIN_TYPE: u8 = 13;
+    const QUEUE_RESET_STREAM_TYPE: u8 = 8;
+    const QUEUE_RESET_CONTROL_TYPE: u8 = 9;
+    const QUEUE_RESET_BOTH_INIT_TYPE: u8 = 10;
+    const QUEUE_RESET_STREAM_INIT_TYPE: u8 = 11;
+    const QUEUE_RESET_CONTROL_INIT_TYPE: u8 = 12;
+    const QUEUE_FREE_TYPE: u8 = 13;
     const ACK_TYPE: u8 = 14;
     const ACK_ECN_TYPE: u8 = 15;
     const ACK_ELICITING_TYPE: u8 = 16;
     const ACK_ECN_ELICITING_TYPE: u8 = 17;
-    const QUEUE_DATA_INIT_NO_FIN_TYPE: u8 = 18;
-    const QUEUE_DATA_INIT_WITH_FIN_TYPE: u8 = 19;
-    const QUEUE_RESET_BOTH_INIT_TYPE: u8 = 20;
-    const QUEUE_RESET_STREAM_INIT_TYPE: u8 = 21;
-    const QUEUE_RESET_CONTROL_INIT_TYPE: u8 = 22;
-    const QUEUE_FREE_TYPE: u8 = 23;
 
     #[inline]
     pub fn priority(&self) -> Priority {
         match self {
-            Self::QueueInit { attempt_id, .. } => {
-                if *attempt_id != VarInt::MAX {
-                    Priority::QueueRetry
-                } else {
-                    Priority::QueueInit
-                }
-            }
+            Self::QueueData {
+                dest_acceptor_id: Some(_),
+                ..
+            } => Priority::QueueInit,
             Self::QueueData { .. } => Priority::QueueData,
             Self::QueueControl { .. } | Self::QueueMaxData { .. } => Priority::QueueControl,
-            Self::QueueFree { .. } => Priority::QueueFree,
-            Self::QueueReset { .. } => Priority::QueueReset,
-            Self::QueueInitReset { .. } | Self::QueueInitFin { .. } => Priority::QueueInit,
-            Self::QueueInitValidate { .. } | Self::QueueValidateRequest { .. } => {
-                Priority::QueueRetry
+            Self::QueueFree { .. } | Self::Ack { .. } | Self::QueueReset { .. } => {
+                Priority::QueueReset
             }
-            // Ack frames are assembled directly from pending_acks, never queued by priority.
-            Self::Ack { .. } => Priority::QueueControl,
         }
     }
 
@@ -536,17 +468,11 @@ impl Header {
     #[inline]
     pub fn has_payload_length(&self) -> bool {
         match self {
-            Self::QueueInit { .. }
-            | Self::QueueData { .. }
+            Self::QueueData { .. }
             | Self::QueueControl { .. }
             | Self::QueueFree { .. }
             | Self::Ack { .. } => true,
-            Self::QueueReset { .. }
-            | Self::QueueMaxData { .. }
-            | Self::QueueInitReset { .. }
-            | Self::QueueInitFin { .. }
-            | Self::QueueInitValidate { .. }
-            | Self::QueueValidateRequest { .. } => false,
+            Self::QueueReset { .. } | Self::QueueMaxData { .. } => false,
         }
     }
 
@@ -575,46 +501,6 @@ impl Header {
 impl EncoderValue for Header {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         match self {
-            Self::QueueInit {
-                source_queue_id,
-                dest_acceptor_id,
-                attempt_id,
-                binding_id,
-                is_fin,
-            } => {
-                let tag = if *is_fin {
-                    Self::QUEUE_INIT_WITH_FIN_TYPE
-                } else {
-                    Self::QUEUE_INIT_TYPE
-                };
-                encoder.encode(&tag);
-                encoder.encode(source_queue_id);
-                encoder.encode(dest_acceptor_id);
-                encoder.encode(attempt_id);
-                encoder.encode(binding_id);
-            }
-            Self::QueueValidateRequest {
-                dest_sender_id,
-                queue_pair,
-                attempt_id,
-                binding_id,
-            } => {
-                encoder.encode(&Self::QUEUE_VALIDATE_REQUEST_TYPE);
-                encoder.encode(dest_sender_id);
-                encoder.encode(queue_pair);
-                encoder.encode(attempt_id);
-                encoder.encode(binding_id);
-            }
-            Self::QueueInitValidate {
-                queue_pair,
-                attempt_id,
-                binding_id,
-            } => {
-                encoder.encode(&Self::QUEUE_INIT_VALIDATE_TYPE);
-                encoder.encode(queue_pair);
-                encoder.encode(attempt_id);
-                encoder.encode(binding_id);
-            }
             Self::QueueData {
                 queue_pair,
                 binding_id,
@@ -677,21 +563,6 @@ impl EncoderValue for Header {
                 encoder.encode(binding_id);
                 encoder.encode(error_code);
             }
-            Self::QueueInitReset {
-                attempt_id,
-                binding_id,
-                error_code,
-            } => {
-                encoder.encode(&Self::QUEUE_INIT_RESET_TYPE);
-                encoder.encode(attempt_id);
-                encoder.encode(binding_id);
-                encoder.encode(error_code);
-            }
-            Self::QueueInitFin { binding_id, offset } => {
-                encoder.encode(&Self::QUEUE_INIT_FIN_TYPE);
-                encoder.encode(binding_id);
-                encoder.encode(offset);
-            }
             Self::QueueFree {
                 free_request_id,
                 smallest_queue_id,
@@ -726,51 +597,6 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
         let (tag, buffer) = buffer.decode::<u8>()?;
 
         match tag {
-            Self::QUEUE_INIT_TYPE | Self::QUEUE_INIT_WITH_FIN_TYPE => {
-                let (source_queue_id, buffer) = buffer.decode()?;
-                let (dest_acceptor_id, buffer) = buffer.decode()?;
-                let (attempt_id, buffer) = buffer.decode()?;
-                let (binding_id, buffer) = buffer.decode()?;
-                let is_fin = tag == Self::QUEUE_INIT_WITH_FIN_TYPE;
-                Ok((
-                    Self::QueueInit {
-                        source_queue_id,
-                        dest_acceptor_id,
-                        attempt_id,
-                        binding_id,
-                        is_fin,
-                    },
-                    buffer,
-                ))
-            }
-            Self::QUEUE_VALIDATE_REQUEST_TYPE => {
-                let (dest_sender_id, buffer) = buffer.decode()?;
-                let (queue_pair, buffer) = buffer.decode()?;
-                let (attempt_id, buffer) = buffer.decode()?;
-                let (binding_id, buffer) = buffer.decode()?;
-                Ok((
-                    Self::QueueValidateRequest {
-                        dest_sender_id,
-                        queue_pair,
-                        attempt_id,
-                        binding_id,
-                    },
-                    buffer,
-                ))
-            }
-            Self::QUEUE_INIT_VALIDATE_TYPE => {
-                let (queue_pair, buffer) = buffer.decode()?;
-                let (attempt_id, buffer) = buffer.decode()?;
-                let (binding_id, buffer) = buffer.decode()?;
-                Ok((
-                    Self::QueueInitValidate {
-                        queue_pair,
-                        attempt_id,
-                        binding_id,
-                    },
-                    buffer,
-                ))
-            }
             Self::QUEUE_DATA_INIT_NO_FIN_TYPE | Self::QUEUE_DATA_INIT_WITH_FIN_TYPE => {
                 let (queue_pair, buffer) = buffer.decode()?;
                 let (dest_acceptor_id, buffer) = buffer.decode::<VarInt>()?;
@@ -875,24 +701,6 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                     buffer,
                 ))
             }
-            Self::QUEUE_INIT_RESET_TYPE => {
-                let (attempt_id, buffer) = buffer.decode()?;
-                let (binding_id, buffer) = buffer.decode()?;
-                let (error_code, buffer) = buffer.decode()?;
-                Ok((
-                    Self::QueueInitReset {
-                        attempt_id,
-                        binding_id,
-                        error_code,
-                    },
-                    buffer,
-                ))
-            }
-            Self::QUEUE_INIT_FIN_TYPE => {
-                let (binding_id, buffer) = buffer.decode()?;
-                let (offset, buffer) = buffer.decode()?;
-                Ok((Self::QueueInitFin { binding_id, offset }, buffer))
-            }
             Self::QUEUE_FREE_TYPE => {
                 let (free_request_id, buffer) = buffer.decode()?;
                 let (smallest_queue_id, buffer) = buffer.decode()?;
@@ -943,9 +751,6 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
 pub struct Frame {
     /// Routing metadata for this frame
     pub header: Header,
-    /// Source sender ID for the packet header. LocalSenderId::UNSPECIFIED means no preference (round-robin).
-    /// When set to a specific value, the frame is sticky-routed to that send socket.
-    pub source_sender_id: LocalSenderId,
     /// Payload data (stream bytes for QueueData, control frame bytes for QueueControl,
     /// ACK frames for Control, empty for resets)
     pub payload: ByteVec,
@@ -976,11 +781,6 @@ impl Frame {
     #[inline]
     pub fn priority(&self) -> Priority {
         self.header.priority()
-    }
-
-    #[inline]
-    pub fn requires_sticky_sender(&self) -> bool {
-        self.source_sender_id != LocalSenderId::UNSPECIFIED
     }
 
     #[inline]
@@ -1044,7 +844,6 @@ mod tests {
                 is_fin: false,
                 dest_acceptor_id: None,
             },
-            source_sender_id: LocalSenderId::UNSPECIFIED,
             payload,
             path_secret_entry: entry,
             completion: None,
@@ -1057,32 +856,6 @@ mod tests {
         assert_eq!(frame.ttl, DEFAULT_TTL);
         assert!(frame.should_transmit());
         assert_eq!(frame.priority(), Priority::QueueData);
-        assert!(!frame.requires_sticky_sender());
-    }
-
-    #[test]
-    fn queue_init_priority() {
-        let entry = PathSecretEntry::builder("127.0.0.1:8080".parse().unwrap()).build();
-
-        let frame = Frame {
-            header: Header::QueueInit {
-                source_queue_id: VarInt::from_u8(1),
-                dest_acceptor_id: VarInt::from_u8(10),
-                attempt_id: VarInt::MAX,
-                binding_id: VarInt::from_u8(42),
-                is_fin: false,
-            },
-            source_sender_id: LocalSenderId::UNSPECIFIED,
-            payload: ByteVec::new(),
-            path_secret_entry: entry,
-            completion: None,
-            status: TransmissionStatus::default(),
-            ttl: DEFAULT_TTL,
-            transmission_time: None,
-        };
-
-        assert_eq!(frame.priority(), Priority::QueueInit);
-        assert!(!frame.requires_sticky_sender());
     }
 
     #[test]
@@ -1097,7 +870,6 @@ mod tests {
                 error_code: VarInt::from_u8(1),
                 dest_acceptor_id: None,
             },
-            source_sender_id: LocalSenderId::UNSPECIFIED,
             payload: ByteVec::new(),
             path_secret_entry: entry,
             completion: None,
@@ -1107,36 +879,10 @@ mod tests {
         };
 
         assert_eq!(frame.priority(), Priority::QueueReset);
-        assert!(!frame.requires_sticky_sender());
         assert_eq!(frame.payload_len(), 0);
         assert_eq!(
             *frame.path_secret_entry.peer(),
             "10.0.0.1:9000".parse::<std::net::SocketAddr>().unwrap()
         );
-    }
-
-    #[test]
-    fn sticky_sender_after_assignment() {
-        let entry = PathSecretEntry::builder("127.0.0.1:8080".parse().unwrap()).build();
-
-        let frame = Frame {
-            header: Header::QueueInit {
-                source_queue_id: VarInt::from_u8(1),
-                dest_acceptor_id: VarInt::from_u8(10),
-                attempt_id: VarInt::from_u8(0),
-                binding_id: VarInt::from_u8(42),
-                is_fin: false,
-            },
-            source_sender_id: LocalSenderId::new(VarInt::from_u8(7)),
-            payload: ByteVec::new(),
-            path_secret_entry: entry,
-            completion: None,
-            status: TransmissionStatus::default(),
-            ttl: DEFAULT_TTL,
-            transmission_time: None,
-        };
-
-        assert!(frame.requires_sticky_sender());
-        assert_eq!(frame.priority(), Priority::QueueRetry);
     }
 }

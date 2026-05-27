@@ -19,7 +19,7 @@ use crate::{
         channel::{intrusive::sync as sync_queue, GaugedSender, UnboundedSender},
         pool::descriptor,
     },
-    stream::PendingValidation,
+    stream::Stream,
     time::precision,
     tracing::*,
 };
@@ -76,9 +76,8 @@ pub struct Endpoint {
     /// Path secret map (shared with PSK providers)
     pub path_secret_map: crate::path::secret::Map,
     /// Queue allocator for flow queues
-    pub queue_allocator: msg::queue::Allocator,
     /// Acceptor registry for server-side stream dispatch
-    pub acceptor_registry: acceptor::Registry<PendingValidation>,
+    pub acceptor_registry: acceptor::Registry<Stream>,
     /// Counters associated with this endpoint
     pub counters: crate::counter::Registry,
     /// Endpoint-wide stream ID counter
@@ -194,7 +193,7 @@ pub struct Config {
     /// GSO capability probed for the local host.
     pub gso: s2n_quic_platform::features::Gso,
     /// Server-side acceptor registry.
-    pub acceptor_registry: acceptor::Registry<PendingValidation>,
+    pub acceptor_registry: acceptor::Registry<Stream>,
     /// Overall bandwidth cap applied by the frame-dispatch pacing stage.
     ///
     /// The [`Paced`] combinator in the dispatch pipeline enforces this rate across all
@@ -401,7 +400,6 @@ where
     let (frame_tx, frame_rx) = frame::submission_channel(submission_shards);
 
     // Shared flow-queue allocator and dispatch counters -------------------------
-    let queue_allocator = msg::queue::Allocator::new_with_registry(&counter_registry);
     let (freed_batch_tx, freed_batch_rx) = crate::queue::freed_batch_channel();
     let counters = counters::Dispatch::new(&counter_registry);
 
@@ -699,7 +697,6 @@ where
     Endpoint {
         frame_tx,
         path_secret_map,
-        queue_allocator,
         acceptor_registry,
         counters: counter_registry,
         next_binding_id: AtomicU64::new(0),
@@ -771,7 +768,7 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     packet_rx: PacketReceiver,
     packet_gauge: crate::counter::QueueGauge,
     path_secret_map: crate::path::secret::Map,
-    acceptor_registry: acceptor::Registry<PendingValidation>,
+    acceptor_registry: acceptor::Registry<Stream>,
     frame_tx: SubmissionSender,
     ack_sender: AckSnd,
     ack_completion_rx: sync_queue::Receiver<msg::Sender>,
@@ -805,7 +802,7 @@ struct BackgroundParts<UpsSocket> {
     ups_rate: crate::socket::rate::Rate,
     ups_dedup_capacity: usize,
     ups_dedup_window: core::time::Duration,
-    acceptor_cleaner: acceptor::Cleaner<PendingValidation>,
+    acceptor_cleaner: acceptor::Cleaner<Stream>,
     waker_sink: waker::Sink,
 }
 

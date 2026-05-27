@@ -146,7 +146,7 @@ pub struct FrameBatch {
     byte_costs: [u64; Priority::LEVELS],
     /// Total wire cost across all levels — used for batch-size budget checks.
     byte_cost: u64,
-    /// Sticky sender assignment for this batch.  `VarInt::MAX` means no preference.
+    /// Assigned sender index (set by PickTwo after routing).
     sender_id: LocalSenderId,
 }
 
@@ -154,9 +154,7 @@ impl FrameBatch {
     #[inline]
     fn new(first: Entry<Frame>) -> Self {
         let frame_cost = first.byte_cost();
-        // Per-packet overhead added once to the first frame's level.
         let byte_cost = MAX_FRAME_BATCH_PACKET_OVERHEAD.saturating_add(frame_cost);
-        let sender_id = first.source_sender_id;
 
         let idx = first.priority().as_index();
         let mut queues = std::array::from_fn(|_| Queue::new());
@@ -168,19 +166,11 @@ impl FrameBatch {
             queues,
             byte_costs,
             byte_cost,
-            sender_id,
+            sender_id: LocalSenderId::UNSPECIFIED,
         }
     }
 
-    #[inline]
-    fn push_with_cost(&mut self, frame: Entry<Frame>, frame_cost: u64) {
-        self.byte_cost = self.byte_cost.saturating_add(frame_cost);
-        let idx = frame.priority().as_index();
-        self.byte_costs[idx] = self.byte_costs[idx].saturating_add(frame_cost);
-        self.queues[idx].push_back(frame);
-    }
-
-    /// Returns the sticky sender index if this batch requires sticky routing.
+    /// Returns the assigned sender index, if set by the routing layer.
     #[inline]
     pub fn sender_id(&self) -> Option<LocalSenderId> {
         if self.sender_id != LocalSenderId::UNSPECIFIED {
@@ -193,6 +183,14 @@ impl FrameBatch {
     #[inline]
     pub fn set_sender_id(&mut self, id: LocalSenderId) {
         self.sender_id = id;
+    }
+
+    #[inline]
+    fn push_with_cost(&mut self, frame: Entry<Frame>, frame_cost: u64) {
+        self.byte_cost = self.byte_cost.saturating_add(frame_cost);
+        let idx = frame.priority().as_index();
+        self.byte_costs[idx] = self.byte_costs[idx].saturating_add(frame_cost);
+        self.queues[idx].push_back(frame);
     }
 
     /// Returns the total number of frames across all priority levels.
@@ -286,7 +284,7 @@ where
     }
 
     /// Try to append frames from inner to the batch. Returns true if the batch is full or
-    /// must be emitted (different path secret / sticky conflict / channel closed).
+    /// must be emitted (different path secret / channel closed).
     fn try_fill_batch(
         &mut self,
         batch: &mut FrameBatch,
@@ -304,19 +302,6 @@ where
                     if !Arc::ptr_eq(batch.path_secret_entry(), frame_entry.path_secret_entry()) {
                         self.buffered = Some(frame_entry);
                         return FillResult::Full;
-                    }
-
-                    let frame_sticky = frame_entry.source_sender_id;
-                    if batch.sender_id != frame_sticky
-                        && (batch.sender_id != LocalSenderId::UNSPECIFIED
-                            && frame_sticky != LocalSenderId::UNSPECIFIED)
-                    {
-                        self.buffered = Some(frame_entry);
-                        return FillResult::Full;
-                    }
-
-                    if batch.sender_id == LocalSenderId::UNSPECIFIED {
-                        batch.sender_id = frame_sticky;
                     }
 
                     let frame_cost = frame_entry.byte_cost();
@@ -419,34 +404,19 @@ where
     }
 }
 
-// ── StickyRoute ───────────────────────────────────────────────────────────
-
-/// Items that may carry a sticky sender preference, bypassing pick-two routing.
-pub trait StickyRoute {
-    /// Returns `Some(idx)` if this item must be routed to a specific sender.
-    fn sticky_sender_idx(&self) -> Option<LocalSenderId>;
-
+/// Items that receive a sender assignment from the pick-two router.
+pub trait AssignSender {
     fn set_sender_id(&mut self, id: LocalSenderId);
 }
 
-impl StickyRoute for FrameBatch {
-    #[inline]
-    fn sticky_sender_idx(&self) -> Option<LocalSenderId> {
-        FrameBatch::sender_id(self)
-    }
-
+impl AssignSender for FrameBatch {
     #[inline]
     fn set_sender_id(&mut self, id: LocalSenderId) {
         FrameBatch::set_sender_id(self, id);
     }
 }
 
-impl<T: StickyRoute> StickyRoute for crate::intrusive::Entry<T> {
-    #[inline]
-    fn sticky_sender_idx(&self) -> Option<LocalSenderId> {
-        (**self).sticky_sender_idx()
-    }
-
+impl<T: AssignSender> AssignSender for crate::intrusive::Entry<T> {
     #[inline]
     fn set_sender_id(&mut self, id: LocalSenderId) {
         (**self).set_sender_id(id);
@@ -457,10 +427,6 @@ impl<T: StickyRoute> StickyRoute for crate::intrusive::Entry<T> {
 
 /// Receiver combinator that routes items to socket senders using pick-two path scheduling
 /// from the path secret map entry associated with each item.
-///
-/// If an item implements [`StickyRoute`] and returns a sender index, that sender is used
-/// directly (retransmissions must go back through the same socket). Otherwise pick-two
-/// selects the sender with the lowest load score.
 ///
 /// Implements `Receiver<()>` so it can be drained via `ReceiverExt::drain_budgeted`.
 pub struct PickTwo<T, R, S, Clk> {
@@ -477,7 +443,7 @@ pub struct PickTwo<T, R, S, Clk> {
 
 impl<T, R, S, Clk> PickTwo<T, R, S, Clk>
 where
-    T: ByteCost + PathSecretMapEntry + StickyRoute,
+    T: ByteCost + PathSecretMapEntry + AssignSender,
     R: Receiver<T>,
     S: UnboundedSender<T>,
     Clk: precision::Clock,
@@ -543,9 +509,7 @@ where
         debug_assert_eq!(senders.len(), entry.socket_sender_count());
 
         let byte_cost = value.byte_cost();
-        let chosen_idx = if let Some(sticky_idx) = value.sticky_sender_idx() {
-            sticky_idx
-        } else {
+        let chosen_idx = {
             let len = senders.len();
             if len <= 1 {
                 LocalSenderId::from_index(0)
@@ -598,7 +562,7 @@ where
 
 impl<T, R, S, Clk> Receiver<()> for PickTwo<T, R, S, Clk>
 where
-    T: ByteCost + PathSecretMapEntry + StickyRoute,
+    T: ByteCost + PathSecretMapEntry + AssignSender,
     R: Receiver<T>,
     S: UnboundedSender<T>,
     Clk: precision::Clock,
@@ -666,30 +630,20 @@ pub(crate) struct AssemblerCounters {
     pub tx_payload_size: crate::counter::Summary,
 
     // Per-frame-type TX counters (one per transmitted frame, all phases).
-    pub tx_frame_queue_init: crate::counter::Counter,
     pub tx_frame_queue_data: crate::counter::Counter,
     pub tx_frame_queue_data_fin: crate::counter::Counter,
     pub tx_frame_queue_control: crate::counter::Counter,
     pub tx_frame_queue_max_data: crate::counter::Counter,
     pub tx_frame_queue_reset: crate::counter::Counter,
-    pub tx_frame_queue_init_reset: crate::counter::Counter,
-    pub tx_frame_queue_init_fin: crate::counter::Counter,
-    pub tx_frame_queue_init_validate: crate::counter::Counter,
-    pub tx_frame_queue_validate_request: crate::counter::Counter,
     pub tx_frame_queue_free: crate::counter::Counter,
     pub tx_frame_ack: crate::counter::Counter,
 
     // Per-frame-type probe TX counters (Phase 2 retransmit + Phase 3 PTO bypass).
-    pub tx_probe_frame_queue_init: crate::counter::Counter,
     pub tx_probe_frame_queue_data: crate::counter::Counter,
     pub tx_probe_frame_queue_data_fin: crate::counter::Counter,
     pub tx_probe_frame_queue_control: crate::counter::Counter,
     pub tx_probe_frame_queue_max_data: crate::counter::Counter,
     pub tx_probe_frame_queue_reset: crate::counter::Counter,
-    pub tx_probe_frame_queue_init_reset: crate::counter::Counter,
-    pub tx_probe_frame_queue_init_fin: crate::counter::Counter,
-    pub tx_probe_frame_queue_init_validate: crate::counter::Counter,
-    pub tx_probe_frame_queue_validate_request: crate::counter::Counter,
     pub tx_probe_frame_queue_free: crate::counter::Counter,
 }
 
@@ -708,22 +662,14 @@ impl AssemblerCounters {
             tx_payload_size: registry
                 .register_summary("tx.payload_size", crate::counter::Unit::Byte),
 
-            tx_frame_queue_init: registry.register_nominal("tx.frame", "queue_init"),
             tx_frame_queue_data: registry.register_nominal("tx.frame", "queue_data"),
             tx_frame_queue_data_fin: registry.register_nominal("tx.frame", "queue_data_fin"),
             tx_frame_queue_control: registry.register_nominal("tx.frame", "queue_control"),
             tx_frame_queue_max_data: registry.register_nominal("tx.frame", "queue_max_data"),
             tx_frame_queue_reset: registry.register_nominal("tx.frame", "queue_reset"),
-            tx_frame_queue_init_reset: registry.register_nominal("tx.frame", "queue_init_reset"),
-            tx_frame_queue_init_fin: registry.register_nominal("tx.frame", "queue_init_fin"),
-            tx_frame_queue_init_validate: registry
-                .register_nominal("tx.frame", "queue_init_validate"),
-            tx_frame_queue_validate_request: registry
-                .register_nominal("tx.frame", "queue_validate_request"),
             tx_frame_queue_free: registry.register_nominal("tx.frame", "queue_free"),
             tx_frame_ack: registry.register_nominal("tx.frame", "ack"),
 
-            tx_probe_frame_queue_init: registry.register_nominal("tx.probe.frame", "queue_init"),
             tx_probe_frame_queue_data: registry.register_nominal("tx.probe.frame", "queue_data"),
             tx_probe_frame_queue_data_fin: registry
                 .register_nominal("tx.probe.frame", "queue_data_fin"),
@@ -732,14 +678,6 @@ impl AssemblerCounters {
             tx_probe_frame_queue_max_data: registry
                 .register_nominal("tx.probe.frame", "queue_max_data"),
             tx_probe_frame_queue_reset: registry.register_nominal("tx.probe.frame", "queue_reset"),
-            tx_probe_frame_queue_init_reset: registry
-                .register_nominal("tx.probe.frame", "queue_init_reset"),
-            tx_probe_frame_queue_init_fin: registry
-                .register_nominal("tx.probe.frame", "queue_init_fin"),
-            tx_probe_frame_queue_init_validate: registry
-                .register_nominal("tx.probe.frame", "queue_init_validate"),
-            tx_probe_frame_queue_validate_request: registry
-                .register_nominal("tx.probe.frame", "queue_validate_request"),
             tx_probe_frame_queue_free: registry.register_nominal("tx.probe.frame", "queue_free"),
         }
     }
@@ -748,18 +686,11 @@ impl AssemblerCounters {
     #[inline]
     pub fn on_tx_frame(&self, header: &frame::Header) {
         match header {
-            frame::Header::QueueInit { .. } => self.tx_frame_queue_init.add(1),
             frame::Header::QueueData { is_fin: false, .. } => self.tx_frame_queue_data.add(1),
             frame::Header::QueueData { is_fin: true, .. } => self.tx_frame_queue_data_fin.add(1),
             frame::Header::QueueControl { .. } => self.tx_frame_queue_control.add(1),
             frame::Header::QueueMaxData { .. } => self.tx_frame_queue_max_data.add(1),
             frame::Header::QueueReset { .. } => self.tx_frame_queue_reset.add(1),
-            frame::Header::QueueInitReset { .. } => self.tx_frame_queue_init_reset.add(1),
-            frame::Header::QueueInitFin { .. } => self.tx_frame_queue_init_fin.add(1),
-            frame::Header::QueueInitValidate { .. } => self.tx_frame_queue_init_validate.add(1),
-            frame::Header::QueueValidateRequest { .. } => {
-                self.tx_frame_queue_validate_request.add(1)
-            }
             frame::Header::QueueFree { .. } => self.tx_frame_queue_free.add(1),
             frame::Header::Ack { .. } => self.tx_frame_ack.add(1),
         }
@@ -771,7 +702,6 @@ impl AssemblerCounters {
     #[inline]
     pub fn on_probe_frame(&self, header: &frame::Header) {
         match header {
-            frame::Header::QueueInit { .. } => self.tx_probe_frame_queue_init.add(1),
             frame::Header::QueueData { is_fin: false, .. } => self.tx_probe_frame_queue_data.add(1),
             frame::Header::QueueData { is_fin: true, .. } => {
                 self.tx_probe_frame_queue_data_fin.add(1)
@@ -779,17 +709,7 @@ impl AssemblerCounters {
             frame::Header::QueueControl { .. } => self.tx_probe_frame_queue_control.add(1),
             frame::Header::QueueMaxData { .. } => self.tx_probe_frame_queue_max_data.add(1),
             frame::Header::QueueReset { .. } => self.tx_probe_frame_queue_reset.add(1),
-            frame::Header::QueueInitReset { .. } => self.tx_probe_frame_queue_init_reset.add(1),
-            frame::Header::QueueInitFin { .. } => self.tx_probe_frame_queue_init_fin.add(1),
-            frame::Header::QueueInitValidate { .. } => {
-                self.tx_probe_frame_queue_init_validate.add(1)
-            }
-            frame::Header::QueueValidateRequest { .. } => {
-                self.tx_probe_frame_queue_validate_request.add(1)
-            }
             frame::Header::QueueFree { .. } => self.tx_probe_frame_queue_free.add(1),
-            // ACK frames are stripped before inflight insertion and are never retransmitted
-            // as probes; this branch should be unreachable in practice.
             frame::Header::Ack { .. } => {
                 debug_assert!(false, "ACK frames should never appear as inflight entries")
             }
@@ -951,7 +871,7 @@ where
         }
     }
 
-    fn flush(&mut self) -> crate::flow::queue::AutoWake {
+    fn flush(&mut self) -> crate::queue::AutoWake {
         if self.batch.is_empty() {
             return Default::default();
         }
@@ -965,7 +885,7 @@ where
     }
 }
 
-impl<R> Receiver<crate::flow::queue::AutoWake> for CompletionDispatcher<R>
+impl<R> Receiver<crate::queue::AutoWake> for CompletionDispatcher<R>
 where
     R: Receiver<Entry<Frame>>,
 {
@@ -973,7 +893,7 @@ where
         &mut self,
         cx: &mut task::Context<'_>,
         budget: &mut Budget,
-    ) -> Poll<Option<crate::flow::queue::AutoWake>> {
+    ) -> Poll<Option<crate::queue::AutoWake>> {
         loop {
             if budget.is_exhausted() {
                 budget.set_needs_wake();
