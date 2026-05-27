@@ -80,6 +80,8 @@ pub struct Path<Config: endpoint::Config> {
 
     /// True if the path is currently active
     is_active: bool,
+    /// Activation generation; higher = more recently active
+    pub(crate) last_activation: u32,
     anti_amplification_multiplier: u8,
     /// PTO jitter percentage (0-50)
     pto_jitter_percentage: u8,
@@ -102,6 +104,7 @@ impl<Config: endpoint::Config> Clone for Path<Config> {
             response_data: self.response_data,
             activated: self.activated,
             is_active: self.is_active,
+            last_activation: self.last_activation,
             anti_amplification_multiplier: self.anti_amplification_multiplier,
             pto_jitter_percentage: self.pto_jitter_percentage,
         }
@@ -152,6 +155,7 @@ impl<Config: endpoint::Config> Path<Config> {
             response_data: None,
             activated: false,
             is_active: false,
+            last_activation: 0,
             anti_amplification_multiplier,
             pto_jitter_percentage,
         }

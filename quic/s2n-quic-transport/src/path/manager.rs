@@ -69,6 +69,9 @@ pub struct Manager<Config: endpoint::Config> {
     /// The `paths` data structure will need to be enhanced to include garbage collection
     /// of old paths to overcome this limitation.
     pending_packet_authentication: Option<u8>,
+
+    /// Monotonic counter bumped on each path activation (LRU eviction)
+    activation_counter: u32,
 }
 
 impl<Config: endpoint::Config> Manager<Config> {
@@ -79,9 +82,11 @@ impl<Config: endpoint::Config> Manager<Config> {
             active: 0,
             last_known_active_validated_path: None,
             pending_packet_authentication: None,
+            activation_counter: 1,
         };
         manager.paths[0].activated = true;
         manager.paths[0].is_active = true;
+        manager.paths[0].last_activation = 1;
         manager
     }
 
@@ -177,6 +182,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         self[prev_path_id].is_active = false;
         self[new_path_id].is_active = true;
         self[new_path_id].on_activated();
+        self.activation_counter += 1;
+        self[new_path_id].last_activation = self.activation_counter;
         let amplification_outcome = if self[prev_path_id].at_amplification_limit()
             && !self[new_path_id].at_amplification_limit()
         {
@@ -377,7 +384,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         //
         // If a previously allocated path failed to contain an authenticated packet, we
         // use that index instead of pushing on to the end.
-        let new_path_idx = if let Some(idx) = self.pending_packet_authentication {
+        let mut new_path_idx = if let Some(idx) = self.pending_packet_authentication {
             idx as _
         } else {
             let idx = self.paths.len();
@@ -385,12 +392,18 @@ impl<Config: endpoint::Config> Manager<Config> {
             idx
         };
 
-        // TODO: Support deletion of old paths: https://github.com/aws/s2n-quic/issues/741
-        // The current path manager implementation does not delete or reuse indices
-        // in the path array. This can result in an unbounded number of paths. To prevent
-        // this we limit the max number of paths per connection.
+        // If we are at capacity, try to evict a stale path to reclaim its slot.
+        // See https://github.com/aws/s2n-quic/issues/741
         if new_path_idx >= MAX_ALLOWED_PATHS {
-            return Err(DatagramDropReason::PathLimitExceeded);
+            if let Some(evicted_idx) = self.find_evictable_path() {
+                if self.last_known_active_validated_path == Some(evicted_idx) {
+                    self.last_known_active_validated_path = None;
+                }
+                self.pending_packet_authentication = Some(evicted_idx);
+                new_path_idx = evicted_idx as usize;
+            } else {
+                return Err(DatagramDropReason::PathLimitExceeded);
+            }
         }
         let new_path_id = path_id(new_path_idx as u8);
 
@@ -496,6 +509,31 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
 
         Ok((new_path_id, amplification_outcome))
+    }
+
+    /// Find a path slot that can be evicted to make room for a new migration.
+    /// Returns the index of the least-important non-protected path.
+    ///
+    /// The tuple encodes eviction priority via lexicographic Ord (false < true):
+    ///   (is_fallback, is_activated, not_failed, last_activation)
+    /// last_activation breaks ties: lowest = inactive longest = most evictable.
+    fn find_evictable_path(&self) -> Option<u8> {
+        self.paths
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| {
+                let i = i as u8;
+                i != self.active && self.pending_packet_authentication != Some(i)
+            })
+            .min_by_key(|&(i, p)| {
+                (
+                    self.last_known_active_validated_path == Some(i as u8),
+                    p.is_activated(),
+                    !p.failed_validation(),
+                    p.last_activation,
+                )
+            })
+            .map(|(i, _)| i as u8)
     }
 
     fn set_challenge(&mut self, path_id: Id, random_generator: &mut dyn random::Generator) {

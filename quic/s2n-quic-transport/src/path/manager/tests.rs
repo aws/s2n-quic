@@ -952,7 +952,7 @@ fn limit_number_of_connection_migrations() {
     let mut manager = manager_server(first_path);
     let mut total_paths = 1;
 
-    for i in 1..u8::MAX {
+    for i in 1..(MAX_ALLOWED_PATHS * 2) {
         let new_addr: SocketAddr = format!("127.0.0.2:{i}").parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
         let new_addr = RemoteAddress::from(new_addr);
@@ -989,7 +989,9 @@ fn limit_number_of_connection_migrations() {
             Err(_) => break,
         }
     }
-    assert_eq!(total_paths, MAX_ALLOWED_PATHS);
+    // Eviction keeps paths bounded even as migrations continue
+    assert!(total_paths > MAX_ALLOWED_PATHS);
+    assert_eq!(manager.paths.len(), MAX_ALLOWED_PATHS);
 }
 
 // Connection migration is still allowed to proceed even if the `disable_active_migration`
@@ -2009,4 +2011,87 @@ pub struct Helper {
     pub first_path_id: Id,
     pub second_path_id: Id,
     pub manager: ServerManager,
+}
+
+#[test]
+fn evict_stale_path_when_at_capacity() {
+    // A connection that migrates more than MAX_ALLOWED_PATHS times should
+    // succeed by evicting stale (non-active) paths.
+    let mut publisher = Publisher::snapshot();
+    let first_addr: SocketAddr = "127.0.0.1:1".parse().unwrap();
+    let first_path = ServerPath::new(
+        RemoteAddress::from(SocketAddress::from(first_addr)),
+        connection::PeerId::try_from_bytes(&[1]).unwrap(),
+        connection::LocalId::TEST_ID,
+        RttEstimator::default(),
+        Default::default(),
+        false,
+        mtu::Config::default(),
+        ANTI_AMPLIFICATION_MULTIPLIER,
+        0,
+    );
+    let mut manager = manager_server(first_path);
+
+    // Fill all MAX_ALLOWED_PATHS slots with authenticated paths
+    for i in 1..MAX_ALLOWED_PATHS {
+        let addr: SocketAddr = format!("127.0.0.2:{i}").parse().unwrap();
+        let addr = RemoteAddress::from(SocketAddress::from(addr));
+        let now = NoopClock {}.get_time();
+        let datagram = DatagramInfo {
+            timestamp: now,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+            destination_connection_id_classification: connection::id::Classification::Local,
+            source_connection_id: None,
+        };
+
+        let (id, _) = manager
+            .handle_connection_migration(
+                &addr,
+                &datagram,
+                &mut Default::default(),
+                &mut migration::allow_all::Validator,
+                &mut mtu::Manager::new(mtu::Config::default()),
+                &Limits::default(),
+                &mut publisher,
+            )
+            .unwrap();
+        let _ = manager.on_processed_packet(
+            id,
+            None,
+            path_validation::Probe::NonProbing,
+            &mut random::testing::Generator(123),
+            &mut publisher,
+        );
+    }
+
+    assert_eq!(manager.paths.len(), MAX_ALLOWED_PATHS);
+
+    // Attempt migration MAX_ALLOWED_PATHS + 1; should succeed via eviction
+    let addr: SocketAddr = "127.0.0.3:99".parse().unwrap();
+    let addr = RemoteAddress::from(SocketAddress::from(addr));
+    let now = NoopClock {}.get_time();
+    let datagram = DatagramInfo {
+        timestamp: now,
+        payload_len: 0,
+        ecn: ExplicitCongestionNotification::default(),
+        destination_connection_id: connection::LocalId::TEST_ID,
+        destination_connection_id_classification: connection::id::Classification::Local,
+        source_connection_id: None,
+    };
+
+    let result = manager.handle_connection_migration(
+        &addr,
+        &datagram,
+        &mut Default::default(),
+        &mut migration::allow_all::Validator,
+        &mut mtu::Manager::new(mtu::Config::default()),
+        &Limits::default(),
+        &mut publisher,
+    );
+
+    // Should succeed; a stale path was evicted to make room
+    assert!(result.is_ok(), "migration should succeed after eviction");
+    assert_eq!(manager.paths.len(), MAX_ALLOWED_PATHS);
 }
