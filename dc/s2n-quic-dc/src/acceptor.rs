@@ -301,6 +301,16 @@ pub enum SendResult<T> {
 }
 
 impl<T> LocalRegistry<T> {
+    /// Returns a mutable reference to the sender for the given acceptor ID,
+    /// or `None` if not registered.
+    #[inline]
+    pub fn get(&mut self, acceptor_id: VarInt) -> Option<&mut Sender<T>> {
+        if self.get_local(acceptor_id).is_none() {
+            self.refresh();
+        }
+        self.get_local(acceptor_id)
+    }
+
     /// Send a stream to the acceptor registered for `acceptor_id`.
     ///
     /// Fast path: one array index. No locks.

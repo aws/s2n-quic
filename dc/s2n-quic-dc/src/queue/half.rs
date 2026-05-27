@@ -114,28 +114,6 @@ impl<T> Half<T> {
         }
     }
 
-    /// Push an entry into this half.
-    ///
-    /// Returns the stored waker on success so the caller can wake the receiver
-    /// after releasing any outer lock.
-    #[inline]
-    pub(crate) fn push(
-        &self,
-        entry: intrusive::Entry<T>,
-    ) -> Result<AutoWake, Error<intrusive::Entry<T>>> {
-        let mut inner = self.inner.lock();
-
-        if !inner.flags.contains(Flags::HAS_SENDER) {
-            return Err(Error::SenderClosed);
-        }
-        if !inner.flags.contains(Flags::HAS_RECEIVER) {
-            return Err(Error::HalfClosed(entry));
-        }
-
-        inner.queue.push_back(entry);
-        Ok(inner.take_waker())
-    }
-
     #[inline]
     pub(crate) fn pop(&self) -> Result<Option<intrusive::Entry<T>>, Closed> {
         let mut inner = self.inner.lock();
@@ -283,32 +261,9 @@ mod tests {
     }
 
     fn push_ok(half: &Half<msg::Stream>, entry: crate::intrusive::Entry<msg::Stream>) -> AutoWake {
-        match half.push(entry) {
-            Ok(aw) => aw,
-            Err(_) => panic!("push failed"),
-        }
-    }
-
-    #[test]
-    fn push_to_open_half() {
-        let half = open_half();
-        let result = half.push(make_stream_entry());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn push_without_receiver_returns_half_closed() {
-        let half = Half::<msg::Stream>::new();
-        let result = half.push(make_stream_entry());
-        assert!(matches!(result, Err(Error::HalfClosed(_))));
-    }
-
-    #[test]
-    fn push_after_broadcast_close_returns_sender_closed() {
-        let half = open_half();
-        half.broadcast_close();
-        let result = half.push(make_stream_entry());
-        assert!(matches!(result, Err(Error::SenderClosed)));
+        let mut inner = half.inner.lock();
+        inner.queue.push_back(entry);
+        inner.take_waker()
     }
 
     #[test]

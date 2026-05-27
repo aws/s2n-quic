@@ -446,11 +446,11 @@ pub enum Header {
     },
     /// Free queue slots (server→client credit return).
     ///
-    /// Uses ACK-style range encoding in the payload. The free_request_id is
+    /// Uses sorted delta encoding in the payload. The free_request_id is
     /// a monotonic stamp for receiver-side dedup of replayed/duplicate frames.
     QueueFree {
         free_request_id: VarInt,
-        largest_queue_id: VarInt,
+        smallest_queue_id: VarInt,
     },
     /// ACK frame with ack_delay lifted into the header (direct routing path).
     ///
@@ -694,11 +694,11 @@ impl EncoderValue for Header {
             }
             Self::QueueFree {
                 free_request_id,
-                largest_queue_id,
+                smallest_queue_id,
             } => {
                 encoder.encode(&Self::QUEUE_FREE_TYPE);
                 encoder.encode(free_request_id);
-                encoder.encode(largest_queue_id);
+                encoder.encode(smallest_queue_id);
             }
             Self::Ack {
                 dest_sender_id,
@@ -895,11 +895,11 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
             }
             Self::QUEUE_FREE_TYPE => {
                 let (free_request_id, buffer) = buffer.decode()?;
-                let (largest_queue_id, buffer) = buffer.decode()?;
+                let (smallest_queue_id, buffer) = buffer.decode()?;
                 Ok((
                     Self::QueueFree {
                         free_request_id,
-                        largest_queue_id,
+                        smallest_queue_id,
                     },
                     buffer,
                 ))

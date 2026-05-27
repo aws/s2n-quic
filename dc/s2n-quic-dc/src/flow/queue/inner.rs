@@ -92,30 +92,7 @@ impl<T> Inner<T> {
     }
 }
 
-#[derive(Default)]
-pub struct AutoWake(Option<Waker>);
-
-impl AutoWake {
-    pub fn new(waker: Option<Waker>) -> Self {
-        Self(waker)
-    }
-
-    pub fn is_some(&self) -> bool {
-        self.0.is_some()
-    }
-
-    pub fn take(&mut self) -> Option<Waker> {
-        self.0.take()
-    }
-}
-
-impl Drop for AutoWake {
-    fn drop(&mut self) {
-        if let Some(waker) = self.0.take() {
-            waker.wake();
-        }
-    }
-}
+pub use crate::queue::AutoWake;
 
 impl<T> fmt::Debug for Inner<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

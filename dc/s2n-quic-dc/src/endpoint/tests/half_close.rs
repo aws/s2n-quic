@@ -803,23 +803,13 @@ fn write_after_shutdown_returns_broken_pipe() {
 
 // ── writer_drop_in_queue_init_sent ──────────────────────────────────────────
 
-/// **Known bug (ignored):** When the client writer is dropped while still in
-/// `QueueBindSent` state (the `QueueInit` packet was sent but `MAX_DATA` has not
-/// yet been received), `shutdown()` is called but `send_fin_packet()` is a
-/// no-op for `QueueBindSent`.  No FIN or `QueueReset` reaches the server, so
-/// the server reader hangs forever.
+/// Verifies that dropping the client writer while in `InitSent` state (before
+/// the server's response arrives) still delivers FIN to the server reader.
 ///
-/// # Expected behaviour after the fix
-///
-/// * `send_fin_packet()` should handle `QueueBindSent` by re-sending the
-///   `QueueInit` with `is_fin: true` (or sending a `QueueReset`), so that the
-///   server reader is unblocked.
-/// * Once fixed, change the assertion to `result.is_ok()` and remove the
-///   `#[ignore]`.
-///
-/// See the TODO comment in `stream/writer.rs` for the full fix description.
+/// The first server→client packet is suppressed to keep the writer in `InitSent`.
+/// The writer's drop triggers `on_send_fin(InitSent => FinSent)`, which re-sends
+/// QueueInit with `is_fin: true`. The server reader unblocks with EOF.
 #[test]
-#[ignore = "known bug: writer drop in QueueBindSent does not notify server reader (stream/writer.rs TODO)"]
 fn writer_drop_in_queue_init_sent_hangs_server_reader() {
     use std::time::Duration;
 
@@ -863,10 +853,9 @@ fn writer_drop_in_queue_init_sent_hangs_server_reader() {
                     })
                     .await;
 
-                    // TODO: flip to `result.is_ok()` once the bug is fixed.
                     assert!(
-                        result.is_err(),
-                        "server reader unexpectedly completed – was the QueueBindSent bug fixed?"
+                        result.is_ok(),
+                        "server reader should complete now that writer drop sends FIN from InitSent"
                     );
                 }
                 .primary()
@@ -922,7 +911,6 @@ fn writer_drop_in_queue_init_sent_hangs_server_reader() {
 /// This is a high-severity availability bug: the server-side reader blocks
 /// indefinitely waiting for a FIN that will never come.
 #[test]
-#[ignore = "FIX THIS!"]
 fn queue_init_fin_lost_when_queue_init_dropped() {
     use crate::testing::ext::*;
     use std::sync::Arc;

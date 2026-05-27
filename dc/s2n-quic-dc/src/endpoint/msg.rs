@@ -53,6 +53,13 @@ pub enum Sender {
     /// Notification carrying a freshly encoded outbound ACK body from recv worker.
     /// The send worker stamps wire-time ack_delay during assembly.
     PendingAck(state::Submission),
+    /// Token indicating that freed queue IDs are ready for QueueFree emission.
+    /// Submitted by OnFree::Server when a slot is reclaimed. The assembler
+    /// encodes ranges JIT from FreedInner at transmission time.
+    PendingFreed {
+        path_secret_entry: Arc<PathSecretEntry>,
+        local_sender_id: LocalSenderId,
+    },
 }
 
 impl Sender {
@@ -64,6 +71,9 @@ impl Sender {
                 local_sender_id, ..
             } => *local_sender_id,
             Self::PendingAck(submission) => submission.local_sender_id,
+            Self::PendingFreed {
+                local_sender_id, ..
+            } => *local_sender_id,
         }
     }
 
@@ -75,6 +85,9 @@ impl Sender {
                 path_secret_entry, ..
             } => path_secret_entry,
             Self::PendingAck(submission) => &submission.path_secret_entry,
+            Self::PendingFreed {
+                path_secret_entry, ..
+            } => path_secret_entry,
         }
     }
 
@@ -84,6 +97,7 @@ impl Sender {
         match self {
             Self::ReceivedAck { .. } => None,
             Self::PendingAck(submission) => Some(submission.recv_worker_id),
+            Self::PendingFreed { .. } => None,
         }
     }
 }
@@ -92,7 +106,4 @@ pub mod queue {
     use crate::flow;
 
     pub type Allocator = flow::queue::Allocator<super::Stream, super::Control, flow::Handle>;
-    pub type Dispatcher = flow::queue::Dispatch<super::Stream, super::Control, flow::Handle>;
-    pub type Control = flow::queue::Control<super::Stream, super::Control, flow::Handle>;
-    pub type Stream = flow::queue::Stream<super::Stream, super::Control, flow::Handle>;
 }

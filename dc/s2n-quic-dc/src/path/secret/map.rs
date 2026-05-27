@@ -19,7 +19,7 @@ use std::{net::SocketAddr, sync::Arc};
 use tokio::task::JoinHandle;
 
 mod cleaner;
-mod entry;
+pub(crate) mod entry;
 mod handshake;
 mod peer;
 mod rehandshake;

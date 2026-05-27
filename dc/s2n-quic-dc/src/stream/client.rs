@@ -12,19 +12,13 @@
 //! with early data.
 
 use crate::{
-    flow, psk,
-    stream::{
-        endpoint::{msg, Endpoint},
-        Reader, Stream, Writer,
-    },
+    path::secret::map::entry::QueueState,
+    psk,
+    stream::{endpoint::Endpoint, Reader, Stream, Writer},
 };
 use s2n_quic::server::Name;
 use s2n_quic_core::varint::VarInt;
-use std::{
-    io,
-    net::SocketAddr,
-    sync::{atomic::Ordering, Arc},
-};
+use std::{io, net::SocketAddr, sync::Arc};
 
 pub mod rpc;
 
@@ -73,7 +67,6 @@ pub struct Client {
     endpoint: Arc<Endpoint>,
     psk: psk::client::Provider,
     server_name: Name,
-    queue_allocator: msg::queue::Allocator,
 }
 
 impl Client {
@@ -91,12 +84,10 @@ impl Client {
             *psk.map(),
             "PSK provider map must be the same instance as the endpoint map"
         );
-        let queue_allocator = endpoint.queue_allocator.clone();
         Self {
             endpoint,
             psk,
             server_name,
-            queue_allocator,
         }
     }
 
@@ -136,30 +127,33 @@ impl Client {
             ));
         }
 
-        let binding_id = VarInt::new(
-            self.endpoint
-                .next_binding_id
-                .fetch_add(1, Ordering::Relaxed),
-        )
-        .unwrap();
+        let QueueState::Client(client_state) = path_secret_entry.queue_state() else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "path secret entry has server queue state for client connect",
+            ));
+        };
 
-        let handle = flow::Handle::client(binding_id, path_secret_entry.clone());
+        let alloc = client_state
+            .alloc(&path_secret_entry, self.endpoint.dead_peer_cooldown)
+            .await
+            .ok_or_else(|| {
+                io::Error::new(io::ErrorKind::ConnectionReset, "peer queue slots closed")
+            })?;
 
-        let (queue_control, queue_stream) = self.queue_allocator.alloc_or_grow(handle, None);
-
+        let frame_tx = self.endpoint.frame_tx.clone();
         let writer = Writer::new_client(
-            self.endpoint.frame_tx.clone(),
+            frame_tx.clone(),
             path_secret_entry.clone(),
-            binding_id,
+            alloc.dest_queue_id,
             acceptor_id,
-            queue_control,
+            alloc.control,
         );
-
         let reader = Reader::new_client(
-            self.endpoint.frame_tx.clone(),
+            frame_tx,
             path_secret_entry,
-            binding_id,
-            queue_stream,
+            alloc.dest_queue_id,
+            alloc.stream,
         );
 
         Ok(Stream::new(reader, writer))

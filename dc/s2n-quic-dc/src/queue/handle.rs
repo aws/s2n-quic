@@ -36,10 +36,9 @@ pub(crate) enum OnFree {
         state: Arc<super::client::ClientState>,
     },
     /// Server: notify the client that this queue_id is available again.
-    /// The Arc<ServerState> keeps the page table and freed state alive.
-    /// endpoint_tx is late-bound from the bind_and_send_stream call site.
+    /// The Arc<PathSecretEntry> keeps the page table alive (it owns
+    /// QueueState::Server which owns Arc<ServerState>).
     Server {
-        server_state: Arc<super::server::ServerState>,
         path_entry: Arc<crate::path::secret::map::Entry>,
         endpoint_tx: super::freed::FreedBatchTx,
     },
@@ -63,6 +62,11 @@ impl StreamReceiver {
     #[inline]
     pub fn queue_id(&self) -> VarInt {
         self.slot().queue_id()
+    }
+
+    #[inline]
+    pub fn binding_id(&self) -> VarInt {
+        self.slot().binding_id()
     }
 
     #[inline]
@@ -111,7 +115,7 @@ impl Drop for StreamReceiver {
             slot.mark_unallocated();
         });
         if is_last {
-            reclaim(queue_id, &self.on_free);
+            reclaim(queue_id, &mut self.on_free);
         }
     }
 }
@@ -142,6 +146,11 @@ impl ControlReceiver {
     #[inline]
     pub fn queue_id(&self) -> VarInt {
         self.slot().queue_id()
+    }
+
+    #[inline]
+    pub fn binding_id(&self) -> VarInt {
+        self.slot().binding_id()
     }
 
     #[inline]
@@ -189,7 +198,7 @@ impl Drop for ControlReceiver {
             slot.mark_unallocated();
         });
         if is_last {
-            reclaim(queue_id, &self.on_free);
+            reclaim(queue_id, &mut self.on_free);
         }
     }
 }
@@ -204,7 +213,7 @@ impl core::fmt::Debug for ControlReceiver {
 
 // ── Shared reclaim helper ─────────────────────────────────────────────────────
 
-fn reclaim(queue_id: VarInt, on_free: &OnFree) {
+fn reclaim(queue_id: VarInt, on_free: &mut OnFree) {
     match on_free {
         OnFree::Client { state } => {
             state
@@ -214,13 +223,16 @@ fn reclaim(queue_id: VarInt, on_free: &OnFree) {
                 .push_freed(queue_id.as_u64() as usize);
         }
         OnFree::Server {
-            server_state,
             path_entry,
             endpoint_tx,
         } => {
-            server_state
-                .freed
-                .record(queue_id, server_state, path_entry, endpoint_tx);
+            let crate::path::secret::map::entry::QueueState::Server(ref server_state) =
+                *path_entry.queue_state()
+            else {
+                debug_assert!(false, "OnFree::Server on non-server entry");
+                return;
+            };
+            server_state.freed.record(queue_id, path_entry, endpoint_tx);
         }
     }
 }

@@ -43,12 +43,14 @@ impl Sendable for Response {
     }
 }
 
+// TODO: dedup filter needs to consider both UPS and stale key messages, not just UPS
 const CREDENTIAL_ID_OFFSET: usize = 1;
 const CREDENTIAL_ID_LEN: usize = 16;
 
 /// Extracts the credential_id from an encoded UnknownPathSecret packet.
 ///
 /// The packet layout is: [tag: 1 byte][credential_id: 16 bytes][...].
+#[expect(dead_code)]
 fn extract_credential_id(packet: &[u8]) -> Option<credentials::Id> {
     let end = CREDENTIAL_ID_OFFSET + CREDENTIAL_ID_LEN;
     if packet.len() < end {
@@ -73,6 +75,7 @@ pub struct DedupFilter {
 }
 
 pub struct DedupCounters {
+    #[expect(dead_code)]
     pub suppressed: Counter,
 }
 

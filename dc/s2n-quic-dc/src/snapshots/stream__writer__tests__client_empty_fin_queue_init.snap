@@ -2,9 +2,8 @@
 source: dc/s2n-quic-dc/src/testing.rs
 expression: logs
 ---
-0:00:00.000000000 [main] DEBUG grow epoch=8
-0:00:00.000000000 [main] DEBUG event=on_send_queue_init prev=Init next=QueueBindSent location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000000000 [main] DEBUG event=on_send_fin prev=QueueBindSent next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000000000 [main] DEBUG Sent QueueInit with early data binding_id=42 bytes_read=0 is_fin=true
-0:00:00.000000000 [main] DEBUG Writer dropping binding_id=42 status=FinSent next_offset=0 inflight_bytes=0 remote_max_data=0
+0:00:00.000000000 [main] DEBUG event=on_init_sent prev=Init next=InitSent location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.000000000 [main] DEBUG event=on_send_fin prev=InitSent next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.000000000 [main] DEBUG Sent QueueInit with early data binding_id=1 bytes_read=0 is_fin=true
+0:00:00.000000000 [main] DEBUG Writer dropping binding_id=1 status=FinSent next_offset=0 inflight_bytes=0 remote_max_data=0
 0:00:00.000000000 [main] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs

@@ -649,6 +649,7 @@ pub(crate) struct Assembler<R, Clk, C, A> {
     header_buf: Vec<u8>,
     cancelled_tx: C,
     ack_completions_tx: A,
+    freed_batch_tx: crate::queue::FreedBatchTx,
     pub(crate) counters: AssemblerCounters,
     send_counters: Rc<super::counters::Send>,
 }
@@ -812,6 +813,7 @@ impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
         pool: crate::socket::pool::Pool,
         cancelled_tx: C,
         ack_completions_tx: A,
+        freed_batch_tx: crate::queue::FreedBatchTx,
         counters: AssemblerCounters,
         send_counters: Rc<super::counters::Send>,
     ) -> Self {
@@ -825,6 +827,7 @@ impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
             header_buf: Vec::new(),
             cancelled_tx,
             ack_completions_tx,
+            freed_batch_tx,
             counters,
             send_counters,
         }
@@ -865,6 +868,7 @@ where
                 &mut self.header_buf,
                 &mut cancelled,
                 &mut ack_completions,
+                &mut self.freed_batch_tx,
                 &self.counters,
                 &self.send_counters,
             );
@@ -1193,6 +1197,32 @@ where
                 let wheel_interest = {
                     let mut ctx = ctx_rc.borrow_mut();
                     ctx.pending_acks.push_back(entry);
+                    ctx.wheel_interest(&self.clock)
+                };
+
+                Some((ctx_rc, wheel_interest))
+            }
+            msg::Sender::PendingFreed { .. } => {
+                let path_entry = entry.path_secret_entry().clone();
+                let ctx_rc = {
+                    let mut cache = cache.borrow_mut();
+                    match cache.get_or_insert(&path_entry, &self.clock) {
+                        Ok(ctx) => ctx,
+                        Err(_) => {
+                            // Context not ready. Clear in_flight so record() can resubmit.
+                            if let crate::path::secret::map::entry::QueueState::Server(ref state) =
+                                *path_entry.queue_state()
+                            {
+                                state.freed.clear_in_flight();
+                            }
+                            return Poll::Ready(Some(None));
+                        }
+                    }
+                };
+
+                let wheel_interest = {
+                    let mut ctx = ctx_rc.borrow_mut();
+                    ctx.pending_freed = Some(entry);
                     ctx.wheel_interest(&self.clock)
                 };
 

@@ -47,10 +47,6 @@ impl PageTable {
             list.grow(next_size);
         }
     }
-
-    pub(crate) fn total_slots(&self) -> usize {
-        self.pages.read().unwrap().total_slots
-    }
 }
 
 // ── PageList ────────────────────────────────────────────────────────────────

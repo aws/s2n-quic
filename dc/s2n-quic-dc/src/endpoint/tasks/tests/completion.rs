@@ -113,7 +113,8 @@ fn completion_dispatcher_ignores_frames_without_completion_sender() {
 fn cancelled_drain_consumes_all_frames_then_closes() {
     sim(|| {
         let (mut frame_tx, frame_rx) = unsync::new::<frame::Frame>();
-        let mut rx = tasks::cancelled_drain(frame_rx);
+        let (freed_batch_tx, _freed_batch_rx) = crate::queue::freed_batch_channel();
+        let mut rx = tasks::cancelled_drain(frame_rx, freed_batch_tx);
 
         async move {
             let pse = test_entry();

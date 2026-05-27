@@ -3,15 +3,69 @@
 
 use crate::{
     credentials::{self, Credentials},
-    endpoint::id::{LocalSenderId, RecvDispatchWorkerId, RemoteSenderId},
+    endpoint::{
+        id::{LocalSenderId, RecvDispatchWorkerId, RemoteSenderId},
+        msg,
+    },
     flow, intrusive,
-    path::{self, secret::map::Entry as PathSecretEntry},
+    path::{
+        self,
+        secret::map::{entry::QueueState, Entry as PathSecretEntry},
+    },
+    queue,
     stream::endpoint::ack::state as ack_state,
     tracing::*,
 };
 use rustc_hash::FxHashMap;
 use s2n_quic_core::{frame::ack::EcnCounts, inet::SocketAddress, varint::VarInt};
 use std::{cell::RefCell, collections::hash_map, fmt, rc::Rc, sync::Arc};
+
+// ── QueueView ─────────────────────────────────────────────────────────────
+
+pub(crate) enum QueueView {
+    Client(queue::ClientDispatch),
+    Server(queue::ServerView),
+}
+
+impl QueueView {
+    pub fn send_stream(
+        &mut self,
+        queue_id: VarInt,
+        binding_id: VarInt,
+        entry: intrusive::Entry<msg::Stream>,
+    ) -> Result<queue::AutoWake, queue::Error<intrusive::Entry<msg::Stream>>> {
+        match self {
+            Self::Client(d) => d.send_stream(queue_id, binding_id, entry),
+            Self::Server(d) => d.send_stream(queue_id, binding_id, entry),
+        }
+    }
+
+    pub fn send_control(
+        &mut self,
+        queue_id: VarInt,
+        binding_id: VarInt,
+        entry: intrusive::Entry<msg::Control>,
+    ) -> Result<queue::AutoWake, queue::Error<intrusive::Entry<msg::Control>>> {
+        match self {
+            Self::Client(d) => d.send_control(queue_id, binding_id, entry),
+            Self::Server(d) => d.send_control(queue_id, binding_id, entry),
+        }
+    }
+
+    pub fn as_server_mut(&mut self) -> Option<&mut queue::ServerView> {
+        match self {
+            Self::Server(v) => Some(v),
+            Self::Client(_) => None,
+        }
+    }
+
+    pub fn as_client_mut(&mut self) -> Option<&mut queue::ClientDispatch> {
+        match self {
+            Self::Client(d) => Some(d),
+            Self::Server(_) => None,
+        }
+    }
+}
 
 /// Errors returned by [`Cache::get_or_insert`].
 pub(crate) enum CacheError {
@@ -106,98 +160,6 @@ impl crate::intrusive::Adapter for AckBurstAdapter {
     }
 }
 
-/// Attempt deduplication using a circular bitmap.
-///
-/// Tracks up to `CAPACITY` recent attempt_ids without shifting memory. The bitmap
-/// is indexed relative to `right_edge` using modular arithmetic.
-pub(crate) struct AttemptDedup {
-    bitmap: [u64; Self::WORDS],
-    right_edge: Option<u64>,
-}
-
-impl AttemptDedup {
-    const WORDS: usize = 32;
-    const CAPACITY: u64 = (Self::WORDS as u64) * 64;
-
-    pub fn new() -> Self {
-        Self {
-            bitmap: [0; Self::WORDS],
-            right_edge: None,
-        }
-    }
-
-    pub fn right_edge_debug(&self) -> u64 {
-        self.right_edge.unwrap_or(u64::MAX)
-    }
-
-    pub fn check_attempt_id(&mut self, attempt_id: VarInt) -> Result<(), AttemptDedupError> {
-        let id = attempt_id.as_u64();
-
-        let Some(edge) = self.right_edge else {
-            self.right_edge = Some(id);
-            return Ok(());
-        };
-
-        if id == edge {
-            return Err(AttemptDedupError::Duplicate);
-        }
-
-        if id > edge {
-            let advance = id - edge;
-            self.clear_range(edge + 1, advance);
-            // The old right_edge moves into the bitmap (if still in window)
-            if advance < Self::CAPACITY {
-                let (word, mask) = Self::index(edge);
-                self.bitmap[word] |= mask;
-            }
-            self.right_edge = Some(id);
-            return Ok(());
-        }
-
-        // id < edge
-        let offset = edge - id;
-        if offset >= Self::CAPACITY {
-            return Err(AttemptDedupError::TooOld);
-        }
-
-        let (word, mask) = Self::index(id);
-        if self.bitmap[word] & mask != 0 {
-            return Err(AttemptDedupError::Duplicate);
-        }
-
-        self.bitmap[word] |= mask;
-        Ok(())
-    }
-
-    /// Clear `count` bit positions starting at `from`.
-    fn clear_range(&mut self, from: u64, count: u64) {
-        if count >= Self::CAPACITY {
-            self.bitmap = [0; Self::WORDS];
-            return;
-        }
-        for i in 0..count {
-            let (word, mask) = Self::index(from + i);
-            self.bitmap[word] &= !mask;
-        }
-    }
-
-    #[inline]
-    fn index(id: u64) -> (usize, u64) {
-        let bit = (id % Self::CAPACITY) as usize;
-        let word = bit / 64;
-        let mask = 1u64 << (bit % 64);
-        (word, mask)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum AttemptDedupError {
-    /// Attempt ID already seen (duplicate)
-    Duplicate,
-    /// Attempt ID too old (outside window) - need to check DashMap or send retry
-    TooOld,
-}
-
 /// Cached crypto state and ACK tracking for a peer.
 ///
 /// Keyed by (credentials.id, source_sender_id) because ACK spaces and
@@ -227,10 +189,11 @@ pub(crate) struct Context {
     pub idle_wheel: crate::time::wheel::WheelLinks,
     pub created_at: crate::time::precision::Timestamp,
     pub ack_state: AckState,
-    pub attempt_dedup: AttemptDedup,
     /// Map from binding_id to allocated queue_id for this sender.
     /// Shared with queue handles so they can remove entries when closed.
     pub flows: flow::Tracker,
+    /// Cached queue dispatch view (client or server depending on role).
+    pub queue_view: QueueView,
     /// Intrusive links for recv-worker pending-ACK burst queue membership.
     pub ack_burst: intrusive::Links,
 }
@@ -309,6 +272,13 @@ impl Context {
 
         let flows = flow::Tracker::new(*path_entry.id());
 
+        let queue_view = match path_entry.queue_state() {
+            QueueState::Client(state) => {
+                QueueView::Client(queue::ClientDispatch::new(state.clone()))
+            }
+            QueueState::Server(state) => QueueView::Server(state.view()),
+        };
+
         Self {
             path_entry,
             remote_sender_id,
@@ -321,8 +291,8 @@ impl Context {
             idle_wheel,
             created_at: now,
             ack_state: AckState::Idle,
-            attempt_dedup: AttemptDedup::new(),
             flows,
+            queue_view,
             ack_burst: intrusive::Links::new(),
         }
     }
@@ -478,7 +448,7 @@ impl Cache {
         };
 
         match self.senders.entry(key) {
-            hash_map::Entry::Occupied(entry) => {
+            hash_map::Entry::Occupied(mut entry) => {
                 let ctx = entry.get().clone();
                 let cached_key_id = ctx.borrow().current_key_id;
 
@@ -530,25 +500,42 @@ impl Cache {
                     )
                     .map_err(|_| CacheError::ReplayDetected)?;
 
-                // Packet is authentic — replace the stale entry.
+                // Packet is authentic — replace the entry with a fresh context.
+                // Key advancement means the peer abandoned its old sender context
+                // (e.g., idle timeout recreation), so the old PN space is dead.
+                // Transfer flows and queue_view since those are independent of PN space.
                 debug!(
                     %credentials,
                     %remote_sender_id,
                     cached_key_id = cached_key_id.as_u64(),
+                    new_key_id = credentials.key_id.as_u64(),
                     "recv cache key_id advanced — replacing entry"
                 );
 
                 let dest_sender_id = route.sender_id_for_ack(remote_sender_id);
-                let new_ctx = Rc::new(RefCell::new(Context::new(
+                let mut new_ctx_inner = Context::new(
                     path_entry,
                     remote_sender_id,
                     dest_sender_id,
                     opener,
                     credentials.key_id,
                     clock.now(),
-                )));
+                );
+
+                {
+                    let mut old = ctx.borrow_mut();
+                    let id = *old.path_entry.id();
+                    new_ctx_inner.flows = core::mem::replace(
+                        &mut old.flows,
+                        flow::Tracker::new(id),
+                    );
+                    core::mem::swap(&mut new_ctx_inner.queue_view, &mut old.queue_view);
+                }
+
+                let new_ctx = Rc::new(RefCell::new(new_ctx_inner));
                 new_ctx.borrow().invariants();
-                *entry.into_mut() = new_ctx.clone();
+                entry.insert(new_ctx.clone());
+
                 Ok((r, new_ctx, false))
             }
             hash_map::Entry::Vacant(entry) => {
@@ -613,179 +600,4 @@ impl Cache {
 crate::context_wheel_adapter!(IdleWheelAdapter, Context, idle_wheel);
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use bolero::check;
-    use std::collections::VecDeque;
-
-    fn v(n: u64) -> VarInt {
-        VarInt::new(n).unwrap()
-    }
-
-    /// Oracle implementation using a VecDeque with the same capacity semantics.
-    struct Oracle {
-        seen: VecDeque<u64>,
-        right_edge: Option<u64>,
-    }
-
-    impl Oracle {
-        fn new() -> Self {
-            Self {
-                seen: VecDeque::new(),
-                right_edge: None,
-            }
-        }
-
-        fn check(&mut self, id: u64) -> Result<(), AttemptDedupError> {
-            let Some(edge) = self.right_edge else {
-                self.right_edge = Some(id);
-                self.seen.push_back(id);
-                return Ok(());
-            };
-
-            if id > edge {
-                self.right_edge = Some(id);
-            }
-
-            // Evict entries that are now too old
-            let new_edge = self.right_edge.unwrap();
-            while let Some(&oldest) = self.seen.front() {
-                if new_edge - oldest >= AttemptDedup::CAPACITY {
-                    self.seen.pop_front();
-                } else {
-                    break;
-                }
-            }
-
-            if new_edge - id >= AttemptDedup::CAPACITY {
-                return Err(AttemptDedupError::TooOld);
-            }
-
-            if self.seen.contains(&id) {
-                return Err(AttemptDedupError::Duplicate);
-            }
-
-            self.seen.push_back(id);
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn first_insert_succeeds() {
-        let mut dedup = AttemptDedup::new();
-        assert!(dedup.check_attempt_id(v(0)).is_ok());
-    }
-
-    #[test]
-    fn duplicate_right_edge() {
-        let mut dedup = AttemptDedup::new();
-        assert!(dedup.check_attempt_id(v(5)).is_ok());
-        assert_eq!(
-            dedup.check_attempt_id(v(5)).unwrap_err(),
-            AttemptDedupError::Duplicate
-        );
-    }
-
-    #[test]
-    fn duplicate_within_window() {
-        let mut dedup = AttemptDedup::new();
-        assert!(dedup.check_attempt_id(v(10)).is_ok());
-        assert!(dedup.check_attempt_id(v(8)).is_ok());
-        assert_eq!(
-            dedup.check_attempt_id(v(8)).unwrap_err(),
-            AttemptDedupError::Duplicate
-        );
-    }
-
-    #[test]
-    fn too_old() {
-        let mut dedup = AttemptDedup::new();
-        assert!(dedup
-            .check_attempt_id(v(AttemptDedup::CAPACITY + 10))
-            .is_ok());
-        assert_eq!(
-            dedup.check_attempt_id(v(0)).unwrap_err(),
-            AttemptDedupError::TooOld
-        );
-    }
-
-    #[test]
-    fn advance_clears_old_bits() {
-        let mut dedup = AttemptDedup::new();
-        assert!(dedup.check_attempt_id(v(5)).is_ok());
-        assert!(dedup.check_attempt_id(v(3)).is_ok());
-
-        assert!(dedup
-            .check_attempt_id(v(5 + AttemptDedup::CAPACITY + 1))
-            .is_ok());
-
-        assert_eq!(
-            dedup.check_attempt_id(v(3)).unwrap_err(),
-            AttemptDedupError::TooOld
-        );
-        assert_eq!(
-            dedup.check_attempt_id(v(5)).unwrap_err(),
-            AttemptDedupError::TooOld
-        );
-    }
-
-    #[test]
-    fn advance_clears_reused_positions() {
-        let mut dedup = AttemptDedup::new();
-        assert!(dedup.check_attempt_id(v(0)).is_ok());
-        assert!(dedup.check_attempt_id(v(1)).is_ok());
-
-        let wrap = AttemptDedup::CAPACITY;
-        assert!(dedup.check_attempt_id(v(1 + wrap)).is_ok());
-        assert!(dedup.check_attempt_id(v(wrap)).is_ok());
-    }
-
-    #[test]
-    fn sequential_inserts() {
-        let mut dedup = AttemptDedup::new();
-        for i in 0..AttemptDedup::CAPACITY * 3 {
-            assert!(dedup.check_attempt_id(v(i)).is_ok(), "failed at {i}");
-        }
-    }
-
-    #[test]
-    fn out_of_order_within_window() {
-        let mut dedup = AttemptDedup::new();
-        assert!(dedup.check_attempt_id(v(100)).is_ok());
-        assert!(dedup.check_attempt_id(v(50)).is_ok());
-        assert!(dedup.check_attempt_id(v(75)).is_ok());
-        assert!(dedup.check_attempt_id(v(99)).is_ok());
-
-        assert_eq!(
-            dedup.check_attempt_id(v(50)).unwrap_err(),
-            AttemptDedupError::Duplicate
-        );
-        assert_eq!(
-            dedup.check_attempt_id(v(100)).unwrap_err(),
-            AttemptDedupError::Duplicate
-        );
-    }
-
-    #[test]
-    fn fuzz_matches_oracle() {
-        check!().with_type::<Vec<u16>>().for_each(|ops| {
-            let mut dedup = AttemptDedup::new();
-            let mut oracle = Oracle::new();
-
-            for &id in ops.iter() {
-                let id = id as u64;
-                let actual = dedup.check_attempt_id(v(id));
-                let expected = oracle.check(id);
-
-                assert_eq!(
-                    actual.is_ok(),
-                    expected.is_ok(),
-                    "mismatch at id={id}: actual={actual:?} expected={expected:?}"
-                );
-                if let (Err(a), Err(e)) = (&actual, &expected) {
-                    assert_eq!(a, e, "error kind mismatch at id={id}");
-                }
-            }
-        });
-    }
-}
+mod tests {}

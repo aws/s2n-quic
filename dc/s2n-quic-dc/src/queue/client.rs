@@ -21,11 +21,17 @@ use super::{
     page_table::{PageTable, SenderView},
     Error,
 };
-use crate::{bitset, endpoint::msg, intrusive, sync};
+use crate::{bitset, endpoint::msg, intrusive, path::secret::map::Entry, sync};
+use core::time::Duration;
 use s2n_quic_core::varint::VarInt;
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, Mutex,
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
+    task::{Context, Poll, Waker},
 };
 
 // ── ClientFreeList ───────────────────────────────────────────────────────────
@@ -81,6 +87,8 @@ impl ClientFreeList {
         debug_assert!(newly_inserted, "double-free of slot {index}");
     }
 
+    // TODO: path secret entry should call close on the queues when removed from the map
+    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) fn close(&mut self) {
         self.closed = true;
     }
@@ -115,92 +123,109 @@ impl ClientState {
         let id = self.next_binding.fetch_add(1, Ordering::Relaxed);
         VarInt::new(id).expect("binding_id overflow")
     }
-}
 
-// ── ClientAllocator ─────────────────────────────────────────────────────────
-
-/// Allocates local queue slots and peer `dest_queue_id`s for client streams.
-///
-/// Each `ClientAllocator` has its own `SenderView`, so repeated calls to
-/// `try_alloc` amortise the page-table `RwLock` acquisition — the view is
-/// only refreshed on page growth.
-pub struct ClientAllocator {
-    state: Arc<ClientState>,
-    view: SenderView,
-}
-
-impl Clone for ClientAllocator {
-    fn clone(&self) -> Self {
-        Self {
-            state: self.state.clone(),
-            view: SenderView::new(),
-        }
-    }
-}
-
-impl ClientAllocator {
-    pub fn new(state: Arc<ClientState>) -> Self {
-        Self {
-            state,
-            view: SenderView::new(),
+    /// Allocate a queue slot, waiting for a peer-side free ID if needed.
+    ///
+    /// Returns `None` if the peer is dead (free list closed or entry in cooldown).
+    /// Checks `entry.is_dead_during_cooldown` on each poll so that a peer-dead
+    /// broadcast's `wake_all` causes blocked callers to bail promptly.
+    pub fn alloc<'a>(
+        self: &'a Arc<Self>,
+        entry: &'a Entry,
+        cooldown: Duration,
+    ) -> ClientAllocFuture<'a> {
+        ClientAllocFuture {
+            state: self,
+            entry,
+            cooldown,
+            waiter: None,
         }
     }
 
-    pub fn try_alloc(&mut self) -> Option<AllocResult> {
-        let dest_queue_id = self.state.peer_free.try_alloc()?;
-        self.alloc_local(dest_queue_id).ok()
+    /// Push Reset into all allocated slots and wake blocked alloc waiters.
+    ///
+    /// Does NOT permanently close the slots — this is a transient peer-dead
+    /// notification.  After cooldown expires, new alloc() calls proceed normally.
+    pub fn broadcast_reset(&self, error_code: VarInt, waker_sink: &mut impl FnMut(AutoWake)) {
+        let mut view = SenderView::new();
+        view.for_each_slot(&self.pages, |slot| {
+            let (sw, cw) = slot.broadcast_reset(error_code);
+            waker_sink(sw);
+            waker_sink(cw);
+        });
+        self.peer_free
+            .wake_all(&mut |w| waker_sink(AutoWake::new(Some(w))));
     }
 
-    pub fn close(&self) {
-        self.state.free.lock().unwrap().close();
-    }
-
-    /// Build a `ClientDispatch` backed by the same state.
-    pub fn dispatcher(&self) -> ClientDispatch {
-        ClientDispatch {
-            state: self.state.clone(),
-            view: SenderView::new(),
-        }
-    }
-
-    fn alloc_local(&mut self, dest_queue_id: VarInt) -> Result<AllocResult, Error<()>> {
+    pub(crate) fn alloc_local(self: &Arc<Self>, dest_queue_id: VarInt) -> Option<AllocResult> {
         let index = {
-            let mut free = self.state.free.lock().unwrap();
-            match free.pop() {
-                Some(idx) => idx,
-                None => return Err(Error::SenderClosed),
-            }
+            let mut free = self.free.lock().unwrap();
+            free.pop()?
         };
 
-        if index >= self.view.total_slots() {
-            self.view.grow_to_fit(index, &self.state.pages);
-        }
+        self.pages.grow_to_fit(index);
 
-        let slot_ref = self
-            .view
-            .get(index, &self.state.pages)
+        let mut view = SenderView::new();
+        view.grow_to_fit(index, &self.pages);
+        let slot_ref = view
+            .get(index, &self.pages)
             .expect("slot index out of range after grow");
 
-        let binding_id = self.state.next_binding_id();
-
+        let binding_id = self.next_binding_id();
         if slot_ref.allocate_and_open(binding_id).is_err() {
-            self.state.free.lock().unwrap().push_freed(index);
-            return Err(Error::SenderClosed);
+            let mut free = self.free.lock().unwrap();
+            free.push_freed(index);
+            return None;
         }
 
         let slot_ptr = slot_ref.as_ptr();
         let local_queue_id = VarInt::new(index as u64).expect("slot index exceeds VarInt range");
         let on_free = OnFree::Client {
-            state: self.state.clone(),
+            state: self.clone(),
         };
 
-        Ok(AllocResult {
+        Some(AllocResult {
             stream: StreamReceiver::new(slot_ptr, on_free.clone()),
             control: ControlReceiver::new(slot_ptr, on_free),
             local_queue_id,
             dest_queue_id,
             binding_id,
         })
+    }
+}
+
+// ── ClientAllocFuture ───────────────────────────────────────────────────────
+
+pub struct ClientAllocFuture<'a> {
+    state: &'a Arc<ClientState>,
+    entry: &'a Entry,
+    cooldown: Duration,
+    waiter: Option<Arc<sync::waiter::Waiter>>,
+}
+
+impl Future for ClientAllocFuture<'_> {
+    type Output = Option<AllocResult>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let this = self.get_mut();
+
+        // Reads the clock — bach-aware in test contexts.
+        let now = crate::time::precision::Timestamp::from(crate::time::now());
+        if this.entry.is_dead_during_cooldown(now, this.cooldown) {
+            return Poll::Ready(None);
+        }
+
+        match this.state.peer_free.poll_alloc(&mut this.waiter, cx) {
+            Poll::Ready(Some(dest_queue_id)) => Poll::Ready(this.state.alloc_local(dest_queue_id)),
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+impl Drop for ClientAllocFuture<'_> {
+    fn drop(&mut self) {
+        self.state.peer_free.cancel_waiter(&mut self.waiter);
     }
 }
 
@@ -216,6 +241,13 @@ pub struct ClientDispatch {
 }
 
 impl ClientDispatch {
+    pub fn new(state: Arc<ClientState>) -> Self {
+        Self {
+            state,
+            view: SenderView::new(),
+        }
+    }
+
     #[inline]
     pub fn send_stream(
         &mut self,
@@ -244,6 +276,20 @@ impl ClientDispatch {
         slot.push_control(binding_id, entry)
     }
 
+    /// Process a received QueueFree frame, returning freed queue_ids to the peer_free list.
+    pub fn free(
+        &self,
+        free_request_id: VarInt,
+        queue_ids: impl Iterator<
+            Item = Result<core::ops::RangeInclusive<VarInt>, s2n_codec::DecoderError>,
+        >,
+        waker_sink: &mut impl FnMut(Waker),
+    ) -> crate::sync::free_list::FreeResult {
+        self.state
+            .peer_free
+            .free(free_request_id, queue_ids, waker_sink)
+    }
+
     /// Broadcast-close all currently allocated slots.
     ///
     /// Called when the path secret entry is evicted.  `AutoWake` tokens are
@@ -268,9 +314,13 @@ mod tests {
         VarInt::new(n).unwrap()
     }
 
-    fn test_allocator(max_queues: u64) -> ClientAllocator {
-        let state = Arc::new(ClientState::new(VarInt::new(max_queues).unwrap()));
-        ClientAllocator::new(state)
+    fn test_state(max_queues: u64) -> Arc<ClientState> {
+        Arc::new(ClientState::new(VarInt::new(max_queues).unwrap()))
+    }
+
+    fn try_alloc(state: &Arc<ClientState>) -> Option<AllocResult> {
+        let dest_queue_id = state.peer_free.try_alloc()?;
+        state.alloc_local(dest_queue_id)
     }
 
     // ── ClientFreeList ──────────────────────────────────────────────────────
@@ -299,13 +349,13 @@ mod tests {
         assert_eq!(fl.pop(), None);
     }
 
-    // ── ClientAllocator ─────────────────────────────────────────────────────
+    // ── ClientState alloc ──────────────────────────────────────────────────
 
     #[test]
     fn alloc_returns_sequential_ids() {
-        let mut alloc = test_allocator(100);
-        let r1 = alloc.try_alloc().unwrap();
-        let r2 = alloc.try_alloc().unwrap();
+        let state = test_state(100);
+        let r1 = try_alloc(&state).unwrap();
+        let r2 = try_alloc(&state).unwrap();
         assert_eq!(r1.local_queue_id, v(0));
         assert_eq!(r2.local_queue_id, v(1));
         assert_ne!(r1.binding_id, r2.binding_id);
@@ -313,29 +363,32 @@ mod tests {
 
     #[test]
     fn alloc_respects_peer_free_cap() {
-        let mut alloc = test_allocator(2);
-        assert!(alloc.try_alloc().is_some());
-        assert!(alloc.try_alloc().is_some());
-        assert!(alloc.try_alloc().is_none());
+        let state = test_state(2);
+        assert!(try_alloc(&state).is_some());
+        assert!(try_alloc(&state).is_some());
+        assert!(try_alloc(&state).is_none());
     }
 
     #[test]
     fn close_prevents_further_alloc() {
-        let mut alloc = test_allocator(100);
-        alloc.close();
-        assert!(alloc.try_alloc().is_none());
+        let state = test_state(100);
+        state.free.lock().unwrap().close();
+        assert!(try_alloc(&state).is_none());
     }
 
     // ── ClientDispatch ──────────────────────────────────────────────────────
 
     #[test]
     fn dispatch_to_allocated_slot() {
-        let mut alloc = test_allocator(10);
-        let result = alloc.try_alloc().unwrap();
-        let mut dispatch = alloc.dispatcher();
+        let state = test_state(10);
+        let result = try_alloc(&state).unwrap();
+        let mut dispatch = ClientDispatch::new(state);
 
-        let wake =
-            dispatch.send_stream(result.local_queue_id, result.binding_id, make_stream_entry());
+        let wake = dispatch.send_stream(
+            result.local_queue_id,
+            result.binding_id,
+            make_stream_entry(),
+        );
         assert!(wake.is_ok());
 
         drop(result);
@@ -343,17 +396,17 @@ mod tests {
 
     #[test]
     fn dispatch_to_unallocated_slot() {
-        let alloc = test_allocator(10);
-        let mut dispatch = alloc.dispatcher();
+        let state = test_state(10);
+        let mut dispatch = ClientDispatch::new(state);
         let result = dispatch.send_stream(v(99), v(1), make_stream_entry());
         assert!(matches!(result, Err(Error::Unallocated(_))));
     }
 
     #[test]
     fn dispatch_stale_binding() {
-        let mut alloc = test_allocator(10);
-        let result = alloc.try_alloc().unwrap();
-        let mut dispatch = alloc.dispatcher();
+        let state = test_state(10);
+        let result = try_alloc(&state).unwrap();
+        let mut dispatch = ClientDispatch::new(state);
 
         let wrong_binding = VarInt::new(result.binding_id.as_u64() + 99).unwrap();
         let err = dispatch.send_stream(result.local_queue_id, wrong_binding, make_stream_entry());

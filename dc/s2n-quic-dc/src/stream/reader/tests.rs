@@ -26,7 +26,7 @@
 use super::{error, msg, write_data_reader, ReadToEnd, Reader};
 use crate::{
     endpoint::frame::{self, Frame, Header, PriorityStorage, SubmissionReceiver},
-    flow, intrusive,
+    intrusive,
     packet::datagram::ResetTarget,
     path::secret::map::Entry as PathSecretEntry,
     testing::{ext::*, sim},
@@ -42,86 +42,33 @@ use std::{net::SocketAddr, time::Duration};
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
-struct PairBuilder {
-    ep_type: endpoint::Type,
-    peer_fin_received: bool,
-}
-
-impl Default for PairBuilder {
-    fn default() -> Self {
-        Self {
-            ep_type: endpoint::Type::Client,
-            peer_fin_received: false,
-        }
-    }
-}
-
-impl PairBuilder {
-    fn server() -> Self {
-        Self {
-            ep_type: endpoint::Type::Server,
-            ..Default::default()
-        }
-    }
-
-    fn peer_fin_received(mut self, value: bool) -> Self {
-        self.peer_fin_received = value;
-        self
-    }
-
-    fn build(self) -> (Reader, Pusher) {
-        let binding_id = VarInt::from_u8(1);
-        let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
-        let path_secret_entry = PathSecretEntry::builder(peer)
-            .endpoint_type(self.ep_type)
-            .build();
-
-        let allocator = msg::queue::Allocator::new();
-        let dispatcher = allocator.dispatcher();
-        let handle = flow::Handle::client(binding_id, path_secret_entry.clone());
-        let (_control, stream_rx) = dispatcher
-            .alloc(handle, Some(VarInt::from_u8(2)))
-            .expect("queue alloc should succeed");
-
-        let queue_id = stream_rx.queue_id();
-        let request = flow::Request {
-            credential_id: *path_secret_entry.id(),
-            binding_id: Some(binding_id),
-        };
-
-        let (frame_tx, frame_rx) = frame::submission_channel(1);
-
-        let reader = match self.ep_type {
-            endpoint::Type::Client => {
-                Reader::new_client(frame_tx, path_secret_entry, binding_id, stream_rx)
-            }
-            endpoint::Type::Server => Reader::new_server_pending(
-                frame_tx,
-                path_secret_entry,
-                binding_id,
-                stream_rx,
-                self.peer_fin_received,
-            ),
-        };
-
-        let pusher = Pusher {
-            dispatcher,
-            queue_id,
-            request,
-            frame_rx,
-            frame_storage: PriorityStorage::default(),
-        };
-
-        (reader, pusher)
-    }
-}
-
 fn make_pair() -> (Reader, Pusher) {
-    PairBuilder::default().build()
-}
+    let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
+    let path_secret_entry = PathSecretEntry::builder(peer)
+        .endpoint_type(endpoint::Type::Client)
+        .build();
 
-fn make_server_pair() -> (Reader, Pusher) {
-    PairBuilder::server().build()
+    let client_state = std::sync::Arc::new(crate::queue::ClientState::new(VarInt::from_u16(100)));
+    let dest_queue_id = client_state.peer_free.try_alloc().unwrap();
+    let alloc = client_state.alloc_local(dest_queue_id).unwrap();
+    let dispatcher = crate::queue::ClientDispatch::new(client_state);
+
+    let queue_id = alloc.stream.queue_id();
+    let binding_id = alloc.stream.binding_id();
+
+    let (frame_tx, frame_rx) = frame::submission_channel(1);
+
+    let reader = Reader::new_client(frame_tx, path_secret_entry, dest_queue_id, alloc.stream);
+
+    let pusher = Pusher {
+        dispatcher,
+        queue_id,
+        binding_id,
+        frame_rx,
+        frame_storage: PriorityStorage::default(),
+    };
+
+    (reader, pusher)
 }
 
 #[test]
@@ -138,9 +85,9 @@ fn peer_addr_returns_handshake_addr() {
 /// waits for [`Frame`]s that the Reader submitted (e.g. `MAX_DATA`,
 /// `STOP_SENDING`).
 struct Pusher {
-    dispatcher: msg::queue::Dispatcher,
+    dispatcher: crate::queue::ClientDispatch,
     queue_id: VarInt,
-    request: flow::Request,
+    binding_id: VarInt,
     /// Outbound frames submitted by the Reader (MAX_DATA, STOP_SENDING, …).
     frame_rx: SubmissionReceiver,
     /// Reusable priority-storage buffer; avoids re-allocating the fixed-size
@@ -150,15 +97,11 @@ struct Pusher {
 
 impl Pusher {
     fn push(&mut self, message: msg::Stream) {
-        // `send_stream` returns an `AutoWake` that fires the registered waker
-        // on drop.  Binding to `_` drops it immediately, waking a waiting
-        // Reader task right away.
         let _ = self
             .dispatcher
             .send_stream(
                 self.queue_id,
-                None,
-                &self.request,
+                self.binding_id,
                 intrusive::Entry::new(message),
             )
             .unwrap_or_else(|_| panic!("send_stream should succeed in tests"));
@@ -174,10 +117,6 @@ impl Pusher {
 
     fn push_reset(&mut self, error_code: VarInt) {
         self.push(msg::Stream::Reset { error_code });
-    }
-
-    fn push_queue_validated(&mut self) {
-        self.push(msg::Stream::QueueValidated);
     }
 
     /// Asynchronously wait for frames submitted by the Reader.
@@ -798,576 +737,6 @@ fn client_fin_observed_before_gap_fill_does_not_send_max_data() {
     });
 }
 
-/// A server-side stream starts in `PendingValidation`; calling `read_into`
-/// before `validate` returns an `InvalidInput` error.
-#[test]
-fn server_read_before_validate_fails() {
-    sim(|| {
-        let (mut reader, mut pusher) = make_server_pair();
-
-        async move {
-            pusher.push_data(0, b"hello", true);
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            let mut buf = BytesMut::with_capacity(16);
-            let err = reader
-                .read_into(&mut buf)
-                .await
-                .expect_err("expected error before validation");
-            assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// A server-side stream becomes readable once `QueueValidated` is received.
-#[test]
-fn server_validates_then_reads() {
-    sim(|| {
-        let (mut reader, mut pusher) = make_server_pair();
-        let expected_max_data = VarInt::new(reader.0.window_size + 5).unwrap();
-
-        async move {
-            pusher.push_queue_validated();
-            // Encourage task interleaving so validation/read processing can run
-            // before we assert on emitted flow-control frames.
-            bach::task::yield_now().await;
-            pusher.push_data(0, b"hello", true);
-            bach::task::yield_now().await;
-            let frames = pusher
-                .recv_frames_timeout(1.s())
-                .await
-                .expect("expected server flow update after validating/reading");
-            assert_eq!(frames.len(), 1, "expected exactly one outbound frame");
-            assert_eq!(
-                frames.front().and_then(decode_max_data_from_queue_control),
-                Some(expected_max_data),
-                "expected exactly one MAX_DATA frame with the computed limit"
-            );
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            reader.validate().await.expect("validate failed");
-            let mut buf = BytesMut::with_capacity(16);
-            let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete(5));
-            assert_eq!(&buf[..], b"hello");
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// When early data arrives before QueueValidated (as happens with AcceptedWithRetry),
-/// the reader must still emit MAX_DATA after validate() + read() — even though
-/// poll_stream_rx returns Pending on the read call (channel already drained by validate).
-#[test]
-fn server_early_data_before_validated_sends_max_data() {
-    sim(|| {
-        let (mut reader, mut pusher) = make_server_pair();
-        let expected_max_data = VarInt::new(reader.0.window_size + 5).unwrap();
-
-        async move {
-            // Push early data FIRST (mimics QueueInit payload arriving before validation)
-            pusher.push_data(0, b"hello", true);
-            bach::task::yield_now().await;
-            // Then QueueValidated arrives (after the validation round-trip)
-            pusher.push_queue_validated();
-            bach::task::yield_now().await;
-
-            let frames = pusher
-                .recv_frames_timeout(1.s())
-                .await
-                .expect("expected MAX_DATA after reading early data");
-            assert_eq!(frames.len(), 1);
-            assert_eq!(
-                frames.front().and_then(decode_max_data_from_queue_control),
-                Some(expected_max_data),
-            );
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            reader.validate().await.expect("validate failed");
-            let mut buf = BytesMut::with_capacity(16);
-            let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete(5));
-            assert_eq!(&buf[..], b"hello");
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// When the server receives a complete request in the init (init+FIN), it must
-/// NOT send MAX_DATA frames — the peer's writer is already closed and no one
-/// would consume the credits.
-#[test]
-fn server_init_with_fin_suppresses_max_data() {
-    sim(|| {
-        let (mut reader, mut pusher) = PairBuilder::server().peer_fin_received(true).build();
-
-        async move {
-            pusher.push_queue_validated();
-            bach::task::yield_now().await;
-            pusher.push_data(0, b"hello", true);
-            bach::task::yield_now().await;
-            let frames = pusher.recv_frames_timeout(1.s()).await;
-            assert!(
-                frames.is_none(),
-                "server should not send MAX_DATA when peer already sent FIN in init"
-            );
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            reader.validate().await.expect("validate failed");
-            let mut buf = BytesMut::with_capacity(16);
-            let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete(5));
-            assert_eq!(&buf[..], b"hello");
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// Same as above but with a larger payload that would normally cross the
-/// flow control replenishment threshold.
-#[test]
-fn server_init_with_fin_suppresses_max_data_large_payload() {
-    sim(|| {
-        let (mut reader, mut pusher) = PairBuilder::server().peer_fin_received(true).build();
-        let window_size = reader.0.window_size;
-        let payload = vec![0xabu8; (window_size / 2 + 1) as usize];
-
-        let payload_clone = payload.clone();
-        async move {
-            pusher.push_queue_validated();
-            bach::task::yield_now().await;
-            pusher.push_data(0, &payload_clone, true);
-            bach::task::yield_now().await;
-            let frames = pusher.recv_frames_timeout(1.s()).await;
-            assert!(
-                frames.is_none(),
-                "server should suppress MAX_DATA even when payload crosses threshold, \
-                 because peer FIN was received in init"
-            );
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            reader.validate().await.expect("validate failed");
-            let mut buf = BytesMut::with_capacity(payload.len() + 16);
-            let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete(payload.len()));
-            assert_eq!(buf.len(), payload.len());
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// Reset arrives while `validate()` is in-flight and early data is already buffered.
-/// The application must be able to drain buffered data after validate fails with
-/// ConnectionReset (TCP receive-buffer semantics: data before RST is readable).
-#[test]
-fn server_reset_during_validate_with_buffered_data() {
-    sim(|| {
-        let (mut reader, mut pusher) = make_server_pair();
-
-        async move {
-            // Early data arrives first (buffered in reassembler during PendingValidation)
-            pusher.push_data(0, b"buffered", false);
-            bach::task::yield_now().await;
-            // Reset arrives in subsequent batch
-            pusher.push_reset(VarInt::from_u8(99));
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            // validate() should fail with ConnectionReset
-            let err = reader
-                .validate()
-                .await
-                .expect_err("expected ConnectionReset from validate");
-            assert_eq!(err.kind(), std::io::ErrorKind::ConnectionReset);
-            assert!(reader.0.status.is_reset());
-
-            // Despite validate failing, buffered data should be drainable
-            let mut buf = BytesMut::with_capacity(32);
-            let n = reader
-                .read_into(&mut buf)
-                .await
-                .expect("buffered data should be readable after reset");
-            assert_eq!(n, 8);
-            assert_eq!(&buf[..], b"buffered");
-
-            // After drain, sticky ConnectionReset
-            let err2 = reader
-                .read_into(&mut buf)
-                .await
-                .expect_err("expected sticky ConnectionReset");
-            assert_eq!(err2.kind(), std::io::ErrorKind::ConnectionReset);
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// Calling `send_reset()` on a PendingValidation reader transitions to Reset.
-/// A subsequent `validate()` call returns `Ok(())` because the early-return at
-/// line 354 fires (`!is_pending_validation()`). The application must attempt a
-/// read to discover the reset error.
-#[test]
-fn server_validate_returns_ok_after_external_reset() {
-    sim(|| {
-        let (mut reader, mut pusher) = make_server_pair();
-
-        async move {
-            let frames = pusher.recv_frames().await;
-            assert_eq!(frames.len(), 1);
-            assert!(
-                matches!(
-                    frames.front().unwrap().header,
-                    Header::QueueReset {
-                        reset_target: ResetTarget::Both,
-                        error_code,
-                        ..
-                    } if error_code == VarInt::from_u8(77)
-                ),
-                "expected QueueReset(Both) from send_reset"
-            );
-            // No STOP_SENDING on drop since status is already Reset
-            let extra = pusher.recv_frames_timeout(1.s()).await;
-            assert!(extra.is_none(), "no additional frames expected on drop");
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            // Application rejects the stream before validation completes
-            reader.send_reset(VarInt::from_u8(77));
-            assert!(reader.0.status.is_reset());
-
-            // validate() returns Ok despite the stream being dead
-            reader
-                .validate()
-                .await
-                .expect("validate returns Ok for non-pending status");
-
-            // read_into reveals the actual error
-            let mut buf = BytesMut::with_capacity(16);
-            let err = reader
-                .read_into(&mut buf)
-                .await
-                .expect_err("expected ConnectionReset");
-            assert_eq!(err.kind(), std::io::ErrorKind::ConnectionReset);
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// QueueValidated and Data arrive in the same queue batch. The `interpose` flag
-/// is captured once as `false` (PendingValidation at start of poll_stream_rx),
-/// so data goes into the reassembler even though status transitions to Open
-/// mid-batch. Subsequent read_into must drain and emit MAX_DATA.
-#[test]
-fn server_queue_validated_and_data_same_batch() {
-    sim(|| {
-        let (mut reader, mut pusher) = make_server_pair();
-        let expected_max_data = VarInt::new(reader.0.window_size + 5).unwrap();
-
-        async move {
-            // Same batch: no yield between pushes
-            pusher.push_queue_validated();
-            pusher.push_data(0, b"hello", true);
-            bach::task::yield_now().await;
-
-            let frames = pusher
-                .recv_frames_timeout(1.s())
-                .await
-                .expect("expected MAX_DATA after same-batch validate+data");
-            assert_eq!(frames.len(), 1);
-            assert_eq!(
-                frames.front().and_then(decode_max_data_from_queue_control),
-                Some(expected_max_data),
-            );
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            reader.validate().await.expect("validate failed");
-            let mut buf = BytesMut::with_capacity(16);
-            let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete(5));
-            assert_eq!(&buf[..], b"hello");
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// Reset arrives before QueueValidated in the same batch. The Reset causes
-/// poll_stream_rx to return immediately, so QueueValidated is never processed.
-/// Status goes directly PendingValidation → Reset.
-#[test]
-fn server_reset_before_queue_validated_same_batch() {
-    sim(|| {
-        let (mut reader, mut pusher) = make_server_pair();
-
-        async move {
-            // Reset first, then QueueValidated in same batch
-            pusher.push_reset(VarInt::from_u8(5));
-            pusher.push_queue_validated();
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            let err = reader
-                .validate()
-                .await
-                .expect_err("expected ConnectionReset");
-            assert_eq!(err.kind(), std::io::ErrorKind::ConnectionReset);
-            assert!(reader.0.status.is_reset());
-
-            // Subsequent read also errors
-            let mut buf = BytesMut::with_capacity(16);
-            let err2 = reader
-                .read_into(&mut buf)
-                .await
-                .expect_err("expected ConnectionReset on read");
-            assert_eq!(err2.kind(), std::io::ErrorKind::ConnectionReset);
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// QueueValidated arrives before Reset in the same batch. QueueValidated
-/// transitions to Open, then Reset transitions Open → Reset. End state is
-/// the same as the reversed ordering (test above).
-#[test]
-fn server_queue_validated_then_reset_same_batch() {
-    sim(|| {
-        let (mut reader, mut pusher) = make_server_pair();
-
-        async move {
-            // QueueValidated first, then Reset in same batch
-            pusher.push_queue_validated();
-            pusher.push_reset(VarInt::from_u8(5));
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            let err = reader
-                .validate()
-                .await
-                .expect_err("expected ConnectionReset");
-            assert_eq!(err.kind(), std::io::ErrorKind::ConnectionReset);
-            assert!(reader.0.status.is_reset());
-
-            // Same end state as reset-before-validated
-            let mut buf = BytesMut::with_capacity(16);
-            let err2 = reader
-                .read_into(&mut buf)
-                .await
-                .expect_err("expected ConnectionReset on read");
-            assert_eq!(err2.kind(), std::io::ErrorKind::ConnectionReset);
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// Endpoint dies (dispatcher drops) while validate() is pending. The reader
-/// surfaces BrokenPipe. Status remains PendingValidation since channel closure
-/// doesn't trigger a state transition.
-#[test]
-fn server_channel_closed_during_validate() {
-    sim(|| {
-        let (mut reader, pusher) = make_server_pair();
-
-        async move {
-            // Drop the dispatcher to close the stream channel
-            drop(pusher);
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            let err = reader
-                .validate()
-                .await
-                .expect_err("expected BrokenPipe when channel closes");
-            assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// Multiple out-of-order chunks arrive before QueueValidated. After validation,
-/// reassembly produces the correct ordered stream and MAX_DATA reflects total
-/// consumed bytes.
-#[test]
-fn server_out_of_order_early_data_before_validated() {
-    sim(|| {
-        let (mut reader, mut pusher) = make_server_pair();
-        let expected_max_data = VarInt::new(reader.0.window_size + 11).unwrap();
-
-        async move {
-            // Out-of-order: middle, head, tail+FIN
-            pusher.push_data(5, b"world", false);
-            pusher.push_data(0, b"hello", false);
-            pusher.push_data(10, b"!", true);
-            bach::task::yield_now().await;
-            pusher.push_queue_validated();
-            bach::task::yield_now().await;
-
-            let frames = pusher
-                .recv_frames_timeout(1.s())
-                .await
-                .expect("expected MAX_DATA after reading out-of-order early data");
-            assert_eq!(
-                frames.front().and_then(decode_max_data_from_queue_control),
-                Some(expected_max_data),
-            );
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            reader.validate().await.expect("validate failed");
-            let mut buf = BytesMut::with_capacity(32);
-            let outcome = reader.read_to_end(&mut buf).await.expect("read failed");
-            assert_eq!(outcome, ReadToEnd::Complete(11));
-            assert_eq!(&buf[..], b"helloworld!");
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// Dropping a reader that was never validated (still PendingValidation) emits
-/// STOP_SENDING so the peer knows to stop sending data for this stream.
-#[test]
-fn server_drop_during_pending_validation_sends_stop_sending() {
-    sim(|| {
-        let (reader, mut pusher) = make_server_pair();
-
-        async move {
-            let frames = pusher.recv_frames().await;
-            assert_eq!(frames.len(), 1);
-            assert!(
-                matches!(
-                    frames.front().unwrap().header,
-                    Header::QueueReset {
-                        reset_target: ResetTarget::Control,
-                        error_code,
-                        ..
-                    } if error_code == error::STOP_SENDING
-                ),
-                "expected STOP_SENDING on drop of never-validated reader"
-            );
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            // Drop without ever calling validate or read
-            drop(reader);
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// Application-initiated rejection: `send_reset` on a PendingValidation reader
-/// emits QueueReset(Both), transitions to Reset, and suppresses further frames
-/// on drop.
-#[test]
-fn server_send_reset_on_pending_reader() {
-    sim(|| {
-        let (mut reader, mut pusher) = make_server_pair();
-
-        async move {
-            let frames = pusher.recv_frames().await;
-            assert_eq!(frames.len(), 1);
-            assert!(
-                matches!(
-                    frames.front().unwrap().header,
-                    Header::QueueReset {
-                        reset_target: ResetTarget::Both,
-                        error_code,
-                        ..
-                    } if error_code == VarInt::from_u8(42)
-                ),
-                "expected QueueReset(Both, 42) from send_reset"
-            );
-            // Drop must NOT emit additional STOP_SENDING (status is already Reset)
-            let extra = pusher.recv_frames_timeout(1.s()).await;
-            assert!(
-                extra.is_none(),
-                "no additional frames after drop of already-reset reader"
-            );
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            reader.send_reset(VarInt::from_u8(42));
-            assert!(reader.0.status.is_reset());
-            assert!(reader.0.reassembler.is_empty());
-            drop(reader);
-        }
-        .primary()
-        .spawn();
-    });
-}
-
-/// Calling validate() twice is idempotent: the second call returns Ok
-/// immediately without polling the channel.
-#[test]
-fn server_validate_idempotent_when_already_open() {
-    sim(|| {
-        let (mut reader, mut pusher) = make_server_pair();
-
-        async move {
-            pusher.push_queue_validated();
-        }
-        .primary()
-        .spawn();
-
-        async move {
-            reader.validate().await.expect("first validate failed");
-            assert!(reader.0.status.is_open());
-            // Second call is a no-op
-            reader
-                .validate()
-                .await
-                .expect("second validate should be Ok");
-            assert!(reader.0.status.is_open());
-        }
-        .primary()
-        .spawn();
-    });
-}
-
 /// Dropping the Reader before a FIN is received must send a `STOP_SENDING`
 /// (QueueReset) frame so the peer knows to stop.
 ///
@@ -1602,14 +971,14 @@ fn broken_frame_channel_is_handled_gracefully() {
         let Pusher {
             dispatcher,
             queue_id,
-            request,
+            binding_id,
             frame_rx: _closed,
             frame_storage,
         } = pusher;
         let mut pusher = Pusher {
             dispatcher,
             queue_id,
-            request,
+            binding_id,
             // Dummy disconnected receiver — not used for assertions in this test.
             frame_rx: frame::submission_channel(1).1,
             frame_storage,

@@ -2,8 +2,7 @@
 source: dc/s2n-quic-dc/src/testing.rs
 expression: logs
 ---
-0:00:00.000000000 [main] DEBUG grow epoch=8
-0:00:00.000000000 [main] DEBUG Writer dropping binding_id=42 status=Open next_offset=5 inflight_bytes=5 remote_max_data=14720
-0:00:00.000000000 [main] DEBUG Sent FIN binding_id=42
+0:00:00.000000000 [main] DEBUG Writer dropping binding_id=1 status=Open next_offset=5 inflight_bytes=5 remote_max_data=14720
+0:00:00.000000000 [main] DEBUG Sent FIN binding_id=1
 0:00:00.000000000 [main] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [main] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs

@@ -557,6 +557,10 @@ pub(crate) struct Context {
     pub queues: [PendingFrames; Priority::LEVELS],
     /// Pending direct ACK submissions from recv dispatch workers.
     pub pending_acks: PendingAcks,
+    /// Pending QueueFree emission token. At most one per peer at any time
+    /// (enforced by FreedInner::in_flight). Consumed by the assembler's
+    /// QueueFree phase.
+    pub pending_freed: Option<crate::intrusive::Entry<crate::stream::endpoint::msg::Sender>>,
     /// Index of this socket in the path secret entry's `sender_load_scores` array.
     ///
     /// Used by `publish_sender_load_score` to write the correct slot so the
@@ -648,6 +652,7 @@ impl Context {
             pto: Pto::default(),
             queues: core::array::from_fn(|_| PendingFrames::new(pending_gauge.clone())),
             pending_acks: PendingAcks::new(ack_gauge),
+            pending_freed: None,
             sender_idx,
             tx_immediate: crate::intrusive::Links::new(),
             tx_wheel: WheelLinks::new(),
@@ -768,7 +773,9 @@ impl Context {
             "probe_state is Requested but nothing to probe with"
         );
 
-        let needs_urgent = self.has_pending_acks() || self.pto.probe_state.is_requested();
+        let needs_urgent = self.has_pending_acks()
+            || self.pending_freed.is_some()
+            || self.pto.probe_state.is_requested();
 
         // Urgent work (ACK to send or PTO probe) always routes to the immediate
         // queue to bypass EDT pacing. This avoids putting ACKs in the "slow lane"
@@ -1093,6 +1100,15 @@ impl Context {
                 });
                 let _ = output.send(frame);
                 drained += 1;
+            }
+        }
+        // Clear pending_freed token — IDs remain in FreedInner.freed (take() hasn't
+        // been called yet). Clear in_flight so future record() calls can resubmit.
+        if self.pending_freed.take().is_some() {
+            if let crate::path::secret::map::entry::QueueState::Server(ref state) =
+                *self.path_secret_entry.queue_state()
+            {
+                state.freed.clear_in_flight();
             }
         }
         (drained, discarded_bytes)

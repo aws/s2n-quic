@@ -13,19 +13,17 @@ use crate::{
     credentials::Credentials,
     endpoint::{
         counters, decode, error,
-        frame::{Frame, Header, PriorityInput, SubmissionSender, DEFAULT_TTL},
+        frame::{Frame, Header, SubmissionSender, DEFAULT_TTL},
         id::LocalSenderId,
-        msg,
-        recv::{self, AttemptDedupError},
-        routing,
+        msg, recv, routing,
     },
-    flow::{self, queue::AutoWake},
     intrusive::Entry,
     packet::{
         self,
         datagram::{QueuePair, ResetTarget, RoutingInfo},
     },
     path::secret::{map::Entry as PathSecretEntry, Map as PathSecretMap},
+    queue::AutoWake,
     socket::{channel, pool::descriptor},
     stream::{PendingValidation, Reader, Stream, Writer},
     tracing::*,
@@ -33,7 +31,7 @@ use crate::{
 use bytes::BytesMut;
 use core::time::Duration;
 use s2n_quic_core::varint::VarInt;
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 pub(crate) enum Error {
     PeerStateLookup {
@@ -73,10 +71,9 @@ pub(crate) fn process<Clk, Route>(
     idle_wheel_tx: &mut impl channel::UnboundedSender<Rc<RefCell<recv::Context>>>,
     path_secret_map: &PathSecretMap,
     acceptor_registry: &mut acceptor::LocalRegistry<PendingValidation>,
-    frame_tx: &SubmissionSender,
-    response_tx: &mut impl channel::UnboundedSender<PriorityInput>,
+    frame_tx: &mut SubmissionSender,
     sender_tx: &mut impl channel::UnboundedSender<Entry<msg::Sender>>,
-    queue_dispatcher: &mut msg::queue::Dispatcher,
+    freed_batch_tx: &mut crate::queue::FreedBatchTx,
     clock: &Clk,
     counters: &counters::Dispatch,
     route: &Route,
@@ -216,8 +213,6 @@ where
 
     let mut payload_storage = decrypted;
 
-    let mut response_frames = PriorityInput::default();
-
     // Multi-frame packet: `app_header_slice` contains the per-frame metadata
     // (Header type tag + optional payload_len VarInt) and `payload_storage`
     // contains the concatenated, decrypted frame payloads.
@@ -257,10 +252,9 @@ where
                     &credentials,
                     acceptor_registry,
                     frame_tx,
-                    queue_dispatcher,
+                    freed_batch_tx,
                     sender_tx,
                     counters,
-                    &mut response_frames,
                     waker_sink,
                 );
             }
@@ -312,7 +306,6 @@ where
         let _ = ack_burst_tx.send(peer_rc);
     }
 
-    let _ = response_tx.send(response_frames);
     Ok(())
 }
 
@@ -331,106 +324,55 @@ fn dispatch_decoded_frame(
     peer: &mut recv::Context,
     credentials: &Credentials,
     acceptor_registry: &mut acceptor::LocalRegistry<PendingValidation>,
-    frame_tx: &SubmissionSender,
-    queue_dispatcher: &mut msg::queue::Dispatcher,
+    frame_tx: &mut SubmissionSender,
+    freed_batch_tx: &mut crate::queue::FreedBatchTx,
     sender_tx: &mut impl channel::UnboundedSender<Entry<msg::Sender>>,
     counters: &counters::Dispatch,
-    response_frames: &mut PriorityInput,
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
     match header {
-        Header::QueueInit {
-            source_queue_id,
-            dest_acceptor_id,
-            attempt_id,
-            binding_id,
-            is_fin,
-        } => {
-            handle_queue_init(
-                peer,
-                credentials,
-                source_sender_id,
-                source_queue_id,
-                dest_acceptor_id,
-                attempt_id,
-                binding_id,
-                is_fin,
-                payload,
-                acceptor_registry,
-                frame_tx,
-                queue_dispatcher,
-                counters,
-                response_frames,
-                waker_sink,
-            );
+        Header::QueueInit { .. } => {
+            todo!("remove QueueInit path")
         }
-        Header::QueueValidateRequest {
-            dest_sender_id,
-            queue_pair,
-            attempt_id,
-            binding_id,
-        } => {
-            handle_queue_validate_request(
-                &peer.path_entry,
-                credentials,
-                dest_sender_id,
-                queue_pair,
-                attempt_id,
-                binding_id,
-                queue_dispatcher,
-                counters,
-                response_frames,
-            );
+        Header::QueueValidateRequest { .. } => {
+            todo!("remove QueueValidateRequest path")
         }
-        Header::QueueInitValidate {
-            queue_pair,
-            attempt_id,
-            binding_id,
-        } => {
-            handle_queue_init_validate(
-                &peer.path_entry,
-                credentials,
-                queue_pair,
-                attempt_id,
-                binding_id,
-                queue_dispatcher,
-                counters,
-                response_frames,
-                waker_sink,
-            );
+        Header::QueueInitValidate { .. } => {
+            todo!("remove QueueInitValidate path")
         }
         Header::QueueData {
             queue_pair,
             binding_id,
             offset,
             is_fin,
-            dest_acceptor_id: _,
+            dest_acceptor_id,
         } => {
-            handle_queue_data(
-                credentials,
-                queue_pair,
-                binding_id,
-                offset,
-                is_fin,
-                payload,
-                queue_dispatcher,
-                counters,
-                waker_sink,
-            );
+            if let Some(acceptor_id) = dest_acceptor_id {
+                handle_queue_data_init(
+                    peer,
+                    queue_pair,
+                    binding_id,
+                    offset,
+                    is_fin,
+                    acceptor_id,
+                    payload,
+                    acceptor_registry,
+                    frame_tx,
+                    freed_batch_tx,
+                    counters,
+                    waker_sink,
+                );
+            } else {
+                handle_queue_data(
+                    peer, queue_pair, binding_id, offset, is_fin, payload, counters, waker_sink,
+                );
+            }
         }
         Header::QueueControl {
             queue_pair,
             binding_id,
         } => {
-            handle_queue_control(
-                credentials,
-                queue_pair,
-                binding_id,
-                payload,
-                queue_dispatcher,
-                counters,
-                waker_sink,
-            );
+            handle_queue_control(peer, queue_pair, binding_id, payload, counters, waker_sink);
         }
         Header::QueueMaxData {
             queue_pair,
@@ -438,11 +380,10 @@ fn dispatch_decoded_frame(
             maximum_data,
         } => {
             handle_queue_max_data(
-                credentials,
+                peer,
                 queue_pair,
                 binding_id,
                 maximum_data,
-                queue_dispatcher,
                 counters,
                 waker_sink,
             );
@@ -455,45 +396,33 @@ fn dispatch_decoded_frame(
             dest_acceptor_id: _,
         } => {
             handle_queue_reset(
-                credentials,
+                peer,
                 dest_queue_id,
                 binding_id,
                 reset_target,
                 error_code,
-                queue_dispatcher,
                 counters,
                 waker_sink,
             );
         }
-        Header::QueueInitReset {
-            attempt_id,
-            binding_id,
-            error_code,
+        Header::QueueInitReset { .. } => {
+            todo!("remove QueueInitReset path")
+        }
+        Header::QueueInitFin { .. } => {
+            todo!("remove QueueInitFin path")
+        }
+        Header::QueueFree {
+            free_request_id,
+            smallest_queue_id,
         } => {
-            handle_queue_init_reset(
+            handle_queue_free(
                 peer,
-                credentials,
-                attempt_id,
-                binding_id,
-                error_code,
-                queue_dispatcher,
+                free_request_id,
+                smallest_queue_id,
+                payload,
                 counters,
                 waker_sink,
             );
-        }
-        Header::QueueInitFin { binding_id, offset } => {
-            handle_queue_init_fin(
-                peer,
-                credentials,
-                binding_id,
-                offset,
-                queue_dispatcher,
-                counters,
-                waker_sink,
-            );
-        }
-        Header::QueueFree { .. } => {
-            // TODO: dispatch to queue free handler
         }
         Header::Ack {
             dest_sender_id,
@@ -519,574 +448,92 @@ fn dispatch_decoded_frame(
     }
 }
 
-fn handle_queue_init(
-    peer: &mut recv::Context,
-    credentials: &Credentials,
-    source_sender_id: VarInt,
-    peer_queue_id: VarInt,
-    acceptor_id: VarInt,
-    attempt_id: VarInt,
-    binding_id: VarInt,
-    is_fin: bool,
-    buf: BytesMut,
-    acceptor_registry: &mut acceptor::LocalRegistry<PendingValidation>,
-    frame_tx: &SubmissionSender,
-    queue_dispatcher: &mut msg::queue::Dispatcher,
-    counters: &counters::Dispatch,
-    response_frames: &mut PriorityInput,
-    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
-) {
-    trace!(
-        %credentials,
-        source_sender_id = source_sender_id.as_u64(),
-        attempt_id = attempt_id.as_u64(),
-        binding_id = binding_id.as_u64(),
-        dedup_right_edge = peer.attempt_dedup.right_edge_debug(),
-        "handle_queue_init: entering"
-    );
-    let create_queue = |handle| {
-        let (queue_control, queue_stream) =
-            queue_dispatcher.alloc_or_grow(handle, Some(peer_queue_id));
-        (queue_control.queue_id(), (queue_control, queue_stream))
-    };
-
-    let mut initial_payload: Option<BytesMut> = Some(buf);
-    let mut create_stream = |queue_control: msg::queue::Control,
-                             queue_stream: msg::queue::Stream,
-                             pending_validation: bool| {
-        let payload = initial_payload.take();
-        if payload.is_none() {
-            error!(
-                attempt_id = attempt_id.as_u64(),
-                binding_id = binding_id.as_u64(),
-                "create_stream called more than once for QueueInit"
-            );
-        }
-        if let Some(p) = payload {
-            if is_fin || !p.is_empty() {
-                queue_stream.push(
-                    msg::Stream::Data {
-                        offset: VarInt::ZERO,
-                        fin: is_fin,
-                        payload: p,
-                    }
-                    .into(),
-                );
-            }
-        }
-
-        let local_queue_id = queue_control.queue_id();
-        let writer = Writer::new_server(
-            frame_tx.clone(),
-            peer.path_entry.clone(),
-            binding_id,
-            queue_control,
-        );
-        let reader = if pending_validation {
-            Reader::new_server_pending(
-                frame_tx.clone(),
-                peer.path_entry.clone(),
-                binding_id,
-                queue_stream,
-                is_fin,
-            )
-        } else {
-            Reader::new_server(
-                frame_tx.clone(),
-                peer.path_entry.clone(),
-                binding_id,
-                queue_stream,
-                is_fin,
-            )
-        };
-
-        (
-            local_queue_id,
-            PendingValidation::new(Stream::new(reader, writer)),
-        )
-    };
-
-    match peer.attempt_dedup.check_attempt_id(attempt_id) {
-        Ok(()) => {
-            let register_result = {
-                let _guard = counters.rx_init_register_time.start();
-                peer.flows.try_register(binding_id, create_queue)
-            };
-            match register_result {
-                Ok((queue_control, queue_stream)) => {
-                    let (local_queue_id, stream) = {
-                        let _guard = counters.rx_init_create_stream_time.start();
-                        create_stream(queue_control, queue_stream, false)
-                    };
-
-                    let send_result = {
-                        let _guard = counters.rx_init_dispatch_time.start();
-                        acceptor_registry.send(acceptor_id, stream)
-                    };
-
-                    match send_result {
-                        acceptor::SendResult::Ok { mut evicted, waker } => {
-                            if let Some(ref mut ev) = evicted {
-                                ev.reset(crate::stream::endpoint::Error::ServerBusy);
-                            }
-                            counters.queue_accepted.add(1);
-                            let _ = waker_sink.send(waker);
-                            debug!(
-                                attempt_id = attempt_id.as_u64(),
-                                binding_id = binding_id.as_u64(),
-                                acceptor_id = acceptor_id.as_u64(),
-                                server_queue_id = local_queue_id.as_u64(),
-                                "QueueInit accepted - dispatched to acceptor"
-                            );
-                        }
-                        acceptor::SendResult::NotFound => {
-                            debug!(
-                                attempt_id = attempt_id.as_u64(),
-                                binding_id = binding_id.as_u64(),
-                                acceptor_id = acceptor_id.as_u64(),
-                                "QueueInit rejected - acceptor not found"
-                            );
-                            push_reset_frame(
-                                response_frames,
-                                counters,
-                                &peer.path_entry,
-                                peer_queue_id,
-                                binding_id,
-                                error::ACCEPTOR_NOT_FOUND,
-                            );
-                        }
-                        acceptor::SendResult::Closed(mut stream, cleanup_waker) => {
-                            stream.disable();
-                            counters.rx_init_acceptor_closed.add(1);
-                            let _ = waker_sink.send(cleanup_waker);
-                            debug!(
-                                attempt_id = attempt_id.as_u64(),
-                                binding_id = binding_id.as_u64(),
-                                acceptor_id = acceptor_id.as_u64(),
-                                "QueueInit rejected - acceptor channel closed"
-                            );
-                            push_reset_frame(
-                                response_frames,
-                                counters,
-                                &peer.path_entry,
-                                peer_queue_id,
-                                binding_id,
-                                error::ACCEPTOR_NOT_FOUND,
-                            );
-                        }
-                        acceptor::SendResult::NoSlots(mut stream) => {
-                            stream.disable();
-                            counters.rx_init_acceptor_no_slots.add(1);
-                            debug!(
-                                attempt_id = attempt_id.as_u64(),
-                                binding_id = binding_id.as_u64(),
-                                acceptor_id = acceptor_id.as_u64(),
-                                "QueueInit rejected - acceptor has no active receivers"
-                            );
-                            push_reset_frame(
-                                response_frames,
-                                counters,
-                                &peer.path_entry,
-                                peer_queue_id,
-                                binding_id,
-                                error::ACCEPTOR_NOT_FOUND,
-                            );
-                        }
-                    }
-                }
-                Err(local_queue_id) => {
-                    debug!(
-                        attempt_id = attempt_id.as_u64(),
-                        binding_id = binding_id.as_u64(),
-                        local_queue_id = local_queue_id.as_u64(),
-                        "QueueInit rejected - binding_id reused by client"
-                    );
-                    push_reset_frame(
-                        response_frames,
-                        counters,
-                        &peer.path_entry,
-                        peer_queue_id,
-                        binding_id,
-                        error::BINDING_ID_ERROR,
-                    );
-                }
-            }
-        }
-        Err(AttemptDedupError::Duplicate) => {
-            counters.rx_init_dup.add(1);
-            trace!(
-                attempt_id = attempt_id.as_u64(),
-                binding_id = binding_id.as_u64(),
-                "Duplicate QueueInit attempt_id - dropping"
-            );
-        }
-        Err(AttemptDedupError::TooOld) => {
-            counters.rx_init_too_old.add(1);
-
-            let register_result = {
-                let _guard = counters.rx_init_register_time.start();
-                peer.flows.try_register(binding_id, create_queue)
-            };
-            match register_result {
-                Ok((queue_control, queue_stream)) => {
-                    let (local_queue_id, stream) = {
-                        let _guard = counters.rx_init_create_stream_time.start();
-                        create_stream(queue_control, queue_stream, true)
-                    };
-
-                    let send_result = {
-                        let _guard = counters.rx_init_dispatch_time.start();
-                        acceptor_registry.send(acceptor_id, stream)
-                    };
-
-                    match send_result {
-                        acceptor::SendResult::Ok { mut evicted, waker } => {
-                            if let Some(ref mut ev) = evicted {
-                                ev.reset(crate::stream::endpoint::Error::ServerBusy);
-                            }
-                            let _ = waker_sink.send(waker);
-                            counters.rx_init_accepted_retry.add(1);
-                            counters.queue_pending.add(1);
-                            debug!(
-                                attempt_id = attempt_id.as_u64(),
-                                binding_id = binding_id.as_u64(),
-                                acceptor_id = acceptor_id.as_u64(),
-                                server_queue_id = local_queue_id.as_u64(),
-                                "QueueInit accepted with retry"
-                            );
-                            push_validate_request_frame(
-                                response_frames,
-                                counters,
-                                &peer.path_entry,
-                                source_sender_id,
-                                local_queue_id,
-                                peer_queue_id,
-                                attempt_id,
-                                binding_id,
-                            );
-                        }
-                        acceptor::SendResult::NotFound => {
-                            counters.rx_init_no_acceptor.add(1);
-                            debug!(
-                                attempt_id = attempt_id.as_u64(),
-                                binding_id = binding_id.as_u64(),
-                                acceptor_id = acceptor_id.as_u64(),
-                                "QueueInit rejected - acceptor not found"
-                            );
-                            push_reset_frame(
-                                response_frames,
-                                counters,
-                                &peer.path_entry,
-                                peer_queue_id,
-                                binding_id,
-                                error::ACCEPTOR_NOT_FOUND,
-                            );
-                        }
-                        acceptor::SendResult::Closed(mut stream, cleanup_waker) => {
-                            stream.disable();
-                            counters.rx_init_acceptor_closed.add(1);
-                            let _ = waker_sink.send(cleanup_waker);
-                            debug!(
-                                attempt_id = attempt_id.as_u64(),
-                                binding_id = binding_id.as_u64(),
-                                acceptor_id = acceptor_id.as_u64(),
-                                "QueueInit rejected - acceptor channel closed"
-                            );
-                            push_reset_frame(
-                                response_frames,
-                                counters,
-                                &peer.path_entry,
-                                peer_queue_id,
-                                binding_id,
-                                error::ACCEPTOR_NOT_FOUND,
-                            );
-                        }
-                        acceptor::SendResult::NoSlots(mut stream) => {
-                            stream.disable();
-                            counters.rx_init_acceptor_no_slots.add(1);
-                            debug!(
-                                attempt_id = attempt_id.as_u64(),
-                                binding_id = binding_id.as_u64(),
-                                acceptor_id = acceptor_id.as_u64(),
-                                "QueueInit rejected - acceptor has no active receivers"
-                            );
-                            push_reset_frame(
-                                response_frames,
-                                counters,
-                                &peer.path_entry,
-                                peer_queue_id,
-                                binding_id,
-                                error::ACCEPTOR_NOT_FOUND,
-                            );
-                        }
-                    }
-                }
-                Err(local_queue_id) => {
-                    counters.rx_init_retx.add(1);
-                    trace!(
-                        attempt_id = attempt_id.as_u64(),
-                        binding_id = binding_id.as_u64(),
-                        queue_id = local_queue_id.as_u64(),
-                        "QueueInit retransmission of existing flow - dropping"
-                    );
-                }
-            }
-        }
-    }
-}
-
-fn push_reset_frame(
-    response_frames: &mut PriorityInput,
-    counters: &counters::Dispatch,
-    path_secret_entry: &std::sync::Arc<PathSecretEntry>,
-    dest_queue_id: VarInt,
-    binding_id: VarInt,
-    error_code: VarInt,
-) {
-    push_reset_frame_with_target(
-        response_frames,
-        counters,
-        path_secret_entry,
-        dest_queue_id,
-        binding_id,
-        ResetTarget::Both,
-        error_code,
-    );
-}
-
-fn push_reset_frame_with_target(
-    response_frames: &mut PriorityInput,
-    counters: &counters::Dispatch,
-    path_secret_entry: &std::sync::Arc<PathSecretEntry>,
-    dest_queue_id: VarInt,
-    binding_id: VarInt,
-    reset_target: ResetTarget,
-    error_code: VarInt,
-) {
-    let frame = Frame {
-        header: Header::QueueReset {
-            dest_queue_id,
-            binding_id,
-            reset_target,
-            error_code,
-            dest_acceptor_id: None,
-        },
-        source_sender_id: LocalSenderId::UNSPECIFIED,
-        payload: ByteVec::new(),
-        path_secret_entry: path_secret_entry.clone(),
-        completion: None,
-        status: Default::default(),
-        ttl: DEFAULT_TTL,
-        transmission_time: None,
-    };
-    counters.on_response_frame(&frame.header);
-    response_frames.push(frame.into());
-}
-
-fn push_validate_request_frame(
-    response_frames: &mut PriorityInput,
-    counters: &counters::Dispatch,
-    path_secret_entry: &std::sync::Arc<PathSecretEntry>,
-    dest_sender_id: VarInt,
-    source_queue_id: VarInt,
-    dest_queue_id: VarInt,
-    attempt_id: VarInt,
-    binding_id: VarInt,
-) {
-    let frame = Frame {
-        header: Header::QueueValidateRequest {
-            dest_sender_id,
-            queue_pair: QueuePair {
-                source_queue_id,
-                dest_queue_id,
-            },
-            attempt_id,
-            binding_id,
-        },
-        source_sender_id: LocalSenderId::UNSPECIFIED,
-        payload: ByteVec::new(),
-        path_secret_entry: path_secret_entry.clone(),
-        completion: None,
-        status: Default::default(),
-        ttl: DEFAULT_TTL,
-        transmission_time: None,
-    };
-    counters.on_response_frame(&frame.header);
-    response_frames.push(frame.into());
-}
-
-// ── QueueValidateRequest ───────────────────────────────────────────────────
-
-fn handle_queue_validate_request(
-    path_secret_entry: &std::sync::Arc<PathSecretEntry>,
-    credentials: &Credentials,
-    _dest_sender_id: VarInt,
-    queue_pair: QueuePair,
-    attempt_id: VarInt,
-    binding_id: VarInt,
-    queue_dispatcher: &mut msg::queue::Dispatcher,
-    counters: &counters::Dispatch,
-    response_frames: &mut PriorityInput,
-) {
-    let local_queue_id = queue_pair.dest_queue_id;
-
-    let request = flow::Request {
-        credential_id: credentials.id,
-        binding_id: Some(binding_id),
-    };
-
-    match queue_dispatcher.validate_stream(local_queue_id, &request) {
-        Ok(()) => {
-            counters.rx_validate_ok.add(1);
-            debug!(
-                attempt_id = attempt_id.as_u64(),
-                binding_id = binding_id.as_u64(),
-                "QueueValidateRequest validated"
-            );
-            let frame = Frame {
-                header: Header::QueueInitValidate {
-                    queue_pair: queue_pair.reverse(),
-                    attempt_id,
-                    binding_id,
-                },
-                source_sender_id: LocalSenderId::UNSPECIFIED,
-                payload: ByteVec::new(),
-                path_secret_entry: path_secret_entry.clone(),
-                completion: None,
-                status: Default::default(),
-                ttl: DEFAULT_TTL,
-                transmission_time: None,
-            };
-            counters.on_response_frame(&frame.header);
-            response_frames.push(frame.into());
-        }
-        Err(_) => {
-            counters.rx_validate_failed.add(1);
-            warn!(
-                attempt_id = attempt_id.as_u64(),
-                binding_id = binding_id.as_u64(),
-                "QueueValidateRequest validation failed"
-            );
-            let frame = Frame {
-                header: Header::QueueReset {
-                    dest_queue_id: queue_pair.source_queue_id,
-                    binding_id,
-                    reset_target: ResetTarget::Both,
-                    error_code: error::QUEUE_VALIDATION_FAILED,
-                    dest_acceptor_id: None,
-                },
-                source_sender_id: LocalSenderId::UNSPECIFIED,
-                payload: ByteVec::new(),
-                path_secret_entry: path_secret_entry.clone(),
-                completion: None,
-                status: Default::default(),
-                ttl: DEFAULT_TTL,
-                transmission_time: None,
-            };
-            counters.on_response_frame(&frame.header);
-            response_frames.push(frame.into());
-        }
-    }
-}
-
-// ── QueueInitValidate ──────────────────────────────────────────────────────
-
-fn handle_queue_init_validate(
-    path_secret_entry: &std::sync::Arc<PathSecretEntry>,
-    credentials: &Credentials,
-    queue_pair: QueuePair,
-    attempt_id: VarInt,
-    binding_id: VarInt,
-    queue_dispatcher: &mut msg::queue::Dispatcher,
-    counters: &counters::Dispatch,
-    response_frames: &mut PriorityInput,
-    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
-) {
-    let local_queue_id = queue_pair.dest_queue_id;
-
-    let request = flow::Request {
-        credential_id: credentials.id,
-        binding_id: Some(binding_id),
-    };
-
-    match queue_dispatcher.validate_stream(local_queue_id, &request) {
-        Ok(()) => {
-            counters.rx_init_validate_ok.add(1);
-
-            let stream_entry = msg::Stream::QueueValidated.into();
-            match queue_dispatcher.send_stream(
-                local_queue_id,
-                Some(queue_pair.source_queue_id),
-                &request,
-                stream_entry,
-            ) {
-                Ok(waker) => {
-                    let _ = waker_sink.send(waker);
-                    debug!(
-                        attempt_id = attempt_id.as_u64(),
-                        binding_id = binding_id.as_u64(),
-                        "QueueInitValidate validated"
-                    );
-                }
-                Err(_) => {
-                    counters.rx_init_validate_dispatch_failed.add(1);
-                    warn!(
-                        attempt_id = attempt_id.as_u64(),
-                        binding_id = binding_id.as_u64(),
-                        queue_id = local_queue_id.as_u64(),
-                        "QueueInitValidate failed to send QueueValidated - sending reset"
-                    );
-                    push_reset_frame(
-                        response_frames,
-                        counters,
-                        path_secret_entry,
-                        queue_pair.source_queue_id,
-                        binding_id,
-                        error::QUEUE_VALIDATION_FAILED,
-                    );
-                }
-            }
-        }
-        Err(_) => {
-            counters.rx_init_validate_validation_failed.add(1);
-            warn!(
-                attempt_id = attempt_id.as_u64(),
-                binding_id = binding_id.as_u64(),
-                queue_id = local_queue_id.as_u64(),
-                "QueueInitValidate validation failed - sending reset"
-            );
-            push_reset_frame(
-                response_frames,
-                counters,
-                path_secret_entry,
-                queue_pair.source_queue_id,
-                binding_id,
-                error::QUEUE_VALIDATION_FAILED,
-            );
-        }
-    }
-}
-
 // ── QueueData ──────────────────────────────────────────────────────────────
 
+fn handle_queue_free(
+    peer: &mut recv::Context,
+    free_request_id: VarInt,
+    smallest_queue_id: VarInt,
+    payload: BytesMut,
+    counters: &counters::Dispatch,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
+) {
+    let Some(client_view) = peer.queue_view.as_client_mut() else {
+        debug!("QueueFree received on server context - dropping");
+        return;
+    };
+
+    let decoder = DeltaDecoder::new(smallest_queue_id, &payload);
+    let result = client_view.free(free_request_id, decoder, &mut |w| {
+        let _ = waker_sink.send(AutoWake::new(Some(w)));
+    });
+    counters
+        .rx_queue_free_slots
+        .record_value(result.slots as u64);
+    counters
+        .rx_queue_free_ranges
+        .record_value(result.ranges as u64);
+}
+
+struct DeltaDecoder<'a> {
+    pending: Option<VarInt>,
+    payload: s2n_codec::DecoderBuffer<'a>,
+}
+
+impl<'a> DeltaDecoder<'a> {
+    fn new(smallest_queue_id: VarInt, payload: &'a [u8]) -> Self {
+        Self {
+            pending: Some(smallest_queue_id),
+            payload: s2n_codec::DecoderBuffer::new(payload),
+        }
+    }
+}
+
+impl Iterator for DeltaDecoder<'_> {
+    type Item = Result<core::ops::RangeInclusive<VarInt>, s2n_codec::DecoderError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let start = self.pending.take()?;
+        let mut end = start;
+
+        loop {
+            if self.payload.is_empty() {
+                return Some(Ok(start..=end));
+            }
+            let (delta, buffer) = match self.payload.decode::<VarInt>() {
+                Ok(v) => v,
+                Err(e) => return Some(Err(e)),
+            };
+            let next_id = match end.checked_add(delta + VarInt::from_u8(1)) {
+                Some(v) => v,
+                None => {
+                    return Some(Err(s2n_codec::DecoderError::InvariantViolation(
+                        "delta overflow",
+                    )))
+                }
+            };
+            self.payload = buffer;
+            if delta == VarInt::ZERO {
+                end = next_id;
+            } else {
+                self.pending = Some(next_id);
+                return Some(Ok(start..=end));
+            }
+        }
+    }
+}
+
 fn handle_queue_data(
-    credentials: &Credentials,
+    peer: &mut recv::Context,
     queue_pair: QueuePair,
     binding_id: VarInt,
     offset: VarInt,
     is_fin: bool,
     buf: BytesMut,
-    queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
     let local_queue_id = queue_pair.dest_queue_id;
-
-    let request = flow::Request {
-        credential_id: credentials.id,
-        binding_id: Some(binding_id),
-    };
-
     let payload_len = buf.len();
     let entry = msg::Stream::Data {
         offset,
@@ -1095,12 +542,10 @@ fn handle_queue_data(
     }
     .into();
 
-    match queue_dispatcher.send_stream(
-        local_queue_id,
-        Some(queue_pair.source_queue_id),
-        &request,
-        entry,
-    ) {
+    match peer
+        .queue_view
+        .send_stream(local_queue_id, binding_id, entry)
+    {
         Ok(waker) => {
             let _ = waker_sink.send(waker);
             counters.rx_data_ok.add(1);
@@ -1113,7 +558,7 @@ fn handle_queue_data(
                 "QueueData dispatched"
             );
         }
-        Err(flow::queue::Error::Unallocated(_)) => {
+        Err(crate::queue::Error::Unallocated(_)) => {
             counters.rx_data_unallocated.add(1);
             debug!(
                 binding_id = binding_id.as_u64(),
@@ -1121,7 +566,7 @@ fn handle_queue_data(
                 "QueueData for unallocated queue - dropping"
             );
         }
-        Err(flow::queue::Error::HalfClosed(_)) => {
+        Err(crate::queue::Error::HalfClosed(_)) => {
             counters.rx_data_half_closed.add(1);
             trace!(
                 binding_id = binding_id.as_u64(),
@@ -1129,155 +574,293 @@ fn handle_queue_data(
                 "QueueData for half-closed stream - dropping"
             );
         }
-        Err(flow::queue::Error::ValidationFailed(_, reason)) => {
-            counters.on_data_validation_failed(reason);
-            debug!(
-                binding_id = binding_id.as_u64(),
-                queue_id = local_queue_id.as_u64(),
-                ?reason,
-                "QueueData validation failed - dropping"
-            );
-        }
-        Err(flow::queue::Error::PermanentlyClosed) => {
-            counters.rx_data_perm_closed.add(1);
+        Err(crate::queue::Error::StaleBinding(_)) => {
+            counters.rx_data_stale_binding.add(1);
             trace!(
                 binding_id = binding_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "QueueData for permanently closed queue"
+                "QueueData stale binding - dropping"
+            );
+        }
+        Err(crate::queue::Error::FutureBinding(_)) => {
+            counters.rx_data_future_binding.add(1);
+            debug!(
+                binding_id = binding_id.as_u64(),
+                queue_id = local_queue_id.as_u64(),
+                "QueueData future binding - dropping"
+            );
+        }
+        Err(crate::queue::Error::SenderClosed) => {
+            trace!(
+                binding_id = binding_id.as_u64(),
+                queue_id = local_queue_id.as_u64(),
+                "QueueData for closed sender - dropping"
+            );
+        }
+        Err(crate::queue::Error::CapExceeded(_)) => {
+            debug!(
+                binding_id = binding_id.as_u64(),
+                queue_id = local_queue_id.as_u64(),
+                "QueueData queue_id exceeds cap - dropping"
             );
         }
     }
 }
 
-// ── QueueControl ───────────────────────────────────────────────────────────
+// ── QueueData Init ─────────────────────────────────────────────────────────
 
-fn handle_queue_control(
-    credentials: &Credentials,
+fn handle_queue_data_init(
+    peer: &mut recv::Context,
     queue_pair: QueuePair,
     binding_id: VarInt,
+    offset: VarInt,
+    is_fin: bool,
+    acceptor_id: VarInt,
     buf: BytesMut,
-    queue_dispatcher: &mut msg::queue::Dispatcher,
+    acceptor_registry: &mut acceptor::LocalRegistry<PendingValidation>,
+    frame_tx: &mut SubmissionSender,
+    freed_batch_tx: &mut crate::queue::FreedBatchTx,
     counters: &counters::Dispatch,
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
-    let payload_len = buf.len();
-    let entry = msg::Control::Frames { payload: buf }.into();
-    if dispatch_control_message(
-        credentials,
-        queue_pair,
-        binding_id,
-        entry,
-        queue_dispatcher,
-        counters,
-        waker_sink,
-    ) {
-        trace!(
+    let Some(server_view) = peer.queue_view.as_server_mut() else {
+        error!(
             binding_id = binding_id.as_u64(),
             queue_id = queue_pair.dest_queue_id.as_u64(),
-            payload_len,
-            "QueueControl dispatched"
+            "QueueData init received on client context - dropping"
         );
+        return;
+    };
+
+    let Some(acceptor_sender) = acceptor_registry.get(acceptor_id) else {
+        counters.rx_init_no_acceptor.add(1);
+        debug!(
+            binding_id = binding_id.as_u64(),
+            acceptor_id = acceptor_id.as_u64(),
+            "QueueData init rejected - acceptor not found, sending reset"
+        );
+        server_view.record_freed(queue_pair.dest_queue_id, &peer.path_entry, freed_batch_tx);
+        send_reset(
+            &peer.path_entry,
+            queue_pair.source_queue_id,
+            binding_id,
+            error::ACCEPTOR_NOT_FOUND,
+            frame_tx,
+        );
+        return;
+    };
+
+    let entry = msg::Stream::Data {
+        offset,
+        fin: is_fin,
+        payload: buf,
+    }
+    .into();
+
+    match server_view.bind_and_send_stream(
+        queue_pair.dest_queue_id,
+        binding_id,
+        entry,
+        &peer.path_entry,
+        freed_batch_tx,
+    ) {
+        Ok(crate::queue::BindResult::NewBinding {
+            waker,
+            stream,
+            control,
+        }) => {
+            let writer = Writer::new_server(
+                frame_tx.clone(),
+                peer.path_entry.clone(),
+                queue_pair.source_queue_id,
+                acceptor_id,
+                control,
+            );
+            let peer_fin = is_fin;
+            let reader = Reader::new_server(
+                frame_tx.clone(),
+                peer.path_entry.clone(),
+                queue_pair.source_queue_id,
+                stream,
+                peer_fin,
+            );
+            let pending = PendingValidation::new(Stream::new(reader, writer));
+
+            match acceptor_sender.send(pending) {
+                Ok((mut evicted, acceptor_waker)) => {
+                    if let Some(ref mut ev) = evicted {
+                        ev.reset(crate::stream::endpoint::Error::ServerBusy);
+                    }
+                    counters.queue_accepted.add(1);
+                    let _ = waker_sink.send(AutoWake::new(acceptor_waker));
+                }
+                Err(acceptor::channel::SendError::Closed(mut stream)) => {
+                    stream.disable();
+                    counters.rx_init_acceptor_closed.add(1);
+                }
+                Err(acceptor::channel::SendError::NoSlots(mut stream)) => {
+                    stream.disable();
+                    counters.rx_init_acceptor_no_slots.add(1);
+                }
+            }
+
+            let _ = waker_sink.send(waker);
+
+            debug!(
+                binding_id = binding_id.as_u64(),
+                queue_id = queue_pair.dest_queue_id.as_u64(),
+                acceptor_id = acceptor_id.as_u64(),
+                "QueueData init - new binding created"
+            );
+        }
+        Ok(crate::queue::BindResult::Bound(waker)) => {
+            let _ = waker_sink.send(waker);
+            counters.rx_data_ok.add(1);
+            trace!(
+                binding_id = binding_id.as_u64(),
+                queue_id = queue_pair.dest_queue_id.as_u64(),
+                "QueueData init - pushed to existing binding"
+            );
+        }
+        Err(_) => {
+            debug!(
+                binding_id = binding_id.as_u64(),
+                queue_id = queue_pair.dest_queue_id.as_u64(),
+                "QueueData init bind failed - dropping"
+            );
+        }
+    }
+}
+
+fn send_reset(
+    path_secret_entry: &Arc<PathSecretEntry>,
+    dest_queue_id: VarInt,
+    binding_id: VarInt,
+    error_code: VarInt,
+    frame_tx: &mut SubmissionSender,
+) {
+    let frame = Frame {
+        source_sender_id: LocalSenderId::UNSPECIFIED,
+        header: Header::QueueReset {
+            dest_queue_id,
+            binding_id,
+            reset_target: ResetTarget::Both,
+            error_code,
+            dest_acceptor_id: None,
+        },
+        payload: ByteVec::new(),
+        path_secret_entry: path_secret_entry.clone(),
+        completion: None,
+        status: crate::endpoint::frame::TransmissionStatus::default(),
+        ttl: DEFAULT_TTL,
+        transmission_time: None,
+    };
+    let _ = frame_tx.send_batch(Entry::new(frame));
+}
+
+// ── QueueControl ───────────────────────────────────────────────────────────
+
+fn handle_queue_control(
+    peer: &mut recv::Context,
+    queue_pair: QueuePair,
+    binding_id: VarInt,
+    buf: BytesMut,
+    counters: &counters::Dispatch,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
+) {
+    let local_queue_id = queue_pair.dest_queue_id;
+    let payload_len = buf.len();
+    let entry = msg::Control::Frames { payload: buf }.into();
+
+    match peer
+        .queue_view
+        .send_control(local_queue_id, binding_id, entry)
+    {
+        Ok(waker) => {
+            let _ = waker_sink.send(waker);
+            counters.rx_queue_control_ok.add(1);
+            trace!(
+                binding_id = binding_id.as_u64(),
+                queue_id = local_queue_id.as_u64(),
+                payload_len,
+                "QueueControl dispatched"
+            );
+        }
+        Err(crate::queue::Error::Unallocated(_)) => {
+            counters.rx_queue_control_unallocated.add(1);
+            debug!(
+                binding_id = binding_id.as_u64(),
+                queue_id = local_queue_id.as_u64(),
+                "QueueControl for unallocated queue - dropping"
+            );
+        }
+        Err(crate::queue::Error::HalfClosed(_)) => {
+            counters.rx_queue_control_half_closed.add(1);
+            trace!(
+                binding_id = binding_id.as_u64(),
+                queue_id = local_queue_id.as_u64(),
+                "QueueControl for half-closed queue - dropping"
+            );
+        }
+        Err(_) => {
+            trace!(
+                binding_id = binding_id.as_u64(),
+                queue_id = local_queue_id.as_u64(),
+                "QueueControl dispatch error - dropping"
+            );
+        }
     }
 }
 
 // ── QueueMaxData ───────────────────────────────────────────────────────────
 
 fn handle_queue_max_data(
-    credentials: &Credentials,
+    peer: &mut recv::Context,
     queue_pair: QueuePair,
     binding_id: VarInt,
     maximum_data: VarInt,
-    queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
-    let entry = msg::Control::MaxData { maximum_data }.into();
-    if dispatch_control_message(
-        credentials,
-        queue_pair,
-        binding_id,
-        entry,
-        queue_dispatcher,
-        counters,
-        waker_sink,
-    ) {
-        trace!(
-            binding_id = binding_id.as_u64(),
-            queue_id = queue_pair.dest_queue_id.as_u64(),
-            maximum_data = maximum_data.as_u64(),
-            "QueueMaxData dispatched"
-        );
-    }
-}
-
-/// Dispatches a pre-built flow-control message into the per-queue control channel.
-///
-/// Returns `true` when the message was accepted by the queue (success path).
-/// All error paths are handled internally. Callers that need to emit a success trace should do so after
-/// this call when the return value is `true`.
-fn dispatch_control_message(
-    credentials: &Credentials,
-    queue_pair: QueuePair,
-    binding_id: VarInt,
-    entry: Entry<msg::Control>,
-    queue_dispatcher: &mut msg::queue::Dispatcher,
-    counters: &counters::Dispatch,
-    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
-) -> bool {
     let local_queue_id = queue_pair.dest_queue_id;
+    let entry = msg::Control::MaxData { maximum_data }.into();
 
-    let request = flow::Request {
-        credential_id: credentials.id,
-        binding_id: Some(binding_id),
-    };
-
-    match queue_dispatcher.send_control(
-        local_queue_id,
-        Some(queue_pair.source_queue_id),
-        &request,
-        entry,
-    ) {
+    match peer
+        .queue_view
+        .send_control(local_queue_id, binding_id, entry)
+    {
         Ok(waker) => {
             let _ = waker_sink.send(waker);
             counters.rx_queue_control_ok.add(1);
-            true
+            trace!(
+                binding_id = binding_id.as_u64(),
+                queue_id = local_queue_id.as_u64(),
+                maximum_data = maximum_data.as_u64(),
+                "QueueMaxData dispatched"
+            );
         }
-        Err(flow::queue::Error::Unallocated(_)) => {
+        Err(crate::queue::Error::Unallocated(_)) => {
             counters.rx_queue_control_unallocated.add(1);
             debug!(
                 binding_id = binding_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "flow control for unallocated queue - dropping"
+                "QueueMaxData for unallocated queue - dropping"
             );
-            false
         }
-        Err(flow::queue::Error::HalfClosed(_)) => {
+        Err(crate::queue::Error::HalfClosed(_)) => {
             counters.rx_queue_control_half_closed.add(1);
             trace!(
                 binding_id = binding_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "flow control for half-closed control queue - dropping"
+                "QueueMaxData for half-closed queue - dropping"
             );
-            false
         }
-        Err(flow::queue::Error::ValidationFailed(_, reason)) => {
-            counters.on_queue_control_validation_failed(reason);
-            debug!(
-                binding_id = binding_id.as_u64(),
-                queue_id = local_queue_id.as_u64(),
-                ?reason,
-                "flow control validation failed - dropping"
-            );
-            false
-        }
-        Err(flow::queue::Error::PermanentlyClosed) => {
-            counters.rx_queue_control_perm_closed.add(1);
+        Err(_) => {
             trace!(
                 binding_id = binding_id.as_u64(),
                 queue_id = local_queue_id.as_u64(),
-                "flow control for permanently closed queue"
+                "QueueMaxData dispatch error - dropping"
             );
-            false
         }
     }
 }
@@ -1285,40 +868,34 @@ fn dispatch_control_message(
 // ── QueueReset ─────────────────────────────────────────────────────────────
 
 fn handle_queue_reset(
-    credentials: &Credentials,
+    peer: &mut recv::Context,
     dest_queue_id: VarInt,
     binding_id: VarInt,
     reset_target: ResetTarget,
     error_code: VarInt,
-    queue_dispatcher: &mut msg::queue::Dispatcher,
     counters: &counters::Dispatch,
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
-    let local_queue_id = dest_queue_id;
-
-    let request = flow::Request {
-        credential_id: credentials.id,
-        binding_id: Some(binding_id),
-    };
-
     match reset_target {
         ResetTarget::Both => {
             counters.rx_reset_both.add(1);
             let stream_entry = msg::Stream::Reset { error_code }.into();
             let control_entry = msg::Control::Reset { error_code }.into();
-            let (waker_a, waker_b) = queue_dispatcher.send_both(
-                local_queue_id,
-                None,
-                &request,
-                stream_entry,
-                control_entry,
-            );
-            let _ = waker_sink.send(waker_a);
-            let _ = waker_sink.send(waker_b);
-
+            if let Ok(waker) = peer
+                .queue_view
+                .send_stream(dest_queue_id, binding_id, stream_entry)
+            {
+                let _ = waker_sink.send(waker);
+            }
+            if let Ok(waker) =
+                peer.queue_view
+                    .send_control(dest_queue_id, binding_id, control_entry)
+            {
+                let _ = waker_sink.send(waker);
+            }
             debug!(
                 binding_id = binding_id.as_u64(),
-                queue_id = local_queue_id.as_u64(),
+                queue_id = dest_queue_id.as_u64(),
                 error_code = error_code.as_u64(),
                 "QueueReset(Both) dispatched"
             );
@@ -1326,15 +903,15 @@ fn handle_queue_reset(
         ResetTarget::Stream => {
             counters.rx_reset_stream.add(1);
             let stream_entry = msg::Stream::Reset { error_code }.into();
-            if let Ok(waker) =
-                queue_dispatcher.send_stream(local_queue_id, None, &request, stream_entry)
+            if let Ok(waker) = peer
+                .queue_view
+                .send_stream(dest_queue_id, binding_id, stream_entry)
             {
                 let _ = waker_sink.send(waker);
             }
-
             debug!(
                 binding_id = binding_id.as_u64(),
-                queue_id = local_queue_id.as_u64(),
+                queue_id = dest_queue_id.as_u64(),
                 error_code = error_code.as_u64(),
                 "QueueReset(Stream) dispatched"
             );
@@ -1343,180 +920,17 @@ fn handle_queue_reset(
             counters.rx_reset_control.add(1);
             let control_entry = msg::Control::Reset { error_code }.into();
             if let Ok(waker) =
-                queue_dispatcher.send_control(local_queue_id, None, &request, control_entry)
+                peer.queue_view
+                    .send_control(dest_queue_id, binding_id, control_entry)
             {
                 let _ = waker_sink.send(waker);
             }
-
             debug!(
                 binding_id = binding_id.as_u64(),
-                queue_id = local_queue_id.as_u64(),
+                queue_id = dest_queue_id.as_u64(),
                 error_code = error_code.as_u64(),
                 "QueueReset(Control) dispatched"
             );
         }
-    }
-}
-
-// ── QueueInitReset ─────────────────────────────────────────────────────────
-
-/// Handle a QueueInitReset frame from a client that doesn't yet know the server's queue ID.
-///
-/// The client is in `QueueBindSent` state — it transmitted a QueueInit but has not yet
-/// received MAX_DATA (and thus doesn't know the server's queue ID). Rather than
-/// silently dropping the reset, it sends a QueueInitReset containing only the binding_id.
-///
-/// We look up the binding_id in the per-peer `flows` tracker to find the local queue_id,
-/// then dispatch a Reset to both stream and control queues. If the binding_id is not
-/// found (QueueInit not yet registered or already closed), we mark the attempt_id as
-/// finalized in the dedup window so that any later QueueInit with this attempt_id is
-/// silently rejected — the server will never create a stream that the client has
-/// already aborted. We never send a reset back in response.
-fn handle_queue_init_reset(
-    peer: &mut recv::Context,
-    credentials: &Credentials,
-    attempt_id: VarInt,
-    binding_id: VarInt,
-    error_code: VarInt,
-    queue_dispatcher: &mut msg::queue::Dispatcher,
-    counters: &counters::Dispatch,
-    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
-) {
-    let Some(local_queue_id) = peer.flows.lookup(binding_id) else {
-        if attempt_id == VarInt::MAX {
-            debug!(
-                binding_id = binding_id.as_u64(),
-                "QueueInitReset for unknown binding_id has sentinel attempt_id - ignoring dedup update"
-            );
-            counters.rx_init_reset_unknown.add(1);
-            return;
-        }
-
-        // Stream not found: mark attempt_id as seen so a later QueueInit with
-        // the same attempt_id is rejected.
-        match peer.attempt_dedup.check_attempt_id(attempt_id) {
-            Ok(()) => {
-                debug!(
-                    attempt_id = attempt_id.as_u64(),
-                    binding_id = binding_id.as_u64(),
-                    "QueueInitReset for unknown binding_id - attempt_id marked as seen"
-                );
-            }
-            Err(AttemptDedupError::Duplicate) => {
-                debug!(
-                    attempt_id = attempt_id.as_u64(),
-                    binding_id = binding_id.as_u64(),
-                    "QueueInitReset for unknown binding_id - attempt_id already marked (duplicate reset)"
-                );
-            }
-            Err(AttemptDedupError::TooOld) => {
-                debug!(
-                    attempt_id = attempt_id.as_u64(),
-                    binding_id = binding_id.as_u64(),
-                    "QueueInitReset for unknown binding_id - attempt_id outside dedup window"
-                );
-            }
-        }
-        counters.rx_init_reset_unknown.add(1);
-        return;
-    };
-
-    let request = flow::Request {
-        credential_id: credentials.id,
-        binding_id: Some(binding_id),
-    };
-
-    let stream_entry = msg::Stream::Reset { error_code }.into();
-    let control_entry = msg::Control::Reset { error_code }.into();
-    let (waker_a, waker_b) =
-        queue_dispatcher.send_both(local_queue_id, None, &request, stream_entry, control_entry);
-    let _ = waker_sink.send(waker_a);
-    let _ = waker_sink.send(waker_b);
-
-    debug!(
-        attempt_id = attempt_id.as_u64(),
-        binding_id = binding_id.as_u64(),
-        queue_id = local_queue_id.as_u64(),
-        error_code = error_code.as_u64(),
-        "QueueInitReset dispatched"
-    );
-}
-
-// ── QueueInitFin ───────────────────────────────────────────────────────────
-
-/// Handle a QueueInitFin frame: graceful FIN from a client that doesn't yet know
-/// the server's queue ID.
-///
-/// The client is in `QueueBindSent` state — it transmitted a QueueInit (with early
-/// data, `is_fin=false`) but has not yet received MAX_DATA. Rather than leaving the
-/// server reader blocked indefinitely, the client sends QueueInitFin with the total
-/// byte offset it has written so the server can deliver a proper EOF to the reader.
-///
-/// We look up the binding_id in the per-peer `flows` tracker, then dispatch a
-/// zero-payload FIN data chunk at `offset` to the stream queue.
-///
-/// If the binding_id is not found (QueueInit not yet received or already closed), we
-/// currently drop the signal and count it in `rx_init_fin_unknown`.
-///
-/// TODO: replace this with a bounded/robust mechanism for handling pre-establishment
-/// FIN reordering without unbounded per-peer state growth.
-fn handle_queue_init_fin(
-    peer: &mut recv::Context,
-    credentials: &Credentials,
-    binding_id: VarInt,
-    offset: VarInt,
-    queue_dispatcher: &mut msg::queue::Dispatcher,
-    counters: &counters::Dispatch,
-    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
-) {
-    let Some(local_queue_id) = peer.flows.lookup(binding_id) else {
-        counters.rx_init_fin_unknown.add(1);
-        debug!(
-            binding_id = binding_id.as_u64(),
-            offset = offset.as_u64(),
-            "QueueInitFin for unknown binding_id - dropping"
-        );
-        return;
-    };
-
-    dispatch_queue_init_fin(
-        credentials,
-        local_queue_id,
-        binding_id,
-        offset,
-        queue_dispatcher,
-        waker_sink,
-    );
-
-    debug!(
-        binding_id = binding_id.as_u64(),
-        queue_id = local_queue_id.as_u64(),
-        offset = offset.as_u64(),
-        "QueueInitFin dispatched"
-    );
-}
-
-/// Dispatch a zero-payload FIN data chunk to the stream queue.
-fn dispatch_queue_init_fin(
-    credentials: &Credentials,
-    local_queue_id: VarInt,
-    binding_id: VarInt,
-    offset: VarInt,
-    queue_dispatcher: &mut msg::queue::Dispatcher,
-    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
-) {
-    let request = flow::Request {
-        credential_id: credentials.id,
-        binding_id: Some(binding_id),
-    };
-
-    let stream_entry = msg::Stream::Data {
-        offset,
-        fin: true,
-        payload: BytesMut::new(),
-    }
-    .into();
-    if let Ok(waker) = queue_dispatcher.send_stream(local_queue_id, None, &request, stream_entry) {
-        let _ = waker_sink.send(waker);
     }
 }

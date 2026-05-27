@@ -4,7 +4,7 @@
 use crate::intrusive::{Adapter, Links, List};
 use std::{cell::UnsafeCell, sync::Arc, task::Waker};
 
-pub(crate) struct Waiter {
+pub struct Waiter {
     pub(crate) links: Links,
     waker: UnsafeCell<Option<Waker>>,
 }
@@ -19,18 +19,18 @@ impl Waiter {
 
     /// # Safety
     /// Must be called under the list's protecting Mutex.
-    pub(crate) unsafe fn set_waker(&self, waker: Waker) {
+    pub unsafe fn set_waker(&self, waker: Waker) {
         *self.waker.get() = Some(waker);
     }
 
     /// # Safety
     /// Must be called under the list's protecting Mutex.
-    pub(crate) unsafe fn take_waker(&self) -> Option<Waker> {
+    pub unsafe fn take_waker(&self) -> Option<Waker> {
         (*self.waker.get()).take()
     }
 }
 
-pub(crate) struct WaiterAdapter;
+pub struct WaiterAdapter;
 
 impl Adapter for WaiterAdapter {
     type Value = Waiter;
@@ -58,7 +58,7 @@ impl Adapter for WaiterAdapter {
     }
 }
 
-pub(crate) type WaiterList = List<WaiterAdapter>;
+pub type WaiterList = List<WaiterAdapter>;
 
 // SAFETY: Waiter is Send+Sync because:
 // - `Links` access is always under an external Mutex

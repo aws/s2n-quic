@@ -4,8 +4,6 @@
 use crate::{
     counter::{Counter, Gauge, Registry, Summary, Timer, Unit},
     endpoint::{frame::Header, id::LocalSenderId},
-    flow::queue::ValidationError,
-    packet::datagram::ResetTarget,
 };
 use s2n_quic_core::{frame::ack::EcnCounts, inet::ExplicitCongestionNotification};
 use std::{rc::Rc, sync::Arc};
@@ -16,49 +14,25 @@ pub mod os;
 pub(crate) struct Dispatch {
     pub rx_data_pkt: Counter,
 
-    pub rx_init_dup: Counter,
-    pub rx_init_too_old: Counter,
-    pub rx_init_retx: Counter,
-    pub rx_init_accepted_retry: Counter,
     pub rx_init_no_acceptor: Counter,
     pub rx_init_acceptor_closed: Counter,
     pub rx_init_acceptor_no_slots: Counter,
 
-    pub rx_validate_ok: Counter,
-    pub rx_validate_failed: Counter,
-    pub rx_init_validate_ok: Counter,
-    pub rx_init_validate_validation_failed: Counter,
-    pub rx_init_validate_dispatch_failed: Counter,
-
     pub rx_data_ok: Counter,
     pub rx_data_unallocated: Counter,
     pub rx_data_half_closed: Counter,
-    pub rx_data_credential_mismatch: Counter,
-    pub rx_data_binding_id_mismatch: Counter,
-    pub rx_data_perm_closed: Counter,
+    pub rx_data_stale_binding: Counter,
+    pub rx_data_future_binding: Counter,
 
     pub rx_queue_control_ok: Counter,
     pub rx_queue_control_unallocated: Counter,
     pub rx_queue_control_half_closed: Counter,
-    pub rx_queue_control_credential_mismatch: Counter,
-    pub rx_queue_control_binding_id_mismatch: Counter,
-    pub rx_queue_control_perm_closed: Counter,
 
     pub rx_reset_both: Counter,
     pub rx_reset_stream: Counter,
     pub rx_reset_control: Counter,
-    pub rx_init_reset_unknown: Counter,
-    pub rx_init_fin_unknown: Counter,
-
-    pub rx_res_validate: Counter,
-    pub rx_res_init_validate: Counter,
-    pub rx_res_reset: Counter,
-    pub rx_res_reset_both: Counter,
-    pub rx_res_reset_stream: Counter,
-    pub rx_res_reset_control: Counter,
 
     pub queue_accepted: Counter,
-    pub queue_pending: Counter,
 
     pub rx_process_err_peer_lookup: Counter,
     pub rx_process_err_decryption: Counter,
@@ -73,9 +47,6 @@ pub(crate) struct Dispatch {
     pub rx_peer_lookup_time: Timer,
     pub rx_decrypt_time: Timer,
     pub rx_dispatch_time: Timer,
-    pub rx_init_register_time: Timer,
-    pub rx_init_create_stream_time: Timer,
-    pub rx_init_dispatch_time: Timer,
     pub rx_frames_per_packet: Summary,
     pub rx_packet_size: Summary,
 
@@ -106,57 +77,27 @@ impl Dispatch {
         Arc::new(Self {
             rx_data_pkt: counters.register("rx.data_pkt"),
 
-            rx_init_dup: counters.register("!rx.init.dup"),
-            rx_init_too_old: counters.register("!rx.init.too_old"),
-            rx_init_retx: counters.register("rx.init.retx"),
-            rx_init_accepted_retry: counters.register("rx.init.accepted_retry"),
             rx_init_no_acceptor: counters.register("!rx.init.no_acceptor"),
             rx_init_acceptor_closed: counters.register("!rx.init.acceptor_closed"),
             rx_init_acceptor_no_slots: counters.register("!rx.init.acceptor_no_slots"),
 
-            rx_validate_ok: counters.register("rx.validate.ok"),
-            rx_validate_failed: counters.register("!rx.validate.failed"),
-            rx_init_validate_ok: counters.register("rx.init_validate.ok"),
-            rx_init_validate_validation_failed: counters
-                .register("!rx.init_validate.validation_failed"),
-            rx_init_validate_dispatch_failed: counters
-                .register("!rx.init_validate.dispatch_failed"),
-
             rx_data_ok: counters.register("rx.data.ok"),
             rx_data_unallocated: counters.register_nominal("!rx.data", "unallocated"),
             rx_data_half_closed: counters.register_nominal("!rx.data", "half_closed"),
-            rx_data_credential_mismatch: counters
-                .register_nominal("!rx.data", "credential_mismatch"),
-            rx_data_binding_id_mismatch: counters
-                .register_nominal("!rx.data", "binding_id_mismatch"),
-            rx_data_perm_closed: counters.register("rx.data.perm_closed"),
+            rx_data_stale_binding: counters.register("rx.data.stale_binding"),
+            rx_data_future_binding: counters.register_nominal("!rx.data", "future_binding"),
 
             rx_queue_control_ok: counters.register("rx.queue_control.ok"),
             rx_queue_control_unallocated: counters
                 .register_nominal("!rx.queue_control", "unallocated"),
             rx_queue_control_half_closed: counters
                 .register_nominal("!rx.queue_control", "half_closed"),
-            rx_queue_control_credential_mismatch: counters
-                .register_nominal("!rx.queue_control", "credential_mismatch"),
-            rx_queue_control_binding_id_mismatch: counters
-                .register_nominal("!rx.queue_control", "binding_id_mismatch"),
-            rx_queue_control_perm_closed: counters.register("rx.queue_control.perm_closed"),
 
             rx_reset_both: counters.register("rx.reset.both"),
             rx_reset_stream: counters.register("rx.reset.stream"),
             rx_reset_control: counters.register("rx.reset.control"),
-            rx_init_reset_unknown: counters.register("!rx.init_reset.unknown"),
-            rx_init_fin_unknown: counters.register("!rx.init_fin.unknown"),
-
-            rx_res_validate: counters.register("rx.res.validate"),
-            rx_res_init_validate: counters.register("rx.res.init_validate"),
-            rx_res_reset: counters.register("rx.res.reset"),
-            rx_res_reset_both: counters.register("rx.res.reset.both"),
-            rx_res_reset_stream: counters.register("rx.res.reset.stream"),
-            rx_res_reset_control: counters.register("rx.res.reset.control"),
 
             queue_accepted: counters.register("queue.accepted"),
-            queue_pending: counters.register("queue.pending"),
 
             rx_process_err_peer_lookup: counters.register("!rx.process.err.peer_lookup"),
             rx_process_err_decryption: counters.register("!rx.process.err.decrypt"),
@@ -172,9 +113,6 @@ impl Dispatch {
             rx_peer_lookup_time: counters.register_timer("rx.peer_lookup_time"),
             rx_decrypt_time: counters.register_timer("rx.decrypt_time"),
             rx_dispatch_time: counters.register_timer("rx.dispatch_time"),
-            rx_init_register_time: counters.register_timer("rx.init.register_time"),
-            rx_init_create_stream_time: counters.register_timer("rx.init.create_stream_time"),
-            rx_init_dispatch_time: counters.register_timer("rx.init.dispatch_time"),
             rx_frames_per_packet: counters.register_summary("rx.frames_per_packet", Unit::Count),
             rx_packet_size: counters.register_summary("rx.packet_size", Unit::Byte),
 
@@ -203,22 +141,6 @@ impl Dispatch {
     }
 
     #[inline]
-    pub fn on_data_validation_failed(&self, reason: ValidationError) {
-        match reason {
-            ValidationError::CredentialMismatch => self.rx_data_credential_mismatch.add(1),
-            ValidationError::BindingIdMismatch => self.rx_data_binding_id_mismatch.add(1),
-        }
-    }
-
-    #[inline]
-    pub fn on_queue_control_validation_failed(&self, reason: ValidationError) {
-        match reason {
-            ValidationError::CredentialMismatch => self.rx_queue_control_credential_mismatch.add(1),
-            ValidationError::BindingIdMismatch => self.rx_queue_control_binding_id_mismatch.add(1),
-        }
-    }
-
-    #[inline]
     pub fn on_ecn(&self, ecn: ExplicitCongestionNotification) {
         match ecn {
             ExplicitCongestionNotification::Ect0 => self.rx_ecn_ect0.add(1),
@@ -243,23 +165,6 @@ impl Dispatch {
             Header::QueueInitFin { .. } => self.rx_frame_queue_init_fin.add(1),
             Header::QueueFree { .. } => self.rx_frame_queue_free.add(1),
             Header::Ack { .. } => self.rx_frame_ack.add(1),
-        };
-    }
-
-    #[inline]
-    pub fn on_response_frame(&self, header: &Header) {
-        match header {
-            Header::QueueValidateRequest { .. } => self.rx_res_validate.add(1),
-            Header::QueueInitValidate { .. } => self.rx_res_init_validate.add(1),
-            Header::QueueReset { reset_target, .. } => {
-                self.rx_res_reset.add(1);
-                match reset_target {
-                    ResetTarget::Both => self.rx_res_reset_both.add(1),
-                    ResetTarget::Stream => self.rx_res_reset_stream.add(1),
-                    ResetTarget::Control => self.rx_res_reset_control.add(1),
-                };
-            }
-            _ => {}
         };
     }
 }

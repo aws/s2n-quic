@@ -18,8 +18,8 @@ mod queue_id;
 mod sender;
 
 // Re-export the Key trait
+pub use crate::queue::AutoWake;
 pub use descriptor::{Key, ValidationError};
-pub use inner::AutoWake;
 
 /// Size of the first allocated page of queue slots.
 ///

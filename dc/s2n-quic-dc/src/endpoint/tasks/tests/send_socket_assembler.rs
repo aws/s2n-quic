@@ -133,6 +133,7 @@ async fn assembler_pipeline(
         &crate::counter::Registry::default(),
         crate::endpoint::id::LocalSenderId::from_index(0),
     );
+    let (freed_batch_tx, _freed_batch_rx) = crate::queue::freed_batch_channel();
     let rx = tasks::send_socket_assembler(
         immediate_rx,
         ctx_rx,
@@ -143,6 +144,7 @@ async fn assembler_pipeline(
         Pool::new(u16::MAX),
         cancelled_tx,
         ack_completions_tx,
+        freed_batch_tx,
         asm_counters,
         send_counters,
         Rate::new(100.0),

@@ -1,0 +1,13 @@
+[server]
+address = "[::]:4433"
+
+[client]
+
+[[client.workloads]]
+name = "paxos-3-small"
+workers = 5
+request_delay_ms = 1000
+paxos.acceptors = 3
+paxos.prepare = { request_size = 1024, response_size = 100 }
+paxos.accept = { request_size = 52428800, response_size = 100 }
+paxos.learn = { request_size = 100, response_size = 100 }

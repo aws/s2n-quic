@@ -290,6 +290,7 @@ fn assemble_accounts_for_header_overhead() {
     let mut header_buf = Vec::new();
     let mut cancelled = Queue::new();
     let mut ack_completions = Queue::new();
+    let (mut freed_batch_tx, _freed_batch_rx) = crate::queue::freed_batch_channel();
 
     for _ in 0..128 {
         context.push_back_frame(
@@ -326,6 +327,7 @@ fn assemble_accounts_for_header_overhead() {
         &mut header_buf,
         &mut cancelled,
         &mut ack_completions,
+        &mut freed_batch_tx,
         &counters,
         &crate::endpoint::counters::Send::new(
             &crate::counter::Registry::default(),
@@ -386,6 +388,7 @@ fn assemble_fuzz_respects_gso_invariants() {
             let mut header_buf = Vec::new();
             let mut cancelled = Queue::new();
             let mut ack_completions = Queue::new();
+            let (mut freed_batch_tx, _freed_batch_rx) = crate::queue::freed_batch_channel();
 
             for frame in &frames {
                 context.push_back_frame(to_frame(frame, &entry));
@@ -404,6 +407,7 @@ fn assemble_fuzz_respects_gso_invariants() {
                 &mut header_buf,
                 &mut cancelled,
                 &mut ack_completions,
+                &mut freed_batch_tx,
                 &counters,
                 &crate::endpoint::counters::Send::new(
                     &crate::counter::Registry::default(),
@@ -656,6 +660,7 @@ fn assemble_probe_fuzz() {
             let mut header_buf = Vec::new();
             let mut cancelled = Queue::new();
             let mut ack_completions = Queue::new();
+            let (mut freed_batch_tx, _freed_batch_rx) = crate::queue::freed_batch_channel();
 
             for frame in &frames {
                 context.push_back_frame(to_frame(frame, &entry));
@@ -675,6 +680,7 @@ fn assemble_probe_fuzz() {
                 &mut header_buf,
                 &mut cancelled,
                 &mut ack_completions,
+                &mut freed_batch_tx,
                 &counters,
                 &crate::endpoint::counters::Send::new(
                     &crate::counter::Registry::default(),
@@ -700,6 +706,7 @@ fn assemble_probe_fuzz() {
                 &mut header_buf,
                 &mut cancelled,
                 &mut ack_completions,
+                &mut freed_batch_tx,
                 &counters,
                 &crate::endpoint::counters::Send::new(
                     &crate::counter::Registry::default(),

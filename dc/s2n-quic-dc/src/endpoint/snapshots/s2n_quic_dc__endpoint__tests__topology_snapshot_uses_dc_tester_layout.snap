@@ -822,6 +822,15 @@ tasks:
       - task.frame_dispatch.drained [summary unit=count]: Number of items processed per poll for this task
       - task.frame_dispatch.next_poll_latency [timer unit=microsecond]: Wall-clock latency between consecutive task polls
       - task.frame_dispatch.time [timer unit=microsecond]: Wall-clock duration spent inside each task poll
+  - name: task.freed_batch_router
+    function: endpoint::Worker::spawn
+    description: Routes freed-batch tokens to send workers with LB
+    budget: none
+    worker_id: 15
+    metrics:
+      - task.freed_batch_router.drained [summary variant=background unit=count]: Number of items processed per poll for this task
+      - task.freed_batch_router.next_poll_latency [timer variant=background unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.freed_batch_router.time [timer variant=background unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.idle_wheel
     function: endpoint::tasks::send_worker
     description: Expires or re-schedules idle send contexts

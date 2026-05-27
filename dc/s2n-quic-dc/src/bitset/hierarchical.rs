@@ -196,6 +196,19 @@ impl HierarchicalBitSet {
         Drain { bitset: self }
     }
 
+    /// Merge all bits from `other` into `self`, draining `other`.
+    pub fn union(&mut self, other: &mut Self) {
+        if other.is_empty() {
+            return;
+        }
+        if other.capacity() > self.capacity() {
+            self.grow(other.capacity());
+        }
+        while let Some(id) = other.pop_first() {
+            self.insert(id);
+        }
+    }
+
     /// Grow capacity to accommodate at least `new_capacity` indices.
     pub fn grow(&mut self, new_capacity: u32) {
         if new_capacity <= self.capacity {

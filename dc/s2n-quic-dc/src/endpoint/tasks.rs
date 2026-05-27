@@ -227,6 +227,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     random: crate::xorshift::Rng,
     frame_tx: frame::SubmissionSender,
     ack_completions_tx: AckComp,
+    freed_batch_tx: crate::queue::FreedBatchTx,
     waker_sink: WakerSink,
     peer_dead_tx: impl UnboundedSender<Entry<PeerDead>> + Clone + 'static,
     dead_peer_cooldown: core::time::Duration,
@@ -480,7 +481,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             .with_function("endpoint::tasks::send_worker");
 
         let rx = GaugedReceiver::new(cancelled_rx, cancelled_receiver);
-        let rx = cancelled_drain(rx);
+        let rx = cancelled_drain(rx, freed_batch_tx.clone());
         let task_counter = counter_registry
             .register_nominal_task("task.cancelled", &variant)
             .with_registration_metadata(
@@ -669,6 +670,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             st.pool,
             cancelled_tx,
             ack_completions_tx,
+            freed_batch_tx.clone(),
             asm_counters,
             send_counters,
             st.per_socket_send_rate,
@@ -918,12 +920,43 @@ where
     })
 }
 
-/// Builds a receiver that drops cancelled frames (frames whose writer has been dropped).
-pub fn cancelled_drain<R>(cancelled_rx: R) -> impl Receiver<()>
+/// Builds a receiver that handles cancelled frames.
+///
+/// Most cancelled frames are simply dropped (writer was dropped). QueueFree frames
+/// are pushed onto FreedInner's retry queue so they can be retransmitted when the
+/// peer recovers from cooldown — the original encoding and request_id are preserved
+/// to allow client-side deduplication.
+pub fn cancelled_drain<R>(
+    cancelled_rx: R,
+    mut freed_batch_tx: crate::queue::FreedBatchTx,
+) -> impl Receiver<()>
 where
     R: Receiver<Entry<Frame>>,
 {
-    Map::new(cancelled_rx, |_entry: Entry<Frame>| {})
+    Map::new(cancelled_rx, move |entry: Entry<Frame>| {
+        use crate::{
+            endpoint::frame::Header, path::secret::map::entry::QueueState, queue::freed::RetryEntry,
+        };
+
+        let frame = entry.into_inner();
+        if let Header::QueueFree {
+            free_request_id,
+            smallest_queue_id,
+        } = frame.header
+        {
+            if let QueueState::Server(ref state) = *frame.path_secret_entry.queue_state() {
+                let path_entry = frame.path_secret_entry.clone();
+                let retry = RetryEntry {
+                    free_request_id,
+                    smallest_queue_id,
+                    payload: frame.payload,
+                };
+                state
+                    .freed
+                    .push_retry(retry, &path_entry, &mut freed_batch_tx);
+            }
+        }
+    })
 }
 
 /// Drains the send TX wheel and routes each expired context to its socket assembler queue.
@@ -1010,6 +1043,7 @@ pub fn send_socket_assembler<ImmediateRx, ContextRx, Clk, Socket, C, A, ImmW, Tx
     pool: crate::socket::pool::Pool,
     cancelled_tx: C,
     ack_completions_tx: A,
+    freed_batch_tx: crate::queue::FreedBatchTx,
     asm_counters: AssemblerCounters,
     send_counters: Rc<endpoint::counters::Send>,
     per_socket_send_rate: Rate,
@@ -1041,6 +1075,7 @@ where
         pool,
         cancelled_tx,
         ack_completions_tx,
+        freed_batch_tx,
         asm_counters,
         send_counters,
     );
@@ -1289,9 +1324,9 @@ pub fn packet_dispatch<
     mut idle_wheel_tx: IdleWheelSender,
     path_secret_map: crate::path::secret::Map,
     acceptor_registry: crate::acceptor::Registry<crate::stream::PendingValidation>,
-    frame_tx: frame::SubmissionSender,
+    mut frame_tx: frame::SubmissionSender,
     mut ack_sender: AckSender,
-    queue_dispatcher: msg::queue::Dispatcher,
+    mut freed_batch_tx: crate::queue::FreedBatchTx,
     counters: Arc<endpoint::counters::Dispatch>,
     clock: Clk,
     route: Route,
@@ -1309,8 +1344,6 @@ where
     Route: endpoint::routing::SenderRoute,
 {
     let rx = Map::new(packet_rx, {
-        let mut response_tx = frame_tx.clone();
-        let mut queue_dispatcher = queue_dispatcher;
         let counters = counters.clone();
         let mut acceptor_local = acceptor_registry.local();
 
@@ -1323,10 +1356,9 @@ where
                 &mut idle_wheel_tx,
                 &path_secret_map,
                 &mut acceptor_local,
-                &frame_tx,
-                &mut response_tx,
+                &mut frame_tx,
                 &mut ack_sender,
-                &mut queue_dispatcher,
+                &mut freed_batch_tx,
                 &clock,
                 &counters,
                 &route,
@@ -1628,45 +1660,31 @@ pub struct PeerDeadCounters {
 
 pub fn peer_dead_broadcast<R, WakerSink>(
     peer_dead_rx: R,
-    mut queue_dispatcher: msg::queue::Dispatcher,
     mut waker_sink: WakerSink,
     counters: PeerDeadCounters,
 ) -> impl Receiver<()>
 where
     R: Receiver<Entry<PeerDead>>,
-    WakerSink: UnboundedSender<crate::flow::queue::AutoWake>,
+    WakerSink: UnboundedSender<crate::queue::AutoWake>,
 {
-    use crate::{endpoint::error::IDLE_TIMEOUT, flow};
+    use crate::{endpoint::error::IDLE_TIMEOUT, path::secret::map::entry::QueueState};
 
     Map::new(peer_dead_rx, move |entry: Entry<PeerDead>| {
         counters.events.add(1);
         let peer_dead = entry.into_inner();
-        let credential_id = *peer_dead.path_secret_entry.id();
 
-        let request = flow::Request {
-            credential_id,
-            binding_id: None,
-        };
-
-        queue_dispatcher.send_both_by_request(
-            &request,
-            || {
-                msg::Stream::Reset {
-                    error_code: IDLE_TIMEOUT,
-                }
-                .into()
-            },
-            || {
-                msg::Control::Reset {
-                    error_code: IDLE_TIMEOUT,
-                }
-                .into()
-            },
-            |waker_a, waker_b| {
-                let _ = waker_sink.send(waker_a);
-                let _ = waker_sink.send(waker_b);
-            },
-        );
+        match peer_dead.path_secret_entry.queue_state() {
+            QueueState::Client(state) => {
+                state.broadcast_reset(IDLE_TIMEOUT, &mut |aw| {
+                    let _ = waker_sink.send(aw);
+                });
+            }
+            QueueState::Server(state) => {
+                state.broadcast_reset(IDLE_TIMEOUT, &mut |aw| {
+                    let _ = waker_sink.send(aw);
+                });
+            }
+        }
         counters.broadcasted.add(1);
     })
 }

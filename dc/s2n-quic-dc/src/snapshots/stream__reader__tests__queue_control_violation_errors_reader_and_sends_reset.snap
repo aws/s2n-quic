@@ -2,7 +2,6 @@
 source: dc/s2n-quic-dc/src/testing.rs
 expression: logs
 ---
-0:00:00.000000000 [main] DEBUG grow epoch=8
 0:00:00.000000000 [main] DEBUG Peer exceeded advertised receive window binding_id=1 offset=0 payload_len=1048577 payload_end_offset=1048577 remote_max_data=1048576
 0:00:00.000000000 [main] DEBUG event=on_reset prev=Open next=Reset location=dc/s2n-quic-dc/src/stream/reader.rs
 0:00:00.000000000 [main] DEBUG Sent QueueReset binding_id=1 error_code=9 reset_target=Both

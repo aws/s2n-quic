@@ -181,11 +181,11 @@ struct Inner {
     /// Receiver for failed completion notifications from the pipeline
     completion_rx: frame::CompletionReceiver,
     /// Stream-side channel for receiving data from the pipeline
-    stream_rx: msg::queue::Stream,
+    stream_rx: crate::queue::StreamReceiver,
+    /// The peer's queue slot index (for sending MAX_DATA / Reset back)
+    dest_queue_id: VarInt,
     /// Path secret entry providing MTU and crypto material
     path_secret_entry: Arc<PathSecretEntry>,
-    /// Stream identifier
-    binding_id: VarInt,
     /// Reassembly buffer for out-of-order data
     reassembler: Reassembler,
     /// Remote flow control: maximum offset we've advertised to the sender
@@ -212,6 +212,7 @@ struct Inner {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Status {
     /// Server-only: awaiting client validation before releasing credits
+    #[expect(dead_code)]
     PendingValidation,
     /// Flow is open for reads
     #[default]
@@ -240,8 +241,8 @@ impl Reader {
     pub(crate) fn new_client(
         frame_tx: SubmissionSender,
         path_secret_entry: Arc<PathSecretEntry>,
-        binding_id: VarInt,
-        stream_rx: msg::queue::Stream,
+        dest_queue_id: VarInt,
+        stream_rx: crate::queue::StreamReceiver,
     ) -> Self {
         let parameters = path_secret_entry.parameters();
         let remote_max_data = parameters.local_recv_max_data;
@@ -251,8 +252,8 @@ impl Reader {
             frame_tx,
             completion_rx: frame::failure_completion_channel(),
             stream_rx,
+            dest_queue_id,
             path_secret_entry,
-            binding_id,
             reassembler: Reassembler::new(),
             remote_max_data,
             window_size,
@@ -268,8 +269,8 @@ impl Reader {
     pub(crate) fn new_server(
         frame_tx: SubmissionSender,
         path_secret_entry: Arc<PathSecretEntry>,
-        binding_id: VarInt,
-        stream_rx: msg::queue::Stream,
+        dest_queue_id: VarInt,
+        stream_rx: crate::queue::StreamReceiver,
         peer_fin_received: bool,
     ) -> Self {
         let parameters = path_secret_entry.parameters();
@@ -279,41 +280,13 @@ impl Reader {
             frame_tx,
             completion_rx: frame::failure_completion_channel(),
             stream_rx,
+            dest_queue_id,
             path_secret_entry,
-            binding_id,
             reassembler: Reassembler::new(),
             remote_max_data: VarInt::ZERO,
             window_size,
             send_flow_update_after_fin: !peer_fin_received,
             status: Status::Open,
-            reset_error_code: None,
-            #[cfg(debug_assertions)]
-            eof_counter: 0,
-            coop: Coop::default(),
-        }))
-    }
-
-    pub(crate) fn new_server_pending(
-        frame_tx: SubmissionSender,
-        path_secret_entry: Arc<PathSecretEntry>,
-        binding_id: VarInt,
-        stream_rx: msg::queue::Stream,
-        peer_fin_received: bool,
-    ) -> Self {
-        let parameters = path_secret_entry.parameters();
-        let window_size = parameters.local_recv_max_data.as_u64();
-
-        Self(Box::new(Inner {
-            frame_tx,
-            completion_rx: frame::failure_completion_channel(),
-            stream_rx,
-            path_secret_entry,
-            binding_id,
-            reassembler: Reassembler::new(),
-            remote_max_data: VarInt::ZERO,
-            window_size,
-            send_flow_update_after_fin: !peer_fin_received,
-            status: Status::PendingValidation,
             reset_error_code: None,
             #[cfg(debug_assertions)]
             eof_counter: 0,
@@ -349,7 +322,7 @@ impl Reader {
     /// Returns the stream identifier assigned when the flow was created.
     #[inline]
     pub fn binding_id(&self) -> u64 {
-        self.0.binding_id.as_u64()
+        self.0.stream_rx.binding_id().as_u64()
     }
 
     /// Returns the handshake peer address used to identify this stream.
@@ -540,7 +513,7 @@ impl Inner {
         debug_assert!(
             self.eof_counter == 1,
             "Reader returned EOF again on stream {} (EOF count: {}). `read_into` returning Ok(0) means the peer's FIN was fully consumed and no more data will arrive. Stop calling `read_into` after the first Ok(0); repeated post-EOF reads usually mean the application treated EOF as \"try again later\" and is now spinning after the stream has completed.",
-            self.binding_id.as_u64(),
+            self.stream_rx.binding_id().as_u64(),
             self.eof_counter,
         );
     }
@@ -655,7 +628,7 @@ impl Inner {
 
         if self.reassembler.is_reading_complete() {
             debug!(
-                binding_id = self.binding_id.as_u64(),
+                binding_id = self.stream_rx.binding_id().as_u64(),
                 final_size = ?self.reassembler.final_size(),
                 consumed_len = self.reassembler.consumed_len(),
                 "Reader complete - all data consumed"
@@ -699,7 +672,7 @@ impl Inner {
                                 offset.as_u64().checked_add(payload.len() as u64)
                             else {
                                 debug!(
-                                    binding_id = self.binding_id.as_u64(),
+                                    binding_id = self.stream_rx.binding_id().as_u64(),
                                     offset = offset.as_u64(),
                                     payload_len = payload.len(),
                                     "Incoming data offset overflowed"
@@ -718,7 +691,7 @@ impl Inner {
                                 && payload_end_offset > self.remote_max_data.as_u64()
                             {
                                 debug!(
-                                    binding_id = self.binding_id.as_u64(),
+                                    binding_id = self.stream_rx.binding_id().as_u64(),
                                     offset = offset.as_u64(),
                                     payload_len = payload.len(),
                                     payload_end_offset,
@@ -729,7 +702,7 @@ impl Inner {
                             }
 
                             trace!(
-                                binding_id = self.binding_id.as_u64(),
+                                binding_id = self.stream_rx.binding_id().as_u64(),
                                 offset = offset.as_u64(),
                                 len = payload.len(),
                                 is_fin = fin,
@@ -741,7 +714,7 @@ impl Inner {
                                 Ok(r) => r,
                                 Err(err) => {
                                     debug!(
-                                        binding_id = self.binding_id.as_u64(),
+                                        binding_id = self.stream_rx.binding_id().as_u64(),
                                         ?err,
                                         "Invalid storage/fin combination"
                                     );
@@ -756,7 +729,7 @@ impl Inner {
                                 interpose,
                             ) {
                                 debug!(
-                                    binding_id = self.binding_id.as_u64(),
+                                    binding_id = self.stream_rx.binding_id().as_u64(),
                                     ?err,
                                     "Failed to write to reassembler"
                                 );
@@ -765,17 +738,20 @@ impl Inner {
                         }
                         msg::Stream::QueueValidated => {
                             if self.status.on_validated().is_ok() {
-                                debug!(binding_id = self.binding_id.as_u64(), "Flow validated");
+                                debug!(
+                                    binding_id = self.stream_rx.binding_id().as_u64(),
+                                    "Flow validated"
+                                );
                             } else {
                                 debug!(
-                                    binding_id = self.binding_id.as_u64(),
+                                    binding_id = self.stream_rx.binding_id().as_u64(),
                                     "QueueValidated received in unexpected state"
                                 );
                             }
                         }
                         msg::Stream::Reset { error_code } => {
                             debug!(
-                                binding_id = self.binding_id.as_u64(),
+                                binding_id = self.stream_rx.binding_id().as_u64(),
                                 error_code = error_code.as_u64(),
                                 "Stream reset by peer"
                             );
@@ -855,7 +831,7 @@ impl Inner {
             self.remote_max_data = new_max_data;
         } else {
             trace!(
-                binding_id = self.binding_id.as_u64(),
+                binding_id = self.stream_rx.binding_id().as_u64(),
                 consumed,
                 current_max,
                 threshold,
@@ -876,7 +852,7 @@ impl Inner {
                     if let frame::TransmissionStatus::Failed(reason) = completed.status {
                         if let Some(existing) = failure {
                             debug!(
-                                binding_id = self.binding_id.as_u64(),
+                                binding_id = self.stream_rx.binding_id().as_u64(),
                                 first = ?existing,
                                 additional = ?reason,
                                 "observed additional transmission failure"
@@ -919,18 +895,14 @@ impl Inner {
     }
 
     fn send_max_data_frame(&mut self, maximum_data: VarInt) -> io::Result<()> {
-        let Some(remote_queue_id) = self.stream_rx.remote_queue_id() else {
-            return Ok(());
-        };
-
         let frame = Frame {
             source_sender_id: LocalSenderId::UNSPECIFIED,
             header: Header::QueueMaxData {
                 queue_pair: QueuePair {
                     source_queue_id: self.stream_rx.queue_id(),
-                    dest_queue_id: remote_queue_id,
+                    dest_queue_id: self.dest_queue_id,
                 },
-                binding_id: self.binding_id,
+                binding_id: self.stream_rx.binding_id(),
                 maximum_data,
             },
             payload: ByteVec::new(),
@@ -944,7 +916,7 @@ impl Inner {
         self.send_frame(frame)?;
 
         trace!(
-            binding_id = self.binding_id.as_u64(),
+            binding_id = self.stream_rx.binding_id().as_u64(),
             maximum_data = maximum_data.as_u64(),
             "Sent MAX_DATA"
         );
@@ -957,15 +929,11 @@ impl Inner {
         error_code: VarInt,
         reset_target: ResetTarget,
     ) -> io::Result<()> {
-        let Some(remote_queue_id) = self.stream_rx.remote_queue_id() else {
-            return Ok(());
-        };
-
         let frame = Frame {
             source_sender_id: LocalSenderId::UNSPECIFIED,
             header: Header::QueueReset {
-                dest_queue_id: remote_queue_id,
-                binding_id: self.binding_id,
+                dest_queue_id: self.dest_queue_id,
+                binding_id: self.stream_rx.binding_id(),
                 reset_target,
                 error_code,
                 dest_acceptor_id: None,
@@ -981,7 +949,7 @@ impl Inner {
         self.send_frame(frame)?;
 
         debug!(
-            binding_id = self.binding_id.as_u64(),
+            binding_id = self.stream_rx.binding_id().as_u64(),
             error_code = error_code.as_u64(),
             ?reset_target,
             "Sent QueueReset"
@@ -1019,7 +987,7 @@ where
 impl Drop for Reader {
     fn drop(&mut self) {
         debug!(
-            binding_id = self.0.binding_id.as_u64(),
+            binding_id = self.0.stream_rx.binding_id().as_u64(),
             status = ?self.0.status,
             final_size = ?self.0.reassembler.final_size(),
             consumed_len = self.0.reassembler.consumed_len(),
@@ -1035,7 +1003,7 @@ impl Drop for Reader {
             let error_code = error::ABNORMAL_TERMINATION;
             let _ = self.0.send_reset_frame(error_code, ResetTarget::Both);
             debug!(
-                binding_id = self.0.binding_id.as_u64(),
+                binding_id = self.0.stream_rx.binding_id().as_u64(),
                 "Reader dropped during panic - sent QueueReset"
             );
         } else if !self.0.reassembler.is_writing_complete() && !self.0.status.is_reset() {
@@ -1046,7 +1014,7 @@ impl Drop for Reader {
             // the peer's writer would never observe the signal.
             let _ = self.0.send_reset_frame(error_code, ResetTarget::Control);
             debug!(
-                binding_id = self.0.binding_id.as_u64(),
+                binding_id = self.0.stream_rx.binding_id().as_u64(),
                 "Reader dropped before FIN received - sent STOP_SENDING"
             );
         }

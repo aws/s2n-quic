@@ -2,13 +2,12 @@
 source: dc/s2n-quic-dc/src/testing.rs
 expression: logs
 ---
-0:00:00.000000000 [main] DEBUG grow epoch=8
-0:00:00.000000000 [main] DEBUG event=on_send_queue_init prev=Init next=QueueBindSent location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000000000 [main] DEBUG Sent QueueInit with early data binding_id=42 bytes_read=3 is_fin=false
-0:00:00.000000000 [main] DEBUG poll_remote_budget received messages binding_id=42 status=QueueBindSent msg_count=2
-0:00:00.000000000 [main] DEBUG event=on_queue_confirmed prev=QueueBindSent next=Open location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000000000 [main] DEBUG Flow established binding_id=42
-0:00:00.000000000 [main] DEBUG Writer dropping binding_id=42 status=Open next_offset=8 inflight_bytes=8 remote_max_data=8
-0:00:00.000000000 [main] DEBUG Sent FIN binding_id=42
+0:00:00.000000000 [main] DEBUG event=on_init_sent prev=Init next=InitSent location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.000000000 [main] DEBUG Sent QueueInit with early data binding_id=1 bytes_read=3 is_fin=false
+0:00:00.000000000 [main] DEBUG poll_remote_budget received messages binding_id=1 status=InitSent msg_count=2
+0:00:00.000000000 [main] DEBUG event=on_confirmed prev=InitSent next=Open location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.000000000 [main] DEBUG Flow established binding_id=1
+0:00:00.000000000 [main] DEBUG Writer dropping binding_id=1 status=Open next_offset=8 inflight_bytes=8 remote_max_data=8
+0:00:00.000000000 [main] DEBUG Sent FIN binding_id=1
 0:00:00.000000000 [main] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [main] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs

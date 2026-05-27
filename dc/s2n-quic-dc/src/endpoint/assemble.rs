@@ -23,6 +23,8 @@ use crate::{
         datagram::{self, RoutingInfo},
         WireVersion,
     },
+    path::secret::map::entry::QueueState,
+    queue::FreedBatchTx,
     socket::{
         channel::{ImmediateQueueStatus, UnboundedSender},
         pool::{self, descriptor::Segments},
@@ -38,6 +40,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 use s2n_quic_platform::features::Gso;
+use std::sync::Arc;
 
 #[cfg(test)]
 mod tests;
@@ -76,6 +79,7 @@ pub(crate) fn assemble<Clk>(
     header_buf: &mut Vec<u8>,
     cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
     ack_completions: &mut impl UnboundedSender<intrusive::Entry<msg::Sender>>,
+    freed_batch_tx: &mut FreedBatchTx,
     counters: &AssemblerCounters,
     send_counters: &crate::endpoint::counters::Send,
 ) -> Option<Segments>
@@ -207,6 +211,42 @@ where
 
                 if estimated_len == max_segment_len {
                     break;
+                }
+            }
+
+            // Phase 1b: QueueFree emission (after ACKs, before PTO).
+            // Bypasses CWND. Stays in inflight map for retransmission on loss.
+            drain_queue_free_retries(
+                context,
+                source_sender_id,
+                source_control_port,
+                &mut metadata,
+                max_segment_len,
+                &mut is_ack_eliciting,
+                &mut packet_frames,
+                freed_batch_tx,
+                counters,
+            );
+
+            // Then encode fresh ranges (if pending_freed token is present).
+            if let Some(freed_entry) = context.pending_freed.take() {
+                if let Some(frame) = assemble_queue_free(
+                    freed_entry,
+                    &context.path_secret_entry,
+                    source_sender_id,
+                    source_control_port,
+                    &context.credentials,
+                    seal::Application::tag_len(&context.sealer),
+                    &metadata,
+                    max_segment_len,
+                    freed_batch_tx,
+                ) {
+                    let next_metadata =
+                        metadata.with_frame_parts(&frame.header, frame.payload.len());
+                    is_ack_eliciting = true;
+                    metadata = next_metadata;
+                    counters.on_tx_frame(&frame.header);
+                    packet_frames.push_back(frame.into());
                 }
             }
 
@@ -500,6 +540,176 @@ enum ProbeResult {
 
 /// Try to assemble a PTO probe from the oldest inflight packet(s).
 ///
+/// Drain retry entries from FreedInner's retry queue into the packet.
+///
+/// These are previously-transmitted QueueFree frames that were cancelled when a
+/// send context was invalidated (peer-dead). They retain their original request_id
+/// and encoding so the client deduplicates on retransmission.
+fn drain_queue_free_retries(
+    context: &mut Context,
+    source_sender_id: LocalSenderId,
+    source_control_port: u16,
+    metadata: &mut MetadataEstimate,
+    max_segment_len: usize,
+    is_ack_eliciting: &mut bool,
+    packet_frames: &mut Queue<Frame>,
+    freed_batch_tx: &mut FreedBatchTx,
+    counters: &AssemblerCounters,
+) {
+    let QueueState::Server(ref server_state) = *context.path_secret_entry.queue_state() else {
+        return;
+    };
+
+    while let Some(retry) = server_state.freed.pop_retry() {
+        let header = frame::Header::QueueFree {
+            free_request_id: retry.free_request_id,
+            smallest_queue_id: retry.smallest_queue_id,
+        };
+        let next_metadata = metadata.with_frame_parts(&header, retry.payload.len());
+        let estimated_len = next_metadata.estimate_packet_len(
+            source_sender_id,
+            source_control_port,
+            &context.credentials,
+            seal::Application::tag_len(&context.sealer),
+        );
+        if estimated_len > max_segment_len {
+            server_state.freed.push_retry(
+                crate::queue::freed::RetryEntry {
+                    free_request_id: retry.free_request_id,
+                    smallest_queue_id: retry.smallest_queue_id,
+                    payload: retry.payload,
+                },
+                &context.path_secret_entry,
+                freed_batch_tx,
+            );
+            break;
+        }
+        let frame = Frame {
+            header,
+            source_sender_id,
+            payload: retry.payload,
+            path_secret_entry: context.path_secret_entry.clone(),
+            completion: None,
+            status: Default::default(),
+            ttl: frame::DEFAULT_TTL,
+            transmission_time: None,
+        };
+        *is_ack_eliciting = true;
+        *metadata = next_metadata;
+        counters.on_tx_frame(&frame.header);
+        packet_frames.push_back(frame.into());
+    }
+}
+
+/// Encode a QueueFree frame from the pending freed token.
+///
+/// Drains accumulated freed IDs from FreedInner, encodes them with a byte budget,
+/// puts back any remainder, and resubmits or parks the token. Returns the assembled
+/// Frame if encoding succeeded, or None if there was nothing to encode or it didn't
+/// fit in the segment.
+fn assemble_queue_free(
+    freed_entry: intrusive::Entry<msg::Sender>,
+    path_secret_entry: &Arc<crate::path::secret::map::Entry>,
+    source_sender_id: LocalSenderId,
+    source_control_port: u16,
+    credentials: &Credentials,
+    tag_len: usize,
+    metadata: &MetadataEstimate,
+    max_segment_len: usize,
+    freed_batch_tx: &mut FreedBatchTx,
+) -> Option<Frame> {
+    let QueueState::Server(ref server_state) = *path_secret_entry.queue_state() else {
+        return None;
+    };
+
+    let mut scratch = crate::bitset::HierarchicalBitSet::new(1);
+    let request_id = match server_state.freed.take(&mut scratch) {
+        Some(id) => id,
+        None => {
+            server_state
+                .freed
+                .finish_encoding(&mut scratch, freed_entry, freed_batch_tx);
+            return None;
+        }
+    };
+
+    // Pop the first (smallest) ID for the header
+    let Some(first_id) = scratch.pop_first() else {
+        server_state
+            .freed
+            .finish_encoding(&mut scratch, freed_entry, freed_batch_tx);
+        return None;
+    };
+    let smallest_queue_id = VarInt::new(first_id as u64).unwrap_or(VarInt::ZERO);
+
+    let header = frame::Header::QueueFree {
+        free_request_id: request_id,
+        smallest_queue_id,
+    };
+
+    // Estimate available payload budget
+    let overhead_estimate =
+        metadata.estimate_packet_len(source_sender_id, source_control_port, credentials, tag_len);
+    let header_cost = header.encoding_size();
+    let payload_budget = max_segment_len.saturating_sub(overhead_estimate + header_cost + 4);
+
+    // Encode deltas within budget
+    let mut payload_buf = vec![0u8; payload_budget];
+    let mut encoded_len = 0usize;
+    let mut prev_id = first_id;
+
+    {
+        let mut encoder = EncoderBuffer::new(&mut payload_buf);
+        while let Some(id) = scratch.pop_first() {
+            let delta = VarInt::new((id - prev_id - 1) as u64).unwrap_or(VarInt::ZERO);
+            let cost = delta.encoding_size();
+            if encoded_len + cost > payload_budget {
+                scratch.insert(id);
+                break;
+            }
+            encoder.encode(&delta);
+            encoded_len += cost;
+            prev_id = id;
+        }
+    }
+
+    payload_buf.truncate(encoded_len);
+    let payload = crate::byte_vec::ByteVec::from(payload_buf);
+
+    // Check that the frame actually fits
+    let next_metadata = metadata.with_frame_parts(&header, encoded_len);
+    let estimated_len = next_metadata.estimate_packet_len(
+        source_sender_id,
+        source_control_port,
+        credentials,
+        tag_len,
+    );
+
+    if estimated_len > max_segment_len {
+        scratch.insert(first_id);
+        server_state
+            .freed
+            .finish_encoding(&mut scratch, freed_entry, freed_batch_tx);
+        return None;
+    }
+
+    // Single lock: put back remainder + decide resubmit
+    server_state
+        .freed
+        .finish_encoding(&mut scratch, freed_entry, freed_batch_tx);
+
+    Some(Frame {
+        header,
+        source_sender_id,
+        payload,
+        path_secret_entry: path_secret_entry.clone(),
+        completion: None,
+        status: Default::default(),
+        ttl: frame::DEFAULT_TTL,
+        transmission_time: None,
+    })
+}
+
 /// Skips packets whose frames have all been cancelled (writer dropped). If a
 /// transmittable packet is found, its frames are added to `packet_frames` and the
 /// PN is advanced by 4 to create the gap that triggers an immediate ACK.

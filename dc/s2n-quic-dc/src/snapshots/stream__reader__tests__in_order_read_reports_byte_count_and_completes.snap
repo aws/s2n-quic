@@ -2,7 +2,6 @@
 source: dc/s2n-quic-dc/src/testing.rs
 expression: logs
 ---
-0:00:00.000000000 [main] DEBUG grow epoch=8
 0:00:00.000000000 [main] DEBUG Reader complete - all data consumed binding_id=1 final_size=Some(8) consumed_len=8
 0:00:00.000000000 [main] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs
 0:00:00.000000000 [main] DEBUG Reader dropping binding_id=1 status=Complete final_size=Some(8) consumed_len=8 total_received_len=8 is_writing_complete=true is_reading_complete=true

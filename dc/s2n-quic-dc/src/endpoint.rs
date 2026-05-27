@@ -402,7 +402,7 @@ where
 
     // Shared flow-queue allocator and dispatch counters -------------------------
     let queue_allocator = msg::queue::Allocator::new_with_registry(&counter_registry);
-    let queue_dispatcher = queue_allocator.dispatcher();
+    let (freed_batch_tx, freed_batch_rx) = crate::queue::freed_batch_channel();
     let counters = counters::Dispatch::new(&counter_registry);
 
     // Per-send-worker batch channels -----------------------------------------------
@@ -594,6 +594,7 @@ where
             random: crate::xorshift::Rng::new(),
             frame_tx: frame_tx.clone(),
             ack_completions_tx: ack_completions_tx.clone(),
+            freed_batch_tx: freed_batch_tx.clone(),
             waker_sink,
             invalidation_rx,
             peer_dead_tx: peer_dead_tx.clone(),
@@ -641,7 +642,7 @@ where
             ack_sender: ack_sender.clone(),
             ack_completion_rx,
             recv_dispatch_idx: recv_dispatch_id,
-            queue_dispatcher: queue_dispatcher.clone(),
+            freed_batch_tx: freed_batch_tx.clone(),
             counters: counters.clone(),
             clock: clock.clone(),
             route: ack_route,
@@ -674,6 +675,8 @@ where
         raw_rx: invalidation_raw_rx,
         peer_dead_rx,
         peer_dead_queue_gauge: counter_registry.register_queue_gauge("q.peer_dead"),
+        freed_batch_rx,
+        ack_sender: ack_sender.clone(),
         path_secret_map: path_secret_map.clone(),
         send_txs: invalidation_send_txs,
         recv_txs: invalidation_recv_txs,
@@ -685,7 +688,6 @@ where
         ups_dedup_capacity,
         ups_dedup_window,
         acceptor_cleaner: acceptor_registry.cleaner(),
-        queue_dispatcher: queue_dispatcher.clone(),
         waker_sink: bg_waker_sink,
     });
 
@@ -733,6 +735,7 @@ struct SendWorkerParts {
     ack_completions_tx: routing::AckCompletionSender<
         GaugedSender<sync_queue::Sender<msg::Sender>, crate::intrusive::Queue<msg::Sender>>,
     >,
+    freed_batch_tx: crate::queue::FreedBatchTx,
     waker_sink: waker::Sink,
     invalidation_rx: sync_queue::Receiver<tasks::Invalidation>,
     peer_dead_tx: PeerDeadSender,
@@ -774,7 +777,7 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     ack_completion_rx: sync_queue::Receiver<msg::Sender>,
     /// Index into the AckCompletionSender's staging array (0..num_recv_dispatch).
     recv_dispatch_idx: RecvDispatchWorkerId,
-    queue_dispatcher: msg::queue::Dispatcher,
+    freed_batch_tx: crate::queue::FreedBatchTx,
     counters: Arc<counters::Dispatch>,
     clock: Clk,
     route: Route,
@@ -788,6 +791,10 @@ struct BackgroundParts<UpsSocket> {
     raw_rx: sync_queue::Receiver<descriptor::Filled>,
     peer_dead_rx: sync_queue::Receiver<tasks::PeerDead>,
     peer_dead_queue_gauge: crate::counter::QueueGauge,
+    freed_batch_rx: crate::queue::FreedBatchRx,
+    ack_sender: routing::AckSender<
+        GaugedSender<sync_queue::Sender<msg::Sender>, crate::intrusive::Entry<msg::Sender>>,
+    >,
     path_secret_map: crate::path::secret::Map,
     send_txs: IdMap<id::SendWorkerId, InvalidationSender>,
     recv_txs: IdMap<id::RecvDispatchWorkerId, InvalidationSender>,
@@ -799,7 +806,6 @@ struct BackgroundParts<UpsSocket> {
     ups_dedup_capacity: usize,
     ups_dedup_window: core::time::Duration,
     acceptor_cleaner: acceptor::Cleaner<PendingValidation>,
-    queue_dispatcher: msg::queue::Dispatcher,
     waker_sink: waker::Sink,
 }
 
@@ -930,6 +936,7 @@ where
                     sw.random,
                     sw.frame_tx,
                     sw.ack_completions_tx,
+                    sw.freed_batch_tx,
                     sw.waker_sink,
                     sw.peer_dead_tx,
                     dead_peer_cooldown,
@@ -1021,7 +1028,7 @@ where
                     rd.acceptor_registry,
                     rd.frame_tx,
                     rd.ack_sender.clone(),
-                    rd.queue_dispatcher,
+                    rd.freed_batch_tx,
                     rd.counters.clone(),
                     rd.clock,
                     rd.route,
@@ -1158,12 +1165,8 @@ where
                         .receiver("task.peer_dead_broadcast")
                         .with_function("endpoint::Worker::spawn"),
                 );
-                let rx = tasks::peer_dead_broadcast(
-                    peer_dead_rx,
-                    bg.queue_dispatcher,
-                    bg.waker_sink,
-                    peer_dead_counters,
-                );
+                let rx =
+                    tasks::peer_dead_broadcast(peer_dead_rx, bg.waker_sink, peer_dead_counters);
                 let task_counter = counter_registry
                     .register_nominal_task("task.peer_dead_broadcast", "background")
                     .with_registration_metadata(
@@ -1196,6 +1199,63 @@ where
                 let task_counter =
                     counter_registry.register_nominal_task("task.ups_send", "background");
                 local.spawn(rx.drain_budgeted_metered(None, task_counter));
+
+                // Freed-batch LB routing: pick socket via sender_load_score, forward
+                // to the target send worker's ack channel.
+                {
+                    use crate::socket::channel::{ReceiverExt as _, UnboundedSender as _};
+                    let mut ack_sender = bg.ack_sender;
+                    let socket_count = total_sender_ids;
+                    let mut rng = crate::xorshift::Rng::new();
+                    let rx = crate::socket::channel::Map::new(
+                        bg.freed_batch_rx,
+                        move |mut entry: crate::intrusive::Entry<msg::Sender>| {
+                            // Pick-two LB using sender_load_score atomics
+                            let chosen = if socket_count <= 1 {
+                                LocalSenderId::from_index(0)
+                            } else {
+                                let path_entry = entry.path_secret_entry().clone();
+                                let idx1 = LocalSenderId::from_index(rng.next_usize(socket_count));
+                                let idx2 = {
+                                    let mut raw = rng.next_usize(socket_count - 1);
+                                    if raw >= idx1.as_usize() {
+                                        raw += 1;
+                                    }
+                                    LocalSenderId::from_index(raw)
+                                };
+                                let s1 = path_entry.sender_load_score(idx1);
+                                let s2 = path_entry.sender_load_score(idx2);
+                                if s1 <= s2 {
+                                    idx1
+                                } else {
+                                    idx2
+                                }
+                            };
+
+                            // Set the chosen sender and forward
+                            if let msg::Sender::PendingFreed {
+                                ref mut local_sender_id,
+                                ..
+                            } = *entry
+                            {
+                                *local_sender_id = chosen;
+                            }
+                            let _ = ack_sender.send(entry);
+                        },
+                    );
+                    let task_counter = counter_registry
+                        .register_nominal_task("task.freed_batch_router", "background")
+                        .with_registration_metadata(
+                            "task.freed_batch_router",
+                            "Routes freed-batch tokens to send workers with LB",
+                            "endpoint::Worker::spawn",
+                        );
+                    local.spawn_receiver_task(
+                        rx.drain_budgeted_metered(None, task_counter.clone()),
+                        None,
+                        task_counter,
+                    );
+                }
 
                 local.spawn(bg.acceptor_cleaner);
             }

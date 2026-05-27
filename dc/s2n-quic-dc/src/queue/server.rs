@@ -83,6 +83,19 @@ impl ServerState {
             view: SenderView::new(),
         }
     }
+
+    /// Push Reset into all allocated slots.
+    ///
+    /// Does NOT permanently close the slots — this is a transient peer-dead
+    /// notification.  After cooldown expires, new bindings proceed normally.
+    pub fn broadcast_reset(&self, error_code: VarInt, waker_sink: &mut impl FnMut(AutoWake)) {
+        let mut view = SenderView::new();
+        view.for_each_slot(&self.pages, |slot| {
+            let (sw, cw) = slot.broadcast_reset(error_code);
+            waker_sink(sw);
+            waker_sink(cw);
+        });
+    }
 }
 
 // ── ServerView (per recv::Context) ───────────────────────────────────────────
@@ -97,6 +110,19 @@ pub struct ServerView {
 }
 
 impl ServerView {
+    /// Record a queue_id as freed without binding it.
+    ///
+    /// Used when the server rejects an init (e.g. acceptor not found) and needs
+    /// to signal the client to reclaim the peer-side slot via QueueFree.
+    pub fn record_freed(
+        &self,
+        queue_id: VarInt,
+        path_entry: &Arc<PathSecretEntry>,
+        endpoint_tx: &mut FreedBatchTx,
+    ) {
+        self.state.freed.record(queue_id, path_entry, endpoint_tx);
+    }
+
     /// Attempt to bind a slot and push the first stream entry.
     pub fn bind_and_send_stream(
         &mut self,
@@ -104,7 +130,7 @@ impl ServerView {
         binding_id: VarInt,
         entry: intrusive::Entry<msg::Stream>,
         path_entry: &Arc<PathSecretEntry>,
-        endpoint_tx: &FreedBatchTx,
+        endpoint_tx: &mut FreedBatchTx,
     ) -> Result<BindResult, Error<intrusive::Entry<msg::Stream>>> {
         let index = queue_id.as_u64() as usize;
 
@@ -125,7 +151,6 @@ impl ServerView {
             BindState::NewBinding(waker) => {
                 let slot_ptr = slot.as_ptr();
                 let on_free = OnFree::Server {
-                    server_state: self.state.clone(),
                     path_entry: path_entry.clone(),
                     endpoint_tx: endpoint_tx.clone(),
                 };
@@ -190,26 +215,43 @@ mod tests {
 
     fn test_server(
         max_queues: u64,
-    ) -> (ServerView, Arc<PathSecretEntry>, FreedBatchTx, super::super::freed::FreedBatchRx) {
+    ) -> (
+        ServerView,
+        Arc<PathSecretEntry>,
+        FreedBatchTx,
+        super::super::freed::FreedBatchRx,
+    ) {
+        use s2n_quic_core::dc;
         let (tx, rx) = freed_batch_channel();
+        let mut params = dc::testing::TEST_APPLICATION_PARAMS;
+        params.max_queues = VarInt::new(max_queues).unwrap();
         let path_entry: Arc<PathSecretEntry> =
-            PathSecretEntry::builder("127.0.0.1:4433".parse().unwrap()).build();
-        let state = Arc::new(ServerState::new(VarInt::new(max_queues).unwrap()));
+            PathSecretEntry::builder("127.0.0.1:4433".parse().unwrap())
+                .endpoint_type(s2n_quic_core::endpoint::Type::Server)
+                .params(params)
+                .build();
+        let crate::path::secret::map::entry::QueueState::Server(ref state) =
+            *path_entry.queue_state()
+        else {
+            panic!("expected Server queue state");
+        };
         let view = state.view();
         (view, path_entry, tx, rx)
     }
 
     #[test]
     fn bind_and_send_new() {
-        let (mut server, path_entry, tx, _rx) = test_server(10);
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
+        let (mut server, path_entry, mut tx, _rx) = test_server(10);
+        let result =
+            server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &mut tx);
         assert!(matches!(result, Ok(BindResult::NewBinding { .. })));
     }
 
     #[test]
     fn bind_and_send_existing() {
-        let (mut server, path_entry, tx, _rx) = test_server(10);
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
+        let (mut server, path_entry, mut tx, _rx) = test_server(10);
+        let result =
+            server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &mut tx);
         let Ok(BindResult::NewBinding {
             stream, control, ..
         }) = result
@@ -218,7 +260,8 @@ mod tests {
         };
 
         // Second send with same binding
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
+        let result =
+            server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &mut tx);
         assert!(matches!(result, Ok(BindResult::Bound(_))));
 
         drop((stream, control));
@@ -226,8 +269,9 @@ mod tests {
 
     #[test]
     fn stale_binding_rejected() {
-        let (mut server, path_entry, tx, _rx) = test_server(10);
-        let result = server.bind_and_send_stream(v(0), v(2), make_stream_entry(), &path_entry, &tx);
+        let (mut server, path_entry, mut tx, _rx) = test_server(10);
+        let result =
+            server.bind_and_send_stream(v(0), v(2), make_stream_entry(), &path_entry, &mut tx);
         let Ok(BindResult::NewBinding {
             stream, control, ..
         }) = result
@@ -236,7 +280,8 @@ mod tests {
         };
 
         // Stale binding (1 < current 2)
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
+        let result =
+            server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &mut tx);
         assert!(matches!(result, Err(Error::StaleBinding(_))));
 
         drop((stream, control));
@@ -244,8 +289,9 @@ mod tests {
 
     #[test]
     fn future_binding_rejected() {
-        let (mut server, path_entry, tx, _rx) = test_server(10);
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
+        let (mut server, path_entry, mut tx, _rx) = test_server(10);
+        let result =
+            server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &mut tx);
         let Ok(BindResult::NewBinding {
             stream, control, ..
         }) = result
@@ -254,7 +300,8 @@ mod tests {
         };
 
         // Future binding (5 > current 1)
-        let result = server.bind_and_send_stream(v(0), v(5), make_stream_entry(), &path_entry, &tx);
+        let result =
+            server.bind_and_send_stream(v(0), v(5), make_stream_entry(), &path_entry, &mut tx);
         assert!(matches!(result, Err(Error::FutureBinding(_))));
 
         drop((stream, control));
@@ -262,15 +309,17 @@ mod tests {
 
     #[test]
     fn cap_exceeded() {
-        let (mut server, path_entry, tx, _rx) = test_server(5);
-        let result = server.bind_and_send_stream(v(5), v(1), make_stream_entry(), &path_entry, &tx);
+        let (mut server, path_entry, mut tx, _rx) = test_server(5);
+        let result =
+            server.bind_and_send_stream(v(5), v(1), make_stream_entry(), &path_entry, &mut tx);
         assert!(matches!(result, Err(Error::CapExceeded(_))));
     }
 
     #[test]
     fn send_stream_after_bind() {
-        let (mut server, path_entry, tx, _rx) = test_server(10);
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
+        let (mut server, path_entry, mut tx, _rx) = test_server(10);
+        let result =
+            server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &mut tx);
         let Ok(BindResult::NewBinding {
             stream, control, ..
         }) = result
@@ -286,8 +335,9 @@ mod tests {
 
     #[test]
     fn send_control_after_bind() {
-        let (mut server, path_entry, tx, _rx) = test_server(10);
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
+        let (mut server, path_entry, mut tx, _rx) = test_server(10);
+        let result =
+            server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &mut tx);
         let Ok(BindResult::NewBinding {
             stream, control, ..
         }) = result
@@ -310,8 +360,9 @@ mod tests {
 
     #[test]
     fn close_wakes_receivers() {
-        let (mut server, path_entry, tx, _rx) = test_server(10);
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
+        let (mut server, path_entry, mut tx, _rx) = test_server(10);
+        let result =
+            server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &mut tx);
         let Ok(BindResult::NewBinding {
             stream, control, ..
         }) = result
@@ -329,32 +380,54 @@ mod tests {
 
     #[test]
     fn freed_batch_submitted_on_receiver_drop() {
-        let (mut server, path_entry, tx, mut rx) = test_server(10);
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
-        let Ok(BindResult::NewBinding {
-            stream, control, ..
-        }) = result
-        else {
-            panic!("expected NewBinding");
+        use crate::{
+            socket::channel::Budget,
+            testing::{ext::*, sim},
         };
 
-        // No batch yet
-        assert!(rx.try_recv().is_err());
+        sim(|| {
+            let (mut server, path_entry, mut tx, mut rx) = test_server(10);
 
-        // Drop both receivers — should trigger freed notification
-        drop(stream);
-        drop(control);
+            async move {
+                let mut budget = Budget::new(usize::MAX);
 
-        // Batch should have been submitted
-        assert!(rx.try_recv().is_ok());
+                let result = server.bind_and_send_stream(
+                    v(0),
+                    v(1),
+                    make_stream_entry(),
+                    &path_entry,
+                    &mut tx,
+                );
+                let Ok(BindResult::NewBinding {
+                    stream, control, ..
+                }) = result
+                else {
+                    panic!("expected NewBinding");
+                };
+
+                // Drop both receivers — should trigger freed notification
+                drop(stream);
+                drop(control);
+
+                // Batch should have been submitted
+                let entry = crate::socket::channel::Receiver::<
+                    crate::intrusive::Entry<crate::stream::endpoint::msg::Sender>,
+                >::recv(&mut rx, &mut budget)
+                .await;
+                assert!(entry.is_some());
+            }
+            .primary()
+            .spawn();
+        });
     }
 
     #[test]
     fn rebind_after_free() {
-        let (mut server, path_entry, tx, _rx) = test_server(10);
+        let (mut server, path_entry, mut tx, _rx) = test_server(10);
 
         // First binding
-        let result = server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &tx);
+        let result =
+            server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &mut tx);
         let Ok(BindResult::NewBinding {
             stream, control, ..
         }) = result
@@ -365,7 +438,8 @@ mod tests {
         drop(control);
 
         // Re-bind with higher binding_id
-        let result = server.bind_and_send_stream(v(0), v(2), make_stream_entry(), &path_entry, &tx);
+        let result =
+            server.bind_and_send_stream(v(0), v(2), make_stream_entry(), &path_entry, &mut tx);
         assert!(matches!(result, Ok(BindResult::NewBinding { .. })));
     }
 }
