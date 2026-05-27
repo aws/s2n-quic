@@ -422,34 +422,35 @@ fn encode_statsd_lines(samples: &[RawMetricSample<'_>], prefix: Option<&str>) ->
                 continue;
             }
 
-            let mut metric = with_metric_prefix(sample.key, prefix);
-            if !variant.is_empty() {
-                metric.push('.');
-                metric.push_str(&sanitize_metric_name(variant));
-            }
+            let metric = with_metric_prefix(sample.key, prefix);
+            let tag = if !variant.is_empty() {
+                format!("|#variant:{}", sanitize_metric_name(variant))
+            } else {
+                String::new()
+            };
 
             let (count, min, max) = histogram_count_min_max(&buckets);
-            lines.push(format!("{metric}.count:{count}|c"));
+            lines.push(format!("{metric}.count:{count}|c{tag}"));
 
             if let Some(min) = convert_to_milliseconds(min, unit) {
-                lines.push(format!("{metric}.min:{min:.3}|ms"));
+                lines.push(format!("{metric}.min:{min:.3}|ms{tag}"));
             } else {
-                lines.push(format!("{metric}.min:{min}|g"));
+                lines.push(format!("{metric}.min:{min}|g{tag}"));
             }
 
             for percentile in STATSD_HISTOGRAM_PERCENTILES {
                 let value = histogram_value_at_percentile(&buckets, percentile);
                 if let Some(value) = convert_to_milliseconds(value, unit) {
-                    lines.push(format!("{metric}.p{percentile}:{value:.3}|ms"));
+                    lines.push(format!("{metric}.p{percentile}:{value:.3}|ms{tag}"));
                 } else {
-                    lines.push(format!("{metric}.p{percentile}:{value}|g"));
+                    lines.push(format!("{metric}.p{percentile}:{value}|g{tag}"));
                 }
             }
 
             if let Some(max) = convert_to_milliseconds(max, unit) {
-                lines.push(format!("{metric}.max:{max:.3}|ms"));
+                lines.push(format!("{metric}.max:{max:.3}|ms{tag}"));
             } else {
-                lines.push(format!("{metric}.max:{max}|g"));
+                lines.push(format!("{metric}.max:{max}|g{tag}"));
             }
 
             continue;
@@ -459,18 +460,17 @@ fn encode_statsd_lines(samples: &[RawMetricSample<'_>], prefix: Option<&str>) ->
             continue;
         };
 
-        let mut metric = with_metric_prefix(sample.key, prefix);
-
-        if let Some(suffix) = suffix.filter(|s| *s != "B") {
-            metric.push('.');
-            metric.push_str(&sanitize_metric_name(suffix));
-        }
+        let metric = with_metric_prefix(sample.key, prefix);
+        let tag = match suffix.filter(|s| *s != "B") {
+            Some(suffix) => format!("|#variant:{}", sanitize_metric_name(suffix)),
+            None => String::new(),
+        };
 
         if sample.key.ends_with(".depth") {
-            lines.push(format!("{metric}:{number}|g"));
-            lines.push(format!("{metric}.distribution:{number}|ms"));
+            lines.push(format!("{metric}:{number}|g{tag}"));
+            lines.push(format!("{metric}.distribution:{number}|ms{tag}"));
         } else {
-            lines.push(format!("{metric}:{number}|c"));
+            lines.push(format!("{metric}:{number}|c{tag}"));
         }
     }
 
@@ -3259,14 +3259,14 @@ mod tests {
         assert!(lines.contains(&"svc.rx.data:255470|c".to_string()));
         assert!(lines.contains(&"svc.q.packet.depth:875|g".to_string()));
         assert!(lines.contains(&"svc.q.packet.depth.distribution:875|ms".to_string()));
-        assert!(lines.contains(&"svc.rx.ecn.ect0:500|c".to_string()));
-        assert!(lines.contains(&"svc.task.time.packet_dispatch.0.count:3|c".to_string()));
-        assert!(lines.contains(&"svc.task.time.packet_dispatch.0.min:0.005|ms".to_string()));
-        assert!(lines.contains(&"svc.task.time.packet_dispatch.0.p50:0.005|ms".to_string()));
-        assert!(lines.contains(&"svc.task.time.packet_dispatch.0.p90:0.010|ms".to_string()));
-        assert!(lines.contains(&"svc.task.time.packet_dispatch.0.p95:0.010|ms".to_string()));
-        assert!(lines.contains(&"svc.task.time.packet_dispatch.0.p99:0.010|ms".to_string()));
-        assert!(lines.contains(&"svc.task.time.packet_dispatch.0.max:0.010|ms".to_string()));
+        assert!(lines.contains(&"svc.rx.ecn:500|c|#variant:ect0".to_string()));
+        assert!(lines.contains(&"svc.task.time.count:3|c|#variant:packet_dispatch.0".to_string()));
+        assert!(lines.contains(&"svc.task.time.min:0.005|ms|#variant:packet_dispatch.0".to_string()));
+        assert!(lines.contains(&"svc.task.time.p50:0.005|ms|#variant:packet_dispatch.0".to_string()));
+        assert!(lines.contains(&"svc.task.time.p90:0.010|ms|#variant:packet_dispatch.0".to_string()));
+        assert!(lines.contains(&"svc.task.time.p95:0.010|ms|#variant:packet_dispatch.0".to_string()));
+        assert!(lines.contains(&"svc.task.time.p99:0.010|ms|#variant:packet_dispatch.0".to_string()));
+        assert!(lines.contains(&"svc.task.time.max:0.010|ms|#variant:packet_dispatch.0".to_string()));
     }
 
     #[test]
