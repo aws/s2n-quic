@@ -33,7 +33,7 @@ mod tests;
 
 pub type ApplicationData = Arc<dyn Any + Send + Sync>;
 
-pub const MAX_PEER_DATA_ADDRS: usize = 32;
+pub const MAX_PEER_DATA_ADDRS: usize = 128;
 
 pub type PeerDataAddrs = tokio::sync::SetOnce<Arc<[s2n_quic_core::inet::SocketAddressV6]>>;
 
