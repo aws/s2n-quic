@@ -6,8 +6,10 @@ publish = false
 
 [dependencies]
 anyhow = "1"
+arrow = { version = "54", default-features = false, features = ["prettyprint"] }
 clap = { version = "4", features = ["derive", "env"] }
 libc = "0.2"
+parquet = { version = "54", features = ["arrow", "zstd"] }
 s2n-quic-dc-metrics = { path = "../dc/s2n-quic-dc-metrics" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

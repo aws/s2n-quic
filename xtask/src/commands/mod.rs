@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod analyze;
+pub mod cwlogs;
 pub mod local;
 
 use anyhow::Result;
@@ -14,6 +15,8 @@ pub enum Command {
     Local(local::Local),
     /// Analyze diagnostic trace files from errored streams
     Analyze(analyze::Analyze),
+    /// Pull [METRICS] lines from CloudWatch Logs and write to Parquet
+    Cwlogs(cwlogs::Cwlogs),
 }
 
 impl Command {
@@ -21,6 +24,7 @@ impl Command {
         match self {
             Self::Local(cmd) => cmd.run(sh),
             Self::Analyze(cmd) => cmd.run(sh),
+            Self::Cwlogs(cmd) => cmd.run(sh),
         }
     }
 }
