@@ -39,6 +39,7 @@ pub(crate) mod frame;
 pub mod id;
 pub(crate) mod inflight;
 pub(crate) mod msg;
+pub(crate) mod range_codec;
 pub(crate) mod recv;
 pub(crate) mod routing;
 pub(crate) mod send;

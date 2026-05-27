@@ -452,6 +452,7 @@ fn dispatch_decoded_frame(
             binding_id,
             reset_target,
             error_code,
+            dest_acceptor_id: _,
         } => {
             handle_queue_reset(
                 credentials,
@@ -490,6 +491,9 @@ fn dispatch_decoded_frame(
                 counters,
                 waker_sink,
             );
+        }
+        Header::QueueFree { .. } => {
+            // TODO: dispatch to queue free handler
         }
         Header::Ack {
             dest_sender_id,
@@ -865,6 +869,7 @@ fn push_reset_frame_with_target(
             binding_id,
             reset_target,
             error_code,
+            dest_acceptor_id: None,
         },
         source_sender_id: LocalSenderId::UNSPECIFIED,
         payload: ByteVec::new(),
@@ -968,6 +973,7 @@ fn handle_queue_validate_request(
                     binding_id,
                     reset_target: ResetTarget::Both,
                     error_code: error::QUEUE_VALIDATION_FAILED,
+                    dest_acceptor_id: None,
                 },
                 source_sender_id: LocalSenderId::UNSPECIFIED,
                 payload: ByteVec::new(),

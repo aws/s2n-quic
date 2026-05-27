@@ -983,6 +983,9 @@ impl Context {
     #[inline]
     pub fn invariants(&self) {
         if cfg!(debug_assertions) {
+            if self.invalidated {
+                return;
+            }
             let has_pending_data = self.queues.iter().any(|q| !q.is_empty());
             let has_pending_data_predicate = self.has_pending_data();
             let has_pending_predicate = self.has_pending();

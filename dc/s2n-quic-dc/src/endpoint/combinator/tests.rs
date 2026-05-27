@@ -595,6 +595,7 @@ fn frame_batch_tracks_byte_costs_per_priority() {
             binding_id: VarInt::from_u8(0),
             reset_target: crate::packet::datagram::ResetTarget::Both,
             error_code: VarInt::from_u8(7),
+            dest_acceptor_id: None,
         },
     );
     let reset_cost = reset.byte_cost();

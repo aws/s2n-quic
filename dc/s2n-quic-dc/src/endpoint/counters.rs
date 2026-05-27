@@ -95,6 +95,9 @@ pub(crate) struct Dispatch {
     pub rx_frame_queue_init_fin: Counter,
     pub rx_frame_queue_init_validate: Counter,
     pub rx_frame_queue_validate_request: Counter,
+    pub rx_frame_queue_free: Counter,
+    pub rx_queue_free_slots: Summary,
+    pub rx_queue_free_ranges: Summary,
     pub rx_frame_ack: Counter,
 }
 
@@ -192,6 +195,9 @@ impl Dispatch {
                 .register_nominal("rx.frame", "queue_init_validate"),
             rx_frame_queue_validate_request: counters
                 .register_nominal("rx.frame", "queue_validate_request"),
+            rx_frame_queue_free: counters.register_nominal("rx.frame", "queue_free"),
+            rx_queue_free_slots: counters.register_summary("rx.queue_free.slots", Unit::Count),
+            rx_queue_free_ranges: counters.register_summary("rx.queue_free.ranges", Unit::Count),
             rx_frame_ack: counters.register_nominal("rx.frame", "ack"),
         })
     }
@@ -235,6 +241,7 @@ impl Dispatch {
             Header::QueueReset { .. } => self.rx_frame_queue_reset.add(1),
             Header::QueueInitReset { .. } => self.rx_frame_queue_init_reset.add(1),
             Header::QueueInitFin { .. } => self.rx_frame_queue_init_fin.add(1),
+            Header::QueueFree { .. } => self.rx_frame_queue_free.add(1),
             Header::Ack { .. } => self.rx_frame_ack.add(1),
         };
     }
@@ -298,6 +305,7 @@ pub(crate) struct Send {
     pub tx_acked_frame_queue_init_fin: Counter,
     pub tx_acked_frame_queue_init_validate: Counter,
     pub tx_acked_frame_queue_validate_request: Counter,
+    pub tx_acked_frame_queue_free: Counter,
 }
 
 impl Send {
@@ -355,6 +363,7 @@ impl Send {
                 .register_nominal("tx.acked.frame.queue_init_validate", &v),
             tx_acked_frame_queue_validate_request: counters
                 .register_nominal("tx.acked.frame.queue_validate_request", &v),
+            tx_acked_frame_queue_free: counters.register_nominal("tx.acked.frame.queue_free", &v),
         })
     }
 
@@ -473,6 +482,7 @@ impl Send {
             Header::QueueValidateRequest { .. } => {
                 self.tx_acked_frame_queue_validate_request.add(1)
             }
+            Header::QueueFree { .. } => self.tx_acked_frame_queue_free.add(1),
             // ACK frames are stripped before inflight insertion and are never ACKed as
             // inflight entries; this branch should be unreachable in practice.
             Header::Ack { .. } => {

@@ -675,6 +675,7 @@ pub(crate) struct AssemblerCounters {
     pub tx_frame_queue_init_fin: crate::counter::Counter,
     pub tx_frame_queue_init_validate: crate::counter::Counter,
     pub tx_frame_queue_validate_request: crate::counter::Counter,
+    pub tx_frame_queue_free: crate::counter::Counter,
     pub tx_frame_ack: crate::counter::Counter,
 
     // Per-frame-type probe TX counters (Phase 2 retransmit + Phase 3 PTO bypass).
@@ -688,6 +689,7 @@ pub(crate) struct AssemblerCounters {
     pub tx_probe_frame_queue_init_fin: crate::counter::Counter,
     pub tx_probe_frame_queue_init_validate: crate::counter::Counter,
     pub tx_probe_frame_queue_validate_request: crate::counter::Counter,
+    pub tx_probe_frame_queue_free: crate::counter::Counter,
 }
 
 impl AssemblerCounters {
@@ -717,6 +719,7 @@ impl AssemblerCounters {
                 .register_nominal("tx.frame", "queue_init_validate"),
             tx_frame_queue_validate_request: registry
                 .register_nominal("tx.frame", "queue_validate_request"),
+            tx_frame_queue_free: registry.register_nominal("tx.frame", "queue_free"),
             tx_frame_ack: registry.register_nominal("tx.frame", "ack"),
 
             tx_probe_frame_queue_init: registry.register_nominal("tx.probe.frame", "queue_init"),
@@ -736,6 +739,7 @@ impl AssemblerCounters {
                 .register_nominal("tx.probe.frame", "queue_init_validate"),
             tx_probe_frame_queue_validate_request: registry
                 .register_nominal("tx.probe.frame", "queue_validate_request"),
+            tx_probe_frame_queue_free: registry.register_nominal("tx.probe.frame", "queue_free"),
         }
     }
 
@@ -755,6 +759,7 @@ impl AssemblerCounters {
             frame::Header::QueueValidateRequest { .. } => {
                 self.tx_frame_queue_validate_request.add(1)
             }
+            frame::Header::QueueFree { .. } => self.tx_frame_queue_free.add(1),
             frame::Header::Ack { .. } => self.tx_frame_ack.add(1),
         }
     }
@@ -781,6 +786,7 @@ impl AssemblerCounters {
             frame::Header::QueueValidateRequest { .. } => {
                 self.tx_probe_frame_queue_validate_request.add(1)
             }
+            frame::Header::QueueFree { .. } => self.tx_probe_frame_queue_free.add(1),
             // ACK frames are stripped before inflight insertion and are never retransmitted
             // as probes; this branch should be unreachable in practice.
             frame::Header::Ack { .. } => {

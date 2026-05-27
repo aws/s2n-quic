@@ -94,13 +94,13 @@ expression: logs
 0:00:00.000000000 [peer] DEBUG event=on_send_queue_init prev=Init next=QueueBindSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [peer] DEBUG event=on_send_fin prev=QueueBindSent next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [peer] DEBUG Sent QueueInit with early data binding_id=0 bytes_read=4 is_fin=true
-0:00:00.000000000 [peer] TRACE c#q.router_to_batcher.enq[p4]=1
-0:00:00.000000000 [peer] TRACE g#q.router_to_batcher.depth[p4]=1
-0:00:00.000000000 [peer] TRACE m#q.router_to_batcher.depth_dist[p4]=1
+0:00:00.000000000 [peer] TRACE c#q.router_to_batcher.enq[p5]=1
+0:00:00.000000000 [peer] TRACE g#q.router_to_batcher.depth[p5]=1
+0:00:00.000000000 [peer] TRACE m#q.router_to_batcher.depth_dist[p5]=1
 0:00:00.000000000 [peer] TRACE m#task.priority_router.drained=1
-0:00:00.000000000 [peer] TRACE c#q.router_to_batcher.receiver[p4.task.frame_dispatch]=1
-0:00:00.000000000 [peer] TRACE c#q.router_to_batcher.drain[p4]=1
-0:00:00.000000000 [peer] TRACE g#q.router_to_batcher.depth[p4]=0
+0:00:00.000000000 [peer] TRACE c#q.router_to_batcher.receiver[p5.task.frame_dispatch]=1
+0:00:00.000000000 [peer] TRACE c#q.router_to_batcher.drain[p5]=1
+0:00:00.000000000 [peer] TRACE g#q.router_to_batcher.depth[p5]=0
 0:00:00.000000000 [peer] TRACE m#task.frame_dispatch.drained=2
 0:00:00.000000000 [peer] TRACE m#task.context_resolver.drained[send.worker.0]=0
 0:00:00.000000000 [peer] TRACE m#task.ack_processor.drained[send.worker.0]=0
@@ -305,9 +305,9 @@ expression: logs
 0:00:00.000521000 [peer] TRACE c#socket.tx.ops[send.1]=1
 0:00:00.000521000 [peer] TRACE c#socket.tx.bytes[send.1]=54
 0:00:00.000521000 [peer] TRACE m#task.assembler.drained[send.1]=1
-0:00:00.000521000 [peer] TRACE c#q.router_to_batcher.enq[p2]=1
-0:00:00.000521000 [peer] TRACE g#q.router_to_batcher.depth[p2]=1
-0:00:00.000521000 [peer] TRACE m#q.router_to_batcher.depth_dist[p2]=1
+0:00:00.000521000 [peer] TRACE c#q.router_to_batcher.enq[p3]=1
+0:00:00.000521000 [peer] TRACE g#q.router_to_batcher.depth[p3]=1
+0:00:00.000521000 [peer] TRACE m#q.router_to_batcher.depth_dist[p3]=1
 0:00:00.000521000 [peer] TRACE m#task.priority_router.drained=1
 0:00:00.000521000 [peer] TRACE m#task.idle_wheel.drained[send.worker.1]=0
 0:00:00.000521000 [peer] TRACE c#q.dispatch.receiver[recv.dispatch.1.task.ack_completion]=1
@@ -315,9 +315,9 @@ expression: logs
 0:00:00.000521000 [peer] TRACE g#q.dispatch.depth[recv.dispatch.1]=0
 0:00:00.000521000 [peer] DEBUG event=on_flush_complete prev=Flushed next=Idle location=dc/s2n-quic-dc/src/endpoint/recv.rs
 0:00:00.000521000 [peer] TRACE m#task.ack_completion.drained[recv.dispatch.1]=1
-0:00:00.000521000 [peer] TRACE c#q.router_to_batcher.receiver[p2.task.frame_dispatch]=1
-0:00:00.000521000 [peer] TRACE c#q.router_to_batcher.drain[p2]=1
-0:00:00.000521000 [peer] TRACE g#q.router_to_batcher.depth[p2]=0
+0:00:00.000521000 [peer] TRACE c#q.router_to_batcher.receiver[p3.task.frame_dispatch]=1
+0:00:00.000521000 [peer] TRACE c#q.router_to_batcher.drain[p3]=1
+0:00:00.000521000 [peer] TRACE g#q.router_to_batcher.depth[p3]=0
 0:00:00.000521000 [peer] TRACE m#task.frame_dispatch.drained=2
 0:00:00.000541000 [peer] TRACE m#pick_two.score_delta=542201
 0:00:00.000541000 [peer] TRACE m#pick_two.rejected[send.1]=542201

@@ -968,6 +968,7 @@ impl Inner {
                 binding_id: self.binding_id,
                 reset_target,
                 error_code,
+                dest_acceptor_id: None,
             },
             payload: ByteVec::new(),
             path_secret_entry: self.path_secret_entry.clone(),

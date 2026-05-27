@@ -4,13 +4,13 @@ expression: logs
 ---
 0:00:00.000000000 [main] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [main] TRACE m#task.frame_dispatch.drained=0
-0:00:00.000000000 [main] TRACE c#q.router_to_batcher.enq[p2]=1
-0:00:00.000000000 [main] TRACE g#q.router_to_batcher.depth[p2]=1
-0:00:00.000000000 [main] TRACE m#q.router_to_batcher.depth_dist[p2]=1
+0:00:00.000000000 [main] TRACE c#q.router_to_batcher.enq[p3]=1
+0:00:00.000000000 [main] TRACE g#q.router_to_batcher.depth[p3]=1
+0:00:00.000000000 [main] TRACE m#q.router_to_batcher.depth_dist[p3]=1
 0:00:00.000000000 [main] TRACE m#task.priority_router.drained=1
-0:00:00.000000000 [main] TRACE c#q.router_to_batcher.receiver[p2.task.frame_dispatch]=1
-0:00:00.000000000 [main] TRACE c#q.router_to_batcher.drain[p2]=1
-0:00:00.000000000 [main] TRACE g#q.router_to_batcher.depth[p2]=0
+0:00:00.000000000 [main] TRACE c#q.router_to_batcher.receiver[p3.task.frame_dispatch]=1
+0:00:00.000000000 [main] TRACE c#q.router_to_batcher.drain[p3]=1
+0:00:00.000000000 [main] TRACE g#q.router_to_batcher.depth[p3]=0
 0:00:00.000000000 [main] TRACE m#pick_two.score_delta=0
 0:00:00.000000000 [main] TRACE m#pick_two.rejected[send.0]=0
 0:00:00.000000000 [main] TRACE c#pick_two.chosen[send.1]=1

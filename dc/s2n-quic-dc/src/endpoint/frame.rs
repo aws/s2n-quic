@@ -35,16 +35,18 @@ pub const MAX_QUEUE_DATA_HEADER_OVERHEAD: u16 = 109;
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Priority {
-    QueueReset = 0,
-    QueueControl = 1,
-    QueueData = 2,
-    QueueRetry = 3,
-    QueueInit = 4,
+    QueueFree = 0,
+    QueueReset = 1,
+    QueueControl = 2,
+    QueueData = 3,
+    QueueRetry = 4,
+    QueueInit = 5,
 }
 
 impl Priority {
-    pub const LEVELS: usize = 5;
+    pub const LEVELS: usize = 6;
     pub const ALL: [Self; Self::LEVELS] = [
+        Self::QueueFree,
         Self::QueueReset,
         Self::QueueControl,
         Self::QueueData,
@@ -399,6 +401,7 @@ pub enum Header {
         binding_id: VarInt,
         reset_target: ResetTarget,
         error_code: VarInt,
+        dest_acceptor_id: Option<VarInt>,
     },
     /// Reset a flow before flow establishment (client doesn't know server's queue ID yet).
     ///
@@ -441,6 +444,14 @@ pub enum Header {
         attempt_id: VarInt,
         binding_id: VarInt,
     },
+    /// Free queue slots (server→client credit return).
+    ///
+    /// Uses ACK-style range encoding in the payload. The free_request_id is
+    /// a monotonic stamp for receiver-side dedup of replayed/duplicate frames.
+    QueueFree {
+        free_request_id: VarInt,
+        largest_queue_id: VarInt,
+    },
     /// ACK frame with ack_delay lifted into the header (direct routing path).
     ///
     /// The body contains only the pre-encoded ACK ranges (and ECN counts if has_ecn).
@@ -474,6 +485,10 @@ impl Header {
     const ACK_ECN_ELICITING_TYPE: u8 = 17;
     const QUEUE_DATA_INIT_NO_FIN_TYPE: u8 = 18;
     const QUEUE_DATA_INIT_WITH_FIN_TYPE: u8 = 19;
+    const QUEUE_RESET_BOTH_INIT_TYPE: u8 = 20;
+    const QUEUE_RESET_STREAM_INIT_TYPE: u8 = 21;
+    const QUEUE_RESET_CONTROL_INIT_TYPE: u8 = 22;
+    const QUEUE_FREE_TYPE: u8 = 23;
 
     #[inline]
     pub fn priority(&self) -> Priority {
@@ -487,6 +502,7 @@ impl Header {
             }
             Self::QueueData { .. } => Priority::QueueData,
             Self::QueueControl { .. } | Self::QueueMaxData { .. } => Priority::QueueControl,
+            Self::QueueFree { .. } => Priority::QueueFree,
             Self::QueueReset { .. } => Priority::QueueReset,
             Self::QueueInitReset { .. } | Self::QueueInitFin { .. } => Priority::QueueInit,
             Self::QueueInitValidate { .. } | Self::QueueValidateRequest { .. } => {
@@ -523,6 +539,7 @@ impl Header {
             Self::QueueInit { .. }
             | Self::QueueData { .. }
             | Self::QueueControl { .. }
+            | Self::QueueFree { .. }
             | Self::Ack { .. } => true,
             Self::QueueReset { .. }
             | Self::QueueMaxData { .. }
@@ -642,14 +659,21 @@ impl EncoderValue for Header {
                 binding_id,
                 reset_target,
                 error_code,
+                dest_acceptor_id,
             } => {
-                let reset_type = match reset_target {
-                    ResetTarget::Both => Self::QUEUE_RESET_BOTH_TYPE,
-                    ResetTarget::Stream => Self::QUEUE_RESET_STREAM_TYPE,
-                    ResetTarget::Control => Self::QUEUE_RESET_CONTROL_TYPE,
+                let reset_type = match (dest_acceptor_id.is_some(), reset_target) {
+                    (false, ResetTarget::Both) => Self::QUEUE_RESET_BOTH_TYPE,
+                    (false, ResetTarget::Stream) => Self::QUEUE_RESET_STREAM_TYPE,
+                    (false, ResetTarget::Control) => Self::QUEUE_RESET_CONTROL_TYPE,
+                    (true, ResetTarget::Both) => Self::QUEUE_RESET_BOTH_INIT_TYPE,
+                    (true, ResetTarget::Stream) => Self::QUEUE_RESET_STREAM_INIT_TYPE,
+                    (true, ResetTarget::Control) => Self::QUEUE_RESET_CONTROL_INIT_TYPE,
                 };
                 encoder.encode(&reset_type);
                 encoder.encode(dest_queue_id);
+                if let Some(acceptor_id) = dest_acceptor_id {
+                    encoder.encode(acceptor_id);
+                }
                 encoder.encode(binding_id);
                 encoder.encode(error_code);
             }
@@ -667,6 +691,14 @@ impl EncoderValue for Header {
                 encoder.encode(&Self::QUEUE_INIT_FIN_TYPE);
                 encoder.encode(binding_id);
                 encoder.encode(offset);
+            }
+            Self::QueueFree {
+                free_request_id,
+                largest_queue_id,
+            } => {
+                encoder.encode(&Self::QUEUE_FREE_TYPE);
+                encoder.encode(free_request_id);
+                encoder.encode(largest_queue_id);
             }
             Self::Ack {
                 dest_sender_id,
@@ -796,6 +828,30 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                     buffer,
                 ))
             }
+            Self::QUEUE_RESET_BOTH_INIT_TYPE
+            | Self::QUEUE_RESET_STREAM_INIT_TYPE
+            | Self::QUEUE_RESET_CONTROL_INIT_TYPE => {
+                let reset_target = match tag {
+                    Self::QUEUE_RESET_BOTH_INIT_TYPE => ResetTarget::Both,
+                    Self::QUEUE_RESET_STREAM_INIT_TYPE => ResetTarget::Stream,
+                    Self::QUEUE_RESET_CONTROL_INIT_TYPE => ResetTarget::Control,
+                    _ => unreachable!(),
+                };
+                let (dest_queue_id, buffer) = buffer.decode()?;
+                let (dest_acceptor_id, buffer) = buffer.decode::<VarInt>()?;
+                let (binding_id, buffer) = buffer.decode()?;
+                let (error_code, buffer) = buffer.decode()?;
+                Ok((
+                    Self::QueueReset {
+                        dest_queue_id,
+                        binding_id,
+                        reset_target,
+                        error_code,
+                        dest_acceptor_id: Some(dest_acceptor_id),
+                    },
+                    buffer,
+                ))
+            }
             Self::QUEUE_RESET_BOTH_TYPE
             | Self::QUEUE_RESET_STREAM_TYPE
             | Self::QUEUE_RESET_CONTROL_TYPE => {
@@ -814,6 +870,7 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                         binding_id,
                         reset_target,
                         error_code,
+                        dest_acceptor_id: None,
                     },
                     buffer,
                 ))
@@ -835,6 +892,17 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                 let (binding_id, buffer) = buffer.decode()?;
                 let (offset, buffer) = buffer.decode()?;
                 Ok((Self::QueueInitFin { binding_id, offset }, buffer))
+            }
+            Self::QUEUE_FREE_TYPE => {
+                let (free_request_id, buffer) = buffer.decode()?;
+                let (largest_queue_id, buffer) = buffer.decode()?;
+                Ok((
+                    Self::QueueFree {
+                        free_request_id,
+                        largest_queue_id,
+                    },
+                    buffer,
+                ))
             }
             Self::ACK_TYPE
             | Self::ACK_ECN_TYPE
@@ -1027,6 +1095,7 @@ mod tests {
                 binding_id: VarInt::from_u8(42),
                 reset_target: ResetTarget::Both,
                 error_code: VarInt::from_u8(1),
+                dest_acceptor_id: None,
             },
             source_sender_id: LocalSenderId::UNSPECIFIED,
             payload: ByteVec::new(),
