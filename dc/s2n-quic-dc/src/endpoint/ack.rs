@@ -74,8 +74,16 @@ pub(crate) fn process_ack<Clk, Rand>(
             ack_only_rtt_sample = Some(time_sent);
         }
 
-        let pmin = PacketNumberSpace::Initial.new_packet_number(start);
         let pmax = PacketNumberSpace::Initial.new_packet_number(end);
+
+        // ACK ranges are ordered largest-to-smallest. Once the upper bound of a
+        // range falls below our lowest inflight PN, all subsequent ranges are stale
+        // (already removed or never tracked). Skip them.
+        if !context.inflight.has_inflight() || pmax < context.inflight.get_range().start() {
+            continue;
+        }
+
+        let pmin = PacketNumberSpace::Initial.new_packet_number(start);
         let range = PacketNumberRange::new(pmin, pmax);
 
         // Phase 1: remove ACKed entries from the inflight map.
@@ -112,11 +120,6 @@ pub(crate) fn process_ack<Clk, Rand>(
             );
 
             if let Some(probe_pn) = packet.probed_to {
-                // Shell: the live frames are at the tail of the probe chain.
-                // Defer completion to Phase 2 (after the iterator is dropped).
-                // If we somehow exceed capacity, the tail frames will remain in
-                // the inflight map and be completed when the probe entry itself
-                // is ACKed or swept by loss detection.
                 deferred.push(probe_pn);
             } else {
                 for mut entry in packet.frames {

@@ -41,6 +41,10 @@ pub struct Cwlogs {
     /// Filter pattern passed to aws CLI
     #[arg(long, default_value = "METRICS")]
     filter_pattern: String,
+
+    /// AWS CLI profile name
+    #[arg(long)]
+    profile: Option<String>,
 }
 
 impl Cwlogs {
@@ -69,7 +73,7 @@ impl Cwlogs {
                 log_group, start_ms, end_ms
             );
 
-            fetch_logs(log_group, start_ms, end_ms, &self.filter_pattern, &events_path)?;
+            fetch_logs(log_group, start_ms, end_ms, &self.filter_pattern, self.profile.as_deref(), &events_path)?;
         }
 
         if !events_path.exists() {
@@ -95,6 +99,7 @@ fn fetch_logs(
     start_ms: i64,
     end_ms: i64,
     filter_pattern: &str,
+    profile: Option<&str>,
     output_path: &std::path::Path,
 ) -> Result<()> {
     let mut file = std::fs::File::create(output_path)
@@ -121,6 +126,10 @@ fn fetch_logs(
             "--output",
             "json",
         ]);
+
+        if let Some(p) = profile {
+            cmd.args(["--profile", p]);
+        }
 
         if let Some(token) = &next_token {
             cmd.args(["--next-token", token]);
