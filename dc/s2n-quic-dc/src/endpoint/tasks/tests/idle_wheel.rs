@@ -12,15 +12,16 @@ use crate::{
     endpoint::{
         frame::{self, Frame},
         id::{Id, IdMap, LocalSendSocketId, LocalSenderId},
+        inflight::{Packet, TransmissionInfo},
         msg, recv, send, tasks,
     },
     flow,
-    intrusive::Entry,
+    intrusive::{Entry, Queue},
     socket::channel::{intrusive::unsync, ReceiverExt as _, UnboundedSender as _},
     testing::{ext::*, sim},
     time::{bach::Clock, precision},
 };
-use s2n_quic_core::varint::VarInt;
+use s2n_quic_core::{packet::number::PacketNumberSpace, time::Clock as _, varint::VarInt};
 use std::{cell::RefCell, rc::Rc};
 
 // ── Send idle wheel tests ────────────────────────────────────────────────────
@@ -547,6 +548,106 @@ fn recv_idle_wheel_expires_reader_only_queue_no_reset() {
                     .iter()
                     .any(|entry| { matches!(entry, msg::Control::Reset { .. }) }),
                 "control queue should NOT receive reset from recv idle expiry"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Reproduction: a packet sent shortly before the idle wheel fires (e.g. at t=25s with
+/// idle_timeout=30s) should NOT cause the peer to be marked dead. The inflight packet is
+/// only 6s old — the peer hasn't had time to respond. Currently, `is_peer_idle` only
+/// checks `last_peer_activity` (set at context creation or last ACK), so it incorrectly
+/// declares the peer dead despite the recent send.
+#[test]
+fn send_idle_wheel_defers_death_for_recent_inflight() {
+    let _guard = crate::testing::without_snapshots();
+    sim(|| {
+        let (send_caches, mut idle_wheel_tx, _completed_rx, clock, _registry, _queue_allocator) =
+            setup_send();
+
+        let pse = test_entry();
+        pse.touch_activity(precision::Clock::now(&clock));
+
+        let ctx = send_caches[LocalSendSocketId::new(0)]
+            .borrow_mut()
+            .get_or_insert(&pse, &clock)
+            .unwrap();
+
+        // Schedule into the idle wheel: fires at t=30s
+        {
+            let mut c = ctx.borrow_mut();
+            let timeout = c.path_secret_entry.idle_timeout();
+            c.idle_wheel.target_time = Some(precision::Clock::now(&clock) + timeout);
+        }
+        let _ = idle_wheel_tx.send(ctx.clone());
+
+        let send_caches = send_caches.clone();
+        let pse = pse.clone();
+        async move {
+            // At t=25s: simulate a packet being sent (empty→non-empty inflight).
+            // The fix resets last_peer_activity to now when transitioning from no
+            // inflight to inflight, effectively restarting the idle timeout.
+            25.s().sleep().await;
+            {
+                let mut ctx = ctx.borrow_mut();
+                let now = clock.get_time();
+                let rtt = ctx.rtt_estimator;
+                let cc_info = ctx.cca.on_packet_sent(now, 200, false, &rtt);
+                let mut frames = Queue::new();
+                frames.push_back(test_frame(&pse));
+                let pn = PacketNumberSpace::Initial.new_packet_number(VarInt::ZERO);
+
+                // Simulate what the assembler does after the fix: restart idle on first send.
+                if !ctx.inflight.has_inflight() {
+                    ctx.last_peer_activity = precision::Clock::now(&clock);
+                }
+
+                ctx.inflight.insert(
+                    pn,
+                    Packet::new(
+                        frames,
+                        TransmissionInfo {
+                            cc_info,
+                            time_sent: now,
+                            sent_bytes: 200,
+                        },
+                    ),
+                );
+            }
+
+            // At t=31s: idle wheel fires (past original 30s target). But with the fix,
+            // last_peer_activity was reset to t=25s, so is_peer_idle returns false
+            // (only 6s elapsed < 30s timeout). The context is rescheduled.
+            6.s().sleep().await;
+            assert_eq!(
+                send_caches[LocalSendSocketId::new(0)]
+                    .borrow()
+                    .context_count(),
+                1,
+                "context should still be alive — inflight packet is only 6s old"
+            );
+            let now = precision::Clock::now(&Clock::default());
+            assert!(
+                !pse.is_dead_during_cooldown(now, crate::endpoint::DEFAULT_DEAD_PEER_COOLDOWN),
+                "peer should NOT be marked dead when inflight is only 6s old"
+            );
+
+            // At t=56s: rescheduled target was t=55s (last_peer_activity=25s + timeout=30s).
+            // Now is_peer_idle returns true (31s elapsed >= 30s). Peer marked dead.
+            25.s().sleep().await;
+            assert_eq!(
+                send_caches[LocalSendSocketId::new(0)]
+                    .borrow()
+                    .context_count(),
+                0,
+                "context should be evicted after inflight waited idle_timeout"
+            );
+            let now = precision::Clock::now(&Clock::default());
+            assert!(
+                pse.is_dead_during_cooldown(now, crate::endpoint::DEFAULT_DEAD_PEER_COOLDOWN),
+                "peer should be marked dead after inflight waited full idle_timeout"
             );
         }
         .primary()

@@ -407,6 +407,11 @@ where
                         time_sent,
                         sent_bytes: encoded_len as u16,
                     };
+                    // Restart idle timeout when transitioning from no inflight to inflight.
+                    if !context.inflight.has_inflight() {
+                        context.last_peer_activity = now;
+                    }
+
                     let pn = PacketNumberSpace::Initial.new_packet_number(packet_number);
                     context
                         .inflight
