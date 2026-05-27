@@ -41,6 +41,7 @@ pub(crate) struct Dispatch {
     pub rx_process_err_missing_sender_id: Counter,
     pub rx_ack_state_impossible: Counter,
     pub rx_ack_completion_impossible: Counter,
+    pub rx_ack_ranges_culled: Counter,
 
     pub rx_peer_cache_hit: Counter,
     pub rx_peer_cache_miss: Counter,
@@ -102,6 +103,7 @@ impl Dispatch {
                 .register("!rx.process.err.missing_sender_id"),
             rx_ack_state_impossible: counters.register("!rx.ack.state_impossible"),
             rx_ack_completion_impossible: counters.register("!rx.ack.completion_impossible"),
+            rx_ack_ranges_culled: counters.register("rx.ack.ranges_culled"),
 
             rx_peer_cache_hit: counters.register("rx.peer_cache.hit"),
             rx_peer_cache_miss: counters.register("rx.peer_cache.miss"),

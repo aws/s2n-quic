@@ -349,23 +349,24 @@ impl Context {
     pub fn on_ack_completion(
         &mut self,
         recv_worker_id: RecvDispatchWorkerId,
-    ) -> Option<ack_state::Submission> {
+    ) -> (Option<ack_state::Submission>, u64) {
         if !(self.ack_state.is_flushed() || self.ack_state.is_flushed_stale()) {
             warn!(
                 ?self.ack_state,
                 "ack completion observed while context is not in a flushed state"
             );
             self.invariants();
-            return None;
+            return (None, 0);
         }
         let transition = self.ack_state.on_flush_complete();
         debug_assert!(
             transition.is_ok(),
             "on_flush_complete transition failed from Flushed/FlushedStale"
         );
+        let ranges_culled = self.ack_ranges.on_completion();
         let submission = self.encode_and_flush(recv_worker_id);
         self.invariants();
-        submission
+        (submission, ranges_culled)
     }
 }
 

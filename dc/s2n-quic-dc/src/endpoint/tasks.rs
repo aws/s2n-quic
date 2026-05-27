@@ -1435,7 +1435,11 @@ where
         }
         ctx.invariants();
 
-        if let Some(submission) = ctx.on_ack_completion(recv_worker_id) {
+        let (submission, ranges_culled) = ctx.on_ack_completion(recv_worker_id);
+        if ranges_culled > 0 {
+            counters.rx_ack_ranges_culled.add(ranges_culled);
+        }
+        if let Some(submission) = submission {
             let mut pending_ack_entry = entry;
             *pending_ack_entry = msg::Sender::PendingAck(submission);
             let _ = ack_sender.send(pending_ack_entry);

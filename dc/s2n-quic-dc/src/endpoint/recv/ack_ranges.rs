@@ -7,12 +7,12 @@
 //! for writing into the shared ACK state.
 
 use bytes::Bytes;
-use core::fmt;
+use core::{fmt, ops::Bound};
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{
     ack,
     frame::{self, ack::EcnCounts},
-    packet::number::PacketNumberSpace,
+    packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
     varint::VarInt,
 };
@@ -23,12 +23,63 @@ use s2n_quic_core::{
 /// routing_info, header_len varint, Header::Ack metadata, payload_len varint, crypto tag.
 pub const PACKET_OVERHEAD: usize = 100;
 
+const CULL_DEPTH: usize = 2;
+
+/// Fixed-capacity ring buffer tracking the largest PN from recent ACK encode+complete cycles.
+///
+/// When full, pushing a new value evicts and returns the oldest entry.
+struct CullRing {
+    buf: [VarInt; CULL_DEPTH],
+    /// Packed: low bit = write index, bits 1..2 = valid entry count (0..=CULL_DEPTH).
+    state: u8,
+}
+
+impl CullRing {
+    const fn new() -> Self {
+        Self {
+            buf: [VarInt::ZERO; CULL_DEPTH],
+            state: 0,
+        }
+    }
+
+    fn idx(&self) -> usize {
+        (self.state & 1) as usize
+    }
+
+    fn len(&self) -> usize {
+        (self.state >> 1) as usize
+    }
+
+    /// Push a value. If full, returns the evicted (oldest) entry.
+    fn push(&mut self, value: VarInt) -> Option<VarInt> {
+        let idx = self.idx();
+        let len = self.len();
+
+        if len < CULL_DEPTH {
+            self.buf[idx] = value;
+            let next_idx = (idx + 1) % CULL_DEPTH;
+            self.state = (((len + 1) as u8) << 1) | next_idx as u8;
+            None
+        } else {
+            let evicted = self.buf[idx];
+            self.buf[idx] = value;
+            let next_idx = (idx + 1) % CULL_DEPTH;
+            self.state = ((CULL_DEPTH as u8) << 1) | next_idx as u8;
+            Some(evicted)
+        }
+    }
+}
+
 /// Tracks received packet numbers and encodes ACK range bodies for the shared state.
 pub(crate) struct AckRanges {
     packets: ack::Ranges,
     /// When the largest packet number was received — written to the shared state so
     /// the sender can compute ack_delay at assembly time.
     max_received_packet_time: Option<Timestamp>,
+    /// Largest PN from the most recent encode_body (awaiting completion confirmation).
+    pending_cull_pn: Option<VarInt>,
+    /// Tracks recent completions to determine when old ranges can be culled.
+    cull_ring: CullRing,
 }
 
 impl fmt::Debug for AckRanges {
@@ -45,6 +96,8 @@ impl Default for AckRanges {
         Self {
             packets: ack::Ranges::new(usize::MAX),
             max_received_packet_time: None,
+            pending_cull_pn: None,
+            cull_ring: CullRing::new(),
         }
     }
 }
@@ -112,6 +165,9 @@ impl AckRanges {
 
             let encoding_size = frame.encoding_size();
             if encoding_size <= max_body_len {
+                if let Some(max_pn) = self.packets.max_value() {
+                    self.pending_cull_pn = Some(PacketNumber::as_varint(max_pn));
+                }
                 return Some(Bytes::from(frame.encode_to_vec()));
             }
 
@@ -120,6 +176,42 @@ impl AckRanges {
                 self.max_received_packet_time = None;
             }
         }
+    }
+
+    /// Called when an ACK submission has been confirmed sent (completion returned).
+    ///
+    /// Advances the cull ring. Once the ring is full, the oldest entry is evicted
+    /// and all ranges at or below it are removed. Returns the number of intervals
+    /// removed (0 if no culling occurred).
+    pub fn on_completion(&mut self) -> u64 {
+        let Some(largest_pn) = self.pending_cull_pn.take() else {
+            return 0;
+        };
+
+        let Some(cull_threshold) = self.cull_ring.push(largest_pn) else {
+            return 0;
+        };
+
+        self.cull_ranges_up_to(cull_threshold)
+    }
+
+    fn cull_ranges_up_to(&mut self, threshold: VarInt) -> u64 {
+        let before = self.packets.interval_len();
+        if before <= 1 {
+            return 0;
+        }
+        let threshold_pn = PacketNumberSpace::Initial.new_packet_number(threshold);
+        // Never cull the highest range — ensures the set is never emptied.
+        let max_pn = self.packets.max_value().unwrap();
+        if threshold_pn >= max_pn {
+            return 0;
+        }
+        let min_pn = PacketNumberSpace::Initial.new_packet_number(VarInt::ZERO);
+        let _ = self
+            .packets
+            .remove((Bound::Included(min_pn), Bound::Included(threshold_pn)));
+        let after = self.packets.interval_len();
+        (before - after) as u64
     }
 }
 
@@ -359,5 +451,123 @@ mod tests {
         let b2 = ranges.encode_body(None, 1024).unwrap();
         // Both calls encode the same state (no packets removed, no new ones added)
         assert_eq!(b1, b2, "repeated encode_body should be deterministic");
+    }
+
+    // ── culling ───────────────────────────────────────────────────────────────
+
+    /// Simulate a full encode+complete cycle and return the cull count.
+    fn encode_complete(ranges: &mut AckRanges) -> u64 {
+        ranges.encode_body(None, 1024);
+        ranges.on_completion()
+    }
+
+    #[test]
+    fn cull_does_not_happen_below_threshold() {
+        let mut ranges = AckRanges::default();
+        for i in 0..10 {
+            ranges.on_packet_received(pn(i), ts(i + 1));
+        }
+        // First two completions fill the ring — no culling yet.
+        assert_eq!(encode_complete(&mut ranges), 0);
+        ranges.on_packet_received(pn(10), ts(11));
+        assert_eq!(encode_complete(&mut ranges), 0);
+        assert!(
+            ranges.packets.contains(
+                &PacketNumberSpace::Initial.new_packet_number(pn(0))
+            ),
+            "ranges should still be intact before ring is full"
+        );
+    }
+
+    #[test]
+    fn cull_removes_old_ranges_after_threshold() {
+        let mut ranges = AckRanges::default();
+        // Phase 1: receive PNs 0..=9 (non-contiguous to create multiple intervals)
+        for i in (0..10).step_by(2) {
+            ranges.on_packet_received(pn(i), ts(i + 1));
+        }
+        // First encode+complete: ring slot 0 filled (largest=8), no cull
+        assert_eq!(encode_complete(&mut ranges), 0);
+
+        // Phase 2: receive PNs 20..=29
+        for i in (20..30).step_by(2) {
+            ranges.on_packet_received(pn(i), ts(i + 1));
+        }
+        // Second encode+complete: ring slot 1 filled (largest=28), no cull
+        assert_eq!(encode_complete(&mut ranges), 0);
+
+        // Phase 3: receive PNs 40..=49
+        for i in (40..50).step_by(2) {
+            ranges.on_packet_received(pn(i), ts(i + 1));
+        }
+        // Third encode+complete: ring full, evicts slot 0 (threshold=8), culls <=8
+        let culled = encode_complete(&mut ranges);
+        assert!(culled > 0, "should have culled old ranges");
+
+        // PNs 0,2,4,6,8 should be gone
+        for i in (0..=8).step_by(2) {
+            assert!(
+                !ranges.packets.contains(
+                    &PacketNumberSpace::Initial.new_packet_number(pn(i))
+                ),
+                "PN {} should have been culled",
+                i
+            );
+        }
+        // PNs 20+ should survive
+        for i in (20..30).step_by(2) {
+            assert!(
+                ranges.packets.contains(
+                    &PacketNumberSpace::Initial.new_packet_number(pn(i))
+                ),
+                "PN {} should still be present",
+                i
+            );
+        }
+    }
+
+    #[test]
+    fn cull_preserves_largest_recv_time() {
+        let mut ranges = AckRanges::default();
+        ranges.on_packet_received(pn(0), ts(100));
+        encode_complete(&mut ranges);
+        ranges.on_packet_received(pn(10), ts(200));
+        encode_complete(&mut ranges);
+        ranges.on_packet_received(pn(20), ts(300));
+        encode_complete(&mut ranges);
+        // PN 0 culled, but largest_recv_time is for PN 20
+        assert_eq!(ranges.largest_recv_time(), Some(ts(300)));
+    }
+
+    #[test]
+    fn encode_after_cull_still_works() {
+        let mut ranges = AckRanges::default();
+        ranges.on_packet_received(pn(0), ts(1));
+        encode_complete(&mut ranges);
+        ranges.on_packet_received(pn(5), ts(2));
+        encode_complete(&mut ranges);
+        ranges.on_packet_received(pn(10), ts(3));
+        encode_complete(&mut ranges);
+        // After culling, encode should still succeed with remaining ranges
+        let body = ranges.encode_body(None, 1024);
+        assert!(body.is_some());
+    }
+
+    #[test]
+    fn cull_ring_push_returns_none_until_full() {
+        let mut ring = CullRing::new();
+        assert_eq!(ring.push(pn(10)), None);
+        assert_eq!(ring.push(pn(20)), None);
+        // Now full — next push evicts oldest
+        assert_eq!(ring.push(pn(30)), Some(pn(10)));
+        assert_eq!(ring.push(pn(40)), Some(pn(20)));
+    }
+
+    #[test]
+    fn on_completion_without_encode_is_noop() {
+        let mut ranges = AckRanges::default();
+        ranges.on_packet_received(pn(5), ts(1));
+        // Call on_completion without prior encode_body
+        assert_eq!(ranges.on_completion(), 0);
     }
 }
