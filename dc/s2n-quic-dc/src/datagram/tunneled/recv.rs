@@ -4,6 +4,7 @@
 use crate::{
     crypto::{open, UninitSlice},
     packet::datagram::{decoder, Tag},
+    path::secret::Map,
 };
 use s2n_codec::{decoder_invariant, DecoderBufferMut, DecoderError};
 use s2n_quic_core::packet::number::{PacketNumberSpace, SlidingWindow, SlidingWindowError};
@@ -46,10 +47,12 @@ impl<K: open::Application> Receiver<K> {
         Self { key }
     }
 
+    /// Decrypts `packet` into `payload_out`.
     pub fn recv_into(
         &mut self,
         packet: &Packet,
         payload_out: &mut UninitSlice,
+        map: &Map,
     ) -> Result<(), Error> {
         debug_assert_eq!(packet.payload().len(), payload_out.len());
 
@@ -61,6 +64,8 @@ impl<K: open::Application> Receiver<K> {
             packet.auth_tag(),
             payload_out,
         )?;
+
+        map.on_datagram_decrypt(packet.wire_len());
 
         Ok(())
     }

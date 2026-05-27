@@ -6,6 +6,7 @@ use crate::{
     credentials::Credentials,
     crypto::seal,
     packet::{self, datagram::encoder},
+    path::secret::Map,
 };
 use core::sync::atomic::{AtomicU64, Ordering};
 use s2n_codec::EncoderBuffer;
@@ -49,12 +50,14 @@ where
         ))
     }
 
+    /// Encrypts `cleartext_payload` into `encrypted_packet`, returning the wire length.
     #[inline]
     pub fn send_into<C>(
         &self,
         control_port: &C,
         mut cleartext_payload: &[u8],
         encrypted_packet: &mut [u8],
+        map: &Map,
     ) -> Result<usize, Error>
     where
         C: control::Controller,
@@ -95,6 +98,8 @@ where
                 &self.credentials,
             )
         };
+
+        map.on_datagram_encrypt(actual_packet_len);
 
         Ok(actual_packet_len)
     }

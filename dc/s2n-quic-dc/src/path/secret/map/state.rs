@@ -1206,6 +1206,18 @@ where
                 peer_address: SocketAddress::from(*peer_address).into_event(),
             });
     }
+
+    fn on_datagram_encrypt(&self, packet_len: usize) {
+        self.subscriber().on_path_secret_map_datagram_encrypt(
+            event::builder::PathSecretMapDatagramEncrypt { packet_len },
+        );
+    }
+
+    fn on_datagram_decrypt(&self, packet_len: usize) {
+        self.subscriber().on_path_secret_map_datagram_decrypt(
+            event::builder::PathSecretMapDatagramDecrypt { packet_len },
+        );
+    }
 }
 
 impl<C, S> Drop for State<C, S>

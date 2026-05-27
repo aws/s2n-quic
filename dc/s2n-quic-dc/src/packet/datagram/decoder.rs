@@ -56,6 +56,7 @@ pub struct Packet<'a> {
     control_data: CheckedRange,
     payload: &'a mut [u8],
     auth_tag: &'a mut [u8],
+    wire_len: usize,
 }
 
 impl std::fmt::Debug for Packet<'_> {
@@ -143,6 +144,11 @@ impl Packet<'_> {
     #[inline]
     pub fn auth_tag(&self) -> &[u8] {
         self.auth_tag
+    }
+
+    #[inline]
+    pub fn wire_len(&self) -> usize {
+        self.wire_len
     }
 
     #[inline(always)]
@@ -262,6 +268,8 @@ impl Packet<'_> {
         let (auth_tag, buffer) = buffer.decode_slice(crypto_tag_len)?;
         let auth_tag = auth_tag.into_less_safe_slice();
 
+        let wire_len = total_header_len + payload_len + crypto_tag_len;
+
         let packet = Packet {
             tag,
             wire_version,
@@ -274,6 +282,7 @@ impl Packet<'_> {
             control_data,
             payload,
             auth_tag,
+            wire_len,
         };
 
         Ok((packet, buffer))

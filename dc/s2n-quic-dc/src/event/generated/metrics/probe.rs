@@ -330,6 +330,12 @@ mod id {
         PATH_SECRET_MAP_ADDRESS_WRITE_LOCK,
         PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__ACQUIRE,
         PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__DURATION,
+        PATH_SECRET_MAP_DATAGRAM_ENCRYPT,
+        PATH_SECRET_MAP_DATAGRAM_ENCRYPT__PACKET_LEN__TOTAL,
+        PATH_SECRET_MAP_DATAGRAM_ENCRYPT__PACKET_LEN,
+        PATH_SECRET_MAP_DATAGRAM_DECRYPT,
+        PATH_SECRET_MAP_DATAGRAM_DECRYPT__PACKET_LEN__TOTAL,
+        PATH_SECRET_MAP_DATAGRAM_DECRYPT__PACKET_LEN,
     }
     pub const ACCEPTOR_TCP_STARTED: usize = InfoId::ACCEPTOR_TCP_STARTED as usize;
     pub const ACCEPTOR_TCP_STARTED__BACKLOG: usize = InfoId::ACCEPTOR_TCP_STARTED__BACKLOG as usize;
@@ -868,6 +874,18 @@ mod id {
         InfoId::PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__ACQUIRE as usize;
     pub const PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__DURATION: usize =
         InfoId::PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__DURATION as usize;
+    pub const PATH_SECRET_MAP_DATAGRAM_ENCRYPT: usize =
+        InfoId::PATH_SECRET_MAP_DATAGRAM_ENCRYPT as usize;
+    pub const PATH_SECRET_MAP_DATAGRAM_ENCRYPT__PACKET_LEN__TOTAL: usize =
+        InfoId::PATH_SECRET_MAP_DATAGRAM_ENCRYPT__PACKET_LEN__TOTAL as usize;
+    pub const PATH_SECRET_MAP_DATAGRAM_ENCRYPT__PACKET_LEN: usize =
+        InfoId::PATH_SECRET_MAP_DATAGRAM_ENCRYPT__PACKET_LEN as usize;
+    pub const PATH_SECRET_MAP_DATAGRAM_DECRYPT: usize =
+        InfoId::PATH_SECRET_MAP_DATAGRAM_DECRYPT as usize;
+    pub const PATH_SECRET_MAP_DATAGRAM_DECRYPT__PACKET_LEN__TOTAL: usize =
+        InfoId::PATH_SECRET_MAP_DATAGRAM_DECRYPT__PACKET_LEN__TOTAL as usize;
+    pub const PATH_SECRET_MAP_DATAGRAM_DECRYPT__PACKET_LEN: usize =
+        InfoId::PATH_SECRET_MAP_DATAGRAM_DECRYPT__PACKET_LEN as usize;
 }
 mod counter {
     #![allow(non_snake_case)]
@@ -1028,6 +1046,14 @@ mod counter {
                 id::PATH_SECRET_MAP_CLEANER_CYCLED => Self(path_secret_map_cleaner_cycled),
                 id::PATH_SECRET_MAP_ID_WRITE_LOCK => Self(path_secret_map_id_write_lock),
                 id::PATH_SECRET_MAP_ADDRESS_WRITE_LOCK => Self(path_secret_map_address_write_lock),
+                id::PATH_SECRET_MAP_DATAGRAM_ENCRYPT => Self(path_secret_map_datagram_encrypt),
+                id::PATH_SECRET_MAP_DATAGRAM_ENCRYPT__PACKET_LEN__TOTAL => {
+                    Self(path_secret_map_datagram_encrypt__packet_len__total)
+                }
+                id::PATH_SECRET_MAP_DATAGRAM_DECRYPT => Self(path_secret_map_datagram_decrypt),
+                id::PATH_SECRET_MAP_DATAGRAM_DECRYPT__PACKET_LEN__TOTAL => {
+                    Self(path_secret_map_datagram_decrypt__packet_len__total)
+                }
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -1253,6 +1279,14 @@ mod counter {
             fn path_secret_map_id_write_lock(value: u64);
             # [link_name = s2n_quic_dc__event__counter__path_secret_map_address_write_lock]
             fn path_secret_map_address_write_lock(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__path_secret_map_datagram_encrypt]
+            fn path_secret_map_datagram_encrypt(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__path_secret_map_datagram_encrypt__packet_len__total]
+            fn path_secret_map_datagram_encrypt__packet_len__total(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__path_secret_map_datagram_decrypt]
+            fn path_secret_map_datagram_decrypt(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__path_secret_map_datagram_decrypt__packet_len__total]
+            fn path_secret_map_datagram_decrypt__packet_len__total(value: u64);
         }
     );
     pub mod bool {
@@ -2009,6 +2043,12 @@ mod measure {
                 id::PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__DURATION => {
                     Self(path_secret_map_address_write_lock__duration)
                 }
+                id::PATH_SECRET_MAP_DATAGRAM_ENCRYPT__PACKET_LEN => {
+                    Self(path_secret_map_datagram_encrypt__packet_len)
+                }
+                id::PATH_SECRET_MAP_DATAGRAM_DECRYPT__PACKET_LEN => {
+                    Self(path_secret_map_datagram_decrypt__packet_len)
+                }
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -2272,6 +2312,10 @@ mod measure {
             fn path_secret_map_address_write_lock__acquire(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_address_write_lock__duration]
             fn path_secret_map_address_write_lock__duration(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_datagram_encrypt__packet_len]
+            fn path_secret_map_datagram_encrypt__packet_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_datagram_decrypt__packet_len]
+            fn path_secret_map_datagram_decrypt__packet_len(value: u64);
         }
     );
 }
