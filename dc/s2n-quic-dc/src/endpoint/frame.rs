@@ -33,9 +33,9 @@ pub const MAX_QUEUE_DATA_HEADER_OVERHEAD: u16 = 111;
 
 /// Worst-case header overhead for a QueueMsg packet on the wire.
 ///
-/// QueueMsg encodes two additional VarInt fields (msg_id, message_size) compared to QueueData,
-/// adding up to 16 bytes in the worst case.
-pub const MAX_QUEUE_MSG_HEADER_OVERHEAD: u16 = 127;
+/// QueueMsg encodes three additional VarInt fields (msg_id, stream_offset, message_size)
+/// compared to QueueData, adding up to 24 bytes in the worst case.
+pub const MAX_QUEUE_MSG_HEADER_OVERHEAD: u16 = 136;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -429,6 +429,7 @@ pub enum Header {
         queue_pair: QueuePair,
         binding_id: VarInt,
         msg_id: VarInt,
+        stream_offset: VarInt,
         message_size: VarInt,
         offset: VarInt,
         is_fin: bool,
@@ -626,6 +627,7 @@ impl EncoderValue for Header {
                 queue_pair,
                 binding_id,
                 msg_id,
+                stream_offset,
                 message_size,
                 offset,
                 is_fin,
@@ -643,6 +645,7 @@ impl EncoderValue for Header {
                 }
                 encoder.encode(binding_id);
                 encoder.encode(msg_id);
+                encoder.encode(stream_offset);
                 encoder.encode(message_size);
                 encoder.encode(offset);
             }
@@ -804,6 +807,7 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                 };
                 let (binding_id, buffer) = buffer.decode()?;
                 let (msg_id, buffer) = buffer.decode()?;
+                let (stream_offset, buffer) = buffer.decode()?;
                 let (message_size, buffer) = buffer.decode()?;
                 let (offset, buffer) = buffer.decode()?;
                 Ok((
@@ -811,6 +815,7 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                         queue_pair,
                         binding_id,
                         msg_id,
+                        stream_offset,
                         message_size,
                         offset,
                         is_fin,
@@ -989,6 +994,7 @@ mod tests {
             },
             binding_id: VarInt::from_u8(10),
             msg_id: VarInt::from_u8(0),
+            stream_offset: VarInt::ZERO,
             message_size: VarInt::new(65536).unwrap(),
             offset: VarInt::ZERO,
             is_fin: false,
@@ -1006,6 +1012,7 @@ mod tests {
             },
             binding_id: VarInt::from_u8(10),
             msg_id: VarInt::from_u8(0),
+            stream_offset: VarInt::ZERO,
             message_size: VarInt::new(65536).unwrap(),
             offset: VarInt::ZERO,
             is_fin: false,
@@ -1047,6 +1054,7 @@ mod tests {
                         queue_pair: qp,
                         binding_id,
                         msg_id,
+                        stream_offset: VarInt::ZERO,
                         message_size,
                         offset,
                         is_fin,
@@ -1083,6 +1091,7 @@ mod tests {
                 queue_pair: qp,
                 binding_id: VarInt::from_u8(10),
                 msg_id: VarInt::from_u8(0),
+                stream_offset: VarInt::ZERO,
                 message_size: VarInt::from_u8(100),
                 offset: VarInt::ZERO,
                 is_fin,
@@ -1113,6 +1122,7 @@ mod tests {
             },
             binding_id: VarInt::from_u8(42),
             msg_id: VarInt::from_u8(3),
+            stream_offset: VarInt::new(32768).unwrap(),
             message_size: VarInt::new(65536).unwrap(),
             offset: VarInt::new(8192).unwrap(),
             is_fin: false,
@@ -1125,9 +1135,10 @@ mod tests {
         header.encode(&mut encoder);
 
         // tag=20 (base 18 + wakeup bit 1<<1), queue_pair(5,7), binding=42, msg_id=3,
-        // message_size=65536 (4-byte varint), offset=8192 (2-byte varint)
+        // stream_offset=32768 (4-byte varint), message_size=65536 (4-byte varint),
+        // offset=8192 (2-byte varint)
         assert_eq!(buf[0], 20);
-        assert_eq!(header.encoding_size(), 1 + 1 + 1 + 1 + 1 + 4 + 2);
+        assert_eq!(header.encoding_size(), 1 + 1 + 1 + 1 + 1 + 4 + 4 + 2);
     }
 
     #[test]
@@ -1141,6 +1152,7 @@ mod tests {
             },
             binding_id: VarInt::from_u8(42),
             msg_id: VarInt::from_u8(0),
+            stream_offset: VarInt::ZERO,
             message_size: VarInt::new(1048576).unwrap(),
             offset: VarInt::ZERO,
             is_fin: true,
@@ -1165,6 +1177,7 @@ mod tests {
             },
             binding_id: VarInt::new(500_000).unwrap(),
             msg_id: VarInt::new(999_999).unwrap(),
+            stream_offset: VarInt::new(50_000_000).unwrap(),
             message_size: VarInt::new(6_000_000).unwrap(),
             offset: VarInt::new(5_999_000).unwrap(),
             is_fin: false,
@@ -1268,6 +1281,7 @@ mod tests {
             },
             binding_id: VarInt::MAX,
             msg_id: VarInt::MAX,
+            stream_offset: VarInt::MAX,
             message_size: VarInt::MAX,
             offset: VarInt::MAX,
             is_fin: true,

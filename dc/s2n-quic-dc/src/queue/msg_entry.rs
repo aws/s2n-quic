@@ -21,6 +21,7 @@ pub const MAX_CHUNKS: u32 = InlineBitSet::<4>::CAPACITY;
 /// at their message-local offset without intermediate allocation.
 pub(crate) struct MsgEntry {
     buffer: BytesMut,
+    stream_offset: u64,
     chunk_size: u16,
     chunk_count: u16,
     received: InlineBitSet<4>,
@@ -57,7 +58,13 @@ impl MsgEntry {
     ///
     /// The buffer is allocated with `total_size` capacity and unsafely set to that length.
     /// The bitset guarantees write-before-read, so uninitialized memory is never exposed.
-    pub(crate) fn new(message_size: u32, chunk_size: u16, is_fin: bool, is_wakeup: bool) -> Self {
+    pub(crate) fn new(
+        message_size: u32,
+        chunk_size: u16,
+        stream_offset: u64,
+        is_fin: bool,
+        is_wakeup: bool,
+    ) -> Self {
         let chunk_count = chunks_for_size(message_size, chunk_size);
         debug_assert!(chunk_count as u32 <= MAX_CHUNKS);
 
@@ -68,6 +75,7 @@ impl MsgEntry {
 
         Self {
             buffer,
+            stream_offset,
             chunk_size,
             chunk_count,
             received: InlineBitSet::new(),
@@ -81,6 +89,11 @@ impl MsgEntry {
     #[inline]
     pub(crate) fn message_size(&self) -> u32 {
         self.buffer.len() as u32
+    }
+
+    #[inline]
+    pub(crate) fn stream_offset(&self) -> u64 {
+        self.stream_offset
     }
 
     #[inline]
@@ -101,6 +114,11 @@ impl MsgEntry {
     #[inline]
     pub(crate) fn has_checkouts(&self) -> bool {
         !self.checked_out.is_empty()
+    }
+
+    #[inline]
+    pub(crate) fn is_complete(&self) -> bool {
+        self.received.all_set(self.chunk_count as u32) && self.checked_out.is_empty()
     }
 
     /// Attempt to check out a chunk for writing.
@@ -200,7 +218,7 @@ mod tests {
 
     #[test]
     fn new_entry() {
-        let entry = MsgEntry::new(65536, CHUNK_SIZE, false, true);
+        let entry = MsgEntry::new(65536, CHUNK_SIZE, 0, false, true);
         assert_eq!(entry.message_size(), 65536);
         assert!(!entry.is_fin());
         assert!(entry.is_wakeup());
@@ -210,7 +228,7 @@ mod tests {
 
     #[test]
     fn checkout_and_complete_single_chunk() {
-        let mut entry = MsgEntry::new(8192, CHUNK_SIZE, true, true);
+        let mut entry = MsgEntry::new(8192, CHUNK_SIZE, 0, true, true);
 
         match entry.checkout(0) {
             CheckoutResult::Ok { ptr, len } => {
@@ -230,7 +248,7 @@ mod tests {
     #[test]
     fn checkout_and_complete_multi_chunk() {
         let total_size = 8192 * 4;
-        let mut entry = MsgEntry::new(total_size, CHUNK_SIZE, false, true);
+        let mut entry = MsgEntry::new(total_size, CHUNK_SIZE, 0, false, true);
         let base_ptr = entry.buffer.as_mut_ptr();
 
         // Check out all chunks
@@ -261,7 +279,7 @@ mod tests {
 
     #[test]
     fn out_of_order_completion() {
-        let mut entry = MsgEntry::new(8192 * 3, CHUNK_SIZE, false, true);
+        let mut entry = MsgEntry::new(8192 * 3, CHUNK_SIZE, 0, false, true);
 
         // Checkout in order
         for i in 0..3 {
@@ -276,7 +294,7 @@ mod tests {
 
     #[test]
     fn duplicate_detection() {
-        let mut entry = MsgEntry::new(8192 * 2, CHUNK_SIZE, false, true);
+        let mut entry = MsgEntry::new(8192 * 2, CHUNK_SIZE, 0, false, true);
 
         assert!(matches!(entry.checkout(0), CheckoutResult::Ok { .. }));
         assert!(matches!(entry.complete_chunk(0), CompleteResult::Pending));
@@ -287,7 +305,7 @@ mod tests {
 
     #[test]
     fn contention_detection() {
-        let mut entry = MsgEntry::new(8192 * 2, CHUNK_SIZE, false, true);
+        let mut entry = MsgEntry::new(8192 * 2, CHUNK_SIZE, 0, false, true);
 
         assert!(matches!(entry.checkout(0), CheckoutResult::Ok { .. }));
         // Same chunk checked out again while first is still outstanding
@@ -296,7 +314,7 @@ mod tests {
 
     #[test]
     fn poison_before_checkout() {
-        let mut entry = MsgEntry::new(8192, CHUNK_SIZE, false, true);
+        let mut entry = MsgEntry::new(8192, CHUNK_SIZE, 0, false, true);
         entry.poison();
         assert!(entry.is_poisoned());
         assert!(matches!(entry.checkout(0), CheckoutResult::Poisoned));
@@ -304,7 +322,7 @@ mod tests {
 
     #[test]
     fn poison_during_checkout() {
-        let mut entry = MsgEntry::new(8192, CHUNK_SIZE, false, true);
+        let mut entry = MsgEntry::new(8192, CHUNK_SIZE, 0, false, true);
 
         assert!(matches!(entry.checkout(0), CheckoutResult::Ok { .. }));
         entry.poison();
@@ -313,7 +331,7 @@ mod tests {
 
     #[test]
     fn into_buffer() {
-        let mut entry = MsgEntry::new(100, 100, false, true);
+        let mut entry = MsgEntry::new(100, 100, 0, false, true);
 
         match entry.checkout(0) {
             CheckoutResult::Ok { ptr, len } => {
@@ -330,7 +348,7 @@ mod tests {
 
     #[test]
     fn completion_requires_no_outstanding_checkouts() {
-        let mut entry = MsgEntry::new(8192 * 2, CHUNK_SIZE, false, true);
+        let mut entry = MsgEntry::new(8192 * 2, CHUNK_SIZE, 0, false, true);
 
         // Check out both chunks
         assert!(matches!(entry.checkout(0), CheckoutResult::Ok { .. }));
@@ -350,7 +368,7 @@ mod tests {
     #[test]
     fn last_chunk_len_is_remainder() {
         // 10000 bytes / 8192 chunk_size = 2 chunks: first is 8192, last is 1808
-        let mut entry = MsgEntry::new(10000, CHUNK_SIZE, false, true);
+        let mut entry = MsgEntry::new(10000, CHUNK_SIZE, 0, false, true);
 
         match entry.checkout(0) {
             CheckoutResult::Ok { ptr, len } => {
