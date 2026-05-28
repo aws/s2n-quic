@@ -663,9 +663,6 @@ fn handle_queue_msg(
         is_fin,
         is_wakeup,
         |ptr, len| -> Result<(), ()> {
-            if payload_len != len {
-                return Err(());
-            }
             unsafe {
                 core::ptr::copy_nonoverlapping(payload.as_ptr(), ptr, len as usize);
             }

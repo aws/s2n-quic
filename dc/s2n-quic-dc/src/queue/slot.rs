@@ -181,34 +181,43 @@ impl Slot {
         let write_ok = write_fn(ptr, expected_len).is_ok();
 
         // Lock msg_table, complete or cancel the chunk
-        let mut table = self.msg_table.lock();
-        let table = table.as_mut().expect("table must exist after checkout");
+        let local_queue = {
+            let mut guard = self.msg_table.lock();
+            let table = guard.as_mut().expect("table must exist after checkout");
 
-        if !write_ok {
-            // Write failed (e.g. decrypt error) — cancel the checkout.
-            // The entry's checked_out bit is cleared without marking received,
-            // so a retransmit can try again.
-            table.cancel_checkout(msg_id, chunk_index);
-            return Ok(half::AutoWake::default());
-        }
+            if !write_ok {
+                table.cancel_checkout(msg_id, chunk_index);
+                return Ok(half::AutoWake::default());
+            }
 
-        match table.complete(msg_id, chunk_index) {
-            super::msg_table::CompleteOutcome::Ready => {
-                // Drain complete messages into the stream half's queue
-                let mut stream = self.stream.inner.lock();
-                for delivered in table.drain_complete() {
-                    let entry: intrusive::Entry<msg::Stream> = msg::Stream::Data {
-                        offset: VarInt::new(delivered.stream_offset).unwrap_or(VarInt::MAX),
-                        fin: delivered.is_fin,
-                        payload: delivered.payload,
+            match table.complete(msg_id, chunk_index) {
+                super::msg_table::CompleteOutcome::Ready => {
+                    let mut queue = intrusive::Queue::new();
+                    for delivered in table.drain_complete() {
+                        let entry: intrusive::Entry<msg::Stream> = msg::Stream::Data {
+                            offset: VarInt::new(delivered.stream_offset)
+                                .unwrap_or(VarInt::MAX),
+                            fin: delivered.is_fin,
+                            payload: delivered.payload,
+                        }
+                        .into();
+                        queue.push_back(entry);
                     }
-                    .into();
-                    stream.queue.push_back(entry);
+                    Some(queue)
                 }
+                super::msg_table::CompleteOutcome::Pending
+                | super::msg_table::CompleteOutcome::Poisoned => None,
+            }
+        };
+        // msg_table lock released here
+
+        match local_queue {
+            Some(mut queue) => {
+                let mut stream = self.stream.inner.lock();
+                stream.queue.append(&mut queue);
                 Ok(stream.take_waker())
             }
-            super::msg_table::CompleteOutcome::Pending
-            | super::msg_table::CompleteOutcome::Poisoned => Ok(half::AutoWake::default()),
+            None => Ok(half::AutoWake::default()),
         }
     }
 

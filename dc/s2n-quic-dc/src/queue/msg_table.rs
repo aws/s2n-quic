@@ -48,8 +48,10 @@ pub(crate) enum InsertError {
     SizeMismatch,
     /// is_fin flag doesn't match the existing entry.
     FinMismatch,
-    /// offset + payload would exceed message_size.
+    /// chunk_index exceeds the message's chunk count.
     OffsetOverflow,
+    /// payload_len doesn't match the expected chunk length.
+    PayloadLenMismatch,
 }
 
 /// Outcome of completing a chunk write.
@@ -138,14 +140,18 @@ impl MsgTable {
             self.fin_msg_id = Some(msg_id);
         }
 
-        let _ = payload_len; // validated by the write callback against expected_len
-
         match entry.checkout(chunk_index) {
-            CheckoutResult::Ok { ptr, len } => Ok(Checkout {
-                ptr,
-                expected_len: len,
-                chunk_index,
-            }),
+            CheckoutResult::Ok { ptr, len } => {
+                if payload_len != len {
+                    entry.cancel_checkout(chunk_index);
+                    return Err(InsertError::PayloadLenMismatch);
+                }
+                Ok(Checkout {
+                    ptr,
+                    expected_len: len,
+                    chunk_index,
+                })
+            }
             CheckoutResult::Duplicate => Err(InsertError::Duplicate),
             CheckoutResult::Contention => Err(InsertError::Contention),
             CheckoutResult::Poisoned => Err(InsertError::Poisoned),
