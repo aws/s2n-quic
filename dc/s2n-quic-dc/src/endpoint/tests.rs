@@ -2052,6 +2052,216 @@ fn zombie_flow_not_invalidated_when_path_has_other_activity() {
     );
 }
 
+/// Reproduces a bug where QueueFree frames in-flight during peer-dead invalidation
+/// are silently dropped, permanently leaking peer queue slots.
+///
+/// The send idle wheel drains inflight frames to `completed_tx` on peer-dead. The
+/// CompletionDispatcher silently drops frames with `completion: None` (like QueueFree).
+/// The `cancelled_drain` task (which rescues QueueFree frames into the retry queue)
+/// only handles the `cancelled_tx` channel — it never sees peer-dead drains.
+///
+/// Result: the client's `peer_free` list permanently loses the freed slot, and
+/// subsequent stream creation blocks forever once all initial slots are exhausted.
+#[test]
+#[ignore = "FIXME!"]
+fn queue_free_lost_on_peer_dead_invalidation() {
+    use crate::{
+        endpoint::testing::sim::{self, SERVER_PORT},
+        testing::ext::*,
+    };
+    use s2n_quic_core::{dc::testing::TEST_APPLICATION_PARAMS, varint::VarInt};
+    use std::num::NonZeroU32;
+
+    crate::testing::sim(|| {
+        let acceptor_id = VarInt::from_u8(1);
+        let drop_client_to_server = Arc::new(AtomicBool::new(false));
+
+        // Monitor: drop client→server packets when the flag is set.
+        // This prevents ACKs from reaching the server, keeping QueueFree in-flight.
+        {
+            let drop_flag = drop_client_to_server.clone();
+            let mut client_addr = MonitorHostAddr::new("client");
+            bach::net::monitor::on_packet_sent(move |packet| {
+                if drop_flag.load(Ordering::Relaxed) && client_addr.is_packet_source(packet) {
+                    return bach::net::monitor::Command::Drop;
+                }
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        // ── Server ──────────────────────────────────────────────────────
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let (mut reader, mut writer) = stream.into_split();
+                    let mut buf = BytesMut::with_capacity(64);
+                    loop {
+                        if reader.read_into(&mut buf).await.expect("server read") == 0 {
+                            break;
+                        }
+                    }
+                    let mut echo = Bytes::copy_from_slice(&buf);
+                    writer
+                        .write_all_from_fin(&mut echo)
+                        .await
+                        .expect("server write");
+                }
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        // ── Client (primary) ────────────────────────────────────────────
+        async move {
+            let mut client = Client::new();
+            bach::task::yield_now().await;
+
+            let server_addr = bach::net::lookup_host(format!("server:{SERVER_PORT}"))
+                .await
+                .expect("lookup")
+                .next()
+                .expect("no addr");
+
+            let client_addr = client.data_addr();
+            let client_map = sim::lookup_sim_map(client_addr).expect("client map");
+            let server_map = sim::lookup_sim_map(server_addr).expect("server map");
+
+            // Configure with very small max_queues (2) so peer slots are scarce.
+            // Short server-side send idle timeout (500ms) so peer-dead fires quickly.
+            let mut server_send_params = TEST_APPLICATION_PARAMS;
+            server_send_params.max_queues = VarInt::from_u8(2);
+            server_send_params.max_idle_timeout = NonZeroU32::new(500);
+            server_send_params.remote_max_data = server_send_params.local_recv_max_data;
+
+            // Client-side entry: same small max_queues, longer idle timeout.
+            let mut client_params = TEST_APPLICATION_PARAMS;
+            client_params.max_queues = VarInt::from_u8(2);
+            client_params.remote_max_data = client_params.local_recv_max_data;
+
+            // Insert path pair. local_params → server_map entry, peer_params → client_map entry.
+            client_map.test_insert_pair(
+                client_addr,
+                Some(server_send_params),
+                &server_map,
+                server_addr,
+                Some(client_params),
+            );
+
+            if let Some(entry) = client_map.get_raw(server_addr) {
+                entry.set_peer_data_addrs(&[server_addr]);
+            }
+            if let Some(entry) = server_map.get_raw(client_addr) {
+                entry.set_peer_data_addrs(&[client_addr]);
+            }
+
+            // ── Stream 1: complete successfully (uses peer slot 0) ───────
+            let stream1 = client
+                .connect(format!("server:{SERVER_PORT}"), acceptor_id)
+                .await
+                .expect("connect 1");
+            let (mut r1, mut w1) = stream1.into_split();
+            let mut data1 = Bytes::from_static(b"hello");
+            w1.write_all_from_fin(&mut data1).await.expect("write 1");
+            let mut buf1 = BytesMut::with_capacity(16);
+            loop {
+                if r1.read_into(&mut buf1).await.expect("read 1") == 0 {
+                    break;
+                }
+            }
+            assert_eq!(&buf1[..], b"hello");
+            // Stream 1 is done. Drop it so the server-side receivers are freed.
+            drop(r1);
+            drop(w1);
+
+            // Allow time for QueueFree to be submitted and transmitted by the server.
+            100.ms().sleep().await;
+
+            // Now block all client→server traffic. The server's QueueFree packet
+            // will never be ACKed, keeping it stuck in the inflight map.
+            drop_client_to_server.store(true, Ordering::Relaxed);
+
+            // Wait for the server's send idle timeout to expire (500ms + margin).
+            // The send idle wheel will fire, invalidate the context, and drain
+            // the in-flight QueueFree to completed_tx where it's silently dropped.
+            800.ms().sleep().await;
+
+            // Re-enable traffic.
+            drop_client_to_server.store(false, Ordering::Relaxed);
+
+            // ── Stream 2: uses peer slot 1 (the only remaining slot) ────
+            let stream2 = client
+                .connect(format!("server:{SERVER_PORT}"), acceptor_id)
+                .await
+                .expect("connect 2");
+            let (mut r2, mut w2) = stream2.into_split();
+            let mut data2 = Bytes::from_static(b"world");
+            timeout(5.s(), w2.write_all_from_fin(&mut data2))
+                .await
+                .expect("write 2 timeout")
+                .expect("write 2");
+            let mut buf2 = BytesMut::with_capacity(16);
+            loop {
+                let n = timeout(5.s(), r2.read_into(&mut buf2))
+                    .await
+                    .expect("read 2 timeout")
+                    .expect("read 2");
+                if n == 0 {
+                    break;
+                }
+            }
+            assert_eq!(&buf2[..], b"world");
+            drop(r2);
+            drop(w2);
+
+            // ── Stream 3: should reuse peer slot 0 via QueueFree ────────
+            // If the bug is present, this will time out because peer slot 0
+            // was never returned to the client's peer_free list.
+            let result = timeout(
+                3.s(),
+                client.connect(format!("server:{SERVER_PORT}"), acceptor_id),
+            )
+            .await;
+
+            assert!(
+                result.is_ok(),
+                "Stream 3 allocation timed out — peer slot 0 was leaked by \
+                 QueueFree loss during peer-dead invalidation. The client's \
+                 peer_free list is permanently depleted."
+            );
+
+            let stream3 = result.unwrap().expect("connect 3");
+            let (mut r3, mut w3) = stream3.into_split();
+            let mut data3 = Bytes::from_static(b"again");
+            timeout(5.s(), w3.write_all_from_fin(&mut data3))
+                .await
+                .expect("write 3 timeout")
+                .expect("write 3");
+            let mut buf3 = BytesMut::with_capacity(16);
+            loop {
+                let n = timeout(5.s(), r3.read_into(&mut buf3))
+                    .await
+                    .expect("read 3 timeout")
+                    .expect("read 3");
+                if n == 0 {
+                    break;
+                }
+            }
+            assert_eq!(&buf3[..], b"again");
+
+            info!("queue_free_lost_on_peer_dead_invalidation passed");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
 #[test]
 fn stale_key_detected_after_recv_cache_eviction() {
     use crate::{
