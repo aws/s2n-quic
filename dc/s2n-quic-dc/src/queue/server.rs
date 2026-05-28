@@ -165,6 +165,49 @@ impl ServerView {
         }
     }
 
+    /// Bind a slot for a QueueMsg init frame without pushing data.
+    ///
+    /// The actual data delivery happens through `push_msg` after binding.
+    pub fn bind_for_msg(
+        &mut self,
+        queue_id: VarInt,
+        binding_id: VarInt,
+        path_entry: &Arc<PathSecretEntry>,
+        endpoint_tx: &mut FreedBatchTx,
+    ) -> Result<BindResult, Error<()>> {
+        let index = queue_id.as_u64() as usize;
+
+        if queue_id.as_u64() > self.state.max_queue_id {
+            return Err(Error::CapExceeded(()));
+        }
+
+        if index >= self.view.total_slots() {
+            self.view.grow_to_fit(index, &self.state.pages);
+        }
+
+        let Some(slot) = self.view.get(index, &self.state.pages) else {
+            return Err(Error::Unallocated(()));
+        };
+
+        match slot.allocate_and_open(binding_id) {
+            Ok(()) => {
+                let slot_ptr = slot.as_ptr();
+                let on_free = OnFree::Server {
+                    path_entry: path_entry.clone(),
+                    endpoint_tx: endpoint_tx.clone(),
+                };
+                let stream = StreamReceiver::new(slot_ptr, on_free.clone());
+                let control = ControlReceiver::new(slot_ptr, on_free);
+                Ok(BindResult::NewBinding {
+                    waker: AutoWake::default(),
+                    stream,
+                    control,
+                })
+            }
+            Err(_) => Ok(BindResult::Bound(AutoWake::default())),
+        }
+    }
+
     #[inline]
     pub fn send_stream(
         &mut self,

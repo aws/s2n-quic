@@ -523,23 +523,48 @@ fn dispatch_decoded_frame(
             chunk_index,
             is_fin,
             is_wakeup,
-            dest_acceptor_id: _,
+            dest_acceptor_id,
         } => {
-            handle_queue_msg(
-                peer,
-                queue_pair,
-                binding_id,
-                msg_id,
-                stream_offset,
-                message_size,
-                chunk_size,
-                chunk_index,
-                is_fin,
-                is_wakeup,
-                payload,
-                counters,
-                waker_sink,
-            );
+            if let Some(acceptor_id) = dest_acceptor_id {
+                handle_queue_msg_init(
+                    peer,
+                    queue_pair,
+                    binding_id,
+                    acceptor_id,
+                    msg_id,
+                    stream_offset,
+                    message_size,
+                    chunk_size,
+                    chunk_index,
+                    is_fin,
+                    is_wakeup,
+                    payload,
+                    acceptor_registry,
+                    frame_tx,
+                    freed_batch_tx,
+                    counters,
+                    waker_sink,
+                    stream_clock,
+                    reader_metrics,
+                    writer_metrics,
+                );
+            } else {
+                handle_queue_msg(
+                    peer,
+                    queue_pair,
+                    binding_id,
+                    msg_id,
+                    stream_offset,
+                    message_size,
+                    chunk_size,
+                    chunk_index,
+                    is_fin,
+                    is_wakeup,
+                    payload,
+                    counters,
+                    waker_sink,
+                );
+            }
         }
     }
 }
@@ -759,6 +784,124 @@ fn handle_queue_msg(
         Err(crate::queue::Error::SenderClosed) => {}
         Err(crate::queue::Error::CapExceeded(_)) => {}
     }
+}
+
+// ── QueueMsg Init ─────────────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+fn handle_queue_msg_init(
+    peer: &mut recv::Context,
+    queue_pair: QueuePair,
+    binding_id: VarInt,
+    acceptor_id: VarInt,
+    msg_id: VarInt,
+    stream_offset: VarInt,
+    message_size: VarInt,
+    chunk_size: VarInt,
+    chunk_index: VarInt,
+    is_fin: bool,
+    is_wakeup: bool,
+    payload: BytesMut,
+    acceptor_registry: &mut acceptor::LocalRegistry<Stream>,
+    frame_tx: &mut SubmissionSender,
+    freed_batch_tx: &mut crate::queue::FreedBatchTx,
+    counters: &counters::Dispatch,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
+    stream_clock: &crate::time::DefaultClock,
+    reader_metrics: &Arc<crate::stream::metrics::ReaderMetrics>,
+    writer_metrics: &Arc<crate::stream::metrics::WriterMetrics>,
+) {
+    let Some(server_view) = peer.queue_view.as_server_mut() else {
+        return;
+    };
+
+    let Some(acceptor_sender) = acceptor_registry.get(acceptor_id) else {
+        counters.rx_init_no_acceptor.add(1);
+        server_view.record_freed(queue_pair.dest_queue_id, &peer.path_entry, freed_batch_tx);
+        send_reset(
+            &peer.path_entry,
+            queue_pair.source_queue_id,
+            binding_id,
+            error::ACCEPTOR_NOT_FOUND,
+            frame_tx,
+        );
+        return;
+    };
+
+    // Bind the slot (creates receivers) without pushing data — data goes through push_msg.
+    match server_view.bind_for_msg(
+        queue_pair.dest_queue_id,
+        binding_id,
+        &peer.path_entry,
+        freed_batch_tx,
+    ) {
+        Ok(crate::queue::BindResult::NewBinding {
+            waker: _,
+            stream,
+            control,
+        }) => {
+            let writer = Writer::new_server(
+                frame_tx.clone(),
+                peer.path_entry.clone(),
+                queue_pair.source_queue_id,
+                acceptor_id,
+                control,
+                stream_clock.clone(),
+                writer_metrics.clone(),
+            );
+            let reader = Reader::new_server(
+                frame_tx.clone(),
+                peer.path_entry.clone(),
+                queue_pair.source_queue_id,
+                stream,
+                is_fin,
+                stream_clock.clone(),
+                reader_metrics.clone(),
+            );
+            let new_stream = Stream::new(reader, writer);
+
+            match acceptor_sender.send(new_stream) {
+                Ok((mut evicted, acceptor_waker)) => {
+                    if let Some(ref mut ev) = evicted {
+                        ev.reset(crate::stream::endpoint::Error::ServerBusy);
+                    }
+                    counters.queue_accepted.add(1);
+                    let _ = waker_sink.send(AutoWake::new(acceptor_waker));
+                }
+                Err(acceptor::channel::SendError::Closed(mut stream)) => {
+                    stream.disable();
+                    counters.rx_init_acceptor_closed.add(1);
+                }
+                Err(acceptor::channel::SendError::NoSlots(mut stream)) => {
+                    stream.disable();
+                    counters.rx_init_acceptor_no_slots.add(1);
+                }
+            }
+        }
+        Ok(crate::queue::BindResult::Bound(_)) => {
+            // Already bound — just push the msg data below
+        }
+        Err(_) => {
+            return;
+        }
+    }
+
+    // Now push the actual chunk data through the msg path.
+    handle_queue_msg(
+        peer,
+        queue_pair,
+        binding_id,
+        msg_id,
+        stream_offset,
+        message_size,
+        chunk_size,
+        chunk_index,
+        is_fin,
+        is_wakeup,
+        payload,
+        counters,
+        waker_sink,
+    );
 }
 
 // ── QueueData Init ─────────────────────────────────────────────────────────
