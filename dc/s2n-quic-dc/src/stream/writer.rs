@@ -99,6 +99,16 @@ use std::{
     task::{Context, Poll},
 };
 
+/// Flags controlling per-message behavior for QueueMsg emission.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct MsgFlags {
+    /// End of stream — all frames in this message carry is_fin.
+    pub is_fin: bool,
+    /// Request receiver wakeup on message completion.
+    /// Overridden to true when flow control budget is nearly exhausted.
+    pub is_wakeup: bool,
+}
+
 /// The send half of an `s2n-quic-dc` stream.
 ///
 /// `Writer` accepts an ordered byte stream from the application, fragments it
@@ -145,6 +155,8 @@ struct Inner {
     completion_rx: frame::CompletionReceiver,
     /// Control-side channel for receiving MAX_DATA frames
     control_rx: crate::queue::ControlReceiver,
+    /// Next msg_id for QueueMsg frames (monotonic per stream)
+    next_msg_id: u64,
     /// Path secret entry providing MTU and crypto material
     path_secret_entry: Arc<PathSecretEntry>,
     /// Cached packet size (MTU minus header overhead) for fragmentation
@@ -228,6 +240,7 @@ impl Writer {
             frame_tx,
             completion_rx,
             control_rx,
+            next_msg_id: 0,
             path_secret_entry,
             packet_size,
             dest_queue_id,
@@ -264,6 +277,7 @@ impl Writer {
             frame_tx,
             completion_rx,
             control_rx,
+            next_msg_id: 0,
             path_secret_entry,
             packet_size,
             dest_queue_id,
@@ -377,6 +391,21 @@ impl Writer {
         }
     }
 
+    /// Sends a complete message using pre-allocated reassembly on the receiver.
+    ///
+    /// The entire contents of `buf` are treated as one atomic message. The receiver
+    /// pre-allocates a contiguous buffer and only wakes the application once all
+    /// chunks arrive. This eliminates per-frame allocation and per-frame wakeups
+    /// for large messages.
+    ///
+    /// This method loops until `buf` is fully drained or the stream errors.
+    pub async fn write_msg<S>(&mut self, buf: &mut S, flags: MsgFlags) -> io::Result<usize>
+    where
+        S: buffer::reader::storage::Infallible,
+    {
+        core::future::poll_fn(|cx| self.0.poll_write_msg(cx, buf, flags)).await
+    }
+
     /// Returns the handshake peer address used to identify this stream.
     ///
     /// This remains the stable peer identity even if data is sent across
@@ -472,6 +501,66 @@ impl Inner {
                 this.poll_write_from_inner(cx, buf, is_fin)
             })
         })
+    }
+
+    fn poll_write_msg<S>(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut S,
+        flags: MsgFlags,
+    ) -> Poll<io::Result<usize>>
+    where
+        S: buffer::reader::storage::Infallible,
+    {
+        waker::debug_assert_contract(cx, |cx| {
+            coop::poll(self, cx, |this, cx| this.poll_write_msg_inner(cx, buf, flags))
+        })
+    }
+
+    fn poll_write_msg_inner<S>(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut S,
+        flags: MsgFlags,
+    ) -> Poll<io::Result<usize>>
+    where
+        S: buffer::reader::storage::Infallible,
+    {
+        if self.status.is_shutdown() {
+            if let Some(error_code) = self.reset_error_code {
+                let reset_error: Error = error_code.into();
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    reset_error,
+                )));
+            }
+            return Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()));
+        }
+
+        if self.status.is_fin_sent() {
+            return Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()));
+        }
+
+        self.poll_completions(cx)?;
+        let _ = self.poll_remote_budget(cx)?;
+
+        if buf.buffer_is_empty() {
+            if flags.is_fin {
+                self.send_data(buf, true)?;
+                return Poll::Ready(Ok(0));
+            }
+            return Poll::Ready(Ok(0));
+        }
+
+        // The entire message must fit in the available budget.
+        let message_size = buf.buffered_len() as u64;
+        let available = self.min_send_budget();
+        if available < message_size {
+            return Poll::Pending;
+        }
+
+        let written = self.send_msg(buf, flags)?;
+        Poll::Ready(Ok(written))
     }
 
     #[inline(always)]
@@ -1016,6 +1105,92 @@ impl Inner {
         self.send_batch(frames)?;
 
         Ok(written)
+    }
+
+    /// Send a complete message using QueueMsg frames (pre-allocated reassembly on receiver).
+    ///
+    /// The entire `buf` is treated as one message. It's split into QueueMsg frames
+    /// each carrying a chunk_index. The receiver pre-allocates and reassembles
+    /// without per-frame allocation.
+    ///
+    /// `flags` control per-message signaling: `is_fin` marks stream end,
+    /// `is_wakeup` requests receiver to wake the application on completion.
+    /// Both flags are set consistently on ALL frames of the message.
+    fn send_msg<S>(&mut self, buf: &mut S, flags: MsgFlags) -> io::Result<usize>
+    where
+        S: buffer::reader::storage::Infallible,
+    {
+        let message_size = buf.buffered_len();
+        if message_size == 0 {
+            if !flags.is_fin {
+                return Ok(0);
+            }
+            return self.send_data(buf, true);
+        }
+
+        let available = self.min_send_budget();
+        if message_size > available as usize {
+            return Ok(0);
+        }
+
+        // Force wakeup if this message exhausts the remote budget — the receiver
+        // must wake, consume, and send MAX_DATA for the sender to continue.
+        let remaining_after = self
+            .remote_max_data
+            .as_u64()
+            .saturating_sub(self.next_offset.as_u64() + message_size as u64);
+        let is_wakeup = flags.is_wakeup || remaining_after == 0;
+
+        let mtu = self.packet_size as usize;
+        let chunk_size = mtu.min(message_size).max(1) as u16;
+        let stream_offset = self.next_offset;
+        let msg_id = self.next_msg_id;
+        self.next_msg_id += 1;
+
+        let batch_enqueued_at = Some(self.clock.now());
+        let mut frames = Queue::new();
+        let mut chunk_index: u32 = 0;
+
+        while !buf.buffer_is_empty() {
+            let chunk_len = (chunk_size as usize).min(buf.buffered_len());
+            let mut payload = ByteVec::new();
+            let mut writer = payload.with_write_limit(chunk_len);
+            buf.infallible_copy_into(&mut writer);
+
+            let frame = Frame {
+                header: Header::QueueMsg {
+                    queue_pair: self.queue_pair(),
+                    binding_id: self.control_rx.binding_id(),
+                    msg_id: VarInt::new(msg_id).unwrap_or(VarInt::MAX),
+                    stream_offset,
+                    message_size: VarInt::new(message_size as u64).unwrap_or(VarInt::MAX),
+                    chunk_size: VarInt::new(chunk_size as u64).unwrap_or(VarInt::MAX),
+                    chunk_index: VarInt::new(chunk_index as u64).unwrap_or(VarInt::MAX),
+                    is_fin: flags.is_fin,
+                    is_wakeup,
+                    dest_acceptor_id: self.dest_acceptor_id(),
+                },
+                payload,
+                path_secret_entry: self.path_secret_entry.clone(),
+                completion: Some(self.completion_rx.sender()),
+                status: frame::TransmissionStatus::default(),
+                ttl: DEFAULT_TTL,
+                enqueued_at: batch_enqueued_at,
+            };
+
+            frames.push_back(frame.into());
+            chunk_index += 1;
+        }
+
+        self.advance_offset(message_size)?;
+
+        if flags.is_fin {
+            self.status.on_send_fin().ok();
+        }
+
+        self.send_batch(frames)?;
+
+        Ok(message_size)
     }
 
     fn remaining_offset_capacity(&self) -> usize {
