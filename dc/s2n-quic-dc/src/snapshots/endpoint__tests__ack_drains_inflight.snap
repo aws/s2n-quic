@@ -1033,8 +1033,8 @@ expression: logs
 0:00:00.001561000 [server] TRACE c#socket.tx.ops[send.1]=1
 0:00:00.001561000 [server] TRACE c#socket.tx.bytes[send.1]=46
 0:00:00.001561000 [server] TRACE m#task.assembler.drained[send.1]=1
-0:00:00.001581000 [server] TRACE m#pick_two.score_delta=523390
-0:00:00.001581000 [server] TRACE m#pick_two.rejected[send.7]=523390
+0:00:00.001581000 [server] TRACE m#pick_two.score_delta=523393
+0:00:00.001581000 [server] TRACE m#pick_two.rejected[send.7]=523393
 0:00:00.001581000 [server] TRACE c#pick_two.chosen[send.1]=1
 0:00:00.001581000 [server] TRACE c#q.resolver.enq[send.1]=1
 0:00:00.001581000 [server] TRACE g#q.resolver.depth[send.1]=1
@@ -1253,8 +1253,8 @@ expression: logs
 0:00:00.002081000 [client] TRACE c#q.router_to_batcher.drain[p3]=1
 0:00:00.002081000 [client] TRACE g#q.router_to_batcher.depth[p3]=0
 0:00:00.002081000 [client] TRACE m#task.frame_dispatch.drained=2
-0:00:00.002101000 [client] TRACE m#pick_two.score_delta=1044392
-0:00:00.002101000 [client] TRACE m#pick_two.rejected[send.5]=1044392
+0:00:00.002101000 [client] TRACE m#pick_two.score_delta=1044395
+0:00:00.002101000 [client] TRACE m#pick_two.rejected[send.5]=1044395
 0:00:00.002101000 [client] TRACE c#pick_two.chosen[send.4]=1
 0:00:00.002101000 [client] TRACE c#q.resolver.enq[send.0]=1
 0:00:00.002101000 [client] TRACE g#q.resolver.depth[send.0]=1
@@ -1511,8 +1511,8 @@ expression: logs
 0:00:00.002601000 [server] TRACE m#task.assembler.drained[send.5]=1
 0:00:00.002601000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=1
 0:00:00.002601000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=0
-0:00:00.002621000 [server] TRACE m#pick_two.score_delta=516610
-0:00:00.002621000 [server] TRACE m#pick_two.rejected[send.5]=516610
+0:00:00.002621000 [server] TRACE m#pick_two.score_delta=516607
+0:00:00.002621000 [server] TRACE m#pick_two.rejected[send.5]=516607
 0:00:00.002621000 [server] TRACE c#pick_two.chosen[send.7]=1
 0:00:00.002621000 [server] TRACE c#q.resolver.enq[send.3]=1
 0:00:00.002621000 [server] TRACE g#q.resolver.depth[send.3]=1

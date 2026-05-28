@@ -429,6 +429,9 @@ fn dispatch_decoded_frame(
                 );
             }
         }
+        Header::QueueMsg { .. } => {
+            // TODO(Phase 4): dispatch to MsgTable for slot-level reassembly
+        }
     }
 }
 

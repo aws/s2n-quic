@@ -66,6 +66,8 @@ pub(crate) struct Dispatch {
     pub rx_queue_free_slots: Summary,
     pub rx_queue_free_ranges: Summary,
     pub rx_frame_ack: Counter,
+    pub rx_frame_queue_msg: Counter,
+    pub rx_frame_queue_msg_fin: Counter,
 }
 
 impl Dispatch {
@@ -127,6 +129,8 @@ impl Dispatch {
             rx_queue_free_slots: counters.register_summary("rx.queue_free.slots", Unit::Count),
             rx_queue_free_ranges: counters.register_summary("rx.queue_free.ranges", Unit::Count),
             rx_frame_ack: counters.register_nominal("rx.frame", "ack"),
+            rx_frame_queue_msg: counters.register_nominal("rx.frame", "queue_msg"),
+            rx_frame_queue_msg_fin: counters.register_nominal("rx.frame", "queue_msg_fin"),
         })
     }
 
@@ -150,6 +154,8 @@ impl Dispatch {
             Header::QueueReset { .. } => self.rx_frame_queue_reset.add(1),
             Header::QueueFree { .. } => self.rx_frame_queue_free.add(1),
             Header::Ack { .. } => self.rx_frame_ack.add(1),
+            Header::QueueMsg { is_fin: false, .. } => self.rx_frame_queue_msg.add(1),
+            Header::QueueMsg { is_fin: true, .. } => self.rx_frame_queue_msg_fin.add(1),
         };
     }
 }
@@ -191,6 +197,7 @@ pub(crate) struct Send {
     pub tx_acked_frame_queue_max_data: Counter,
     pub tx_acked_frame_queue_reset: Counter,
     pub tx_acked_frame_queue_free: Counter,
+    pub tx_acked_frame_queue_msg: Counter,
 }
 
 impl Send {
@@ -240,6 +247,7 @@ impl Send {
                 .register_nominal("tx.acked.frame.queue_max_data", &v),
             tx_acked_frame_queue_reset: counters.register_nominal("tx.acked.frame.queue_reset", &v),
             tx_acked_frame_queue_free: counters.register_nominal("tx.acked.frame.queue_free", &v),
+            tx_acked_frame_queue_msg: counters.register_nominal("tx.acked.frame.queue_msg", &v),
         })
     }
 
@@ -355,6 +363,7 @@ impl Send {
             Header::Ack { .. } => {
                 debug_assert!(false, "ACK frames should never appear as inflight entries")
             }
+            Header::QueueMsg { .. } => self.tx_acked_frame_queue_msg.add(1),
         }
     }
 }

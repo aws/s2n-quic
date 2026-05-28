@@ -1034,8 +1034,8 @@ expression: logs
 0:00:00.001561000 [server] TRACE c#socket.tx.ops[send.1]=1
 0:00:00.001561000 [server] TRACE c#socket.tx.bytes[send.1]=46
 0:00:00.001561000 [server] TRACE m#task.assembler.drained[send.1]=1
-0:00:00.001581000 [server] TRACE m#pick_two.score_delta=523192
-0:00:00.001581000 [server] TRACE m#pick_two.rejected[send.7]=523192
+0:00:00.001581000 [server] TRACE m#pick_two.score_delta=523195
+0:00:00.001581000 [server] TRACE m#pick_two.rejected[send.7]=523195
 0:00:00.001581000 [server] TRACE c#pick_two.chosen[send.1]=1
 0:00:00.001581000 [server] TRACE c#q.resolver.enq[send.1]=1
 0:00:00.001581000 [server] TRACE g#q.resolver.depth[send.1]=1

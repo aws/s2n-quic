@@ -356,8 +356,8 @@ expression: logs
 0:00:00.000521000 [peer] TRACE m#task.idle_wheel.drained[send.worker.3]=0
 0:00:00.000521000 [peer] TRACE m#task.pto_wheel.drained[send.worker.3]=1
 0:00:00.000521000 [peer] TRACE m#task.pto_wheel.drained[send.worker.3]=0
-0:00:00.000541000 [peer] TRACE m#pick_two.score_delta=21192
-0:00:00.000541000 [peer] TRACE m#pick_two.rejected[send.1]=21192
+0:00:00.000541000 [peer] TRACE m#pick_two.score_delta=21195
+0:00:00.000541000 [peer] TRACE m#pick_two.rejected[send.1]=21195
 0:00:00.000541000 [peer] TRACE c#pick_two.chosen[send.7]=1
 0:00:00.000541000 [peer] TRACE c#q.resolver.enq[send.3]=1
 0:00:00.000541000 [peer] TRACE g#q.resolver.depth[send.3]=1

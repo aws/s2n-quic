@@ -1089,8 +1089,8 @@ expression: logs
 0:00:03.001561000 [server] TRACE m#task.assembler.drained[send.1]=1
 0:00:03.001561000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=1
 0:00:03.001561000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=0
-0:00:03.001581000 [server] TRACE m#pick_two.score_delta=2999476810
-0:00:03.001581000 [server] TRACE m#pick_two.rejected[send.1]=2999476810
+0:00:03.001581000 [server] TRACE m#pick_two.score_delta=2999476807
+0:00:03.001581000 [server] TRACE m#pick_two.rejected[send.1]=2999476807
 0:00:03.001581000 [server] TRACE c#pick_two.chosen[send.7]=1
 0:00:03.001581000 [server] TRACE c#q.resolver.enq[send.3]=1
 0:00:03.001581000 [server] TRACE g#q.resolver.depth[send.3]=1
@@ -1282,8 +1282,8 @@ expression: logs
 0:00:03.002561000 [server] TRACE c#q.router_to_batcher.drain[p0]=1
 0:00:03.002561000 [server] TRACE g#q.router_to_batcher.depth[p0]=0
 0:00:03.002561000 [server] TRACE m#task.frame_dispatch.drained=2
-0:00:03.002581000 [server] TRACE m#pick_two.score_delta=6002646192
-0:00:03.002581000 [server] TRACE m#pick_two.rejected[send.7]=6002646192
+0:00:03.002581000 [server] TRACE m#pick_two.score_delta=6002646195
+0:00:03.002581000 [server] TRACE m#pick_two.rejected[send.7]=6002646195
 0:00:03.002581000 [server] TRACE c#pick_two.chosen[send.5]=1
 0:00:03.002581000 [server] TRACE c#q.resolver.enq[send.1]=1
 0:00:03.002581000 [server] TRACE g#q.resolver.depth[send.1]=1

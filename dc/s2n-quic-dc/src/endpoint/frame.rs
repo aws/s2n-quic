@@ -29,7 +29,13 @@ use std::sync::Arc;
 pub const DEFAULT_TTL: u16 = u16::MAX;
 
 /// Worst-case header overhead for a QueueData packet on the wire.
-pub const MAX_QUEUE_DATA_HEADER_OVERHEAD: u16 = 109;
+pub const MAX_QUEUE_DATA_HEADER_OVERHEAD: u16 = 111;
+
+/// Worst-case header overhead for a QueueMsg packet on the wire.
+///
+/// QueueMsg encodes two additional VarInt fields (msg_id, message_size) compared to QueueData,
+/// adding up to 16 bytes in the worst case.
+pub const MAX_QUEUE_MSG_HEADER_OVERHEAD: u16 = 127;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -409,6 +415,26 @@ pub enum Header {
         has_ecn: bool,
         is_ack_eliciting: bool,
     },
+    /// Pre-allocated message data routed via queue pair.
+    ///
+    /// Unlike QueueData which allocates per-frame, QueueMsg enables the receiver to
+    /// pre-allocate a single contiguous buffer for the entire message and decrypt/copy
+    /// frame payloads directly into it at the correct offset. The receiver only wakes
+    /// the application once the full message is assembled.
+    ///
+    /// Every frame is self-describing: it carries msg_id + message_size so the receiver
+    /// can allocate on any frame regardless of arrival order. The offset is message-local
+    /// (0-based).
+    QueueMsg {
+        queue_pair: QueuePair,
+        binding_id: VarInt,
+        msg_id: VarInt,
+        message_size: VarInt,
+        offset: VarInt,
+        is_fin: bool,
+        is_wakeup: bool,
+        dest_acceptor_id: Option<VarInt>,
+    },
 }
 
 impl Header {
@@ -429,6 +455,10 @@ impl Header {
     const ACK_ECN_TYPE: u8 = 15;
     const ACK_ELICITING_TYPE: u8 = 16;
     const ACK_ECN_ELICITING_TYPE: u8 = 17;
+    // QueueMsg: 8 type tags with bit-positioned flags.
+    // Bit 0: is_fin, Bit 1: is_wakeup, Bit 2: has_dest_acceptor_id (init)
+    const QUEUE_MSG_BASE_TYPE: u8 = 18;
+    const QUEUE_MSG_MAX_TYPE: u8 = Self::QUEUE_MSG_BASE_TYPE + 7;
 
     #[inline]
     pub fn priority(&self) -> Priority {
@@ -436,8 +466,12 @@ impl Header {
             Self::QueueData {
                 dest_acceptor_id: Some(_),
                 ..
+            }
+            | Self::QueueMsg {
+                dest_acceptor_id: Some(_),
+                ..
             } => Priority::QueueInit,
-            Self::QueueData { .. } => Priority::QueueData,
+            Self::QueueData { .. } | Self::QueueMsg { .. } => Priority::QueueData,
             Self::QueueControl { .. } | Self::QueueMaxData { .. } => Priority::QueueControl,
             Self::QueueFree { .. } | Self::Ack { .. } | Self::QueueReset { .. } => {
                 Priority::QueueReset
@@ -469,6 +503,7 @@ impl Header {
     pub fn has_payload_length(&self) -> bool {
         match self {
             Self::QueueData { .. }
+            | Self::QueueMsg { .. }
             | Self::QueueControl { .. }
             | Self::QueueFree { .. }
             | Self::Ack { .. } => true,
@@ -586,6 +621,30 @@ impl EncoderValue for Header {
                 encoder.encode(&tag);
                 encoder.encode(dest_sender_id);
                 encoder.encode(ack_delay);
+            }
+            Self::QueueMsg {
+                queue_pair,
+                binding_id,
+                msg_id,
+                message_size,
+                offset,
+                is_fin,
+                is_wakeup,
+                dest_acceptor_id,
+            } => {
+                let tag = Self::QUEUE_MSG_BASE_TYPE
+                    + (*is_fin as u8)
+                    + ((*is_wakeup as u8) << 1)
+                    + ((dest_acceptor_id.is_some() as u8) << 2);
+                encoder.encode(&tag);
+                encoder.encode(queue_pair);
+                if let Some(acceptor_id) = dest_acceptor_id {
+                    encoder.encode(acceptor_id);
+                }
+                encoder.encode(binding_id);
+                encoder.encode(msg_id);
+                encoder.encode(message_size);
+                encoder.encode(offset);
             }
         }
     }
@@ -727,6 +786,36 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                         ack_delay,
                         has_ecn,
                         is_ack_eliciting,
+                    },
+                    buffer,
+                ))
+            }
+            tag @ Self::QUEUE_MSG_BASE_TYPE..=Self::QUEUE_MSG_MAX_TYPE => {
+                let flags = tag - Self::QUEUE_MSG_BASE_TYPE;
+                let is_fin = flags & 1 != 0;
+                let is_wakeup = flags & 2 != 0;
+                let has_init = flags & 4 != 0;
+                let (queue_pair, buffer) = buffer.decode()?;
+                let (dest_acceptor_id, buffer) = if has_init {
+                    let (id, buf) = buffer.decode::<VarInt>()?;
+                    (Some(id), buf)
+                } else {
+                    (None, buffer)
+                };
+                let (binding_id, buffer) = buffer.decode()?;
+                let (msg_id, buffer) = buffer.decode()?;
+                let (message_size, buffer) = buffer.decode()?;
+                let (offset, buffer) = buffer.decode()?;
+                Ok((
+                    Self::QueueMsg {
+                        queue_pair,
+                        binding_id,
+                        msg_id,
+                        message_size,
+                        offset,
+                        is_fin,
+                        is_wakeup,
+                        dest_acceptor_id,
                     },
                     buffer,
                 ))
@@ -883,6 +972,309 @@ mod tests {
         assert_eq!(
             *frame.path_secret_entry.peer(),
             "10.0.0.1:9000".parse::<std::net::SocketAddr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn queue_msg_priority() {
+        let header = Header::QueueMsg {
+            queue_pair: QueuePair {
+                source_queue_id: VarInt::from_u8(1),
+                dest_queue_id: VarInt::from_u8(2),
+            },
+            binding_id: VarInt::from_u8(10),
+            msg_id: VarInt::from_u8(0),
+            message_size: VarInt::new(65536).unwrap(),
+            offset: VarInt::ZERO,
+            is_fin: false,
+            is_wakeup: true,
+            dest_acceptor_id: None,
+        };
+        assert_eq!(header.priority(), Priority::QueueData);
+        assert!(header.has_payload_length());
+        assert!(header.is_ack_eliciting());
+
+        let header_init = Header::QueueMsg {
+            queue_pair: QueuePair {
+                source_queue_id: VarInt::from_u8(1),
+                dest_queue_id: VarInt::from_u8(2),
+            },
+            binding_id: VarInt::from_u8(10),
+            msg_id: VarInt::from_u8(0),
+            message_size: VarInt::new(65536).unwrap(),
+            offset: VarInt::ZERO,
+            is_fin: false,
+            is_wakeup: true,
+            dest_acceptor_id: Some(VarInt::from_u8(99)),
+        };
+        assert_eq!(header_init.priority(), Priority::QueueInit);
+    }
+
+    fn roundtrip(header: Header) {
+        use s2n_codec::{DecoderBuffer, EncoderBuffer};
+
+        let mut buf = vec![0u8; header.encoding_size()];
+        let mut encoder = EncoderBuffer::new(&mut buf);
+        header.encode(&mut encoder);
+
+        let decoder = DecoderBuffer::new(&buf);
+        let (decoded, remaining) = decoder.decode::<Header>().unwrap();
+        assert!(remaining.is_empty(), "trailing bytes after decode");
+        assert_eq!(header, decoded);
+    }
+
+    #[test]
+    fn queue_msg_roundtrip_all_variants() {
+        let qp = QueuePair {
+            source_queue_id: VarInt::from_u8(5),
+            dest_queue_id: VarInt::from_u8(7),
+        };
+        let binding_id = VarInt::from_u8(42);
+        let msg_id = VarInt::from_u8(3);
+        let message_size = VarInt::new(8192).unwrap();
+        let offset = VarInt::new(4096).unwrap();
+        let acceptor_id = VarInt::from_u8(200);
+
+        for is_fin in [false, true] {
+            for is_wakeup in [false, true] {
+                for dest_acceptor_id in [None, Some(acceptor_id)] {
+                    roundtrip(Header::QueueMsg {
+                        queue_pair: qp,
+                        binding_id,
+                        msg_id,
+                        message_size,
+                        offset,
+                        is_fin,
+                        is_wakeup,
+                        dest_acceptor_id,
+                    });
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn queue_msg_type_tags() {
+        use s2n_codec::EncoderBuffer;
+
+        let qp = QueuePair {
+            source_queue_id: VarInt::from_u8(1),
+            dest_queue_id: VarInt::from_u8(2),
+        };
+
+        let cases: Vec<(bool, bool, Option<VarInt>, u8)> = vec![
+            (false, false, None, 18),
+            (true, false, None, 19),
+            (false, true, None, 20),
+            (true, true, None, 21),
+            (false, false, Some(VarInt::from_u8(1)), 22),
+            (true, false, Some(VarInt::from_u8(1)), 23),
+            (false, true, Some(VarInt::from_u8(1)), 24),
+            (true, true, Some(VarInt::from_u8(1)), 25),
+        ];
+
+        for (is_fin, is_wakeup, dest_acceptor_id, expected_tag) in cases {
+            let header = Header::QueueMsg {
+                queue_pair: qp,
+                binding_id: VarInt::from_u8(10),
+                msg_id: VarInt::from_u8(0),
+                message_size: VarInt::from_u8(100),
+                offset: VarInt::ZERO,
+                is_fin,
+                is_wakeup,
+                dest_acceptor_id,
+            };
+
+            let mut buf = vec![0u8; header.encoding_size()];
+            let mut encoder = EncoderBuffer::new(&mut buf);
+            header.encode(&mut encoder);
+
+            assert_eq!(
+                buf[0], expected_tag,
+                "tag mismatch for is_fin={is_fin}, is_wakeup={is_wakeup}, init={}",
+                dest_acceptor_id.is_some()
+            );
+        }
+    }
+
+    #[test]
+    fn queue_msg_encoding_snapshot() {
+        use s2n_codec::EncoderBuffer;
+
+        let header = Header::QueueMsg {
+            queue_pair: QueuePair {
+                source_queue_id: VarInt::from_u8(5),
+                dest_queue_id: VarInt::from_u8(7),
+            },
+            binding_id: VarInt::from_u8(42),
+            msg_id: VarInt::from_u8(3),
+            message_size: VarInt::new(65536).unwrap(),
+            offset: VarInt::new(8192).unwrap(),
+            is_fin: false,
+            is_wakeup: true,
+            dest_acceptor_id: None,
+        };
+
+        let mut buf = vec![0u8; header.encoding_size()];
+        let mut encoder = EncoderBuffer::new(&mut buf);
+        header.encode(&mut encoder);
+
+        // tag=20 (base 18 + wakeup bit 1<<1), queue_pair(5,7), binding=42, msg_id=3,
+        // message_size=65536 (4-byte varint), offset=8192 (2-byte varint)
+        assert_eq!(buf[0], 20);
+        assert_eq!(header.encoding_size(), 1 + 1 + 1 + 1 + 1 + 4 + 2);
+    }
+
+    #[test]
+    fn queue_msg_encoding_snapshot_with_init() {
+        use s2n_codec::EncoderBuffer;
+
+        let header = Header::QueueMsg {
+            queue_pair: QueuePair {
+                source_queue_id: VarInt::from_u8(5),
+                dest_queue_id: VarInt::from_u8(7),
+            },
+            binding_id: VarInt::from_u8(42),
+            msg_id: VarInt::from_u8(0),
+            message_size: VarInt::new(1048576).unwrap(),
+            offset: VarInt::ZERO,
+            is_fin: true,
+            is_wakeup: true,
+            dest_acceptor_id: Some(VarInt::from_u8(99)),
+        };
+
+        let mut buf = vec![0u8; header.encoding_size()];
+        let mut encoder = EncoderBuffer::new(&mut buf);
+        header.encode(&mut encoder);
+
+        // tag=25 (base 18 + fin 1 + wakeup 2 + init 4)
+        assert_eq!(buf[0], 25);
+    }
+
+    #[test]
+    fn queue_msg_large_varints_roundtrip() {
+        let header = Header::QueueMsg {
+            queue_pair: QueuePair {
+                source_queue_id: VarInt::new(1_000_000).unwrap(),
+                dest_queue_id: VarInt::new(2_000_000).unwrap(),
+            },
+            binding_id: VarInt::new(500_000).unwrap(),
+            msg_id: VarInt::new(999_999).unwrap(),
+            message_size: VarInt::new(6_000_000).unwrap(),
+            offset: VarInt::new(5_999_000).unwrap(),
+            is_fin: false,
+            is_wakeup: true,
+            dest_acceptor_id: None,
+        };
+        roundtrip(header);
+    }
+
+    #[test]
+    fn queue_msg_bolero_roundtrip() {
+        bolero::check!().with_type::<Header>().for_each(|header| {
+            roundtrip(*header);
+        });
+    }
+
+    /// Computes the worst-case per-packet overhead (everything except the frame payload bytes).
+    ///
+    /// Components:
+    /// - packet tag (1 byte)
+    /// - credentials: Id (16 bytes) + KeyId (VarInt worst-case)
+    /// - wire version (1 byte)
+    /// - source_control_port (2 bytes)
+    /// - packet_number (VarInt worst-case)
+    /// - routing_info: type tag (1) + source_sender_id (VarInt worst-case)
+    /// - payload_len (VarInt worst-case)
+    /// - header_len (VarInt encoding of frame metadata size)
+    /// - frame metadata: header encoding + payload_len VarInt
+    /// - crypto auth tag (16 bytes)
+    fn compute_worst_case_overhead(header: Header) -> usize {
+        use crate::{
+            credentials::{Credentials, Id},
+            packet::{datagram::RoutingInfo, wire_version::WireVersion},
+        };
+
+        let packet_tag_size = 1usize;
+        let credentials = Credentials {
+            id: Id::default(),
+            key_id: VarInt::MAX,
+        };
+        let credentials_size = credentials.encoding_size();
+        let wire_version_size = WireVersion::ZERO.encoding_size();
+        let source_control_port_size = 0u16.encoding_size();
+        let packet_number_size = VarInt::MAX.encoding_size();
+        let routing_info = RoutingInfo::SenderId {
+            source_sender_id: VarInt::MAX,
+        };
+        let routing_info_size = routing_info.encoding_size();
+        let payload_len_size = VarInt::MAX.encoding_size();
+        let crypto_tag_size = 16usize;
+
+        // Frame metadata: header encoding + payload_len VarInt (worst-case payload len)
+        let frame_metadata_size = header.encoding_size() + VarInt::MAX.encoding_size();
+        // header_len VarInt encodes the frame_metadata_size value
+        let header_len_size =
+            VarInt::new(frame_metadata_size as u64).unwrap().encoding_size();
+
+        packet_tag_size
+            + credentials_size
+            + wire_version_size
+            + source_control_port_size
+            + packet_number_size
+            + routing_info_size
+            + payload_len_size
+            + header_len_size
+            + frame_metadata_size
+            + crypto_tag_size
+    }
+
+    #[test]
+    fn max_queue_data_header_overhead_matches_worst_case() {
+        // The constant covers the non-init variant (no dest_acceptor_id) since init frames
+        // use Priority::QueueInit and go through a different path.
+        let worst_case_header = Header::QueueData {
+            queue_pair: QueuePair {
+                source_queue_id: VarInt::MAX,
+                dest_queue_id: VarInt::MAX,
+            },
+            binding_id: VarInt::MAX,
+            offset: VarInt::MAX,
+            is_fin: true,
+            dest_acceptor_id: None,
+        };
+
+        let computed = compute_worst_case_overhead(worst_case_header);
+        assert_eq!(
+            computed as u16, MAX_QUEUE_DATA_HEADER_OVERHEAD,
+            "MAX_QUEUE_DATA_HEADER_OVERHEAD ({MAX_QUEUE_DATA_HEADER_OVERHEAD}) does not match \
+             computed worst-case ({computed})"
+        );
+    }
+
+    #[test]
+    fn max_queue_msg_header_overhead_matches_worst_case() {
+        // Non-init variant (no dest_acceptor_id) — matches QueueData pattern where
+        // the init overhead is only relevant for the first frame.
+        let worst_case_header = Header::QueueMsg {
+            queue_pair: QueuePair {
+                source_queue_id: VarInt::MAX,
+                dest_queue_id: VarInt::MAX,
+            },
+            binding_id: VarInt::MAX,
+            msg_id: VarInt::MAX,
+            message_size: VarInt::MAX,
+            offset: VarInt::MAX,
+            is_fin: true,
+            is_wakeup: true,
+            dest_acceptor_id: None,
+        };
+
+        let computed = compute_worst_case_overhead(worst_case_header);
+        assert_eq!(
+            computed as u16, MAX_QUEUE_MSG_HEADER_OVERHEAD,
+            "MAX_QUEUE_MSG_HEADER_OVERHEAD ({MAX_QUEUE_MSG_HEADER_OVERHEAD}) does not match \
+             computed worst-case ({computed})"
         );
     }
 }
