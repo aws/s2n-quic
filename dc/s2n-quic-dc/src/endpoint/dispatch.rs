@@ -65,6 +65,138 @@ enum DecryptResult {
     SlowPath(BytesMut),
 }
 
+/// Fast path: decrypt a single-QueueMsg-frame packet directly into the slot buffer.
+///
+/// Handles both init (with binding setup) and non-init frames.
+#[allow(clippy::too_many_arguments)]
+fn decrypt_fast_path(
+    header: Header,
+    opener: &crate::crypto::awslc::open::Application,
+    packet: &packet::datagram::decoder::Packet<descriptor::Filled>,
+    decrypt_len: usize,
+    queue_view: &mut recv::QueueView,
+    acceptor_registry: &mut acceptor::LocalRegistry<Stream>,
+    frame_tx: &mut SubmissionSender,
+    freed_batch_tx: &mut crate::queue::FreedBatchTx,
+    counters: &counters::Dispatch,
+    path_entry: &Arc<PathSecretEntry>,
+    stream_clock: &crate::time::DefaultClock,
+    reader_metrics: &Arc<crate::stream::metrics::ReaderMetrics>,
+    writer_metrics: &Arc<crate::stream::metrics::WriterMetrics>,
+) -> Option<AutoWake> {
+    let Header::QueueMsg {
+        queue_pair,
+        binding_id,
+        msg_id,
+        stream_offset,
+        message_size,
+        chunk_size,
+        chunk_index,
+        is_fin,
+        is_wakeup,
+        dest_acceptor_id,
+    } = header
+    else {
+        return None;
+    };
+
+    // Handle init: bind the slot before attempting push_msg
+    if let Some(acceptor_id) = dest_acceptor_id {
+        let Some(server_view) = queue_view.as_server_mut() else {
+            return Some(AutoWake::default());
+        };
+
+        let Some(acceptor_sender) = acceptor_registry.get(acceptor_id) else {
+            counters.rx_init_no_acceptor.add(1);
+            server_view.record_freed(queue_pair.dest_queue_id, path_entry, freed_batch_tx);
+            send_reset(path_entry, queue_pair.source_queue_id, binding_id, error::ACCEPTOR_NOT_FOUND, frame_tx);
+            return Some(AutoWake::default());
+        };
+
+        match server_view.bind_for_msg(
+            queue_pair.dest_queue_id,
+            binding_id,
+            path_entry,
+            freed_batch_tx,
+        ) {
+            Ok(crate::queue::BindResult::NewBinding { waker: _, stream, control }) => {
+                let writer = Writer::new_server(
+                    frame_tx.clone(),
+                    path_entry.clone(),
+                    queue_pair.source_queue_id,
+                    acceptor_id,
+                    control,
+                    stream_clock.clone(),
+                    writer_metrics.clone(),
+                );
+                let reader = Reader::new_server(
+                    frame_tx.clone(),
+                    path_entry.clone(),
+                    queue_pair.source_queue_id,
+                    stream,
+                    is_fin,
+                    stream_clock.clone(),
+                    reader_metrics.clone(),
+                );
+                let new_stream = Stream::new(reader, writer);
+                match acceptor_sender.send(new_stream) {
+                    Ok((mut evicted, acceptor_waker)) => {
+                        if let Some(ref mut ev) = evicted {
+                            ev.reset(crate::stream::endpoint::Error::ServerBusy);
+                        }
+                        counters.queue_accepted.add(1);
+                        // We'll return the msg waker; acceptor waker fires on drop
+                        drop(AutoWake::new(acceptor_waker));
+                    }
+                    Err(acceptor::channel::SendError::Closed(mut s)) => {
+                        s.disable();
+                        counters.rx_init_acceptor_closed.add(1);
+                    }
+                    Err(acceptor::channel::SendError::NoSlots(mut s)) => {
+                        s.disable();
+                        counters.rx_init_acceptor_no_slots.add(1);
+                    }
+                }
+            }
+            Ok(crate::queue::BindResult::Bound(_)) => {}
+            Err(_) => return Some(AutoWake::default()),
+        }
+    }
+
+    // Scatter-decrypt directly into the slot buffer
+    let waker = queue_view.send_msg(
+        queue_pair.dest_queue_id,
+        binding_id,
+        msg_id.as_u64(),
+        stream_offset.as_u64(),
+        message_size.as_u64() as u32,
+        chunk_size.as_u64() as u16,
+        chunk_index.as_u64() as u32,
+        decrypt_len as u32,
+        is_fin,
+        is_wakeup,
+        |ptr, len| {
+            let dest =
+                unsafe { bytes::buf::UninitSlice::from_raw_parts_mut(ptr, len as usize) };
+            packet
+                .decrypt_into(opener, dest)
+                .map_err(|_| ())
+                .and_then(|written| {
+                    if written == len as usize {
+                        Ok(())
+                    } else {
+                        Err(())
+                    }
+                })
+        },
+    );
+
+    Some(match waker {
+        Ok(w) => w,
+        Err(_) => AutoWake::default(),
+    })
+}
+
 /// Process a received datagram packet.
 ///
 /// Authenticates (decrypt), deduplicates by packet number, updates ACK state, then
@@ -122,59 +254,29 @@ where
     let mut control_out = Vec::new();
     let decrypt_fn =
         |opener: &crate::crypto::awslc::open::Application,
-         queue_view: &mut recv::QueueView| -> Option<DecryptResult> {
+         queue_view: &mut recv::QueueView,
+         path_entry: &Arc<PathSecretEntry>| -> Option<DecryptResult> {
             let _guard = counters.rx_decrypt_time.start();
 
             // Fast path: single QueueMsg frame — decrypt directly into the slot buffer.
-            if let Some(Header::QueueMsg {
-                queue_pair,
-                binding_id,
-                msg_id,
-                stream_offset,
-                message_size,
-                chunk_size,
-                chunk_index,
-                is_fin,
-                is_wakeup,
-                dest_acceptor_id: _,
-            }) = single_queue_msg
-            {
-                let local_queue_id = queue_pair.dest_queue_id;
-                let cs = chunk_size.as_u64() as u16;
-                let ci = chunk_index.as_u64() as u32;
-
-                let waker = queue_view.send_msg(
-                    local_queue_id,
-                    binding_id,
-                    msg_id.as_u64(),
-                    stream_offset.as_u64(),
-                    message_size.as_u64() as u32,
-                    cs,
-                    ci,
-                    decrypt_len as u32,
-                    is_fin,
-                    is_wakeup,
-                    |ptr, len| {
-                        // Decrypt directly into the slot's pre-allocated buffer
-                        let dest = unsafe {
-                            bytes::buf::UninitSlice::from_raw_parts_mut(ptr, len as usize)
-                        };
-                        packet
-                            .decrypt_into(opener, dest)
-                            .map_err(|_| ())
-                            .and_then(|written| {
-                                if written == len as usize {
-                                    Ok(())
-                                } else {
-                                    Err(())
-                                }
-                            })
-                    },
-                );
-                return match waker {
-                    Ok(w) => Some(DecryptResult::FastPath(w)),
-                    Err(_) => Some(DecryptResult::FastPath(AutoWake::default())),
-                };
+            if let Some(header) = single_queue_msg {
+                if let Some(waker) = decrypt_fast_path(
+                    header,
+                    opener,
+                    &packet,
+                    decrypt_len,
+                    queue_view,
+                    acceptor_registry,
+                    frame_tx,
+                    freed_batch_tx,
+                    counters,
+                    path_entry,
+                    stream_clock,
+                    reader_metrics,
+                    writer_metrics,
+                ) {
+                    return Some(DecryptResult::FastPath(waker));
+                }
             }
 
             // Slow path: allocate BytesMut, decrypt into it, dispatch frames later.

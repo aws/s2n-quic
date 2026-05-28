@@ -103,11 +103,7 @@ pub(crate) fn detect_single_queue_msg(
     let (header, rest) = buf.decode::<Header>().ok()?;
 
     match &header {
-        // Only non-init QueueMsg can use the fast path; init frames need binding setup.
-        Header::QueueMsg {
-            dest_acceptor_id: None,
-            ..
-        } => {}
+        Header::QueueMsg { .. } => {}
         _ => return None,
     }
 

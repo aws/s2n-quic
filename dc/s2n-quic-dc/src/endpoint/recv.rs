@@ -446,7 +446,7 @@ impl Cache {
     where
         Clk: crate::time::precision::Clock + ?Sized,
         Route: super::routing::SenderRoute,
-        F: FnOnce(&crate::crypto::awslc::open::Application, &mut QueueView) -> Option<R>,
+        F: FnOnce(&crate::crypto::awslc::open::Application, &mut QueueView, &Arc<PathSecretEntry>) -> Option<R>,
     {
         let key = Key {
             id: credentials.id,
@@ -462,7 +462,8 @@ impl Cache {
                     ctx.borrow().invariants();
                     let mut borrow = ctx.borrow_mut();
                     let ctx_ref = &mut *borrow;
-                    let r = decrypt(&ctx_ref.opener, &mut ctx_ref.queue_view)
+                    let path_entry = ctx_ref.path_entry.clone();
+                    let r = decrypt(&ctx_ref.opener, &mut ctx_ref.queue_view, &path_entry)
                         .ok_or(CacheError::DecryptFailed)?;
                     drop(borrow);
                     return Ok((r, ctx, true));
@@ -499,8 +500,12 @@ impl Cache {
                     )
                     .ok_or(CacheError::PathSecretNotFound)?;
 
-                let r = decrypt(&opener, &mut ctx.borrow_mut().queue_view)
-                    .ok_or(CacheError::DecryptFailed)?;
+                let r = {
+                    let mut borrow = ctx.borrow_mut();
+                    let ctx_ref = &mut *borrow;
+                    decrypt(&opener, &mut ctx_ref.queue_view, &ctx_ref.path_entry)
+                        .ok_or(CacheError::DecryptFailed)?
+                };
 
                 path_secret_map
                     .check_dedup(
@@ -573,7 +578,7 @@ impl Cache {
                     QueueState::Server(state) => QueueView::Server(state.view()),
                 };
 
-                let r = decrypt(&opener, &mut queue_view).ok_or(CacheError::DecryptFailed)?;
+                let r = decrypt(&opener, &mut queue_view, &path_entry).ok_or(CacheError::DecryptFailed)?;
 
                 // Record the key_id as seen in the receiver's replay window.  This prevents
                 // a replayed initial packet from establishing a poisoned cache entry.
