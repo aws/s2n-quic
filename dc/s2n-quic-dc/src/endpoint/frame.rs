@@ -35,7 +35,7 @@ pub const MAX_QUEUE_DATA_HEADER_OVERHEAD: u16 = 111;
 ///
 /// QueueMsg encodes three additional VarInt fields (msg_id, stream_offset, message_size)
 /// compared to QueueData, adding up to 24 bytes in the worst case.
-pub const MAX_QUEUE_MSG_HEADER_OVERHEAD: u16 = 136;
+pub const MAX_QUEUE_MSG_HEADER_OVERHEAD: u16 = 144;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -431,7 +431,8 @@ pub enum Header {
         msg_id: VarInt,
         stream_offset: VarInt,
         message_size: VarInt,
-        offset: VarInt,
+        chunk_size: VarInt,
+        chunk_index: VarInt,
         is_fin: bool,
         is_wakeup: bool,
         dest_acceptor_id: Option<VarInt>,
@@ -629,7 +630,8 @@ impl EncoderValue for Header {
                 msg_id,
                 stream_offset,
                 message_size,
-                offset,
+                chunk_size,
+                chunk_index,
                 is_fin,
                 is_wakeup,
                 dest_acceptor_id,
@@ -647,7 +649,8 @@ impl EncoderValue for Header {
                 encoder.encode(msg_id);
                 encoder.encode(stream_offset);
                 encoder.encode(message_size);
-                encoder.encode(offset);
+                encoder.encode(chunk_size);
+                encoder.encode(chunk_index);
             }
         }
     }
@@ -809,7 +812,8 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                 let (msg_id, buffer) = buffer.decode()?;
                 let (stream_offset, buffer) = buffer.decode()?;
                 let (message_size, buffer) = buffer.decode()?;
-                let (offset, buffer) = buffer.decode()?;
+                let (chunk_size, buffer) = buffer.decode()?;
+                let (chunk_index, buffer) = buffer.decode()?;
                 Ok((
                     Self::QueueMsg {
                         queue_pair,
@@ -817,7 +821,8 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                         msg_id,
                         stream_offset,
                         message_size,
-                        offset,
+                        chunk_size,
+                        chunk_index,
                         is_fin,
                         is_wakeup,
                         dest_acceptor_id,
@@ -996,7 +1001,8 @@ mod tests {
             msg_id: VarInt::from_u8(0),
             stream_offset: VarInt::ZERO,
             message_size: VarInt::new(65536).unwrap(),
-            offset: VarInt::ZERO,
+            chunk_size: VarInt::new(8192).unwrap(),
+            chunk_index: VarInt::ZERO,
             is_fin: false,
             is_wakeup: true,
             dest_acceptor_id: None,
@@ -1014,7 +1020,8 @@ mod tests {
             msg_id: VarInt::from_u8(0),
             stream_offset: VarInt::ZERO,
             message_size: VarInt::new(65536).unwrap(),
-            offset: VarInt::ZERO,
+            chunk_size: VarInt::new(8192).unwrap(),
+            chunk_index: VarInt::ZERO,
             is_fin: false,
             is_wakeup: true,
             dest_acceptor_id: Some(VarInt::from_u8(99)),
@@ -1044,7 +1051,8 @@ mod tests {
         let binding_id = VarInt::from_u8(42);
         let msg_id = VarInt::from_u8(3);
         let message_size = VarInt::new(8192).unwrap();
-        let offset = VarInt::new(4096).unwrap();
+        let chunk_size = VarInt::new(8192).unwrap();
+        let chunk_index = VarInt::from_u8(0);
         let acceptor_id = VarInt::from_u8(200);
 
         for is_fin in [false, true] {
@@ -1056,7 +1064,8 @@ mod tests {
                         msg_id,
                         stream_offset: VarInt::ZERO,
                         message_size,
-                        offset,
+                        chunk_size,
+                        chunk_index,
                         is_fin,
                         is_wakeup,
                         dest_acceptor_id,
@@ -1093,7 +1102,8 @@ mod tests {
                 msg_id: VarInt::from_u8(0),
                 stream_offset: VarInt::ZERO,
                 message_size: VarInt::from_u8(100),
-                offset: VarInt::ZERO,
+                chunk_size: VarInt::from_u8(100),
+                chunk_index: VarInt::ZERO,
                 is_fin,
                 is_wakeup,
                 dest_acceptor_id,
@@ -1124,7 +1134,8 @@ mod tests {
             msg_id: VarInt::from_u8(3),
             stream_offset: VarInt::new(32768).unwrap(),
             message_size: VarInt::new(65536).unwrap(),
-            offset: VarInt::new(8192).unwrap(),
+            chunk_size: VarInt::new(8192).unwrap(),
+            chunk_index: VarInt::from_u8(1),
             is_fin: false,
             is_wakeup: true,
             dest_acceptor_id: None,
@@ -1136,9 +1147,9 @@ mod tests {
 
         // tag=20 (base 18 + wakeup bit 1<<1), queue_pair(5,7), binding=42, msg_id=3,
         // stream_offset=32768 (4-byte varint), message_size=65536 (4-byte varint),
-        // offset=8192 (2-byte varint)
+        // chunk_size=8192 (2-byte varint), chunk_index=1 (1 byte)
         assert_eq!(buf[0], 20);
-        assert_eq!(header.encoding_size(), 1 + 1 + 1 + 1 + 1 + 4 + 4 + 2);
+        assert_eq!(header.encoding_size(), 1 + 1 + 1 + 1 + 1 + 4 + 4 + 2 + 1);
     }
 
     #[test]
@@ -1154,7 +1165,8 @@ mod tests {
             msg_id: VarInt::from_u8(0),
             stream_offset: VarInt::ZERO,
             message_size: VarInt::new(1048576).unwrap(),
-            offset: VarInt::ZERO,
+            chunk_size: VarInt::new(8192).unwrap(),
+            chunk_index: VarInt::ZERO,
             is_fin: true,
             is_wakeup: true,
             dest_acceptor_id: Some(VarInt::from_u8(99)),
@@ -1179,7 +1191,8 @@ mod tests {
             msg_id: VarInt::new(999_999).unwrap(),
             stream_offset: VarInt::new(50_000_000).unwrap(),
             message_size: VarInt::new(6_000_000).unwrap(),
-            offset: VarInt::new(5_999_000).unwrap(),
+            chunk_size: VarInt::new(8192).unwrap(),
+            chunk_index: VarInt::new(200).unwrap(),
             is_fin: false,
             is_wakeup: true,
             dest_acceptor_id: None,
@@ -1283,7 +1296,8 @@ mod tests {
             msg_id: VarInt::MAX,
             stream_offset: VarInt::MAX,
             message_size: VarInt::MAX,
-            offset: VarInt::MAX,
+            chunk_size: VarInt::MAX,
+            chunk_index: VarInt::MAX,
             is_fin: true,
             is_wakeup: true,
             dest_acceptor_id: None,

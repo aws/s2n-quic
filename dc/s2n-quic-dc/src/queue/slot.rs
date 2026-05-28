@@ -135,11 +135,11 @@ impl Slot {
         msg_id: u64,
         stream_offset: u64,
         message_size: u32,
-        offset: u32,
+        chunk_size: u16,
+        chunk_index: u32,
         payload_len: u32,
         is_fin: bool,
         is_wakeup: bool,
-        chunk_size: u16,
         write_fn: impl FnOnce(*mut u8, u32) -> Result<(), E>,
     ) -> Result<half::AutoWake, super::Error<()>> {
         // Validate binding under stream lock (quick check, then release)
@@ -167,9 +167,9 @@ impl Slot {
         // Lock msg_table, insert (checkout)
         let (ptr, expected_len, chunk_index) = {
             let mut table = self.msg_table.lock();
-            let table = table.get_or_insert_with(|| MsgTable::new(chunk_size));
+            let table = table.get_or_insert_with(MsgTable::new);
 
-            match table.insert(msg_id, stream_offset, message_size, offset, payload_len, is_fin, is_wakeup) {
+            match table.insert(msg_id, stream_offset, message_size, chunk_size, chunk_index, payload_len, is_fin, is_wakeup) {
                 Ok(checkout) => (checkout.ptr, checkout.expected_len, checkout.chunk_index),
                 Err(_) => return Ok(half::AutoWake::default()),
             }

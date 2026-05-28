@@ -447,7 +447,8 @@ fn dispatch_decoded_frame(
             msg_id,
             stream_offset,
             message_size,
-            offset,
+            chunk_size,
+            chunk_index,
             is_fin,
             is_wakeup,
             dest_acceptor_id: _,
@@ -459,7 +460,8 @@ fn dispatch_decoded_frame(
                 msg_id,
                 stream_offset,
                 message_size,
-                offset,
+                chunk_size,
+                chunk_index,
                 is_fin,
                 is_wakeup,
                 payload,
@@ -638,7 +640,8 @@ fn handle_queue_msg(
     msg_id: VarInt,
     stream_offset: VarInt,
     message_size: VarInt,
-    offset: VarInt,
+    chunk_size: VarInt,
+    chunk_index: VarInt,
     is_fin: bool,
     is_wakeup: bool,
     payload: BytesMut,
@@ -646,11 +649,6 @@ fn handle_queue_msg(
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
     let local_queue_id = queue_pair.dest_queue_id;
-    let chunk_size = peer
-        .path_entry
-        .parameters()
-        .max_datagram_size()
-        .saturating_sub(crate::endpoint::frame::MAX_QUEUE_MSG_HEADER_OVERHEAD) as u16;
     let payload_len = payload.len() as u32;
 
     match peer.queue_view.send_msg(
@@ -659,11 +657,11 @@ fn handle_queue_msg(
         msg_id.as_u64(),
         stream_offset.as_u64(),
         message_size.as_u64() as u32,
-        offset.as_u64() as u32,
+        chunk_size.as_u64() as u16,
+        chunk_index.as_u64() as u32,
         payload_len,
         is_fin,
         is_wakeup,
-        chunk_size,
         |ptr, len| -> Result<(), ()> {
             if payload_len != len {
                 return Err(());

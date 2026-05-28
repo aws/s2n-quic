@@ -60,16 +60,16 @@ impl QueueView {
         msg_id: u64,
         stream_offset: u64,
         message_size: u32,
-        offset: u32,
+        chunk_size: u16,
+        chunk_index: u32,
         payload_len: u32,
         is_fin: bool,
         is_wakeup: bool,
-        chunk_size: u16,
         write_fn: impl FnOnce(*mut u8, u32) -> Result<(), E>,
     ) -> Result<queue::AutoWake, queue::Error<()>> {
         match self {
-            Self::Client(d) => d.send_msg(queue_id, binding_id, msg_id, stream_offset, message_size, offset, payload_len, is_fin, is_wakeup, chunk_size, write_fn),
-            Self::Server(d) => d.send_msg(queue_id, binding_id, msg_id, stream_offset, message_size, offset, payload_len, is_fin, is_wakeup, chunk_size, write_fn),
+            Self::Client(d) => d.send_msg(queue_id, binding_id, msg_id, stream_offset, message_size, chunk_size, chunk_index, payload_len, is_fin, is_wakeup, write_fn),
+            Self::Server(d) => d.send_msg(queue_id, binding_id, msg_id, stream_offset, message_size, chunk_size, chunk_index, payload_len, is_fin, is_wakeup, write_fn),
         }
     }
 
