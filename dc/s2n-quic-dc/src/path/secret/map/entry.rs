@@ -686,7 +686,7 @@ impl<'a> TestEntryBuilder<'a> {
             sender::State::new(stateless_reset),
             receiver::State::new(),
             params,
-            crate::time::now(),
+            crate::time::DefaultClock::default().now().into(),
             None,
             self.socket_sender_count,
         ))

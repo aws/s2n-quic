@@ -573,6 +573,7 @@ expression: logs
 0:00:00.001021000 [client] TRACE g#q.ack_to_completion.depth[send.worker.1]=0
 0:00:00.001021000 [client] TRACE m#task.completion.drained[send.worker.1]=1
 0:00:00.001021000 [client] TRACE m#task.waker_drain.drained[waker.11]=1
+0:00:00.001021000 [client] TRACE m#stream.writer.sojourn[acked]=1021000
 0:00:00.001041000 [client] TRACE c#socket.rx.ops[recv.1]=1
 0:00:00.001041000 [client] TRACE c#socket.rx.bytes[recv.1]=50
 0:00:00.001041000 [client] TRACE c#router.routed=1
@@ -806,6 +807,7 @@ expression: logs
 0:00:00.001541000 [server] TRACE c#q.ack_to_completion.receiver[send.worker.1.task.completion]=1
 0:00:00.001541000 [server] TRACE c#q.ack_to_completion.drain[send.worker.1]=1
 0:00:00.001541000 [server] TRACE g#q.ack_to_completion.depth[send.worker.1]=0
+0:00:00.001541000 [server] TRACE m#stream.reader.sojourn[acked]=1020000
 0:00:00.001541000 [server] TRACE m#task.completion.drained[send.worker.1]=1
 0:00:00.001561000 [server] TRACE c#socket.rx.ops[recv.6]=1
 0:00:00.001561000 [server] TRACE c#socket.rx.bytes[recv.6]=1412

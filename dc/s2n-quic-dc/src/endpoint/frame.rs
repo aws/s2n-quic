@@ -860,10 +860,15 @@ pub struct Frame {
     /// Remaining transmission attempts. Decremented on each retransmission.
     /// When zero, the frame completes with failure instead of being retransmitted.
     pub ttl: u16,
-    /// Target transmission time for pacing. Writers assign times at 1us granularity to
-    /// interleave fairly with frames from other streams rather than forming bursts.
-    /// Advisory — actual pacing happens at the Peer Context level.
-    pub transmission_time: Option<precision::Timestamp>,
+    /// Time at which the application enqueued this frame into the pipeline.
+    ///
+    /// Set by application-originated frames (data, FIN, MAX_DATA) at construction
+    /// time to enable end-to-end sojourn time measurement from submission through
+    /// final disposition (ACK, cancellation, peer dead, etc.).
+    ///
+    /// `None` for transport-internal frames (resets, ACK frames, free frames) that
+    /// do not require sojourn tracking.
+    pub enqueued_at: Option<precision::Timestamp>,
 }
 
 impl Frame {
@@ -907,7 +912,7 @@ impl std::fmt::Debug for Frame {
             .field("payload_len", &self.payload.len())
             .field("peer_data_addrs", self.path_secret_entry.peer_data_addrs())
             .field("ttl", &self.ttl)
-            .field("transmission_time", &self.transmission_time)
+            .field("enqueued_at", &self.enqueued_at)
             .finish()
     }
 }
@@ -938,7 +943,7 @@ mod tests {
             completion: None,
             status: TransmissionStatus::default(),
             ttl: DEFAULT_TTL,
-            transmission_time: None,
+            enqueued_at: None,
         };
 
         assert_eq!(frame.payload_len(), 5);
@@ -964,7 +969,7 @@ mod tests {
             completion: None,
             status: TransmissionStatus::default(),
             ttl: DEFAULT_TTL,
-            transmission_time: None,
+            enqueued_at: None,
         };
 
         assert_eq!(frame.priority(), Priority::QueueReset);

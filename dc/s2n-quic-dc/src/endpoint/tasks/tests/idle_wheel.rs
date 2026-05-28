@@ -225,7 +225,7 @@ fn send_idle_wheel_expires_reader_only_queue_no_reset_without_inflight() {
 
             // Without inflight packets, the peer is not marked dead.
             // The entry's dead_at should remain unset (-1).
-            let now = crate::time::precision::Timestamp::from(crate::time::now());
+            let now = crate::time::DefaultClock::default().now();
             assert!(
                 !pse.is_dead_during_cooldown(now, crate::endpoint::DEFAULT_DEAD_PEER_COOLDOWN),
                 "peer should NOT be marked dead when idle expires without inflight"

@@ -5,6 +5,7 @@ pub mod client;
 mod coop;
 mod reader;
 pub mod server;
+pub(crate) mod metrics;
 mod stream;
 mod writer;
 

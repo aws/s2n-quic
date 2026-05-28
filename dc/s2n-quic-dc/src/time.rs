@@ -23,27 +23,47 @@ pub use time::clock::Cached;
 pub use time::Timestamp;
 pub mod wheel;
 
-/// Returns the current timestamp from the appropriate clock.
+/// Default production clock.
 ///
-/// Inside bach simulations this returns simulated time; otherwise it
-/// falls back to the tokio clock (wall-clock relative to process start).
-pub fn now() -> Timestamp {
-    use time::Clock as _;
+/// Checks [`bach::is_active()`](::bach::is_active) **once** at construction and
+/// stores either the Bach simulated-time epoch or the busy-poll epoch internally.
+/// Subsequent [`now`](Self::now) calls skip the per-call static deref.
+#[derive(Clone, Debug)]
+pub struct DefaultClock(DefaultClockKind);
 
+#[derive(Clone, Debug)]
+enum DefaultClockKind {
     #[cfg(any(test, feature = "testing"))]
-    if ::bach::is_active() {
-        return bach::Clock::default().get_time();
-    }
+    Bach(bach::Clock),
+    BusyPoll(crate::busy_poll::clock::Clock),
+}
 
-    #[cfg(feature = "tokio")]
-    {
-        tokio::Clock::default().get_time()
+impl Default for DefaultClock {
+    fn default() -> Self {
+        #[cfg(any(test, feature = "testing"))]
+        if ::bach::is_active() {
+            return Self(DefaultClockKind::Bach(bach::Clock::default()));
+        }
+        Self(DefaultClockKind::BusyPoll(crate::busy_poll::clock::Clock::default()))
     }
+}
 
-    #[cfg(not(feature = "tokio"))]
-    {
-        use s2n_quic_core::time::clock::StdClock;
-        StdClock.get_time()
+impl DefaultClock {
+    /// Returns the current time as a [`precision::Timestamp`].
+    #[inline]
+    pub fn now(&self) -> precision::Timestamp {
+        match &self.0 {
+            #[cfg(any(test, feature = "testing"))]
+            DefaultClockKind::Bach(c) => precision::Clock::now(c),
+            DefaultClockKind::BusyPoll(c) => precision::Clock::now(c),
+        }
+    }
+}
+
+impl time::Clock for DefaultClock {
+    #[inline]
+    fn get_time(&self) -> time::Timestamp {
+        self.now().into()
     }
 }
 

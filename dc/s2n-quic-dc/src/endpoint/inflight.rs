@@ -376,7 +376,7 @@ mod tests {
             completion: None,
             status: TransmissionStatus::default(),
             ttl: DEFAULT_TTL,
-            transmission_time: None,
+            enqueued_at: None,
         };
         frames.push_back(frame.into());
 

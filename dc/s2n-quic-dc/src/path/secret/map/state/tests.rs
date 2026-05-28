@@ -150,7 +150,7 @@ impl Model {
                     sender::State::new(stateless_reset),
                     receiver::State::new(),
                     dc::testing::TEST_APPLICATION_PARAMS,
-                    crate::time::now(),
+                    crate::time::DefaultClock::default().now().into(),
                     None,
                 )));
 

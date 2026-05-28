@@ -29,6 +29,7 @@ use crate::{
     intrusive,
     packet::datagram::ResetTarget,
     path::secret::map::Entry as PathSecretEntry,
+    stream::metrics::ReaderMetrics,
     testing::{ext::*, sim},
 };
 use bytes::BytesMut;
@@ -38,7 +39,7 @@ use s2n_quic_core::{
     stream::testing::Data,
     varint::VarInt,
 };
-use std::{net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
@@ -58,7 +59,14 @@ fn make_pair() -> (Reader, Pusher) {
 
     let (frame_tx, frame_rx) = frame::submission_channel(1);
 
-    let reader = Reader::new_client(frame_tx, path_secret_entry, dest_queue_id, alloc.stream);
+    let reader = Reader::new_client(
+        frame_tx,
+        path_secret_entry,
+        dest_queue_id,
+        alloc.stream,
+        crate::time::DefaultClock::default(),
+        Arc::new(ReaderMetrics::new(&crate::counter::Registry::default(), "test")),
+    );
 
     let pusher = Pusher {
         dispatcher,

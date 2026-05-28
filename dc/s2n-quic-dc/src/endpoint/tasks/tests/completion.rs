@@ -25,7 +25,17 @@ impl CompletionHarnessBuilder {
     fn build(self) -> CompletionHarness {
         let (frame_tx, frame_rx) = unsync::new::<frame::Frame>();
         let (wake_tx, wake_rx) = entry_channel::<AutoWake>();
-        let rx = tasks::completion_dispatcher(frame_rx, wake_tx);
+        let registry = crate::counter::Registry::default();
+        let clock = crate::time::DefaultClock::default();
+        let reader_metrics = std::sync::Arc::new(crate::stream::metrics::ReaderMetrics::new(
+            &registry,
+            "test.reader",
+        ));
+        let writer_metrics = std::sync::Arc::new(crate::stream::metrics::WriterMetrics::new(
+            &registry,
+            "test.writer",
+        ));
+        let rx = tasks::completion_dispatcher(frame_rx, wake_tx, clock, reader_metrics, writer_metrics);
 
         async move { rx.drain_budgeted(Some(32)).await }
             .primary()
@@ -109,7 +119,17 @@ fn cancelled_drain_consumes_all_frames_then_closes() {
     sim(|| {
         let (mut frame_tx, frame_rx) = unsync::new::<frame::Frame>();
         let (freed_batch_tx, _freed_batch_rx) = crate::queue::freed_batch_channel();
-        let mut rx = tasks::cancelled_drain(frame_rx, freed_batch_tx);
+        let registry = crate::counter::Registry::default();
+        let clock = crate::time::DefaultClock::default();
+        let reader_metrics = std::sync::Arc::new(crate::stream::metrics::ReaderMetrics::new(
+            &registry,
+            "test.reader",
+        ));
+        let writer_metrics = std::sync::Arc::new(crate::stream::metrics::WriterMetrics::new(
+            &registry,
+            "test.writer",
+        ));
+        let mut rx = tasks::cancelled_drain(frame_rx, freed_batch_tx, clock, reader_metrics, writer_metrics);
 
         async move {
             let pse = test_entry();

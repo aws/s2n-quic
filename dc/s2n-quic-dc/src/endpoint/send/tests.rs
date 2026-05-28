@@ -61,7 +61,7 @@ fn make_frame(payload_len: usize) -> crate::intrusive::Entry<Frame> {
         completion: None,
         status: TransmissionStatus::Pending,
         ttl: DEFAULT_TTL,
-        transmission_time: None,
+        enqueued_at: None,
     }
     .into()
 }

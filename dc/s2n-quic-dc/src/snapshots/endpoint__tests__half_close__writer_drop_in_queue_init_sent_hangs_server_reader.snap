@@ -833,6 +833,7 @@ expression: logs
 0:00:00.001541000 [server] TRACE c#q.ack_to_completion.receiver[send.worker.3.task.completion]=1
 0:00:00.001541000 [server] TRACE c#q.ack_to_completion.drain[send.worker.3]=1
 0:00:00.001541000 [server] TRACE g#q.ack_to_completion.depth[send.worker.3]=1
+0:00:00.001541000 [server] TRACE m#stream.reader.sojourn[acked]=1020000
 0:00:00.001541000 [server] TRACE c#q.ack_to_completion.receiver[send.worker.3.task.completion]=1
 0:00:00.001541000 [server] TRACE c#q.ack_to_completion.drain[send.worker.3]=1
 0:00:00.001541000 [server] TRACE g#q.ack_to_completion.depth[send.worker.3]=0

@@ -690,6 +690,7 @@ expression: logs
 0:00:00.001021000 [client] TRACE c#socket.tx.ops[send.1]=1
 0:00:00.001021000 [client] TRACE c#socket.tx.bytes[send.1]=54
 0:00:00.001021000 [client] TRACE m#task.assembler.drained[send.1]=1
+0:00:00.001021000 [client] TRACE m#stream.writer.sojourn[acked]=1021000
 0:00:00.001021000 [client] TRACE m#task.idle_wheel.drained[send.worker.1]=0
 0:00:00.001021000 [client] TRACE c#q.dispatch.receiver[recv.dispatch.0.task.ack_completion]=1
 0:00:00.001021000 [client] TRACE c#q.dispatch.drain[recv.dispatch.0]=1

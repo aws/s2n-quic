@@ -15,12 +15,17 @@ use crate::{
     intrusive,
     packet::datagram::ResetTarget,
     path::secret::map::Entry as PathSecretEntry,
+    stream::metrics::WriterMetrics,
     testing::sim,
 };
 use bach::{ext::*, time::timeout};
 use bytes::Bytes;
 use s2n_quic_core::{endpoint, varint::VarInt};
-use std::{net::SocketAddr, task::Poll, time::Duration};
+use std::{net::SocketAddr, sync::Arc, task::Poll, time::Duration};
+
+fn test_writer_metrics() -> Arc<WriterMetrics> {
+    Arc::new(WriterMetrics::new(&crate::counter::Registry::default(), "test"))
+}
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
@@ -72,6 +77,8 @@ impl PairBuilder {
                 dest_queue_id,
                 acceptor_id,
                 alloc.control,
+                crate::time::DefaultClock::default(),
+                test_writer_metrics(),
             ),
             endpoint::Type::Server => Writer::new_server(
                 frame_tx,
@@ -79,6 +86,8 @@ impl PairBuilder {
                 dest_queue_id,
                 acceptor_id,
                 alloc.control,
+                crate::time::DefaultClock::default(),
+                test_writer_metrics(),
             ),
         };
 

@@ -583,8 +583,7 @@ where
     // Auto-insert path secrets (idempotent: re-uses existing entry if present).
     let path_secret_entry = connect(endpoint, peer_addr);
 
-    let now = crate::time::now();
-    let now = crate::time::precision::Timestamp::from(now);
+    let now = endpoint.clock.now();
     if path_secret_entry.is_dead_during_cooldown(now, endpoint.dead_peer_cooldown) {
         return Err(io::Error::new(
             io::ErrorKind::TimedOut,
@@ -611,12 +610,16 @@ where
         alloc.dest_queue_id,
         acceptor_id,
         alloc.control,
+        endpoint.clock.clone(),
+        endpoint.writer_metrics.clone(),
     );
     let reader = Reader::new_client(
         frame_tx,
         path_secret_entry,
         alloc.dest_queue_id,
         alloc.stream,
+        endpoint.clock.clone(),
+        endpoint.reader_metrics.clone(),
     );
 
     Ok(Stream::new(reader, writer))

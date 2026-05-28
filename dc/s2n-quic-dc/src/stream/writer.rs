@@ -82,6 +82,7 @@ use crate::{
         datagram::{QueuePair, ResetTarget},
     },
     path::secret::map::Entry as PathSecretEntry,
+    stream::metrics::WriterMetrics,
     tracing::*,
 };
 use s2n_quic_core::{
@@ -166,6 +167,11 @@ struct Inner {
     reset_error_code: Option<VarInt>,
     /// Cooperative yield budget
     coop: Coop,
+    /// Clock used to stamp `enqueued_at` on application-originated frames and to
+    /// record sojourn time measurements on completion.
+    clock: crate::time::DefaultClock,
+    /// Per-outcome sojourn time histograms shared with the application.
+    metrics: Arc<WriterMetrics>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -208,6 +214,8 @@ impl Writer {
         dest_queue_id: VarInt,
         acceptor_id: VarInt,
         control_rx: crate::queue::ControlReceiver,
+        clock: crate::time::DefaultClock,
+        metrics: Arc<WriterMetrics>,
     ) -> Self {
         let completion_rx = frame::completion_channel();
         let parameters = path_secret_entry.parameters();
@@ -231,6 +239,8 @@ impl Writer {
             status: Status::Init,
             reset_error_code: None,
             coop: Coop::default(),
+            clock,
+            metrics,
         }))
     }
 
@@ -240,6 +250,8 @@ impl Writer {
         dest_queue_id: VarInt,
         acceptor_id: VarInt,
         control_rx: crate::queue::ControlReceiver,
+        clock: crate::time::DefaultClock,
+        metrics: Arc<WriterMetrics>,
     ) -> Self {
         let completion_rx = frame::completion_channel();
         let parameters = path_secret_entry.parameters();
@@ -263,6 +275,8 @@ impl Writer {
             status: Status::Open,
             reset_error_code: None,
             coop: Coop::default(),
+            clock,
+            metrics,
         }))
     }
 
@@ -576,7 +590,7 @@ impl Inner {
             completion: None,
             status: frame::TransmissionStatus::default(),
             ttl: DEFAULT_TTL,
-            transmission_time: None,
+            enqueued_at: None,
         };
 
         self.send_frame(frame)?;
@@ -605,7 +619,7 @@ impl Inner {
             completion: Some(self.completion_rx.sender()),
             status: frame::TransmissionStatus::default(),
             ttl: DEFAULT_TTL,
-            transmission_time: None,
+            enqueued_at: Some(self.clock.now()),
         };
 
         self.send_frame(frame)?;
@@ -625,7 +639,20 @@ impl Inner {
                 let mut freed_bytes = 0u64;
                 let mut failure = None;
 
+                // Snapshot current time once for all sojourn measurements in
+                // this completion batch (avoids repeated clock reads).
+                let completed_at = self.clock.now();
+
                 for completed in queue.iter() {
+                    // Record sojourn time for frames that carry an enqueue stamp.
+                    if let Some(enqueued_at) = completed.enqueued_at {
+                        let failure_reason = match completed.status {
+                            TransmissionStatus::Failed(r) => Some(r),
+                            _ => None,
+                        };
+                        self.metrics.sojourn.record(enqueued_at, completed_at, failure_reason);
+                    }
+
                     match completed.status {
                         TransmissionStatus::Acknowledged => {
                             freed_bytes += completed.payload.len() as u64;
@@ -828,7 +855,7 @@ impl Inner {
             completion: Some(self.completion_rx.sender()),
             status: frame::TransmissionStatus::default(),
             ttl: DEFAULT_TTL,
-            transmission_time: None,
+            enqueued_at: Some(self.clock.now()),
         };
 
         self.send_frame(frame)?;
@@ -909,6 +936,10 @@ impl Inner {
         let mut need_fin_packet = is_fin && buf.buffer_is_empty();
         let mut frames = Queue::new();
 
+        // Capture enqueue time once for all frames in this send batch so that
+        // every frame shares the same reference point for sojourn measurement.
+        let batch_enqueued_at = Some(self.clock.now());
+
         loop {
             if !need_fin_packet && buf.buffer_is_empty() {
                 break;
@@ -959,7 +990,7 @@ impl Inner {
                 completion: Some(self.completion_rx.sender()),
                 status: frame::TransmissionStatus::default(),
                 ttl: DEFAULT_TTL,
-                transmission_time: None,
+                enqueued_at: batch_enqueued_at,
             };
 
             frames.push_back(frame.into());

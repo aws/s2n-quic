@@ -87,6 +87,12 @@ pub struct Endpoint {
     pub data_addrs: Vec<std::net::SocketAddr>,
     /// Cooldown period during which new flows are rejected after a peer is marked dead.
     pub dead_peer_cooldown: Duration,
+    /// Clock created once at endpoint construction — bach-aware in test contexts.
+    pub clock: crate::time::DefaultClock,
+    /// Per-outcome sojourn metrics for stream read halves (shared across all server streams).
+    pub reader_metrics: Arc<crate::stream::metrics::ReaderMetrics>,
+    /// Per-outcome sojourn metrics for stream write halves (shared across all server streams).
+    pub writer_metrics: Arc<crate::stream::metrics::WriterMetrics>,
 }
 
 // ── Pipeline Setup ────────────────────────────────────────────────────────
@@ -572,6 +578,15 @@ where
     let ack_completions_tx = routing::AckCompletionSender::new(ack_completion_txs);
 
     // Assign per-send-worker batch/ack receivers.
+    let stream_clock = crate::time::DefaultClock::default();
+    let reader_metrics = Arc::new(crate::stream::metrics::ReaderMetrics::new(
+        &counter_registry,
+        "stream.reader",
+    ));
+    let writer_metrics = Arc::new(crate::stream::metrics::WriterMetrics::new(
+        &counter_registry,
+        "stream.writer",
+    ));
     for (send_worker_id, batch_rx, ack_rx, invalidation_rx, waker_sink) in (
         worker_batch_rxs,
         worker_ack_rxs,
@@ -596,6 +611,9 @@ where
             waker_sink,
             invalidation_rx,
             peer_dead_tx: peer_dead_tx.clone(),
+            stream_clock: stream_clock.clone(),
+            reader_metrics: reader_metrics.clone(),
+            writer_metrics: writer_metrics.clone(),
         });
     }
 
@@ -643,10 +661,13 @@ where
             freed_batch_tx: freed_batch_tx.clone(),
             counters: counters.clone(),
             clock: clock.clone(),
+            stream_clock: stream_clock.clone(),
             route: ack_route,
             waker_sink,
             ups_tx: ups_tx.clone(),
             invalidation_rx,
+            reader_metrics: reader_metrics.clone(),
+            writer_metrics: writer_metrics.clone(),
         });
     }
 
@@ -702,6 +723,9 @@ where
         next_binding_id: AtomicU64::new(0),
         data_addrs,
         dead_peer_cooldown,
+        clock: stream_clock,
+        reader_metrics,
+        writer_metrics,
     }
 }
 
@@ -736,6 +760,9 @@ struct SendWorkerParts {
     waker_sink: waker::Sink,
     invalidation_rx: sync_queue::Receiver<tasks::Invalidation>,
     peer_dead_tx: PeerDeadSender,
+    stream_clock: crate::time::DefaultClock,
+    reader_metrics: Arc<crate::stream::metrics::ReaderMetrics>,
+    writer_metrics: Arc<crate::stream::metrics::WriterMetrics>,
 }
 
 /// Per-socket ingredients for the socket send task.
@@ -777,10 +804,14 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     freed_batch_tx: crate::queue::FreedBatchTx,
     counters: Arc<counters::Dispatch>,
     clock: Clk,
+    /// Concrete clock used for stream construction (checked once at endpoint startup).
+    stream_clock: crate::time::DefaultClock,
     route: Route,
     waker_sink: waker::Sink,
     ups_tx: UpsSender,
     invalidation_rx: sync_queue::Receiver<tasks::Invalidation>,
+    reader_metrics: Arc<crate::stream::metrics::ReaderMetrics>,
+    writer_metrics: Arc<crate::stream::metrics::WriterMetrics>,
 }
 
 /// Ingredients for the background worker (invalidation validation + future housekeeping).
@@ -939,6 +970,9 @@ where
                     dead_peer_cooldown,
                     budgets,
                     counter_registry.clone(),
+                    sw.stream_clock,
+                    sw.reader_metrics,
+                    sw.writer_metrics,
                 );
             }
 
@@ -1031,6 +1065,9 @@ where
                     rd.route,
                     rd.waker_sink,
                     rd.ups_tx,
+                    rd.stream_clock,
+                    rd.reader_metrics,
+                    rd.writer_metrics,
                 );
                 let variant = format!("recv.dispatch.{recv_dispatch_idx}");
                 let task_counter = counter_registry

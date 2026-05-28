@@ -240,7 +240,7 @@ pub fn test_frame_with_payload(pse: &Arc<PathSecretEntry>, payload_size: usize) 
         completion: None,
         status: frame::TransmissionStatus::Pending,
         ttl: 3,
-        transmission_time: None,
+        enqueued_at: None,
     })
 }
 

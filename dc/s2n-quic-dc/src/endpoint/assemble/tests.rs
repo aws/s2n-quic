@@ -154,7 +154,7 @@ fn to_frame(frame: &FrameInput, entry: &Arc<PathSecretEntry>) -> crate::intrusiv
         completion: None,
         status: TransmissionStatus::default(),
         ttl: DEFAULT_TTL,
-        transmission_time: None,
+        enqueued_at: None,
     }
     .into()
 }
@@ -306,7 +306,7 @@ fn assemble_accounts_for_header_overhead() {
                 completion: None,
                 status: TransmissionStatus::default(),
                 ttl: DEFAULT_TTL,
-                transmission_time: None,
+                enqueued_at: None,
             }
             .into(),
         );

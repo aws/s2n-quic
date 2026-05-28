@@ -210,7 +210,7 @@ impl Future for ClientAllocFuture<'_> {
         let this = self.get_mut();
 
         // Reads the clock — bach-aware in test contexts.
-        let now = crate::time::precision::Timestamp::from(crate::time::now());
+        let now = crate::time::DefaultClock::default().now();
         if this.entry.is_dead_during_cooldown(now, this.cooldown) {
             return Poll::Ready(None);
         }

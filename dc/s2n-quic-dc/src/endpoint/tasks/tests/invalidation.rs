@@ -74,7 +74,7 @@ fn test_frame(pse: &Arc<crate::path::secret::map::Entry>) -> Entry<Frame> {
         completion: None,
         status: frame::TransmissionStatus::Pending,
         ttl: 3,
-        transmission_time: None,
+        enqueued_at: None,
     })
 }
 

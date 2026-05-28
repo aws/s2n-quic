@@ -77,6 +77,9 @@ pub(crate) fn process<Clk, Route>(
     counters: &counters::Dispatch,
     route: &Route,
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
+    stream_clock: &crate::time::DefaultClock,
+    reader_metrics: &Arc<crate::stream::metrics::ReaderMetrics>,
+    writer_metrics: &Arc<crate::stream::metrics::WriterMetrics>,
 ) -> Result<(), Error>
 where
     Clk: s2n_quic_core::time::Clock + crate::time::precision::Clock + ?Sized,
@@ -255,6 +258,9 @@ where
                     sender_tx,
                     counters,
                     waker_sink,
+                    stream_clock,
+                    reader_metrics,
+                    writer_metrics,
                 );
             }
             Err(err) => {
@@ -328,6 +334,9 @@ fn dispatch_decoded_frame(
     sender_tx: &mut impl channel::UnboundedSender<Entry<msg::Sender>>,
     counters: &counters::Dispatch,
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
+    stream_clock: &crate::time::DefaultClock,
+    reader_metrics: &Arc<crate::stream::metrics::ReaderMetrics>,
+    writer_metrics: &Arc<crate::stream::metrics::WriterMetrics>,
 ) {
     match header {
         Header::QueueData {
@@ -351,6 +360,9 @@ fn dispatch_decoded_frame(
                     freed_batch_tx,
                     counters,
                     waker_sink,
+                    stream_clock,
+                    reader_metrics,
+                    writer_metrics,
                 );
             } else {
                 handle_queue_data(
@@ -609,6 +621,9 @@ fn handle_queue_data_init(
     freed_batch_tx: &mut crate::queue::FreedBatchTx,
     counters: &counters::Dispatch,
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
+    stream_clock: &crate::time::DefaultClock,
+    reader_metrics: &Arc<crate::stream::metrics::ReaderMetrics>,
+    writer_metrics: &Arc<crate::stream::metrics::WriterMetrics>,
 ) {
     let Some(server_view) = peer.queue_view.as_server_mut() else {
         error!(
@@ -662,6 +677,8 @@ fn handle_queue_data_init(
                 queue_pair.source_queue_id,
                 acceptor_id,
                 control,
+                stream_clock.clone(),
+                writer_metrics.clone(),
             );
             let peer_fin = is_fin;
             let reader = Reader::new_server(
@@ -670,6 +687,8 @@ fn handle_queue_data_init(
                 queue_pair.source_queue_id,
                 stream,
                 peer_fin,
+                stream_clock.clone(),
+                reader_metrics.clone(),
             );
             let new_stream = Stream::new(reader, writer);
 
@@ -739,7 +758,7 @@ fn send_reset(
         completion: None,
         status: crate::endpoint::frame::TransmissionStatus::default(),
         ttl: DEFAULT_TTL,
-        transmission_time: None,
+        enqueued_at: None,
     };
     let _ = frame_tx.send_batch(Entry::new(frame));
 }

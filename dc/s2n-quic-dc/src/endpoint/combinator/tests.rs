@@ -30,6 +30,23 @@ fn test_clock() -> test_clock_mod::Clock {
     test_clock_mod::Clock::new(std::time::Duration::from_secs(1))
 }
 
+fn test_completion_dispatcher<R>(rx: R) -> CompletionDispatcher<R>
+where
+    R: Receiver<Entry<Frame>>,
+{
+    let registry = crate::counter::Registry::default();
+    let clock = crate::time::DefaultClock::default();
+    let reader_metrics = Arc::new(crate::stream::metrics::ReaderMetrics::new(
+        &registry,
+        "test.reader",
+    ));
+    let writer_metrics = Arc::new(crate::stream::metrics::WriterMetrics::new(
+        &registry,
+        "test.writer",
+    ));
+    CompletionDispatcher::new(rx, clock, reader_metrics, writer_metrics)
+}
+
 struct TestItem {
     path_secret_entry: Arc<PathSecretEntry>,
     byte_cost: u64,
@@ -162,7 +179,7 @@ fn new_test_frame_with_header(
         completion: None,
         status: TransmissionStatus::Pending,
         ttl: DEFAULT_TTL,
-        transmission_time: None,
+        enqueued_at: None,
     })
 }
 
@@ -395,7 +412,7 @@ fn completion_dispatcher_filters_non_failures_for_failure_only_subscriptions() {
         values: [Entry::new(frame)].into(),
         consumed: 0,
     };
-    let mut dispatcher = CompletionDispatcher::new(rx);
+    let mut dispatcher = test_completion_dispatcher(rx);
     let _ = drive_completion_dispatcher(&mut dispatcher, usize::MAX);
 
     with_noop_context(|cx| {
@@ -420,7 +437,7 @@ fn completion_dispatcher_notifies_failures_for_failure_only_subscriptions() {
         values: [Entry::new(frame)].into(),
         consumed: 0,
     };
-    let mut dispatcher = CompletionDispatcher::new(rx);
+    let mut dispatcher = test_completion_dispatcher(rx);
     let _ = drive_completion_dispatcher(&mut dispatcher, usize::MAX);
 
     with_noop_context(|cx| match completion_rx.poll_swap(cx) {
@@ -453,7 +470,7 @@ fn completion_dispatcher_polls_past_filtered_frames_in_same_poll() {
         values: [Entry::new(acknowledged), Entry::new(failed)].into(),
         consumed: 0,
     };
-    let mut dispatcher = CompletionDispatcher::new(rx);
+    let mut dispatcher = test_completion_dispatcher(rx);
 
     let _ = drive_completion_dispatcher(&mut dispatcher, usize::MAX);
 
@@ -481,7 +498,7 @@ fn completion_dispatcher_returns_pending_when_budget_exhausted_while_filtering()
     let rx = BudgetAwareTestReceiver {
         values: [Entry::new(frame)].into(),
     };
-    let mut dispatcher = CompletionDispatcher::new(rx);
+    let mut dispatcher = test_completion_dispatcher(rx);
 
     with_noop_context(|cx| {
         let mut budget = Budget::new(1);
