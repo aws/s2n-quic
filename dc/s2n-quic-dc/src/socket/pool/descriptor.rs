@@ -3,7 +3,9 @@
 
 use crate::{
     allocator,
+    intrusive::{self, Links},
     msg::{self, addr::Addr, cmsg},
+    socket::channel::intrusive::sync::AdapterShared,
     tracing::trace,
 };
 use core::fmt;
@@ -12,8 +14,79 @@ use std::{
     alloc::Layout,
     io::{IoSlice, IoSliceMut},
     ptr::NonNull,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{atomic::{AtomicUsize, Ordering}, Weak},
 };
+
+// ── Recycling infrastructure ──────────────────────────────────────────────
+
+/// Weak reference to the recycling channel's shared state.
+///
+/// Stored in each descriptor's Header. On drop, upgrading this weak ref
+/// gives temporary access to the channel for pushing the descriptor back.
+/// If upgrade fails (channel gone), the descriptor is deallocated normally.
+pub type WeakRecycleSender = Weak<AdapterShared<RecycleAdapter>>;
+
+
+/// A descriptor in the recycling pipeline. Deallocates on drop.
+///
+/// This wrapper ensures that if a recycling queue or list is dropped
+/// (e.g. on shutdown), the underlying allocation is properly freed.
+/// To reuse a recycled descriptor, call [`into_descriptor`](Self::into_descriptor).
+pub struct Recycled(Descriptor);
+
+impl Recycled {
+    pub fn into_descriptor(self) -> Descriptor {
+        let desc = Descriptor { ptr: self.0.ptr };
+        core::mem::forget(self);
+        desc
+    }
+}
+
+impl Drop for Recycled {
+    fn drop(&mut self) {
+        unsafe { self.0.dealloc() };
+    }
+}
+
+unsafe impl Send for Recycled {}
+unsafe impl Sync for Recycled {}
+
+/// Intrusive adapter for recycled descriptors.
+///
+/// Uses `Recycled` as the pointer type so that dropping any `List<RecycleAdapter>`
+/// (in the sync channel, local pool, etc.) properly deallocates all remaining
+/// descriptors.
+pub struct RecycleAdapter;
+
+impl intrusive::Adapter for RecycleAdapter {
+    type Value = Header;
+    type Target = Header;
+    type Pointer = Recycled;
+
+    unsafe fn links(value: *mut Self::Value) -> *mut Links {
+        core::ptr::addr_of_mut!((*value).links)
+    }
+
+    unsafe fn target(value: *mut Self::Value) -> *mut Self::Target {
+        value
+    }
+
+    fn as_ptr(ptr: &Self::Pointer) -> *const Self::Value {
+        ptr.0.ptr.as_ptr()
+    }
+
+    fn into_raw(ptr: Self::Pointer) -> *mut Self::Value {
+        let raw = ptr.0.ptr.as_ptr();
+        core::mem::forget(ptr);
+        raw
+    }
+
+    unsafe fn from_raw(ptr: *mut Self::Value) -> Self::Pointer {
+        Recycled(Descriptor {
+            ptr: NonNull::new_unchecked(ptr),
+        })
+    }
+}
 
 /// A pointer to a single descriptor
 ///
@@ -23,7 +96,7 @@ use std::{
 /// Reference counting allows splitting a filled descriptor into multiple
 /// segments (e.g., for GRO). When the last reference is dropped, the entire
 /// allocation is freed through [`allocator::packet::dealloc`].
-pub(super) struct Descriptor {
+pub struct Descriptor {
     ptr: NonNull<Header>,
 }
 
@@ -32,7 +105,7 @@ impl Descriptor {
     ///
     /// Returns `None` if the packet subheap is exhausted.
     #[inline]
-    fn alloc(capacity: u16) -> Option<Self> {
+    fn alloc(capacity: u16, recycler: Option<WeakRecycleSender>) -> Option<Self> {
         let (layout, addr_offset, _payload_offset) = Header::layout(capacity);
 
         let ptr = allocator::packet::alloc(layout)?;
@@ -47,6 +120,8 @@ impl Descriptor {
             inner_ptr.write(Header {
                 capacity,
                 references: AtomicUsize::new(1),
+                recycler,
+                links: Links::new(),
             });
 
             // Initialize the Addr
@@ -132,6 +207,24 @@ impl Descriptor {
 
         core::sync::atomic::fence(Ordering::Acquire);
 
+        // Try to recycle instead of deallocating
+        if let Some(weak) = &inner.recycler {
+            if let Some(shared) = weak.upgrade() {
+                inner.references.store(1, Ordering::Relaxed);
+                let recycled = Recycled(Descriptor { ptr: self.ptr });
+                match shared.push(recycled) {
+                    Ok(()) => {
+                        trace!(recycle_desc = ?self.ptr, state = %"filled");
+                        return;
+                    }
+                    Err(_recycled) => {
+                        // Channel closed — Recycled::drop will dealloc
+                        return;
+                    }
+                }
+            }
+        }
+
         trace!(free_desc = ?self.ptr, state = %"filled");
         self.dealloc();
     }
@@ -154,16 +247,17 @@ impl Descriptor {
     #[inline]
     unsafe fn dealloc(&self) {
         let inner = self.inner();
-        let (layout, _addr_offset, _payload_offset) = Header::layout(inner.capacity);
+        let capacity = inner.capacity;
+
+        // Drop the recycler (Weak) before freeing memory
+        let header_ptr = self.ptr.as_ptr();
+        core::ptr::drop_in_place(core::ptr::addr_of_mut!((*header_ptr).recycler));
+
+        const { assert!(!core::mem::needs_drop::<Addr>()) };
+        const { assert!(!core::mem::needs_drop::<Links>()) };
+
+        let (layout, _addr_offset, _payload_offset) = Header::layout(capacity);
         let base = self.ptr.cast::<u8>();
-
-        // Static assertion: Header and Addr must not have non-trivial Drop impls,
-        // since we dealloc without dropping them.
-        const {
-            assert!(!core::mem::needs_drop::<Header>());
-            assert!(!core::mem::needs_drop::<Addr>());
-        }
-
         allocator::packet::dealloc(base, layout);
     }
 }
@@ -171,7 +265,7 @@ impl Descriptor {
 unsafe impl Send for Descriptor {}
 unsafe impl Sync for Descriptor {}
 
-struct Header {
+pub struct Header {
     /// The maximum capacity for this descriptor
     capacity: u16,
     /// The number of active references for this descriptor.
@@ -179,6 +273,12 @@ struct Header {
     /// This refcount allows for splitting descriptors into multiple segments
     /// and then correctly freeing the descriptor once the last segment is dropped.
     references: AtomicUsize,
+    /// Weak reference to the recycling channel for returning this descriptor
+    /// to the recv_io worker that allocated it. None for send-path descriptors.
+    recycler: Option<WeakRecycleSender>,
+    /// Intrusive links for queue membership during recycling.
+    /// Only active when the descriptor is in a recycling queue.
+    links: Links,
 }
 
 impl Header {
@@ -234,8 +334,27 @@ impl Unfilled {
     /// Returns `None` if the packet subheap is exhausted.
     #[inline]
     pub fn new(capacity: u16) -> Option<Self> {
-        let desc = Descriptor::alloc(capacity)?;
+        let desc = Descriptor::alloc(capacity, None)?;
         Some(Self { desc: Some(desc) })
+    }
+
+    /// Allocates a new unfilled packet with a recycler attached.
+    ///
+    /// When this descriptor is eventually dropped (after being filled and consumed),
+    /// it will be pushed back to the recycling channel instead of being deallocated.
+    #[inline]
+    pub fn new_with_recycler(capacity: u16, recycler: WeakRecycleSender) -> Option<Self> {
+        let desc = Descriptor::alloc(capacity, Some(recycler))?;
+        Some(Self { desc: Some(desc) })
+    }
+
+    /// Wraps a recycled descriptor back into an Unfilled.
+    ///
+    /// The descriptor's Header (capacity, recycler, etc.) is still valid from
+    /// the original allocation.
+    #[inline]
+    pub(crate) fn from_recycled(desc: Descriptor) -> Self {
+        Self { desc: Some(desc) }
     }
 
     /// Fills the packet with the given callback, if the callback is successful
@@ -287,6 +406,24 @@ impl Drop for Unfilled {
     fn drop(&mut self) {
         if let Some(desc) = self.desc.take() {
             unsafe {
+                // Try to recycle instead of deallocating
+                let inner = desc.inner();
+                if let Some(weak) = &inner.recycler {
+                    if let Some(shared) = weak.upgrade() {
+                        inner.references.store(1, Ordering::Relaxed);
+                        let recycled = Recycled(desc);
+                        match shared.push(recycled) {
+                            Ok(()) => {
+                                trace!(recycle = %"unfilled");
+                                return;
+                            }
+                            Err(_recycled) => {
+                                // Channel closed — Recycled::drop will dealloc
+                                return;
+                            }
+                        }
+                    }
+                }
                 // SAFETY: the descriptor is in the `unfilled` state and no longer used
                 desc.drop_unfilled();
             }

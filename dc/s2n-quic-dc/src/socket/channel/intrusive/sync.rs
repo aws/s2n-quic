@@ -43,6 +43,146 @@ pub fn new<T>() -> (Sender<T>, Receiver<T>) {
     )
 }
 
+// ── Adapter-generic channel ───────────────────────────────────────────────
+
+struct AdapterInner<A: intrusive::Adapter> {
+    queue: intrusive::List<A>,
+    recv_waker: Option<core::task::Waker>,
+}
+
+pub struct AdapterShared<A: intrusive::Adapter> {
+    is_open: AtomicBool,
+    inner: Mutex<AdapterInner<A>>,
+}
+
+impl<A: intrusive::Adapter> AdapterShared<A>
+where
+    A::Pointer: Send,
+{
+    pub(crate) fn push(&self, value: A::Pointer) -> Result<(), A::Pointer> {
+        let mut guard = self.inner.lock();
+        if !self.is_open.load(Ordering::Acquire) {
+            return Err(value);
+        }
+        guard.queue.push_back(value);
+        if let Some(waker) = guard.recv_waker.take() {
+            drop(guard);
+            waker.wake();
+        }
+        Ok(())
+    }
+}
+
+pub fn new_with_adapter<A: intrusive::Adapter>() -> (AdapterSender<A>, AdapterReceiver<A>)
+where
+    A::Pointer: Send,
+{
+    let shared = Arc::new(AdapterShared {
+        is_open: AtomicBool::new(true),
+        inner: Mutex::new(AdapterInner {
+            queue: intrusive::List::new(),
+            recv_waker: None,
+        }),
+    });
+    (
+        AdapterSender {
+            shared: ManuallyDrop::new(shared.clone()),
+        },
+        AdapterReceiver {
+            shared: ManuallyDrop::new(shared),
+        },
+    )
+}
+
+pub struct AdapterSender<A: intrusive::Adapter> {
+    shared: ManuallyDrop<Arc<AdapterShared<A>>>,
+}
+
+impl<A: intrusive::Adapter> AdapterSender<A>
+where
+    A::Pointer: Send,
+{
+    pub fn downgrade(&self) -> std::sync::Weak<AdapterShared<A>> {
+        Arc::downgrade(&self.shared)
+    }
+}
+
+impl<A: intrusive::Adapter> Clone for AdapterSender<A> {
+    fn clone(&self) -> Self {
+        Self {
+            shared: ManuallyDrop::new(Arc::clone(&self.shared)),
+        }
+    }
+}
+
+impl<A: intrusive::Adapter> Drop for AdapterSender<A> {
+    fn drop(&mut self) {
+        let mut guard = self.shared.inner.lock();
+        let waker = core::mem::take(&mut guard.recv_waker);
+        drop(guard);
+        unsafe {
+            ManuallyDrop::drop(&mut self.shared);
+        }
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+    }
+}
+
+pub struct AdapterReceiver<A: intrusive::Adapter> {
+    shared: ManuallyDrop<Arc<AdapterShared<A>>>,
+}
+
+impl<A: intrusive::Adapter> Drop for AdapterReceiver<A> {
+    fn drop(&mut self) {
+        self.shared.is_open.store(false, Ordering::Release);
+        let mut guard = self.shared.inner.lock();
+        let waker = core::mem::take(&mut guard.recv_waker);
+        drop(guard);
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+        unsafe {
+            ManuallyDrop::drop(&mut self.shared);
+        }
+    }
+}
+
+impl<A: intrusive::Adapter> super::super::Receiver<intrusive::List<A>> for AdapterReceiver<A>
+where
+    A::Pointer: Send,
+{
+    fn poll_recv(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+        budget: &mut super::super::Budget,
+    ) -> Poll<Option<intrusive::List<A>>> {
+        if budget.is_exhausted() {
+            budget.set_needs_wake();
+            return Poll::Pending;
+        }
+
+        let mut guard = self.shared.inner.lock();
+
+        if !guard.queue.is_empty() {
+            let batch = core::mem::take(&mut guard.queue);
+            budget.consume();
+            return Poll::Ready(Some(batch));
+        }
+
+        if Arc::strong_count(&self.shared) <= 1 {
+            return Poll::Ready(None);
+        }
+
+        guard.recv_waker = Some(cx.waker().clone());
+        Poll::Pending
+    }
+
+    fn on_consumed(&mut self, _bytes: u64) {}
+}
+
+// ── Original Entry-based channel ──────────────────────────────────────────
+
 pub struct Sender<T> {
     shared: ManuallyDrop<Arc<Shared<T>>>,
 }

@@ -1307,18 +1307,39 @@ pub async fn recv_idle_wheel_drain<Clk>(
 pub fn socket_recv<Socket, R>(
     socket: Socket,
     pool: crate::socket::pool::Pool,
+    local_pool: Rc<RefCell<crate::intrusive::List<descriptor::RecycleAdapter>>>,
+    recycle_weak: descriptor::WeakRecycleSender,
     router: R,
 ) -> impl Receiver<()>
 where
     Socket: crate::socket::recv::Socket,
     R: crate::socket::recv::router::Router,
 {
-    let rx = SocketReceiver::new(socket, pool);
+    let rx = SocketReceiver::new(socket, pool, local_pool, recycle_weak);
     let rx = InspectErr::new(rx, |err| {
         warn!(%err, "socket recv error");
     });
     let rx = FlattenSegments::new(rx);
     RouterAdapter::new(rx, router)
+}
+
+/// Drains recycled descriptors from the cross-thread sync channel into a local list.
+///
+/// Each recv_io worker has one sync recycling channel (fed by all dispatch workers)
+/// and one local list (consumed by SocketReceivers). This task bridges them with
+/// a single lock acquisition per drain batch.
+///
+/// The sender is kept alive here (moved into the closure) so that `Weak::upgrade()`
+/// succeeds on descriptor drop. The sender lives as long as this task runs.
+pub fn recycle_drain(
+    sync_rx: crate::socket::channel::intrusive::sync::AdapterReceiver<descriptor::RecycleAdapter>,
+    local_pool: Rc<RefCell<crate::intrusive::List<descriptor::RecycleAdapter>>>,
+    _sender_keepalive: crate::socket::channel::intrusive::sync::AdapterSender<descriptor::RecycleAdapter>,
+) -> impl Receiver<()> {
+    Map::new(sync_rx, move |mut batch: crate::intrusive::List<descriptor::RecycleAdapter>| {
+        let _ = &_sender_keepalive;
+        local_pool.borrow_mut().append(&mut batch);
+    })
 }
 
 /// Per-worker packet dispatch loop: decrypts, deduplicates, and dispatches received packets.

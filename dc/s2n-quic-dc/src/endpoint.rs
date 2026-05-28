@@ -10,7 +10,7 @@ use crate::{
         frame::SubmissionSender,
         id::{
             Id, IdJoin, IdMap, LocalRecvSocketId, LocalSendSocketId, LocalSenderId,
-            RecvDispatchWorkerId, SendWorkerId,
+            RecvDispatchWorkerId, RecvIoWorkerId, SendWorkerId,
         },
     },
     intrusive::Entry,
@@ -671,22 +671,46 @@ where
         });
     }
 
-    // Distribute recv sockets across recv_io workers round-robin.
+    // Create one recycling channel per recv_io worker.
+    // The sender is downgraded to Weak (stored in each descriptor's Header).
+    // The receiver drains into a local pool created inside spawn_local.
+    type RecyclePair = (
+        crate::socket::channel::intrusive::sync::AdapterSender<descriptor::RecycleAdapter>,
+        crate::socket::channel::intrusive::sync::AdapterReceiver<descriptor::RecycleAdapter>,
+    );
     let num_recv_io_workers = layout.recv_io.len();
+    let recycle_channels: IdMap<RecvIoWorkerId, _> = RecvIoWorkerId::range(num_recv_io_workers)
+        .map(|id| {
+            let (tx, rx) = crate::socket::channel::intrusive::sync::new_with_adapter::<descriptor::RecycleAdapter>();
+            let weak = tx.downgrade();
+            (id, (weak, tx, rx))
+        })
+        .collect();
+
+    // Distribute recv sockets across recv_io workers round-robin.
     for (recv_socket_id, socket) in recv_sockets.into_iter() {
         let raw_idx = recv_socket_id.as_usize();
-        let worker_id = layout.recv_io[raw_idx % num_recv_io_workers];
+        let recv_io_idx = RecvIoWorkerId::new(raw_idx % num_recv_io_workers);
+        let worker_id = layout.recv_io[recv_io_idx.as_usize()];
         let router = worker::FanOutRouter::<_, RecvRoute, _>::new(
             dispatch_txs.clone(),
             invalidation_raw_tx.clone(),
             &counter_registry,
         );
+        let (weak, _, _) = &recycle_channels[recv_io_idx];
         workers[worker_id].recv_sockets.push(RecvSocketParts {
             idx: recv_socket_id,
             socket,
             recv_pool: recv_pool.clone(),
             router,
+            recycle_weak: weak.clone(),
         });
+    }
+
+    // Assign recycle drain (sender + receiver) to their workers.
+    for (recv_io_idx, (_, tx, rx)) in recycle_channels.into_iter() {
+        let worker_id = layout.recv_io[recv_io_idx.as_usize()];
+        workers[worker_id].recycle_drain = Some((tx, rx));
     }
 
     // Background worker — invalidation validation + future housekeeping.
@@ -788,6 +812,7 @@ struct RecvSocketParts<Socket, Route, Inv> {
     socket: Socket,
     recv_pool: crate::socket::pool::Pool,
     router: worker::FanOutRouter<PacketSender, Route, Inv>,
+    recycle_weak: descriptor::WeakRecycleSender,
 }
 
 /// Ingredients for a recv dispatch worker (decrypt + dedup + frame dispatch).
@@ -861,6 +886,12 @@ struct Worker<SendSocket, RecvSocket, UpsSocket, Clk, AckSnd, Route, Inv> {
     recv_sockets: Vec<RecvSocketParts<RecvSocket, Route, Inv>>,
     /// Recv dispatch: decrypt + dedup + frame routing (at most one per worker).
     recv_dispatch: Option<RecvDispatchParts<Clk, AckSnd, Route>>,
+    /// Recycle drain: moves recycled descriptors from sync channel to local pool.
+    /// The sender is kept alive so that Weak::upgrade() succeeds on descriptor drop.
+    recycle_drain: Option<(
+        crate::socket::channel::intrusive::sync::AdapterSender<descriptor::RecycleAdapter>,
+        crate::socket::channel::intrusive::sync::AdapterReceiver<descriptor::RecycleAdapter>,
+    )>,
     /// Waker drain task assigned to this worker.
     waker_drain: Option<waker::Drain>,
     /// Background worker parts (invalidation validation).
@@ -899,6 +930,7 @@ where
             send_sockets: Vec::new(),
             recv_sockets: Vec::new(),
             recv_dispatch: None,
+            recycle_drain: None,
             waker_drain: None,
             background: None,
         }
@@ -920,6 +952,7 @@ where
             send_sockets,
             recv_sockets,
             recv_dispatch,
+            recycle_drain,
             waker_drain,
             background,
         } = self;
@@ -976,10 +1009,43 @@ where
                 );
             }
 
+            // Create the local recycled-descriptor pool (Rc, single-threaded).
+            // Shared by all recv sockets on this worker and the drain task.
+            let local_recycle_pool = std::rc::Rc::new(std::cell::RefCell::new(
+                crate::intrusive::List::<descriptor::RecycleAdapter>::new(),
+            ));
+
+            // Spawn the recycle drain task if this worker has one.
+            debug_assert!(
+                recv_sockets.is_empty() || recycle_drain.is_some(),
+                "recv_io workers with sockets must have a recycle_drain task"
+            );
+            if let Some((sender_keepalive, recycle_rx)) = recycle_drain {
+                let rx = tasks::recycle_drain(recycle_rx, local_recycle_pool.clone(), sender_keepalive);
+                let task_counter = counter_registry
+                    .register_task("task.recycle_drain")
+                    .with_registration_metadata(
+                        "task.recycle_drain",
+                        "Drains recycled descriptors from dispatch workers into local pool",
+                        "endpoint::Worker::spawn",
+                    );
+                local.spawn_receiver_task(
+                    rx.drain_budgeted_metered(None, task_counter.clone()),
+                    None,
+                    task_counter,
+                );
+            }
+
             for rs in recv_sockets {
                 let recv_idx = rs.idx;
                 let variant = format!("recv.{recv_idx}");
-                let rx = tasks::socket_recv(rs.socket, rs.recv_pool, rs.router);
+                let rx = tasks::socket_recv(
+                    rs.socket,
+                    rs.recv_pool,
+                    local_recycle_pool.clone(),
+                    rs.recycle_weak,
+                    rs.router,
+                );
                 let task_counter = counter_registry
                     .register_nominal_task("task.socket_recv", &variant)
                     .with_registration_metadata(

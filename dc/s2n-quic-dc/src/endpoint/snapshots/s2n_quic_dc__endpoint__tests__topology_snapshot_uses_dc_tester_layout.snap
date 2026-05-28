@@ -1101,6 +1101,42 @@ tasks:
       - task.recv_idle_wheel.drained [summary variant=recv.dispatch.4 unit=count]: Number of items processed per poll for this task
       - task.recv_idle_wheel.next_poll_latency [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock latency between consecutive task polls
       - task.recv_idle_wheel.time [timer variant=recv.dispatch.4 unit=microsecond]: Wall-clock duration spent inside each task poll
+  - name: task.recycle_drain
+    function: endpoint::Worker::spawn
+    description: Drains recycled descriptors from dispatch workers into local pool
+    budget: none
+    worker_id: 5
+    metrics:
+      - task.recycle_drain.drained [summary unit=count]: Number of items processed per poll for this task
+      - task.recycle_drain.next_poll_latency [timer unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.recycle_drain.time [timer unit=microsecond]: Wall-clock duration spent inside each task poll
+  - name: task.recycle_drain
+    function: endpoint::Worker::spawn
+    description: Drains recycled descriptors from dispatch workers into local pool
+    budget: none
+    worker_id: 6
+    metrics:
+      - task.recycle_drain.drained [summary unit=count]: Number of items processed per poll for this task
+      - task.recycle_drain.next_poll_latency [timer unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.recycle_drain.time [timer unit=microsecond]: Wall-clock duration spent inside each task poll
+  - name: task.recycle_drain
+    function: endpoint::Worker::spawn
+    description: Drains recycled descriptors from dispatch workers into local pool
+    budget: none
+    worker_id: 7
+    metrics:
+      - task.recycle_drain.drained [summary unit=count]: Number of items processed per poll for this task
+      - task.recycle_drain.next_poll_latency [timer unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.recycle_drain.time [timer unit=microsecond]: Wall-clock duration spent inside each task poll
+  - name: task.recycle_drain
+    function: endpoint::Worker::spawn
+    description: Drains recycled descriptors from dispatch workers into local pool
+    budget: none
+    worker_id: 8
+    metrics:
+      - task.recycle_drain.drained [summary unit=count]: Number of items processed per poll for this task
+      - task.recycle_drain.next_poll_latency [timer unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.recycle_drain.time [timer unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.socket_recv
     function: endpoint::Worker::spawn
     description: Reads UDP datagrams and routes packets into dispatch queues
