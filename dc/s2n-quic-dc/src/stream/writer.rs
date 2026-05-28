@@ -1145,6 +1145,16 @@ impl Inner {
             return self.send_data(buf, true);
         }
 
+        // Size-based routing: messages that fit in a single chunk use QueueData
+        // (avoids the MsgTable/bitset overhead for small messages).
+        if message_size <= self.packet_size as usize {
+            if self.status.is_init() {
+                let (written, _) = self.send_queue_data_init(buf, flags.is_fin)?;
+                return Ok(written);
+            }
+            return self.send_data(buf, flags.is_fin);
+        }
+
         // Force wakeup if this message exhausts the remote budget — the receiver
         // must wake, consume, and send MAX_DATA for the sender to continue.
         let remaining_after = self

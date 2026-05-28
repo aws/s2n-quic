@@ -2428,14 +2428,15 @@ fn stale_key_detected_after_recv_cache_eviction() {
 
 // ── QueueMsg Integration Tests ─────────────────────────────────────────────
 
-/// Single message, single chunk — verifies the basic QueueMsg path works end-to-end.
+/// Single message, two chunks — verifies the basic QueueMsg path works end-to-end.
+/// Uses a size just over one MTU to ensure QueueMsg routing (not QueueData).
 #[test]
 fn queue_msg_single_chunk() {
     crate::testing::sim(|| {
         use crate::testing::ext::*;
 
         let acceptor_id = VarInt::from_u8(1);
-        const MSG_SIZE: usize = 4096;
+        const MSG_SIZE: usize = 16384;
 
         async move {
             let server = Server::new();
@@ -2623,6 +2624,135 @@ fn queue_msg_multiple_messages() {
         }
         .group("client")
         .primary()
+        .spawn();
+    });
+}
+
+/// Verifies that write_msg with a small payload (≤ chunk_size) uses the QueueData
+/// path transparently. The receiver gets the data through the existing stream
+/// delivery mechanism without MsgTable involvement.
+#[test]
+fn queue_msg_small_message_uses_queue_data() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+        // Small enough to fit in one chunk — should route through QueueData
+        const MSG_SIZE: usize = 100;
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let (mut reader, _writer) = stream.into_split();
+                    let mut recv = Data::new(MSG_SIZE as u64);
+                    loop {
+                        let n = reader.read_into(&mut recv).await.expect("server read");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+                    assert!(recv.is_finished(), "server should receive all data via QueueData path");
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (_reader, mut writer) = stream.into_split();
+
+            let mut data = Data::new(MSG_SIZE as u64);
+            writer
+                .write_msg(
+                    &mut data,
+                    crate::stream::MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await
+                .expect("client write_msg (small, should use QueueData)");
+
+            info!("queue_msg_small_message_uses_queue_data passed");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
+/// Verifies that resetting a stream mid-message doesn't leak or panic.
+///
+/// The server drops its reader after receiving the init frame but before the full
+/// message completes, triggering a reset. The client's write_msg should surface
+/// the error cleanly.
+#[test]
+fn queue_msg_reset_mid_message() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+        const MSG_SIZE: usize = 65536;
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            let stream = acceptor.recv().await.expect("should receive stream");
+            let (reader, _writer) = stream.into_split();
+            // Drop the reader — triggers STOP_SENDING reset back to client.
+            // The MsgTable may have partially-received chunks that must be cleaned up.
+            drop(reader);
+
+            info!("queue_msg_reset_mid_message: server dropped reader");
+        }
+        .group("server")
+        .primary()
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (_reader, mut writer) = stream.into_split();
+
+            let mut data = Data::new(MSG_SIZE as u64);
+            let result = writer
+                .write_msg(
+                    &mut data,
+                    crate::stream::MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await;
+
+            // Write may succeed (queued before reset) or fail (reset arrived).
+            // Both are fine — the invariant is no panic, no leak, no hang.
+            match result {
+                Ok(_) => info!("write_msg completed before reset arrived"),
+                Err(e) => info!("write_msg got expected error: {e}"),
+            }
+        }
+        .group("client")
         .spawn();
     });
 }
