@@ -2425,3 +2425,290 @@ fn stale_key_detected_after_recv_cache_eviction() {
         .spawn();
     });
 }
+
+// ── QueueMsg Integration Tests ─────────────────────────────────────────────
+
+/// Single message, single chunk — verifies the basic QueueMsg path works end-to-end.
+#[test]
+fn queue_msg_single_chunk() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+        const MSG_SIZE: usize = 4096;
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let (mut reader, _writer) = stream.into_split();
+                    let mut recv = Data::new(MSG_SIZE as u64);
+                    loop {
+                        let n = reader.read_into(&mut recv).await.expect("server read");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+                    assert!(recv.is_finished(), "server should receive all data");
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (_reader, mut writer) = stream.into_split();
+
+            let mut data = Data::new(MSG_SIZE as u64);
+            writer
+                .write_msg(
+                    &mut data,
+                    crate::stream::MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await
+                .expect("client write_msg");
+
+            info!("queue_msg_single_chunk passed");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
+/// Multi-chunk message — verifies reassembly across multiple QueueMsg frames.
+#[test]
+fn queue_msg_multi_chunk() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+        // 64KB message at ~8KB MTU = ~8 chunks
+        const MSG_SIZE: usize = 65536;
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let (mut reader, _writer) = stream.into_split();
+                    let mut recv = Data::new(MSG_SIZE as u64);
+                    loop {
+                        let n = reader.read_into(&mut recv).await.expect("server read");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+                    assert!(recv.is_finished(), "server should receive all data");
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (_reader, mut writer) = stream.into_split();
+
+            let mut data = Data::new(MSG_SIZE as u64);
+            writer
+                .write_msg(
+                    &mut data,
+                    crate::stream::MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await
+                .expect("client write_msg");
+
+            info!("queue_msg_multi_chunk passed");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
+/// Multiple messages on the same stream — verifies fence-gated ordering and
+/// data integrity across message boundaries with advancing stream offsets.
+#[test]
+fn queue_msg_multiple_messages() {
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+        const MSG_SIZE: usize = 16384;
+        const NUM_MSGS: usize = 4;
+        const TOTAL: u64 = (MSG_SIZE * NUM_MSGS) as u64;
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let (mut reader, _writer) = stream.into_split();
+                    let mut recv = Data::new(TOTAL);
+                    loop {
+                        let n = reader.read_into(&mut recv).await.expect("server read");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+                    assert!(recv.is_finished(), "server should receive all data");
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (_reader, mut writer) = stream.into_split();
+
+            // Use a single Data source so each message advances the stream offset,
+            // producing different content per message for integrity validation.
+            let mut source = Data::new(TOTAL);
+            for msg_idx in 0..NUM_MSGS {
+                let mut msg_buf = source.send_one(MSG_SIZE).expect("should have data");
+                let is_last = msg_idx == NUM_MSGS - 1;
+                writer
+                    .write_msg(
+                        &mut msg_buf,
+                        crate::stream::MsgFlags {
+                            is_fin: is_last,
+                            is_wakeup: is_last,
+                        },
+                    )
+                    .await
+                    .expect("client write_msg");
+            }
+
+            info!("queue_msg_multiple_messages passed");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
+/// Verifies that QueueMsg reassembly works when chunks arrive out of order due to
+/// packet loss and retransmission. The first few client→server packets are dropped,
+/// forcing them to be retransmitted after later chunks have already arrived.
+#[test]
+fn queue_msg_reassembly_after_loss() {
+    let client_packets_sent = Arc::new(AtomicUsize::new(0));
+
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+        // 64KB message = ~8 chunks at typical MTU. Drop the first 3 data packets
+        // to force out-of-order reassembly.
+        const MSG_SIZE: usize = 65536;
+
+        let mut client_addr = MonitorHostAddr::new("client");
+        {
+            let client_packets_sent = client_packets_sent.clone();
+            bach::net::monitor::on_packet_sent(move |packet| {
+                if client_addr.is_packet_source(packet) {
+                    let idx = client_packets_sent.fetch_add(1, Ordering::Relaxed) + 1;
+                    // Drop packets 2, 3, 4 (the first data packets after the init).
+                    // Packet 1 is the init frame which must arrive to establish the binding.
+                    if (2..=4).contains(&idx) {
+                        info!("dropping client packet #{idx} to force reorder");
+                        return bach::net::monitor::Command::Drop;
+                    }
+                }
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let (mut reader, _writer) = stream.into_split();
+                    let mut recv = Data::new(MSG_SIZE as u64);
+                    loop {
+                        let n = reader.read_into(&mut recv).await.expect("server read");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+                    assert!(recv.is_finished(), "server should receive all data after reorder");
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (_reader, mut writer) = stream.into_split();
+
+            let mut data = Data::new(MSG_SIZE as u64);
+            writer
+                .write_msg(
+                    &mut data,
+                    crate::stream::MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await
+                .expect("client write_msg");
+
+            info!("queue_msg_reassembly_after_loss passed");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}

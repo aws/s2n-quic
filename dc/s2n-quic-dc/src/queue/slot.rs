@@ -73,6 +73,11 @@ impl Slot {
     }
 
     #[inline]
+    pub(crate) fn binding_id_raw(&self) -> u64 {
+        self.binding_id.load(Ordering::Relaxed)
+    }
+
+    #[inline]
     pub(crate) fn binding_id(&self) -> VarInt {
         let raw = self.binding_id.load(Ordering::Relaxed);
         VarInt::new(raw & !UNALLOCATED_BIT).unwrap_or(VarInt::ZERO)

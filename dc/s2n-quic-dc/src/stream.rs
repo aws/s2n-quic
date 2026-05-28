@@ -14,7 +14,7 @@ pub use client::Client;
 pub use reader::Reader;
 pub use server::Server;
 pub use stream::Stream;
-pub use writer::Writer;
+pub use writer::{MsgFlags, Writer};
 
 #[deprecated = "use crate::endpoint instead"]
 pub use crate::endpoint;

@@ -544,6 +544,23 @@ impl Inner {
         self.poll_completions(cx)?;
         let _ = self.poll_remote_budget(cx)?;
 
+        // Handle Init state: first write triggers QueueMsg-init with dest_acceptor_id.
+        // send_msg already includes dest_acceptor_id when status is not confirmed.
+        if self.status.is_init() {
+            if buf.buffer_is_empty() {
+                return Poll::Pending;
+            }
+            let written = self.send_msg(buf, flags)?;
+            if written > 0 {
+                self.status.on_init_sent().ok();
+            }
+            return Poll::Ready(Ok(written));
+        }
+
+        if self.status.is_init_sent() {
+            return Poll::Pending;
+        }
+
         if buf.buffer_is_empty() {
             if flags.is_fin {
                 self.send_data(buf, true)?;
@@ -1128,11 +1145,6 @@ impl Inner {
             return self.send_data(buf, true);
         }
 
-        let available = self.min_send_budget();
-        if message_size > available as usize {
-            return Ok(0);
-        }
-
         // Force wakeup if this message exhausts the remote budget — the receiver
         // must wake, consume, and send MAX_DATA for the sender to continue.
         let remaining_after = self
@@ -1217,11 +1229,13 @@ impl Inner {
     }
 
     fn send_batch(&mut self, queue: Queue<Frame>) -> io::Result<()> {
+        let priority = queue
+            .iter()
+            .next()
+            .map(|f| f.priority())
+            .unwrap_or(Priority::QueueData);
         self.frame_tx
-            .send_batch(HomogeneousBatch {
-                queue,
-                priority: Priority::QueueData,
-            })
+            .send_batch(HomogeneousBatch { queue, priority })
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "frame channel closed"))
     }
 }

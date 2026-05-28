@@ -168,6 +168,7 @@ impl ServerView {
     /// Bind a slot for a QueueMsg init frame without pushing data.
     ///
     /// The actual data delivery happens through `push_msg` after binding.
+    /// Returns `Bound` if the slot is already allocated with a matching binding.
     pub fn bind_for_msg(
         &mut self,
         queue_id: VarInt,
@@ -189,6 +190,22 @@ impl ServerView {
             return Err(Error::Unallocated(()));
         };
 
+        // Check if already bound — use the same atomic check as push_stream
+        let stored = slot.binding_id_raw();
+        if stored & super::slot::UNALLOCATED_BIT == 0 {
+            // Slot is allocated. If binding matches, it's already bound.
+            if stored == binding_id.as_u64() {
+                return Ok(BindResult::Bound(AutoWake::default()));
+            }
+            // Binding mismatch — stale or future
+            if binding_id.as_u64() < stored {
+                return Err(Error::StaleBinding(()));
+            } else {
+                return Err(Error::FutureBinding(()));
+            }
+        }
+
+        // Slot is unallocated — bind it
         match slot.allocate_and_open(binding_id) {
             Ok(()) => {
                 let slot_ptr = slot.as_ptr();
@@ -204,7 +221,7 @@ impl ServerView {
                     control,
                 })
             }
-            Err(_) => Ok(BindResult::Bound(AutoWake::default())),
+            Err(_) => Err(Error::SenderClosed),
         }
     }
 
