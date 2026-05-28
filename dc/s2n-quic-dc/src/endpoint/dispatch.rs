@@ -58,6 +58,13 @@ pub(crate) enum Error {
     MissingSenderId,
 }
 
+/// Result of the decrypt closure: either the fast path completed dispatch inline,
+/// or we have a BytesMut that needs multi-frame dispatch.
+enum DecryptResult {
+    FastPath(AutoWake),
+    SlowPath(BytesMut),
+}
+
 /// Process a received datagram packet.
 ///
 /// Authenticates (decrypt), deduplicates by packet number, updates ACK state, then
@@ -99,6 +106,9 @@ where
     let decrypt_len = packet.decrypt_into_len();
     let ecn = packet.storage().ecn();
 
+    // Detect single-QueueMsg frame for the fast path (scatter-decrypt into slot buffer).
+    let single_queue_msg = decode::detect_single_queue_msg(app_header_slice, decrypt_len);
+
     // Get or create peer receive state, decrypting the packet on-demand.
     //
     // The decrypt closure is invoked with the opener (cached on hit, freshly derived
@@ -112,8 +122,62 @@ where
     let mut control_out = Vec::new();
     let decrypt_fn =
         |opener: &crate::crypto::awslc::open::Application,
-         _queue_view: &mut recv::QueueView| {
+         queue_view: &mut recv::QueueView| -> Option<DecryptResult> {
             let _guard = counters.rx_decrypt_time.start();
+
+            // Fast path: single QueueMsg frame — decrypt directly into the slot buffer.
+            if let Some(Header::QueueMsg {
+                queue_pair,
+                binding_id,
+                msg_id,
+                stream_offset,
+                message_size,
+                chunk_size,
+                chunk_index,
+                is_fin,
+                is_wakeup,
+                dest_acceptor_id: _,
+            }) = single_queue_msg
+            {
+                let local_queue_id = queue_pair.dest_queue_id;
+                let cs = chunk_size.as_u64() as u16;
+                let ci = chunk_index.as_u64() as u32;
+
+                let waker = queue_view.send_msg(
+                    local_queue_id,
+                    binding_id,
+                    msg_id.as_u64(),
+                    stream_offset.as_u64(),
+                    message_size.as_u64() as u32,
+                    cs,
+                    ci,
+                    decrypt_len as u32,
+                    is_fin,
+                    is_wakeup,
+                    |ptr, len| {
+                        // Decrypt directly into the slot's pre-allocated buffer
+                        let dest = unsafe {
+                            bytes::buf::UninitSlice::from_raw_parts_mut(ptr, len as usize)
+                        };
+                        packet
+                            .decrypt_into(opener, dest)
+                            .map_err(|_| ())
+                            .and_then(|written| {
+                                if written == len as usize {
+                                    Ok(())
+                                } else {
+                                    Err(())
+                                }
+                            })
+                    },
+                );
+                return match waker {
+                    Ok(w) => Some(DecryptResult::FastPath(w)),
+                    Err(_) => Some(DecryptResult::FastPath(AutoWake::default())),
+                };
+            }
+
+            // Slow path: allocate BytesMut, decrypt into it, dispatch frames later.
             let mut buf = BytesMut::with_capacity(decrypt_len);
             let written = packet
                 .decrypt_into(opener, bytes::BufMut::chunk_mut(&mut buf))
@@ -136,14 +200,10 @@ where
                 );
                 return None;
             }
-            // SAFETY: `buf` was allocated with `with_capacity(decrypt_len)` and
-            // `chunk_mut` exposed exactly that region to `decrypt_into`, which
-            // initialized `decrypt_len` bytes.  We returned early unless
-            // `written == decrypt_len`.
             unsafe { buf.set_len(decrypt_len) };
-            Some(buf)
+            Some(DecryptResult::SlowPath(buf))
         };
-    let (decrypted, peer_rc, cache_hit) = {
+    let (decrypt_result, peer_rc, cache_hit) = {
         let _guard = counters.rx_peer_lookup_time.start();
         let remote_addr = packet.storage().remote_address().get();
         match recv_cache.get_or_insert(
@@ -215,7 +275,17 @@ where
 
     counters.rx_packet_size.record_value(decrypt_len as u64);
 
-    let mut payload_storage = decrypted;
+    // Fast path: single QueueMsg already dispatched during decrypt — just send the waker.
+    let payload_storage = match decrypt_result {
+        DecryptResult::FastPath(waker) => {
+            let _ = waker_sink.send(waker);
+            counters.on_received_frame(&single_queue_msg.unwrap());
+            counters.rx_frames_per_packet.record_value(1);
+            return Ok(());
+        }
+        DecryptResult::SlowPath(buf) => buf,
+    };
+    let mut payload_storage = payload_storage;
 
     // Multi-frame packet: `app_header_slice` contains the per-frame metadata
     // (Header type tag + optional payload_len VarInt) and `payload_storage`

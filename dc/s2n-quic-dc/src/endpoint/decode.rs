@@ -89,3 +89,34 @@ pub(crate) fn decode_frames(application_header: &[u8]) -> FrameIter<'_> {
         metadata: DecoderBuffer::new(application_header),
     }
 }
+
+/// Detects whether the application header encodes exactly one QueueMsg frame whose
+/// payload_len matches the full decrypt_len. Returns the header if so.
+///
+/// This enables the fast path: decrypt directly into the pre-allocated slot buffer
+/// instead of an intermediate BytesMut.
+pub(crate) fn detect_single_queue_msg(
+    application_header: &[u8],
+    decrypt_len: usize,
+) -> Option<Header> {
+    let buf = DecoderBuffer::new(application_header);
+    let (header, rest) = buf.decode::<Header>().ok()?;
+
+    match &header {
+        Header::QueueMsg { .. } => {}
+        _ => return None,
+    }
+
+    // Must have a payload_len field and it must consume the entire decrypt payload
+    let (payload_len, rest) = rest.decode::<VarInt>().ok()?;
+    if payload_len.as_u64() as usize != decrypt_len {
+        return None;
+    }
+
+    // Must be the only frame (no trailing metadata)
+    if !rest.is_empty() {
+        return None;
+    }
+
+    Some(header)
+}
