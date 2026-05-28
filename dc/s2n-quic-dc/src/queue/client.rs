@@ -276,6 +276,29 @@ impl ClientDispatch {
         slot.push_control(binding_id, entry)
     }
 
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_msg<E>(
+        &mut self,
+        queue_id: VarInt,
+        binding_id: VarInt,
+        msg_id: u64,
+        stream_offset: u64,
+        message_size: u32,
+        offset: u32,
+        payload_len: u32,
+        is_fin: bool,
+        is_wakeup: bool,
+        chunk_size: u16,
+        write_fn: impl FnOnce(*mut u8, u32) -> Result<(), E>,
+    ) -> Result<AutoWake, Error<()>> {
+        let index = queue_id.as_u64() as usize;
+        let Some(slot) = self.view.get(index, &self.state.pages) else {
+            return Err(Error::Unallocated(()));
+        };
+        slot.push_msg(binding_id, msg_id, stream_offset, message_size, offset, payload_len, is_fin, is_wakeup, chunk_size, write_fn)
+    }
+
     /// Process a received QueueFree frame, returning freed queue_ids to the peer_free list.
     pub fn free(
         &self,

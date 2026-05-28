@@ -441,8 +441,31 @@ fn dispatch_decoded_frame(
                 );
             }
         }
-        Header::QueueMsg { .. } => {
-            // TODO(Phase 4): dispatch to MsgTable for slot-level reassembly
+        Header::QueueMsg {
+            queue_pair,
+            binding_id,
+            msg_id,
+            stream_offset,
+            message_size,
+            offset,
+            is_fin,
+            is_wakeup,
+            dest_acceptor_id: _,
+        } => {
+            handle_queue_msg(
+                peer,
+                queue_pair,
+                binding_id,
+                msg_id,
+                stream_offset,
+                message_size,
+                offset,
+                is_fin,
+                is_wakeup,
+                payload,
+                counters,
+                waker_sink,
+            );
         }
     }
 }
@@ -603,6 +626,71 @@ fn handle_queue_data(
                 "QueueData queue_id exceeds cap - dropping"
             );
         }
+    }
+}
+
+// ── QueueMsg ──────────────────────────────────────────────────────────────
+
+fn handle_queue_msg(
+    peer: &mut recv::Context,
+    queue_pair: QueuePair,
+    binding_id: VarInt,
+    msg_id: VarInt,
+    stream_offset: VarInt,
+    message_size: VarInt,
+    offset: VarInt,
+    is_fin: bool,
+    is_wakeup: bool,
+    payload: BytesMut,
+    counters: &counters::Dispatch,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
+) {
+    let local_queue_id = queue_pair.dest_queue_id;
+    let chunk_size = peer
+        .path_entry
+        .parameters()
+        .max_datagram_size()
+        .saturating_sub(crate::endpoint::frame::MAX_QUEUE_MSG_HEADER_OVERHEAD) as u16;
+    let payload_len = payload.len() as u32;
+
+    match peer.queue_view.send_msg(
+        local_queue_id,
+        binding_id,
+        msg_id.as_u64(),
+        stream_offset.as_u64(),
+        message_size.as_u64() as u32,
+        offset.as_u64() as u32,
+        payload_len,
+        is_fin,
+        is_wakeup,
+        chunk_size,
+        |ptr, len| -> Result<(), ()> {
+            if payload_len != len {
+                return Err(());
+            }
+            unsafe {
+                core::ptr::copy_nonoverlapping(payload.as_ptr(), ptr, len as usize);
+            }
+            Ok(())
+        },
+    ) {
+        Ok(waker) => {
+            let _ = waker_sink.send(waker);
+        }
+        Err(crate::queue::Error::Unallocated(_)) => {
+            counters.rx_data_unallocated.add(1);
+        }
+        Err(crate::queue::Error::HalfClosed(_)) => {
+            counters.rx_data_half_closed.add(1);
+        }
+        Err(crate::queue::Error::StaleBinding(_)) => {
+            counters.rx_data_stale_binding.add(1);
+        }
+        Err(crate::queue::Error::FutureBinding(_)) => {
+            counters.rx_data_future_binding.add(1);
+        }
+        Err(crate::queue::Error::SenderClosed) => {}
+        Err(crate::queue::Error::CapExceeded(_)) => {}
     }
 }
 

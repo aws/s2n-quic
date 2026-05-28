@@ -173,6 +173,14 @@ impl MsgEntry {
         }
     }
 
+    /// Cancel a checkout without marking received.
+    /// Used when the write callback fails (e.g. decrypt error).
+    pub(crate) fn cancel_checkout(&mut self, chunk_index: u32) {
+        debug_assert!(chunk_index < self.chunk_count as u32);
+        debug_assert!(self.checked_out.get(chunk_index));
+        self.checked_out.remove(chunk_index);
+    }
+
     /// Poison this entry (called during reset).
     ///
     /// If no chunks are checked out, the caller can immediately free the buffer.

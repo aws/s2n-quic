@@ -8,12 +8,16 @@
 //! binding IDs have the top two bits clear (QUIC VarInt encoding), so there is
 //! no overlap.
 
-use super::half::{self, Flags, Half, HalfInner};
+use super::{
+    half::{self, Flags, Half, HalfInner},
+    msg_table::MsgTable,
+};
 use crate::{endpoint::msg, intrusive};
 use core::{
     ptr::NonNull,
     sync::atomic::{AtomicU64, Ordering},
 };
+use parking_lot::Mutex;
 use s2n_quic_core::varint::VarInt;
 
 /// The MSB of the u64 binding_id field is set when the slot is free.
@@ -33,6 +37,8 @@ pub(crate) struct Slot {
     queue_id: u64,
     pub(crate) stream: Half<msg::Stream>,
     pub(crate) control: Half<msg::Control>,
+    /// Message reassembly table for QueueMsg frames (separate lock from stream half).
+    pub(crate) msg_table: Mutex<Option<MsgTable>>,
 }
 
 /// Result of `Slot::bind_and_push_stream`.
@@ -57,6 +63,7 @@ impl Slot {
             queue_id: queue_id.as_u64(),
             stream: Half::new(),
             control: Half::new(),
+            msg_table: Mutex::new(None),
         }
     }
 
@@ -111,6 +118,98 @@ impl Slot {
     ) -> Result<half::AutoWake, super::Error<intrusive::Entry<msg::Control>>> {
         let mut inner = self.control.inner.lock();
         validate_and_push(binding_id, entry, &self.binding_id, &mut inner)
+    }
+
+    /// Dispatch a QueueMsg frame to the message reassembly table.
+    ///
+    /// Validates binding_id, checks out the chunk, invokes `write_fn` to fill the
+    /// buffer region (either a memcpy from decrypted payload or a direct scatter-decrypt),
+    /// marks the chunk complete, and if the message (and all prior messages) are ready,
+    /// pushes them into the stream half's queue and returns the waker.
+    ///
+    /// If `write_fn` returns `Err`, the checkout is cleared without marking received
+    /// (the transport will retransmit).
+    pub(crate) fn push_msg<E>(
+        &self,
+        binding_id: VarInt,
+        msg_id: u64,
+        stream_offset: u64,
+        message_size: u32,
+        offset: u32,
+        payload_len: u32,
+        is_fin: bool,
+        is_wakeup: bool,
+        chunk_size: u16,
+        write_fn: impl FnOnce(*mut u8, u32) -> Result<(), E>,
+    ) -> Result<half::AutoWake, super::Error<()>> {
+        // Validate binding under stream lock (quick check, then release)
+        {
+            let inner = self.stream.inner.lock();
+            let stored = self.binding_id.load(Ordering::Relaxed);
+            if stored & UNALLOCATED_BIT != 0 {
+                return Err(super::Error::Unallocated(()));
+            }
+            if stored != binding_id.as_u64() {
+                if binding_id.as_u64() < stored {
+                    return Err(super::Error::StaleBinding(()));
+                } else {
+                    return Err(super::Error::FutureBinding(()));
+                }
+            }
+            if !inner.flags.contains(Flags::HAS_RECEIVER) {
+                return Err(super::Error::HalfClosed(()));
+            }
+            if !inner.flags.contains(Flags::HAS_SENDER) {
+                return Err(super::Error::SenderClosed);
+            }
+        }
+
+        // Lock msg_table, insert (checkout)
+        let (ptr, expected_len, chunk_index) = {
+            let mut table = self.msg_table.lock();
+            let table = table.get_or_insert_with(|| MsgTable::new(chunk_size));
+
+            match table.insert(msg_id, stream_offset, message_size, offset, payload_len, is_fin, is_wakeup) {
+                Ok(checkout) => (checkout.ptr, checkout.expected_len, checkout.chunk_index),
+                Err(_) => return Ok(half::AutoWake::default()),
+            }
+        };
+
+        // Invoke the write callback (outside both locks).
+        // For the mixed path: memcpy from decrypted BytesMut.
+        // For the fast path: scatter-decrypt directly into ptr.
+        let write_ok = write_fn(ptr, expected_len).is_ok();
+
+        // Lock msg_table, complete or cancel the chunk
+        let mut table = self.msg_table.lock();
+        let table = table.as_mut().expect("table must exist after checkout");
+
+        if !write_ok {
+            // Write failed (e.g. decrypt error) — cancel the checkout.
+            // The entry's checked_out bit is cleared without marking received,
+            // so a retransmit can try again.
+            table.cancel_checkout(msg_id, chunk_index);
+            return Ok(half::AutoWake::default());
+        }
+
+        match table.complete(msg_id, chunk_index) {
+            super::msg_table::CompleteOutcome::Ready => {
+                // Drain complete messages into the stream half's queue
+                let mut stream = self.stream.inner.lock();
+                for delivered in table.drain_complete() {
+                    let entry: intrusive::Entry<msg::Stream> = msg::Stream::Data {
+                        offset: VarInt::new(delivered.stream_offset).unwrap_or(VarInt::MAX),
+                        fin: delivered.is_fin,
+                        payload: delivered.payload,
+                    }
+                    .into();
+                    stream.queue.push_back(entry);
+                }
+                Ok(stream.take_waker())
+            }
+            super::msg_table::CompleteOutcome::Pending
+            | super::msg_table::CompleteOutcome::Poisoned => Ok(half::AutoWake::default()),
+        }
     }
 
     /// Set `binding_id` and open both receiver halves in one critical section.

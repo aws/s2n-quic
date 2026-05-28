@@ -189,6 +189,16 @@ impl MsgTable {
         }
     }
 
+    /// Cancel a checkout without marking received (write failed, e.g. decrypt error).
+    /// The chunk can be retried on a future retransmission.
+    pub(crate) fn cancel_checkout(&mut self, msg_id: u64, chunk_index: u32) {
+        debug_assert!(msg_id >= self.base_id);
+        let index = (msg_id - self.base_id) as usize;
+        if let Some(Some(entry)) = self.entries.get_mut(index) {
+            entry.cancel_checkout(chunk_index);
+        }
+    }
+
     /// Poison all entries (called during reset).
     pub(crate) fn poison(&mut self) {
         for entry in self.entries.iter_mut().flatten() {
