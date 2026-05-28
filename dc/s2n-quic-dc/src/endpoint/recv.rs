@@ -279,17 +279,11 @@ impl Context {
         opener: crate::crypto::awslc::open::Application,
         key_id: VarInt,
         now: crate::time::precision::Timestamp,
+        queue_view: QueueView,
     ) -> Self {
         let idle_timeout = path_entry.idle_timeout();
         let mut idle_wheel = crate::time::wheel::WheelLinks::new();
         idle_wheel.target_time = Some(now + idle_timeout);
-
-        let queue_view = match path_entry.queue_state() {
-            QueueState::Client(state) => {
-                QueueView::Client(queue::ClientDispatch::new(state.clone()))
-            }
-            QueueState::Server(state) => QueueView::Server(state.view()),
-        };
 
         Self {
             path_entry,
@@ -452,7 +446,7 @@ impl Cache {
     where
         Clk: crate::time::precision::Clock + ?Sized,
         Route: super::routing::SenderRoute,
-        F: FnOnce(&crate::crypto::awslc::open::Application) -> Option<R>,
+        F: FnOnce(&crate::crypto::awslc::open::Application, &mut QueueView) -> Option<R>,
     {
         let key = Key {
             id: credentials.id,
@@ -466,7 +460,11 @@ impl Cache {
 
                 if credentials.key_id == cached_key_id {
                     ctx.borrow().invariants();
-                    let r = decrypt(&ctx.borrow().opener).ok_or(CacheError::DecryptFailed)?;
+                    let mut borrow = ctx.borrow_mut();
+                    let ctx_ref = &mut *borrow;
+                    let r = decrypt(&ctx_ref.opener, &mut ctx_ref.queue_view)
+                        .ok_or(CacheError::DecryptFailed)?;
+                    drop(borrow);
                     return Ok((r, ctx, true));
                 }
 
@@ -501,7 +499,8 @@ impl Cache {
                     )
                     .ok_or(CacheError::PathSecretNotFound)?;
 
-                let r = decrypt(&opener).ok_or(CacheError::DecryptFailed)?;
+                let r = decrypt(&opener, &mut ctx.borrow_mut().queue_view)
+                    .ok_or(CacheError::DecryptFailed)?;
 
                 path_secret_map
                     .check_dedup(
@@ -525,21 +524,30 @@ impl Cache {
                 );
 
                 let dest_sender_id = route.sender_id_for_ack(remote_sender_id);
-                let mut new_ctx_inner = Context::new(
+
+                // Take queue_view from old context — it was already used by decrypt
+                // and is independent of the PN space being replaced.
+                let queue_view = {
+                    let mut old = ctx.borrow_mut();
+                    let old_ref = &mut *old;
+                    // Replace with a dummy Client view; the old ctx is about to be dropped.
+                    let state = old_ref.path_entry.queue_state();
+                    let replacement = match state {
+                        QueueState::Client(s) => QueueView::Client(queue::ClientDispatch::new(s.clone())),
+                        QueueState::Server(s) => QueueView::Server(s.view()),
+                    };
+                    core::mem::replace(&mut old_ref.queue_view, replacement)
+                };
+
+                let new_ctx = Rc::new(RefCell::new(Context::new(
                     path_entry,
                     remote_sender_id,
                     dest_sender_id,
                     opener,
                     credentials.key_id,
                     clock.now(),
-                );
-
-                {
-                    let mut old = ctx.borrow_mut();
-                    core::mem::swap(&mut new_ctx_inner.queue_view, &mut old.queue_view);
-                }
-
-                let new_ctx = Rc::new(RefCell::new(new_ctx_inner));
+                    queue_view,
+                )));
                 new_ctx.borrow().invariants();
                 entry.insert(new_ctx.clone());
 
@@ -558,8 +566,14 @@ impl Cache {
                     )
                     .ok_or(CacheError::PathSecretNotFound)?;
 
-                // Decrypt before inserting: only create a Context if the packet is authentic.
-                let r = decrypt(&opener).ok_or(CacheError::DecryptFailed)?;
+                let mut queue_view = match path_entry.queue_state() {
+                    QueueState::Client(state) => {
+                        QueueView::Client(queue::ClientDispatch::new(state.clone()))
+                    }
+                    QueueState::Server(state) => QueueView::Server(state.view()),
+                };
+
+                let r = decrypt(&opener, &mut queue_view).ok_or(CacheError::DecryptFailed)?;
 
                 // Record the key_id as seen in the receiver's replay window.  This prevents
                 // a replayed initial packet from establishing a poisoned cache entry.
@@ -584,6 +598,7 @@ impl Cache {
                     opener,
                     credentials.key_id,
                     clock.now(),
+                    queue_view,
                 )));
                 ctx.borrow().invariants();
                 entry.insert(ctx.clone());

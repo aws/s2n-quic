@@ -110,37 +110,39 @@ where
     // the Context is inserted only once both decrypt and `post_authentication` succeed,
     // preventing stale path-secret entries from poisoning the cache.
     let mut control_out = Vec::new();
-    let decrypt_fn = |opener: &crate::crypto::awslc::open::Application| {
-        let _guard = counters.rx_decrypt_time.start();
-        let mut buf = BytesMut::with_capacity(decrypt_len);
-        let written = packet
-            .decrypt_into(opener, bytes::BufMut::chunk_mut(&mut buf))
-            .map_err(|err| {
+    let decrypt_fn =
+        |opener: &crate::crypto::awslc::open::Application,
+         _queue_view: &mut recv::QueueView| {
+            let _guard = counters.rx_decrypt_time.start();
+            let mut buf = BytesMut::with_capacity(decrypt_len);
+            let written = packet
+                .decrypt_into(opener, bytes::BufMut::chunk_mut(&mut buf))
+                .map_err(|err| {
+                    warn!(
+                        %credentials,
+                        packet_number = packet_number.as_u64(),
+                        error = %err,
+                        "decrypt_into failed"
+                    );
+                })
+                .ok()?;
+            if written != decrypt_len {
                 warn!(
                     %credentials,
                     packet_number = packet_number.as_u64(),
-                    error = %err,
-                    "decrypt_into failed"
+                    expected_len = decrypt_len,
+                    actual_len = written,
+                    "decrypt_into wrote an unexpected number of bytes"
                 );
-            })
-            .ok()?;
-        if written != decrypt_len {
-            warn!(
-                %credentials,
-                packet_number = packet_number.as_u64(),
-                expected_len = decrypt_len,
-                actual_len = written,
-                "decrypt_into wrote an unexpected number of bytes"
-            );
-            return None;
-        }
-        // SAFETY: `buf` was allocated with `with_capacity(decrypt_len)` and
-        // `chunk_mut` exposed exactly that region to `decrypt_into`, which
-        // initialized `decrypt_len` bytes.  We returned early unless
-        // `written == decrypt_len`.
-        unsafe { buf.set_len(decrypt_len) };
-        Some(buf)
-    };
+                return None;
+            }
+            // SAFETY: `buf` was allocated with `with_capacity(decrypt_len)` and
+            // `chunk_mut` exposed exactly that region to `decrypt_into`, which
+            // initialized `decrypt_len` bytes.  We returned early unless
+            // `written == decrypt_len`.
+            unsafe { buf.set_len(decrypt_len) };
+            Some(buf)
+        };
     let (decrypted, peer_rc, cache_hit) = {
         let _guard = counters.rx_peer_lookup_time.start();
         let remote_addr = packet.storage().remote_address().get();

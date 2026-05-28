@@ -174,6 +174,14 @@ impl RecvContextBuilder {
             .build();
         let opener = entry.secret().application_opener(VarInt::ZERO);
         let clock = crate::time::bach::Clock::default();
+        let queue_view = match entry.queue_state() {
+            crate::path::secret::map::entry::QueueState::Client(state) => {
+                recv::QueueView::Client(crate::queue::ClientDispatch::new(state.clone()))
+            }
+            crate::path::secret::map::entry::QueueState::Server(state) => {
+                recv::QueueView::Server(state.view())
+            }
+        };
         Rc::new(RefCell::new(recv::Context::new(
             entry,
             self.remote_sender_id,
@@ -181,6 +189,7 @@ impl RecvContextBuilder {
             opener,
             VarInt::ZERO,
             crate::time::precision::Clock::now(&clock),
+            queue_view,
         )))
     }
 }
