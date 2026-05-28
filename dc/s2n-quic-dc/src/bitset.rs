@@ -9,6 +9,8 @@
 
 mod bitset64;
 mod hierarchical;
+mod inline;
 
 pub use bitset64::BitSet64;
 pub use hierarchical::HierarchicalBitSet;
+pub use inline::InlineBitSet;

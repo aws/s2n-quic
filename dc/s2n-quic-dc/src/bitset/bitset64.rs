@@ -69,6 +69,11 @@ impl BitSet64 {
     }
 
     #[inline]
+    pub const fn mask(self, other: Self) -> Self {
+        Self(self.0 & other.0)
+    }
+
+    #[inline]
     pub fn clear(&mut self) {
         self.0 = 0;
     }
