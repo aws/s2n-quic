@@ -24,6 +24,7 @@ pub(crate) mod client;
 pub(crate) mod freed;
 pub(crate) mod half;
 pub(crate) mod handle;
+pub(crate) mod msg_entry;
 pub(crate) mod page_table;
 pub(crate) mod server;
 pub(crate) mod slot;
