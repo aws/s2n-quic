@@ -53,10 +53,16 @@ impl SojournMetrics {
             acked: registry.register_nominal_summary(&label, "acked", Unit::Microsecond),
             peer_dead: registry.register_nominal_summary(&label, "peer_dead", Unit::Microsecond),
             cancelled: registry.register_nominal_summary(&label, "cancelled", Unit::Microsecond),
-            transmission_error: registry
-                .register_nominal_summary(&label, "transmission_error", Unit::Microsecond),
-            unknown_path_secret: registry
-                .register_nominal_summary(&label, "unknown_path_secret", Unit::Microsecond),
+            transmission_error: registry.register_nominal_summary(
+                &label,
+                "transmission_error",
+                Unit::Microsecond,
+            ),
+            unknown_path_secret: registry.register_nominal_summary(
+                &label,
+                "unknown_path_secret",
+                Unit::Microsecond,
+            ),
         }
     }
 

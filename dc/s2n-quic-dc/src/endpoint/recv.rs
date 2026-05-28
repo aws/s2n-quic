@@ -68,8 +68,32 @@ impl QueueView {
         write_fn: impl FnOnce(*mut u8, u32) -> Result<(), E>,
     ) -> Result<queue::AutoWake, queue::Error<()>> {
         match self {
-            Self::Client(d) => d.send_msg(queue_id, binding_id, msg_id, stream_offset, message_size, chunk_size, chunk_index, payload_len, is_fin, is_wakeup, write_fn),
-            Self::Server(d) => d.send_msg(queue_id, binding_id, msg_id, stream_offset, message_size, chunk_size, chunk_index, payload_len, is_fin, is_wakeup, write_fn),
+            Self::Client(d) => d.send_msg(
+                queue_id,
+                binding_id,
+                msg_id,
+                stream_offset,
+                message_size,
+                chunk_size,
+                chunk_index,
+                payload_len,
+                is_fin,
+                is_wakeup,
+                write_fn,
+            ),
+            Self::Server(d) => d.send_msg(
+                queue_id,
+                binding_id,
+                msg_id,
+                stream_offset,
+                message_size,
+                chunk_size,
+                chunk_index,
+                payload_len,
+                is_fin,
+                is_wakeup,
+                write_fn,
+            ),
         }
     }
 
@@ -446,7 +470,11 @@ impl Cache {
     where
         Clk: crate::time::precision::Clock + ?Sized,
         Route: super::routing::SenderRoute,
-        F: FnOnce(&crate::crypto::awslc::open::Application, &mut QueueView, &Arc<PathSecretEntry>) -> Option<R>,
+        F: FnOnce(
+            &crate::crypto::awslc::open::Application,
+            &mut QueueView,
+            &Arc<PathSecretEntry>,
+        ) -> Option<R>,
     {
         let key = Key {
             id: credentials.id,
@@ -538,7 +566,9 @@ impl Cache {
                     // Replace with a dummy Client view; the old ctx is about to be dropped.
                     let state = old_ref.path_entry.queue_state();
                     let replacement = match state {
-                        QueueState::Client(s) => QueueView::Client(queue::ClientDispatch::new(s.clone())),
+                        QueueState::Client(s) => {
+                            QueueView::Client(queue::ClientDispatch::new(s.clone()))
+                        }
                         QueueState::Server(s) => QueueView::Server(s.view()),
                     };
                     core::mem::replace(&mut old_ref.queue_view, replacement)
@@ -578,7 +608,8 @@ impl Cache {
                     QueueState::Server(state) => QueueView::Server(state.view()),
                 };
 
-                let r = decrypt(&opener, &mut queue_view, &path_entry).ok_or(CacheError::DecryptFailed)?;
+                let r = decrypt(&opener, &mut queue_view, &path_entry)
+                    .ok_or(CacheError::DecryptFailed)?;
 
                 // Record the key_id as seen in the receiver's replay window.  This prevents
                 // a replayed initial packet from establishing a poisoned cache entry.

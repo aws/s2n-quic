@@ -52,7 +52,14 @@ impl Pool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::socket::pool::descriptor::Filled;
+    use crate::{
+        intrusive,
+        socket::{
+            channel::{intrusive::sync, Budget, Receiver as _},
+            pool::descriptor::{Filled, RecycleAdapter},
+        },
+        testing::{ext::*, sim},
+    };
     use bolero::{check, TypeGenerator};
     use std::{
         collections::VecDeque,
@@ -224,13 +231,6 @@ mod tests {
 
     #[test]
     fn descriptor_recycles_through_channel() {
-        use crate::{
-            intrusive,
-            socket::channel::{intrusive::sync, Budget, Receiver as _},
-            testing::{ext::*, sim},
-        };
-        use crate::socket::pool::descriptor::RecycleAdapter;
-
         sim(|| {
             async {
                 let (tx, mut rx) = sync::new_with_adapter::<RecycleAdapter>();
@@ -252,8 +252,7 @@ mod tests {
 
                 // The descriptor should now be in the channel — recv it
                 let mut budget = Budget::new(16);
-                let batch: Option<intrusive::List<RecycleAdapter>> =
-                    rx.recv(&mut budget).await;
+                let batch: Option<intrusive::List<RecycleAdapter>> = rx.recv(&mut budget).await;
                 let list = batch.expect("channel should have a batch");
                 assert_eq!(list.len(), 1, "expected exactly 1 recycled descriptor");
 
@@ -266,13 +265,6 @@ mod tests {
 
     #[test]
     fn descriptor_deallocs_without_recycler() {
-        use crate::{
-            intrusive,
-            socket::channel::{intrusive::sync, Budget, Receiver as _},
-            testing::{ext::*, sim},
-        };
-        use crate::socket::pool::descriptor::RecycleAdapter;
-
         sim(|| {
             async {
                 let (tx, mut rx) = sync::new_with_adapter::<RecycleAdapter>();

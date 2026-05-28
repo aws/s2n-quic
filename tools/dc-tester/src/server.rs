@@ -1,8 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::client::USE_MSG_FLAG;
 use s2n_quic_core::{stream::testing::Data, varint::VarInt};
-use s2n_quic_dc::stream::endpoint::Endpoint;
+use s2n_quic_dc::stream::{endpoint::Endpoint, MsgFlags};
 use std::{io, net::SocketAddr, sync::Arc};
 use tokio::{io::AsyncReadExt as _, task::JoinSet};
 use tracing::{error, info};
@@ -77,8 +78,11 @@ pub async fn run(endpoint: Arc<Endpoint>, address: SocketAddr) -> io::Result<()>
 async fn handle_connection(stream: s2n_quic_dc::stream::Stream) -> io::Result<(u64, u64)> {
     let (mut reader, mut writer) = stream.into_split();
 
-    // Read the 8-byte response size header (required by the send half to know how many bytes to write)
-    let response_size = reader.read_u64().await?;
+    // Read the 8-byte response size header (required by the send half to know how many bytes to write).
+    // High bit signals whether to use write_msg for the response.
+    let wire_response_size = reader.read_u64().await?;
+    let use_msg = wire_response_size & USE_MSG_FLAG != 0;
+    let response_size = wire_response_size & !USE_MSG_FLAG;
 
     let recv = async move {
         let mut total_received = 8u64;
@@ -95,8 +99,20 @@ async fn handle_connection(stream: s2n_quic_dc::stream::Stream) -> io::Result<(u
 
     let send = async move {
         let mut response = Data::new(response_size);
-        while !response.is_finished() {
-            writer.write_from_fin(&mut response).await?;
+        if use_msg {
+            writer
+                .write_msg(
+                    &mut response,
+                    MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await?;
+        } else {
+            while !response.is_finished() {
+                writer.write_from_fin(&mut response).await?;
+            }
         }
         io::Result::Ok(response_size)
     };

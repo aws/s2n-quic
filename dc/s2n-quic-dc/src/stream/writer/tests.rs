@@ -24,7 +24,10 @@ use s2n_quic_core::{endpoint, varint::VarInt};
 use std::{net::SocketAddr, sync::Arc, task::Poll, time::Duration};
 
 fn test_writer_metrics() -> Arc<WriterMetrics> {
-    Arc::new(WriterMetrics::new(&crate::counter::Registry::default(), "test"))
+    Arc::new(WriterMetrics::new(
+        &crate::counter::Registry::default(),
+        "test",
+    ))
 }
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────

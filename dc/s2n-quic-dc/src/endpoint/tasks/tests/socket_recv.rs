@@ -28,9 +28,9 @@ fn test_recycler() -> (
 ) {
     let (tx, _rx) = sync::new_with_adapter::<RecycleAdapter>();
     let weak = tx.downgrade();
-    let local_pool = Rc::new(std::cell::RefCell::new(
-        crate::intrusive::List::<RecycleAdapter>::new(),
-    ));
+    let local_pool = Rc::new(std::cell::RefCell::new(crate::intrusive::List::<
+        RecycleAdapter,
+    >::new()));
     (local_pool, weak, tx)
 }
 
@@ -190,23 +190,15 @@ fn descriptors_are_recycled_and_reused() {
             };
             let (tx, rx) = sync::new_with_adapter::<RecycleAdapter>();
             let weak = tx.downgrade();
-            let local_pool = Rc::new(std::cell::RefCell::new(
-                crate::intrusive::List::<RecycleAdapter>::new(),
-            ));
+            let local_pool = Rc::new(std::cell::RefCell::new(crate::intrusive::List::<
+                RecycleAdapter,
+            >::new()));
 
             // Spawn the drain task to move descriptors from sync → local pool
             let drain_rx = tasks::recycle_drain(rx, local_pool.clone(), tx);
-            crate::testing::ext::SpawnExt::spawn(
-                drain_rx.drain_budgeted(Some(32)),
-            );
+            crate::testing::ext::SpawnExt::spawn(drain_rx.drain_budgeted(Some(32)));
 
-            let recv_rx = tasks::socket_recv(
-                recv_socket,
-                pool,
-                local_pool.clone(),
-                weak,
-                router,
-            );
+            let recv_rx = tasks::socket_recv(recv_socket, pool, local_pool.clone(), weak, router);
             recv_rx.drain_budgeted(Some(64)).await;
 
             assert_eq!(segments.get(), 3);

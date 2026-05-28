@@ -1114,7 +1114,8 @@ mod tests {
             header.encode(&mut encoder);
 
             assert_eq!(
-                buf[0], expected_tag,
+                buf[0],
+                expected_tag,
                 "tag mismatch for is_fin={is_fin}, is_wakeup={is_wakeup}, init={}",
                 dest_acceptor_id.is_some()
             );
@@ -1245,8 +1246,9 @@ mod tests {
         // Frame metadata: header encoding + payload_len VarInt (worst-case payload len)
         let frame_metadata_size = header.encoding_size() + VarInt::MAX.encoding_size();
         // header_len VarInt encodes the frame_metadata_size value
-        let header_len_size =
-            VarInt::new(frame_metadata_size as u64).unwrap().encoding_size();
+        let header_len_size = VarInt::new(frame_metadata_size as u64)
+            .unwrap()
+            .encoding_size();
 
         packet_tag_size
             + credentials_size

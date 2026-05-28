@@ -472,9 +472,9 @@ mod tests {
         ranges.on_packet_received(pn(10), ts(11));
         assert_eq!(encode_complete(&mut ranges), 0);
         assert!(
-            ranges.packets.contains(
-                &PacketNumberSpace::Initial.new_packet_number(pn(0))
-            ),
+            ranges
+                .packets
+                .contains(&PacketNumberSpace::Initial.new_packet_number(pn(0))),
             "ranges should still be intact before ring is full"
         );
     }
@@ -507,9 +507,9 @@ mod tests {
         // PNs 0,2,4,6,8 should be gone
         for i in (0..=8).step_by(2) {
             assert!(
-                !ranges.packets.contains(
-                    &PacketNumberSpace::Initial.new_packet_number(pn(i))
-                ),
+                !ranges
+                    .packets
+                    .contains(&PacketNumberSpace::Initial.new_packet_number(pn(i))),
                 "PN {} should have been culled",
                 i
             );
@@ -517,9 +517,9 @@ mod tests {
         // PNs 20+ should survive
         for i in (20..30).step_by(2) {
             assert!(
-                ranges.packets.contains(
-                    &PacketNumberSpace::Initial.new_packet_number(pn(i))
-                ),
+                ranges
+                    .packets
+                    .contains(&PacketNumberSpace::Initial.new_packet_number(pn(i))),
                 "PN {} should still be present",
                 i
             );

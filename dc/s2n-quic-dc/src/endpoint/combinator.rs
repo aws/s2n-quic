@@ -725,9 +725,7 @@ impl AssemblerCounters {
             frame::Header::Ack { .. } => {
                 debug_assert!(false, "ACK frames should never appear as inflight entries")
             }
-            frame::Header::QueueMsg { is_fin: false, .. } => {
-                self.tx_probe_frame_queue_msg.add(1)
-            }
+            frame::Header::QueueMsg { is_fin: false, .. } => self.tx_probe_frame_queue_msg.add(1),
             frame::Header::QueueMsg { is_fin: true, .. } => {
                 self.tx_probe_frame_queue_msg_fin.add(1)
             }

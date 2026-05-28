@@ -241,6 +241,12 @@ pub struct WorkloadConfig {
     #[serde(default)]
     pub request_delay_ms: u64,
 
+    /// Use write_msg (QueueMsg frames) instead of write_from_fin (QueueData frames).
+    /// QueueMsg pre-allocates on the receiver and delivers atomically, reducing
+    /// per-frame overhead for large messages.
+    #[serde(default)]
+    pub use_msg: bool,
+
     /// If set, run a Paxos-like multi-phase workload instead of simple request-response
     #[serde(default)]
     pub paxos: Option<PaxosConfig>,
@@ -301,6 +307,7 @@ impl Default for WorkloadConfig {
             request_size: SizeSpec::default(),
             response_size: SizeSpec::default(),
             request_delay_ms: 0,
+            use_msg: false,
             paxos: None,
         }
     }

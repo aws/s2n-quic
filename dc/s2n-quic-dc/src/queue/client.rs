@@ -296,7 +296,18 @@ impl ClientDispatch {
         let Some(slot) = self.view.get(index, &self.state.pages) else {
             return Err(Error::Unallocated(()));
         };
-        slot.push_msg(binding_id, msg_id, stream_offset, message_size, chunk_size, chunk_index, payload_len, is_fin, is_wakeup, write_fn)
+        slot.push_msg(
+            binding_id,
+            msg_id,
+            stream_offset,
+            message_size,
+            chunk_size,
+            chunk_index,
+            payload_len,
+            is_fin,
+            is_wakeup,
+            write_fn,
+        )
     }
 
     /// Process a received QueueFree frame, returning freed queue_ids to the peer_free list.

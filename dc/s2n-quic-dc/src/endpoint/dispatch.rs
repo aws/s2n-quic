@@ -109,7 +109,13 @@ fn decrypt_fast_path(
         let Some(acceptor_sender) = acceptor_registry.get(acceptor_id) else {
             counters.rx_init_no_acceptor.add(1);
             server_view.record_freed(queue_pair.dest_queue_id, path_entry, freed_batch_tx);
-            send_reset(path_entry, queue_pair.source_queue_id, binding_id, error::ACCEPTOR_NOT_FOUND, frame_tx);
+            send_reset(
+                path_entry,
+                queue_pair.source_queue_id,
+                binding_id,
+                error::ACCEPTOR_NOT_FOUND,
+                frame_tx,
+            );
             return Some(AutoWake::default());
         };
 
@@ -119,7 +125,11 @@ fn decrypt_fast_path(
             path_entry,
             freed_batch_tx,
         ) {
-            Ok(crate::queue::BindResult::NewBinding { waker: _, stream, control }) => {
+            Ok(crate::queue::BindResult::NewBinding {
+                waker: _,
+                stream,
+                control,
+            }) => {
                 let writer = Writer::new_server(
                     frame_tx.clone(),
                     path_entry.clone(),
@@ -176,8 +186,7 @@ fn decrypt_fast_path(
         is_fin,
         is_wakeup,
         |ptr, len| {
-            let dest =
-                unsafe { bytes::buf::UninitSlice::from_raw_parts_mut(ptr, len as usize) };
+            let dest = unsafe { bytes::buf::UninitSlice::from_raw_parts_mut(ptr, len as usize) };
             packet
                 .decrypt_into(opener, dest)
                 .map_err(|_| ())
@@ -252,59 +261,59 @@ where
     // the Context is inserted only once both decrypt and `post_authentication` succeed,
     // preventing stale path-secret entries from poisoning the cache.
     let mut control_out = Vec::new();
-    let decrypt_fn =
-        |opener: &crate::crypto::awslc::open::Application,
-         queue_view: &mut recv::QueueView,
-         path_entry: &Arc<PathSecretEntry>| -> Option<DecryptResult> {
-            let _guard = counters.rx_decrypt_time.start();
+    let decrypt_fn = |opener: &crate::crypto::awslc::open::Application,
+                      queue_view: &mut recv::QueueView,
+                      path_entry: &Arc<PathSecretEntry>|
+     -> Option<DecryptResult> {
+        let _guard = counters.rx_decrypt_time.start();
 
-            // Fast path: single QueueMsg frame — decrypt directly into the slot buffer.
-            if let Some(header) = single_queue_msg {
-                if let Some(waker) = decrypt_fast_path(
-                    header,
-                    opener,
-                    &packet,
-                    decrypt_len,
-                    queue_view,
-                    acceptor_registry,
-                    frame_tx,
-                    freed_batch_tx,
-                    counters,
-                    path_entry,
-                    stream_clock,
-                    reader_metrics,
-                    writer_metrics,
-                ) {
-                    return Some(DecryptResult::FastPath(waker));
-                }
+        // Fast path: single QueueMsg frame — decrypt directly into the slot buffer.
+        if let Some(header) = single_queue_msg {
+            if let Some(waker) = decrypt_fast_path(
+                header,
+                opener,
+                &packet,
+                decrypt_len,
+                queue_view,
+                acceptor_registry,
+                frame_tx,
+                freed_batch_tx,
+                counters,
+                path_entry,
+                stream_clock,
+                reader_metrics,
+                writer_metrics,
+            ) {
+                return Some(DecryptResult::FastPath(waker));
             }
+        }
 
-            // Slow path: allocate BytesMut, decrypt into it, dispatch frames later.
-            let mut buf = BytesMut::with_capacity(decrypt_len);
-            let written = packet
-                .decrypt_into(opener, bytes::BufMut::chunk_mut(&mut buf))
-                .map_err(|err| {
-                    warn!(
-                        %credentials,
-                        packet_number = packet_number.as_u64(),
-                        error = %err,
-                        "decrypt_into failed"
-                    );
-                })
-                .ok()?;
-            if written != decrypt_len {
+        // Slow path: allocate BytesMut, decrypt into it, dispatch frames later.
+        let mut buf = BytesMut::with_capacity(decrypt_len);
+        let written = packet
+            .decrypt_into(opener, bytes::BufMut::chunk_mut(&mut buf))
+            .map_err(|err| {
                 warn!(
                     %credentials,
                     packet_number = packet_number.as_u64(),
-                    expected_len = decrypt_len,
-                    actual_len = written,
-                    "decrypt_into wrote an unexpected number of bytes"
+                    error = %err,
+                    "decrypt_into failed"
                 );
-                return None;
-            }
-            unsafe { buf.set_len(decrypt_len) };
-            Some(DecryptResult::SlowPath(buf))
-        };
+            })
+            .ok()?;
+        if written != decrypt_len {
+            warn!(
+                %credentials,
+                packet_number = packet_number.as_u64(),
+                expected_len = decrypt_len,
+                actual_len = written,
+                "decrypt_into wrote an unexpected number of bytes"
+            );
+            return None;
+        }
+        unsafe { buf.set_len(decrypt_len) };
+        Some(DecryptResult::SlowPath(buf))
+    };
     let (decrypt_result, peer_rc, cache_hit) = {
         let _guard = counters.rx_peer_lookup_time.start();
         let remote_addr = packet.storage().remote_address().get();

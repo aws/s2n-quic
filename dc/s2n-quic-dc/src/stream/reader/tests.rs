@@ -65,7 +65,10 @@ fn make_pair() -> (Reader, Pusher) {
         dest_queue_id,
         alloc.stream,
         crate::time::DefaultClock::default(),
-        Arc::new(ReaderMetrics::new(&crate::counter::Registry::default(), "test")),
+        Arc::new(ReaderMetrics::new(
+            &crate::counter::Registry::default(),
+            "test",
+        )),
     );
 
     let pusher = Pusher {

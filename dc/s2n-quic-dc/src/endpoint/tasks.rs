@@ -461,7 +461,13 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             .with_function("endpoint::tasks::send_worker");
 
         let rx = GaugedReceiver::new(completed_rx, completion_receiver);
-        let rx = completion_dispatcher(rx, waker_sink.clone(), stream_clock.clone(), reader_metrics.clone(), writer_metrics.clone());
+        let rx = completion_dispatcher(
+            rx,
+            waker_sink.clone(),
+            stream_clock.clone(),
+            reader_metrics.clone(),
+            writer_metrics.clone(),
+        );
         let task_counter = counter_registry
             .register_nominal_task("task.completion", &variant)
             .with_registration_metadata(
@@ -484,7 +490,13 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             .with_function("endpoint::tasks::send_worker");
 
         let rx = GaugedReceiver::new(cancelled_rx, cancelled_receiver);
-        let rx = cancelled_drain(rx, freed_batch_tx.clone(), stream_clock.clone(), reader_metrics.clone(), writer_metrics.clone());
+        let rx = cancelled_drain(
+            rx,
+            freed_batch_tx.clone(),
+            stream_clock.clone(),
+            reader_metrics.clone(),
+            writer_metrics.clone(),
+        );
         let task_counter = counter_registry
             .register_nominal_task("task.cancelled", &variant)
             .with_registration_metadata(
@@ -1334,12 +1346,17 @@ where
 pub fn recycle_drain(
     sync_rx: crate::socket::channel::intrusive::sync::AdapterReceiver<descriptor::RecycleAdapter>,
     local_pool: Rc<RefCell<crate::intrusive::List<descriptor::RecycleAdapter>>>,
-    _sender_keepalive: crate::socket::channel::intrusive::sync::AdapterSender<descriptor::RecycleAdapter>,
+    _sender_keepalive: crate::socket::channel::intrusive::sync::AdapterSender<
+        descriptor::RecycleAdapter,
+    >,
 ) -> impl Receiver<()> {
-    Map::new(sync_rx, move |mut batch: crate::intrusive::List<descriptor::RecycleAdapter>| {
-        let _ = &_sender_keepalive;
-        local_pool.borrow_mut().append(&mut batch);
-    })
+    Map::new(
+        sync_rx,
+        move |mut batch: crate::intrusive::List<descriptor::RecycleAdapter>| {
+            let _ = &_sender_keepalive;
+            local_pool.borrow_mut().append(&mut batch);
+        },
+    )
 }
 
 /// Per-worker packet dispatch loop: decrypts, deduplicates, and dispatches received packets.

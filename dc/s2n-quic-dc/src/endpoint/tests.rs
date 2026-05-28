@@ -2656,7 +2656,10 @@ fn queue_msg_small_message_uses_queue_data() {
                             break;
                         }
                     }
-                    assert!(recv.is_finished(), "server should receive all data via QueueData path");
+                    assert!(
+                        recv.is_finished(),
+                        "server should receive all data via QueueData path"
+                    );
                 }
                 .primary()
                 .spawn();
@@ -2805,7 +2808,10 @@ fn queue_msg_reassembly_after_loss() {
                             break;
                         }
                     }
-                    assert!(recv.is_finished(), "server should receive all data after reorder");
+                    assert!(
+                        recv.is_finished(),
+                        "server should receive all data after reorder"
+                    );
                 }
                 .primary()
                 .spawn();

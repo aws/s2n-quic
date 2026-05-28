@@ -796,7 +796,9 @@ impl Inner {
                             frame::TransmissionStatus::Failed(r) => Some(r),
                             _ => None,
                         };
-                        self.metrics.sojourn.record(enqueued_at, completed_at, failure_reason);
+                        self.metrics
+                            .sojourn
+                            .record(enqueued_at, completed_at, failure_reason);
                     }
 
                     if let frame::TransmissionStatus::Failed(reason) = completed.status {

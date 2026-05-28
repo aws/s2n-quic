@@ -2,18 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use anyhow::{Context, Result};
-use arrow::array::*;
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow::{
+    array::*,
+    datatypes::{DataType, Field, Schema},
+};
 use clap::Args;
-use parquet::arrow::ArrowWriter;
-use parquet::basic::Compression;
-use parquet::file::properties::WriterProperties;
+use parquet::{arrow::ArrowWriter, basic::Compression, file::properties::WriterProperties};
 use serde::Deserialize;
-use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
-use std::process::Command;
-use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{
+    io::{BufRead, BufReader, Write},
+    path::PathBuf,
+    process::Command,
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use xshell::Shell;
 
 #[derive(Args)]
@@ -49,8 +51,9 @@ pub struct Cwlogs {
 
 impl Cwlogs {
     pub fn run(self, _sh: &Shell) -> Result<()> {
-        std::fs::create_dir_all(&self.output_dir)
-            .with_context(|| format!("Failed to create output dir: {}", self.output_dir.display()))?;
+        std::fs::create_dir_all(&self.output_dir).with_context(|| {
+            format!("Failed to create output dir: {}", self.output_dir.display())
+        })?;
 
         let events_path = self.output_dir.join("events.jsonl");
         let parquet_path = self.output_dir.join("metrics.parquet");
@@ -73,7 +76,14 @@ impl Cwlogs {
                 log_group, start_ms, end_ms
             );
 
-            fetch_logs(log_group, start_ms, end_ms, &self.filter_pattern, self.profile.as_deref(), &events_path)?;
+            fetch_logs(
+                log_group,
+                start_ms,
+                end_ms,
+                &self.filter_pattern,
+                self.profile.as_deref(),
+                &events_path,
+            )?;
         }
 
         if !events_path.exists() {
@@ -526,7 +536,9 @@ fn parse_rfc3339(s: &str) -> Option<i64> {
 
     let (datetime_part, offset_secs) = if s.ends_with('Z') || s.ends_with('z') {
         (&s[..s.len() - 1], 0i64)
-    } else if s.len() > 6 && (s.as_bytes()[s.len() - 6] == b'+' || s.as_bytes()[s.len() - 6] == b'-') {
+    } else if s.len() > 6
+        && (s.as_bytes()[s.len() - 6] == b'+' || s.as_bytes()[s.len() - 6] == b'-')
+    {
         let (dt, off) = s.split_at(s.len() - 6);
         let sign = if off.starts_with('-') { -1i64 } else { 1i64 };
         let off = &off[1..];

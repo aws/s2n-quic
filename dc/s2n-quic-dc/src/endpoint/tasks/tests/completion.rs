@@ -35,7 +35,8 @@ impl CompletionHarnessBuilder {
             &registry,
             "test.writer",
         ));
-        let rx = tasks::completion_dispatcher(frame_rx, wake_tx, clock, reader_metrics, writer_metrics);
+        let rx =
+            tasks::completion_dispatcher(frame_rx, wake_tx, clock, reader_metrics, writer_metrics);
 
         async move { rx.drain_budgeted(Some(32)).await }
             .primary()
@@ -129,7 +130,13 @@ fn cancelled_drain_consumes_all_frames_then_closes() {
             &registry,
             "test.writer",
         ));
-        let mut rx = tasks::cancelled_drain(frame_rx, freed_batch_tx, clock, reader_metrics, writer_metrics);
+        let mut rx = tasks::cancelled_drain(
+            frame_rx,
+            freed_batch_tx,
+            clock,
+            reader_metrics,
+            writer_metrics,
+        );
 
         async move {
             let pse = test_entry();

@@ -7,7 +7,10 @@ use s2n_quic_core::{
     stream::testing::Data,
     varint::VarInt,
 };
-use s2n_quic_dc::{counter, stream::endpoint::Endpoint};
+use s2n_quic_dc::{
+    counter,
+    stream::{endpoint::Endpoint, MsgFlags},
+};
 use std::{
     io,
     net::SocketAddr,
@@ -68,7 +71,7 @@ pub async fn run(
     // Warm up path secrets by sending a ping to each server
     for &addr in &server_addrs {
         info!(%addr, "Warming up connection");
-        execute_single_message(&mut client, addr, 1, 1).await?;
+        execute_single_message(&mut client, addr, 1, 1, false).await?;
     }
     info!("Warmup complete");
 
@@ -238,7 +241,14 @@ async fn execute_request(
 ) -> io::Result<(u64, u64)> {
     let request_size = workload.request_size.sample(rng);
     let response_size = workload.response_size.sample(rng);
-    execute_single_message(client, server_addr, request_size, response_size).await
+    execute_single_message(
+        client,
+        server_addr,
+        request_size,
+        response_size,
+        workload.use_msg,
+    )
+    .await
 }
 
 #[derive(Clone)]
@@ -368,6 +378,7 @@ async fn execute_phase(
                 server_addr,
                 request_size,
                 response_size,
+                false,
                 &connect_timer,
                 &send_timer,
                 &recv_timer,
@@ -431,9 +442,10 @@ async fn execute_single_message(
     server_addr: SocketAddr,
     request_size: u64,
     response_size: u64,
+    use_msg: bool,
 ) -> io::Result<(u64, u64)> {
     let stream = client.connect(server_addr, VarInt::ZERO).await?;
-    send_recv(stream, request_size, response_size).await
+    send_recv(stream, request_size, response_size, use_msg).await
 }
 
 async fn execute_single_message_instrumented(
@@ -441,6 +453,7 @@ async fn execute_single_message_instrumented(
     server_addr: SocketAddr,
     request_size: u64,
     response_size: u64,
+    use_msg: bool,
     connect_timer: &counter::Timer,
     send_timer: &counter::Timer,
     recv_timer: &counter::Timer,
@@ -451,17 +464,35 @@ async fn execute_single_message_instrumented(
 
     let (mut reader, mut writer) = stream.into_split();
 
+    let wire_response_size = if use_msg {
+        response_size | USE_MSG_FLAG
+    } else {
+        response_size
+    };
+
     let send_start = Instant::now();
     let send = async move {
-        let header = response_size.to_be_bytes();
+        let header = wire_response_size.to_be_bytes();
         let mut payload = (&header[..]).chain(Data::new(request_size));
-        loop {
-            if payload.buffer_is_empty() {
-                break;
+        if use_msg {
+            writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await?;
+        } else {
+            loop {
+                if payload.buffer_is_empty() {
+                    break;
+                }
+                tokio::time::timeout(Duration::from_secs(10), writer.write_from_fin(&mut payload))
+                    .await
+                    .expect("writer did not produce a chunk within 10 seconds")?;
             }
-            tokio::time::timeout(Duration::from_secs(10), writer.write_from_fin(&mut payload))
-                .await
-                .expect("writer did not produce a chunk within 10 seconds")?;
         }
         io::Result::Ok(8 + request_size)
     };
@@ -535,23 +566,45 @@ async fn execute_single_message_instrumented(
 
 pub(crate) const SPAWN_THRESHOLD: u64 = 1024 * 1024;
 
+/// High bit of the response_size header signals the server should use write_msg.
+pub(crate) const USE_MSG_FLAG: u64 = 1 << 63;
+
 async fn send_recv(
     stream: s2n_quic_dc::stream::Stream,
     request_size: u64,
     response_size: u64,
+    use_msg: bool,
 ) -> io::Result<(u64, u64)> {
     let (mut reader, mut writer) = stream.into_split();
 
+    let wire_response_size = if use_msg {
+        response_size | USE_MSG_FLAG
+    } else {
+        response_size
+    };
+
     let send = async move {
-        let header = response_size.to_be_bytes();
+        let header = wire_response_size.to_be_bytes();
         let mut payload = (&header[..]).chain(Data::new(request_size));
-        loop {
-            if payload.buffer_is_empty() {
-                break;
+        if use_msg {
+            writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await?;
+        } else {
+            loop {
+                if payload.buffer_is_empty() {
+                    break;
+                }
+                tokio::time::timeout(Duration::from_secs(10), writer.write_from_fin(&mut payload))
+                    .await
+                    .expect("writer did not produce a chunk within 10 seconds")?;
             }
-            tokio::time::timeout(Duration::from_secs(10), writer.write_from_fin(&mut payload))
-                .await
-                .expect("writer did not produce a chunk within 10 seconds")?;
         }
         io::Result::Ok(8 + request_size)
     };

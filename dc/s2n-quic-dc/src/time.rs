@@ -44,7 +44,9 @@ impl Default for DefaultClock {
         if ::bach::is_active() {
             return Self(DefaultClockKind::Bach(bach::Clock::default()));
         }
-        Self(DefaultClockKind::BusyPoll(crate::busy_poll::clock::Clock::default()))
+        Self(DefaultClockKind::BusyPoll(
+            crate::busy_poll::clock::Clock::default(),
+        ))
     }
 }
 

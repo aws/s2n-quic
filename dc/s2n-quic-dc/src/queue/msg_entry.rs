@@ -107,6 +107,7 @@ impl MsgEntry {
     }
 
     #[inline]
+    #[cfg(test)]
     pub(crate) fn is_poisoned(&self) -> bool {
         self.poisoned
     }

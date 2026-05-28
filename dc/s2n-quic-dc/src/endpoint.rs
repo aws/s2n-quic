@@ -674,14 +674,12 @@ where
     // Create one recycling channel per recv_io worker.
     // The sender is downgraded to Weak (stored in each descriptor's Header).
     // The receiver drains into a local pool created inside spawn_local.
-    type RecyclePair = (
-        crate::socket::channel::intrusive::sync::AdapterSender<descriptor::RecycleAdapter>,
-        crate::socket::channel::intrusive::sync::AdapterReceiver<descriptor::RecycleAdapter>,
-    );
     let num_recv_io_workers = layout.recv_io.len();
     let recycle_channels: IdMap<RecvIoWorkerId, _> = RecvIoWorkerId::range(num_recv_io_workers)
         .map(|id| {
-            let (tx, rx) = crate::socket::channel::intrusive::sync::new_with_adapter::<descriptor::RecycleAdapter>();
+            let (tx, rx) = crate::socket::channel::intrusive::sync::new_with_adapter::<
+                descriptor::RecycleAdapter,
+            >();
             let weak = tx.downgrade();
             (id, (weak, tx, rx))
         })
@@ -1011,9 +1009,10 @@ where
 
             // Create the local recycled-descriptor pool (Rc, single-threaded).
             // Shared by all recv sockets on this worker and the drain task.
-            let local_recycle_pool = std::rc::Rc::new(std::cell::RefCell::new(
-                crate::intrusive::List::<descriptor::RecycleAdapter>::new(),
-            ));
+            let local_recycle_pool =
+                std::rc::Rc::new(std::cell::RefCell::new(crate::intrusive::List::<
+                    descriptor::RecycleAdapter,
+                >::new()));
 
             // Spawn the recycle drain task if this worker has one.
             debug_assert!(
@@ -1021,7 +1020,8 @@ where
                 "recv_io workers with sockets must have a recycle_drain task"
             );
             if let Some((sender_keepalive, recycle_rx)) = recycle_drain {
-                let rx = tasks::recycle_drain(recycle_rx, local_recycle_pool.clone(), sender_keepalive);
+                let rx =
+                    tasks::recycle_drain(recycle_rx, local_recycle_pool.clone(), sender_keepalive);
                 let task_counter = counter_registry
                     .register_task("task.recycle_drain")
                     .with_registration_metadata(

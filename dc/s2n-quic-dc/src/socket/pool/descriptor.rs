@@ -14,7 +14,10 @@ use std::{
     alloc::Layout,
     io::{IoSlice, IoSliceMut},
     ptr::NonNull,
-    sync::{atomic::{AtomicUsize, Ordering}, Weak},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Weak,
+    },
 };
 
 // ── Recycling infrastructure ──────────────────────────────────────────────
@@ -25,7 +28,6 @@ use std::{
 /// gives temporary access to the channel for pushing the descriptor back.
 /// If upgrade fails (channel gone), the descriptor is deallocated normally.
 pub type WeakRecycleSender = Weak<AdapterShared<RecycleAdapter>>;
-
 
 /// A descriptor in the recycling pipeline. Deallocates on drop.
 ///

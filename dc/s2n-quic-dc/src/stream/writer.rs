@@ -73,6 +73,7 @@ use crate::{
         frame::{
             self, FailureReason, Frame, Header, HomogeneousBatch, Priority, SubmissionSender,
             TransmissionStatus, DEFAULT_TTL, MAX_QUEUE_DATA_HEADER_OVERHEAD,
+            MAX_QUEUE_MSG_HEADER_OVERHEAD,
         },
         msg,
     },
@@ -159,8 +160,10 @@ struct Inner {
     next_msg_id: u64,
     /// Path secret entry providing MTU and crypto material
     path_secret_entry: Arc<PathSecretEntry>,
-    /// Cached packet size (MTU minus header overhead) for fragmentation
+    /// Cached packet size (MTU minus header overhead) for QueueData fragmentation
     packet_size: u16,
+    /// Cached packet size for QueueMsg fragmentation (accounts for larger header)
+    msg_packet_size: u16,
     /// The peer's queue slot index for this stream
     dest_queue_id: VarInt,
     /// Acceptor ID for server routing
@@ -233,6 +236,7 @@ impl Writer {
         let parameters = path_secret_entry.parameters();
         let mtu = parameters.max_datagram_size();
         let packet_size = mtu.saturating_sub(MAX_QUEUE_DATA_HEADER_OVERHEAD);
+        let msg_packet_size = mtu.saturating_sub(MAX_QUEUE_MSG_HEADER_OVERHEAD);
         let max_inflight_bytes = parameters.local_send_max_data.as_u64();
         let remote_max_data = VarInt::ZERO;
 
@@ -243,6 +247,7 @@ impl Writer {
             next_msg_id: 0,
             path_secret_entry,
             packet_size,
+            msg_packet_size,
             dest_queue_id,
             acceptor_id,
             next_offset: VarInt::ZERO,
@@ -270,6 +275,7 @@ impl Writer {
         let parameters = path_secret_entry.parameters();
         let mtu = parameters.max_datagram_size();
         let packet_size = mtu.saturating_sub(MAX_QUEUE_DATA_HEADER_OVERHEAD);
+        let msg_packet_size = mtu.saturating_sub(MAX_QUEUE_MSG_HEADER_OVERHEAD);
         let max_inflight_bytes = parameters.local_send_max_data.as_u64();
         let initial_remote_max_data = parameters.remote_max_data;
 
@@ -280,6 +286,7 @@ impl Writer {
             next_msg_id: 0,
             path_secret_entry,
             packet_size,
+            msg_packet_size,
             dest_queue_id,
             acceptor_id,
             next_offset: VarInt::ZERO,
@@ -513,7 +520,9 @@ impl Inner {
         S: buffer::reader::storage::Infallible,
     {
         waker::debug_assert_contract(cx, |cx| {
-            coop::poll(self, cx, |this, cx| this.poll_write_msg_inner(cx, buf, flags))
+            coop::poll(self, cx, |this, cx| {
+                this.poll_write_msg_inner(cx, buf, flags)
+            })
         })
     }
 
@@ -756,7 +765,9 @@ impl Inner {
                             TransmissionStatus::Failed(r) => Some(r),
                             _ => None,
                         };
-                        self.metrics.sojourn.record(enqueued_at, completed_at, failure_reason);
+                        self.metrics
+                            .sojourn
+                            .record(enqueued_at, completed_at, failure_reason);
                     }
 
                     match completed.status {
@@ -1163,7 +1174,7 @@ impl Inner {
             .saturating_sub(self.next_offset.as_u64() + message_size as u64);
         let is_wakeup = flags.is_wakeup || remaining_after == 0;
 
-        let mtu = self.packet_size as usize;
+        let mtu = self.msg_packet_size as usize;
         let chunk_size = mtu.min(message_size).max(1) as u16;
         let stream_offset = self.next_offset;
         let msg_id = self.next_msg_id;

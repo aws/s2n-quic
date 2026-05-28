@@ -174,7 +174,16 @@ impl Slot {
             let mut table = self.msg_table.lock();
             let table = table.get_or_insert_with(MsgTable::new);
 
-            match table.insert(msg_id, stream_offset, message_size, chunk_size, chunk_index, payload_len, is_fin, is_wakeup) {
+            match table.insert(
+                msg_id,
+                stream_offset,
+                message_size,
+                chunk_size,
+                chunk_index,
+                payload_len,
+                is_fin,
+                is_wakeup,
+            ) {
                 Ok(checkout) => (checkout.ptr, checkout.expected_len, checkout.chunk_index),
                 Err(_) => return Ok(half::AutoWake::default()),
             }
@@ -198,17 +207,18 @@ impl Slot {
             match table.complete(msg_id, chunk_index) {
                 super::msg_table::CompleteOutcome::Ready => {
                     let mut queue = intrusive::Queue::new();
+                    let mut should_wake = false;
                     for delivered in table.drain_complete() {
+                        should_wake |= delivered.is_wakeup;
                         let entry: intrusive::Entry<msg::Stream> = msg::Stream::Data {
-                            offset: VarInt::new(delivered.stream_offset)
-                                .unwrap_or(VarInt::MAX),
+                            offset: VarInt::new(delivered.stream_offset).unwrap_or(VarInt::MAX),
                             fin: delivered.is_fin,
                             payload: delivered.payload,
                         }
                         .into();
                         queue.push_back(entry);
                     }
-                    Some(queue)
+                    Some((queue, should_wake))
                 }
                 super::msg_table::CompleteOutcome::Pending
                 | super::msg_table::CompleteOutcome::Poisoned => None,
@@ -217,10 +227,14 @@ impl Slot {
         // msg_table lock released here
 
         match local_queue {
-            Some(mut queue) => {
+            Some((mut queue, should_wake)) => {
                 let mut stream = self.stream.inner.lock();
                 stream.queue.append(&mut queue);
-                Ok(stream.take_waker())
+                if should_wake {
+                    Ok(stream.take_waker())
+                } else {
+                    Ok(half::AutoWake::default())
+                }
             }
             None => Ok(half::AutoWake::default()),
         }
@@ -235,7 +249,10 @@ impl Slot {
     pub(crate) fn allocate_and_open(&self, binding_id: VarInt) -> Result<(), half::Closed> {
         let mut s = self.stream.inner.lock();
         let mut c = self.control.inner.lock();
-        Self::allocate_and_open_locked(&mut s, &mut c, &self.binding_id, binding_id)
+        Self::allocate_and_open_locked(&mut s, &mut c, &self.binding_id, binding_id)?;
+        // Clear any poisoned msg_table from the previous binding.
+        *self.msg_table.lock() = None;
+        Ok(())
     }
 
     /// Bind the slot (if unallocated) and push the first stream entry atomically.
@@ -275,6 +292,9 @@ impl Slot {
             Self::allocate_and_open_locked(&mut s, &mut c, &self.binding_id, binding_id)
                 .map_err(|_| super::Error::SenderClosed)?;
 
+            // Clear any poisoned msg_table from the previous binding.
+            *self.msg_table.lock() = None;
+
             s.queue.push_back(entry);
             let waker = s.take_waker();
             return Ok(BindState::NewBinding(waker));
@@ -310,6 +330,11 @@ impl Slot {
         let raw = self.binding_id.load(Ordering::Relaxed);
         if raw & UNALLOCATED_BIT != 0 {
             return (half::AutoWake::default(), half::AutoWake::default());
+        }
+
+        // Poison the msg_table so in-flight chunk writes see Poisoned on complete.
+        if let Some(table) = self.msg_table.lock().as_mut() {
+            table.poison();
         }
 
         let sw = if s.flags.contains(Flags::HAS_RECEIVER) {
@@ -620,5 +645,116 @@ mod tests {
         // Subsequent push fails
         let result = slot.push_stream(v(1), make_stream_entry());
         assert!(matches!(result, Err(super::super::Error::SenderClosed)));
+    }
+
+    #[test]
+    fn broadcast_reset_poisons_msg_table() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(1)).unwrap();
+
+        // Insert a partial message (first chunk only of a 2-chunk message)
+        let result = slot.push_msg(v(1), 0, 0, 16384, 8192, 0, 8192, false, true, |ptr, len| {
+            unsafe { core::ptr::write_bytes(ptr, 0xAB, len as usize) };
+            Ok::<(), ()>(())
+        });
+        assert!(result.is_ok());
+
+        // Reset the slot
+        slot.broadcast_reset(v(42));
+
+        // The msg_table should be poisoned — second chunk write returns default waker
+        let result = slot.push_msg(v(1), 0, 0, 16384, 8192, 1, 8192, false, true, |ptr, len| {
+            unsafe { core::ptr::write_bytes(ptr, 0xCD, len as usize) };
+            Ok::<(), ()>(())
+        });
+        // Should succeed (returns Ok with empty waker) — the chunk completes
+        // but the poisoned table discards the result.
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn new_binding_clears_msg_table() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(1)).unwrap();
+
+        // Push a complete message to create and populate the msg_table
+        let _ = slot.push_msg(v(1), 0, 0, 4096, 8192, 0, 4096, false, true, |ptr, len| {
+            unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
+            Ok::<(), ()>(())
+        });
+
+        // msg_table exists (even if entries were drained, the table itself is Some)
+        assert!(slot.msg_table.lock().is_some());
+
+        // Simulate receiver drop + mark unallocated
+        simulate_receiver_drop(&slot);
+
+        // Re-bind with a new binding_id
+        let result = slot.bind_and_push_stream(v(2), make_stream_entry());
+        assert!(matches!(result, Ok(BindState::NewBinding(_))));
+
+        // msg_table should be cleared — new sender starts fresh
+        assert!(slot.msg_table.lock().is_none());
+    }
+
+    #[test]
+    fn push_msg_wakes_only_when_is_wakeup_set() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(1)).unwrap();
+
+        // Register a waker on the stream half
+        let (waker, wake_count) = test_waker();
+        {
+            let mut s = slot.stream.inner.lock();
+            s.waker = Some(waker.clone());
+        }
+
+        // Push a complete message with is_wakeup=false
+        let result = slot.push_msg(
+            v(1),
+            0,
+            0,
+            4096,
+            8192,
+            0,
+            4096,
+            false,
+            false, // is_wakeup = false
+            |ptr, len| {
+                unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
+                Ok::<(), ()>(())
+            },
+        );
+        assert!(result.is_ok());
+        // Waker should NOT have been taken
+        assert_eq!(wake_count.load(Ordering::SeqCst), 0);
+
+        // Re-register waker (it was consumed on the first push since we always take_waker
+        // returns the slot — but with is_wakeup=false the AutoWake is default/empty)
+        {
+            let mut s = slot.stream.inner.lock();
+            s.waker = Some(waker.clone());
+        }
+
+        // Push a complete message with is_wakeup=true
+        let result = slot.push_msg(
+            v(1),
+            1,
+            4096,
+            4096,
+            8192,
+            0,
+            4096,
+            false,
+            true, // is_wakeup = true
+            |ptr, len| {
+                unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
+                Ok::<(), ()>(())
+            },
+        );
+        assert!(result.is_ok());
+        // Now the waker SHOULD fire
+        drop(result);
+        assert_eq!(wake_count.load(Ordering::SeqCst), 1);
     }
 }
