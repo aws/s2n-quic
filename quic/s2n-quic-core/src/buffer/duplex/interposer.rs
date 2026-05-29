@@ -125,9 +125,7 @@ where
         let final_offset = reader.final_offset();
 
         {
-            // if the storage specializes writing zero-copy Bytes/BytesMut, then just write to the
-            // receive buffer, since that's what it stores
-            let mut should_delegate = C::SPECIALIZES_BYTES || C::SPECIALIZES_BYTES_MUT;
+            let mut should_delegate = false;
 
             // if the storage has no space left then write into the duplex
             should_delegate |= !self.storage.has_remaining_capacity();
@@ -135,26 +133,10 @@ where
             // if this packet is non-contiguous, then delegate to the wrapped writer
             should_delegate |= reader.current_offset() != self.duplex.current_offset();
 
-            // We want to decrypt into our own buffer (`duplex`) if that's cheaper. Note that
-            // decrypt is itself an optional "free" copy. Our choices are:
-            //
-            // 1. Decrypt in-place, copy head to `storage` and tail to `duplex`
-            // 2. Decrypt to `duplex`, copy head to `storage`
-            // 3. Decrypt to `storage`
-            //
-            // 1 and 2 are always possible (duplex can take any amount of data).
-            // 1 is always more expensive than 2 in `# of bytes copied` but does potentially save
-            // allocating large buffer(s) in `duplex`, if most of the bytes go into storage.
-            //
-            // 3 is optimal and should essentially always be preferred. Maybe that should even
-            // override SPECIALIZES_BYTES/_MUT?
             should_delegate |= self.storage.remaining_capacity() < (reader.buffered_len() / 2);
 
             if should_delegate {
                 self.duplex.read_from(reader)?;
-
-                // don't copy into `storage` here - let the caller do that later since it can be
-                // more efficient to pull from `duplex` all in one go.
 
                 return Ok(());
             }

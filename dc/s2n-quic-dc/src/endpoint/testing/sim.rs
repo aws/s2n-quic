@@ -40,7 +40,7 @@ use crate::{
     },
 };
 use core::net::{IpAddr, SocketAddr};
-use s2n_quic_core::varint::VarInt;
+use s2n_quic_core::{dc::ApplicationParams, varint::VarInt};
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -78,9 +78,16 @@ thread_local! {
 
     static SIM_ENDPOINT_BY_GROUP: RefCell<HashMap<u64, Weak<Endpoint>>> =
         RefCell::new(HashMap::new());
+
+    static SIM_PARAMS_REGISTRY: RefCell<HashMap<SocketAddr, ApplicationParams>> =
+        RefCell::new(HashMap::new());
 }
 
-fn register_endpoint_map(data_addrs: &[SocketAddr], map: PathSecretMap) {
+fn register_endpoint_map(
+    data_addrs: &[SocketAddr],
+    map: PathSecretMap,
+    params: ApplicationParams,
+) {
     SIM_MAP_REGISTRY.with(|r| {
         let mut reg = r.borrow_mut();
         for &addr in data_addrs {
@@ -94,6 +101,16 @@ fn register_endpoint_map(data_addrs: &[SocketAddr], map: PathSecretMap) {
             reg.insert(addr, addrs.clone());
         }
     });
+    SIM_PARAMS_REGISTRY.with(|r| {
+        let mut reg = r.borrow_mut();
+        for &addr in data_addrs {
+            reg.insert(addr, params.clone());
+        }
+    });
+}
+
+fn lookup_sim_params(addr: SocketAddr) -> Option<ApplicationParams> {
+    SIM_PARAMS_REGISTRY.with(|r| r.borrow().get(&addr).cloned())
 }
 
 fn lookup_peer_data_addrs(any_addr: SocketAddr) -> Vec<SocketAddr> {
@@ -159,10 +176,10 @@ impl MonitorHostAddr {
 
 /// Returns the shared [`Endpoint`] for the current Bach group, creating it lazily.
 ///
-/// `bind_addr` is used only on the first call for a given group (or after a
+/// The config is used only on the first call for a given group (or after a
 /// previous endpoint for that group has been fully dropped); subsequent calls
 /// upgrade the cached [`Weak`] reference and return the same [`Endpoint`].
-fn get_or_create_group_endpoint(bind_addr: SocketAddr) -> Arc<Endpoint> {
+fn get_or_create_group_endpoint(config: SimEndpointConfig) -> Arc<Endpoint> {
     let group_id = bach::group::current().id();
     SIM_ENDPOINT_BY_GROUP.with(|r| {
         let mut map = r.borrow_mut();
@@ -173,10 +190,6 @@ fn get_or_create_group_endpoint(bind_addr: SocketAddr) -> Arc<Endpoint> {
         }
         let path_secret_map = crate::path::secret::map::testing::new(50_000);
         let acceptor_registry = acceptor::Registry::new();
-        let config = SimEndpointConfig {
-            bind_addr,
-            ..SimEndpointConfig::default()
-        };
         let ep = Arc::new(setup_sim_endpoint(
             config,
             path_secret_map,
@@ -232,6 +245,10 @@ pub struct SimEndpointConfig {
     /// Maximum transfer unit for the send / recv buffer pools (bytes).
     pub mtu: u16,
 
+    /// Local send window (local_send_max_data). When set, constrains how much data
+    /// the writer can emit before receiving MAX_DATA from the peer.
+    pub send_window: Option<VarInt>,
+
     /// Cooldown period for peers marked dead before new flows are allowed.
     pub dead_peer_cooldown: core::time::Duration,
 }
@@ -255,8 +272,43 @@ impl Default for SimEndpointConfig {
             per_socket_send_rate: Rate::new(5.0),
             budgets: Budgets::default(),
             mtu: 1500,
+            send_window: None,
             dead_peer_cooldown: crate::stream::endpoint::DEFAULT_DEAD_PEER_COOLDOWN,
         }
+    }
+}
+
+impl SimEndpointConfig {
+    pub fn mtu(mut self, mtu: u16) -> Self {
+        self.mtu = mtu;
+        self
+    }
+
+    pub fn send_window(mut self, window: VarInt) -> Self {
+        self.send_window = Some(window);
+        self
+    }
+
+    pub fn overall_send_rate(mut self, rate: Rate) -> Self {
+        self.overall_send_rate = rate;
+        self
+    }
+
+    pub fn per_socket_send_rate(mut self, rate: Rate) -> Self {
+        self.per_socket_send_rate = rate;
+        self
+    }
+
+    pub fn server(self) -> Server {
+        Server::with_config(self)
+    }
+
+    pub fn client(self) -> Client {
+        Client::with_config(self)
+    }
+
+    pub fn peer(self) -> Peer {
+        Peer::with_config(self)
     }
 }
 
@@ -290,6 +342,7 @@ pub fn setup_sim_endpoint(
         per_socket_send_rate,
         budgets,
         mtu,
+        send_window,
         dead_peer_cooldown,
     } = config;
 
@@ -405,8 +458,26 @@ pub fn setup_sim_endpoint(
         ups_socket,
     );
 
+    // Build ApplicationParams from the config for path-secret insertion.
+    // Subtract IP + UDP headers to get the max datagram payload size.
+    let ip_header_len: u16 = if endpoint.data_addrs[0].is_ipv4() {
+        20
+    } else {
+        40
+    };
+    let udp_header_len: u16 = 8;
+    let max_datagram_size = mtu - ip_header_len - udp_header_len;
+    let mut params = s2n_quic_core::dc::testing::TEST_APPLICATION_PARAMS;
+    params
+        .max_datagram_size
+        .store(max_datagram_size, core::sync::atomic::Ordering::Relaxed);
+    params.remote_max_data = params.local_recv_max_data;
+    if let Some(window) = send_window {
+        params.local_send_max_data = window;
+    }
+
     // Register in the thread-local registry so `connect` can find it.
-    register_endpoint_map(&endpoint.data_addrs, path_secret_map);
+    register_endpoint_map(&endpoint.data_addrs, path_secret_map, params);
 
     endpoint
 }
@@ -523,17 +594,15 @@ pub fn insert_fake_path_pair(
     peer_map: &PathSecretMap,
     peer_addr: SocketAddr,
 ) -> TestPairIds {
-    use s2n_quic_core::dc::testing::TEST_APPLICATION_PARAMS;
-
-    let mut params = TEST_APPLICATION_PARAMS;
-    params.remote_max_data = params.local_recv_max_data;
+    let local_params = lookup_sim_params(local_addr);
+    let peer_params = lookup_sim_params(peer_addr);
 
     local_map.test_insert_pair(
         local_addr,
-        Some(params.clone()),
+        local_params,
         peer_map,
         peer_addr,
-        Some(params),
+        peer_params,
     )
 }
 
@@ -644,8 +713,16 @@ pub struct Peer {
 impl Peer {
     /// Returns the sim peer for the current Bach group, creating it if needed.
     pub fn new() -> Self {
-        let bind_addr = SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), SERVER_PORT);
-        let endpoint = get_or_create_group_endpoint(bind_addr);
+        Self::with_config(SimEndpointConfig::default())
+    }
+
+    /// Returns the sim peer for the current Bach group with custom config.
+    pub fn with_config(config: SimEndpointConfig) -> Self {
+        let config = SimEndpointConfig {
+            bind_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), SERVER_PORT),
+            ..config
+        };
+        let endpoint = get_or_create_group_endpoint(config);
         Self { endpoint }
     }
 
@@ -711,8 +788,16 @@ impl Server {
     /// task (after `.group("name").spawn()`) so the socket is associated with the
     /// correct simulated machine.
     pub fn new() -> Self {
-        let bind_addr = SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), SERVER_PORT);
-        let endpoint = get_or_create_group_endpoint(bind_addr);
+        Self::with_config(SimEndpointConfig::default())
+    }
+
+    /// Returns the sim server for the current Bach group with custom config.
+    pub fn with_config(config: SimEndpointConfig) -> Self {
+        let config = SimEndpointConfig {
+            bind_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), SERVER_PORT),
+            ..config
+        };
+        let endpoint = get_or_create_group_endpoint(config);
         Self { endpoint }
     }
 
@@ -771,8 +856,12 @@ impl Client {
     /// Binds sockets to an ephemeral port (`0.0.0.0:0`).  Call this inside the
     /// group task so the socket is associated with the correct simulated machine.
     pub fn new() -> Self {
-        let bind_addr = SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), 0);
-        let endpoint = get_or_create_group_endpoint(bind_addr);
+        Self::with_config(SimEndpointConfig::default())
+    }
+
+    /// Returns the sim client for the current Bach group with custom config.
+    pub fn with_config(config: SimEndpointConfig) -> Self {
+        let endpoint = get_or_create_group_endpoint(config);
         Self { endpoint }
     }
 

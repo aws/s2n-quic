@@ -2556,6 +2556,83 @@ fn queue_msg_multi_chunk() {
     });
 }
 
+/// With jumbo MTU (9001), a 2 MiB message fits in a single segment (256 chunks *
+/// ~8857 bytes = ~2.17 MiB). Even when the send window is only 64 KiB, segment
+/// sizing must not shrink to match the window — the receiver should see exactly
+/// one contiguous allocation.
+#[test]
+fn queue_msg_single_allocation_under_flow_control() {
+    use crate::{byte_vec::ByteVec, endpoint::testing::sim::SimEndpointConfig};
+
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+        const MSG_SIZE: usize = 2 * 1024 * 1024;
+
+        async move {
+            let server = SimEndpointConfig::default().mtu(9001).server();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            let stream = timeout(30.s(), acceptor.recv())
+                .await
+                .expect("server accept timeout")
+                .expect("server stream closed");
+            let (mut reader, _writer) = stream.into_split();
+            let mut recv = ByteVec::new();
+            loop {
+                let n = timeout(30.s(), reader.read_into(&mut recv))
+                    .await
+                    .expect("server read timeout")
+                    .expect("server read");
+                if n == 0 {
+                    break;
+                }
+            }
+            assert_eq!(recv.len(), MSG_SIZE);
+            assert_eq!(
+                recv.chunks().count(),
+                1,
+                "2 MiB message at 9001 MTU should be a single allocation"
+            );
+        }
+        .group("server")
+        .primary()
+        .spawn();
+
+        async move {
+            let mut client = SimEndpointConfig::default()
+                .mtu(9001)
+                .send_window(VarInt::from_u32(64 * 1024))
+                .client();
+
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (_reader, mut writer) = stream.into_split();
+
+            let mut data = Data::new(MSG_SIZE as u64);
+            writer
+                .write_msg(
+                    &mut data,
+                    crate::stream::MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await
+                .expect("client write_msg");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
 /// Large message requiring multi-segment split — verifies that write_msg correctly
 /// splits messages larger than MAX_CHUNKS * chunk_size into multiple msg_ids.
 /// With ~1328-byte chunks and 256 MAX_CHUNKS, max_segment_size is ~340KB.

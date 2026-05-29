@@ -1167,9 +1167,9 @@ impl Inner {
     /// Both flags are set consistently on ALL frames of the message.
     ///
     /// Messages larger than MAX_CHUNKS * chunk_size are automatically split into
-    /// multiple msg_ids, each independently reassembled by the receiver. Respects
-    /// both local inflight and remote MAX_DATA budgets per-segment — returns the
-    /// number of bytes actually sent (may be less than buf if budget exhausted).
+    /// multiple msg_ids, each independently reassembled by the receiver. Segment
+    /// sizing is always based on `max_segment_size`; remote MAX_DATA gates when a
+    /// new segment can start, and the method returns the number of bytes sent.
     /// `force_first` bypasses the budget check for the first segment (used by Init
     /// to bootstrap the connection before MAX_DATA is available).
     fn send_msg<S>(&mut self, buf: &mut S, flags: MsgFlags, force_first: bool) -> io::Result<usize>
@@ -1213,17 +1213,12 @@ impl Inner {
                 .as_u64()
                 .saturating_sub(self.next_offset.as_u64());
 
-            if !(is_first && force_first) && remote_budget == 0 {
+            let segment_size = buf.buffered_len().min(max_segment_size);
+
+            if !(is_first && force_first) && (remote_budget as usize) < segment_size {
                 break;
             }
             is_first = false;
-
-            let budget_limit = if force_first && remote_budget == 0 {
-                max_segment_size
-            } else {
-                remote_budget as usize
-            };
-            let segment_size = buf.buffered_len().min(max_segment_size).min(budget_limit);
 
             let is_last_segment = buf.buffered_len() <= segment_size;
 
