@@ -612,9 +612,6 @@ impl Inner {
             return Poll::Ready(Ok(0));
         }
 
-        // Send segments in a loop, refreshing budget between batches so the
-        // pipeline stays full. This mirrors how write_from_fin achieves high
-        // throughput by interleaving completions/MAX_DATA with sends.
         loop {
             let written = self.send_msg(buf, flags, false)?;
 
@@ -623,6 +620,11 @@ impl Inner {
             }
 
             if written == 0 {
+                return Poll::Pending;
+            }
+
+            if !self.coop.consume() {
+                cx.waker().wake_by_ref();
                 return Poll::Pending;
             }
 

@@ -16,6 +16,18 @@ impl Default for Coop {
     }
 }
 
+impl Coop {
+    #[inline]
+    pub fn consume(&mut self) -> bool {
+        if self.budget == 0 {
+            self.budget = BUDGET;
+            return false;
+        }
+        self.budget -= 1;
+        true
+    }
+}
+
 pub trait HasCoop {
     fn coop(&mut self) -> &mut Coop;
 }
