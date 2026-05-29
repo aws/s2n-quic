@@ -63,6 +63,15 @@ pub enum Error<T> {
     CapExceeded(T),
 }
 
+/// Error returned by QueueMsg dispatch operations.
+#[derive(Debug)]
+pub enum MsgError<E> {
+    /// Queue validation failed before the write callback could complete.
+    Queue(Error<()>),
+    /// The caller-provided write callback failed.
+    Write(E),
+}
+
 impl<T> From<half::Error<T>> for Error<T> {
     fn from(e: half::Error<T>) -> Self {
         match e {

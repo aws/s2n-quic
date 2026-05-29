@@ -65,6 +65,11 @@ enum DecryptResult {
     SlowPath(BytesMut),
 }
 
+enum FastPathError {
+    HeaderMismatch,
+    WriteFailed,
+}
+
 /// Fast path: decrypt a single-QueueMsg-frame packet directly into the slot buffer.
 ///
 /// Handles both init (with binding setup) and non-init frames.
@@ -83,7 +88,7 @@ fn decrypt_fast_path(
     stream_clock: &crate::time::DefaultClock,
     reader_metrics: &Arc<crate::stream::metrics::ReaderMetrics>,
     writer_metrics: &Arc<crate::stream::metrics::WriterMetrics>,
-) -> Option<AutoWake> {
+) -> Result<AutoWake, FastPathError> {
     let Header::QueueMsg {
         queue_pair,
         binding_id,
@@ -97,13 +102,13 @@ fn decrypt_fast_path(
         dest_acceptor_id,
     } = header
     else {
-        return None;
+        return Err(FastPathError::HeaderMismatch);
     };
 
     // Handle init: bind the slot before attempting push_msg
     if let Some(acceptor_id) = dest_acceptor_id {
         let Some(server_view) = queue_view.as_server_mut() else {
-            return Some(AutoWake::default());
+            return Ok(AutoWake::default());
         };
 
         let Some(acceptor_sender) = acceptor_registry.get(acceptor_id) else {
@@ -116,7 +121,7 @@ fn decrypt_fast_path(
                 error::ACCEPTOR_NOT_FOUND,
                 frame_tx,
             );
-            return Some(AutoWake::default());
+            return Ok(AutoWake::default());
         };
 
         match server_view.bind_for_msg(
@@ -169,7 +174,7 @@ fn decrypt_fast_path(
                 }
             }
             Ok(crate::queue::BindResult::Bound(_)) => {}
-            Err(_) => return Some(AutoWake::default()),
+            Err(_) => return Ok(AutoWake::default()),
         }
     }
 
@@ -200,7 +205,7 @@ fn decrypt_fast_path(
         },
     );
 
-    Some(match waker {
+    Ok(match waker {
         Ok(w) => {
             if w.is_some() {
                 counters.rx_msg_segment_completed.add(1);
@@ -212,7 +217,8 @@ fn decrypt_fast_path(
             }
             w
         }
-        Err(_) => AutoWake::default(),
+        Err(crate::queue::MsgError::Queue(_)) => AutoWake::default(),
+        Err(crate::queue::MsgError::Write(_)) => return Err(FastPathError::WriteFailed),
     })
 }
 
@@ -279,7 +285,7 @@ where
 
         // Fast path: single QueueMsg frame — decrypt directly into the slot buffer.
         if let Some(header) = single_queue_msg {
-            if let Some(waker) = decrypt_fast_path(
+            return decrypt_fast_path(
                 header,
                 opener,
                 &packet,
@@ -293,9 +299,9 @@ where
                 stream_clock,
                 reader_metrics,
                 writer_metrics,
-            ) {
-                return Some(DecryptResult::FastPath(waker));
-            }
+            )
+            .map(DecryptResult::FastPath)
+            .ok();
         }
 
         // Slow path: allocate BytesMut, decrypt into it, dispatch frames later.
@@ -915,20 +921,27 @@ fn handle_queue_msg(
             }
             let _ = waker_sink.send(waker);
         }
-        Err(crate::queue::Error::Unallocated(_)) => {
+        Err(crate::queue::MsgError::Queue(crate::queue::Error::Unallocated(_))) => {
             counters.rx_data_unallocated.add(1);
         }
-        Err(crate::queue::Error::HalfClosed(_)) => {
+        Err(crate::queue::MsgError::Queue(crate::queue::Error::HalfClosed(_))) => {
             counters.rx_data_half_closed.add(1);
         }
-        Err(crate::queue::Error::StaleBinding(_)) => {
+        Err(crate::queue::MsgError::Queue(crate::queue::Error::StaleBinding(_))) => {
             counters.rx_data_stale_binding.add(1);
         }
-        Err(crate::queue::Error::FutureBinding(_)) => {
+        Err(crate::queue::MsgError::Queue(crate::queue::Error::FutureBinding(_))) => {
             counters.rx_data_future_binding.add(1);
         }
-        Err(crate::queue::Error::SenderClosed) => {}
-        Err(crate::queue::Error::CapExceeded(_)) => {}
+        Err(crate::queue::MsgError::Queue(crate::queue::Error::SenderClosed)) => {}
+        Err(crate::queue::MsgError::Queue(crate::queue::Error::CapExceeded(_))) => {}
+        Err(crate::queue::MsgError::Write(_)) => {
+            trace!(
+                binding_id = binding_id.as_u64(),
+                queue_id = local_queue_id.as_u64(),
+                "QueueMsg mixed-path write callback failed - dropping"
+            );
+        }
     }
 }
 

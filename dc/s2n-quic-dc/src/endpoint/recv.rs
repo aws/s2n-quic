@@ -66,7 +66,7 @@ impl QueueView {
         is_fin: bool,
         is_wakeup: bool,
         write_fn: impl FnOnce(*mut u8, u32) -> Result<(), E>,
-    ) -> Result<queue::AutoWake, queue::Error<()>> {
+    ) -> Result<queue::AutoWake, queue::MsgError<E>> {
         match self {
             Self::Client(d) => d.send_msg(
                 queue_id,

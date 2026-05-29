@@ -147,11 +147,12 @@ impl Slot {
         is_fin: bool,
         is_wakeup: bool,
         write_fn: impl FnOnce(*mut u8, u32) -> Result<(), E>,
-    ) -> Result<half::AutoWake, super::Error<()>> {
+    ) -> Result<half::AutoWake, super::MsgError<E>> {
         // Validate + checkout under the stream lock.
         let (ptr, expected_len, chunk_index, keep_alive) = {
             let mut stream = self.stream.inner.lock();
-            validate_msg_dispatch(binding_id, &self.binding_id, &stream)?;
+            validate_msg_dispatch(binding_id, &self.binding_id, &stream)
+                .map_err(super::MsgError::Queue)?;
             let table = stream.extra.msg_table.get_or_insert_with(MsgTable::new);
 
             match table.insert(
@@ -180,11 +181,21 @@ impl Slot {
         // Invoke the write callback (outside both locks).
         // For the mixed path: memcpy from decrypted BytesMut.
         // For the fast path: scatter-decrypt directly into ptr.
-        let write_ok = write_fn(ptr, expected_len).is_ok();
+        let write_result = write_fn(ptr, expected_len);
 
         // Validate + complete/cancel under the stream lock.
         let mut stream = self.stream.inner.lock();
-        if let Err(error) = validate_msg_dispatch(binding_id, &self.binding_id, &stream) {
+        let validation = validate_msg_dispatch(binding_id, &self.binding_id, &stream);
+        if let Err(error) = write_result {
+            if validation.is_ok() {
+                if let Some(table) = stream.extra.msg_table.as_mut() {
+                    table.cancel_checkout(msg_id, chunk_index);
+                }
+            }
+            return Err(super::MsgError::Write(error));
+        }
+
+        if let Err(error) = validation {
             trace!(
                 msg_id,
                 chunk_index,
@@ -202,10 +213,6 @@ impl Slot {
             let Some(table) = stream.extra.msg_table.as_mut() else {
                 return Ok(half::AutoWake::default());
             };
-            if !write_ok {
-                table.cancel_checkout(msg_id, chunk_index);
-                return Ok(half::AutoWake::default());
-            }
             match table.complete(msg_id, chunk_index) {
                 super::msg_table::CompleteOutcome::Ready => {
                     let mut queue = intrusive::Queue::new();
@@ -908,7 +915,7 @@ mod tests {
             },
         );
 
-        assert!(result.is_ok());
+        assert!(matches!(result, Err(super::super::MsgError::Write(()))));
         assert!(write_called.load(Ordering::Relaxed));
         let mut stream = slot.stream.inner.lock();
         assert!(stream.extra.msg_table.is_none());
@@ -930,7 +937,7 @@ mod tests {
         let first = slot.push_msg(v(1), 0, 0, 4096, 8192, 0, 4096, false, true, |_ptr, _len| {
             Err::<(), ()>(())
         });
-        assert!(first.is_ok());
+        assert!(matches!(first, Err(super::super::MsgError::Write(()))));
 
         let retry = slot.push_msg(v(1), 0, 0, 4096, 8192, 0, 4096, false, true, |ptr, len| {
             unsafe { core::ptr::write_bytes(ptr, 0xAA, len as usize) };

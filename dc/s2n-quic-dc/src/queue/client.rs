@@ -291,10 +291,10 @@ impl ClientDispatch {
         is_fin: bool,
         is_wakeup: bool,
         write_fn: impl FnOnce(*mut u8, u32) -> Result<(), E>,
-    ) -> Result<AutoWake, Error<()>> {
+    ) -> Result<AutoWake, super::MsgError<E>> {
         let index = queue_id.as_u64() as usize;
         let Some(slot) = self.view.get(index, &self.state.pages) else {
-            return Err(Error::Unallocated(()));
+            return Err(super::MsgError::Queue(Error::Unallocated(())));
         };
         slot.push_msg(
             binding_id,
