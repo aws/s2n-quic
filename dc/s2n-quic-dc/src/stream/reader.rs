@@ -562,6 +562,12 @@ impl Inner {
                 // poll_validate consumed early data). Fall through so we drain
                 // the reassembler and call maybe_send_max_data.
                 Poll::Pending if !self.reassembler.is_empty() => None,
+                Poll::Pending => {
+                    // Even with no data available, send initial credits so the
+                    // peer can start transmitting.
+                    self.maybe_send_max_data()?;
+                    return Poll::Pending;
+                }
                 other => return other.map_ok(|()| 0usize),
             }
         };

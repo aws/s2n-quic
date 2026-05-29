@@ -158,6 +158,16 @@ struct Inner {
     control_rx: crate::queue::ControlReceiver,
     /// Next msg_id for QueueMsg frames (monotonic per stream)
     next_msg_id: u64,
+    /// When non-zero, a partially-sent segment is in progress: the current
+    /// msg_id has already emitted chunks [0, pending_chunk_index) and the
+    /// segment must be resumed before advancing to the next msg_id.
+    pending_chunk_index: u32,
+    /// The declared message_size of the pending segment (needed so resumed
+    /// chunks reference the same size the receiver allocated).
+    pending_segment_size: usize,
+    /// The stream_offset of the pending segment (all chunks in a segment
+    /// share the same stream_offset).
+    pending_stream_offset: VarInt,
     /// Path secret entry providing MTU and crypto material
     path_secret_entry: Arc<PathSecretEntry>,
     /// Cached packet size (MTU minus header overhead) for QueueData fragmentation
@@ -174,6 +184,9 @@ struct Inner {
     inflight_bytes: u64,
     /// Maximum number of bytes allowed in flight (local flow control)
     max_inflight_bytes: u64,
+    /// The peer's initial receive window from handshake params. Used to cap the
+    /// init segment so the message completes as soon as the server grants credits.
+    initial_remote_max_data: u64,
     /// Remote flow control budget: maximum offset we can send to
     remote_max_data: VarInt,
     /// Current status of the writer
@@ -238,6 +251,7 @@ impl Writer {
         let packet_size = mtu.saturating_sub(MAX_QUEUE_DATA_HEADER_OVERHEAD);
         let msg_packet_size = mtu.saturating_sub(MAX_QUEUE_MSG_HEADER_OVERHEAD);
         let max_inflight_bytes = parameters.local_send_max_data.as_u64();
+        let initial_remote_max_data = parameters.remote_max_data.as_u64();
         let remote_max_data = VarInt::ZERO;
 
         Self(Box::new(Inner {
@@ -245,6 +259,9 @@ impl Writer {
             completion_rx,
             control_rx,
             next_msg_id: 0,
+            pending_chunk_index: 0,
+            pending_segment_size: 0,
+            pending_stream_offset: VarInt::ZERO,
             path_secret_entry,
             packet_size,
             msg_packet_size,
@@ -253,6 +270,7 @@ impl Writer {
             next_offset: VarInt::ZERO,
             inflight_bytes: 0,
             max_inflight_bytes,
+            initial_remote_max_data,
             remote_max_data,
             status: Status::Init,
             reset_error_code: None,
@@ -277,13 +295,16 @@ impl Writer {
         let packet_size = mtu.saturating_sub(MAX_QUEUE_DATA_HEADER_OVERHEAD);
         let msg_packet_size = mtu.saturating_sub(MAX_QUEUE_MSG_HEADER_OVERHEAD);
         let max_inflight_bytes = parameters.local_send_max_data.as_u64();
-        let initial_remote_max_data = parameters.remote_max_data;
+        let initial_remote_max_data = parameters.remote_max_data.as_u64();
 
         Self(Box::new(Inner {
             frame_tx,
             completion_rx,
             control_rx,
             next_msg_id: 0,
+            pending_chunk_index: 0,
+            pending_segment_size: 0,
+            pending_stream_offset: VarInt::ZERO,
             path_secret_entry,
             packet_size,
             msg_packet_size,
@@ -292,7 +313,8 @@ impl Writer {
             next_offset: VarInt::ZERO,
             inflight_bytes: 0,
             max_inflight_bytes,
-            remote_max_data: initial_remote_max_data,
+            initial_remote_max_data,
+            remote_max_data: VarInt::new(initial_remote_max_data).unwrap_or(VarInt::MAX),
             status: Status::Open,
             reset_error_code: None,
             coop: Coop::default(),
@@ -1218,28 +1240,54 @@ impl Inner {
                 .as_u64()
                 .saturating_sub(self.next_offset.as_u64());
 
-            let segment_size = buf.buffered_len().min(max_segment_size);
+            // If resuming a partial segment, use the originally declared size.
+            // For init (force_first), cap to initial_remote_max_data so the message
+            // completes as soon as the server grants its first credits.
+            // For normal path, use full max_segment_size — budget gates below.
+            let segment_size = if self.pending_chunk_index > 0 {
+                self.pending_segment_size
+            } else if force_first {
+                buf.buffered_len()
+                    .min(max_segment_size)
+                    .min(self.initial_remote_max_data as usize)
+            } else {
+                buf.buffered_len().min(max_segment_size)
+            };
 
-            if !(is_first && force_first) && (remote_budget as usize) < segment_size {
+            let is_resuming = self.pending_chunk_index > 0;
+            if !is_resuming && !(is_first && force_first) && (remote_budget as usize) < segment_size
+            {
                 break;
             }
             is_first = false;
 
-            let is_last_segment = buf.buffered_len() <= segment_size;
+            let is_last_segment = if self.pending_chunk_index > 0 {
+                // During resume, check against the remaining buffered data plus
+                // what was already sent for this segment.
+                let already_sent = self.pending_chunk_index as usize * chunk_size as usize;
+                buf.buffered_len() + already_sent <= segment_size
+            } else {
+                buf.buffered_len() <= segment_size
+            };
 
             // Preserve caller intent, but force wakeups as remote flow control
             // becomes tight so the receiver drains MsgTable entries and sends
             // MAX_DATA to unblock subsequent segments.
             let is_wakeup = flags.is_wakeup || remote_budget <= max_segment_size as u64;
 
-            let stream_offset = self.next_offset;
+            let stream_offset = if self.pending_chunk_index > 0 {
+                self.pending_stream_offset
+            } else {
+                self.next_offset
+            };
             let msg_id = self.next_msg_id;
-            self.next_msg_id += 1;
 
             let segment_is_fin = is_last_segment && flags.is_fin;
 
-            let mut chunk_index: u32 = 0;
-            let mut segment_remaining = segment_size;
+            let start_chunk_index = self.pending_chunk_index;
+            let mut chunk_index: u32 = start_chunk_index;
+            let mut segment_remaining = segment_size
+                - (start_chunk_index as usize * chunk_size as usize).min(segment_size);
             while segment_remaining > 0 {
                 let chunk_len = (chunk_size as usize).min(segment_remaining);
                 let mut payload = ByteVec::new();
@@ -1270,6 +1318,42 @@ impl Inner {
 
                 frames.push_back(frame.into());
                 chunk_index += 1;
+
+                // During init, send only the first chunk to probe the server.
+                // The header declares the full message_size so the receiver
+                // allocates the complete buffer, but we don't flood with data
+                // before knowing the server has accepted.
+                if force_first && chunk_index == 1 {
+                    break;
+                }
+            }
+
+            let chunks_sent = chunk_index - start_chunk_index;
+            let bytes_sent = chunks_sent as usize * chunk_size as usize;
+            let bytes_sent = bytes_sent.min(segment_size - start_chunk_index as usize * chunk_size as usize);
+
+            if segment_remaining > 0 {
+                // Partial segment: remember where to resume.
+                self.pending_chunk_index = chunk_index;
+                self.pending_segment_size = segment_size;
+                self.pending_stream_offset = stream_offset;
+
+                self.metrics
+                    .tx_msg_segment_size
+                    .record_value(segment_size as u64);
+                self.metrics
+                    .tx_msg_chunks_per_segment
+                    .record_value(chunks_sent as u64);
+
+                self.advance_offset(bytes_sent)?;
+                total_written += bytes_sent;
+                break;
+            } else {
+                // Segment complete: advance msg_id and clear partial state.
+                self.pending_chunk_index = 0;
+                self.pending_segment_size = 0;
+                self.pending_stream_offset = VarInt::ZERO;
+                self.next_msg_id += 1;
             }
 
             self.metrics
@@ -1277,10 +1361,10 @@ impl Inner {
                 .record_value(segment_size as u64);
             self.metrics
                 .tx_msg_chunks_per_segment
-                .record_value(chunk_index as u64);
+                .record_value(chunks_sent as u64);
 
-            self.advance_offset(segment_size)?;
-            total_written += segment_size;
+            self.advance_offset(bytes_sent)?;
+            total_written += bytes_sent;
 
             if segment_is_fin {
                 self.status.on_send_fin().ok();
