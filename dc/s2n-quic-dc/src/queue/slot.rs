@@ -171,7 +171,7 @@ impl Slot {
         }
 
         // Lock msg_table, insert (checkout)
-        let (ptr, expected_len, chunk_index) = {
+        let (ptr, expected_len, chunk_index, keep_alive) = {
             let mut table = self.msg_table.lock();
             let table = table.get_or_insert_with(MsgTable::new);
 
@@ -185,7 +185,12 @@ impl Slot {
                 is_fin,
                 is_wakeup,
             ) {
-                Ok(checkout) => (checkout.ptr, checkout.expected_len, checkout.chunk_index),
+                Ok(checkout) => (
+                    checkout.ptr,
+                    checkout.expected_len,
+                    checkout.chunk_index,
+                    checkout.keep_alive,
+                ),
                 Err(e) => {
                     trace!(msg_id, chunk_index, ?e, "slot::send_msg insert failed");
                     return Ok(half::AutoWake::default());
@@ -201,7 +206,9 @@ impl Slot {
         // Lock msg_table, complete or cancel the chunk
         let local_queue = {
             let mut guard = self.msg_table.lock();
-            let table = guard.as_mut().expect("table must exist after checkout");
+            let Some(table) = guard.as_mut() else {
+                return Ok(half::AutoWake::default());
+            };
 
             if !write_ok {
                 table.cancel_checkout(msg_id, chunk_index);
@@ -229,6 +236,7 @@ impl Slot {
             }
         };
         // msg_table lock released here
+        drop(keep_alive);
 
         match local_queue {
             Some((mut queue, should_wake)) => {
@@ -466,6 +474,7 @@ impl core::fmt::Debug for Slot {
 mod tests {
     use super::*;
     use crate::queue::testing::*;
+    use core::sync::atomic::AtomicBool;
 
     fn v(n: u64) -> VarInt {
         VarInt::new(n).unwrap()
@@ -772,5 +781,42 @@ mod tests {
         // Now the waker SHOULD fire
         drop(result);
         assert_eq!(wake_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn push_msg_tolerates_rebind_while_write_in_flight() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(1)).unwrap();
+        let msg_id = 0;
+        let stream_offset = 0;
+        let message_size = 4096;
+        let chunk_size = 8192;
+        let chunk_index = 0;
+        let payload_len = 4096;
+        let write_called = AtomicBool::new(false);
+
+        let result = slot.push_msg(
+            v(1),
+            msg_id,
+            stream_offset,
+            message_size,
+            chunk_size,
+            chunk_index,
+            payload_len,
+            false,
+            true,
+            |ptr, len| {
+                write_called.store(true, Ordering::Relaxed);
+                simulate_receiver_drop(&slot);
+                let result = slot.bind_and_push_stream(v(2), make_stream_entry());
+                assert!(matches!(result, Ok(BindState::NewBinding(_))));
+                unsafe { core::ptr::write_bytes(ptr, 0xAB, len as usize) };
+                Ok::<(), ()>(())
+            },
+        );
+
+        assert!(result.is_ok());
+        assert!(write_called.load(Ordering::Relaxed));
+        assert!(slot.msg_table.lock().is_none());
     }
 }

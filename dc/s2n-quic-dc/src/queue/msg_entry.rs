@@ -8,7 +8,7 @@
 //! has been poisoned by a reset.
 
 use crate::bitset::InlineBitSet;
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 
 /// Maximum number of chunks per message (limited by inline bitset capacity).
 /// At 8KB per chunk this covers messages up to 2MB.
@@ -21,6 +21,7 @@ pub const MAX_CHUNKS: u32 = InlineBitSet::<4>::CAPACITY;
 /// at their message-local offset without intermediate allocation.
 pub(crate) struct MsgEntry {
     buffer: BytesMut,
+    keep_alive: Bytes,
     stream_offset: u64,
     chunk_size: u16,
     chunk_count: u16,
@@ -34,7 +35,11 @@ pub(crate) struct MsgEntry {
 /// Result of attempting to check out a chunk for writing.
 pub(crate) enum CheckoutResult {
     /// The chunk is available. Write exactly `len` bytes at `ptr`.
-    Ok { ptr: *mut u8, len: u32 },
+    Ok {
+        ptr: *mut u8,
+        len: u32,
+        keep_alive: Bytes,
+    },
     /// Duplicate: this chunk was already received.
     Duplicate,
     /// Another thread is currently writing this chunk (contention on retransmit).
@@ -68,13 +73,20 @@ impl MsgEntry {
         let chunk_count = chunks_for_size(message_size, chunk_size);
         debug_assert!(chunk_count as u32 <= MAX_CHUNKS);
 
-        let mut buffer = BytesMut::with_capacity(message_size as usize);
+        // +1 byte provides a tiny prefix we can split/freeze as a keep-alive handle.
+        // This avoids copying/cloning the message payload while still creating a ref-counted
+        // handle that keeps the original allocation alive during checkout writes.
+        let mut buffer = BytesMut::with_capacity(message_size as usize + 1);
         // SAFETY: The received bitset guarantees that only fully-written regions are ever
         // read. No consumer sees the buffer until all chunks are marked received.
-        unsafe { buffer.set_len(message_size as usize) };
+        // We reserve one extra prefix byte and split/freeze it as a keep-alive handle so
+        // checked-out pointers remain valid even if the table is cleared concurrently.
+        unsafe { buffer.set_len(message_size as usize + 1) };
+        let keep_alive = buffer.split_to(1).freeze();
 
         Self {
             buffer,
+            keep_alive,
             stream_offset,
             chunk_size,
             chunk_count,
@@ -149,7 +161,11 @@ impl MsgEntry {
         // SAFETY: offset is bounded by message_size (checked via chunk_index < chunk_count).
         // The pointer is stable because BytesMut capacity == len (never reallocates).
         let ptr = unsafe { self.buffer.as_mut_ptr().add(offset as usize) };
-        CheckoutResult::Ok { ptr, len }
+        CheckoutResult::Ok {
+            ptr,
+            len,
+            keep_alive: self.keep_alive.clone(),
+        }
     }
 
     /// Complete a chunk write after the data has been copied into the buffer.
@@ -240,7 +256,7 @@ mod tests {
         let mut entry = MsgEntry::new(8192, CHUNK_SIZE, 0, true, true);
 
         match entry.checkout(0) {
-            CheckoutResult::Ok { ptr, len } => {
+            CheckoutResult::Ok { ptr, len, .. } => {
                 assert!(!ptr.is_null());
                 assert_eq!(len, 8192);
             }
@@ -263,7 +279,7 @@ mod tests {
         // Check out all chunks
         for i in 0..4 {
             match entry.checkout(i) {
-                CheckoutResult::Ok { ptr, len } => {
+                CheckoutResult::Ok { ptr, len, .. } => {
                     assert_eq!(ptr, unsafe { base_ptr.add((i * 8192) as usize) });
                     assert_eq!(len, 8192);
                 }
@@ -343,7 +359,7 @@ mod tests {
         let mut entry = MsgEntry::new(100, 100, 0, false, true);
 
         match entry.checkout(0) {
-            CheckoutResult::Ok { ptr, len } => {
+            CheckoutResult::Ok { ptr, len, .. } => {
                 assert!(!ptr.is_null());
                 assert_eq!(len, 100);
             }
@@ -380,7 +396,7 @@ mod tests {
         let mut entry = MsgEntry::new(10000, CHUNK_SIZE, 0, false, true);
 
         match entry.checkout(0) {
-            CheckoutResult::Ok { ptr, len } => {
+            CheckoutResult::Ok { ptr, len, .. } => {
                 assert!(!ptr.is_null());
                 assert_eq!(len, 8192);
             }
@@ -388,7 +404,7 @@ mod tests {
         }
 
         match entry.checkout(1) {
-            CheckoutResult::Ok { ptr, len } => {
+            CheckoutResult::Ok { ptr, len, .. } => {
                 assert!(!ptr.is_null());
                 assert_eq!(len, 10000 - 8192);
             }

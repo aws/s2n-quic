@@ -8,7 +8,7 @@
 //! drains contiguous complete messages into the output queue.
 
 use super::msg_entry::{self, CheckoutResult, CompleteResult, MsgEntry};
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use std::collections::VecDeque;
 
 /// Maximum number of in-flight messages per stream before rejecting new msg_ids.
@@ -27,6 +27,7 @@ pub(crate) struct Checkout {
     pub ptr: *mut u8,
     pub expected_len: u32,
     pub chunk_index: u32,
+    pub keep_alive: Bytes,
 }
 
 /// Error from `insert`.
@@ -146,7 +147,11 @@ impl MsgTable {
         }
 
         match entry.checkout(chunk_index) {
-            CheckoutResult::Ok { ptr, len } => {
+            CheckoutResult::Ok {
+                ptr,
+                len,
+                keep_alive,
+            } => {
                 if payload_len != len {
                     entry.cancel_checkout(chunk_index);
                     return Err(InsertError::PayloadLenMismatch);
@@ -155,6 +160,7 @@ impl MsgTable {
                     ptr,
                     expected_len: len,
                     chunk_index,
+                    keep_alive,
                 })
             }
             CheckoutResult::Duplicate => Err(InsertError::Duplicate),
