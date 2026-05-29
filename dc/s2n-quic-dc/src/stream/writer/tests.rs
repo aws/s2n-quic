@@ -20,7 +20,7 @@ use crate::{
 };
 use bach::{ext::*, time::timeout};
 use bytes::Bytes;
-use s2n_quic_core::{endpoint, varint::VarInt};
+use s2n_quic_core::{endpoint, stream::testing::Data, varint::VarInt};
 use std::{net::SocketAddr, sync::Arc, task::Poll, time::Duration};
 
 fn test_writer_metrics() -> Arc<WriterMetrics> {
@@ -299,6 +299,170 @@ fn client_write_all_from_fin_sends_queue_init_with_early_data_and_fin() {
                 .await
                 .expect("write should succeed");
             assert_eq!(written, 5);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+#[test]
+fn write_msg_preserves_is_wakeup_flag() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        writer.0.remote_max_data = VarInt::MAX;
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            assert!(!frames.is_empty(), "expected at least one frame");
+            let mut queue_msg_count = 0usize;
+            for frame in frames.iter() {
+                match frame.header {
+                    Header::QueueMsg { is_wakeup, .. } => {
+                        queue_msg_count += 1;
+                        assert!(
+                            !is_wakeup,
+                            "write_msg should preserve MsgFlags.is_wakeup=false when not flow-control constrained"
+                        );
+                    }
+                    Header::QueueData { is_fin: true, .. } => {
+                        // This task exits immediately after write_msg; dropping an
+                        // open writer emits a best-effort trailing FIN frame.
+                    }
+                    _ => panic!("unexpected frame while validating QueueMsg: {:?}", frame.header),
+                }
+            }
+            assert!(queue_msg_count > 0, "expected at least one QueueMsg frame");
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let payload_len = writer.0.packet_size as usize + 1;
+            let mut payload = Data::new(payload_len as u64);
+            let written = writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                )
+                .await
+                .expect("write_msg should succeed");
+            assert_eq!(written, payload_len);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+#[test]
+fn write_msg_large_payload_uses_multiple_msg_segments() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        writer.0.remote_max_data = VarInt::MAX;
+        let chunk_size = writer.0.msg_packet_size as usize;
+        let first_segment_size = crate::queue::msg_entry::MAX_CHUNKS as usize * chunk_size;
+        let second_segment_size = chunk_size + 17;
+        let payload_len = first_segment_size + second_segment_size;
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            assert!(!frames.is_empty(), "expected QueueMsg frames");
+
+            let mut first_msg_id = None::<u64>;
+            let mut second_msg_id = None::<u64>;
+            let mut first_next_chunk = 0u64;
+            let mut second_next_chunk = 0u64;
+            let mut first_chunk_count = 0usize;
+            let mut second_chunk_count = 0usize;
+            let mut first_fin_seen = false;
+            let mut second_segment_has_non_fin_frame = false;
+            let mut expected = Data::new(payload_len as u64);
+
+            for frame in frames.iter() {
+                let (msg_id, stream_offset, message_size, frame_chunk_size, chunk_index, is_fin) =
+                    match frame.header {
+                        Header::QueueMsg {
+                            msg_id,
+                            stream_offset,
+                            message_size,
+                            chunk_size,
+                            chunk_index,
+                            is_fin,
+                            ..
+                        } => (
+                            msg_id.as_u64(),
+                            stream_offset.as_u64(),
+                            message_size.as_u64(),
+                            chunk_size.as_u64(),
+                            chunk_index.as_u64(),
+                            is_fin,
+                        ),
+                        _ => panic!("expected QueueMsg frame, got {:?}", frame.header),
+                    };
+
+                if first_msg_id.is_none() {
+                    first_msg_id = Some(msg_id);
+                }
+
+                if Some(msg_id) == first_msg_id {
+                    assert_eq!(stream_offset, 0);
+                    assert_eq!(message_size, first_segment_size as u64);
+                    assert_eq!(frame_chunk_size, chunk_size as u64);
+                    assert_eq!(chunk_index, first_next_chunk);
+                    first_next_chunk += 1;
+                    first_chunk_count += 1;
+                    first_fin_seen |= is_fin;
+                } else {
+                    if second_msg_id.is_none() {
+                        second_msg_id = Some(msg_id);
+                    }
+                    assert_eq!(Some(msg_id), second_msg_id, "unexpected third msg_id");
+                    assert_eq!(stream_offset, first_segment_size as u64);
+                    assert_eq!(message_size, second_segment_size as u64);
+                    assert_eq!(frame_chunk_size, chunk_size as u64);
+                    assert_eq!(chunk_index, second_next_chunk);
+                    second_next_chunk += 1;
+                    second_chunk_count += 1;
+                    second_segment_has_non_fin_frame |= !is_fin;
+                }
+
+                for chunk in frame.payload.chunks() {
+                    expected.receive(std::slice::from_ref(&chunk));
+                }
+            }
+
+            assert!(second_msg_id.is_some(), "expected at least two msg_ids");
+            assert_eq!(
+                first_chunk_count,
+                crate::queue::msg_entry::MAX_CHUNKS as usize,
+                "first segment should fill MAX_CHUNKS"
+            );
+            assert_eq!(second_chunk_count, 2, "second segment should be two chunks");
+            assert!(!first_fin_seen, "first segment should not carry FIN");
+            assert!(
+                !second_segment_has_non_fin_frame,
+                "all frames in final segment should carry FIN"
+            );
+            assert!(expected.is_finished(), "payload should reassemble completely");
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Data::new(payload_len as u64);
+            let written = writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await
+                .expect("write_msg should succeed");
+            assert_eq!(written, payload_len);
         }
         .primary()
         .spawn();

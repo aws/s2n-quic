@@ -1227,9 +1227,10 @@ impl Inner {
 
             let is_last_segment = buf.buffered_len() <= segment_size;
 
-            // Wakeup on every segment so the receiver drains MsgTable entries and
-            // sends MAX_DATA, unblocking subsequent segments.
-            let is_wakeup = true;
+            // Preserve caller intent, but force wakeups as remote flow control
+            // becomes tight so the receiver drains MsgTable entries and sends
+            // MAX_DATA to unblock subsequent segments.
+            let is_wakeup = flags.is_wakeup || remote_budget <= max_segment_size as u64;
 
             let stream_offset = self.next_offset;
             let msg_id = self.next_msg_id;
