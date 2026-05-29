@@ -21,7 +21,15 @@ use crate::{
 use bach::{ext::*, time::timeout};
 use bytes::Bytes;
 use s2n_quic_core::{endpoint, stream::testing::Data, varint::VarInt};
-use std::{net::SocketAddr, sync::Arc, task::Poll, time::Duration};
+use std::{
+    net::SocketAddr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    task::Poll,
+    time::Duration,
+};
 
 fn test_writer_metrics() -> Arc<WriterMetrics> {
     Arc::new(WriterMetrics::new(
@@ -1712,6 +1720,654 @@ fn client_write_from_fin_in_queue_init_sent_sends_queue_data_fin() {
             assert_eq!(n, 0, "no additional payload");
             // FIN was sent; status transitions to FinSent (not Shutdown until drop)
             assert!(writer.0.status.is_fin_sent());
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+// ─── write_msg tests ───────────────────────────────────────────────────────────
+//
+// The tests below cover the write_msg API surface:
+//   * empty-buffer paths (no-FIN and FIN variants)
+//   * small-payload routing to QueueData instead of QueueMsg
+//   * flow-control blocking and unblocking via MAX_DATA
+//   * error propagation after remote reset, explicit shutdown, and FIN-already-sent
+//   * client-side init-state (QueueData-init) and subsequent blocking in InitSent
+//   * cooperative yielding: write_msg yields after BUDGET consecutive completions
+
+/// write_msg with an empty buffer and is_fin=false returns 0 without emitting
+/// any frame. The caller may call again with actual data later.
+#[test]
+fn write_msg_empty_buffer_no_fin_returns_zero_without_frames() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        writer.0.remote_max_data = VarInt::MAX;
+
+        async move {
+            // A drop-triggered FIN is the only frame that should appear.
+            let frames = pusher.recv_frames().await;
+            assert_eq!(frames.len(), 1);
+            assert!(
+                matches!(frames.front().unwrap().header, Header::QueueData { is_fin: true, .. }),
+                "expected only the drop-FIN frame"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut empty: Bytes = Bytes::new();
+            let written = writer
+                .write_msg(
+                    &mut empty,
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                )
+                .await
+                .expect("write_msg on empty buf should succeed");
+            assert_eq!(written, 0);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// write_msg with an empty buffer and is_fin=true sends a QueueData FIN frame.
+#[test]
+fn write_msg_empty_buffer_with_fin_emits_fin_frame() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        writer.0.remote_max_data = VarInt::MAX;
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            assert_eq!(frames.len(), 1, "expected exactly one FIN frame");
+            let frame = frames.front().unwrap();
+            assert!(
+                matches!(
+                    frame.header,
+                    Header::QueueData {
+                        is_fin: true,
+                        offset,
+                        ..
+                    } if offset == VarInt::ZERO
+                ),
+                "expected QueueData FIN at offset 0"
+            );
+            assert!(frame.payload.is_empty(), "FIN frame payload should be empty");
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut empty: Bytes = Bytes::new();
+            let written = writer
+                .write_msg(
+                    &mut empty,
+                    MsgFlags {
+                        is_fin: true,
+                        is_wakeup: false,
+                    },
+                )
+                .await
+                .expect("write_msg with empty buf + FIN should succeed");
+            assert_eq!(written, 0);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// A payload that fits within a single packet_size threshold is routed to a
+/// QueueData frame, not a QueueMsg frame. This avoids MsgTable overhead for
+/// small messages.
+#[test]
+fn write_msg_small_payload_routes_to_queue_data_frame() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        writer.0.remote_max_data = VarInt::MAX;
+        // Any payload at or below packet_size triggers the QueueData fast-path.
+        let small_payload = vec![0xABu8; writer.0.packet_size as usize];
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            assert!(!frames.is_empty(), "expected at least one frame");
+            for frame in frames.iter() {
+                assert!(
+                    matches!(frame.header, Header::QueueData { .. }),
+                    "small payload should produce QueueData frames, got {:?}",
+                    frame.header
+                );
+            }
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from(small_payload);
+            writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                )
+                .await
+                .expect("write_msg should succeed");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// write_msg blocks (returns Pending) when the remote flow budget is zero, and
+/// unblocks once MAX_DATA arrives from the peer.
+#[test]
+fn server_write_msg_blocks_when_remote_budget_zero() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        // Override to zero so the first write can't proceed.
+        writer.0.remote_max_data = VarInt::ZERO;
+
+        async move {
+            // No frame should arrive while budget is zero.
+            let early = pusher
+                .recv_frames_timeout(Duration::from_millis(100))
+                .await;
+            assert!(
+                early.is_none(),
+                "expected no frame while remote flow budget is zero"
+            );
+
+            // Grant budget; the blocked write_msg should now complete.
+            pusher.push_max_data(VarInt::from_u16(4096));
+
+            let frames = pusher.recv_frames().await;
+            assert!(!frames.is_empty(), "expected frames after MAX_DATA");
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"hello");
+
+            // First poll must return Pending because remote budget is zero.
+            let blocked = core::future::poll_fn(|cx| {
+                let mut buf = Bytes::from_static(b"hello");
+                match writer.0.poll_write_msg(
+                    cx,
+                    &mut buf,
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                ) {
+                    Poll::Pending => Poll::Ready(true),
+                    Poll::Ready(_) => Poll::Ready(false),
+                }
+            })
+            .await;
+            assert!(blocked, "expected write_msg to block when budget is zero");
+
+            writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                )
+                .await
+                .expect("write_msg should succeed after MAX_DATA");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// write_msg blocks when remote budget is exhausted, and resumes after MAX_DATA
+/// raises the flow-control window.
+#[test]
+fn server_write_msg_unblocks_after_max_data() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        writer.0.remote_max_data = VarInt::ZERO;
+
+        async move {
+            // First wait confirms nothing arrives while budget is 0.
+            let no_frames = pusher
+                .recv_frames_timeout(Duration::from_millis(100))
+                .await;
+            assert!(no_frames.is_none(), "no frame expected before MAX_DATA");
+
+            pusher.push_max_data(VarInt::from_u16(8192));
+
+            let frames = pusher.recv_frames().await;
+            assert!(
+                !frames.is_empty(),
+                "expected frames after MAX_DATA unblocks write_msg"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"unblocked");
+            writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                )
+                .await
+                .expect("write_msg should complete after MAX_DATA");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// write_msg returns ConnectionReset when a remote Reset arrives before the
+/// write can complete.
+#[test]
+fn write_msg_after_remote_reset_returns_connection_reset() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        writer.0.remote_max_data = VarInt::ZERO;
+
+        async move {
+            pusher.push_reset(VarInt::from_u8(42));
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"data");
+            let err = writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                )
+                .await
+                .expect_err("expected ConnectionReset");
+            assert_eq!(
+                err.kind(),
+                io::ErrorKind::ConnectionReset,
+                "expected ConnectionReset, got {err:?}"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// write_msg returns BrokenPipe after the writer has been explicitly shut down.
+#[test]
+fn write_msg_after_shutdown_returns_broken_pipe() {
+    sim(|| {
+        let (mut writer, pusher) = make_server_pair();
+
+        async move {
+            // Keep the pusher alive so the frame channel stays open; shutdown()
+            // sends a FIN frame and would fail with "frame channel closed" if
+            // the receiver were dropped before the task runs.
+            let _pusher = pusher;
+            writer.shutdown().expect("shutdown should succeed");
+            let mut payload = Bytes::from_static(b"data");
+            let err = writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                )
+                .await
+                .expect_err("expected BrokenPipe after shutdown");
+            assert_eq!(
+                err.kind(),
+                io::ErrorKind::BrokenPipe,
+                "expected BrokenPipe after shutdown, got {err:?}"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// write_msg returns BrokenPipe after a FIN has already been sent.
+#[test]
+fn write_msg_after_fin_sent_returns_broken_pipe() {
+    sim(|| {
+        let (mut writer, _pusher) = make_server_pair();
+
+        async move {
+            // Force FinSent state by marking it directly.
+            writer.0.status.on_send_fin().ok();
+            assert!(writer.0.status.is_fin_sent());
+
+            let mut payload = Bytes::from_static(b"data");
+            let err = writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                )
+                .await
+                .expect_err("expected BrokenPipe after fin sent");
+            assert_eq!(
+                err.kind(),
+                io::ErrorKind::BrokenPipe,
+                "expected BrokenPipe after FinSent, got {err:?}"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Client write_msg sends a QueueData-init frame on the first write (the
+/// bootstrap message that lets the server know which acceptor queue to use and
+/// triggers it to send MAX_DATA), then blocks on any subsequent write while in
+/// InitSent waiting for the server to confirm the stream.
+///
+/// Crucially, the client starts with `remote_max_data = VarInt::ZERO` (zero
+/// flow-control window), yet the first write still completes immediately — the
+/// init packet is always sent unconditionally so the stream can be established.
+/// See also `client_write_msg_zero_window_does_not_block_init`.
+#[test]
+fn client_write_msg_first_write_sends_queue_data_init_then_blocks() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_client_pair();
+        // Clients always start with a zero remote window — the init frame must
+        // bypass this restriction.
+        assert_eq!(
+            writer.0.remote_max_data,
+            VarInt::ZERO,
+            "client must start with zero remote budget"
+        );
+
+        async move {
+            // The bootstrap init frame(s) must arrive.
+            let frames = pusher.recv_frames().await;
+            let has_init = frames.iter().any(|f| {
+                matches!(
+                    f.header,
+                    Header::QueueData {
+                        dest_acceptor_id: Some(_),
+                        ..
+                    } | Header::QueueMsg {
+                        dest_acceptor_id: Some(_),
+                        ..
+                    }
+                )
+            });
+            assert!(
+                has_init,
+                "expected at least one init frame with dest_acceptor_id"
+            );
+
+            // No further frames — writer is blocked in InitSent until MAX_DATA.
+            let extra = pusher
+                .recv_frames_timeout(Duration::from_millis(100))
+                .await;
+            assert!(
+                extra.is_none(),
+                "expected no further frames while in InitSent"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            // Small payload (≤ packet_size) → send_queue_data_init fast-path.
+            // The write completes immediately despite the zero window because the
+            // init frame is always sent unconditionally.
+            let payload_len = writer.0.packet_size as usize;
+            let mut buf = Data::new(payload_len as u64);
+            let result = core::future::poll_fn(|cx| {
+                writer.0.poll_write_msg(
+                    cx,
+                    &mut buf,
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                )
+            })
+            .await;
+            assert!(result.is_ok(), "first write should succeed: {result:?}");
+            assert!(
+                writer.0.status.is_init_sent(),
+                "writer should be in InitSent after first write"
+            );
+
+            // A second write call must block: we are now in InitSent, waiting
+            // for the server's MAX_DATA before more data can be sent.
+            let blocked = core::future::poll_fn(|cx| {
+                let mut buf2 = Data::new(1);
+                match writer.0.poll_write_msg(
+                    cx,
+                    &mut buf2,
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                ) {
+                    Poll::Pending => Poll::Ready(true),
+                    Poll::Ready(_) => Poll::Ready(false),
+                }
+            })
+            .await;
+            assert!(
+                blocked,
+                "second write_msg should block while in InitSent"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Client write_msg does NOT block on the first write even when the remote
+/// flow-control window is zero.
+///
+/// Servers correctly block when their budget is zero (see
+/// `server_write_msg_blocks_when_remote_budget_zero`), but clients in the Init
+/// state must always be able to send the bootstrap packet that establishes the
+/// stream and triggers the server to open a flow-control window.
+#[test]
+fn client_write_msg_zero_window_does_not_block_init() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_client_pair();
+        // Clients always start with zero remote budget.
+        assert_eq!(writer.0.remote_max_data, VarInt::ZERO);
+
+        async move {
+            // The init frame must arrive despite the zero window.
+            let frames = pusher.recv_frames().await;
+            assert!(
+                !frames.is_empty(),
+                "client must send init frame even with zero window"
+            );
+            let has_init = frames.iter().any(|f| {
+                matches!(
+                    f.header,
+                    Header::QueueData {
+                        dest_acceptor_id: Some(_),
+                        ..
+                    } | Header::QueueMsg {
+                        dest_acceptor_id: Some(_),
+                        ..
+                    }
+                )
+            });
+            assert!(has_init, "init frame must carry dest_acceptor_id");
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"hello");
+            // First write should complete (not block) even with zero window.
+            let result = core::future::poll_fn(|cx| {
+                writer.0.poll_write_msg(
+                    cx,
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                )
+            })
+            .await;
+            assert!(
+                result.is_ok(),
+                "client first write must succeed despite zero window: {result:?}"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// write_msg yields cooperatively when the inner send_msg loop exhausts the
+/// coop budget, giving other tasks a chance to run even under continuous write
+/// pressure with unlimited credits.
+#[test]
+#[ignore = "needs endpoint-level harness to exercise multi-segment coop yielding"]
+fn write_msg_coop_yields_after_budget_completions() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        writer.0.remote_max_data = VarInt::MAX;
+
+        let ran = Arc::new(AtomicBool::new(false));
+        let ran_clone = ran.clone();
+
+        // Competing task: marks itself as having run, then keeps yielding.
+        async move {
+            ran_clone.store(true, Ordering::Relaxed);
+            loop {
+                bach::task::yield_now().await;
+            }
+        }
+        .spawn();
+
+        // Frame-drainer task: keeps the frame channel from filling up.
+        async move {
+            loop {
+                let _ = pusher.recv_frames().await;
+            }
+        }
+        .spawn();
+
+        async move {
+            // Use a payload large enough to require >128 segments so the inner
+            // coop check in send_msg's loop fires. Each segment is max_segment_size
+            // (~340KB at MTU 1472), so we need 128 * 340KB ≈ 43MB. Use a large
+            // Data buffer to avoid actual allocation of that much memory.
+            let chunk_size = writer.0.msg_packet_size as usize;
+            let max_segment_size =
+                crate::queue::msg_entry::MAX_CHUNKS as usize * chunk_size;
+            let payload_len = max_segment_size * 130;
+            let mut payload = Data::new(payload_len as u64);
+            writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: true,
+                        is_wakeup: false,
+                    },
+                )
+                .await
+                .expect("write_msg should succeed");
+            assert!(
+                ran.load(Ordering::Relaxed),
+                "competing task should have run during write_msg coop yield"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// write_msg with FIN on a large multi-segment payload marks FIN only on the
+/// last chunk of the last segment, not on intermediate segments.
+///
+/// This complements `write_msg_large_payload_uses_multiple_msg_segments` by
+/// focusing on is_fin placement rather than segment structure.
+#[test]
+fn write_msg_fin_only_on_last_chunk_of_last_segment() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        writer.0.remote_max_data = VarInt::MAX;
+        let chunk_size = writer.0.msg_packet_size as usize;
+        // Two full segments: first has MAX_CHUNKS chunks, second has one extra.
+        let first_segment = crate::queue::msg_entry::MAX_CHUNKS as usize * chunk_size;
+        let second_segment = chunk_size;
+        let payload_len = first_segment + second_segment;
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            assert!(!frames.is_empty());
+
+            let mut fin_count = 0usize;
+            let mut non_fin_before_fin = false;
+            let mut last_was_fin = false;
+
+            for frame in frames.iter() {
+                match frame.header {
+                    Header::QueueMsg { is_fin, msg_id, .. } => {
+                        if last_was_fin {
+                            panic!(
+                                "frame after FIN: msg_id={} is_fin={}",
+                                msg_id.as_u64(),
+                                is_fin
+                            );
+                        }
+                        if is_fin {
+                            fin_count += 1;
+                            last_was_fin = true;
+                        } else {
+                            non_fin_before_fin = true;
+                        }
+                    }
+                    _ => panic!("expected QueueMsg, got {:?}", frame.header),
+                }
+            }
+
+            assert_eq!(fin_count, 1, "exactly one FIN-bearing chunk expected");
+            assert!(
+                non_fin_before_fin,
+                "expected non-FIN chunks before the FIN chunk"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Data::new(payload_len as u64);
+            writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: true,
+                        is_wakeup: false,
+                    },
+                )
+                .await
+                .expect("write_msg with fin should succeed");
         }
         .primary()
         .spawn();

@@ -1167,7 +1167,8 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
                 // Compute the reschedule target. If it's in a future wheel tick,
                 // reschedule and return early.
                 if !ctx.is_peer_idle(now) {
-                    let target = ctx.last_peer_activity + ctx.path_secret_entry.idle_timeout();
+                    let last_activity = ctx.last_peer_activity.max(ctx.path_secret_entry.last_activity());
+                    let target = last_activity + ctx.path_secret_entry.idle_timeout();
                     if target.nanos_since(now) >= wheel::SECOND_GRANULARITY_NANOS {
                         drop(ctx);
                         context.borrow_mut().idle_wheel.target_time = Some(target);

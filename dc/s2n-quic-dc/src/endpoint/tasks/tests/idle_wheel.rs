@@ -555,3 +555,121 @@ fn send_idle_wheel_defers_death_for_recent_inflight() {
         .spawn();
     });
 }
+
+/// Gossip heartbeats arrive on the recv path and update PathSecretEntry::last_activity.
+/// The send idle wheel must treat this as evidence the peer is alive and reschedule
+/// rather than expiring the send context.
+#[test]
+fn send_idle_wheel_kept_alive_by_path_activity() {
+    sim(|| {
+        let (send_caches, mut idle_wheel_tx, _completed_rx, clock, _registry) = setup_send();
+
+        let pse = test_entry();
+        pse.touch_activity(precision::Clock::now(&clock));
+
+        let ctx = send_caches[LocalSendSocketId::new(0)]
+            .borrow_mut()
+            .get_or_insert(&pse, &clock)
+            .unwrap();
+
+        // Schedule into the idle wheel: fires at t=30s
+        {
+            let mut c = ctx.borrow_mut();
+            let timeout = c.path_secret_entry.idle_timeout();
+            c.idle_wheel.target_time = Some(precision::Clock::now(&clock) + timeout);
+        }
+        let _ = idle_wheel_tx.send(ctx.clone());
+
+        let send_caches = send_caches.clone();
+        let pse = pse.clone();
+        async move {
+            // At t=20s: simulate a gossip heartbeat arriving on the recv path.
+            // This touches PathSecretEntry::last_activity but NOT the send context's
+            // last_peer_activity (no ACK was received).
+            20.s().sleep().await;
+            pse.touch_activity(precision::Clock::now(&Clock::default()));
+
+            // At t=31s: the idle wheel fires (past the original 30s target).
+            // Because path_entry.last_activity was refreshed at t=20s, the send context
+            // should be rescheduled, not expired.
+            11.s().sleep().await;
+            assert_eq!(
+                send_caches[LocalSendSocketId::new(0)]
+                    .borrow()
+                    .context_count(),
+                1,
+                "context should still be alive — path activity (gossip) at t=20s keeps it alive"
+            );
+
+            // At t=51s: past last_activity(20s) + idle_timeout(30s) = t=50s.
+            // Now the context should expire.
+            20.s().sleep().await;
+            assert_eq!(
+                send_caches[LocalSendSocketId::new(0)]
+                    .borrow()
+                    .context_count(),
+                0,
+                "context should expire after path activity + idle_timeout"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Repeated gossip heartbeats keep a send context alive indefinitely, even without
+/// any ACK activity. This simulates the steady-state gossip pattern where peers
+/// heartbeat every second.
+#[test]
+fn send_idle_wheel_survives_indefinitely_with_periodic_path_activity() {
+    sim(|| {
+        let (send_caches, mut idle_wheel_tx, _completed_rx, clock, _registry) = setup_send();
+
+        let pse = test_entry();
+        pse.touch_activity(precision::Clock::now(&clock));
+
+        let ctx = send_caches[LocalSendSocketId::new(0)]
+            .borrow_mut()
+            .get_or_insert(&pse, &clock)
+            .unwrap();
+
+        {
+            let mut c = ctx.borrow_mut();
+            let timeout = c.path_secret_entry.idle_timeout();
+            c.idle_wheel.target_time = Some(precision::Clock::now(&clock) + timeout);
+        }
+        let _ = idle_wheel_tx.send(ctx.clone());
+
+        let send_caches = send_caches.clone();
+        let pse = pse.clone();
+        async move {
+            // Simulate heartbeats arriving every 10 seconds for 120 seconds (4x the idle timeout).
+            // The send context must survive the entire time.
+            for _ in 0..12 {
+                10.s().sleep().await;
+                pse.touch_activity(precision::Clock::now(&Clock::default()));
+            }
+
+            // At t=120s: context should still be alive.
+            assert_eq!(
+                send_caches[LocalSendSocketId::new(0)]
+                    .borrow()
+                    .context_count(),
+                1,
+                "context should survive indefinitely with periodic heartbeats"
+            );
+
+            // Stop heartbeating. Wait for idle timeout + margin.
+            31.s().sleep().await;
+            assert_eq!(
+                send_caches[LocalSendSocketId::new(0)]
+                    .borrow()
+                    .context_count(),
+                0,
+                "context should expire after heartbeats stop"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}

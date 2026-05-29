@@ -741,12 +741,20 @@ impl Context {
     }
 
     /// Returns true if this send context has not received any peer activity
-    /// (ACKs) within the idle timeout window.
+    /// within the idle timeout window.
+    ///
+    /// Checks both the send-specific `last_peer_activity` (ACK receipt) and the
+    /// shared path entry's `last_activity` (any inbound packet, including gossip
+    /// heartbeats). Either signal is sufficient to keep the context alive.
     #[inline]
     pub fn is_peer_idle(&self, now: precision::Timestamp) -> bool {
-        let elapsed = now.nanos_since(self.last_peer_activity);
-        let timeout = self.path_secret_entry.idle_timeout();
-        elapsed >= timeout.as_nanos() as u64
+        let timeout = self.path_secret_entry.idle_timeout().as_nanos() as u64;
+        let send_elapsed = now.nanos_since(self.last_peer_activity);
+        if send_elapsed < timeout {
+            return false;
+        }
+        let path_elapsed = now.nanos_since(self.path_secret_entry.last_activity());
+        path_elapsed >= timeout
     }
 
     /// Compute wheel interest after a state change
