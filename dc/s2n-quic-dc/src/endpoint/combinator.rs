@@ -425,8 +425,14 @@ impl<T: AssignSender> AssignSender for crate::intrusive::Entry<T> {
 
 // ── PickTwo ───────────────────────────────────────────────────────────────
 
-/// Receiver combinator that routes items to socket senders using pick-two path scheduling
-/// from the path secret map entry associated with each item.
+/// Receiver combinator that routes items to socket senders using a hybrid round-robin +
+/// random pick-two path scheduling strategy from the path secret map entry associated
+/// with each item.
+///
+/// The first candidate is chosen via round-robin (striping consecutive sends across
+/// different senders), and the second is chosen randomly (but always distinct from the
+/// first). The lower-scored candidate wins, giving both deterministic striping for bursts
+/// and load-awareness through the score comparison.
 ///
 /// Implements `Receiver<()>` so it can be drained via `ReceiverExt::drain_budgeted`.
 pub struct PickTwo<T, R, S, Clk> {
@@ -435,6 +441,8 @@ pub struct PickTwo<T, R, S, Clk> {
     socket_edts: crate::endpoint::edt::Local,
     clock: Clk,
     rng: crate::xorshift::Rng,
+    /// Round-robin cursor for the first pick candidate. Always in `[0, senders.len())`.
+    round_robin_idx: usize,
     pick_counters: IdMap<LocalSenderId, crate::counter::Counter>,
     rejected_counters: IdMap<LocalSenderId, crate::counter::Summary>,
     score_delta: crate::counter::Summary,
@@ -484,6 +492,7 @@ where
             socket_edts,
             clock,
             rng,
+            round_robin_idx: 0,
             pick_counters,
             rejected_counters,
             score_delta,
@@ -497,6 +506,7 @@ where
         socket_edts: &mut crate::endpoint::edt::Local,
         now: precision::Timestamp,
         rng: &mut crate::xorshift::Rng,
+        round_robin_idx: &mut usize,
         pick_counters: &IdMap<LocalSenderId, crate::counter::Counter>,
         rejected_counters: &IdMap<LocalSenderId, crate::counter::Summary>,
         score_delta: &crate::counter::Summary,
@@ -514,7 +524,13 @@ where
             if len <= 1 {
                 LocalSenderId::from_index(0)
             } else {
-                let idx1 = LocalSenderId::from_index(rng.next_usize(len));
+                // First candidate: round-robin for deterministic striping across senders.
+                let rr = *round_robin_idx;
+                let next = rr + 1;
+                *round_robin_idx = if next >= len { 0 } else { next };
+                let idx1 = LocalSenderId::from_index(rr);
+
+                // Second candidate: random, but always distinct from idx1.
                 let idx2 = if len == 2 {
                     LocalSenderId::from_index(idx1.as_usize() ^ 1)
                 } else {
@@ -581,6 +597,7 @@ where
             &mut self.socket_edts,
             now,
             &mut self.rng,
+            &mut self.round_robin_idx,
             &self.pick_counters,
             &self.rejected_counters,
             &self.score_delta,

@@ -182,77 +182,77 @@ expression: logs
 0:00:00.000000000 [peer] TRACE m#task.frame_dispatch.drained=0
 0:00:00.000021000 [peer] TRACE m#pick_two.score_delta=0
 0:00:00.000021000 [peer] TRACE m#pick_two.rejected[send.7]=0
-0:00:00.000021000 [peer] TRACE c#pick_two.chosen[send.1]=1
-0:00:00.000021000 [peer] TRACE c#q.resolver.enq[send.1]=1
-0:00:00.000021000 [peer] TRACE g#q.resolver.depth[send.1]=1
-0:00:00.000021000 [peer] TRACE m#q.resolver.depth_dist[send.1]=1
+0:00:00.000021000 [peer] TRACE c#pick_two.chosen[send.0]=1
+0:00:00.000021000 [peer] TRACE c#q.resolver.enq[send.0]=1
+0:00:00.000021000 [peer] TRACE g#q.resolver.depth[send.0]=1
+0:00:00.000021000 [peer] TRACE m#q.resolver.depth_dist[send.0]=1
 0:00:00.000021000 [peer] TRACE m#task.frame_dispatch.drained=0
-0:00:00.000021000 [peer] TRACE c#q.resolver.receiver[send.1.task.context_resolver]=1
-0:00:00.000021000 [peer] TRACE c#q.resolver.drain[send.1]=1
-0:00:00.000021000 [peer] TRACE g#q.resolver.depth[send.1]=0
-0:00:00.000021000 [peer] DEBUG deriving sealer for credentials credentials=0xf0fd2a0a4d67aaf871aba8165276bbd1:0 peer_addr=10.0.0.1:49152 sender_idx=1
-0:00:00.000021000 [peer] TRACE g#send.context.count[send.1]=1
-0:00:00.000021000 [peer] TRACE c#send.pending.enq[send.1]=1
-0:00:00.000021000 [peer] TRACE g#send.pending.depth[send.1]=1
-0:00:00.000021000 [peer] TRACE m#send.pending.depth_dist[send.1]=1
-0:00:00.000021000 [peer] TRACE c#q.resolver_to_idle_wheel.sender[send.worker.1.task.context_resolver]=1
-0:00:00.000021000 [peer] TRACE c#q.resolver_to_idle_wheel.enq[send.worker.1]=1
-0:00:00.000021000 [peer] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.1]=1
-0:00:00.000021000 [peer] TRACE m#q.resolver_to_idle_wheel.depth_dist[send.worker.1]=1
-0:00:00.000021000 [peer] TRACE c#q.resolver_to_tx_wheel.sender[send.worker.1.task.context_resolver]=1
-0:00:00.000021000 [peer] TRACE c#q.resolver_to_tx_wheel.enq[send.worker.1]=1
-0:00:00.000021000 [peer] TRACE g#q.resolver_to_tx_wheel.depth[send.worker.1]=1
-0:00:00.000021000 [peer] TRACE m#q.resolver_to_tx_wheel.depth_dist[send.worker.1]=1
-0:00:00.000021000 [peer] TRACE m#task.context_resolver.drained[send.worker.1]=2
-0:00:00.000021000 [peer] TRACE m#task.idle_wheel.drained[send.worker.1]=1
-0:00:00.000021000 [peer] TRACE c#q.resolver_to_tx_wheel.receiver[send.worker.1.task.wheel_drain]=1
-0:00:00.000021000 [peer] TRACE c#q.resolver_to_tx_wheel.drain[send.worker.1]=1
-0:00:00.000021000 [peer] TRACE g#q.resolver_to_tx_wheel.depth[send.worker.1]=0
-0:00:00.000021000 [peer] TRACE c#q.wheel_to_assembler.sender[send.1.task.tx_wheel]=1
-0:00:00.000021000 [peer] TRACE c#q.wheel_to_assembler.enq[send.1]=1
-0:00:00.000021000 [peer] TRACE g#q.wheel_to_assembler.depth[send.1]=1
-0:00:00.000021000 [peer] TRACE m#q.wheel_to_assembler.depth_dist[send.1]=1
-0:00:00.000021000 [peer] TRACE m#task.tx_wheel.drained[send.worker.1]=1
-0:00:00.000021000 [peer] TRACE m#task.idle_wheel.drained[send.worker.1]=0
-0:00:00.000021000 [peer] TRACE c#q.wheel_to_assembler.receiver[send.1.task.assembler.send.1]=1
-0:00:00.000021000 [peer] TRACE c#q.wheel_to_assembler.drain[send.1]=1
-0:00:00.000021000 [peer] TRACE g#q.wheel_to_assembler.depth[send.1]=0
+0:00:00.000021000 [peer] TRACE c#q.resolver.receiver[send.0.task.context_resolver]=1
+0:00:00.000021000 [peer] TRACE c#q.resolver.drain[send.0]=1
+0:00:00.000021000 [peer] TRACE g#q.resolver.depth[send.0]=0
+0:00:00.000021000 [peer] DEBUG deriving sealer for credentials credentials=0xf0fd2a0a4d67aaf871aba8165276bbd1:0 peer_addr=10.0.0.1:4433 sender_idx=0
+0:00:00.000021000 [peer] TRACE g#send.context.count[send.0]=1
+0:00:00.000021000 [peer] TRACE c#send.pending.enq[send.0]=1
+0:00:00.000021000 [peer] TRACE g#send.pending.depth[send.0]=1
+0:00:00.000021000 [peer] TRACE m#send.pending.depth_dist[send.0]=1
+0:00:00.000021000 [peer] TRACE c#q.resolver_to_idle_wheel.sender[send.worker.0.task.context_resolver]=1
+0:00:00.000021000 [peer] TRACE c#q.resolver_to_idle_wheel.enq[send.worker.0]=1
+0:00:00.000021000 [peer] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.0]=1
+0:00:00.000021000 [peer] TRACE m#q.resolver_to_idle_wheel.depth_dist[send.worker.0]=1
+0:00:00.000021000 [peer] TRACE c#q.resolver_to_tx_wheel.sender[send.worker.0.task.context_resolver]=1
+0:00:00.000021000 [peer] TRACE c#q.resolver_to_tx_wheel.enq[send.worker.0]=1
+0:00:00.000021000 [peer] TRACE g#q.resolver_to_tx_wheel.depth[send.worker.0]=1
+0:00:00.000021000 [peer] TRACE m#q.resolver_to_tx_wheel.depth_dist[send.worker.0]=1
+0:00:00.000021000 [peer] TRACE m#task.context_resolver.drained[send.worker.0]=2
+0:00:00.000021000 [peer] TRACE m#task.idle_wheel.drained[send.worker.0]=1
+0:00:00.000021000 [peer] TRACE c#q.resolver_to_tx_wheel.receiver[send.worker.0.task.wheel_drain]=1
+0:00:00.000021000 [peer] TRACE c#q.resolver_to_tx_wheel.drain[send.worker.0]=1
+0:00:00.000021000 [peer] TRACE g#q.resolver_to_tx_wheel.depth[send.worker.0]=0
+0:00:00.000021000 [peer] TRACE c#q.wheel_to_assembler.sender[send.0.task.tx_wheel]=1
+0:00:00.000021000 [peer] TRACE c#q.wheel_to_assembler.enq[send.0]=1
+0:00:00.000021000 [peer] TRACE g#q.wheel_to_assembler.depth[send.0]=1
+0:00:00.000021000 [peer] TRACE m#q.wheel_to_assembler.depth_dist[send.0]=1
+0:00:00.000021000 [peer] TRACE m#task.tx_wheel.drained[send.worker.0]=1
+0:00:00.000021000 [peer] TRACE m#task.idle_wheel.drained[send.worker.0]=0
+0:00:00.000021000 [peer] TRACE c#q.wheel_to_assembler.receiver[send.0.task.assembler.send.0]=1
+0:00:00.000021000 [peer] TRACE c#q.wheel_to_assembler.drain[send.0]=1
+0:00:00.000021000 [peer] TRACE g#q.wheel_to_assembler.depth[send.0]=0
 0:00:00.000021000 [peer] TRACE m#asm.max_datagram_size=1472
-0:00:00.000021000 [peer] TRACE c#send.pending.drain[send.1]=1
-0:00:00.000021000 [peer] TRACE g#send.pending.depth[send.1]=0
+0:00:00.000021000 [peer] TRACE c#send.pending.drain[send.0]=1
+0:00:00.000021000 [peer] TRACE g#send.pending.depth[send.0]=0
 0:00:00.000021000 [peer] TRACE c#tx.frame[queue_data_fin]=1
 0:00:00.000021000 [peer] TRACE m#tx.packet_size=53
 0:00:00.000021000 [peer] TRACE m#tx.frames_per_packet=1
 0:00:00.000021000 [peer] TRACE m#tx.payload_size=4
 0:00:00.000021000 [peer] TRACE c#tx.data=1
-0:00:00.000021000 [peer] TRACE c#tx.data[send.1]=1
-0:00:00.000021000 [peer] TRACE c#send.inflight.enq[send.1]=1
-0:00:00.000021000 [peer] TRACE g#send.inflight.depth[send.1]=1
-0:00:00.000021000 [peer] TRACE m#send.inflight.depth_dist[send.1]=1
+0:00:00.000021000 [peer] TRACE c#tx.data[send.0]=1
+0:00:00.000021000 [peer] TRACE c#send.inflight.enq[send.0]=1
+0:00:00.000021000 [peer] TRACE g#send.inflight.depth[send.0]=1
+0:00:00.000021000 [peer] TRACE m#send.inflight.depth_dist[send.0]=1
 0:00:00.000021000 [peer] TRACE m#asm.segments=1
-0:00:00.000021000 [peer] TRACE c#q.resolver_to_pto_wheel.sender[send.worker.1.task.assembler.send.1]=1
-0:00:00.000021000 [peer] TRACE c#q.resolver_to_pto_wheel.enq[send.worker.1]=1
-0:00:00.000021000 [peer] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.1]=1
-0:00:00.000021000 [peer] TRACE m#q.resolver_to_pto_wheel.depth_dist[send.worker.1]=1
-0:00:00.000021000 [peer] TRACE c#socket.tx.ops[send.1]=1
-0:00:00.000021000 [peer] TRACE c#socket.tx.bytes[send.1]=53
-0:00:00.000021000 [peer] TRACE m#task.assembler.drained[send.1]=1
-0:00:00.000021000 [peer] TRACE m#task.tx_wheel.drained[send.worker.1]=0
-0:00:00.000021000 [peer] TRACE m#task.pto_wheel.drained[send.worker.1]=1
-0:00:00.000021000 [peer] TRACE m#task.pto_wheel.drained[send.worker.1]=0
-0:00:00.000521000 [peer] TRACE c#socket.rx.ops[recv.1]=1
-0:00:00.000521000 [peer] TRACE c#socket.rx.bytes[recv.1]=53
+0:00:00.000021000 [peer] TRACE c#q.resolver_to_pto_wheel.sender[send.worker.0.task.assembler.send.0]=1
+0:00:00.000021000 [peer] TRACE c#q.resolver_to_pto_wheel.enq[send.worker.0]=1
+0:00:00.000021000 [peer] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.0]=1
+0:00:00.000021000 [peer] TRACE m#q.resolver_to_pto_wheel.depth_dist[send.worker.0]=1
+0:00:00.000021000 [peer] TRACE c#socket.tx.ops[send.0]=1
+0:00:00.000021000 [peer] TRACE c#socket.tx.bytes[send.0]=53
+0:00:00.000021000 [peer] TRACE m#task.assembler.drained[send.0]=1
+0:00:00.000021000 [peer] TRACE m#task.tx_wheel.drained[send.worker.0]=0
+0:00:00.000021000 [peer] TRACE m#task.pto_wheel.drained[send.worker.0]=1
+0:00:00.000021000 [peer] TRACE m#task.pto_wheel.drained[send.worker.0]=0
+0:00:00.000521000 [peer] TRACE c#socket.rx.ops[recv.0]=1
+0:00:00.000521000 [peer] TRACE c#socket.rx.bytes[recv.0]=53
 0:00:00.000521000 [peer] TRACE c#router.routed=1
 0:00:00.000521000 [peer] TRACE c#router.routed[recv.1]=1
 0:00:00.000521000 [peer] TRACE c#q.dispatch_rx.enq[recv.1]=1
 0:00:00.000521000 [peer] TRACE g#q.dispatch_rx.depth[recv.1]=1
 0:00:00.000521000 [peer] TRACE m#q.dispatch_rx.depth_dist[recv.1]=1
-0:00:00.000521000 [peer] TRACE m#task.socket_recv.drained[recv.1]=0
+0:00:00.000521000 [peer] TRACE m#task.socket_recv.drained[recv.0]=0
 0:00:00.000521000 [peer] TRACE c#q.dispatch_rx.receiver[recv.1.task.packet_dispatch]=1
 0:00:00.000521000 [peer] TRACE c#q.dispatch_rx.drain[recv.1]=1
 0:00:00.000521000 [peer] TRACE g#q.dispatch_rx.depth[recv.1]=0
 0:00:00.000521000 [peer] TRACE c#rx.data_pkt=1
-0:00:00.000521000 [peer] DEBUG deriving opener for credentials credentials=0xf0fd2a0a4d67aaf871aba8165276bbd1:0 peer_addr=10.0.0.1:49152 sender_id=1 recv_worker_id=1
+0:00:00.000521000 [peer] DEBUG deriving opener for credentials credentials=0xf0fd2a0a4d67aaf871aba8165276bbd1:0 peer_addr=10.0.0.1:4433 sender_id=0 recv_worker_id=1
 0:00:00.000521000 [peer] DEBUG s2n_quic_dc: credential_id=[240, 253, 42, 10, 77, 103, 170, 248, 113, 171, 168, 22, 82, 118, 187, 209] hit=true
 0:00:00.000521000 [peer] DEBUG s2n_quic_dc: credential_id=[240, 253, 42, 10, 77, 103, 170, 248, 113, 171, 168, 22, 82, 118, 187, 209] age=520µs
 0:00:00.000521000 [peer] DEBUG s2n_quic_dc: credential_id=[240, 253, 42, 10, 77, 103, 170, 248, 113, 171, 168, 22, 82, 118, 187, 209] key_id=0 gap=1 forward_shift=0
@@ -268,25 +268,25 @@ expression: logs
 0:00:00.000521000 [peer] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.1]=1
 0:00:00.000521000 [peer] TRACE m#task.waker_drain.drained[waker.11]=1
 0:00:00.000521000 [peer] DEBUG event=on_flush prev=Scheduled next=Flushed location=dc/s2n-quic-dc/src/endpoint/recv.rs
-0:00:00.000521000 [peer] TRACE c#q.ack.enq[send.1]=1
-0:00:00.000521000 [peer] TRACE g#q.ack.depth[send.1]=1
-0:00:00.000521000 [peer] TRACE m#q.ack.depth_dist[send.1]=1
+0:00:00.000521000 [peer] TRACE c#q.ack.enq[send.0]=1
+0:00:00.000521000 [peer] TRACE g#q.ack.depth[send.0]=1
+0:00:00.000521000 [peer] TRACE m#q.ack.depth_dist[send.0]=1
 0:00:00.000521000 [peer] TRACE m#task.ack_burst.drained[recv.dispatch.1]=1
 0:00:00.000521000 [peer] TRACE m#task.recycle_drain.drained=1
 0:00:00.000521000 [peer] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.1]=0
-0:00:00.000521000 [peer] TRACE c#q.ack.receiver[send.1.task.ack_processor]=1
-0:00:00.000521000 [peer] TRACE c#q.ack.drain[send.1]=1
-0:00:00.000521000 [peer] TRACE g#q.ack.depth[send.1]=0
-0:00:00.000521000 [peer] DEBUG deriving sealer for credentials credentials=0x70fd2a0a4d67aaf871aba8165276bbd1:0 peer_addr=10.0.0.1:49152 sender_idx=1
-0:00:00.000521000 [peer] TRACE g#send.context.count[send.1]=2
-0:00:00.000521000 [peer] TRACE c#send.ack.enq[send.1]=1
-0:00:00.000521000 [peer] TRACE g#send.ack.depth[send.1]=1
-0:00:00.000521000 [peer] TRACE m#send.ack.depth_dist[send.1]=1
-0:00:00.000521000 [peer] TRACE c#q.resolver_to_idle_wheel.sender[send.worker.1.task.ack_processor]=1
-0:00:00.000521000 [peer] TRACE c#q.resolver_to_idle_wheel.enq[send.worker.1]=1
-0:00:00.000521000 [peer] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.1]=2
-0:00:00.000521000 [peer] TRACE m#q.resolver_to_idle_wheel.depth_dist[send.worker.1]=2
-0:00:00.000521000 [peer] TRACE m#task.ack_processor.drained[send.worker.1]=2
+0:00:00.000521000 [peer] TRACE c#q.ack.receiver[send.0.task.ack_processor]=1
+0:00:00.000521000 [peer] TRACE c#q.ack.drain[send.0]=1
+0:00:00.000521000 [peer] TRACE g#q.ack.depth[send.0]=0
+0:00:00.000521000 [peer] DEBUG deriving sealer for credentials credentials=0x70fd2a0a4d67aaf871aba8165276bbd1:0 peer_addr=10.0.0.1:4433 sender_idx=0
+0:00:00.000521000 [peer] TRACE g#send.context.count[send.0]=2
+0:00:00.000521000 [peer] TRACE c#send.ack.enq[send.0]=1
+0:00:00.000521000 [peer] TRACE g#send.ack.depth[send.0]=1
+0:00:00.000521000 [peer] TRACE m#send.ack.depth_dist[send.0]=1
+0:00:00.000521000 [peer] TRACE c#q.resolver_to_idle_wheel.sender[send.worker.0.task.ack_processor]=1
+0:00:00.000521000 [peer] TRACE c#q.resolver_to_idle_wheel.enq[send.worker.0]=1
+0:00:00.000521000 [peer] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.0]=2
+0:00:00.000521000 [peer] TRACE m#q.resolver_to_idle_wheel.depth_dist[send.worker.0]=2
+0:00:00.000521000 [peer] TRACE m#task.ack_processor.drained[send.worker.0]=2
 0:00:00.000521000 [peer] TRACE m#task.recycle_drain.drained=0
 0:00:00.000521000 [peer] DEBUG Reader complete - all data consumed binding_id=1 final_size=Some(4) consumed_len=4
 0:00:00.000521000 [peer] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs
@@ -294,32 +294,32 @@ expression: logs
 0:00:00.000521000 [peer] DEBUG Writer dropping binding_id=1 status=FinSent next_offset=4 inflight_bytes=4 remote_max_data=1048576
 0:00:00.000521000 [peer] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000521000 [peer] DEBUG Reader dropping binding_id=1 status=Complete final_size=Some(4) consumed_len=4 total_received_len=4 is_writing_complete=true is_reading_complete=true
-0:00:00.000521000 [peer] TRACE m#task.idle_wheel.drained[send.worker.1]=1
+0:00:00.000521000 [peer] TRACE m#task.idle_wheel.drained[send.worker.0]=1
 0:00:00.000521000 [peer] TRACE m#asm.max_datagram_size=1472
-0:00:00.000521000 [peer] TRACE c#send.ack.drain[send.1]=1
-0:00:00.000521000 [peer] TRACE g#send.ack.depth[send.1]=0
+0:00:00.000521000 [peer] TRACE c#send.ack.drain[send.0]=1
+0:00:00.000521000 [peer] TRACE g#send.ack.depth[send.0]=0
 0:00:00.000521000 [peer] TRACE c#tx.frame[ack]=1
 0:00:00.000521000 [peer] TRACE m#tx.packet_size=54
 0:00:00.000521000 [peer] TRACE m#tx.frames_per_packet=1
 0:00:00.000521000 [peer] TRACE m#tx.payload_size=8
 0:00:00.000521000 [peer] TRACE c#tx.data=1
-0:00:00.000521000 [peer] TRACE c#tx.data[send.1]=1
+0:00:00.000521000 [peer] TRACE c#tx.data[send.0]=1
 0:00:00.000521000 [peer] TRACE c#q.dispatch.enq[recv.dispatch.1]=1
 0:00:00.000521000 [peer] TRACE g#q.dispatch.depth[recv.dispatch.1]=1
 0:00:00.000521000 [peer] TRACE m#q.dispatch.depth_dist[recv.dispatch.1]=1
 0:00:00.000521000 [peer] TRACE m#asm.segments=1
-0:00:00.000521000 [peer] TRACE c#socket.tx.ops[send.1]=1
-0:00:00.000521000 [peer] TRACE c#socket.tx.bytes[send.1]=54
-0:00:00.000521000 [peer] TRACE m#task.assembler.drained[send.1]=1
+0:00:00.000521000 [peer] TRACE c#socket.tx.ops[send.0]=1
+0:00:00.000521000 [peer] TRACE c#socket.tx.bytes[send.0]=54
+0:00:00.000521000 [peer] TRACE m#task.assembler.drained[send.0]=1
 0:00:00.000521000 [peer] TRACE c#q.router_to_batcher.enq[p2]=1
 0:00:00.000521000 [peer] TRACE g#q.router_to_batcher.depth[p2]=1
 0:00:00.000521000 [peer] TRACE m#q.router_to_batcher.depth_dist[p2]=1
 0:00:00.000521000 [peer] TRACE m#task.priority_router.drained=1
-0:00:00.000521000 [peer] TRACE c#q.ack.enq[send.3]=1
-0:00:00.000521000 [peer] TRACE g#q.ack.depth[send.3]=1
-0:00:00.000521000 [peer] TRACE m#q.ack.depth_dist[send.3]=1
+0:00:00.000521000 [peer] TRACE c#q.ack.enq[send.1]=1
+0:00:00.000521000 [peer] TRACE g#q.ack.depth[send.1]=1
+0:00:00.000521000 [peer] TRACE m#q.ack.depth_dist[send.1]=1
 0:00:00.000521000 [peer] TRACE m#task.freed_batch_router.drained[background]=1
-0:00:00.000521000 [peer] TRACE m#task.idle_wheel.drained[send.worker.1]=0
+0:00:00.000521000 [peer] TRACE m#task.idle_wheel.drained[send.worker.0]=0
 0:00:00.000521000 [peer] TRACE c#q.dispatch.receiver[recv.dispatch.1.task.ack_completion]=1
 0:00:00.000521000 [peer] TRACE c#q.dispatch.drain[recv.dispatch.1]=1
 0:00:00.000521000 [peer] TRACE g#q.dispatch.depth[recv.dispatch.1]=0
@@ -329,41 +329,41 @@ expression: logs
 0:00:00.000521000 [peer] TRACE c#q.router_to_batcher.drain[p2]=1
 0:00:00.000521000 [peer] TRACE g#q.router_to_batcher.depth[p2]=0
 0:00:00.000521000 [peer] TRACE m#task.frame_dispatch.drained=2
-0:00:00.000521000 [peer] TRACE c#q.ack.receiver[send.3.task.ack_processor]=1
-0:00:00.000521000 [peer] TRACE c#q.ack.drain[send.3]=1
-0:00:00.000521000 [peer] TRACE g#q.ack.depth[send.3]=0
-0:00:00.000521000 [peer] DEBUG deriving sealer for credentials credentials=0x70fd2a0a4d67aaf871aba8165276bbd1:1 peer_addr=10.0.0.1:49158 sender_idx=7
-0:00:00.000521000 [peer] TRACE g#send.context.count[send.7]=1
-0:00:00.000521000 [peer] TRACE c#q.resolver_to_idle_wheel.sender[send.worker.3.task.ack_processor]=1
-0:00:00.000521000 [peer] TRACE c#q.resolver_to_idle_wheel.enq[send.worker.3]=1
-0:00:00.000521000 [peer] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.3]=1
-0:00:00.000521000 [peer] TRACE m#q.resolver_to_idle_wheel.depth_dist[send.worker.3]=1
-0:00:00.000521000 [peer] TRACE m#task.ack_processor.drained[send.worker.3]=2
+0:00:00.000521000 [peer] TRACE c#q.ack.receiver[send.1.task.ack_processor]=1
+0:00:00.000521000 [peer] TRACE c#q.ack.drain[send.1]=1
+0:00:00.000521000 [peer] TRACE g#q.ack.depth[send.1]=0
+0:00:00.000521000 [peer] DEBUG deriving sealer for credentials credentials=0x70fd2a0a4d67aaf871aba8165276bbd1:1 peer_addr=10.0.0.1:49152 sender_idx=1
+0:00:00.000521000 [peer] TRACE g#send.context.count[send.1]=1
+0:00:00.000521000 [peer] TRACE c#q.resolver_to_idle_wheel.sender[send.worker.1.task.ack_processor]=1
+0:00:00.000521000 [peer] TRACE c#q.resolver_to_idle_wheel.enq[send.worker.1]=1
+0:00:00.000521000 [peer] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.1]=1
+0:00:00.000521000 [peer] TRACE m#q.resolver_to_idle_wheel.depth_dist[send.worker.1]=1
+0:00:00.000521000 [peer] TRACE m#task.ack_processor.drained[send.worker.1]=2
 0:00:00.000521000 [peer] TRACE m#task.freed_batch_router.drained[background]=0
-0:00:00.000521000 [peer] TRACE m#task.idle_wheel.drained[send.worker.3]=1
+0:00:00.000521000 [peer] TRACE m#task.idle_wheel.drained[send.worker.1]=1
 0:00:00.000521000 [peer] TRACE m#asm.max_datagram_size=1472
 0:00:00.000521000 [peer] TRACE c#tx.frame[queue_free]=1
 0:00:00.000521000 [peer] TRACE m#tx.packet_size=46
 0:00:00.000521000 [peer] TRACE m#tx.frames_per_packet=1
 0:00:00.000521000 [peer] TRACE m#tx.payload_size=0
 0:00:00.000521000 [peer] TRACE c#tx.data=1
-0:00:00.000521000 [peer] TRACE c#tx.data[send.7]=1
-0:00:00.000521000 [peer] TRACE c#send.inflight.enq[send.7]=1
-0:00:00.000521000 [peer] TRACE g#send.inflight.depth[send.7]=1
-0:00:00.000521000 [peer] TRACE m#send.inflight.depth_dist[send.7]=1
+0:00:00.000521000 [peer] TRACE c#tx.data[send.1]=1
+0:00:00.000521000 [peer] TRACE c#send.inflight.enq[send.1]=1
+0:00:00.000521000 [peer] TRACE g#send.inflight.depth[send.1]=1
+0:00:00.000521000 [peer] TRACE m#send.inflight.depth_dist[send.1]=1
 0:00:00.000521000 [peer] TRACE m#asm.segments=1
-0:00:00.000521000 [peer] TRACE c#q.resolver_to_pto_wheel.sender[send.worker.3.task.assembler.send.7]=1
-0:00:00.000521000 [peer] TRACE c#q.resolver_to_pto_wheel.enq[send.worker.3]=1
-0:00:00.000521000 [peer] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.3]=1
-0:00:00.000521000 [peer] TRACE m#q.resolver_to_pto_wheel.depth_dist[send.worker.3]=1
-0:00:00.000521000 [peer] TRACE c#socket.tx.ops[send.7]=1
-0:00:00.000521000 [peer] TRACE c#socket.tx.bytes[send.7]=46
-0:00:00.000521000 [peer] TRACE m#task.assembler.drained[send.7]=1
-0:00:00.000521000 [peer] TRACE m#task.idle_wheel.drained[send.worker.3]=0
-0:00:00.000521000 [peer] TRACE m#task.pto_wheel.drained[send.worker.3]=1
-0:00:00.000521000 [peer] TRACE m#task.pto_wheel.drained[send.worker.3]=0
-0:00:00.000541000 [peer] TRACE m#pick_two.score_delta=21195
-0:00:00.000541000 [peer] TRACE m#pick_two.rejected[send.1]=21195
+0:00:00.000521000 [peer] TRACE c#q.resolver_to_pto_wheel.sender[send.worker.1.task.assembler.send.1]=1
+0:00:00.000521000 [peer] TRACE c#q.resolver_to_pto_wheel.enq[send.worker.1]=1
+0:00:00.000521000 [peer] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.1]=1
+0:00:00.000521000 [peer] TRACE m#q.resolver_to_pto_wheel.depth_dist[send.worker.1]=1
+0:00:00.000521000 [peer] TRACE c#socket.tx.ops[send.1]=1
+0:00:00.000521000 [peer] TRACE c#socket.tx.bytes[send.1]=46
+0:00:00.000521000 [peer] TRACE m#task.assembler.drained[send.1]=1
+0:00:00.000521000 [peer] TRACE m#task.idle_wheel.drained[send.worker.1]=0
+0:00:00.000521000 [peer] TRACE m#task.pto_wheel.drained[send.worker.1]=1
+0:00:00.000521000 [peer] TRACE m#task.pto_wheel.drained[send.worker.1]=0
+0:00:00.000541000 [peer] TRACE m#pick_two.score_delta=521000
+0:00:00.000541000 [peer] TRACE m#pick_two.rejected[send.1]=521000
 0:00:00.000541000 [peer] TRACE c#pick_two.chosen[send.7]=1
 0:00:00.000541000 [peer] TRACE c#q.resolver.enq[send.3]=1
 0:00:00.000541000 [peer] TRACE g#q.resolver.depth[send.3]=1
@@ -372,14 +372,21 @@ expression: logs
 0:00:00.000541000 [peer] TRACE c#q.resolver.receiver[send.3.task.context_resolver]=1
 0:00:00.000541000 [peer] TRACE c#q.resolver.drain[send.3]=1
 0:00:00.000541000 [peer] TRACE g#q.resolver.depth[send.3]=0
+0:00:00.000541000 [peer] DEBUG deriving sealer for credentials credentials=0x70fd2a0a4d67aaf871aba8165276bbd1:2 peer_addr=10.0.0.1:49158 sender_idx=7
+0:00:00.000541000 [peer] TRACE g#send.context.count[send.7]=1
 0:00:00.000541000 [peer] TRACE c#send.pending.enq[send.7]=1
 0:00:00.000541000 [peer] TRACE g#send.pending.depth[send.7]=1
 0:00:00.000541000 [peer] TRACE m#send.pending.depth_dist[send.7]=1
+0:00:00.000541000 [peer] TRACE c#q.resolver_to_idle_wheel.sender[send.worker.3.task.context_resolver]=1
+0:00:00.000541000 [peer] TRACE c#q.resolver_to_idle_wheel.enq[send.worker.3]=1
+0:00:00.000541000 [peer] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.3]=1
+0:00:00.000541000 [peer] TRACE m#q.resolver_to_idle_wheel.depth_dist[send.worker.3]=1
 0:00:00.000541000 [peer] TRACE c#q.resolver_to_tx_wheel.sender[send.worker.3.task.context_resolver]=1
 0:00:00.000541000 [peer] TRACE c#q.resolver_to_tx_wheel.enq[send.worker.3]=1
 0:00:00.000541000 [peer] TRACE g#q.resolver_to_tx_wheel.depth[send.worker.3]=1
 0:00:00.000541000 [peer] TRACE m#q.resolver_to_tx_wheel.depth_dist[send.worker.3]=1
 0:00:00.000541000 [peer] TRACE m#task.context_resolver.drained[send.worker.3]=2
+0:00:00.000541000 [peer] TRACE m#task.idle_wheel.drained[send.worker.3]=1
 0:00:00.000541000 [peer] TRACE c#q.resolver_to_tx_wheel.receiver[send.worker.3.task.wheel_drain]=1
 0:00:00.000541000 [peer] TRACE c#q.resolver_to_tx_wheel.drain[send.worker.3]=1
 0:00:00.000541000 [peer] TRACE g#q.resolver_to_tx_wheel.depth[send.worker.3]=0
@@ -388,6 +395,7 @@ expression: logs
 0:00:00.000541000 [peer] TRACE g#q.wheel_to_assembler.depth[send.7]=1
 0:00:00.000541000 [peer] TRACE m#q.wheel_to_assembler.depth_dist[send.7]=1
 0:00:00.000541000 [peer] TRACE m#task.tx_wheel.drained[send.worker.3]=1
+0:00:00.000541000 [peer] TRACE m#task.idle_wheel.drained[send.worker.3]=0
 0:00:00.000541000 [peer] TRACE c#q.wheel_to_assembler.receiver[send.7.task.assembler.send.7]=1
 0:00:00.000541000 [peer] TRACE c#q.wheel_to_assembler.drain[send.7]=1
 0:00:00.000541000 [peer] TRACE g#q.wheel_to_assembler.depth[send.7]=0
@@ -401,34 +409,40 @@ expression: logs
 0:00:00.000541000 [peer] TRACE c#tx.data=1
 0:00:00.000541000 [peer] TRACE c#tx.data[send.7]=1
 0:00:00.000541000 [peer] TRACE c#send.inflight.enq[send.7]=1
-0:00:00.000541000 [peer] TRACE g#send.inflight.depth[send.7]=2
-0:00:00.000541000 [peer] TRACE m#send.inflight.depth_dist[send.7]=2
+0:00:00.000541000 [peer] TRACE g#send.inflight.depth[send.7]=1
+0:00:00.000541000 [peer] TRACE m#send.inflight.depth_dist[send.7]=1
 0:00:00.000541000 [peer] TRACE m#asm.segments=1
+0:00:00.000541000 [peer] TRACE c#q.resolver_to_pto_wheel.sender[send.worker.3.task.assembler.send.7]=1
+0:00:00.000541000 [peer] TRACE c#q.resolver_to_pto_wheel.enq[send.worker.3]=1
+0:00:00.000541000 [peer] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.3]=1
+0:00:00.000541000 [peer] TRACE m#q.resolver_to_pto_wheel.depth_dist[send.worker.3]=1
 0:00:00.000541000 [peer] TRACE c#socket.tx.ops[send.7]=1
 0:00:00.000541000 [peer] TRACE c#socket.tx.bytes[send.7]=52
 0:00:00.000541000 [peer] TRACE m#task.assembler.drained[send.7]=1
 0:00:00.000541000 [peer] TRACE m#task.tx_wheel.drained[send.worker.3]=0
-0:00:00.001021000 [peer] TRACE c#socket.rx.ops[recv.1]=1
-0:00:00.001021000 [peer] TRACE c#socket.rx.bytes[recv.1]=54
+0:00:00.000541000 [peer] TRACE m#task.pto_wheel.drained[send.worker.3]=1
+0:00:00.000541000 [peer] TRACE m#task.pto_wheel.drained[send.worker.3]=0
+0:00:00.001021000 [peer] TRACE c#socket.rx.ops[recv.0]=1
+0:00:00.001021000 [peer] TRACE c#socket.rx.bytes[recv.0]=54
 0:00:00.001021000 [peer] TRACE c#router.routed=1
 0:00:00.001021000 [peer] TRACE c#router.routed[recv.1]=1
 0:00:00.001021000 [peer] TRACE c#q.dispatch_rx.enq[recv.1]=1
 0:00:00.001021000 [peer] TRACE g#q.dispatch_rx.depth[recv.1]=1
 0:00:00.001021000 [peer] TRACE m#q.dispatch_rx.depth_dist[recv.1]=1
-0:00:00.001021000 [peer] TRACE m#task.socket_recv.drained[recv.1]=0
-0:00:00.001021000 [peer] TRACE c#socket.rx.ops[recv.7]=1
-0:00:00.001021000 [peer] TRACE c#socket.rx.bytes[recv.7]=46
+0:00:00.001021000 [peer] TRACE m#task.socket_recv.drained[recv.0]=0
+0:00:00.001021000 [peer] TRACE c#socket.rx.ops[recv.1]=1
+0:00:00.001021000 [peer] TRACE c#socket.rx.bytes[recv.1]=46
 0:00:00.001021000 [peer] TRACE c#router.routed=1
-0:00:00.001021000 [peer] TRACE c#router.routed[recv.0]=1
-0:00:00.001021000 [peer] TRACE c#q.dispatch_rx.enq[recv.0]=1
-0:00:00.001021000 [peer] TRACE g#q.dispatch_rx.depth[recv.0]=1
-0:00:00.001021000 [peer] TRACE m#q.dispatch_rx.depth_dist[recv.0]=1
-0:00:00.001021000 [peer] TRACE m#task.socket_recv.drained[recv.7]=0
+0:00:00.001021000 [peer] TRACE c#router.routed[recv.1]=1
+0:00:00.001021000 [peer] TRACE c#q.dispatch_rx.enq[recv.1]=1
+0:00:00.001021000 [peer] TRACE g#q.dispatch_rx.depth[recv.1]=2
+0:00:00.001021000 [peer] TRACE m#q.dispatch_rx.depth_dist[recv.1]=2
+0:00:00.001021000 [peer] TRACE m#task.socket_recv.drained[recv.1]=0
 0:00:00.001021000 [peer] TRACE c#q.dispatch_rx.receiver[recv.1.task.packet_dispatch]=1
 0:00:00.001021000 [peer] TRACE c#q.dispatch_rx.drain[recv.1]=1
-0:00:00.001021000 [peer] TRACE g#q.dispatch_rx.depth[recv.1]=0
+0:00:00.001021000 [peer] TRACE g#q.dispatch_rx.depth[recv.1]=1
 0:00:00.001021000 [peer] TRACE c#rx.data_pkt=1
-0:00:00.001021000 [peer] DEBUG deriving opener for credentials credentials=0x70fd2a0a4d67aaf871aba8165276bbd1:0 peer_addr=10.0.0.1:49152 sender_id=1 recv_worker_id=1
+0:00:00.001021000 [peer] DEBUG deriving opener for credentials credentials=0x70fd2a0a4d67aaf871aba8165276bbd1:0 peer_addr=10.0.0.1:4433 sender_id=0 recv_worker_id=1
 0:00:00.001021000 [peer] DEBUG s2n_quic_dc: credential_id=[112, 253, 42, 10, 77, 103, 170, 248, 113, 171, 168, 22, 82, 118, 187, 209] hit=true
 0:00:00.001021000 [peer] DEBUG s2n_quic_dc: credential_id=[112, 253, 42, 10, 77, 103, 170, 248, 113, 171, 168, 22, 82, 118, 187, 209] age=1.02ms
 0:00:00.001021000 [peer] DEBUG s2n_quic_dc: credential_id=[112, 253, 42, 10, 77, 103, 170, 248, 113, 171, 168, 22, 82, 118, 187, 209] key_id=0 gap=1 forward_shift=0
@@ -436,16 +450,15 @@ expression: logs
 0:00:00.001021000 [peer] TRACE c#rx.ecn[ect0]=1
 0:00:00.001021000 [peer] TRACE m#rx.packet_size=8
 0:00:00.001021000 [peer] TRACE c#rx.frame[ack]=1
-0:00:00.001021000 [peer] TRACE c#q.ack.enq[send.1]=1
-0:00:00.001021000 [peer] TRACE g#q.ack.depth[send.1]=1
-0:00:00.001021000 [peer] TRACE m#q.ack.depth_dist[send.1]=1
+0:00:00.001021000 [peer] TRACE c#q.ack.enq[send.0]=1
+0:00:00.001021000 [peer] TRACE g#q.ack.depth[send.0]=1
+0:00:00.001021000 [peer] TRACE m#q.ack.depth_dist[send.0]=1
 0:00:00.001021000 [peer] TRACE m#rx.frames_per_packet=1
-0:00:00.001021000 [peer] TRACE m#task.packet_dispatch.drained[recv.dispatch.1]=2
-0:00:00.001021000 [peer] TRACE c#q.dispatch_rx.receiver[recv.0.task.packet_dispatch]=1
-0:00:00.001021000 [peer] TRACE c#q.dispatch_rx.drain[recv.0]=1
-0:00:00.001021000 [peer] TRACE g#q.dispatch_rx.depth[recv.0]=0
+0:00:00.001021000 [peer] TRACE c#q.dispatch_rx.receiver[recv.1.task.packet_dispatch]=1
+0:00:00.001021000 [peer] TRACE c#q.dispatch_rx.drain[recv.1]=1
+0:00:00.001021000 [peer] TRACE g#q.dispatch_rx.depth[recv.1]=0
 0:00:00.001021000 [peer] TRACE c#rx.data_pkt=1
-0:00:00.001021000 [peer] DEBUG deriving opener for credentials credentials=0x70fd2a0a4d67aaf871aba8165276bbd1:1 peer_addr=10.0.0.1:49158 sender_id=7 recv_worker_id=0
+0:00:00.001021000 [peer] DEBUG deriving opener for credentials credentials=0x70fd2a0a4d67aaf871aba8165276bbd1:1 peer_addr=10.0.0.1:49152 sender_id=1 recv_worker_id=1
 0:00:00.001021000 [peer] DEBUG s2n_quic_dc: credential_id=[112, 253, 42, 10, 77, 103, 170, 248, 113, 171, 168, 22, 82, 118, 187, 209] hit=true
 0:00:00.001021000 [peer] DEBUG s2n_quic_dc: credential_id=[112, 253, 42, 10, 77, 103, 170, 248, 113, 171, 168, 22, 82, 118, 187, 209] age=1.02ms
 0:00:00.001021000 [peer] DEBUG s2n_quic_dc: credential_id=[112, 253, 42, 10, 77, 103, 170, 248, 113, 171, 168, 22, 82, 118, 187, 209] key_id=1 gap=1 forward_shift=0
@@ -457,77 +470,77 @@ expression: logs
 0:00:00.001021000 [peer] TRACE m#rx.queue_free.ranges=1
 0:00:00.001021000 [peer] TRACE m#rx.frames_per_packet=1
 0:00:00.001021000 [peer] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
-0:00:00.001021000 [peer] TRACE m#task.packet_dispatch.drained[recv.dispatch.0]=2
+0:00:00.001021000 [peer] TRACE m#task.packet_dispatch.drained[recv.dispatch.1]=3
 0:00:00.001021000 [peer] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.1]=1
+0:00:00.001021000 [peer] TRACE c#q.ack.receiver[send.0.task.ack_processor]=1
+0:00:00.001021000 [peer] TRACE c#q.ack.drain[send.0]=1
+0:00:00.001021000 [peer] TRACE g#q.ack.depth[send.0]=0
+0:00:00.001021000 [peer] TRACE c#tx.ack_received[send.0]=1
+0:00:00.001021000 [peer] TRACE c#send.inflight.drain[send.0]=1
+0:00:00.001021000 [peer] TRACE g#send.inflight.depth[send.0]=0
+0:00:00.001021000 [peer] TRACE c#tx.acked.frame.queue_data_fin[send.0]=1
+0:00:00.001021000 [peer] TRACE c#q.ack_to_completion.sender[send.worker.0.task.ack_processor]=1
+0:00:00.001021000 [peer] TRACE c#q.ack_to_completion.enq[send.worker.0]=1
+0:00:00.001021000 [peer] TRACE g#q.ack_to_completion.depth[send.worker.0]=1
+0:00:00.001021000 [peer] TRACE m#q.ack_to_completion.depth_dist[send.worker.0]=1
+0:00:00.001021000 [peer] TRACE m#tx.ack_packets[send.0]=1
+0:00:00.001021000 [peer] TRACE c#send.inflight.drain.ack[send.0]=1
+0:00:00.001021000 [peer] TRACE c#tx.ecn.ect0[send.0]=1
+0:00:00.001021000 [peer] TRACE m#send.cwnd[send.0]=14773
+0:00:00.001021000 [peer] TRACE m#send.pacing_rate[send.0]=40368997
+0:00:00.001021000 [peer] TRACE c#send.app_limited[send.0]=1
+0:00:00.001021000 [peer] TRACE m#task.ack_processor.drained[send.worker.0]=2
+0:00:00.001021000 [peer] TRACE m#task.recycle_drain.drained=1
+0:00:00.001021000 [peer] DEBUG event=on_flush prev=Scheduled next=Flushed location=dc/s2n-quic-dc/src/endpoint/recv.rs
+0:00:00.001021000 [peer] TRACE c#q.ack.enq[send.1]=1
+0:00:00.001021000 [peer] TRACE g#q.ack.depth[send.1]=1
+0:00:00.001021000 [peer] TRACE m#q.ack.depth_dist[send.1]=1
+0:00:00.001021000 [peer] TRACE m#task.ack_burst.drained[recv.dispatch.1]=1
+0:00:00.001021000 [peer] TRACE m#task.recycle_drain.drained=1
+0:00:00.001021000 [peer] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.1]=0
+0:00:00.001021000 [peer] TRACE c#q.ack_to_completion.receiver[send.worker.0.task.completion]=1
+0:00:00.001021000 [peer] TRACE c#q.ack_to_completion.drain[send.worker.0]=1
+0:00:00.001021000 [peer] TRACE g#q.ack_to_completion.depth[send.worker.0]=0
+0:00:00.001021000 [peer] TRACE m#task.completion.drained[send.worker.0]=1
+0:00:00.001021000 [peer] TRACE m#task.recycle_drain.drained=0
 0:00:00.001021000 [peer] TRACE c#q.ack.receiver[send.1.task.ack_processor]=1
 0:00:00.001021000 [peer] TRACE c#q.ack.drain[send.1]=1
 0:00:00.001021000 [peer] TRACE g#q.ack.depth[send.1]=0
-0:00:00.001021000 [peer] TRACE c#tx.ack_received[send.1]=1
-0:00:00.001021000 [peer] TRACE c#send.inflight.drain[send.1]=1
-0:00:00.001021000 [peer] TRACE g#send.inflight.depth[send.1]=0
-0:00:00.001021000 [peer] TRACE c#tx.acked.frame.queue_data_fin[send.1]=1
-0:00:00.001021000 [peer] TRACE c#q.ack_to_completion.sender[send.worker.1.task.ack_processor]=1
-0:00:00.001021000 [peer] TRACE c#q.ack_to_completion.enq[send.worker.1]=1
-0:00:00.001021000 [peer] TRACE g#q.ack_to_completion.depth[send.worker.1]=1
-0:00:00.001021000 [peer] TRACE m#q.ack_to_completion.depth_dist[send.worker.1]=1
-0:00:00.001021000 [peer] TRACE m#tx.ack_packets[send.1]=1
-0:00:00.001021000 [peer] TRACE c#send.inflight.drain.ack[send.1]=1
-0:00:00.001021000 [peer] TRACE c#tx.ecn.ect0[send.1]=1
-0:00:00.001021000 [peer] TRACE m#send.cwnd[send.1]=14773
-0:00:00.001021000 [peer] TRACE m#send.pacing_rate[send.1]=40368997
-0:00:00.001021000 [peer] TRACE c#send.app_limited[send.1]=1
+0:00:00.001021000 [peer] DEBUG deriving sealer for credentials credentials=0xf0fd2a0a4d67aaf871aba8165276bbd1:1 peer_addr=10.0.0.1:49152 sender_idx=1
+0:00:00.001021000 [peer] TRACE g#send.context.count[send.1]=2
+0:00:00.001021000 [peer] TRACE c#send.ack.enq[send.1]=1
+0:00:00.001021000 [peer] TRACE g#send.ack.depth[send.1]=1
+0:00:00.001021000 [peer] TRACE m#send.ack.depth_dist[send.1]=1
+0:00:00.001021000 [peer] TRACE c#q.resolver_to_idle_wheel.sender[send.worker.1.task.ack_processor]=1
+0:00:00.001021000 [peer] TRACE c#q.resolver_to_idle_wheel.enq[send.worker.1]=1
+0:00:00.001021000 [peer] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.1]=2
+0:00:00.001021000 [peer] TRACE m#q.resolver_to_idle_wheel.depth_dist[send.worker.1]=2
 0:00:00.001021000 [peer] TRACE m#task.ack_processor.drained[send.worker.1]=2
-0:00:00.001021000 [peer] TRACE m#task.recycle_drain.drained=1
-0:00:00.001021000 [peer] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.0]=1
-0:00:00.001021000 [peer] DEBUG event=on_flush prev=Scheduled next=Flushed location=dc/s2n-quic-dc/src/endpoint/recv.rs
-0:00:00.001021000 [peer] TRACE c#q.ack.enq[send.3]=1
-0:00:00.001021000 [peer] TRACE g#q.ack.depth[send.3]=1
-0:00:00.001021000 [peer] TRACE m#q.ack.depth_dist[send.3]=1
-0:00:00.001021000 [peer] TRACE m#task.ack_burst.drained[recv.dispatch.0]=1
-0:00:00.001021000 [peer] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.1]=0
-0:00:00.001021000 [peer] TRACE c#q.ack_to_completion.receiver[send.worker.1.task.completion]=1
-0:00:00.001021000 [peer] TRACE c#q.ack_to_completion.drain[send.worker.1]=1
-0:00:00.001021000 [peer] TRACE g#q.ack_to_completion.depth[send.worker.1]=0
-0:00:00.001021000 [peer] TRACE m#task.completion.drained[send.worker.1]=1
 0:00:00.001021000 [peer] TRACE m#task.recycle_drain.drained=0
-0:00:00.001021000 [peer] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.0]=0
-0:00:00.001021000 [peer] TRACE c#q.ack.receiver[send.3.task.ack_processor]=1
-0:00:00.001021000 [peer] TRACE c#q.ack.drain[send.3]=1
-0:00:00.001021000 [peer] TRACE g#q.ack.depth[send.3]=0
-0:00:00.001021000 [peer] DEBUG deriving sealer for credentials credentials=0xf0fd2a0a4d67aaf871aba8165276bbd1:1 peer_addr=10.0.0.1:49158 sender_idx=7
-0:00:00.001021000 [peer] TRACE g#send.context.count[send.7]=2
-0:00:00.001021000 [peer] TRACE c#send.ack.enq[send.7]=1
-0:00:00.001021000 [peer] TRACE g#send.ack.depth[send.7]=1
-0:00:00.001021000 [peer] TRACE m#send.ack.depth_dist[send.7]=1
-0:00:00.001021000 [peer] TRACE c#q.resolver_to_idle_wheel.sender[send.worker.3.task.ack_processor]=1
-0:00:00.001021000 [peer] TRACE c#q.resolver_to_idle_wheel.enq[send.worker.3]=1
-0:00:00.001021000 [peer] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.3]=2
-0:00:00.001021000 [peer] TRACE m#q.resolver_to_idle_wheel.depth_dist[send.worker.3]=2
-0:00:00.001021000 [peer] TRACE m#task.ack_processor.drained[send.worker.3]=2
 0:00:00.001021000 [peer] TRACE m#task.waker_drain.drained[waker.11]=1
-0:00:00.001021000 [peer] TRACE m#task.idle_wheel.drained[send.worker.3]=1
+0:00:00.001021000 [peer] TRACE m#task.idle_wheel.drained[send.worker.1]=1
 0:00:00.001021000 [peer] TRACE m#asm.max_datagram_size=1472
-0:00:00.001021000 [peer] TRACE c#send.ack.drain[send.7]=1
-0:00:00.001021000 [peer] TRACE g#send.ack.depth[send.7]=0
+0:00:00.001021000 [peer] TRACE c#send.ack.drain[send.1]=1
+0:00:00.001021000 [peer] TRACE g#send.ack.depth[send.1]=0
 0:00:00.001021000 [peer] TRACE c#tx.frame[ack]=1
 0:00:00.001021000 [peer] TRACE m#tx.packet_size=54
 0:00:00.001021000 [peer] TRACE m#tx.frames_per_packet=1
 0:00:00.001021000 [peer] TRACE m#tx.payload_size=8
 0:00:00.001021000 [peer] TRACE c#tx.data=1
-0:00:00.001021000 [peer] TRACE c#tx.data[send.7]=1
-0:00:00.001021000 [peer] TRACE c#q.dispatch.enq[recv.dispatch.0]=1
-0:00:00.001021000 [peer] TRACE g#q.dispatch.depth[recv.dispatch.0]=1
-0:00:00.001021000 [peer] TRACE m#q.dispatch.depth_dist[recv.dispatch.0]=1
+0:00:00.001021000 [peer] TRACE c#tx.data[send.1]=1
+0:00:00.001021000 [peer] TRACE c#q.dispatch.enq[recv.dispatch.1]=1
+0:00:00.001021000 [peer] TRACE g#q.dispatch.depth[recv.dispatch.1]=1
+0:00:00.001021000 [peer] TRACE m#q.dispatch.depth_dist[recv.dispatch.1]=1
 0:00:00.001021000 [peer] TRACE m#asm.segments=1
-0:00:00.001021000 [peer] TRACE c#socket.tx.ops[send.7]=1
-0:00:00.001021000 [peer] TRACE c#socket.tx.bytes[send.7]=54
-0:00:00.001021000 [peer] TRACE m#task.assembler.drained[send.7]=1
-0:00:00.001021000 [peer] TRACE m#task.idle_wheel.drained[send.worker.3]=0
-0:00:00.001021000 [peer] TRACE c#q.dispatch.receiver[recv.dispatch.0.task.ack_completion]=1
-0:00:00.001021000 [peer] TRACE c#q.dispatch.drain[recv.dispatch.0]=1
-0:00:00.001021000 [peer] TRACE g#q.dispatch.depth[recv.dispatch.0]=0
+0:00:00.001021000 [peer] TRACE c#socket.tx.ops[send.1]=1
+0:00:00.001021000 [peer] TRACE c#socket.tx.bytes[send.1]=54
+0:00:00.001021000 [peer] TRACE m#task.assembler.drained[send.1]=1
+0:00:00.001021000 [peer] TRACE m#task.idle_wheel.drained[send.worker.1]=0
+0:00:00.001021000 [peer] TRACE c#q.dispatch.receiver[recv.dispatch.1.task.ack_completion]=1
+0:00:00.001021000 [peer] TRACE c#q.dispatch.drain[recv.dispatch.1]=1
+0:00:00.001021000 [peer] TRACE g#q.dispatch.depth[recv.dispatch.1]=0
 0:00:00.001021000 [peer] DEBUG event=on_flush_complete prev=Flushed next=Idle location=dc/s2n-quic-dc/src/endpoint/recv.rs
-0:00:00.001021000 [peer] TRACE m#task.ack_completion.drained[recv.dispatch.0]=1
+0:00:00.001021000 [peer] TRACE m#task.ack_completion.drained[recv.dispatch.1]=1
 0:00:00.001041000 [peer] TRACE c#socket.rx.ops[recv.7]=1
 0:00:00.001041000 [peer] TRACE c#socket.rx.bytes[recv.7]=52
 0:00:00.001041000 [peer] TRACE c#router.routed=1
@@ -540,7 +553,11 @@ expression: logs
 0:00:00.001041000 [peer] TRACE c#q.dispatch_rx.drain[recv.0]=1
 0:00:00.001041000 [peer] TRACE g#q.dispatch_rx.depth[recv.0]=0
 0:00:00.001041000 [peer] TRACE c#rx.data_pkt=1
-0:00:00.001041000 [peer] TRACE c#rx.peer_cache.hit=1
+0:00:00.001041000 [peer] DEBUG deriving opener for credentials credentials=0x70fd2a0a4d67aaf871aba8165276bbd1:2 peer_addr=10.0.0.1:49158 sender_id=7 recv_worker_id=0
+0:00:00.001041000 [peer] DEBUG s2n_quic_dc: credential_id=[112, 253, 42, 10, 77, 103, 170, 248, 113, 171, 168, 22, 82, 118, 187, 209] hit=true
+0:00:00.001041000 [peer] DEBUG s2n_quic_dc: credential_id=[112, 253, 42, 10, 77, 103, 170, 248, 113, 171, 168, 22, 82, 118, 187, 209] age=1.04ms
+0:00:00.001041000 [peer] DEBUG s2n_quic_dc: credential_id=[112, 253, 42, 10, 77, 103, 170, 248, 113, 171, 168, 22, 82, 118, 187, 209] key_id=2 gap=1 forward_shift=0
+0:00:00.001041000 [peer] TRACE c#rx.peer_cache.miss=1
 0:00:00.001041000 [peer] TRACE c#rx.ecn[ect0]=1
 0:00:00.001041000 [peer] TRACE m#rx.packet_size=4
 0:00:00.001041000 [peer] TRACE c#rx.frame[queue_data_fin]=1
@@ -548,6 +565,7 @@ expression: logs
 0:00:00.001041000 [peer] TRACE m#rx.frames_per_packet=1
 0:00:00.001041000 [peer] DEBUG event=on_ack_eliciting prev=Idle next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.001041000 [peer] TRACE m#task.packet_dispatch.drained[recv.dispatch.0]=2
+0:00:00.001041000 [peer] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.0]=1
 0:00:00.001041000 [peer] TRACE m#task.waker_drain.drained[waker.11]=1
 0:00:00.001041000 [peer] DEBUG event=on_flush prev=Scheduled next=Flushed location=dc/s2n-quic-dc/src/endpoint/recv.rs
 0:00:00.001041000 [peer] TRACE c#q.ack.enq[send.3]=1
@@ -555,6 +573,7 @@ expression: logs
 0:00:00.001041000 [peer] TRACE m#q.ack.depth_dist[send.3]=1
 0:00:00.001041000 [peer] TRACE m#task.ack_burst.drained[recv.dispatch.0]=1
 0:00:00.001041000 [peer] TRACE m#task.recycle_drain.drained=1
+0:00:00.001041000 [peer] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.0]=0
 0:00:00.001041000 [peer] DEBUG Reader complete - all data consumed binding_id=1 final_size=Some(4) consumed_len=4
 0:00:00.001041000 [peer] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs
 0:00:00.001041000 [peer]  INFO peer_self_loopback passed
@@ -564,11 +583,18 @@ expression: logs
 0:00:00.001041000 [peer] TRACE c#q.ack.receiver[send.3.task.ack_processor]=1
 0:00:00.001041000 [peer] TRACE c#q.ack.drain[send.3]=1
 0:00:00.001041000 [peer] TRACE g#q.ack.depth[send.3]=0
+0:00:00.001041000 [peer] DEBUG deriving sealer for credentials credentials=0xf0fd2a0a4d67aaf871aba8165276bbd1:2 peer_addr=10.0.0.1:49158 sender_idx=7
+0:00:00.001041000 [peer] TRACE g#send.context.count[send.7]=2
 0:00:00.001041000 [peer] TRACE c#send.ack.enq[send.7]=1
 0:00:00.001041000 [peer] TRACE g#send.ack.depth[send.7]=1
 0:00:00.001041000 [peer] TRACE m#send.ack.depth_dist[send.7]=1
+0:00:00.001041000 [peer] TRACE c#q.resolver_to_idle_wheel.sender[send.worker.3.task.ack_processor]=1
+0:00:00.001041000 [peer] TRACE c#q.resolver_to_idle_wheel.enq[send.worker.3]=1
+0:00:00.001041000 [peer] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.3]=2
+0:00:00.001041000 [peer] TRACE m#q.resolver_to_idle_wheel.depth_dist[send.worker.3]=2
 0:00:00.001041000 [peer] TRACE m#task.ack_processor.drained[send.worker.3]=2
 0:00:00.001041000 [peer] TRACE m#task.recycle_drain.drained=0
+0:00:00.001041000 [peer] TRACE m#task.idle_wheel.drained[send.worker.3]=1
 0:00:00.001041000 [peer] TRACE m#asm.max_datagram_size=1472
 0:00:00.001041000 [peer] TRACE c#send.ack.drain[send.7]=1
 0:00:00.001041000 [peer] TRACE g#send.ack.depth[send.7]=0
@@ -585,6 +611,7 @@ expression: logs
 0:00:00.001041000 [peer] TRACE c#socket.tx.ops[send.7]=1
 0:00:00.001041000 [peer] TRACE c#socket.tx.bytes[send.7]=54
 0:00:00.001041000 [peer] TRACE m#task.assembler.drained[send.7]=1
+0:00:00.001041000 [peer] TRACE m#task.idle_wheel.drained[send.worker.3]=0
 0:00:00.001041000 [peer] TRACE c#q.dispatch.receiver[recv.dispatch.0.task.ack_completion]=1
 0:00:00.001041000 [peer] TRACE c#q.dispatch.drain[recv.dispatch.0]=1
 0:00:00.001041000 [peer] TRACE g#q.dispatch.depth[recv.dispatch.0]=0

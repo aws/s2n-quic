@@ -274,6 +274,15 @@ fn try_send_pick_two(
     senders: &mut Vec<TestSender>,
     rng: &mut crate::xorshift::Rng,
 ) -> Result<(), TestItem> {
+    try_send_pick_two_with_rr(value, senders, rng, &mut 0)
+}
+
+fn try_send_pick_two_with_rr(
+    value: TestItem,
+    senders: &mut Vec<TestSender>,
+    rng: &mut crate::xorshift::Rng,
+    round_robin_idx: &mut usize,
+) -> Result<(), TestItem> {
     use crate::time::precision::Clock as _;
 
     let registry = crate::counter::Registry::default();
@@ -312,6 +321,7 @@ fn try_send_pick_two(
         &mut socket_edts,
         now,
         rng,
+        round_robin_idx,
         &pick_counters_map,
         &rejected_counters_map,
         &score_delta,

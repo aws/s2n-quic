@@ -12,6 +12,6 @@ expression: logs
 0:00:00.000000000 [main] TRACE c#q.router_to_batcher.drain[p2]=1
 0:00:00.000000000 [main] TRACE g#q.router_to_batcher.depth[p2]=0
 0:00:00.000000000 [main] TRACE m#pick_two.score_delta=0
-0:00:00.000000000 [main] TRACE m#pick_two.rejected[send.0]=0
-0:00:00.000000000 [main] TRACE c#pick_two.chosen[send.1]=1
+0:00:00.000000000 [main] TRACE m#pick_two.rejected[send.1]=0
+0:00:00.000000000 [main] TRACE c#pick_two.chosen[send.0]=1
 0:00:00.000000000 [main] TRACE m#task.frame_dispatch.drained=2
