@@ -3266,3 +3266,95 @@ fn write_msg_drop_during_init_stalls_reader() {
         .spawn();
     });
 }
+
+/// Cancelling a `write_msg` future mid-partial-segment and then using `write_from`
+/// on the same writer must return an error. The receiver already has a partially-
+/// allocated MsgTable entry that expects the remaining QueueMsg chunks. Allowing
+/// `write_from` would send QueueData at an offset past the incomplete entry, creating
+/// a permanent MsgTable gap that stalls the reader.
+///
+/// The writer rejects the `write_from` call with `InvalidInput` so the application
+/// knows it must complete or shut down the in-progress message.
+#[test]
+fn write_msg_cancel_then_write_from_returns_error() {
+    sim(|| {
+        let acceptor_id = VarInt::from_u8(1);
+        // Message must be larger than one MTU chunk so force_first creates a partial
+        // segment during init.
+        const MSG_SIZE: usize = 8192;
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let (mut reader, _writer) = stream.into_split();
+                    let mut buf = BytesMut::with_capacity(MSG_SIZE * 2);
+                    loop {
+                        match reader.read_into(&mut buf).await {
+                            Ok(0) => break,
+                            Ok(_n) => continue,
+                            Err(_e) => break,
+                        }
+                    }
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (_reader, mut writer) = stream.into_split();
+
+            // Start write_msg with a large payload. The init path sends only
+            // chunk 0 (force_first) and then blocks in InitSent waiting for
+            // MAX_DATA. Cancel the future before MAX_DATA arrives.
+            let mut data = Bytes::from(vec![0xABu8; MSG_SIZE]);
+            let write_result = timeout(Duration::from_micros(100), async {
+                writer
+                    .write_msg(
+                        &mut data,
+                        crate::stream::MsgFlags {
+                            is_fin: false,
+                            is_wakeup: true,
+                        },
+                    )
+                    .await
+            })
+            .await;
+
+            assert!(write_result.is_err(), "write_msg should have timed out");
+
+            // Now attempt write_from on the same writer. The writer still has
+            // pending_chunk_index > 0 from the cancelled write_msg. The writer
+            // must reject this call with InvalidInput.
+            let mut payload = Bytes::from_static(b"hello after cancel");
+            let result = writer.write_from(&mut payload).await;
+
+            assert!(result.is_err(), "write_from must fail with pending segment");
+            let err = result.unwrap_err();
+            assert_eq!(
+                err.kind(),
+                io::ErrorKind::InvalidInput,
+                "expected InvalidInput, got {:?}",
+                err
+            );
+
+            info!("write_msg_cancel_then_write_from_returns_error passed");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}

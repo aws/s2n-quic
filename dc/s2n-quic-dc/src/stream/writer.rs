@@ -649,6 +649,14 @@ impl Inner {
     where
         S: buffer::reader::storage::Infallible,
     {
+        if self.pending_chunk_index > 0 {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "cannot use write_from while a partial write_msg segment is pending; \
+                 call write_msg again to complete the in-progress message",
+            )));
+        }
+
         if self.status.is_shutdown() {
             if let Some(error_code) = self.reset_error_code {
                 let reset_error: Error = error_code.into();
