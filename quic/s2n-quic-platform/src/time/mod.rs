@@ -81,7 +81,9 @@ mod if_no_std {
                 }
                 Err(err) if err == CLOCK_INITIALIZING => {
                     // Wait until a different thread has initialized the clock
-                    while CLOCK_STATE.load(Ordering::SeqCst) != CLOCK_INITIALIZED {}
+                    while CLOCK_STATE.load(Ordering::SeqCst) != CLOCK_INITIALIZED {
+                        std::hint::spin_loop()
+                    }
                     Err(())
                 }
                 _ => Err(()),
