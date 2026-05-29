@@ -2764,6 +2764,144 @@ fn queue_msg_small_message_uses_queue_data() {
     });
 }
 
+/// Verifies that an empty write_msg with FIN in Init state sends EOF and completes.
+#[test]
+fn queue_msg_empty_fin_closes_stream() {
+    let _guard = crate::testing::without_snapshots();
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let (mut reader, _writer) = stream.into_split();
+                    let mut recv = BytesMut::with_capacity(1);
+                    let n = timeout(5.s(), reader.read_into(&mut recv))
+                        .await
+                        .expect("server read timeout")
+                        .expect("server read");
+                    assert_eq!(n, 0, "server should observe EOF for empty FIN message");
+                    assert!(recv.is_empty(), "no payload should be delivered");
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (_reader, mut writer) = stream.into_split();
+
+            let mut empty = Bytes::new();
+            let n = timeout(
+                5.s(),
+                writer.write_msg(
+                    &mut empty,
+                    crate::stream::MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                ),
+            )
+            .await
+            .expect("client write_msg timeout")
+            .expect("client write_msg");
+            assert_eq!(n, 0, "empty FIN message should report zero bytes written");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
+/// Verifies that an empty write_msg without FIN is a no-op and doesn't block later writes.
+#[test]
+fn queue_msg_empty_without_fin_is_noop() {
+    let _guard = crate::testing::without_snapshots();
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let (mut reader, _writer) = stream.into_split();
+                    let mut recv = BytesMut::with_capacity(8);
+                    loop {
+                        let n = timeout(5.s(), reader.read_into(&mut recv))
+                            .await
+                            .expect("server read timeout")
+                            .expect("server read");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+                    assert_eq!(&recv[..], b"ping");
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (_reader, mut writer) = stream.into_split();
+
+            let mut empty = Bytes::new();
+            let n = timeout(
+                5.s(),
+                writer.write_msg(
+                    &mut empty,
+                    crate::stream::MsgFlags {
+                        is_fin: false,
+                        is_wakeup: true,
+                    },
+                ),
+            )
+            .await
+            .expect("client write_msg timeout")
+            .expect("client write_msg");
+            assert_eq!(n, 0, "empty non-FIN message should be a no-op");
+
+            let mut ping = Bytes::from_static(b"ping");
+            timeout(5.s(), writer.write_all_from_fin(&mut ping))
+                .await
+                .expect("client write_all_from_fin timeout")
+                .expect("client write_all_from_fin");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
 /// Verifies that resetting a stream mid-message doesn't leak or panic.
 ///
 /// The server drops its reader after receiving the init frame but before the full

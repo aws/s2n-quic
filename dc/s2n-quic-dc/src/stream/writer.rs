@@ -561,7 +561,12 @@ impl Inner {
         // triggers the peer to send MAX_DATA.
         if self.status.is_init() {
             if buf.buffer_is_empty() {
-                return Poll::Pending;
+                if flags.is_fin {
+                    let (written, _) = self.send_queue_data_init(buf, true)?;
+                    return Poll::Ready(Ok(written));
+                }
+
+                return Poll::Ready(Ok(0));
             }
             let written = self.send_msg(buf, flags, true)?;
             if written > 0 {

@@ -170,6 +170,8 @@ expression: logs
 0:00:00.000000000 [client] DEBUG s2n_quic_dc: peer_address=10.0.0.2:49152 credential_id=[253, 162, 176, 33, 188, 81, 236, 106, 53, 74, 204, 19, 207, 132, 62, 199]
 0:00:00.000000000 [client] DEBUG setting peer data addresses peer=10.0.0.1:4433 addrs=[SocketAddressV6([::ffff:10.0.0.1]:4433), SocketAddressV6([::ffff:10.0.0.1]:49152), SocketAddressV6([::ffff:10.0.0.1]:49153), SocketAddressV6([::ffff:10.0.0.1]:49154), SocketAddressV6([::ffff:10.0.0.1]:49155), SocketAddressV6([::ffff:10.0.0.1]:49156), SocketAddressV6([::ffff:10.0.0.1]:49157), SocketAddressV6([::ffff:10.0.0.1]:49158)]
 0:00:00.000000000 [client] DEBUG setting peer data addresses peer=10.0.0.2:49152 addrs=[SocketAddressV6([::ffff:10.0.0.2]:49152), SocketAddressV6([::ffff:10.0.0.2]:49153), SocketAddressV6([::ffff:10.0.0.2]:49154), SocketAddressV6([::ffff:10.0.0.2]:49155), SocketAddressV6([::ffff:10.0.0.2]:49156), SocketAddressV6([::ffff:10.0.0.2]:49157), SocketAddressV6([::ffff:10.0.0.2]:49158), SocketAddressV6([::ffff:10.0.0.2]:49159)]
+0:00:00.000000000 [client] TRACE m#tx.msg.segment_size=16384
+0:00:00.000000000 [client] TRACE m#tx.msg.chunks_per_segment=13
 0:00:00.000000000 [client] DEBUG event=on_init_sent prev=Init next=InitSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [server] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [server] TRACE m#task.frame_dispatch.drained=0
@@ -1282,6 +1284,9 @@ expression: logs
 0:00:00.001521000 [server] TRACE c#q.dispatch_rx.drain[recv.2]=1
 0:00:00.001521000 [server] TRACE g#q.dispatch_rx.depth[recv.2]=0
 0:00:00.001521000 [server] TRACE c#rx.data_pkt=1
+0:00:00.001521000 [server] TRACE c#rx.msg.segment_completed=1
+0:00:00.001521000 [server] TRACE m#rx.msg.segment_size=16384
+0:00:00.001521000 [server] TRACE m#rx.msg.chunks_per_segment=13
 0:00:00.001521000 [server] TRACE c#rx.peer_cache.hit=1
 0:00:00.001521000 [server] TRACE c#rx.ecn[ect0]=1
 0:00:00.001521000 [server] TRACE m#rx.packet_size=448
@@ -1498,6 +1503,12 @@ expression: logs
 0:00:00.002041000 [client] DEBUG poll_remote_budget received messages binding_id=1 status=InitSent msg_count=1
 0:00:00.002041000 [client] DEBUG event=on_confirmed prev=InitSent next=Open location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.002041000 [client] DEBUG Flow established binding_id=1
+0:00:00.002041000 [client] TRACE m#tx.msg.segment_size=16384
+0:00:00.002041000 [client] TRACE m#tx.msg.chunks_per_segment=13
+0:00:00.002041000 [client] TRACE m#tx.msg.segment_size=16384
+0:00:00.002041000 [client] TRACE m#tx.msg.chunks_per_segment=13
+0:00:00.002041000 [client] TRACE m#tx.msg.segment_size=16384
+0:00:00.002041000 [client] TRACE m#tx.msg.chunks_per_segment=13
 0:00:00.002041000 [client] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.002041000 [client]  INFO queue_msg_multiple_messages passed
 0:00:00.002041000 [client] DEBUG Writer dropping binding_id=1 status=FinSent next_offset=65536 inflight_bytes=49152 remote_max_data=1064960
@@ -4307,6 +4318,9 @@ expression: logs
 0:00:00.004561000 [server] TRACE c#q.dispatch_rx.drain[recv.2]=1
 0:00:00.004561000 [server] TRACE g#q.dispatch_rx.depth[recv.2]=0
 0:00:00.004561000 [server] TRACE c#rx.data_pkt=1
+0:00:00.004561000 [server] TRACE c#rx.msg.segment_completed=1
+0:00:00.004561000 [server] TRACE m#rx.msg.segment_size=16384
+0:00:00.004561000 [server] TRACE m#rx.msg.chunks_per_segment=13
 0:00:00.004561000 [server] TRACE c#rx.peer_cache.hit=1
 0:00:00.004561000 [server] TRACE c#rx.ecn[ect0]=1
 0:00:00.004561000 [server] TRACE m#rx.packet_size=448
