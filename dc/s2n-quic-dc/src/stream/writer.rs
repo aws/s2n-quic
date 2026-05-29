@@ -165,6 +165,9 @@ struct Inner {
     /// The declared message_size of the pending segment (needed so resumed
     /// chunks reference the same size the receiver allocated).
     pending_segment_size: usize,
+    /// The declared chunk_size of the pending segment (needed so resumed
+    /// chunks use the same chunk_size the receiver expects).
+    pending_chunk_size: u16,
     /// The stream_offset of the pending segment (all chunks in a segment
     /// share the same stream_offset).
     pending_stream_offset: VarInt,
@@ -261,6 +264,7 @@ impl Writer {
             next_msg_id: 0,
             pending_chunk_index: 0,
             pending_segment_size: 0,
+            pending_chunk_size: 0,
             pending_stream_offset: VarInt::ZERO,
             path_secret_entry,
             packet_size,
@@ -304,6 +308,7 @@ impl Writer {
             next_msg_id: 0,
             pending_chunk_index: 0,
             pending_segment_size: 0,
+            pending_chunk_size: 0,
             pending_stream_offset: VarInt::ZERO,
             path_secret_entry,
             packet_size,
@@ -1227,7 +1232,11 @@ impl Inner {
 
         // Size-based routing: messages that fit in a single chunk use QueueData
         // (avoids the MsgTable/bitset overhead for small messages).
-        if total_size <= self.packet_size as usize {
+        // Skip this optimization when a partial QueueMsg segment is pending —
+        // the receiver's MsgTable already has an entry expecting all chunks via
+        // QueueMsg, and routing the remainder via QueueData would leave the
+        // entry permanently incomplete.
+        if total_size <= self.packet_size as usize && self.pending_chunk_index == 0 {
             if self.status.is_init() {
                 let (written, _) = self.send_queue_data_init(buf, flags.is_fin)?;
                 return Ok(written);
@@ -1236,7 +1245,13 @@ impl Inner {
         }
 
         let mtu = self.msg_packet_size as usize;
-        let chunk_size = mtu.min(total_size).max(1) as u16;
+        // When resuming a pending segment, use the saved chunk_size so all
+        // frames in the segment share the same declared chunk_size.
+        let chunk_size = if self.pending_chunk_index > 0 {
+            self.pending_chunk_size
+        } else {
+            mtu.min(total_size).max(1) as u16
+        };
         let max_segment_size = crate::queue::msg_entry::MAX_CHUNKS as usize * chunk_size as usize;
 
         let batch_enqueued_at = Some(self.clock.now());
@@ -1350,6 +1365,7 @@ impl Inner {
                 // Partial segment: remember where to resume.
                 self.pending_chunk_index = chunk_index;
                 self.pending_segment_size = segment_size;
+                self.pending_chunk_size = chunk_size;
                 self.pending_stream_offset = stream_offset;
 
                 self.metrics
@@ -1366,6 +1382,7 @@ impl Inner {
                 // Segment complete: advance msg_id and clear partial state.
                 self.pending_chunk_index = 0;
                 self.pending_segment_size = 0;
+                self.pending_chunk_size = 0;
                 self.pending_stream_offset = VarInt::ZERO;
                 self.next_msg_id += 1;
             }

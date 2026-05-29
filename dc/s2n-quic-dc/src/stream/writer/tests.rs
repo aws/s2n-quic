@@ -2302,6 +2302,117 @@ fn write_msg_coop_yields_after_budget_completions() {
     });
 }
 
+/// BUG REPRODUCTION: Client write_msg with a payload just above packet_size
+/// splits into a 2-chunk QueueMsg segment. During Init (force_first=true),
+/// only chunk 0 is sent. After MAX_DATA unblocks the writer, `send_msg` is
+/// called with the remaining bytes. If those remaining bytes fit within
+/// packet_size, the size-based routing early-return at the top of `send_msg`
+/// routes them to `send_data` (QueueData) instead of resuming the pending
+/// QueueMsg segment. The receiver's MsgTable entry never completes because
+/// chunk 1 never arrives via QueueMsg — the data arrives via QueueData at
+/// the wrong offset, and the MsgTable is permanently stuck.
+#[test]
+fn client_write_msg_partial_segment_resume_must_use_queue_msg_not_queue_data() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_client_pair();
+        // Payload just above packet_size so it takes the QueueMsg path but
+        // produces exactly 2 chunks: first chunk = msg_packet_size, second chunk
+        // = packet_size + 1 - msg_packet_size (which is < packet_size).
+        let payload_len = writer.0.packet_size as usize + 1;
+
+        async move {
+            // First batch: the init bootstrap frame(s). Should contain at least
+            // one QueueMsg with chunk_index=0.
+            let frames = pusher.recv_frames().await;
+            let mut saw_queue_msg_chunk_0 = false;
+            for frame in frames.iter() {
+                match frame.header {
+                    Header::QueueMsg {
+                        chunk_index,
+                        dest_acceptor_id: Some(_),
+                        ..
+                    } => {
+                        assert_eq!(
+                            chunk_index.as_u64(),
+                            0,
+                            "init should only send chunk_index=0"
+                        );
+                        saw_queue_msg_chunk_0 = true;
+                    }
+                    Header::QueueData {
+                        dest_acceptor_id: Some(_),
+                        ..
+                    } => {
+                        // Small-payload init path — this test requires a
+                        // payload above packet_size, so this shouldn't happen.
+                        panic!(
+                            "expected QueueMsg init (payload > packet_size), got QueueData"
+                        );
+                    }
+                    _ => panic!("unexpected frame during init: {:?}", frame.header),
+                }
+            }
+            assert!(
+                saw_queue_msg_chunk_0,
+                "expected QueueMsg chunk_index=0 during init"
+            );
+
+            // Grant MAX_DATA so the writer can resume the pending segment.
+            pusher.push_max_data(VarInt::from_u16(4096));
+
+            // Second batch: the resumed segment. This MUST contain QueueMsg
+            // chunk_index=1, NOT a QueueData frame.
+            let resume_frames = pusher
+                .recv_frames_timeout(Duration::from_secs(5))
+                .await
+                .expect("expected resumed frames after MAX_DATA");
+
+            let mut saw_queue_msg_chunk_1 = false;
+            for frame in resume_frames.iter() {
+                match frame.header {
+                    Header::QueueMsg { chunk_index, .. } => {
+                        assert_eq!(
+                            chunk_index.as_u64(),
+                            1,
+                            "resumed segment should send chunk_index=1"
+                        );
+                        saw_queue_msg_chunk_1 = true;
+                    }
+                    Header::QueueData { .. } => {
+                        panic!(
+                            "BUG: remaining bytes routed to QueueData instead of \
+                             resuming QueueMsg segment (pending_chunk_index was ignored)"
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            assert!(
+                saw_queue_msg_chunk_1,
+                "expected QueueMsg chunk_index=1 after resume, but it never arrived"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Data::new(payload_len as u64);
+            writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await
+                .expect("write_msg should succeed");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
 /// write_msg with FIN on a large multi-segment payload marks FIN only on the
 /// last chunk of the last segment, not on intermediate segments.
 ///
