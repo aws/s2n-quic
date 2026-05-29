@@ -116,12 +116,17 @@ impl ReaderMetrics {
 #[derive(Clone)]
 pub struct WriterMetrics {
     pub sojourn: SojournMetrics,
+    pub tx_msg_segment_size: Summary,
+    pub tx_msg_chunks_per_segment: Summary,
 }
 
 impl WriterMetrics {
     pub fn new(registry: &Registry, label: &str) -> Self {
         Self {
             sojourn: SojournMetrics::new(registry, label),
+            tx_msg_segment_size: registry.register_summary("tx.msg.segment_size", Unit::Byte),
+            tx_msg_chunks_per_segment: registry
+                .register_summary("tx.msg.chunks_per_segment", Unit::Count),
         }
     }
 }

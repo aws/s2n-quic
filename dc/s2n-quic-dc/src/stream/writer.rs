@@ -410,7 +410,9 @@ impl Writer {
     where
         S: buffer::reader::storage::Infallible,
     {
-        core::future::poll_fn(|cx| self.0.poll_write_msg(cx, buf, flags)).await
+        let total = buf.buffered_len();
+        core::future::poll_fn(|cx| self.0.poll_write_msg(cx, buf, flags)).await?;
+        Ok(total)
     }
 
     /// Returns the handshake peer address used to identify this stream.
@@ -555,15 +557,20 @@ impl Inner {
 
         // Handle Init state: first write triggers QueueMsg-init with dest_acceptor_id.
         // send_msg already includes dest_acceptor_id when status is not confirmed.
+        // Force the first segment unconditionally since this bootstrap message
+        // triggers the peer to send MAX_DATA.
         if self.status.is_init() {
             if buf.buffer_is_empty() {
                 return Poll::Pending;
             }
-            let written = self.send_msg(buf, flags)?;
+            let written = self.send_msg(buf, flags, true)?;
             if written > 0 {
                 self.status.on_init_sent().ok();
             }
-            return Poll::Ready(Ok(written));
+            if buf.buffer_is_empty() {
+                return Poll::Ready(Ok(0));
+            }
+            return Poll::Pending;
         }
 
         if self.status.is_init_sent() {
@@ -578,15 +585,24 @@ impl Inner {
             return Poll::Ready(Ok(0));
         }
 
-        // The entire message must fit in the available budget.
-        let message_size = buf.buffered_len() as u64;
-        let available = self.min_send_budget();
-        if available < message_size {
-            return Poll::Pending;
-        }
+        // Send segments in a loop, refreshing budget between batches so the
+        // pipeline stays full. This mirrors how write_from_fin achieves high
+        // throughput by interleaving completions/MAX_DATA with sends.
+        loop {
+            let written = self.send_msg(buf, flags, false)?;
 
-        let written = self.send_msg(buf, flags)?;
-        Poll::Ready(Ok(written))
+            if buf.buffer_is_empty() {
+                return Poll::Ready(Ok(0));
+            }
+
+            if written == 0 {
+                return Poll::Pending;
+            }
+
+            // Refresh budget: drain completions and process MAX_DATA before retrying.
+            self.poll_completions(cx)?;
+            let _ = self.poll_remote_budget(cx)?;
+        }
     }
 
     #[inline(always)]
@@ -1144,12 +1160,19 @@ impl Inner {
     /// `flags` control per-message signaling: `is_fin` marks stream end,
     /// `is_wakeup` requests receiver to wake the application on completion.
     /// Both flags are set consistently on ALL frames of the message.
-    fn send_msg<S>(&mut self, buf: &mut S, flags: MsgFlags) -> io::Result<usize>
+    ///
+    /// Messages larger than MAX_CHUNKS * chunk_size are automatically split into
+    /// multiple msg_ids, each independently reassembled by the receiver. Respects
+    /// both local inflight and remote MAX_DATA budgets per-segment — returns the
+    /// number of bytes actually sent (may be less than buf if budget exhausted).
+    /// `force_first` bypasses the budget check for the first segment (used by Init
+    /// to bootstrap the connection before MAX_DATA is available).
+    fn send_msg<S>(&mut self, buf: &mut S, flags: MsgFlags, force_first: bool) -> io::Result<usize>
     where
         S: buffer::reader::storage::Infallible,
     {
-        let message_size = buf.buffered_len();
-        if message_size == 0 {
+        let total_size = buf.buffered_len();
+        if total_size == 0 {
             if !flags.is_fin {
                 return Ok(0);
             }
@@ -1158,7 +1181,7 @@ impl Inner {
 
         // Size-based routing: messages that fit in a single chunk use QueueData
         // (avoids the MsgTable/bitset overhead for small messages).
-        if message_size <= self.packet_size as usize {
+        if total_size <= self.packet_size as usize {
             if self.status.is_init() {
                 let (written, _) = self.send_queue_data_init(buf, flags.is_fin)?;
                 return Ok(written);
@@ -1166,64 +1189,104 @@ impl Inner {
             return self.send_data(buf, flags.is_fin);
         }
 
-        // Force wakeup if this message exhausts the remote budget — the receiver
-        // must wake, consume, and send MAX_DATA for the sender to continue.
-        let remaining_after = self
-            .remote_max_data
-            .as_u64()
-            .saturating_sub(self.next_offset.as_u64() + message_size as u64);
-        let is_wakeup = flags.is_wakeup || remaining_after == 0;
-
         let mtu = self.msg_packet_size as usize;
-        let chunk_size = mtu.min(message_size).max(1) as u16;
-        let stream_offset = self.next_offset;
-        let msg_id = self.next_msg_id;
-        self.next_msg_id += 1;
+        let chunk_size = mtu.min(total_size).max(1) as u16;
+        let max_segment_size =
+            crate::queue::msg_entry::MAX_CHUNKS as usize * chunk_size as usize;
 
         let batch_enqueued_at = Some(self.clock.now());
         let mut frames = Queue::new();
-        let mut chunk_index: u32 = 0;
+        let mut total_written = 0usize;
 
+        let mut is_first = true;
         while !buf.buffer_is_empty() {
-            let chunk_len = (chunk_size as usize).min(buf.buffered_len());
-            let mut payload = ByteVec::new();
-            let mut writer = payload.with_write_limit(chunk_len);
-            buf.infallible_copy_into(&mut writer);
+            // Gate on remote window only — the receiver enforces this limit and
+            // sends MAX_DATA as it consumes. Local inflight budget is not checked
+            // here because write_msg data is already materialized in the caller's
+            // buffer; the send pipeline naturally throttles at wire speed.
+            let remote_budget = self
+                .remote_max_data
+                .as_u64()
+                .saturating_sub(self.next_offset.as_u64());
 
-            let frame = Frame {
-                header: Header::QueueMsg {
-                    queue_pair: self.queue_pair(),
-                    binding_id: self.control_rx.binding_id(),
-                    msg_id: VarInt::new(msg_id).unwrap_or(VarInt::MAX),
-                    stream_offset,
-                    message_size: VarInt::new(message_size as u64).unwrap_or(VarInt::MAX),
-                    chunk_size: VarInt::new(chunk_size as u64).unwrap_or(VarInt::MAX),
-                    chunk_index: VarInt::new(chunk_index as u64).unwrap_or(VarInt::MAX),
-                    is_fin: flags.is_fin,
-                    is_wakeup,
-                    dest_acceptor_id: self.dest_acceptor_id(),
-                },
-                payload,
-                path_secret_entry: self.path_secret_entry.clone(),
-                completion: Some(self.completion_rx.sender()),
-                status: frame::TransmissionStatus::default(),
-                ttl: DEFAULT_TTL,
-                enqueued_at: batch_enqueued_at,
+            if !(is_first && force_first) && remote_budget == 0 {
+                break;
+            }
+            is_first = false;
+
+            let budget_limit = if force_first && remote_budget == 0 {
+                max_segment_size
+            } else {
+                remote_budget as usize
             };
+            let segment_size = buf.buffered_len().min(max_segment_size).min(budget_limit);
 
-            frames.push_back(frame.into());
-            chunk_index += 1;
+            let is_last_segment = buf.buffered_len() <= segment_size;
+
+            // Wakeup on every segment so the receiver drains MsgTable entries and
+            // sends MAX_DATA, unblocking subsequent segments.
+            let is_wakeup = true;
+
+            let stream_offset = self.next_offset;
+            let msg_id = self.next_msg_id;
+            self.next_msg_id += 1;
+
+            let segment_is_fin = is_last_segment && flags.is_fin;
+
+            let mut chunk_index: u32 = 0;
+            let mut segment_remaining = segment_size;
+            while segment_remaining > 0 {
+                let chunk_len = (chunk_size as usize).min(segment_remaining);
+                let mut payload = ByteVec::new();
+                let mut writer = payload.with_write_limit(chunk_len);
+                buf.infallible_copy_into(&mut writer);
+                segment_remaining -= chunk_len;
+
+                let frame = Frame {
+                    header: Header::QueueMsg {
+                        queue_pair: self.queue_pair(),
+                        binding_id: self.control_rx.binding_id(),
+                        msg_id: VarInt::new(msg_id).unwrap_or(VarInt::MAX),
+                        stream_offset,
+                        message_size: VarInt::new(segment_size as u64).unwrap_or(VarInt::MAX),
+                        chunk_size: VarInt::new(chunk_size as u64).unwrap_or(VarInt::MAX),
+                        chunk_index: VarInt::new(chunk_index as u64).unwrap_or(VarInt::MAX),
+                        is_fin: segment_is_fin,
+                        is_wakeup,
+                        dest_acceptor_id: self.dest_acceptor_id(),
+                    },
+                    payload,
+                    path_secret_entry: self.path_secret_entry.clone(),
+                    completion: Some(self.completion_rx.sender()),
+                    status: frame::TransmissionStatus::default(),
+                    ttl: DEFAULT_TTL,
+                    enqueued_at: batch_enqueued_at,
+                };
+
+                frames.push_back(frame.into());
+                chunk_index += 1;
+            }
+
+            self.metrics
+                .tx_msg_segment_size
+                .record_value(segment_size as u64);
+            self.metrics
+                .tx_msg_chunks_per_segment
+                .record_value(chunk_index as u64);
+
+            self.advance_offset(segment_size)?;
+            total_written += segment_size;
+
+            if segment_is_fin {
+                self.status.on_send_fin().ok();
+            }
         }
 
-        self.advance_offset(message_size)?;
-
-        if flags.is_fin {
-            self.status.on_send_fin().ok();
+        if !frames.is_empty() {
+            self.send_batch(frames)?;
         }
 
-        self.send_batch(frames)?;
-
-        Ok(message_size)
+        Ok(total_written)
     }
 
     fn remaining_offset_capacity(&self) -> usize {

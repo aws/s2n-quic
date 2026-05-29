@@ -65,9 +65,13 @@ where
             return Err(value);
         }
         guard.queue.push_back(value);
+        let has_waker = guard.recv_waker.is_some();
         if let Some(waker) = guard.recv_waker.take() {
             drop(guard);
+            trace!(has_waker, "sync::push -> waking receiver");
             waker.wake();
+        } else {
+            trace!(has_waker, "sync::push -> no receiver waker registered");
         }
         Ok(())
     }

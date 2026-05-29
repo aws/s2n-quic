@@ -207,7 +207,7 @@ impl ServerView {
 
         // Slot is unallocated — bind it
         match slot.allocate_and_open(binding_id) {
-            Ok(()) => {
+            Ok(true) => {
                 let slot_ptr = slot.as_ptr();
                 let on_free = OnFree::Server {
                     path_entry: path_entry.clone(),
@@ -221,6 +221,7 @@ impl ServerView {
                     control,
                 })
             }
+            Ok(false) => Ok(BindResult::Bound(AutoWake::default())),
             Err(_) => Err(Error::SenderClosed),
         }
     }

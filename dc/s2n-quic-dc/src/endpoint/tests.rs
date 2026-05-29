@@ -2556,6 +2556,73 @@ fn queue_msg_multi_chunk() {
     });
 }
 
+/// Large message requiring multi-segment split — verifies that write_msg correctly
+/// splits messages larger than MAX_CHUNKS * chunk_size into multiple msg_ids.
+/// With ~1328-byte chunks and 256 MAX_CHUNKS, max_segment_size is ~340KB.
+/// A 700KB message needs 3 segments but fits within the 1MB initial window.
+#[test]
+fn queue_msg_large_flow_control() {
+    let _guard = crate::testing::without_snapshots();
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        let acceptor_id = VarInt::from_u8(1);
+        // 700KB requires multiple segments (340KB each) but fits in 1MB window
+        const MSG_SIZE: usize = 32 * 1024 * 1024;
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let (mut reader, _writer) = stream.into_split();
+                    let mut recv = Data::new(MSG_SIZE as u64);
+                    loop {
+                        let n = reader.read_into(&mut recv).await.expect("server read");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+                    assert!(recv.is_finished(), "server should receive all data");
+                    info!("queue_msg_large_flow_control passed");
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (_reader, mut writer) = stream.into_split();
+
+            let mut data = Data::new(MSG_SIZE as u64);
+            writer
+                .write_msg(
+                    &mut data,
+                    crate::stream::MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await
+                .expect("client write_msg");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
 /// Multiple messages on the same stream — verifies fence-gated ordering and
 /// data integrity across message boundaries with advancing stream offsets.
 #[test]

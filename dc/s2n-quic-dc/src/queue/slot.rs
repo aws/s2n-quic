@@ -8,6 +8,7 @@
 //! binding IDs have the top two bits clear (QUIC VarInt encoding), so there is
 //! no overlap.
 
+use crate::tracing::*;
 use super::{
     half::{self, Flags, Half, HalfInner},
     msg_table::MsgTable,
@@ -185,7 +186,10 @@ impl Slot {
                 is_wakeup,
             ) {
                 Ok(checkout) => (checkout.ptr, checkout.expected_len, checkout.chunk_index),
-                Err(_) => return Ok(half::AutoWake::default()),
+                Err(e) => {
+                    trace!(msg_id, chunk_index, ?e, "slot::send_msg insert failed");
+                    return Ok(half::AutoWake::default());
+                }
             }
         };
 
@@ -231,8 +235,12 @@ impl Slot {
                 let mut stream = self.stream.inner.lock();
                 stream.queue.append(&mut queue);
                 if should_wake {
-                    Ok(stream.take_waker())
+                    let waker = stream.take_waker();
+                    let has_waker = waker.0.is_some();
+                    trace!(should_wake, has_waker, "slot::send_msg segment complete");
+                    Ok(waker)
                 } else {
+                    trace!(should_wake, "slot::send_msg segment complete (no wakeup flag)");
                     Ok(half::AutoWake::default())
                 }
             }
@@ -244,15 +252,23 @@ impl Slot {
     ///
     /// Acquires both half locks (stream → control) so that the binding store
     /// and the `HAS_RECEIVER` flag updates are never visible in a partial state.
-    /// Returns `Err(Closed)` if the sender side has already been closed.
+    /// Returns `Ok(true)` if a new allocation was performed, `Ok(false)` if the
+    /// slot was already bound (concurrent race), or `Err(Closed)` if the sender
+    /// side has already been closed.
     #[inline]
-    pub(crate) fn allocate_and_open(&self, binding_id: VarInt) -> Result<(), half::Closed> {
+    pub(crate) fn allocate_and_open(&self, binding_id: VarInt) -> Result<bool, half::Closed> {
         let mut s = self.stream.inner.lock();
         let mut c = self.control.inner.lock();
+
+        // Re-check inside the lock: a concurrent caller may have already bound.
+        if s.flags.contains(Flags::HAS_RECEIVER) && c.flags.contains(Flags::HAS_RECEIVER) {
+            return Ok(false);
+        }
+
         Self::allocate_and_open_locked(&mut s, &mut c, &self.binding_id, binding_id)?;
         // Clear any poisoned msg_table from the previous binding.
         *self.msg_table.lock() = None;
-        Ok(())
+        Ok(true)
     }
 
     /// Bind the slot (if unallocated) and push the first stream entry atomically.

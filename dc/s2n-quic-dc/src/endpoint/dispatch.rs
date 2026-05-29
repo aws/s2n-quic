@@ -201,7 +201,19 @@ fn decrypt_fast_path(
     );
 
     Some(match waker {
-        Ok(w) => w,
+        Ok(w) => {
+            if w.is_some() {
+                counters.rx_msg_segment_completed.add(1);
+                counters
+                    .rx_msg_segment_size
+                    .record_value(message_size.as_u64());
+                let chunks = message_size
+                    .as_u64()
+                    .div_ceil(chunk_size.as_u64().max(1));
+                counters.rx_msg_chunks_per_segment.record_value(chunks);
+            }
+            w
+        }
         Err(_) => AutoWake::default(),
     })
 }
@@ -392,6 +404,24 @@ where
             let _ = waker_sink.send(waker);
             counters.on_received_frame(&single_queue_msg.unwrap());
             counters.rx_frames_per_packet.record_value(1);
+
+            // QueueMsg is always ack-eliciting — drive the ACK state machine.
+            match peer.ack_state.on_ack_eliciting() {
+                Ok(()) | Err(s2n_quic_core::state::Error::NoOp { .. }) => {}
+                Err(s2n_quic_core::state::Error::InvalidTransition { .. }) => {
+                    counters.rx_ack_state_impossible.add(1);
+                    debug_assert!(false, "on_ack_eliciting transition failed");
+                }
+            }
+            let enqueue_pending_ack =
+                !peer.ack_burst.is_linked() && peer.ack_state.is_scheduled();
+            peer.invariants();
+            drop(peer);
+
+            if enqueue_pending_ack {
+                let _ = ack_burst_tx.send(peer_rc);
+            }
+
             return Ok(());
         }
         DecryptResult::SlowPath(buf) => buf,
@@ -878,6 +908,16 @@ fn handle_queue_msg(
         },
     ) {
         Ok(waker) => {
+            if waker.is_some() {
+                counters.rx_msg_segment_completed.add(1);
+                counters
+                    .rx_msg_segment_size
+                    .record_value(message_size.as_u64());
+                let chunks = message_size
+                    .as_u64()
+                    .div_ceil(chunk_size.as_u64().max(1));
+                counters.rx_msg_chunks_per_segment.record_value(chunks);
+            }
             let _ = waker_sink.send(waker);
         }
         Err(crate::queue::Error::Unallocated(_)) => {

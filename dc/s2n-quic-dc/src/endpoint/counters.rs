@@ -68,6 +68,11 @@ pub(crate) struct Dispatch {
     pub rx_frame_ack: Counter,
     pub rx_frame_queue_msg: Counter,
     pub rx_frame_queue_msg_fin: Counter,
+
+    // QueueMsg reassembly metrics
+    pub rx_msg_segment_completed: Counter,
+    pub rx_msg_segment_size: Summary,
+    pub rx_msg_chunks_per_segment: Summary,
 }
 
 impl Dispatch {
@@ -131,6 +136,11 @@ impl Dispatch {
             rx_frame_ack: counters.register_nominal("rx.frame", "ack"),
             rx_frame_queue_msg: counters.register_nominal("rx.frame", "queue_msg"),
             rx_frame_queue_msg_fin: counters.register_nominal("rx.frame", "queue_msg_fin"),
+
+            rx_msg_segment_completed: counters.register("rx.msg.segment_completed"),
+            rx_msg_segment_size: counters.register_summary("rx.msg.segment_size", Unit::Byte),
+            rx_msg_chunks_per_segment: counters
+                .register_summary("rx.msg.chunks_per_segment", Unit::Count),
         })
     }
 

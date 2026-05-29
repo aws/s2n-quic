@@ -1163,6 +1163,7 @@ expression: logs
 0:00:00.000500000 [server] TRACE m#rx.packet_size=1328
 0:00:00.000500000 [server] TRACE c#rx.frame[queue_msg_fin]=1
 0:00:00.000500000 [server] TRACE m#rx.frames_per_packet=1
+0:00:00.000500000 [server] DEBUG event=on_ack_eliciting prev=Scheduled next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.receiver[recv.2.task.packet_dispatch]=1
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.drain[recv.2]=1
 0:00:00.000500000 [server] TRACE g#q.dispatch_rx.depth[recv.2]=7
@@ -1172,6 +1173,7 @@ expression: logs
 0:00:00.000500000 [server] TRACE m#rx.packet_size=1328
 0:00:00.000500000 [server] TRACE c#rx.frame[queue_msg_fin]=1
 0:00:00.000500000 [server] TRACE m#rx.frames_per_packet=1
+0:00:00.000500000 [server] DEBUG event=on_ack_eliciting prev=Scheduled next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.receiver[recv.2.task.packet_dispatch]=1
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.drain[recv.2]=1
 0:00:00.000500000 [server] TRACE g#q.dispatch_rx.depth[recv.2]=6
@@ -1181,6 +1183,7 @@ expression: logs
 0:00:00.000500000 [server] TRACE m#rx.packet_size=1328
 0:00:00.000500000 [server] TRACE c#rx.frame[queue_msg_fin]=1
 0:00:00.000500000 [server] TRACE m#rx.frames_per_packet=1
+0:00:00.000500000 [server] DEBUG event=on_ack_eliciting prev=Scheduled next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.receiver[recv.2.task.packet_dispatch]=1
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.drain[recv.2]=1
 0:00:00.000500000 [server] TRACE g#q.dispatch_rx.depth[recv.2]=5
@@ -1190,6 +1193,7 @@ expression: logs
 0:00:00.000500000 [server] TRACE m#rx.packet_size=1328
 0:00:00.000500000 [server] TRACE c#rx.frame[queue_msg_fin]=1
 0:00:00.000500000 [server] TRACE m#rx.frames_per_packet=1
+0:00:00.000500000 [server] DEBUG event=on_ack_eliciting prev=Scheduled next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.receiver[recv.2.task.packet_dispatch]=1
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.drain[recv.2]=1
 0:00:00.000500000 [server] TRACE g#q.dispatch_rx.depth[recv.2]=4
@@ -1199,6 +1203,7 @@ expression: logs
 0:00:00.000500000 [server] TRACE m#rx.packet_size=1328
 0:00:00.000500000 [server] TRACE c#rx.frame[queue_msg_fin]=1
 0:00:00.000500000 [server] TRACE m#rx.frames_per_packet=1
+0:00:00.000500000 [server] DEBUG event=on_ack_eliciting prev=Scheduled next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.receiver[recv.2.task.packet_dispatch]=1
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.drain[recv.2]=1
 0:00:00.000500000 [server] TRACE g#q.dispatch_rx.depth[recv.2]=3
@@ -1208,6 +1213,7 @@ expression: logs
 0:00:00.000500000 [server] TRACE m#rx.packet_size=1328
 0:00:00.000500000 [server] TRACE c#rx.frame[queue_msg_fin]=1
 0:00:00.000500000 [server] TRACE m#rx.frames_per_packet=1
+0:00:00.000500000 [server] DEBUG event=on_ack_eliciting prev=Scheduled next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.receiver[recv.2.task.packet_dispatch]=1
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.drain[recv.2]=1
 0:00:00.000500000 [server] TRACE g#q.dispatch_rx.depth[recv.2]=2
@@ -1217,6 +1223,7 @@ expression: logs
 0:00:00.000500000 [server] TRACE m#rx.packet_size=1328
 0:00:00.000500000 [server] TRACE c#rx.frame[queue_msg_fin]=1
 0:00:00.000500000 [server] TRACE m#rx.frames_per_packet=1
+0:00:00.000500000 [server] DEBUG event=on_ack_eliciting prev=Scheduled next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.receiver[recv.2.task.packet_dispatch]=1
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.drain[recv.2]=1
 0:00:00.000500000 [server] TRACE g#q.dispatch_rx.depth[recv.2]=1
@@ -1226,6 +1233,7 @@ expression: logs
 0:00:00.000500000 [server] TRACE m#rx.packet_size=1328
 0:00:00.000500000 [server] TRACE c#rx.frame[queue_msg_fin]=1
 0:00:00.000500000 [server] TRACE m#rx.frames_per_packet=1
+0:00:00.000500000 [server] DEBUG event=on_ack_eliciting prev=Scheduled next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.receiver[recv.2.task.packet_dispatch]=1
 0:00:00.000500000 [server] TRACE c#q.dispatch_rx.drain[recv.2]=1
 0:00:00.000500000 [server] TRACE g#q.dispatch_rx.depth[recv.2]=0
@@ -1235,6 +1243,7 @@ expression: logs
 0:00:00.000500000 [server] TRACE m#rx.packet_size=1328
 0:00:00.000500000 [server] TRACE c#rx.frame[queue_msg_fin]=1
 0:00:00.000500000 [server] TRACE m#rx.frames_per_packet=1
+0:00:00.000500000 [server] DEBUG event=on_ack_eliciting prev=Scheduled next=Scheduled location=dc/s2n-quic-dc/src/endpoint/dispatch.rs
 0:00:00.000500000 [server] TRACE m#task.packet_dispatch.drained[recv.dispatch.2]=11
 0:00:00.000500000 [server] TRACE m#task.recv_idle_wheel.drained[recv.dispatch.2]=1
 0:00:00.000500000 [server] TRACE m#task.waker_drain.drained[waker.11]=1

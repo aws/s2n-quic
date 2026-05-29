@@ -11,7 +11,7 @@
 //! Each producer gets its own `Slot` (mutex-guarded Vec) so there is no cross-producer contention.
 //! The drain task swaps the Vec out in O(1) and iterates the local copy.
 
-use crate::{queue::AutoWake, socket::channel};
+use crate::{queue::AutoWake, socket::channel, tracing::*};
 use core::task::{Poll, Waker};
 use parking_lot::Mutex;
 use std::{
@@ -51,6 +51,8 @@ impl Slot {
             guard.wakers.push_back(waker);
             guard.drain_waker.take()
         };
+        let has_notify = notify.is_some();
+        trace!(has_drain_waker = has_notify, "waker::Slot::push");
         if let Some(w) = notify {
             w.wake();
         }
@@ -58,6 +60,7 @@ impl Slot {
 
     fn swap_into(&self, cx: &core::task::Context<'_>, out: &mut VecDeque<Waker>) {
         let mut guard = self.inner.lock();
+        let swapped_count = guard.wakers.len();
         core::mem::swap(&mut guard.wakers, out);
         if guard
             .drain_waker
@@ -66,6 +69,7 @@ impl Slot {
         {
             guard.drain_waker = Some(cx.waker().clone());
         }
+        trace!(swapped_count, "waker::Slot::swap_into");
     }
 }
 
@@ -114,7 +118,10 @@ impl channel::UnboundedSender<Waker> for Sink {
 impl channel::UnboundedSender<AutoWake> for Sink {
     fn send(&mut self, mut auto_wake: AutoWake) -> Result<(), AutoWake> {
         if let Some(waker) = auto_wake.take() {
+            trace!("waker::Sink::send(AutoWake) -> push");
             self.slot.push(waker);
+        } else {
+            trace!("waker::Sink::send(AutoWake) -> empty, skipped");
         }
         Ok(())
     }
@@ -158,6 +165,7 @@ impl channel::Receiver<Waker> for Drain {
 
         if let Some(waker) = self.local.pop_front() {
             budget.consume();
+            trace!("waker::Drain::poll_recv -> Ready (from local)");
             return Poll::Ready(Some(waker));
         }
 
@@ -169,6 +177,7 @@ impl channel::Receiver<Waker> for Drain {
             slot.swap_into(cx, &mut self.local);
             if let Some(waker) = self.local.pop_front() {
                 budget.consume();
+                trace!(local_remaining = self.local.len(), "waker::Drain::poll_recv -> Ready (from slot)");
                 return Poll::Ready(Some(waker));
             }
         }
@@ -184,6 +193,7 @@ impl channel::Receiver<Waker> for Drain {
             *guard = Some(cx.waker().clone());
         }
 
+        trace!("waker::Drain::poll_recv -> Pending");
         Poll::Pending
     }
 
