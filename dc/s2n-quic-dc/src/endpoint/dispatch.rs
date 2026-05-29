@@ -207,9 +207,7 @@ fn decrypt_fast_path(
                 counters
                     .rx_msg_segment_size
                     .record_value(message_size.as_u64());
-                let chunks = message_size
-                    .as_u64()
-                    .div_ceil(chunk_size.as_u64().max(1));
+                let chunks = message_size.as_u64().div_ceil(chunk_size.as_u64().max(1));
                 counters.rx_msg_chunks_per_segment.record_value(chunks);
             }
             w
@@ -413,8 +411,7 @@ where
                     debug_assert!(false, "on_ack_eliciting transition failed");
                 }
             }
-            let enqueue_pending_ack =
-                !peer.ack_burst.is_linked() && peer.ack_state.is_scheduled();
+            let enqueue_pending_ack = !peer.ack_burst.is_linked() && peer.ack_state.is_scheduled();
             peer.invariants();
             drop(peer);
 
@@ -913,9 +910,7 @@ fn handle_queue_msg(
                 counters
                     .rx_msg_segment_size
                     .record_value(message_size.as_u64());
-                let chunks = message_size
-                    .as_u64()
-                    .div_ceil(chunk_size.as_u64().max(1));
+                let chunks = message_size.as_u64().div_ceil(chunk_size.as_u64().max(1));
                 counters.rx_msg_chunks_per_segment.record_value(chunks);
             }
             let _ = waker_sink.send(waker);

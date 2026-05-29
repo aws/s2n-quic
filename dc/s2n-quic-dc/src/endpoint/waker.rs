@@ -177,7 +177,10 @@ impl channel::Receiver<Waker> for Drain {
             slot.swap_into(cx, &mut self.local);
             if let Some(waker) = self.local.pop_front() {
                 budget.consume();
-                trace!(local_remaining = self.local.len(), "waker::Drain::poll_recv -> Ready (from slot)");
+                trace!(
+                    local_remaining = self.local.len(),
+                    "waker::Drain::poll_recv -> Ready (from slot)"
+                );
                 return Poll::Ready(Some(waker));
             }
         }

@@ -1196,8 +1196,7 @@ impl Inner {
 
         let mtu = self.msg_packet_size as usize;
         let chunk_size = mtu.min(total_size).max(1) as u16;
-        let max_segment_size =
-            crate::queue::msg_entry::MAX_CHUNKS as usize * chunk_size as usize;
+        let max_segment_size = crate::queue::msg_entry::MAX_CHUNKS as usize * chunk_size as usize;
 
         let batch_enqueued_at = Some(self.clock.now());
         let mut frames = Queue::new();

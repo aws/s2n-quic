@@ -31,13 +31,14 @@ bitflags! {
     }
 }
 
-pub(crate) struct HalfInner<T> {
+pub(crate) struct HalfInner<T, X = ()> {
     pub(crate) queue: intrusive::Queue<T>,
     pub(crate) flags: Flags,
     pub(crate) waker: Option<Waker>,
+    pub(crate) extra: X,
 }
 
-impl<T> HalfInner<T> {
+impl<T, X> HalfInner<T, X> {
     pub(crate) fn take_waker(&mut self) -> AutoWake {
         AutoWake(self.waker.take())
     }
@@ -50,7 +51,7 @@ impl<T> HalfInner<T> {
     }
 }
 
-impl<T> fmt::Debug for HalfInner<T> {
+impl<T, X> fmt::Debug for HalfInner<T, X> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("HalfInner")
             .field("queue_len", &self.queue.len())
@@ -99,17 +100,24 @@ pub enum Error<T> {
     SenderClosed,
 }
 
-pub(crate) struct Half<T> {
-    pub(crate) inner: Mutex<HalfInner<T>>,
+pub(crate) struct Half<T, X = ()> {
+    pub(crate) inner: Mutex<HalfInner<T, X>>,
 }
 
 impl<T> Half<T> {
     pub(crate) fn new() -> Self {
+        Self::with_extra(())
+    }
+}
+
+impl<T, X> Half<T, X> {
+    pub(crate) fn with_extra(extra: X) -> Self {
         Self {
             inner: Mutex::new(HalfInner {
                 queue: intrusive::Queue::new(),
                 flags: Flags::HAS_SENDER,
                 waker: None,
+                extra,
             }),
         }
     }
@@ -189,9 +197,9 @@ impl<T> Half<T> {
 ///
 /// Returns `true` when this was the last receiver, signalling the caller to
 /// reclaim the slot.
-pub(crate) fn close_receiver<S, C, F>(
-    stream: &Half<S>,
-    control: &Half<C>,
+pub(crate) fn close_receiver<S, C, SX, CX, F>(
+    stream: &Half<S, SX>,
+    control: &Half<C, CX>,
     closing_stream: bool,
     on_last_receiver: F,
 ) -> bool
@@ -238,7 +246,7 @@ where
     }
 }
 
-impl<T> fmt::Debug for Half<T> {
+impl<T, X> fmt::Debug for Half<T, X> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.inner.try_lock() {
             Some(inner) => fmt::Debug::fmt(&*inner, f),
