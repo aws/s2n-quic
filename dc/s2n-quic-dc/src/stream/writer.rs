@@ -702,7 +702,12 @@ impl Inner {
             return Ok(());
         }
 
-        self.send_fin_packet()?;
+        if self.status.is_init() {
+            let mut empty = bytes::Bytes::new();
+            self.send_queue_data_init(&mut empty, true)?;
+        } else {
+            self.send_fin_packet()?;
+        }
         self.status.on_shutdown().unwrap();
 
         Ok(())
