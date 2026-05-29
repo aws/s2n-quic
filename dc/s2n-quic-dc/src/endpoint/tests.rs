@@ -9,6 +9,7 @@
 
 use crate::{
     stream::endpoint::testing::sim::{Client, MonitorHostAddr, Peer, Server, SERVER_PORT},
+    testing::{ext::*, sim},
     tracing::*,
 };
 use bach::time::timeout;
@@ -81,9 +82,7 @@ fn topology_snapshot_uses_dc_tester_layout() {
 /// entries into both maps.
 #[test]
 fn ping_pong() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
 
         // ── Server — group "server" ────────────────────────────────────
@@ -174,9 +173,7 @@ fn server_response_loss_triggers_pto() {
     let server_to_client_packets = Arc::new(AtomicUsize::new(0));
     let dropped_server_packets = Arc::new(AtomicUsize::new(0));
 
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         let mut server_addr = MonitorHostAddr::new("server");
         // Drop the second packet sent from the server to the client.
@@ -282,9 +279,7 @@ fn server_response_loss_triggers_pto() {
 /// client should PTO-retransmit and the server should still see "ping".
 #[test]
 fn client_request_loss_triggers_pto() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         let mut server_addr = MonitorHostAddr::new("server");
 
@@ -378,9 +373,7 @@ fn client_request_loss_triggers_pto() {
 /// This tests the acceptor channel, multi-stream dispatch, and queue pair routing.
 #[test]
 fn multiple_sequential_streams() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
 
         // ── Server ────────────────────────────────────────────────────────
@@ -458,9 +451,7 @@ fn multiple_sequential_streams() {
 /// frame fragmentation in the Writer and reassembly in the Reader.
 #[test]
 fn large_payload_transfer() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         const PAYLOAD_SIZE: usize = 4096;
 
@@ -542,9 +533,7 @@ fn multiple_packet_loss_recovered_by_pto() {
     let server_to_client_packets = Arc::new(AtomicUsize::new(0));
     let dropped_server_packets = Arc::new(AtomicUsize::new(0));
 
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         let mut server_addr = MonitorHostAddr::new("server");
         // Drop the first two packets from the server.
@@ -647,9 +636,7 @@ fn multiple_packet_loss_recovered_by_pto() {
 /// hanging (which would indicate stuck inflight tracking).
 #[test]
 fn ack_drains_inflight() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
 
         async move {
@@ -723,9 +710,7 @@ fn ack_drains_inflight() {
 /// for the client's message first.
 #[test]
 fn bidirectional_simultaneous_send() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
 
         // ── Server ────────────────────────────────────────────────────────
@@ -806,9 +791,7 @@ fn bidirectional_simultaneous_send() {
 /// should appear afterward.
 #[test]
 fn duplicated_client_init_accepts_only_once() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         let duplicated_packets = Arc::new(AtomicUsize::new(0));
         let duplicated_packets_monitor = duplicated_packets.clone();
@@ -906,9 +889,7 @@ fn duplicated_client_init_accepts_only_once() {
 /// other registered acceptor channels.
 #[test]
 fn unregistered_acceptor_id_does_not_reach_registered_acceptor() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let registered_acceptor_id = VarInt::from_u8(1);
         let missing_acceptor_id = VarInt::from_u8(2);
 
@@ -976,9 +957,7 @@ fn total_packet_loss_surfaces_read_timeout() {
     // for backoff, producing thousands of TRACE lines (~23MB) that change with any
     // PTO tuning. The test's value is in the assertion, not the log trace.
     let _guard = crate::testing::without_snapshots();
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
 
         // After the first successful exchange, drop ALL packets.
@@ -1117,9 +1096,7 @@ fn total_packet_loss_surfaces_read_timeout() {
 fn peer_dead_cooldown_blocks_new_connects() {
     // Snapshot disabled: this test intentionally drives timeout and loss behavior.
     let _guard = crate::testing::without_snapshots();
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         let blackhole = Arc::new(AtomicUsize::new(0));
         let blackhole_monitor = blackhole.clone();
@@ -1250,9 +1227,7 @@ fn total_packet_loss_surfaces_write_timeout() {
     // for backoff, producing thousands of TRACE lines (~23MB) that change with any
     // PTO tuning. The test's value is in the assertion, not the log trace.
     let _guard = crate::testing::without_snapshots();
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
 
         let blackhole = Arc::new(AtomicUsize::new(0));
@@ -1389,9 +1364,7 @@ fn multi_server_concurrent_loss_recovery() {
 }
 
 fn multi_server_concurrent_loss_sim() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         const NUM_STREAMS: usize = 50;
 
@@ -1535,9 +1508,7 @@ fn multi_server_concurrent_loss_sim() {
 /// the Server entry for the inbound acceptor path.
 #[test]
 fn peer_self_loopback() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
 
         async move {
@@ -1606,15 +1577,13 @@ fn peer_self_loopback() {
 
 #[test]
 fn five_node_random_chatter_settles_after_stop() {
-    use crate::testing::ext::*;
-
     const NODE_NAMES: [&str; 5] = ["node_0", "node_1", "node_2", "node_3", "node_4"];
     const CHAT_SECONDS: usize = 60;
     const SETTLE_WINDOW: Duration = Duration::from_secs(5);
     const MAX_PAYLOAD_SIZE: usize = 256;
 
     let _no_snap = crate::testing::without_snapshots();
-    crate::testing::sim(|| {
+    sim(|| {
         let acceptor_id = VarInt::from_u8(7);
         let monitor_active = Arc::new(AtomicBool::new(false));
         let packets_after_stop = Arc::new(AtomicUsize::new(0));
@@ -1769,9 +1738,7 @@ fn five_node_random_chatter_settles_after_stop() {
 /// scheduling). Under production load these naturally coalesce into one packet.
 #[test]
 fn concurrent_tiny_streams_batch_into_minimal_packets() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         const NUM_STREAMS: usize = 3;
 
@@ -1922,14 +1889,13 @@ fn concurrent_tiny_streams_batch_into_minimal_packets() {
 /// probes persist indefinitely, inflating pick_two scores.
 #[test]
 fn zombie_flow_not_invalidated_when_path_has_other_activity() {
-    use crate::testing::ext::*;
     use std::sync::atomic::AtomicBool;
 
     let zombie_still_probing = Arc::new(AtomicBool::new(false));
     let zombie_still_probing_inner = zombie_still_probing.clone();
 
     let _no_snap = crate::testing::without_snapshots();
-    crate::testing::sim(|| {
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         let mut server_addr = MonitorHostAddr::new("server");
 
@@ -2066,14 +2032,11 @@ fn zombie_flow_not_invalidated_when_path_has_other_activity() {
 #[test]
 #[ignore = "FIXME!"]
 fn queue_free_lost_on_peer_dead_invalidation() {
-    use crate::{
-        endpoint::testing::sim::{self, SERVER_PORT},
-        testing::ext::*,
-    };
+    use crate::endpoint::testing::sim::{self, SERVER_PORT};
     use s2n_quic_core::{dc::testing::TEST_APPLICATION_PARAMS, varint::VarInt};
     use std::num::NonZeroU32;
 
-    crate::testing::sim(|| {
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         let drop_client_to_server = Arc::new(AtomicBool::new(false));
 
@@ -2265,14 +2228,11 @@ fn queue_free_lost_on_peer_dead_invalidation() {
 
 #[test]
 fn stale_key_detected_after_recv_cache_eviction() {
-    use crate::{
-        endpoint::testing::sim::{self, SERVER_PORT},
-        testing::ext::*,
-    };
+    use crate::endpoint::testing::sim::{self, SERVER_PORT};
     use s2n_quic_core::{dc::testing::TEST_APPLICATION_PARAMS, varint::VarInt};
     use std::num::NonZeroU32;
 
-    crate::testing::sim(|| {
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
 
         // Server group: accept all streams and echo the payload.
@@ -2433,9 +2393,7 @@ fn stale_key_detected_after_recv_cache_eviction() {
 /// Uses a size just over one MTU to ensure QueueMsg routing (not QueueData).
 #[test]
 fn queue_msg_single_chunk() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         const MSG_SIZE: usize = 16384;
 
@@ -2496,9 +2454,7 @@ fn queue_msg_single_chunk() {
 /// Multi-chunk message — verifies reassembly across multiple QueueMsg frames.
 #[test]
 fn queue_msg_multi_chunk() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         // 64KB message at ~8KB MTU = ~8 chunks
         const MSG_SIZE: usize = 65536;
@@ -2566,9 +2522,7 @@ fn queue_msg_init_sends_single_frame() {
     let init_packets = Arc::new(AtomicUsize::new(0));
     let init_packets_check = init_packets.clone();
 
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         const MSG_SIZE: usize = 64 * 1024;
 
@@ -2662,9 +2616,7 @@ fn queue_msg_init_sends_single_frame() {
 fn queue_msg_single_allocation_under_flow_control() {
     use crate::{byte_vec::ByteVec, endpoint::testing::sim::SimEndpointConfig};
 
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         const MSG_SIZE: usize = 2 * 1024 * 1024;
 
@@ -2738,9 +2690,7 @@ fn queue_msg_single_allocation_under_flow_control() {
 #[test]
 fn queue_msg_large_flow_control() {
     let _guard = crate::testing::without_snapshots();
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         // 700KB requires multiple segments (340KB each) but fits in 1MB window
         const MSG_SIZE: usize = 32 * 1024 * 1024;
@@ -2802,9 +2752,7 @@ fn queue_msg_large_flow_control() {
 /// data integrity across message boundaries with advancing stream offsets.
 #[test]
 fn queue_msg_multiple_messages() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         const MSG_SIZE: usize = 16384;
         const NUM_MSGS: usize = 4;
@@ -2875,9 +2823,7 @@ fn queue_msg_multiple_messages() {
 /// delivery mechanism without MsgTable involvement.
 #[test]
 fn queue_msg_small_message_uses_queue_data() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         // Small enough to fit in one chunk — should route through QueueData
         const MSG_SIZE: usize = 100;
@@ -2943,9 +2889,7 @@ fn queue_msg_small_message_uses_queue_data() {
 #[test]
 fn queue_msg_empty_fin_closes_stream() {
     let _guard = crate::testing::without_snapshots();
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
 
         async move {
@@ -3007,9 +2951,7 @@ fn queue_msg_empty_fin_closes_stream() {
 #[test]
 fn queue_msg_empty_without_fin_is_noop() {
     let _guard = crate::testing::without_snapshots();
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
 
         async move {
@@ -3084,9 +3026,7 @@ fn queue_msg_empty_without_fin_is_noop() {
 /// the error cleanly.
 #[test]
 fn queue_msg_reset_mid_message() {
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         const MSG_SIZE: usize = 65536;
 
@@ -3147,9 +3087,7 @@ fn queue_msg_reset_mid_message() {
 fn queue_msg_reassembly_after_loss() {
     let client_packets_sent = Arc::new(AtomicUsize::new(0));
 
-    crate::testing::sim(|| {
-        use crate::testing::ext::*;
-
+    sim(|| {
         let acceptor_id = VarInt::from_u8(1);
         // 64KB message = ~8 chunks at typical MTU. Drop the first 3 data packets
         // to force out-of-order reassembly.
@@ -3222,6 +3160,106 @@ fn queue_msg_reassembly_after_loss() {
                 .expect("client write_msg");
 
             info!("queue_msg_reassembly_after_loss passed");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
+/// Dropping a writer mid-`write_msg` (e.g. timeout during init) must not stall the
+/// server reader. The writer sends only the first chunk of a multi-chunk QueueMsg
+/// during Init (force_first), then gets dropped. The drop path sends a FIN via
+/// QueueData which bypasses the MsgTable. The MsgTable retains an incomplete entry
+/// that permanently blocks drain_complete, so the reader's reassembler has a gap
+/// it can never fill.
+///
+/// Expected: the server reader returns an error (or EOF) within a reasonable time.
+/// Bug: the server reader stalls forever.
+#[test]
+fn write_msg_drop_during_init_stalls_reader() {
+    sim(|| {
+        let acceptor_id = VarInt::from_u8(1);
+        // Message larger than one chunk so the init path sends only chunk 0
+        // and leaves the rest for after MAX_DATA arrives.
+        const MSG_SIZE: usize = 8192;
+
+        let server_read_completed = Arc::new(AtomicBool::new(false));
+        let server_read_completed2 = server_read_completed.clone();
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                let flag = server_read_completed2.clone();
+                async move {
+                    let (mut reader, _writer) = stream.into_split();
+                    let mut buf = BytesMut::with_capacity(MSG_SIZE);
+
+                    // The reader should eventually get an error or EOF — not hang.
+                    loop {
+                        match reader.read_into(&mut buf).await {
+                            Ok(0) => break,
+                            Ok(_n) => continue,
+                            Err(_e) => break,
+                        }
+                    }
+                    flag.store(true, Ordering::Release);
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (_reader, mut writer) = stream.into_split();
+
+            // Start write_msg but cancel it before MAX_DATA arrives. The sim
+            // has 500µs one-way latency (1ms RTT). Use a timeout shorter than
+            // the RTT so the writer is still in InitSent when cancelled.
+            let mut data = Bytes::from(vec![0xABu8; MSG_SIZE]);
+            let write_result = timeout(Duration::from_micros(100), async {
+                writer
+                    .write_msg(
+                        &mut data,
+                        crate::stream::MsgFlags {
+                            is_fin: false,
+                            is_wakeup: true,
+                        },
+                    )
+                    .await
+            })
+            .await;
+
+            // The timeout must fire (writer blocked in InitSent waiting for
+            // MAX_DATA that takes 1ms RTT to arrive).
+            assert!(write_result.is_err(), "write_msg should have timed out");
+            info!("write_msg timed out as expected");
+
+            // Drop the writer explicitly — this sends FIN via QueueData.
+            drop(writer);
+
+            // Give the server time to process the FIN and unblock.
+            bach::time::sleep(Duration::from_secs(5)).await;
+
+            assert!(
+                server_read_completed.load(Ordering::Acquire),
+                "server reader must not stall — it should observe an error or EOF \
+                 when the writer drops after a partial QueueMsg init"
+            );
+
+            info!("write_msg_drop_during_init_stalls_reader passed");
         }
         .group("client")
         .primary()

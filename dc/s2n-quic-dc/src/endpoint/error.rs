@@ -28,6 +28,9 @@ pub const QUEUE_CONTROL_ERROR: VarInt = VarInt::from_u32(7);
 /// The peer was declared dead after its idle timeout elapsed without activity
 pub const IDLE_TIMEOUT: VarInt = VarInt::from_u32(8);
 
+/// The sender cancelled the stream before completing a partially-sent message
+pub const SENDER_CANCELLED: VarInt = VarInt::from_u32(9);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     AcceptorNotFound,
@@ -38,6 +41,7 @@ pub enum Error {
     ServerBusy,
     QueueControlError,
     IdleTimeout,
+    SenderCancelled,
     Unknown(VarInt),
 }
 
@@ -59,6 +63,7 @@ impl Error {
             Self::ServerBusy => SERVER_BUSY,
             Self::QueueControlError => QUEUE_CONTROL_ERROR,
             Self::IdleTimeout => IDLE_TIMEOUT,
+            Self::SenderCancelled => SENDER_CANCELLED,
             Self::Unknown(code) => code,
         }
     }
@@ -75,6 +80,7 @@ impl From<VarInt> for Error {
             SERVER_BUSY => Self::ServerBusy,
             QUEUE_CONTROL_ERROR => Self::QueueControlError,
             IDLE_TIMEOUT => Self::IdleTimeout,
+            SENDER_CANCELLED => Self::SenderCancelled,
             _ => Self::Unknown(code),
         }
     }
@@ -91,6 +97,7 @@ impl fmt::Display for Error {
             Self::ServerBusy => write!(f, "server accept queue full"),
             Self::QueueControlError => write!(f, "sender exceeded receive window"),
             Self::IdleTimeout => write!(f, "peer idle timeout expired"),
+            Self::SenderCancelled => write!(f, "sender cancelled mid-message"),
             Self::Unknown(code) => write!(f, "unknown error ({})", code.as_u64()),
         }
     }

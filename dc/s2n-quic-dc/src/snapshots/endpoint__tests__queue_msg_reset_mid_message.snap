@@ -525,9 +525,8 @@ expression: logs
 0:00:00.000521000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=1
 0:00:00.000521000 [server] TRACE m#task.pto_wheel.drained[send.worker.1]=0
 0:00:00.000521000 [main] DEBUG Writer dropping binding_id=1 status=InitSent next_offset=1328 inflight_bytes=1328 remote_max_data=0
-0:00:00.000521000 [main] DEBUG Sent FIN binding_id=1
-0:00:00.000521000 [main] DEBUG event=on_send_fin prev=InitSent next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000521000 [main] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.000521000 [main] DEBUG Sent QueueReset binding_id=1 error_code=9 reset_target=Stream
+0:00:00.000521000 [main] DEBUG event=on_shutdown prev=InitSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000521000 [main] DEBUG Reader dropping binding_id=1 status=Open final_size=None consumed_len=0 total_received_len=0 is_writing_complete=false is_reading_complete=false
 0:00:00.000521000 [main] DEBUG Sent QueueReset binding_id=1 error_code=4 reset_target=Control
 0:00:00.000521000 [main] DEBUG Reader dropped before FIN received - sent STOP_SENDING binding_id=1

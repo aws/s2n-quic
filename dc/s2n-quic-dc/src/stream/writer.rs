@@ -726,6 +726,18 @@ impl Inner {
             return Ok(());
         }
 
+        if self.pending_chunk_index > 0 {
+            // A partial QueueMsg segment was sent — the receiver's MsgTable has
+            // an incomplete entry that can never be filled. A FIN would bypass
+            // the MsgTable (via QueueData), leaving a permanent gap in the
+            // reassembler. Send a Reset so the receiver can poison the table and
+            // surface an error to the application.
+            let error_code = error::SENDER_CANCELLED;
+            let _ = self.send_reset_frame(error_code, ResetTarget::Stream);
+            self.status.on_shutdown().ok();
+            return Ok(());
+        }
+
         if self.status.is_init() {
             let mut empty = bytes::Bytes::new();
             self.send_queue_data_init(&mut empty, true)?;
