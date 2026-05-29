@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::socket::pool::descriptor::{Unfilled, WeakRecycleSender};
+use crate::socket::pool::descriptor::{Recycler, Unfilled};
 use core::fmt;
 
 pub mod descriptor;
@@ -35,7 +35,7 @@ impl Pool {
     ///
     /// Returns `None` if the packet allocator is exhausted (backpressure signal).
     #[inline]
-    pub fn alloc(&self) -> Option<Unfilled> {
+    pub fn alloc<R: Recycler>(&self) -> Option<Unfilled<R>> {
         Unfilled::new(self.max_packet_size)
     }
 
@@ -44,7 +44,7 @@ impl Pool {
     /// When the descriptor is eventually dropped, it will be pushed back to the
     /// recycling channel instead of being deallocated.
     #[inline]
-    pub fn alloc_with_recycler(&self, recycler: &WeakRecycleSender) -> Option<Unfilled> {
+    pub fn alloc_with_recycler<R: Recycler + Clone>(&self, recycler: &R) -> Option<Unfilled<R>> {
         Unfilled::new_with_recycler(self.max_packet_size, recycler.clone())
     }
 }
@@ -56,7 +56,7 @@ mod tests {
         intrusive,
         socket::{
             channel::{intrusive::sync, Budget, Receiver as _},
-            pool::descriptor::{Filled, RecycleAdapter},
+            pool::descriptor::{Filled, RecycleAdapter, SyncRecycler},
         },
         testing::{ext::*, sim},
     };
@@ -100,7 +100,7 @@ mod tests {
         }
 
         fn alloc(&mut self) {
-            if let Some(desc) = self.pool.alloc() {
+            if let Some(desc) = self.pool.alloc::<SyncRecycler>() {
                 self.unfilled.push_back(desc);
             }
         }
@@ -233,8 +233,8 @@ mod tests {
     fn descriptor_recycles_through_channel() {
         sim(|| {
             async {
-                let (tx, mut rx) = sync::new_with_adapter::<RecycleAdapter>();
-                let weak = tx.downgrade();
+                let (tx, mut rx) = sync::new_with_adapter::<RecycleAdapter<SyncRecycler>>();
+                let weak = SyncRecycler(tx.downgrade());
                 let pool = Pool::new(1500);
 
                 // Allocate with recycler, fill, then drop
@@ -252,7 +252,8 @@ mod tests {
 
                 // The descriptor should now be in the channel — recv it
                 let mut budget = Budget::new(16);
-                let batch: Option<intrusive::List<RecycleAdapter>> = rx.recv(&mut budget).await;
+                let batch: Option<intrusive::List<RecycleAdapter<SyncRecycler>>> =
+                    rx.recv(&mut budget).await;
                 let list = batch.expect("channel should have a batch");
                 assert_eq!(list.len(), 1, "expected exactly 1 recycled descriptor");
 
@@ -267,12 +268,12 @@ mod tests {
     fn descriptor_deallocs_without_recycler() {
         sim(|| {
             async {
-                let (tx, mut rx) = sync::new_with_adapter::<RecycleAdapter>();
-                let weak = tx.downgrade();
+                let (tx, mut rx) = sync::new_with_adapter::<RecycleAdapter<SyncRecycler>>();
+                let weak = SyncRecycler(tx.downgrade());
                 let pool = Pool::new(1500);
 
                 // Allocate WITHOUT recycler, fill, then drop — should dealloc, not recycle
-                let unfilled = pool.alloc().unwrap();
+                let unfilled = pool.alloc::<SyncRecycler>().unwrap();
                 let segments = unfilled
                     .fill_with(|addr, _cmsg, mut iov| {
                         iov[..4].copy_from_slice(b"test");

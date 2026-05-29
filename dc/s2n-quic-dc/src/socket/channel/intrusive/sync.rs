@@ -152,6 +152,21 @@ impl<A: intrusive::Adapter> Drop for AdapterReceiver<A> {
     }
 }
 
+impl<A: intrusive::Adapter> AdapterReceiver<A>
+where
+    A::Pointer: Send,
+{
+    /// Synchronously drain all available items from the channel into `list`.
+    ///
+    /// Unlike `poll_recv`, this never registers a waker and never returns
+    /// `Pending`; it is intended for use on the same thread that consumes the
+    /// items (e.g. draining a recycled-descriptor pool before each allocation).
+    pub fn drain_into(&mut self, list: &mut intrusive::List<A>) {
+        let mut guard = self.shared.inner.lock();
+        list.append(&mut guard.queue);
+    }
+}
+
 impl<A: intrusive::Adapter> super::super::Receiver<intrusive::List<A>> for AdapterReceiver<A>
 where
     A::Pointer: Send,

@@ -11,7 +11,10 @@ use crate::{
     },
     packet::datagram::ResetTarget,
     path::secret::map::Entry as PathSecretEntry,
-    socket::channel::ImmediateQueueStatus,
+    socket::{
+        channel::ImmediateQueueStatus,
+        pool::{self, descriptor::SyncRecycler},
+    },
     time::testing::Clock,
 };
 use bolero::check;
@@ -321,7 +324,7 @@ fn assemble_accounts_for_header_overhead() {
         crate::endpoint::id::LocalSenderId::new(VarInt::from_u8(1)),
         443,
         &gso,
-        &pool,
+        pool.alloc::<SyncRecycler>().expect("pool alloc failed"),
         &mut header_buf,
         &mut cancelled,
         &mut ack_completions,
@@ -401,7 +404,7 @@ fn assemble_fuzz_respects_gso_invariants() {
                 crate::endpoint::id::LocalSenderId::new(input.source_sender_id),
                 input.source_control_port,
                 &gso,
-                &pool,
+                pool.alloc::<SyncRecycler>().expect("pool alloc failed"),
                 &mut header_buf,
                 &mut cancelled,
                 &mut ack_completions,
@@ -665,14 +668,14 @@ fn assemble_probe_fuzz() {
             // Phase 1: normal assembly — puts frames into inflight.
             let registry2 = Registry::new();
             let counters = AssemblerCounters::new(&registry2);
-            let _segments = assemble(
+            let _segments = assemble::<SyncRecycler, _>(
                 &mut context,
                 ImmediateQueueStatus::Empty, // no more immediate items
                 &clock,
                 crate::endpoint::id::LocalSenderId::new(input.source_sender_id),
                 input.source_control_port,
                 &gso,
-                &pool,
+                pool.alloc::<SyncRecycler>().expect("pool alloc failed"),
                 &mut header_buf,
                 &mut cancelled,
                 &mut ack_completions,
@@ -698,7 +701,7 @@ fn assemble_probe_fuzz() {
                 crate::endpoint::id::LocalSenderId::new(input.source_sender_id),
                 input.source_control_port,
                 &gso,
-                &pool,
+                pool.alloc::<SyncRecycler>().expect("pool alloc failed"),
                 &mut header_buf,
                 &mut cancelled,
                 &mut ack_completions,

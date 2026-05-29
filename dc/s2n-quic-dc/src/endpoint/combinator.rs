@@ -12,11 +12,14 @@ use crate::{
         frame::{self, Frame, Priority, PriorityInput},
         id::{Id, IdMap, LocalSendSocketId, LocalSenderId},
     },
-    intrusive::{Entry, Queue},
+    intrusive::{Entry, List, Queue},
     path::secret::map::Entry as PathSecretEntry,
     socket::{
-        channel::{Budget, ByteCost, ImmediateQueueStatus, Receiver, UnboundedSender},
-        pool::descriptor,
+        channel::{
+            intrusive::{unsync as unsync_channel},
+            Budget, ByteCost, ImmediateQueueStatus, Receiver, UnboundedSender,
+        },
+        pool::descriptor::{self, UnsyncRecycler},
         rate::Rate,
     },
     stream::endpoint::{msg, send},
@@ -640,6 +643,16 @@ pub(crate) struct Assembler<R, Clk, C, A> {
     freed_batch_tx: crate::queue::FreedBatchTx,
     pub(crate) counters: AssemblerCounters,
     send_counters: Rc<super::counters::Send>,
+    /// Sender keepalive: keeps the recycle channel open so that `Arc::strong_count > 1`
+    /// and `recycle_rx` does not treat the channel as closed when polling for recycled buffers.
+    _recycle_tx: unsync_channel::Sender<descriptor::RecycleAdapter<UnsyncRecycler>>,
+    /// Weak reference stored in each newly-allocated descriptor so that, on drop,
+    /// the buffer is pushed back into the recycle channel without a mutex.
+    recycle_weak: UnsyncRecycler,
+    /// Inbound recycled descriptors pushed by dropped `Segments` on this thread.
+    recycle_rx: unsync_channel::Receiver<descriptor::RecycleAdapter<UnsyncRecycler>>,
+    /// Thread-local LIFO cache of descriptors drained from `recycle_rx`.
+    local_pool: List<descriptor::RecycleAdapter<UnsyncRecycler>>,
 }
 
 #[derive(Clone)]
@@ -760,7 +773,7 @@ impl AssemblerCounters {
 type AssemblerOutput = (
     Rc<RefCell<send::Context>>,
     send::WheelInterest,
-    Option<descriptor::Segments>,
+    Option<descriptor::Segments<UnsyncRecycler>>,
 );
 
 impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
@@ -777,6 +790,9 @@ impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
         counters: AssemblerCounters,
         send_counters: Rc<super::counters::Send>,
     ) -> Self {
+        let (recycle_tx, recycle_rx) =
+            unsync_channel::new_with_adapter::<descriptor::RecycleAdapter<UnsyncRecycler>>();
+        let recycle_weak = UnsyncRecycler(recycle_tx.downgrade());
         Self {
             inner,
             clock,
@@ -790,6 +806,10 @@ impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
             freed_batch_tx,
             counters,
             send_counters,
+            _recycle_tx: recycle_tx,
+            recycle_weak,
+            recycle_rx,
+            local_pool: List::new(),
         }
     }
 }
@@ -813,25 +833,39 @@ where
             return Poll::Ready(None);
         };
 
+        // Drain any descriptors recycled by previously-sent `Segments` back into
+        // the local pool, then try to hand a pre-allocated buffer to `assemble` so
+        // it can skip the system allocator on the hot path.
+        self.recycle_rx.drain_into(&mut self.local_pool);
+        let pre_alloc = self
+            .local_pool
+            .pop_back()
+            .map(|recycled| {
+                descriptor::Unfilled::<UnsyncRecycler>::from_recycled(recycled.into_descriptor())
+            })
+            .or_else(|| self.pool.alloc_with_recycler(&self.recycle_weak));
+
         let (segments, wheel_interest) = {
             let mut context = context.borrow_mut();
             let mut cancelled = Queue::new();
             let mut ack_completions = Queue::new();
-            let segments = assemble::assemble(
-                &mut context,
-                immediate_queue_status,
-                &self.clock,
-                self.source_sender_id,
-                self.source_control_port,
-                &self.gso,
-                &self.pool,
-                &mut self.header_buf,
-                &mut cancelled,
-                &mut ack_completions,
-                &mut self.freed_batch_tx,
-                &self.counters,
-                &self.send_counters,
-            );
+            let segments = pre_alloc.and_then(|unfilled| {
+                assemble::assemble::<UnsyncRecycler, _>(
+                    &mut context,
+                    immediate_queue_status,
+                    &self.clock,
+                    self.source_sender_id,
+                    self.source_control_port,
+                    &self.gso,
+                    unfilled,
+                    &mut self.header_buf,
+                    &mut cancelled,
+                    &mut ack_completions,
+                    &mut self.freed_batch_tx,
+                    &self.counters,
+                    &self.send_counters,
+                )
+            });
             if !cancelled.is_empty() {
                 let _ = self.cancelled_tx.send(cancelled);
             }

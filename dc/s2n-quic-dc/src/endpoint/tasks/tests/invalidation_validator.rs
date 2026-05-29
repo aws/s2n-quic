@@ -123,7 +123,7 @@ fn packet_entry(
     peer: SocketAddr,
 ) -> Entry<crate::socket::pool::descriptor::Filled> {
     let unfilled = Pool::new(1200)
-        .alloc()
+        .alloc::<crate::socket::pool::descriptor::SyncRecycler>()
         .expect("packet allocation should succeed");
     let segments = unfilled
         .fill_with(|addr, _cmsg, mut buffer| {

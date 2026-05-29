@@ -672,7 +672,7 @@ where
     }
 
     // Create one recycling channel per recv_io worker.
-    // The sender is downgraded to Weak (stored in each descriptor's Header).
+    // The sender is downgraded to a SyncRecycler (stored in each descriptor's Header).
     // The receiver drains into a local pool created inside spawn_local.
     let num_recv_io_workers = layout.recv_io.len();
     let recycle_channels: IdMap<RecvIoWorkerId, _> = RecvIoWorkerId::range(num_recv_io_workers)
@@ -680,7 +680,7 @@ where
             let (tx, rx) = crate::socket::channel::intrusive::sync::new_with_adapter::<
                 descriptor::RecycleAdapter,
             >();
-            let weak = tx.downgrade();
+            let weak = descriptor::SyncRecycler(tx.downgrade());
             (id, (weak, tx, rx))
         })
         .collect();

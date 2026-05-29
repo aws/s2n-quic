@@ -21,7 +21,7 @@ use std::{
     task::{Poll, Waker},
 };
 
-struct Shared<A: intrusive::Adapter> {
+pub(crate) struct Shared<A: intrusive::Adapter> {
     queue: UnsafeCell<intrusive::List<A>>,
     is_open: Cell<bool>,
     sender_count: Cell<usize>,
@@ -39,6 +39,26 @@ impl<A: intrusive::Adapter> Shared<A> {
     #[inline(always)]
     fn is_alive(&self) -> bool {
         self.is_open.get()
+    }
+
+    /// Push a value directly into the queue from a raw (weak-ref) caller.
+    ///
+    /// Returns `Ok(())` on success, or `Err(value)` when the channel is already
+    /// closed so that the caller can arrange deallocation via the value's `Drop`.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the same thread that owns this `Shared` (guaranteed
+    /// because `Shared` is only reachable via `Rc`/`rc::Weak`, both `!Send`).
+    #[inline(always)]
+    pub(crate) unsafe fn push_recycled(&self, value: A::Pointer) -> Result<(), A::Pointer> {
+        if !self.is_open.get() {
+            return Err(value);
+        }
+        let queue = &mut *self.queue.get();
+        queue.push_back(value);
+        self.wake_receiver();
+        Ok(())
     }
 
     #[inline(always)]
@@ -158,6 +178,14 @@ impl<A: intrusive::Adapter> super::super::Sender<A::Pointer> for Sender<A> {
 }
 
 impl<A: intrusive::Adapter> Sender<A> {
+    /// Returns a weak reference to the underlying `Shared` state.
+    ///
+    /// The weak reference can be stored in descriptors so they can push themselves
+    /// back into the queue on drop without keeping the receiver alive.
+    pub(crate) fn downgrade(&self) -> std::rc::Weak<Shared<A>> {
+        Rc::downgrade(&self.shared)
+    }
+
     /// Convert this sender into a list-based sender
     pub fn into_list_sender(self) -> ListSender<A> {
         ListSender { sender: self }
@@ -230,6 +258,18 @@ impl<A: intrusive::Adapter> Receiver<A> {
     /// Convert this receiver into a list-based receiver
     pub fn into_list_receiver(self) -> ListReceiver<A> {
         ListReceiver { receiver: self }
+    }
+
+    /// Synchronously drain all available items from the channel into `list`.
+    ///
+    /// No waker is registered; this is intended for same-thread polling (e.g.
+    /// draining a recycled-descriptor pool before each allocation).
+    pub fn drain_into(&mut self, list: &mut intrusive::List<A>) {
+        unsafe {
+            // SAFETY: `Shared` is `!Send`; all accesses are on the same thread.
+            let queue = &mut *self.shared.queue.get();
+            list.append(queue);
+        }
     }
 }
 

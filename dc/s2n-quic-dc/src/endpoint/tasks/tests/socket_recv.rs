@@ -12,7 +12,10 @@ use crate::{
     endpoint::tasks,
     socket::{
         channel::{intrusive::sync, ReceiverExt as _},
-        pool::{descriptor::RecycleAdapter, Pool},
+        pool::{
+            descriptor::{RecycleAdapter, SyncRecycler},
+            Pool,
+        },
         recv::router::Router,
     },
     testing::{ext::*, sim},
@@ -27,7 +30,7 @@ fn test_recycler() -> (
     crate::socket::channel::intrusive::sync::AdapterSender<RecycleAdapter>,
 ) {
     let (tx, _rx) = sync::new_with_adapter::<RecycleAdapter>();
-    let weak = tx.downgrade();
+    let weak = SyncRecycler(tx.downgrade());
     let local_pool = Rc::new(std::cell::RefCell::new(crate::intrusive::List::<
         RecycleAdapter,
     >::new()));
@@ -189,7 +192,7 @@ fn descriptors_are_recycled_and_reused() {
                 expected: 3,
             };
             let (tx, rx) = sync::new_with_adapter::<RecycleAdapter>();
-            let weak = tx.downgrade();
+            let weak = SyncRecycler(tx.downgrade());
             let local_pool = Rc::new(std::cell::RefCell::new(crate::intrusive::List::<
                 RecycleAdapter,
             >::new()));

@@ -27,7 +27,7 @@ use crate::{
     queue::FreedBatchTx,
     socket::{
         channel::{ImmediateQueueStatus, UnboundedSender},
-        pool::{self, descriptor::Segments},
+        pool::descriptor::{Recycler, Segments, Unfilled},
     },
     time::precision,
 };
@@ -46,9 +46,9 @@ mod tests;
 
 /// Attempt to assemble pending frames into a full GSO datagram of encrypted packets.
 ///
-/// Returns None if the CCA window is full, no transmittable frames exist, or pool
-/// allocation fails. The caller is responsible for re-registering the context in the
-/// timer wheel if frames remain after assembly.
+/// Returns None if the CCA window is full or no transmittable frames exist. The caller
+/// is responsible for re-registering the context in the timer wheel if frames remain
+/// after assembly.
 ///
 /// `header_buf` is a caller-provided reusable allocation for encoding per-frame metadata
 /// into the application header region. It is cleared before use and after return.
@@ -67,21 +67,21 @@ mod tests;
 ///
 /// Cancelled frames (where `should_transmit()` returns false) are sent to `cancelled`
 /// for completion notification.
-pub(crate) fn assemble<Clk>(
+pub(crate) fn assemble<R: Recycler, Clk>(
     context: &mut Context,
     immediate_queue_status: ImmediateQueueStatus,
     clock: &Clk,
     source_sender_id: LocalSenderId,
     source_control_port: u16,
     gso: &Gso,
-    pool: &pool::Pool,
+    unfilled: Unfilled<R>,
     header_buf: &mut Vec<u8>,
     cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
     ack_completions: &mut impl UnboundedSender<intrusive::Entry<msg::Sender>>,
     freed_batch_tx: &mut FreedBatchTx,
     counters: &AssemblerCounters,
     send_counters: &crate::endpoint::counters::Send,
-) -> Option<Segments>
+) -> Option<Segments<R>>
 where
     Clk: precision::Clock + ?Sized,
 {
@@ -92,8 +92,6 @@ where
         max_segments,
     } = context.path_info(gso);
     counters.max_datagram_size.record_value(mtu as u64);
-
-    let unfilled = pool.alloc()?;
 
     let mut segment_size: u16 = 0;
     let mut segments_written: u32 = 0;
