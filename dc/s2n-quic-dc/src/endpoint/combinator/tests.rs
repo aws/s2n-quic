@@ -399,6 +399,53 @@ fn pick_two_drops_unsent_entry_on_shutdown() {
     assert_eq!(drop_counter.load(Ordering::Relaxed), 1);
 }
 
+/// Regression test: PickTwo must call `on_consumed` on the inner receiver after successfully
+/// dispatching an item.  Before the fix, `on_consumed` was never called, so the `Paced`
+/// combinator's token bucket was never consumed and pacing was completely bypassed.
+#[test]
+fn pick_two_propagates_on_consumed() {
+    let drop_counter = Arc::new(AtomicUsize::new(0));
+    let item = new_test_item(test_path_secret_entry(), drop_counter);
+    let expected_byte_cost = item.byte_cost();
+    let rx = TestReceiver {
+        values: VecDeque::from([item]),
+        consumed: 0,
+    };
+    let senders = vec![
+        TestSender {
+            accept: true,
+            calls: 0,
+        },
+        TestSender {
+            accept: true,
+            calls: 0,
+        },
+    ];
+    let registry = crate::counter::Registry::default();
+    let mut pick_two = PickTwo::new(
+        rx,
+        senders.into(),
+        test_clock(),
+        crate::socket::rate::Rate::new(10.0),
+        crate::xorshift::Rng::new(),
+        &registry,
+    );
+
+    let result = with_noop_context(|cx| {
+        let mut budget = Budget::new(usize::MAX);
+        pick_two.poll_recv(cx, &mut budget)
+    });
+    assert_eq!(result, Poll::Ready(Some(())));
+
+    // The inner receiver's on_consumed must be called with the item's byte_cost so that
+    // upstream Paced combinators advance their token buckets.
+    assert_eq!(
+        pick_two.rx.consumed,
+        expected_byte_cost,
+        "PickTwo must propagate on_consumed(byte_cost) to inner receiver after dispatch"
+    );
+}
+
 #[test]
 fn completion_dispatcher_filters_non_failures_for_failure_only_subscriptions() {
     let path_secret_entry = test_path_secret_entry();

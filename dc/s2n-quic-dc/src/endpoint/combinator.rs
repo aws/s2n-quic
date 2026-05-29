@@ -572,6 +572,8 @@ where
             return Poll::Ready(None);
         };
 
+        // Capture byte cost before moving value into try_send_pick_two.
+        let byte_cost = value.byte_cost();
         let now = self.clock.now();
         match Self::try_send_pick_two(
             value,
@@ -583,7 +585,12 @@ where
             &self.rejected_counters,
             &self.score_delta,
         ) {
-            Ok(()) => Poll::Ready(Some(())),
+            Ok(()) => {
+                // Notify upstream (e.g. Paced) that bytes were consumed so the token bucket
+                // is advanced and pacing delays are applied to subsequent items.
+                self.rx.on_consumed(byte_cost);
+                Poll::Ready(Some(()))
+            }
             Err(_) => Poll::Ready(None),
         }
     }
