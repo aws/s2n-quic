@@ -16,7 +16,11 @@
 //!
 //! The `drain_budgeted` future resets budget each poll, loops until Pending, then
 //! checks `budget.take_needs_wake()` to issue a single self-wake if more work exists.
-use crate::{socket::pool::descriptor, time::precision, tracing::*};
+use crate::{
+    socket::pool::{descriptor, SyncReuseHandle},
+    time::precision,
+    tracing::*,
+};
 use core::task::{self, Poll};
 use s2n_quic_core::ready;
 use std::{future::Future, io, marker::PhantomData, mem::MaybeUninit, time::Instant};
@@ -1139,28 +1143,17 @@ pub struct SocketReceiver<S> {
     socket: S,
     alloc: crate::socket::pool::Pool,
     pending: Option<descriptor::Unfilled>,
-    /// Shared local pool of recycled descriptors (Rc, single-threaded, no locking)
-    local_pool:
-        std::rc::Rc<core::cell::RefCell<crate::intrusive::List<descriptor::RecycleAdapter>>>,
-    /// Weak sender for fresh allocations — stored in each new descriptor's Header
-    recycle_weak: descriptor::WeakRecycleSender,
+    /// Worker-local descriptor reuse state shared across recv sockets.
+    reuse: SyncReuseHandle,
 }
 
 impl<S> SocketReceiver<S> {
-    pub fn new(
-        socket: S,
-        alloc: crate::socket::pool::Pool,
-        local_pool: std::rc::Rc<
-            core::cell::RefCell<crate::intrusive::List<descriptor::RecycleAdapter>>,
-        >,
-        recycle_weak: descriptor::WeakRecycleSender,
-    ) -> Self {
+    pub fn new(socket: S, alloc: crate::socket::pool::Pool, reuse: SyncReuseHandle) -> Self {
         Self {
             socket,
             alloc,
             pending: None,
-            local_pool,
-            recycle_weak,
+            reuse,
         }
     }
 }
@@ -1176,18 +1169,10 @@ where
     ) -> Poll<Option<io::Result<descriptor::Segments>>> {
         use std::io;
 
-        let unfilled = self.pending.take().or_else(|| {
-            // Try recycled descriptors first (LIFO for cache locality)
-            let mut list = self.local_pool.borrow_mut();
-            if let Some(recycled) = list.pop_back() {
-                return Some(descriptor::Unfilled::from_recycled(
-                    recycled.into_descriptor(),
-                ));
-            }
-            drop(list);
-            // Fall back to fresh allocation
-            self.alloc.alloc_with_recycler(&self.recycle_weak)
-        });
+        let unfilled = self
+            .pending
+            .take()
+            .or_else(|| self.reuse.alloc_or_reuse(&self.alloc));
 
         let Some(unfilled) = unfilled else {
             // Allocator exhausted

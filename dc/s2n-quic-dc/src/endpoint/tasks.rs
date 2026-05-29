@@ -24,7 +24,7 @@ use crate::{
             Priority as PriorityRx, PrioritySelect, Receiver, ReceiverExt as _, RouterAdapter,
             SocketReceiver, SocketSender, UnboundedSender,
         },
-        pool::descriptor,
+        pool::{descriptor, SyncReuseDrain, SyncReuseHandle},
         rate::Rate,
     },
     time::{
@@ -1319,15 +1319,14 @@ pub async fn recv_idle_wheel_drain<Clk>(
 pub fn socket_recv<Socket, R>(
     socket: Socket,
     pool: crate::socket::pool::Pool,
-    local_pool: Rc<RefCell<crate::intrusive::List<descriptor::RecycleAdapter>>>,
-    recycle_weak: descriptor::WeakRecycleSender,
+    reuse: SyncReuseHandle,
     router: R,
 ) -> impl Receiver<()>
 where
     Socket: crate::socket::recv::Socket,
     R: crate::socket::recv::router::Router,
 {
-    let rx = SocketReceiver::new(socket, pool, local_pool, recycle_weak);
+    let rx = SocketReceiver::new(socket, pool, reuse);
     let rx = InspectErr::new(rx, |err| {
         warn!(%err, "socket recv error");
     });
@@ -1341,19 +1340,18 @@ where
 /// and one local list (consumed by SocketReceivers). This task bridges them with
 /// a single lock acquisition per drain batch.
 ///
-/// The sender is kept alive here (moved into the closure) so that `Weak::upgrade()`
-/// succeeds on descriptor drop. The sender lives as long as this task runs.
-pub fn recycle_drain(
-    sync_rx: crate::socket::channel::intrusive::sync::AdapterReceiver<descriptor::RecycleAdapter>,
-    local_pool: Rc<RefCell<crate::intrusive::List<descriptor::RecycleAdapter>>>,
-    _sender_keepalive: crate::socket::channel::intrusive::sync::AdapterSender<
-        descriptor::RecycleAdapter,
-    >,
-) -> impl Receiver<()> {
+/// The sender keepalive is held in the drain state so that `Weak::upgrade()`
+/// succeeds on descriptor drop for as long as the task runs.
+pub fn recycle_drain(drain: SyncReuseDrain) -> impl Receiver<()> {
+    let SyncReuseDrain {
+        _recycle_tx,
+        recycle_rx,
+        local_pool,
+    } = drain;
     Map::new(
-        sync_rx,
+        recycle_rx,
         move |mut batch: crate::intrusive::List<descriptor::RecycleAdapter>| {
-            let _ = &_sender_keepalive;
+            let _ = &_recycle_tx;
             local_pool.borrow_mut().append(&mut batch);
         },
     )

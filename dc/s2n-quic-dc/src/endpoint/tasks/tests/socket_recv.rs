@@ -11,11 +11,8 @@
 use crate::{
     endpoint::tasks,
     socket::{
-        channel::{intrusive::sync, ReceiverExt as _},
-        pool::{
-            descriptor::{RecycleAdapter, SyncRecycler},
-            Pool,
-        },
+        channel::ReceiverExt as _,
+        pool::{Pool, SyncReusePool},
         recv::router::Router,
     },
     testing::{ext::*, sim},
@@ -23,18 +20,8 @@ use crate::{
 use bach::net::UdpSocket;
 use std::{cell::Cell, rc::Rc};
 
-fn test_recycler() -> (
-    Rc<std::cell::RefCell<crate::intrusive::List<RecycleAdapter>>>,
-    crate::socket::pool::descriptor::WeakRecycleSender,
-    // Keep sender alive so Weak::upgrade succeeds
-    crate::socket::channel::intrusive::sync::AdapterSender<RecycleAdapter>,
-) {
-    let (tx, _rx) = sync::new_with_adapter::<RecycleAdapter>();
-    let weak = SyncRecycler(tx.downgrade());
-    let local_pool = Rc::new(std::cell::RefCell::new(crate::intrusive::List::<
-        RecycleAdapter,
-    >::new()));
-    (local_pool, weak, tx)
+fn test_recycler() -> SyncReusePool {
+    SyncReusePool::new()
 }
 
 struct CountingRouter {
@@ -66,8 +53,8 @@ fn single_datagram_routed() {
                 segments: segments.clone(),
                 expected: 1,
             };
-            let (local_pool, recycle_weak, _tx) = test_recycler();
-            let rx = tasks::socket_recv(recv_socket, pool, local_pool, recycle_weak, router);
+            let recycle_pool = test_recycler().into_local();
+            let rx = tasks::socket_recv(recv_socket, pool, recycle_pool.handle(), router);
             rx.drain_budgeted(Some(32)).await;
             assert_eq!(segments.get(), 1);
         }
@@ -99,8 +86,8 @@ fn multiple_datagrams_routed() {
                 segments: segments.clone(),
                 expected: 5,
             };
-            let (local_pool, recycle_weak, _tx) = test_recycler();
-            let rx = tasks::socket_recv(recv_socket, pool, local_pool, recycle_weak, router);
+            let recycle_pool = test_recycler().into_local();
+            let rx = tasks::socket_recv(recv_socket, pool, recycle_pool.handle(), router);
             rx.drain_budgeted(Some(32)).await;
             assert_eq!(segments.get(), 5);
         }
@@ -134,8 +121,8 @@ fn variable_sized_datagrams() {
                 segments: segments.clone(),
                 expected: 4,
             };
-            let (local_pool, recycle_weak, _tx) = test_recycler();
-            let rx = tasks::socket_recv(recv_socket, pool, local_pool, recycle_weak, router);
+            let recycle_pool = test_recycler().into_local();
+            let rx = tasks::socket_recv(recv_socket, pool, recycle_pool.handle(), router);
             rx.drain_budgeted(Some(32)).await;
             assert_eq!(segments.get(), 4);
         }
@@ -167,8 +154,8 @@ fn closed_router_shuts_down_task() {
                 segments: Rc::new(Cell::new(0)),
                 expected: 0,
             };
-            let (local_pool, recycle_weak, _tx) = test_recycler();
-            let rx = tasks::socket_recv(recv_socket, pool, local_pool, recycle_weak, router);
+            let recycle_pool = test_recycler().into_local();
+            let rx = tasks::socket_recv(recv_socket, pool, recycle_pool.handle(), router);
             rx.drain_budgeted(Some(32)).await;
         }
         .group("receiver")
@@ -191,17 +178,18 @@ fn descriptors_are_recycled_and_reused() {
                 segments: segments.clone(),
                 expected: 3,
             };
-            let (tx, rx) = sync::new_with_adapter::<RecycleAdapter>();
-            let weak = SyncRecycler(tx.downgrade());
-            let local_pool = Rc::new(std::cell::RefCell::new(crate::intrusive::List::<
-                RecycleAdapter,
-            >::new()));
+            let mut recycle_pool = SyncReusePool::new().into_local();
+            let local_pool = recycle_pool.handle().local_pool();
 
             // Spawn the drain task to move descriptors from sync → local pool
-            let drain_rx = tasks::recycle_drain(rx, local_pool.clone(), tx);
+            let drain_rx = tasks::recycle_drain(
+                recycle_pool
+                    .take_drain()
+                    .expect("recycle pool should provide one drain task"),
+            );
             crate::testing::ext::SpawnExt::spawn(drain_rx.drain_budgeted(Some(32)));
 
-            let recv_rx = tasks::socket_recv(recv_socket, pool, local_pool.clone(), weak, router);
+            let recv_rx = tasks::socket_recv(recv_socket, pool, recycle_pool.handle(), router);
             recv_rx.drain_budgeted(Some(64)).await;
 
             assert_eq!(segments.get(), 3);
