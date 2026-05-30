@@ -7,7 +7,7 @@ use crate::{
     path::secret::map::Entry as PathSecretEntry,
     socket::{
         channel::ImmediateQueueStatus,
-        pool::{self, descriptor::SyncRecycler},
+        pool::{self, descriptor::UnsyncRecycler},
     },
     time::bach::Clock,
     xorshift::Rng,
@@ -35,6 +35,8 @@ pub struct AssembleBenchmark {
     cancelled: Queue<frame::Frame>,
     ack_completions: Queue<crate::endpoint::msg::Sender>,
     freed_batch_tx: crate::queue::FreedBatchTx,
+    _freed_batch_rx: crate::queue::FreedBatchRx,
+    recycle_pool: pool::UnsyncReusePool,
     gso: Gso,
 }
 
@@ -51,7 +53,8 @@ impl AssembleBenchmark {
         let header_buf = Vec::new();
         let cancelled = Queue::new();
         let ack_completions = Queue::new();
-        let (freed_batch_tx, _freed_batch_rx) = crate::queue::freed_batch_channel();
+        let (freed_batch_tx, freed_batch_rx) = crate::queue::freed_batch_channel();
+        let recycle_pool = pool::UnsyncReusePool::new();
         let gso: Gso = MaxSegments::try_from(1usize).unwrap().into();
 
         for packet_idx in 0..packets {
@@ -74,6 +77,8 @@ impl AssembleBenchmark {
             cancelled,
             ack_completions,
             freed_batch_tx,
+            _freed_batch_rx: freed_batch_rx,
+            recycle_pool,
             gso,
         }
     }
@@ -81,10 +86,10 @@ impl AssembleBenchmark {
     pub fn run(mut self) -> u64 {
         let mut total_segments = 0u64;
         loop {
-            let Some(unfilled) = self.pool.alloc::<SyncRecycler>() else {
+            let Some(unfilled) = self.recycle_pool.alloc_or_reuse(&self.pool) else {
                 break;
             };
-            let Some(segments) = assemble::assemble::<SyncRecycler, _>(
+            let Some(segments) = assemble::assemble::<UnsyncRecycler, _>(
                 &mut self.context,
                 ImmediateQueueStatus::Empty,
                 &self.clock,
