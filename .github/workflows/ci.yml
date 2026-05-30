@@ -294,6 +294,42 @@ jobs:
         run: |
           cargo nextest run -p s2n-quic-core -p s2n-quic-dc
 
+  cachegrind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Install rust toolchain
+        id: toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
+
+      - uses: camshaft/rust-cache@v1
+        with:
+          key: cachegrind
+
+      - name: Install valgrind
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build benchmark
+        run: |
+          rm -f target/release/deps/bench-*
+          cargo build --bench bench --features cachegrind --profile bench -p s2n-quic-dc-benches
+
+      - name: Run benchmark under callgrind
+        run: |
+          BENCH_BIN="$(find target/release/deps -maxdepth 1 -type f -executable -name 'bench-*' | head -n1)"
+          test -n "$BENCH_BIN"
+          mkdir -p artifacts/callgrind
+          valgrind --tool=callgrind --callgrind-out-file=artifacts/callgrind/callgrind.out --instr-atstart=no "$BENCH_BIN"
+          test -f artifacts/callgrind/callgrind.out
+
   asan:
     runs-on: ubuntu-latest
     steps:
