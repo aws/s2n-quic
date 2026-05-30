@@ -3,6 +3,7 @@
 
 pub mod analyze;
 pub mod cwlogs;
+pub mod investigate;
 pub mod local;
 
 use anyhow::Result;
@@ -17,6 +18,8 @@ pub enum Command {
     Analyze(analyze::Analyze),
     /// Pull [METRICS] lines from CloudWatch Logs and write to Parquet
     Cwlogs(cwlogs::Cwlogs),
+    /// Investigate s2n-quic-dc metrics stored in Parquet files
+    Investigate(investigate::Investigate),
 }
 
 impl Command {
@@ -25,6 +28,7 @@ impl Command {
             Self::Local(cmd) => cmd.run(sh),
             Self::Analyze(cmd) => cmd.run(sh),
             Self::Cwlogs(cmd) => cmd.run(sh),
+            Self::Investigate(cmd) => cmd.run(sh),
         }
     }
 }
