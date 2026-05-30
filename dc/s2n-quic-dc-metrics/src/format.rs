@@ -195,93 +195,167 @@ impl<'a> ParsedMetricsLine<'a> {
         self.entries.is_empty()
     }
 
-    pub fn to_json_rows(&self) -> Vec<serde_json::Value> {
-        use serde_json::json;
-
+    pub fn to_rows(&self) -> Vec<MetricRow<'a>> {
         let mut rows = Vec::new();
 
         for entry in &self.entries {
             match entry {
                 MetricEntry::QueueGauge(m) => {
-                    rows.push(json!({
-                        "metric": m.name,
-                        "type": "queue",
-                        "enq": m.enq.parse::<u64>().unwrap_or(0),
-                        "drain": m.drain.parse::<u64>().unwrap_or(0),
-                        "depth": m.depth.and_then(|d| d.parse::<i64>().ok()).unwrap_or(0),
-                    }));
+                    rows.push(MetricRow {
+                        metric: m.name,
+                        r#type: "queue",
+                        variant: None,
+                        unit: None,
+                        value: None,
+                        enq: Some(m.enq.parse::<u64>().unwrap_or(0)),
+                        drain: Some(m.drain.parse::<u64>().unwrap_or(0)),
+                        depth: Some(m.depth.and_then(|d| d.parse::<i64>().ok()).unwrap_or(0)),
+                        hit: None,
+                        miss: None,
+                        bytes: None,
+                        count: None,
+                        p50: None,
+                        p99: None,
+                        max: None,
+                        buckets: None,
+                    });
                 }
                 MetricEntry::HitMiss(m) => {
-                    rows.push(json!({
-                        "metric": m.name,
-                        "type": "hit_miss",
-                        "hit": m.hit.parse::<u64>().unwrap_or(0),
-                        "miss": m.miss.parse::<u64>().unwrap_or(0),
-                    }));
+                    rows.push(MetricRow {
+                        metric: m.name,
+                        r#type: "hit_miss",
+                        variant: None,
+                        unit: None,
+                        value: None,
+                        enq: None,
+                        drain: None,
+                        depth: None,
+                        hit: Some(m.hit.parse::<u64>().unwrap_or(0)),
+                        miss: Some(m.miss.parse::<u64>().unwrap_or(0)),
+                        bytes: None,
+                        count: None,
+                        p50: None,
+                        p99: None,
+                        max: None,
+                        buckets: None,
+                    });
                 }
                 MetricEntry::Throughput(m) => {
-                    rows.push(json!({
-                        "metric": m.name,
-                        "type": "throughput",
-                        "bytes": m.bytes,
-                    }));
+                    rows.push(MetricRow {
+                        metric: m.name,
+                        r#type: "throughput",
+                        variant: None,
+                        unit: None,
+                        value: None,
+                        enq: None,
+                        drain: None,
+                        depth: None,
+                        hit: None,
+                        miss: None,
+                        bytes: Some(m.bytes),
+                        count: None,
+                        p50: None,
+                        p99: None,
+                        max: None,
+                        buckets: None,
+                    });
                 }
                 MetricEntry::Histogram(m) => {
                     let (count, p50, p99, max) = m.histogram.summarize();
-                    let buckets: Vec<_> = m
+                    let buckets = m
                         .histogram
                         .buckets
                         .iter()
-                        .map(|b| json!([b.value, b.count]))
+                        .map(|b| (b.value, b.count))
                         .collect();
-                    rows.push(json!({
-                        "metric": m.name,
-                        "type": "histogram",
-                        "unit": m.histogram.unit,
-                        "count": count,
-                        "p50": p50,
-                        "p99": p99,
-                        "max": max,
-                        "buckets": buckets,
-                    }));
+                    rows.push(MetricRow {
+                        metric: m.name,
+                        r#type: "histogram",
+                        variant: None,
+                        unit: Some(m.histogram.unit),
+                        value: None,
+                        enq: None,
+                        drain: None,
+                        depth: None,
+                        hit: None,
+                        miss: None,
+                        bytes: None,
+                        count: Some(count),
+                        p50: Some(p50),
+                        p99: Some(p99),
+                        max: Some(max),
+                        buckets: Some(buckets),
+                    });
                 }
                 MetricEntry::Scalar(m) => {
-                    rows.push(json!({
-                        "metric": m.name,
-                        "type": "scalar",
-                        "value": m.value.parse::<u64>().unwrap_or(0),
-                    }));
+                    rows.push(MetricRow {
+                        metric: m.name,
+                        r#type: "scalar",
+                        variant: None,
+                        unit: None,
+                        value: Some(m.value.parse::<i64>().unwrap_or(0)),
+                        enq: None,
+                        drain: None,
+                        depth: None,
+                        hit: None,
+                        miss: None,
+                        bytes: None,
+                        count: None,
+                        p50: None,
+                        p99: None,
+                        max: None,
+                        buckets: None,
+                    });
                 }
                 MetricEntry::Nominal(m) => {
                     for v in &m.variants {
-                        rows.push(json!({
-                            "metric": m.name,
-                            "type": "nominal",
-                            "variant": v.label,
-                            "value": v.value.parse::<u64>().unwrap_or(0),
-                        }));
+                        rows.push(MetricRow {
+                            metric: m.name,
+                            r#type: "nominal",
+                            variant: Some(v.label),
+                            unit: None,
+                            value: Some(v.value.parse::<i64>().unwrap_or(0)),
+                            enq: None,
+                            drain: None,
+                            depth: None,
+                            hit: None,
+                            miss: None,
+                            bytes: None,
+                            count: None,
+                            p50: None,
+                            p99: None,
+                            max: None,
+                            buckets: None,
+                        });
                     }
                 }
                 MetricEntry::VariantHistograms(m) => {
                     for v in &m.variants {
                         let (count, p50, p99, max) = v.histogram.summarize();
-                        let buckets: Vec<_> = v
+                        let buckets = v
                             .histogram
                             .buckets
                             .iter()
-                            .map(|b| json!([b.value, b.count]))
+                            .map(|b| (b.value, b.count))
                             .collect();
-                        rows.push(json!({
-                            "metric": m.name,
-                            "type": "histogram",
-                            "variant": v.label,
-                            "unit": v.histogram.unit,
-                            "count": count,
-                            "p50": p50,
-                            "p99": p99,
-                            "max": max,
-                            "buckets": buckets,
-                        }));
+                        rows.push(MetricRow {
+                            metric: m.name,
+                            r#type: "histogram",
+                            variant: Some(v.label),
+                            unit: Some(v.histogram.unit),
+                            value: None,
+                            enq: None,
+                            drain: None,
+                            depth: None,
+                            hit: None,
+                            miss: None,
+                            bytes: None,
+                            count: Some(count),
+                            p50: Some(p50),
+                            p99: Some(p99),
+                            max: Some(max),
+                            buckets: Some(buckets),
+                        });
                     }
                 }
             }
@@ -289,6 +363,91 @@ impl<'a> ParsedMetricsLine<'a> {
 
         rows
     }
+
+    pub fn to_json_rows(&self) -> Vec<serde_json::Value> {
+        self.to_rows()
+            .into_iter()
+            .map(|row| {
+                let mut value = serde_json::Map::new();
+                value.insert("metric".into(), row.metric.into());
+                value.insert("type".into(), row.r#type.into());
+
+                if let Some(variant) = row.variant {
+                    value.insert("variant".into(), variant.into());
+                }
+                if let Some(unit) = row.unit {
+                    value.insert("unit".into(), unit.into());
+                }
+                if let Some(value_i64) = row.value {
+                    value.insert("value".into(), value_i64.into());
+                }
+                if let Some(enq) = row.enq {
+                    value.insert("enq".into(), enq.into());
+                }
+                if let Some(drain) = row.drain {
+                    value.insert("drain".into(), drain.into());
+                }
+                if let Some(depth) = row.depth {
+                    value.insert("depth".into(), depth.into());
+                }
+                if let Some(hit) = row.hit {
+                    value.insert("hit".into(), hit.into());
+                }
+                if let Some(miss) = row.miss {
+                    value.insert("miss".into(), miss.into());
+                }
+                if let Some(bytes) = row.bytes {
+                    value.insert("bytes".into(), bytes.into());
+                }
+                if let Some(count) = row.count {
+                    value.insert("count".into(), count.into());
+                }
+                if let Some(p50) = row.p50 {
+                    value.insert("p50".into(), p50.into());
+                }
+                if let Some(p99) = row.p99 {
+                    value.insert("p99".into(), p99.into());
+                }
+                if let Some(max) = row.max {
+                    value.insert("max".into(), max.into());
+                }
+                if let Some(buckets) = row.buckets {
+                    value.insert(
+                        "buckets".into(),
+                        buckets
+                            .into_iter()
+                            .map(|(value, count)| serde_json::json!([value, count]))
+                            .collect::<Vec<_>>()
+                            .into(),
+                    );
+                }
+
+                serde_json::Value::Object(value)
+            })
+            .collect()
+    }
+}
+
+/// Structured metric row used by exporters for direct serialization
+/// into tabular sinks (e.g., Parquet) without first materializing JSON.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MetricRow<'a> {
+    pub metric: &'a str,
+    pub r#type: &'a str,
+    pub variant: Option<&'a str>,
+    pub unit: Option<&'a str>,
+    pub value: Option<i64>,
+    pub enq: Option<u64>,
+    pub drain: Option<u64>,
+    pub depth: Option<i64>,
+    pub hit: Option<u64>,
+    pub miss: Option<u64>,
+    pub bytes: Option<u64>,
+    pub count: Option<u64>,
+    pub p50: Option<u64>,
+    pub p99: Option<u64>,
+    pub max: Option<u64>,
+    pub buckets: Option<Vec<(u64, u64)>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

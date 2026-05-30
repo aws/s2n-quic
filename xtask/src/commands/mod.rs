@@ -5,6 +5,7 @@ pub mod analyze;
 pub mod cwlogs;
 pub mod investigate;
 pub mod local;
+pub mod metrics_parquet;
 
 use anyhow::Result;
 use clap::Subcommand;

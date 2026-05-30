@@ -3,6 +3,7 @@
 
 use anyhow::{Context, Result};
 use clap::Args;
+use parquet::{arrow::ArrowWriter, basic::Compression, file::properties::WriterProperties};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -20,6 +21,8 @@ use tokio::{
     task::JoinHandle,
 };
 use xshell::{Shell, cmd};
+
+use super::metrics_parquet::{METRICS_BATCH_SIZE, MetricsBatchBuilder, metrics_schema};
 
 #[derive(Args)]
 pub struct Local {
@@ -787,6 +790,19 @@ fn epoch_days_to_date(days: u64) -> (u64, u64, u64) {
     (y, m, d)
 }
 
+fn flush_local_metrics_batch(
+    writer: &mut ArrowWriter<std::fs::File>,
+    batch: &mut MetricsBatchBuilder,
+) -> Result<()> {
+    if batch.row_count == 0 {
+        return Ok(());
+    }
+    let record_batch = batch.finish();
+    writer.write(&record_batch)?;
+    *batch = MetricsBatchBuilder::new();
+    Ok(())
+}
+
 struct ProcessConfig {
     target: Node,
     label: String,
@@ -827,11 +843,27 @@ async fn run_processes(
     std::fs::create_dir_all(&run_config.log_dir)
         .with_context(|| format!("Failed to create log dir: {}", run_config.log_dir.display()))?;
     let log_path = run_config.log_dir.join("output.log");
-    let metrics_path = run_config.log_dir.join("metrics.jsonl");
+    let metrics_path = run_config.log_dir.join("metrics.parquet");
     let mut log_file = std::fs::File::create(&log_path)
         .with_context(|| format!("Failed to create log file: {}", log_path.display()))?;
-    let mut metrics_file = std::fs::File::create(&metrics_path)
+    let metrics_file = std::fs::File::create(&metrics_path)
         .with_context(|| format!("Failed to create metrics file: {}", metrics_path.display()))?;
+    let metrics_props = WriterProperties::builder()
+        .set_compression(Compression::ZSTD(Default::default()))
+        .set_max_row_group_size(100_000)
+        .build();
+    let mut metrics_writer =
+        ArrowWriter::try_new(metrics_file, metrics_schema(), Some(metrics_props)).with_context(
+            || {
+                format!(
+                    "Failed to create parquet writer: {}",
+                    metrics_path.display()
+                )
+            },
+        )?;
+    let mut metrics_batch = MetricsBatchBuilder::new();
+    let workloads_json = serde_json::to_string(&run_config.workloads)
+        .context("Failed to serialize workloads to JSON")?;
 
     let mut children = Vec::new();
     let (tx, mut rx) = mpsc::channel(512);
@@ -880,19 +912,25 @@ async fn run_processes(
                             print_line(&mut stdout, color, &label, format_args!("{} {}", prefix.trim_end(), pretty), max_label_len)?;
                         }
 
-                        // Write structured JSONL — one row per metric
+                        // Write structured parquet — one row per metric
                         let ts = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap()
                             .as_secs_f64();
-                        for mut row in parsed.to_json_rows() {
-                            if let Some(obj) = row.as_object_mut() {
-                                obj.insert("process".into(), serde_json::Value::String(label.to_string()));
-                                obj.insert("ts".into(), serde_json::json!(ts));
-                                obj.insert("run".into(), serde_json::Value::String(run_config.run_name.clone()));
-                                obj.insert("workloads".into(), serde_json::json!(run_config.workloads));
+                        for row in parsed.to_rows() {
+                            // local context mapped to unified CW-style columns:
+                            // run_name -> log_group, process label -> stream, workloads -> env
+                            metrics_batch.push(
+                                ts,
+                                "local",
+                                Some(&run_config.run_name),
+                                Some(&label),
+                                Some(&workloads_json),
+                                &row,
+                            );
+                            if metrics_batch.row_count >= METRICS_BATCH_SIZE {
+                                flush_local_metrics_batch(&mut metrics_writer, &mut metrics_batch)?;
                             }
-                            let _ = writeln!(metrics_file, "{}", row);
                         }
                     }
                 } else {
@@ -932,6 +970,8 @@ async fn run_processes(
     if !exit_task.is_finished() {
         let _ = exit_task.await;
     }
+    flush_local_metrics_batch(&mut metrics_writer, &mut metrics_batch)?;
+    metrics_writer.close()?;
 
     eprintln!("Log: {}", log_path.display());
     eprintln!("Metrics: {}", metrics_path.display());
