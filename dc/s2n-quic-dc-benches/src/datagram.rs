@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use criterion::Criterion;
+use crate::bench::Criterion;
 
 mod recv;
 mod send;

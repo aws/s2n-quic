@@ -4,9 +4,20 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+## Run benchmarks under Valgrind (cachegrind / callgrind) instead of criterion.
+##
+## Build the `bench` binary and execute it under `valgrind --tool=callgrind`
+## or `valgrind --tool=cachegrind` to collect instruction counts.
+## Each benchmark runs twice (cold-cache then warm-cache) and emits a labelled
+## dump for each, so per-harness instruction counts are available from a single
+## execution.
+cachegrind = ["dep:crabgrind"]
+
 [dependencies]
 aws-lc-rs = "1.12"
 criterion = { version = "0.8", features = ["html_reports", "async_tokio"] }
+crabgrind = { version = "0.2", optional = true }
 s2n-codec = { path = "../../common/s2n-codec" }
 s2n-quic-dc = { path = "../s2n-quic-dc", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }

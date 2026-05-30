@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use criterion::{BenchmarkId, Criterion};
+use crate::bench::{BenchmarkId, Criterion};
 use std::hint::black_box;
 
 const PACKET: [u8; 90] = [
