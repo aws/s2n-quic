@@ -72,14 +72,16 @@ pub const fn backend() -> Backend {
 // ── Criterion backend (default) ───────────────────────────────────────────────
 
 #[cfg(not(feature = "cachegrind"))]
-pub use criterion::{BenchmarkGroup, BenchmarkId, Criterion, Throughput};
+pub use criterion::{BatchSize, BenchmarkGroup, BenchmarkId, Criterion, Throughput};
 #[cfg(not(feature = "cachegrind"))]
 pub use std::hint::black_box;
 
 // ── Cachegrind backend ────────────────────────────────────────────────────────
 
 #[cfg(feature = "cachegrind")]
-pub use cachegrind_backend::{black_box, BenchmarkGroup, BenchmarkId, Criterion, Throughput};
+pub use cachegrind_backend::{
+    black_box, BatchSize, BenchmarkGroup, BenchmarkId, Criterion, Throughput,
+};
 #[cfg(feature = "cachegrind")]
 mod cachegrind_backend {
     use core::fmt;
@@ -127,6 +129,19 @@ mod cachegrind_backend {
         }
     }
 
+    // ── BatchSize ─────────────────────────────────────────────────────────────
+
+    /// Batch-size hint kept for criterion API parity.
+    #[derive(Clone, Copy, Debug)]
+    #[non_exhaustive]
+    pub enum BatchSize {
+        SmallInput,
+        LargeInput,
+        PerIteration,
+        NumBatches(u64),
+        NumIterations(u64),
+    }
+
     // ── Bencher ───────────────────────────────────────────────────────────────
 
     /// Single-iteration benchmark runner.
@@ -136,13 +151,47 @@ mod cachegrind_backend {
     /// warm-cache measurements.  Running the resulting binary under
     /// `valgrind --tool=callgrind` (or `cachegrind`) then yields stable
     /// instruction counts and cache statistics for both scenarios.
-    pub struct Bencher;
+    pub struct Bencher {
+        cold_label: CString,
+        warm_label: CString,
+    }
 
     impl Bencher {
+        #[inline(always)]
+        fn new(cold_label: CString, warm_label: CString) -> Self {
+            Self {
+                cold_label,
+                warm_label,
+            }
+        }
+
         /// Run `f` once.
         #[inline(always)]
         pub fn iter<F: FnMut()>(&mut self, mut f: F) {
-            f();
+            run_with_callgrind(
+                || {
+                    f();
+                },
+                self.cold_label.as_c_str(),
+                self.warm_label.as_c_str(),
+            );
+        }
+
+        /// Run setup outside instrumentation for both cold and warm benchmark
+        /// passes, then run the measured routine once per pass.
+        #[inline(always)]
+        pub fn iter_batched<I, S, R>(&mut self, mut setup: S, mut routine: R, size: BatchSize)
+        where
+            S: FnMut() -> I,
+            R: FnMut(I),
+        {
+            let _ = size;
+            run_with_callgrind_setup(
+                || setup(),
+                |input| routine(input),
+                self.cold_label.as_c_str(),
+                self.warm_label.as_c_str(),
+            );
         }
 
         /// Run `f` with a single iteration count and ignore the returned
@@ -174,20 +223,13 @@ mod cachegrind_backend {
         /// Register and immediately run a benchmark with a borrowed input.
         ///
         /// Matches `criterion::BenchmarkGroup::bench_with_input`.
-        pub fn bench_with_input<I, F>(
-            &mut self,
-            id: BenchmarkId,
-            input: &I,
-            mut f: F,
-        ) -> &mut Self
+        pub fn bench_with_input<I, F>(&mut self, id: BenchmarkId, input: &I, mut f: F) -> &mut Self
         where
             I: ?Sized,
             F: FnMut(&mut Bencher, &I),
         {
             let full_name = format!("{}/{id}", self.group_name);
-            let mut b = Bencher;
-            self.criterion
-                .run_bench(&full_name, &mut || f(&mut b, input));
+            self.criterion.run_bench(&full_name, &mut |b| f(b, input));
             self
         }
 
@@ -199,8 +241,7 @@ mod cachegrind_backend {
             F: FnMut(&mut Bencher),
         {
             let full_name = format!("{}/{id}", self.group_name);
-            let mut b = Bencher;
-            self.criterion.run_bench(&full_name, &mut || f(&mut b));
+            self.criterion.run_bench(&full_name, &mut f);
             self
         }
 
@@ -258,32 +299,61 @@ mod cachegrind_backend {
         /// Both `start_instrumentation` / `stop_instrumentation` and
         /// `dump_stats` are no-ops when not running under Valgrind, so the
         /// binary works correctly under cachegrind and without Valgrind too.
-        fn run_bench(&mut self, name: &str, f: &mut dyn FnMut()) {
+        fn run_bench(&mut self, name: &str, f: &mut dyn FnMut(&mut Bencher)) {
             self.count += 1;
             eprintln!("[cachegrind] {:>4}  {name}", self.count);
 
             let cold_label = make_label(name, "cold");
             let warm_label = make_label(name, "warm");
-
-            // ── Cold run ──────────────────────────────────────────────────────
-            // start_instrumentation triggers a full simulated-cache flush so
-            // this run captures cold-cache instruction counts.
-            crabgrind::callgrind::start_instrumentation();
-            f();
-            crabgrind::callgrind::dump_stats(Some(cold_label.as_c_str()));
-            // Zero counters so the warm dump only reflects the second execution.
-            crabgrind::callgrind::zero_stats();
-
-            // ── Warm run ──────────────────────────────────────────────────────
-            // The cache is now populated from the cold run; this second
-            // execution measures the steady-state (cache-hot) path.
-            f();
-            crabgrind::callgrind::dump_stats(Some(warm_label.as_c_str()));
-
-            // Stop counting so inter-benchmark overhead is not attributed to
-            // the next harness's cold run.
-            crabgrind::callgrind::stop_instrumentation();
+            let mut bencher = Bencher::new(cold_label, warm_label);
+            f(&mut bencher);
         }
+    }
+
+    #[inline(always)]
+    fn run_with_callgrind<R>(
+        mut routine: R,
+        cold_label: &std::ffi::CStr,
+        warm_label: &std::ffi::CStr,
+    )
+    where
+        R: FnMut(),
+    {
+        run_with_callgrind_setup(|| (), |_| routine(), cold_label, warm_label);
+    }
+
+    #[inline(always)]
+    fn run_with_callgrind_setup<I, S, R>(
+        mut setup: S,
+        mut routine: R,
+        cold_label: &std::ffi::CStr,
+        warm_label: &std::ffi::CStr,
+    ) where
+        S: FnMut() -> I,
+        R: FnMut(I),
+    {
+        // ── Cold run ──────────────────────────────────────────────────────────
+        // Setup executes before instrumentation so setup work is excluded from
+        // the measured instruction counts.
+        let cold_input = setup();
+        // start_instrumentation triggers a full simulated-cache flush so this
+        // run captures cold-cache instruction counts.
+        crabgrind::callgrind::start_instrumentation();
+        routine(cold_input);
+        crabgrind::callgrind::stop_instrumentation();
+        crabgrind::callgrind::dump_stats(Some(cold_label));
+        // Zero counters so the warm dump only reflects the second execution.
+        crabgrind::callgrind::zero_stats();
+
+        // ── Warm run ──────────────────────────────────────────────────────────
+        // The cache is now populated from the cold run; this second execution
+        // measures the steady-state (cache-hot) path. Setup is run again so the
+        // warm pass benchmarks the same routine against a freshly prepared input.
+        let warm_input = setup();
+        crabgrind::callgrind::start_instrumentation();
+        routine(warm_input);
+        crabgrind::callgrind::stop_instrumentation();
+        crabgrind::callgrind::dump_stats(Some(warm_label));
     }
 
     /// Build a `CString` label of the form `"<name> [<suffix>]"`.

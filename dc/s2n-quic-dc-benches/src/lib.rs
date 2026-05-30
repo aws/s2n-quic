@@ -6,8 +6,10 @@ use crate::bench::Criterion;
 pub mod bench;
 pub mod crypto;
 pub mod datagram;
+pub mod endpoint;
 
 pub fn benchmarks(c: &mut Criterion) {
     crypto::benchmarks(c);
     datagram::benchmarks(c);
+    endpoint::benchmarks(c);
 }
