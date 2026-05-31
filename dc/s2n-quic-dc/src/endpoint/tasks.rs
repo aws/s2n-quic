@@ -38,12 +38,14 @@ use s2n_quic_core::varint::VarInt;
 use s2n_quic_platform::features::Gso;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-/// Default per-poll budget for [`socket_recv_task`]: process up to this many segments before
-/// yielding to the executor. Tune via the `budget` parameter if workloads differ.
+/// Default per-poll budget for a receive task built from [`socket_recv`].
+///
+/// The task will process up to this many UDP segments before yielding back to the executor.
 pub const DEFAULT_RECV_BUDGET: usize = 32;
 
-/// Default per-poll budget for [`packet_dispatch_task`]: process up to this many packets before
-/// yielding to the executor. Tune via the `budget` parameter if workloads differ.
+/// Default per-poll budget for a dispatch task built from [`packet_dispatch`].
+///
+/// The task will process up to this many decoded packets before yielding back to the executor.
 pub const DEFAULT_DISPATCH_BUDGET: usize = 32;
 
 #[cfg(test)]
@@ -51,63 +53,25 @@ mod tests;
 
 // ── Pipeline Task Functions ────────────────────────────────────────────────
 
-/// Routes frame submissions to socket workers using priority queues, pacing, and pick-two
-/// load balancing.
+/// Spawns the send-side ingress pipeline that turns submitted frames into worker-local
+/// transmission batches.
 ///
-/// Creates two cooperating tasks on `spawner`'s worker:
+/// # Role
 ///
-/// - **Priority router** (Task 1): on each poll it calls [`poll_swap`] once to atomically
-///   receive the next ready shard's [`PriorityStorage`] (a Box pointer swap — O(1)).  It
-///   then appends each non-empty priority queue to the corresponding per-priority unsync
-///   [`ListSender`] in O([`Priority::LEVELS`]) work.  After processing one shard it yields
-///   to the executor (one shard per poll).  A pre-allocated `staging` Box is reused across
-///   swaps — no heap allocation on the hot path.
+/// `frame_dispatch` is the boundary between producers that submit individual [`Frame`] values
+/// and send workers that consume [`FrameBatch`] values. It is responsible for preserving frame
+/// priority, batching work by peer/path secret, applying endpoint-wide pacing, and choosing a
+/// send worker for each batch.
 ///
-/// - **Batcher + Distributor** (Task 2): each per-priority unsync receiver is independently
-///   wrapped in [`BatchFramesByPathSecret`] to coalesce frames for the same peer into
-///   datagram-sized batches. The resulting per-priority [`Receiver<FrameBatch>`] streams are
-///   merged in urgency order by [`channel::Priority`], overall bandwidth is throttled by
-///   [`channel::Paced`], and each batch is routed to a send socket via [`pick_two`].
+/// # Contract
 ///
-/// # Why prioritize before batching
-///
-/// Prioritizing individual frames before coalescing into batches ensures that frames for the
-/// same peer are properly separated by priority class. If batching ran first, a single
-/// `FrameBatch` might mix ACK frames (high priority) with data frames (low priority), and
-/// the batch would only be routed to one priority lane based on the first frame.
-/// Pre-prioritization means every `FrameBatch` that emerges from a lane is homogeneous in
-/// priority class.
-///
-/// # Fixed-cost routing
-///
-/// Senders submit [`PriorityInput`] values (stack-allocated), which are merged into the
-/// shard's Box-backed [`PriorityStorage`] at submission time (O([`Priority::LEVELS`])
-/// appends). Task 1 pointer-swaps the Box in O(1) and then distributes the queues to the
-/// per-priority unsync lanes in one O([`Priority::LEVELS`]) pass.
-///
-/// # Pipeline overview
-///
-/// ```text
-/// Task 1 (priority router):
-///   SubmissionReceiver
-///     → poll_swap (O(1) pointer swap of PriorityStorage Box)
-///     → drain staging into per-priority ListSenders (O(Priority::LEVELS))
-///     → yield (one shard per poll)
-///
-/// Task 2 (batcher + distributor):
-///   [per-priority unsync rx[i] → BatchFramesByPathSecret]
-///     → Priority (urgency-ordered merge)
-///     → Paced (overall bandwidth cap)
-///     → pick_two (send-socket routing)
-/// ```
-///
-/// [`poll_swap`]: crate::socket::channel::intrusive_queue::sharded::Receiver::poll_swap
-/// [`ListSender`]: crate::socket::channel::intrusive_queue::unsync::ListSender
-/// [`channel::Priority`]: crate::socket::channel::Priority
-/// [`channel::Paced`]: crate::socket::channel::Paced
-/// [`Priority::LEVELS`]: crate::stream::frame::Priority::LEVELS
-/// [`PriorityStorage`]: crate::stream::frame::PriorityStorage
-/// [`PriorityInput`]: crate::stream::frame::PriorityInput
+/// - Input arrives through `frame_rx` as submitted frames.
+/// - Output is delivered to `worker_senders` as [`Entry<FrameBatch>`] values.
+/// - Frames from different priority classes are never merged into the same batch.
+/// - The spawned tasks are the only side effect; callers do not receive a handle back and must
+///   keep the underlying executor running for progress.
+/// - `overall_send_rate`, `per_socket_send_rate`, and `budgets` bound how aggressively work is
+///   drained once the tasks are spawned.
 pub fn frame_dispatch<S, Clk>(
     spawner: &mut impl Spawner,
     frame_rx: SubmissionReceiver,
@@ -204,17 +168,22 @@ pub fn frame_dispatch<S, Clk>(
     }
 }
 
-/// Spawns all send-side tasks for a worker: context resolution, ACK processing, and
-/// per-socket assembly+send.
+/// Spawns all send-side tasks that belong to a single send worker.
 ///
-/// Pipeline:
-///   batch_rx (sync, from PickTwo)
-///     → context resolver (resolve per-peer state, push frames)
-///     → TODO: tx wheel (pacing/scheduling)
-///     → per-socket Assembler → SocketSender
+/// # Role
 ///
-///   ack_rx (sync, from recv workers)
-///     → ACK processor (loss detection, retransmission)
+/// A send worker owns the mutable send state for a subset of peers and sockets. It accepts new
+/// frame batches, ACK/control traffic coming back from receive workers, and invalidation events;
+/// then it schedules transmission, PTO, and idle work for the worker's sockets.
+///
+/// # Contract
+///
+/// - `batch_rx`, `ack_rx`, and `invalidation_rx` are independent inputs into the same worker.
+/// - `send_sockets` defines the worker-local egress sockets; each socket gets its own assembler
+///   pipeline and timing-wheel drain tasks.
+/// - Completions, cancellations, wakeups, and peer-dead notifications are emitted through the
+///   channels passed in by the caller.
+/// - Progress depends on the spawned tasks being continuously driven by `spawner`.
 pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     spawner: &mut impl Spawner,
     worker_id: SendWorkerId,
@@ -748,12 +717,17 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     }
 }
 
-/// Builds a receiver that resolves send contexts for incoming frame batches and dispatches
-/// them to timing wheels for pacing and transmission.
+/// Builds the receiver that turns incoming frame batches into send-context work.
 ///
-/// For each `FrameBatch`, looks up the peer's `send::Context` (creating one if needed),
-/// pushes the batch's frames into the context's pending queues, and enqueues the context
-/// into the appropriate timing wheels (tx, pto, idle).
+/// # Contract
+///
+/// - Each incoming [`FrameBatch`] must already have an assigned sender id.
+/// - The sender id must resolve through `sender_idx_to_local` into an entry in `send_caches`.
+///   Missing mappings are treated as programmer errors and panic.
+/// - If a send context cannot be created for the batch's path secret, the batch is dropped and
+///   no wheel work is emitted.
+/// - Otherwise the batch is appended to the peer's pending send state and the resulting wheel
+///   interest is forwarded to `immediate_tx`, `tx_wheel_tx`, `pto_wheel_tx`, and `idle_wheel_tx`.
 pub fn context_resolver<BatchRx, Clk, ImmW, TxW, PtoW, IdleW>(
     batch_rx: BatchRx,
     mut send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
@@ -818,10 +792,14 @@ where
     send::WheelRouter::new(rx, immediate_tx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx)
 }
 
-/// Builds the ACK-processing receiver pipeline used by the send worker.
+/// Builds the send-worker receiver that applies inbound ACK/control messages to send state.
 ///
-/// This pipeline decodes incoming ACK messages, updates send context state, and routes
-/// the resulting wheel interest to tx/pto/idle schedulers.
+/// # Contract
+///
+/// - Input arrives from receive workers as [`msg::Sender`] entries in `ack_rx`.
+/// - ACK processing may emit completed frames, cancelled frames, new frame submissions, and
+///   wheel interest for immediate, tx, PTO, or idle scheduling.
+/// - Sender ids that cannot be resolved are ignored and counted via `invalid_sender_idx`.
 #[allow(clippy::too_many_arguments)]
 pub fn send_ack_processor<AckRx, Clk, Rand, C, ImmW, TxW, PtoW, IdleW>(
     ack_rx: AckRx,
@@ -865,10 +843,10 @@ where
     send::WheelRouter::new(rx, immediate_tx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx)
 }
 
-/// Builds the send-worker PTO timeout receiver pipeline.
+/// Builds the send-worker receiver that handles PTO expirations.
 ///
-/// For each context emitted by the PTO wheel, updates probe state and routes the resulting
-/// wheel interest to tx/pto/idle schedulers.
+/// For each send context emitted by the PTO wheel, this updates probe state and forwards the
+/// resulting wheel interest back to the caller-supplied scheduling channels.
 pub fn send_pto_timeout<CtxRx, Clk, ImmW, TxW, PtoW, IdleW>(
     pto_context_rx: CtxRx,
     clock: Clk,
@@ -917,10 +895,10 @@ where
     send::WheelRouter::new(rx, immediate_tx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx)
 }
 
-/// Builds a receiver that dispatches completed frames back to their owning writers.
+/// Builds the receiver that turns completed send frames into writer wakeups.
 ///
-/// Groups completed frames by completion channel and fires wakers in bulk, reducing
-/// lock contention on the per-stream completion queue.
+/// Completed frames are dispatched back to their owning queues, and any resulting wakeups are
+/// forwarded to `waker_sink`.
 pub fn completion_dispatcher<R, WakerSink>(
     completed_rx: R,
     mut waker_sink: WakerSink,
@@ -938,16 +916,11 @@ where
     })
 }
 
-/// Builds a receiver that handles cancelled frames.
+/// Builds the receiver that handles frames which will never complete successfully.
 ///
-/// Most cancelled frames are simply dropped (writer was dropped). QueueFree frames
-/// are pushed onto FreedInner's retry queue so they can be retransmitted when the
-/// peer recovers from cooldown — the original encoding and request_id are preserved
-/// to allow client-side deduplication.
-///
-/// Frames with `enqueued_at` set have their cancelled sojourn recorded via
-/// `reader_metrics` (for `QueueMaxData`) or `writer_metrics` (for all other
-/// application-level frames) before being dropped.
+/// Most cancelled frames are dropped after recording sojourn metrics. `QueueFree` frames are the
+/// exception: they are re-queued through `freed_batch_tx` so they can be retried if the peer
+/// recovers later.
 pub fn cancelled_drain<R>(
     cancelled_rx: R,
     mut freed_batch_tx: crate::queue::FreedBatchTx,
@@ -997,7 +970,7 @@ where
     })
 }
 
-/// Drains the send TX wheel and routes each expired context to its socket assembler queue.
+/// Drains the send TX wheel and forwards each expired context to its socket-local assembler.
 pub async fn send_tx_wheel_drain<Clk, CtxTx>(
     tx_wheel_rx: intrusive::unsync::Receiver<send::TxWheelAdapter>,
     clock: Clk,
@@ -1023,13 +996,11 @@ pub async fn send_tx_wheel_drain<Clk, CtxTx>(
     .await;
 }
 
-/// Drains a timing wheel, yielding each expired context to the provided callback.
+/// Shared helper for tasks that drain a timing wheel and consume expired entries.
 ///
-/// The wheel continuously polls its inner receiver (insertion channel) to keep time
-/// progressing and insert new entries. As entries expire, they are flattened and
-/// handed to `on_expire` one at a time. This runs up to `budget` items per poll.
-///
-/// `input_gauge` tracks the wheel's depth: each expired item decrements it.
+/// The helper owns the wheel loop: it accepts new insertions from `rx`, yields expired entries to
+/// `on_expire`, decrements `input_gauge` as items are consumed, and stops once the input closes.
+/// `budget` limits the amount of work done per poll.
 async fn wheel_drain<A, T, F, const GRANULARITY_US: u64>(
     rx: intrusive::unsync::Receiver<A>,
     timer: T,
@@ -1054,23 +1025,18 @@ async fn wheel_drain<A, T, F, const GRANULARITY_US: u64>(
     rx.drain_budgeted_metered(Some(budget), task_counter).await;
 }
 
-/// Builds the per-socket assembler + send pipeline for one send socket.
+/// Builds the per-socket egress pipeline for one send socket.
 ///
-/// For each `Context` emitted from the tx wheel, this pipeline:
+/// # Contract
 ///
-/// 1. Assembles pending frames into encrypted UDP datagrams via [`Assembler`].
-/// 2. Routes any post-assembly wheel interest (tx reschedule, PTO arm, idle update)
-///    back to the appropriate wheel senders via [`send::WheelRouter`].
-/// 3. Paces the outgoing segment stream with [`Paced`].
-/// 4. Sends each [`Segments`] batch over the socket via [`SocketSender`].
-/// 5. Logs socket send errors without terminating the pipeline.
+/// - `immediate_rx` carries urgent contexts that should preempt normal tx-wheel work from
+///   `context_rx`.
+/// - Each input context is assembled into encrypted UDP segments for `socket`.
+/// - Any post-assembly scheduling interest is routed back through the supplied wheel senders.
+/// - Socket send errors are logged and dropped; they do not terminate the pipeline.
 ///
 /// Returns a `Receiver<()>` — callers must drain it (typically via
 /// `drain_budgeted_metered`) to make progress.
-///
-/// [`Assembler`]: crate::endpoint::combinator::Assembler
-/// [`send::WheelRouter`]: crate::endpoint::send::WheelRouter
-/// [`Segments`]: crate::socket::pool::descriptor::Segments
 pub fn send_socket_assembler<ImmediateRx, ContextRx, Clk, Socket, C, A, ImmW, TxW, PtoW, IdleW>(
     immediate_rx: ImmediateRx,
     context_rx: ContextRx,
@@ -1127,6 +1093,13 @@ where
     Map::new(rx, |_segments| {})
 }
 
+/// Drains the send-side idle wheel for one send worker.
+///
+/// Contexts whose idle deadline remains at least one wheel tick in the future are re-armed on
+/// the idle wheel. Expired contexts (including deadlines that fall within the current wheel
+/// tick) are invalidated from the send cache; any failed frames are completed with
+/// [`frame::FailureReason::PeerDead`], and `peer_dead_tx` is notified only when the idle expiry
+/// also indicates an unresponsive peer with inflight data.
 pub async fn send_idle_wheel_drain<Clk, WakerSink>(
     rx: intrusive::unsync::Receiver<send::IdleWheelAdapter>,
     idle_wheel_tx: intrusive::unsync::Sender<send::IdleWheelAdapter>,
@@ -1167,7 +1140,9 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
                 // Compute the reschedule target. If it's in a future wheel tick,
                 // reschedule and return early.
                 if !ctx.is_peer_idle(now) {
-                    let last_activity = ctx.last_peer_activity.max(ctx.path_secret_entry.last_activity());
+                    let last_activity = ctx
+                        .last_peer_activity
+                        .max(ctx.path_secret_entry.last_activity());
                     let target = last_activity + ctx.path_secret_entry.idle_timeout();
                     if target.nanos_since(now) >= wheel::SECOND_GRANULARITY_NANOS {
                         drop(ctx);
@@ -1243,6 +1218,12 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
     .await;
 }
 
+/// Drains the receive-side idle wheel for one receive worker.
+///
+/// Contexts whose idle deadline remains at least one wheel tick in the future are re-armed on
+/// the idle wheel. Expired contexts (including deadlines that fall within the current wheel
+/// tick) are removed from `recv_cache`. Unlike the send side, this task never marks a peer dead:
+/// a quiet receive path does not prove reachability failure.
 pub async fn recv_idle_wheel_drain<Clk>(
     rx: intrusive::unsync::Receiver<endpoint::recv::IdleWheelAdapter>,
     idle_wheel_tx: intrusive::unsync::Sender<endpoint::recv::IdleWheelAdapter>,
@@ -1307,16 +1288,11 @@ pub async fn recv_idle_wheel_drain<Clk>(
     .await;
 }
 
-/// Builds a receiver that reads raw UDP segments from a socket and routes decoded packets
-/// to the dispatch task.
+/// Builds the receiver that reads UDP segments from a socket and forwards decoded packets to a
+/// router.
 ///
-/// Drives a [`SocketReceiver`] → [`InspectErr`] → [`FlattenSegments`] → [`RouterAdapter`]
-/// chain. The caller is responsible for draining with an appropriate budget and metrics.
-///
-/// [`SocketReceiver`]: crate::socket::channel::SocketReceiver
-/// [`InspectErr`]: crate::socket::channel::InspectErr
-/// [`FlattenSegments`]: crate::socket::channel::FlattenSegments
-/// [`RouterAdapter`]: crate::socket::channel::RouterAdapter
+/// Socket receive errors are logged and ignored. The returned receiver only makes progress while
+/// the caller continues draining it.
 pub fn socket_recv<Socket, R>(
     socket: Socket,
     pool: crate::socket::pool::Pool,
@@ -1358,19 +1334,15 @@ pub fn recycle_drain(drain: SyncReuseDrain) -> impl Receiver<()> {
     )
 }
 
-/// Per-worker packet dispatch loop: decrypts, deduplicates, and dispatches received packets.
+/// Builds the per-worker receive pipeline that validates packets and fan-outs the resulting work.
 ///
-/// `packet_rx` and `ack_sender` are generic so callers can substitute local unsync receivers
-/// or a custom ACK fan-out when tasks are co-located on the same worker.
+/// # Contract
 ///
-/// Accepts a worker-shared `recv_cache` as `Rc<RefCell<recv::Cache>>` created once in
-/// Builds a receiver that decrypts, deduplicates, and dispatches received packets.
-///
-/// For each packet from `packet_rx`, calls [`dispatch::process`] to decrypt, validate,
-/// and route frames to flow queues. Dispatch errors are silently dropped — they represent
-/// invalid/duplicate/unauthenticated packets which should not terminate the worker.
-///
-/// [`dispatch::process`]: crate::endpoint::dispatch::process
+/// - `packet_rx` supplies decoded datagram packets for this worker.
+/// - `recv_cache` holds the worker-local receive contexts that are updated while processing.
+/// - Successful packets may schedule ACK bursts, idle-wheel work, application frame delivery,
+///   UPS responses, and stream wakeups through the caller-provided channels.
+/// - Dispatch errors are packet-local and are logged/counted rather than terminating the worker.
 pub fn packet_dispatch<
     PacketRx,
     AckSender,
@@ -1442,25 +1414,19 @@ where
     })
 }
 
-/// Builds a receiver that drains offloaded wakers from dispatch workers, invoking each one.
+/// Builds the receiver that invokes wakers offloaded from dispatch workers.
 ///
-/// Composes the `waker::Drain` receiver (which yields `Waker` values from its assigned slots)
-/// with a `Map` that calls `wake()` on each. The caller is responsible for draining with an
-/// appropriate budget and metrics.
+/// The returned receiver has no side effects other than calling `wake()` for each received
+/// [`core::task::Waker`].
 pub fn waker_drain(drain: endpoint::waker::Drain) -> impl Receiver<()> {
     Map::new(drain, |waker: core::task::Waker| waker.wake())
 }
 
-/// Drains ACK completion entries returning from the send worker's assembler.
+/// Builds the receiver that handles ACK completion entries returning from the send side.
 ///
-/// For each returned entry, looks up the recv context and checks if new packets arrived
-/// while the ACK was in flight. If stale (ack_state went back to Scheduled), re-submits
-/// a fresh PendingAck. Otherwise transitions Flushed → Idle.
-/// Builds a receiver that processes ACK completion entries returning from the assembler.
-///
-/// For each returned PendingAck entry, looks up the recv context and checks if new packets
-/// arrived while the ACK was in flight. If stale (ack_state went back to Scheduled),
-/// re-submits a fresh PendingAck. Otherwise transitions Flushed → Idle.
+/// For each completed pending ACK, this task updates the corresponding recv context. If the ACK
+/// became stale while it was in flight, a replacement pending ACK is submitted through
+/// `ack_sender`; otherwise the recv context settles back to idle.
 pub fn ack_completion<CompRx, AckTx>(
     completion_rx: CompRx,
     recv_cache: Rc<RefCell<endpoint::recv::Cache>>,
@@ -1519,11 +1485,11 @@ where
     })
 }
 
-/// Builds a receiver that encodes and flushes pending ACK bursts from recv contexts.
+/// Builds the receiver that turns recv contexts with scheduled ACK work into pending ACK
+/// submissions.
 ///
-/// For each recv context submitted to `ack_burst_rx`, calls `encode_and_flush` to produce
-/// a PendingAck submission and sends it to the `ack_sender`. The caller is responsible for
-/// draining with an appropriate budget and metrics.
+/// Each emitted submission is sent through `ack_sender`. Contexts that no longer have flushable
+/// ACK work are ignored.
 pub fn ack_burst<AckBurstRx, AckTx>(
     ack_burst_rx: AckBurstRx,
     mut ack_sender: AckTx,
