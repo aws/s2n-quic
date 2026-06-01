@@ -41,6 +41,20 @@ pub(crate) struct Slot {
 
 pub(crate) struct StreamState {
     pub(crate) msg_table: Option<MsgTable>,
+    /// Stream offset up to which MsgTable deliveries must always wake the reader.
+    ///
+    /// Set when a QueueData frame or a QueueMsg frame with `is_fin`/`is_wakeup`
+    /// arrives. The value is the stream_offset of the frame that triggered the
+    /// wakeup plus its payload length — i.e. the byte offset AFTER the waking
+    /// frame. Any MsgTable message whose `stream_offset` falls below this
+    /// watermark must fire the reader waker, because the reader was previously
+    /// woken expecting contiguous data up to this point.
+    ///
+    /// Without this, a QueueData frame can wake the reader into a reassembler
+    /// gap caused by a pending QueueMsg segment. The reader returns Pending.
+    /// When the MsgTable segment later completes with `is_wakeup: false`, the
+    /// reader is never re-woken and hangs indefinitely.
+    pub(crate) flush_watermark: u64,
 }
 
 /// Result of `Slot::bind_and_push_stream`.
@@ -63,7 +77,7 @@ impl Slot {
         Self {
             binding_id: AtomicU64::new(UNALLOCATED),
             queue_id: queue_id.as_u64(),
-            stream: Half::with_extra(StreamState { msg_table: None }),
+            stream: Half::with_extra(StreamState { msg_table: None, flush_watermark: 0 }),
             control: Half::new(),
         }
     }
@@ -112,6 +126,12 @@ impl Slot {
         entry: intrusive::Entry<msg::Stream>,
     ) -> Result<half::AutoWake, super::Error<intrusive::Entry<msg::Stream>>> {
         let mut inner = self.stream.inner.lock();
+        if let msg::Stream::Data { offset, payload, .. } = &*entry {
+            let end = offset.as_u64().saturating_add(payload.len() as u64);
+            if end > inner.extra.flush_watermark {
+                inner.extra.flush_watermark = end;
+            }
+        }
         validate_and_push(binding_id, entry, &self.binding_id, &mut inner)
     }
 
@@ -153,6 +173,14 @@ impl Slot {
             let mut stream = self.stream.inner.lock();
             validate_msg_dispatch(binding_id, &self.binding_id, &stream)
                 .map_err(super::MsgError::Queue)?;
+
+            if is_fin || is_wakeup {
+                let end = stream_offset.saturating_add(message_size as u64);
+                if end > stream.extra.flush_watermark {
+                    stream.extra.flush_watermark = end;
+                }
+            }
+
             let table = stream.extra.msg_table.get_or_insert_with(MsgTable::new);
 
             match table.insert(
@@ -163,7 +191,6 @@ impl Slot {
                 chunk_index,
                 payload_len,
                 is_fin,
-                is_wakeup,
             ) {
                 Ok(checkout) => (
                     checkout.ptr,
@@ -210,6 +237,7 @@ impl Slot {
             return Ok(half::AutoWake::default());
         }
         let local_queue = {
+            let watermark = stream.extra.flush_watermark;
             let Some(table) = stream.extra.msg_table.as_mut() else {
                 return Ok(half::AutoWake::default());
             };
@@ -218,7 +246,7 @@ impl Slot {
                     let mut queue = intrusive::Queue::new();
                     let mut should_wake = false;
                     for delivered in table.drain_complete() {
-                        should_wake |= delivered.is_wakeup;
+                        should_wake |= delivered.stream_offset < watermark;
                         let entry: intrusive::Entry<msg::Stream> = msg::Stream::Data {
                             offset: VarInt::new(delivered.stream_offset).unwrap_or(VarInt::MAX),
                             fin: delivered.is_fin,
@@ -274,8 +302,9 @@ impl Slot {
         }
 
         Self::allocate_and_open_locked(&mut s, &mut c, &self.binding_id, binding_id)?;
-        // Clear any poisoned msg_table from the previous binding.
+        // Clear state from the previous binding.
         s.extra.msg_table = None;
+        s.extra.flush_watermark = 0;
         Ok(true)
     }
 
@@ -784,7 +813,7 @@ mod tests {
     }
 
     #[test]
-    fn push_msg_wakes_only_when_is_wakeup_set() {
+    fn push_msg_wakes_based_on_flush_watermark() {
         let slot = Slot::with_queue_id(v(0));
         slot.allocate_and_open(v(1)).unwrap();
 
@@ -795,7 +824,8 @@ mod tests {
             s.waker = Some(waker.clone());
         }
 
-        // Push a complete message with is_wakeup=false
+        // Push a complete message with is_wakeup=false — watermark stays at 0,
+        // so stream_offset(0) is NOT < watermark(0) → no wake.
         let result = slot.push_msg(
             v(1),
             0,
@@ -805,24 +835,24 @@ mod tests {
             0,
             4096,
             false,
-            false, // is_wakeup = false
+            false,
             |ptr, len| {
                 unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
                 Ok::<(), ()>(())
             },
         );
         assert!(result.is_ok());
-        // Waker should NOT have been taken
         assert_eq!(wake_count.load(Ordering::SeqCst), 0);
 
-        // Re-register waker (it was consumed on the first push since we always take_waker
-        // returns the slot — but with is_wakeup=false the AutoWake is default/empty)
+        // Re-register waker
         {
             let mut s = slot.stream.inner.lock();
             s.waker = Some(waker.clone());
         }
 
-        // Push a complete message with is_wakeup=true
+        // Push a complete message with is_wakeup=true — watermark advances to
+        // stream_offset(4096) + message_size(4096) = 8192. The delivered message
+        // at stream_offset(4096) < watermark(8192) → wakes.
         let result = slot.push_msg(
             v(1),
             1,
@@ -832,14 +862,13 @@ mod tests {
             0,
             4096,
             false,
-            true, // is_wakeup = true
+            true,
             |ptr, len| {
                 unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
                 Ok::<(), ()>(())
             },
         );
         assert!(result.is_ok());
-        // Now the waker SHOULD fire
         drop(result);
         assert_eq!(wake_count.load(Ordering::SeqCst), 1);
     }

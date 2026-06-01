@@ -85,7 +85,7 @@ impl EndpointConfig {
     }
 
     fn default_submission_shards() -> usize {
-        128
+        8
     }
 
     /// Total number of busy-poll threads needed (frame_dispatch + all worker roles).

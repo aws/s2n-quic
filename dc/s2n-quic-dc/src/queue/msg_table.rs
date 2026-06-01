@@ -70,7 +70,6 @@ pub(crate) struct DeliveredMsg {
     pub payload: BytesMut,
     pub stream_offset: u64,
     pub is_fin: bool,
-    pub is_wakeup: bool,
 }
 
 impl MsgTable {
@@ -96,7 +95,6 @@ impl MsgTable {
         chunk_index: u32,
         payload_len: u32,
         is_fin: bool,
-        is_wakeup: bool,
     ) -> Result<Checkout, InsertError> {
         if msg_id < self.base_id {
             return Err(InsertError::Stale);
@@ -112,10 +110,17 @@ impl MsgTable {
             return Err(InsertError::GapExceeded);
         }
 
-        let chunk_count = msg_entry::chunks_for_size(message_size, chunk_size);
-        if chunk_count as u32 > msg_entry::MAX_CHUNKS {
+        if chunk_size == 0 {
             return Err(InsertError::MessageTooLarge);
         }
+
+        // Validate using u32 arithmetic to avoid u16 truncation in chunks_for_size
+        let true_chunk_count = (message_size as u64 + chunk_size as u64 - 1) / chunk_size as u64;
+        if true_chunk_count > msg_entry::MAX_CHUNKS as u64 {
+            return Err(InsertError::MessageTooLarge);
+        }
+
+        let chunk_count = true_chunk_count as u16;
 
         if chunk_index >= chunk_count as u32 {
             return Err(InsertError::OffsetOverflow);
@@ -126,9 +131,8 @@ impl MsgTable {
             self.entries.resize_with(index + 1, || None);
         }
 
-        let entry = self.entries[index].get_or_insert_with(|| {
-            MsgEntry::new(message_size, chunk_size, stream_offset, is_fin, is_wakeup)
-        });
+        let entry = self.entries[index]
+            .get_or_insert_with(|| MsgEntry::new(message_size, chunk_size, stream_offset, is_fin));
 
         if entry.message_size() != message_size {
             return Err(InsertError::SizeMismatch);
@@ -215,12 +219,6 @@ impl MsgTable {
         }
     }
 
-    /// Returns true if this table has been poisoned by a reset.
-    #[cfg(test)]
-    pub(crate) fn is_poisoned(&self) -> bool {
-        self.entries.iter().flatten().any(|e| e.is_poisoned())
-    }
-
     /// Poison all entries (called during reset).
     pub(crate) fn poison(&mut self) {
         for entry in self.entries.iter_mut().flatten() {
@@ -258,14 +256,12 @@ impl Iterator for DrainIter<'_> {
 
         let stream_offset = entry.stream_offset();
         let is_fin = entry.is_fin();
-        let is_wakeup = entry.is_wakeup();
         let payload = entry.into_buffer();
 
         Some(DeliveredMsg {
             payload,
             stream_offset,
             is_fin,
-            is_wakeup,
         })
     }
 }
@@ -293,7 +289,6 @@ mod tests {
                 chunk_index,
                 payload_len,
                 false,
-                true,
             )
             .expect("insert should succeed");
         assert_eq!(checkout.expected_len, payload_len);
@@ -301,7 +296,7 @@ mod tests {
         table.complete(msg_id, checkout.chunk_index)
     }
 
-    // insert args: msg_id, stream_offset, message_size, chunk_size, chunk_index, payload_len, is_fin, is_wakeup
+    // insert args: msg_id, stream_offset, message_size, chunk_size, chunk_index, payload_len, is_fin
 
     #[test]
     fn single_message_single_chunk() {
@@ -397,7 +392,7 @@ mod tests {
         write_chunk(&mut table, 0, 0, 4096, 0, 4096);
         table.drain_complete().count();
 
-        let result = table.insert(0, 0, 4096, CHUNK_SIZE, 0, 4096, false, true);
+        let result = table.insert(0, 0, 4096, CHUNK_SIZE, 0, 4096, false);
         assert_eq!(result.unwrap_err(), InsertError::Stale);
     }
 
@@ -412,7 +407,6 @@ mod tests {
             0,
             4096,
             false,
-            true,
         );
         assert_eq!(result.unwrap_err(), InsertError::GapExceeded);
     }
@@ -424,7 +418,7 @@ mod tests {
         write_chunk(&mut table, 0, 0, CHUNK_SIZE as u32, 0, CHUNK_SIZE as u32);
 
         // Try again with different message_size
-        let result = table.insert(0, 0, 9999, CHUNK_SIZE, 0, CHUNK_SIZE as u32, false, true);
+        let result = table.insert(0, 0, 9999, CHUNK_SIZE, 0, CHUNK_SIZE as u32, false);
         assert_eq!(result.unwrap_err(), InsertError::SizeMismatch);
     }
 
@@ -435,20 +429,11 @@ mod tests {
 
         // First frame says no fin
         table
-            .insert(
-                0,
-                0,
-                msg_size,
-                CHUNK_SIZE,
-                0,
-                CHUNK_SIZE as u32,
-                false,
-                true,
-            )
+            .insert(0, 0, msg_size, CHUNK_SIZE, 0, CHUNK_SIZE as u32, false)
             .unwrap();
 
         // Second frame for same msg says fin — mismatch
-        let result = table.insert(0, 0, msg_size, CHUNK_SIZE, 1, CHUNK_SIZE as u32, true, true);
+        let result = table.insert(0, 0, msg_size, CHUNK_SIZE, 1, CHUNK_SIZE as u32, true);
         assert_eq!(result.unwrap_err(), InsertError::FinMismatch);
     }
 
@@ -456,7 +441,7 @@ mod tests {
     fn chunk_index_overflow() {
         let mut table = MsgTable::new();
         // 4096-byte message with 8192 chunk_size = 1 chunk. chunk_index=1 is out of bounds.
-        let result = table.insert(0, 0, 4096, CHUNK_SIZE, 1, 4096, false, true);
+        let result = table.insert(0, 0, 4096, CHUNK_SIZE, 1, 4096, false);
         assert_eq!(result.unwrap_err(), InsertError::OffsetOverflow);
     }
 
@@ -466,16 +451,7 @@ mod tests {
         let msg_size = CHUNK_SIZE as u32 * 2;
         write_chunk(&mut table, 0, 0, msg_size, 0, CHUNK_SIZE as u32);
 
-        let result = table.insert(
-            0,
-            0,
-            msg_size,
-            CHUNK_SIZE,
-            0,
-            CHUNK_SIZE as u32,
-            false,
-            true,
-        );
+        let result = table.insert(0, 0, msg_size, CHUNK_SIZE, 0, CHUNK_SIZE as u32, false);
         assert_eq!(result.unwrap_err(), InsertError::Duplicate);
     }
 
@@ -485,7 +461,7 @@ mod tests {
 
         // msg_id=0: checkout outstanding (don't complete)
         table
-            .insert(0, 0, 4096, CHUNK_SIZE, 0, 4096, false, true)
+            .insert(0, 0, 4096, CHUNK_SIZE, 0, 4096, false)
             .unwrap();
 
         // msg_id=1: fully complete
@@ -503,9 +479,7 @@ mod tests {
     fn fin_delivery() {
         let mut table = MsgTable::new();
 
-        let checkout = table
-            .insert(0, 0, 4096, CHUNK_SIZE, 0, 4096, true, true)
-            .unwrap();
+        let checkout = table.insert(0, 0, 4096, CHUNK_SIZE, 0, 4096, true).unwrap();
         unsafe { core::ptr::write_bytes(checkout.ptr, 0, checkout.expected_len as usize) };
         table.complete(0, checkout.chunk_index);
 
@@ -524,40 +498,11 @@ mod tests {
     }
 
     #[test]
-    fn is_wakeup_propagated_to_delivered_msg() {
-        let mut table = MsgTable::new();
-
-        // msg_id=0 with is_wakeup=false
-        let checkout = table
-            .insert(0, 0, 4096, CHUNK_SIZE, 0, 4096, false, false)
-            .unwrap();
-        unsafe { core::ptr::write_bytes(checkout.ptr, 0, checkout.expected_len as usize) };
-        table.complete(0, checkout.chunk_index);
-
-        let delivered: Vec<_> = table.drain_complete().collect();
-        assert_eq!(delivered.len(), 1);
-        assert!(!delivered[0].is_wakeup);
-
-        // msg_id=1 with is_wakeup=true
-        let checkout = table
-            .insert(1, 4096, 4096, CHUNK_SIZE, 0, 4096, false, true)
-            .unwrap();
-        unsafe { core::ptr::write_bytes(checkout.ptr, 0, checkout.expected_len as usize) };
-        table.complete(1, checkout.chunk_index);
-
-        let delivered: Vec<_> = table.drain_complete().collect();
-        assert_eq!(delivered.len(), 1);
-        assert!(delivered[0].is_wakeup);
-    }
-
-    #[test]
     fn insert_rejected_after_fin_delivered() {
         let mut table = MsgTable::new();
 
         // Deliver a FIN message
-        let checkout = table
-            .insert(0, 0, 4096, CHUNK_SIZE, 0, 4096, true, true)
-            .unwrap();
+        let checkout = table.insert(0, 0, 4096, CHUNK_SIZE, 0, 4096, true).unwrap();
         unsafe { core::ptr::write_bytes(checkout.ptr, 0, checkout.expected_len as usize) };
         table.complete(0, checkout.chunk_index);
         table.drain_complete().count();
@@ -565,7 +510,7 @@ mod tests {
         assert!(table.is_fin_delivered());
 
         // New insert must be rejected as stale
-        let result = table.insert(1, 4096, 4096, CHUNK_SIZE, 0, 4096, false, true);
+        let result = table.insert(1, 4096, 4096, CHUNK_SIZE, 0, 4096, false);
         assert_eq!(result.unwrap_err(), InsertError::Stale);
     }
 
@@ -576,7 +521,7 @@ mod tests {
 
         // Insert first chunk of FIN message
         let checkout = table
-            .insert(0, 0, msg_size, CHUNK_SIZE, 0, CHUNK_SIZE as u32, true, true)
+            .insert(0, 0, msg_size, CHUNK_SIZE, 0, CHUNK_SIZE as u32, true)
             .unwrap();
         unsafe { core::ptr::write_bytes(checkout.ptr, 0, checkout.expected_len as usize) };
         table.complete(0, checkout.chunk_index);
@@ -586,7 +531,7 @@ mod tests {
 
         // Second chunk should still work
         let checkout = table
-            .insert(0, 0, msg_size, CHUNK_SIZE, 1, CHUNK_SIZE as u32, true, true)
+            .insert(0, 0, msg_size, CHUNK_SIZE, 1, CHUNK_SIZE as u32, true)
             .unwrap();
         unsafe { core::ptr::write_bytes(checkout.ptr, 0, checkout.expected_len as usize) };
         table.complete(0, checkout.chunk_index);
@@ -595,5 +540,46 @@ mod tests {
         assert_eq!(delivered.len(), 1);
         assert!(delivered[0].is_fin);
         assert!(table.is_fin_delivered());
+    }
+
+    #[test]
+    fn chunk_size_zero_rejected() {
+        let mut table = MsgTable::new();
+        let result = table.insert(0, 0, 4096, 0, 0, 4096, false);
+        assert_eq!(result.unwrap_err(), InsertError::MessageTooLarge);
+    }
+
+    #[test]
+    fn chunk_size_zero_via_truncation_rejected() {
+        let mut table = MsgTable::new();
+        let chunk_size_on_wire: u64 = 65536;
+        let chunk_size_truncated = chunk_size_on_wire as u16;
+        assert_eq!(chunk_size_truncated, 0);
+        let result = table.insert(0, 0, 4096, chunk_size_truncated, 0, 4096, false);
+        assert_eq!(result.unwrap_err(), InsertError::MessageTooLarge);
+    }
+
+    #[test]
+    fn chunk_count_overflow_rejected() {
+        let mut table = MsgTable::new();
+        // message_size=65792 / chunk_size=1 → true chunk_count=65792 > MAX_CHUNKS(256)
+        let result = table.insert(0, 0, 65792, 1, 0, 1, false);
+        assert_eq!(result.unwrap_err(), InsertError::MessageTooLarge);
+    }
+
+    #[test]
+    fn max_valid_chunk_count_accepted() {
+        let mut table = MsgTable::new();
+        // 256 chunks of 1 byte each = message_size 256, exactly at MAX_CHUNKS
+        let result = table.insert(0, 0, 256, 1, 0, 1, false);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn one_over_max_chunks_rejected() {
+        let mut table = MsgTable::new();
+        // 257 chunks needed → rejected
+        let result = table.insert(0, 0, 257, 1, 0, 1, false);
+        assert_eq!(result.unwrap_err(), InsertError::MessageTooLarge);
     }
 }

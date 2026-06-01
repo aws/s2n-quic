@@ -3358,3 +3358,112 @@ fn write_msg_cancel_then_write_from_returns_error() {
         .spawn();
     });
 }
+
+/// Sending a QueueMsg with `is_fin: true` and `is_wakeup: false` from a SERVER writer
+/// (which starts in Open state with full budget) must still wake the client reader so
+/// it can observe EOF. The server writer has large remote_budget from the start, so
+/// the `is_wakeup` forced-true heuristic (budget <= max_segment_size) does NOT trigger.
+/// All chunks genuinely have `is_wakeup: false`.
+///
+/// Without a fix, the client reader hangs indefinitely: the completed message (with FIN)
+/// is pushed to the stream queue but the waker is never fired because `should_wake = false`.
+#[test]
+fn queue_msg_fin_without_wakeup_flag_still_wakes_reader() {
+    sim(|| {
+        let acceptor_id = VarInt::from_u8(1);
+        const MSG_SIZE: usize = 16384;
+
+        let reader_reached_eof = Arc::new(AtomicBool::new(false));
+        let reader_flag = reader_reached_eof.clone();
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                async move {
+                    let (mut reader, mut writer) = stream.into_split();
+
+                    // Drain the client's hello to establish bidirectional flow.
+                    let mut buf = BytesMut::with_capacity(64);
+                    loop {
+                        let n = reader.read_into(&mut buf).await.expect("server read hello");
+                        if n == 0 {
+                            break;
+                        }
+                    }
+
+                    // Server writer starts in Open state with full budget.
+                    // All QueueMsg chunks will have is_wakeup=false because
+                    // remote_budget >> max_segment_size.
+                    let mut data = Data::new(MSG_SIZE as u64);
+                    writer
+                        .write_msg(
+                            &mut data,
+                            crate::stream::MsgFlags {
+                                is_fin: true,
+                                is_wakeup: false,
+                            },
+                        )
+                        .await
+                        .expect("server write_msg");
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (mut reader, mut writer) = stream.into_split();
+            let flag = reader_flag.clone();
+
+            // Send a small message to establish the stream on the server side.
+            let mut hello: &[u8] = b"hi";
+            writer
+                .write_from_fin(&mut hello)
+                .await
+                .expect("client init write");
+
+            // Read the server's response until EOF.
+            // If the bug exists, this hangs forever.
+            let mut recv = Data::new(MSG_SIZE as u64);
+            let read_result = timeout(Duration::from_secs(5), async {
+                loop {
+                    let n = reader.read_into(&mut recv).await.expect("client read");
+                    if n == 0 {
+                        break;
+                    }
+                }
+            })
+            .await;
+
+            if read_result.is_ok() {
+                assert!(recv.is_finished(), "client should receive all data");
+                flag.store(true, Ordering::Release);
+            }
+
+            assert!(
+                reader_reached_eof.load(Ordering::Acquire),
+                "BUG: client reader did not reach EOF within 5s. \
+                 QueueMsg with is_fin=true and is_wakeup=false from server writer \
+                 failed to wake the reader. The completed message (with FIN) was pushed \
+                 to the stream queue but the waker was never fired."
+            );
+
+            info!("queue_msg_fin_without_wakeup_flag_still_wakes_reader passed");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
