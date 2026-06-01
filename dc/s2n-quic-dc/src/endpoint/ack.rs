@@ -326,9 +326,11 @@ fn detect_loss<Rand>(
             "Packet lost by PN threshold"
         );
 
-        context
-            .cca
-            .on_packet_lost(tx_info.sent_bytes as u32, tx_info.cc_info, random, now);
+        if tx_info.sent_bytes > 0 {
+            context
+                .cca
+                .on_packet_lost(tx_info.sent_bytes as u32, tx_info.cc_info, random, now);
+        }
 
         for mut entry in packet.frames {
             if !entry.should_transmit() {

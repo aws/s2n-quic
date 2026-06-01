@@ -453,9 +453,15 @@ where
                         .insert(pn, inflight::Packet::new(packet_frames, tx_info));
                     sent_inflight_packet = true;
 
-                    // If this segment was a probe, link the old shell entry to the new PN.
+                    // If this segment was a probe, link the old shell entry to the new PN
+                    // and release the shell's bytes from the CCA. Only the latest probe's
+                    // bytes should count as "in flight" — the shell is just a tombstone
+                    // for chain resolution during ACK processing.
                     if let Some(old_pn) = probe_from_pn {
-                        context.inflight.set_probed_to(old_pn, pn);
+                        let discarded = context.inflight.set_probed_to_and_take_bytes(old_pn, pn);
+                        if discarded > 0 {
+                            context.cca.on_packet_discarded(discarded);
+                        }
                     }
                 } else if rtt_sample_needed {
                     // ACK-only ack-eliciting packet (our own RTT probe or PTO-triggered).

@@ -169,10 +169,11 @@ impl Map {
     /// Take the frames from the oldest non-shell inflight entry for a PTO probe.
     ///
     /// The entry remains in the map with an empty `frames` list and its
-    /// `TransmissionInfo` intact. The caller must then call [`set_probed_to`] to
-    /// finalise the shell pointer.
+    /// `TransmissionInfo` intact. The caller must then call
+    /// [`set_probed_to_and_take_bytes`] to finalise the shell pointer and
+    /// release the shell's bytes from the CCA.
     ///
-    /// [`set_probed_to`]: Self::set_probed_to
+    /// [`set_probed_to_and_take_bytes`]: Self::set_probed_to_and_take_bytes
     #[inline]
     pub fn take_oldest_for_probe(&mut self) -> Option<(PacketNumber, Queue<Frame>)> {
         let old_pn = self.oldest_non_shell_pn()?;
@@ -242,20 +243,40 @@ impl Map {
         Some(packet)
     }
 
-    /// Set the `probed_to` forward pointer on an existing inflight entry.
+    /// Set the `probed_to` forward pointer on an existing inflight entry and
+    /// release its `sent_bytes` from `bytes_in_flight` accounting.
     ///
     /// Called after a probe segment is successfully encoded: the `old_pn` entry
-    /// becomes a shell pointing to `new_pn` (the probe's packet number).
+    /// becomes a shell pointing to `new_pn` (the probe's packet number). The new
+    /// probe packet already called `on_packet_sent()` with its own bytes, so the
+    /// shell's bytes must be released to avoid double-counting in `bytes_in_flight`.
+    ///
+    /// The `transmission_info` is preserved (with `sent_bytes` zeroed) so that if
+    /// the peer ACKs the shell's PN, the CCA/RTT estimator still receives the
+    /// correct `cc_info` and `time_sent` for delivery rate sampling.
+    ///
+    /// Returns the number of bytes released (0 if the entry was not found or had
+    /// no transmission info).
     #[inline]
-    pub fn set_probed_to(&mut self, old_pn: PacketNumber, new_pn: PacketNumber) {
+    pub fn set_probed_to_and_take_bytes(
+        &mut self,
+        old_pn: PacketNumber,
+        new_pn: PacketNumber,
+    ) -> usize {
         if let Some(packet) = self.inner.get_mut(old_pn) {
             debug_assert!(
                 packet.frames.is_empty(),
-                "set_probed_to: old entry still has frames; \
-                 take_oldest_for_probe should have taken them before calling set_probed_to"
+                "set_probed_to_and_take_bytes: old entry still has frames; \
+                 take_oldest_for_probe should have taken them first"
             );
             packet.probed_to = Some(new_pn);
+            if let Some(ref mut tx_info) = packet.transmission_info {
+                let bytes = tx_info.sent_bytes as usize;
+                tx_info.sent_bytes = 0;
+                return bytes;
+            }
         }
+        0
     }
 
     /// Follow the `probed_to` chain starting at `pn`, remove every entry in the
@@ -483,7 +504,7 @@ mod tests {
 
         // Make pn1 a shell (take its frames and don't re-insert)
         let (_old_pn, _frames) = map.take_oldest_for_probe().unwrap(); // takes pn1
-        map.set_probed_to(pn1, pn2); // link shell → pn2
+        map.set_probed_to_and_take_bytes(pn1, pn2); // link shell → pn2
 
         // Now pn1 is a shell; the only non-shell is pn2
         assert_eq!(map.oldest_non_shell_pn(), Some(pn2));
@@ -503,7 +524,7 @@ mod tests {
 
         // Make both shells
         map.take_oldest_for_probe(); // empties pn1's frames
-        map.set_probed_to(pn1, pn2);
+        map.set_probed_to_and_take_bytes(pn1, pn2);
         map.take_oldest_for_probe(); // empties pn2's frames
                                      // pn2 has no probed_to yet — take_oldest_for_probe should still return None
                                      // because frames are empty
@@ -539,7 +560,7 @@ mod tests {
                 },
             ),
         );
-        map.set_probed_to(pn_old, pn_new);
+        map.set_probed_to_and_take_bytes(pn_old, pn_new);
 
         // remove_chain should follow shell → probe, remove probe, and return its frames
         let removal = map.remove_chain(pn_old);
@@ -576,7 +597,7 @@ mod tests {
                 },
             ),
         );
-        map.set_probed_to(pn_old, pn_new);
+        map.set_probed_to_and_take_bytes(pn_old, pn_new);
 
         // Simulate the probe PN being removed before the shell is processed.
         let range = s2n_quic_core::packet::number::PacketNumberRange::new(pn_new, pn_new);
@@ -619,7 +640,7 @@ mod tests {
                 },
             ),
         );
-        map.set_probed_to(pn1, pn10);
+        map.set_probed_to_and_take_bytes(pn1, pn10);
 
         // Second probe: pn10 → pn20
         let (_old10, frames10) = map.take_oldest_for_probe().unwrap();
@@ -635,7 +656,7 @@ mod tests {
                 },
             ),
         );
-        map.set_probed_to(pn10, pn20);
+        map.set_probed_to_and_take_bytes(pn10, pn20);
 
         // remove_chain from pn1 should walk pn1 → pn10 → pn20, remove all, return pn20's frames
         let removal = map.remove_chain(pn1);
@@ -663,8 +684,88 @@ mod tests {
         map.insert(pn1, make_packet(fake_entry()));
         map.insert(pn2, make_packet(fake_entry()));
         map.take_oldest_for_probe(); // makes pn1 a shell with empty frames
-        map.set_probed_to(pn1, pn2); // now pn1 is a valid shell (probed_to is Some)
-                                     // Should not panic: pn1 has probed_to, pn2 has non-empty frames
+        map.set_probed_to_and_take_bytes(pn1, pn2); // now pn1 is a valid shell (probed_to is Some)
+                                                    // Should not panic: pn1 has probed_to, pn2 has non-empty frames
         map.invariants();
+    }
+
+    /// Verifies that repeated probes without ACKs do NOT inflate bytes_in_flight.
+    ///
+    /// This is the core regression test for the strss-1-dcquic production issue:
+    /// each probe must release the previous shell's bytes so that bytes_in_flight
+    /// equals only the latest probe's size, not the sum of all historical probes.
+    #[test]
+    fn repeated_probes_do_not_inflate_bytes_in_flight() {
+        let mut map = Map::new(make_gauge());
+        let mut cca = crate::congestion::Controller::new(1500);
+        let rtt = RttEstimator::new(Duration::from_millis(2));
+        let now =
+            unsafe { s2n_quic_core::time::Timestamp::from_duration(Duration::from_millis(100)) };
+
+        const PACKET_SIZE: u16 = 100;
+        const NUM_PROBES: usize = 50;
+
+        // Initial packet — use make_packet's frame construction pattern
+        let pn0 = make_pn(0);
+        let initial_packet = make_packet(fake_entry());
+        let cc_info = cca.on_packet_sent(now, PACKET_SIZE, false, &rtt);
+        map.insert(
+            pn0,
+            Packet::new(
+                initial_packet.frames,
+                TransmissionInfo {
+                    cc_info,
+                    time_sent: now,
+                    sent_bytes: PACKET_SIZE,
+                },
+            ),
+        );
+        assert_eq!(cca.bytes_in_flight(), PACKET_SIZE as u32);
+
+        // Simulate N probes without any ACK arriving
+        let mut prev_pn = pn0;
+        for i in 1..=NUM_PROBES {
+            let new_pn = make_pn((i * 10) as u64);
+
+            // PTO fires: take frames from oldest non-shell
+            let (old_pn, frames) = map.take_oldest_for_probe().unwrap();
+            assert_eq!(old_pn, prev_pn);
+
+            // Assemble new probe packet (calls on_packet_sent)
+            let cc_info = cca.on_packet_sent(now, PACKET_SIZE, false, &rtt);
+            map.insert(
+                new_pn,
+                Packet::new(
+                    frames,
+                    TransmissionInfo {
+                        cc_info,
+                        time_sent: now,
+                        sent_bytes: PACKET_SIZE,
+                    },
+                ),
+            );
+
+            // Link shell → new probe and release shell bytes
+            let discarded = map.set_probed_to_and_take_bytes(old_pn, new_pn);
+            if discarded > 0 {
+                cca.on_packet_discarded(discarded);
+            }
+
+            prev_pn = new_pn;
+        }
+
+        // After 50 probes, bytes_in_flight should still be just one packet's worth.
+        // Without the fix (no discard), it would be 51 * 100 = 5100.
+        assert_eq!(
+            cca.bytes_in_flight(),
+            PACKET_SIZE as u32,
+            "bytes_in_flight should equal one packet after {} probes, \
+             but got {} — shell chain is leaking bytes into the CCA",
+            NUM_PROBES,
+            cca.bytes_in_flight()
+        );
+
+        // sum_sent_bytes should match (only the live entry has transmission_info)
+        assert_eq!(map.sum_sent_bytes(), PACKET_SIZE as u32);
     }
 }

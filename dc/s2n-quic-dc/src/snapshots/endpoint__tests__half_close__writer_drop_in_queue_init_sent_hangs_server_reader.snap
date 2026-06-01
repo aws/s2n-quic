@@ -1010,7 +1010,7 @@ expression: logs
 0:00:00.007016000 [client] TRACE m#tx.ack_packets[send.0]=2
 0:00:00.007016000 [client] TRACE c#send.inflight.drain.ack[send.0]=2
 0:00:00.007016000 [client] TRACE c#tx.ecn.ect0[send.0]=2
-0:00:00.007016000 [client] TRACE m#send.cwnd[send.0]=14842
+0:00:00.007016000 [client] TRACE m#send.cwnd[send.0]=14781
 0:00:00.007016000 [client] TRACE m#send.pacing_rate[send.0]=40368997
 0:00:00.007016000 [client] TRACE c#send.app_limited[send.0]=1
 0:00:00.007016000 [client] TRACE m#task.ack_processor.drained[send.worker.0]=2
