@@ -666,6 +666,7 @@ pub(crate) struct AssemblerCounters {
     pub tx_frame_queue_reset: crate::counter::Counter,
     pub tx_frame_queue_free: crate::counter::Counter,
     pub tx_frame_ack: crate::counter::Counter,
+    pub tx_frame_ping: crate::counter::Counter,
 
     pub tx_frame_queue_msg: crate::counter::Counter,
     pub tx_frame_queue_msg_fin: crate::counter::Counter,
@@ -677,6 +678,7 @@ pub(crate) struct AssemblerCounters {
     pub tx_probe_frame_queue_max_data: crate::counter::Counter,
     pub tx_probe_frame_queue_reset: crate::counter::Counter,
     pub tx_probe_frame_queue_free: crate::counter::Counter,
+    pub tx_probe_frame_ping: crate::counter::Counter,
     pub tx_probe_frame_queue_msg: crate::counter::Counter,
     pub tx_probe_frame_queue_msg_fin: crate::counter::Counter,
 }
@@ -703,6 +705,7 @@ impl AssemblerCounters {
             tx_frame_queue_reset: registry.register_nominal("tx.frame", "queue_reset"),
             tx_frame_queue_free: registry.register_nominal("tx.frame", "queue_free"),
             tx_frame_ack: registry.register_nominal("tx.frame", "ack"),
+            tx_frame_ping: registry.register_nominal("tx.frame", "ping"),
             tx_frame_queue_msg: registry.register_nominal("tx.frame", "queue_msg"),
             tx_frame_queue_msg_fin: registry.register_nominal("tx.frame", "queue_msg_fin"),
 
@@ -715,6 +718,7 @@ impl AssemblerCounters {
                 .register_nominal("tx.probe.frame", "queue_max_data"),
             tx_probe_frame_queue_reset: registry.register_nominal("tx.probe.frame", "queue_reset"),
             tx_probe_frame_queue_free: registry.register_nominal("tx.probe.frame", "queue_free"),
+            tx_probe_frame_ping: registry.register_nominal("tx.probe.frame", "ping"),
             tx_probe_frame_queue_msg: registry.register_nominal("tx.probe.frame", "queue_msg"),
             tx_probe_frame_queue_msg_fin: registry
                 .register_nominal("tx.probe.frame", "queue_msg_fin"),
@@ -734,6 +738,7 @@ impl AssemblerCounters {
             frame::Header::Ack { .. } => self.tx_frame_ack.add(1),
             frame::Header::QueueMsg { is_fin: false, .. } => self.tx_frame_queue_msg.add(1),
             frame::Header::QueueMsg { is_fin: true, .. } => self.tx_frame_queue_msg_fin.add(1),
+            frame::Header::Ping => self.tx_frame_ping.add(1),
         }
     }
 
@@ -754,6 +759,7 @@ impl AssemblerCounters {
             frame::Header::Ack { .. } => {
                 debug_assert!(false, "ACK frames should never appear as inflight entries")
             }
+            frame::Header::Ping => self.tx_probe_frame_ping.add(1),
             frame::Header::QueueMsg { is_fin: false, .. } => self.tx_probe_frame_queue_msg.add(1),
             frame::Header::QueueMsg { is_fin: true, .. } => {
                 self.tx_probe_frame_queue_msg_fin.add(1)

@@ -437,6 +437,12 @@ pub enum Header {
         is_wakeup: bool,
         dest_acceptor_id: Option<VarInt>,
     },
+    /// Minimal ack-eliciting frame with no payload or fields.
+    ///
+    /// Used as the second PTO probe segment when there is only one inflight entry
+    /// to retransmit. Ensures the peer receives 2 ack-eliciting packets at contiguous
+    /// packet numbers, satisfying the PN-threshold for loss detection.
+    Ping,
 }
 
 impl Header {
@@ -461,6 +467,7 @@ impl Header {
     // Bit 0: is_fin, Bit 1: is_wakeup, Bit 2: has_dest_acceptor_id (init)
     const QUEUE_MSG_BASE_TYPE: u8 = 18;
     const QUEUE_MSG_MAX_TYPE: u8 = Self::QUEUE_MSG_BASE_TYPE + 7;
+    const PING_TYPE: u8 = 26;
 
     #[inline]
     pub fn priority(&self) -> Priority {
@@ -475,7 +482,7 @@ impl Header {
             } => Priority::QueueInit,
             Self::QueueData { .. } | Self::QueueMsg { .. } => Priority::QueueData,
             Self::QueueControl { .. } | Self::QueueMaxData { .. } => Priority::QueueControl,
-            Self::QueueFree { .. } | Self::Ack { .. } | Self::QueueReset { .. } => {
+            Self::QueueFree { .. } | Self::Ack { .. } | Self::QueueReset { .. } | Self::Ping => {
                 Priority::QueueReset
             }
         }
@@ -509,7 +516,7 @@ impl Header {
             | Self::QueueControl { .. }
             | Self::QueueFree { .. }
             | Self::Ack { .. } => true,
-            Self::QueueReset { .. } | Self::QueueMaxData { .. } => false,
+            Self::QueueReset { .. } | Self::QueueMaxData { .. } | Self::Ping => false,
         }
     }
 
@@ -651,6 +658,9 @@ impl EncoderValue for Header {
                 encoder.encode(message_size);
                 encoder.encode(chunk_size);
                 encoder.encode(chunk_index);
+            }
+            Self::Ping => {
+                encoder.encode(&Self::PING_TYPE);
             }
         }
     }
@@ -830,6 +840,7 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                     buffer,
                 ))
             }
+            Self::PING_TYPE => Ok((Self::Ping, buffer)),
             _ => {
                 decoder_invariant!(false, "unknown frame header type");
                 Err(s2n_codec::DecoderError::InvariantViolation(

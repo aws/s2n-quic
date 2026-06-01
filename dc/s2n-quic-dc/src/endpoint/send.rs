@@ -505,23 +505,30 @@ pub(crate) enum ProbeState {
     /// No probe pending.
     #[default]
     Idle,
-    /// A probe has been requested by the PTO handler.
-    Requested,
+    /// Two probe segments remain. Set when a PTO fires — we always emit 2
+    /// ack-eliciting packets so the PN-threshold (2) can detect genuine loss.
+    ProbeTwice,
+    /// One probe segment remains (the first was already transmitted).
+    ProbeOnce,
 }
 
 impl ProbeState {
     s2n_quic_core::state::is!(
-        /// Returns `true` when a probe is pending.
-        is_requested, Requested
+        /// Returns `true` when at least one probe segment is pending.
+        is_requested, ProbeTwice | ProbeOnce
+    );
+    s2n_quic_core::state::is!(
+        /// Returns `true` when exactly one probe segment remains.
+        is_probe_once, ProbeOnce
     );
 
     s2n_quic_core::state::event! {
-        /// Transition `Idle → Requested` when a PTO fires.
-        request(Idle => Requested);
-        /// Transition `Requested → Idle` after the assembler transmits an ack-eliciting probe.
-        on_transmit(Requested => Idle);
-        /// Transition `Requested → Idle` when all inflight data is ACKed before the probe fires.
-        on_all_acked(Requested => Idle);
+        /// Transition to ProbeTwice when a PTO fires. No-op if already ProbeTwice.
+        request(Idle | ProbeOnce | ProbeTwice => ProbeTwice);
+        /// Transition after the assembler transmits an ack-eliciting probe segment.
+        on_transmit(ProbeTwice => ProbeOnce, ProbeOnce => Idle);
+        /// Transition when all inflight data is ACKed before the probe fires.
+        on_all_acked(ProbeTwice => Idle, ProbeOnce => Idle);
     }
 
     #[cfg(test)]

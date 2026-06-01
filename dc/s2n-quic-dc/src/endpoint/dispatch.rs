@@ -710,6 +710,7 @@ fn dispatch_decoded_frame(
                 );
             }
         }
+        Header::Ping => {}
     }
 }
 

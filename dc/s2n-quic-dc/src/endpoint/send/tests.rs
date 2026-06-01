@@ -143,6 +143,11 @@ fn probe_state_request_transitions_to_requested() {
 fn probe_state_on_transmit_clears_request() {
     let mut state = ProbeState::default();
     state.request().unwrap();
+    // ProbeTwice → ProbeOnce (still requested)
+    state.on_transmit().unwrap();
+    assert!(state.is_requested());
+    assert!(state.is_probe_once());
+    // ProbeOnce → Idle
     state.on_transmit().unwrap();
     assert!(!state.is_requested());
 }

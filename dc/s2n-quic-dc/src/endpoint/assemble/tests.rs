@@ -692,7 +692,7 @@ fn assemble_probe_fuzz() {
             }
 
             // Phase 2: request a probe and reassemble — exercises the probe path.
-            context.pto.probe_state = ProbeState::Requested;
+            context.pto.probe_state = ProbeState::ProbeTwice;
 
             let result = assemble(
                 &mut context,

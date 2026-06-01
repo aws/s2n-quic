@@ -295,7 +295,9 @@ fn detect_loss<Rand>(
 ) where
     Rand: random::Generator,
 {
-    let pn_threshold = max_acked_pn.checked_sub(VarInt::from_u8(3));
+    // Threshold of 2: PTO sends 2 contiguous probe packets, guaranteeing any
+    // genuinely-lost packet is at least 2 behind the largest ACKed.
+    let pn_threshold = max_acked_pn.checked_sub(VarInt::from_u8(2));
     let time_threshold = context.rtt_estimator.loss_time_threshold();
     let time_loss_cutoff = max_tx_time.checked_sub(time_threshold);
 

@@ -66,6 +66,7 @@ pub(crate) struct Dispatch {
     pub rx_queue_free_slots: Summary,
     pub rx_queue_free_ranges: Summary,
     pub rx_frame_ack: Counter,
+    pub rx_frame_ping: Counter,
     pub rx_frame_queue_msg: Counter,
     pub rx_frame_queue_msg_fin: Counter,
 
@@ -134,6 +135,7 @@ impl Dispatch {
             rx_queue_free_slots: counters.register_summary("rx.queue_free.slots", Unit::Count),
             rx_queue_free_ranges: counters.register_summary("rx.queue_free.ranges", Unit::Count),
             rx_frame_ack: counters.register_nominal("rx.frame", "ack"),
+            rx_frame_ping: counters.register_nominal("rx.frame", "ping"),
             rx_frame_queue_msg: counters.register_nominal("rx.frame", "queue_msg"),
             rx_frame_queue_msg_fin: counters.register_nominal("rx.frame", "queue_msg_fin"),
 
@@ -166,6 +168,7 @@ impl Dispatch {
             Header::Ack { .. } => self.rx_frame_ack.add(1),
             Header::QueueMsg { is_fin: false, .. } => self.rx_frame_queue_msg.add(1),
             Header::QueueMsg { is_fin: true, .. } => self.rx_frame_queue_msg_fin.add(1),
+            Header::Ping => self.rx_frame_ping.add(1),
         };
     }
 }
@@ -372,6 +375,9 @@ impl Send {
             Header::QueueFree { .. } => self.tx_acked_frame_queue_free.add(1),
             Header::Ack { .. } => {
                 debug_assert!(false, "ACK frames should never appear as inflight entries")
+            }
+            Header::Ping => {
+                debug_assert!(false, "Ping frames should never appear as inflight entries")
             }
             Header::QueueMsg { .. } => self.tx_acked_frame_queue_msg.add(1),
         }
