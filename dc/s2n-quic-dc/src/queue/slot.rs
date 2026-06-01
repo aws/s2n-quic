@@ -56,6 +56,13 @@ pub(crate) struct StreamState {
     pub(crate) flush_watermark: u64,
 }
 
+impl StreamState {
+    pub(crate) fn clear(&mut self) {
+        self.msg_table = None;
+        self.flush_watermark = 0;
+    }
+}
+
 /// Result of `Slot::bind_and_push_stream`.
 pub(crate) enum BindState {
     /// An existing, matching binding was found; the entry was pushed.
@@ -310,9 +317,7 @@ impl Slot {
         }
 
         Self::allocate_and_open_locked(&mut s, &mut c, &self.binding_id, binding_id)?;
-        // Clear state from the previous binding.
-        s.extra.msg_table = None;
-        s.extra.flush_watermark = 0;
+        s.extra.clear();
         Ok(true)
     }
 
@@ -353,8 +358,7 @@ impl Slot {
             Self::allocate_and_open_locked(&mut s, &mut c, &self.binding_id, binding_id)
                 .map_err(|_| super::Error::SenderClosed)?;
 
-            // Clear any poisoned msg_table from the previous binding.
-            s.extra.msg_table = None;
+            s.extra.clear();
 
             s.queue.push_back(entry);
             let waker = s.take_waker();
@@ -987,5 +991,74 @@ mod tests {
             Some(msg::Stream::Data { payload, .. }) => assert_eq!(payload.len(), 4096),
             _ => panic!("expected retried stream data"),
         }
+    }
+
+    /// After slot recycling via `bind_and_push_stream`, the flush_watermark from
+    /// the previous binding must be cleared. A stale watermark causes spurious
+    /// wakeups on the new binding's QueueMsg deliveries even when the sender
+    /// explicitly set `is_wakeup: false`.
+    ///
+    /// Scenario:
+    /// 1. First binding sets a high flush_watermark via is_wakeup=true message
+    /// 2. Receiver drops (slot recycled via mark_unallocated)
+    /// 3. New binding arrives via bind_and_push_stream
+    /// 4. New sender sends QueueMsg with is_wakeup=false
+    /// 5. BUG: the stale watermark causes should_wake=true (spurious wake)
+    #[test]
+    fn bind_and_push_stream_clears_flush_watermark() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(1)).unwrap();
+
+        // First binding: push a message with is_wakeup=true to set watermark high.
+        // stream_offset=0, message_size=65536 → watermark = 65536
+        let result = slot.push_msg(v(1), 0, 0, 65536, 8192, 0, 8192, false, true, |ptr, len| {
+            unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
+            Ok::<(), ()>(())
+        });
+        assert!(result.is_ok());
+
+        // Verify watermark was set
+        assert_eq!(slot.stream.inner.lock().extra.flush_watermark, 65536);
+
+        // Simulate receiver drop + recycling
+        simulate_receiver_drop(&slot);
+
+        // New binding arrives via bind_and_push_stream
+        let result = slot.bind_and_push_stream(v(2), make_stream_entry());
+        assert!(matches!(result, Ok(BindState::NewBinding(_))));
+
+        // The watermark must be cleared for the new binding
+        assert_eq!(
+            slot.stream.inner.lock().extra.flush_watermark,
+            0,
+            "BUG: flush_watermark was not cleared after bind_and_push_stream. \
+             A stale watermark from the previous binding causes spurious wakeups \
+             on the new binding's QueueMsg deliveries, violating is_wakeup=false semantics."
+        );
+
+        // Drain the initial entry pushed by bind_and_push_stream
+        slot.stream.inner.lock().queue.pop_front();
+
+        // Register a waker to verify wakeup behavior
+        let (waker, wake_count) = test_waker();
+        slot.stream.inner.lock().waker = Some(waker);
+
+        // New binding: push a complete message with is_wakeup=false.
+        // With a correctly cleared watermark (0), stream_offset(0) < 0 is false,
+        // so should_wake=false and the waker should NOT fire.
+        let result = slot.push_msg(v(2), 0, 0, 4096, 8192, 0, 4096, false, false, |ptr, len| {
+            unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
+            Ok::<(), ()>(())
+        });
+        assert!(result.is_ok());
+        drop(result);
+
+        assert_eq!(
+            wake_count.load(Ordering::SeqCst),
+            0,
+            "BUG: reader was spuriously woken despite is_wakeup=false. \
+             The stale flush_watermark from the previous binding caused \
+             should_wake to evaluate as true for the new binding's messages."
+        );
     }
 }
