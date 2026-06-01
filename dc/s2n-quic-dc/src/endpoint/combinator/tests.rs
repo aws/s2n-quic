@@ -450,8 +450,7 @@ fn pick_two_propagates_on_consumed() {
     // The inner receiver's on_consumed must be called with the item's byte_cost so that
     // upstream Paced combinators advance their token buckets.
     assert_eq!(
-        pick_two.rx.consumed,
-        expected_byte_cost,
+        pick_two.rx.consumed, expected_byte_cost,
         "PickTwo must propagate on_consumed(byte_cost) to inner receiver after dispatch"
     );
 }

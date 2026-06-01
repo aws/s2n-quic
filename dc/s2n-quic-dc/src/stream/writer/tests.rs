@@ -453,7 +453,10 @@ fn write_msg_large_payload_uses_multiple_msg_segments() {
                 !second_segment_has_non_fin_frame,
                 "all frames in final segment should carry FIN"
             );
-            assert!(expected.is_finished(), "payload should reassemble completely");
+            assert!(
+                expected.is_finished(),
+                "payload should reassemble completely"
+            );
         }
         .primary()
         .spawn();
@@ -1749,7 +1752,10 @@ fn write_msg_empty_buffer_no_fin_returns_zero_without_frames() {
             let frames = pusher.recv_frames().await;
             assert_eq!(frames.len(), 1);
             assert!(
-                matches!(frames.front().unwrap().header, Header::QueueData { is_fin: true, .. }),
+                matches!(
+                    frames.front().unwrap().header,
+                    Header::QueueData { is_fin: true, .. }
+                ),
                 "expected only the drop-FIN frame"
             );
         }
@@ -1797,7 +1803,10 @@ fn write_msg_empty_buffer_with_fin_emits_fin_frame() {
                 ),
                 "expected QueueData FIN at offset 0"
             );
-            assert!(frame.payload.is_empty(), "FIN frame payload should be empty");
+            assert!(
+                frame.payload.is_empty(),
+                "FIN frame payload should be empty"
+            );
         }
         .primary()
         .spawn();
@@ -1875,9 +1884,7 @@ fn server_write_msg_blocks_when_remote_budget_zero() {
 
         async move {
             // No frame should arrive while budget is zero.
-            let early = pusher
-                .recv_frames_timeout(Duration::from_millis(100))
-                .await;
+            let early = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
             assert!(
                 early.is_none(),
                 "expected no frame while remote flow budget is zero"
@@ -1939,9 +1946,7 @@ fn server_write_msg_unblocks_after_max_data() {
 
         async move {
             // First wait confirms nothing arrives while budget is 0.
-            let no_frames = pusher
-                .recv_frames_timeout(Duration::from_millis(100))
-                .await;
+            let no_frames = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
             assert!(no_frames.is_none(), "no frame expected before MAX_DATA");
 
             pusher.push_max_data(VarInt::from_u16(8192));
@@ -2119,9 +2124,7 @@ fn client_write_msg_first_write_sends_queue_data_init_then_blocks() {
             );
 
             // No further frames — writer is blocked in InitSent until MAX_DATA.
-            let extra = pusher
-                .recv_frames_timeout(Duration::from_millis(100))
-                .await;
+            let extra = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
             assert!(
                 extra.is_none(),
                 "expected no further frames while in InitSent"
@@ -2170,10 +2173,7 @@ fn client_write_msg_first_write_sends_queue_data_init_then_blocks() {
                 }
             })
             .await;
-            assert!(
-                blocked,
-                "second write_msg should block while in InitSent"
-            );
+            assert!(blocked, "second write_msg should block while in InitSent");
         }
         .primary()
         .spawn();
@@ -2278,8 +2278,7 @@ fn write_msg_coop_yields_after_budget_completions() {
             // (~340KB at MTU 1472), so we need 128 * 340KB ≈ 43MB. Use a large
             // Data buffer to avoid actual allocation of that much memory.
             let chunk_size = writer.0.msg_packet_size as usize;
-            let max_segment_size =
-                crate::queue::msg_entry::MAX_CHUNKS as usize * chunk_size;
+            let max_segment_size = crate::queue::msg_entry::MAX_CHUNKS as usize * chunk_size;
             let payload_len = max_segment_size * 130;
             let mut payload = Data::new(payload_len as u64);
             writer
@@ -2345,9 +2344,7 @@ fn client_write_msg_partial_segment_resume_must_use_queue_msg_not_queue_data() {
                     } => {
                         // Small-payload init path — this test requires a
                         // payload above packet_size, so this shouldn't happen.
-                        panic!(
-                            "expected QueueMsg init (payload > packet_size), got QueueData"
-                        );
+                        panic!("expected QueueMsg init (payload > packet_size), got QueueData");
                     }
                     _ => panic!("unexpected frame during init: {:?}", frame.header),
                 }

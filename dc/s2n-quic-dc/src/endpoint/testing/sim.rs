@@ -83,11 +83,7 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
-fn register_endpoint_map(
-    data_addrs: &[SocketAddr],
-    map: PathSecretMap,
-    params: ApplicationParams,
-) {
+fn register_endpoint_map(data_addrs: &[SocketAddr], map: PathSecretMap, params: ApplicationParams) {
     SIM_MAP_REGISTRY.with(|r| {
         let mut reg = r.borrow_mut();
         for &addr in data_addrs {
@@ -597,13 +593,7 @@ pub fn insert_fake_path_pair(
     let local_params = lookup_sim_params(local_addr);
     let peer_params = lookup_sim_params(peer_addr);
 
-    local_map.test_insert_pair(
-        local_addr,
-        local_params,
-        peer_map,
-        peer_addr,
-        peer_params,
-    )
+    local_map.test_insert_pair(local_addr, local_params, peer_map, peer_addr, peer_params)
 }
 
 /// Returns the [`PathSecretMap`] registered for the given address, or `None`

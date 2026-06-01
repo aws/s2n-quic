@@ -48,7 +48,9 @@ pub unsafe trait Recycler: Sized + 'static {
 ///
 /// Suitable for descriptors that may be dropped on a different thread from
 /// the one that owns the recv socket (e.g. dispatch workers).
-pub struct SyncRecycler(pub(crate) std::sync::Weak<sync::AdapterShared<RecycleAdapter<SyncRecycler>>>);
+pub struct SyncRecycler(
+    pub(crate) std::sync::Weak<sync::AdapterShared<RecycleAdapter<SyncRecycler>>>,
+);
 
 // SAFETY: `Weak<AdapterShared<…>>` is `Send + Sync`.
 unsafe impl Send for SyncRecycler {}

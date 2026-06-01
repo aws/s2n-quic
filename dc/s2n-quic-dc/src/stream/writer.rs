@@ -1323,8 +1323,8 @@ impl Inner {
 
             let start_chunk_index = self.pending_chunk_index;
             let mut chunk_index: u32 = start_chunk_index;
-            let mut segment_remaining = segment_size
-                - (start_chunk_index as usize * chunk_size as usize).min(segment_size);
+            let mut segment_remaining =
+                segment_size - (start_chunk_index as usize * chunk_size as usize).min(segment_size);
             while segment_remaining > 0 {
                 let chunk_len = (chunk_size as usize).min(segment_remaining);
                 let mut payload = ByteVec::new();
@@ -1367,7 +1367,8 @@ impl Inner {
 
             let chunks_sent = chunk_index - start_chunk_index;
             let bytes_sent = chunks_sent as usize * chunk_size as usize;
-            let bytes_sent = bytes_sent.min(segment_size - start_chunk_index as usize * chunk_size as usize);
+            let bytes_sent =
+                bytes_sent.min(segment_size - start_chunk_index as usize * chunk_size as usize);
 
             if segment_remaining > 0 {
                 // Partial segment: remember where to resume.

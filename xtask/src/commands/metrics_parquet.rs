@@ -43,8 +43,8 @@ pub fn metrics_schema() -> Arc<Schema> {
                             "entries",
                             DataType::Struct(
                                 vec![
-                                    Arc::new(Field::new("key", DataType::UInt64, false)),
-                                    Arc::new(Field::new("value", DataType::UInt64, false)),
+                                    Arc::new(Field::new("keys", DataType::UInt64, false)),
+                                    Arc::new(Field::new("values", DataType::UInt64, true)),
                                 ]
                                 .into(),
                             ),

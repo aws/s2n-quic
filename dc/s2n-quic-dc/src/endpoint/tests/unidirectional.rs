@@ -57,7 +57,10 @@ fn client_to_server_send_only() {
                             break;
                         }
                     }
-                    assert!(buf.is_finished(), "server did not receive all expected data");
+                    assert!(
+                        buf.is_finished(),
+                        "server did not receive all expected data"
+                    );
                 }
                 .primary()
                 .spawn();
@@ -214,7 +217,10 @@ fn server_to_client_send_only() {
                     break;
                 }
             }
-            assert!(buf.is_finished(), "client did not receive all expected data");
+            assert!(
+                buf.is_finished(),
+                "client did not receive all expected data"
+            );
         }
         .group("client")
         .primary()

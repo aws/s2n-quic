@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
 use std::{
     ffi::OsStr,
@@ -239,9 +239,7 @@ fn build_init_sql(inputs: &[PathBuf], sql_files: &SqlFiles) -> String {
             .map(|p| {
                 let path = p.to_string_lossy();
                 let quoted_path = quote_sql_string(&path);
-                format!(
-                    "SELECT *, {quoted_path} AS label FROM read_parquet({quoted_path})"
-                )
+                format!("SELECT *, {quoted_path} AS label FROM read_parquet({quoted_path})")
             })
             .collect::<Vec<_>>()
             .join("\nUNION ALL\n");
@@ -354,10 +352,7 @@ impl Investigate {
         let inputs = resolve_inputs(&self.inputs)?;
 
         // 2. Locate the queries directory.
-        let queries_dir = self
-            .queries_dir
-            .clone()
-            .unwrap_or_else(find_queries_dir);
+        let queries_dir = self.queries_dir.clone().unwrap_or_else(find_queries_dir);
 
         // 3. Load SQL files.
         let sql_files = SqlFiles::load(&queries_dir)?;

@@ -15,9 +15,7 @@ use crate::{
     intrusive::{Entry, Queue},
     path::secret::map::Entry as PathSecretEntry,
     socket::{
-        channel::{
-            Budget, ByteCost, ImmediateQueueStatus, Receiver, UnboundedSender,
-        },
+        channel::{Budget, ByteCost, ImmediateQueueStatus, Receiver, UnboundedSender},
         pool::{
             descriptor::{self, UnsyncRecycler},
             UnsyncReusePool,

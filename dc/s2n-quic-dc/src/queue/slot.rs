@@ -12,8 +12,7 @@ use super::{
     half::{self, Flags, Half, HalfInner},
     msg_table::MsgTable,
 };
-use crate::tracing::*;
-use crate::{endpoint::msg, intrusive};
+use crate::{endpoint::msg, intrusive, tracing::*};
 use core::{
     ptr::NonNull,
     sync::atomic::{AtomicU64, Ordering},
@@ -77,7 +76,10 @@ impl Slot {
         Self {
             binding_id: AtomicU64::new(UNALLOCATED),
             queue_id: queue_id.as_u64(),
-            stream: Half::with_extra(StreamState { msg_table: None, flush_watermark: 0 }),
+            stream: Half::with_extra(StreamState {
+                msg_table: None,
+                flush_watermark: 0,
+            }),
             control: Half::new(),
         }
     }
@@ -126,7 +128,10 @@ impl Slot {
         entry: intrusive::Entry<msg::Stream>,
     ) -> Result<half::AutoWake, super::Error<intrusive::Entry<msg::Stream>>> {
         let mut inner = self.stream.inner.lock();
-        if let msg::Stream::Data { offset, payload, .. } = &*entry {
+        if let msg::Stream::Data {
+            offset, payload, ..
+        } = &*entry
+        {
             let end = offset.as_u64().saturating_add(payload.len() as u64);
             if end > inner.extra.flush_watermark {
                 inner.extra.flush_watermark = end;
@@ -229,7 +234,10 @@ impl Slot {
                 ?error,
                 "slot::send_msg completion validation failed"
             );
-            if matches!(error, super::Error::HalfClosed(_) | super::Error::SenderClosed) {
+            if matches!(
+                error,
+                super::Error::HalfClosed(_) | super::Error::SenderClosed
+            ) {
                 if let Some(table) = stream.extra.msg_table.as_mut() {
                     table.cancel_checkout(msg_id, chunk_index);
                 }
@@ -465,7 +473,8 @@ fn validate_msg_dispatch(
     slot_binding: &AtomicU64,
     inner: &HalfInner<msg::Stream, StreamState>,
 ) -> Result<(), super::Error<()>> {
-    validate_binding_state(binding_id, slot_binding, &inner.flags).map_err(map_validation_error_unit)
+    validate_binding_state(binding_id, slot_binding, &inner.flags)
+        .map_err(map_validation_error_unit)
 }
 
 /// Internal-only binding-state validation result used to centralize checks.
@@ -826,21 +835,10 @@ mod tests {
 
         // Push a complete message with is_wakeup=false — watermark stays at 0,
         // so stream_offset(0) is NOT < watermark(0) → no wake.
-        let result = slot.push_msg(
-            v(1),
-            0,
-            0,
-            4096,
-            8192,
-            0,
-            4096,
-            false,
-            false,
-            |ptr, len| {
-                unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
-                Ok::<(), ()>(())
-            },
-        );
+        let result = slot.push_msg(v(1), 0, 0, 4096, 8192, 0, 4096, false, false, |ptr, len| {
+            unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
+            Ok::<(), ()>(())
+        });
         assert!(result.is_ok());
         assert_eq!(wake_count.load(Ordering::SeqCst), 0);
 
@@ -963,9 +961,18 @@ mod tests {
         let slot = Slot::with_queue_id(v(0));
         slot.allocate_and_open(v(1)).unwrap();
 
-        let first = slot.push_msg(v(1), 0, 0, 4096, 8192, 0, 4096, false, true, |_ptr, _len| {
-            Err::<(), ()>(())
-        });
+        let first = slot.push_msg(
+            v(1),
+            0,
+            0,
+            4096,
+            8192,
+            0,
+            4096,
+            false,
+            true,
+            |_ptr, _len| Err::<(), ()>(()),
+        );
         assert!(matches!(first, Err(super::super::MsgError::Write(()))));
 
         let retry = slot.push_msg(v(1), 0, 0, 4096, 8192, 0, 4096, false, true, |ptr, len| {

@@ -315,8 +315,7 @@ mod cachegrind_backend {
         mut routine: R,
         cold_label: &std::ffi::CStr,
         warm_label: &std::ffi::CStr,
-    )
-    where
+    ) where
         R: FnMut(),
     {
         run_with_callgrind_setup(|| (), |_| routine(), cold_label, warm_label);
