@@ -359,7 +359,7 @@ impl<T: Absorb> Channels<T> {
         self.drain_fallback(&mut aggregate);
     }
 
-    fn aggregate_page(aggregate: &mut Vec<T>, mut page: Box<Page>, empty_pages: &ShardedPagePool) {
+    fn aggregate_page(aggregate: &mut [T], mut page: Box<Page>, empty_pages: &ShardedPagePool) {
         let length = *page.length.get_mut() as usize;
         let filled = unsafe { &mut *(&mut page.slots[..length] as *mut [_] as *mut [u64]) };
         T::handle(aggregate, filled);
@@ -578,7 +578,7 @@ impl<T: Absorb> Channels<T> {
         self.fallback.push(event);
     }
 
-    fn drain_fallback(&self, aggregate: &mut Vec<T>) {
+    fn drain_fallback(&self, aggregate: &mut [T]) {
         let mut buffer = Vec::with_capacity(SLOTS * 2);
         while let Some(event) = self.fallback.pop() {
             buffer.push(event);

@@ -589,7 +589,9 @@ where
 }
 
 enum ProbeResult {
-    Assembled { old_pn: PacketNumber },
+    Assembled {
+        old_pn: PacketNumber,
+    },
     /// No inflight entries available to probe (all shells or empty map).
     NothingToProbe,
     /// Probe frames exist but don't fit in the current segment (GSO size constraint).
