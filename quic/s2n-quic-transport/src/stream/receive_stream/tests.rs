@@ -1770,6 +1770,63 @@ fn stop_sending_releases_outstanding_connection_flow_control_credits() {
 }
 
 #[test]
+fn stop_sending_releases_credits_for_data_arriving_in_stopping_state() {
+    let test_env_config = conn_flow_control_test_env_config();
+    let mut test_env = setup_stream_test_env_with_config(test_env_config);
+
+    // Feed 2000 bytes of data — stream acquires connection flow control credits
+    test_env.feed_data(VarInt::from_u32(0), 2000);
+    assert_eq!(
+        VarInt::new(
+            test_env_config.initial_connection_receive_window_size - 2000,
+        )
+        .unwrap(),
+        Into::<u64>::into(test_env.rx_connection_flow_controller.remaining_window())
+    );
+
+    // STOP_SENDING releases outstanding credits
+    assert!(test_env
+        .stop_sending(ApplicationErrorCode::UNKNOWN)
+        .is_ok());
+    assert_eq!(
+        VarInt::from_u32(test_env_config.desired_connection_flow_control_window),
+        Into::<u64>::into(test_env.rx_connection_flow_controller.remaining_window())
+    );
+
+    let consumed_before = test_env.rx_connection_flow_controller.consumed_window();
+
+    // Feed additional data while in Stopping state.
+    // This data was sent before the peer received STOP_SENDING.
+    // It must be acquired (RFC 9000 §4.5) and then immediately released
+    // so the connection flow control credits are not stranded.
+    let mut events = StreamEvents::new();
+    assert!(test_env
+        .stream
+        .on_data(
+            &stream_data(
+                test_env.stream.stream_id,
+                VarInt::from_u32(2000),
+                &[0u8; 1000],
+                false,
+            ),
+            &mut events,
+        )
+        .is_ok());
+
+    // Connection flow control window should be fully available again
+    assert_eq!(
+        VarInt::from_u32(test_env_config.desired_connection_flow_control_window),
+        Into::<u64>::into(test_env.rx_connection_flow_controller.remaining_window())
+    );
+
+    // consumed_window must increase to reflect the additional data
+    assert_eq!(
+        consumed_before + VarInt::from_u32(1000),
+        test_env.rx_connection_flow_controller.consumed_window()
+    );
+}
+
+#[test]
 fn stop_sending_will_trigger_a_stop_sending_frame() {
     for available_data in &[0, 1] {
         for consume_data in &[false, true] {
@@ -2620,3 +2677,4 @@ fn receiving_into_non_empty_buffers_returns_an_error() {
         "data should not be lost when returning an error"
     );
 }
+
