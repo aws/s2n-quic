@@ -398,8 +398,8 @@ pub fn setup_sim_endpoint(
         recv_sockets.push(Arc::new(sock));
     }
 
-    let send_pool = Pool::new(mtu);
-    let recv_pool = Pool::new(mtu);
+    let send_pool = Pool::new(u16::MAX);
+    let recv_pool = Pool::new(u16::MAX);
 
     // Update path secret map so it knows how many sender slots to allocate.
     path_secret_map.set_socket_sender_count(num_send_sockets);

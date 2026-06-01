@@ -39,9 +39,7 @@ impl super::Socket for UdpSocket {
         let mut opts = SendOptions::default();
         opts.ecn = ecn as u8;
 
-        // More than one buffer slice means GSO-style segmentation; tell Bach the
-        // per-segment size so it can reconstruct individual datagrams.
-        if payload.len() > 1 && segment_size > 0 {
+        if segment_size > 0 {
             opts.segment_len = Some(segment_size as usize);
         }
 

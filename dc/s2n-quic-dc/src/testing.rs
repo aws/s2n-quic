@@ -405,7 +405,7 @@ struct StdoutWriterGuard {
 impl std::io::Write for StdoutWriterGuard {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         if self.active {
-            std::io::stderr().write(buf)
+            std::io::stdout().write(buf)
         } else {
             Ok(buf.len())
         }
@@ -413,7 +413,7 @@ impl std::io::Write for StdoutWriterGuard {
 
     fn flush(&mut self) -> std::io::Result<()> {
         if self.active {
-            std::io::stderr().flush()
+            std::io::stdout().flush()
         } else {
             Ok(())
         }
