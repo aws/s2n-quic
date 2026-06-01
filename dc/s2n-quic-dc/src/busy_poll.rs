@@ -273,7 +273,7 @@ impl Runner {
         #[cfg(target_os = "linux")]
         {
             thread_dump::install_handler();
-            let tid = unsafe { libc::gettid() };
+            let tid = unsafe { libc::syscall(libc::SYS_gettid) } as i32;
             heartbeat.tid.store(tid, Ordering::Release);
         }
 

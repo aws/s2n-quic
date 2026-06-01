@@ -41,7 +41,7 @@ pub fn dump(tid: i32, timeout: Duration) -> Option<Backtrace> {
     }
 
     unsafe {
-        libc::tgkill(libc::getpid(), tid, libc::SIGUSR1);
+        libc::syscall(libc::SYS_tgkill, libc::getpid(), tid, libc::SIGUSR1);
     }
 
     let deadline = Instant::now() + timeout;
