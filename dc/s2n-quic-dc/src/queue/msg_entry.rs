@@ -101,6 +101,11 @@ impl MsgEntry {
     }
 
     #[inline]
+    pub(crate) fn chunk_size(&self) -> u16 {
+        self.chunk_size
+    }
+
+    #[inline]
     pub(crate) fn stream_offset(&self) -> u64 {
         self.stream_offset
     }

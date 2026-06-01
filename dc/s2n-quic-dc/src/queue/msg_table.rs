@@ -51,6 +51,8 @@ pub(crate) enum InsertError {
     FinMismatch,
     /// chunk_index exceeds the message's chunk count.
     OffsetOverflow,
+    /// chunk_size on this frame doesn't match the existing entry.
+    ChunkSizeMismatch,
     /// payload_len doesn't match the expected chunk length.
     PayloadLenMismatch,
 }
@@ -144,6 +146,10 @@ impl MsgTable {
 
         if entry.is_fin() != is_fin {
             return Err(InsertError::FinMismatch);
+        }
+
+        if entry.chunk_size() != chunk_size {
+            return Err(InsertError::ChunkSizeMismatch);
         }
 
         if is_fin {
@@ -581,5 +587,35 @@ mod tests {
         // 257 chunks needed → rejected
         let result = table.insert(0, 0, 257, 1, 0, 1, false);
         assert_eq!(result.unwrap_err(), InsertError::MessageTooLarge);
+    }
+
+    /// Regression: a frame with a smaller chunk_size than the first frame can
+    /// produce a higher chunk_count, allowing a chunk_index that exceeds the
+    /// entry's actual chunk_count. The entry's checkout() then computes an
+    /// offset using the stored (larger) chunk_size, writing beyond the buffer.
+    ///
+    /// Example: message_size=16384, first frame chunk_size=8192 → entry has 2 chunks.
+    /// Attacker frame chunk_size=4096 → validation computes 4 chunks, chunk_index=3
+    /// passes OffsetOverflow. But entry.checkout(3) computes offset=3*8192=24576,
+    /// which is beyond the 16384-byte buffer. In release builds (no debug_assert),
+    /// this is a heap buffer overflow.
+    #[test]
+    fn chunk_size_mismatch_rejects_overflow() {
+        let mut table = MsgTable::new();
+
+        // First frame establishes the entry with chunk_size=8192.
+        // message_size=16384 → chunk_count = 2 (chunks 0 and 1).
+        let result = table.insert(0, 0, 16384, 8192, 0, 8192, false);
+        assert!(result.is_ok());
+
+        // Attacker sends a frame claiming chunk_size=4096 for the same msg_id.
+        // With chunk_size=4096, chunk_count = 4, so chunk_index=3 passes
+        // the OffsetOverflow check (3 < 4). But the entry was created with
+        // chunk_size=8192, so checkout() would compute offset = 3 * 8192 = 24576,
+        // far beyond the 16384-byte buffer.
+        //
+        // This MUST be rejected before reaching checkout().
+        let result = table.insert(0, 0, 16384, 4096, 3, 4096, false);
+        assert_eq!(result.unwrap_err(), InsertError::ChunkSizeMismatch);
     }
 }
