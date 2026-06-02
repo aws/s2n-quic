@@ -738,6 +738,8 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
         consumed: 0,
     };
 
+    let (ack_completions_tx, _ack_completions_rx) = unsync::new::<msg::Sender>();
+    let ack_completions_tx = ack_completions_tx.into_list_sender();
     let processor = AckProcessor::new(
         ack_rx,
         send_caches,
@@ -748,6 +750,7 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
         frame_tx,
         frame::PriorityInput::default(),
         frame::PriorityInput::default(),
+        ack_completions_tx,
         registry.register("!send.invalid_sender_idx"),
     );
     let rx = crate::socket::channel::Flatten::new(processor);

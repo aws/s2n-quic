@@ -61,6 +61,8 @@ fn send_ack_processor_ignores_invalid_sender_id() {
         let immediate_tx =
             send::ImmediateSender::new(socket_immediate_txs, sender_idx_to_local_imm);
 
+        let (ack_completions_tx, _ack_completions_rx) = unsync::new::<msg::Sender>();
+        let ack_completions_tx = ack_completions_tx.into_list_sender();
         let rx = tasks::send_ack_processor(
             ack_rx,
             send_caches,
@@ -71,6 +73,7 @@ fn send_ack_processor_ignores_invalid_sender_id() {
             frame_tx,
             completed_tx,
             cancelled_tx,
+            ack_completions_tx,
             registry.register("!send.invalid_sender_idx"),
             immediate_tx,
             tx_wheel_tx,

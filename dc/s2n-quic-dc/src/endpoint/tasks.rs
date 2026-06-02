@@ -402,6 +402,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             frame_tx.clone(),
             GaugedSender::new(completed_tx, completion_sender),
             GaugedSender::new(cancelled_tx.clone(), cancelled_sender),
+            ack_completions_tx.clone(),
             counter_registry.register("!send.invalid_sender_idx"),
             immediate_tx.clone(),
             GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
@@ -801,7 +802,7 @@ where
 ///   wheel interest for immediate, tx, PTO, or idle scheduling.
 /// - Sender ids that cannot be resolved are ignored and counted via `invalid_sender_idx`.
 #[allow(clippy::too_many_arguments)]
-pub fn send_ack_processor<AckRx, Clk, Rand, C, ImmW, TxW, PtoW, IdleW>(
+pub fn send_ack_processor<AckRx, Clk, Rand, C, AckComp, ImmW, TxW, PtoW, IdleW>(
     ack_rx: AckRx,
     send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
     sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId>,
@@ -811,6 +812,7 @@ pub fn send_ack_processor<AckRx, Clk, Rand, C, ImmW, TxW, PtoW, IdleW>(
     frame_tx: frame::SubmissionSender,
     completed_tx: C,
     cancelled_tx: C,
+    ack_completions_tx: AckComp,
     invalid_sender_idx: counter::Counter,
     immediate_tx: ImmW,
     tx_wheel_tx: TxW,
@@ -822,6 +824,7 @@ where
     Clk: precision::Clock + s2n_quic_core::time::Clock,
     Rand: s2n_quic_core::random::Generator,
     C: UnboundedSender<Entry<Frame>>,
+    AckComp: UnboundedSender<Queue<msg::Sender>>,
     ImmW: UnboundedSender<Rc<RefCell<send::Context>>>,
     TxW: UnboundedSender<Rc<RefCell<send::Context>>>,
     PtoW: UnboundedSender<Rc<RefCell<send::Context>>>,
@@ -837,6 +840,7 @@ where
         frame_tx,
         completed_tx,
         cancelled_tx,
+        ack_completions_tx,
         invalid_sender_idx,
     );
     let rx = Flatten::new(rx);

@@ -1048,7 +1048,7 @@ where
 
 /// Processes `msg::Sender` messages: resolves the target send::Context and dispatches
 /// either loss detection (ReceivedAck) or direct ACK state (PendingAck).
-pub(crate) struct AckProcessor<R, Clk, Rand, C> {
+pub(crate) struct AckProcessor<R, Clk, Rand, C, A> {
     inner: R,
     send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
     sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId>,
@@ -1058,12 +1058,13 @@ pub(crate) struct AckProcessor<R, Clk, Rand, C> {
     frame_tx: frame::SubmissionSender,
     completed_tx: C,
     cancelled_tx: C,
+    ack_completions_tx: A,
     invalid_sender_idx: crate::counter::Counter,
     /// Storage space for packet number/recovery states
     deferred: Vec<PacketNumber>,
 }
 
-impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
+impl<R, Clk, Rand, C, A> AckProcessor<R, Clk, Rand, C, A> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         inner: R,
@@ -1075,6 +1076,7 @@ impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
         frame_tx: frame::SubmissionSender,
         completed_tx: C,
         cancelled_tx: C,
+        ack_completions_tx: A,
         invalid_sender_idx: crate::counter::Counter,
     ) -> Self {
         Self {
@@ -1087,6 +1089,7 @@ impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
             frame_tx,
             completed_tx,
             cancelled_tx,
+            ack_completions_tx,
             invalid_sender_idx,
             deferred: Vec::with_capacity(8),
         }
@@ -1114,12 +1117,13 @@ impl<R, Clk, Rand, C> AckProcessor<R, Clk, Rand, C> {
 
 type MaybeWheelDispatch = Option<(Rc<RefCell<send::Context>>, send::WheelInterest)>;
 
-impl<R, Clk, Rand, C> Receiver<MaybeWheelDispatch> for AckProcessor<R, Clk, Rand, C>
+impl<R, Clk, Rand, C, A> Receiver<MaybeWheelDispatch> for AckProcessor<R, Clk, Rand, C, A>
 where
     R: Receiver<Entry<msg::Sender>>,
     Clk: precision::Clock + s2n_quic_core::time::Clock,
     Rand: s2n_quic_core::random::Generator,
     C: UnboundedSender<Entry<Frame>>,
+    A: UnboundedSender<Queue<msg::Sender>>,
 {
     fn poll_recv(
         &mut self,
@@ -1193,6 +1197,9 @@ where
                         Ok(ctx) => ctx,
                         Err(error) => {
                             warn!(?error, peer = %entry.path_secret_entry().peer(), "dropping ack: send context not ready");
+                            let mut completions = Queue::new();
+                            completions.push_back(entry);
+                            let _ = self.ack_completions_tx.send(completions);
                             return Poll::Ready(Some(None));
                         }
                     }
