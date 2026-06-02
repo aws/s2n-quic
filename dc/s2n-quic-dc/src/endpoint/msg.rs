@@ -7,7 +7,7 @@ use crate::{
 };
 use bytes::BytesMut;
 use core::time::Duration;
-use s2n_quic_core::varint::VarInt;
+use s2n_quic_core::{frame::ack::EcnCounts, varint::VarInt};
 use std::sync::Arc;
 
 pub enum Stream {
@@ -39,15 +39,19 @@ pub enum Control {
 }
 
 pub enum Sender {
-    /// Inbound ACK from the peer — decoded payload drives loss detection and CCA updates.
+    /// Inbound ACK from the peer — decoded fields drive loss detection and CCA updates.
     ReceivedAck {
         local_sender_id: LocalSenderId,
         path_secret_entry: Arc<PathSecretEntry>,
+        /// Additional gap/range pairs beyond the first range (often empty).
         payload: BytesMut,
         /// Wire-time ACK delay: time from when the largest acknowledged packet was received
         /// by the peer to when the ACK was sent.  Extracted from `Header::Ack.ack_delay` by
         /// the dispatch layer and subtracted from the RTT sample in `process_ack`.
         ack_delay: Duration,
+        largest_acknowledged: VarInt,
+        ack_range: VarInt,
+        ecn_counts: EcnCounts,
     },
     /// Notification carrying a freshly encoded outbound ACK body from recv worker.
     /// The send worker stamps wire-time ack_delay during assembly.

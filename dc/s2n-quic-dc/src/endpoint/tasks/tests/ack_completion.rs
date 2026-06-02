@@ -165,11 +165,11 @@ fn completion_from_idle_state_is_ignored() {
     sim(|| {
         let ctx = RecvContextBuilder::default().build();
         let submission = ack_state::Submission {
-            // Body contents are irrelevant for this path: ack_completion only validates
-            // context state/cache lookup before deciding whether to re-submit.
-            body: Bytes::from_static(&[0]),
+            largest_acknowledged: VarInt::ZERO,
+            ack_range: VarInt::ZERO,
+            extra_ranges: Bytes::new(),
+            ecn_counts: Default::default(),
             largest_recv_time: crate::time::precision::Clock::now(&Clock::default()),
-            has_ecn: false,
             path_secret_entry: ctx.borrow().path_entry.clone(),
             local_sender_id: ctx.borrow().local_sender_id,
             remote_sender_id: ctx.borrow().remote_sender_id,

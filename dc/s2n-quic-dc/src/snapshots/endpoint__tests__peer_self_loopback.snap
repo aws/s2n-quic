@@ -299,9 +299,9 @@ expression: logs
 0:00:00.000521000 [peer] TRACE c#send.ack.drain[send.0]=1
 0:00:00.000521000 [peer] TRACE g#send.ack.depth[send.0]=0
 0:00:00.000521000 [peer] TRACE c#tx.frame[ack]=1
-0:00:00.000521000 [peer] TRACE m#tx.packet_size=54
+0:00:00.000521000 [peer] TRACE m#tx.packet_size=51
 0:00:00.000521000 [peer] TRACE m#tx.frames_per_packet=1
-0:00:00.000521000 [peer] TRACE m#tx.payload_size=8
+0:00:00.000521000 [peer] TRACE m#tx.payload_size=0
 0:00:00.000521000 [peer] TRACE c#tx.data=1
 0:00:00.000521000 [peer] TRACE c#tx.data[send.0]=1
 0:00:00.000521000 [peer] TRACE c#q.dispatch.enq[recv.dispatch.1]=1
@@ -309,7 +309,7 @@ expression: logs
 0:00:00.000521000 [peer] TRACE m#q.dispatch.depth_dist[recv.dispatch.1]=1
 0:00:00.000521000 [peer] TRACE m#asm.segments=1
 0:00:00.000521000 [peer] TRACE c#socket.tx.ops[send.0]=1
-0:00:00.000521000 [peer] TRACE c#socket.tx.bytes[send.0]=54
+0:00:00.000521000 [peer] TRACE c#socket.tx.bytes[send.0]=51
 0:00:00.000521000 [peer] TRACE m#task.assembler.drained[send.0]=1
 0:00:00.000521000 [peer] TRACE c#q.router_to_batcher.enq[p2]=1
 0:00:00.000521000 [peer] TRACE g#q.router_to_batcher.depth[p2]=1
@@ -423,7 +423,7 @@ expression: logs
 0:00:00.000541000 [peer] TRACE m#task.pto_wheel.drained[send.worker.3]=1
 0:00:00.000541000 [peer] TRACE m#task.pto_wheel.drained[send.worker.3]=0
 0:00:00.001021000 [peer] TRACE c#socket.rx.ops[recv.0]=1
-0:00:00.001021000 [peer] TRACE c#socket.rx.bytes[recv.0]=54
+0:00:00.001021000 [peer] TRACE c#socket.rx.bytes[recv.0]=51
 0:00:00.001021000 [peer] TRACE c#router.routed=1
 0:00:00.001021000 [peer] TRACE c#router.routed[recv.1]=1
 0:00:00.001021000 [peer] TRACE c#q.dispatch_rx.enq[recv.1]=1
@@ -448,7 +448,7 @@ expression: logs
 0:00:00.001021000 [peer] DEBUG s2n_quic_dc: credential_id=[112, 253, 42, 10, 77, 103, 170, 248, 113, 171, 168, 22, 82, 118, 187, 209] key_id=0 gap=1 forward_shift=0
 0:00:00.001021000 [peer] TRACE c#rx.peer_cache.miss=1
 0:00:00.001021000 [peer] TRACE c#rx.ecn[ect0]=1
-0:00:00.001021000 [peer] TRACE m#rx.packet_size=8
+0:00:00.001021000 [peer] TRACE m#rx.packet_size=0
 0:00:00.001021000 [peer] TRACE c#rx.frame[ack]=1
 0:00:00.001021000 [peer] TRACE c#q.ack.enq[send.0]=1
 0:00:00.001021000 [peer] TRACE g#q.ack.depth[send.0]=1
@@ -523,9 +523,9 @@ expression: logs
 0:00:00.001021000 [peer] TRACE c#send.ack.drain[send.1]=1
 0:00:00.001021000 [peer] TRACE g#send.ack.depth[send.1]=0
 0:00:00.001021000 [peer] TRACE c#tx.frame[ack]=1
-0:00:00.001021000 [peer] TRACE m#tx.packet_size=54
+0:00:00.001021000 [peer] TRACE m#tx.packet_size=51
 0:00:00.001021000 [peer] TRACE m#tx.frames_per_packet=1
-0:00:00.001021000 [peer] TRACE m#tx.payload_size=8
+0:00:00.001021000 [peer] TRACE m#tx.payload_size=0
 0:00:00.001021000 [peer] TRACE c#tx.data=1
 0:00:00.001021000 [peer] TRACE c#tx.data[send.1]=1
 0:00:00.001021000 [peer] TRACE c#q.dispatch.enq[recv.dispatch.1]=1
@@ -533,7 +533,7 @@ expression: logs
 0:00:00.001021000 [peer] TRACE m#q.dispatch.depth_dist[recv.dispatch.1]=1
 0:00:00.001021000 [peer] TRACE m#asm.segments=1
 0:00:00.001021000 [peer] TRACE c#socket.tx.ops[send.1]=1
-0:00:00.001021000 [peer] TRACE c#socket.tx.bytes[send.1]=54
+0:00:00.001021000 [peer] TRACE c#socket.tx.bytes[send.1]=51
 0:00:00.001021000 [peer] TRACE m#task.assembler.drained[send.1]=1
 0:00:00.001021000 [peer] TRACE m#task.idle_wheel.drained[send.worker.1]=0
 0:00:00.001021000 [peer] TRACE c#q.dispatch.receiver[recv.dispatch.1.task.ack_completion]=1
@@ -599,9 +599,9 @@ expression: logs
 0:00:00.001041000 [peer] TRACE c#send.ack.drain[send.7]=1
 0:00:00.001041000 [peer] TRACE g#send.ack.depth[send.7]=0
 0:00:00.001041000 [peer] TRACE c#tx.frame[ack]=1
-0:00:00.001041000 [peer] TRACE m#tx.packet_size=54
+0:00:00.001041000 [peer] TRACE m#tx.packet_size=51
 0:00:00.001041000 [peer] TRACE m#tx.frames_per_packet=1
-0:00:00.001041000 [peer] TRACE m#tx.payload_size=8
+0:00:00.001041000 [peer] TRACE m#tx.payload_size=0
 0:00:00.001041000 [peer] TRACE c#tx.data=1
 0:00:00.001041000 [peer] TRACE c#tx.data[send.7]=1
 0:00:00.001041000 [peer] TRACE c#q.dispatch.enq[recv.dispatch.0]=1
@@ -609,7 +609,7 @@ expression: logs
 0:00:00.001041000 [peer] TRACE m#q.dispatch.depth_dist[recv.dispatch.0]=1
 0:00:00.001041000 [peer] TRACE m#asm.segments=1
 0:00:00.001041000 [peer] TRACE c#socket.tx.ops[send.7]=1
-0:00:00.001041000 [peer] TRACE c#socket.tx.bytes[send.7]=54
+0:00:00.001041000 [peer] TRACE c#socket.tx.bytes[send.7]=51
 0:00:00.001041000 [peer] TRACE m#task.assembler.drained[send.7]=1
 0:00:00.001041000 [peer] TRACE m#task.idle_wheel.drained[send.worker.3]=0
 0:00:00.001041000 [peer] TRACE c#q.dispatch.receiver[recv.dispatch.0.task.ack_completion]=1

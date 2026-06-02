@@ -172,10 +172,12 @@ where
                 let header = frame::Header::Ack {
                     dest_sender_id: submission.remote_sender_id.as_varint(),
                     ack_delay,
-                    has_ecn: submission.has_ecn,
+                    largest_acknowledged: submission.largest_acknowledged,
+                    ack_range: submission.ack_range,
+                    ecn_counts: submission.ecn_counts,
                     is_ack_eliciting: context.pto.probe_state.is_requested() || make_ack_eliciting,
                 };
-                let payload_len = submission.body.len();
+                let payload_len = submission.extra_ranges.len();
 
                 let next_metadata = metadata.with_frame_parts(&header, payload_len);
                 let estimated_len = next_metadata.estimate_packet_len(
@@ -192,7 +194,7 @@ where
 
                 let frame = Frame {
                     header,
-                    payload: submission.body.clone().into(),
+                    payload: submission.extra_ranges.clone().into(),
                     path_secret_entry: submission.path_secret_entry.clone(),
                     completion: None,
                     status: Default::default(),

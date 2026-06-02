@@ -73,6 +73,8 @@ expression: logs
 0:02:30.000000000 [main] TRACE g#test.idle_wheel.depth=-1
 0:02:30.000000000 [main] TRACE g#send.context.count[send.0]=0
 0:02:30.000000000 [main] DEBUG invalidating send context id=0x3825b05b860f8a17c74724ad21b1b2f3 sender_idx=0
+0:02:30.000000000 [main] TRACE c#send.ack.drain[send.0]=0
+0:02:30.000000000 [main] TRACE g#send.ack.depth[send.0]=0
 0:02:30.000000000 [main] TRACE c#send.inflight.drain.expire[send.0]=0
 0:02:30.000000000 [main] TRACE c#idle.send.expired=1
 0:02:30.000000000 [main] TRACE m#task.idle_wheel.drained[send.0]=0

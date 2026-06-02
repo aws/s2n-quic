@@ -14,10 +14,7 @@ use crate::{
 };
 use bytes::BytesMut;
 use core::time::Duration;
-use s2n_codec::EncoderValue as _;
-use s2n_quic_core::{
-    ack, frame as quic_frame, packet::number::PacketNumberSpace, time::Clock as _, varint::VarInt,
-};
+use s2n_quic_core::{packet::number::PacketNumberSpace, time::Clock as _, varint::VarInt};
 use s2n_quic_platform::features::{gso::MaxSegments, Gso};
 use std::{rc::Rc, sync::Arc};
 
@@ -120,7 +117,7 @@ pub struct AckProcessingBenchmark {
     context: send::Context,
     clock: Clock,
     send_counters: Rc<counters::Send>,
-    payload: BytesMut,
+    largest_acknowledged: VarInt,
 }
 
 impl AckProcessingBenchmark {
@@ -128,7 +125,7 @@ impl AckProcessingBenchmark {
         packets: usize,
         frames_per_packet: usize,
         payload_len: usize,
-        ack_frames: usize,
+        _ack_frames: usize,
     ) -> Self {
         let registry = crate::counter::Registry::default();
         let clock = Clock::default();
@@ -146,12 +143,17 @@ impl AckProcessingBenchmark {
             payload_len,
         );
 
-        let payload = encode_ack_payload(packets, ack_frames);
+        let largest_acknowledged = if packets > 0 {
+            VarInt::new((packets - 1) as u64).unwrap()
+        } else {
+            VarInt::ZERO
+        };
+
         Self {
             context,
             clock,
             send_counters,
-            payload,
+            largest_acknowledged,
         }
     }
 
@@ -161,8 +163,11 @@ impl AckProcessingBenchmark {
         let mut cancelled = Queue::new();
         let mut rng = Rng::new();
         let mut deferred = Vec::new();
-        let _ = self.context.process_ack_payload(
-            &mut self.payload,
+        let _ = self.context.process_ack(
+            self.largest_acknowledged,
+            VarInt::ZERO,
+            &[],
+            Default::default(),
             Duration::ZERO,
             &self.send_counters,
             &mut completed,
@@ -278,38 +283,3 @@ fn seed_inflight_packets(
     context.next_packet_number = VarInt::new(packets as u64).unwrap_or(VarInt::MAX);
 }
 
-fn encode_ack_payload(total_packets: usize, ack_frames: usize) -> BytesMut {
-    if total_packets == 0 {
-        return BytesMut::new();
-    }
-
-    let frame_count = ack_frames.max(1).min(total_packets);
-    let mut payload = Vec::with_capacity(frame_count * 32);
-
-    let base = total_packets / frame_count;
-    let remainder = total_packets % frame_count;
-    let mut start = 0usize;
-
-    for idx in 0..frame_count {
-        let mut count = base;
-        if idx < remainder {
-            count += 1;
-        }
-        let end = start + count - 1;
-        let mut ranges = ack::Ranges::new(count.max(1) + 1);
-        for packet in start..=end {
-            let packet_number =
-                PacketNumberSpace::Initial.new_packet_number(VarInt::new(packet as u64).unwrap());
-            let _ = ranges.insert_packet_number(packet_number);
-        }
-        let frame = quic_frame::Ack {
-            ack_delay: VarInt::ZERO,
-            ack_ranges: &ranges,
-            ecn_counts: None,
-        };
-        payload.extend_from_slice(&frame.encode_to_vec());
-        start = end + 1;
-    }
-
-    BytesMut::from(payload.as_slice())
-}

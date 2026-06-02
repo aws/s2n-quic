@@ -652,6 +652,9 @@ fn dispatch_decoded_frame(
         Header::Ack {
             dest_sender_id,
             ack_delay: ack_delay_micros,
+            largest_acknowledged,
+            ack_range,
+            ecn_counts,
             ..
         } => {
             let ack_delay = Duration::from_micros(ack_delay_micros.as_u64());
@@ -660,6 +663,9 @@ fn dispatch_decoded_frame(
                 path_secret_entry: peer.path_entry.clone(),
                 payload,
                 ack_delay,
+                largest_acknowledged,
+                ack_range,
+                ecn_counts,
             };
             if sender_tx.send(Entry::new(message)).is_err() {
                 warn!(

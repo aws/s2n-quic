@@ -734,6 +734,9 @@ fn ack_processor_drops_message_with_out_of_range_sender_idx() {
             path_secret_entry,
             payload: BytesMut::new(),
             ack_delay: core::time::Duration::ZERO,
+            largest_acknowledged: VarInt::ZERO,
+            ack_range: VarInt::ZERO,
+            ecn_counts: Default::default(),
         })]),
         consumed: 0,
     };

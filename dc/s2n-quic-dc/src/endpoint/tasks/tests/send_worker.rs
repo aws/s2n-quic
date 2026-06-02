@@ -92,6 +92,9 @@ fn send_ack_processor_ignores_invalid_sender_id() {
                 path_secret_entry: entry,
                 payload: BytesMut::new(),
                 ack_delay: Duration::ZERO,
+                largest_acknowledged: VarInt::ZERO,
+                ack_range: VarInt::ZERO,
+                ecn_counts: Default::default(),
             }));
             drop(ack_tx);
         }

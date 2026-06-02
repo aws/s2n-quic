@@ -13,6 +13,8 @@ expression: logs
 0:00:00.000000000 [main] DEBUG invalidating send context id=0x3825b05b860f8a17c74724ad21b1b2f3 sender_idx=0
 0:00:00.000000000 [main] TRACE c#send.pending.drain[send.0]=1
 0:00:00.000000000 [main] TRACE g#send.pending.depth[send.0]=0
+0:00:00.000000000 [main] TRACE c#send.ack.drain[send.0]=0
+0:00:00.000000000 [main] TRACE g#send.ack.depth[send.0]=0
 0:00:00.000000000 [main] TRACE c#test.invalidation.ups.contexts=1
 0:00:00.000000000 [main] TRACE c#test.invalidation.ups.frames_failed=1
 0:00:00.000000000 [main] TRACE c#send.inflight.drain.invalidate[send.0]=1

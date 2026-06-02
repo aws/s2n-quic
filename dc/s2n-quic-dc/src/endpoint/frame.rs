@@ -22,7 +22,7 @@ use crate::{
     time::precision,
 };
 use s2n_codec::{decoder_invariant, Encoder, EncoderValue};
-use s2n_quic_core::varint::VarInt;
+use s2n_quic_core::{frame::ack::EcnCounts, varint::VarInt};
 use std::sync::Arc;
 
 /// Default TTL for frames (number of transmission attempts before failure).
@@ -404,15 +404,20 @@ pub enum Header {
         free_request_id: VarInt,
         smallest_queue_id: VarInt,
     },
-    /// ACK frame with ack_delay lifted into the header (direct routing path).
+    /// ACK frame with all metadata lifted into the header.
     ///
-    /// The body contains only the pre-encoded ACK ranges (and ECN counts if has_ecn).
+    /// The first ACK range (`ack_range..=largest_acknowledged`) and ECN counts live
+    /// entirely in the header. The body contains only additional gap/range pairs when
+    /// there are gaps (loss). In the common no-loss case, the body is empty.
+    ///
     /// ack_delay is computed by the sender at assembly time as `now - largest_recv_time`,
     /// giving the most accurate delay measurement possible.
     Ack {
         dest_sender_id: VarInt,
         ack_delay: VarInt,
-        has_ecn: bool,
+        largest_acknowledged: VarInt,
+        ack_range: VarInt,
+        ecn_counts: EcnCounts,
         is_ack_eliciting: bool,
     },
     /// Pre-allocated message data routed via queue pair.
@@ -460,14 +465,12 @@ impl Header {
     const QUEUE_RESET_CONTROL_INIT_TYPE: u8 = 12;
     const QUEUE_FREE_TYPE: u8 = 13;
     const ACK_TYPE: u8 = 14;
-    const ACK_ECN_TYPE: u8 = 15;
-    const ACK_ELICITING_TYPE: u8 = 16;
-    const ACK_ECN_ELICITING_TYPE: u8 = 17;
+    const ACK_ELICITING_TYPE: u8 = 15;
     // QueueMsg: 8 type tags with bit-positioned flags.
     // Bit 0: is_fin, Bit 1: is_wakeup, Bit 2: has_dest_acceptor_id (init)
-    const QUEUE_MSG_BASE_TYPE: u8 = 18;
+    const QUEUE_MSG_BASE_TYPE: u8 = 16;
     const QUEUE_MSG_MAX_TYPE: u8 = Self::QUEUE_MSG_BASE_TYPE + 7;
-    const PING_TYPE: u8 = 26;
+    const PING_TYPE: u8 = 24;
 
     #[inline]
     pub fn priority(&self) -> Priority {
@@ -618,18 +621,24 @@ impl EncoderValue for Header {
             Self::Ack {
                 dest_sender_id,
                 ack_delay,
-                has_ecn,
+                largest_acknowledged,
+                ack_range,
+                ecn_counts,
                 is_ack_eliciting,
             } => {
-                let tag = match (*has_ecn, *is_ack_eliciting) {
-                    (false, false) => Self::ACK_TYPE,
-                    (true, false) => Self::ACK_ECN_TYPE,
-                    (false, true) => Self::ACK_ELICITING_TYPE,
-                    (true, true) => Self::ACK_ECN_ELICITING_TYPE,
+                let tag = if *is_ack_eliciting {
+                    Self::ACK_ELICITING_TYPE
+                } else {
+                    Self::ACK_TYPE
                 };
                 encoder.encode(&tag);
                 encoder.encode(dest_sender_id);
                 encoder.encode(ack_delay);
+                encoder.encode(largest_acknowledged);
+                encoder.encode(ack_range);
+                encoder.encode(&ecn_counts.ect_0_count);
+                encoder.encode(&ecn_counts.ect_1_count);
+                encoder.encode(&ecn_counts.ce_count);
             }
             Self::QueueMsg {
                 queue_pair,
@@ -787,20 +796,26 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                     buffer,
                 ))
             }
-            Self::ACK_TYPE
-            | Self::ACK_ECN_TYPE
-            | Self::ACK_ELICITING_TYPE
-            | Self::ACK_ECN_ELICITING_TYPE => {
+            Self::ACK_TYPE | Self::ACK_ELICITING_TYPE => {
                 let (dest_sender_id, buffer) = buffer.decode()?;
                 let (ack_delay, buffer) = buffer.decode()?;
-                let has_ecn = matches!(tag, Self::ACK_ECN_TYPE | Self::ACK_ECN_ELICITING_TYPE);
-                let is_ack_eliciting =
-                    matches!(tag, Self::ACK_ELICITING_TYPE | Self::ACK_ECN_ELICITING_TYPE);
+                let (largest_acknowledged, buffer) = buffer.decode()?;
+                let (ack_range, buffer) = buffer.decode()?;
+                let (ect_0_count, buffer) = buffer.decode()?;
+                let (ect_1_count, buffer) = buffer.decode()?;
+                let (ce_count, buffer) = buffer.decode()?;
+                let is_ack_eliciting = tag == Self::ACK_ELICITING_TYPE;
                 Ok((
                     Self::Ack {
                         dest_sender_id,
                         ack_delay,
-                        has_ecn,
+                        largest_acknowledged,
+                        ack_range,
+                        ecn_counts: EcnCounts {
+                            ect_0_count,
+                            ect_1_count,
+                            ce_count,
+                        },
                         is_ack_eliciting,
                     },
                     buffer,
@@ -1096,14 +1111,14 @@ mod tests {
         };
 
         let cases: Vec<(bool, bool, Option<VarInt>, u8)> = vec![
-            (false, false, None, 18),
-            (true, false, None, 19),
-            (false, true, None, 20),
-            (true, true, None, 21),
-            (false, false, Some(VarInt::from_u8(1)), 22),
-            (true, false, Some(VarInt::from_u8(1)), 23),
-            (false, true, Some(VarInt::from_u8(1)), 24),
-            (true, true, Some(VarInt::from_u8(1)), 25),
+            (false, false, None, 16),
+            (true, false, None, 17),
+            (false, true, None, 18),
+            (true, true, None, 19),
+            (false, false, Some(VarInt::from_u8(1)), 20),
+            (true, false, Some(VarInt::from_u8(1)), 21),
+            (false, true, Some(VarInt::from_u8(1)), 22),
+            (true, true, Some(VarInt::from_u8(1)), 23),
         ];
 
         for (is_fin, is_wakeup, dest_acceptor_id, expected_tag) in cases {
@@ -1157,10 +1172,10 @@ mod tests {
         let mut encoder = EncoderBuffer::new(&mut buf);
         header.encode(&mut encoder);
 
-        // tag=20 (base 18 + wakeup bit 1<<1), queue_pair(5,7), binding=42, msg_id=3,
+        // tag=18 (base 16 + wakeup bit 1<<1), queue_pair(5,7), binding=42, msg_id=3,
         // stream_offset=32768 (4-byte varint), message_size=65536 (4-byte varint),
         // chunk_size=8192 (2-byte varint), chunk_index=1 (1 byte)
-        assert_eq!(buf[0], 20);
+        assert_eq!(buf[0], 18);
         assert_eq!(header.encoding_size(), 1 + 1 + 1 + 1 + 1 + 4 + 4 + 2 + 1);
     }
 
@@ -1188,8 +1203,8 @@ mod tests {
         let mut encoder = EncoderBuffer::new(&mut buf);
         header.encode(&mut encoder);
 
-        // tag=25 (base 18 + fin 1 + wakeup 2 + init 4)
-        assert_eq!(buf[0], 25);
+        // tag=23 (base 16 + fin 1 + wakeup 2 + init 4)
+        assert_eq!(buf[0], 23);
     }
 
     #[test]

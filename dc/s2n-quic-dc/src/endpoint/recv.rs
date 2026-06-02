@@ -346,13 +346,9 @@ impl Context {
             return None;
         }
 
-        let has_ecn = self.ecn_counts.as_option().is_some();
         let mtu = self.path_entry.max_datagram_size() as usize;
-        let max_body_len = mtu.saturating_sub(ack_ranges::PACKET_OVERHEAD);
-        let Some(body) = self
-            .ack_ranges
-            .encode_body(self.ecn_counts.as_option(), max_body_len)
-        else {
+        let max_extra_len = mtu.saturating_sub(ack_ranges::PACKET_OVERHEAD);
+        let Some(encoded) = self.ack_ranges.encode_ack(max_extra_len) else {
             let transition = self.ack_state.on_empty();
             debug_assert!(
                 transition.is_ok(),
@@ -380,9 +376,11 @@ impl Context {
         self.invariants();
 
         Some(ack_state::Submission {
-            body,
+            largest_acknowledged: encoded.largest_acknowledged,
+            ack_range: encoded.ack_range,
+            extra_ranges: encoded.extra_ranges,
+            ecn_counts: self.ecn_counts,
             largest_recv_time: largest_recv_time.into(),
-            has_ecn,
             path_secret_entry: self.path_entry.clone(),
             local_sender_id: self.local_sender_id,
             remote_sender_id: self.remote_sender_id,

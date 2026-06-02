@@ -25,27 +25,8 @@ use crate::{
     time::bach::Clock,
     xorshift::Rng,
 };
-use bytes::BytesMut;
 use core::time::Duration;
-use s2n_codec::EncoderValue as _;
-use s2n_quic_core::{
-    ack, frame as quic_frame, packet::number::PacketNumberSpace, time::Clock as _, varint::VarInt,
-};
-
-/// Encode a QUIC ACK frame acknowledging a single contiguous range [0, largest].
-fn encode_ack_payload(largest: u64) -> BytesMut {
-    let mut ranges = ack::Ranges::new(64);
-    for pn in 0..=largest {
-        let packet_number = PacketNumberSpace::Initial.new_packet_number(VarInt::new(pn).unwrap());
-        ranges.insert_packet_number(packet_number).unwrap();
-    }
-    let frame = quic_frame::Ack {
-        ack_delay: VarInt::ZERO,
-        ack_ranges: &ranges,
-        ecn_counts: None,
-    };
-    BytesMut::from(frame.encode_to_vec().as_slice())
-}
+use s2n_quic_core::{packet::number::PacketNumberSpace, time::Clock as _, varint::VarInt};
 
 /// Create a test frame suitable for inflight insertion (ack-eliciting).
 fn inflight_frame(pse: &std::sync::Arc<crate::path::secret::map::Entry>) -> Entry<Frame> {
@@ -135,11 +116,13 @@ fn stale_tx_wheel_after_ack_clears_probe() {
         let mut lost = Queue::new();
         let mut cancelled = Queue::new();
         let mut rng = Rng::new();
-        let mut payload = encode_ack_payload(0);
 
         let mut deferred = Vec::new();
-        let _ = ctx_rc.borrow_mut().process_ack_payload(
-            &mut payload,
+        let _ = ctx_rc.borrow_mut().process_ack(
+            VarInt::ZERO,
+            VarInt::ZERO,
+            &[],
+            Default::default(),
             Duration::ZERO,
             &send_counters,
             &mut completed,

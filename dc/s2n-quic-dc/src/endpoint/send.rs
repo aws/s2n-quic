@@ -703,15 +703,18 @@ impl Context {
         interest
     }
 
-    /// Decode an ACK payload and process it against this context's inflight state.
+    /// Process an inbound ACK against this context's inflight state.
     ///
-    /// Each ACK frame in the payload triggers loss detection and CCA updates. Acknowledged
-    /// frames go to `acked`, retransmittable lost frames to `lost`, and cancelled/expired
-    /// frames to `cancelled`. After all frames are processed, computes and returns a single
-    /// `WheelInterest` for rescheduling.
-    pub fn process_ack_payload<Clk, Rand>(
+    /// The first range (`ack_range..=largest_acknowledged`) and ECN counts come from
+    /// the header. Additional gap/range pairs are in `extra_ranges` (often empty).
+    /// Acknowledged frames go to `completed`, retransmittable lost frames to `lost`,
+    /// and cancelled/expired frames to `cancelled`.
+    pub fn process_ack<Clk, Rand>(
         &mut self,
-        payload: &mut [u8],
+        largest_acknowledged: VarInt,
+        ack_range: VarInt,
+        extra_ranges: &[u8],
+        ecn_counts: EcnCounts,
         ack_delay: Duration,
         counters: &super::counters::Send,
         completed: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
@@ -726,28 +729,22 @@ impl Context {
         Rand: random::Generator,
     {
         self.last_peer_activity = clock.now();
-        let frames_iter = crate::packet::control::decoder::ControlFramesMut::new(payload);
 
-        for frame in frames_iter {
-            let Ok(frame) = frame else {
-                debug!("failed to decode control frame in ACK payload");
-                break;
-            };
-
-            match frame {
-                s2n_quic_core::frame::FrameMut::Ack(ack_frame) => {
-                    super::ack::process_ack(
-                        &ack_frame, ack_delay, self, counters, completed, lost, cancelled, clock,
-                        random, deferred,
-                    );
-                }
-                s2n_quic_core::frame::FrameMut::Padding(_)
-                | s2n_quic_core::frame::FrameMut::Ping(_) => {}
-                frame => {
-                    debug!(?frame, "unexpected control frame type in ACK payload");
-                }
-            }
-        }
+        super::ack::process_ack(
+            largest_acknowledged,
+            ack_range,
+            extra_ranges,
+            ecn_counts,
+            ack_delay,
+            self,
+            counters,
+            completed,
+            lost,
+            cancelled,
+            clock,
+            random,
+            deferred,
+        );
 
         let interest = self.wheel_interest(clock);
         self.invariants();

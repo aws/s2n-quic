@@ -18,12 +18,10 @@ use crate::{
     socket::channel::UnboundedSender,
     tracing::*,
 };
-use core::time::Duration;
+use core::{ops::RangeInclusive, time::Duration};
+use s2n_codec::DecoderBuffer;
 use s2n_quic_core::{
-    frame::{
-        self as quic_frame,
-        ack::{AckRanges, EcnCounts},
-    },
+    frame::ack::EcnCounts,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     random,
     varint::VarInt,
@@ -31,14 +29,20 @@ use s2n_quic_core::{
 
 pub(crate) mod state;
 
-/// Process an ACK frame against the send context.
+/// Process an ACK against the send context.
+///
+/// The first range (`ack_range..=largest_acknowledged`) comes from the header.
+/// Additional gap/range pairs are decoded from `extra_ranges` (often empty).
 ///
 /// Removes ACKed packets from the inflight map:
 /// - **completed**: frames the writer needs to hear about (successfully ACKed or TTL-exhausted)
 /// - **lost**: retransmittable frames (TTL remaining, still transmittable)
 /// - **cancelled**: `should_transmit()` is false (writer already gone) — silently dropped
 pub(crate) fn process_ack<Clk, Rand>(
-    ack: &quic_frame::Ack<impl AckRanges>,
+    largest_acknowledged: VarInt,
+    ack_range: VarInt,
+    extra_ranges: &[u8],
+    ecn_counts: EcnCounts,
     ack_delay: Duration,
     context: &mut send::Context,
     counters: &super::counters::Send,
@@ -62,19 +66,19 @@ pub(crate) fn process_ack<Clk, Rand>(
     // Set when an ACK range covers the pending PN recorded by `rtt_tracker`.
     let mut ack_only_rtt_sample: Option<s2n_quic_core::time::Timestamp> = None;
 
-    let max_acked_pn = ack.largest_acknowledged();
+    let max_acked_pn = largest_acknowledged;
 
-    for range in ack.ack_ranges() {
-        let start = *range.start();
-        let end = *range.end();
+    // Process all ranges: first range from header, then extra gap/range pairs from payload.
+    for pn_range in AckRangeIter::new(largest_acknowledged, ack_range, extra_ranges) {
+        let (pmin, pmax) = (*pn_range.start(), *pn_range.end());
 
         // Check whether this range covers the outstanding ack-eliciting ACK-only
         // packet (if any) and collect the RTT sample.
-        if let Some(time_sent) = context.rtt_tracker.check_range(start, end) {
+        let start_varint = PacketNumber::as_varint(pmin);
+        let end_varint = PacketNumber::as_varint(pmax);
+        if let Some(time_sent) = context.rtt_tracker.check_range(start_varint, end_varint) {
             ack_only_rtt_sample = Some(time_sent);
         }
-
-        let pmax = PacketNumberSpace::Initial.new_packet_number(end);
 
         // ACK ranges are ordered largest-to-smallest. Once the upper bound of a
         // range falls below our lowest inflight PN, all subsequent ranges are stale
@@ -83,7 +87,6 @@ pub(crate) fn process_ack<Clk, Rand>(
             continue;
         }
 
-        let pmin = PacketNumberSpace::Initial.new_packet_number(start);
         let range = PacketNumberRange::new(pmin, pmax);
 
         // Phase 1: remove ACKed entries from the inflight map.
@@ -92,7 +95,6 @@ pub(crate) fn process_ack<Clk, Rand>(
         // reside at the tail of the probe chain at a higher PN. We defer chain
         // following until after the iterator is dropped (so the borrow on
         // `context.inflight` is released).
-
         for (num, mut packet) in context.inflight.remove_range(range) {
             packets_acked += 1;
 
@@ -206,7 +208,7 @@ pub(crate) fn process_ack<Clk, Rand>(
     }
 
     // Process ECN feedback from the peer
-    if let Some(ecn_counts) = ack.ecn_counts {
+    {
         let prev = context.peer_ecn_counts;
         context.peer_ecn_counts = ecn_counts.max(prev);
         let mut delta = context.peer_ecn_counts;
@@ -269,6 +271,59 @@ pub(crate) fn process_ack<Clk, Rand>(
     // This ensures pick-two sees the fully-updated pacing and congestion state.
     context.publish_sender_load_score(now);
     context.invariants();
+}
+
+/// Iterator that yields ACK ranges as `RangeInclusive<PacketNumber>` from the
+/// inline first range plus additional gap/range pairs decoded from extra_ranges.
+///
+/// Ranges are yielded in descending order (largest first).
+pub(crate) struct AckRangeIter<'a> {
+    first: Option<(VarInt, VarInt)>,
+    prev_smallest: VarInt,
+    buffer: DecoderBuffer<'a>,
+}
+
+impl<'a> AckRangeIter<'a> {
+    pub(crate) fn new(
+        largest_acknowledged: VarInt,
+        ack_range: VarInt,
+        extra_ranges: &'a [u8],
+    ) -> Self {
+        Self {
+            first: Some((ack_range, largest_acknowledged)),
+            prev_smallest: ack_range,
+            buffer: DecoderBuffer::new(extra_ranges),
+        }
+    }
+}
+
+impl Iterator for AckRangeIter<'_> {
+    type Item = RangeInclusive<PacketNumber>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (start, end) = if let Some(first) = self.first.take() {
+            first
+        } else {
+            if self.buffer.is_empty() {
+                return None;
+            }
+
+            let (gap, buffer) = self.buffer.decode::<VarInt>().ok()?;
+            let (range_len, buffer) = buffer.decode::<VarInt>().ok()?;
+            self.buffer = buffer;
+
+            // RFC 9000 gap encoding: prev_smallest - gap - 2 = end of this range
+            let end =
+                VarInt::new(self.prev_smallest.as_u64().checked_sub(gap.as_u64() + 2)?).ok()?;
+            let start = VarInt::new(end.as_u64().checked_sub(range_len.as_u64())?).ok()?;
+            self.prev_smallest = start;
+            (start, end)
+        };
+
+        let pmin = PacketNumberSpace::Initial.new_packet_number(start);
+        let pmax = PacketNumberSpace::Initial.new_packet_number(end);
+        Some(pmin..=pmax)
+    }
 }
 
 /// Detect lost packets using QUIC PN-threshold and time-threshold algorithms.
@@ -527,5 +582,97 @@ mod tests {
         assert!(completed.0.is_empty());
         assert!(context.inflight.remove(make_pn(1)).is_none());
         assert!(context.inflight.remove(make_pn(2)).is_some());
+    }
+
+    // ── AckRangeIter roundtrip tests ─────────────────────────────────────────
+
+    use crate::endpoint::recv::ack_ranges::AckRanges;
+    use s2n_quic_core::time::Timestamp;
+
+    fn ts(millis: u64) -> Timestamp {
+        unsafe { Timestamp::from_duration(Duration::from_millis(millis)) }
+    }
+
+    /// Helper: insert PNs into AckRanges, encode, then decode with AckRangeIter
+    /// and verify the decoded ranges match the original interval set.
+    fn roundtrip_ack_ranges(pns: &[u64]) {
+        let mut ack_ranges = AckRanges::default();
+        for &pn in pns {
+            ack_ranges.on_packet_received(VarInt::new(pn).unwrap(), ts(pn + 1));
+        }
+
+        let encoded = ack_ranges.encode_ack(usize::MAX).unwrap();
+
+        // Decode with AckRangeIter
+        let decoded: Vec<_> = AckRangeIter::new(
+            encoded.largest_acknowledged,
+            encoded.ack_range,
+            &encoded.extra_ranges,
+        )
+        .collect();
+
+        // Build expected ranges from the interval set (descending order)
+        let expected: Vec<_> = ack_ranges
+            .packets_for_test()
+            .inclusive_ranges()
+            .rev()
+            .collect();
+
+        assert_eq!(
+            decoded.len(),
+            expected.len(),
+            "range count mismatch: decoded {decoded:?} vs expected {expected:?}"
+        );
+
+        for (decoded_range, expected_range) in decoded.iter().zip(expected.iter()) {
+            assert_eq!(
+                decoded_range, expected_range,
+                "range mismatch: decoded {decoded:?} vs expected {expected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn ack_range_iter_single_packet() {
+        roundtrip_ack_ranges(&[42]);
+    }
+
+    #[test]
+    fn ack_range_iter_contiguous_range() {
+        roundtrip_ack_ranges(&[0, 1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn ack_range_iter_two_disjoint_ranges() {
+        roundtrip_ack_ranges(&[0, 1, 2, 5, 6, 7]);
+    }
+
+    #[test]
+    fn ack_range_iter_many_gaps() {
+        // Alternating: single packets with gaps of 1
+        roundtrip_ack_ranges(&[0, 2, 4, 6, 8, 10, 12, 14]);
+    }
+
+    #[test]
+    fn ack_range_iter_varied_gap_sizes() {
+        // ranges: 0..=2, 10..=12, 100..=105
+        roundtrip_ack_ranges(&[0, 1, 2, 10, 11, 12, 100, 101, 102, 103, 104, 105]);
+    }
+
+    #[test]
+    fn ack_range_iter_large_packet_numbers() {
+        roundtrip_ack_ranges(&[1_000_000, 1_000_001, 2_000_000, 2_000_001, 2_000_002]);
+    }
+
+    #[test]
+    fn ack_range_iter_single_element_ranges() {
+        // Each PN is its own range (gap of 1 between each)
+        roundtrip_ack_ranges(&[10, 12, 14, 16, 18]);
+    }
+
+    #[test]
+    fn ack_range_iter_out_of_order_insertion() {
+        // Insert out of order — the interval set normalizes them
+        roundtrip_ack_ranges(&[5, 1, 3, 7, 0, 2, 6, 4]);
     }
 }

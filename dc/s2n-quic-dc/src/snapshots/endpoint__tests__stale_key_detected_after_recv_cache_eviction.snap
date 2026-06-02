@@ -454,9 +454,9 @@ expression: logs
 0:00:00.000521000 [server] TRACE c#send.ack.drain[send.0]=1
 0:00:00.000521000 [server] TRACE g#send.ack.depth[send.0]=0
 0:00:00.000521000 [server] TRACE c#tx.frame[ack]=1
-0:00:00.000521000 [server] TRACE m#tx.packet_size=54
+0:00:00.000521000 [server] TRACE m#tx.packet_size=51
 0:00:00.000521000 [server] TRACE m#tx.frames_per_packet=1
-0:00:00.000521000 [server] TRACE m#tx.payload_size=8
+0:00:00.000521000 [server] TRACE m#tx.payload_size=0
 0:00:00.000521000 [server] TRACE c#tx.data=1
 0:00:00.000521000 [server] TRACE c#tx.data[send.0]=1
 0:00:00.000521000 [server] TRACE c#q.dispatch.enq[recv.dispatch.0]=1
@@ -464,7 +464,7 @@ expression: logs
 0:00:00.000521000 [server] TRACE m#q.dispatch.depth_dist[recv.dispatch.0]=1
 0:00:00.000521000 [server] TRACE m#asm.segments=1
 0:00:00.000521000 [server] TRACE c#socket.tx.ops[send.0]=1
-0:00:00.000521000 [server] TRACE c#socket.tx.bytes[send.0]=54
+0:00:00.000521000 [server] TRACE c#socket.tx.bytes[send.0]=51
 0:00:00.000521000 [server] TRACE m#task.assembler.drained[send.0]=1
 0:00:00.000521000 [server] TRACE c#q.router_to_batcher.enq[p2]=1
 0:00:00.000521000 [server] TRACE g#q.router_to_batcher.depth[p2]=1
@@ -578,7 +578,7 @@ expression: logs
 0:00:00.000541000 [server] TRACE m#task.pto_wheel.drained[send.worker.3]=1
 0:00:00.000541000 [server] TRACE m#task.pto_wheel.drained[send.worker.3]=0
 0:00:00.001021000 [client] TRACE c#socket.rx.ops[recv.0]=1
-0:00:00.001021000 [client] TRACE c#socket.rx.bytes[recv.0]=54
+0:00:00.001021000 [client] TRACE c#socket.rx.bytes[recv.0]=51
 0:00:00.001021000 [client] TRACE c#router.routed=1
 0:00:00.001021000 [client] TRACE c#router.routed[recv.0]=1
 0:00:00.001021000 [client] TRACE c#q.dispatch_rx.enq[recv.0]=1
@@ -602,7 +602,7 @@ expression: logs
 0:00:00.001021000 [client] DEBUG s2n_quic_dc: credential_id=[125, 162, 176, 33, 188, 81, 236, 106, 53, 74, 204, 19, 207, 132, 62, 199] key_id=0 gap=1 forward_shift=0
 0:00:00.001021000 [client] TRACE c#rx.peer_cache.miss=1
 0:00:00.001021000 [client] TRACE c#rx.ecn[ect0]=1
-0:00:00.001021000 [client] TRACE m#rx.packet_size=8
+0:00:00.001021000 [client] TRACE m#rx.packet_size=0
 0:00:00.001021000 [client] TRACE c#rx.frame[ack]=1
 0:00:00.001021000 [client] TRACE c#q.ack.enq[send.0]=1
 0:00:00.001021000 [client] TRACE g#q.ack.depth[send.0]=1
@@ -675,9 +675,9 @@ expression: logs
 0:00:00.001021000 [client] TRACE c#send.ack.drain[send.1]=1
 0:00:00.001021000 [client] TRACE g#send.ack.depth[send.1]=0
 0:00:00.001021000 [client] TRACE c#tx.frame[ack]=1
-0:00:00.001021000 [client] TRACE m#tx.packet_size=54
+0:00:00.001021000 [client] TRACE m#tx.packet_size=51
 0:00:00.001021000 [client] TRACE m#tx.frames_per_packet=1
-0:00:00.001021000 [client] TRACE m#tx.payload_size=8
+0:00:00.001021000 [client] TRACE m#tx.payload_size=0
 0:00:00.001021000 [client] TRACE c#tx.data=1
 0:00:00.001021000 [client] TRACE c#tx.data[send.1]=1
 0:00:00.001021000 [client] TRACE c#q.dispatch.enq[recv.dispatch.0]=1
@@ -685,7 +685,7 @@ expression: logs
 0:00:00.001021000 [client] TRACE m#q.dispatch.depth_dist[recv.dispatch.0]=1
 0:00:00.001021000 [client] TRACE m#asm.segments=1
 0:00:00.001021000 [client] TRACE c#socket.tx.ops[send.1]=1
-0:00:00.001021000 [client] TRACE c#socket.tx.bytes[send.1]=54
+0:00:00.001021000 [client] TRACE c#socket.tx.bytes[send.1]=51
 0:00:00.001021000 [client] TRACE m#task.assembler.drained[send.1]=1
 0:00:00.001021000 [client] TRACE m#task.idle_wheel.drained[send.worker.1]=0
 0:00:00.001021000 [client] TRACE c#q.dispatch.receiver[recv.dispatch.0.task.ack_completion]=1
@@ -747,9 +747,9 @@ expression: logs
 0:00:00.001041000 [client] TRACE c#send.ack.drain[send.7]=1
 0:00:00.001041000 [client] TRACE g#send.ack.depth[send.7]=0
 0:00:00.001041000 [client] TRACE c#tx.frame[ack]=1
-0:00:00.001041000 [client] TRACE m#tx.packet_size=54
+0:00:00.001041000 [client] TRACE m#tx.packet_size=51
 0:00:00.001041000 [client] TRACE m#tx.frames_per_packet=1
-0:00:00.001041000 [client] TRACE m#tx.payload_size=8
+0:00:00.001041000 [client] TRACE m#tx.payload_size=0
 0:00:00.001041000 [client] TRACE c#tx.data=1
 0:00:00.001041000 [client] TRACE c#tx.data[send.7]=1
 0:00:00.001041000 [client] TRACE c#q.dispatch.enq[recv.dispatch.1]=1
@@ -757,7 +757,7 @@ expression: logs
 0:00:00.001041000 [client] TRACE m#q.dispatch.depth_dist[recv.dispatch.1]=1
 0:00:00.001041000 [client] TRACE m#asm.segments=1
 0:00:00.001041000 [client] TRACE c#socket.tx.ops[send.7]=1
-0:00:00.001041000 [client] TRACE c#socket.tx.bytes[send.7]=54
+0:00:00.001041000 [client] TRACE c#socket.tx.bytes[send.7]=51
 0:00:00.001041000 [client] TRACE m#task.assembler.drained[send.7]=1
 0:00:00.001041000 [client] TRACE m#task.idle_wheel.drained[send.worker.3]=0
 0:00:00.001041000 [client] TRACE c#q.dispatch.receiver[recv.dispatch.1.task.ack_completion]=1
@@ -766,7 +766,7 @@ expression: logs
 0:00:00.001041000 [client] DEBUG event=on_flush_complete prev=Flushed next=Idle location=dc/s2n-quic-dc/src/endpoint/recv.rs
 0:00:00.001041000 [client] TRACE m#task.ack_completion.drained[recv.dispatch.1]=1
 0:00:00.001521000 [server] TRACE c#socket.rx.ops[recv.0]=1
-0:00:00.001521000 [server] TRACE c#socket.rx.bytes[recv.0]=54
+0:00:00.001521000 [server] TRACE c#socket.rx.bytes[recv.0]=51
 0:00:00.001521000 [server] TRACE c#router.routed=1
 0:00:00.001521000 [server] TRACE c#router.routed[recv.0]=1
 0:00:00.001521000 [server] TRACE c#q.dispatch_rx.enq[recv.0]=1
@@ -783,7 +783,7 @@ expression: logs
 0:00:00.001521000 [server] DEBUG s2n_quic_dc: credential_id=[253, 162, 176, 33, 188, 81, 236, 106, 53, 74, 204, 19, 207, 132, 62, 199] key_id=1 gap=1 forward_shift=0
 0:00:00.001521000 [server] TRACE c#rx.peer_cache.miss=1
 0:00:00.001521000 [server] TRACE c#rx.ecn[ect0]=1
-0:00:00.001521000 [server] TRACE m#rx.packet_size=8
+0:00:00.001521000 [server] TRACE m#rx.packet_size=0
 0:00:00.001521000 [server] TRACE c#rx.frame[ack]=1
 0:00:00.001521000 [server] TRACE c#q.ack.enq[send.1]=1
 0:00:00.001521000 [server] TRACE g#q.ack.depth[send.1]=1
@@ -817,7 +817,7 @@ expression: logs
 0:00:00.001521000 [server] TRACE m#task.completion.drained[send.worker.1]=1
 0:00:00.001521000 [server] TRACE m#task.recycle_drain.drained=0
 0:00:00.001541000 [server] TRACE c#socket.rx.ops[recv.0]=1
-0:00:00.001541000 [server] TRACE c#socket.rx.bytes[recv.0]=54
+0:00:00.001541000 [server] TRACE c#socket.rx.bytes[recv.0]=51
 0:00:00.001541000 [server] TRACE c#router.routed=1
 0:00:00.001541000 [server] TRACE c#router.routed[recv.1]=1
 0:00:00.001541000 [server] TRACE c#q.dispatch_rx.enq[recv.1]=1
@@ -834,7 +834,7 @@ expression: logs
 0:00:00.001541000 [server] DEBUG s2n_quic_dc: credential_id=[253, 162, 176, 33, 188, 81, 236, 106, 53, 74, 204, 19, 207, 132, 62, 199] key_id=2 gap=1 forward_shift=0
 0:00:00.001541000 [server] TRACE c#rx.peer_cache.miss=1
 0:00:00.001541000 [server] TRACE c#rx.ecn[ect0]=1
-0:00:00.001541000 [server] TRACE m#rx.packet_size=8
+0:00:00.001541000 [server] TRACE m#rx.packet_size=0
 0:00:00.001541000 [server] TRACE c#rx.frame[ack]=1
 0:00:00.001541000 [server] TRACE c#q.ack.enq[send.3]=1
 0:00:00.001541000 [server] TRACE g#q.ack.depth[send.3]=1
@@ -887,6 +887,8 @@ expression: logs
 0:00:01.000000000 [client] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.0]=0
 0:00:01.000000000 [client] TRACE g#send.context.count[send.0]=0
 0:00:01.000000000 [client] DEBUG invalidating send context id=0x7da2b021bc51ec6a354acc13cf843ec7 sender_idx=0
+0:00:01.000000000 [client] TRACE c#send.ack.drain[send.0]=0
+0:00:01.000000000 [client] TRACE g#send.ack.depth[send.0]=0
 0:00:01.000000000 [client] TRACE c#send.inflight.drain.expire[send.0]=0
 0:00:01.000000000 [client] TRACE c#idle.send.expired=1
 0:00:01.000000000 [client] TRACE m#task.idle_wheel.drained[send.worker.0]=0
@@ -904,6 +906,8 @@ expression: logs
 0:00:01.000000000 [client] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.1]=0
 0:00:01.000000000 [client] TRACE g#send.context.count[send.1]=0
 0:00:01.000000000 [client] DEBUG invalidating send context id=0x7da2b021bc51ec6a354acc13cf843ec7 sender_idx=1
+0:00:01.000000000 [client] TRACE c#send.ack.drain[send.1]=0
+0:00:01.000000000 [client] TRACE g#send.ack.depth[send.1]=0
 0:00:01.000000000 [client] TRACE c#send.inflight.drain.expire[send.1]=0
 0:00:01.000000000 [client] TRACE c#idle.send.expired=1
 0:00:01.000000000 [client] TRACE m#task.idle_wheel.drained[send.worker.1]=0
@@ -917,6 +921,8 @@ expression: logs
 0:00:01.000000000 [client] TRACE g#q.resolver_to_idle_wheel.depth[send.worker.3]=0
 0:00:01.000000000 [client] TRACE g#send.context.count[send.7]=0
 0:00:01.000000000 [client] DEBUG invalidating send context id=0x7da2b021bc51ec6a354acc13cf843ec7 sender_idx=7
+0:00:01.000000000 [client] TRACE c#send.ack.drain[send.7]=0
+0:00:01.000000000 [client] TRACE g#send.ack.depth[send.7]=0
 0:00:01.000000000 [client] TRACE c#send.inflight.drain.expire[send.7]=0
 0:00:01.000000000 [client] TRACE c#idle.send.expired=1
 0:00:01.000000000 [client] TRACE m#task.idle_wheel.drained[send.worker.3]=0
@@ -1051,9 +1057,9 @@ expression: logs
 0:00:03.001561000 [server] TRACE c#send.ack.drain[send.5]=1
 0:00:03.001561000 [server] TRACE g#send.ack.depth[send.5]=0
 0:00:03.001561000 [server] TRACE c#tx.frame[ack]=1
-0:00:03.001561000 [server] TRACE m#tx.packet_size=54
+0:00:03.001561000 [server] TRACE m#tx.packet_size=51
 0:00:03.001561000 [server] TRACE m#tx.frames_per_packet=1
-0:00:03.001561000 [server] TRACE m#tx.payload_size=8
+0:00:03.001561000 [server] TRACE m#tx.payload_size=0
 0:00:03.001561000 [server] TRACE c#tx.data=1
 0:00:03.001561000 [server] TRACE c#tx.data[send.5]=1
 0:00:03.001561000 [server] TRACE c#q.dispatch.enq[recv.dispatch.2]=1
@@ -1061,7 +1067,7 @@ expression: logs
 0:00:03.001561000 [server] TRACE m#q.dispatch.depth_dist[recv.dispatch.2]=1
 0:00:03.001561000 [server] TRACE m#asm.segments=1
 0:00:03.001561000 [server] TRACE c#socket.tx.ops[send.5]=1
-0:00:03.001561000 [server] TRACE c#socket.tx.bytes[send.5]=54
+0:00:03.001561000 [server] TRACE c#socket.tx.bytes[send.5]=51
 0:00:03.001561000 [server] TRACE m#task.assembler.drained[send.5]=1
 0:00:03.001561000 [server] TRACE c#q.router_to_batcher.enq[p2]=1
 0:00:03.001561000 [server] TRACE g#q.router_to_batcher.depth[p2]=1
@@ -1159,7 +1165,7 @@ expression: logs
 0:00:03.001581000 [server] TRACE m#task.pto_wheel.drained[send.worker.3]=1
 0:00:03.001581000 [server] TRACE m#task.pto_wheel.drained[send.worker.3]=0
 0:00:03.002061000 [client] TRACE c#socket.rx.ops[recv.0]=1
-0:00:03.002061000 [client] TRACE c#socket.rx.bytes[recv.0]=54
+0:00:03.002061000 [client] TRACE c#socket.rx.bytes[recv.0]=51
 0:00:03.002061000 [client] TRACE c#router.routed=1
 0:00:03.002061000 [client] TRACE c#router.routed[recv.2]=1
 0:00:03.002061000 [client] TRACE c#q.dispatch_rx.enq[recv.2]=1
@@ -1183,7 +1189,7 @@ expression: logs
 0:00:03.002061000 [client] DEBUG s2n_quic_dc: credential_id=[125, 162, 176, 33, 188, 81, 236, 106, 53, 74, 204, 19, 207, 132, 62, 199] key_id=3 gap=1 forward_shift=0
 0:00:03.002061000 [client] TRACE c#rx.peer_cache.miss=1
 0:00:03.002061000 [client] TRACE c#rx.ecn[ect0]=1
-0:00:03.002061000 [client] TRACE m#rx.packet_size=8
+0:00:03.002061000 [client] TRACE m#rx.packet_size=0
 0:00:03.002061000 [client] TRACE c#rx.frame[ack]=1
 0:00:03.002061000 [client] TRACE c#q.ack.enq[send.1]=1
 0:00:03.002061000 [client] TRACE g#q.ack.depth[send.1]=1
@@ -1288,6 +1294,8 @@ expression: logs
 0:00:03.002561000 [server] DEBUG invalidating stale/replay send context for retransmission id=0xfda2b021bc51ec6a354acc13cf843ec7 sender_idx=1 stale_sender_id=1 rejected_key_id=1
 0:00:03.002561000 [server] TRACE c#send.inflight.drain[send.1]=1
 0:00:03.002561000 [server] TRACE g#send.inflight.depth[send.1]=0
+0:00:03.002561000 [server] TRACE c#send.ack.drain[send.1]=0
+0:00:03.002561000 [server] TRACE g#send.ack.depth[send.1]=0
 0:00:03.002561000 [server] TRACE c#invalidation.stale_replay.contexts=1
 0:00:03.002561000 [server] TRACE c#invalidation.stale_replay.frames_requeued=1
 0:00:03.002561000 [server] TRACE c#send.inflight.drain.invalidate[send.1]=1
@@ -1383,6 +1391,8 @@ expression: logs
 0:00:03.002581000 [server] DEBUG invalidating stale/replay send context for retransmission id=0xfda2b021bc51ec6a354acc13cf843ec7 sender_idx=7 stale_sender_id=7 rejected_key_id=2
 0:00:03.002581000 [server] TRACE c#send.inflight.drain[send.7]=1
 0:00:03.002581000 [server] TRACE g#send.inflight.depth[send.7]=0
+0:00:03.002581000 [server] TRACE c#send.ack.drain[send.7]=0
+0:00:03.002581000 [server] TRACE g#send.ack.depth[send.7]=0
 0:00:03.002581000 [server] TRACE c#invalidation.stale_replay.contexts=1
 0:00:03.002581000 [server] TRACE c#invalidation.stale_replay.frames_requeued=1
 0:00:03.002581000 [server] TRACE c#send.inflight.drain.invalidate[send.7]=1
@@ -1513,9 +1523,9 @@ expression: logs
 0:00:03.003081000 [client] TRACE c#send.ack.drain[send.2]=1
 0:00:03.003081000 [client] TRACE g#send.ack.depth[send.2]=0
 0:00:03.003081000 [client] TRACE c#tx.frame[ack]=1
-0:00:03.003081000 [client] TRACE m#tx.packet_size=54
+0:00:03.003081000 [client] TRACE m#tx.packet_size=51
 0:00:03.003081000 [client] TRACE m#tx.frames_per_packet=1
-0:00:03.003081000 [client] TRACE m#tx.payload_size=8
+0:00:03.003081000 [client] TRACE m#tx.payload_size=0
 0:00:03.003081000 [client] TRACE c#tx.data=1
 0:00:03.003081000 [client] TRACE c#tx.data[send.2]=1
 0:00:03.003081000 [client] TRACE c#q.dispatch.enq[recv.dispatch.0]=1
@@ -1523,7 +1533,7 @@ expression: logs
 0:00:03.003081000 [client] TRACE m#q.dispatch.depth_dist[recv.dispatch.0]=1
 0:00:03.003081000 [client] TRACE m#asm.segments=1
 0:00:03.003081000 [client] TRACE c#socket.tx.ops[send.2]=1
-0:00:03.003081000 [client] TRACE c#socket.tx.bytes[send.2]=54
+0:00:03.003081000 [client] TRACE c#socket.tx.bytes[send.2]=51
 0:00:03.003081000 [client] TRACE m#task.assembler.drained[send.2]=1
 0:00:03.003081000 [client] TRACE m#task.idle_wheel.drained[send.worker.2]=0
 0:00:03.003081000 [client] TRACE c#q.dispatch.receiver[recv.dispatch.0.task.ack_completion]=1
@@ -1591,9 +1601,9 @@ expression: logs
 0:00:03.003101000 [client] TRACE c#send.ack.drain[send.3]=1
 0:00:03.003101000 [client] TRACE g#send.ack.depth[send.3]=0
 0:00:03.003101000 [client] TRACE c#tx.frame[ack]=1
-0:00:03.003101000 [client] TRACE m#tx.packet_size=54
+0:00:03.003101000 [client] TRACE m#tx.packet_size=51
 0:00:03.003101000 [client] TRACE m#tx.frames_per_packet=1
-0:00:03.003101000 [client] TRACE m#tx.payload_size=8
+0:00:03.003101000 [client] TRACE m#tx.payload_size=0
 0:00:03.003101000 [client] TRACE c#tx.data=1
 0:00:03.003101000 [client] TRACE c#tx.data[send.3]=1
 0:00:03.003101000 [client] TRACE c#q.dispatch.enq[recv.dispatch.3]=1
@@ -1601,7 +1611,7 @@ expression: logs
 0:00:03.003101000 [client] TRACE m#q.dispatch.depth_dist[recv.dispatch.3]=1
 0:00:03.003101000 [client] TRACE m#asm.segments=1
 0:00:03.003101000 [client] TRACE c#socket.tx.ops[send.3]=1
-0:00:03.003101000 [client] TRACE c#socket.tx.bytes[send.3]=54
+0:00:03.003101000 [client] TRACE c#socket.tx.bytes[send.3]=51
 0:00:03.003101000 [client] TRACE m#task.assembler.drained[send.3]=1
 0:00:03.003101000 [client] TRACE m#task.idle_wheel.drained[send.worker.3]=0
 0:00:03.003101000 [client] TRACE c#q.dispatch.receiver[recv.dispatch.3.task.ack_completion]=1

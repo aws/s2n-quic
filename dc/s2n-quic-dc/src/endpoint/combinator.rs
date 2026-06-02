@@ -1155,6 +1155,9 @@ where
                 payload,
                 path_secret_entry,
                 ack_delay,
+                largest_acknowledged,
+                ack_range,
+                ecn_counts,
                 ..
             } => {
                 let ctx_rc = {
@@ -1171,8 +1174,11 @@ where
 
                 let wheel_interest = {
                     let mut ctx = ctx_rc.borrow_mut();
-                    let interest = ctx.process_ack_payload(
+                    let interest = ctx.process_ack(
+                        *largest_acknowledged,
+                        *ack_range,
                         payload,
+                        *ecn_counts,
                         *ack_delay,
                         &counters,
                         &mut self.completed_tx,

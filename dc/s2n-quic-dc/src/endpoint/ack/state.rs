@@ -9,19 +9,24 @@
 
 use crate::{endpoint::id, path::secret::map::Entry as PathSecretEntry, time::precision};
 use bytes::Bytes;
+use s2n_quic_core::{frame::ack::EcnCounts, varint::VarInt};
 use std::sync::Arc;
 
 /// Notification sent on the direct channel from a recv dispatch worker to a send worker.
 ///
-/// Carries a fully encoded ACK body and metadata needed by the send worker to stamp
-/// wire-time ack_delay.
+/// Carries the first ACK range and ECN counts inline. Additional gap/range pairs (if any)
+/// are in `extra_ranges`. In the common no-loss case, `extra_ranges` is empty.
 pub struct Submission {
-    /// Pre-encoded ACK frame body (ranges + optional ECN counts).
-    pub body: Bytes,
+    /// Largest acknowledged packet number (upper bound of first range).
+    pub largest_acknowledged: VarInt,
+    /// Smallest packet number in the first contiguous range.
+    pub ack_range: VarInt,
+    /// Additional gap/range VarInt pairs beyond the first range. Empty when no loss.
+    pub extra_ranges: Bytes,
+    /// ECN counts (always present in DC).
+    pub ecn_counts: EcnCounts,
     /// Largest-acked packet receive time (recv clock domain) for ack_delay stamping.
     pub largest_recv_time: precision::Timestamp,
-    /// Whether `body` includes ECN counts.
-    pub has_ecn: bool,
     /// Path secret entry identifying the peer — used by the send worker to find or
     /// create the corresponding send::Context.
     pub path_secret_entry: Arc<PathSecretEntry>,

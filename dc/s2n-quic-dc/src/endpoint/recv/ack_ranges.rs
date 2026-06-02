@@ -8,10 +8,9 @@
 
 use bytes::Bytes;
 use core::{fmt, ops::Bound};
-use s2n_codec::EncoderValue;
+use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     ack,
-    frame::{self, ack::EcnCounts},
     packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
     varint::VarInt,
@@ -20,8 +19,19 @@ use s2n_quic_core::{
 /// Conservative overhead estimate for packet-level framing around an ACK body.
 ///
 /// Accounts for: tag, credentials, wire_version, source_control_port, packet_number,
-/// routing_info, header_len varint, Header::Ack metadata, payload_len varint, crypto tag.
-pub const PACKET_OVERHEAD: usize = 100;
+/// routing_info, header_len varint, Header::Ack metadata (dest_sender_id, ack_delay,
+/// largest_acknowledged, ack_range, 3x ecn counts, payload_len varint), crypto tag.
+pub const PACKET_OVERHEAD: usize = 120;
+
+/// Result of encoding ACK ranges with the first range split out for the header.
+pub struct EncodedAck {
+    /// Largest acknowledged packet number (upper bound of first range).
+    pub largest_acknowledged: VarInt,
+    /// Smallest packet number in the first contiguous range.
+    pub ack_range: VarInt,
+    /// Additional gap/range VarInt pairs beyond the first range. Empty when no loss.
+    pub extra_ranges: Bytes,
+}
 
 const CULL_DEPTH: usize = 2;
 
@@ -108,6 +118,11 @@ impl AckRanges {
         self.packets.is_empty()
     }
 
+    #[cfg(test)]
+    pub(crate) fn packets_for_test(&self) -> &ack::Ranges {
+        &self.packets
+    }
+
     /// Record a received packet number and its arrival time.
     pub fn on_packet_received(&mut self, packet_number: VarInt, now: Timestamp) {
         let pn = PacketNumberSpace::Initial.new_packet_number(packet_number);
@@ -129,46 +144,44 @@ impl AckRanges {
         self.max_received_packet_time
     }
 
-    /// Encode the ACK ranges (and optional ECN counts) into a `Bytes` buffer.
+    /// Encode ACK ranges with the first range split out for the header.
     ///
-    /// Pops the lowest ranges if the encoding exceeds `max_body_len` so the ACK
+    /// Returns the first range (`ack_range..=largest_acknowledged`) as direct fields
+    /// and any additional gap/range pairs in `extra_ranges`. In the common no-loss case,
+    /// `extra_ranges` is empty (no allocation).
+    ///
+    /// Pops the lowest ranges if the encoding exceeds `max_extra_len` so the ACK
     /// always fits in a single packet. The most recent ranges (highest PNs) are
     /// preserved since those are most useful for loss detection.
     ///
-    /// Currently uses the standard QUIC ACK frame encoding with ack_delay=0 as a
-    /// placeholder. The sender stamps the real delay in the Header::Ack field.
-    ///
-    /// TODO: use a custom encoding that drops the tag, count, and ack_delay fields to save
-    /// 3 bytes per ACK body. We own both sides of the wire format.
-    ///
     /// Returns `None` if there are no ranges to encode.
-    pub fn encode_body(
-        &mut self,
-        ecn_counts: Option<EcnCounts>,
-        max_body_len: usize,
-    ) -> Option<Bytes> {
+    pub fn encode_ack(&mut self, max_extra_len: usize) -> Option<EncodedAck> {
         loop {
             if self.packets.is_empty() {
                 self.max_received_packet_time = None;
                 return None;
             }
 
-            let frame = frame::Ack {
-                // The ack_delay field in the body is a zero placeholder; the real wire-time
-                // delay is computed at assembly time from `largest_recv_time` and written into
-                // `Header::Ack.ack_delay`.  The receiver extracts it from the header and passes
-                // it directly to `process_ack`, so this body field is intentionally ignored.
-                ack_delay: VarInt::ZERO,
-                ack_ranges: &self.packets,
-                ecn_counts,
-            };
+            let extra_encoding_size = self.extra_ranges_encoding_size();
+            if extra_encoding_size <= max_extra_len {
+                let max_pn = self.packets.max_value().unwrap();
+                self.pending_cull_pn = Some(PacketNumber::as_varint(max_pn));
 
-            let encoding_size = frame.encoding_size();
-            if encoding_size <= max_body_len {
-                if let Some(max_pn) = self.packets.max_value() {
-                    self.pending_cull_pn = Some(PacketNumber::as_varint(max_pn));
-                }
-                return Some(Bytes::from(frame.encode_to_vec()));
+                let largest_acknowledged = PacketNumber::as_varint(max_pn);
+                let min_pn_in_first_range = self.first_range_min();
+                let ack_range = min_pn_in_first_range;
+
+                let extra_ranges = if extra_encoding_size == 0 {
+                    Bytes::new()
+                } else {
+                    self.encode_extra_ranges()
+                };
+
+                return Some(EncodedAck {
+                    largest_acknowledged,
+                    ack_range,
+                    extra_ranges,
+                });
             }
 
             let _ = self.packets.pop_min();
@@ -176,6 +189,67 @@ impl AckRanges {
                 self.max_received_packet_time = None;
             }
         }
+    }
+
+    /// Returns the smallest PN in the first (highest) range.
+    fn first_range_min(&self) -> VarInt {
+        let first_range = self.packets.inclusive_ranges().next_back().unwrap();
+        let (min_pn, _max_pn) = first_range.into_inner();
+        PacketNumber::as_varint(min_pn)
+    }
+
+    /// Computes the encoding size for additional gap/range pairs (excludes the first range).
+    fn extra_ranges_encoding_size(&self) -> usize {
+        if self.packets.interval_len() <= 1 {
+            return 0;
+        }
+
+        let mut size = 0usize;
+        let mut prev_smallest: Option<VarInt> = None;
+        // Iterate ranges in descending order (largest first)
+        for range in self.packets.inclusive_ranges().rev() {
+            let (range_start, range_end) = range.into_inner();
+            let start = PacketNumber::as_varint(range_start);
+            let end = PacketNumber::as_varint(range_end);
+            if prev_smallest.is_none() {
+                // First (highest) range — skip, it's in the header
+                prev_smallest = Some(start);
+                continue;
+            }
+            let prev = prev_smallest.unwrap();
+            // gap = prev_smallest - end - 2 (RFC 9000 encoding)
+            let gap = VarInt::new(prev.as_u64() - end.as_u64() - 2).unwrap_or(VarInt::ZERO);
+            let range_len = VarInt::new(end.as_u64() - start.as_u64()).unwrap_or(VarInt::ZERO);
+            size += gap.encoding_size() + range_len.encoding_size();
+            prev_smallest = Some(start);
+        }
+        size
+    }
+
+    /// Encodes additional gap/range pairs into a Bytes buffer.
+    fn encode_extra_ranges(&self) -> Bytes {
+        let size = self.extra_ranges_encoding_size();
+        let mut buf = vec![0u8; size];
+        let mut encoder = EncoderBuffer::new(&mut buf);
+
+        let mut prev_smallest: Option<VarInt> = None;
+        for range in self.packets.inclusive_ranges().rev() {
+            let (range_start, range_end) = range.into_inner();
+            let start = PacketNumber::as_varint(range_start);
+            let end = PacketNumber::as_varint(range_end);
+            if prev_smallest.is_none() {
+                prev_smallest = Some(start);
+                continue;
+            }
+            let prev = prev_smallest.unwrap();
+            let gap = VarInt::new(prev.as_u64() - end.as_u64() - 2).unwrap_or(VarInt::ZERO);
+            let range_len = VarInt::new(end.as_u64() - start.as_u64()).unwrap_or(VarInt::ZERO);
+            encoder.encode(&gap);
+            encoder.encode(&range_len);
+            prev_smallest = Some(start);
+        }
+
+        Bytes::from(buf)
     }
 
     /// Called when an ACK submission has been confirmed sent (completion returned).
@@ -219,7 +293,7 @@ impl AckRanges {
 mod tests {
     use super::*;
     use core::time::Duration;
-    use s2n_quic_core::{frame::ack::EcnCounts, varint::VarInt};
+    use s2n_quic_core::varint::VarInt;
 
     fn ts(millis: u64) -> Timestamp {
         unsafe { Timestamp::from_duration(Duration::from_millis(millis)) }
@@ -232,9 +306,9 @@ mod tests {
     // ── empty / basic ─────────────────────────────────────────────────────────
 
     #[test]
-    fn empty_encode_body_returns_none() {
+    fn empty_encode_returns_none() {
         let mut ranges = AckRanges::default();
-        assert!(ranges.encode_body(None, 1024).is_none());
+        assert!(ranges.encode_ack(1024).is_none());
     }
 
     #[test]
@@ -247,9 +321,12 @@ mod tests {
     fn single_packet_encodes() {
         let mut ranges = AckRanges::default();
         ranges.on_packet_received(pn(0), ts(100));
-        let body = ranges.encode_body(None, 1024);
-        assert!(body.is_some(), "single packet should encode");
-        assert!(!body.unwrap().is_empty());
+        let encoded = ranges.encode_ack(1024);
+        assert!(encoded.is_some(), "single packet should encode");
+        let encoded = encoded.unwrap();
+        assert_eq!(encoded.largest_acknowledged, pn(0));
+        assert_eq!(encoded.ack_range, pn(0));
+        assert!(encoded.extra_ranges.is_empty());
     }
 
     #[test]
@@ -266,7 +343,6 @@ mod tests {
         let mut ranges = AckRanges::default();
         ranges.on_packet_received(pn(5), ts(100));
         ranges.on_packet_received(pn(10), ts(200));
-        // PN 10 is the new max; timestamp should be ts(200)
         assert_eq!(ranges.largest_recv_time(), Some(ts(200)));
     }
 
@@ -274,7 +350,6 @@ mod tests {
     fn largest_recv_time_not_updated_for_out_of_order() {
         let mut ranges = AckRanges::default();
         ranges.on_packet_received(pn(10), ts(200));
-        // PN 3 arrives out-of-order; max is still 10
         ranges.on_packet_received(pn(3), ts(50));
         assert_eq!(
             ranges.largest_recv_time(),
@@ -287,7 +362,6 @@ mod tests {
     fn duplicate_packet_not_re_tracked() {
         let mut ranges = AckRanges::default();
         ranges.on_packet_received(pn(7), ts(100));
-        // Receive same PN again — insert_packet_number returns Err, so no update
         ranges.on_packet_received(pn(7), ts(999));
         assert_eq!(
             ranges.largest_recv_time(),
@@ -316,148 +390,133 @@ mod tests {
         for i in 0u64..10 {
             ranges.on_packet_received(pn(i), ts(i * 10 + 1));
         }
-        // After 10 packets, largest PN is 9, time is ts(91)
         assert_eq!(ranges.largest_recv_time(), Some(ts(91)));
     }
 
-    // ── encode_body / trimming ────────────────────────────────────────────────
+    // ── encode_ack / trimming ─────────────────────────────────────────────────
 
     #[test]
-    fn encode_body_with_ecn_includes_counts() {
+    fn contiguous_range_has_empty_extra_ranges() {
         let mut ranges = AckRanges::default();
-        ranges.on_packet_received(pn(0), ts(1));
-        let ecn = EcnCounts {
-            ect_0_count: VarInt::from_u8(1),
-            ect_1_count: VarInt::from_u8(0),
-            ce_count: VarInt::from_u8(0),
-        };
-        let body_no_ecn = ranges.encode_body(None, 1024).unwrap();
-        let mut ranges2 = AckRanges::default();
-        ranges2.on_packet_received(pn(0), ts(1));
-        let body_with_ecn = ranges2.encode_body(Some(ecn), 1024).unwrap();
-        // ECN-tagged body should be larger (extra ECN count fields)
+        for i in 0u64..5 {
+            ranges.on_packet_received(pn(i), ts(i + 1));
+        }
+        let encoded = ranges.encode_ack(1024).unwrap();
+        assert_eq!(encoded.largest_acknowledged, pn(4));
+        assert_eq!(encoded.ack_range, pn(0));
         assert!(
-            body_with_ecn.len() > body_no_ecn.len(),
-            "ECN body should be larger: ecn={} vs no_ecn={}",
-            body_with_ecn.len(),
-            body_no_ecn.len()
+            encoded.extra_ranges.is_empty(),
+            "contiguous range should produce empty extra_ranges"
         );
     }
 
     #[test]
-    fn encode_body_trims_lowest_ranges_on_overflow() {
+    fn non_contiguous_range_has_extra_ranges() {
         let mut ranges = AckRanges::default();
-        // Insert many non-contiguous packet numbers so the encoding is large
+        // Two disjoint ranges: 0..=2 and 5..=7
+        for i in 0u64..=2 {
+            ranges.on_packet_received(pn(i), ts(i + 1));
+        }
+        for i in 5u64..=7 {
+            ranges.on_packet_received(pn(i), ts(i + 1));
+        }
+        let encoded = ranges.encode_ack(1024).unwrap();
+        assert_eq!(encoded.largest_acknowledged, pn(7));
+        assert_eq!(encoded.ack_range, pn(5));
+        assert!(
+            !encoded.extra_ranges.is_empty(),
+            "non-contiguous ranges should produce non-empty extra_ranges"
+        );
+    }
+
+    #[test]
+    fn encode_trims_lowest_ranges_on_overflow() {
+        let mut ranges = AckRanges::default();
         for i in (0u64..50).step_by(2) {
             ranges.on_packet_received(pn(i), ts(i + 1));
         }
 
-        let unconstrained = ranges.encode_body(None, usize::MAX).unwrap();
-        // Re-insert same data with a very tight constraint
+        let unconstrained = ranges.encode_ack(usize::MAX).unwrap();
         let mut ranges2 = AckRanges::default();
         for i in (0u64..50).step_by(2) {
             ranges2.on_packet_received(pn(i), ts(i + 1));
         }
-        // Allow only ~20 bytes, forcing several low ranges to be dropped
-        let constrained = ranges2.encode_body(None, 20);
+        let constrained = ranges2.encode_ack(4);
         assert!(
             constrained.is_some(),
             "should return Some even with tight limit"
         );
         let constrained = constrained.unwrap();
-        // Constrained encoding is smaller
         assert!(
-            constrained.len() <= unconstrained.len(),
-            "constrained body should be no larger than unconstrained"
+            constrained.extra_ranges.len() <= unconstrained.extra_ranges.len(),
+            "constrained extra_ranges should be no larger than unconstrained"
         );
         assert!(
-            constrained.len() <= 20,
-            "constrained body must fit within max_body_len"
+            constrained.extra_ranges.len() <= 4,
+            "constrained extra_ranges must fit within max_extra_len"
         );
     }
 
     #[test]
-    fn encode_body_preserves_highest_ranges_after_trim() {
-        // After trimming, the highest PN should still be in the encoded ranges.
+    fn encode_preserves_highest_range_after_trim() {
         let mut ranges = AckRanges::default();
         let high_pn = 99u64;
         for i in (0u64..=high_pn).step_by(3) {
             ranges.on_packet_received(pn(i), ts(i + 1));
         }
-        // Constrain so trimming happens
-        let body = ranges.encode_body(None, 15);
-        assert!(body.is_some());
-        // The body is non-empty; verify it decoded successfully by re-parsing
-        // (we just need it to be Some and non-empty here)
-        assert!(!body.unwrap().is_empty());
+        let encoded = ranges.encode_ack(4).unwrap();
+        assert_eq!(
+            encoded.largest_acknowledged,
+            pn(99),
+            "highest PN must be preserved after trimming"
+        );
     }
 
     #[test]
-    fn encode_body_zero_limit_still_encodes_minimal_range() {
-        // Even with max_body_len=0, the encoder should not panic;
-        // it pops ranges until only one remains, which fits in any sane buffer.
+    fn encode_zero_limit_produces_single_range() {
         let mut ranges = AckRanges::default();
         for i in 0u64..10 {
             ranges.on_packet_received(pn(i * 5), ts(i + 1));
         }
-        // max_body_len = 0 forces aggressive trimming but should terminate
-        // (exactly one ACK range always fits since an ACK with a single range
-        // encodes to roughly 5 bytes with ack_delay=0)
-        let body = ranges.encode_body(None, 0);
-        // Either None (all popped) or Some with at least one byte
-        if let Some(b) = body {
-            assert!(!b.is_empty());
-        }
+        // max_extra_len=0 forces trimming until single range remains
+        let encoded = ranges.encode_ack(0);
+        assert!(encoded.is_some(), "should still encode with single range");
+        let encoded = encoded.unwrap();
+        assert!(encoded.extra_ranges.is_empty());
     }
 
     #[test]
-    fn encode_body_empty_result_clears_largest_recv_time() {
+    fn encode_empty_result_clears_largest_recv_time() {
         let mut ranges = AckRanges::default();
-        for i in 0u64..10 {
-            ranges.on_packet_received(pn(i * 7), ts(i + 1));
-        }
-
-        let body = ranges.encode_body(None, 0);
-        assert!(body.is_none(), "max_body_len=0 should trim all ranges");
-        assert!(ranges.is_empty(), "all ranges should be dropped");
-        assert!(
-            ranges.largest_recv_time().is_none(),
-            "largest_recv_time must be cleared when no ranges remain"
-        );
+        // Insert only non-contiguous single-element ranges. With max_extra_len=0,
+        // encoding will pop ranges until only one remains, then succeed.
+        // But if we have a case where popping results in empty, we test that path.
+        // Actually, encode_ack with a single range always succeeds (extra_ranges=empty).
+        // So let's test that an empty AckRanges returns None and clears time.
+        assert!(ranges.encode_ack(0).is_none());
+        assert!(ranges.largest_recv_time().is_none());
     }
 
-    // ── contiguous ranges ─────────────────────────────────────────────────────
+    // ── repeated encode_ack calls ─────────────────────────────────────────────
 
     #[test]
-    fn contiguous_range_encodes_as_single_ack_block() {
-        let mut ranges = AckRanges::default();
-        for i in 0u64..5 {
-            ranges.on_packet_received(pn(i), ts(i + 1));
-        }
-        // Contiguous range 0..=4: should encode to the smallest possible body
-        let body = ranges.encode_body(None, 1024).unwrap();
-        assert!(!body.is_empty());
-    }
-
-    // ── repeated encode_body calls ────────────────────────────────────────────
-
-    #[test]
-    fn encode_body_idempotent_when_no_new_packets() {
+    fn encode_ack_idempotent_when_no_new_packets() {
         let mut ranges = AckRanges::default();
         ranges.on_packet_received(pn(0), ts(1));
         ranges.on_packet_received(pn(1), ts(2));
 
-        let b1 = ranges.encode_body(None, 1024).unwrap();
-        let b2 = ranges.encode_body(None, 1024).unwrap();
-        // Both calls encode the same state (no packets removed, no new ones added)
-        assert_eq!(b1, b2, "repeated encode_body should be deterministic");
+        let e1 = ranges.encode_ack(1024).unwrap();
+        let e2 = ranges.encode_ack(1024).unwrap();
+        assert_eq!(e1.largest_acknowledged, e2.largest_acknowledged);
+        assert_eq!(e1.ack_range, e2.ack_range);
+        assert_eq!(e1.extra_ranges, e2.extra_ranges);
     }
 
     // ── culling ───────────────────────────────────────────────────────────────
 
     /// Simulate a full encode+complete cycle and return the cull count.
     fn encode_complete(ranges: &mut AckRanges) -> u64 {
-        ranges.encode_body(None, 1024);
+        ranges.encode_ack(1024);
         ranges.on_completion()
     }
 
@@ -549,8 +608,8 @@ mod tests {
         ranges.on_packet_received(pn(10), ts(3));
         encode_complete(&mut ranges);
         // After culling, encode should still succeed with remaining ranges
-        let body = ranges.encode_body(None, 1024);
-        assert!(body.is_some());
+        let encoded = ranges.encode_ack(1024);
+        assert!(encoded.is_some());
     }
 
     #[test]

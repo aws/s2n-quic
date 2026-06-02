@@ -18,6 +18,8 @@ expression: logs
 0:00:00.000000000 [main] DEBUG invalidating stale/replay send context for retransmission id=0x3825b05b860f8a17c74724ad21b1b2f3 sender_idx=1 stale_sender_id=1 rejected_key_id=1
 0:00:00.000000000 [main] TRACE c#send.pending.drain[send.1]=1
 0:00:00.000000000 [main] TRACE g#send.pending.depth[send.1]=0
+0:00:00.000000000 [main] TRACE c#send.ack.drain[send.1]=0
+0:00:00.000000000 [main] TRACE g#send.ack.depth[send.1]=0
 0:00:00.000000000 [main] TRACE c#test.invalidation.stale_replay.contexts=1
 0:00:00.000000000 [main] TRACE c#test.invalidation.stale_replay.frames_requeued=1
 0:00:00.000000000 [main] TRACE c#send.inflight.drain.invalidate[send.1]=1

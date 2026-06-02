@@ -286,9 +286,11 @@ fn ack_completion_after_recv_invalidation_does_not_resurrect_context() {
             let ctx = recv_cache.borrow().senders.values().next().unwrap().clone();
             let c = ctx.borrow();
             crate::endpoint::ack::state::Submission {
-                body: bytes::Bytes::from_static(&[1]),
+                largest_acknowledged: s2n_quic_core::varint::VarInt::ZERO,
+                ack_range: s2n_quic_core::varint::VarInt::ZERO,
+                extra_ranges: bytes::Bytes::new(),
+                ecn_counts: Default::default(),
                 largest_recv_time: precision::Clock::now(&Clock::default()),
-                has_ecn: false,
                 path_secret_entry: c.path_entry.clone(),
                 local_sender_id: c.local_sender_id,
                 remote_sender_id: c.remote_sender_id,
