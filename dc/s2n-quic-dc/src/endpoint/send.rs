@@ -184,6 +184,13 @@ impl PendingAcks {
     }
 
     #[inline]
+    pub fn take(&mut self) -> Queue<msg::Sender> {
+        let v = core::mem::take(&mut self.queue);
+        self.gauge.dequeue_n(v.len() as _);
+        v
+    }
+
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
     }
@@ -1081,12 +1088,18 @@ impl Context {
 
     /// Drains all inflight and pending frames from this context.
     ///
-    /// Returns `(frames_drained, inflight_bytes_discarded)`.
+    /// Returns `(frames_drained, inflight_bytes_discarded, pending_acks)`.
+    /// Callers must route `pending_acks` back through ack_completions so recv
+    /// contexts can recover their ack_state.
     pub fn drain_frames(
         &mut self,
         reason: Option<frame::FailureReason>,
         output: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
-    ) -> (usize, usize) {
+    ) -> (
+        usize,
+        usize,
+        intrusive::Queue<crate::stream::endpoint::msg::Sender>,
+    ) {
         let mut drained = 0usize;
         let mut discarded_bytes = 0usize;
         let range = self.inflight.get_range();
@@ -1114,6 +1127,7 @@ impl Context {
                 drained += 1;
             }
         }
+        let pending_acks = self.pending_acks.take();
         // Clear pending_freed token — IDs remain in FreedInner.freed (take() hasn't
         // been called yet). Clear in_flight so future record() calls can resubmit.
         if self.pending_freed.take().is_some() {
@@ -1123,7 +1137,7 @@ impl Context {
                 state.freed.clear_in_flight();
             }
         }
-        (drained, discarded_bytes)
+        (drained, discarded_bytes, pending_acks)
     }
 }
 
@@ -1372,7 +1386,11 @@ impl Cache {
         id: &credentials::Id,
         reason: frame::FailureReason,
         cancelled: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
-    ) -> Option<(usize, usize)> {
+    ) -> Option<(
+        usize,
+        usize,
+        intrusive::Queue<crate::stream::endpoint::msg::Sender>,
+    )> {
         let Some(ctx) = self.contexts.remove(id) else {
             trace!(%id, sender_idx = %self.sender_idx, "invalidate: no context found");
             return None;
@@ -1390,7 +1408,11 @@ impl Cache {
         sender_idx: LocalSenderId,
         rejected_key_id: VarInt,
         retransmit: &mut impl UnboundedSender<intrusive::Entry<Frame>>,
-    ) -> Option<(usize, usize)> {
+    ) -> Option<(
+        usize,
+        usize,
+        intrusive::Queue<crate::stream::endpoint::msg::Sender>,
+    )> {
         assert_eq!(
             self.sender_idx, sender_idx,
             "invalidate_stale_key called for wrong sender cache"

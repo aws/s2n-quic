@@ -585,6 +585,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             sender_idx_to_local.clone(),
             sender_local_addrs.clone(),
             idle_expired_completed_tx,
+            ack_completions_tx.clone(),
             peer_dead_tx.clone(),
             dead_peer_cooldown,
             counter_registry.register("idle.send.expired"),
@@ -701,6 +702,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             sender_idx_to_local.clone(),
             invalidation_completed_tx,
             retransmit_tx,
+            ack_completions_tx.clone(),
             invalidation_counters,
         );
         let task_counter = counter_registry
@@ -1104,7 +1106,7 @@ where
 /// tick) are invalidated from the send cache; any failed frames are completed with
 /// [`frame::FailureReason::PeerDead`], and `peer_dead_tx` is notified only when the idle expiry
 /// also indicates an unresponsive peer with inflight data.
-pub async fn send_idle_wheel_drain<Clk, WakerSink>(
+pub async fn send_idle_wheel_drain<Clk, WakerSink, AckComp>(
     rx: intrusive::unsync::Receiver<send::IdleWheelAdapter>,
     idle_wheel_tx: intrusive::unsync::Sender<send::IdleWheelAdapter>,
     clock: Clk,
@@ -1113,6 +1115,7 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
     sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId>,
     sender_local_addrs: IdMap<LocalSendSocketId, std::net::SocketAddr>,
     mut completed_tx: impl UnboundedSender<Entry<Frame>>,
+    mut ack_completions_tx: AckComp,
     mut peer_dead_tx: WakerSink,
     dead_peer_cooldown: core::time::Duration,
     idle_expired: counter::Counter,
@@ -1122,6 +1125,7 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
     task_counter: counter::Task,
 ) where
     Clk: precision::Clock,
+    AckComp: UnboundedSender<Queue<crate::stream::endpoint::msg::Sender>>,
     WakerSink: UnboundedSender<Entry<PeerDead>>,
 {
     let timer = clock.timer();
@@ -1201,7 +1205,10 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink>(
                     &mut completed_tx,
                 );
 
-                if let Some((drained, discarded_bytes)) = result {
+                if let Some((drained, discarded_bytes, pending_acks)) = result {
+                    if !pending_acks.is_empty() {
+                        let _ = ack_completions_tx.send(pending_acks);
+                    }
                     let cache = send_caches[local_id].borrow();
                     let counters = cache.send_counters();
                     counters.on_inflight_drain_expire(drained as u64);
@@ -1732,16 +1739,18 @@ where
     })
 }
 
-pub fn send_invalidation<R>(
+pub fn send_invalidation<R, AckComp>(
     invalidation_rx: R,
     send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
     sender_idx_to_local: IdMap<LocalSenderId, LocalSendSocketId>,
     mut cancelled_tx: impl UnboundedSender<Entry<Frame>> + 'static,
     mut retransmit_tx: impl UnboundedSender<Entry<Frame>> + 'static,
+    mut ack_completions_tx: AckComp,
     counters: SendInvalidationCounters,
 ) -> impl Receiver<()>
 where
     R: Receiver<Entry<Invalidation>>,
+    AckComp: UnboundedSender<Queue<crate::stream::endpoint::msg::Sender>> + 'static,
 {
     Map::new(
         invalidation_rx,
@@ -1750,11 +1759,14 @@ where
                 counters.unknown_path_secret_events.add(1);
                 for (_, cache) in &send_caches {
                     let mut cache = cache.borrow_mut();
-                    if let Some((drained, discarded_bytes)) = cache.invalidate(
+                    if let Some((drained, discarded_bytes, pending_acks)) = cache.invalidate(
                         &credential_id,
                         frame::FailureReason::UnknownPathSecret,
                         &mut cancelled_tx,
                     ) {
+                        if !pending_acks.is_empty() {
+                            let _ = ack_completions_tx.send(pending_acks);
+                        }
                         counters.unknown_path_secret_contexts.add(1);
                         counters
                             .unknown_path_secret_frames_failed
@@ -1788,12 +1800,15 @@ where
                     return;
                 };
                 let mut cache = cache.borrow_mut();
-                if let Some((drained, discarded_bytes)) = cache.invalidate_stale_key(
+                if let Some((drained, discarded_bytes, pending_acks)) = cache.invalidate_stale_key(
                     &credential_id,
                     sender_id,
                     rejected_key_id,
                     &mut retransmit_tx,
                 ) {
+                    if !pending_acks.is_empty() {
+                        let _ = ack_completions_tx.send(pending_acks);
+                    }
                     counters.stale_or_replay_contexts.add(1);
                     counters.stale_or_replay_frames_requeued.add(drained as u64);
                     let send_counters = cache.send_counters();

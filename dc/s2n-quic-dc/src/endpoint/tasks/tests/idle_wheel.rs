@@ -46,6 +46,9 @@ fn setup_send() -> (
 
     let (idle_wheel_tx, idle_wheel_rx) = unsync::new_with_adapter::<send::IdleWheelAdapter>();
     let (completed_tx, completed_rx) = unsync::new::<Frame>();
+    let (ack_completions_tx, _ack_completions_rx) =
+        unsync::new::<crate::endpoint::msg::Sender>();
+    let ack_completions_tx = ack_completions_tx.into_list_sender();
     let (peer_dead_tx, peer_dead_rx) = unsync::new::<tasks::PeerDead>();
     let q_gauge = registry.register_queue_gauge("test.idle_wheel");
 
@@ -58,6 +61,7 @@ fn setup_send() -> (
         sender_idx_to_local,
         sender_local_addrs,
         completed_tx,
+        ack_completions_tx,
         peer_dead_tx,
         crate::endpoint::DEFAULT_DEAD_PEER_COOLDOWN,
         registry.register("idle.send.expired"),

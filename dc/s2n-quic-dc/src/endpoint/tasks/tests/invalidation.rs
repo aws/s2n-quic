@@ -126,6 +126,9 @@ fn send_invalidation_purges_cache_and_emits_failed_frames() {
         let id = *pse.id();
         let (cancelled_tx, mut collected_rx) = unsync::new::<Frame>();
         let (retransmit_tx, mut retransmit_rx) = unsync::new::<Frame>();
+        let (ack_completions_tx, _ack_completions_rx) =
+            unsync::new::<crate::endpoint::msg::Sender>();
+        let ack_completions_tx = ack_completions_tx.into_list_sender();
 
         let invalidation_rx = super::helpers::TestReceiver::new(vec![Entry::new(
             tasks::Invalidation::UnknownPathSecret { credential_id: id },
@@ -136,6 +139,7 @@ fn send_invalidation_purges_cache_and_emits_failed_frames() {
             IdMap::<LocalSenderId, LocalSendSocketId>::new(1, LocalSendSocketId::new(0)),
             cancelled_tx,
             retransmit_tx,
+            ack_completions_tx,
             invalidation_counters(),
         );
 
@@ -178,6 +182,9 @@ fn send_invalidation_noop_for_unknown_id() {
         let fake_id = credentials::Id::from([0xAA; 16]);
         let (cancelled_tx, mut collected_rx) = unsync::new::<Frame>();
         let (retransmit_tx, mut retransmit_rx) = unsync::new::<Frame>();
+        let (ack_completions_tx, _ack_completions_rx) =
+            unsync::new::<crate::endpoint::msg::Sender>();
+        let ack_completions_tx = ack_completions_tx.into_list_sender();
 
         let invalidation_rx = super::helpers::TestReceiver::new(vec![Entry::new(
             tasks::Invalidation::UnknownPathSecret {
@@ -190,6 +197,7 @@ fn send_invalidation_noop_for_unknown_id() {
             IdMap::<LocalSenderId, LocalSendSocketId>::new(1, LocalSendSocketId::new(0)),
             cancelled_tx,
             retransmit_tx,
+            ack_completions_tx,
             invalidation_counters(),
         );
 
@@ -377,6 +385,9 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
         let id = *pse.id();
         let (cancelled_tx, mut collected_rx) = unsync::new::<Frame>();
         let (retransmit_tx, mut retransmit_rx) = unsync::new::<Frame>();
+        let (ack_completions_tx, _ack_completions_rx) =
+            unsync::new::<crate::endpoint::msg::Sender>();
+        let ack_completions_tx = ack_completions_tx.into_list_sender();
         let invalidation_rx =
             super::helpers::TestReceiver::new(vec![Entry::new(tasks::Invalidation::StaleKey {
                 credential_id: id,
@@ -399,6 +410,7 @@ fn send_invalidation_stale_key_targets_matching_sender_only() {
             },
             cancelled_tx,
             retransmit_tx,
+            ack_completions_tx,
             invalidation_counters(),
         );
 
