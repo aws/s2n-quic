@@ -234,6 +234,9 @@ pub(crate) struct Context {
     pub idle_wheel: crate::time::wheel::WheelLinks,
     pub created_at: crate::time::precision::Timestamp,
     pub ack_state: AckState,
+    /// Timestamp when ack_state entered Flushed (submission sent to send pipeline).
+    /// Used to measure how long the recv context is blocked waiting for ACK completion.
+    pub flushed_at: Option<crate::time::precision::Timestamp>,
     /// Map from binding_id to allocated queue_id for this sender.
     /// Shared with queue handles so they can remove entries when closed.
     /// Cached queue dispatch view (client or server depending on role).
@@ -321,6 +324,7 @@ impl Context {
             idle_wheel,
             created_at: now,
             ack_state: AckState::Idle,
+            flushed_at: None,
             queue_view,
             ack_burst: intrusive::Links::new(),
         }
@@ -372,6 +376,7 @@ impl Context {
             transition.is_ok(),
             "on_flush transition failed from Scheduled"
         );
+        self.flushed_at = Some(largest_recv_time.into());
         self.invariants();
 
         Some(ack_state::Submission {
@@ -402,6 +407,7 @@ impl Context {
             transition.is_ok(),
             "on_flush_complete transition failed from Flushed/FlushedStale"
         );
+        self.flushed_at = None;
         let ranges_culled = self.ack_ranges.on_completion();
         let submission = self.encode_and_flush(recv_worker_id);
         self.invariants();

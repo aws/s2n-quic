@@ -417,6 +417,12 @@ where
                     debug_assert!(false, "on_ack_eliciting transition failed");
                 }
             }
+            if peer.ack_state.is_flushed_stale() {
+                if let Some(flushed_at) = peer.flushed_at {
+                    let now = crate::time::precision::Clock::now(clock);
+                    counters.rx_ack_flush_blocked.record(now.duration_since(flushed_at));
+                }
+            }
             let enqueue_pending_ack = !peer.ack_burst.is_linked() && peer.ack_state.is_scheduled();
             peer.invariants();
             drop(peer);
@@ -509,6 +515,13 @@ where
             Err(s2n_quic_core::state::Error::InvalidTransition { .. }) => {
                 counters.rx_ack_state_impossible.add(1);
                 debug_assert!(false, "on_ack_eliciting transition failed");
+            }
+        }
+
+        if peer.ack_state.is_flushed_stale() {
+            if let Some(flushed_at) = peer.flushed_at {
+                let now = crate::time::precision::Clock::now(clock);
+                counters.rx_ack_flush_blocked.record(now.duration_since(flushed_at));
             }
         }
 

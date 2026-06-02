@@ -42,6 +42,7 @@ pub(crate) struct Dispatch {
     pub rx_ack_state_impossible: Counter,
     pub rx_ack_completion_impossible: Counter,
     pub rx_ack_ranges_culled: Counter,
+    pub rx_ack_flush_blocked: Timer,
 
     pub rx_peer_cache_hit: Counter,
     pub rx_peer_cache_miss: Counter,
@@ -112,6 +113,7 @@ impl Dispatch {
             rx_ack_state_impossible: counters.register("!rx.ack.state_impossible"),
             rx_ack_completion_impossible: counters.register("!rx.ack.completion_impossible"),
             rx_ack_ranges_culled: counters.register("rx.ack.ranges_culled"),
+            rx_ack_flush_blocked: counters.register_timer("rx.ack.flush_blocked"),
 
             rx_peer_cache_hit: counters.register("rx.peer_cache.hit"),
             rx_peer_cache_miss: counters.register("rx.peer_cache.miss"),
