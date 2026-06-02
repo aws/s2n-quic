@@ -444,6 +444,8 @@ pub fn setup_sim_endpoint(
         ups_dedup_capacity: 1024,
         ups_dedup_window: core::time::Duration::from_secs(1),
         dead_peer_cooldown,
+        initial_tx_descriptor_allocs: 0,
+        initial_rx_descriptor_allocs: 0,
     };
 
     let endpoint = setup_endpoint(

@@ -112,6 +112,20 @@ impl UnsyncReusePool {
         }
     }
 
+    /// Pre-allocates `count` descriptors from `pool` and pushes them directly into
+    /// the local LIFO list, so the first `count` calls to [`alloc_or_reuse`] never
+    /// touch the system allocator.
+    ///
+    /// [`alloc_or_reuse`]: Self::alloc_or_reuse
+    #[inline]
+    pub fn prime(&mut self, pool: &Pool, count: usize) {
+        for _ in 0..count {
+            if let Some(unfilled) = pool.alloc_with_recycler(&self.recycle_weak) {
+                self.local_pool.push_back(unfilled.into_recycled());
+            }
+        }
+    }
+
     /// Drains recycled descriptors and returns either a reused descriptor or a
     /// fresh descriptor from `pool` with the local weak recycler attached.
     #[inline]
@@ -156,6 +170,19 @@ impl SyncReuseLocal {
             recycle_rx,
             local_pool: self.local_pool.clone(),
         })
+    }
+
+    /// Pre-allocates `count` descriptors from `pool` and pushes them directly into
+    /// the worker-local LIFO list, so the first `count` calls to
+    /// [`SyncReuseHandle::alloc_or_reuse`] never touch the system allocator.
+    #[inline]
+    pub fn prime(&mut self, pool: &Pool, count: usize) {
+        let mut list = self.local_pool.borrow_mut();
+        for _ in 0..count {
+            if let Some(unfilled) = pool.alloc_with_recycler(&self.recycle_weak) {
+                list.push_back(unfilled.into_recycled());
+            }
+        }
     }
 
     #[inline]

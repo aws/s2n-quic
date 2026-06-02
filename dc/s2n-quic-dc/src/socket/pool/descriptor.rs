@@ -447,6 +447,17 @@ impl<R: Recycler> Unfilled<R> {
         Self { desc: Some(desc) }
     }
 
+    /// Converts this unfilled descriptor into the recycled form for direct pool priming.
+    ///
+    /// This bypasses the recycling channel so the descriptor lands straight in the
+    /// caller's local LIFO list, ready to be handed out on the very first
+    /// [`alloc_or_reuse`](crate::socket::pool::UnsyncReusePool::alloc_or_reuse) call.
+    #[inline]
+    pub(crate) fn into_recycled(mut self) -> Recycled<R> {
+        let desc = self.desc.take().expect("valid state");
+        Recycled(desc)
+    }
+
     /// Fills the packet with the given callback, if the callback is successful
     #[inline]
     pub fn fill_with<F, E>(mut self, f: F) -> Result<Segments<R>, (Self, E)>

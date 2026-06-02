@@ -787,7 +787,10 @@ impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
         freed_batch_tx: crate::queue::FreedBatchTx,
         counters: AssemblerCounters,
         send_counters: Rc<super::counters::Send>,
+        initial_tx_descriptor_allocs: usize,
     ) -> Self {
+        let mut recycle_pool = UnsyncReusePool::new();
+        recycle_pool.prime(&pool, initial_tx_descriptor_allocs);
         Self {
             inner,
             clock,
@@ -801,7 +804,7 @@ impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
             freed_batch_tx,
             counters,
             send_counters,
-            recycle_pool: UnsyncReusePool::new(),
+            recycle_pool,
         }
     }
 }

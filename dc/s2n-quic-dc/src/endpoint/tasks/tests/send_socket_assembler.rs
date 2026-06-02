@@ -153,6 +153,7 @@ async fn assembler_pipeline(
         tx_wheel_tx,
         pto_wheel_tx,
         idle_wheel_tx,
+        0,
     );
     rx.drain_budgeted(Some(32)).await;
 }

@@ -64,6 +64,8 @@ fn topology_snapshot_uses_dc_tester_layout() {
             ups_dedup_capacity: 1024,
             ups_dedup_window: core::time::Duration::from_secs(1),
             dead_peer_cooldown: endpoint::DEFAULT_DEAD_PEER_COOLDOWN,
+            initial_tx_descriptor_allocs: 0,
+            initial_rx_descriptor_allocs: 0,
         },
         64,
         4,

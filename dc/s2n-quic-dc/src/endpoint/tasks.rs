@@ -665,6 +665,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             tx_wheel_tx,
             pto_wheel_tx,
             idle_wheel_tx,
+            st.initial_tx_descriptor_allocs,
         );
         let variant = format!("send.{sender_idx}");
         let task_counter = counter_registry
@@ -1062,6 +1063,7 @@ pub fn send_socket_assembler<ImmediateRx, ContextRx, Clk, Socket, C, A, ImmW, Tx
     tx_wheel_tx: TxW,
     pto_wheel_tx: PtoW,
     idle_wheel_tx: IdleW,
+    initial_tx_descriptor_allocs: usize,
 ) -> impl Receiver<()>
 where
     ImmediateRx: Receiver<Rc<RefCell<send::Context>>>,
@@ -1088,6 +1090,7 @@ where
         freed_batch_tx,
         asm_counters,
         send_counters,
+        initial_tx_descriptor_allocs,
     );
     let rx = send::WheelRouter::new(rx, immediate_tx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx);
     let rx = Flatten::new(rx);
