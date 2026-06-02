@@ -86,6 +86,18 @@ fn main() -> std::io::Result<()> {
         }
         Err(e) => eprintln!("jemalloc lg_prof_interval check failed: {}", e),
     }
+    match tikv_jemalloc_ctl::background_thread::write(true) {
+        Ok(_) => eprintln!("jemalloc background_thread: enabled"),
+        Err(e) => eprintln!("jemalloc background_thread: failed to enable: {}", e),
+    }
+    match unsafe { tikv_jemalloc_ctl::raw::write(b"arenas.dirty_decay_ms\0", 1000_isize) } {
+        Ok(_) => eprintln!("jemalloc dirty_decay_ms: 1000"),
+        Err(e) => eprintln!("jemalloc dirty_decay_ms: failed to set: {}", e),
+    }
+    match unsafe { tikv_jemalloc_ctl::raw::write(b"arenas.muzzy_decay_ms\0", 5000_isize) } {
+        Ok(_) => eprintln!("jemalloc muzzy_decay_ms: 5000"),
+        Err(e) => eprintln!("jemalloc muzzy_decay_ms: failed to set: {}", e),
+    }
 
     let cli = Cli::parse();
 

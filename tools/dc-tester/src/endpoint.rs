@@ -97,6 +97,8 @@ pub fn create(
         ups_dedup_capacity: 1024,
         ups_dedup_window: core::time::Duration::from_secs(1),
         dead_peer_cooldown: core::time::Duration::from_secs(5),
+        initial_tx_descriptor_allocs: 2,
+        initial_rx_descriptor_allocs: 64,
     };
 
     let inner = endpoint::setup_endpoint(
