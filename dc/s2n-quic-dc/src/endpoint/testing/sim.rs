@@ -472,6 +472,8 @@ pub fn setup_sim_endpoint(
     params.remote_max_data = params.local_recv_max_data;
     if let Some(window) = send_window {
         params.local_send_max_data = window;
+        params.local_recv_max_data = window;
+        params.remote_max_data = window;
     }
 
     // Register in the thread-local registry so `connect` can find it.

@@ -1288,7 +1288,9 @@ impl Inner {
                     .min(max_segment_size)
                     .min(self.initial_remote_max_data as usize)
             } else {
-                buf.buffered_len().min(max_segment_size)
+                buf.buffered_len()
+                    .min(max_segment_size)
+                    .min((remote_budget as usize).max(chunk_size as usize))
             };
 
             let is_resuming = self.pending_chunk_index > 0;

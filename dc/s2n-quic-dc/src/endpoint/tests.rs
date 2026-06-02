@@ -3469,3 +3469,118 @@ fn queue_msg_fin_without_wakeup_flag_still_wakes_reader() {
         .spawn();
     });
 }
+
+/// End-to-end reproduction of the production write_msg deadlock.
+///
+/// Conditions (matching strss-2-dcquic):
+/// - 64KB flow control window (send_window = 64KB sets all windows)
+/// - Server streams a 128KB response via write_msg (message > window)
+/// - is_wakeup: true, is_fin: true on the message
+///
+/// The deadlock: write_msg declares segment_size = 128KB but remote_max_data
+/// is only 64KB. The budget check (remote_budget < segment_size) prevents
+/// the segment from ever being started. The reader sends MAX_DATA(64KB) on
+/// first poll but that's not enough — the writer needs 128KB of budget.
+/// The reader won't send more credits until it consumes 32KB, but nothing
+/// was ever sent. Permanent stall.
+///
+/// write_from never hit this because it sends MTU-sized (1.3KB) frames that
+/// always individually fit within even a tiny window.
+#[test]
+fn queue_msg_write_msg_deadlock_message_exceeds_window() {
+    use crate::endpoint::testing::sim::SimEndpointConfig;
+
+    let _guard = crate::testing::without_snapshots();
+    sim(|| {
+        let acceptor_id = VarInt::from_u8(1);
+        const RESPONSE_SIZE: usize = 128 * 1024; // 128KB > 64KB window
+
+        async move {
+            let server = SimEndpointConfig::default()
+                .send_window(VarInt::from_u32(64 * 1024))
+                .server();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            let stream = timeout(5.s(), acceptor.recv())
+                .await
+                .expect("server accept timeout")
+                .expect("server stream closed");
+            let (mut reader, mut writer) = stream.into_split();
+
+            // Read client request
+            let mut req = Data::new(64);
+            loop {
+                let n = timeout(5.s(), reader.read_into(&mut req))
+                    .await
+                    .expect("server read timeout")
+                    .expect("server read");
+                if n == 0 {
+                    break;
+                }
+            }
+
+            // Stream response — this write_msg should deadlock because
+            // message_size (128KB) > remote_max_data (64KB)
+            let mut response = Data::new(RESPONSE_SIZE as u64);
+            writer
+                .write_msg(
+                    &mut response,
+                    crate::stream::MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await
+                .expect("server write_msg");
+        }
+        .group("server")
+        .primary()
+        .spawn();
+
+        async move {
+            let mut client = SimEndpointConfig::default()
+                .send_window(VarInt::from_u32(64 * 1024))
+                .client();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+            let (mut reader, mut writer) = stream.into_split();
+
+            // Send small request
+            let mut req = Data::new(64);
+            writer
+                .write_msg(
+                    &mut req,
+                    crate::stream::MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await
+                .expect("client write request");
+
+            // Read response — deadlocks if server can't send
+            let mut resp = Data::new(RESPONSE_SIZE as u64);
+            loop {
+                let n = timeout(10.s(), reader.read_into(&mut resp))
+                    .await
+                    .expect(
+                        "DEADLOCK: write_msg(128KB) cannot send with 64KB window. \
+                         segment_size exceeds remote_max_data and the reader's \
+                         MAX_DATA threshold won't grow the window without first \
+                         consuming data that was never sent.",
+                    )
+                    .expect("client read error");
+                if n == 0 {
+                    break;
+                }
+            }
+            assert!(resp.is_finished());
+        }
+        .group("client")
+        .spawn();
+    });
+}
