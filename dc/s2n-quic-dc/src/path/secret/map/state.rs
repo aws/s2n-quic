@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    cleaner::Cleaner, stateless_reset, ApplicationData, ApplicationDataError, Entry, Store,
+    cleaner::Cleaner, persistence, stateless_reset, ApplicationData, ApplicationDataError, Entry,
+    Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -22,6 +23,7 @@ use std::{
     hash::BuildHasher,
     mem::ManuallyDrop,
     net::SocketAddr,
+    path::PathBuf,
     sync::{Arc, Mutex, RwLock, Weak},
     time::Duration,
 };
@@ -62,6 +64,7 @@ where
     should_evict_on_unknown_path_secret: bool,
     clock: Option<C>,
     subscriber: Option<S>,
+    peer_persistence_dir: Option<PathBuf>,
 }
 
 impl<C, S> StateBuilder<C, S>
@@ -76,6 +79,7 @@ where
             should_evict_on_unknown_path_secret: false,
             clock: None,
             subscriber: None,
+            peer_persistence_dir: None,
         }
     }
 
@@ -94,6 +98,11 @@ where
         self
     }
 
+    pub fn with_peer_persistence_dir(mut self, dir: PathBuf) -> Self {
+        self.peer_persistence_dir = Some(dir);
+        self
+    }
+
     pub fn with_clock<C2: 'static + time::Clock + Sync + Send>(
         self,
         clock: C2,
@@ -104,6 +113,7 @@ where
             should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
             signer: self.signer,
             capacity: self.capacity,
+            peer_persistence_dir: self.peer_persistence_dir,
         }
     }
 
@@ -114,6 +124,7 @@ where
             should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
             signer: self.signer,
             capacity: self.capacity,
+            peer_persistence_dir: self.peer_persistence_dir,
         }
     }
 
@@ -125,12 +136,23 @@ where
             .subscriber
             .ok_or(StateBuilderError::MissingSubscriber)?;
 
+        let persistence_writer =
+            self.peer_persistence_dir
+                .and_then(|dir| match persistence::Writer::new(dir) {
+                    Ok(w) => Some(w),
+                    Err(e) => {
+                        tracing::warn!("salty.peer_persistence.writer_init_failed: {:?}", e);
+                        None
+                    }
+                });
+
         Ok(State::new(
             signer,
             capacity,
             self.should_evict_on_unknown_path_secret,
             clock,
             subscriber,
+            persistence_writer,
         ))
     }
 }
@@ -417,6 +439,8 @@ where
 
     cleaner: Cleaner,
 
+    pub(super) persistence_writer: Option<persistence::Writer>,
+
     // Avoids allocating/deallocating on each cleaner run.
     // We use a PeerMap to save memory -- an Arc is 8 bytes, SocketAddr is 32 bytes.
     pub(super) cleaner_peer_seen: PeerMap,
@@ -503,6 +527,7 @@ where
         should_evict_on_unknown_path_secret: bool,
         clock: C,
         subscriber: S,
+        persistence_writer: Option<persistence::Writer>,
     ) -> Arc<Self> {
         let control_socket = control_socket();
 
@@ -521,6 +546,7 @@ where
             eviction_queue: Default::default(),
             cleaner_peer_seen: Default::default(),
             cleaner: Cleaner::new(),
+            persistence_writer,
             rehandshake: Mutex::new(super::rehandshake::RehandshakeState::new(
                 rehandshake_period,
             )),
@@ -1175,6 +1201,11 @@ where
     #[cfg(test)]
     fn test_stop_cleaner(&self) {
         self.cleaner.stop();
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn test_run_cleaner(&self) {
+        self.cleaner.clean(self, 0);
     }
 
     fn application_data(
