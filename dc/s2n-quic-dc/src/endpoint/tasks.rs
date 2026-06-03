@@ -1177,6 +1177,29 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink, AckComp>(
                 let has_inflight = ctx.inflight.has_inflight();
                 let pto_backoff = ctx.pto.backoff;
                 let packets_sent = ctx.next_packet_number.as_u64();
+
+                // Extra diagnostics for routing asymmetry investigation
+                let bytes_in_flight = ctx.cca.bytes_in_flight();
+                let congestion_window = ctx.cca.congestion_window();
+                let is_congestion_limited = ctx.cca.is_congestion_limited();
+                let smoothed_rtt_us = ctx.rtt_estimator.smoothed_rtt().as_micros();
+                let inflight_range = ctx.inflight.get_range();
+                let inflight_range_start = inflight_range.start().as_u64();
+                let inflight_range_end = inflight_range.end().as_u64();
+                let inflight_bytes_sum = ctx.inflight.sum_sent_bytes();
+                let pending_frames: usize = ctx.queues.iter().map(|q| q.len()).sum();
+                let has_pending_acks = !ctx.pending_acks.is_empty();
+                let has_pending_freed = ctx.pending_freed.is_some();
+                let pto_is_armed = ctx.pto.is_armed();
+                let probe_is_requested = ctx.pto.probe_state.is_requested();
+                let created_at_nanos = ctx.created_at.nanos;
+                let last_peer_activity_nanos = ctx.last_peer_activity.nanos;
+                let path_last_activity_nanos = ctx.path_secret_entry.last_activity().nanos;
+                let idle_timeout_ms = ctx.path_secret_entry.idle_timeout().as_millis();
+                let key_id = ctx.credentials.key_id.as_u64();
+                let credentials_id = *ctx.path_secret_entry.id();
+                let edt = ctx.cca.earliest_departure_time();
+                let bandwidth_bytes_per_sec = ctx.cca.bandwidth().as_bytes_per_second();
                 drop(ctx);
 
                 if path_active && has_inflight {
@@ -1191,6 +1214,27 @@ pub async fn send_idle_wheel_drain<Clk, WakerSink, AckComp>(
                         ever_responded,
                         pto_backoff,
                         packets_sent,
+                        bytes_in_flight,
+                        congestion_window,
+                        is_congestion_limited,
+                        smoothed_rtt_us,
+                        inflight_range_start,
+                        inflight_range_end,
+                        inflight_bytes_sum,
+                        pending_frames,
+                        has_pending_acks,
+                        has_pending_freed,
+                        pto_is_armed,
+                        probe_is_requested,
+                        created_at_nanos,
+                        last_peer_activity_nanos,
+                        path_last_activity_nanos,
+                        idle_timeout_ms,
+                        key_id,
+                        %credentials_id,
+                        ?edt,
+                        bandwidth_bytes_per_sec,
+                        ?lifetime,
                         "send context idle but path still active — possible routing asymmetry"
                     );
                 }
