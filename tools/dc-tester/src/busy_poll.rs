@@ -15,6 +15,7 @@ pub fn create_pool(workers: usize) -> busy_poll::Pool {
             .name(format!("dcquic:busy_poll:{}", idx))
             .spawn(move || {
                 configure_thread();
+                let _ = dial9_perf_self_profile::register_current_thread();
                 runner.run()
             })
             .unwrap();
