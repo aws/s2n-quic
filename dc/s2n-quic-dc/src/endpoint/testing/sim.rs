@@ -564,8 +564,9 @@ pub fn connect(
             server_entry.set_peer_data_addrs(&peer_data_addrs);
         }
     } else {
-        // Also set our addrs on the peer's entry for us.
-        if let Some(peer_entry) = peer_map.get_raw(local_addr) {
+        // Set our addrs on the peer's server-side entry (looked up by ID since
+        // server entries are not in the address-keyed client map).
+        if let Some(peer_entry) = peer_map.get_by_id(&ids.peer) {
             peer_entry.set_peer_data_addrs(&local_endpoint.data_addrs);
         }
     }

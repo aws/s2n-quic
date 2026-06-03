@@ -221,7 +221,11 @@ impl Model {
             match invariant {
                 Invariant::ContainsIp(ip) => {
                     if state.max_capacity != 5 {
-                        assert!(state.peers.contains_key(ip), "{ip:?}");
+                        assert!(
+                            state.client_peers.contains_key(ip)
+                                || state.server_peers.contains_key(ip),
+                            "{ip:?}"
+                        );
                     }
                 }
                 Invariant::ContainsId(id) => {
@@ -399,10 +403,10 @@ fn unknown_path_secret_evicts() {
     );
 
     assert!(map.ids.contains_key(entry.id()), "{:?}", map.ids);
-    assert!(map.peers.contains_key(entry.peer()), "{:?}", map.peers);
+    assert!(map.client_peers.contains_key(entry.peer()));
 
     map.handle_unknown_path_secret_packet(&packet, &"127.0.0.1:1234".parse().unwrap());
 
     assert!(!map.ids.contains_key(entry.id()), "{:?}", map.ids);
-    assert!(!map.peers.contains_key(entry.peer()), "{:?}", map.peers);
+    assert!(!map.client_peers.contains_key(entry.peer()));
 }

@@ -13,6 +13,7 @@ use crate::{
     tracing::*,
 };
 use s2n_quic_core::{
+    endpoint,
     inet::SocketAddress,
     time::{self, Timestamp},
     varint::VarInt,
@@ -138,12 +139,13 @@ where
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 #[repr(align(128))]
-pub(crate) struct PeerMap(
-    parking_lot::RwLock<hashbrown::HashTable<Arc<Entry>>>,
-    std::collections::hash_map::RandomState,
-);
+pub(crate) struct PeerMap {
+    table: parking_lot::RwLock<hashbrown::HashTable<Arc<Entry>>>,
+    hasher: std::collections::hash_map::RandomState,
+    target_capacity: usize,
+}
 
 #[derive(Default, Debug)]
 #[repr(align(128))]
@@ -209,6 +211,9 @@ where
     pub(crate) fn insert(&self, entry: Arc<Entry>) -> Option<Arc<Entry>> {
         let hash = self.whole.hash(&entry);
         let mut map = self.write();
+        if map.capacity() == 0 {
+            map.reserve(2 * self.whole.target_capacity, |e| self.whole.hash(e));
+        }
         match map.entry(
             hash,
             |other| other.peer() == entry.peer(),
@@ -238,8 +243,12 @@ where
 }
 
 impl PeerMap {
-    fn reserve(&self, additional: usize) {
-        self.0.write().reserve(additional, |e| self.hash(e));
+    fn new(target_capacity: usize) -> Self {
+        Self {
+            table: Default::default(),
+            hasher: Default::default(),
+            target_capacity,
+        }
     }
 
     fn hash(&self, entry: &Entry) -> u64 {
@@ -247,12 +256,15 @@ impl PeerMap {
     }
 
     fn hash_key(&self, entry: &SocketAddr) -> u64 {
-        self.1.hash_one(entry)
+        self.hasher.hash_one(entry)
     }
 
     pub(crate) fn insert_no_events(&self, entry: Arc<Entry>) -> Option<Arc<Entry>> {
         let hash = self.hash(&entry);
-        let mut map = self.0.write();
+        let mut map = self.table.write();
+        if map.capacity() == 0 {
+            map.reserve(2 * self.target_capacity, |e| self.hash(e));
+        }
         match map.entry(hash, |other| other.peer() == entry.peer(), |e| self.hash(e)) {
             hashbrown::hash_table::Entry::Occupied(mut o) => {
                 Some(std::mem::replace(o.get_mut(), entry))
@@ -266,23 +278,23 @@ impl PeerMap {
 
     pub(crate) fn contains_key(&self, ip: &SocketAddr) -> bool {
         let hash = self.hash_key(ip);
-        let map = self.0.read();
+        let map = self.table.read();
         map.find(hash, |o| o.peer() == ip).is_some()
     }
 
     pub(crate) fn get(&self, peer: SocketAddr) -> Option<Arc<Entry>> {
         let hash = self.hash_key(&peer);
-        let map = self.0.read();
+        let map = self.table.read();
         map.find(hash, |o| *o.peer() == peer).cloned()
     }
 
     pub(crate) fn clear(&self) {
-        let mut map = self.0.write();
+        let mut map = self.table.write();
         map.clear();
     }
 
     pub(super) fn len(&self) -> usize {
-        let map = self.0.read();
+        let map = self.table.read();
         map.len()
     }
 }
@@ -388,15 +400,14 @@ where
 
     // peers is the most recent entry originating from a locally *or* remote initiated handshake.
     //
-    // Handshakes use s2n-quic and the SocketAddr is the address of the handshake socket. Since
-    // s2n-quic only has Client or Server endpoints, a given SocketAddr can only be used for
-    // exactly one of a locally initiated handshake or a remote initiated handshake. As a result we
-    // can use a single map to store both kinds and treat them identically.
-    //
-    // In the future it's likely we'll want to build bidirectional support in which case splitting
-    // this into two maps (per the discussion in "Managing memory consumption" above) will be
-    // needed.
-    pub(super) peers: PeerMap,
+    // Client and Server entries are stored in separate maps because a given peer
+    // address can appear in both roles simultaneously (e.g., bidirectional gossip
+    // where node A connects to node B and node B also connects to node A). Without
+    // separation, server-side entries from different handshakes would collide and
+    // retire each other, causing credential eviction while senders still reference
+    // them.
+    pub(super) client_peers: PeerMap,
+    pub(super) server_peers: PeerMap,
 
     // All known entries.
     pub(super) ids: IdMap,
@@ -534,10 +545,11 @@ where
             max_capacity: capacity,
             socket_sender_count: AtomicUsize::new(0),
             should_evict_on_unknown_path_secret,
-            peers: Default::default(),
+            client_peers: PeerMap::new(capacity),
+            server_peers: PeerMap::new(capacity),
             ids: Default::default(),
             eviction_queue: Default::default(),
-            cleaner_peer_seen: Default::default(),
+            cleaner_peer_seen: PeerMap::new(capacity),
             cleaner: Cleaner::new(),
             rehandshake: Mutex::new(super::rehandshake::RehandshakeState::new(
                 rehandshake_period,
@@ -558,9 +570,7 @@ where
         // In practice we don't pin a particular version of hashbrown but there's definitely at
         // most a constant factor of growth left (vs continuous upwards resizing) with any
         // reasonable implementation.
-        state.peers.reserve(2 * state.max_capacity);
         state.ids.reserve(2 * state.max_capacity);
-        state.cleaner_peer_seen.reserve(2 * state.max_capacity);
         state
             .rehandshake
             .get_mut()
@@ -605,7 +615,7 @@ where
         // We drop from the peers map only if this is exactly the entry in that map to
         // avoid evicting a newer path secret (in case of rehandshaking with the same
         // peer).
-        if self.peers().remove_exact(evicted).is_some() {
+        if self.peers_for(evicted.id().endpoint_type()).remove_exact(evicted).is_some() {
             peer_removed = true;
             self.subscriber().on_path_secret_map_address_entry_evicted(
                 event::builder::PathSecretMapAddressEntryEvicted {
@@ -669,7 +679,8 @@ where
     #[allow(unused)]
     fn set_max_capacity(&mut self, new: usize) {
         self.max_capacity = new;
-        self.peers = Default::default();
+        self.client_peers = PeerMap::new(new);
+        self.server_peers = PeerMap::new(new);
         self.ids = Default::default();
     }
 
@@ -685,10 +696,14 @@ where
         )
     }
 
-    fn peers(&self) -> WithEvents<'_, PeerMap, C, S> {
+    fn peers_for(&self, endpoint_type: endpoint::Type) -> WithEvents<'_, PeerMap, C, S> {
+        let map = match endpoint_type {
+            endpoint::Type::Client => &self.client_peers,
+            endpoint::Type::Server => &self.server_peers,
+        };
         WithEvents {
-            inner: &self.peers.0,
-            whole: &self.peers,
+            inner: &map.table,
+            whole: map,
             clock: &self.clock,
             subscriber: self.subscriber(),
         }
@@ -724,7 +739,7 @@ where
     }
 
     fn peers_len(&self) -> usize {
-        self.peers.len()
+        self.client_peers.len() + self.server_peers.len()
     }
 
     fn secrets_capacity(&self) -> usize {
@@ -745,11 +760,12 @@ where
 
     fn drop_state(&self) {
         self.ids.clear();
-        self.peers.clear();
+        self.client_peers.clear();
+        self.server_peers.clear();
     }
 
     fn contains(&self, peer: &SocketAddr) -> bool {
-        self.peers.contains_key(peer)
+        self.client_peers.contains_key(peer) || self.server_peers.contains_key(peer)
     }
 
     fn on_new_path_secrets(&self, entry: Arc<Entry>) {
@@ -800,7 +816,7 @@ where
         let id = *entry.id();
         let peer = *entry.peer();
 
-        if let Some(prev) = self.peers().insert(entry.clone()) {
+        if let Some(prev) = self.peers_for(id.endpoint_type()).insert(entry.clone()) {
             // This shouldn't happen due to the panic in on_new_path_secrets, but just
             // in case something went wrong with the secret map we double check here.
             // FIXME: Make insertion fallible and fail handshakes instead?
@@ -856,11 +872,13 @@ where
     }
 
     fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<Arc<Entry>> {
-        self.peers.get(*peer)
+        self.client_peers
+            .get(*peer)
+            .or_else(|| self.server_peers.get(*peer))
     }
 
     fn get_by_addr_tracked(&self, peer: &SocketAddr) -> Option<Arc<Entry>> {
-        let result = self.peers.get(*peer);
+        let result = self.client_peers.get(*peer);
 
         self.subscriber().on_path_secret_map_address_cache_accessed(
             event::builder::PathSecretMapAddressCacheAccessed {
@@ -1334,8 +1352,10 @@ where
 
     #[cfg(test)]
     fn reset_all_senders(&self) {
-        let peer_map = self.peers.0.read();
-        for entry in peer_map.iter() {
+        for entry in self.client_peers.table.read().iter() {
+            entry.reset_sender_counter();
+        }
+        for entry in self.server_peers.table.read().iter() {
             entry.reset_sender_counter();
         }
     }

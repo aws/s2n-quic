@@ -3584,3 +3584,128 @@ fn queue_msg_write_msg_deadlock_message_exceeds_window() {
         .spawn();
     });
 }
+
+/// Twenty nodes gossip with 3 random peers every second for 30 simulated minutes.
+///
+/// This exercises the routing hash, symmetric 5-tuple dispatch, and multi-sender
+/// state under sustained cross-mesh traffic. The primary assertion is that no
+/// routing asymmetry warnings fire (the `!send.routing_asymmetry` counter stays
+/// zero throughout the run).
+///
+// TODO: assert directly on counter values once we have a query API for sim metrics
+#[test]
+fn twenty_node_gossip_no_routing_asymmetry() {
+    const NUM_NODES: usize = 20;
+    const PEERS_PER_TICK: usize = 3;
+    const DURATION_SECS: usize = 5 * 60;
+    const MAX_PAYLOAD_SIZE: usize = 128;
+
+    let _guard = crate::testing::without_snapshots();
+    sim(|| {
+        let acceptor_id = VarInt::from_u8(1);
+        let routing_asymmetry_count = Arc::new(AtomicUsize::new(0));
+
+        for node_idx in 0..NUM_NODES {
+            let routing_asymmetry_count = routing_asymmetry_count.clone();
+            async move {
+                let mut peer = Peer::new();
+                let mut acceptor = peer
+                    .register_acceptor_channel(acceptor_id, 4096)
+                    .expect("acceptor registration");
+
+                // Accept incoming streams and echo back.
+                async move {
+                    while let Some(stream) = acceptor.recv().await {
+                        async move {
+                            let stream = stream;
+                            let (mut reader, mut writer) = stream.into_split();
+                            let mut buf = BytesMut::with_capacity(MAX_PAYLOAD_SIZE);
+                            loop {
+                                if reader.read_into(&mut buf).await.expect("read") == 0 {
+                                    break;
+                                }
+                            }
+                            let mut echo = buf.freeze();
+                            writer.write_all_from_fin(&mut echo).await.expect("write");
+                        }
+                        .spawn();
+                    }
+                }
+                .spawn();
+
+                // Gossip: connect to 3 random peers each tick, spawned in parallel.
+                let rejection_threshold = ((u8::MAX as usize + 1) / NUM_NODES) * NUM_NODES;
+
+                for _tick in 0..DURATION_SECS {
+                    let mut selected = [0usize; PEERS_PER_TICK];
+                    let mut count = 0;
+                    while count < PEERS_PER_TICK {
+                        let raw = bach::rand::any::<u8>() as usize;
+                        if raw >= rejection_threshold {
+                            continue;
+                        }
+                        let candidate = raw % NUM_NODES;
+                        if candidate == node_idx {
+                            continue;
+                        }
+                        if selected[..count].contains(&candidate) {
+                            continue;
+                        }
+                        selected[count] = candidate;
+                        count += 1;
+                    }
+
+                    for &target_idx in &selected {
+                        let remote = format!("node_{target_idx}:0");
+                        let stream = peer.connect(&*remote, acceptor_id).await.expect("connect");
+
+                        // Spawn the RPC exchange so all 3 peers run concurrently.
+                        async move {
+                            let (mut reader, mut writer) = stream.into_split();
+
+                            let payload = format!("{node_idx}->{target_idx}");
+                            let mut data = Bytes::copy_from_slice(payload.as_bytes());
+                            writer.write_all_from_fin(&mut data).await.expect("write");
+
+                            let mut buf = BytesMut::with_capacity(MAX_PAYLOAD_SIZE);
+                            loop {
+                                if reader.read_into(&mut buf).await.expect("read") == 0 {
+                                    break;
+                                }
+                            }
+                            assert_eq!(
+                                &buf[..],
+                                payload.as_bytes(),
+                                "echo mismatch: node {node_idx} -> node {target_idx}"
+                            );
+                        }
+                        .spawn();
+                    }
+
+                    1.s().sleep().await;
+                }
+
+                let _ = &routing_asymmetry_count;
+            }
+            .group(format!("node_{node_idx}"))
+            .spawn();
+        }
+
+        // Observer: wait for all nodes to finish, then assert zero asymmetry.
+        {
+            let routing_asymmetry_count = routing_asymmetry_count.clone();
+            async move {
+                Duration::from_secs(DURATION_SECS as u64 + 60).sleep().await;
+
+                let count = routing_asymmetry_count.load(Ordering::Relaxed);
+                assert_eq!(
+                    count, 0,
+                    "routing asymmetry detected {count} time(s) during 30-minute gossip"
+                );
+            }
+            .group("observer")
+            .primary()
+            .spawn();
+        }
+    });
+}

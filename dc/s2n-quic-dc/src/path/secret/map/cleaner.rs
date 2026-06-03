@@ -171,7 +171,7 @@ impl Cleaner {
         let id_entries_initial = state.ids.len();
         let mut id_entries_retired = 0usize;
         let mut id_entries_active = 0usize;
-        let address_entries_initial = state.peers.len();
+        let address_entries_initial = state.peers_len();
         let mut address_entries_retired = 0usize;
         let mut address_entries_active = 0usize;
 
@@ -262,7 +262,7 @@ impl Cleaner {
 
         let mut handshake_requests = 0;
         let handshake_requests_skipped =
-            rehandshake.next_rehandshake_batch(state.peers.len(), |peer| {
+            rehandshake.next_rehandshake_batch(state.peers_len(), |peer| {
                 handshake_requests += 1;
                 state.request_handshake(peer, crate::psk::io::HandshakeReason::Periodic)
             });
@@ -270,7 +270,7 @@ impl Cleaner {
         drop(rehandshake);
 
         let id_entries = state.ids.len();
-        let address_entries = state.peers.len();
+        let address_entries = state.peers_len();
 
         state.subscriber().on_path_secret_map_cleaner_cycled(
             event::builder::PathSecretMapCleanerCycled {
