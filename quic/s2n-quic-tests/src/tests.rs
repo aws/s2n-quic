@@ -68,6 +68,7 @@ mod chain;
 mod client_handshake_confirm;
 #[cfg(not(target_os = "windows"))]
 mod dc;
+#[cfg(not(target_os = "windows"))]
 mod dc_connection_close;
 #[cfg(not(target_os = "windows"))]
 mod fips;
