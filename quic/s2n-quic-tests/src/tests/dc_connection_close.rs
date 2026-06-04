@@ -130,7 +130,7 @@ fn handle_packet_failure() {
         });
 
         spawn(async move {
-            if let Some(_) = server.accept().await {
+            if server.accept().await.is_some() {
                 panic!("connection should not be accepted on path_secrets failure");
             }
         });
