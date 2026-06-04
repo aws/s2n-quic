@@ -171,6 +171,20 @@ impl Map {
         Some(opener)
     }
 
+    pub fn open_once_with_application_data(
+        &self,
+        credentials: &Credentials,
+        queue_id: Option<VarInt>,
+        control_out: &mut Vec<u8>,
+    ) -> Option<(open::Once, Option<ApplicationData>)> {
+        let entry = self
+            .store
+            .pre_authentication(credentials, queue_id, control_out)?;
+        let application_data = entry.application_data().clone();
+        let opener = entry.uni_opener(self.clone(), credentials, queue_id);
+        Some((opener, application_data))
+    }
+
     pub fn pair_for_credentials(
         &self,
         credentials: &Credentials,
