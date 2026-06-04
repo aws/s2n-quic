@@ -232,16 +232,12 @@ impl HandshakingPathInner {
         );
 
         let receiver = receiver::State::new();
-        let secret = match self.secret.take() {
-            Some(secret) => secret,
-            None => {
-                return;
-            }
-        };
 
         let entry = Entry::new(
             self.peer,
-            secret,
+            self.secret
+                .take()
+                .expect("peer tokens are only received after secrets are ready"),
             sender,
             receiver,
             self.parameters.clone(),
