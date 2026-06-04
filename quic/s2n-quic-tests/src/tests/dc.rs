@@ -1028,3 +1028,86 @@ impl Interceptor for RandomShort {
         DecoderBufferMut::new(payload)
     }
 }
+
+/// Tests that DcPeerInfo bytes are exchanged during the QUIC handshake:
+/// - The server's `local_peer_info()` is received by the client in `ConnectionInfo::peer_info`
+/// - The client's `local_peer_info()` is received by the server in `ConnectionInfo::peer_info`
+#[test]
+fn dc_peer_info_exchange() -> Result<()> {
+    use std::sync::{Arc, Mutex};
+
+    let server_payload = bytes::Bytes::from_static(b"server-negotiation-payload");
+    let client_payload = bytes::Bytes::from_static(b"client-negotiation-payload");
+
+    let server_dc =
+        MockDcEndpoint::new(&SERVER_TOKENS).with_local_peer_info(server_payload.clone());
+    let client_dc =
+        MockDcEndpoint::new(&CLIENT_TOKENS).with_local_peer_info(client_payload.clone());
+
+    // Grab handles to check received peer info after the handshake
+    let server_received = server_dc.received_peer_info_handle();
+    let client_received = client_dc.received_peer_info_handle();
+
+    let server = Server::builder()
+        .with_tls(SERVER_CERTS)?
+        .with_dc(server_dc)?;
+    let client = Client::builder()
+        .with_tls(certificates::CERT_PEM)?
+        .with_dc(client_dc)?;
+
+    self_test(server, client, true, None, None, true)?;
+
+    // After the handshake completes, verify peer info was exchanged:
+    // The server should have received the client's payload
+    let server_got = server_received.lock().unwrap().clone();
+    assert_eq!(
+        server_got.as_ref(),
+        Some(&client_payload),
+        "Server should receive client's local_peer_info via DcPeerInfo transport parameter"
+    );
+
+    // The client should have received the server's payload
+    let client_got = client_received.lock().unwrap().clone();
+    assert_eq!(
+        client_got.as_ref(),
+        Some(&server_payload),
+        "Client should receive server's local_peer_info via DcPeerInfo transport parameter"
+    );
+
+    Ok(())
+}
+
+/// Tests that when no peer info is configured, `ConnectionInfo::peer_info` is `None`
+#[test]
+fn dc_peer_info_none_when_not_configured() -> Result<()> {
+    // Standard MockDcEndpoint without local_peer_info set
+    let server_dc = MockDcEndpoint::new(&SERVER_TOKENS);
+    let client_dc = MockDcEndpoint::new(&CLIENT_TOKENS);
+
+    let server_received = server_dc.received_peer_info_handle();
+    let client_received = client_dc.received_peer_info_handle();
+
+    let server = Server::builder()
+        .with_tls(SERVER_CERTS)?
+        .with_dc(server_dc)?;
+    let client = Client::builder()
+        .with_tls(certificates::CERT_PEM)?
+        .with_dc(client_dc)?;
+
+    self_test(server, client, true, None, None, true)?;
+
+    // Neither side configured peer info, so neither should receive any
+    let server_got = server_received.lock().unwrap().clone();
+    assert_eq!(
+        server_got, None,
+        "Server should not receive peer_info when client doesn't configure it"
+    );
+
+    let client_got = client_received.lock().unwrap().clone();
+    assert_eq!(
+        client_got, None,
+        "Client should not receive peer_info when server doesn't configure it"
+    );
+
+    Ok(())
+}

@@ -1246,6 +1246,134 @@ impl IntoEvent<bool> for MtuProbingCompleteSupport {
     }
 }
 
+#[cfg(feature = "alloc")]
+/// Opaque peer info bytes exchanged during the TLS handshake for
+/// application-level negotiation (e.g., service discovery and RPC
+/// version negotiation). Each peer sends its local payload; the
+/// remote peer receives it in `ConnectionInfo::peer_info`.
+///
+/// No size limit — the payload grows with the number of services and methods.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DcPeerInfo {
+    data: bytes::Bytes,
+}
+
+#[cfg(feature = "alloc")]
+impl DcPeerInfo {
+    pub fn new(data: bytes::Bytes) -> Self {
+        Self { data }
+    }
+
+    pub fn from_slice(bytes: &[u8]) -> Self {
+        Self {
+            data: bytes::Bytes::copy_from_slice(bytes),
+        }
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    pub fn into_bytes(self) -> bytes::Bytes {
+        self.data
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl TransportParameter for DcPeerInfo {
+    type CodecValue = Self;
+
+    const ID: TransportParameterId = TransportParameterId::from_u32(0xdc0003);
+
+    fn from_codec_value(value: Self::CodecValue) -> Self {
+        value
+    }
+
+    fn try_into_codec_value(&self) -> Option<&Self::CodecValue> {
+        if self.is_empty() {
+            None
+        } else {
+            Some(self)
+        }
+    }
+
+    fn default_value() -> Self {
+        Self::default()
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl EncoderValue for DcPeerInfo {
+    fn encode<E: Encoder>(&self, buffer: &mut E) {
+        buffer.write_slice(&self.data);
+    }
+
+    fn encoding_size(&self) -> usize {
+        self.data.len()
+    }
+}
+
+#[cfg(feature = "alloc")]
+decoder_value!(
+    impl<'a> DcPeerInfo {
+        fn decode(buffer: Buffer) -> Result<Self> {
+            let len = buffer.len();
+            let (slice, buffer) = buffer.decode_slice(len)?;
+            let data = bytes::Bytes::copy_from_slice(slice.into_less_safe_slice());
+            Ok((Self { data }, buffer))
+        }
+    }
+);
+
+#[cfg(feature = "alloc")]
+impl TransportParameterValidator for DcPeerInfo {}
+
+/// No-op DcPeerInfo when alloc is not available
+#[cfg(not(feature = "alloc"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DcPeerInfo;
+
+#[cfg(not(feature = "alloc"))]
+impl TransportParameter for DcPeerInfo {
+    type CodecValue = ();
+    const ID: TransportParameterId = TransportParameterId::from_u32(0xdc0003);
+    fn from_codec_value(_value: ()) -> Self {
+        Self
+    }
+    fn try_into_codec_value(&self) -> Option<&()> {
+        None
+    }
+    fn default_value() -> Self {
+        Self
+    }
+}
+
+#[cfg(not(feature = "alloc"))]
+impl EncoderValue for DcPeerInfo {
+    fn encode<E: Encoder>(&self, _buffer: &mut E) {}
+}
+
+#[cfg(not(feature = "alloc"))]
+decoder_value!(
+    impl<'a> DcPeerInfo {
+        fn decode(buffer: Buffer) -> Result<Self> {
+            let len = buffer.len();
+            let buffer = buffer.skip(len)?;
+            Ok((Self, buffer))
+        }
+    }
+);
+
+#[cfg(not(feature = "alloc"))]
+impl TransportParameterValidator for DcPeerInfo {}
 //= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# If present, transport parameters that set initial per-stream flow
 //# control limits (initial_max_stream_data_bidi_local,
@@ -1472,7 +1600,7 @@ macro_rules! impl_transport_parameters {
         $($server_param:ident),* $(,)? >
         { $($field:ident : $field_ty:ty),* $(,)? }
     ) => {
-        #[derive(Clone, Copy, Debug, PartialEq)]
+        #[derive(Clone, Debug, PartialEq)]
         pub struct TransportParameters<$($server_param),*> {
             $(
                 pub $field: $field_ty
@@ -1607,6 +1735,7 @@ impl_transport_parameters!(
         initial_source_connection_id: Option<InitialSourceConnectionId>,
         retry_source_connection_id: RetrySourceConnectionId,
         dc_supported_versions: DcSupportedVersions,
+        dc_peer_info: DcPeerInfo,
         mtu_probing_complete_support: MtuProbingCompleteSupport,
     }
 );

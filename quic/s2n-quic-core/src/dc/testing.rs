@@ -11,7 +11,7 @@ use crate::{
 use core::{num::NonZeroU32, time::Duration};
 use std::sync::{
     atomic::{AtomicU16, AtomicU8, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 
 pub struct MockDcEndpoint {
@@ -19,6 +19,11 @@ pub struct MockDcEndpoint {
     pub on_possible_secret_control_packet_count: Arc<AtomicU8>,
     pub on_possible_secret_control_packet: fn() -> bool,
     mtu_probing_complete_support: MtuProbingCompleteSupport,
+    #[cfg(feature = "alloc")]
+    local_peer_info: Option<bytes::Bytes>,
+    /// Captures the `peer_info` received from the remote peer during `new_path()`.
+    #[cfg(feature = "alloc")]
+    received_peer_info: Arc<Mutex<Option<bytes::Bytes>>>,
 }
 
 impl MockDcEndpoint {
@@ -28,6 +33,8 @@ impl MockDcEndpoint {
             on_possible_secret_control_packet_count: Arc::new(AtomicU8::default()),
             on_possible_secret_control_packet: || false,
             mtu_probing_complete_support: MtuProbingCompleteSupport::Enabled,
+            local_peer_info: None,
+            received_peer_info: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -37,6 +44,24 @@ impl MockDcEndpoint {
             false => MtuProbingCompleteSupport::Disabled,
         };
         self
+    }
+
+    #[cfg(feature = "alloc")]
+    pub fn with_local_peer_info(mut self, peer_info: bytes::Bytes) -> Self {
+        self.local_peer_info = Some(peer_info);
+        self
+    }
+
+    /// Returns the peer info bytes received from the remote peer during the handshake.
+    #[cfg(feature = "alloc")]
+    pub fn received_peer_info(&self) -> Option<bytes::Bytes> {
+        self.received_peer_info.lock().unwrap().clone()
+    }
+
+    /// Returns a clone of the shared handle for checking received peer info after handshake.
+    #[cfg(feature = "alloc")]
+    pub fn received_peer_info_handle(&self) -> Arc<Mutex<Option<bytes::Bytes>>> {
+        self.received_peer_info.clone()
     }
 }
 
@@ -54,6 +79,11 @@ impl dc::Endpoint for MockDcEndpoint {
     type Path = MockDcPath;
 
     fn new_path(&mut self, connection_info: &ConnectionInfo) -> Option<Self::Path> {
+        // Capture the peer_info received from the remote peer
+        if let Some(peer_info) = &connection_info.peer_info {
+            *self.received_peer_info.lock().unwrap() = Some(peer_info.clone());
+        }
+
         Some(MockDcPath {
             stateless_reset_tokens: self.stateless_reset_tokens.clone(),
             mtu: connection_info
@@ -79,6 +109,11 @@ impl dc::Endpoint for MockDcEndpoint {
             self.mtu_probing_complete_support,
             MtuProbingCompleteSupport::Enabled
         )
+    }
+
+    #[cfg(feature = "alloc")]
+    fn local_peer_info(&self) -> Option<bytes::Bytes> {
+        self.local_peer_info.clone()
     }
 }
 

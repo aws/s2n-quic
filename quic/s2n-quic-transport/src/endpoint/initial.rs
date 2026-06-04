@@ -234,6 +234,11 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             transport_parameters.mtu_probing_complete_support = MtuProbingCompleteSupport::Enabled;
         }
 
+        if let Some(peer_info) = endpoint_context.dc.local_peer_info() {
+            transport_parameters.dc_peer_info =
+                s2n_quic_core::transport::parameters::DcPeerInfo::new(peer_info);
+        }
+
         let local_address = header.path.local_address();
         let connection_info = tls::ConnectionInfo::new(local_address, remote_address);
 

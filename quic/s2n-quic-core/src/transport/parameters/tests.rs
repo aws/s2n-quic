@@ -84,6 +84,7 @@ fn server_transport_parameters() -> ServerTransportParameters {
             len: 1,
             versions: [3, 0, 0, 0],
         },
+        dc_peer_info: DcPeerInfo::from_slice(b"server-peer-info"),
         mtu_probing_complete_support: MtuProbingCompleteSupport::Enabled,
     }
 }
@@ -126,6 +127,7 @@ fn client_transport_parameters() -> ClientTransportParameters {
             len: 4,
             versions: [1, 2, 3, 4],
         },
+        dc_peer_info: DcPeerInfo::from_slice(b"client-peer-info"),
         mtu_probing_complete_support: MtuProbingCompleteSupport::Enabled,
     }
 }
@@ -365,6 +367,75 @@ fn mtu_probing_complete_support_encoding() {
                 .windows(id_bytes.len())
                 .any(|window| window == id_bytes.as_slice()),
             "MtuProbingCompleteSupport parameter should NOT be encoded when Disabled"
+        );
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[test]
+fn dc_peer_info_encode_decode_round_trip() {
+    let value = DcPeerInfo::from_slice(b"negotiation-payload-v1");
+    let encoded: Vec<u8> = assert_codec_round_trip_value!(DcPeerInfo, value);
+    assert_eq!(encoded, b"negotiation-payload-v1");
+}
+
+#[test]
+#[cfg(feature = "alloc")]
+fn dc_peer_info_empty_not_sent() {
+    let value = DcPeerInfo::default();
+    assert!(value.is_empty());
+    assert_eq!(value.len(), 0);
+    // Empty DcPeerInfo should not produce a codec value (not sent on the wire)
+    assert!(value.try_into_codec_value().is_none());
+}
+
+#[test]
+#[cfg(feature = "alloc")]
+fn dc_peer_info_from_slice_and_into_bytes() {
+    let value = DcPeerInfo::from_slice(b"test-payload");
+    assert!(!value.is_empty());
+    assert_eq!(value.len(), 12);
+    assert_eq!(value.data(), b"test-payload");
+    assert_eq!(
+        value.into_bytes(),
+        bytes::Bytes::from_static(b"test-payload")
+    );
+}
+
+#[test]
+#[cfg(feature = "alloc")]
+fn dc_peer_info_encoding() {
+    let id_bytes = DcPeerInfo::ID.encode_to_vec();
+    let mut params = ClientTransportParameters::default();
+
+    // When non-empty, the parameter SHOULD be encoded
+    {
+        params.dc_peer_info = DcPeerInfo::from_slice(b"hello");
+        let encoded = params.encode_to_vec();
+
+        assert!(
+            encoded
+                .windows(id_bytes.len())
+                .any(|window| window == id_bytes.as_slice()),
+            "DcPeerInfo parameter should be encoded when non-empty"
+        );
+        // The payload bytes should appear in the encoded output
+        assert!(
+            encoded.windows(5).any(|window| window == b"hello"),
+            "DcPeerInfo payload should appear in encoded output"
+        );
+    }
+
+    // When empty, the parameter should NOT be encoded
+    {
+        params.dc_peer_info = DcPeerInfo::default();
+        let encoded = params.encode_to_vec();
+
+        assert!(
+            !encoded
+                .windows(id_bytes.len())
+                .any(|window| window == id_bytes.as_slice()),
+            "DcPeerInfo parameter should NOT be encoded when empty"
         );
     }
 }

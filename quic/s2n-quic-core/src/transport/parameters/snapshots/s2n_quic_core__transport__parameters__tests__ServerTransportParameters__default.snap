@@ -1,6 +1,5 @@
 ---
 source: quic/s2n-quic-core/src/transport/parameters/tests.rs
-assertion_line: 47
 expression: default_value
 ---
 TransportParameters {
@@ -76,6 +75,9 @@ TransportParameters {
             0,
             0,
         ],
+    },
+    dc_peer_info: DcPeerInfo {
+        data: b"",
     },
     mtu_probing_complete_support: Disabled,
 }

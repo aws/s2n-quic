@@ -1235,6 +1235,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 } else {
                     MtuProbingCompleteSupport::Disabled
                 };
+
+            if let Some(peer_info) = endpoint_context.dc.local_peer_info() {
+                transport_parameters.dc_peer_info =
+                    s2n_quic_core::transport::parameters::DcPeerInfo::new(peer_info);
+            }
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2

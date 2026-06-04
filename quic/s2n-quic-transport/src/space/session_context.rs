@@ -54,6 +54,8 @@ struct PeerTransportParams {
     datagram_limits: DatagramLimits,
     max_ack_delay: MaxAckDelay,
     dc_version: Option<dc::Version>,
+    /// Opaque peer info bytes from the remote peer's DcPeerInfo transport parameter.
+    dc_peer_info: s2n_quic_core::transport::parameters::DcPeerInfo,
     /// The peer is both prepared to receive MtuProbingComplete frame and will send the frame if the local side indicates
     /// it supports MtuProbingComplete frame via transport parameter.
     mtu_probing_complete_support: MtuProbingCompleteSupport,
@@ -218,6 +220,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'
             datagram_limits,
             max_ack_delay: peer_parameters.max_ack_delay,
             dc_version,
+            dc_peer_info: peer_parameters.dc_peer_info,
             mtu_probing_complete_support: peer_parameters.mtu_probing_complete_support,
         })
     }
@@ -276,6 +279,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'
             datagram_limits,
             max_ack_delay: peer_parameters.max_ack_delay,
             dc_version,
+            dc_peer_info: peer_parameters.dc_peer_info,
             mtu_probing_complete_support: peer_parameters.mtu_probing_complete_support,
         })
     }
@@ -461,11 +465,17 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 self.limits,
             );
             let remote_address = self.path_manager.active_path().remote_address().0;
+            let peer_info = if !peer_params.dc_peer_info.is_empty() {
+                Some(peer_params.dc_peer_info.into_bytes())
+            } else {
+                None
+            };
             let conn_info = dc::ConnectionInfo::new(
                 &remote_address,
                 dc_version,
                 application_params,
                 Config::ENDPOINT_TYPE.into_event(),
+                peer_info,
             );
             let dc_path = self.dc.new_path(&conn_info);
 

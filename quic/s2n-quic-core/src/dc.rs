@@ -56,9 +56,34 @@ pub struct ConnectionInfo<'a> {
     pub application_params: ApplicationParams,
     /// The local endpoint type (client or server)
     pub endpoint_type: EndpointType,
+    /// Opaque peer info bytes received from the remote peer via the
+    /// `DcPeerInfo` QUIC transport parameter. `None` if the remote peer
+    /// did not send this parameter (e.g., older peer without negotiation
+    /// support).
+    #[cfg(feature = "alloc")]
+    pub peer_info: Option<bytes::Bytes>,
 }
-
 impl<'a> ConnectionInfo<'a> {
+    #[cfg(feature = "alloc")]
+    #[inline]
+    #[doc(hidden)]
+    pub fn new(
+        remote_address: &'a inet::SocketAddress,
+        dc_version: Version,
+        application_params: ApplicationParams,
+        endpoint_type: EndpointType,
+        peer_info: Option<bytes::Bytes>,
+    ) -> Self {
+        Self {
+            remote_address: remote_address.into_event(),
+            dc_version,
+            application_params,
+            endpoint_type,
+            peer_info,
+        }
+    }
+
+    #[cfg(not(feature = "alloc"))]
     #[inline]
     #[doc(hidden)]
     pub fn new(

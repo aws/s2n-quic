@@ -33,6 +33,16 @@ pub trait Endpoint: 'static + Send {
     fn mtu_probing_complete_support(&self) -> bool {
         true
     }
+
+    /// Returns the local peer info bytes to be sent as a QUIC transport parameter
+    /// during the TLS handshake. The remote peer will receive these bytes in its
+    /// `ConnectionInfo::peer_info` field.
+    ///
+    /// Returns `None` if no peer info should be sent (default).
+    #[cfg(feature = "alloc")]
+    fn local_peer_info(&self) -> Option<bytes::Bytes> {
+        None
+    }
 }
 
 /// A dc path
