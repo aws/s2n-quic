@@ -1697,6 +1697,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //= https://www.rfc-editor.org/rfc/rfc9000#10.2.1
         //# An endpoint that is closing is not required to process any received frame.
         if matches!(self.state, ConnectionState::Closing) {
+            let path = &self.path_manager[path_id];
             publisher.on_packet_dropped(event::builder::PacketDropped {
                 reason: event::builder::PacketDropReason::ConnectionClosed {
                     path: path_event!(path, path_id),
