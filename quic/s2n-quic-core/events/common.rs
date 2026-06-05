@@ -902,6 +902,11 @@ enum PacketDropReason<'a> {
         path: Path<'a>,
         packet_type: PacketType,
     },
+    /// The connection has already closed
+    ConnectionClosed {
+        path: Path<'a>,
+        packet_type: PacketType,
+    },
 }
 
 #[deprecated(note = "use on_rx_ack_range_dropped event instead")]

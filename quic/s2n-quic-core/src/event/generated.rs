@@ -1132,6 +1132,12 @@ pub mod api {
             path: Path<'a>,
             packet_type: PacketType,
         },
+        #[non_exhaustive]
+        #[doc = " The connection has already closed"]
+        ConnectionClosed {
+            path: Path<'a>,
+            packet_type: PacketType,
+        },
     }
     impl<'a> aggregate::AsVariant for PacketDropReason<'a> {
         const VARIANTS: &'static [aggregate::info::Variant] = &[
@@ -1195,6 +1201,11 @@ pub mod api {
                 id: 11usize,
             }
             .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("CONNECTION_CLOSED\0"),
+                id: 12usize,
+            }
+            .build(),
         ];
         #[inline]
         fn variant_idx(&self) -> usize {
@@ -1211,6 +1222,7 @@ pub mod api {
                 Self::UndersizedInitialPacket { .. } => 9usize,
                 Self::InitialConnectionIdInvalidSpace { .. } => 10usize,
                 Self::PacketSpaceDoesNotExist { .. } => 11usize,
+                Self::ConnectionClosed { .. } => 12usize,
             }
         }
     }
@@ -3315,7 +3327,7 @@ pub mod api {
         }
     }
     macro_rules! impl_conn_id {
-        ($name:ident) => {
+        ($ name : ident) => {
             impl<'a> IntoEvent<builder::ConnectionId<'a>> for &'a crate::connection::id::$name {
                 #[inline]
                 fn into_event(self) -> builder::ConnectionId<'a> {
@@ -5752,6 +5764,11 @@ pub mod builder {
             path: Path<'a>,
             packet_type: PacketType,
         },
+        #[doc = " The connection has already closed"]
+        ConnectionClosed {
+            path: Path<'a>,
+            packet_type: PacketType,
+        },
     }
     impl<'a> IntoEvent<api::PacketDropReason<'a>> for PacketDropReason<'a> {
         #[inline]
@@ -5803,6 +5820,10 @@ pub mod builder {
                     }
                 }
                 Self::PacketSpaceDoesNotExist { path, packet_type } => PacketSpaceDoesNotExist {
+                    path: path.into_event(),
+                    packet_type: packet_type.into_event(),
+                },
+                Self::ConnectionClosed { path, packet_type } => ConnectionClosed {
                     path: path.into_event(),
                     packet_type: packet_type.into_event(),
                 },
@@ -7501,7 +7522,8 @@ pub mod supervisor {
 pub use traits::*;
 mod traits {
     use super::*;
-    use crate::{event::Meta, query};
+    use crate::event::Meta;
+    use crate::query;
     use core::fmt;
     /// Allows for events to be subscribed to
     pub trait Subscriber: 'static + Send {

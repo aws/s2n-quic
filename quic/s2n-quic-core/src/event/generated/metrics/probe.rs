@@ -5,12 +5,10 @@
 // This file was generated with the `s2n-events` crate and any required
 // changes should be made there.
 
-use crate::{
-    event::metrics::aggregate::{
-        self, info, BoolRecorder, Info, NominalRecorder, Recorder as MetricRecorder,
-    },
-    probe::define,
+use crate::event::metrics::aggregate::{
+    self, info, BoolRecorder, Info, NominalRecorder, Recorder as MetricRecorder,
 };
+use crate::probe::define;
 mod id {
     #[allow(non_camel_case_types)]
     #[allow(clippy::upper_case_acronyms)]

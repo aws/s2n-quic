@@ -1694,6 +1694,18 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
+        //= https://www.rfc-editor.org/rfc/rfc9000#10.2.1
+        //# An endpoint that is closing is not required to process any received frame.
+        if matches!(self.state, ConnectionState::Closing) {
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::ConnectionClosed {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::OneRtt,
+                },
+            });
+            return Ok(());
+        }
+
         //= https://www.rfc-editor.org/rfc/rfc9001#section-5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
         //# their peer prior to completing the handshake.
