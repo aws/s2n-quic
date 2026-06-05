@@ -18,7 +18,14 @@ use crate::{
 };
 use s2n_quic::server::Name;
 use s2n_quic_core::varint::VarInt;
-use std::{io, net::SocketAddr, sync::Arc};
+use std::{
+    future::{poll_fn, Future},
+    io,
+    net::SocketAddr,
+    pin::pin,
+    sync::Arc,
+    time::Instant,
+};
 
 pub mod rpc;
 
@@ -112,10 +119,21 @@ impl Client {
     /// - Using an `acceptor_id` not registered on the server causes the server to reject
     ///   the stream, which surfaces as a later write or read error.
     pub async fn connect(&mut self, peer: SocketAddr, acceptor_id: VarInt) -> io::Result<Stream> {
-        let (peer, _kind) = self
+        let handshake_start = Instant::now();
+        let (peer, handshake_kind) = self
             .psk
             .handshake_with_entry(peer, self.server_name.clone())
             .await?;
+        let handshake_elapsed = handshake_start.elapsed();
+        let handshake_timer = match handshake_kind {
+            crate::path::secret::HandshakeKind::Cached => {
+                &self.endpoint.client_metrics.handshake_cached
+            }
+            crate::path::secret::HandshakeKind::Fresh => {
+                &self.endpoint.client_metrics.handshake_fresh
+            }
+        };
+        handshake_timer.record(handshake_elapsed);
 
         let path_secret_entry = peer.into_raw();
         let now = self.endpoint.clock.now();
@@ -133,12 +151,33 @@ impl Client {
             ));
         };
 
-        let alloc = client_state
-            .alloc(&path_secret_entry, self.endpoint.dead_peer_cooldown)
+        let alloc_start = Instant::now();
+        let mut blocked = false;
+        let alloc = {
+            let mut alloc_fut =
+                pin!(client_state.alloc(&path_secret_entry, self.endpoint.dead_peer_cooldown));
+            poll_fn(|cx| {
+                let poll = alloc_fut.as_mut().poll(cx);
+                if poll.is_pending() {
+                    blocked = true;
+                }
+                poll
+            })
             .await
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::ConnectionReset, "peer queue slots closed")
-            })?;
+        }
+        .ok_or_else(|| io::Error::new(io::ErrorKind::ConnectionReset, "peer queue slots closed"))?;
+        let alloc_elapsed = alloc_start.elapsed();
+        if blocked {
+            self.endpoint
+                .client_metrics
+                .alloc_blocked
+                .record(alloc_elapsed);
+        } else {
+            self.endpoint
+                .client_metrics
+                .alloc_fast
+                .record(alloc_elapsed);
+        }
 
         let frame_tx = self.endpoint.frame_tx.clone();
         let writer = Writer::new_client(
@@ -159,7 +198,14 @@ impl Client {
             self.endpoint.reader_metrics.clone(),
         );
 
-        Ok(Stream::new(reader, writer))
+        let stream = Stream::new(reader, writer);
+
+        self.endpoint
+            .client_metrics
+            .connect_time
+            .record(handshake_start.elapsed());
+
+        Ok(stream)
     }
 
     /// Performs a single-round-trip RPC: sends `request` and collects `response`.

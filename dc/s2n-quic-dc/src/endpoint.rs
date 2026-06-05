@@ -93,6 +93,8 @@ pub struct Endpoint {
     pub reader_metrics: Arc<crate::stream::metrics::ReaderMetrics>,
     /// Per-outcome sojourn metrics for stream write halves (shared across all server streams).
     pub writer_metrics: Arc<crate::stream::metrics::WriterMetrics>,
+    /// Metrics for client-side connect operations (queue-pair allocation timing/blocked counts).
+    pub client_metrics: Arc<crate::stream::metrics::ClientMetrics>,
 }
 
 // ── Pipeline Setup ────────────────────────────────────────────────────────
@@ -605,6 +607,9 @@ where
         &counter_registry,
         "stream.writer",
     ));
+    let client_metrics = Arc::new(crate::stream::metrics::ClientMetrics::new(
+        &counter_registry,
+    ));
     for (send_worker_id, batch_rx, ack_rx, invalidation_rx, waker_sink) in (
         worker_batch_rxs,
         worker_ack_rxs,
@@ -756,6 +761,7 @@ where
         clock: stream_clock,
         reader_metrics,
         writer_metrics,
+        client_metrics,
     }
 }
 

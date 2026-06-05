@@ -18,7 +18,7 @@
 //! [`Frame::enqueued_at`]: crate::endpoint::frame::Frame::enqueued_at
 
 use crate::{
-    counter::{Registry, Summary, Unit},
+    counter::{Registry, Summary, Timer, Unit},
     endpoint::frame::FailureReason,
     time::precision::Timestamp,
 };
@@ -127,6 +127,51 @@ impl WriterMetrics {
             tx_msg_segment_size: registry.register_summary("tx.msg.segment_size", Unit::Byte),
             tx_msg_chunks_per_segment: registry
                 .register_summary("tx.msg.chunks_per_segment", Unit::Count),
+        }
+    }
+}
+
+/// Metrics for client-side stream connect operations.
+///
+/// `connect_time` records the total wall-clock duration of
+/// [`Client::connect`](crate::stream::Client::connect), covering handshake,
+/// queue-pair allocation, and stream state setup.
+///
+/// `alloc_fast` and `alloc_blocked` record the wall-clock duration of the
+/// queue-pair allocation step, partitioned by whether the allocation future
+/// completed on its first poll (`fast`) or had to suspend waiting for a peer
+/// free-list slot (`blocked`).
+///
+/// `handshake_cached` and `handshake_fresh` record the duration of the PSK
+/// handshake step, partitioned by whether a path secret was already present in
+/// the cache (`cached`) or had to be negotiated (`fresh`).
+///
+/// Sampling is disabled on all timers so every connect is recorded.
+#[derive(Clone)]
+pub struct ClientMetrics {
+    pub connect_time: Timer,
+    pub alloc_fast: Timer,
+    pub alloc_blocked: Timer,
+    pub handshake_cached: Timer,
+    pub handshake_fresh: Timer,
+}
+
+impl ClientMetrics {
+    pub fn new(registry: &Registry) -> Self {
+        Self {
+            connect_time: registry.register_timer("stream.client.connect.time").unsampled(),
+            alloc_fast: registry
+                .register_nominal_timer("stream.client.alloc", "fast")
+                .unsampled(),
+            alloc_blocked: registry
+                .register_nominal_timer("stream.client.alloc", "blocked")
+                .unsampled(),
+            handshake_cached: registry
+                .register_nominal_timer("stream.client.handshake", "cached")
+                .unsampled(),
+            handshake_fresh: registry
+                .register_nominal_timer("stream.client.handshake", "fresh")
+                .unsampled(),
         }
     }
 }
