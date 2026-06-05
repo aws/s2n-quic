@@ -8,7 +8,7 @@
 //! module captures that pattern in a pair of traits ([`Request`] and [`Response`]) and a
 //! free function ([`from_stream`]) that drives both halves concurrently.
 
-use crate::stream::Stream;
+use crate::stream::{MsgFlags, Stream};
 use core::future::Future;
 use s2n_quic_core::buffer::{self, writer::Storage as _};
 use std::{future::poll_fn, io};
@@ -114,9 +114,15 @@ where
 
     let writer = async move {
         let mut request = request;
-        while !request.buffer_is_empty() {
-            writer.write_from_fin(&mut request).await?;
-        }
+        writer
+            .write_msg(
+                &mut request,
+                MsgFlags {
+                    is_fin: true,
+                    is_wakeup: true,
+                },
+            )
+            .await?;
         writer.shutdown()?;
         <io::Result<_>>::Ok(())
     };
