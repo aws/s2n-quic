@@ -276,6 +276,26 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         rpc_internal::from_stream(stream, request, response).await
     }
 
+    /// Connects using the TLS over TCP transport layer with a pre-existing TCP stream.
+    #[inline]
+    pub async fn connect_tls_with(
+        &self,
+        stream: TcpStream,
+        server_name: Name,
+        config: &impl crate::stream::TlsConnectionBuilder,
+    ) -> io::Result<Stream<S>> {
+        let stream = client::connect_tls_with(
+            stream,
+            server_name,
+            config,
+            &self.env,
+            self.linger,
+            self.handshake.map(),
+        )
+        .await?;
+        Ok(stream)
+    }
+
     /// Connects with a pre-existing TCP stream
     #[inline]
     pub async fn connect_tcp_with(
@@ -690,51 +710,169 @@ where
         }
     };
 
-    // Make sure TCP_NODELAY is set
-    let _ = socket.set_nodelay(true);
-
-    if linger.is_some() {
-        #[allow(deprecated)]
-        let _ = socket.set_linger(linger);
-    }
-
-    let mut connection = config.build_connection(s2n_tls::enums::Mode::Client)?;
-    (*connection).as_mut().set_server_name(&server_name)?;
-
-    let socket = Arc::new(crate::stream::socket::application::Single(socket));
-    let mut connection =
-        crate::stream::tls::S2nTlsConnection::from_connection(socket.clone(), connection)?;
-
-    let res = connection.negotiate(None).await;
-
-    let negotiate_end = env.clock().get_time();
-
-    env.endpoint_publisher_with_time(negotiate_end)
-        .on_stream_tls_connect(event::builder::StreamTlsConnect {
-            error: res.is_err(),
-            tcp_latency: kernel_start_time.saturating_duration_since(start),
-            tls_latency: negotiate_end.saturating_duration_since(kernel_start_time),
-        });
-
-    // Return if negotiation failed.
-    res?;
-
-    // Successful
-    guard.reason = None;
-
-    // The handshake is complete at this point, so the stream should be considered open. Eventually
-    // at this point we'll want to export the TLS keys from the connection and add those into the
-    // state below. Right now though we're continuing to use s2n-tls for maintaining relevant
-    // state.
-
-    crate::stream::tls::build_stream(
-        kernel_start_time,
-        addr,
+    let stream = NegotiateTls {
         socket,
-        connection,
+        addr,
+        server_name,
+        config,
         env,
+        linger,
         map,
-        s2n_quic_core::endpoint::Type::Client,
-    )?
-    .build()
+        start,
+        kernel_start_time,
+        guard,
+    }
+    .negotiate()
+    .await?;
+
+    Ok(stream)
+}
+
+/// Negotiates TLS 1.3 over a pre-existing TCP stream
+#[inline]
+pub async fn connect_tls_with<Sub>(
+    socket: TcpStream,
+    server_name: Name,
+    config: &impl crate::stream::TlsConnectionBuilder,
+    env: &Environment<Sub>,
+    linger: Option<Duration>,
+    // FIXME: Do we really need the map for this?
+    map: &crate::path::secret::Map,
+) -> io::Result<Stream<Sub>>
+where
+    Sub: event::Subscriber + Clone,
+{
+    let start = env.clock().get_time();
+
+    // The peer address is resolved from the provided socket. This is done before arming the guard
+    // below so that a failure here doesn't emit a connect error event for a handshake we never
+    // started.
+    let addr = socket.peer_addr()?;
+
+    // This emits the error event in case this future gets dropped. The TCP connection is already
+    // established, so we begin waiting on the handshake.
+    let guard = DropGuard {
+        env,
+        reason: Some(StreamTcpConnectErrorReason::AbortedPendingHandshake),
+        start,
+    };
+
+    let stream = NegotiateTls {
+        socket,
+        addr,
+        server_name,
+        config,
+        env,
+        linger,
+        map,
+        start,
+        // The TCP connection was established before this call, so there is no TCP connect step to
+        // time: using `start` as the kernel start time reports a zero TCP latency for the TLS
+        // event emitted during negotiation.
+        kernel_start_time: start,
+        guard,
+    }
+    .negotiate()
+    .await?;
+
+    Ok(stream)
+}
+
+/// Negotiates TLS 1.3 over a connected TCP socket and builds the resulting stream.
+///
+/// This is the shared tail of [`connect_tls`] and [`connect_tls_with`]: those functions differ
+/// only in how the socket is obtained.
+struct NegotiateTls<'a, C, Sub>
+where
+    C: crate::stream::TlsConnectionBuilder,
+    Sub: event::Subscriber + Clone,
+{
+    /// A connected TCP socket to negotiate TLS over.
+    socket: TcpStream,
+    /// The peer address of `socket`.
+    addr: SocketAddr,
+    /// The server name to request during the TLS handshake.
+    server_name: Name,
+    /// Builds the s2n-tls connection used for negotiation.
+    config: &'a C,
+    env: &'a Environment<Sub>,
+    /// `SO_LINGER` to apply to `socket`, if any.
+    linger: Option<Duration>,
+    // FIXME: Do we really need the map for this?
+    map: &'a crate::path::secret::Map,
+    /// When the connect attempt began.
+    start: Timestamp,
+    /// When the TCP connection was established. Equal to `start` when the socket was already
+    /// connected by the caller.
+    kernel_start_time: Timestamp,
+    guard: DropGuard<'a, Sub>,
+}
+
+impl<C, Sub> NegotiateTls<'_, C, Sub>
+where
+    C: crate::stream::TlsConnectionBuilder,
+    Sub: event::Subscriber + Clone,
+{
+    #[inline]
+    async fn negotiate(self) -> io::Result<Stream<Sub>> {
+        let NegotiateTls {
+            socket,
+            addr,
+            server_name,
+            config,
+            env,
+            linger,
+            map,
+            start,
+            kernel_start_time,
+            mut guard,
+        } = self;
+
+        // Make sure TCP_NODELAY is set
+        let _ = socket.set_nodelay(true);
+
+        if linger.is_some() {
+            #[allow(deprecated)]
+            let _ = socket.set_linger(linger);
+        }
+
+        let mut connection = config.build_connection(s2n_tls::enums::Mode::Client)?;
+        (*connection).as_mut().set_server_name(&server_name)?;
+
+        let socket = Arc::new(crate::stream::socket::application::Single(socket));
+        let mut connection =
+            crate::stream::tls::S2nTlsConnection::from_connection(socket.clone(), connection)?;
+
+        let res = connection.negotiate(None).await;
+
+        let negotiate_end = env.clock().get_time();
+
+        env.endpoint_publisher_with_time(negotiate_end)
+            .on_stream_tls_connect(event::builder::StreamTlsConnect {
+                error: res.is_err(),
+                tcp_latency: kernel_start_time.saturating_duration_since(start),
+                tls_latency: negotiate_end.saturating_duration_since(kernel_start_time),
+            });
+
+        // Return if negotiation failed.
+        res?;
+
+        guard.reason = None;
+
+        // The handshake is complete at this point, so the stream should be considered open.
+        // Eventually at this point we'll want to export the TLS keys from the connection and add
+        // those into the state below. Right now though we're continuing to use s2n-tls for
+        // maintaining relevant state.
+
+        crate::stream::tls::build_stream(
+            kernel_start_time,
+            addr,
+            socket,
+            connection,
+            env,
+            map,
+            s2n_quic_core::endpoint::Type::Client,
+        )?
+        .build()
+    }
 }
