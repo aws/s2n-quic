@@ -569,8 +569,8 @@ impl<A: Adapter> List<A> {
         let prev = prev_raw.map(|p| NonNull::new_unchecked(p.as_ptr() as *mut A::Value));
         let next = next_raw.map(|p| NonNull::new_unchecked(p.as_ptr() as *mut A::Value));
 
-        let is_head = prev.map_or(false, |p| p == node);
-        let is_tail = next.map_or(false, |p| p == node);
+        let is_head = prev == Some(node);
+        let is_tail = next == Some(node);
 
         match (is_head, is_tail) {
             (true, true) => {

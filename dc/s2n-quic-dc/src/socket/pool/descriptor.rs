@@ -66,7 +66,7 @@ unsafe impl Recycler for SyncRecycler {
     #[inline]
     unsafe fn try_push(&self, recycled: Recycled<Self>) -> Result<(), Recycled<Self>> {
         if let Some(shared) = self.0.upgrade() {
-            shared.push(recycled).map_err(|r| r)
+            shared.push(recycled)
         } else {
             Err(recycled)
         }
@@ -96,7 +96,7 @@ unsafe impl Recycler for UnsyncRecycler {
     unsafe fn try_push(&self, recycled: Recycled<Self>) -> Result<(), Recycled<Self>> {
         if let Some(shared) = self.0.upgrade() {
             // SAFETY: `UnsyncRecycler` is `!Send`; all access is on the same thread.
-            shared.push_recycled(recycled).map_err(|r| r)
+            shared.push_recycled(recycled)
         } else {
             Err(recycled)
         }

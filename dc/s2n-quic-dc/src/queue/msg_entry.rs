@@ -219,7 +219,7 @@ impl MsgEntry {
 #[inline]
 pub(crate) fn chunks_for_size(total_size: u32, chunk_size: u16) -> u16 {
     let cs = chunk_size as u32;
-    ((total_size + cs - 1) / cs) as u16
+    total_size.div_ceil(cs) as u16
 }
 
 #[cfg(test)]

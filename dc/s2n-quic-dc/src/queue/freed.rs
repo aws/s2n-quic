@@ -69,6 +69,12 @@ struct FreedState {
     retry_queue: VecDeque<RetryEntry>,
 }
 
+impl Default for FreedInner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FreedInner {
     pub fn new() -> Self {
         Self {

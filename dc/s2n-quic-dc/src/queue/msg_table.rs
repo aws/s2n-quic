@@ -117,7 +117,7 @@ impl MsgTable {
         }
 
         // Validate using u32 arithmetic to avoid u16 truncation in chunks_for_size
-        let true_chunk_count = (message_size as u64 + chunk_size as u64 - 1) / chunk_size as u64;
+        let true_chunk_count = (message_size as u64).div_ceil(chunk_size as u64);
         if true_chunk_count > msg_entry::MAX_CHUNKS as u64 {
             return Err(InsertError::MessageTooLarge);
         }
