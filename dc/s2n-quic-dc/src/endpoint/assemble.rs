@@ -518,6 +518,14 @@ where
                         if discarded > 0 {
                             context.cca.on_packet_discarded(discarded);
                         }
+                        trace!(
+                            credentials = %context.credentials.id,
+                            sender_idx = %context.sender_idx,
+                            shell_pn = old_pn.as_u64(),
+                            probe_pn = pn.as_u64(),
+                            discarded_bytes = discarded,
+                            "PTO probe: shell created (old PN -> new PN)"
+                        );
                     }
                 } else if rtt_sample_needed {
                     // ACK-only ack-eliciting packet (our own RTT probe or PTO-triggered).
@@ -831,6 +839,13 @@ fn assemble_probe(
                     context.cca.on_packet_discarded(tx_info.sent_bytes as usize);
                 }
             }
+
+            // Removing the cancelled tail can drop `bytes_in_flight` to zero while
+            // predecessor shells (whose forward chain pointed at tails already gone)
+            // still linger. Those shells carry no bytes and can never resolve, so they
+            // would otherwise pin `has_inflight()` true and keep the PTO arming forever.
+            // Reap them as soon as nothing is genuinely in flight.
+            context.reap_shells_if_drained();
             continue;
         }
 

@@ -237,6 +237,12 @@ pub(crate) fn process_ack<Clk, Rand>(
         );
     }
 
+    // If this ACK (plus loss detection) drained all bytes in flight, any entries
+    // still in the map are zero-byte shells: PTO-probe tombstones whose live tails
+    // are gone. They can never resolve, so reap them now — otherwise they keep
+    // `has_inflight()` true and arm the PTO spuriously after the flow has drained.
+    context.reap_shells_if_drained();
+
     // Update PTO
     let has_remaining_inflight = context.inflight.has_inflight();
     context.pto.on_ack_received(has_remaining_inflight);
@@ -582,6 +588,79 @@ mod tests {
         assert!(completed.0.is_empty());
         assert!(context.inflight.remove(make_pn(1)).is_none());
         assert!(context.inflight.remove(make_pn(2)).is_some());
+    }
+
+    /// When an ACK drains all bytes in flight, any leftover zero-byte shells (probe
+    /// tombstones whose live tail was just removed) must be reaped so they don't keep
+    /// `has_inflight()` true and arm the PTO spuriously.
+    #[test]
+    fn ack_draining_inflight_reaps_orphaned_shells() {
+        let entry = make_path_secret_entry();
+        let mut context = make_context(&entry);
+        let counters = super::super::counters::Send::new(
+            &Registry::default(),
+            LocalSenderId::new(VarInt::ZERO),
+        );
+        let mut completed = CollectFrames::default();
+        let mut lost = CollectFrames::default();
+        let mut cancelled = CollectFrames::default();
+        let mut random = xorshift::Rng::with_seed(1);
+        let mut deferred = Vec::new();
+
+        // Build a probe chain: PN 1 (data) is retransmitted as a probe at PN 2, so PN 1
+        // becomes a zero-byte shell (probed_to = Some(2)) and PN 2 holds the live frame.
+        let pn1 = make_pn(1);
+        let pn2 = make_pn(2);
+        let packet1 = make_packet(&mut context, entry.clone(), make_ts(100));
+        context.inflight.insert(pn1, packet1);
+        // Simulate the probe assembly that moves the frame from PN 1 to PN 2.
+        let (_old, frames) = context.inflight.take_oldest_for_probe().unwrap();
+        let cc_info = context
+            .cca
+            .on_packet_sent(make_ts(100), 100, false, &context.rtt_estimator);
+        context.inflight.insert(
+            pn2,
+            Packet::new(
+                frames,
+                TransmissionInfo { cc_info, time_sent: make_ts(100), sent_bytes: 100 },
+            ),
+        );
+        let discarded = context.inflight.set_probed_to_and_take_bytes(pn1, pn2);
+        context.cca.on_packet_discarded(discarded);
+        context.next_packet_number = VarInt::from_u8(3);
+        context.pto.needs_update = true; // PTO armed while data is in flight.
+
+        assert!(context.inflight.has_inflight());
+        assert!(context.cca.bytes_in_flight() > 0);
+
+        // ACK the live tail (PN 2) directly — a gap ACK that skips the PN 1 shell.
+        // This removes PN 2, draining bytes_in_flight to zero, but leaves the PN 1 shell.
+        process_ack(
+            VarInt::from_u8(2), // largest_acknowledged
+            VarInt::from_u8(2), // ack_range start (only PN 2)
+            &[],
+            EcnCounts::default(),
+            Duration::ZERO,
+            &mut context,
+            &counters,
+            &mut completed,
+            &mut lost,
+            &mut cancelled,
+            &make_ts(110),
+            &mut random,
+            &mut deferred,
+        );
+
+        // The shell must be reaped now that nothing is genuinely in flight.
+        assert_eq!(context.cca.bytes_in_flight(), 0, "tail ACK drained all bytes");
+        assert!(
+            !context.inflight.has_inflight(),
+            "orphaned PN 1 shell should be reaped once bytes_in_flight hit zero"
+        );
+        assert!(
+            !context.pto.is_armed(),
+            "PTO must not stay armed when there is nothing left to probe"
+        );
     }
 
     // ── AckRangeIter roundtrip tests ─────────────────────────────────────────

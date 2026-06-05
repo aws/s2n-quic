@@ -193,6 +193,15 @@ impl<V> SortedVecMap<V> {
         self.entries.is_empty()
     }
 
+    /// Returns the number of entries.
+    ///
+    /// O(1): the backing `VecDeque` tracks its length directly, so prefer this over
+    /// `iter().count()`.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
     /// Clears all entries.
     #[inline]
     pub fn clear(&mut self) {

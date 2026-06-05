@@ -1083,6 +1083,21 @@ impl Context {
         self.inflight.invariants();
     }
 
+    /// Reap orphaned probe shells once nothing is genuinely in flight.
+    ///
+    /// When `bytes_in_flight` reaches zero, any entries still in the inflight map are
+    /// zero-byte shells (PTO-probe tombstones whose live tail is already gone). They can
+    /// never resolve to a completion or carry a probe, so they only keep `has_inflight()`
+    /// true and the PTO armed forever. This wraps the `bytes_in_flight == 0` precondition
+    /// together with the clear so every drain site reaps them consistently — call it
+    /// anywhere an operation may have just dropped the last bytes in flight.
+    #[inline]
+    pub fn reap_shells_if_drained(&mut self) {
+        if self.cca.bytes_in_flight() == 0 {
+            self.inflight.clear_orphaned_shells();
+        }
+    }
+
     /// Drains all inflight and pending frames from this context.
     ///
     /// Returns `(frames_drained, inflight_bytes_discarded, pending_acks)`.

@@ -870,3 +870,172 @@ fn encode_decode_fuzz_round_trip() {
             }
         });
 }
+
+/// Builds a single ack-eliciting QueueData frame carrying `completion`, so the test
+/// can later cancel it (drop/cancel the receiver) and observe `should_transmit()`
+/// flip to false. Mirrors the frame shape produced by the writer for stream data.
+fn make_data_frame(
+    entry: &Arc<PathSecretEntry>,
+    completion: crate::endpoint::frame::CompletionSender,
+) -> crate::intrusive::Entry<Frame> {
+    use crate::packet::datagram::QueuePair;
+
+    let mut payload = ByteVec::new();
+    payload.push_back(Bytes::from_static(b"hello"));
+    Frame {
+        header: Header::QueueData {
+            queue_pair: QueuePair {
+                source_queue_id: VarInt::from_u8(1),
+                dest_queue_id: VarInt::from_u8(2),
+            },
+            binding_id: VarInt::from_u8(1),
+            offset: VarInt::ZERO,
+            is_fin: false,
+            dest_acceptor_id: None,
+        },
+        payload,
+        path_secret_entry: entry.clone(),
+        completion: Some(completion),
+        status: TransmissionStatus::default(),
+        ttl: DEFAULT_TTL,
+        enqueued_at: None,
+    }
+    .into()
+}
+
+/// Reproduces the "orphaned probe shell" defect at the smallest scale that exercises
+/// the real assembler: a shell entry whose probe chain tail is removed by the
+/// cancelled-frame path in `assemble_probe`, leaving the shell dangling forever.
+///
+/// Background — the inflight map links PTO probes with *forward-only* pointers:
+/// when PN N is retransmitted as a probe at PN X, N becomes a "shell"
+/// (`probed_to = Some(X)`, frames emptied, bytes zeroed) and X holds the live frames.
+/// Reaping a shell requires either ACK processing following the chain forward, or
+/// loss detection sweeping the contiguous lost prefix — both run only from
+/// `process_ack`, i.e. only when an ACK arrives.
+///
+/// The escape: if, on a later PTO, the probe tail's frames have all been cancelled
+/// (the writer dropped, so `should_transmit()` is false), `assemble_probe` removes
+/// the tail directly via `inflight.remove(old_pn)` (assemble.rs, the `!has_frame`
+/// branch) — in the *send* path, with no ACK and no loss detection. The predecessor
+/// shell still points at the now-removed tail. Nothing ever follows or sweeps it, so
+/// it lingers: `has_inflight()` stays true while `bytes_in_flight == 0`.
+///
+/// This is the deterministic core of the production "routing asymmetry" warning,
+/// which fires from the idle-wheel handler when a context is idle
+/// (`bytes_in_flight == 0`) yet `has_inflight()` is still true.
+///
+/// The test asserts the CORRECT behavior: once the probe tail is removed because
+/// its frames were cancelled, no inflight state should remain (the context must be
+/// able to drain). On the current code it FAILS, demonstrating the bug — the
+/// predecessor shell is left dangling. The fix (drop predecessor shells when the
+/// cancelled-tail path removes their tail) makes it pass.
+#[test]
+fn orphaned_shell_survives_cancelled_probe_tail() {
+    use crate::stream::endpoint::send::ProbeState;
+
+    let mtu = 1500;
+    let registry = Registry::new();
+    let (mut context, entry) = make_context(mtu, &registry);
+
+    let clock = Clock::new(Duration::from_micros(1));
+    let gso = make_gso(1);
+    let pool = pool::Pool::new(u16::MAX);
+    let mut header_buf = Vec::new();
+    let mut cancelled = Queue::new();
+    let mut ack_completions = Queue::new();
+    let (mut freed_batch_tx, _freed_batch_rx) = crate::queue::freed_batch_channel();
+
+    let send_counters = crate::endpoint::counters::Send::new(
+        &crate::counter::Registry::default(),
+        crate::endpoint::id::LocalSenderId::from_index(0),
+    );
+    let source_sender_id = crate::endpoint::id::LocalSenderId::new(VarInt::from_u8(1));
+    let source_control_port = 443;
+
+    // Helper to run one assembly round with the shared arguments.
+    macro_rules! run_assemble {
+        () => {
+            assemble::<SyncRecycler, _>(
+                &mut context,
+                ImmediateQueueStatus::Empty,
+                &clock,
+                source_sender_id,
+                source_control_port,
+                &gso,
+                pool.alloc::<SyncRecycler>().expect("pool alloc failed"),
+                &mut header_buf,
+                &mut cancelled,
+                &mut ack_completions,
+                &mut freed_batch_tx,
+                &AssemblerCounters::new(&registry),
+                &send_counters,
+            )
+        };
+    }
+
+    // ── Round 1: send the data frame at PN 0 (held alive by `completion_rx`). ──
+    let completion_rx = crate::endpoint::frame::completion_channel();
+    context.push_back_frame(make_data_frame(&entry, completion_rx.sender()));
+    let _ = run_assemble!().expect("initial data should assemble");
+    assert!(context.inflight.has_inflight(), "PN 0 is in flight");
+    let range = context.inflight.get_range();
+    let shell_pn = range.start();
+    assert_eq!(range.start(), range.end(), "exactly one inflight entry (PN 0)");
+    assert!(
+        context.cca.bytes_in_flight() > 0,
+        "live packet contributes bytes_in_flight"
+    );
+
+    // ── Round 2: PTO probe — retransmits PN 0's frame at PN 1. ──
+    // PN 0 becomes a shell (probed_to = Some(PN 1)); PN 1 holds the live frame.
+    context.pto.probe_state = ProbeState::ProbeTwice;
+    let _ = run_assemble!();
+    assert!(
+        context.inflight.get_range().end().as_u64() > shell_pn.as_u64(),
+        "probe created a higher PN tail (PN 0 -> PN 1 chain)"
+    );
+    // Only the live tail's bytes count; the shell's bytes were released.
+    let tail_bytes = context.cca.bytes_in_flight();
+    assert!(tail_bytes > 0, "probe tail contributes bytes_in_flight");
+    assert_eq!(
+        context.inflight.sum_sent_bytes(),
+        tail_bytes,
+        "inflight byte accounting matches CCA (shell zeroed, tail counted)"
+    );
+
+    // ── Cancel the writer: the in-flight frame must no longer be transmitted. ──
+    completion_rx.cancel();
+
+    // ── Round 3: PTO probe again. `assemble_probe` pulls the tail's frame, finds it
+    // cancelled, and removes the tail directly via the `!has_frame` branch — WITHOUT
+    // running ACK or loss detection. The predecessor shell at PN 0 is left dangling.
+    context.pto.probe_state = ProbeState::ProbeTwice;
+    let _ = run_assemble!();
+
+    // ── Correct behavior: removing the cancelled probe tail must leave no dangling
+    // shell. The context has nothing left to send and must be able to drain.
+    //
+    // On the current (buggy) code these assertions FAIL: the predecessor shell at
+    // PN 0 still points at the removed tail (PN 1), so `has_inflight()` stays true
+    // with zero bytes — the exact production "routing asymmetry" signature
+    // (has_inflight() true, bytes_in_flight == 0, a lone shell with no frames to
+    // probe, so the PTO can never make progress and the context never drains).
+    //
+    // The fix: when the cancelled-tail path in `assemble_probe` removes a tail,
+    // it must also drop any predecessor shells whose `probed_to` pointed at it.
+    assert!(
+        !context.inflight.has_inflight(),
+        "orphaned shell at PN {}: tail was removed as cancelled but the shell still \
+         keeps has_inflight() true with bytes_in_flight={} (sum_sent_bytes={}); the \
+         context can never drain",
+        shell_pn.as_u64(),
+        context.cca.bytes_in_flight(),
+        context.inflight.sum_sent_bytes(),
+    );
+    assert_eq!(
+        context.cca.bytes_in_flight(),
+        0,
+        "no bytes should remain in flight once the only frame was cancelled"
+    );
+}
