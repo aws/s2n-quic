@@ -745,6 +745,7 @@ where
             invalidation_rx,
             reader_metrics: reader_metrics.clone(),
             writer_metrics: writer_metrics.clone(),
+            send_credit_pool: send_credit_pool.clone(),
         });
     }
 
@@ -915,6 +916,9 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     invalidation_rx: sync_queue::Receiver<tasks::Invalidation>,
     reader_metrics: Arc<crate::stream::metrics::ReaderMetrics>,
     writer_metrics: Arc<crate::stream::metrics::WriterMetrics>,
+    /// Endpoint-wide send credit pool, plumbed through to `Writer::new_server` so
+    /// server-side stream Writers can register their `Slot` against it.
+    send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
 }
 
 /// Ingredients for the background worker (invalidation validation + future housekeeping).
@@ -1231,6 +1235,7 @@ where
                     rd.stream_clock,
                     rd.reader_metrics,
                     rd.writer_metrics,
+                    rd.send_credit_pool,
                 );
                 let variant = format!("recv.dispatch.{recv_dispatch_idx}");
                 let task_counter = counter_registry

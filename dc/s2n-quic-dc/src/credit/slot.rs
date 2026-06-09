@@ -170,6 +170,28 @@ impl Slot {
         }
     }
 
+    /// Mark a delivered grant as consumed by zeroing the `granted` field.
+    ///
+    /// After [`poll_granted`] returned `Granted(n)` and the application has attached those bytes to
+    /// frames (or otherwise taken responsibility for releasing them), call this to record that the
+    /// slot is once again "idle, no credits owed". A subsequent [`abandon`] on this idle slot will
+    /// then return `Granted(0)` instead of re-reporting the stale `n`, which makes drop a single
+    /// unconditional `abandon` call regardless of slot state.
+    ///
+    /// # Safety
+    ///
+    /// Must be called only while the slot is APP-owned (refcount=1) — i.e. between a successful
+    /// `poll_granted` and the next `poll_acquire`. Calling it while the slot is LINKED races the
+    /// pool's grant write.
+    ///
+    /// [`poll_granted`]: Slot::poll_granted
+    /// [`abandon`]: Slot::abandon
+    #[inline]
+    pub unsafe fn consume_grant(&self) {
+        debug_assert_eq!(self.refcount.load(Ordering::Relaxed), RC_APP);
+        *self.granted.get() = 0;
+    }
+
     /// Called by the pool under the tier mutex to grant credits and release
     /// the slot back to the application.
     ///
@@ -227,28 +249,34 @@ impl Slot {
         self.refcount.load(Ordering::Relaxed) == RC_DEAD
     }
 
-    /// Abandon the slot from the application side while it is LINKED.
+    /// Abandon the slot from the application side. Safe to call in any APP-owned or LINKED state.
     ///
-    /// Returns [`AbandonResult::Abandoned`] if the slot was successfully marked DEAD — the pool will
-    /// free the allocation when it next pops this entry, and the caller must not touch the slot again.
+    /// Returns [`AbandonResult::Abandoned`] if the slot was LINKED and was successfully marked
+    /// DEAD — the pool will free the allocation when it next pops this entry, and the caller must
+    /// not touch the slot again.
     ///
-    /// If the pool won the LINKED→APP race, the CAS fails and the caller now owns the allocation:
-    /// [`AbandonResult::Granted`] if the pool delivered a real grant, or [`AbandonResult::Closed`] if
-    /// the pool was dropped (it wrote the `GRANT_CLOSED` sentinel). Distinguishing these matters —
-    /// `Granted(n)` may be released back to the pool, but `Closed` must not (the pool is gone), and
-    /// folding the `u64::MAX` sentinel into a byte count would corrupt the budget.
+    /// If the slot is APP-owned (either it was never parked, or the pool just won the LINKED→APP
+    /// race), the caller already owns the allocation. The result distinguishes:
+    ///
+    /// - [`AbandonResult::Granted(n)`] — `n` bytes the pool delivered and the application has not
+    ///   yet declared consumed. After the application attaches a delivered grant to frames, it
+    ///   should call [`consume_grant`] so subsequent `abandon`s see `Granted(0)` instead of
+    ///   re-reporting the stale grant. `Granted(0)` is the benign "nothing to release" signal.
+    /// - [`AbandonResult::Closed`] — the pool was dropped (it wrote the `GRANT_CLOSED` sentinel).
+    ///   The caller must not release anything back to the (gone) pool.
     ///
     /// # Safety
     ///
-    /// Must only be called from the application side while the slot is **LINKED** (it was parked via
-    /// `poll_acquire` returning `Pending` and not yet granted). Calling it on an idle APP slot is a
-    /// contract violation: the code cannot distinguish a never-parked slot from a granted one. After
-    /// any non-`Abandoned` return the caller owns the allocation; after `Abandoned` it must not
-    /// access any non-thread-safe field.
+    /// Must only be called from the application side. After [`AbandonResult::Abandoned`] the caller
+    /// must not access any non-thread-safe field of the slot. After any other return the caller
+    /// owns the allocation outright.
+    ///
+    /// [`consume_grant`]: Slot::consume_grant
     #[inline]
     pub unsafe fn abandon(&self) -> AbandonResult {
-        // Try to transition LINKED → DEAD. If the pool already transitioned to APP (granted or
-        // closed), the CAS fails and the caller owns the allocation.
+        // Try to transition LINKED → DEAD. If the slot is APP-owned (never parked, or the pool just
+        // raced us to APP), the CAS fails and the caller owns the allocation. The expected-current
+        // value is `RC_LINKED` so a successful CAS proves we transitioned a live LINKED slot.
         match self.refcount.compare_exchange(
             RC_LINKED,
             RC_DEAD,
@@ -259,7 +287,7 @@ impl Slot {
             Err(rc) => {
                 debug_assert_eq!(
                     rc, RC_APP,
-                    "abandon must only be called on a LINKED slot, got {rc}"
+                    "abandon found unexpected refcount {rc} (expected APP or LINKED)"
                 );
                 let granted = *self.granted.get();
                 if granted == GRANT_CLOSED {

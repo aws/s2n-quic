@@ -93,9 +93,11 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 use std::{
+    alloc::{self, Layout},
     io,
     net::SocketAddr,
     pin::Pin,
+    ptr::NonNull,
     sync::Arc,
     task::{Context, Poll},
 };
@@ -147,7 +149,125 @@ pub struct MsgFlags {
 ///     Ok(())
 /// }
 /// ```
-pub struct Writer(Box<Inner>);
+pub struct Writer(WriterAllocPtr);
+
+#[repr(C)]
+struct WriterAlloc {
+    /// MUST live at offset 0 — the credit pool casts `NonNull<Slot>` back to
+    /// `NonNull<WriterAlloc>` via the registered `drop_fn`. Enforced at compile
+    /// time by [`crate::assert_slot_at_offset_zero!`] below.
+    slot: crate::credit::Slot,
+    inner: Inner,
+}
+
+crate::assert_slot_at_offset_zero!(WriterAlloc);
+
+/// Owning pointer to a `WriterAlloc`. Derefs to `Inner` so the writer body keeps
+/// its `self.0.field` ergonomics, while drop is staged through the credit slot's
+/// abandon/grant state machine: a parked acquire can transfer ownership of the
+/// allocation to the pool, which then calls [`drop_writer_alloc`] to free it.
+struct WriterAllocPtr(NonNull<WriterAlloc>);
+
+// SAFETY: `WriterAllocPtr` owns the heap allocation exclusively. `Inner`'s fields
+// are all `Send` (and not `Sync`), and `credit::Slot` is `Send`/`Sync`. The pool
+// only ever reads/writes `Slot` fields under its own state machine; it never
+// touches `Inner`.
+unsafe impl Send for WriterAllocPtr {}
+
+impl WriterAllocPtr {
+    /// Allocate a `WriterAlloc` initialized with `inner` and an idle (rc=APP)
+    /// `Slot` registered against [`drop_writer_alloc`].
+    fn new(inner: Inner) -> Self {
+        let layout = Layout::new::<WriterAlloc>();
+        let raw = unsafe { alloc::alloc(layout) } as *mut WriterAlloc;
+        let ptr = NonNull::new(raw).unwrap_or_else(|| alloc::handle_alloc_error(layout));
+        unsafe {
+            std::ptr::write(
+                ptr.as_ptr(),
+                WriterAlloc {
+                    slot: crate::credit::Slot::new(drop_writer_alloc),
+                    inner,
+                },
+            );
+        }
+        Self(ptr)
+    }
+
+    /// Pointer to the embedded `Slot` for handing to the credit pool.
+    #[allow(dead_code)] // wired by step 6 (poll_acquire)
+    #[inline]
+    fn slot_ptr(&self) -> NonNull<crate::credit::Slot> {
+        self.0.cast()
+    }
+}
+
+impl core::ops::Deref for WriterAllocPtr {
+    type Target = Inner;
+    #[inline]
+    fn deref(&self) -> &Inner {
+        unsafe { &(*self.0.as_ptr()).inner }
+    }
+}
+
+impl core::ops::DerefMut for WriterAllocPtr {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Inner {
+        unsafe { &mut (*self.0.as_ptr()).inner }
+    }
+}
+
+impl Drop for WriterAllocPtr {
+    fn drop(&mut self) {
+        // Always go through `abandon` — its CAS is the single source of truth for who owns the
+        // allocation. On a never-parked-or-already-consumed slot the CAS fails harmlessly and
+        // returns `Granted(0)` (because `consume_grant` was called after the last delivered
+        // grant, or because no grant was ever delivered). Step 6 wires the matching
+        // `consume_grant` call inside the writer's acquire/attach path.
+        //
+        // SAFETY: `abandon`'s relaxed contract (post step-5) permits calling it in any APP-owned
+        // or LINKED state, exactly the range the slot can be in when the writer drops.
+        let slot = unsafe { &(*self.0.as_ptr()).slot };
+        match unsafe { slot.abandon() } {
+            crate::credit::AbandonResult::Abandoned => {
+                // The slot was LINKED and is now DEAD. The pool's pop walk will call
+                // `drop_writer_alloc` to free the allocation; we must not touch it again.
+                return;
+            }
+            crate::credit::AbandonResult::Granted(n) => {
+                // We own the allocation. `n == 0` is the steady-state "no outstanding grant"
+                // signal. A non-zero `n` would mean a delivered grant was never consumed —
+                // step 6's release path is responsible for handing it back to the pool, so
+                // `n != 0` here would be a leak. Debug-assert that invariant; in release we
+                // still free the allocation rather than stranding it.
+                debug_assert_eq!(
+                    n, 0,
+                    "writer dropped with {n} bytes of unconsumed credit grant — release path is broken"
+                );
+            }
+            crate::credit::AbandonResult::Closed => {
+                // Pool was dropped concurrently. We own the allocation; do not touch the pool.
+            }
+        }
+        // SAFETY: The slot is APP-owned and we hold the only reference. Drop `Inner` and free
+        // the heap block.
+        unsafe {
+            std::ptr::drop_in_place(&raw mut (*self.0.as_ptr()).inner);
+            alloc::dealloc(self.0.as_ptr().cast(), Layout::new::<WriterAlloc>());
+        }
+    }
+}
+
+/// `drop_fn` invoked by the credit pool when it pops a dead slot — i.e. the
+/// writer was dropped while its slot was linked, the pool then dequeued the
+/// dead entry and now owns the allocation. Drops `Inner` and frees the block.
+unsafe fn drop_writer_alloc(ptr: NonNull<crate::credit::Slot>) {
+    // SAFETY: `Slot` lives at offset 0 of `WriterAlloc` (see
+    // `assert_slot_at_offset_zero!`), so the cast points back to the original
+    // allocation. The pool guarantees this is called exactly once.
+    let ptr = ptr.cast::<WriterAlloc>();
+    std::ptr::drop_in_place(&raw mut (*ptr.as_ptr()).inner);
+    alloc::dealloc(ptr.as_ptr().cast(), Layout::new::<WriterAlloc>());
+}
 
 struct Inner {
     /// Channel to submit frames to the wheel
@@ -203,6 +323,17 @@ struct Inner {
     clock: crate::time::DefaultClock,
     /// Per-outcome sojourn time histograms shared with the application.
     metrics: Arc<WriterMetrics>,
+    /// Priority tier this writer acquires credits at. Stable over the writer's
+    /// lifetime; mutated only via `set_priority` (future acquires only — already
+    /// parked acquires retain the priority they were parked under).
+    priority: crate::credit::Priority,
+    /// Endpoint-shared send credit pool. Cloned at construction so the writer's
+    /// `Slot` (offset 0 of `WriterAlloc`) can stay registered with this pool.
+    send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
+    /// Credits granted by the most recent `poll_acquire` that have not yet been
+    /// attached to a frame. Carry-over after a batch consumes less than was
+    /// granted is released back to the pool.
+    pending_credits: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -247,6 +378,8 @@ impl Writer {
         control_rx: crate::queue::ControlReceiver,
         clock: crate::time::DefaultClock,
         metrics: Arc<WriterMetrics>,
+        send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
+        priority: crate::credit::Priority,
     ) -> Self {
         let completion_rx = frame::completion_channel();
         let parameters = path_secret_entry.parameters();
@@ -257,7 +390,7 @@ impl Writer {
         let initial_remote_max_data = parameters.remote_max_data.as_u64();
         let remote_max_data = VarInt::ZERO;
 
-        Self(Box::new(Inner {
+        Self(WriterAllocPtr::new(Inner {
             frame_tx,
             completion_rx,
             control_rx,
@@ -281,6 +414,9 @@ impl Writer {
             coop: Coop::default(),
             clock,
             metrics,
+            priority,
+            send_credit_pool,
+            pending_credits: 0,
         }))
     }
 
@@ -292,6 +428,8 @@ impl Writer {
         control_rx: crate::queue::ControlReceiver,
         clock: crate::time::DefaultClock,
         metrics: Arc<WriterMetrics>,
+        send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
+        priority: crate::credit::Priority,
     ) -> Self {
         let completion_rx = frame::completion_channel();
         let parameters = path_secret_entry.parameters();
@@ -301,7 +439,7 @@ impl Writer {
         let max_inflight_bytes = parameters.local_send_max_data.as_u64();
         let initial_remote_max_data = parameters.remote_max_data.as_u64();
 
-        Self(Box::new(Inner {
+        Self(WriterAllocPtr::new(Inner {
             frame_tx,
             completion_rx,
             control_rx,
@@ -325,7 +463,25 @@ impl Writer {
             coop: Coop::default(),
             clock,
             metrics,
+            priority,
+            send_credit_pool,
+            pending_credits: 0,
         }))
+    }
+
+    /// Returns the priority this writer is currently acquiring credits at.
+    #[inline]
+    pub fn priority(&self) -> crate::credit::Priority {
+        self.0.priority
+    }
+
+    /// Set the priority used for **future** credit acquires. Already-parked
+    /// acquires keep the priority they were parked under (the slot is linked
+    /// in that tier's wait list and cannot be migrated without racing the
+    /// distributor).
+    #[inline]
+    pub fn set_priority(&mut self, priority: crate::credit::Priority) {
+        self.0.priority = priority;
     }
 
     /// Writes bytes from the source buffer into the stream.
@@ -1489,6 +1645,9 @@ impl Drop for Writer {
         } else {
             let _ = self.shutdown();
         }
+        // The allocation itself is freed by `WriterAllocPtr::drop`, which runs
+        // after this body returns. That drop branches on the credit slot's
+        // state to handle the parked-acquire case (step 8).
     }
 }
 

@@ -188,6 +188,8 @@ impl Client {
             alloc.control,
             self.endpoint.clock.clone(),
             self.endpoint.writer_metrics.clone(),
+            self.endpoint.send_credit_pool.clone(),
+            crate::credit::Priority::default(),
         );
         let reader = Reader::new_client(
             frame_tx,

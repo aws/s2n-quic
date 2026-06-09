@@ -678,6 +678,8 @@ where
         alloc.control,
         endpoint.clock.clone(),
         endpoint.writer_metrics.clone(),
+        endpoint.send_credit_pool.clone(),
+        crate::credit::Priority::default(),
     );
     let reader = Reader::new_client(
         frame_tx,

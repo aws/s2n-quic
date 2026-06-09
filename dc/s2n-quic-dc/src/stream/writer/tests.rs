@@ -81,6 +81,8 @@ impl PairBuilder {
 
         let (frame_tx, frame_rx) = frame::submission_channel(1);
 
+        let send_credit_pool =
+            crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::default()));
         let writer = match self.ep_type {
             endpoint::Type::Client => Writer::new_client(
                 frame_tx,
@@ -90,6 +92,8 @@ impl PairBuilder {
                 alloc.control,
                 crate::time::DefaultClock::default(),
                 test_writer_metrics(),
+                send_credit_pool,
+                crate::credit::Priority::default(),
             ),
             endpoint::Type::Server => Writer::new_server(
                 frame_tx,
@@ -99,6 +103,8 @@ impl PairBuilder {
                 alloc.control,
                 crate::time::DefaultClock::default(),
                 test_writer_metrics(),
+                send_credit_pool,
+                crate::credit::Priority::default(),
             ),
         };
 
