@@ -1,5 +1,6 @@
 ---
 source: dc/s2n-quic-dc/src/testing.rs
+assertion_line: 352
 expression: logs
 ---
 0:00:00.000000000 [server] DEBUG s2n_quic_dc: capacity=50000
@@ -178,6 +179,8 @@ expression: logs
 0:00:00.000000000 [client] DEBUG s2n_quic_dc: peer_address=10.0.0.2:49152 credential_id=[253, 162, 176, 33, 188, 81, 236, 106, 53, 74, 204, 19, 207, 132, 62, 199]
 0:00:00.000000000 [client] DEBUG setting peer data addresses peer=10.0.0.1:4433 addrs=[SocketAddressV6([::ffff:10.0.0.1]:4433), SocketAddressV6([::ffff:10.0.0.1]:49152), SocketAddressV6([::ffff:10.0.0.1]:49153), SocketAddressV6([::ffff:10.0.0.1]:49154), SocketAddressV6([::ffff:10.0.0.1]:49155), SocketAddressV6([::ffff:10.0.0.1]:49156), SocketAddressV6([::ffff:10.0.0.1]:49157), SocketAddressV6([::ffff:10.0.0.1]:49158)]
 0:00:00.000000000 [client] DEBUG setting peer data addresses peer=10.0.0.2:49152 addrs=[SocketAddressV6([::ffff:10.0.0.2]:49152), SocketAddressV6([::ffff:10.0.0.2]:49153), SocketAddressV6([::ffff:10.0.0.2]:49154), SocketAddressV6([::ffff:10.0.0.2]:49155), SocketAddressV6([::ffff:10.0.0.2]:49156), SocketAddressV6([::ffff:10.0.0.2]:49157), SocketAddressV6([::ffff:10.0.0.2]:49158), SocketAddressV6([::ffff:10.0.0.2]:49159)]
+0:00:00.000000000 [client] TRACE c#credit.send.acquire.fast_path=1
+0:00:00.000000000 [client] TRACE c#credit.send.acquire.bytes=1361
 0:00:00.000000000 [client] TRACE m#tx.msg.segment_size=8192
 0:00:00.000000000 [client] TRACE m#tx.msg.chunks_per_segment=1
 0:00:00.000000000 [client] DEBUG event=on_init_sent prev=Init next=InitSent location=dc/s2n-quic-dc/src/stream/writer.rs
@@ -396,6 +399,8 @@ expression: logs
 0:00:00.000021000 [client] TRACE c#send.inflight.enq[send.0]=1
 0:00:00.000021000 [client] TRACE g#send.inflight.depth[send.0]=1
 0:00:00.000021000 [client] TRACE m#send.inflight.depth_dist[send.0]=1
+0:00:00.000021000 [client] TRACE c#credit.send.release.bytes=1328
+0:00:00.000021000 [client] TRACE c#credit.send.release.calls=1
 0:00:00.000021000 [client] TRACE m#asm.segments=1
 0:00:00.000021000 [client] TRACE c#q.resolver_to_pto_wheel.sender[send.worker.0.task.assembler.send.0]=1
 0:00:00.000021000 [client] TRACE c#q.resolver_to_pto_wheel.enq[send.worker.0]=1
@@ -405,12 +410,16 @@ expression: logs
 0:00:00.000021000 [client] TRACE c#socket.tx.bytes[send.0]=1386
 0:00:00.000021000 [client] TRACE m#task.assembler.drained[send.0]=1
 0:00:00.000021000 [client] TRACE m#task.tx_wheel.drained[send.worker.0]=0
+0:00:00.000021000 [client] TRACE c#credit.send.distributor.passes=1
+0:00:00.000021000 [client] TRACE c#credit.send.distributor.passes=1
 0:00:00.000021000 [client] TRACE m#task.pto_wheel.drained[send.worker.0]=1
 0:00:00.000021000 [client] TRACE m#task.pto_wheel.drained[send.worker.0]=0
 0:00:00.000100000 [client]  INFO write_msg_cancel_then_write_from_returns_error passed
 0:00:00.000100000 [client] DEBUG Writer dropping binding_id=1 status=InitSent next_offset=1328 inflight_bytes=1328 remote_max_data=0
 0:00:00.000100000 [client] DEBUG Sent QueueReset binding_id=1 error_code=9 reset_target=Stream
 0:00:00.000100000 [client] DEBUG event=on_shutdown prev=InitSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.000100000 [client] TRACE c#credit.send.release.bytes=33
+0:00:00.000100000 [client] TRACE c#credit.send.release.calls=1
 0:00:00.000100000 [client] DEBUG Reader dropping binding_id=1 status=Open final_size=None consumed_len=0 total_received_len=0 is_writing_complete=false is_reading_complete=false
 0:00:00.000100000 [client] DEBUG Sent QueueReset binding_id=1 error_code=4 reset_target=Control
 0:00:00.000100000 [client] DEBUG Reader dropped before FIN received - sent STOP_SENDING binding_id=1
@@ -421,6 +430,8 @@ expression: logs
 0:00:00.000100000 [client] TRACE g#q.router_to_batcher.depth[p0]=2
 0:00:00.000100000 [client] TRACE m#q.router_to_batcher.depth_dist[p0]=2
 0:00:00.000100000 [client] TRACE m#task.priority_router.drained=2
+0:00:00.000100000 [client] TRACE c#credit.send.distributor.passes=1
+0:00:00.000100000 [client] TRACE c#credit.send.distributor.passes=1
 0:00:00.000100000 [client] TRACE c#q.router_to_batcher.receiver[p0.task.frame_dispatch]=1
 0:00:00.000100000 [client] TRACE c#q.router_to_batcher.drain[p0]=1
 0:00:00.000100000 [client] TRACE g#q.router_to_batcher.depth[p0]=1

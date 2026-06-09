@@ -1,5 +1,6 @@
 ---
 source: dc/s2n-quic-dc/src/testing.rs
+assertion_line: 352
 expression: logs
 ---
 0:00:00.000000000 [server] DEBUG s2n_quic_dc: capacity=50000
@@ -336,12 +337,18 @@ expression: logs
 0:00:00.000000000 [client] TRACE m#task.peer_dead_broadcast.drained[background]=0
 0:00:00.000000000 [client] TRACE m#task.ups_send.drained[background]=0
 0:00:00.000000000 [client] TRACE m#task.freed_batch_router.drained[background]=0
+0:00:00.000000000 [client] TRACE c#credit.send.acquire.fast_path=1
+0:00:00.000000000 [client] TRACE c#credit.send.acquire.bytes=10
 0:00:00.000000000 [client] DEBUG event=on_init_sent prev=Init next=InitSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [client] DEBUG event=on_send_fin prev=InitSent next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [client] DEBUG Sent QueueInit with early data binding_id=1 bytes_read=10 is_fin=true
+0:00:00.000000000 [client] TRACE c#credit.send.acquire.fast_path=1
+0:00:00.000000000 [client] TRACE c#credit.send.acquire.bytes=10
 0:00:00.000000000 [client] DEBUG event=on_init_sent prev=Init next=InitSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [client] DEBUG event=on_send_fin prev=InitSent next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [client] DEBUG Sent QueueInit with early data binding_id=2 bytes_read=10 is_fin=true
+0:00:00.000000000 [client] TRACE c#credit.send.acquire.fast_path=1
+0:00:00.000000000 [client] TRACE c#credit.send.acquire.bytes=10
 0:00:00.000000000 [client] DEBUG event=on_init_sent prev=Init next=InitSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [client] DEBUG event=on_send_fin prev=InitSent next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [client] DEBUG Sent QueueInit with early data binding_id=3 bytes_read=10 is_fin=true
@@ -417,6 +424,8 @@ expression: logs
 0:00:00.000021000 [client] TRACE c#send.inflight.enq[send.0]=1
 0:00:00.000021000 [client] TRACE g#send.inflight.depth[send.0]=1
 0:00:00.000021000 [client] TRACE m#send.inflight.depth_dist[send.0]=1
+0:00:00.000021000 [client] TRACE c#credit.send.release.bytes=30
+0:00:00.000021000 [client] TRACE c#credit.send.release.calls=1
 0:00:00.000021000 [client] TRACE m#asm.segments=1
 0:00:00.000021000 [client] TRACE c#q.resolver_to_pto_wheel.sender[send.worker.0.task.assembler.send.0]=1
 0:00:00.000021000 [client] TRACE c#q.resolver_to_pto_wheel.enq[send.worker.0]=1
@@ -426,6 +435,8 @@ expression: logs
 0:00:00.000021000 [client] TRACE c#socket.tx.bytes[send.0]=96
 0:00:00.000021000 [client] TRACE m#task.assembler.drained[send.0]=1
 0:00:00.000021000 [client] TRACE m#task.tx_wheel.drained[send.worker.0]=0
+0:00:00.000021000 [client] TRACE c#credit.send.distributor.passes=1
+0:00:00.000021000 [client] TRACE c#credit.send.distributor.passes=1
 0:00:00.000021000 [client] TRACE m#task.pto_wheel.drained[send.worker.0]=1
 0:00:00.000021000 [client] TRACE m#task.pto_wheel.drained[send.worker.0]=0
 0:00:00.000521000 [server] TRACE c#socket.rx.ops[recv.0]=1
@@ -484,18 +495,24 @@ expression: logs
 0:00:00.000521000 [server] TRACE m#task.recycle_drain.drained=0
 0:00:00.000521000 [server] DEBUG Reader complete - all data consumed binding_id=2 final_size=Some(10) consumed_len=10
 0:00:00.000521000 [server] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs
+0:00:00.000521000 [server] TRACE c#credit.send.acquire.fast_path=1
+0:00:00.000521000 [server] TRACE c#credit.send.acquire.bytes=10
 0:00:00.000521000 [server] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000521000 [server] DEBUG Writer dropping binding_id=2 status=FinSent next_offset=10 inflight_bytes=10 remote_max_data=1048576
 0:00:00.000521000 [server] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000521000 [server] DEBUG Reader dropping binding_id=2 status=Complete final_size=Some(10) consumed_len=10 total_received_len=10 is_writing_complete=true is_reading_complete=true
 0:00:00.000521000 [server] DEBUG Reader complete - all data consumed binding_id=1 final_size=Some(10) consumed_len=10
 0:00:00.000521000 [server] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs
+0:00:00.000521000 [server] TRACE c#credit.send.acquire.fast_path=1
+0:00:00.000521000 [server] TRACE c#credit.send.acquire.bytes=10
 0:00:00.000521000 [server] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000521000 [server] DEBUG Writer dropping binding_id=1 status=FinSent next_offset=10 inflight_bytes=10 remote_max_data=1048576
 0:00:00.000521000 [server] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000521000 [server] DEBUG Reader dropping binding_id=1 status=Complete final_size=Some(10) consumed_len=10 total_received_len=10 is_writing_complete=true is_reading_complete=true
 0:00:00.000521000 [server] DEBUG Reader complete - all data consumed binding_id=3 final_size=Some(10) consumed_len=10
 0:00:00.000521000 [server] DEBUG event=on_complete prev=Open next=Complete location=dc/s2n-quic-dc/src/stream/reader.rs
+0:00:00.000521000 [server] TRACE c#credit.send.acquire.fast_path=1
+0:00:00.000521000 [server] TRACE c#credit.send.acquire.bytes=10
 0:00:00.000521000 [server] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000521000 [server] DEBUG Writer dropping binding_id=3 status=FinSent next_offset=10 inflight_bytes=10 remote_max_data=1048576
 0:00:00.000521000 [server] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
@@ -632,6 +649,8 @@ expression: logs
 0:00:00.000541000 [server] TRACE c#send.inflight.enq[send.7]=1
 0:00:00.000541000 [server] TRACE g#send.inflight.depth[send.7]=1
 0:00:00.000541000 [server] TRACE m#send.inflight.depth_dist[send.7]=1
+0:00:00.000541000 [server] TRACE c#credit.send.release.bytes=30
+0:00:00.000541000 [server] TRACE c#credit.send.release.calls=1
 0:00:00.000541000 [server] TRACE m#asm.segments=1
 0:00:00.000541000 [server] TRACE c#q.resolver_to_pto_wheel.sender[send.worker.3.task.assembler.send.7]=1
 0:00:00.000541000 [server] TRACE c#q.resolver_to_pto_wheel.enq[send.worker.3]=1
@@ -641,6 +660,8 @@ expression: logs
 0:00:00.000541000 [server] TRACE c#socket.tx.bytes[send.7]=90
 0:00:00.000541000 [server] TRACE m#task.assembler.drained[send.7]=1
 0:00:00.000541000 [server] TRACE m#task.tx_wheel.drained[send.worker.3]=0
+0:00:00.000541000 [server] TRACE c#credit.send.distributor.passes=1
+0:00:00.000541000 [server] TRACE c#credit.send.distributor.passes=1
 0:00:00.000541000 [server] TRACE m#task.pto_wheel.drained[send.worker.3]=1
 0:00:00.000541000 [server] TRACE m#task.pto_wheel.drained[send.worker.3]=0
 0:00:00.001021000 [client] TRACE c#socket.rx.ops[recv.0]=1

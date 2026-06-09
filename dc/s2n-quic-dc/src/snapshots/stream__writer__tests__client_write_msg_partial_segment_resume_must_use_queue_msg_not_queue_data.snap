@@ -3,12 +3,16 @@ source: dc/s2n-quic-dc/src/testing.rs
 assertion_line: 352
 expression: logs
 ---
+0:00:00.000000000 [main] TRACE c#credit.acquire.fast_path=1
+0:00:00.000000000 [main] TRACE c#credit.acquire.bytes=1361
 0:00:00.000000000 [main] TRACE m#tx.msg.segment_size=1362
 0:00:00.000000000 [main] TRACE m#tx.msg.chunks_per_segment=1
 0:00:00.000000000 [main] DEBUG event=on_init_sent prev=Init next=InitSent location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [main] DEBUG poll_remote_budget received messages binding_id=1 status=InitSent msg_count=1
 0:00:00.000000000 [main] DEBUG event=on_confirmed prev=InitSent next=Open location=dc/s2n-quic-dc/src/stream/writer.rs
 0:00:00.000000000 [main] DEBUG Flow established binding_id=1
+0:00:00.000000000 [main] TRACE c#credit.acquire.fast_path=1
+0:00:00.000000000 [main] TRACE c#credit.acquire.bytes=1
 0:00:00.000000000 [main] TRACE m#tx.msg.segment_size=1362
 0:00:00.000000000 [main] TRACE m#tx.msg.chunks_per_segment=1
 0:00:00.000000000 [main] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs

@@ -1,7 +1,10 @@
 ---
 source: dc/s2n-quic-dc/src/testing.rs
+assertion_line: 352
 expression: logs
 ---
+0:00:00.000000000 [main] TRACE c#credit.acquire.fast_path=1
+0:00:00.000000000 [main] TRACE c#credit.acquire.bytes=5
 0:00:00.000000000 [main] TRACE m#test.sojourn[peer_dead]=0
 0:00:00.000000000 [main] DEBUG Transmission failed binding_id=1 reason=PeerDead
 0:00:00.000000000 [main] DEBUG event=on_shutdown prev=Open next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs

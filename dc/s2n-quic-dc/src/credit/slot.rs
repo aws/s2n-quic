@@ -148,48 +148,38 @@ impl Slot {
         self.refcount.store(RC_LINKED, Ordering::Release);
     }
 
-    /// Read the granted credits after being woken.
+    /// Read and **consume** the granted credits after being woken.
     ///
-    /// Returns `Ok(granted)` if the pool has written a grant (refcount=1).
-    /// Returns `Err(Closed)` if the pool was dropped (sentinel value).
-    /// Returns `Err(Pending)` if this is a spurious wake (refcount still 2).
+    /// Returns `Granted(n)` if the pool has written a grant (refcount=APP). The `n` is taken from
+    /// the slot — the field is reset to 0 — so the next `abandon` sees `Granted(0)` and the next
+    /// `poll_acquire` starts from a clean idle state. `Granted(0)` is the benign "nothing
+    /// outstanding" signal: returned for a never-parked or already-consumed slot.
+    ///
+    /// Returns `Closed` if the pool was dropped (sentinel value `GRANT_CLOSED`). The sentinel is
+    /// **not** cleared, so a subsequent `abandon` still observes `Closed` rather than
+    /// `Granted(0)` — that distinction is load-bearing for the drop path.
+    ///
+    /// Returns `Pending` if the slot is still LINKED (spurious wake). No side effect.
     #[inline]
     pub fn poll_granted(&self) -> GrantResult {
         let rc = self.refcount.load(Ordering::Acquire);
         match rc {
             RC_APP => {
+                // SAFETY: rc=APP means the application owns the slot exclusively; no concurrent
+                // pool access touches `granted` until the next `poll_acquire`.
                 let granted = unsafe { *self.granted.get() };
                 if granted == GRANT_CLOSED {
                     GrantResult::Closed
                 } else {
+                    // Consume the grant so subsequent `abandon`/`poll_granted` calls return
+                    // `Granted(0)` instead of re-reporting the stale amount.
+                    unsafe { *self.granted.get() = 0 };
                     GrantResult::Granted(granted)
                 }
             }
             RC_LINKED => GrantResult::Pending,
             _ => unreachable!("unexpected refcount {rc} in poll_granted"),
         }
-    }
-
-    /// Mark a delivered grant as consumed by zeroing the `granted` field.
-    ///
-    /// After [`poll_granted`] returned `Granted(n)` and the application has attached those bytes to
-    /// frames (or otherwise taken responsibility for releasing them), call this to record that the
-    /// slot is once again "idle, no credits owed". A subsequent [`abandon`] on this idle slot will
-    /// then return `Granted(0)` instead of re-reporting the stale `n`, which makes drop a single
-    /// unconditional `abandon` call regardless of slot state.
-    ///
-    /// # Safety
-    ///
-    /// Must be called only while the slot is APP-owned (refcount=1) — i.e. between a successful
-    /// `poll_granted` and the next `poll_acquire`. Calling it while the slot is LINKED races the
-    /// pool's grant write.
-    ///
-    /// [`poll_granted`]: Slot::poll_granted
-    /// [`abandon`]: Slot::abandon
-    #[inline]
-    pub unsafe fn consume_grant(&self) {
-        debug_assert_eq!(self.refcount.load(Ordering::Relaxed), RC_APP);
-        *self.granted.get() = 0;
     }
 
     /// Called by the pool under the tier mutex to grant credits and release
@@ -259,9 +249,8 @@ impl Slot {
     /// race), the caller already owns the allocation. The result distinguishes:
     ///
     /// - [`AbandonResult::Granted(n)`] — `n` bytes the pool delivered and the application has not
-    ///   yet declared consumed. After the application attaches a delivered grant to frames, it
-    ///   should call [`consume_grant`] so subsequent `abandon`s see `Granted(0)` instead of
-    ///   re-reporting the stale grant. `Granted(0)` is the benign "nothing to release" signal.
+    ///   yet observed via [`poll_granted`]. `Granted(0)` is the benign "nothing outstanding"
+    ///   signal returned after [`poll_granted`] consumed any grant.
     /// - [`AbandonResult::Closed`] — the pool was dropped (it wrote the `GRANT_CLOSED` sentinel).
     ///   The caller must not release anything back to the (gone) pool.
     ///
@@ -271,7 +260,7 @@ impl Slot {
     /// must not access any non-thread-safe field of the slot. After any other return the caller
     /// owns the allocation outright.
     ///
-    /// [`consume_grant`]: Slot::consume_grant
+    /// [`poll_granted`]: Slot::poll_granted
     #[inline]
     pub unsafe fn abandon(&self) -> AbandonResult {
         // Try to transition LINKED → DEAD. If the slot is APP-owned (never parked, or the pool just

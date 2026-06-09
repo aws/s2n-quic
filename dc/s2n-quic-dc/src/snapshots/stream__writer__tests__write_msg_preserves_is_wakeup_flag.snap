@@ -1,7 +1,10 @@
 ---
 source: dc/s2n-quic-dc/src/testing.rs
+assertion_line: 352
 expression: logs
 ---
+0:00:00.000000000 [main] TRACE c#credit.acquire.fast_path=1
+0:00:00.000000000 [main] TRACE c#credit.acquire.bytes=1362
 0:00:00.000000000 [main] TRACE m#tx.msg.segment_size=1362
 0:00:00.000000000 [main] TRACE m#tx.msg.chunks_per_segment=2
 0:00:00.000000000 [main] DEBUG Writer dropping binding_id=1 status=Open next_offset=1362 inflight_bytes=1362 remote_max_data=4611686018427387903

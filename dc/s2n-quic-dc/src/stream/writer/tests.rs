@@ -1906,6 +1906,7 @@ fn server_write_msg_blocks_when_remote_budget_zero() {
         .spawn();
 
         async move {
+            let slot = writer.0.slot_ptr();
             let mut payload = Bytes::from_static(b"hello");
 
             // First poll must return Pending because remote budget is zero.
@@ -1913,6 +1914,7 @@ fn server_write_msg_blocks_when_remote_budget_zero() {
                 let mut buf = Bytes::from_static(b"hello");
                 match writer.0.poll_write_msg(
                     cx,
+                    slot,
                     &mut buf,
                     MsgFlags {
                         is_fin: false,
@@ -2140,6 +2142,7 @@ fn client_write_msg_first_write_sends_queue_data_init_then_blocks() {
         .spawn();
 
         async move {
+            let slot = writer.0.slot_ptr();
             // Small payload (≤ packet_size) → send_queue_data_init fast-path.
             // The write completes immediately despite the zero window because the
             // init frame is always sent unconditionally.
@@ -2148,6 +2151,7 @@ fn client_write_msg_first_write_sends_queue_data_init_then_blocks() {
             let result = core::future::poll_fn(|cx| {
                 writer.0.poll_write_msg(
                     cx,
+                    slot,
                     &mut buf,
                     MsgFlags {
                         is_fin: false,
@@ -2168,6 +2172,7 @@ fn client_write_msg_first_write_sends_queue_data_init_then_blocks() {
                 let mut buf2 = Data::new(1);
                 match writer.0.poll_write_msg(
                     cx,
+                    slot,
                     &mut buf2,
                     MsgFlags {
                         is_fin: false,
@@ -2225,11 +2230,13 @@ fn client_write_msg_zero_window_does_not_block_init() {
         .spawn();
 
         async move {
+            let slot = writer.0.slot_ptr();
             let mut payload = Bytes::from_static(b"hello");
             // First write should complete (not block) even with zero window.
             let result = core::future::poll_fn(|cx| {
                 writer.0.poll_write_msg(
                     cx,
+                    slot,
                     &mut payload,
                     MsgFlags {
                         is_fin: false,
