@@ -1380,7 +1380,10 @@ impl Inner {
 
         let need = want - self.pending_credits;
         // SAFETY: caller's invariants: `slot` is this writer's idle slot.
-        match unsafe { self.send_credit_pool.poll_acquire(cx, slot, need, self.priority) } {
+        match unsafe {
+            self.send_credit_pool
+                .poll_acquire(cx, slot, need, self.priority)
+        } {
             Poll::Ready(n) => {
                 self.pending_credits = self.pending_credits.saturating_add(n);
                 Poll::Ready(Ok(()))
