@@ -4,13 +4,13 @@
 use crate::{
     credit::{
         AbandonResult, Config, DeadSlotQueue, Distributor, GrantResult, Pool, Priority, Slot,
+        WakerSink,
     },
-    intrusive::Queue,
-    socket::channel::{Budget, UnboundedSender},
-    sync::AutoWake,
+    socket::channel::Budget,
 };
 use std::{
     alloc::{self, Layout},
+    collections::VecDeque,
     ptr::NonNull,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -91,20 +91,15 @@ impl Wake for WakeCounter {
     }
 }
 
-/// Waker sender that immediately wakes every waker in the batch (mirrors a downstream that
-/// drains and delivers the wakers). Each `AutoWake` token's `take()` returns the inner waker so
-/// the test calls `wake()` exactly once per granted slot — relying on `AutoWake::drop` would
-/// also work but obscures the count.
+/// Waker sink that immediately wakes every waker in the batch (mirrors a downstream that
+/// drains and delivers the wakers).
 struct InlineWakeSender;
 
-impl UnboundedSender<Queue<AutoWake>> for InlineWakeSender {
-    fn send(&mut self, mut batch: Queue<AutoWake>) -> Result<(), Queue<AutoWake>> {
-        while let Some(entry) = batch.pop_front() {
-            if let Some(w) = entry.into_inner().take() {
-                w.wake();
-            }
+impl WakerSink for InlineWakeSender {
+    fn append_wakers(&mut self, batch: &mut VecDeque<Waker>) {
+        for w in batch.drain(..) {
+            w.wake();
         }
-        Ok(())
     }
 }
 
@@ -668,9 +663,8 @@ fn second_refill_drains_fresh_arrivals_behind_cached_head() {
     // First pass with no credit: the distributor refills the mirror with A, finds it unaffordable
     // (free = 0, req = 5), and breaks. A is now cached in the mirror across passes.
     let mut budget = Budget::new(1 << 20);
-    let mut pending = Queue::<AutoWake>::new();
     let mut dead = DeadSlotQueue::new();
-    let progressed = h.dist.pass(&mut budget, &mut pending, &mut dead);
+    let progressed = h.dist.pass(&mut budget, &mut dead);
     assert!(!progressed);
     assert_eq!(counters[0].wakeups(), 0);
 
@@ -687,15 +681,14 @@ fn second_refill_drains_fresh_arrivals_behind_cached_head() {
     // shared tier, then grants B and C. Without the second refill, only A would be served and
     // B/C would have to wait for another pass.
     let mut budget = Budget::new(1 << 20);
-    let mut pending = Queue::<AutoWake>::new();
     let mut dead = DeadSlotQueue::new();
-    let progressed = h.dist.pass(&mut budget, &mut pending, &mut dead);
+    let progressed = h.dist.pass(&mut budget, &mut dead);
     assert!(progressed);
 
     // Deliver the wakers that this single pass staged; a real run would flush them to the waker
     // channel at end-of-poll, but the test drives `pass` directly.
     let mut sink = InlineWakeSender;
-    let _ = sink.send(pending);
+    sink.append_wakers(&mut h.dist.pending_wakers);
 
     for (i, counter) in counters.iter().enumerate() {
         assert_eq!(
@@ -770,12 +763,11 @@ fn budget_exhaustion_preserves_no_snipe() {
     // Single pass with budget=2 → exits via budget exhaustion after two grants.
     h.dist.pool.waker.register(&h.dist_waker);
     let mut budget = Budget::new(2);
-    let mut pending = Queue::<AutoWake>::new();
     let mut dead = DeadSlotQueue::new();
-    let progressed = h.dist.pass(&mut budget, &mut pending, &mut dead);
+    let progressed = h.dist.pass(&mut budget, &mut dead);
     assert!(progressed);
     let mut sink = InlineWakeSender;
-    let _ = sink.send(pending);
+    sink.append_wakers(&mut h.dist.pending_wakers);
 
     // Two of the four are now granted.
     let granted_count: usize = counters.iter().map(|c| c.wakeups()).sum();
@@ -846,11 +838,10 @@ fn carry_accumulates_across_passes() {
     // Step with budget=1 until all served.
     for _ in 0..16 {
         let mut budget = Budget::new(1);
-        let mut pending = Queue::<AutoWake>::new();
         let mut dead = DeadSlotQueue::new();
-        let _ = h.dist.pass(&mut budget, &mut pending, &mut dead);
+        let _ = h.dist.pass(&mut budget, &mut dead);
         let mut sink = InlineWakeSender;
-        let _ = sink.send(pending);
+        sink.append_wakers(&mut h.dist.pending_wakers);
         if counters.iter().all(|c| c.wakeups() == 1) {
             break;
         }
@@ -892,11 +883,10 @@ fn carry_releases_when_queue_drains() {
     // Pass with budget=1: grants one, leaves two parked, carry > 0.
     h.dist.pool.waker.register(&h.dist_waker);
     let mut budget = Budget::new(1);
-    let mut pending = Queue::<AutoWake>::new();
     let mut dead = DeadSlotQueue::new();
-    let _ = h.dist.pass(&mut budget, &mut pending, &mut dead);
+    let _ = h.dist.pass(&mut budget, &mut dead);
     let mut sink = InlineWakeSender;
-    let _ = sink.send(pending);
+    sink.append_wakers(&mut h.dist.pending_wakers);
     assert!(h.dist.debug_carry() > 0);
 
     // The two remaining waiters abandon before the next pass.
@@ -911,10 +901,9 @@ fn carry_releases_when_queue_drains() {
 
     // Next pass: live_parked drops to zero, carry must write back fully.
     let mut budget = Budget::new(1 << 20);
-    let mut pending = Queue::<AutoWake>::new();
     let mut dead = DeadSlotQueue::new();
-    let _ = h.dist.pass(&mut budget, &mut pending, &mut dead);
-    let _ = sink.send(pending);
+    let _ = h.dist.pass(&mut budget, &mut dead);
+    sink.append_wakers(&mut h.dist.pending_wakers);
     drop(dead);
     assert_eq!(h.dist.debug_carry(), 0);
 
@@ -1043,11 +1032,10 @@ fn budget_exhaustion_with_dead_reaps() {
     // Single tiny-budget pass: dead slots are reaped without consuming budget; live ones do.
     h.dist.pool.waker.register(&h.dist_waker);
     let mut budget = Budget::new(1);
-    let mut pending = Queue::<AutoWake>::new();
     let mut dead = DeadSlotQueue::new();
-    let _ = h.dist.pass(&mut budget, &mut pending, &mut dead);
+    let _ = h.dist.pass(&mut budget, &mut dead);
     let mut sink = InlineWakeSender;
-    let _ = sink.send(pending);
+    sink.append_wakers(&mut h.dist.pending_wakers);
     drop(dead);
 
     // No-snipe: live parkers may remain.
@@ -1149,55 +1137,19 @@ fn counters_track_fast_path_and_park() {
 }
 
 #[test]
-fn closed_wakers_tx_does_not_strand() {
-    // A `wakers_tx` that always rejects sends would, under a naive design, strand granted slots:
-    // the slot's `granted` field is mutated under `grant()`, but the waker never gets called and
-    // the parked task never wakes. With AutoWake, the rejected batch's drop wakes every slot
-    // automatically.
-    let mut h = Harness::new(cfg(0, 100));
-
-    struct AlwaysClosed;
-    impl UnboundedSender<Queue<AutoWake>> for AlwaysClosed {
-        fn send(&mut self, batch: Queue<AutoWake>) -> Result<(), Queue<AutoWake>> {
-            // Reject the send; the caller drops `batch` and AutoWake's Drop fires per-entry.
-            Err(batch)
-        }
-    }
-
-    let counter = Arc::new(WakeCounter::default());
-    let waker = Waker::from(counter.clone());
-    let slot = alloc_test_slot();
-
-    let r = unsafe { h.poll_acquire(slot, 10, Priority::Medium, &waker) };
-    assert!(matches!(r, Poll::Pending));
-
-    h.release(10);
-    h.dist.pool.waker.register(&h.dist_waker);
-    let mut budget = Budget::new(1 << 20);
-    let mut sink = AlwaysClosed;
-    let _ = h.dist.poll_distribute(&mut budget, &mut sink);
-
-    // The slot's `granted` field has been written and the waker fired via AutoWake's Drop in the
-    // rejected batch.
-    assert_eq!(counter.wakeups(), 1);
-    let slot_ref = unsafe { &*slot.as_ptr() };
-    assert_eq!(slot_ref.poll_granted(), GrantResult::Granted(10));
-
-    unsafe { free_test_slot(slot) };
-}
-
-#[test]
-fn dropped_batch_wakes_everyone() {
-    // The sender accepts, but the receiver drops the resulting `Queue<AutoWake>` without draining.
-    // Every entry's drop wakes its parked task.
+fn buffering_sink_splices_batch_and_distributor_reuses_buffer() {
+    // The production sink (endpoint::waker::Sink) drains the batch via VecDeque::append into
+    // its own buffer and a downstream drain task fires the wakers later. This test mirrors that
+    // shape and additionally checks that the distributor's pending_wakers buffer is left empty
+    // (so its capacity can be reused on the next poll without re-allocating).
     let mut h = Harness::new(cfg(0, 1000));
 
-    struct DroppingSink;
-    impl UnboundedSender<Queue<AutoWake>> for DroppingSink {
-        fn send(&mut self, batch: Queue<AutoWake>) -> Result<(), Queue<AutoWake>> {
-            // Accept then drop without draining — simulates a downstream that buffers but is gone.
-            drop(batch);
-            Ok(())
+    struct BufferingSink {
+        buf: VecDeque<Waker>,
+    }
+    impl WakerSink for BufferingSink {
+        fn append_wakers(&mut self, batch: &mut VecDeque<Waker>) {
+            self.buf.append(batch);
         }
     }
 
@@ -1211,15 +1163,67 @@ fn dropped_batch_wakes_everyone() {
     h.release(30);
     h.dist.pool.waker.register(&h.dist_waker);
     let mut budget = Budget::new(1 << 20);
-    let mut sink = DroppingSink;
+    let mut sink = BufferingSink {
+        buf: VecDeque::new(),
+    };
     let _ = h.dist.poll_distribute(&mut budget, &mut sink);
 
+    // The distributor handed all three wakers to the sink and left its scratch buffer empty.
+    assert_eq!(sink.buf.len(), 3);
+    assert!(
+        h.dist.pending_wakers.is_empty(),
+        "distributor must leave its scratch buffer empty after a poll"
+    );
+
+    // Wakers fire when the downstream drains its buffer.
+    for w in sink.buf.drain(..) {
+        w.wake();
+    }
     for c in &counters {
         assert_eq!(c.wakeups(), 1);
     }
     for s in &slots {
         let s_ref = unsafe { &*s.as_ptr() };
         assert_eq!(s_ref.poll_granted(), GrantResult::Granted(10));
+    }
+
+    for s in slots {
+        unsafe { free_test_slot(s) };
+    }
+}
+
+#[test]
+fn pending_wakers_capacity_persists_across_polls() {
+    // Smoke test the steady-state allocation behavior: the distributor's pending_wakers buffer
+    // grows once and then reuses its capacity. We can't directly observe alloc/free, but we can
+    // observe that poll_distribute leaves the buffer empty (and InlineWakeSender's `drain` keeps
+    // the same allocation), so consecutive polls of the same shape don't grow it.
+    let mut h = Harness::new(cfg(0, 1000));
+
+    let counters: Vec<_> = (0..2).map(|_| Arc::new(WakeCounter::default())).collect();
+    let wakers: Vec<_> = counters.iter().map(|c| Waker::from(c.clone())).collect();
+    let slots: Vec<_> = (0..2).map(|_| alloc_test_slot()).collect();
+
+    h.dist.pool.waker.register(&h.dist_waker);
+
+    for round in 0..3 {
+        for i in 0..2 {
+            let r = unsafe { h.poll_acquire(slots[i], 10, Priority::Medium, &wakers[i]) };
+            assert!(matches!(r, Poll::Pending), "round {round}, slot {i}");
+        }
+        h.release(20);
+        let mut budget = Budget::new(1 << 20);
+        let mut sink = InlineWakeSender;
+        let _ = h.dist.poll_distribute(&mut budget, &mut sink);
+        assert!(h.dist.pending_wakers.is_empty(), "round {round}");
+        for i in 0..2 {
+            let s_ref = unsafe { &*slots[i].as_ptr() };
+            assert_eq!(s_ref.poll_granted(), GrantResult::Granted(10));
+        }
+        // Each round increments the wake counters by one.
+        for c in &counters {
+            assert_eq!(c.wakeups(), round + 1);
+        }
     }
 
     for s in slots {

@@ -9,7 +9,7 @@ mod waker;
 
 pub use config::Config;
 pub use counters::Counters;
-pub use pool::{Distributor, Pool, Priority};
+pub use pool::{Distributor, Pool, Priority, WakerSink};
 pub use slot::{AbandonResult, DeadSlot, DeadSlotQueue, GrantResult, Slot};
 
 /// Static-asserts that the embedded `slot: Slot` field lives at offset 0 of `$outer`.

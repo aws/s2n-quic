@@ -4,8 +4,12 @@ expression: logs
 ---
 0:00:00.000000000 [peer] DEBUG s2n_quic_dc: capacity=50000
 0:00:00.000000000 [peer] DEBUG setting up endpoint config.layout=WorkerLayout { frame_dispatch: 0, send: [1, 2, 3, 4], recv_io: [5, 6], recv_dispatch: [7, 8, 9, 10], waker_drain: [11], background: 12 } send_sockets=[10.0.0.1:4433, 10.0.0.1:49152, 10.0.0.1:49153, 10.0.0.1:49154, 10.0.0.1:49155, 10.0.0.1:49156, 10.0.0.1:49157, 10.0.0.1:49158] recv_sockets=[10.0.0.1:4433, 10.0.0.1:49152, 10.0.0.1:49153, 10.0.0.1:49154, 10.0.0.1:49155, 10.0.0.1:49156, 10.0.0.1:49157, 10.0.0.1:49158]
+0:00:00.000000000 [peer] DEBUG distributor created
+0:00:00.000000000 [peer] DEBUG distributor created
 0:00:00.000000000 [peer] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [peer] TRACE m#task.frame_dispatch.drained=0
+0:00:00.000000000 [peer] TRACE c#credit.send.distributor.passes=1
+0:00:00.000000000 [peer] TRACE c#credit.recv.distributor.passes=1
 0:00:00.000000000 [peer] TRACE m#task.context_resolver.drained[send.worker.0]=0
 0:00:00.000000000 [peer] TRACE m#task.ack_processor.drained[send.worker.0]=0
 0:00:00.000000000 [peer] TRACE m#task.completion.drained[send.worker.0]=0
@@ -102,6 +106,8 @@ expression: logs
 0:00:00.000000000 [peer] TRACE c#q.router_to_batcher.drain[p3]=1
 0:00:00.000000000 [peer] TRACE g#q.router_to_batcher.depth[p3]=0
 0:00:00.000000000 [peer] TRACE m#task.frame_dispatch.drained=2
+0:00:00.000000000 [peer] TRACE c#credit.send.distributor.passes=1
+0:00:00.000000000 [peer] TRACE c#credit.recv.distributor.passes=1
 0:00:00.000000000 [peer] TRACE m#task.context_resolver.drained[send.worker.0]=0
 0:00:00.000000000 [peer] TRACE m#task.ack_processor.drained[send.worker.0]=0
 0:00:00.000000000 [peer] TRACE m#task.completion.drained[send.worker.0]=0
@@ -616,3 +622,5 @@ expression: logs
 0:00:00.001041000 [peer] TRACE g#q.dispatch.depth[recv.dispatch.0]=0
 0:00:00.001041000 [peer] DEBUG event=on_flush_complete prev=Flushed next=Idle location=dc/s2n-quic-dc/src/endpoint/recv.rs
 0:00:00.001041000 [peer] TRACE m#task.ack_completion.drained[recv.dispatch.0]=1
+0:00:00.001041000 [main] DEBUG distributor dropping; closing pool
+0:00:00.001041000 [main] DEBUG distributor dropping; closing pool

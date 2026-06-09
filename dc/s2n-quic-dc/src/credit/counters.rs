@@ -64,7 +64,22 @@ pub struct Counters {
 }
 
 impl Counters {
+    /// Construct counters under the default `credit.*` namespace. Use [`new_with_prefix`] when
+    /// multiple pools share a registry (e.g. one send-direction pool and one recv-direction pool
+    /// on the same endpoint) so their counter names don't collide.
+    ///
+    /// [`new_with_prefix`]: Self::new_with_prefix
     pub fn new(registry: &Registry) -> Self {
+        Self::new_with_prefix(registry, "credit")
+    }
+
+    /// Construct counters with a custom namespace prefix. The prefix replaces the leading `credit`
+    /// segment of every counter name, so for example `Counters::new_with_prefix(registry, "credit.send")`
+    /// produces `credit.send.acquire.fast_path`, `!credit.send.distributor.budget_exhausted`, etc.
+    ///
+    /// The prefix should not contain a trailing dot. The leading `!` for nominal-bad counters is
+    /// preserved.
+    pub fn new_with_prefix(registry: &Registry, prefix: &str) -> Self {
         let acquire_parked = std::array::from_fn(|i| {
             let priority = match i {
                 0 => "Highest",
@@ -77,21 +92,23 @@ impl Counters {
                 7 => "Background",
                 _ => unreachable!(),
             };
-            registry.register_nominal("credit.acquire.parked", priority)
+            registry.register_nominal(format!("{prefix}.acquire.parked"), priority)
         });
 
         Self {
-            acquire_fast_path: registry.register("credit.acquire.fast_path"),
+            acquire_fast_path: registry.register(format!("{prefix}.acquire.fast_path")),
             acquire_parked,
-            acquire_bytes: registry.register_bytes("credit.acquire.bytes"),
-            release_bytes: registry.register_bytes("credit.release.bytes"),
-            release_calls: registry.register("credit.release.calls"),
-            distributor_passes: registry.register("credit.distributor.passes"),
-            distributor_granted: registry.register("credit.distributor.granted"),
-            distributor_reaped: registry.register("credit.distributor.reaped"),
-            distributor_carry_bytes: registry.register_gauge("credit.distributor.carry_bytes"),
-            distributor_budget_exhausted: registry.register("!credit.distributor.budget_exhausted"),
-            abandon_granted_race: registry.register("!credit.abandon.granted_race"),
+            acquire_bytes: registry.register_bytes(format!("{prefix}.acquire.bytes")),
+            release_bytes: registry.register_bytes(format!("{prefix}.release.bytes")),
+            release_calls: registry.register(format!("{prefix}.release.calls")),
+            distributor_passes: registry.register(format!("{prefix}.distributor.passes")),
+            distributor_granted: registry.register(format!("{prefix}.distributor.granted")),
+            distributor_reaped: registry.register(format!("{prefix}.distributor.reaped")),
+            distributor_carry_bytes: registry
+                .register_gauge(format!("{prefix}.distributor.carry_bytes")),
+            distributor_budget_exhausted: registry
+                .register(format!("!{prefix}.distributor.budget_exhausted")),
+            abandon_granted_race: registry.register(format!("!{prefix}.abandon.granted_race")),
         }
     }
 }

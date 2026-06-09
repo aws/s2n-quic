@@ -59,14 +59,14 @@ use super::{
     waker::TaskWaker,
 };
 use crate::{
-    intrusive::{Entry, List, Queue},
-    socket::channel::{Budget, UnboundedSender},
-    sync::{lock, Arc, AtomicI64, AtomicU64, AutoWake, Mutex, Ordering},
+    intrusive::List,
+    socket::channel::Budget,
+    sync::{lock, Arc, AtomicI64, AtomicU64, Mutex, Ordering},
     tracing::{debug, trace},
 };
-use core::task::{Context, Poll};
+use core::task::{Context, Poll, Waker};
 use crossbeam_utils::CachePadded;
-use std::ptr::NonNull;
+use std::{collections::VecDeque, ptr::NonNull};
 
 #[cfg(all(test, not(feature = "loom")))]
 mod tests;
@@ -327,6 +327,32 @@ impl Pool {
 /// `Arc<Pool>`, only [`Distributor::drop`] can guarantee the close timing — the implicit
 /// `Arc<Pool>` drop happens after the *last* stream finishes, which is too late for an unwanted
 /// distributor cancellation.
+/// Receiver of the distributor's per-poll waker batch.
+///
+/// The distributor accumulates `Waker`s into a `VecDeque<Waker>` it owns across the
+/// poll cycle and hands the batch to the sink at end-of-poll via [`append_wakers`].
+/// The sink takes whatever delivery decision is appropriate for it (fan out under a
+/// lock, fire inline, route to a drain task) and returns. The distributor's
+/// `VecDeque` is left empty and reused on the next poll.
+///
+/// **Wake guarantee.** A granted slot has already had its `granted` field mutated
+/// — the parked task MUST be woken. The sink contract is therefore total: every
+/// `Waker` placed into `batch` MUST be either delivered (queued for a drain task,
+/// fanned out, etc.) or invoked inline before `append_wakers` returns. The
+/// distributor never inspects the `VecDeque` after the call (it only `clear()`s
+/// for reuse), so a sink that leaves wakers in the batch without invoking them
+/// strands granted slots.
+///
+/// [`append_wakers`]: WakerSink::append_wakers
+pub trait WakerSink {
+    /// Drain `batch` and deliver each waker. The distributor calls this once per
+    /// poll cycle when at least one grant happened. After the call, `batch` should
+    /// be empty so the distributor can reuse its allocation; sink implementations
+    /// that cannot deliver immediately must arrange for delivery internally and
+    /// still empty the input (e.g. by `append`-ing into a downstream buffer).
+    fn append_wakers(&mut self, batch: &mut VecDeque<Waker>);
+}
+
 pub struct Distributor {
     pool: Arc<Pool>,
     /// One mirror list per priority. Each shares its shared tier's list id (seeded by `detach`).
@@ -340,6 +366,12 @@ pub struct Distributor {
     /// next pass. Holding the surplus distributor-locally (instead of staging it back through
     /// `returned`) keeps the shared `returned` line a single producer/single consumer atomic.
     carry: u64,
+    /// Per-poll waker scratch buffer. Owned by the distributor so its capacity persists
+    /// across polls — `VecDeque` only re-allocates when a poll grants more wakers than any
+    /// previous poll. The buffer is always empty when entering and leaving `poll_distribute`:
+    /// `pass` appends grants; the sink drains them via [`WakerSink::append_wakers`] before
+    /// the function returns.
+    pending_wakers: VecDeque<Waker>,
 }
 
 impl Distributor {
@@ -350,6 +382,7 @@ impl Distributor {
             local: std::array::from_fn(|_| List::new()),
             paid_demand: 0,
             carry: 0,
+            pending_wakers: VecDeque::new(),
         }
     }
 
@@ -368,18 +401,16 @@ impl Distributor {
     /// Drive the distributor as an async task.
     ///
     /// `budget` bounds the work per poll; the future yields when the budget is exhausted and
-    /// re-arms via the standard `take_needs_wake` self-wake. `wakers_tx` receives one
-    /// [`Queue<AutoWake>`] batch per poll cycle holding every slot the distributor woke during
-    /// that cycle — empty cycles do not send. The future never resolves; drop the task to shut down.
+    /// re-arms via the standard `take_needs_wake` self-wake. `wakers_tx` receives the batch of
+    /// wakers granted during each poll cycle via [`WakerSink::append_wakers`] — empty cycles
+    /// do not call the sink. The future never resolves; drop the task to shut down.
     ///
-    /// The wakers ride through the channel as [`AutoWake`] tokens: if the channel is closed or the
-    /// downstream drops the batch without draining, every still-`Some` token wakes its parked task
-    /// on drop. A grant that has already mutated the slot's `granted` field cannot be retracted,
-    /// so the parked task must be woken regardless of channel state — `AutoWake` makes that
-    /// guarantee structural rather than relying on the producer to handle each failure mode.
+    /// A grant has already mutated the slot's `granted` field and cannot be retracted, so the
+    /// sink MUST either queue or invoke every waker handed to it before returning. See
+    /// [`WakerSink`] for the contract.
     pub async fn distribute<W>(mut self, mut budget: Budget, mut wakers_tx: W)
     where
-        W: UnboundedSender<Queue<AutoWake>>,
+        W: WakerSink,
     {
         // Register exactly once on the first poll. Subsequent polls keep the registered waker —
         // the steady-state loop below never touches it.
@@ -412,21 +443,25 @@ impl Distributor {
     /// waker on the pool (see [`Distributor::distribute`] for the standard wiring) before the first
     /// poll, otherwise releases will not drive a re-poll.
     ///
-    /// On every `Pending` exit, the accumulated waker batch is shipped to `wakers_tx` as a single
-    /// send (no send when empty). Dead slots are freed inline inside `pass`, outside any tier lock.
+    /// On every `Pending` exit, the accumulated waker batch is shipped to `wakers_tx` as a
+    /// single [`WakerSink::append_wakers`] call (skipped when empty). Dead slots are freed
+    /// inline inside `pass`, outside any tier lock.
     pub(crate) fn poll_distribute<W>(&mut self, budget: &mut Budget, wakers_tx: &mut W) -> Poll<()>
     where
-        W: UnboundedSender<Queue<AutoWake>>,
+        W: WakerSink,
     {
-        // Wakers and dead slots accumulate during the pass and are flushed at the end of the
-        // poll cycle: linking each one is two pointer writes (cheap), but the actual work — a
-        // channel send for the wakers, and `drop_fn` per dead slot for the dead queue — would
-        // otherwise stall the inner loop on every grant/reap. Both queues live on the poll stack,
-        // so storage is reclaimed between polls.
-        let mut pending_wakers = Queue::<AutoWake>::new();
+        // Wakers accumulate during the pass and are flushed at the end of the poll cycle:
+        // a `VecDeque::push_back` per grant is cheap, but invoking the sink (which typically
+        // takes a downstream lock) per grant would stall the inner loop. `self.pending_wakers`
+        // is a long-lived scratch buffer — its allocation persists across polls so steady-state
+        // grant batches don't allocate. Empty at function entry; emptied by the sink before exit.
+        debug_assert!(
+            self.pending_wakers.is_empty(),
+            "pending_wakers leaked across polls"
+        );
         let mut dead = DeadSlotQueue::new();
         let result = loop {
-            let progressed = self.pass(budget, &mut pending_wakers, &mut dead);
+            let progressed = self.pass(budget, &mut dead);
             if budget.is_exhausted() {
                 budget.set_needs_wake();
                 break Poll::Pending;
@@ -436,11 +471,15 @@ impl Distributor {
             }
         };
 
-        if !pending_wakers.is_empty() {
-            // `send` returning Err returns the batch — `AutoWake` drops in each entry will fire
-            // the wake automatically, so a closed channel cannot strand a granted slot. We
-            // intentionally discard the Err and let the drop path do the work.
-            let _ = wakers_tx.send(pending_wakers);
+        if !self.pending_wakers.is_empty() {
+            // The sink contract is total: every waker in the buffer is either queued or fired
+            // inline before this returns, and the buffer is left empty so we can reuse it next
+            // poll without re-allocating.
+            wakers_tx.append_wakers(&mut self.pending_wakers);
+            debug_assert!(
+                self.pending_wakers.is_empty(),
+                "WakerSink::append_wakers must drain the batch (its capacity is reused next poll)"
+            );
         }
         // `dead` drops here at the end of the poll cycle — its drop walks the list and runs each
         // slot's `drop_fn`, freeing the outer allocations outside the work loop.
@@ -460,12 +499,7 @@ impl Distributor {
     /// never tighter than the natural bound). On the budget-exhaustion exit, where affordable
     /// waiters can still be linked, the cap prevents `available` from going positive while owed
     /// credit still has parkers; the surplus carries to the next pass via `self.carry`.
-    fn pass(
-        &mut self,
-        budget: &mut Budget,
-        pending_wakers: &mut Queue<AutoWake>,
-        dead: &mut DeadSlotQueue,
-    ) -> bool {
+    fn pass(&mut self, budget: &mut Budget, dead: &mut DeadSlotQueue) -> bool {
         self.pool.counters.distributor_passes.add(1);
         // Recover true free credit `= capacity − in_flight = available + outstanding_demand`,
         // plus the newly-returned `pull`. `available` is held negative by every parked waiter's
@@ -564,15 +598,14 @@ impl Distributor {
                         Some(waker) => {
                             // Full grant: the waiter's park-time subtraction stays in `available`
                             // (reclassified parked → in-flight); we only drop its demand. Stash
-                            // the waker locally; the batch is shipped at the end of the poll cycle.
-                            // Wrap in AutoWake so the wake fires even if the batch is dropped
-                            // before delivery — a granted slot has already had its `granted` field
-                            // mutated and MUST be woken.
+                            // the waker locally; the batch is shipped at the end of the poll
+                            // cycle via `WakerSink::append_wakers`, whose contract guarantees
+                            // every waker is either queued or fired before it returns.
                             free -= req as i64;
                             granted_any = true;
                             self.pool.counters.distributor_granted.add(1);
                             trace!(target: "credit::pool", req, "grant");
-                            pending_wakers.push_back(Entry::new(AutoWake::new(Some(waker))));
+                            self.pending_wakers.push_back(waker);
                         }
                         None => {
                             // Raced: the app abandoned between our `is_dead` check and the CAS.

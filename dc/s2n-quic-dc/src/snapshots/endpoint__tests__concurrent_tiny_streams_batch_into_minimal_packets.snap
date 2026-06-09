@@ -4,10 +4,16 @@ expression: logs
 ---
 0:00:00.000000000 [server] DEBUG s2n_quic_dc: capacity=50000
 0:00:00.000000000 [server] DEBUG setting up endpoint config.layout=WorkerLayout { frame_dispatch: 0, send: [1, 2, 3, 4], recv_io: [5, 6], recv_dispatch: [7, 8, 9, 10], waker_drain: [11], background: 12 } send_sockets=[10.0.0.1:4433, 10.0.0.1:49152, 10.0.0.1:49153, 10.0.0.1:49154, 10.0.0.1:49155, 10.0.0.1:49156, 10.0.0.1:49157, 10.0.0.1:49158] recv_sockets=[10.0.0.1:4433, 10.0.0.1:49152, 10.0.0.1:49153, 10.0.0.1:49154, 10.0.0.1:49155, 10.0.0.1:49156, 10.0.0.1:49157, 10.0.0.1:49158]
+0:00:00.000000000 [server] DEBUG distributor created
+0:00:00.000000000 [server] DEBUG distributor created
 0:00:00.000000000 [client] DEBUG s2n_quic_dc: capacity=50000
 0:00:00.000000000 [client] DEBUG setting up endpoint config.layout=WorkerLayout { frame_dispatch: 0, send: [1, 2, 3, 4], recv_io: [5, 6], recv_dispatch: [7, 8, 9, 10], waker_drain: [11], background: 12 } send_sockets=[10.0.0.2:49152, 10.0.0.2:49153, 10.0.0.2:49154, 10.0.0.2:49155, 10.0.0.2:49156, 10.0.0.2:49157, 10.0.0.2:49158, 10.0.0.2:49159] recv_sockets=[10.0.0.2:49152, 10.0.0.2:49153, 10.0.0.2:49154, 10.0.0.2:49155, 10.0.0.2:49156, 10.0.0.2:49157, 10.0.0.2:49158, 10.0.0.2:49159]
+0:00:00.000000000 [client] DEBUG distributor created
+0:00:00.000000000 [client] DEBUG distributor created
 0:00:00.000000000 [server] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [server] TRACE m#task.frame_dispatch.drained=0
+0:00:00.000000000 [server] TRACE c#credit.send.distributor.passes=1
+0:00:00.000000000 [server] TRACE c#credit.recv.distributor.passes=1
 0:00:00.000000000 [server] TRACE m#task.context_resolver.drained[send.worker.0]=0
 0:00:00.000000000 [server] TRACE m#task.ack_processor.drained[send.worker.0]=0
 0:00:00.000000000 [server] TRACE m#task.completion.drained[send.worker.0]=0
@@ -85,6 +91,8 @@ expression: logs
 0:00:00.000000000 [server] TRACE m#task.freed_batch_router.drained[background]=0
 0:00:00.000000000 [client] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [client] TRACE m#task.frame_dispatch.drained=0
+0:00:00.000000000 [client] TRACE c#credit.send.distributor.passes=1
+0:00:00.000000000 [client] TRACE c#credit.recv.distributor.passes=1
 0:00:00.000000000 [client] TRACE m#task.context_resolver.drained[send.worker.0]=0
 0:00:00.000000000 [client] TRACE m#task.ack_processor.drained[send.worker.0]=0
 0:00:00.000000000 [client] TRACE m#task.completion.drained[send.worker.0]=0
@@ -172,6 +180,8 @@ expression: logs
 0:00:00.000000000 [client] DEBUG setting peer data addresses peer=10.0.0.2:49152 addrs=[SocketAddressV6([::ffff:10.0.0.2]:49152), SocketAddressV6([::ffff:10.0.0.2]:49153), SocketAddressV6([::ffff:10.0.0.2]:49154), SocketAddressV6([::ffff:10.0.0.2]:49155), SocketAddressV6([::ffff:10.0.0.2]:49156), SocketAddressV6([::ffff:10.0.0.2]:49157), SocketAddressV6([::ffff:10.0.0.2]:49158), SocketAddressV6([::ffff:10.0.0.2]:49159)]
 0:00:00.000000000 [server] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [server] TRACE m#task.frame_dispatch.drained=0
+0:00:00.000000000 [server] TRACE c#credit.send.distributor.passes=1
+0:00:00.000000000 [server] TRACE c#credit.recv.distributor.passes=1
 0:00:00.000000000 [server] TRACE m#task.context_resolver.drained[send.worker.0]=0
 0:00:00.000000000 [server] TRACE m#task.ack_processor.drained[send.worker.0]=0
 0:00:00.000000000 [server] TRACE m#task.completion.drained[send.worker.0]=0
@@ -249,6 +259,8 @@ expression: logs
 0:00:00.000000000 [server] TRACE m#task.freed_batch_router.drained[background]=0
 0:00:00.000000000 [client] TRACE m#task.priority_router.drained=0
 0:00:00.000000000 [client] TRACE m#task.frame_dispatch.drained=0
+0:00:00.000000000 [client] TRACE c#credit.send.distributor.passes=1
+0:00:00.000000000 [client] TRACE c#credit.recv.distributor.passes=1
 0:00:00.000000000 [client] TRACE m#task.context_resolver.drained[send.worker.0]=0
 0:00:00.000000000 [client] TRACE m#task.ack_processor.drained[send.worker.0]=0
 0:00:00.000000000 [client] TRACE m#task.completion.drained[send.worker.0]=0
@@ -988,3 +1000,7 @@ expression: logs
 0:00:00.006528000 [server] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.3]=0
 0:00:00.006528000 [server] TRACE c#tx.pto_check=1
 0:00:00.006528000 [server] TRACE m#task.pto_wheel.drained[send.worker.3]=0
+0:00:00.101041000 [main] DEBUG distributor dropping; closing pool
+0:00:00.101041000 [main] DEBUG distributor dropping; closing pool
+0:00:00.101041000 [main] DEBUG distributor dropping; closing pool
+0:00:00.101041000 [main] DEBUG distributor dropping; closing pool

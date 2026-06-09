@@ -58,6 +58,30 @@ impl Slot {
         }
     }
 
+    /// Splice `batch` into this slot's pending wakers under a single mutex acquire.
+    ///
+    /// Used by the credit [`Distributor`](crate::credit::Distributor)'s per-poll waker
+    /// batch. Implemented as one `VecDeque::append` — a bulk pointer/length copy when
+    /// the slot is empty, two pointer/length splices otherwise — never a per-element
+    /// iteration. The drain task is notified at most once for the whole batch.
+    ///
+    /// `batch` is left empty so the caller can reuse its allocation.
+    fn append(&self, batch: &mut VecDeque<Waker>) {
+        if batch.is_empty() {
+            return;
+        }
+        let notify = {
+            let mut guard = self.inner.lock();
+            guard.wakers.append(batch);
+            guard.drain_waker.take()
+        };
+        let has_notify = notify.is_some();
+        trace!(has_drain_waker = has_notify, "waker::Slot::append");
+        if let Some(w) = notify {
+            w.wake();
+        }
+    }
+
     fn swap_into(&self, cx: &core::task::Context<'_>, out: &mut VecDeque<Waker>) {
         let mut guard = self.inner.lock();
         let swapped_count = guard.wakers.len();
@@ -124,6 +148,15 @@ impl channel::UnboundedSender<AutoWake> for Sink {
             trace!("waker::Sink::send(AutoWake) -> empty, skipped");
         }
         Ok(())
+    }
+}
+
+/// Receive a batch of `Waker`s from the credit [`Distributor`](crate::credit::Distributor)
+/// in one mutex acquire and one `VecDeque::append`. The distributor retains ownership of
+/// its `VecDeque`; this impl drains it via the underlying [`Slot::append`].
+impl crate::credit::WakerSink for Sink {
+    fn append_wakers(&mut self, batch: &mut VecDeque<Waker>) {
+        self.slot.append(batch);
     }
 }
 

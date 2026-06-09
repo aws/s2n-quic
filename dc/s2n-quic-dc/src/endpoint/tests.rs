@@ -66,6 +66,8 @@ fn topology_snapshot_uses_dc_tester_layout() {
             dead_peer_cooldown: endpoint::DEFAULT_DEAD_PEER_COOLDOWN,
             initial_tx_descriptor_allocs: 0,
             initial_rx_descriptor_allocs: 0,
+            send_credit_pool_config: crate::credit::Config::default(),
+            recv_credit_pool_config: crate::credit::Config::default(),
         },
         64,
         4,

@@ -8,8 +8,6 @@
 use super::*;
 use crate::{
     credit::slot::{AbandonResult, GrantResult, Slot},
-    intrusive::Queue,
-    sync::AutoWake,
     testing::loom,
 };
 use core::task::{Context, Poll, Waker};
@@ -63,15 +61,12 @@ fn noop() -> Waker {
 
 /// Counts grants delivered by the distributor (and forwards each granted slot's waker).
 struct CountWake(Arc<crate::sync::AtomicUsize>);
-impl UnboundedSender<Queue<AutoWake>> for CountWake {
-    fn send(&mut self, mut batch: Queue<AutoWake>) -> Result<(), Queue<AutoWake>> {
-        while let Some(entry) = batch.pop_front() {
+impl WakerSink for CountWake {
+    fn append_wakers(&mut self, batch: &mut std::collections::VecDeque<core::task::Waker>) {
+        for w in batch.drain(..) {
             self.0.fetch_add(1, Ordering::Release);
-            if let Some(w) = entry.into_inner().take() {
-                w.wake();
-            }
+            w.wake();
         }
-        Ok(())
     }
 }
 

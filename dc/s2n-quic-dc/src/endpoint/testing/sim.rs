@@ -446,6 +446,8 @@ pub fn setup_sim_endpoint(
         dead_peer_cooldown,
         initial_tx_descriptor_allocs: 0,
         initial_rx_descriptor_allocs: 0,
+        send_credit_pool_config: crate::credit::Config::default(),
+        recv_credit_pool_config: crate::credit::Config::default(),
     };
 
     let endpoint = setup_endpoint(

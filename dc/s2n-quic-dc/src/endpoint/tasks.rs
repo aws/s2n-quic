@@ -168,6 +168,40 @@ pub fn frame_dispatch<S, Clk>(
     }
 }
 
+/// Spawn the credit pool's [`Distributor`] task on this worker.
+///
+/// The distributor reconciles released credit and grants parked acquires; its
+/// per-poll waker batch flows out through `waker_sink` (the same per-worker
+/// [`endpoint::waker::Sink`] infrastructure other producers use), via
+/// [`crate::credit::WakerSink::append_wakers`] — one mutex acquire and one
+/// [`VecDeque::append`] per batch. The future never resolves; dropping it (e.g. on
+/// worker shutdown) closes the pool.
+///
+/// [`Distributor`]: crate::credit::Distributor
+/// [`VecDeque::append`]: std::collections::VecDeque::append
+pub fn spawn_credit_distributor(
+    spawner: &mut impl Spawner,
+    distributor: crate::credit::Distributor,
+    budget: usize,
+    waker_sink: endpoint::waker::Sink,
+    counter_registry: &counter::Registry,
+    task_label: &str,
+) {
+    let task_counter = counter_registry
+        .register_nominal_task("task.credit_distributor", task_label)
+        .with_registration_metadata(
+            "task.credit_distributor",
+            "Reconciles released credit and grants parked acquires",
+            "endpoint::tasks::spawn_credit_distributor",
+        );
+    task_counter.on_spawn(Some(budget), spawner.worker_id());
+    let task_name = format!("task.credit_distributor.{task_label}");
+    spawner.spawn_named(
+        &task_name,
+        distributor.distribute(Budget::new(budget), waker_sink),
+    );
+}
+
 /// Spawns all send-side tasks that belong to a single send worker.
 ///
 /// # Role

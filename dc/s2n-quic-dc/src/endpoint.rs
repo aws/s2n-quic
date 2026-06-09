@@ -95,6 +95,18 @@ pub struct Endpoint {
     pub writer_metrics: Arc<crate::stream::metrics::WriterMetrics>,
     /// Metrics for client-side connect operations (queue-pair allocation timing/blocked counts).
     pub client_metrics: Arc<crate::stream::metrics::ClientMetrics>,
+    /// Endpoint-wide credit pool gating outbound stream admission. All Writers acquire
+    /// from this pool before submitting frames so cross-stream priority and global
+    /// admission limits can be enforced. The matching `Distributor` runs on the
+    /// frame-dispatch worker.
+    ///
+    /// Wrapped in `crate::sync::Arc` (rather than `std::sync::Arc`) so the type matches
+    /// the `Pool`'s internal `Arc` flavor under `--features loom`.
+    pub send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
+    /// Endpoint-wide credit pool reserved for the Reader side. Wired here to keep the
+    /// `Distributor` task colocated with the rest of the endpoint plumbing; the Reader
+    /// integration is a follow-up.
+    pub recv_credit_pool: crate::sync::Arc<crate::credit::Pool>,
 }
 
 // ── Pipeline Setup ────────────────────────────────────────────────────────
@@ -138,6 +150,11 @@ pub struct Budgets {
     pub ack_completion: usize,
     /// Budget for the per-worker invalidation drain task.
     pub invalidation: usize,
+    /// Per-poll budget for each credit-pool [`Distributor`](crate::credit::Distributor) task.
+    /// Bounds work-per-pass; a budget that is too small surfaces as
+    /// `!credit.<dir>.distributor.budget_exhausted` increments. Two distributors run
+    /// (one per direction); they each get this budget independently.
+    pub credit_distributor: usize,
 }
 
 impl Default for Budgets {
@@ -159,6 +176,7 @@ impl Default for Budgets {
             waker_drain: 512,
             ack_completion: tasks::DEFAULT_DISPATCH_BUDGET,
             invalidation: 1,
+            credit_distributor: 256,
         }
     }
 }
@@ -243,6 +261,12 @@ pub struct Config {
     ///
     /// [`SyncReuseLocal`]: crate::socket::pool::SyncReuseLocal
     pub initial_rx_descriptor_allocs: usize,
+    /// Configuration for the endpoint-wide outbound credit pool. Capacity and per-priority
+    /// caps are exposed here so deployments can experiment with admission limits.
+    pub send_credit_pool_config: crate::credit::Config,
+    /// Configuration for the endpoint-wide inbound credit pool. Reserved for the Reader-side
+    /// integration; the pool is constructed and run today but not yet acquired against.
+    pub recv_credit_pool_config: crate::credit::Config,
 }
 
 // ── setup_endpoint ────────────────────────────────────────────────────────
@@ -381,6 +405,8 @@ where
         dead_peer_cooldown,
         initial_tx_descriptor_allocs,
         initial_rx_descriptor_allocs,
+        send_credit_pool_config,
+        recv_credit_pool_config,
     } = config;
 
     let clock = runtime.clock();
@@ -426,6 +452,21 @@ where
     // Shared flow-queue allocator and dispatch counters -------------------------
     let (freed_batch_tx, freed_batch_rx) = crate::queue::freed_batch_channel();
     let counters = counters::Dispatch::new(&counter_registry);
+
+    // Endpoint-wide credit pools (one per direction) ----------------------------
+    // The send pool gates outbound stream admission via the Writer; the recv pool
+    // is constructed today for symmetry but is not yet acquired against (Reader
+    // integration is a follow-up).
+    let send_credit_pool = crate::sync::Arc::new(crate::credit::Pool::with_counters(
+        send_credit_pool_config,
+        crate::credit::Counters::new_with_prefix(&counter_registry, "credit.send"),
+    ));
+    let recv_credit_pool = crate::sync::Arc::new(crate::credit::Pool::with_counters(
+        recv_credit_pool_config,
+        crate::credit::Counters::new_with_prefix(&counter_registry, "credit.recv"),
+    ));
+    let send_credit_distributor = crate::credit::Distributor::new(send_credit_pool.clone());
+    let recv_credit_distributor = crate::credit::Distributor::new(recv_credit_pool.clone());
 
     // Per-send-worker batch channels -----------------------------------------------
     let num_send_workers = layout.send.len();
@@ -539,22 +580,20 @@ where
         .map(|(sender_id, &worker_idx)| (sender_id, worker_batch_txs[worker_idx].clone()))
         .collect();
 
-    // Frame-dispatch task on its designated worker.
-    workers[layout.frame_dispatch].frame_dispatch = Some(FrameDispatchParts {
-        frame_rx,
-        socket_senders,
-        clock: clock.clone(),
-        overall_send_rate,
-        per_socket_send_rate,
-    });
-
     // ── Waker offload ─────────────────────────────────────────────────────────
-    // One slot per producer (recv_dispatch + send workers + background peer-dead fanout task),
-    // partitioned across waker_drain workers.
+    // One slot per producer (recv_dispatch + send workers + background peer-dead fanout task
+    // + the two credit-pool distributors), partitioned across waker_drain workers.
     let num_recv_dispatch = layout.recv_dispatch.len();
-    let num_waker_slots = num_recv_dispatch + num_send_workers + 1;
+    let num_waker_slots = num_recv_dispatch + num_send_workers + 1 + 2;
     let num_waker_drains = layout.waker_drain.len().max(1);
     let (mut waker_sinks, waker_drains) = waker::new(num_waker_slots, num_waker_drains);
+    // Layout: [recv_dispatch.. | send_workers.. | bg | credit_send | credit_recv]
+    let recv_credit_distributor_waker_sink = waker_sinks
+        .pop()
+        .expect("recv credit waker sink must exist");
+    let send_credit_distributor_waker_sink = waker_sinks
+        .pop()
+        .expect("send credit waker sink must exist");
     let mut send_and_bg_waker_sinks = waker_sinks.split_off(num_recv_dispatch);
     let bg_waker_sink = send_and_bg_waker_sinks
         .pop()
@@ -571,6 +610,20 @@ where
         RecvDispatchWorkerId::range(num_recv_dispatch)
             .zip(waker_sinks)
             .collect();
+
+    // Frame-dispatch task on its designated worker. Bundles the credit-pool
+    // distributors so they spawn alongside frame_dispatch on the same thread.
+    workers[layout.frame_dispatch].frame_dispatch = Some(FrameDispatchParts {
+        frame_rx,
+        socket_senders,
+        clock: clock.clone(),
+        overall_send_rate,
+        per_socket_send_rate,
+        send_credit_distributor,
+        recv_credit_distributor,
+        send_credit_waker_sink: send_credit_distributor_waker_sink,
+        recv_credit_waker_sink: recv_credit_distributor_waker_sink,
+    });
 
     for (idx, drain) in waker_drains.into_iter().enumerate() {
         let worker_id = layout.waker_drain[idx % layout.waker_drain.len()];
@@ -762,6 +815,8 @@ where
         reader_metrics,
         writer_metrics,
         client_metrics,
+        send_credit_pool,
+        recv_credit_pool,
     }
 }
 
@@ -778,6 +833,15 @@ struct FrameDispatchParts<Clk> {
     overall_send_rate: crate::socket::rate::Rate,
     /// Per-socket bandwidth cap used for socket-level EDT in pick-two.
     per_socket_send_rate: crate::socket::rate::Rate,
+    /// Send-direction credit-pool distributor. Spawned alongside the frame-dispatch
+    /// task on the same worker so distribution and submission share a thread.
+    send_credit_distributor: crate::credit::Distributor,
+    /// Recv-direction credit-pool distributor. Reserved for the Reader integration;
+    /// spawned today so the close path is wired and `recv_credit_pool.release` works.
+    recv_credit_distributor: crate::credit::Distributor,
+    /// Waker sinks used by the two distributors.
+    send_credit_waker_sink: waker::Sink,
+    recv_credit_waker_sink: waker::Sink,
 }
 
 /// Per-worker state for context resolution and ACK processing.
@@ -982,6 +1046,22 @@ where
                     fd.per_socket_send_rate,
                     budgets,
                     counter_registry.clone(),
+                );
+                tasks::spawn_credit_distributor(
+                    &mut local,
+                    fd.send_credit_distributor,
+                    budgets.credit_distributor,
+                    fd.send_credit_waker_sink,
+                    &counter_registry,
+                    "send",
+                );
+                tasks::spawn_credit_distributor(
+                    &mut local,
+                    fd.recv_credit_distributor,
+                    budgets.credit_distributor,
+                    fd.recv_credit_waker_sink,
+                    &counter_registry,
+                    "recv",
                 );
             }
 

@@ -813,6 +813,24 @@ tasks:
       - task.context_resolver.drained [summary variant=send.worker.3 unit=count]: Number of items processed per poll for this task
       - task.context_resolver.next_poll_latency [timer variant=send.worker.3 unit=microsecond]: Wall-clock latency between consecutive task polls
       - task.context_resolver.time [timer variant=send.worker.3 unit=microsecond]: Wall-clock duration spent inside each task poll
+  - name: task.credit_distributor
+    function: endpoint::tasks::spawn_credit_distributor
+    description: Reconciles released credit and grants parked acquires
+    budget: 256
+    worker_id: 0
+    metrics:
+      - task.credit_distributor.drained [summary variant=send unit=count]: Number of items processed per poll for this task
+      - task.credit_distributor.next_poll_latency [timer variant=send unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.credit_distributor.time [timer variant=send unit=microsecond]: Wall-clock duration spent inside each task poll
+  - name: task.credit_distributor
+    function: endpoint::tasks::spawn_credit_distributor
+    description: Reconciles released credit and grants parked acquires
+    budget: 256
+    worker_id: 0
+    metrics:
+      - task.credit_distributor.drained [summary variant=recv unit=count]: Number of items processed per poll for this task
+      - task.credit_distributor.next_poll_latency [timer variant=recv unit=microsecond]: Wall-clock latency between consecutive task polls
+      - task.credit_distributor.time [timer variant=recv unit=microsecond]: Wall-clock duration spent inside each task poll
   - name: task.frame_dispatch
     function: endpoint::tasks::frame_dispatch
     description: Batches, paces, and routes frame batches to worker send sockets
