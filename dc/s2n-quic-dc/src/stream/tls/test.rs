@@ -104,6 +104,16 @@ async fn dc_server(
 }
 
 async fn check_client(message: &[u8]) {
+    check_client_inner(message, false).await;
+}
+
+/// Same as [`check_client`], but connects using a pre-existing TCP stream via
+/// [`Client::connect_tls_with`].
+async fn check_client_with(message: &[u8]) {
+    check_client_inner(message, true).await;
+}
+
+async fn check_client_inner(message: &[u8], use_existing_stream: bool) {
     let client_config = client_config();
     let server_config = server_config();
 
@@ -127,14 +137,22 @@ async fn check_client(message: &[u8]) {
     });
 
     let client = dc_client();
-    let stream = client
-        .connect_tls(
-            server_addr,
-            Name::from_static("qlaws.qlaws"),
-            &client_config,
-        )
-        .await
-        .unwrap();
+    let stream = if use_existing_stream {
+        let conn = tokio::net::TcpStream::connect(server_addr).await.unwrap();
+        client
+            .connect_tls_with(conn, Name::from_static("qlaws.qlaws"), &client_config)
+            .await
+            .unwrap()
+    } else {
+        client
+            .connect_tls(
+                server_addr,
+                Name::from_static("qlaws.qlaws"),
+                &client_config,
+            )
+            .await
+            .unwrap()
+    };
     let (mut reader, mut writer) = stream.into_split();
 
     writer.write_all_from(&mut &message[..]).await.unwrap();
@@ -243,6 +261,23 @@ async fn medium() {
 async fn large() {
     let message = vec![0x3; 50 * 1024 * 1024];
     check_client(&message).await;
+}
+
+#[tokio::test]
+async fn short_with() {
+    check_client_with(&b"testing"[..]).await;
+}
+
+#[tokio::test]
+async fn medium_with() {
+    let message = vec![0x3; 1024 * 1024];
+    check_client_with(&message).await;
+}
+
+#[tokio::test]
+async fn large_with() {
+    let message = vec![0x3; 50 * 1024 * 1024];
+    check_client_with(&message).await;
 }
 
 #[tokio::test]
