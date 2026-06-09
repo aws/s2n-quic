@@ -100,6 +100,7 @@ fn decrypt_fast_path(
         is_fin,
         is_wakeup,
         dest_acceptor_id,
+        priority: _,
     } = header
     else {
         return Err(FastPathError::HeaderMismatch);
@@ -578,6 +579,7 @@ fn dispatch_decoded_frame(
             offset,
             is_fin,
             dest_acceptor_id,
+            priority: _,
         } => {
             if let Some(acceptor_id) = dest_acceptor_id {
                 handle_queue_data_init(
@@ -691,6 +693,7 @@ fn dispatch_decoded_frame(
             is_fin,
             is_wakeup,
             dest_acceptor_id,
+            priority: _,
         } => {
             if let Some(acceptor_id) = dest_acceptor_id {
                 handle_queue_msg_init(

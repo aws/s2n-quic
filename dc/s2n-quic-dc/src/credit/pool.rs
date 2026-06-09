@@ -74,12 +74,14 @@ mod tests;
 #[cfg(all(test, feature = "loom"))]
 mod loom;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum Priority {
     Highest = 0,
     High = 1,
     MediumHigh = 2,
+    #[default]
     Medium = 3,
     MediumLow = 4,
     Low = 5,
@@ -89,6 +91,38 @@ pub enum Priority {
 
 impl Priority {
     pub const LEVELS: usize = 8;
+
+    pub const ALL: [Self; Self::LEVELS] = [
+        Self::Highest,
+        Self::High,
+        Self::MediumHigh,
+        Self::Medium,
+        Self::MediumLow,
+        Self::Low,
+        Self::Lowest,
+        Self::Background,
+    ];
+
+    /// Decode a single byte into a `Priority`. Values 0..=7 map; otherwise `None`.
+    #[inline]
+    pub fn from_u8(byte: u8) -> Option<Self> {
+        match byte {
+            0 => Some(Self::Highest),
+            1 => Some(Self::High),
+            2 => Some(Self::MediumHigh),
+            3 => Some(Self::Medium),
+            4 => Some(Self::MediumLow),
+            5 => Some(Self::Low),
+            6 => Some(Self::Lowest),
+            7 => Some(Self::Background),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub const fn as_u8(self) -> u8 {
+        self as u8
+    }
 }
 
 pub struct Pool {

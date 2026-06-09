@@ -502,6 +502,7 @@ fn cancelled_frame_emitted_when_completion_is_cancelled() {
                             offset: VarInt::ZERO,
                             is_fin: false,
                             dest_acceptor_id: None,
+                            priority: crate::credit::Priority::default(),
                         },
                         payload: Default::default(),
                         path_secret_entry: entry.clone(),

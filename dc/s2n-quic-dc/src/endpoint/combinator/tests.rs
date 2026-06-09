@@ -585,6 +585,7 @@ fn frame_batch_tracks_byte_costs_per_priority() {
             offset: VarInt::ZERO,
             is_fin: false,
             dest_acceptor_id: None,
+            priority: crate::credit::Priority::default(),
         },
     );
     let data_cost = data.byte_cost();

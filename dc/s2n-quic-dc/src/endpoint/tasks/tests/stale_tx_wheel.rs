@@ -40,6 +40,7 @@ fn inflight_frame(pse: &std::sync::Arc<crate::path::secret::map::Entry>) -> Entr
             offset: VarInt::ZERO,
             is_fin: false,
             dest_acceptor_id: None,
+            priority: crate::credit::Priority::default(),
         },
         payload: bytes::BytesMut::zeroed(100).into(),
         path_secret_entry: pse.clone(),

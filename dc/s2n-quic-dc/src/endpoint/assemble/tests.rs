@@ -468,6 +468,7 @@ fn encode_decode_round_trip() {
                 offset: VarInt::ZERO,
                 is_fin: false,
                 dest_acceptor_id: None,
+                priority: crate::credit::Priority::default(),
             },
             payload: b"hello world".to_vec(),
         },
@@ -491,6 +492,7 @@ fn encode_decode_round_trip() {
                 offset: VarInt::from_u8(11),
                 is_fin: true,
                 dest_acceptor_id: None,
+                priority: crate::credit::Priority::default(),
             },
             payload: b"fin frame".to_vec(),
         },
@@ -860,7 +862,14 @@ fn encode_decode_fuzz_round_trip() {
             for (i, ((header, payload), orig)) in
                 decoded.iter().zip(packet_inputs.iter()).enumerate()
             {
-                assert_eq!(*header, orig.header, "frame[{i}] header mismatch");
+                // priority is encoded only on init frames; on non-init frames the
+                // decoder reconstructs the default value, so canonicalize before
+                // comparing.
+                assert_eq!(
+                    *header,
+                    orig.header.canonicalize_for_wire(),
+                    "frame[{i}] header mismatch"
+                );
                 let exp_payload = if orig.header.has_payload_length() {
                     &orig.payload[..]
                 } else {
@@ -892,6 +901,7 @@ fn make_data_frame(
             offset: VarInt::ZERO,
             is_fin: false,
             dest_acceptor_id: None,
+            priority: crate::credit::Priority::default(),
         },
         payload,
         path_secret_entry: entry.clone(),

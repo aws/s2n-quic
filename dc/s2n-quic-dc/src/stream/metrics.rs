@@ -159,7 +159,9 @@ pub struct ClientMetrics {
 impl ClientMetrics {
     pub fn new(registry: &Registry) -> Self {
         Self {
-            connect_time: registry.register_timer("stream.client.connect.time").unsampled(),
+            connect_time: registry
+                .register_timer("stream.client.connect.time")
+                .unsampled(),
             alloc_fast: registry
                 .register_nominal_timer("stream.client.alloc", "fast")
                 .unsampled(),

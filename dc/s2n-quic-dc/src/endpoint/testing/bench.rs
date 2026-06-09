@@ -232,6 +232,7 @@ fn benchmark_frame(
             offset: VarInt::ZERO,
             is_fin: false,
             dest_acceptor_id: None,
+            priority: crate::credit::Priority::default(),
         },
         payload: BytesMut::zeroed(payload_len).into(),
         path_secret_entry: entry.clone(),

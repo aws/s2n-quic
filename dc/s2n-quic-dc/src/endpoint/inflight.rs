@@ -424,6 +424,7 @@ mod tests {
                 offset: VarInt::ZERO,
                 is_fin: false,
                 dest_acceptor_id: None,
+                priority: crate::credit::Priority::default(),
             },
             payload,
             path_secret_entry: entry,

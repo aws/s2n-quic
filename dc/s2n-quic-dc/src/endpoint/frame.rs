@@ -361,12 +361,19 @@ pub enum Header {
     /// When `dest_acceptor_id` is `Some`, this is an "init" frame that can create
     /// a new binding on the server if the queue is unbound. Once the server confirms
     /// the binding (via MaxData), subsequent frames omit the acceptor_id.
+    ///
+    /// `priority` is encoded on the wire only for init frames; it tells the server
+    /// which credit tier the inbound stream should park on. The peer remembers the
+    /// priority after binding so subsequent frames carry no priority on the wire.
+    /// On non-init frames this field is informational only and is set to a default
+    /// after decode.
     QueueData {
         queue_pair: QueuePair,
         binding_id: VarInt,
         offset: VarInt,
         is_fin: bool,
         dest_acceptor_id: Option<VarInt>,
+        priority: crate::credit::Priority,
     },
     /// Flow control (MAX_DATA and other control frames)
     QueueControl {
@@ -441,6 +448,8 @@ pub enum Header {
         is_fin: bool,
         is_wakeup: bool,
         dest_acceptor_id: Option<VarInt>,
+        /// Encoded on the wire only when `dest_acceptor_id.is_some()`. See `QueueData`.
+        priority: crate::credit::Priority,
     },
     /// Minimal ack-eliciting frame with no payload or fields.
     ///
@@ -488,6 +497,68 @@ impl Header {
             Self::QueueFree { .. } | Self::Ack { .. } | Self::QueueReset { .. } | Self::Ping => {
                 Priority::QueueReset
             }
+        }
+    }
+
+    /// Returns the wire-canonical form of `self`: clears fields that the encoder
+    /// drops when their qualifying flag is absent, so that `encode-then-decode` is
+    /// equality-preserving. Currently only `priority` (encoded only on init frames)
+    /// is affected.
+    ///
+    /// This exists primarily for fuzz/property tests that synthesize arbitrary
+    /// `Header` values; production code never produces a non-canonical header.
+    #[inline]
+    pub fn canonicalize_for_wire(self) -> Self {
+        match self {
+            Self::QueueData {
+                queue_pair,
+                binding_id,
+                offset,
+                is_fin,
+                dest_acceptor_id,
+                priority,
+            } => Self::QueueData {
+                queue_pair,
+                binding_id,
+                offset,
+                is_fin,
+                dest_acceptor_id,
+                priority: if dest_acceptor_id.is_some() {
+                    priority
+                } else {
+                    crate::credit::Priority::default()
+                },
+            },
+            Self::QueueMsg {
+                queue_pair,
+                binding_id,
+                msg_id,
+                stream_offset,
+                message_size,
+                chunk_size,
+                chunk_index,
+                is_fin,
+                is_wakeup,
+                dest_acceptor_id,
+                priority,
+            } => Self::QueueMsg {
+                queue_pair,
+                binding_id,
+                msg_id,
+                stream_offset,
+                message_size,
+                chunk_size,
+                chunk_index,
+                is_fin,
+                is_wakeup,
+                dest_acceptor_id,
+                priority: if dest_acceptor_id.is_some() {
+                    priority
+                } else {
+                    crate::credit::Priority::default()
+                },
+            },
+            other => other,
         }
     }
 
@@ -554,6 +625,7 @@ impl EncoderValue for Header {
                 offset,
                 is_fin,
                 dest_acceptor_id,
+                priority,
             } => {
                 let tag = match (dest_acceptor_id.is_some(), *is_fin) {
                     (true, false) => Self::QUEUE_DATA_INIT_NO_FIN_TYPE,
@@ -565,6 +637,7 @@ impl EncoderValue for Header {
                 encoder.encode(queue_pair);
                 if let Some(acceptor_id) = dest_acceptor_id {
                     encoder.encode(acceptor_id);
+                    encoder.encode(&priority.as_u8());
                 }
                 encoder.encode(binding_id);
                 encoder.encode(offset);
@@ -651,6 +724,7 @@ impl EncoderValue for Header {
                 is_fin,
                 is_wakeup,
                 dest_acceptor_id,
+                priority,
             } => {
                 let tag = Self::QUEUE_MSG_BASE_TYPE
                     + (*is_fin as u8)
@@ -660,6 +734,7 @@ impl EncoderValue for Header {
                 encoder.encode(queue_pair);
                 if let Some(acceptor_id) = dest_acceptor_id {
                     encoder.encode(acceptor_id);
+                    encoder.encode(&priority.as_u8());
                 }
                 encoder.encode(binding_id);
                 encoder.encode(msg_id);
@@ -684,6 +759,12 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
             Self::QUEUE_DATA_INIT_NO_FIN_TYPE | Self::QUEUE_DATA_INIT_WITH_FIN_TYPE => {
                 let (queue_pair, buffer) = buffer.decode()?;
                 let (dest_acceptor_id, buffer) = buffer.decode::<VarInt>()?;
+                let (priority_byte, buffer) = buffer.decode::<u8>()?;
+                let priority = crate::credit::Priority::from_u8(priority_byte).ok_or(
+                    s2n_codec::DecoderError::InvariantViolation(
+                        "credit::Priority value out of range",
+                    ),
+                )?;
                 let (binding_id, buffer) = buffer.decode()?;
                 let (offset, buffer) = buffer.decode()?;
                 let is_fin = tag == Self::QUEUE_DATA_INIT_WITH_FIN_TYPE;
@@ -694,6 +775,7 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                         offset,
                         is_fin,
                         dest_acceptor_id: Some(dest_acceptor_id),
+                        priority,
                     },
                     buffer,
                 ))
@@ -710,6 +792,7 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                         offset,
                         is_fin,
                         dest_acceptor_id: None,
+                        priority: crate::credit::Priority::default(),
                     },
                     buffer,
                 ))
@@ -827,11 +910,17 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                 let is_wakeup = flags & 2 != 0;
                 let has_init = flags & 4 != 0;
                 let (queue_pair, buffer) = buffer.decode()?;
-                let (dest_acceptor_id, buffer) = if has_init {
+                let (dest_acceptor_id, priority, buffer) = if has_init {
                     let (id, buf) = buffer.decode::<VarInt>()?;
-                    (Some(id), buf)
+                    let (priority_byte, buf) = buf.decode::<u8>()?;
+                    let priority = crate::credit::Priority::from_u8(priority_byte).ok_or(
+                        s2n_codec::DecoderError::InvariantViolation(
+                            "credit::Priority value out of range",
+                        ),
+                    )?;
+                    (Some(id), priority, buf)
                 } else {
-                    (None, buffer)
+                    (None, crate::credit::Priority::default(), buffer)
                 };
                 let (binding_id, buffer) = buffer.decode()?;
                 let (msg_id, buffer) = buffer.decode()?;
@@ -851,6 +940,7 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                         is_fin,
                         is_wakeup,
                         dest_acceptor_id,
+                        priority,
                     },
                     buffer,
                 ))
@@ -973,6 +1063,7 @@ mod tests {
                 offset: VarInt::ZERO,
                 is_fin: false,
                 dest_acceptor_id: None,
+                priority: crate::credit::Priority::default(),
             },
             payload,
             path_secret_entry: entry,
@@ -1032,6 +1123,7 @@ mod tests {
             is_fin: false,
             is_wakeup: true,
             dest_acceptor_id: None,
+            priority: crate::credit::Priority::default(),
         };
         assert_eq!(header.priority(), Priority::QueueData);
         assert!(header.has_payload_length());
@@ -1051,13 +1143,78 @@ mod tests {
             is_fin: false,
             is_wakeup: true,
             dest_acceptor_id: Some(VarInt::from_u8(99)),
+            priority: crate::credit::Priority::default(),
         };
         assert_eq!(header_init.priority(), Priority::QueueInit);
+    }
+
+    #[test]
+    fn init_priority_roundtrip_all_levels() {
+        let qp = QueuePair {
+            source_queue_id: VarInt::from_u8(1),
+            dest_queue_id: VarInt::from_u8(2),
+        };
+        for priority in crate::credit::Priority::ALL {
+            roundtrip(Header::QueueData {
+                queue_pair: qp,
+                binding_id: VarInt::from_u8(10),
+                offset: VarInt::ZERO,
+                is_fin: false,
+                dest_acceptor_id: Some(VarInt::from_u8(99)),
+                priority,
+            });
+            roundtrip(Header::QueueMsg {
+                queue_pair: qp,
+                binding_id: VarInt::from_u8(10),
+                msg_id: VarInt::from_u8(0),
+                stream_offset: VarInt::ZERO,
+                message_size: VarInt::from_u8(100),
+                chunk_size: VarInt::from_u8(100),
+                chunk_index: VarInt::ZERO,
+                is_fin: false,
+                is_wakeup: false,
+                dest_acceptor_id: Some(VarInt::from_u8(99)),
+                priority,
+            });
+        }
+    }
+
+    #[test]
+    fn init_priority_rejects_out_of_range() {
+        use s2n_codec::{DecoderBuffer, EncoderBuffer};
+
+        // Use values that all fit in 1-byte VarInts (< 64) so the priority byte's
+        // index in the buffer is predictable: tag(1) + src_qid(1) + dst_qid(1) +
+        // acceptor_id(1) = 4, priority byte at index 4.
+        let header = Header::QueueData {
+            queue_pair: QueuePair {
+                source_queue_id: VarInt::from_u8(1),
+                dest_queue_id: VarInt::from_u8(2),
+            },
+            binding_id: VarInt::from_u8(10),
+            offset: VarInt::ZERO,
+            is_fin: false,
+            dest_acceptor_id: Some(VarInt::from_u8(7)),
+            priority: crate::credit::Priority::Highest,
+        };
+        let mut buf = vec![0u8; header.encoding_size()];
+        let mut encoder = EncoderBuffer::new(&mut buf);
+        header.encode(&mut encoder);
+        assert_eq!(buf[4], 0, "expected priority byte to be Highest=0");
+        buf[4] = 8;
+
+        let decoder = DecoderBuffer::new(&buf);
+        let result = decoder.decode::<Header>();
+        assert!(
+            result.is_err(),
+            "expected decoder to reject out-of-range priority"
+        );
     }
 
     fn roundtrip(header: Header) {
         use s2n_codec::{DecoderBuffer, EncoderBuffer};
 
+        let header = header.canonicalize_for_wire();
         let mut buf = vec![0u8; header.encoding_size()];
         let mut encoder = EncoderBuffer::new(&mut buf);
         header.encode(&mut encoder);
@@ -1084,18 +1241,21 @@ mod tests {
         for is_fin in [false, true] {
             for is_wakeup in [false, true] {
                 for dest_acceptor_id in [None, Some(acceptor_id)] {
-                    roundtrip(Header::QueueMsg {
-                        queue_pair: qp,
-                        binding_id,
-                        msg_id,
-                        stream_offset: VarInt::ZERO,
-                        message_size,
-                        chunk_size,
-                        chunk_index,
-                        is_fin,
-                        is_wakeup,
-                        dest_acceptor_id,
-                    });
+                    for priority in crate::credit::Priority::ALL {
+                        roundtrip(Header::QueueMsg {
+                            queue_pair: qp,
+                            binding_id,
+                            msg_id,
+                            stream_offset: VarInt::ZERO,
+                            message_size,
+                            chunk_size,
+                            chunk_index,
+                            is_fin,
+                            is_wakeup,
+                            dest_acceptor_id,
+                            priority,
+                        });
+                    }
                 }
             }
         }
@@ -1133,6 +1293,7 @@ mod tests {
                 is_fin,
                 is_wakeup,
                 dest_acceptor_id,
+                priority: crate::credit::Priority::default(),
             };
 
             let mut buf = vec![0u8; header.encoding_size()];
@@ -1166,6 +1327,7 @@ mod tests {
             is_fin: false,
             is_wakeup: true,
             dest_acceptor_id: None,
+            priority: crate::credit::Priority::default(),
         };
 
         let mut buf = vec![0u8; header.encoding_size()];
@@ -1197,6 +1359,7 @@ mod tests {
             is_fin: true,
             is_wakeup: true,
             dest_acceptor_id: Some(VarInt::from_u8(99)),
+            priority: crate::credit::Priority::default(),
         };
 
         let mut buf = vec![0u8; header.encoding_size()];
@@ -1223,6 +1386,7 @@ mod tests {
             is_fin: false,
             is_wakeup: true,
             dest_acceptor_id: None,
+            priority: crate::credit::Priority::default(),
         };
         roundtrip(header);
     }
@@ -1301,6 +1465,7 @@ mod tests {
             offset: VarInt::MAX,
             is_fin: true,
             dest_acceptor_id: None,
+            priority: crate::credit::Priority::default(),
         };
 
         let computed = compute_worst_case_overhead(worst_case_header);
@@ -1329,6 +1494,7 @@ mod tests {
             is_fin: true,
             is_wakeup: true,
             dest_acceptor_id: None,
+            priority: crate::credit::Priority::default(),
         };
 
         let computed = compute_worst_case_overhead(worst_case_header);

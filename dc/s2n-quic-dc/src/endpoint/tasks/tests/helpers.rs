@@ -243,6 +243,7 @@ pub fn test_frame_with_payload(pse: &Arc<PathSecretEntry>, payload_size: usize) 
             offset: VarInt::ZERO,
             is_fin: false,
             dest_acceptor_id: None,
+            priority: crate::credit::Priority::default(),
         },
         payload: bytes::BytesMut::zeroed(payload_size).into(),
         path_secret_entry: pse.clone(),
