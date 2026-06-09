@@ -781,6 +781,7 @@ fn dlsym(symbol: &CStr) -> std::io::Result<*mut std::ffi::c_void> {
         Ok(address)
     }
 }
+
 #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 fn thread_plus_offset(offset: libc::ptrdiff_t) -> *mut std::ffi::c_void {
     let output: *mut std::ffi::c_void;
@@ -814,9 +815,8 @@ fn from_libc() -> std::io::Result<*mut Rseq> {
 }
 
 #[allow(clippy::needless_return)]
-#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 fn sys_rseq(rseq_abi: *mut Rseq, flags: i32) -> std::io::Result<()> {
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     {
         let ret = unsafe {
             libc::syscall(
