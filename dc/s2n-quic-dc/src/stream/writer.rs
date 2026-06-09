@@ -781,6 +781,7 @@ impl Inner {
             status: frame::TransmissionStatus::default(),
             ttl: DEFAULT_TTL,
             enqueued_at: None,
+            flow_credits: 0,
         };
 
         self.send_frame(frame)?;
@@ -811,6 +812,7 @@ impl Inner {
             status: frame::TransmissionStatus::default(),
             ttl: DEFAULT_TTL,
             enqueued_at: Some(self.clock.now()),
+            flow_credits: 0,
         };
 
         self.send_frame(frame)?;
@@ -1050,6 +1052,7 @@ impl Inner {
             status: frame::TransmissionStatus::default(),
             ttl: DEFAULT_TTL,
             enqueued_at: Some(self.clock.now()),
+            flow_credits: 0,
         };
 
         self.send_frame(frame)?;
@@ -1186,6 +1189,7 @@ impl Inner {
                 status: frame::TransmissionStatus::default(),
                 ttl: DEFAULT_TTL,
                 enqueued_at: batch_enqueued_at,
+                flow_credits: 0,
             };
 
             frames.push_back(frame.into());
@@ -1357,6 +1361,7 @@ impl Inner {
                     status: frame::TransmissionStatus::default(),
                     ttl: DEFAULT_TTL,
                     enqueued_at: batch_enqueued_at,
+                    flow_credits: 0,
                 };
 
                 frames.push_back(frame.into());

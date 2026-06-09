@@ -432,6 +432,7 @@ mod tests {
             status: TransmissionStatus::default(),
             ttl: DEFAULT_TTL,
             enqueued_at: None,
+            flow_credits: 0,
         };
         frames.push_back(frame.into());
 

@@ -1243,6 +1243,7 @@ fn send_reset(
         status: crate::endpoint::frame::TransmissionStatus::default(),
         ttl: DEFAULT_TTL,
         enqueued_at: None,
+        flow_credits: 0,
     };
     let _ = frame_tx.send_batch(Entry::new(frame));
 }

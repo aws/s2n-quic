@@ -251,6 +251,7 @@ pub fn test_frame_with_payload(pse: &Arc<PathSecretEntry>, payload_size: usize) 
         status: frame::TransmissionStatus::Pending,
         ttl: 3,
         enqueued_at: None,
+        flow_credits: 0,
     })
 }
 

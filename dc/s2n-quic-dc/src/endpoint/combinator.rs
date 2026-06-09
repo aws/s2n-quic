@@ -645,6 +645,10 @@ pub(crate) struct Assembler<R, Clk, C, A> {
     send_counters: Rc<super::counters::Send>,
     /// Self-contained unsync descriptor reuse state for the send pipeline.
     recycle_pool: UnsyncReusePool,
+    /// Endpoint-wide credit pool. The assembler releases credit on the admit path —
+    /// every frame's `flow_credits` is summed and released back here just before the
+    /// frame's packet is inserted into the inflight map.
+    send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
 }
 
 #[derive(Clone)]
@@ -788,6 +792,7 @@ impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
         counters: AssemblerCounters,
         send_counters: Rc<super::counters::Send>,
         initial_tx_descriptor_allocs: usize,
+        send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
     ) -> Self {
         let mut recycle_pool = UnsyncReusePool::new();
         recycle_pool.prime(&pool, initial_tx_descriptor_allocs);
@@ -805,6 +810,7 @@ impl<R, Clk, C, A> Assembler<R, Clk, C, A> {
             counters,
             send_counters,
             recycle_pool,
+            send_credit_pool,
         }
     }
 }
@@ -851,6 +857,7 @@ where
                     &mut self.freed_batch_tx,
                     &self.counters,
                     &self.send_counters,
+                    &self.send_credit_pool,
                 )
             });
             if !cancelled.is_empty() {

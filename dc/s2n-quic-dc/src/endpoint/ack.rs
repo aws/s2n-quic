@@ -530,6 +530,7 @@ mod tests {
                 status: TransmissionStatus::Pending,
                 ttl: DEFAULT_TTL,
                 enqueued_at: None,
+                flow_credits: 0,
             }
             .into(),
         );

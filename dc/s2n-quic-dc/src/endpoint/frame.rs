@@ -995,6 +995,28 @@ pub struct Frame {
     /// `None` for transport-internal frames (resets, ACK frames, free frames) that
     /// do not require sojourn tracking.
     pub enqueued_at: Option<precision::Timestamp>,
+    /// Bytes of credit-pool budget this frame is currently holding from the
+    /// endpoint's send credit pool.
+    ///
+    /// The producer (currently the Writer) acquires from `Endpoint::send_credit_pool`
+    /// before submitting the frame and stores the granted amount here. The pipeline
+    /// is responsible for releasing those credits exactly once over the frame's
+    /// lifetime — once a credit is released, this field is zeroed so subsequent
+    /// disposal cannot double-release.
+    ///
+    /// Release sites:
+    ///
+    /// * The assembler, immediately before inserting the frame's packet into the
+    ///   inflight map (the "frame is admitted to the wire" point) — `flow_credits`
+    ///   is summed across the whole packet and released in one call.
+    /// * The cancelled drain task, for frames the assembler routed to the cancelled
+    ///   channel because `should_transmit()` returned false (writer dropped, stream
+    ///   reset) — these frames never reach the inflight map, so the drain owns
+    ///   the release.
+    ///
+    /// Frames with no associated credit (control frames, ACKs, resets, etc.) leave
+    /// this at 0 and the release sites no-op for them.
+    pub flow_credits: u64,
 }
 
 impl Frame {
@@ -1071,6 +1093,7 @@ mod tests {
             status: TransmissionStatus::default(),
             ttl: DEFAULT_TTL,
             enqueued_at: None,
+            flow_credits: 0,
         };
 
         assert_eq!(frame.payload_len(), 5);
@@ -1097,6 +1120,7 @@ mod tests {
             status: TransmissionStatus::default(),
             ttl: DEFAULT_TTL,
             enqueued_at: None,
+            flow_credits: 0,
         };
 
         assert_eq!(frame.priority(), Priority::QueueReset);

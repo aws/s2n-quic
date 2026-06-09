@@ -134,6 +134,8 @@ async fn assembler_pipeline(
         crate::endpoint::id::LocalSenderId::from_index(0),
     );
     let (freed_batch_tx, _freed_batch_rx) = crate::queue::freed_batch_channel();
+    let send_credit_pool =
+        crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::default()));
     let rx = tasks::send_socket_assembler(
         immediate_rx,
         ctx_rx,
@@ -154,6 +156,7 @@ async fn assembler_pipeline(
         pto_wheel_tx,
         idle_wheel_tx,
         0,
+        send_credit_pool,
     );
     rx.drain_budgeted(Some(32)).await;
 }
@@ -510,6 +513,7 @@ fn cancelled_frame_emitted_when_completion_is_cancelled() {
                         status: frame::TransmissionStatus::Pending,
                         ttl: 3,
                         enqueued_at: None,
+                        flow_credits: 0,
                     }),
                 );
                 batch.set_sender_id(crate::endpoint::id::LocalSenderId::from_index(0));

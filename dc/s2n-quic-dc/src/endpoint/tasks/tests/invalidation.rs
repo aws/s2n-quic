@@ -76,6 +76,7 @@ fn test_frame(pse: &Arc<crate::path::secret::map::Entry>) -> Entry<Frame> {
         status: frame::TransmissionStatus::Pending,
         ttl: 3,
         enqueued_at: None,
+        flow_credits: 0,
     })
 }
 

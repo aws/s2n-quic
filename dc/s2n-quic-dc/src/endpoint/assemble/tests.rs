@@ -23,6 +23,13 @@ use core::time::Duration;
 use s2n_quic_platform::features::gso::MaxSegments;
 use std::sync::Arc;
 
+/// Build an unused credit pool for assemble tests that don't exercise credit accounting.
+/// The pool's release() is a no-op when nothing is acquired against it; tests that exercise
+/// the admit-path release just observe `release_calls == 0` here, which is also no-op.
+fn unused_credit_pool() -> crate::credit::Pool {
+    crate::credit::Pool::new(crate::credit::Config::default())
+}
+
 const MAX_TEST_FRAMES: usize = segment::MAX_COUNT * 2;
 const MAX_TEST_PAYLOAD_LEN: usize = 8_500;
 const MIN_TEST_MTU: u16 = 1_200;
@@ -158,6 +165,7 @@ fn to_frame(frame: &FrameInput, entry: &Arc<PathSecretEntry>) -> crate::intrusiv
         status: TransmissionStatus::default(),
         ttl: DEFAULT_TTL,
         enqueued_at: None,
+        flow_credits: 0,
     }
     .into()
 }
@@ -310,6 +318,7 @@ fn assemble_accounts_for_header_overhead() {
                 status: TransmissionStatus::default(),
                 ttl: DEFAULT_TTL,
                 enqueued_at: None,
+                flow_credits: 0,
             }
             .into(),
         );
@@ -334,6 +343,7 @@ fn assemble_accounts_for_header_overhead() {
             &crate::counter::Registry::default(),
             crate::endpoint::id::LocalSenderId::from_index(0),
         ),
+        &unused_credit_pool(),
     )
     .expect("frames should assemble");
 
@@ -414,6 +424,7 @@ fn assemble_fuzz_respects_gso_invariants() {
                     &crate::counter::Registry::default(),
                     crate::endpoint::id::LocalSenderId::from_index(0),
                 ),
+                &unused_credit_pool(),
             )
             .expect("assemble should make progress for bounded test inputs");
 
@@ -687,6 +698,7 @@ fn assemble_probe_fuzz() {
                     &crate::counter::Registry::default(),
                     crate::endpoint::id::LocalSenderId::from_index(0),
                 ),
+                &unused_credit_pool(),
             );
 
             if !context.inflight.has_inflight() {
@@ -713,6 +725,7 @@ fn assemble_probe_fuzz() {
                     &crate::counter::Registry::default(),
                     crate::endpoint::id::LocalSenderId::from_index(0),
                 ),
+                &unused_credit_pool(),
             );
 
             // If a probe was assembled, verify GSO invariants.
@@ -909,6 +922,7 @@ fn make_data_frame(
         status: TransmissionStatus::default(),
         ttl: DEFAULT_TTL,
         enqueued_at: None,
+        flow_credits: 0,
     }
     .into()
 }
@@ -963,6 +977,7 @@ fn orphaned_shell_survives_cancelled_probe_tail() {
     let source_sender_id = crate::endpoint::id::LocalSenderId::new(VarInt::from_u8(1));
     let source_control_port = 443;
 
+    let credit_pool = unused_credit_pool();
     // Helper to run one assembly round with the shared arguments.
     macro_rules! run_assemble {
         () => {
@@ -980,6 +995,7 @@ fn orphaned_shell_survives_cancelled_probe_tail() {
                 &mut freed_batch_tx,
                 &AssemblerCounters::new(&registry),
                 &send_counters,
+                &credit_pool,
             )
         };
     }

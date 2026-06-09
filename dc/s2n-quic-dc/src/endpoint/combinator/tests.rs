@@ -180,6 +180,7 @@ fn new_test_frame_with_header(
         status: TransmissionStatus::Pending,
         ttl: DEFAULT_TTL,
         enqueued_at: None,
+        flow_credits: 0,
     })
 }
 

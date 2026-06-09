@@ -239,6 +239,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
     stream_clock: crate::time::DefaultClock,
     reader_metrics: Arc<crate::stream::metrics::ReaderMetrics>,
     writer_metrics: Arc<crate::stream::metrics::WriterMetrics>,
+    send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
 ) where
     Socket: crate::socket::send::Socket + 'static,
     Clk: precision::Clock + s2n_quic_core::time::Clock + Clone + 'static,
@@ -500,6 +501,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             stream_clock.clone(),
             reader_metrics.clone(),
             writer_metrics.clone(),
+            send_credit_pool.clone(),
         );
         let task_counter = counter_registry
             .register_nominal_task("task.cancelled", &variant)
@@ -700,6 +702,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             pto_wheel_tx,
             idle_wheel_tx,
             st.initial_tx_descriptor_allocs,
+            send_credit_pool.clone(),
         );
         let variant = format!("send.{sender_idx}");
         let task_counter = counter_registry
@@ -962,12 +965,18 @@ where
 /// Most cancelled frames are dropped after recording sojourn metrics. `QueueFree` frames are the
 /// exception: they are re-queued through `freed_batch_tx` so they can be retried if the peer
 /// recovers later.
+///
+/// Frames that arrive here can carry non-zero `flow_credits` (the assembler routes pre-admit
+/// rejects to this channel with credits still attached). Each frame's credits are released back
+/// to the send credit pool — the pool's `release` is itself a single atomic add, so per-frame
+/// release is fine on this cold path.
 pub fn cancelled_drain<R>(
     cancelled_rx: R,
     mut freed_batch_tx: crate::queue::FreedBatchTx,
     clock: crate::time::DefaultClock,
     reader_metrics: Arc<crate::stream::metrics::ReaderMetrics>,
     writer_metrics: Arc<crate::stream::metrics::WriterMetrics>,
+    send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
 ) -> impl Receiver<()>
 where
     R: Receiver<Entry<Frame>>,
@@ -980,6 +989,13 @@ where
         };
 
         let frame = entry.into_inner();
+
+        // Release any credit pool budget the frame is still holding. The admit path zeros
+        // `flow_credits` before inserting into the inflight map, so a non-zero value here
+        // means this frame never made it to the wire (writer dropped, stream cancelled, etc.).
+        if frame.flow_credits > 0 {
+            send_credit_pool.release(frame.flow_credits);
+        }
 
         // Record sojourn for application-originated frames before dropping them.
         if let Some(enqueued_at) = frame.enqueued_at {
@@ -1098,6 +1114,7 @@ pub fn send_socket_assembler<ImmediateRx, ContextRx, Clk, Socket, C, A, ImmW, Tx
     pto_wheel_tx: PtoW,
     idle_wheel_tx: IdleW,
     initial_tx_descriptor_allocs: usize,
+    send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
 ) -> impl Receiver<()>
 where
     ImmediateRx: Receiver<Rc<RefCell<send::Context>>>,
@@ -1125,6 +1142,7 @@ where
         asm_counters,
         send_counters,
         initial_tx_descriptor_allocs,
+        send_credit_pool,
     );
     let rx = send::WheelRouter::new(rx, immediate_tx, tx_wheel_tx, pto_wheel_tx, idle_wheel_tx);
     let rx = Flatten::new(rx);

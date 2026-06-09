@@ -690,6 +690,7 @@ where
             stream_clock: stream_clock.clone(),
             reader_metrics: reader_metrics.clone(),
             writer_metrics: writer_metrics.clone(),
+            send_credit_pool: send_credit_pool.clone(),
         });
     }
 
@@ -863,6 +864,7 @@ struct SendWorkerParts {
     stream_clock: crate::time::DefaultClock,
     reader_metrics: Arc<crate::stream::metrics::ReaderMetrics>,
     writer_metrics: Arc<crate::stream::metrics::WriterMetrics>,
+    send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
 }
 
 /// Per-socket ingredients for the socket send task.
@@ -1099,6 +1101,7 @@ where
                     sw.stream_clock,
                     sw.reader_metrics,
                     sw.writer_metrics,
+                    sw.send_credit_pool,
                 );
             }
 

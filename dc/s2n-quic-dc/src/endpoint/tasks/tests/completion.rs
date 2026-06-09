@@ -130,12 +130,15 @@ fn cancelled_drain_consumes_all_frames_then_closes() {
             &registry,
             "test.writer",
         ));
+        let send_credit_pool =
+            crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::default()));
         let mut rx = tasks::cancelled_drain(
             frame_rx,
             freed_batch_tx,
             clock,
             reader_metrics,
             writer_metrics,
+            send_credit_pool,
         );
 
         async move {
