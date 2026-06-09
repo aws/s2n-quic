@@ -670,6 +670,19 @@ impl Inner {
             Some(self.acceptor_id)
         }
     }
+
+    /// Priority field to encode on the next outgoing frame. Init frames (those carrying
+    /// `dest_acceptor_id`) emit the writer's actual priority; non-init frames emit the default
+    /// because the wire format only encodes priority when `dest_acceptor_id.is_some()`. Mirrors
+    /// `Header::canonicalize_for_wire` so production code never produces a non-canonical header.
+    #[inline]
+    fn wire_priority(&self) -> crate::credit::Priority {
+        if self.dest_acceptor_id().is_some() {
+            self.priority
+        } else {
+            crate::credit::Priority::default()
+        }
+    }
 }
 
 impl HasCoop for Inner {
@@ -1004,7 +1017,7 @@ impl Inner {
                 offset: self.next_offset,
                 is_fin: true,
                 dest_acceptor_id: self.dest_acceptor_id(),
-                priority: crate::credit::Priority::default(),
+                priority: self.wire_priority(),
             },
             payload: ByteVec::new(),
             path_secret_entry: self.path_secret_entry.clone(),
@@ -1245,7 +1258,7 @@ impl Inner {
                 offset: VarInt::ZERO,
                 is_fin: actual_fin,
                 dest_acceptor_id: Some(self.acceptor_id),
-                priority: crate::credit::Priority::default(),
+                priority: self.wire_priority(),
             },
             payload,
             path_secret_entry: self.path_secret_entry.clone(),
@@ -1465,7 +1478,7 @@ impl Inner {
                     offset,
                     is_fin: include_fin,
                     dest_acceptor_id: self.dest_acceptor_id(),
-                    priority: crate::credit::Priority::default(),
+                    priority: self.wire_priority(),
                 },
                 payload,
                 path_secret_entry: self.path_secret_entry.clone(),
@@ -1644,7 +1657,7 @@ impl Inner {
                         is_fin: segment_is_fin,
                         is_wakeup,
                         dest_acceptor_id: self.dest_acceptor_id(),
-                        priority: crate::credit::Priority::default(),
+                        priority: self.wire_priority(),
                     },
                     payload,
                     path_secret_entry: self.path_secret_entry.clone(),

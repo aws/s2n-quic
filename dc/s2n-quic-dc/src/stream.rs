@@ -9,7 +9,7 @@ pub mod server;
 mod stream;
 mod writer;
 
-pub use crate::endpoint::Error;
+pub use crate::{credit::Priority, endpoint::Error};
 pub use client::Client;
 pub use reader::Reader;
 pub use server::Server;

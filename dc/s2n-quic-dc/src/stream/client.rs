@@ -66,7 +66,7 @@ pub mod rpc;
 ///     server: SocketAddr,
 /// ) -> std::io::Result<Stream> {
 ///     let acceptor_id = VarInt::from_u8(0);
-///     client.connect(server, acceptor_id).await
+///     client.connect(server, acceptor_id, Priority::default()).await
 /// }
 /// ```
 #[derive(Clone)]
@@ -118,7 +118,12 @@ impl Client {
     /// - If the TLS handshake fails, this returns an error and no stream is created.
     /// - Using an `acceptor_id` not registered on the server causes the server to reject
     ///   the stream, which surfaces as a later write or read error.
-    pub async fn connect(&mut self, peer: SocketAddr, acceptor_id: VarInt) -> io::Result<Stream> {
+    pub async fn connect(
+        &mut self,
+        peer: SocketAddr,
+        acceptor_id: VarInt,
+        priority: crate::credit::Priority,
+    ) -> io::Result<Stream> {
         let handshake_start = Instant::now();
         let (peer, handshake_kind) = self
             .psk
@@ -189,7 +194,7 @@ impl Client {
             self.endpoint.clock.clone(),
             self.endpoint.writer_metrics.clone(),
             self.endpoint.send_credit_pool.clone(),
-            crate::credit::Priority::default(),
+            priority,
         );
         let reader = Reader::new_client(
             frame_tx,
@@ -226,6 +231,7 @@ impl Client {
         &mut self,
         peer: SocketAddr,
         acceptor_id: VarInt,
+        priority: crate::credit::Priority,
         request: Req,
         response: Res,
     ) -> io::Result<Res::Output>
@@ -233,7 +239,7 @@ impl Client {
         Req: rpc::Request,
         Res: rpc::Response,
     {
-        let stream = self.connect(peer, acceptor_id).await?;
+        let stream = self.connect(peer, acceptor_id, priority).await?;
         rpc::from_stream(stream, request, response).await
     }
 }
