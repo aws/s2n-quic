@@ -13,6 +13,7 @@ pub mod congestion;
 pub mod control;
 pub mod counter;
 pub mod credentials;
+pub mod credit;
 pub mod crypto;
 pub mod datagram;
 pub mod endpoint;

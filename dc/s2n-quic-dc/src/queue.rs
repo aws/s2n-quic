@@ -35,7 +35,8 @@ pub(crate) mod testing;
 
 // Public API surface
 
-pub use half::{AutoWake, Closed};
+pub use crate::sync::AutoWake;
+pub use half::Closed;
 pub use handle::{AllocResult, ControlReceiver, StreamReceiver};
 pub use server::BindResult;
 

@@ -21,7 +21,7 @@ pub use bach::{ext, rand};
 
 use s2n_quic::provider::tls::default as s2n_quic_tls_prov;
 
-#[cfg(all(test, not(loom)))]
+#[cfg(all(test, not(feature = "loom")))]
 pub mod loom {
     pub use std::{sync, thread};
 
@@ -67,7 +67,7 @@ pub mod loom {
     }
 }
 
-#[cfg(all(test, loom))]
+#[cfg(all(test, feature = "loom"))]
 pub use loom;
 
 pub static SNI: OnceLock<Name> = OnceLock::new();

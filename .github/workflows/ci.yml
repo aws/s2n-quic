@@ -949,6 +949,38 @@ jobs:
         env:
           RUSTFLAGS: --cfg loom -Cdebug-assertions
 
+  loom-dc:
+    # s2n-quic-dc enables loom via a crate-scoped cargo feature (not a global `--cfg loom`), because
+    # its dependency tree includes concurrent-queue (via bach), which does not compile under a global
+    # loom cfg. The `loom` feature swaps `crate::sync` to loom's instrumented primitives for the
+    # crate only, leaving dependencies untouched.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Install rust toolchain
+        id: toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
+
+      - uses: camshaft/rust-cache@v1
+        with:
+          key: dc/s2n-quic-dc-loom
+
+      - name: dc/s2n-quic-dc
+        # release-debug keeps debug-assertions on (loom relies on them) while optimizing the models.
+        # Scoped to the credit models for now; the pre-existing sharded loom model
+        # (`loom_concurrent_send_recv`) fails under loom and is tracked separately — it had never
+        # actually run before s2n-quic-dc gained loom support.
+        # LOOM_MAX_PREEMPTIONS bounds the exploration so the multi-thread models finish in CI time
+        # (the standard loom knob; 2-3 preemptions catch essentially all real ordering bugs).
+        run: cd dc/s2n-quic-dc && cargo test --profile release-debug --features loom credit::pool::loom
+        env:
+          LOOM_MAX_PREEMPTIONS: "3"
+
   xdp:
     if: false # Disabled in this fork: focus CI on s2n-quic-dc and s2n-quic-core
     runs-on: ubuntu-latest
@@ -1019,7 +1051,7 @@ jobs:
   ci-status-report:
     runs-on: ubuntu-latest
     if: ${{ always() }}
-    needs: [env, rustfmt, clippy, test, asan, coverage, copyright, snapshots, typos, loom]
+    needs: [env, rustfmt, clippy, test, asan, coverage, copyright, snapshots, typos, loom, loom-dc]
     steps:
       - name: Report daily CI run to CloudWatch
         if: false # Disabled in this fork: no CloudWatch publishing is configured

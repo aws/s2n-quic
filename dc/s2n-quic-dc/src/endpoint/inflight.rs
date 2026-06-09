@@ -267,7 +267,9 @@ impl Map {
         // the byte invariant in `send::Context::invariants` is the real guard.
         debug_assert!(
             self.inner.iter().all(|(_, p)| p.transmission_info.is_none()
-                || p.transmission_info.as_ref().is_some_and(|i| i.sent_bytes == 0)),
+                || p.transmission_info
+                    .as_ref()
+                    .is_some_and(|i| i.sent_bytes == 0)),
             "clear_orphaned_shells called with non-shell entries still in the map"
         );
         self.inner.clear();

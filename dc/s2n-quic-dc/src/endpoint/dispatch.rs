@@ -420,7 +420,9 @@ where
             if peer.ack_state.is_flushed_stale() {
                 if let Some(flushed_at) = peer.flushed_at {
                     let now = crate::time::precision::Clock::now(clock);
-                    counters.rx_ack_flush_blocked.record(now.duration_since(flushed_at));
+                    counters
+                        .rx_ack_flush_blocked
+                        .record(now.duration_since(flushed_at));
                 }
             }
             let enqueue_pending_ack = !peer.ack_burst.is_linked() && peer.ack_state.is_scheduled();
@@ -521,7 +523,9 @@ where
         if peer.ack_state.is_flushed_stale() {
             if let Some(flushed_at) = peer.flushed_at {
                 let now = crate::time::precision::Clock::now(clock);
-                counters.rx_ack_flush_blocked.record(now.duration_since(flushed_at));
+                counters
+                    .rx_ack_flush_blocked
+                    .record(now.duration_since(flushed_at));
             }
         }
 

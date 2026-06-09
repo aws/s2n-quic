@@ -13,7 +13,7 @@ use atomic_waker::AtomicWaker;
 use core::{marker::PhantomData, task::Poll};
 use sync::{lock, Arc, AtomicU64, AtomicUsize, Mutex, Ordering};
 
-#[cfg(all(loom, test))]
+#[cfg(all(feature = "loom", test))]
 mod sync {
     pub use loom::sync::{
         atomic::{AtomicU64, AtomicUsize, Ordering},
@@ -26,7 +26,7 @@ mod sync {
     }
 }
 
-#[cfg(not(all(loom, test)))]
+#[cfg(not(all(feature = "loom", test)))]
 mod sync {
     pub use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
     pub use parking_lot::{Mutex, MutexGuard};

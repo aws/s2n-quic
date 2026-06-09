@@ -282,4 +282,3 @@ fn seed_inflight_packets(
 
     context.next_packet_number = VarInt::new(packets as u64).unwrap_or(VarInt::MAX);
 }
-

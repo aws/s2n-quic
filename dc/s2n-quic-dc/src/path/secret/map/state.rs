@@ -615,7 +615,11 @@ where
         // We drop from the peers map only if this is exactly the entry in that map to
         // avoid evicting a newer path secret (in case of rehandshaking with the same
         // peer).
-        if self.peers_for(evicted.id().endpoint_type()).remove_exact(evicted).is_some() {
+        if self
+            .peers_for(evicted.id().endpoint_type())
+            .remove_exact(evicted)
+            .is_some()
+        {
             peer_removed = true;
             self.subscriber().on_path_secret_map_address_entry_evicted(
                 event::builder::PathSecretMapAddressEntryEvicted {

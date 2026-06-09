@@ -622,7 +622,11 @@ mod tests {
             pn2,
             Packet::new(
                 frames,
-                TransmissionInfo { cc_info, time_sent: make_ts(100), sent_bytes: 100 },
+                TransmissionInfo {
+                    cc_info,
+                    time_sent: make_ts(100),
+                    sent_bytes: 100,
+                },
             ),
         );
         let discarded = context.inflight.set_probed_to_and_take_bytes(pn1, pn2);
@@ -652,7 +656,11 @@ mod tests {
         );
 
         // The shell must be reaped now that nothing is genuinely in flight.
-        assert_eq!(context.cca.bytes_in_flight(), 0, "tail ACK drained all bytes");
+        assert_eq!(
+            context.cca.bytes_in_flight(),
+            0,
+            "tail ACK drained all bytes"
+        );
         assert!(
             !context.inflight.has_inflight(),
             "orphaned PN 1 shell should be reaped once bytes_in_flight hit zero"

@@ -9,6 +9,7 @@
 //! dropped).
 
 use crate::intrusive;
+pub use crate::sync::AutoWake;
 use bitflags::bitflags;
 use core::{
     fmt,
@@ -58,32 +59,6 @@ impl<T, X> fmt::Debug for HalfInner<T, X> {
             .field("flags", &self.flags)
             .field("has_waker", &self.waker.is_some())
             .finish()
-    }
-}
-
-/// A token that wakes a stored waker when dropped.
-#[derive(Default)]
-pub struct AutoWake(pub(crate) Option<Waker>);
-
-impl AutoWake {
-    pub fn new(waker: Option<Waker>) -> Self {
-        Self(waker)
-    }
-
-    pub fn is_some(&self) -> bool {
-        self.0.is_some()
-    }
-
-    pub fn take(&mut self) -> Option<Waker> {
-        self.0.take()
-    }
-}
-
-impl Drop for AutoWake {
-    fn drop(&mut self) {
-        if let Some(w) = self.0.take() {
-            w.wake();
-        }
     }
 }
 

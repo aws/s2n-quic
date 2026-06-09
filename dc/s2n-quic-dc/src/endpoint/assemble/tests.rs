@@ -981,7 +981,11 @@ fn orphaned_shell_survives_cancelled_probe_tail() {
     assert!(context.inflight.has_inflight(), "PN 0 is in flight");
     let range = context.inflight.get_range();
     let shell_pn = range.start();
-    assert_eq!(range.start(), range.end(), "exactly one inflight entry (PN 0)");
+    assert_eq!(
+        range.start(),
+        range.end(),
+        "exactly one inflight entry (PN 0)"
+    );
     assert!(
         context.cca.bytes_in_flight() > 0,
         "live packet contributes bytes_in_flight"
