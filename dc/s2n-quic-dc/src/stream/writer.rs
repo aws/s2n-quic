@@ -594,8 +594,11 @@ impl Writer {
         S: buffer::reader::storage::Infallible,
     {
         let total = buf.buffered_len();
-        let slot = self.0.slot_ptr();
-        core::future::poll_fn(|cx| self.0.poll_write_msg(cx, slot, buf, flags)).await?;
+        core::future::poll_fn(|cx| {
+            let slot = self.0.slot_ptr();
+            self.0.poll_write_msg(cx, slot, buf, flags)
+        })
+        .await?;
         Ok(total)
     }
 

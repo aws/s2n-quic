@@ -42,12 +42,16 @@ fn test_writer_metrics() -> Arc<WriterMetrics> {
 
 struct PairBuilder {
     ep_type: endpoint::Type,
+    credit_pool: Option<crate::sync::Arc<crate::credit::Pool>>,
+    priority: crate::credit::Priority,
 }
 
 impl Default for PairBuilder {
     fn default() -> Self {
         Self {
             ep_type: endpoint::Type::Client,
+            credit_pool: None,
+            priority: crate::credit::Priority::default(),
         }
     }
 }
@@ -56,11 +60,25 @@ impl PairBuilder {
     fn server() -> Self {
         Self {
             ep_type: endpoint::Type::Server,
+            credit_pool: None,
+            priority: crate::credit::Priority::default(),
         }
     }
 
     fn client_no_remote_queue_id() -> Self {
         Self::default()
+    }
+
+    /// Override the credit pool used by the writer. Allows tests to assert against pool counters
+    /// (`debug_available`, `debug_parked_demand`) and to drive the pool into specific states.
+    fn with_credit_pool(mut self, pool: crate::sync::Arc<crate::credit::Pool>) -> Self {
+        self.credit_pool = Some(pool);
+        self
+    }
+
+    fn with_priority(mut self, priority: crate::credit::Priority) -> Self {
+        self.priority = priority;
+        self
     }
 
     fn build(self) -> (Writer, Pusher) {
@@ -81,8 +99,9 @@ impl PairBuilder {
 
         let (frame_tx, frame_rx) = frame::submission_channel(1);
 
-        let send_credit_pool =
-            crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::default()));
+        let send_credit_pool = self.credit_pool.unwrap_or_else(|| {
+            crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::default()))
+        });
         let writer = match self.ep_type {
             endpoint::Type::Client => Writer::new_client(
                 frame_tx,
@@ -93,7 +112,7 @@ impl PairBuilder {
                 crate::time::DefaultClock::default(),
                 test_writer_metrics(),
                 send_credit_pool,
-                crate::credit::Priority::default(),
+                self.priority,
             ),
             endpoint::Type::Server => Writer::new_server(
                 frame_tx,
@@ -104,7 +123,7 @@ impl PairBuilder {
                 crate::time::DefaultClock::default(),
                 test_writer_metrics(),
                 send_credit_pool,
-                crate::credit::Priority::default(),
+                self.priority,
             ),
         };
 
@@ -2493,4 +2512,265 @@ fn write_msg_fin_only_on_last_chunk_of_last_segment() {
         .primary()
         .spawn();
     });
+}
+
+// ── Credit-pool integration ─────────────────────────────────────────────────
+
+/// Build a credit pool with a custom capacity. Per-priority caps default to capacity so a single
+/// acquire can drain the whole pool.
+fn test_credit_pool(capacity: u64) -> crate::sync::Arc<crate::credit::Pool> {
+    crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config {
+        capacity,
+        max_single_acquire: [capacity; crate::credit::Priority::LEVELS],
+    }))
+}
+
+/// Sum the `flow_credits` field across every frame in `queue`.
+fn sum_flow_credits(queue: &intrusive::Queue<Frame>) -> u64 {
+    queue.iter().map(|f| f.flow_credits).sum()
+}
+
+/// Steady-state: every byte the writer sends is attributed to a `Frame.flow_credits` field
+/// equal to its payload size. The test simulates the production assembler by releasing each
+/// admitted frame's credits back to the pool, then asserts that the pool counters reconcile:
+/// `acquire_bytes == release_bytes` across the lifecycle.
+#[test]
+fn credit_pool_round_trip_attaches_credits_and_admit_restores_capacity() {
+    sim(|| {
+        const CAPACITY: u64 = 16 * 1024;
+        let pool = test_credit_pool(CAPACITY);
+        let (mut writer, mut pusher) = PairBuilder::default()
+            .with_credit_pool(pool.clone())
+            .build();
+
+        // Distributor folds `returned` back into `available` when it polls; spawning it lets us
+        // assert against `debug_available` after a few yield points.
+        let dist = crate::credit::Distributor::new(pool.clone());
+        async move {
+            use crate::socket::channel::Budget;
+            dist.distribute(Budget::new(1 << 20), TestWakerSink).await;
+        }
+        .spawn();
+
+        let pool_for_pusher = pool.clone();
+        async move {
+            // Init frame round-trip: payload is bounded by packet_size.
+            let init = pusher.recv_frames().await;
+            assert_eq!(init.len(), 1, "expected single init frame");
+            let init_credits = sum_flow_credits(&init);
+            assert_eq!(
+                init_credits, 5,
+                "init frame should carry exactly the bytes it transports"
+            );
+            // Simulate the assembler admitting the frame: release its credits back to the pool.
+            pool_for_pusher.release(init_credits);
+
+            // Steady-state writes after the server's MAX_DATA: each frame's flow_credits matches
+            // its payload size; admit them all by releasing.
+            pusher.push_max_data(VarInt::from_u32(8 * 1024));
+            let steady = pusher.recv_frames().await;
+            assert!(!steady.is_empty(), "expected steady-state frames");
+            for frame in steady.iter() {
+                assert_eq!(
+                    frame.flow_credits,
+                    frame.payload.len() as u64,
+                    "every data frame must carry credits equal to its payload size"
+                );
+            }
+            pool_for_pusher.release(sum_flow_credits(&steady));
+        }
+        .primary()
+        .spawn();
+
+        let pool_for_writer = pool.clone();
+        async move {
+            let mut hello = Bytes::from_static(b"hello");
+            writer
+                .write_from(&mut hello)
+                .await
+                .expect("init write succeeds");
+
+            let mut bulk = Data::new(8 * 1024);
+            writer.write_from(&mut bulk).await.expect("bulk write");
+
+            drop(writer);
+
+            // Yield so the distributor folds the released credits back into `available`.
+            for _ in 0..4 {
+                bach::task::yield_now().await;
+            }
+
+            // All credits acquired by the writer have been either (a) released by the simulated
+            // admit path on the Pusher side, or (b) released by `WriterAllocPtr::drop` for any
+            // bytes the writer was still holding when it went away.
+            assert_eq!(
+                pool_for_writer.debug_available(),
+                CAPACITY as i64,
+                "acquire/release must net to zero across the lifecycle"
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// A second poll on a writer whose pool is exhausted parks. After the pool is replenished the
+/// distributor wakes the slot and the next poll proceeds. Covers the LINKED→APP grant path.
+#[test]
+fn credit_pool_parked_write_unblocks_after_release() {
+    sim(|| {
+        // Capacity holds exactly one bulk write. The first bulk drains the pool; the second
+        // parks until the pusher simulates an admit by releasing credits.
+        const CAPACITY: u64 = 128;
+        let pool = test_credit_pool(CAPACITY);
+
+        // Distributor task — runs in the background, must not block runtime termination.
+        let dist = crate::credit::Distributor::new(pool.clone());
+        async move {
+            use crate::socket::channel::Budget;
+            dist.distribute(Budget::new(1 << 20), TestWakerSink).await;
+        }
+        .spawn();
+
+        let (mut writer, mut pusher) = PairBuilder::default()
+            .with_credit_pool(pool.clone())
+            .build();
+
+        let pool_for_pusher = pool.clone();
+        async move {
+            // Init frame: simulate the assembler admitting it (release its credits).
+            let init = pusher.recv_frames().await;
+            pool_for_pusher.release(sum_flow_credits(&init));
+
+            // Open the steady-state window.
+            pusher.push_max_data(VarInt::from_u32(4 * CAPACITY as u32));
+
+            // First bulk arrives but stays in the channel — admit only when we want to wake the
+            // parked second bulk.
+            let first = pusher.recv_frames().await;
+            assert!(!first.is_empty(), "first bulk should produce frames");
+
+            // Pool is now drained (debited by `first`'s flow_credits, not yet released). Release
+            // them — this wakes the parked writer task.
+            pool_for_pusher.release(sum_flow_credits(&first));
+
+            let second = pusher.recv_frames().await;
+            assert!(!second.is_empty(), "second batch must arrive after release");
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut first = Bytes::from_static(b"hi");
+            writer.write_from(&mut first).await.expect("init write");
+
+            // First bulk: takes the entire steady-state capacity.
+            let mut bulk = Data::new(CAPACITY);
+            writer
+                .write_from(&mut bulk)
+                .await
+                .expect("first bulk write");
+
+            // Second bulk: parks because the pool is drained until the pusher releases.
+            let mut more = Data::new(CAPACITY);
+            writer
+                .write_from(&mut more)
+                .await
+                .expect("second bulk write completes after release");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Dropping a writer while its credit slot is parked must transfer ownership of the slot
+/// allocation to the pool via `Slot::abandon`. The pool reclaims the slot on its next pass and
+/// invokes `drop_writer_alloc` to free the heap. This exercises the LINKED→DEAD branch of
+/// `WriterAllocPtr::drop`.
+#[test]
+fn parked_writer_drop_transfers_ownership_to_pool() {
+    sim(|| {
+        // Capacity = 2 covers the init's "hi" exactly; any subsequent acquire parks because the
+        // pool is drained.
+        const CAPACITY: u64 = 2;
+        let pool = test_credit_pool(CAPACITY);
+
+        let dist = crate::credit::Distributor::new(pool.clone());
+        async move {
+            use crate::socket::channel::Budget;
+            dist.distribute(Budget::new(1 << 20), TestWakerSink).await;
+        }
+        .spawn();
+
+        let (mut writer, mut pusher) = PairBuilder::default()
+            .with_credit_pool(pool.clone())
+            .build();
+
+        async move {
+            let _init = pusher.recv_frames().await;
+            // Open the steady-state window so the writer's next acquire isn't gated by
+            // `min_send_budget==0`. We do NOT release the init credits — the pool stays drained.
+            pusher.push_max_data(VarInt::from_u32(1024));
+            // Hold the pusher so its task keeps running while the writer parks and then drops.
+            // Without this, the pusher task ends and the runtime tears down before the writer
+            // gets a chance to park.
+            for _ in 0..8 {
+                bach::task::yield_now().await;
+            }
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut hello = Bytes::from_static(b"hi");
+            writer.write_from(&mut hello).await.expect("init write");
+
+            // Yield so the pusher's `push_max_data` lands and the writer's status becomes Open.
+            for _ in 0..2 {
+                bach::task::yield_now().await;
+            }
+
+            // The pool has zero credits available now (init took both bytes and the pusher
+            // didn't release them). The next write parks the slot.
+            let mut bulk = Data::new(64);
+            let parked =
+                core::future::poll_fn(|cx| match writer.poll_write_from(cx, &mut bulk, false) {
+                    Poll::Pending => Poll::Ready(true),
+                    Poll::Ready(_) => Poll::Ready(false),
+                })
+                .await;
+            assert!(parked, "expected the bulk write to park on credit acquire");
+
+            // Drop the writer while its slot is LINKED. `Slot::abandon` succeeds; the
+            // distributor's next pass observes the dead slot and frees the allocation via
+            // `drop_writer_alloc`. The test's success criterion is "no leak/panic at drop"; the
+            // bach runtime tears down cleanly because the distributor handles the dead slot.
+            drop(writer);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// `set_priority` updates the writer's priority field and is reflected by the `priority()` getter.
+#[test]
+fn priority_getter_reflects_set_priority() {
+    let (mut writer, _pusher) = PairBuilder::default()
+        .with_priority(crate::credit::Priority::Low)
+        .build();
+    assert_eq!(writer.priority(), crate::credit::Priority::Low);
+    writer.set_priority(crate::credit::Priority::High);
+    assert_eq!(writer.priority(), crate::credit::Priority::High);
+}
+
+/// Inline `WakerSink` that wakes every batched waker immediately. Mirrors the production sink's
+/// contract: after `append_wakers` returns, the batch must be empty.
+struct TestWakerSink;
+
+impl crate::credit::WakerSink for TestWakerSink {
+    fn append_wakers(&mut self, batch: &mut std::collections::VecDeque<core::task::Waker>) {
+        for w in batch.drain(..) {
+            w.wake();
+        }
+    }
 }

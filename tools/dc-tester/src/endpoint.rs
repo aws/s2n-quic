@@ -99,6 +99,8 @@ pub fn create(
         dead_peer_cooldown: core::time::Duration::from_secs(5),
         initial_tx_descriptor_allocs: 2,
         initial_rx_descriptor_allocs: 64,
+        send_credit_pool_config: s2n_quic_dc::credit::Config::default(),
+        recv_credit_pool_config: s2n_quic_dc::credit::Config::default(),
     };
 
     let inner = endpoint::setup_endpoint(

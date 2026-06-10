@@ -448,7 +448,13 @@ async fn execute_single_message(
     response_size: u64,
     use_msg: bool,
 ) -> io::Result<(u64, u64)> {
-    let stream = client.connect(server_addr, VarInt::ZERO).await?;
+    let stream = client
+        .connect(
+            server_addr,
+            VarInt::ZERO,
+            s2n_quic_dc::credit::Priority::default(),
+        )
+        .await?;
     send_recv(stream, request_size, response_size, use_msg).await
 }
 
@@ -463,7 +469,13 @@ async fn execute_single_message_instrumented(
     recv_timer: &counter::Timer,
 ) -> io::Result<(u64, u64)> {
     let connect_start = Instant::now();
-    let stream = client.connect(server_addr, VarInt::ZERO).await?;
+    let stream = client
+        .connect(
+            server_addr,
+            VarInt::ZERO,
+            s2n_quic_dc::credit::Priority::default(),
+        )
+        .await?;
     connect_timer.record(connect_start.elapsed());
 
     let (mut reader, mut writer) = stream.into_split();
