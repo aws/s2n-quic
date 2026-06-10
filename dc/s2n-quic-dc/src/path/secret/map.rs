@@ -22,6 +22,7 @@ mod cleaner;
 mod entry;
 pub mod handshake;
 mod peer;
+pub mod persistence;
 mod rehandshake;
 mod size_of;
 mod state;
@@ -84,14 +85,38 @@ impl Map {
         C: 'static + time::Clock + Send + Sync,
         S: event::Subscriber,
     {
-        let store = state::State::builder()
+        Self::new_with_persistence(
+            signer,
+            capacity,
+            should_evict_on_unknown_path_secret,
+            clock,
+            subscriber,
+            None,
+        )
+    }
+
+    pub fn new_with_persistence<C, S>(
+        signer: stateless_reset::Signer,
+        capacity: usize,
+        should_evict_on_unknown_path_secret: bool,
+        clock: C,
+        subscriber: S,
+        peer_persistence_dir: Option<std::path::PathBuf>,
+    ) -> Self
+    where
+        C: 'static + time::Clock + Send + Sync,
+        S: event::Subscriber,
+    {
+        let mut builder = state::State::builder()
             .with_signer(signer)
             .with_capacity(capacity)
             .with_evict_on_unknown_path_secret(should_evict_on_unknown_path_secret)
             .with_clock(clock)
-            .with_subscriber(subscriber)
-            .build()
-            .unwrap();
+            .with_subscriber(subscriber);
+        if let Some(dir) = peer_persistence_dir {
+            builder = builder.with_peer_persistence_dir(dir);
+        }
+        let store = builder.build().unwrap();
 
         Self { store }
     }
@@ -345,6 +370,12 @@ impl Map {
     #[cfg(test)]
     pub fn test_stop_cleaner(&self) {
         self.store.test_stop_cleaner();
+    }
+
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "testing"))]
+    pub fn cleaner_run_for_test(&self) {
+        self.store.test_run_cleaner();
     }
 
     #[doc(hidden)]

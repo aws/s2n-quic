@@ -18,6 +18,17 @@ use std::{
 
 const EVICTION_CYCLES: u64 = if cfg!(test) { 0 } else { 10 };
 
+// Server HI snapshots peer state every Nth cleaner cycle rather than every cycle:
+// the cleaner runs ~once a minute, and persisting on every cycle pays the snapshot
+// IO far more often than the recovery value justifies. Under test (or the `testing`
+// feature, used when downstream crates drive the cleaner) it fires every cycle so a
+// single `cleaner_run_for_test` produces a snapshot.
+const PERSISTENCE_CYCLES: u64 = if cfg!(any(test, feature = "testing")) {
+    1
+} else {
+    5
+};
+
 pub struct Cleaner {
     should_stop: AtomicBool,
     thread: Mutex<Option<std::thread::JoinHandle<()>>>,
@@ -139,6 +150,15 @@ impl Cleaner {
         let mut rehandshake = state.rehandshake.lock().unwrap();
         let refill_rehandshakes = rehandshake.needs_refill();
 
+        // Server HI: collect the live `(credential_id, peer)` set during this same
+        // walk, every PERSISTENCE_CYCLES-th cycle, instead of taking a second pass
+        // over `state.peers` under its own lock. `Some(vec)` only when this cycle
+        // persists and a writer is configured; otherwise capture is skipped entirely.
+        let mut peer_snapshot: Option<Vec<(crate::credentials::Id, std::net::SocketAddr)>> =
+            (current_epoch.is_multiple_of(PERSISTENCE_CYCLES)
+                && state.persistence_writer.is_some())
+            .then(|| Vec::with_capacity(state.peers.len()));
+
         // FIXME: add metrics for queue depth?
         // These are sort of equivalent to the ID map -- so maybe not worth it for now unless we
         // can get something more interesting out of it.
@@ -188,8 +208,26 @@ impl Cleaner {
                 return false;
             }
 
+            // Entry is retained: capture it for the Server HI snapshot if this is a
+            // persisting cycle. Evicted entries are intentionally excluded so the
+            // next incarnation does not replay to peers we just dropped.
+            if let Some(snapshot) = peer_snapshot.as_mut() {
+                snapshot.push((*entry.id(), *entry.peer()));
+            }
+
             true
         });
+
+        // Server HI: write the snapshot collected during the walk above. The
+        // `(credential_id, peer)` pairs were gathered inside `queue.retain` rather
+        // than by a second pass over `state.peers`, so this writes already-owned
+        // data and adds no extra map iteration or lock. `peer_snapshot` is `Some`
+        // only on persisting cycles with a configured writer.
+        if let (Some(snapshot), Some(writer)) = (peer_snapshot, state.persistence_writer.as_ref()) {
+            if let Err(e) = writer.write_snapshot(snapshot) {
+                tracing::warn!("salty.peer_persistence.write_failed: {:?}", e);
+            }
+        }
 
         // Avoid retaining entries for longer than expected.
         state.cleaner_peer_seen.clear();

@@ -76,6 +76,7 @@ s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
 s2n-quic-platform = { path = "../../quic/s2n-quic-platform", features = [
     "testing",
 ] }
+tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

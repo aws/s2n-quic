@@ -87,6 +87,11 @@ pub trait Store: 'static + Send + Sync {
     #[cfg(test)]
     fn test_stop_cleaner(&self);
 
+    /// Runs one cleaner cycle synchronously. Used by Server HI tests to force
+    /// a snapshot to disk without waiting for the background thread.
+    #[cfg(any(test, feature = "testing"))]
+    fn test_run_cleaner(&self);
+
     #[inline]
     fn send_control_error(
         &self,
