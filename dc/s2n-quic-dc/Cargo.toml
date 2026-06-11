@@ -82,3 +82,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [lints.rust.unexpected_cfgs]
 level = "warn"
 check-cfg = ['cfg(future)', 'cfg(fuzzing)', 'cfg(kani)', 'cfg(todo)']
+
+[lints.clippy]
+panic = "deny"
+panicking_unwrap = "deny"
+panicking_overflow_checks = "deny"
+panic_in_result_fn = "deny"
+large_futures = "deny"
+unwrap_used = "deny"
+unwrap_in_result = "deny"

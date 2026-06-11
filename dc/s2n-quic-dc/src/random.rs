@@ -11,6 +11,11 @@ impl TryRng for AwsLc {
     type Error = core::convert::Infallible;
 
     #[inline]
+    #[expect(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "aws-lc-rs random fill only fails on internal RNG failure, which is not a recoverable condition"
+    )]
     fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
         let mut v = [0; 4];
         aws_lc_rs::rand::fill(&mut v).unwrap();
@@ -18,6 +23,11 @@ impl TryRng for AwsLc {
     }
 
     #[inline]
+    #[expect(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "aws-lc-rs random fill only fails on internal RNG failure, which is not a recoverable condition"
+    )]
     fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
         let mut v = [0; 8];
         aws_lc_rs::rand::fill(&mut v).unwrap();
@@ -25,6 +35,11 @@ impl TryRng for AwsLc {
     }
 
     #[inline]
+    #[expect(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "aws-lc-rs random fill only fails on internal RNG failure, which is not a recoverable condition"
+    )]
     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Self::Error> {
         aws_lc_rs::rand::fill(dest).unwrap();
         Ok(())

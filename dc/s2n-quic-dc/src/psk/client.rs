@@ -32,6 +32,10 @@ struct State {
 }
 
 fn make_runtime() -> (Arc<Runtime>, DropGuard) {
+    #[expect(
+        clippy::unwrap_used,
+        reason = "FIXME: building the tokio runtime is fallible (resource exhaustion); should propagate the error"
+    )]
     let runtime = Arc::new(
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -42,6 +46,10 @@ fn make_runtime() -> (Arc<Runtime>, DropGuard) {
     let token = tokio_util::sync::CancellationToken::new();
     let cancelled = token.clone().cancelled_owned();
     let rt = runtime.clone();
+    #[expect(
+        clippy::unwrap_used,
+        reason = "FIXME: spawning a thread is fallible (resource exhaustion); should propagate the error"
+    )]
     std::thread::Builder::new()
         .name(String::from("hs-client"))
         .spawn(move || {
@@ -193,6 +201,11 @@ impl Provider {
 
     /// Handshake with a peer in the background.
     #[inline]
+    #[expect(
+        clippy::panic,
+        clippy::panic_in_result_fn,
+        reason = "the panic is only reachable in the deterministic testing configuration where no runtime is present"
+    )]
     pub fn background_handshake_with(
         &self,
         peer: SocketAddr,
@@ -230,6 +243,11 @@ impl Provider {
     // We duplicate the implementation of this method with handshake_with so that we preserve the fast
     // path (not interacting with the runtime at all) for cached handshakes.
     #[inline]
+    #[expect(
+        clippy::panic,
+        clippy::panic_in_result_fn,
+        reason = "the panic is only reachable in the deterministic testing configuration where no runtime is present"
+    )]
     pub fn blocking_handshake_with(
         &self,
         peer: SocketAddr,

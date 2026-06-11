@@ -50,6 +50,10 @@ impl Cleaner {
             // then wait for the background thread to finish exiting.
             if std::thread::current().id() != thread.thread().id() {
                 // We expect this to terminate very quickly.
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "panicking if a panic already occurred is OK"
+                )]
                 thread.join().unwrap();
             }
         }
@@ -93,9 +97,16 @@ impl Cleaner {
 
                 // pause the rest of the time to run once a minute, not twice a minute
                 std::thread::park_timeout(next_start.saturating_duration_since(Instant::now()));
-            })
-            .unwrap();
-        *self.thread.lock().unwrap() = Some(handle);
+            });
+        #[expect(
+            clippy::unwrap_used,
+            reason = "FIXME: spawning the cleaner thread is fallible (resource exhaustion)"
+        )]
+        let handle = handle.unwrap();
+        #[expect(clippy::unwrap_used, reason = "panic only if already panicked")]
+        {
+            *self.thread.lock().unwrap() = Some(handle);
+        }
     }
 
     /// Periodic maintenance for various maps.
@@ -136,6 +147,10 @@ impl Cleaner {
         // single threaded. No concurrent access is permitted.
         state.cleaner_peer_seen.clear();
 
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
         let mut rehandshake = state.rehandshake.lock().unwrap();
         let refill_rehandshakes = rehandshake.needs_refill();
 

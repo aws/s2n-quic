@@ -164,6 +164,10 @@ impl<F: FnOnce()> Drop for PeerWriteGuard<'_, F> {
         unsafe {
             ManuallyDrop::drop(&mut self.guard);
         }
+        #[expect(
+            clippy::unwrap_used,
+            reason = "cb is always Some until this Drop impl takes it exactly once"
+        )]
         (self.cb.take().unwrap())();
     }
 }
@@ -456,6 +460,10 @@ fn control_socket() -> Option<Arc<std::net::UdpSocket>> {
     // per process.
     static CONTROL_SOCKET: Mutex<Weak<std::net::UdpSocket>> = Mutex::new(Weak::new());
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "lock is only poisoned if another thread already panicked while holding it"
+    )]
     let mut guard = CONTROL_SOCKET.lock().unwrap();
     if let Some(socket) = guard.upgrade() {
         return Some(socket);
@@ -465,6 +473,10 @@ fn control_socket() -> Option<Arc<std::net::UdpSocket>> {
     let addrs = ["[::]:0", "0.0.0.0:0"];
 
     for addr in addrs {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "addr comes from a fixed list of compile-time constant address literals that are known valid"
+        )]
         let mut options = crate::socket::Options::new(addr.parse().unwrap());
         options.blocking = false;
         options.only_v6 = false;
@@ -542,6 +554,10 @@ where
         state.peers.reserve(2 * state.max_capacity);
         state.ids.reserve(2 * state.max_capacity);
         state.cleaner_peer_seen.reserve(2 * state.max_capacity);
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
         state
             .rehandshake
             .get_mut()
@@ -709,6 +725,10 @@ where
         self.peers.contains_key(peer)
     }
 
+    #[expect(
+        clippy::panic,
+        reason = "FIXME: inserting a duplicate path secret ID should fail the handshake rather than panic"
+    )]
     fn on_new_path_secrets(&self, entry: Arc<Entry>) {
         let id = *entry.id();
         let peer = entry.peer();
@@ -733,6 +753,10 @@ where
                 // FIXME: Consider a more interesting algorithm, e.g., scanning the first N entries
                 // if the popped entry is still live to see if we can avoid dropping a live entry.
                 // May not be worth it in practice.
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "queue is non-empty here because its length was just checked to exceed max_capacity"
+                )]
                 let element = queue.pop_front().unwrap();
                 // Drop the queue lock prior to dropping element in case we wind up deallocating
                 // This reduces lock contention and avoids interleaving locks (requiring careful

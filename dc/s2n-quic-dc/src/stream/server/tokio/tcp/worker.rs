@@ -48,6 +48,10 @@ where
     Sub: event::Subscriber + Clone,
 {
     #[inline]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "FIXME: local_addr() is a fallible syscall; this should propagate the error instead of unwrapping"
+    )]
     pub fn new<B: PollBehavior<Sub> + Clone>(acceptor: &super::Acceptor<Sub, B>) -> Self {
         Self {
             recv_buffer: msg::recv::Message::new(u16::MAX),
@@ -315,6 +319,10 @@ where
                 } => (buffer, *blocked_count),
                 // we encountered an error so try and send it back
                 WorkerState::Erroring { offset, buffer, .. } => {
+                    #[expect(
+                        clippy::unwrap_used,
+                        reason = "poll is only called with an active stream, as documented on Worker::poll"
+                    )]
                     let (stream, _remote_address) = stream.as_mut().unwrap();
                     let len = ready!(Pin::new(stream).poll_write(cx, &buffer[*offset..])).map_err(
                         |e| WorkerError {
@@ -344,6 +352,10 @@ where
 
             // try to read an initial packet from the socket
             let res = {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "poll is only called with an active stream, as documented on Worker::poll"
+                )]
                 let (stream, remote_address) = stream.as_mut().unwrap();
                 WorkerState::poll_initial_packet(
                     cx,
@@ -375,7 +387,15 @@ where
 
             let initial_packet = res?;
 
+            #[expect(
+                clippy::unwrap_used,
+                reason = "subscriber_ctx is always set alongside an active stream"
+            )]
             let subscriber_ctx = subscriber_ctx.take().unwrap();
+            #[expect(
+                clippy::unwrap_used,
+                reason = "poll is only called with an active stream, as documented on Worker::poll"
+            )]
             let (socket, remote_address) = stream.take().unwrap();
 
             let initial_packet = match initial_packet {
@@ -754,6 +774,10 @@ where
                 } => (buffer, *blocked_count),
                 // we encountered an error so try and send it back
                 WorkerState::Erroring { offset, buffer, .. } => {
+                    #[expect(
+                        clippy::unwrap_used,
+                        reason = "poll is only called with an active stream, as documented on Worker::poll"
+                    )]
                     let (stream, _remote_address) = stream.as_mut().unwrap();
                     let len = ready!(Pin::new(stream).poll_write(cx, &buffer[*offset..])).map_err(
                         |error| WorkerError {
@@ -794,6 +818,10 @@ where
 
             // try to read an initial packet from the socket
             let res = {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "poll is only called with an active stream, as documented on Worker::poll"
+                )]
                 let (stream, remote_address) = stream.as_mut().unwrap();
                 WorkerState::poll_initial_packet(
                     cx,
@@ -838,6 +866,10 @@ where
                 Err(e) => return Err(e).into(),
             };
 
+            #[expect(
+                clippy::unwrap_used,
+                reason = "poll is only called with an active stream, as documented on Worker::poll"
+            )]
             let (socket, remote_address) = stream.take().unwrap();
 
             let recv_buffer = recv_buffer.make_contiguous();

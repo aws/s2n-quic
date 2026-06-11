@@ -164,6 +164,10 @@ where
 {
     #[inline]
     fn default() -> Self {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "FIXME: build() constructs tokio runtimes which can fail under resource exhaustion"
+        )]
         Self::builder().build().unwrap()
     }
 }

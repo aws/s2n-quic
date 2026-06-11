@@ -17,6 +17,13 @@ use super::recv::buffer::Buffer;
 type Result<T = (), E = io::Error> = core::result::Result<T, E>;
 
 #[cfg(any(feature = "testing", test))]
+#[allow(
+    clippy::unwrap_used,
+    clippy::unwrap_in_result,
+    clippy::panic,
+    clippy::panic_in_result_fn,
+    reason = "bach simulation environment is test-support code and may panic to surface setup failures"
+)]
 pub mod bach;
 #[cfg(feature = "tokio")]
 pub mod tokio;

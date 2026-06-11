@@ -9,6 +9,10 @@ use std::{
 };
 
 #[cfg(test)]
+#[allow(
+    clippy::panic_in_result_fn,
+    reason = "test code may panic to surface failures"
+)]
 mod tests;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -225,6 +229,11 @@ impl<T, W: RecvWaker> RingDeque<T, W> {
     }
 
     #[inline]
+    #[expect(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "lock is only poisoned if another thread already panicked while holding it"
+    )]
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, Inner<T, W>>, Closed> {
         let inner = self.inner.lock().unwrap();
         ensure!(inner.open, Err(Closed));
@@ -271,6 +280,10 @@ impl RecvWaker for () {
     }
 
     #[inline(always)]
+    #[expect(
+        clippy::panic,
+        reason = "the () RecvWaker is used for non-polling queues; calling update is a programming error"
+    )]
     fn update(&mut self, _cx: &mut core::task::Context) {
         panic!("polling is disabled");
     }

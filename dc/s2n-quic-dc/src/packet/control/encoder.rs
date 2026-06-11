@@ -80,6 +80,10 @@ where
 
     if cfg!(debug_assertions) {
         let decoder = s2n_codec::DecoderBufferMut::new(slice);
+        #[expect(
+            clippy::unwrap_used,
+            reason = "debug-assertions-only round-trip check that the packet we just encoded decodes successfully"
+        )]
         let _ = super::decoder::Packet::decode(decoder, (), crypto.tag_len()).unwrap();
     }
 

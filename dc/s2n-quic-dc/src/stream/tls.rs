@@ -100,6 +100,10 @@ impl S2nTlsConnection {
         mut initial_read_buffer: Option<crate::msg::recv::Message>,
     ) -> io::Result<()> {
         std::future::poll_fn(|cx| -> Poll<io::Result<()>> {
+            #[expect(
+                clippy::unwrap_used,
+                reason = "lock is only poisoned if another thread already panicked while holding it"
+            )]
             let s2n_connection = &mut self.connection.get_mut().unwrap().0;
 
             let context = NegotiateContext {
@@ -154,6 +158,11 @@ impl S2nTlsConnection {
         .await
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "lock is only poisoned if another thread already panicked while holding it"
+    )]
     pub(crate) fn write<M, R>(
         &self,
         message: &mut M,
@@ -217,6 +226,11 @@ impl S2nTlsConnection {
     }
 
     /// Process TLS frames in `input` and write decrypted results into `output`.
+    #[expect(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "lock poisoning only occurs if another thread already panicked while holding it; setting a receive callback is effectively infallible in the s2n-tls Rust bindings"
+    )]
     pub(crate) fn read(
         &self,
         input: &mut super::recv::shared::RecvBuffer,
@@ -319,6 +333,10 @@ unsafe extern "C" fn recv_direct_cb<'a>(
     buf: *mut u8,
     len: u32,
 ) -> i32 {
+    #[expect(
+        clippy::unwrap_used,
+        reason = "ctx is the non-null NegotiateContext pointer we set on the connection before s2n-tls invokes this callback"
+    )]
     let ctx = ctx.cast::<NegotiateContext<'a>>().as_mut::<'a>().unwrap();
 
     let mut cx = std::task::Context::from_waker(ctx.waker);
@@ -371,6 +389,10 @@ unsafe extern "C" fn send_direct_cb<'a>(
     buf: *const u8,
     len: u32,
 ) -> i32 {
+    #[expect(
+        clippy::unwrap_used,
+        reason = "ctx is the non-null NegotiateContext pointer we set on the connection before s2n-tls invokes this callback"
+    )]
     let ctx = ctx.cast::<NegotiateContext<'a>>().as_ref::<'a>().unwrap();
 
     let mut cx = std::task::Context::from_waker(ctx.waker);
@@ -405,11 +427,19 @@ unsafe extern "C" fn send_io_cb<'a, M>(ctx: *mut core::ffi::c_void, buf: *const 
 where
     M: 'a + super::send::application::state::Message,
 {
+    #[expect(
+        clippy::unwrap_used,
+        reason = "ctx is the non-null message context pointer we set on the connection before s2n-tls invokes this callback"
+    )]
     let message = ctx.cast::<M>().as_mut::<'a>().unwrap();
 
     let mut buf = std::slice::from_raw_parts(buf, len as usize);
 
     while !buf.is_empty() {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "the split point is clamped to at most buf.len(), so split_off is always in range"
+        )]
         let part = buf
             .split_off(..buf.len().clamp(0, u16::MAX as usize))
             .unwrap();
@@ -435,6 +465,10 @@ where
         });
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "FIXME: len comes from s2n-tls and a value greater than i32::MAX would panic"
+    )]
     i32::try_from(len).unwrap()
 }
 
@@ -443,6 +477,10 @@ where
 unsafe extern "C" fn recv_io_cb<'a>(ctx: *mut core::ffi::c_void, buf: *mut u8, len: u32) -> i32 {
     // Note that we intentionally aren't assuming unique access, since we intend to call from
     // multiple threads.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "ctx is the non-null RecvBuffer context pointer we set on the connection before s2n-tls invokes this callback"
+    )]
     let mut ctx = ctx
         .cast::<super::recv::shared::RecvBuffer>()
         .as_mut::<'a>()
@@ -579,6 +617,7 @@ impl Drop for CallbackResetGuard<'_> {
     }
 }
 
+#[allow(clippy::unwrap_in_result, reason = "see unwraps below")]
 pub(crate) fn build_stream<Sub>(
     kernel_start_time: Timestamp,
     addr: std::net::SocketAddr,
@@ -604,6 +643,10 @@ where
         addr
     };
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "VarInt::ZERO is a constant that is always a valid normal stream Id"
+    )]
     let stream_id = crate::packet::stream::Id::normal(VarInt::ZERO).unwrap();
 
     let params = s2n_quic_core::dc::ApplicationParams::new(
@@ -624,6 +667,7 @@ where
     // Fake up a secret -- this will need some reworking to store the keys in the TLS state
     // probably?
     let mut secret = [0; 32];
+    #[expect(clippy::unwrap_used, reason = "entropy failure is unrecoverable")]
     aws_lc_rs::rand::fill(&mut secret).unwrap();
     let secret = crate::path::secret::schedule::Secret::new(
         crate::path::secret::schedule::Ciphersuite::AES_GCM_128_SHA256,
