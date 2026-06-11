@@ -96,6 +96,11 @@ impl State {
     }
 
     /// Called after decryption has been performed
+    #[expect(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "lock is only poisoned if another thread already panicked while holding it"
+    )]
     pub fn post_authentication(&self, identity: &Credentials) -> Result<(), Error> {
         // Duplicate since it's cheap right now, can be refined in the future.
         // In practice callers should have already run this early in the receiving process.

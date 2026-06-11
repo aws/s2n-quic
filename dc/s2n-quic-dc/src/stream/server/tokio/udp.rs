@@ -51,6 +51,10 @@ where
         secrets: &secret::Map,
         accept_flavor: accept::Flavor,
     ) -> Self {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "converting the compile-time constant 9000 is infallible since it is a valid non-zero value"
+        )]
         let acceptor = Self {
             sender: sender.clone(),
             socket,

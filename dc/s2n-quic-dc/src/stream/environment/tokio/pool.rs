@@ -61,6 +61,7 @@ impl Socket {
 }
 
 impl Pool {
+    #[allow(clippy::unwrap_in_result, reason = "see unwrap_used lints below")]
     pub fn new<Sub>(
         env: &Environment<Sub>,
         mut workers: usize,
@@ -110,6 +111,10 @@ impl Pool {
 
         if let Some(sender) = acceptor {
             spawn!(|_packets: &Packets, socket: &Socket| {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "lock is only poisoned if another thread already panicked while holding it"
+                )]
                 let queues = socket.queue.lock().unwrap();
                 let app_socket = socket.application_socket.clone();
                 let worker_socket = socket.worker_socket.clone();
@@ -129,6 +134,10 @@ impl Pool {
             });
         } else {
             spawn!(|_packets: &Packets, socket: &Socket| {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "lock is only poisoned if another thread already panicked while holding it"
+                )]
                 let dispatch = socket.queue.lock().unwrap().dispatcher();
                 dispatch.with_map(config.map.clone())
             });
@@ -149,6 +158,10 @@ impl Pool {
         let idx = self.current.fetch_add(1, Ordering::Relaxed);
         let idx = idx & self.mask;
         let socket = &self.sockets[idx];
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
         let (control, stream) = socket.queue.lock().unwrap().alloc_or_grow(credentials);
         let app_socket = socket.application_socket.clone();
         let worker_socket = socket.worker_socket.clone();

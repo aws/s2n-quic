@@ -43,9 +43,11 @@ impl Provider {
         );
         let token = tokio_util::sync::CancellationToken::new();
         let cancelled = token.clone().cancelled_owned();
+        #[expect(clippy::unwrap_used, reason = "FIXME: spawning a thread is fallible (resource exhaustion); should propagate the error")]
         std::thread::Builder::new()
             .name(String::from("hs-server"))
             .spawn(move || {
+                #[expect(clippy::unwrap_used, reason = "FIXME: building the tokio runtime is fallible (resource exhaustion); should propagate the error")]
                 let rt = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()

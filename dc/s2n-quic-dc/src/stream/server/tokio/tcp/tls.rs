@@ -92,6 +92,10 @@ where
     Sub: event::Subscriber + Clone,
 {
     fn drop(&mut self) {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "rt is always Some until it is taken here during drop"
+        )]
         if let Some(rt) = Arc::into_inner(self.rt.take().unwrap()) {
             rt.shutdown_background();
         }
@@ -166,7 +170,12 @@ where
         let map = self.map.clone();
         let flavor = self.accept_flavor;
         let timeout = self.timeout;
-        self.rt.as_ref().unwrap().spawn(async move {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "rt is always Some until Self is dropped"
+        )]
+        let rt = self.rt.as_ref().unwrap();
+        rt.spawn(async move {
             let fut = accept_conn(
                 socket,
                 remote_addr,

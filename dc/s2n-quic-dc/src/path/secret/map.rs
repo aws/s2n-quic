@@ -84,6 +84,10 @@ impl Map {
         C: 'static + time::Clock + Send + Sync,
         S: event::Subscriber,
     {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "build only fails if a required field is unset, we control the required field set"
+        )]
         let store = state::State::builder()
             .with_signer(signer)
             .with_capacity(capacity)
@@ -292,6 +296,10 @@ impl Map {
 
     #[doc(hidden)]
     #[cfg(any(test, feature = "testing"))]
+    #[allow(
+        clippy::unwrap_used,
+        reason = "test-support helper may panic to surface setup failures"
+    )]
     pub fn for_test_with_peers(
         peers: Vec<(
             crate::path::secret::schedule::Ciphersuite,
@@ -362,6 +370,10 @@ impl Map {
     }
 
     #[cfg(any(test, feature = "testing"))]
+    #[allow(
+        clippy::unwrap_used,
+        reason = "test-support helper may panic to surface setup failures"
+    )]
     pub(crate) fn test_insert_pair(
         &self,
         local_addr: SocketAddr,

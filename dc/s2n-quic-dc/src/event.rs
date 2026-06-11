@@ -26,6 +26,15 @@ impl Meta for api::EndpointMeta {
     }
 }
 
+// The generated code is not currently held to the panic lints; suppress them here at the
+// module level rather than annotating each generated site (which would be lost on regeneration).
+#[allow(
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unwrap_in_result,
+    clippy::panic_in_result_fn,
+    reason = "FIXME: generated event code is not yet audited for the panic lints"
+)]
 mod generated;
 pub use generated::*;
 

@@ -323,6 +323,10 @@ impl Packet<'_> {
 
     #[inline]
     #[cfg(debug_assertions)]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "debug-assertions-only build that round-trip checks the retransmission re-encode against a snapshot; the asserts validate internal encode/decode consistency"
+    )]
     pub fn retransmit<K>(
         buffer: DecoderBufferMut,
         space: stream::PacketSpace,
@@ -376,11 +380,20 @@ impl Packet<'_> {
     #[cfg(debug_assertions)]
     fn snapshot(buffer: &mut [u8], crypto_tag_len: usize) -> Owned {
         let buffer = DecoderBufferMut::new(buffer);
+        #[expect(
+            clippy::unwrap_used,
+            reason = "debug-assertions-only snapshot helper decoding a buffer that was just produced by this crate's encoder, so it is guaranteed to be well-formed"
+        )]
         let (packet, _buffer) = Self::decode(buffer, (), crypto_tag_len).unwrap();
         packet.into()
     }
 
     #[inline(always)]
+    #[expect(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "FIXME: support decoding const-known slices directly into arrays"
+    )]
     fn retransmit_impl<K>(
         buffer: DecoderBufferMut,
         space: stream::PacketSpace,

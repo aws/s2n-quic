@@ -126,6 +126,10 @@ impl Entry {
     }
 
     #[cfg(any(test, feature = "testing"))]
+    #[allow(
+        clippy::unwrap_used,
+        reason = "test-support helper may panic to surface setup failures"
+    )]
     pub fn fake(peer: SocketAddr, receiver: Option<receiver::State>) -> Arc<Entry> {
         let receiver = receiver.unwrap_or_default();
 

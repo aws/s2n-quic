@@ -31,12 +31,20 @@ impl Default for Waker {
 
 impl Waker {
     #[inline]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "lock is only poisoned if another thread already panicked while holding it"
+    )]
     pub fn update(&self, waker: &task::Waker) {
         self.state.lock().unwrap().waker = waker.clone();
     }
 
     #[inline]
     pub fn wake(&self) {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
         let state = self.state.lock().unwrap();
 
         // we only need to `wake_by_ref` if the worker is sleeping
@@ -51,6 +59,10 @@ impl Waker {
     #[inline]
     pub fn wake_forced(&self) {
         // wake the waker outside of the lock to avoid deadlocks
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
         let waker = self.state.lock().unwrap().waker.clone();
         waker.wake();
     }
@@ -71,6 +83,10 @@ impl Waker {
 
     #[inline]
     fn swap_status(&self, status: Status) -> Status {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
         let mut state = self.state.lock().unwrap();
         core::mem::replace(&mut state.status, status)
     }

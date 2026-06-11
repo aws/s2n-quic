@@ -65,6 +65,10 @@ impl allocator::Segment for Segment {
 
 #[cfg(debug_assertions)]
 impl Drop for Segment {
+    #[expect(
+        clippy::panic,
+        reason = "debug-only leak detector that fires only when a segment was dropped without being freed"
+    )]
     fn drop(&mut self) {
         if self.idx != Idx::MAX && !std::thread::panicking() {
             panic!("message segment {} leaked", self.idx);
@@ -122,6 +126,10 @@ impl Retransmission {
 
 #[cfg(debug_assertions)]
 impl Drop for Retransmission {
+    #[expect(
+        clippy::panic,
+        reason = "debug-only leak detector that fires only when a segment was dropped without being freed"
+    )]
     fn drop(&mut self) {
         if self.idx.get() != Idx::MAX && !std::thread::panicking() {
             panic!("message segment {} leaked", self.idx.get());
