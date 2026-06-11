@@ -224,6 +224,17 @@ impl ServerView {
             }
         }
 
+        // Slot is unallocated. Reject stale/duplicate init frames from an old
+        // generation: a recycled slot preserves its previous binding_id as a
+        // tombstone (see `Slot::mark_unallocated`), and only a strictly greater
+        // binding may re-allocate it. This mirrors the tombstone check in
+        // `bind_and_push_stream`; without it a delayed/reordered init from a
+        // freed binding would resurrect the slot under a zombie binding_id.
+        let tombstone = stored & !super::slot::UNALLOCATED_BIT;
+        if binding_id.as_u64() <= tombstone {
+            return Err(Error::StaleBinding(()));
+        }
+
         // Slot is unallocated — bind it
         match slot.allocate_and_open(binding_id, self.state.initial_recv_window) {
             Ok(true) => {
@@ -542,6 +553,58 @@ mod tests {
             .primary()
             .spawn();
         });
+    }
+
+    #[test]
+    fn bind_for_msg_rejects_stale_on_recycled() {
+        let (mut server, path_entry, mut tx, _rx) = test_server(10);
+
+        // Bind queue 0 with binding_id 5 via the msg-init path.
+        let result = server.bind_for_msg(v(0), v(5), &path_entry, &mut tx);
+        let Ok(BindResult::NewBinding {
+            stream, control, ..
+        }) = result
+        else {
+            panic!("expected NewBinding for fresh slot");
+        };
+
+        // Receivers drop → slot recycled, tombstone preserves binding 5.
+        drop(stream);
+        drop(control);
+
+        // A stale/reordered init frame from the OLD binding (4 < tombstone 5)
+        // arrives. It MUST be rejected as a stale binding, exactly as
+        // bind_and_send_stream / bind_and_push_stream would do
+        // (see slot.rs `bind_and_push_stale_on_recycled`). Otherwise the slot
+        // is re-allocated under a zombie binding id.
+        let result = server.bind_for_msg(v(0), v(4), &path_entry, &mut tx);
+        assert!(
+            matches!(result, Err(Error::StaleBinding(_))),
+            "stale init on recycled slot must be rejected"
+        );
+    }
+
+    #[test]
+    fn bind_for_msg_rejects_equal_on_recycled() {
+        let (mut server, path_entry, mut tx, _rx) = test_server(10);
+
+        let result = server.bind_for_msg(v(0), v(5), &path_entry, &mut tx);
+        let Ok(BindResult::NewBinding {
+            stream, control, ..
+        }) = result
+        else {
+            panic!("expected NewBinding");
+        };
+        drop(stream);
+        drop(control);
+
+        // A duplicate of the SAME binding that was just freed must not
+        // resurrect the slot — equal-to-tombstone is stale.
+        let result = server.bind_for_msg(v(0), v(5), &path_entry, &mut tx);
+        assert!(
+            matches!(result, Err(Error::StaleBinding(_))),
+            "equal-to-tombstone init on recycled slot must be rejected"
+        );
     }
 
     #[test]

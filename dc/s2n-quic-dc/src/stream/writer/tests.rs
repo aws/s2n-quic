@@ -338,6 +338,80 @@ impl Pusher {
 
 // ─── Bach async tests ─────────────────────────────────────────────────────────
 
+/// Repro: the Init send path (`send_queue_data_init` / `prepare_early_data`) frames a payload
+/// clamped only by MTU / buffered length / offset capacity — NOT by the credits actually held in
+/// `pending_credits`. `poll_acquire_credits` for the byte-stream Init path uses `min_progress = 1`,
+/// so it returns `Ready` as soon as `pending_credits >= 1`, even when the pool granted far less than
+/// the full `want`. `take_credits(payload.len())` then over-reports: it returns `payload.len()` and
+/// saturates `pending_credits` to 0, stamping `frame.flow_credits = payload.len()` while only
+/// `min(want, max_single_acquire)` was ever debited from the pool.
+///
+/// Downstream the assembler (or the cancelled drain) releases `frame.flow_credits` back to the
+/// send pool, so the pool gains `payload.len() - acquired` phantom credits it never had — a credit
+/// over-release that inflates the pool past capacity and breaks the no-snipe / flow-control bound.
+///
+/// Here we drive a single (uncontended) writer against a pool whose `max_single_acquire` is smaller
+/// than one MTU payload, so a single acquire grants less than the Init frame's payload. The frame's
+/// `flow_credits` must never exceed what the pool could have handed out.
+#[test]
+fn init_frame_flow_credits_never_exceed_acquired() {
+    sim(|| {
+        // Tiny pool: capacity 100 ⇒ max_single_acquire = max(100/256, 1) = 1 for the default
+        // (Medium) tier. A single acquire can therefore grant at most 1 credit.
+        let pool = crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::new(100)));
+        let initial_available = pool.debug_available();
+
+        let (mut writer, mut pusher) = PairBuilder::default()
+            .with_credit_pool(pool.clone())
+            .build();
+
+        async move {
+            // Drain whatever frames the writer emits over the next few polls. Each frame's
+            // `flow_credits` must be backed by credit actually debited from the pool: the sum can
+            // never exceed the pool's total capacity, and per frame it must not exceed
+            // `initial_available`. The pre-fix Init path over-reports (stamps payload.len() while
+            // holding fewer credits), tripping either this assertion or the `take_credits`
+            // debug_assert in debug builds.
+            let mut total_credits = 0u64;
+            for _ in 0..4 {
+                let Some(frames) = pusher.recv_frames_timeout(Duration::from_millis(50)).await
+                else {
+                    break;
+                };
+                for frame in frames.iter() {
+                    assert!(
+                        (frame.flow_credits as i64) <= initial_available,
+                        "frame.flow_credits ({}) exceeds total pool capacity ({}); \
+                         releasing it downstream over-releases credit (payload_len={})",
+                        frame.flow_credits,
+                        initial_available,
+                        frame.payload.len(),
+                    );
+                    total_credits += frame.flow_credits;
+                }
+            }
+            assert!(
+                (total_credits as i64) <= initial_available,
+                "total flow_credits across all frames ({total_credits}) exceeds pool capacity ({initial_available})",
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            // Payload larger than the single-acquire grant so the Init path frames more bytes than
+            // the credits it holds.
+            let mut payload = Bytes::from(vec![0u8; 64]);
+            let _ = writer.write_from(&mut payload).await;
+            // Keep the writer alive briefly so the receiver task can observe its frames.
+            Duration::from_millis(200).sleep().await;
+            drop(writer);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
 #[test]
 fn client_write_all_from_fin_sends_queue_init_with_early_data_and_fin() {
     sim(|| {

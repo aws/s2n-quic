@@ -1378,7 +1378,14 @@ impl Inner {
         let mtu = self.packet_size as usize;
         let chunk_len = mtu
             .min(buf.buffered_len())
-            .min(self.remaining_offset_capacity());
+            .min(self.remaining_offset_capacity())
+            // Clamp by the credits actually held. The Init acquire uses `min_progress = 1`, so it
+            // can return Ready holding fewer credits than a full MTU payload (a small pool's
+            // `max_single_acquire`, or a partial fair-share grant under contention). Without this
+            // clamp `take_credits(chunk_len)` would over-report `flow_credits`, which the assembler
+            // later releases back to the pool — injecting phantom credit. The remainder is sent on
+            // a later poll after re-acquiring.
+            .min(self.pending_credits as usize);
 
         let mut payload = ByteVec::new();
         {
