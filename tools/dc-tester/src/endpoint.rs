@@ -99,8 +99,25 @@ pub fn create(
         dead_peer_cooldown: core::time::Duration::from_secs(5),
         initial_tx_descriptor_allocs: 2,
         initial_rx_descriptor_allocs: 64,
-        send_credit_pool_config: s2n_quic_dc::credit::Config::default(),
-        recv_credit_pool_config: s2n_quic_dc::credit::Config::default(),
+        // Send pool: bounds local pre-transmission frame queuing; credit releases at admission to
+        // the inflight map (~10us), not at ACK, so it can be far smaller than the recv pool.
+        // `max_single_acquire` MUST stay well above one msg chunk (`msg_packet_size`, ~8.8 KiB at
+        // the production 8940-byte MTU). A writer acquires per chunk and the QueueMsg resume path
+        // takes a full chunk at a time; if a single acquire can't cover one chunk the writer
+        // either stalls (it never advertises enough for forward progress) or, on the resume path,
+        // truncates a chunk's `flow_credits` and corrupts receiver flow accounting. The default
+        // `Config::new` cap (capacity/256) would be only 8 KiB at a 2 MiB capacity — below a chunk
+        // — so set a uniform cap that comfortably spans several chunks.
+        // TODO(measure): tune capacity to the empirical acquire->admit latency via dc-tester.
+        send_credit_pool_config: s2n_quic_dc::credit::Config::new(2 * 1024 * 1024)
+            .with_max_single_acquire_uniform(256 * 1024),
+        // Recv pool: aggregate advertised-but-unfilled receive window across all streams. Sized to
+        // ~8x the single-stream BDP (30 Gbps x 500us ~= 1.875 MB) so several streams can hold a
+        // full window concurrently. `max_single_acquire` is the per-stream window ceiling — set to
+        // ~1 BDP (2 MiB) so a single stream can saturate the link but no further. A reader extends
+        // by a full window per acquire, so this must stay >= the per-stream window.
+        recv_credit_pool_config: s2n_quic_dc::credit::Config::new(16 * 1024 * 1024)
+            .with_max_single_acquire_uniform(2 * 1024 * 1024),
     };
 
     let inner = endpoint::setup_endpoint(

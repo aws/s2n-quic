@@ -667,6 +667,7 @@ pub(crate) struct AssemblerCounters {
     pub tx_frame_queue_data_fin: crate::counter::Counter,
     pub tx_frame_queue_control: crate::counter::Counter,
     pub tx_frame_queue_max_data: crate::counter::Counter,
+    pub tx_frame_queue_data_blocked: crate::counter::Counter,
     pub tx_frame_queue_reset: crate::counter::Counter,
     pub tx_frame_queue_free: crate::counter::Counter,
     pub tx_frame_ack: crate::counter::Counter,
@@ -680,6 +681,7 @@ pub(crate) struct AssemblerCounters {
     pub tx_probe_frame_queue_data_fin: crate::counter::Counter,
     pub tx_probe_frame_queue_control: crate::counter::Counter,
     pub tx_probe_frame_queue_max_data: crate::counter::Counter,
+    pub tx_probe_frame_queue_data_blocked: crate::counter::Counter,
     pub tx_probe_frame_queue_reset: crate::counter::Counter,
     pub tx_probe_frame_queue_free: crate::counter::Counter,
     pub tx_probe_frame_ping: crate::counter::Counter,
@@ -706,6 +708,8 @@ impl AssemblerCounters {
             tx_frame_queue_data_fin: registry.register_nominal("tx.frame", "queue_data_fin"),
             tx_frame_queue_control: registry.register_nominal("tx.frame", "queue_control"),
             tx_frame_queue_max_data: registry.register_nominal("tx.frame", "queue_max_data"),
+            tx_frame_queue_data_blocked: registry
+                .register_nominal("tx.frame", "queue_data_blocked"),
             tx_frame_queue_reset: registry.register_nominal("tx.frame", "queue_reset"),
             tx_frame_queue_free: registry.register_nominal("tx.frame", "queue_free"),
             tx_frame_ack: registry.register_nominal("tx.frame", "ack"),
@@ -720,6 +724,8 @@ impl AssemblerCounters {
                 .register_nominal("tx.probe.frame", "queue_control"),
             tx_probe_frame_queue_max_data: registry
                 .register_nominal("tx.probe.frame", "queue_max_data"),
+            tx_probe_frame_queue_data_blocked: registry
+                .register_nominal("tx.probe.frame", "queue_data_blocked"),
             tx_probe_frame_queue_reset: registry.register_nominal("tx.probe.frame", "queue_reset"),
             tx_probe_frame_queue_free: registry.register_nominal("tx.probe.frame", "queue_free"),
             tx_probe_frame_ping: registry.register_nominal("tx.probe.frame", "ping"),
@@ -737,6 +743,7 @@ impl AssemblerCounters {
             frame::Header::QueueData { is_fin: true, .. } => self.tx_frame_queue_data_fin.add(1),
             frame::Header::QueueControl { .. } => self.tx_frame_queue_control.add(1),
             frame::Header::QueueMaxData { .. } => self.tx_frame_queue_max_data.add(1),
+            frame::Header::QueueDataBlocked { .. } => self.tx_frame_queue_data_blocked.add(1),
             frame::Header::QueueReset { .. } => self.tx_frame_queue_reset.add(1),
             frame::Header::QueueFree { .. } => self.tx_frame_queue_free.add(1),
             frame::Header::Ack { .. } => self.tx_frame_ack.add(1),
@@ -758,6 +765,7 @@ impl AssemblerCounters {
             }
             frame::Header::QueueControl { .. } => self.tx_probe_frame_queue_control.add(1),
             frame::Header::QueueMaxData { .. } => self.tx_probe_frame_queue_max_data.add(1),
+            frame::Header::QueueDataBlocked { .. } => self.tx_probe_frame_queue_data_blocked.add(1),
             frame::Header::QueueReset { .. } => self.tx_probe_frame_queue_reset.add(1),
             frame::Header::QueueFree { .. } => self.tx_probe_frame_queue_free.add(1),
             frame::Header::Ack { .. } => {

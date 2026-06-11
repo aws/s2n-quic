@@ -29,13 +29,15 @@ use std::sync::Arc;
 pub const DEFAULT_TTL: u16 = u16::MAX;
 
 /// Worst-case header overhead for a QueueData packet on the wire.
-pub const MAX_QUEUE_DATA_HEADER_OVERHEAD: u16 = 111;
+///
+/// Includes the `largest_offset` delta VarInt (up to 8 bytes), encoded on non-FIN frames.
+pub const MAX_QUEUE_DATA_HEADER_OVERHEAD: u16 = 119;
 
 /// Worst-case header overhead for a QueueMsg packet on the wire.
 ///
 /// QueueMsg encodes three additional VarInt fields (msg_id, stream_offset, message_size)
-/// compared to QueueData, adding up to 24 bytes in the worst case.
-pub const MAX_QUEUE_MSG_HEADER_OVERHEAD: u16 = 144;
+/// compared to QueueData, plus the `largest_offset` delta VarInt, in the worst case.
+pub const MAX_QUEUE_MSG_HEADER_OVERHEAD: u16 = 152;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -371,7 +373,16 @@ pub enum Header {
         queue_pair: QueuePair,
         binding_id: VarInt,
         offset: VarInt,
+        /// Absolute largest stream offset the writer currently wants to send (its high
+        /// watermark). Encoded on the wire as a delta from `offset`; reconstructed to absolute
+        /// on decode. Omitted on the wire for non-init FIN frames (the writer is done and the
+        /// reader learns the final size from the FIN), in which case decode sets it to `offset`.
+        largest_offset: VarInt,
         is_fin: bool,
+        /// The writer is flow-control blocked at `largest_offset` (more data is buffered than the
+        /// remote window admits). Encoded as a type-tag flag bit. Lets the reader grow its window
+        /// without waiting for a standalone `QueueDataBlocked`.
+        blocked: bool,
         dest_acceptor_id: Option<VarInt>,
         priority: crate::credit::Priority,
     },
@@ -442,11 +453,18 @@ pub enum Header {
         binding_id: VarInt,
         msg_id: VarInt,
         stream_offset: VarInt,
+        /// Absolute largest stream offset the writer currently wants to send. Encoded as a delta
+        /// from `stream_offset`; reconstructed to absolute on decode. Omitted on the wire for
+        /// non-init FIN frames (decode then sets it to `stream_offset`). See `QueueData`.
+        largest_offset: VarInt,
         message_size: VarInt,
         chunk_size: VarInt,
         chunk_index: VarInt,
         is_fin: bool,
         is_wakeup: bool,
+        /// The writer is flow-control blocked at `largest_offset`. Encoded as a type-tag flag bit.
+        /// See `QueueData`.
+        blocked: bool,
         dest_acceptor_id: Option<VarInt>,
         /// Encoded on the wire only when `dest_acceptor_id.is_some()`. See `QueueData`.
         priority: crate::credit::Priority,
@@ -457,29 +475,50 @@ pub enum Header {
     /// to retransmit. Ensures the peer receives 2 ack-eliciting packets at contiguous
     /// packet numbers, satisfying the PN-threshold for loss detection.
     Ping,
+    /// Standalone flow-control-blocked signal (writer→reader).
+    ///
+    /// The payload-less counterpart to the in-band `blocked` bit on `QueueData`/`QueueMsg`. Emitted
+    /// only when the writer is fully blocked with no data frame to carry the bit (the window was
+    /// exhausted while the buffer was empty and the application then queued more data). Carries the
+    /// writer's desired high-water offset so the reader can grow its receive window. Like other
+    /// non-Ack frames it is ack-eliciting and retransmitted; the reader self-dedups on the
+    /// monotonic `desired_offset`, so the writer never handles loss specially.
+    QueueDataBlocked {
+        queue_pair: QueuePair,
+        binding_id: VarInt,
+        desired_offset: VarInt,
+    },
 }
 
 impl Header {
-    const QUEUE_DATA_NO_FIN_TYPE: u8 = 1;
-    const QUEUE_DATA_WITH_FIN_TYPE: u8 = 2;
-    const QUEUE_DATA_INIT_NO_FIN_TYPE: u8 = 3;
-    const QUEUE_DATA_INIT_WITH_FIN_TYPE: u8 = 4;
-    const QUEUE_CONTROL_TYPE: u8 = 5;
-    const QUEUE_MAX_DATA_TYPE: u8 = 6;
-    const QUEUE_RESET_BOTH_TYPE: u8 = 7;
-    const QUEUE_RESET_STREAM_TYPE: u8 = 8;
-    const QUEUE_RESET_CONTROL_TYPE: u8 = 9;
-    const QUEUE_RESET_BOTH_INIT_TYPE: u8 = 10;
-    const QUEUE_RESET_STREAM_INIT_TYPE: u8 = 11;
-    const QUEUE_RESET_CONTROL_INIT_TYPE: u8 = 12;
-    const QUEUE_FREE_TYPE: u8 = 13;
-    const ACK_TYPE: u8 = 14;
-    const ACK_ELICITING_TYPE: u8 = 15;
-    // QueueMsg: 8 type tags with bit-positioned flags.
-    // Bit 0: is_fin, Bit 1: is_wakeup, Bit 2: has_dest_acceptor_id (init)
-    const QUEUE_MSG_BASE_TYPE: u8 = 16;
-    const QUEUE_MSG_MAX_TYPE: u8 = Self::QUEUE_MSG_BASE_TYPE + 7;
-    const PING_TYPE: u8 = 24;
+    // QueueData: 8 type tags with bit-positioned flags.
+    // Bit 0: is_fin, Bit 1: has_dest_acceptor_id (init), Bit 2: blocked
+    const QUEUE_DATA_BASE_TYPE: u8 = 1;
+    const QUEUE_DATA_FIN_BIT: u8 = 1;
+    const QUEUE_DATA_INIT_BIT: u8 = 2;
+    const QUEUE_DATA_BLOCKED_BIT: u8 = 4;
+    const QUEUE_DATA_MAX_TYPE: u8 = Self::QUEUE_DATA_BASE_TYPE + 7;
+    const QUEUE_CONTROL_TYPE: u8 = 9;
+    const QUEUE_MAX_DATA_TYPE: u8 = 10;
+    const QUEUE_RESET_BOTH_TYPE: u8 = 11;
+    const QUEUE_RESET_STREAM_TYPE: u8 = 12;
+    const QUEUE_RESET_CONTROL_TYPE: u8 = 13;
+    const QUEUE_RESET_BOTH_INIT_TYPE: u8 = 14;
+    const QUEUE_RESET_STREAM_INIT_TYPE: u8 = 15;
+    const QUEUE_RESET_CONTROL_INIT_TYPE: u8 = 16;
+    const QUEUE_FREE_TYPE: u8 = 17;
+    const ACK_TYPE: u8 = 18;
+    const ACK_ELICITING_TYPE: u8 = 19;
+    const PING_TYPE: u8 = 20;
+    const QUEUE_DATA_BLOCKED_TYPE: u8 = 21;
+    // QueueMsg: 16 type tags with bit-positioned flags.
+    // Bit 0: is_fin, Bit 1: is_wakeup, Bit 2: has_dest_acceptor_id (init), Bit 3: blocked
+    const QUEUE_MSG_BASE_TYPE: u8 = 32;
+    const QUEUE_MSG_FIN_BIT: u8 = 1;
+    const QUEUE_MSG_WAKEUP_BIT: u8 = 2;
+    const QUEUE_MSG_INIT_BIT: u8 = 4;
+    const QUEUE_MSG_BLOCKED_BIT: u8 = 8;
+    const QUEUE_MSG_MAX_TYPE: u8 = Self::QUEUE_MSG_BASE_TYPE + 15;
 
     #[inline]
     pub fn priority(&self) -> Priority {
@@ -493,7 +532,9 @@ impl Header {
                 ..
             } => Priority::QueueInit,
             Self::QueueData { .. } | Self::QueueMsg { .. } => Priority::QueueData,
-            Self::QueueControl { .. } | Self::QueueMaxData { .. } => Priority::QueueControl,
+            Self::QueueControl { .. }
+            | Self::QueueMaxData { .. }
+            | Self::QueueDataBlocked { .. } => Priority::QueueControl,
             Self::QueueFree { .. } | Self::Ack { .. } | Self::QueueReset { .. } | Self::Ping => {
                 Priority::QueueReset
             }
@@ -502,8 +543,9 @@ impl Header {
 
     /// Returns the wire-canonical form of `self`: clears fields that the encoder
     /// drops when their qualifying flag is absent, so that `encode-then-decode` is
-    /// equality-preserving. Currently only `priority` (encoded only on init frames)
-    /// is affected.
+    /// equality-preserving. Affects `priority` (encoded only on init frames) and
+    /// `largest_offset` (encoded as a delta from the base offset, and omitted entirely
+    /// on non-init FIN frames — both cases lose any sub-base value).
     ///
     /// This exists primarily for fuzz/property tests that synthesize arbitrary
     /// `Header` values; production code never produces a non-canonical header.
@@ -514,14 +556,23 @@ impl Header {
                 queue_pair,
                 binding_id,
                 offset,
+                largest_offset,
                 is_fin,
+                blocked,
                 dest_acceptor_id,
                 priority,
             } => Self::QueueData {
                 queue_pair,
                 binding_id,
                 offset,
+                largest_offset: Self::canonical_largest_offset(
+                    offset,
+                    largest_offset,
+                    is_fin,
+                    dest_acceptor_id.is_some(),
+                ),
                 is_fin,
+                blocked,
                 dest_acceptor_id,
                 priority: if dest_acceptor_id.is_some() {
                     priority
@@ -534,11 +585,13 @@ impl Header {
                 binding_id,
                 msg_id,
                 stream_offset,
+                largest_offset,
                 message_size,
                 chunk_size,
                 chunk_index,
                 is_fin,
                 is_wakeup,
+                blocked,
                 dest_acceptor_id,
                 priority,
             } => Self::QueueMsg {
@@ -546,11 +599,18 @@ impl Header {
                 binding_id,
                 msg_id,
                 stream_offset,
+                largest_offset: Self::canonical_largest_offset(
+                    stream_offset,
+                    largest_offset,
+                    is_fin,
+                    dest_acceptor_id.is_some(),
+                ),
                 message_size,
                 chunk_size,
                 chunk_index,
                 is_fin,
                 is_wakeup,
+                blocked,
                 dest_acceptor_id,
                 priority: if dest_acceptor_id.is_some() {
                     priority
@@ -560,6 +620,38 @@ impl Header {
             },
             other => other,
         }
+    }
+
+    /// Canonical `largest_offset` after a wire round-trip.
+    ///
+    /// The encoder writes `largest_offset - base` (clamped to 0 below `base`) and omits the field
+    /// entirely on non-init FIN frames. Decode therefore yields `base` when the field was omitted,
+    /// and `base + max(0, largest_offset - base)` otherwise — i.e. `max(base, largest_offset)`.
+    #[inline]
+    fn canonical_largest_offset(
+        base: VarInt,
+        largest_offset: VarInt,
+        is_fin: bool,
+        is_init: bool,
+    ) -> VarInt {
+        if is_fin && !is_init {
+            base
+        } else {
+            base.max(largest_offset)
+        }
+    }
+
+    /// Wire delta for `largest_offset`: `largest_offset - base`, clamped to 0 when below `base`
+    /// (defensive — production always has `largest_offset >= base`).
+    #[inline]
+    fn encode_largest_offset_delta(base: VarInt, largest_offset: VarInt) -> VarInt {
+        VarInt::new(largest_offset.as_u64().saturating_sub(base.as_u64())).unwrap_or(VarInt::MAX)
+    }
+
+    /// Reconstruct the absolute `largest_offset` from a decoded wire delta.
+    #[inline]
+    fn decode_largest_offset(base: VarInt, delta: VarInt) -> VarInt {
+        VarInt::new(base.as_u64().saturating_add(delta.as_u64())).unwrap_or(VarInt::MAX)
     }
 
     /// Returns true if a frame with this header type elicits an ACK from the peer.
@@ -590,7 +682,10 @@ impl Header {
             | Self::QueueControl { .. }
             | Self::QueueFree { .. }
             | Self::Ack { .. } => true,
-            Self::QueueReset { .. } | Self::QueueMaxData { .. } | Self::Ping => false,
+            Self::QueueReset { .. }
+            | Self::QueueMaxData { .. }
+            | Self::QueueDataBlocked { .. }
+            | Self::Ping => false,
         }
     }
 
@@ -623,16 +718,17 @@ impl EncoderValue for Header {
                 queue_pair,
                 binding_id,
                 offset,
+                largest_offset,
                 is_fin,
+                blocked,
                 dest_acceptor_id,
                 priority,
             } => {
-                let tag = match (dest_acceptor_id.is_some(), *is_fin) {
-                    (true, false) => Self::QUEUE_DATA_INIT_NO_FIN_TYPE,
-                    (true, true) => Self::QUEUE_DATA_INIT_WITH_FIN_TYPE,
-                    (false, false) => Self::QUEUE_DATA_NO_FIN_TYPE,
-                    (false, true) => Self::QUEUE_DATA_WITH_FIN_TYPE,
-                };
+                let is_init = dest_acceptor_id.is_some();
+                let tag = Self::QUEUE_DATA_BASE_TYPE
+                    + ((*is_fin as u8) * Self::QUEUE_DATA_FIN_BIT)
+                    + ((is_init as u8) * Self::QUEUE_DATA_INIT_BIT)
+                    + ((*blocked as u8) * Self::QUEUE_DATA_BLOCKED_BIT);
                 encoder.encode(&tag);
                 encoder.encode(queue_pair);
                 if let Some(acceptor_id) = dest_acceptor_id {
@@ -641,6 +737,11 @@ impl EncoderValue for Header {
                 }
                 encoder.encode(binding_id);
                 encoder.encode(offset);
+                // `largest_offset` is omitted on non-init FIN frames (writer done; reader learns
+                // final size from the FIN). Otherwise encode it as a delta from `offset`.
+                if is_init || !*is_fin {
+                    encoder.encode(&Self::encode_largest_offset_delta(*offset, *largest_offset));
+                }
             }
             Self::QueueControl {
                 queue_pair,
@@ -718,18 +819,22 @@ impl EncoderValue for Header {
                 binding_id,
                 msg_id,
                 stream_offset,
+                largest_offset,
                 message_size,
                 chunk_size,
                 chunk_index,
                 is_fin,
                 is_wakeup,
+                blocked,
                 dest_acceptor_id,
                 priority,
             } => {
+                let is_init = dest_acceptor_id.is_some();
                 let tag = Self::QUEUE_MSG_BASE_TYPE
-                    + (*is_fin as u8)
-                    + ((*is_wakeup as u8) << 1)
-                    + ((dest_acceptor_id.is_some() as u8) << 2);
+                    + ((*is_fin as u8) * Self::QUEUE_MSG_FIN_BIT)
+                    + ((*is_wakeup as u8) * Self::QUEUE_MSG_WAKEUP_BIT)
+                    + ((is_init as u8) * Self::QUEUE_MSG_INIT_BIT)
+                    + ((*blocked as u8) * Self::QUEUE_MSG_BLOCKED_BIT);
                 encoder.encode(&tag);
                 encoder.encode(queue_pair);
                 if let Some(acceptor_id) = dest_acceptor_id {
@@ -739,12 +844,29 @@ impl EncoderValue for Header {
                 encoder.encode(binding_id);
                 encoder.encode(msg_id);
                 encoder.encode(stream_offset);
+                // See QueueData: omitted on non-init FIN frames, else a delta from `stream_offset`.
+                if is_init || !*is_fin {
+                    encoder.encode(&Self::encode_largest_offset_delta(
+                        *stream_offset,
+                        *largest_offset,
+                    ));
+                }
                 encoder.encode(message_size);
                 encoder.encode(chunk_size);
                 encoder.encode(chunk_index);
             }
             Self::Ping => {
                 encoder.encode(&Self::PING_TYPE);
+            }
+            Self::QueueDataBlocked {
+                queue_pair,
+                binding_id,
+                desired_offset,
+            } => {
+                encoder.encode(&Self::QUEUE_DATA_BLOCKED_TYPE);
+                encoder.encode(queue_pair);
+                encoder.encode(binding_id);
+                encoder.encode(desired_offset);
             }
         }
     }
@@ -756,43 +878,44 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
         let (tag, buffer) = buffer.decode::<u8>()?;
 
         match tag {
-            Self::QUEUE_DATA_INIT_NO_FIN_TYPE | Self::QUEUE_DATA_INIT_WITH_FIN_TYPE => {
+            tag @ Self::QUEUE_DATA_BASE_TYPE..=Self::QUEUE_DATA_MAX_TYPE => {
+                let flags = tag - Self::QUEUE_DATA_BASE_TYPE;
+                let is_fin = flags & Self::QUEUE_DATA_FIN_BIT != 0;
+                let is_init = flags & Self::QUEUE_DATA_INIT_BIT != 0;
+                let blocked = flags & Self::QUEUE_DATA_BLOCKED_BIT != 0;
                 let (queue_pair, buffer) = buffer.decode()?;
-                let (dest_acceptor_id, buffer) = buffer.decode::<VarInt>()?;
-                let (priority_byte, buffer) = buffer.decode::<u8>()?;
-                let priority = crate::credit::Priority::from_u8(priority_byte).ok_or(
-                    s2n_codec::DecoderError::InvariantViolation(
-                        "credit::Priority value out of range",
-                    ),
-                )?;
+                let (dest_acceptor_id, priority, buffer) = if is_init {
+                    let (id, buffer) = buffer.decode::<VarInt>()?;
+                    let (priority_byte, buffer) = buffer.decode::<u8>()?;
+                    let priority = crate::credit::Priority::from_u8(priority_byte).ok_or(
+                        s2n_codec::DecoderError::InvariantViolation(
+                            "credit::Priority value out of range",
+                        ),
+                    )?;
+                    (Some(id), priority, buffer)
+                } else {
+                    (None, crate::credit::Priority::default(), buffer)
+                };
                 let (binding_id, buffer) = buffer.decode()?;
                 let (offset, buffer) = buffer.decode()?;
-                let is_fin = tag == Self::QUEUE_DATA_INIT_WITH_FIN_TYPE;
+                // `largest_offset` is omitted on non-init FIN frames (set to `offset`); otherwise
+                // it is a delta from `offset`.
+                let (largest_offset, buffer) = if is_init || !is_fin {
+                    let (delta, buffer) = buffer.decode::<VarInt>()?;
+                    (Self::decode_largest_offset(offset, delta), buffer)
+                } else {
+                    (offset, buffer)
+                };
                 Ok((
                     Self::QueueData {
                         queue_pair,
                         binding_id,
                         offset,
+                        largest_offset,
                         is_fin,
-                        dest_acceptor_id: Some(dest_acceptor_id),
+                        blocked,
+                        dest_acceptor_id,
                         priority,
-                    },
-                    buffer,
-                ))
-            }
-            Self::QUEUE_DATA_NO_FIN_TYPE | Self::QUEUE_DATA_WITH_FIN_TYPE => {
-                let (queue_pair, buffer) = buffer.decode()?;
-                let (binding_id, buffer) = buffer.decode()?;
-                let (offset, buffer) = buffer.decode()?;
-                let is_fin = tag == Self::QUEUE_DATA_WITH_FIN_TYPE;
-                Ok((
-                    Self::QueueData {
-                        queue_pair,
-                        binding_id,
-                        offset,
-                        is_fin,
-                        dest_acceptor_id: None,
-                        priority: crate::credit::Priority::default(),
                     },
                     buffer,
                 ))
@@ -906,9 +1029,10 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
             }
             tag @ Self::QUEUE_MSG_BASE_TYPE..=Self::QUEUE_MSG_MAX_TYPE => {
                 let flags = tag - Self::QUEUE_MSG_BASE_TYPE;
-                let is_fin = flags & 1 != 0;
-                let is_wakeup = flags & 2 != 0;
-                let has_init = flags & 4 != 0;
+                let is_fin = flags & Self::QUEUE_MSG_FIN_BIT != 0;
+                let is_wakeup = flags & Self::QUEUE_MSG_WAKEUP_BIT != 0;
+                let has_init = flags & Self::QUEUE_MSG_INIT_BIT != 0;
+                let blocked = flags & Self::QUEUE_MSG_BLOCKED_BIT != 0;
                 let (queue_pair, buffer) = buffer.decode()?;
                 let (dest_acceptor_id, priority, buffer) = if has_init {
                     let (id, buf) = buffer.decode::<VarInt>()?;
@@ -925,6 +1049,13 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                 let (binding_id, buffer) = buffer.decode()?;
                 let (msg_id, buffer) = buffer.decode()?;
                 let (stream_offset, buffer) = buffer.decode()?;
+                // See QueueData: omitted on non-init FIN frames (set to `stream_offset`).
+                let (largest_offset, buffer) = if has_init || !is_fin {
+                    let (delta, buffer) = buffer.decode::<VarInt>()?;
+                    (Self::decode_largest_offset(stream_offset, delta), buffer)
+                } else {
+                    (stream_offset, buffer)
+                };
                 let (message_size, buffer) = buffer.decode()?;
                 let (chunk_size, buffer) = buffer.decode()?;
                 let (chunk_index, buffer) = buffer.decode()?;
@@ -934,11 +1065,13 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                         binding_id,
                         msg_id,
                         stream_offset,
+                        largest_offset,
                         message_size,
                         chunk_size,
                         chunk_index,
                         is_fin,
                         is_wakeup,
+                        blocked,
                         dest_acceptor_id,
                         priority,
                     },
@@ -946,6 +1079,19 @@ impl<'a> s2n_codec::DecoderValue<'a> for Header {
                 ))
             }
             Self::PING_TYPE => Ok((Self::Ping, buffer)),
+            Self::QUEUE_DATA_BLOCKED_TYPE => {
+                let (queue_pair, buffer) = buffer.decode()?;
+                let (binding_id, buffer) = buffer.decode()?;
+                let (desired_offset, buffer) = buffer.decode()?;
+                Ok((
+                    Self::QueueDataBlocked {
+                        queue_pair,
+                        binding_id,
+                        desired_offset,
+                    },
+                    buffer,
+                ))
+            }
             _ => {
                 decoder_invariant!(false, "unknown frame header type");
                 Err(s2n_codec::DecoderError::InvariantViolation(
@@ -1083,7 +1229,9 @@ mod tests {
                 },
                 binding_id: VarInt::from_u8(42),
                 offset: VarInt::ZERO,
+                largest_offset: VarInt::ZERO,
                 is_fin: false,
+                blocked: false,
                 dest_acceptor_id: None,
                 priority: crate::credit::Priority::default(),
             },
@@ -1141,11 +1289,13 @@ mod tests {
             binding_id: VarInt::from_u8(10),
             msg_id: VarInt::from_u8(0),
             stream_offset: VarInt::ZERO,
+            largest_offset: VarInt::ZERO,
             message_size: VarInt::new(65536).unwrap(),
             chunk_size: VarInt::new(8192).unwrap(),
             chunk_index: VarInt::ZERO,
             is_fin: false,
             is_wakeup: true,
+            blocked: false,
             dest_acceptor_id: None,
             priority: crate::credit::Priority::default(),
         };
@@ -1161,11 +1311,13 @@ mod tests {
             binding_id: VarInt::from_u8(10),
             msg_id: VarInt::from_u8(0),
             stream_offset: VarInt::ZERO,
+            largest_offset: VarInt::ZERO,
             message_size: VarInt::new(65536).unwrap(),
             chunk_size: VarInt::new(8192).unwrap(),
             chunk_index: VarInt::ZERO,
             is_fin: false,
             is_wakeup: true,
+            blocked: false,
             dest_acceptor_id: Some(VarInt::from_u8(99)),
             priority: crate::credit::Priority::default(),
         };
@@ -1183,7 +1335,9 @@ mod tests {
                 queue_pair: qp,
                 binding_id: VarInt::from_u8(10),
                 offset: VarInt::ZERO,
+                largest_offset: VarInt::ZERO,
                 is_fin: false,
+                blocked: false,
                 dest_acceptor_id: Some(VarInt::from_u8(99)),
                 priority,
             });
@@ -1192,11 +1346,13 @@ mod tests {
                 binding_id: VarInt::from_u8(10),
                 msg_id: VarInt::from_u8(0),
                 stream_offset: VarInt::ZERO,
+                largest_offset: VarInt::ZERO,
                 message_size: VarInt::from_u8(100),
                 chunk_size: VarInt::from_u8(100),
                 chunk_index: VarInt::ZERO,
                 is_fin: false,
                 is_wakeup: false,
+                blocked: false,
                 dest_acceptor_id: Some(VarInt::from_u8(99)),
                 priority,
             });
@@ -1217,7 +1373,9 @@ mod tests {
             },
             binding_id: VarInt::from_u8(10),
             offset: VarInt::ZERO,
+            largest_offset: VarInt::ZERO,
             is_fin: false,
+            blocked: false,
             dest_acceptor_id: Some(VarInt::from_u8(7)),
             priority: crate::credit::Priority::Highest,
         };
@@ -1271,11 +1429,13 @@ mod tests {
                             binding_id,
                             msg_id,
                             stream_offset: VarInt::ZERO,
+                            largest_offset: VarInt::ZERO,
                             message_size,
                             chunk_size,
                             chunk_index,
                             is_fin,
                             is_wakeup,
+                            blocked: false,
                             dest_acceptor_id,
                             priority,
                         });
@@ -1294,28 +1454,32 @@ mod tests {
             dest_queue_id: VarInt::from_u8(2),
         };
 
-        let cases: Vec<(bool, bool, Option<VarInt>, u8)> = vec![
-            (false, false, None, 16),
-            (true, false, None, 17),
-            (false, true, None, 18),
-            (true, true, None, 19),
-            (false, false, Some(VarInt::from_u8(1)), 20),
-            (true, false, Some(VarInt::from_u8(1)), 21),
-            (false, true, Some(VarInt::from_u8(1)), 22),
-            (true, true, Some(VarInt::from_u8(1)), 23),
+        // Base 32; bits: 0=is_fin, 1=is_wakeup, 2=init, 3=blocked.
+        let base = 32u8;
+        let cases: Vec<(bool, bool, bool, Option<VarInt>, u8)> = vec![
+            (false, false, false, None, base),
+            (true, false, false, None, base + 1),
+            (false, true, false, None, base + 2),
+            (true, true, false, None, base + 3),
+            (false, false, false, Some(VarInt::from_u8(1)), base + 4),
+            (true, true, false, Some(VarInt::from_u8(1)), base + 7),
+            (false, false, true, None, base + 8),
+            (true, true, true, Some(VarInt::from_u8(1)), base + 15),
         ];
 
-        for (is_fin, is_wakeup, dest_acceptor_id, expected_tag) in cases {
+        for (is_fin, is_wakeup, blocked, dest_acceptor_id, expected_tag) in cases {
             let header = Header::QueueMsg {
                 queue_pair: qp,
                 binding_id: VarInt::from_u8(10),
                 msg_id: VarInt::from_u8(0),
                 stream_offset: VarInt::ZERO,
+                largest_offset: VarInt::ZERO,
                 message_size: VarInt::from_u8(100),
                 chunk_size: VarInt::from_u8(100),
                 chunk_index: VarInt::ZERO,
                 is_fin,
                 is_wakeup,
+                blocked,
                 dest_acceptor_id,
                 priority: crate::credit::Priority::default(),
             };
@@ -1327,7 +1491,7 @@ mod tests {
             assert_eq!(
                 buf[0],
                 expected_tag,
-                "tag mismatch for is_fin={is_fin}, is_wakeup={is_wakeup}, init={}",
+                "tag mismatch for is_fin={is_fin}, is_wakeup={is_wakeup}, blocked={blocked}, init={}",
                 dest_acceptor_id.is_some()
             );
         }
@@ -1345,11 +1509,13 @@ mod tests {
             binding_id: VarInt::from_u8(42),
             msg_id: VarInt::from_u8(3),
             stream_offset: VarInt::new(32768).unwrap(),
+            largest_offset: VarInt::new(32768).unwrap(),
             message_size: VarInt::new(65536).unwrap(),
             chunk_size: VarInt::new(8192).unwrap(),
             chunk_index: VarInt::from_u8(1),
             is_fin: false,
             is_wakeup: true,
+            blocked: false,
             dest_acceptor_id: None,
             priority: crate::credit::Priority::default(),
         };
@@ -1358,11 +1524,15 @@ mod tests {
         let mut encoder = EncoderBuffer::new(&mut buf);
         header.encode(&mut encoder);
 
-        // tag=18 (base 16 + wakeup bit 1<<1), queue_pair(5,7), binding=42, msg_id=3,
-        // stream_offset=32768 (4-byte varint), message_size=65536 (4-byte varint),
-        // chunk_size=8192 (2-byte varint), chunk_index=1 (1 byte)
-        assert_eq!(buf[0], 18);
-        assert_eq!(header.encoding_size(), 1 + 1 + 1 + 1 + 1 + 4 + 4 + 2 + 1);
+        // tag=34 (base 32 + wakeup bit 1<<1), queue_pair(5,7), binding=42, msg_id=3,
+        // stream_offset=32768 (4-byte varint), largest_offset delta=0 (1 byte, non-FIN),
+        // message_size=65536 (4-byte varint), chunk_size=8192 (2-byte varint),
+        // chunk_index=1 (1 byte)
+        assert_eq!(buf[0], 34);
+        assert_eq!(
+            header.encoding_size(),
+            1 + 1 + 1 + 1 + 1 + 4 + 1 + 4 + 2 + 1
+        );
     }
 
     #[test]
@@ -1377,11 +1547,13 @@ mod tests {
             binding_id: VarInt::from_u8(42),
             msg_id: VarInt::from_u8(0),
             stream_offset: VarInt::ZERO,
+            largest_offset: VarInt::ZERO,
             message_size: VarInt::new(1048576).unwrap(),
             chunk_size: VarInt::new(8192).unwrap(),
             chunk_index: VarInt::ZERO,
             is_fin: true,
             is_wakeup: true,
+            blocked: false,
             dest_acceptor_id: Some(VarInt::from_u8(99)),
             priority: crate::credit::Priority::default(),
         };
@@ -1390,8 +1562,8 @@ mod tests {
         let mut encoder = EncoderBuffer::new(&mut buf);
         header.encode(&mut encoder);
 
-        // tag=23 (base 16 + fin 1 + wakeup 2 + init 4)
-        assert_eq!(buf[0], 23);
+        // tag=39 (base 32 + fin 1 + wakeup 2 + init 4)
+        assert_eq!(buf[0], 39);
     }
 
     #[test]
@@ -1404,11 +1576,13 @@ mod tests {
             binding_id: VarInt::new(500_000).unwrap(),
             msg_id: VarInt::new(999_999).unwrap(),
             stream_offset: VarInt::new(50_000_000).unwrap(),
+            largest_offset: VarInt::new(50_000_000).unwrap(),
             message_size: VarInt::new(6_000_000).unwrap(),
             chunk_size: VarInt::new(8192).unwrap(),
             chunk_index: VarInt::new(200).unwrap(),
             is_fin: false,
             is_wakeup: true,
+            blocked: false,
             dest_acceptor_id: None,
             priority: crate::credit::Priority::default(),
         };
@@ -1480,14 +1654,22 @@ mod tests {
     fn max_queue_data_header_overhead_matches_worst_case() {
         // The constant covers the non-init variant (no dest_acceptor_id) since init frames
         // use Priority::QueueInit and go through a different path.
+        //
+        // The `largest_offset` delta is only encoded on non-FIN frames, so use `is_fin: false`.
+        // To force both the `offset` field AND the `largest_offset` delta to their 8-byte VarInt
+        // worst case simultaneously, pick `offset = 2^61` (8 bytes) and `largest_offset = MAX`, so
+        // the encoded delta `MAX - 2^61 ≈ 2^61` is also 8 bytes. (With `offset = MAX` the delta
+        // would collapse to 0, under-measuring.)
         let worst_case_header = Header::QueueData {
             queue_pair: QueuePair {
                 source_queue_id: VarInt::MAX,
                 dest_queue_id: VarInt::MAX,
             },
             binding_id: VarInt::MAX,
-            offset: VarInt::MAX,
-            is_fin: true,
+            offset: VarInt::new(1 << 61).unwrap(),
+            largest_offset: VarInt::MAX,
+            is_fin: false,
+            blocked: false,
             dest_acceptor_id: None,
             priority: crate::credit::Priority::default(),
         };
@@ -1511,12 +1693,15 @@ mod tests {
             },
             binding_id: VarInt::MAX,
             msg_id: VarInt::MAX,
-            stream_offset: VarInt::MAX,
+            stream_offset: VarInt::new(1 << 61).unwrap(),
+            largest_offset: VarInt::MAX,
             message_size: VarInt::MAX,
             chunk_size: VarInt::MAX,
             chunk_index: VarInt::MAX,
-            is_fin: true,
+            // Non-FIN so the `largest_offset` delta is actually encoded; see the QueueData test.
+            is_fin: false,
             is_wakeup: true,
+            blocked: false,
             dest_acceptor_id: None,
             priority: crate::credit::Priority::default(),
         };

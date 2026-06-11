@@ -8,4 +8,4 @@ expression: logs
 0:00:00.000000000 [main] TRACE m#test.sojourn[peer_dead]=0
 0:00:00.000000000 [main] DEBUG Transmission failed binding_id=1 reason=PeerDead
 0:00:00.000000000 [main] DEBUG event=on_shutdown prev=Open next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000000000 [main] DEBUG Writer dropping binding_id=1 status=Shutdown next_offset=5 inflight_bytes=0 remote_max_data=14720
+0:00:00.000000000 [main] DEBUG Writer dropping binding_id=1 status=Shutdown next_offset=5 inflight_bytes=0 remote_max_data=1048576

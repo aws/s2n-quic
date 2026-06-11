@@ -62,6 +62,7 @@ pub(crate) struct Dispatch {
     pub rx_frame_queue_data_fin: Counter,
     pub rx_frame_queue_control: Counter,
     pub rx_frame_queue_max_data: Counter,
+    pub rx_frame_queue_data_blocked: Counter,
     pub rx_frame_queue_reset: Counter,
     pub rx_frame_queue_free: Counter,
     pub rx_queue_free_slots: Summary,
@@ -132,6 +133,8 @@ impl Dispatch {
             rx_frame_queue_data_fin: counters.register_nominal("rx.frame", "queue_data_fin"),
             rx_frame_queue_control: counters.register_nominal("rx.frame", "queue_control"),
             rx_frame_queue_max_data: counters.register_nominal("rx.frame", "queue_max_data"),
+            rx_frame_queue_data_blocked: counters
+                .register_nominal("rx.frame", "queue_data_blocked"),
             rx_frame_queue_reset: counters.register_nominal("rx.frame", "queue_reset"),
             rx_frame_queue_free: counters.register_nominal("rx.frame", "queue_free"),
             rx_queue_free_slots: counters.register_summary("rx.queue_free.slots", Unit::Count),
@@ -165,6 +168,7 @@ impl Dispatch {
             Header::QueueData { is_fin: true, .. } => self.rx_frame_queue_data_fin.add(1),
             Header::QueueControl { .. } => self.rx_frame_queue_control.add(1),
             Header::QueueMaxData { .. } => self.rx_frame_queue_max_data.add(1),
+            Header::QueueDataBlocked { .. } => self.rx_frame_queue_data_blocked.add(1),
             Header::QueueReset { .. } => self.rx_frame_queue_reset.add(1),
             Header::QueueFree { .. } => self.rx_frame_queue_free.add(1),
             Header::Ack { .. } => self.rx_frame_ack.add(1),
@@ -210,6 +214,7 @@ pub(crate) struct Send {
     pub tx_acked_frame_queue_data_fin: Counter,
     pub tx_acked_frame_queue_control: Counter,
     pub tx_acked_frame_queue_max_data: Counter,
+    pub tx_acked_frame_queue_data_blocked: Counter,
     pub tx_acked_frame_queue_reset: Counter,
     pub tx_acked_frame_queue_free: Counter,
     pub tx_acked_frame_queue_msg: Counter,
@@ -260,6 +265,8 @@ impl Send {
                 .register_nominal("tx.acked.frame.queue_control", &v),
             tx_acked_frame_queue_max_data: counters
                 .register_nominal("tx.acked.frame.queue_max_data", &v),
+            tx_acked_frame_queue_data_blocked: counters
+                .register_nominal("tx.acked.frame.queue_data_blocked", &v),
             tx_acked_frame_queue_reset: counters.register_nominal("tx.acked.frame.queue_reset", &v),
             tx_acked_frame_queue_free: counters.register_nominal("tx.acked.frame.queue_free", &v),
             tx_acked_frame_queue_msg: counters.register_nominal("tx.acked.frame.queue_msg", &v),
@@ -373,6 +380,7 @@ impl Send {
             Header::QueueData { is_fin: true, .. } => self.tx_acked_frame_queue_data_fin.add(1),
             Header::QueueControl { .. } => self.tx_acked_frame_queue_control.add(1),
             Header::QueueMaxData { .. } => self.tx_acked_frame_queue_max_data.add(1),
+            Header::QueueDataBlocked { .. } => self.tx_acked_frame_queue_data_blocked.add(1),
             Header::QueueReset { .. } => self.tx_acked_frame_queue_reset.add(1),
             Header::QueueFree { .. } => self.tx_acked_frame_queue_free.add(1),
             Header::Ack { .. } => {

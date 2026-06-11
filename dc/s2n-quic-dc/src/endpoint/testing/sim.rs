@@ -247,6 +247,15 @@ pub struct SimEndpointConfig {
 
     /// Cooldown period for peers marked dead before new flows are allowed.
     pub dead_peer_cooldown: core::time::Duration,
+
+    /// Recv credit pool config. Defaults to [`crate::credit::Config::default`] (a large,
+    /// effectively non-contending pool). Override to a smaller capacity to exercise the recv-side
+    /// fair-share distributor under contention from many concurrent streams (mirrors the dc-tester
+    /// production sizing).
+    pub recv_credit_pool_config: crate::credit::Config,
+
+    /// Send credit pool config. Defaults to [`crate::credit::Config::default`].
+    pub send_credit_pool_config: crate::credit::Config,
 }
 
 impl Default for SimEndpointConfig {
@@ -270,6 +279,8 @@ impl Default for SimEndpointConfig {
             mtu: 1500,
             send_window: None,
             dead_peer_cooldown: crate::stream::endpoint::DEFAULT_DEAD_PEER_COOLDOWN,
+            recv_credit_pool_config: crate::credit::Config::default(),
+            send_credit_pool_config: crate::credit::Config::default(),
         }
     }
 }
@@ -292,6 +303,16 @@ impl SimEndpointConfig {
 
     pub fn per_socket_send_rate(mut self, rate: Rate) -> Self {
         self.per_socket_send_rate = rate;
+        self
+    }
+
+    pub fn recv_credit_pool_config(mut self, config: crate::credit::Config) -> Self {
+        self.recv_credit_pool_config = config;
+        self
+    }
+
+    pub fn send_credit_pool_config(mut self, config: crate::credit::Config) -> Self {
+        self.send_credit_pool_config = config;
         self
     }
 
@@ -340,6 +361,8 @@ pub fn setup_sim_endpoint(
         mtu,
         send_window,
         dead_peer_cooldown,
+        recv_credit_pool_config,
+        send_credit_pool_config,
     } = config;
 
     assert!(
@@ -446,8 +469,8 @@ pub fn setup_sim_endpoint(
         dead_peer_cooldown,
         initial_tx_descriptor_allocs: 0,
         initial_rx_descriptor_allocs: 0,
-        send_credit_pool_config: crate::credit::Config::default(),
-        recv_credit_pool_config: crate::credit::Config::default(),
+        send_credit_pool_config,
+        recv_credit_pool_config,
     };
 
     let endpoint = setup_endpoint(
@@ -688,6 +711,8 @@ where
         alloc.stream,
         endpoint.clock.clone(),
         endpoint.reader_metrics.clone(),
+        endpoint.recv_credit_pool.clone(),
+        crate::credit::Priority::default(),
     );
 
     Ok(Stream::new(reader, writer))

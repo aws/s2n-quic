@@ -229,7 +229,7 @@ expression: logs
 0:00:00.000021000 [peer] TRACE c#send.pending.drain[send.0]=1
 0:00:00.000021000 [peer] TRACE g#send.pending.depth[send.0]=0
 0:00:00.000021000 [peer] TRACE c#tx.frame[queue_data_fin]=1
-0:00:00.000021000 [peer] TRACE m#tx.packet_size=54
+0:00:00.000021000 [peer] TRACE m#tx.packet_size=55
 0:00:00.000021000 [peer] TRACE m#tx.frames_per_packet=1
 0:00:00.000021000 [peer] TRACE m#tx.payload_size=4
 0:00:00.000021000 [peer] TRACE c#tx.data=1
@@ -245,7 +245,7 @@ expression: logs
 0:00:00.000021000 [peer] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.0]=1
 0:00:00.000021000 [peer] TRACE m#q.resolver_to_pto_wheel.depth_dist[send.worker.0]=1
 0:00:00.000021000 [peer] TRACE c#socket.tx.ops[send.0]=1
-0:00:00.000021000 [peer] TRACE c#socket.tx.bytes[send.0]=54
+0:00:00.000021000 [peer] TRACE c#socket.tx.bytes[send.0]=55
 0:00:00.000021000 [peer] TRACE m#task.assembler.drained[send.0]=1
 0:00:00.000021000 [peer] TRACE m#task.tx_wheel.drained[send.worker.0]=0
 0:00:00.000021000 [peer] TRACE c#credit.send.distributor.passes=1
@@ -253,7 +253,7 @@ expression: logs
 0:00:00.000021000 [peer] TRACE m#task.pto_wheel.drained[send.worker.0]=1
 0:00:00.000021000 [peer] TRACE m#task.pto_wheel.drained[send.worker.0]=0
 0:00:00.000521000 [peer] TRACE c#socket.rx.ops[recv.0]=1
-0:00:00.000521000 [peer] TRACE c#socket.rx.bytes[recv.0]=54
+0:00:00.000521000 [peer] TRACE c#socket.rx.bytes[recv.0]=55
 0:00:00.000521000 [peer] TRACE c#router.routed=1
 0:00:00.000521000 [peer] TRACE c#router.routed[recv.1]=1
 0:00:00.000521000 [peer] TRACE c#q.dispatch_rx.enq[recv.1]=1
@@ -504,7 +504,7 @@ expression: logs
 0:00:00.001021000 [peer] TRACE m#tx.ack_packets[send.0]=1
 0:00:00.001021000 [peer] TRACE c#send.inflight.drain.ack[send.0]=1
 0:00:00.001021000 [peer] TRACE c#tx.ecn.ect0[send.0]=1
-0:00:00.001021000 [peer] TRACE m#send.cwnd[send.0]=14774
+0:00:00.001021000 [peer] TRACE m#send.cwnd[send.0]=14775
 0:00:00.001021000 [peer] TRACE m#send.pacing_rate[send.0]=40368997
 0:00:00.001021000 [peer] TRACE c#send.app_limited[send.0]=1
 0:00:00.001021000 [peer] TRACE m#task.ack_processor.drained[send.worker.0]=2

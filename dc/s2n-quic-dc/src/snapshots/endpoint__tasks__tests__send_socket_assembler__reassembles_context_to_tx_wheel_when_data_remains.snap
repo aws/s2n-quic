@@ -1,5 +1,6 @@
 ---
 source: dc/s2n-quic-dc/src/testing.rs
+assertion_line: 352
 expression: logs
 ---
 0:00:00.000000000 [main] DEBUG setting peer data addresses peer=10.0.0.1:4433 addrs=[SocketAddressV6([::ffff:10.0.0.1]:4433)]
@@ -19,7 +20,7 @@ expression: logs
 0:00:00.000000000 [main] TRACE c#test.pending.enq=1
 0:00:00.000000000 [main] TRACE g#test.pending.depth=1
 0:00:00.000000000 [main] TRACE m#test.pending.depth_dist=1
-0:00:00.000000000 [main] TRACE m#tx.packet_size=1350
+0:00:00.000000000 [main] TRACE m#tx.packet_size=1351
 0:00:00.000000000 [main] TRACE m#tx.frames_per_packet=1
 0:00:00.000000000 [main] TRACE m#tx.payload_size=1300
 0:00:00.000000000 [main] TRACE c#tx.data=1
@@ -33,4 +34,4 @@ expression: logs
 0:00:00.000000000 [main] TRACE g#test.pending.depth=1
 0:00:00.000000000 [main] TRACE m#test.pending.depth_dist=1
 0:00:00.000000000 [main] TRACE m#asm.segments=1
-0:00:00.000500000 [server] DEBUG received encrypted datagram at server n=1350
+0:00:00.000500000 [server] DEBUG received encrypted datagram at server n=1351

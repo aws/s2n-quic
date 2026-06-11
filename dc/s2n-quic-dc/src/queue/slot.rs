@@ -34,6 +34,23 @@ pub(crate) struct Slot {
     binding_id: AtomicU64,
     /// The slot's position in the page table, fixed at creation time.
     queue_id: u64,
+    /// The reader's currently-advertised receive window (`remote_max_data`),
+    /// published lock-free by the reader so the dispatch side can bound its
+    /// per-arrival credit release to what the reader actually acquired.
+    ///
+    /// The reader only debits the recv pool when it grows this window, but
+    /// dispatch releases credit per arriving byte. A peer that overshoots the
+    /// advertised window would otherwise make dispatch release credit that was
+    /// never acquired — phantom credit that inflates the shared pool. Dispatch
+    /// clamps each `observe_offset` to this ceiling so only acquired bytes are
+    /// released.
+    ///
+    /// Written by the reader (`StreamReceiver::advertise_window`) with `Release`
+    /// outside any half lock; read by dispatch under the stream-half lock with
+    /// `Acquire`. Monotonic, and never below the unbacked initial window. A
+    /// brief lag between the reader's store and a dispatch read only makes the
+    /// clamp momentarily conservative, which is harmless for this bound.
+    advertised_window: AtomicU64,
     pub(crate) stream: Half<msg::Stream, StreamState>,
     pub(crate) control: Half<msg::Control>,
 }
@@ -54,12 +71,100 @@ pub(crate) struct StreamState {
     /// When the MsgTable segment later completes with `is_wakeup: false`, the
     /// reader is never re-woken and hangs indefinitely.
     pub(crate) flush_watermark: u64,
+    /// Highest stream offset (exclusive end) ever observed for this binding,
+    /// across QueueData and QueueMsg dispatches. Used to release recv-credit
+    /// to the endpoint pool exactly once per byte regardless of retransmits
+    /// or reordering.
+    pub(crate) max_received_offset: u64,
+    /// Bytes of unbacked initial window that have not yet been consumed by
+    /// inbound data. Set to the configured initial window at slot bind; each
+    /// new-byte release subtracts from this first, so only bytes beyond the
+    /// initial window are returned to the recv credit pool.
+    pub(crate) initial_window_remaining: u64,
+    /// Set once the reader has reconciled its advertised window on termination
+    /// (see [`StreamState::finish_recv_accounting`]). After this point
+    /// [`StreamState::observe_offset`] stops releasing, because the terminal
+    /// reconciliation already accounted for the full advertised window — any
+    /// late-arriving (but in-window) bytes would otherwise be released twice.
+    pub(crate) recv_finished: bool,
 }
 
 impl StreamState {
     pub(crate) fn clear(&mut self) {
         self.msg_table = None;
         self.flush_watermark = 0;
+        self.max_received_offset = 0;
+        self.recv_finished = false;
+        // initial_window_remaining is reset by the caller on bind because the
+        // value comes from configuration that lives outside the slot.
+    }
+
+    /// Update `max_received_offset` to cover `[offset, end)` and return how
+    /// many of those bytes are pool-backed (i.e. beyond the initial window).
+    /// `initial_window_remaining` is consumed monotonically for the new bytes.
+    ///
+    /// `advertised` is the reader's published receive window ceiling. `end` is
+    /// clamped to it before accounting: the reader only ever acquired pool
+    /// credit up to what it advertised, so bytes a (misbehaving) peer sends
+    /// beyond that window must release nothing — releasing them would inject
+    /// credit the pool never had. Clamping also keeps the invariant
+    /// `max_received_offset <= advertised` that `finish_recv_accounting` relies
+    /// on for an exact terminal reconciliation. The reader's own window
+    /// enforcement still resets such a stream; this clamp only protects the
+    /// shared pool's accounting in the meantime.
+    ///
+    /// Returns zero once [`finish_recv_accounting`] has run: the terminal
+    /// reconciliation released the remainder of the advertised window in one
+    /// shot, so releasing per-arrival again here would double-count.
+    ///
+    /// [`finish_recv_accounting`]: StreamState::finish_recv_accounting
+    #[inline]
+    pub(crate) fn observe_offset(&mut self, end: u64, advertised: u64) -> u64 {
+        let end = end.min(advertised);
+        if self.recv_finished || end <= self.max_received_offset {
+            return 0;
+        }
+        let new_bytes = end - self.max_received_offset;
+        self.max_received_offset = end;
+        let from_initial = new_bytes.min(self.initial_window_remaining);
+        self.initial_window_remaining -= from_initial;
+        new_bytes - from_initial
+    }
+
+    /// Reconcile the advertised receive window on stream termination and return
+    /// how many pool-backed credits the reader must release.
+    ///
+    /// A reader debits the recv pool whenever it grows its advertised window
+    /// (`advertised`), but the dispatch side only releases credit for bytes that
+    /// actually arrive (via [`observe_offset`]). The gap between the advertised
+    /// window and what arrived — minus the still-unconsumed unbacked initial
+    /// window, which was never acquired — is credit the reader holds but will
+    /// never see filled. On termination that gap must go back to the pool:
+    ///
+    /// ```text
+    /// leftover = advertised - max_received_offset - initial_window_remaining
+    /// ```
+    ///
+    /// Window enforcement guarantees `max_received_offset <= advertised` and
+    /// `max_received_offset + initial_window_remaining <= advertised`, so the
+    /// result is exact; the saturating subtraction is defensive.
+    ///
+    /// Idempotent: the first call returns the leftover and latches
+    /// `recv_finished`; subsequent calls (and any further `observe_offset`)
+    /// return zero. Callers must hold the stream-half lock, which serializes
+    /// this against concurrent dispatch `observe_offset` calls so a byte is
+    /// released exactly once.
+    ///
+    /// [`observe_offset`]: StreamState::observe_offset
+    #[inline]
+    pub(crate) fn finish_recv_accounting(&mut self, advertised: u64) -> u64 {
+        if self.recv_finished {
+            return 0;
+        }
+        self.recv_finished = true;
+        advertised
+            .saturating_sub(self.max_received_offset)
+            .saturating_sub(self.initial_window_remaining)
     }
 }
 
@@ -83,9 +188,13 @@ impl Slot {
         Self {
             binding_id: AtomicU64::new(UNALLOCATED),
             queue_id: queue_id.as_u64(),
+            advertised_window: AtomicU64::new(0),
             stream: Half::with_extra(StreamState {
                 msg_table: None,
                 flush_watermark: 0,
+                max_received_offset: 0,
+                initial_window_remaining: 0,
+                recv_finished: false,
             }),
             control: Half::new(),
         }
@@ -127,14 +236,54 @@ impl Slot {
             .store(prev | UNALLOCATED_BIT, Ordering::Relaxed);
     }
 
+    /// Publish the reader's currently-advertised receive window so dispatch can
+    /// clamp its per-arrival credit release to it. Lock-free; called by the
+    /// reader off the stream-half lock. `fetch_max` keeps the published value
+    /// monotonic against a stale concurrent store.
+    #[inline]
+    pub(crate) fn advertise_window(&self, advertised: u64) {
+        self.advertised_window
+            .fetch_max(advertised, Ordering::Release);
+    }
+
+    /// The reader's currently-advertised receive window, the ceiling dispatch
+    /// uses to bound credit release. Read with `Acquire` to pair with
+    /// [`Slot::advertise_window`]'s `Release`.
+    #[inline]
+    fn advertised_window(&self) -> u64 {
+        self.advertised_window.load(Ordering::Acquire)
+    }
+
+    /// Reconcile the advertised receive window on termination, returning the
+    /// pool-backed credits the reader must release. See
+    /// [`StreamState::finish_recv_accounting`]. Idempotent; serialized with
+    /// dispatch `observe_offset` by the stream-half lock.
+    #[inline]
+    pub(crate) fn finish_recv_accounting(&self, advertised: u64) -> u64 {
+        self.stream
+            .inner
+            .lock()
+            .extra
+            .finish_recv_accounting(advertised)
+    }
+
     /// Push to the stream half, validating binding_id inside the lock.
+    ///
+    /// On a successful Data push, returns the number of bytes whose offset
+    /// extends past the highest observed end and that exceed the unbacked
+    /// initial window — the caller releases that many credits to the recv
+    /// pool. Duplicate or already-covered offsets contribute zero.
     #[inline]
     pub(crate) fn push_stream(
         &self,
         binding_id: VarInt,
         entry: intrusive::Entry<msg::Stream>,
-    ) -> Result<half::AutoWake, super::Error<intrusive::Entry<msg::Stream>>> {
+    ) -> Result<(half::AutoWake, u64), super::Error<intrusive::Entry<msg::Stream>>> {
         let mut inner = self.stream.inner.lock();
+        if let Err(error) = validate_binding_state(binding_id, &self.binding_id, &inner.flags) {
+            return Err(map_validation_error_entry(error, entry));
+        }
+        let mut release_bytes = 0u64;
         if let msg::Stream::Data {
             offset, payload, ..
         } = &*entry
@@ -143,8 +292,10 @@ impl Slot {
             if end > inner.extra.flush_watermark {
                 inner.extra.flush_watermark = end;
             }
+            release_bytes = inner.extra.observe_offset(end, self.advertised_window());
         }
-        validate_and_push(binding_id, entry, &self.binding_id, &mut inner)
+        inner.queue.push_back(entry);
+        Ok((inner.take_waker(), release_bytes))
     }
 
     /// Push to the control half, validating binding_id inside the lock.
@@ -167,19 +318,22 @@ impl Slot {
     ///
     /// If `write_fn` returns `Err`, the checkout is cleared without marking received
     /// (the transport will retransmit).
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn push_msg<E>(
         &self,
         binding_id: VarInt,
         msg_id: u64,
         stream_offset: u64,
+        peer_max_offset: u64,
         message_size: u32,
         chunk_size: u16,
         chunk_index: u32,
         payload_len: u32,
         is_fin: bool,
         is_wakeup: bool,
+        blocked: bool,
         write_fn: impl FnOnce(*mut u8, u32) -> Result<(), E>,
-    ) -> Result<half::AutoWake, super::MsgError<E>> {
+    ) -> Result<(half::AutoWake, u64), super::MsgError<E>> {
         // Validate + checkout under the stream lock.
         let (ptr, expected_len, chunk_index, keep_alive) = {
             let mut stream = self.stream.inner.lock();
@@ -198,11 +352,13 @@ impl Slot {
             match table.insert(
                 msg_id,
                 stream_offset,
+                peer_max_offset,
                 message_size,
                 chunk_size,
                 chunk_index,
                 payload_len,
                 is_fin,
+                blocked,
             ) {
                 Ok(checkout) => (
                     checkout.ptr,
@@ -212,7 +368,7 @@ impl Slot {
                 ),
                 Err(e) => {
                     trace!(msg_id, chunk_index, ?e, "slot::send_msg insert failed");
-                    return Ok(half::AutoWake::default());
+                    return Ok((half::AutoWake::default(), 0));
                 }
             }
         };
@@ -249,12 +405,23 @@ impl Slot {
                     table.cancel_checkout(msg_id, chunk_index);
                 }
             }
-            return Ok(half::AutoWake::default());
+            return Ok((half::AutoWake::default(), 0));
         }
+
+        // The chunk wrote successfully and the binding is still valid: this
+        // chunk's payload is now buffered. Charge it against the per-binding
+        // dedup watermark and surface any new bytes for pool release.
+        let chunk_start =
+            stream_offset.saturating_add((chunk_index as u64).saturating_mul(chunk_size as u64));
+        let chunk_end = chunk_start.saturating_add(payload_len as u64);
+        let release_bytes = stream
+            .extra
+            .observe_offset(chunk_end, self.advertised_window());
+
         let local_queue = {
             let watermark = stream.extra.flush_watermark;
             let Some(table) = stream.extra.msg_table.as_mut() else {
-                return Ok(half::AutoWake::default());
+                return Ok((half::AutoWake::default(), release_bytes));
             };
             match table.complete(msg_id, chunk_index) {
                 super::msg_table::CompleteOutcome::Ready => {
@@ -264,7 +431,10 @@ impl Slot {
                         should_wake |= delivered.stream_offset < watermark;
                         let entry: intrusive::Entry<msg::Stream> = msg::Stream::Data {
                             offset: VarInt::new(delivered.stream_offset).unwrap_or(VarInt::MAX),
+                            peer_max_offset: VarInt::new(delivered.largest_offset)
+                                .unwrap_or(VarInt::MAX),
                             fin: delivered.is_fin,
+                            blocked: delivered.blocked,
                             payload: delivered.payload,
                         }
                         .into();
@@ -286,16 +456,16 @@ impl Slot {
                     let waker = stream.take_waker();
                     let has_waker = waker.0.is_some();
                     trace!(should_wake, has_waker, "slot::send_msg segment complete");
-                    Ok(waker)
+                    Ok((waker, release_bytes))
                 } else {
                     trace!(
                         should_wake,
                         "slot::send_msg segment complete (no wakeup flag)"
                     );
-                    Ok(half::AutoWake::default())
+                    Ok((half::AutoWake::default(), release_bytes))
                 }
             }
-            None => Ok(half::AutoWake::default()),
+            None => Ok((half::AutoWake::default(), release_bytes)),
         }
     }
 
@@ -307,7 +477,11 @@ impl Slot {
     /// slot was already bound (concurrent race), or `Err(Closed)` if the sender
     /// side has already been closed.
     #[inline]
-    pub(crate) fn allocate_and_open(&self, binding_id: VarInt) -> Result<bool, half::Closed> {
+    pub(crate) fn allocate_and_open(
+        &self,
+        binding_id: VarInt,
+        initial_window: u64,
+    ) -> Result<bool, half::Closed> {
         let mut s = self.stream.inner.lock();
         let mut c = self.control.inner.lock();
 
@@ -318,6 +492,11 @@ impl Slot {
 
         Self::allocate_and_open_locked(&mut s, &mut c, &self.binding_id, binding_id)?;
         s.extra.clear();
+        s.extra.initial_window_remaining = initial_window;
+        // Seed the dispatch-side ceiling to the unbacked initial window; both
+        // halves are locked, so this plain store can't race a reader.
+        self.advertised_window
+            .store(initial_window, Ordering::Release);
         Ok(true)
     }
 
@@ -337,7 +516,8 @@ impl Slot {
         &self,
         binding_id: VarInt,
         entry: intrusive::Entry<msg::Stream>,
-    ) -> Result<BindState, super::Error<intrusive::Entry<msg::Stream>>> {
+        initial_window: u64,
+    ) -> Result<(BindState, u64), super::Error<intrusive::Entry<msg::Stream>>> {
         let mut s = self.stream.inner.lock();
         let mut c = self.control.inner.lock();
 
@@ -359,10 +539,30 @@ impl Slot {
                 .map_err(|_| super::Error::SenderClosed)?;
 
             s.extra.clear();
+            s.extra.initial_window_remaining = initial_window;
+            // Seed the dispatch-side ceiling to the unbacked initial window the
+            // reader starts with. A plain store (not fetch_max) resets any value
+            // left by a prior generation on this recycled slot; both halves are
+            // locked here so no reader for this binding can race the store.
+            self.advertised_window
+                .store(initial_window, Ordering::Release);
+
+            let release_bytes = if let msg::Stream::Data {
+                offset, payload, ..
+            } = &*entry
+            {
+                let end = offset.as_u64().saturating_add(payload.len() as u64);
+                if end > s.extra.flush_watermark {
+                    s.extra.flush_watermark = end;
+                }
+                s.extra.observe_offset(end, self.advertised_window())
+            } else {
+                0
+            };
 
             s.queue.push_back(entry);
             let waker = s.take_waker();
-            return Ok(BindState::NewBinding(waker));
+            return Ok((BindState::NewBinding(waker), release_bytes));
         }
 
         // Slot is allocated — classify the binding relationship.
@@ -378,9 +578,22 @@ impl Slot {
             return Err(super::Error::HalfClosed(entry));
         }
 
+        let release_bytes = if let msg::Stream::Data {
+            offset, payload, ..
+        } = &*entry
+        {
+            let end = offset.as_u64().saturating_add(payload.len() as u64);
+            if end > s.extra.flush_watermark {
+                s.extra.flush_watermark = end;
+            }
+            s.extra.observe_offset(end, self.advertised_window())
+        } else {
+            0
+        };
+
         s.queue.push_back(entry);
         let waker = s.take_waker();
-        Ok(BindState::AlreadyBound(waker))
+        Ok((BindState::AlreadyBound(waker), release_bytes))
     }
 
     /// Push Reset into both halves of an allocated slot without binding validation.
@@ -594,7 +807,7 @@ mod tests {
     #[test]
     fn allocate_and_open_sets_binding() {
         let slot = Slot::with_queue_id(v(0));
-        assert!(slot.allocate_and_open(v(1)).is_ok());
+        assert!(slot.allocate_and_open(v(1), 0).is_ok());
         let raw = slot.binding_id.load(Ordering::Relaxed);
         assert_eq!(raw, 1);
         assert!(slot.stream.inner.lock().flags.contains(Flags::HAS_RECEIVER));
@@ -610,13 +823,13 @@ mod tests {
     fn allocate_and_open_fails_after_close() {
         let slot = Slot::with_queue_id(v(0));
         slot.broadcast_close();
-        assert!(slot.allocate_and_open(v(1)).is_err());
+        assert!(slot.allocate_and_open(v(1), 0).is_err());
     }
 
     #[test]
     fn push_stream_matching_binding() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(1)).unwrap();
+        slot.allocate_and_open(v(1), 0).unwrap();
         let result = slot.push_stream(v(1), make_stream_entry());
         assert!(result.is_ok());
     }
@@ -624,7 +837,7 @@ mod tests {
     #[test]
     fn push_stream_stale_binding() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(5)).unwrap();
+        slot.allocate_and_open(v(5), 0).unwrap();
         let result = slot.push_stream(v(3), make_stream_entry());
         assert!(matches!(result, Err(super::super::Error::StaleBinding(_))));
     }
@@ -632,7 +845,7 @@ mod tests {
     #[test]
     fn push_stream_future_binding() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(5)).unwrap();
+        slot.allocate_and_open(v(5), 0).unwrap();
         let result = slot.push_stream(v(7), make_stream_entry());
         assert!(matches!(result, Err(super::super::Error::FutureBinding(_))));
     }
@@ -656,7 +869,7 @@ mod tests {
     #[test]
     fn push_control_matching_binding() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(1)).unwrap();
+        slot.allocate_and_open(v(1), 0).unwrap();
         let result = slot.push_control(v(1), make_control_entry());
         assert!(result.is_ok());
     }
@@ -664,7 +877,7 @@ mod tests {
     #[test]
     fn mark_unallocated_preserves_binding() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(5)).unwrap();
+        slot.allocate_and_open(v(5), 0).unwrap();
         slot.mark_unallocated();
         let raw = slot.binding_id.load(Ordering::Relaxed);
         assert_ne!(raw & UNALLOCATED_BIT, 0);
@@ -674,7 +887,7 @@ mod tests {
     #[test]
     fn mark_unallocated_rejects_old_binding() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(5)).unwrap();
+        slot.allocate_and_open(v(5), 0).unwrap();
         slot.mark_unallocated();
         let result = slot.push_stream(v(5), make_stream_entry());
         assert!(matches!(result, Err(super::super::Error::StaleBinding(_))));
@@ -683,31 +896,31 @@ mod tests {
     #[test]
     fn bind_and_push_fresh_slot_new_binding() {
         let slot = Slot::with_queue_id(v(0));
-        let result = slot.bind_and_push_stream(v(1), make_stream_entry());
-        assert!(matches!(result, Ok(BindState::NewBinding(_))));
+        let result = slot.bind_and_push_stream(v(1), make_stream_entry(), 0);
+        assert!(matches!(result, Ok((BindState::NewBinding(_), _))));
     }
 
     #[test]
     fn bind_and_push_already_bound_matching() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(1)).unwrap();
-        let result = slot.bind_and_push_stream(v(1), make_stream_entry());
-        assert!(matches!(result, Ok(BindState::AlreadyBound(_))));
+        slot.allocate_and_open(v(1), 0).unwrap();
+        let result = slot.bind_and_push_stream(v(1), make_stream_entry(), 0);
+        assert!(matches!(result, Ok((BindState::AlreadyBound(_), _))));
     }
 
     #[test]
     fn bind_and_push_stale_on_allocated() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(5)).unwrap();
-        let result = slot.bind_and_push_stream(v(3), make_stream_entry());
+        slot.allocate_and_open(v(5), 0).unwrap();
+        let result = slot.bind_and_push_stream(v(3), make_stream_entry(), 0);
         assert!(matches!(result, Err(super::super::Error::StaleBinding(_))));
     }
 
     #[test]
     fn bind_and_push_future_on_allocated() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(5)).unwrap();
-        let result = slot.bind_and_push_stream(v(7), make_stream_entry());
+        slot.allocate_and_open(v(5), 0).unwrap();
+        let result = slot.bind_and_push_stream(v(7), make_stream_entry(), 0);
         assert!(matches!(result, Err(super::super::Error::FutureBinding(_))));
     }
 
@@ -720,52 +933,52 @@ mod tests {
     #[test]
     fn bind_and_push_stale_on_recycled() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(5)).unwrap();
+        slot.allocate_and_open(v(5), 0).unwrap();
         simulate_receiver_drop(&slot);
-        let result = slot.bind_and_push_stream(v(4), make_stream_entry());
+        let result = slot.bind_and_push_stream(v(4), make_stream_entry(), 0);
         assert!(matches!(result, Err(super::super::Error::StaleBinding(_))));
     }
 
     #[test]
     fn bind_and_push_equal_on_recycled() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(5)).unwrap();
+        slot.allocate_and_open(v(5), 0).unwrap();
         simulate_receiver_drop(&slot);
-        let result = slot.bind_and_push_stream(v(5), make_stream_entry());
+        let result = slot.bind_and_push_stream(v(5), make_stream_entry(), 0);
         assert!(matches!(result, Err(super::super::Error::StaleBinding(_))));
     }
 
     #[test]
     fn bind_and_push_new_binding_after_recycle() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(5)).unwrap();
+        slot.allocate_and_open(v(5), 0).unwrap();
         simulate_receiver_drop(&slot);
-        let result = slot.bind_and_push_stream(v(6), make_stream_entry());
-        assert!(matches!(result, Ok(BindState::NewBinding(_))));
+        let result = slot.bind_and_push_stream(v(6), make_stream_entry(), 0);
+        assert!(matches!(result, Ok((BindState::NewBinding(_), _))));
     }
 
     #[test]
     fn bind_and_push_after_broadcast_close() {
         let slot = Slot::with_queue_id(v(0));
         slot.broadcast_close();
-        let result = slot.bind_and_push_stream(v(1), make_stream_entry());
+        let result = slot.bind_and_push_stream(v(1), make_stream_entry(), 0);
         assert!(matches!(result, Err(super::super::Error::SenderClosed)));
     }
 
     #[test]
     fn bind_and_push_half_closed() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(1)).unwrap();
+        slot.allocate_and_open(v(1), 0).unwrap();
         // Close stream receiver
         slot.stream.inner.lock().flags.remove(Flags::HAS_RECEIVER);
-        let result = slot.bind_and_push_stream(v(1), make_stream_entry());
+        let result = slot.bind_and_push_stream(v(1), make_stream_entry(), 0);
         assert!(matches!(result, Err(super::super::Error::HalfClosed(_))));
     }
 
     #[test]
     fn broadcast_close_both_halves() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(1)).unwrap();
+        slot.allocate_and_open(v(1), 0).unwrap();
         let (sw, cw) = slot.broadcast_close();
         // Both are AutoWake (possibly empty since no waker was registered)
         drop(sw);
@@ -778,23 +991,49 @@ mod tests {
     #[test]
     fn broadcast_reset_poisons_msg_table() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(1)).unwrap();
+        slot.allocate_and_open(v(1), 0).unwrap();
 
         // Insert a partial message (first chunk only of a 2-chunk message)
-        let result = slot.push_msg(v(1), 0, 0, 16384, 8192, 0, 8192, false, true, |ptr, len| {
-            unsafe { core::ptr::write_bytes(ptr, 0xAB, len as usize) };
-            Ok::<(), ()>(())
-        });
+        let result = slot.push_msg(
+            v(1),
+            0,
+            0,
+            0,
+            16384,
+            8192,
+            0,
+            8192,
+            false,
+            true,
+            false,
+            |ptr, len| {
+                unsafe { core::ptr::write_bytes(ptr, 0xAB, len as usize) };
+                Ok::<(), ()>(())
+            },
+        );
         assert!(result.is_ok());
 
         // Reset the slot
         slot.broadcast_reset(v(42));
 
         // The msg_table should be poisoned — second chunk write returns default waker
-        let result = slot.push_msg(v(1), 0, 0, 16384, 8192, 1, 8192, false, true, |ptr, len| {
-            unsafe { core::ptr::write_bytes(ptr, 0xCD, len as usize) };
-            Ok::<(), ()>(())
-        });
+        let result = slot.push_msg(
+            v(1),
+            0,
+            0,
+            0,
+            16384,
+            8192,
+            1,
+            8192,
+            false,
+            true,
+            false,
+            |ptr, len| {
+                unsafe { core::ptr::write_bytes(ptr, 0xCD, len as usize) };
+                Ok::<(), ()>(())
+            },
+        );
         // Should succeed (returns Ok with empty waker) — the chunk completes
         // but the poisoned table discards the result.
         assert!(result.is_ok());
@@ -803,13 +1042,26 @@ mod tests {
     #[test]
     fn new_binding_clears_msg_table() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(1)).unwrap();
+        slot.allocate_and_open(v(1), 0).unwrap();
 
         // Push a complete message to create and populate the msg_table
-        let _ = slot.push_msg(v(1), 0, 0, 4096, 8192, 0, 4096, false, true, |ptr, len| {
-            unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
-            Ok::<(), ()>(())
-        });
+        let _ = slot.push_msg(
+            v(1),
+            0,
+            0,
+            0,
+            4096,
+            8192,
+            0,
+            4096,
+            false,
+            true,
+            false,
+            |ptr, len| {
+                unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
+                Ok::<(), ()>(())
+            },
+        );
 
         // msg_table exists (even if entries were drained, the table itself is Some)
         assert!(slot.stream.inner.lock().extra.msg_table.is_some());
@@ -818,8 +1070,8 @@ mod tests {
         simulate_receiver_drop(&slot);
 
         // Re-bind with a new binding_id
-        let result = slot.bind_and_push_stream(v(2), make_stream_entry());
-        assert!(matches!(result, Ok(BindState::NewBinding(_))));
+        let result = slot.bind_and_push_stream(v(2), make_stream_entry(), 0);
+        assert!(matches!(result, Ok((BindState::NewBinding(_), _))));
 
         // msg_table should be cleared — new sender starts fresh
         assert!(slot.stream.inner.lock().extra.msg_table.is_none());
@@ -828,7 +1080,7 @@ mod tests {
     #[test]
     fn push_msg_wakes_based_on_flush_watermark() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(1)).unwrap();
+        slot.allocate_and_open(v(1), 0).unwrap();
 
         // Register a waker on the stream half
         let (waker, wake_count) = test_waker();
@@ -839,10 +1091,23 @@ mod tests {
 
         // Push a complete message with is_wakeup=false — watermark stays at 0,
         // so stream_offset(0) is NOT < watermark(0) → no wake.
-        let result = slot.push_msg(v(1), 0, 0, 4096, 8192, 0, 4096, false, false, |ptr, len| {
-            unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
-            Ok::<(), ()>(())
-        });
+        let result = slot.push_msg(
+            v(1),
+            0,
+            0,
+            0,
+            4096,
+            8192,
+            0,
+            4096,
+            false,
+            false,
+            false,
+            |ptr, len| {
+                unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
+                Ok::<(), ()>(())
+            },
+        );
         assert!(result.is_ok());
         assert_eq!(wake_count.load(Ordering::SeqCst), 0);
 
@@ -859,12 +1124,14 @@ mod tests {
             v(1),
             1,
             4096,
+            0,
             4096,
             8192,
             0,
             4096,
             false,
             true,
+            false,
             |ptr, len| {
                 unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
                 Ok::<(), ()>(())
@@ -878,7 +1145,7 @@ mod tests {
     #[test]
     fn push_msg_detects_rebind_during_write_and_completes_to_new_binding() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(1)).unwrap();
+        slot.allocate_and_open(v(1), 0).unwrap();
         let msg_id = 0;
         let stream_offset = 0;
         let message_size = 4096;
@@ -891,17 +1158,19 @@ mod tests {
             v(1),
             msg_id,
             stream_offset,
+            0,
             message_size,
             chunk_size,
             chunk_index,
             payload_len,
             false,
             true,
+            false,
             |ptr, len| {
                 write_called.store(true, Ordering::Relaxed);
                 simulate_receiver_drop(&slot);
-                let result = slot.bind_and_push_stream(v(2), make_stream_entry());
-                assert!(matches!(result, Ok(BindState::NewBinding(_))));
+                let result = slot.bind_and_push_stream(v(2), make_stream_entry(), 0);
+                assert!(matches!(result, Ok((BindState::NewBinding(_), _))));
                 unsafe { core::ptr::write_bytes(ptr, 0xAB, len as usize) };
                 Ok::<(), ()>(())
             },
@@ -924,11 +1193,12 @@ mod tests {
     #[test]
     fn push_msg_detects_rebind_after_write_error() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(1)).unwrap();
+        slot.allocate_and_open(v(1), 0).unwrap();
         let write_called = AtomicBool::new(false);
 
         let result = slot.push_msg(
             v(1),
+            0,
             0,
             0,
             4096,
@@ -937,11 +1207,12 @@ mod tests {
             4096,
             false,
             true,
+            false,
             |_ptr, _len| {
                 write_called.store(true, Ordering::Relaxed);
                 simulate_receiver_drop(&slot);
-                let result = slot.bind_and_push_stream(v(2), make_stream_entry());
-                assert!(matches!(result, Ok(BindState::NewBinding(_))));
+                let result = slot.bind_and_push_stream(v(2), make_stream_entry(), 0);
+                assert!(matches!(result, Ok((BindState::NewBinding(_), _))));
                 Err::<(), ()>(())
             },
         );
@@ -963,10 +1234,11 @@ mod tests {
     #[test]
     fn push_msg_cancel_checkout_allows_retry() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(1)).unwrap();
+        slot.allocate_and_open(v(1), 0).unwrap();
 
         let first = slot.push_msg(
             v(1),
+            0,
             0,
             0,
             4096,
@@ -975,14 +1247,28 @@ mod tests {
             4096,
             false,
             true,
+            false,
             |_ptr, _len| Err::<(), ()>(()),
         );
         assert!(matches!(first, Err(super::super::MsgError::Write(()))));
 
-        let retry = slot.push_msg(v(1), 0, 0, 4096, 8192, 0, 4096, false, true, |ptr, len| {
-            unsafe { core::ptr::write_bytes(ptr, 0xAA, len as usize) };
-            Ok::<(), ()>(())
-        });
+        let retry = slot.push_msg(
+            v(1),
+            0,
+            0,
+            0,
+            4096,
+            8192,
+            0,
+            4096,
+            false,
+            true,
+            false,
+            |ptr, len| {
+                unsafe { core::ptr::write_bytes(ptr, 0xAA, len as usize) };
+                Ok::<(), ()>(())
+            },
+        );
         assert!(retry.is_ok());
 
         let mut stream = slot.stream.inner.lock();
@@ -1007,14 +1293,27 @@ mod tests {
     #[test]
     fn bind_and_push_stream_clears_flush_watermark() {
         let slot = Slot::with_queue_id(v(0));
-        slot.allocate_and_open(v(1)).unwrap();
+        slot.allocate_and_open(v(1), 0).unwrap();
 
         // First binding: push a message with is_wakeup=true to set watermark high.
         // stream_offset=0, message_size=65536 → watermark = 65536
-        let result = slot.push_msg(v(1), 0, 0, 65536, 8192, 0, 8192, false, true, |ptr, len| {
-            unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
-            Ok::<(), ()>(())
-        });
+        let result = slot.push_msg(
+            v(1),
+            0,
+            0,
+            0,
+            65536,
+            8192,
+            0,
+            8192,
+            false,
+            true,
+            false,
+            |ptr, len| {
+                unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
+                Ok::<(), ()>(())
+            },
+        );
         assert!(result.is_ok());
 
         // Verify watermark was set
@@ -1024,13 +1323,17 @@ mod tests {
         simulate_receiver_drop(&slot);
 
         // New binding arrives via bind_and_push_stream
-        let result = slot.bind_and_push_stream(v(2), make_stream_entry());
-        assert!(matches!(result, Ok(BindState::NewBinding(_))));
+        let result = slot.bind_and_push_stream(v(2), make_stream_entry(), 0);
+        assert!(matches!(result, Ok((BindState::NewBinding(_), _))));
 
-        // The watermark must be cleared for the new binding
+        // The stale watermark from the prior binding must be cleared. The
+        // first data entry of the new binding can advance it to its own end
+        // offset — `make_stream_entry` is a 1-byte payload at offset 0, so
+        // the watermark resets and is bumped to 1, well below the 65536 the
+        // prior binding left behind.
         assert_eq!(
             slot.stream.inner.lock().extra.flush_watermark,
-            0,
+            1,
             "BUG: flush_watermark was not cleared after bind_and_push_stream. \
              A stale watermark from the previous binding causes spurious wakeups \
              on the new binding's QueueMsg deliveries, violating is_wakeup=false semantics."
@@ -1043,13 +1346,28 @@ mod tests {
         let (waker, wake_count) = test_waker();
         slot.stream.inner.lock().waker = Some(waker);
 
-        // New binding: push a complete message with is_wakeup=false.
-        // With a correctly cleared watermark (0), stream_offset(0) < 0 is false,
-        // so should_wake=false and the waker should NOT fire.
-        let result = slot.push_msg(v(2), 0, 0, 4096, 8192, 0, 4096, false, false, |ptr, len| {
-            unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
-            Ok::<(), ()>(())
-        });
+        // New binding: push a complete message at offset 4096 with is_wakeup=false.
+        // The watermark (1, set by the bind's data push) is below the message's
+        // stream_offset, so should_wake=false and the waker should NOT fire —
+        // the stale 65536 watermark from the previous binding would have caused
+        // a spurious wake.
+        let result = slot.push_msg(
+            v(2),
+            0,
+            4096,
+            0,
+            4096,
+            8192,
+            0,
+            4096,
+            false,
+            false,
+            false,
+            |ptr, len| {
+                unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
+                Ok::<(), ()>(())
+            },
+        );
         assert!(result.is_ok());
         drop(result);
 
@@ -1060,5 +1378,66 @@ mod tests {
              The stale flush_watermark from the previous binding caused \
              should_wake to evaluate as true for the new binding's messages."
         );
+    }
+
+    /// Regression (review finding M1): `observe_offset` must clamp its per-arrival recv-credit
+    /// release to the reader's *advertised* receive window. The reader only acquires pool credit up
+    /// to what it advertises (growing `remote_max_data`), but dispatch releases per arriving byte;
+    /// without the clamp a peer that overshoots the advertised window makes dispatch release credit
+    /// that was never acquired, silently inflating the shared pool and defeating backpressure.
+    ///
+    /// The bootstrap case is the most reachable: a slot binds with `initial_window_remaining = 0`
+    /// (or the unbacked window already consumed), so every arriving byte is pool-backed — yet the
+    /// reader may have advertised only a small window.
+    #[test]
+    fn observe_offset_clamps_release_to_advertised_window() {
+        let mut state = StreamState {
+            msg_table: None,
+            flush_watermark: 0,
+            max_received_offset: 0,
+            // No unbacked initial window: model the post-bootstrap / zero-initial-window slot where
+            // every byte is accounted as pool-backed.
+            initial_window_remaining: 0,
+            recv_finished: false,
+        };
+
+        // The reader advertised (and therefore acquired) only 10 bytes of pool credit. A peer that
+        // overshoots to 1000 bytes must release at most the advertised 10; the excess releases
+        // nothing because the reader never acquired it.
+        let advertised = 10u64;
+        let released = state.observe_offset(1000, advertised);
+        assert_eq!(
+            released, advertised,
+            "observe_offset must clamp its release to the advertised window ({advertised}), \
+             got {released}",
+        );
+
+        // A second overshooting arrival must release nothing further: the ceiling is already
+        // fully accounted, so no phantom credit can be injected.
+        let released_again = state.observe_offset(2000, advertised);
+        assert_eq!(
+            released_again, 0,
+            "no further credit may be released once the advertised window is fully observed",
+        );
+    }
+
+    /// Within the advertised window `observe_offset` still releases exactly the pool-backed bytes
+    /// (those beyond the unbacked initial window), so the clamp does not under-release for a
+    /// well-behaved peer.
+    #[test]
+    fn observe_offset_releases_pool_backed_bytes_within_window() {
+        let mut state = StreamState {
+            msg_table: None,
+            flush_watermark: 0,
+            max_received_offset: 0,
+            initial_window_remaining: 4,
+            recv_finished: false,
+        };
+
+        // Advertised window comfortably above what arrives. First 4 bytes are unbacked (release 0),
+        // the next 6 are pool-backed (release 6).
+        let advertised = 100u64;
+        assert_eq!(state.observe_offset(4, advertised), 0);
+        assert_eq!(state.observe_offset(10, advertised), 6);
     }
 }

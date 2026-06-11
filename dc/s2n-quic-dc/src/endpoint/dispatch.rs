@@ -89,17 +89,20 @@ fn decrypt_fast_path(
     reader_metrics: &Arc<crate::stream::metrics::ReaderMetrics>,
     writer_metrics: &Arc<crate::stream::metrics::WriterMetrics>,
     send_credit_pool: &crate::sync::Arc<crate::credit::Pool>,
+    recv_credit_pool: &crate::sync::Arc<crate::credit::Pool>,
 ) -> Result<AutoWake, FastPathError> {
     let Header::QueueMsg {
         queue_pair,
         binding_id,
         msg_id,
         stream_offset,
+        largest_offset,
         message_size,
         chunk_size,
         chunk_index,
         is_fin,
         is_wakeup,
+        blocked,
         dest_acceptor_id,
         priority,
     } = header
@@ -136,6 +139,7 @@ fn decrypt_fast_path(
                 waker: _,
                 stream,
                 control,
+                release_bytes: _,
             }) => {
                 let writer = Writer::new_server(
                     frame_tx.clone(),
@@ -156,6 +160,8 @@ fn decrypt_fast_path(
                     is_fin,
                     stream_clock.clone(),
                     reader_metrics.clone(),
+                    recv_credit_pool.clone(),
+                    priority,
                 );
                 let new_stream = Stream::new(reader, writer);
                 match acceptor_sender.send(new_stream) {
@@ -177,7 +183,7 @@ fn decrypt_fast_path(
                     }
                 }
             }
-            Ok(crate::queue::BindResult::Bound(_)) => {}
+            Ok(crate::queue::BindResult::Bound { .. }) => {}
             Err(_) => return Ok(AutoWake::default()),
         }
     }
@@ -188,12 +194,14 @@ fn decrypt_fast_path(
         binding_id,
         msg_id.as_u64(),
         stream_offset.as_u64(),
+        largest_offset.as_u64(),
         message_size.as_u64() as u32,
         chunk_size.as_u64() as u16,
         chunk_index.as_u64() as u32,
         decrypt_len as u32,
         is_fin,
         is_wakeup,
+        blocked,
         |ptr, len| {
             let dest = unsafe { bytes::buf::UninitSlice::from_raw_parts_mut(ptr, len as usize) };
             packet
@@ -210,7 +218,7 @@ fn decrypt_fast_path(
     );
 
     Ok(match waker {
-        Ok(w) => {
+        Ok((w, release_bytes)) => {
             if w.is_some() {
                 counters.rx_msg_segment_completed.add(1);
                 counters
@@ -219,6 +227,7 @@ fn decrypt_fast_path(
                 let chunks = message_size.as_u64().div_ceil(chunk_size.as_u64().max(1));
                 counters.rx_msg_chunks_per_segment.record_value(chunks);
             }
+            recv_credit_pool.release(release_bytes);
             w
         }
         Err(crate::queue::MsgError::Queue(_)) => AutoWake::default(),
@@ -249,6 +258,7 @@ pub(crate) fn process<Clk, Route>(
     reader_metrics: &Arc<crate::stream::metrics::ReaderMetrics>,
     writer_metrics: &Arc<crate::stream::metrics::WriterMetrics>,
     send_credit_pool: &crate::sync::Arc<crate::credit::Pool>,
+    recv_credit_pool: &crate::sync::Arc<crate::credit::Pool>,
 ) -> Result<(), Error>
 where
     Clk: s2n_quic_core::time::Clock + crate::time::precision::Clock + ?Sized,
@@ -305,6 +315,7 @@ where
                 reader_metrics,
                 writer_metrics,
                 send_credit_pool,
+                recv_credit_pool,
             )
             .map(DecryptResult::FastPath)
             .ok();
@@ -492,6 +503,7 @@ where
                     reader_metrics,
                     writer_metrics,
                     send_credit_pool,
+                    recv_credit_pool,
                 );
             }
             Err(err) => {
@@ -578,23 +590,30 @@ fn dispatch_decoded_frame(
     reader_metrics: &Arc<crate::stream::metrics::ReaderMetrics>,
     writer_metrics: &Arc<crate::stream::metrics::WriterMetrics>,
     send_credit_pool: &crate::sync::Arc<crate::credit::Pool>,
+    recv_credit_pool: &crate::sync::Arc<crate::credit::Pool>,
 ) {
     match header {
         Header::QueueData {
             queue_pair,
             binding_id,
             offset,
+            largest_offset,
             is_fin,
+            blocked,
             dest_acceptor_id,
             priority,
         } => {
+            // `largest_offset` is already reconstructed to absolute by decode.
+            let peer_max_offset = largest_offset.as_u64();
             if let Some(acceptor_id) = dest_acceptor_id {
                 handle_queue_data_init(
                     peer,
                     queue_pair,
                     binding_id,
                     offset,
+                    peer_max_offset,
                     is_fin,
+                    blocked,
                     acceptor_id,
                     payload,
                     acceptor_registry,
@@ -606,11 +625,22 @@ fn dispatch_decoded_frame(
                     reader_metrics,
                     writer_metrics,
                     send_credit_pool,
+                    recv_credit_pool,
                     priority,
                 );
             } else {
                 handle_queue_data(
-                    peer, queue_pair, binding_id, offset, is_fin, payload, counters, waker_sink,
+                    peer,
+                    queue_pair,
+                    binding_id,
+                    offset,
+                    peer_max_offset,
+                    is_fin,
+                    blocked,
+                    payload,
+                    counters,
+                    waker_sink,
+                    recv_credit_pool,
                 );
             }
         }
@@ -696,14 +726,18 @@ fn dispatch_decoded_frame(
             binding_id,
             msg_id,
             stream_offset,
+            largest_offset,
             message_size,
             chunk_size,
             chunk_index,
             is_fin,
             is_wakeup,
+            blocked,
             dest_acceptor_id,
             priority,
         } => {
+            // `largest_offset` is already reconstructed to absolute by decode.
+            let peer_max_offset = largest_offset.as_u64();
             if let Some(acceptor_id) = dest_acceptor_id {
                 handle_queue_msg_init(
                     peer,
@@ -712,11 +746,13 @@ fn dispatch_decoded_frame(
                     acceptor_id,
                     msg_id,
                     stream_offset,
+                    peer_max_offset,
                     message_size,
                     chunk_size,
                     chunk_index,
                     is_fin,
                     is_wakeup,
+                    blocked,
                     payload,
                     acceptor_registry,
                     frame_tx,
@@ -727,6 +763,7 @@ fn dispatch_decoded_frame(
                     reader_metrics,
                     writer_metrics,
                     send_credit_pool,
+                    recv_credit_pool,
                     priority,
                 );
             } else {
@@ -736,18 +773,35 @@ fn dispatch_decoded_frame(
                     binding_id,
                     msg_id,
                     stream_offset,
+                    peer_max_offset,
                     message_size,
                     chunk_size,
                     chunk_index,
                     is_fin,
                     is_wakeup,
+                    blocked,
                     payload,
                     counters,
                     waker_sink,
+                    recv_credit_pool,
                 );
             }
         }
         Header::Ping => {}
+        Header::QueueDataBlocked {
+            queue_pair,
+            binding_id,
+            desired_offset,
+        } => {
+            handle_queue_data_blocked(
+                peer,
+                queue_pair,
+                binding_id,
+                desired_offset,
+                counters,
+                waker_sink,
+            );
+        }
     }
 }
 
@@ -826,21 +880,27 @@ impl Iterator for DeltaDecoder<'_> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_queue_data(
     peer: &mut recv::Context,
     queue_pair: QueuePair,
     binding_id: VarInt,
     offset: VarInt,
+    peer_max_offset: u64,
     is_fin: bool,
+    blocked: bool,
     buf: BytesMut,
     counters: &counters::Dispatch,
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
+    recv_credit_pool: &crate::sync::Arc<crate::credit::Pool>,
 ) {
     let local_queue_id = queue_pair.dest_queue_id;
     let payload_len = buf.len();
     let entry = msg::Stream::Data {
         offset,
+        peer_max_offset: VarInt::new(peer_max_offset).unwrap_or(VarInt::MAX),
         fin: is_fin,
+        blocked,
         payload: buf,
     }
     .into();
@@ -849,8 +909,9 @@ fn handle_queue_data(
         .queue_view
         .send_stream(local_queue_id, binding_id, entry)
     {
-        Ok(waker) => {
+        Ok((waker, release_bytes)) => {
             let _ = waker_sink.send(waker);
+            recv_credit_pool.release(release_bytes);
             counters.rx_data_ok.add(1);
             trace!(
                 binding_id = binding_id.as_u64(),
@@ -912,20 +973,24 @@ fn handle_queue_data(
 
 // ── QueueMsg ──────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn handle_queue_msg(
     peer: &mut recv::Context,
     queue_pair: QueuePair,
     binding_id: VarInt,
     msg_id: VarInt,
     stream_offset: VarInt,
+    peer_max_offset: u64,
     message_size: VarInt,
     chunk_size: VarInt,
     chunk_index: VarInt,
     is_fin: bool,
     is_wakeup: bool,
+    blocked: bool,
     payload: BytesMut,
     counters: &counters::Dispatch,
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
+    recv_credit_pool: &crate::sync::Arc<crate::credit::Pool>,
 ) {
     let local_queue_id = queue_pair.dest_queue_id;
     let payload_len = payload.len() as u32;
@@ -935,12 +1000,14 @@ fn handle_queue_msg(
         binding_id,
         msg_id.as_u64(),
         stream_offset.as_u64(),
+        peer_max_offset,
         message_size.as_u64() as u32,
         chunk_size.as_u64() as u16,
         chunk_index.as_u64() as u32,
         payload_len,
         is_fin,
         is_wakeup,
+        blocked,
         |ptr, len| -> Result<(), ()> {
             unsafe {
                 core::ptr::copy_nonoverlapping(payload.as_ptr(), ptr, len as usize);
@@ -948,7 +1015,7 @@ fn handle_queue_msg(
             Ok(())
         },
     ) {
-        Ok(waker) => {
+        Ok((waker, release_bytes)) => {
             if waker.is_some() {
                 counters.rx_msg_segment_completed.add(1);
                 counters
@@ -958,6 +1025,7 @@ fn handle_queue_msg(
                 counters.rx_msg_chunks_per_segment.record_value(chunks);
             }
             let _ = waker_sink.send(waker);
+            recv_credit_pool.release(release_bytes);
         }
         Err(crate::queue::MsgError::Queue(crate::queue::Error::Unallocated(_))) => {
             counters.rx_data_unallocated.add(1);
@@ -993,11 +1061,13 @@ fn handle_queue_msg_init(
     acceptor_id: VarInt,
     msg_id: VarInt,
     stream_offset: VarInt,
+    peer_max_offset: u64,
     message_size: VarInt,
     chunk_size: VarInt,
     chunk_index: VarInt,
     is_fin: bool,
     is_wakeup: bool,
+    blocked: bool,
     payload: BytesMut,
     acceptor_registry: &mut acceptor::LocalRegistry<Stream>,
     frame_tx: &mut SubmissionSender,
@@ -1008,6 +1078,7 @@ fn handle_queue_msg_init(
     reader_metrics: &Arc<crate::stream::metrics::ReaderMetrics>,
     writer_metrics: &Arc<crate::stream::metrics::WriterMetrics>,
     send_credit_pool: &crate::sync::Arc<crate::credit::Pool>,
+    recv_credit_pool: &crate::sync::Arc<crate::credit::Pool>,
     priority: crate::credit::Priority,
 ) {
     let Some(server_view) = peer.queue_view.as_server_mut() else {
@@ -1038,6 +1109,7 @@ fn handle_queue_msg_init(
             waker: _,
             stream,
             control,
+            release_bytes: _,
         }) => {
             let writer = Writer::new_server(
                 frame_tx.clone(),
@@ -1058,6 +1130,8 @@ fn handle_queue_msg_init(
                 is_fin,
                 stream_clock.clone(),
                 reader_metrics.clone(),
+                recv_credit_pool.clone(),
+                priority,
             );
             let new_stream = Stream::new(reader, writer);
 
@@ -1079,7 +1153,7 @@ fn handle_queue_msg_init(
                 }
             }
         }
-        Ok(crate::queue::BindResult::Bound(_)) => {
+        Ok(crate::queue::BindResult::Bound { .. }) => {
             // Already bound — just push the msg data below
         }
         Err(_) => {
@@ -1094,25 +1168,31 @@ fn handle_queue_msg_init(
         binding_id,
         msg_id,
         stream_offset,
+        peer_max_offset,
         message_size,
         chunk_size,
         chunk_index,
         is_fin,
         is_wakeup,
+        blocked,
         payload,
         counters,
         waker_sink,
+        recv_credit_pool,
     );
 }
 
 // ── QueueData Init ─────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn handle_queue_data_init(
     peer: &mut recv::Context,
     queue_pair: QueuePair,
     binding_id: VarInt,
     offset: VarInt,
+    peer_max_offset: u64,
     is_fin: bool,
+    blocked: bool,
     acceptor_id: VarInt,
     buf: BytesMut,
     acceptor_registry: &mut acceptor::LocalRegistry<Stream>,
@@ -1124,6 +1204,7 @@ fn handle_queue_data_init(
     reader_metrics: &Arc<crate::stream::metrics::ReaderMetrics>,
     writer_metrics: &Arc<crate::stream::metrics::WriterMetrics>,
     send_credit_pool: &crate::sync::Arc<crate::credit::Pool>,
+    recv_credit_pool: &crate::sync::Arc<crate::credit::Pool>,
     priority: crate::credit::Priority,
 ) {
     let Some(server_view) = peer.queue_view.as_server_mut() else {
@@ -1155,7 +1236,9 @@ fn handle_queue_data_init(
 
     let entry = msg::Stream::Data {
         offset,
+        peer_max_offset: VarInt::new(peer_max_offset).unwrap_or(VarInt::MAX),
         fin: is_fin,
+        blocked,
         payload: buf,
     }
     .into();
@@ -1171,6 +1254,7 @@ fn handle_queue_data_init(
             waker,
             stream,
             control,
+            release_bytes,
         }) => {
             let writer = Writer::new_server(
                 frame_tx.clone(),
@@ -1192,6 +1276,8 @@ fn handle_queue_data_init(
                 peer_fin,
                 stream_clock.clone(),
                 reader_metrics.clone(),
+                recv_credit_pool.clone(),
+                priority,
             );
             let new_stream = Stream::new(reader, writer);
 
@@ -1214,6 +1300,7 @@ fn handle_queue_data_init(
             }
 
             let _ = waker_sink.send(waker);
+            recv_credit_pool.release(release_bytes);
 
             debug!(
                 binding_id = binding_id.as_u64(),
@@ -1222,8 +1309,12 @@ fn handle_queue_data_init(
                 "QueueData init - new binding created"
             );
         }
-        Ok(crate::queue::BindResult::Bound(waker)) => {
+        Ok(crate::queue::BindResult::Bound {
+            waker,
+            release_bytes,
+        }) => {
             let _ = waker_sink.send(waker);
+            recv_credit_pool.release(release_bytes);
             counters.rx_data_ok.add(1);
             trace!(
                 binding_id = binding_id.as_u64(),
@@ -1374,6 +1465,53 @@ fn handle_queue_max_data(
     }
 }
 
+// ── QueueDataBlocked ───────────────────────────────────────────────────────
+
+/// Deliver a standalone writer-blocked signal to the reader.
+///
+/// Unlike `QueueMaxData` (reader→writer, routed via the control half), this is writer→reader and
+/// the reader drains only the stream half, so it rides the stream queue as `msg::Stream::Blocked`.
+/// `send_stream` returns an `AutoWake` so a reader parked in `poll_read_into` with no pending data
+/// is still woken to process the signal.
+fn handle_queue_data_blocked(
+    peer: &mut recv::Context,
+    queue_pair: QueuePair,
+    binding_id: VarInt,
+    desired_offset: VarInt,
+    counters: &counters::Dispatch,
+    waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
+) {
+    let local_queue_id = queue_pair.dest_queue_id;
+    let entry = msg::Stream::Blocked { desired_offset }.into();
+
+    match peer
+        .queue_view
+        .send_stream(local_queue_id, binding_id, entry)
+    {
+        Ok((waker, release_bytes)) => {
+            let _ = waker_sink.send(waker);
+            // A blocked signal carries no payload, so there is nothing to release; assert the
+            // invariant rather than silently relying on it.
+            debug_assert_eq!(release_bytes, 0);
+            counters.rx_data_ok.add(1);
+            trace!(
+                binding_id = binding_id.as_u64(),
+                queue_id = local_queue_id.as_u64(),
+                desired_offset = desired_offset.as_u64(),
+                "QueueDataBlocked dispatched"
+            );
+        }
+        Err(_) => {
+            // Unallocated / half-closed / stale binding — the signal is advisory, so drop it.
+            trace!(
+                binding_id = binding_id.as_u64(),
+                queue_id = local_queue_id.as_u64(),
+                "QueueDataBlocked dispatch error - dropping"
+            );
+        }
+    }
+}
+
 // ── QueueReset ─────────────────────────────────────────────────────────────
 
 fn handle_queue_reset(
@@ -1390,9 +1528,9 @@ fn handle_queue_reset(
             counters.rx_reset_both.add(1);
             let stream_entry = msg::Stream::Reset { error_code }.into();
             let control_entry = msg::Control::Reset { error_code }.into();
-            if let Ok(waker) = peer
-                .queue_view
-                .send_stream(dest_queue_id, binding_id, stream_entry)
+            if let Ok((waker, _)) =
+                peer.queue_view
+                    .send_stream(dest_queue_id, binding_id, stream_entry)
             {
                 let _ = waker_sink.send(waker);
             }
@@ -1412,9 +1550,9 @@ fn handle_queue_reset(
         ResetTarget::Stream => {
             counters.rx_reset_stream.add(1);
             let stream_entry = msg::Stream::Reset { error_code }.into();
-            if let Ok(waker) = peer
-                .queue_view
-                .send_stream(dest_queue_id, binding_id, stream_entry)
+            if let Ok((waker, _)) =
+                peer.queue_view
+                    .send_stream(dest_queue_id, binding_id, stream_entry)
             {
                 let _ = waker_sink.send(waker);
             }

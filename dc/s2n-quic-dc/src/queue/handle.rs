@@ -105,6 +105,27 @@ impl StreamReceiver {
     ) -> Poll<Result<intrusive::Queue<msg::Stream>, Closed>> {
         self.slot().stream.poll_swap(cx)
     }
+
+    /// Reconcile the recv-credit accounting on stream termination.
+    ///
+    /// `advertised` is the maximum receive offset the reader has advertised to
+    /// the peer (its `remote_max_data`). Returns how many pool-backed credits
+    /// the reader still holds for window it advertised but the peer never filled
+    /// — the caller must `release` exactly this many back to the recv pool.
+    /// Idempotent across calls and serialized against dispatch's per-arrival
+    /// release by the slot's stream-half lock.
+    #[inline]
+    pub fn finish_recv_accounting(&self, advertised: u64) -> u64 {
+        self.slot().finish_recv_accounting(advertised)
+    }
+
+    /// Publish the reader's currently-advertised receive window so the dispatch
+    /// side can bound its per-arrival recv-credit release to it. Lock-free and
+    /// monotonic; see [`Slot::advertise_window`].
+    #[inline]
+    pub fn advertise_window(&self, advertised: u64) {
+        self.slot().advertise_window(advertised);
+    }
 }
 
 impl Drop for StreamReceiver {

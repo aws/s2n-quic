@@ -1481,6 +1481,7 @@ pub fn packet_dispatch<
     reader_metrics: std::sync::Arc<crate::stream::metrics::ReaderMetrics>,
     writer_metrics: std::sync::Arc<crate::stream::metrics::WriterMetrics>,
     send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
+    recv_credit_pool: crate::sync::Arc<crate::credit::Pool>,
 ) -> impl Receiver<()>
 where
     PacketRx: Receiver<crate::intrusive::Entry<Packet<descriptor::Filled>>>,
@@ -1516,6 +1517,7 @@ where
                 &reader_metrics,
                 &writer_metrics,
                 &send_credit_pool,
+                &recv_credit_pool,
             )
         }
     });

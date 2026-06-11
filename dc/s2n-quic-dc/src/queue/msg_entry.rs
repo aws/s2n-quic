@@ -23,12 +23,16 @@ pub(crate) struct MsgEntry {
     buffer: BytesMut,
     keep_alive: Bytes,
     stream_offset: u64,
+    /// Absolute high-water offset the writer advertised; folded across chunks (max).
+    largest_offset: u64,
     chunk_size: u16,
     chunk_count: u16,
     received: InlineBitSet<4>,
     checked_out: InlineBitSet<4>,
     poisoned: bool,
     is_fin: bool,
+    /// Writer signaled flow-control blocked on at least one chunk; folded across chunks (OR).
+    blocked: bool,
 }
 
 /// Result of attempting to check out a chunk for writing.
@@ -66,7 +70,9 @@ impl MsgEntry {
         message_size: u32,
         chunk_size: u16,
         stream_offset: u64,
+        largest_offset: u64,
         is_fin: bool,
+        blocked: bool,
     ) -> Self {
         let chunk_count = chunks_for_size(message_size, chunk_size);
         debug_assert!(chunk_count as u32 <= MAX_CHUNKS);
@@ -86,12 +92,14 @@ impl MsgEntry {
             buffer,
             keep_alive,
             stream_offset,
+            largest_offset,
             chunk_size,
             chunk_count,
             received: InlineBitSet::new(),
             checked_out: InlineBitSet::new(),
             poisoned: false,
             is_fin,
+            blocked,
         }
     }
 
@@ -111,8 +119,27 @@ impl MsgEntry {
     }
 
     #[inline]
+    pub(crate) fn largest_offset(&self) -> u64 {
+        self.largest_offset
+    }
+
+    #[inline]
     pub(crate) fn is_fin(&self) -> bool {
         self.is_fin
+    }
+
+    #[inline]
+    pub(crate) fn blocked(&self) -> bool {
+        self.blocked
+    }
+
+    /// Fold a chunk's blocked signal and high-water hint into the entry. Chunks of a segment
+    /// share these values, but a retransmit may carry a fresher one — take the max / OR so the
+    /// delivered message reflects the strongest signal seen, never regressing.
+    #[inline]
+    pub(crate) fn observe_blocked_signal(&mut self, largest_offset: u64, blocked: bool) {
+        self.largest_offset = self.largest_offset.max(largest_offset);
+        self.blocked |= blocked;
     }
 
     #[inline]
@@ -240,7 +267,7 @@ mod tests {
 
     #[test]
     fn new_entry() {
-        let entry = MsgEntry::new(65536, CHUNK_SIZE, 0, false);
+        let entry = MsgEntry::new(65536, CHUNK_SIZE, 0, 0, false, false);
         assert_eq!(entry.message_size(), 65536);
         assert!(!entry.is_fin());
         assert!(!entry.is_poisoned());
@@ -249,7 +276,7 @@ mod tests {
 
     #[test]
     fn checkout_and_complete_single_chunk() {
-        let mut entry = MsgEntry::new(8192, CHUNK_SIZE, 0, true);
+        let mut entry = MsgEntry::new(8192, CHUNK_SIZE, 0, 0, true, false);
 
         match entry.checkout(0) {
             CheckoutResult::Ok { ptr, len, .. } => {
@@ -269,7 +296,7 @@ mod tests {
     #[test]
     fn checkout_and_complete_multi_chunk() {
         let total_size = 8192 * 4;
-        let mut entry = MsgEntry::new(total_size, CHUNK_SIZE, 0, false);
+        let mut entry = MsgEntry::new(total_size, CHUNK_SIZE, 0, 0, false, false);
         let base_ptr = entry.buffer.as_mut_ptr();
 
         // Check out all chunks
@@ -300,7 +327,7 @@ mod tests {
 
     #[test]
     fn out_of_order_completion() {
-        let mut entry = MsgEntry::new(8192 * 3, CHUNK_SIZE, 0, false);
+        let mut entry = MsgEntry::new(8192 * 3, CHUNK_SIZE, 0, 0, false, false);
 
         // Checkout in order
         for i in 0..3 {
@@ -315,7 +342,7 @@ mod tests {
 
     #[test]
     fn duplicate_detection() {
-        let mut entry = MsgEntry::new(8192 * 2, CHUNK_SIZE, 0, false);
+        let mut entry = MsgEntry::new(8192 * 2, CHUNK_SIZE, 0, 0, false, false);
 
         assert!(matches!(entry.checkout(0), CheckoutResult::Ok { .. }));
         assert!(matches!(entry.complete_chunk(0), CompleteResult::Pending));
@@ -326,7 +353,7 @@ mod tests {
 
     #[test]
     fn contention_detection() {
-        let mut entry = MsgEntry::new(8192 * 2, CHUNK_SIZE, 0, false);
+        let mut entry = MsgEntry::new(8192 * 2, CHUNK_SIZE, 0, 0, false, false);
 
         assert!(matches!(entry.checkout(0), CheckoutResult::Ok { .. }));
         // Same chunk checked out again while first is still outstanding
@@ -335,7 +362,7 @@ mod tests {
 
     #[test]
     fn poison_before_checkout() {
-        let mut entry = MsgEntry::new(8192, CHUNK_SIZE, 0, false);
+        let mut entry = MsgEntry::new(8192, CHUNK_SIZE, 0, 0, false, false);
         entry.poison();
         assert!(entry.is_poisoned());
         assert!(matches!(entry.checkout(0), CheckoutResult::Poisoned));
@@ -343,7 +370,7 @@ mod tests {
 
     #[test]
     fn poison_during_checkout() {
-        let mut entry = MsgEntry::new(8192, CHUNK_SIZE, 0, false);
+        let mut entry = MsgEntry::new(8192, CHUNK_SIZE, 0, 0, false, false);
 
         assert!(matches!(entry.checkout(0), CheckoutResult::Ok { .. }));
         entry.poison();
@@ -352,7 +379,7 @@ mod tests {
 
     #[test]
     fn into_buffer() {
-        let mut entry = MsgEntry::new(100, 100, 0, false);
+        let mut entry = MsgEntry::new(100, 100, 0, 0, false, false);
 
         match entry.checkout(0) {
             CheckoutResult::Ok { ptr, len, .. } => {
@@ -369,7 +396,7 @@ mod tests {
 
     #[test]
     fn completion_requires_no_outstanding_checkouts() {
-        let mut entry = MsgEntry::new(8192 * 2, CHUNK_SIZE, 0, false);
+        let mut entry = MsgEntry::new(8192 * 2, CHUNK_SIZE, 0, 0, false, false);
 
         // Check out both chunks
         assert!(matches!(entry.checkout(0), CheckoutResult::Ok { .. }));
@@ -389,7 +416,7 @@ mod tests {
     #[test]
     fn last_chunk_len_is_remainder() {
         // 10000 bytes / 8192 chunk_size = 2 chunks: first is 8192, last is 1808
-        let mut entry = MsgEntry::new(10000, CHUNK_SIZE, 0, false);
+        let mut entry = MsgEntry::new(10000, CHUNK_SIZE, 0, 0, false, false);
 
         match entry.checkout(0) {
             CheckoutResult::Ok { ptr, len, .. } => {

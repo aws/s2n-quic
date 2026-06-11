@@ -292,11 +292,27 @@ impl Pool {
         self.waker.wake();
     }
 
+    /// Per-request acquire ceiling for `priority` (the normalized `max_single_acquire`). Callers
+    /// use this to bound speculative sizing — e.g. the reader caps its window-growth ratio so a
+    /// grown window can never exceed what a single acquire could satisfy.
+    #[inline]
+    pub fn max_single_acquire(&self, priority: Priority) -> u64 {
+        self.config.max_single_acquire[priority as usize]
+    }
+
     // Used by the deterministic suite (compiled out under the loom feature, hence allow(dead_code)).
     #[cfg(test)]
     #[allow(dead_code)]
     pub(crate) fn debug_available(&self) -> i64 {
         self.available.load(Ordering::Relaxed)
+    }
+
+    /// Staged-but-not-yet-reconciled returned credit. With no parked waiters the pool conserves
+    /// `available + returned == capacity`; a recv-credit leak shows up as this sum falling short.
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn debug_returned(&self) -> u64 {
+        self.returned.load(Ordering::Relaxed)
     }
 
     #[cfg(test)]
@@ -527,27 +543,68 @@ impl Distributor {
             (self.pool.parked_demand.load(Ordering::Acquire) - self.paid_demand) as i64;
         let mut free = self.pool.available.load(Ordering::Acquire) + outstanding + pull as i64;
 
-        let mut dead_released: u64 = 0;
+        // Avail-debits the walk reclaimed this pass that MUST write back to `available` in full (in
+        // contrast to `pull`, whose writeback is capped to preserve no-snipe). Three sources, all
+        // balancing a park-time `available -= req`: a reaped dead slot's `req`, an abandon-race
+        // slot's `req`, and the un-granted remainder of a partial grant (`req - grant_amount`). Kept
+        // separate from `pull` precisely because it is unconditional; see the end-of-pass writeback.
+        let mut reclaimed_avail: u64 = 0;
         let mut granted_any = false;
 
-        'walk: for (local, tier) in self.local.iter_mut().zip(&self.pool.tiers) {
-            // Refill from the shared tier when the mirror drains, capped at one extra refill per
-            // tier per pass. The cap bounds tier-lock acquisitions: at most two locks per tier per
-            // pass even if waiters keep arriving. Without the second refill, cached mirror entries
-            // would shadow fresh arrivals in the shared tier — granting only the cached ones and
-            // moving on, leaving the new ones for the next pass.
-            let mut refilled = false;
+        'walk: for ((local, tier), &min_slice) in self
+            .local
+            .iter_mut()
+            .zip(&self.pool.tiers)
+            .zip(&self.pool.config.min_grant_slice)
+        {
+            // Pull the shared tier into the mirror up-front, before computing the slice. This both
+            // refills a drained mirror and merges fresh arrivals that landed behind cached leftovers
+            // — the merge is load-bearing for fairness: the slice below is `free / local.len()`, so
+            // if a few cached heads shadowed a large shared-tier backlog the split would degenerate
+            // toward a near-full grant for those heads and starve the hidden waiters. `append`
+            // preserves FIFO (cached stay at the front, arrivals go to the back). One uncontended
+            // tier-lock per pass per tier — cheap, and the slice now always reflects the true
+            // backlog. Skip the per-pass overhead for empty tiers.
+            {
+                let mut shared = lock(tier);
+                local.append(&mut shared.list);
+            }
+            if local.is_empty() {
+                continue;
+            }
+
+            // Demand-elastic fair share, computed ONCE up-front for the whole tier.
+            // Granting each head its full `req` lets the first few waiters drain the pool at
+            // `max_single_acquire` and starve the rest behind the affordability `break`. Instead,
+            // hand each waiter an equal slice and round-robin: a granted head leaves the queue, its
+            // caller consumes and re-acquires, re-parking at the tail. Every waiter is serviced
+            // within O(parked) grants — FIFO, not racy — and aggregate bandwidth stays saturated as
+            // long as the slice covers a few frames.
+            //
+            // Computed once (not per item as `free` shrinks): a single up-front split gives every
+            // waiter in the tier the same slice; recomputing would skew larger slices toward the
+            // tail of the queue. Floored at the configured `min_grant_slice[priority]` so heavy
+            // contention can't shrink it to sub-frame slivers — we'd rather serve fewer waiters per
+            // pass with a usable slice than dribble a few KB to everyone. With no contention
+            // (`parked == 1`) the slice is the full `free`, so a lone waiter still gets a full grant.
+            // `min_slice` is normalized to `<= max_single_acquire[p]` and `<= capacity`, so the
+            // floor can never demand more than the pool could ever free.
+            //
+            // KNOWN LIMITATION (skewed demand): with a fixed slice, waiters wanting less than the
+            // slice leave their unused portion in `free`, which the larger waiters cannot pick up
+            // this pass (they are capped at `slice`). The leftover writes back and is granted over
+            // subsequent passes, so this costs a little latency under heavily mixed demand, never
+            // throughput or correctness. A single-pass-optimal allocation would need a max-min /
+            // water-filling split (e.g. per-tier demand-bucket counts), deferred until measured.
+            let slice = if free > 0 {
+                (free as u64 / local.len() as u64).max(min_slice)
+            } else {
+                min_slice
+            };
+
             loop {
                 if local.is_empty() {
-                    if refilled {
-                        break;
-                    }
-                    refilled = true;
-                    let mut shared = lock(tier);
-                    if shared.list.is_empty() {
-                        break;
-                    }
-                    core::mem::swap(local, &mut shared.list);
+                    break;
                 }
 
                 // Grant heads while affordable. Reap dead heads unconditionally (a dead corpse at
@@ -562,7 +619,7 @@ impl Distributor {
                 if front.is_dead() {
                     let ptr = local.pop_front().unwrap().take();
                     self.paid_demand += req;
-                    dead_released += req;
+                    reclaimed_avail += req;
                     free += req as i64;
                     self.pool.counters.distributor_reaped.add(1);
                     // SAFETY: a dead slot (refcount=0) has been popped from every list and is owned
@@ -572,7 +629,19 @@ impl Distributor {
                     continue;
                 }
 
-                if req as i64 > free {
+                if free <= 0 {
+                    break 'walk;
+                }
+
+                let grant_amount = req.min(slice);
+
+                // If we can't cover this head's slice right now, stop and let releases refill `free`.
+                // A head wanting at least the slice must get the whole slice (no sub-slice dribble);
+                // a head wanting less than the slice only needs its (smaller) `req`. Either way, bail
+                // when `free` can't cover what this head should receive — the next pass retries once
+                // more credit has been returned. This is what keeps grants at >= min_slice instead
+                // of handing out whatever scrap of `free` happens to exist this instant.
+                if (grant_amount as i64) > free {
                     break 'walk;
                 }
 
@@ -588,30 +657,39 @@ impl Distributor {
                 // (refcount CAS) and our `grant` race, and `grant` resolves that race.
                 unsafe {
                     let slot = &*ptr.as_ptr();
-                    let res = slot.grant(req);
+                    let res = slot.grant(grant_amount);
 
-                    // Whether granted or raced, this park is now resolved — credit it locally so
-                    // the next pass's `outstanding` reflects reality.
+                    // Whether granted or raced, this park is now resolved — credit the FULL `req`
+                    // locally so the next pass's `outstanding` reflects that the slot has left the
+                    // parked list. The un-granted remainder (`req - grant_amount`) is refunded
+                    // below; the slot's caller re-acquires for the rest.
                     self.paid_demand += req;
 
                     match res {
                         Some(waker) => {
-                            // Full grant: the waiter's park-time subtraction stays in `available`
-                            // (reclassified parked → in-flight); we only drop its demand. Stash
-                            // the waker locally; the batch is shipped at the end of the poll
-                            // cycle via `WakerSink::append_wakers`, whose contract guarantees
-                            // every waker is either queued or fired before it returns.
-                            free -= req as i64;
+                            // Partial (or full) grant: only `grant_amount` becomes in-flight; the
+                            // rest of the park-time `available -= req` debit must return to
+                            // `available`. That refund is the same kind of reclaimed avail-debit as
+                            // a dead-slot reap, so route it through `reclaimed_avail` (which always
+                            // writes back at end of pass). The waiter's park-time subtraction stays
+                            // in `available`; we reclassify `grant_amount` parked → in-flight and
+                            // hand the remainder back. Stash the waker locally; the batch ships at
+                            // end of the poll cycle via `WakerSink::append_wakers`.
+                            free -= grant_amount as i64;
+                            let refund = req - grant_amount;
+                            if refund > 0 {
+                                reclaimed_avail += refund;
+                            }
                             granted_any = true;
                             self.pool.counters.distributor_granted.add(1);
-                            trace!(target: "credit::pool", req, "grant");
+                            trace!(target: "credit::pool", req, grant_amount, "grant");
                             self.pending_wakers.push_back(waker);
                         }
                         None => {
                             // Raced: the app abandoned between our `is_dead` check and the CAS.
                             // `grant` returning None means refcount=0 and the slot is ours to free.
                             // Push into the dead queue; its drop at end-of-poll frees the slot.
-                            dead_released += req;
+                            reclaimed_avail += req;
                             free += req as i64;
                             self.pool.counters.abandon_granted_race.add(1);
                             trace!(target: "credit::pool", req, "abandon_granted_race");
@@ -622,10 +700,15 @@ impl Distributor {
             }
         }
 
-        // End-of-pass writeback. We hold `pull + dead_released` total credit:
+        // End-of-pass writeback. We only ever apply a *delta* to `available` via `fetch_add`: the
+        // fast path (`poll_acquire`) mutates `available` concurrently, so the distributor can never
+        // store an absolute (e.g. `free`) without clobbering in-flight acquires. The delta re-
+        // entering `available` is exactly the credit that left it or was never granted:
         //   * `pull` — bytes pulled from `returned` (plus any carried-over from a prior pass).
-        //   * `dead_released` — avail-debits the walk reclaimed when reaping dead slots, which
-        //     must be returned to `available` to balance the original park-time `available -= req`.
+        //   * `reclaimed_avail` — park-time `available -= req` debits the walk reclaimed this pass
+        //     (dead-slot reaps, abandon races, partial-grant refunds), which must return in full.
+        // (`free` itself is absolute — it bakes in `available_start + outstanding`, already present
+        // in `available` — so adding it would double-count; that's why we track the delta instead.)
         //
         // If we wrote back the full total, two pass exit paths are safe and one is not:
         //
@@ -640,7 +723,7 @@ impl Distributor {
         //     no-snipe across this exit, we cap the writeback by the live remaining demand and
         //     hold the surplus in `self.carry` for the next pass to fold back into `pull`.
         //
-        // `dead_released` always writes back (those debits are real reclaimed credit, not pull).
+        // `reclaimed_avail` always writes back (those debits are real reclaimed credit, not pull).
         // The pull portion is capped at `live_parked` so `available` never overruns after-grant
         // outstanding demand.
         let live_parked = self
@@ -648,11 +731,11 @@ impl Distributor {
             .parked_demand
             .load(Ordering::Acquire)
             .saturating_sub(self.paid_demand);
-        let total = pull + dead_released;
+        let total = pull + reclaimed_avail;
         let writeback = if live_parked == 0 {
             total
         } else {
-            total.min(live_parked + dead_released)
+            total.min(live_parked + reclaimed_avail)
         };
         self.carry = total - writeback;
         self.pool
@@ -667,7 +750,7 @@ impl Distributor {
 
         // Forward progress: `pull > 0` covers the "carried credit waiting to be written back"
         // case, since carry is folded into `pull` at the top of every pass.
-        granted_any || dead_released > 0 || pull > 0
+        granted_any || reclaimed_avail > 0 || pull > 0
     }
 }
 

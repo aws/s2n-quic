@@ -23,7 +23,23 @@ pub struct Config {
     ///   conservation arithmetic. Bounding the cap separately per priority bounds the worst-case
     ///   negative excursion *per tier*.
     pub max_single_acquire: [u64; Priority::LEVELS],
+    /// Minimum bytes a demand-elastic fair-share grant hands a parked waiter, indexed by
+    /// [`Priority`]. See `Distributor::pass`: under contention the per-waiter share
+    /// (`free / parked`) shrinks toward zero, so the distributor floors each grant here to keep it
+    /// at least a few frames — every served waiter then makes real forward progress instead of
+    /// receiving sub-frame slivers that just force another acquire round-trip. The floor never
+    /// raises a grant above the credit actually free, nor above `max_single_acquire[p]`.
+    ///
+    /// Per-priority (like `max_single_acquire`) so latency-sensitive tiers can use a small slice
+    /// (finer round-robin, lower head-of-line delay) while bulk tiers use a larger one (fewer
+    /// re-acquire round-trips per unit of throughput).
+    pub min_grant_slice: [u64; Priority::LEVELS],
 }
+
+/// Default minimum fair-share grant slice: a handful of MTU-sized frames. Large enough that a
+/// served waiter does useful work before re-acquiring, small enough that many waiters can be served
+/// per pass under contention. Tune empirically via dc-tester.
+const DEFAULT_MIN_GRANT_SLICE: u64 = 64 * 1024;
 
 impl Default for Config {
     #[inline]
@@ -40,6 +56,7 @@ impl Default for Config {
                 small, small, small, small, // Highest, High, MediumHigh, Medium
                 large, large, large, large, // MediumLow, Low, Lowest, Background
             ],
+            min_grant_slice: [DEFAULT_MIN_GRANT_SLICE; Priority::LEVELS],
         }
     }
 }
@@ -58,6 +75,7 @@ impl Config {
                 small, small, small, small, // Highest, High, MediumHigh, Medium
                 large, large, large, large, // MediumLow, Low, Lowest, Background
             ],
+            min_grant_slice: [DEFAULT_MIN_GRANT_SLICE; Priority::LEVELS],
         }
     }
 
@@ -72,6 +90,20 @@ impl Config {
     #[inline]
     pub fn with_max_single_acquire_per_priority(mut self, caps: [u64; Priority::LEVELS]) -> Self {
         self.max_single_acquire = caps;
+        self
+    }
+
+    /// Override the minimum fair-share grant slice with a single value applied uniformly.
+    #[inline]
+    pub fn with_min_grant_slice_uniform(mut self, n: u64) -> Self {
+        self.min_grant_slice = [n; Priority::LEVELS];
+        self
+    }
+
+    /// Override the minimum fair-share grant slice explicitly, one entry per [`Priority`] level.
+    #[inline]
+    pub fn with_min_grant_slice_per_priority(mut self, slices: [u64; Priority::LEVELS]) -> Self {
+        self.min_grant_slice = slices;
         self
     }
 
@@ -94,9 +126,21 @@ impl Config {
         for entry in max_single_acquire.iter_mut() {
             *entry = (*entry).max(1).min(cap_bound);
         }
+        // The fair-share floor must be a usable grant size: at least 1 (so the distributor always
+        // makes progress) and never above this tier's per-acquire cap (a grant can't exceed what a
+        // single request could be). The cap is already clamped to the capacity bound above, so
+        // clamping to it also keeps the slice within capacity for real pools — while preserving the
+        // `capacity == 0` test carve-out (unbounded), which clamping directly to capacity would
+        // wrongly collapse to 1. A pool smaller than the configured slice thus still grants: the
+        // slice lands at capacity, not above it. See `Distributor::pass`.
+        let mut min_grant_slice = self.min_grant_slice;
+        for (slice, cap) in min_grant_slice.iter_mut().zip(max_single_acquire.iter()) {
+            *slice = (*slice).max(1).min(*cap);
+        }
         Self {
             capacity,
             max_single_acquire,
+            min_grant_slice,
         }
     }
 
@@ -115,6 +159,7 @@ mod tests {
         let c = Config {
             capacity: 1000,
             max_single_acquire: [u64::MAX; Priority::LEVELS],
+            min_grant_slice: [DEFAULT_MIN_GRANT_SLICE; Priority::LEVELS],
         }
         .normalized();
         for entry in c.max_single_acquire.iter() {
@@ -127,6 +172,7 @@ mod tests {
         let c = Config {
             capacity: 1000,
             max_single_acquire: [0; Priority::LEVELS],
+            min_grant_slice: [DEFAULT_MIN_GRANT_SLICE; Priority::LEVELS],
         }
         .normalized();
         for entry in c.max_single_acquire.iter() {
@@ -140,6 +186,7 @@ mod tests {
         let c = Config {
             capacity: 1000,
             max_single_acquire: caps,
+            min_grant_slice: [DEFAULT_MIN_GRANT_SLICE; Priority::LEVELS],
         }
         .normalized();
         let priorities = [
@@ -172,6 +219,41 @@ mod tests {
         let c = Config::new(8192).with_max_single_acquire_uniform(99);
         for entry in c.max_single_acquire.iter() {
             assert_eq!(*entry, 99);
+        }
+    }
+
+    #[test]
+    fn min_grant_slice_clamped_to_cap_and_capacity() {
+        // Slice requested far above both the per-acquire cap and the capacity: normalize must clamp
+        // it to the per-priority `max_single_acquire` (which itself is clamped to capacity).
+        let c = Config::new(8192)
+            .with_max_single_acquire_uniform(1024)
+            .with_min_grant_slice_uniform(u64::MAX)
+            .normalized();
+        for slice in c.min_grant_slice.iter() {
+            assert_eq!(*slice, 1024, "slice must clamp to max_single_acquire");
+        }
+
+        // A pool smaller than the configured slice must still grant: slice clamps to capacity.
+        let c = Config::new(4096)
+            .with_max_single_acquire_uniform(4096)
+            .with_min_grant_slice_uniform(64 * 1024)
+            .normalized();
+        for slice in c.min_grant_slice.iter() {
+            assert_eq!(
+                *slice, 4096,
+                "slice must clamp to capacity when capacity < slice"
+            );
+        }
+    }
+
+    #[test]
+    fn min_grant_slice_minimum_one() {
+        let c = Config::new(8192)
+            .with_min_grant_slice_uniform(0)
+            .normalized();
+        for slice in c.min_grant_slice.iter() {
+            assert_eq!(*slice, 1);
         }
     }
 }

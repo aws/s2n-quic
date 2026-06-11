@@ -43,13 +43,18 @@ use crate::path::secret::map::Entry as PathSecretEntry;
 /// Outcome of `ServerView::bind_and_send_stream`.
 pub enum BindResult {
     /// The slot already had a matching binding — packet pushed.
-    Bound(AutoWake),
+    /// `release_bytes` is the number of newly-buffered bytes the caller must
+    /// return to the recv credit pool.
+    Bound { waker: AutoWake, release_bytes: u64 },
     /// A new binding was created.  The caller must hand the receivers to the
     /// stream handshake task.
     NewBinding {
         waker: AutoWake,
         stream: StreamReceiver,
         control: ControlReceiver,
+        /// Newly-buffered bytes from the bind frame's payload that exceed the
+        /// unbacked initial window. Caller must release these to the recv pool.
+        release_bytes: u64,
     },
 }
 
@@ -65,14 +70,19 @@ pub struct ServerState {
     pub(crate) pages: PageTable,
     pub(crate) freed: FreedInner,
     pub(crate) max_queue_id: u64,
+    /// Per-stream unbacked initial recv window — the bytes a peer may send
+    /// before any pool-backed window grants flow. Configured at endpoint
+    /// construction; passed into slot bind to seed `initial_window_remaining`.
+    pub(crate) initial_recv_window: u64,
 }
 
 impl ServerState {
-    pub fn new(max_queues: VarInt) -> Self {
+    pub fn new(max_queues: VarInt, initial_recv_window: u64) -> Self {
         Self {
             pages: PageTable::new(),
             freed: FreedInner::new(),
             max_queue_id: max_queues.as_u64().saturating_sub(1),
+            initial_recv_window,
         }
     }
 
@@ -146,8 +156,13 @@ impl ServerView {
             return Err(Error::Unallocated(entry));
         };
 
-        match slot.bind_and_push_stream(binding_id, entry)? {
-            BindState::AlreadyBound(waker) => Ok(BindResult::Bound(waker)),
+        let (state, release_bytes) =
+            slot.bind_and_push_stream(binding_id, entry, self.state.initial_recv_window)?;
+        match state {
+            BindState::AlreadyBound(waker) => Ok(BindResult::Bound {
+                waker,
+                release_bytes,
+            }),
             BindState::NewBinding(waker) => {
                 let slot_ptr = slot.as_ptr();
                 let on_free = OnFree::Server {
@@ -160,6 +175,7 @@ impl ServerView {
                     waker,
                     stream,
                     control,
+                    release_bytes,
                 })
             }
         }
@@ -195,7 +211,10 @@ impl ServerView {
         if stored & super::slot::UNALLOCATED_BIT == 0 {
             // Slot is allocated. If binding matches, it's already bound.
             if stored == binding_id.as_u64() {
-                return Ok(BindResult::Bound(AutoWake::default()));
+                return Ok(BindResult::Bound {
+                    waker: AutoWake::default(),
+                    release_bytes: 0,
+                });
             }
             // Binding mismatch — stale or future
             if binding_id.as_u64() < stored {
@@ -206,7 +225,7 @@ impl ServerView {
         }
 
         // Slot is unallocated — bind it
-        match slot.allocate_and_open(binding_id) {
+        match slot.allocate_and_open(binding_id, self.state.initial_recv_window) {
             Ok(true) => {
                 let slot_ptr = slot.as_ptr();
                 let on_free = OnFree::Server {
@@ -219,9 +238,13 @@ impl ServerView {
                     waker: AutoWake::default(),
                     stream,
                     control,
+                    release_bytes: 0,
                 })
             }
-            Ok(false) => Ok(BindResult::Bound(AutoWake::default())),
+            Ok(false) => Ok(BindResult::Bound {
+                waker: AutoWake::default(),
+                release_bytes: 0,
+            }),
             Err(_) => Err(Error::SenderClosed),
         }
     }
@@ -232,7 +255,7 @@ impl ServerView {
         queue_id: VarInt,
         binding_id: VarInt,
         entry: intrusive::Entry<msg::Stream>,
-    ) -> Result<AutoWake, Error<intrusive::Entry<msg::Stream>>> {
+    ) -> Result<(AutoWake, u64), Error<intrusive::Entry<msg::Stream>>> {
         let index = queue_id.as_u64() as usize;
         let Some(slot) = self.view.get(index, &self.state.pages) else {
             return Err(Error::Unallocated(entry));
@@ -256,20 +279,23 @@ impl ServerView {
 
     #[inline]
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn send_msg<E>(
         &mut self,
         queue_id: VarInt,
         binding_id: VarInt,
         msg_id: u64,
         stream_offset: u64,
+        peer_max_offset: u64,
         message_size: u32,
         chunk_size: u16,
         chunk_index: u32,
         payload_len: u32,
         is_fin: bool,
         is_wakeup: bool,
+        blocked: bool,
         write_fn: impl FnOnce(*mut u8, u32) -> Result<(), E>,
-    ) -> Result<AutoWake, super::MsgError<E>> {
+    ) -> Result<(AutoWake, u64), super::MsgError<E>> {
         let index = queue_id.as_u64() as usize;
         let Some(slot) = self.view.get(index, &self.state.pages) else {
             return Err(super::MsgError::Queue(Error::Unallocated(())));
@@ -278,12 +304,14 @@ impl ServerView {
             binding_id,
             msg_id,
             stream_offset,
+            peer_max_offset,
             message_size,
             chunk_size,
             chunk_index,
             payload_len,
             is_fin,
             is_wakeup,
+            blocked,
             write_fn,
         )
     }
@@ -357,7 +385,7 @@ mod tests {
         // Second send with same binding
         let result =
             server.bind_and_send_stream(v(0), v(1), make_stream_entry(), &path_entry, &mut tx);
-        assert!(matches!(result, Ok(BindResult::Bound(_))));
+        assert!(matches!(result, Ok(BindResult::Bound { .. })));
 
         drop((stream, control));
     }

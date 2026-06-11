@@ -391,7 +391,7 @@ expression: logs
 0:00:00.000021000 [client] TRACE c#send.pending.drain[send.0]=1
 0:00:00.000021000 [client] TRACE g#send.pending.depth[send.0]=0
 0:00:00.000021000 [client] TRACE c#tx.frame[queue_data_fin]=1
-0:00:00.000021000 [client] TRACE m#tx.packet_size=180
+0:00:00.000021000 [client] TRACE m#tx.packet_size=182
 0:00:00.000021000 [client] TRACE m#tx.frames_per_packet=1
 0:00:00.000021000 [client] TRACE m#tx.payload_size=128
 0:00:00.000021000 [client] TRACE c#tx.data=1
@@ -407,7 +407,7 @@ expression: logs
 0:00:00.000021000 [client] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.0]=1
 0:00:00.000021000 [client] TRACE m#q.resolver_to_pto_wheel.depth_dist[send.worker.0]=1
 0:00:00.000021000 [client] TRACE c#socket.tx.ops[send.0]=1
-0:00:00.000021000 [client] TRACE c#socket.tx.bytes[send.0]=180
+0:00:00.000021000 [client] TRACE c#socket.tx.bytes[send.0]=182
 0:00:00.000021000 [client] TRACE m#task.assembler.drained[send.0]=1
 0:00:00.000021000 [client] TRACE m#task.tx_wheel.drained[send.worker.0]=0
 0:00:00.000021000 [client] TRACE c#credit.send.distributor.passes=1
@@ -415,7 +415,7 @@ expression: logs
 0:00:00.000021000 [client] TRACE m#task.pto_wheel.drained[send.worker.0]=1
 0:00:00.000021000 [client] TRACE m#task.pto_wheel.drained[send.worker.0]=0
 0:00:00.000521000 [server] TRACE c#socket.rx.ops[recv.0]=1
-0:00:00.000521000 [server] TRACE c#socket.rx.bytes[recv.0]=180
+0:00:00.000521000 [server] TRACE c#socket.rx.bytes[recv.0]=182
 0:00:00.000521000 [server] TRACE c#router.routed=1
 0:00:00.000521000 [server] TRACE c#router.routed[recv.0]=1
 0:00:00.000521000 [server] TRACE c#q.dispatch_rx.enq[recv.0]=1
@@ -666,7 +666,7 @@ expression: logs
 0:00:00.001021000 [client] TRACE m#tx.ack_packets[send.0]=1
 0:00:00.001021000 [client] TRACE c#send.inflight.drain.ack[send.0]=1
 0:00:00.001021000 [client] TRACE c#tx.ecn.ect0[send.0]=1
-0:00:00.001021000 [client] TRACE m#send.cwnd[send.0]=14900
+0:00:00.001021000 [client] TRACE m#send.cwnd[send.0]=14902
 0:00:00.001021000 [client] TRACE m#send.pacing_rate[send.0]=40368997
 0:00:00.001021000 [client] TRACE c#send.app_limited[send.0]=1
 0:00:00.001021000 [client] TRACE m#task.ack_processor.drained[send.worker.0]=2
@@ -850,7 +850,7 @@ expression: logs
 0:00:00.001061000 [client] TRACE c#send.pending.drain[send.5]=1
 0:00:00.001061000 [client] TRACE g#send.pending.depth[send.5]=0
 0:00:00.001061000 [client] TRACE c#tx.frame[queue_data_fin]=1
-0:00:00.001061000 [client] TRACE m#tx.packet_size=180
+0:00:00.001061000 [client] TRACE m#tx.packet_size=182
 0:00:00.001061000 [client] TRACE m#tx.frames_per_packet=1
 0:00:00.001061000 [client] TRACE m#tx.payload_size=128
 0:00:00.001061000 [client] TRACE c#tx.data=1
@@ -866,7 +866,7 @@ expression: logs
 0:00:00.001061000 [client] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.1]=1
 0:00:00.001061000 [client] TRACE m#q.resolver_to_pto_wheel.depth_dist[send.worker.1]=1
 0:00:00.001061000 [client] TRACE c#socket.tx.ops[send.5]=1
-0:00:00.001061000 [client] TRACE c#socket.tx.bytes[send.5]=180
+0:00:00.001061000 [client] TRACE c#socket.tx.bytes[send.5]=182
 0:00:00.001061000 [client] TRACE m#task.assembler.drained[send.5]=1
 0:00:00.001061000 [client] TRACE m#task.tx_wheel.drained[send.worker.1]=0
 0:00:00.001061000 [client] TRACE c#credit.send.distributor.passes=1
@@ -976,7 +976,7 @@ expression: logs
 0:00:00.001541000 [server] TRACE m#task.completion.drained[send.worker.3]=1
 0:00:00.001541000 [server] TRACE m#task.recycle_drain.drained=0
 0:00:00.001561000 [server] TRACE c#socket.rx.ops[recv.5]=1
-0:00:00.001561000 [server] TRACE c#socket.rx.bytes[recv.5]=180
+0:00:00.001561000 [server] TRACE c#socket.rx.bytes[recv.5]=182
 0:00:00.001561000 [server] TRACE c#router.routed=1
 0:00:00.001561000 [server] TRACE c#router.routed[recv.2]=1
 0:00:00.001561000 [server] TRACE c#q.dispatch_rx.enq[recv.2]=1
@@ -1085,8 +1085,8 @@ expression: logs
 0:00:00.001561000 [server] TRACE c#socket.tx.ops[send.1]=1
 0:00:00.001561000 [server] TRACE c#socket.tx.bytes[send.1]=46
 0:00:00.001561000 [server] TRACE m#task.assembler.drained[send.1]=1
-0:00:00.001581000 [server] TRACE m#pick_two.score_delta=523393
-0:00:00.001581000 [server] TRACE m#pick_two.rejected[send.7]=523393
+0:00:00.001581000 [server] TRACE m#pick_two.score_delta=523406
+0:00:00.001581000 [server] TRACE m#pick_two.rejected[send.7]=523406
 0:00:00.001581000 [server] TRACE c#pick_two.chosen[send.1]=1
 0:00:00.001581000 [server] TRACE c#q.resolver.enq[send.1]=1
 0:00:00.001581000 [server] TRACE g#q.resolver.depth[send.1]=1
@@ -1196,7 +1196,7 @@ expression: logs
 0:00:00.002061000 [client] TRACE m#tx.ack_packets[send.5]=1
 0:00:00.002061000 [client] TRACE c#send.inflight.drain.ack[send.5]=1
 0:00:00.002061000 [client] TRACE c#tx.ecn.ect0[send.5]=1
-0:00:00.002061000 [client] TRACE m#send.cwnd[send.5]=14900
+0:00:00.002061000 [client] TRACE m#send.cwnd[send.5]=14902
 0:00:00.002061000 [client] TRACE m#send.pacing_rate[send.5]=40368997
 0:00:00.002061000 [client] TRACE c#send.app_limited[send.5]=1
 0:00:00.002061000 [client] TRACE m#task.ack_processor.drained[send.worker.1]=2
@@ -1315,8 +1315,8 @@ expression: logs
 0:00:00.002081000 [client] TRACE c#q.router_to_batcher.drain[p3]=1
 0:00:00.002081000 [client] TRACE g#q.router_to_batcher.depth[p3]=0
 0:00:00.002081000 [client] TRACE m#task.frame_dispatch.drained=2
-0:00:00.002101000 [client] TRACE m#pick_two.score_delta=1044396
-0:00:00.002101000 [client] TRACE m#pick_two.rejected[send.0]=1044396
+0:00:00.002101000 [client] TRACE m#pick_two.score_delta=1044412
+0:00:00.002101000 [client] TRACE m#pick_two.rejected[send.0]=1044412
 0:00:00.002101000 [client] TRACE c#pick_two.chosen[send.2]=1
 0:00:00.002101000 [client] TRACE c#q.resolver.enq[send.2]=1
 0:00:00.002101000 [client] TRACE g#q.resolver.depth[send.2]=1
@@ -1356,7 +1356,7 @@ expression: logs
 0:00:00.002101000 [client] TRACE c#send.pending.drain[send.2]=1
 0:00:00.002101000 [client] TRACE g#send.pending.depth[send.2]=0
 0:00:00.002101000 [client] TRACE c#tx.frame[queue_data_fin]=1
-0:00:00.002101000 [client] TRACE m#tx.packet_size=180
+0:00:00.002101000 [client] TRACE m#tx.packet_size=182
 0:00:00.002101000 [client] TRACE m#tx.frames_per_packet=1
 0:00:00.002101000 [client] TRACE m#tx.payload_size=128
 0:00:00.002101000 [client] TRACE c#tx.data=1
@@ -1372,7 +1372,7 @@ expression: logs
 0:00:00.002101000 [client] TRACE g#q.resolver_to_pto_wheel.depth[send.worker.2]=1
 0:00:00.002101000 [client] TRACE m#q.resolver_to_pto_wheel.depth_dist[send.worker.2]=1
 0:00:00.002101000 [client] TRACE c#socket.tx.ops[send.2]=1
-0:00:00.002101000 [client] TRACE c#socket.tx.bytes[send.2]=180
+0:00:00.002101000 [client] TRACE c#socket.tx.bytes[send.2]=182
 0:00:00.002101000 [client] TRACE m#task.assembler.drained[send.2]=1
 0:00:00.002101000 [client] TRACE m#task.tx_wheel.drained[send.worker.2]=0
 0:00:00.002101000 [client] TRACE c#credit.send.distributor.passes=1
@@ -1470,7 +1470,7 @@ expression: logs
 0:00:00.002581000 [server] TRACE m#task.completion.drained[send.worker.1]=1
 0:00:00.002581000 [server] TRACE m#task.recycle_drain.drained=0
 0:00:00.002601000 [server] TRACE c#socket.rx.ops[recv.2]=1
-0:00:00.002601000 [server] TRACE c#socket.rx.bytes[recv.2]=180
+0:00:00.002601000 [server] TRACE c#socket.rx.bytes[recv.2]=182
 0:00:00.002601000 [server] TRACE c#router.routed=1
 0:00:00.002601000 [server] TRACE c#router.routed[recv.0]=1
 0:00:00.002601000 [server] TRACE c#q.dispatch_rx.enq[recv.0]=1
@@ -1696,7 +1696,7 @@ expression: logs
 0:00:00.003101000 [client] TRACE m#tx.ack_packets[send.2]=1
 0:00:00.003101000 [client] TRACE c#send.inflight.drain.ack[send.2]=1
 0:00:00.003101000 [client] TRACE c#tx.ecn.ect0[send.2]=1
-0:00:00.003101000 [client] TRACE m#send.cwnd[send.2]=14900
+0:00:00.003101000 [client] TRACE m#send.cwnd[send.2]=14902
 0:00:00.003101000 [client] TRACE m#send.pacing_rate[send.2]=40368997
 0:00:00.003101000 [client] TRACE c#send.app_limited[send.2]=1
 0:00:00.003101000 [client] TRACE m#task.ack_processor.drained[send.worker.2]=2

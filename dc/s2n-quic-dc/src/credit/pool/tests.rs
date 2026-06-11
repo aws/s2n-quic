@@ -67,6 +67,10 @@ fn cfg(capacity: u64, max_single_acquire: u64) -> Config {
     Config {
         capacity,
         max_single_acquire: [max_single_acquire; Priority::LEVELS],
+        // Floor == cap: the fair-share slice never splits a grant below the full request, so these
+        // tests exercise the pre-fair-share full-grant contract they were written against. Tests
+        // that specifically exercise demand-elastic splitting set a smaller slice explicitly.
+        min_grant_slice: [max_single_acquire; Priority::LEVELS],
     }
 }
 
@@ -646,11 +650,13 @@ fn split_credit_no_longer_strands() {
 }
 
 #[test]
-fn second_refill_drains_fresh_arrivals_behind_cached_head() {
-    // Regression for the bounded second-refill behavior. After a prior pass leaves a head cached
-    // in the mirror (it was unaffordable at the time), fresh waiters arrive in the shared tier
-    // behind it. The next pass must refill the mirror once more after granting the cached head, so
-    // those fresh waiters are served in the same pass — not stranded until the next one.
+fn fresh_arrivals_behind_cached_head_served_same_pass() {
+    // After a prior pass leaves a head cached in the mirror (it was unaffordable at the time), fresh
+    // waiters arrive in the shared tier behind it. Because each pass merges the shared tier into the
+    // mirror up-front (via `append`, before computing the slice), the cached head and the fresh
+    // arrivals are all present when the pass grants — so they are served together, not stranded
+    // until a later pass. This also pins the fairness property the up-front merge exists for: the
+    // slice is computed from the *full* backlog (cached + fresh), not just the cached head.
     let mut h = Harness::new(cfg(0, 100));
     let counters: Vec<_> = (0..3).map(|_| Arc::new(WakeCounter::default())).collect();
     let wakers: Vec<_> = counters.iter().map(|c| Waker::from(c.clone())).collect();
@@ -660,7 +666,7 @@ fn second_refill_drains_fresh_arrivals_behind_cached_head() {
     let r = unsafe { h.poll_acquire(slots[0], 5, Priority::Medium, &wakers[0]) };
     assert!(matches!(r, Poll::Pending));
 
-    // First pass with no credit: the distributor refills the mirror with A, finds it unaffordable
+    // First pass with no credit: the distributor merges A into the mirror, finds it unaffordable
     // (free = 0, req = 5), and breaks. A is now cached in the mirror across passes.
     let mut budget = Budget::new(1 << 20);
     let mut dead = DeadSlotQueue::new();
@@ -677,9 +683,9 @@ fn second_refill_drains_fresh_arrivals_behind_cached_head() {
     // Enough credit for all three.
     h.release(15);
 
-    // Single pass: grants A from the cached mirror, mirror drains, refills once more from the
-    // shared tier, then grants B and C. Without the second refill, only A would be served and
-    // B/C would have to wait for another pass.
+    // Single pass: the up-front merge appends B and C (from the shared tier) behind the cached A,
+    // so all three are in the mirror before any grant; the pass then serves A, B, and C. Without
+    // the up-front merge, only A would be served and B/C would wait for another pass.
     let mut budget = Budget::new(1 << 20);
     let mut dead = DeadSlotQueue::new();
     let progressed = h.dist.pass(&mut budget, &mut dead);
@@ -1009,7 +1015,7 @@ fn poll_acquire_after_distributor_drop_signals_closed() {
 
 #[test]
 fn budget_exhaustion_with_dead_reaps() {
-    // Mix dead and live slots so dead_released > 0 and budget runs out mid-walk. Conservation
+    // Mix dead and live slots so reclaimed_avail > 0 and budget runs out mid-walk. Conservation
     // (no over-commit) and no-snipe (available <= 0 with live parkers) must both hold.
     let mut h = Harness::new(cfg(0, 100));
 
@@ -1067,6 +1073,11 @@ fn per_priority_caps_in_pool_acquire() {
     let pool = Pool::new(Config {
         capacity: 1000,
         max_single_acquire: [
+            10, 1000, 1000, 1000, // Highest, High, MediumHigh, Medium
+            1000, 1000, 1000, 1000, // MediumLow, Low, Lowest, Background
+        ],
+        // Per-priority floor == per-priority cap, so this priority-clamp test sees full grants.
+        min_grant_slice: [
             10, 1000, 1000, 1000, // Highest, High, MediumHigh, Medium
             1000, 1000, 1000, 1000, // MediumLow, Low, Lowest, Background
         ],
@@ -1228,5 +1239,241 @@ fn pending_wakers_capacity_persists_across_polls() {
 
     for s in slots {
         unsafe { free_test_slot(s) };
+    }
+}
+
+// ── Demand-elastic fair-share robustness ───────────────────────────────────────
+//
+// These pin the behavior of the per-tier fair-share slice (`Distributor::pass`) across the demand
+// shapes that motivated it: uniform-tiny, heavily-mixed, and a partial-grant refund. The shared
+// invariant is conservation — at quiescence with no parked waiter, `available + returned ==
+// capacity` — alongside the specific grant / forward-progress guarantees.
+
+/// Build a config with an explicit fair-share floor distinct from the per-acquire cap, so the
+/// demand-elastic split is actually exercised (the `cfg` helper sets floor == cap, disabling it).
+fn cfg_slice(capacity: u64, max_single_acquire: u64, min_grant_slice: u64) -> Config {
+    Config {
+        capacity,
+        max_single_acquire: [max_single_acquire; Priority::LEVELS],
+        min_grant_slice: [min_grant_slice; Priority::LEVELS],
+    }
+}
+
+/// Quiescent conservation check: with no waiter parked, all credit lives in `available + returned`.
+fn assert_conserved(h: &Harness, capacity: u64) {
+    let available = h.pool.debug_available();
+    let returned = h.pool.debug_returned();
+    assert!(
+        available >= 0,
+        "available went negative at quiescence: {available}"
+    );
+    assert_eq!(
+        available as u64 + returned,
+        capacity,
+        "credit not conserved: available={available} + returned={returned} != capacity={capacity}"
+    );
+}
+
+/// Many tiny requests against ample credit must ALL be granted their full request in one pass — the
+/// `min_grant_slice` floor never forces a premature bail when every head wants far less than the
+/// slice. Guards against a regression where the bail (`grant_amount > free`) fires for small heads.
+#[test]
+fn fair_share_tiny_requests_all_served_no_premature_bail() {
+    const N: usize = 100;
+    const REQ: u64 = 100;
+    const CAP: u64 = 1024 * 1024;
+    // Floor far above any single request: each head still only takes its own `req`, never the floor.
+    let mut h = Harness::new(cfg_slice(CAP, CAP, 64 * 1024));
+
+    // Drain the pool so all N park (forces the distributor path, not the fast path).
+    let drain_counter = Arc::new(WakeCounter::default());
+    let drain_waker = Waker::from(drain_counter);
+    let drain_slot = alloc_test_slot();
+    let r = unsafe { h.poll_acquire(drain_slot, CAP, Priority::Medium, &drain_waker) };
+    assert_eq!(r, Poll::Ready(CAP));
+
+    let counters: Vec<_> = (0..N).map(|_| Arc::new(WakeCounter::default())).collect();
+    let wakers: Vec<_> = counters.iter().map(|c| Waker::from(c.clone())).collect();
+    let slots: Vec<_> = (0..N).map(|_| alloc_test_slot()).collect();
+    for i in 0..N {
+        let r = unsafe { h.poll_acquire(slots[i], REQ, Priority::Medium, &wakers[i]) };
+        assert!(matches!(r, Poll::Pending));
+    }
+
+    // Return exactly the aggregate tiny demand; one pass must serve every waiter in full.
+    h.release(N as u64 * REQ);
+    h.distribute();
+
+    for (i, c) in counters.iter().enumerate() {
+        assert_eq!(c.wakeups(), 1, "tiny waiter {i} not served");
+        let s = unsafe { &*slots[i].as_ptr() };
+        assert_eq!(
+            s.poll_granted(),
+            GrantResult::Granted(REQ),
+            "tiny waiter {i}"
+        );
+    }
+
+    // Release the drained CAP (in-flight to drain_slot) and confirm conservation at quiescence.
+    h.release(CAP);
+    h.distribute();
+    assert_conserved(&h, CAP);
+
+    unsafe {
+        free_test_slot(drain_slot);
+        for s in slots {
+            free_test_slot(s);
+        }
+    }
+}
+
+/// Mixed demand: one large waiter ahead of many tiny ones, against credit far short of the large
+/// request. The large head must be capped at the slice (not granted its full request, which would
+/// drain the pool and starve the rest), and over repeated release+distribute rounds every small
+/// waiter must make forward progress while the large one round-robins.
+#[test]
+fn fair_share_mixed_demand_caps_large_and_progresses() {
+    const CAP: u64 = 1024 * 1024;
+    const SLICE: u64 = 64 * 1024;
+    // A single acquire can never exceed capacity (you can't hold more than the whole pool), so the
+    // "large" head requests the per-acquire max (== CAP) and re-acquires for more across rounds.
+    const BIG: u64 = CAP;
+    const SMALL: u64 = 100;
+    const N_SMALL: usize = 16;
+    let mut h = Harness::new(cfg_slice(CAP, CAP, SLICE));
+
+    // Pre-drain the pool so every subsequent acquire parks (forces the distributor path).
+    let drain_counter = Arc::new(WakeCounter::default());
+    let drain_waker = Waker::from(drain_counter);
+    let drain_slot = alloc_test_slot();
+    let r = unsafe { h.poll_acquire(drain_slot, CAP, Priority::Medium, &drain_waker) };
+    assert_eq!(r, Poll::Ready(CAP));
+
+    let big_counter = Arc::new(WakeCounter::default());
+    let big_waker = Waker::from(big_counter.clone());
+    let big_slot = alloc_test_slot();
+    let r = unsafe { h.poll_acquire(big_slot, BIG, Priority::Medium, &big_waker) };
+    assert!(matches!(r, Poll::Pending));
+
+    let small_counters: Vec<_> = (0..N_SMALL)
+        .map(|_| Arc::new(WakeCounter::default()))
+        .collect();
+    let small_wakers: Vec<_> = small_counters
+        .iter()
+        .map(|c| Waker::from(c.clone()))
+        .collect();
+    let small_slots: Vec<_> = (0..N_SMALL).map(|_| alloc_test_slot()).collect();
+    for i in 0..N_SMALL {
+        let r =
+            unsafe { h.poll_acquire(small_slots[i], SMALL, Priority::Medium, &small_wakers[i]) };
+        assert!(matches!(r, Poll::Pending));
+    }
+
+    // The drain returns its CAP. The big head is at the front of the tier with parked = 17
+    // (big + 16 small), so slice = max(CAP/17, SLICE) = SLICE; the big head is capped at SLICE,
+    // NOT granted its full CAP request (which would drain everything and starve the smalls).
+    h.release(CAP);
+    h.distribute();
+
+    let big_ref = unsafe { &*big_slot.as_ptr() };
+    match big_ref.poll_granted() {
+        GrantResult::Granted(n) => assert_eq!(
+            n, SLICE,
+            "large head must be capped at the fair-share slice, got {n}"
+        ),
+        other => panic!("large head not granted: {other:?}"),
+    }
+
+    // It re-acquires for more, parking again at the tail — proving the large stream round-robins
+    // behind the smalls rather than monopolizing the pool.
+    let r = unsafe { h.poll_acquire(big_slot, BIG, Priority::Medium, &big_waker) };
+    assert!(matches!(r, Poll::Pending));
+
+    // Drive rounds until every small waiter is served; the big one keeps round-robining. Bounded
+    // loop so a starvation regression fails loudly instead of hanging.
+    for _round in 0..64 {
+        if small_counters.iter().all(|c| c.wakeups() >= 1) {
+            break;
+        }
+        h.release(SLICE);
+        h.distribute();
+    }
+    for (i, c) in small_counters.iter().enumerate() {
+        assert!(
+            c.wakeups() >= 1,
+            "small waiter {i} starved behind the large one"
+        );
+    }
+
+    // Resolve the still-parked big slot before freeing it — a linked slot must not be dropped.
+    // Release until the distributor grants it (each grant is capped at SLICE), then drain the grant
+    // so the slot transitions back to idle/APP-owned and is safe to free.
+    let big_ref = unsafe { &*big_slot.as_ptr() };
+    let mut big_resolved = false;
+    for _round in 0..64 {
+        if matches!(big_ref.poll_granted(), GrantResult::Granted(_)) {
+            big_resolved = true;
+            break;
+        }
+        h.release(SLICE);
+        h.distribute();
+    }
+    assert!(
+        big_resolved,
+        "big slot never resolved; cannot free a parked slot"
+    );
+
+    unsafe {
+        free_test_slot(drain_slot);
+        free_test_slot(big_slot);
+        for s in small_slots {
+            free_test_slot(s);
+        }
+    }
+}
+
+/// Conservation across a partial (sliced) grant: when the slice caps a grant below the request, the
+/// un-granted remainder must return to `available` (via `reclaimed_avail`), never leak. A lone
+/// waiter sliced down, then fully drained, must leave `available + returned == capacity`.
+#[test]
+fn fair_share_partial_grant_refund_conserves() {
+    const CAP: u64 = 256 * 1024;
+    const SLICE: u64 = 64 * 1024;
+    const REQ: u64 = 256 * 1024;
+    let mut h = Harness::new(cfg_slice(CAP, REQ, SLICE));
+
+    // Pre-drain so the real waiter takes the distributor path.
+    let drain_slot = alloc_test_slot();
+    let drain_counter = Arc::new(WakeCounter::default());
+    let drain_waker = Waker::from(drain_counter);
+    let r = unsafe { h.poll_acquire(drain_slot, CAP, Priority::Medium, &drain_waker) };
+    assert_eq!(r, Poll::Ready(CAP));
+
+    let counter = Arc::new(WakeCounter::default());
+    let waker = Waker::from(counter.clone());
+    let slot = alloc_test_slot();
+    let r = unsafe { h.poll_acquire(slot, REQ, Priority::Medium, &waker) };
+    assert!(matches!(r, Poll::Pending));
+
+    // The drain returns only SLICE of its CAP: with one parker and `free == SLICE < REQ`, the grant
+    // is capped to SLICE and the park-time debit's remainder (REQ - SLICE) must be refunded to
+    // `available` via `reclaimed_avail` rather than leaked.
+    h.release(SLICE);
+    h.distribute();
+    let s = unsafe { &*slot.as_ptr() };
+    assert_eq!(s.poll_granted(), GrantResult::Granted(SLICE));
+    // Refund landed: with the lone waiter resolved, `available` is back to zero (the drain still
+    // holds CAP - SLICE in flight, the waiter holds the granted SLICE — together exactly CAP).
+    assert_eq!(h.pool.debug_available(), 0);
+
+    // Drive to quiescence: the drain returns its remaining CAP - SLICE and the waiter returns its
+    // granted SLICE — CAP total back to the pool. Nothing is parked, so it all lands in `available`.
+    h.release(CAP);
+    h.distribute();
+    assert_conserved(&h, CAP);
+
+    unsafe {
+        free_test_slot(drain_slot);
+        free_test_slot(slot);
     }
 }

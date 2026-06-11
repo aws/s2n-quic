@@ -13,8 +13,19 @@ use std::sync::Arc;
 pub enum Stream {
     Data {
         offset: VarInt,
+        /// Absolute largest stream offset the writer wants to send (its high watermark),
+        /// reconstructed from the frame's `largest_offset`. Lets the reader right-size the
+        /// receive window it advertises.
+        peer_max_offset: VarInt,
         fin: bool,
+        /// The writer signaled it is flow-control blocked at `peer_max_offset`.
+        blocked: bool,
         payload: BytesMut,
+    },
+    /// Standalone writer-blocked signal (from a `QueueDataBlocked` frame). Carries the desired
+    /// high-water offset; the reader uses it to grow its window. No payload.
+    Blocked {
+        desired_offset: VarInt,
     },
     Reset {
         error_code: VarInt,

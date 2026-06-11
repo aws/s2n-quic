@@ -37,7 +37,15 @@ use tokio::{
 };
 
 pub use crate::endpoint::DEFAULT_IDLE_TIMEOUT;
+/// Connection-level flow-control window and the local send window. Bounds the peer's
+/// connection-level `remote_max_data`; the effective send rate is gated by the peer's advertised
+/// per-stream window and the endpoint send credit pool, so this stays generous.
 pub const DEFAULT_MAX_DATA: u64 = 1u64 << 23;
+/// Per-stream *recv* window we advertise (`local_recv_max_data`). This is also the unbacked initial
+/// window a fresh stream may receive before any pool-backed `MAX_DATA` grant, so it is kept small:
+/// a fan-out of N peers can each fill this much before drawing from the recv credit pool. Window
+/// growth beyond this is pool-backed and capped per-stream by the recv pool's `max_single_acquire`.
+pub const DEFAULT_RECV_WINDOW: u64 = 64 * 1024;
 pub const DEFAULT_BASE_MTU: u16 = 1450;
 #[cfg(target_os = "linux")]
 pub const DEFAULT_MTU: u16 = 8940;
@@ -179,7 +187,7 @@ impl Server {
             .with_max_idle_timeout(builder.max_idle_timeout)?
             .with_data_window(builder.data_window)?
             .with_bidirectional_local_data_window(builder.data_window)?
-            .with_bidirectional_remote_data_window(builder.data_window)?
+            .with_bidirectional_remote_data_window(builder.recv_window)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
         let event = (
@@ -355,7 +363,7 @@ impl Client {
             .with_max_idle_timeout(builder.max_idle_timeout)?
             .with_data_window(builder.data_window)?
             .with_bidirectional_local_data_window(builder.data_window)?
-            .with_bidirectional_remote_data_window(builder.data_window)?
+            .with_bidirectional_remote_data_window(builder.recv_window)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
 
         let event = (

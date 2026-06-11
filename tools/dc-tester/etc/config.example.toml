@@ -121,6 +121,25 @@ use_msg = true
 request_size = { min = 134217728, max = 4294967296 }
 response_size = 1024
 
+# 100 concurrent bulk uploaders contending the shared recv credit pool. Tests fair-share of BW,
+# whether aggregate BW stays saturated under contention, and whether any stream starves (per-chunk
+# 10s watchdog fires → "writer/reader did not produce a chunk").
+[[client.workloads]]
+name = "xlarge-request-100"
+workers = 100
+request_size = { min = 134217728, max = 4294967296 }
+response_size = 1024
+
+# Same as xlarge-request-100 but exercising the write_msg (QueueMsg) path instead of write_from
+# (QueueData), to validate per-frame coop yielding across the segmented message path under
+# contention.
+[[client.workloads]]
+name = "xlarge-request-100-msg"
+workers = 100
+use_msg = true
+request_size = { min = 134217728, max = 4294967296 }
+response_size = 1024
+
 [[client.workloads]]
 name = "xlarge-response"
 workers = 1

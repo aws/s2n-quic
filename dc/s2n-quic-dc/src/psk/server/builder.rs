@@ -5,6 +5,7 @@ use crate::{
     path::secret,
     psk::io::{
         Result, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_DATA, DEFAULT_MTU, DEFAULT_PTO_JITTER_PERCENTAGE,
+        DEFAULT_RECV_WINDOW,
     },
 };
 use s2n_quic::provider::{event::Subscriber as Sub, tls::Provider as Prov};
@@ -18,6 +19,7 @@ pub struct Builder<
     #[allow(dead_code)]
     pub(crate) event_subscriber: Event,
     pub(crate) data_window: u64,
+    pub(crate) recv_window: u64,
     pub(crate) mtu: u16,
     pub(crate) max_idle_timeout: Duration,
     pub(crate) data_addrs: Vec<SocketAddr>,
@@ -47,6 +49,7 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
         Self {
             event_subscriber: Default::default(),
             data_window: DEFAULT_MAX_DATA,
+            recv_window: DEFAULT_RECV_WINDOW,
             mtu: DEFAULT_MTU,
             max_idle_timeout: DEFAULT_IDLE_TIMEOUT,
             data_addrs: Vec::new(),
@@ -66,6 +69,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
         Builder {
             event_subscriber,
             data_window: self.data_window,
+            recv_window: self.recv_window,
             mtu: self.mtu,
             max_idle_timeout: self.max_idle_timeout,
             data_addrs: self.data_addrs,
@@ -87,9 +91,16 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
         self
     }
 
-    /// Sets the data window to use for flow control
+    /// Sets the connection-level data window to use for flow control.
     pub fn with_data_window(mut self, data_window: u64) -> Self {
         self.data_window = data_window;
+        self
+    }
+
+    /// Sets the per-stream receive window advertised to the peer (`local_recv_max_data`). This is
+    /// also the unbacked initial window a fresh stream may receive before any pool-backed grant.
+    pub fn with_recv_window(mut self, recv_window: u64) -> Self {
+        self.recv_window = recv_window;
         self
     }
 

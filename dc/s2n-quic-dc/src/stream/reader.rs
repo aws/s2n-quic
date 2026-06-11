@@ -104,9 +104,11 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 use std::{
+    alloc::{self, Layout},
     io,
     net::SocketAddr,
     pin::Pin,
+    ptr::NonNull,
     sync::Arc,
     task::{Context, Poll},
 };
@@ -149,7 +151,142 @@ use std::{
 ///     Ok(body)
 /// }
 /// ```
-pub struct Reader(Box<Inner>);
+pub struct Reader(ReaderAllocPtr);
+
+#[repr(C)]
+struct ReaderAlloc {
+    /// MUST live at offset 0 — the credit pool casts `NonNull<Slot>` back to
+    /// `NonNull<ReaderAlloc>` via the registered `drop_fn`. Enforced at compile
+    /// time by [`crate::assert_slot_at_offset_zero!`] below.
+    slot: crate::credit::Slot,
+    inner: Inner,
+}
+
+crate::assert_slot_at_offset_zero!(ReaderAlloc);
+
+/// Owning pointer to a `ReaderAlloc`. Derefs to `Inner` so the reader body keeps
+/// its `self.0.field` ergonomics, while drop is staged through the credit slot's
+/// abandon/grant state machine: a parked acquire can transfer ownership of the
+/// allocation to the recv credit pool, which then calls [`drop_reader_alloc`]
+/// to free it.
+struct ReaderAllocPtr(NonNull<ReaderAlloc>);
+
+// SAFETY: `ReaderAllocPtr` owns the heap allocation exclusively. `Inner`'s
+// fields are all `Send` (and not `Sync`), and `credit::Slot` is `Send`/`Sync`.
+// The pool only ever reads/writes `Slot` fields under its own state machine; it
+// never touches `Inner`.
+unsafe impl Send for ReaderAllocPtr {}
+
+impl ReaderAllocPtr {
+    /// Allocate a `ReaderAlloc` initialized with `inner` and an idle (rc=APP)
+    /// `Slot` registered against [`drop_reader_alloc`].
+    fn new(inner: Inner) -> Self {
+        let layout = Layout::new::<ReaderAlloc>();
+        let raw = unsafe { alloc::alloc(layout) } as *mut ReaderAlloc;
+        let ptr = NonNull::new(raw).unwrap_or_else(|| alloc::handle_alloc_error(layout));
+        unsafe {
+            std::ptr::write(
+                ptr.as_ptr(),
+                ReaderAlloc {
+                    slot: crate::credit::Slot::new(drop_reader_alloc),
+                    inner,
+                },
+            );
+        }
+        Self(ptr)
+    }
+
+    /// Pointer to the embedded `Slot` for handing to the credit pool.
+    #[inline]
+    fn slot_ptr(&self) -> NonNull<crate::credit::Slot> {
+        self.0.cast()
+    }
+}
+
+impl core::ops::Deref for ReaderAllocPtr {
+    type Target = Inner;
+    #[inline]
+    fn deref(&self) -> &Inner {
+        unsafe { &(*self.0.as_ptr()).inner }
+    }
+}
+
+impl core::ops::DerefMut for ReaderAllocPtr {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Inner {
+        unsafe { &mut (*self.0.as_ptr()).inner }
+    }
+}
+
+impl Drop for ReaderAllocPtr {
+    fn drop(&mut self) {
+        // Two distinct quantities must return to the recv pool on drop:
+        //
+        // 1. The advertised-but-unfilled window. Each `poll_acquire` commits its
+        //    grant straight into `remote_max_data`; the dispatch side only
+        //    releases credit as bytes actually arrive. The window the reader
+        //    advertised beyond what the peer sent is therefore still debited.
+        //    `StreamReceiver::finish_recv_accounting` computes that leftover
+        //    (`remote_max_data - max_received_offset - initial_window_remaining`)
+        //    under the slot lock, idempotently and race-free against any
+        //    concurrent dispatch release. We do this BEFORE `abandon` so it runs
+        //    regardless of which ownership branch the CAS lands on.
+        // 2. An unobserved distributor grant. If the distributor granted while
+        //    we were unparked, the grant sits in the slot unseen by
+        //    `poll_granted`; the `abandon` CAS surfaces it as `Granted(n)`.
+        let inner = unsafe { &(*self.0.as_ptr()).inner };
+        let leftover = inner
+            .stream_rx
+            .finish_recv_accounting(inner.remote_max_data.as_u64());
+        if leftover > 0 {
+            inner.recv_credit_pool.release(leftover);
+        }
+
+        // SAFETY: `abandon`'s relaxed contract permits calling it in any
+        // APP-owned or LINKED state, exactly the range the slot can be in
+        // when the reader drops.
+        let slot = unsafe { &(*self.0.as_ptr()).slot };
+        match unsafe { slot.abandon() } {
+            crate::credit::AbandonResult::Abandoned => {
+                // The slot was LINKED and is now DEAD. The pool's pop walk
+                // will call `drop_reader_alloc` to free the allocation; we
+                // must not touch it again. (The leftover release above already
+                // ran and touched only the pool, not the slot allocation.)
+                return;
+            }
+            crate::credit::AbandonResult::Granted(n) => {
+                // We own the allocation. If the pool delivered a grant we
+                // never observed, return it — otherwise it would leak from
+                // the pool's accounting until restart.
+                if n > 0 {
+                    inner.recv_credit_pool.release(n);
+                }
+            }
+            crate::credit::AbandonResult::Closed => {
+                // Pool was dropped concurrently. We own the allocation; do
+                // not touch the pool.
+            }
+        }
+        // SAFETY: The slot is APP-owned and we hold the only reference. Drop
+        // `Inner` and free the heap block.
+        unsafe {
+            std::ptr::drop_in_place(&raw mut (*self.0.as_ptr()).inner);
+            alloc::dealloc(self.0.as_ptr().cast(), Layout::new::<ReaderAlloc>());
+        }
+    }
+}
+
+/// `drop_fn` invoked by the credit pool when it pops a dead slot — i.e. the
+/// reader was dropped while its slot was linked, the pool then dequeued the
+/// dead entry and now owns the allocation. Drops `Inner` and frees the block.
+unsafe fn drop_reader_alloc(ptr: NonNull<crate::credit::Slot>) {
+    // SAFETY: `Slot` lives at offset 0 of `ReaderAlloc` (see
+    // `assert_slot_at_offset_zero!`), so the cast points back to the original
+    // allocation. The pool guarantees this is called exactly once.
+    let ptr = ptr.cast::<ReaderAlloc>();
+    std::ptr::drop_in_place(&raw mut (*ptr.as_ptr()).inner);
+    alloc::dealloc(ptr.as_ptr().cast(), Layout::new::<ReaderAlloc>());
+}
 
 use super::coop::{self, Coop, HasCoop};
 
@@ -190,8 +327,43 @@ struct Inner {
     reassembler: Reassembler,
     /// Remote flow control: maximum offset we've advertised to the sender
     remote_max_data: VarInt,
-    /// Window size for flow control
+    /// Unbacked window the reader may still advertise WITHOUT acquiring pool credit.
+    ///
+    /// Seeded to `local_recv_max_data` at construction (same value the slot seeds into its
+    /// `initial_window_remaining`, see `path/secret/map/entry.rs`). The peer is already bounded by
+    /// this handshake parameter, so this first window is "free" — the dispatch side never releases
+    /// pool credit for bytes that land inside it, and `finish_recv_accounting` subtracts the unused
+    /// remainder at termination. Advertising it therefore must NOT draw from the pool.
+    ///
+    /// This is what guarantees the server's first MAX_DATA — the one that confirms the binding and
+    /// unblocks the peer writer out of `InitSent` — always goes out even when the recv pool is
+    /// drained. Window growth *beyond* the unbacked window is pool-backed as before. Each MAX_DATA
+    /// extension draws from this first, and only the remainder is acquired from the pool.
+    unbacked_remaining: u64,
+    /// Bootstrap window and top-up threshold (no longer the acquire ceiling). The advertised
+    /// window now tracks the writer's hinted high watermark, grown multiplicatively on blocked
+    /// signals up to the recv pool's `max_single_acquire`.
     window_size: u64,
+    /// Highest absolute offset the writer has told us it wants to send (running max of the
+    /// per-frame `peer_max_offset` hint and any blocked `desired_offset`). Zero until the first
+    /// hint arrives, which keeps the bootstrap window behavior unchanged.
+    peer_max_offset: u64,
+    /// `consumed_len` at the most recent window-growth doubling. Growth is gated on `consumed`
+    /// advancing past this mark, which paces doublings to roughly once per drained window and
+    /// dedups the burst of blocked frames (and any retransmits/reorders) that arrive at the same
+    /// consumption level. Keying on the *writer's* absolute `desired_offset` would be wrong: a bulk
+    /// writer's high watermark is constant, so a single doubling would latch and the window would
+    /// never open past `2 * window_size` while the writer stayed blocked.
+    acted_blocked_offset: u64,
+    /// Multiplicative window-growth factor (slow-start). Starts at 1×, doubles on each blocked
+    /// signal that outstrips the current cap, clamped so the window can't exceed the pool's
+    /// `max_single_acquire`. Held until the stream goes idle (never reset mid-stream).
+    growth_ratio: u32,
+    /// Endpoint-wide recv credit pool. Window-extension acquires draw from
+    /// here; dispatch-side releases happen elsewhere as bytes arrive.
+    recv_credit_pool: crate::sync::Arc<crate::credit::Pool>,
+    /// Priority tier for `poll_acquire` calls against the recv pool.
+    priority: crate::credit::Priority,
     /// Whether this endpoint should emit a flow update after FIN is consumed.
     /// Server-side readers set this to true so FIN consumption can act as an
     /// acceptance signal to the peer. Client-side readers set it to false since
@@ -207,6 +379,11 @@ struct Inner {
     eof_counter: u8,
     /// Cooperative yield budget
     coop: Coop,
+    /// Frames swapped out of the stream slot but not yet processed because the per-frame coop
+    /// budget was exhausted mid-batch. Drained FIFO on the next `poll_stream_rx`, BEFORE any
+    /// fresh `poll_swap`, preserving wire order. Empty in steady state — only non-empty between
+    /// the budget-exhausted break and the next poll's drain.
+    pending_rx: intrusive::Queue<msg::Stream>,
     /// Clock used to stamp `enqueued_at` on application-originated frames and to
     /// record the completion time when measuring sojourn durations.
     clock: crate::time::DefaultClock,
@@ -245,12 +422,19 @@ impl Reader {
         stream_rx: crate::queue::StreamReceiver,
         clock: crate::time::DefaultClock,
         metrics: Arc<ReaderMetrics>,
+        recv_credit_pool: crate::sync::Arc<crate::credit::Pool>,
+        priority: crate::credit::Priority,
     ) -> Self {
         let parameters = path_secret_entry.parameters();
         let remote_max_data = parameters.local_recv_max_data;
         let window_size = remote_max_data.as_u64();
 
-        Self(Box::new(Inner {
+        // Publish the initial advertised window so the dispatch side clamps its per-arrival credit
+        // release to it from the first frame. The client advertises its full window up front, so
+        // that is the ceiling. (`fetch_max`, so this composes with the bind-time seed.)
+        stream_rx.advertise_window(window_size);
+
+        Self(ReaderAllocPtr::new(Inner {
             frame_tx,
             completion_rx: frame::failure_completion_channel(),
             stream_rx,
@@ -258,13 +442,23 @@ impl Reader {
             path_secret_entry,
             reassembler: Reassembler::new(),
             remote_max_data,
+            // The client advertises its full unbacked window (`local_recv_max_data`) up front via
+            // `remote_max_data`, so none remains to advertise later: invariant
+            // `advertised_at_construction + unbacked_remaining == initial_window` ⇒ 0 here.
+            unbacked_remaining: 0,
             window_size,
+            peer_max_offset: 0,
+            acted_blocked_offset: 0,
+            growth_ratio: 1,
+            recv_credit_pool,
+            priority,
             send_flow_update_after_fin: false,
             status: Status::Open,
             reset_error_code: None,
             #[cfg(debug_assertions)]
             eof_counter: 0,
             coop: Coop::default(),
+            pending_rx: intrusive::Queue::new(),
             clock,
             metrics,
         }))
@@ -278,25 +472,45 @@ impl Reader {
         peer_fin_received: bool,
         clock: crate::time::DefaultClock,
         metrics: Arc<ReaderMetrics>,
+        recv_credit_pool: crate::sync::Arc<crate::credit::Pool>,
+        priority: crate::credit::Priority,
     ) -> Self {
         let parameters = path_secret_entry.parameters();
         let window_size = parameters.local_recv_max_data.as_u64();
 
-        Self(Box::new(Inner {
+        // The server advertises 0 to the peer, but its unbacked initial window (`window_size`) is
+        // the real dispatch-side ceiling during bootstrap: data within it is accepted before the
+        // first MAX_DATA and must not be released as pool credit (it was never acquired). Publish
+        // that ceiling so dispatch clamps to it. (`fetch_max`, composes with the bind-time seed.)
+        stream_rx.advertise_window(window_size);
+
+        Self(ReaderAllocPtr::new(Inner {
             frame_tx,
             completion_rx: frame::failure_completion_channel(),
             stream_rx,
             dest_queue_id,
             path_secret_entry,
             reassembler: Reassembler::new(),
+            // Server starts at zero advertised window; its first consumption forces the MAX_DATA
+            // that confirms the binding to the peer writer. That whole first window is unbacked
+            // (the peer is bounded by the handshake `local_recv_max_data`), so it is advertised
+            // without drawing pool credit — which is what lets binding confirmation proceed even
+            // when the recv pool is drained.
             remote_max_data: VarInt::ZERO,
+            unbacked_remaining: window_size,
             window_size,
+            peer_max_offset: 0,
+            acted_blocked_offset: 0,
+            growth_ratio: 1,
+            recv_credit_pool,
+            priority,
             send_flow_update_after_fin: !peer_fin_received,
             status: Status::Open,
             reset_error_code: None,
             #[cfg(debug_assertions)]
             eof_counter: 0,
             coop: Coop::default(),
+            pending_rx: intrusive::Queue::new(),
             clock,
             metrics,
         }))
@@ -441,7 +655,11 @@ impl Reader {
     where
         S: buffer::writer::Storage,
     {
-        self.0.poll_read_into(cx, buf)
+        let slot = self.0.slot_ptr();
+        // SAFETY: `slot` is the slot embedded at offset 0 of this reader's
+        // `ReaderAlloc`. It is the only legal slot for `poll_acquire` because
+        // the pool stores a waker for *this* task into it.
+        unsafe { self.0.poll_read_into(cx, buf, slot) }
     }
 }
 
@@ -461,6 +679,16 @@ impl Inner {
     fn drain_pending_reset(&mut self) {
         if self.status.is_reset() {
             return;
+        }
+        // Drain locally-stashed frames (older, behind the budget boundary) BEFORE pulling fresh
+        // ones off the slot — a Reset stashed by a budget break must still suppress the
+        // drop-time STOP_SENDING. Drain rather than iter so this mirrors the `try_swap` arm
+        // below (both consume their respective queues; entries are dropped on the way out).
+        for entry in core::mem::take(&mut self.pending_rx) {
+            if matches!(&*entry, msg::Stream::Reset { .. }) {
+                self.status.on_reset().ok();
+                return;
+            }
         }
         let Ok(queue) = self.stream_rx.try_swap() else {
             return;
@@ -506,17 +734,29 @@ impl Inner {
     fn on_eof_returned(&mut self) {}
 
     #[inline]
-    fn poll_read_into<S>(&mut self, cx: &mut Context, buf: &mut S) -> Poll<io::Result<usize>>
+    unsafe fn poll_read_into<S>(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut S,
+        slot: NonNull<crate::credit::Slot>,
+    ) -> Poll<io::Result<usize>>
     where
         S: buffer::writer::Storage,
     {
         waker::debug_assert_contract(cx, |cx| {
-            coop::poll(self, cx, |this, cx| this.poll_read_into_inner(cx, buf))
+            coop::poll(self, cx, |this, cx| unsafe {
+                this.poll_read_into_inner(cx, buf, slot)
+            })
         })
     }
 
     #[inline(always)]
-    fn poll_read_into_inner<S>(&mut self, cx: &mut Context, buf: &mut S) -> Poll<io::Result<usize>>
+    unsafe fn poll_read_into_inner<S>(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut S,
+        slot: NonNull<crate::credit::Slot>,
+    ) -> Poll<io::Result<usize>>
     where
         S: buffer::writer::Storage,
     {
@@ -563,9 +803,12 @@ impl Inner {
                 // the reassembler and call maybe_send_max_data.
                 Poll::Pending if !self.reassembler.is_empty() => None,
                 Poll::Pending => {
-                    // Even with no data available, send initial credits so the
-                    // peer can start transmitting.
-                    self.maybe_send_max_data()?;
+                    // Even with no data available, try to extend the window so
+                    // the peer can start (or keep) transmitting. Pending here
+                    // means the pool didn't grant — that's fine, we're already
+                    // returning Pending anyway.
+                    // SAFETY: caller's invariant — `slot` is this reader's idle slot.
+                    unsafe { self.maybe_send_max_data(cx, slot)? };
                     return Poll::Pending;
                 }
                 other => return other.map_ok(|()| 0usize),
@@ -584,7 +827,8 @@ impl Inner {
         // Attempting to send in that state would produce an error that discards
         // the data we just buffered, which is wrong.
         if deferred_err.is_none() {
-            self.maybe_send_max_data()?;
+            // SAFETY: caller's invariant — `slot` is this reader's idle slot.
+            unsafe { self.maybe_send_max_data(cx, slot)? };
         }
 
         if self.reassembler.is_reading_complete() {
@@ -618,113 +862,160 @@ impl Inner {
     where
         S: buffer::writer::Storage + ?Sized,
     {
-        match self.stream_rx.poll_swap(cx) {
-            Poll::Ready(Ok(queue)) => {
-                for msg in queue {
-                    match msg.into_inner() {
-                        msg::Stream::Data {
-                            offset,
-                            mut payload,
-                            fin,
-                        } => {
-                            let Some(payload_end_offset) =
-                                offset.as_u64().checked_add(payload.len() as u64)
-                            else {
-                                debug!(
-                                    binding_id = self.stream_rx.binding_id().as_u64(),
-                                    offset = offset.as_u64(),
-                                    payload_len = payload.len(),
-                                    "Incoming data offset overflowed"
-                                );
-                                return self.protocol_error();
-                            };
+        // Drain any frames stashed by a previous budget-exhausted break BEFORE pulling a fresh
+        // batch off the slot — preserves wire order, since `pending_rx` always holds frames
+        // that arrived earlier than anything still in the slot. When `pending_rx` is non-empty
+        // we skip `poll_swap` entirely so we don't register the slot waker without need; the
+        // gate's self-wake (when budget exhausts again) covers re-entry.
+        let mut queue = if !self.pending_rx.is_empty() {
+            core::mem::take(&mut self.pending_rx)
+        } else {
+            match self.stream_rx.poll_swap(cx) {
+                Poll::Ready(Ok(q)) => q,
+                Poll::Ready(Err(_)) => {
+                    return Poll::Ready(Err(io::Error::new(
+                        io::ErrorKind::BrokenPipe,
+                        "stream channel closed",
+                    )))
+                }
+                Poll::Pending => return Poll::Pending,
+            }
+        };
 
-                            // Server bootstrap special-case:
-                            // `remote_max_data == 0` is used for server-side
-                            // streams before initial validation/credit release.
-                            // In that state the first bytes are accepted without
-                            // hard receive-window enforcement; once credits are
-                            // advertised (`remote_max_data > 0`) the check below
-                            // is enforced for all subsequent packets.
-                            if self.remote_max_data != VarInt::ZERO
-                                && payload_end_offset > self.remote_max_data.as_u64()
-                            {
-                                debug!(
-                                    binding_id = self.stream_rx.binding_id().as_u64(),
-                                    offset = offset.as_u64(),
-                                    payload_len = payload.len(),
-                                    payload_end_offset,
-                                    remote_max_data = self.remote_max_data.as_u64(),
-                                    "Peer exceeded advertised receive window"
-                                );
-                                return self.queue_control_error();
-                            }
+        while let Some(entry) = queue.pop_front() {
+            // Per-frame coop accounting.
+            //
+            // Break-safe: `entry` was just popped but not yet consumed (its `into_inner` is in
+            // the match below). On budget-exhaust we push it back to the front of `queue` so
+            // the next drain sees it first, then move `queue` into `pending_rx`. `pending_rx`
+            // is provably empty here (we drained it above; no frame can have entered it since
+            // the field is only written here). Returning `Ready(Ok(()))` lets the outer
+            // `poll_read_into_inner` deliver the bytes we already wrote into the reassembler;
+            // the gate yields on the *next* poll because budget is now zero.
+            if !self.coop.consume() {
+                debug_assert!(self.pending_rx.is_empty());
+                queue.push_front(entry);
+                self.pending_rx = queue;
+                return Poll::Ready(Ok(()));
+            }
+            match entry.into_inner() {
+                msg::Stream::Data {
+                    offset,
+                    peer_max_offset,
+                    mut payload,
+                    fin,
+                    blocked,
+                } => {
+                    // Track the writer's desired high watermark and, if it signaled it is
+                    // blocked, possibly grow the window. Done before the receive-window
+                    // check so a blocked signal still drives growth even on an empty frame.
+                    self.peer_max_offset = self.peer_max_offset.max(peer_max_offset.as_u64());
+                    if blocked {
+                        self.on_blocked_signal(peer_max_offset.as_u64());
+                    }
 
-                            trace!(
-                                binding_id = self.stream_rx.binding_id().as_u64(),
-                                offset = offset.as_u64(),
-                                len = payload.len(),
-                                is_fin = fin,
-                                "Received data"
-                            );
+                    let Some(payload_end_offset) =
+                        offset.as_u64().checked_add(payload.len() as u64)
+                    else {
+                        debug!(
+                            binding_id = self.stream_rx.binding_id().as_u64(),
+                            offset = offset.as_u64(),
+                            payload_len = payload.len(),
+                            "Incoming data offset overflowed"
+                        );
+                        return self.protocol_error();
+                    };
 
-                            let mut incremental = Incremental::new(offset);
-                            let mut reader = match incremental.with_storage(&mut payload, fin) {
-                                Ok(r) => r,
-                                Err(err) => {
-                                    debug!(
-                                        binding_id = self.stream_rx.binding_id().as_u64(),
-                                        ?err,
-                                        "Invalid storage/fin combination"
-                                    );
-                                    return self.protocol_error();
-                                }
-                            };
+                    // Server bootstrap special-case:
+                    // `remote_max_data == 0` is used for server-side
+                    // streams before initial validation/credit release.
+                    // In that state the first bytes are accepted without
+                    // hard receive-window enforcement; once credits are
+                    // advertised (`remote_max_data > 0`) the check below
+                    // is enforced for all subsequent packets.
+                    if self.remote_max_data != VarInt::ZERO
+                        && payload_end_offset > self.remote_max_data.as_u64()
+                    {
+                        debug!(
+                            binding_id = self.stream_rx.binding_id().as_u64(),
+                            offset = offset.as_u64(),
+                            payload_len = payload.len(),
+                            payload_end_offset,
+                            remote_max_data = self.remote_max_data.as_u64(),
+                            "Peer exceeded advertised receive window"
+                        );
+                        return self.queue_control_error();
+                    }
 
-                            if let Err(err) =
-                                write_data_reader(&mut self.reassembler, &mut reader, app_buf)
-                            {
-                                debug!(
-                                    binding_id = self.stream_rx.binding_id().as_u64(),
-                                    ?err,
-                                    "Failed to write to reassembler"
-                                );
-                                return self.protocol_error();
-                            }
-                        }
-                        msg::Stream::Reset { error_code } => {
+                    trace!(
+                        binding_id = self.stream_rx.binding_id().as_u64(),
+                        offset = offset.as_u64(),
+                        len = payload.len(),
+                        is_fin = fin,
+                        "Received data"
+                    );
+
+                    let mut incremental = Incremental::new(offset);
+                    let mut reader = match incremental.with_storage(&mut payload, fin) {
+                        Ok(r) => r,
+                        Err(err) => {
                             debug!(
                                 binding_id = self.stream_rx.binding_id().as_u64(),
-                                error_code = error_code.as_u64(),
-                                "Stream reset by peer"
+                                ?err,
+                                "Invalid storage/fin combination"
                             );
-                            self.reset_error_code = Some(error_code);
-                            self.status.on_reset().ok();
-                            // Only clear the reassembler immediately when it is
-                            // already empty.  If data was buffered before the
-                            // reset arrived, leave it intact so poll_read_into_inner
-                            // can drain it to the application first (TCP semantics:
-                            // data in the receive buffer before a RST is readable).
-                            if self.reassembler.is_empty() {
-                                self.reassembler.reset();
-                            }
-                            let reset_error: Error = error_code.into();
-                            return Poll::Ready(Err(io::Error::new(
-                                reset_error.io_error_kind(),
-                                reset_error,
-                            )));
+                            return self.protocol_error();
                         }
+                    };
+
+                    if let Err(err) = write_data_reader(&mut self.reassembler, &mut reader, app_buf)
+                    {
+                        debug!(
+                            binding_id = self.stream_rx.binding_id().as_u64(),
+                            ?err,
+                            "Failed to write to reassembler"
+                        );
+                        return self.protocol_error();
                     }
                 }
-
-                Poll::Ready(Ok(()))
+                msg::Stream::Blocked { desired_offset } => {
+                    // Standalone blocked signal (cold-start path): no payload, just drives
+                    // window growth. The subsequent maybe_send_max_data in the caller
+                    // emits the extension.
+                    trace!(
+                        binding_id = self.stream_rx.binding_id().as_u64(),
+                        desired_offset = desired_offset.as_u64(),
+                        "Received QueueDataBlocked"
+                    );
+                    self.peer_max_offset = self.peer_max_offset.max(desired_offset.as_u64());
+                    self.on_blocked_signal(desired_offset.as_u64());
+                }
+                msg::Stream::Reset { error_code } => {
+                    debug!(
+                        binding_id = self.stream_rx.binding_id().as_u64(),
+                        error_code = error_code.as_u64(),
+                        "Stream reset by peer"
+                    );
+                    self.reset_error_code = Some(error_code);
+                    self.status.on_reset().ok();
+                    // Only clear the reassembler immediately when it is
+                    // already empty.  If data was buffered before the
+                    // reset arrived, leave it intact so poll_read_into_inner
+                    // can drain it to the application first (TCP semantics:
+                    // data in the receive buffer before a RST is readable).
+                    if self.reassembler.is_empty() {
+                        self.reassembler.reset();
+                    }
+                    let reset_error: Error = error_code.into();
+                    return Poll::Ready(Err(io::Error::new(
+                        reset_error.io_error_kind(),
+                        reset_error,
+                    )));
+                }
             }
-            Poll::Ready(Err(_)) => Poll::Ready(Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "stream channel closed",
-            ))),
-            Poll::Pending => Poll::Pending,
         }
+
+        Poll::Ready(Ok(()))
     }
 
     fn protocol_error(&mut self) -> Poll<io::Result<()>> {
@@ -747,13 +1038,114 @@ impl Inner {
         Poll::Ready(Err(io::Error::new(io::ErrorKind::InvalidData, reset_error)))
     }
 
-    fn maybe_send_max_data(&mut self) -> io::Result<()> {
+    /// Maximum window-growth ratio: the most we can scale `window_size` before the resulting
+    /// acquire would exceed the pool's per-request ceiling. Clamping the *ratio* (not just the
+    /// byte target) is what makes the doubling terminate.
+    #[inline]
+    fn max_growth_ratio(&self) -> u32 {
+        let max_single = self.recv_credit_pool.max_single_acquire(self.priority);
+        let ratio = max_single / self.window_size.max(1);
+        (ratio as u32).max(1)
+    }
+
+    /// React to a blocked signal (in-band `blocked` bit or standalone `QueueDataBlocked`).
+    ///
+    /// Doubles the growth ratio when the writer still wants past our current runway (`desired >
+    /// cap`) AND the application has made progress since the last doubling (`consumed >
+    /// acted_blocked_offset`). The two conditions together mean: the writer is *persistently*
+    /// blocked — it keeps hitting the window edge even as we drain — so we widen the runway. The
+    /// `consumed`-advanced gate both paces growth (≈ one doubling per drained window) and dedups the
+    /// burst of blocked frames / retransmits that share a consumption level.
+    ///
+    /// Growth terminates on its own: once the runway outpaces the writer (`desired <= cap`) the
+    /// writer stops setting the blocked bit, so no more signals arrive; and `growth_ratio` is hard
+    /// capped at `max_growth_ratio` regardless. The ratio is held (never reset mid-stream) to avoid
+    /// thrashing during steady state.
+    fn on_blocked_signal(&mut self, desired: u64) {
+        let consumed = self.reassembler.consumed_len();
+        let cap =
+            consumed.saturating_add(self.window_size.saturating_mul(self.growth_ratio as u64));
+        if desired > cap && consumed >= self.acted_blocked_offset {
+            self.acted_blocked_offset = consumed.saturating_add(self.window_size);
+            let prev = self.growth_ratio;
+            self.growth_ratio = self
+                .growth_ratio
+                .saturating_mul(2)
+                .min(self.max_growth_ratio());
+            trace!(
+                binding_id = self.stream_rx.binding_id().as_u64(),
+                desired,
+                consumed,
+                cap,
+                prev_growth_ratio = prev,
+                growth_ratio = self.growth_ratio,
+                "on_blocked_signal: growing window"
+            );
+        }
+    }
+
+    /// Decide whether to extend the advertised window and, if so, acquire the
+    /// new credit from the recv pool before sending MAX_DATA.
+    ///
+    /// `slot` must point to the embedded `Slot` of the `ReaderAlloc` that owns
+    /// this `Inner`; the pool stores a waker pointing at our task on `Pending`.
+    ///
+    /// Re-entry safety: a prior call may have parked the slot. Each invocation
+    /// drains any delivered grant via `poll_granted` and short-circuits on
+    /// `Pending` so we never call `prepare_park` twice on the same slot — that
+    /// would violate the credit pool's refcount=APP precondition. This mirrors
+    /// the writer's `poll_acquire_credits` pattern at
+    /// [stream/writer.rs:poll_acquire_credits].
+    ///
+    /// `Poll::Pending` here means "leave the advertised window where it is."
+    /// It does not stall application reads — the reader keeps draining
+    /// whatever data is already buffered. The distributor will wake the
+    /// reader's task when credit becomes available.
+    ///
+    /// # Safety
+    ///
+    /// `slot` must be the slot embedded at offset 0 of this reader's
+    /// `ReaderAlloc`. It is the only legal slot because `Pool::poll_acquire`
+    /// writes a waker for *this* task into it.
+    unsafe fn maybe_send_max_data(
+        &mut self,
+        cx: &mut Context,
+        slot: NonNull<crate::credit::Slot>,
+    ) -> io::Result<()> {
+        // Drain any grant the distributor delivered while we were away. This
+        // also tells us whether the slot is still parked from a prior poll —
+        // in which case we MUST NOT issue a fresh acquire (the slot's
+        // `prepare_park` requires refcount=APP and would panic on RC_LINKED).
+        let slot_ref = unsafe { slot.as_ref() };
+        let prior_grant = match slot_ref.poll_granted() {
+            crate::credit::GrantResult::Pending => {
+                // Slot is still linked into the pool's tier. The distributor
+                // will wake us when it grants; nothing more to do this turn.
+                return Ok(());
+            }
+            crate::credit::GrantResult::Closed => {
+                // Pool was dropped; surface as broken pipe so subsequent
+                // polls don't loop.
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "recv credit pool closed",
+                ));
+            }
+            crate::credit::GrantResult::Granted(n) => n,
+        };
+
         if let Some(final_size) = self.reassembler.final_size() {
             if !self.send_flow_update_after_fin {
+                if prior_grant > 0 {
+                    self.recv_credit_pool.release(prior_grant);
+                }
                 return Ok(());
             }
 
             if self.remote_max_data.as_u64() >= final_size {
+                if prior_grant > 0 {
+                    self.recv_credit_pool.release(prior_grant);
+                }
                 return Ok(());
             }
         }
@@ -762,26 +1154,129 @@ impl Inner {
         let current_max = self.remote_max_data.as_u64();
         let threshold = current_max.saturating_sub(self.window_size / 2);
 
-        if consumed >= threshold {
-            let new_max_data = consumed + self.window_size;
-            let new_max_data = VarInt::new(new_max_data)
-                .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "max_data overflow"))?;
-
-            // Frame send errors are propagated: if we cannot communicate flow
-            // control credits the peer may stall, so it is better to surface
-            // the failure immediately.
-            self.send_max_data_frame(new_max_data)?;
-            self.remote_max_data = new_max_data;
+        // Target window: sized to the writer's hinted demand, capped by the (possibly grown) local
+        // window, and never below what we've already consumed. Before any hint arrives
+        // (`peer_max_offset == 0`) preserve the original fixed bootstrap window so server/client
+        // startup is unchanged.
+        let cap =
+            consumed.saturating_add(self.window_size.saturating_mul(self.growth_ratio as u64));
+        let target_max_data = if self.peer_max_offset == 0 {
+            consumed.saturating_add(self.window_size)
         } else {
+            self.peer_max_offset.max(consumed).min(cap)
+        };
+
+        // Trigger on hint-or-threshold: extend when the writer wants more room than we've advertised
+        // (`target > current_max`) OR consumption crossed the top-up threshold.
+        let wants_more = target_max_data > current_max;
+        if consumed < threshold && !wants_more {
             trace!(
                 binding_id = self.stream_rx.binding_id().as_u64(),
                 consumed,
                 current_max,
                 threshold,
+                target_max_data,
+                peer_max_offset = self.peer_max_offset,
+                growth_ratio = self.growth_ratio,
                 window_size = self.window_size,
-                "maybe_send_max_data: below threshold, not sending"
+                "maybe_send_max_data: below threshold and no new demand, not sending"
             );
+            if prior_grant > 0 {
+                self.recv_credit_pool.release(prior_grant);
+            }
+            return Ok(());
         }
+
+        let delta = target_max_data.saturating_sub(current_max);
+        if delta == 0 {
+            if prior_grant > 0 {
+                self.recv_credit_pool.release(prior_grant);
+            }
+            return Ok(());
+        }
+
+        trace!(
+            binding_id = self.stream_rx.binding_id().as_u64(),
+            consumed,
+            current_max,
+            target_max_data,
+            delta,
+            peer_max_offset = self.peer_max_offset,
+            growth_ratio = self.growth_ratio,
+            "maybe_send_max_data: extending window"
+        );
+
+        // Cover the extension from three sources, cheapest first:
+        //   1. `unbacked_remaining` — the initial window we may advertise for free (no pool
+        //      credit). This always lets the first/confirming MAX_DATA go out, even against a
+        //      drained pool, which is what prevents the binding-confirmation deadlock.
+        //   2. `prior_grant` — credit the distributor already delivered to our slot.
+        //   3. a fresh `poll_acquire` for whatever remains.
+        let from_unbacked = self.unbacked_remaining.min(delta);
+        self.unbacked_remaining -= from_unbacked;
+        let mut granted = from_unbacked;
+
+        let remaining = delta - granted;
+        let from_prior = prior_grant.min(remaining);
+        let surplus = prior_grant - from_prior;
+        if surplus > 0 {
+            self.recv_credit_pool.release(surplus);
+        }
+        granted += from_prior;
+
+        let need = delta - granted;
+        if need > 0 {
+            // SAFETY: caller's invariant — `slot` is this reader's idle slot,
+            // and `poll_granted` above confirmed it is currently APP-owned
+            // (RC=1), satisfying `poll_acquire`'s precondition.
+            match unsafe {
+                self.recv_credit_pool
+                    .poll_acquire(cx, slot, need, self.priority)
+            } {
+                Poll::Ready(n) => {
+                    granted = granted.saturating_add(n);
+                }
+                Poll::Pending => {
+                    // We parked for `need` more credit. Any credit already
+                    // collected (unbacked + prior grant) is consumed by
+                    // advertising it now — there is no `pending_credits` carry
+                    // on the reader, so dropping it would strand it. Advertise
+                    // the partial and let the next poll re-evaluate when the
+                    // distributor delivers the rest.
+                }
+            }
+        }
+
+        if granted == 0 {
+            return Ok(());
+        }
+
+        let new_max_data = current_max.saturating_add(granted);
+        let new_max_data = VarInt::new(new_max_data)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "max_data overflow"))?;
+
+        // Frame send errors are propagated: if we cannot communicate flow
+        // control credits the peer may stall, so it is better to surface
+        // the failure immediately.
+        if let Err(err) = self.send_max_data_frame(new_max_data) {
+            // Frame submission failed — undo the credit we collected for this
+            // extension so accounting stays balanced. Only `granted -
+            // from_unbacked` came from the pool (prior grant + fresh acquire);
+            // `from_unbacked` was drawn from `unbacked_remaining`, never the
+            // pool, so releasing it would inject phantom pool credit. Return
+            // the unbacked portion to its own budget instead so it is not lost.
+            let pool_backed = granted - from_unbacked;
+            if pool_backed > 0 {
+                self.recv_credit_pool.release(pool_backed);
+            }
+            self.unbacked_remaining += from_unbacked;
+            return Err(err);
+        }
+        self.remote_max_data = new_max_data;
+        // Publish the grown window so the dispatch side can clamp its per-arrival
+        // credit release to what we actually advertised (and acquired). Monotonic
+        // and lock-free; see `Slot::advertise_window`.
+        self.stream_rx.advertise_window(new_max_data.as_u64());
 
         Ok(())
     }

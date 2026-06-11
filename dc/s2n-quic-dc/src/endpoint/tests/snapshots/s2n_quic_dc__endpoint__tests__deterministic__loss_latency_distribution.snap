@@ -1,10 +1,11 @@
 ---
 source: dc/s2n-quic-dc/src/endpoint/tests/deterministic.rs
+assertion_line: 1075
 expression: "format!(\"n={n}\\nmean={mean:?}\\np50={p50:?}\\np90={p90:?}\\np99={p99:?}\\nmax={max:?}\")"
 ---
 n=200
-mean=69.66686ms
-p50=24.944ms
-p90=136.774ms
+mean=72.65608ms
+p50=28.87ms
+p90=197.786ms
 p99=964.806ms
 max=1.150918s

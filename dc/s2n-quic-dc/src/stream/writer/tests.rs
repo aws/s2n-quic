@@ -24,7 +24,7 @@ use s2n_quic_core::{endpoint, stream::testing::Data, varint::VarInt};
 use std::{
     net::SocketAddr,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
     task::Poll,
@@ -44,6 +44,7 @@ struct PairBuilder {
     ep_type: endpoint::Type,
     credit_pool: Option<crate::sync::Arc<crate::credit::Pool>>,
     priority: crate::credit::Priority,
+    params: Option<s2n_quic_core::dc::ApplicationParams>,
 }
 
 impl Default for PairBuilder {
@@ -52,6 +53,7 @@ impl Default for PairBuilder {
             ep_type: endpoint::Type::Client,
             credit_pool: None,
             priority: crate::credit::Priority::default(),
+            params: None,
         }
     }
 }
@@ -62,7 +64,16 @@ impl PairBuilder {
             ep_type: endpoint::Type::Server,
             credit_pool: None,
             priority: crate::credit::Priority::default(),
+            params: None,
         }
+    }
+
+    /// Override the handshake `ApplicationParams` used to build the writer. Lets a test model the
+    /// production split where the connection-level `remote_max_data` differs from the per-stream
+    /// `local_recv_max_data` the peer actually advertises and enforces.
+    fn with_params(mut self, params: s2n_quic_core::dc::ApplicationParams) -> Self {
+        self.params = Some(params);
+        self
     }
 
     fn client_no_remote_queue_id() -> Self {
@@ -84,12 +95,14 @@ impl PairBuilder {
     fn build(self) -> (Writer, Pusher) {
         let acceptor_id = VarInt::from_u8(7);
         let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
-        let path_secret_entry = PathSecretEntry::builder(peer)
-            .endpoint_type(self.ep_type)
-            .build();
+        let mut entry_builder = PathSecretEntry::builder(peer).endpoint_type(self.ep_type);
+        if let Some(params) = self.params {
+            entry_builder = entry_builder.params(params);
+        }
+        let path_secret_entry = entry_builder.build();
 
         let client_state =
-            std::sync::Arc::new(crate::queue::ClientState::new(VarInt::from_u16(100)));
+            std::sync::Arc::new(crate::queue::ClientState::new(VarInt::from_u16(100), 0));
         let dest_queue_id = client_state.peer_free.try_alloc().unwrap();
         let alloc = client_state.alloc_local(dest_queue_id).unwrap();
         let dispatcher = crate::queue::ClientDispatch::new(client_state);
@@ -280,6 +293,28 @@ impl Pusher {
         }
     }
 
+    /// Accumulate frames across multiple `recv_frames` batches until a FIN-bearing frame is
+    /// observed, returning the combined queue in wire order.
+    ///
+    /// Per-frame cooperative yielding (`stream/coop.rs`) can split a single large `write_msg`
+    /// across several polls, so its frames arrive in more than one `poll_swap` batch. Tests that
+    /// assert on the *entire* message (e.g. "exactly one FIN", "all chunks present") must drain
+    /// until the FIN rather than inspecting just the first batch.
+    async fn recv_frames_until_fin(&mut self) -> intrusive::Queue<Frame> {
+        let mut combined = intrusive::Queue::default();
+        loop {
+            let mut batch = self.recv_frames().await;
+            let saw_fin = batch.iter().any(|frame| match frame.header {
+                Header::QueueMsg { is_fin, .. } | Header::QueueData { is_fin, .. } => is_fin,
+                _ => false,
+            });
+            combined.append(&mut batch);
+            if saw_fin {
+                return combined;
+            }
+        }
+    }
+
     fn complete_all(
         &mut self,
         mut frames: intrusive::Queue<Frame>,
@@ -400,65 +435,74 @@ fn write_msg_large_payload_uses_multiple_msg_segments() {
         let payload_len = first_segment_size + second_segment_size;
 
         async move {
-            let frames = pusher.recv_frames().await;
+            let frames = pusher.recv_frames_until_fin().await;
             assert!(!frames.is_empty(), "expected QueueMsg frames");
 
+            // The first segment must be a full `MAX_CHUNKS` QueueMsg segment at offset 0 carrying
+            // no FIN — that is the "splits into multiple segments" invariant this test guards.
+            //
+            // The remaining bytes after the first segment may be framed either as a second
+            // QueueMsg segment OR, when per-frame coop yielding defers the small tail to a fresh
+            // poll where it fits the QueueData fast path, as QueueData. Either is correct, so for
+            // the tail we only assert reassembly and FIN placement.
             let mut first_msg_id = None::<u64>;
-            let mut second_msg_id = None::<u64>;
             let mut first_next_chunk = 0u64;
-            let mut second_next_chunk = 0u64;
             let mut first_chunk_count = 0usize;
-            let mut second_chunk_count = 0usize;
-            let mut first_fin_seen = false;
-            let mut second_segment_has_non_fin_frame = false;
+            let mut fin_count = 0usize;
+            let mut last_was_fin = false;
+            let mut in_tail = false;
             let mut expected = Data::new(payload_len as u64);
 
             for frame in frames.iter() {
-                let (msg_id, stream_offset, message_size, frame_chunk_size, chunk_index, is_fin) =
-                    match frame.header {
-                        Header::QueueMsg {
-                            msg_id,
-                            stream_offset,
-                            message_size,
-                            chunk_size,
-                            chunk_index,
-                            is_fin,
-                            ..
-                        } => (
-                            msg_id.as_u64(),
-                            stream_offset.as_u64(),
-                            message_size.as_u64(),
-                            chunk_size.as_u64(),
-                            chunk_index.as_u64(),
-                            is_fin,
-                        ),
-                        _ => panic!("expected QueueMsg frame, got {:?}", frame.header),
-                    };
+                assert!(
+                    !last_was_fin,
+                    "no frame may follow the FIN: {:?}",
+                    frame.header
+                );
 
-                if first_msg_id.is_none() {
-                    first_msg_id = Some(msg_id);
-                }
-
-                if Some(msg_id) == first_msg_id {
-                    assert_eq!(stream_offset, 0);
-                    assert_eq!(message_size, first_segment_size as u64);
-                    assert_eq!(frame_chunk_size, chunk_size as u64);
-                    assert_eq!(chunk_index, first_next_chunk);
-                    first_next_chunk += 1;
-                    first_chunk_count += 1;
-                    first_fin_seen |= is_fin;
-                } else {
-                    if second_msg_id.is_none() {
-                        second_msg_id = Some(msg_id);
+                match frame.header {
+                    Header::QueueMsg {
+                        msg_id,
+                        stream_offset,
+                        message_size,
+                        chunk_size: frame_chunk_size,
+                        chunk_index,
+                        is_fin,
+                        ..
+                    } if !in_tail && first_msg_id.is_none_or(|id| id == msg_id.as_u64()) => {
+                        // First segment.
+                        first_msg_id.get_or_insert(msg_id.as_u64());
+                        assert_eq!(stream_offset.as_u64(), 0);
+                        assert_eq!(message_size.as_u64(), first_segment_size as u64);
+                        assert_eq!(frame_chunk_size.as_u64(), chunk_size as u64);
+                        assert_eq!(chunk_index.as_u64(), first_next_chunk);
+                        assert!(!is_fin, "first segment must not carry FIN");
+                        first_next_chunk += 1;
+                        first_chunk_count += 1;
                     }
-                    assert_eq!(Some(msg_id), second_msg_id, "unexpected third msg_id");
-                    assert_eq!(stream_offset, first_segment_size as u64);
-                    assert_eq!(message_size, second_segment_size as u64);
-                    assert_eq!(frame_chunk_size, chunk_size as u64);
-                    assert_eq!(chunk_index, second_next_chunk);
-                    second_next_chunk += 1;
-                    second_chunk_count += 1;
-                    second_segment_has_non_fin_frame |= !is_fin;
+                    Header::QueueMsg {
+                        stream_offset,
+                        is_fin,
+                        ..
+                    } => {
+                        // Tail framed as a second QueueMsg segment.
+                        in_tail = true;
+                        assert_eq!(stream_offset.as_u64(), first_segment_size as u64);
+                        if is_fin {
+                            fin_count += 1;
+                            last_was_fin = true;
+                        }
+                    }
+                    Header::QueueData { offset, is_fin, .. } => {
+                        // Tail re-routed to the QueueData fast path by coop deferral.
+                        in_tail = true;
+                        assert_eq!(offset.as_u64(), first_segment_size as u64);
+                        if is_fin {
+                            fin_count += 1;
+                            last_was_fin = true;
+                        }
+                    }
+                    other => panic!("expected QueueMsg or QueueData, got {:?}", other),
                 }
 
                 for chunk in frame.payload.chunks() {
@@ -466,18 +510,16 @@ fn write_msg_large_payload_uses_multiple_msg_segments() {
                 }
             }
 
-            assert!(second_msg_id.is_some(), "expected at least two msg_ids");
             assert_eq!(
                 first_chunk_count,
                 crate::queue::msg_entry::MAX_CHUNKS as usize,
                 "first segment should fill MAX_CHUNKS"
             );
-            assert_eq!(second_chunk_count, 2, "second segment should be two chunks");
-            assert!(!first_fin_seen, "first segment should not carry FIN");
             assert!(
-                !second_segment_has_non_fin_frame,
-                "all frames in final segment should carry FIN"
+                in_tail,
+                "expected a tail segment after the first MAX_CHUNKS segment"
             );
+            assert_eq!(fin_count, 1, "exactly one FIN-bearing frame expected");
             assert!(
                 expected.is_finished(),
                 "payload should reassemble completely"
@@ -499,6 +541,108 @@ fn write_msg_large_payload_uses_multiple_msg_segments() {
                 .await
                 .expect("write_msg should succeed");
             assert_eq!(written, payload_len);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Reproduction: the server writer must not send past the per-stream receive window the peer
+/// actually advertises and enforces (`local_recv_max_data`), regardless of the larger
+/// connection-level `remote_max_data`.
+///
+/// Production split: `remote_max_data` (the connection-level data
+/// window, ~8 MiB) and `local_recv_max_data` (the per-stream recv window, 64 KiB) diverged. But
+/// `Writer::new_server` seeds its initial flow-control budget from `parameters.remote_max_data` and
+/// starts in `Open`, so the server writer believes it may send the full 8 MiB immediately — before
+/// the peer's reader has advertised any pool-backed window. The peer reader only ever advertises and
+/// enforces `local_recv_max_data` (plus pool-backed growth), so the writer overshoots its real
+/// window and the reader tears the connection down with `QUEUE_CONTROL_ERROR` ("sender exceeded
+/// receive window").
+///
+/// This test pins the invariant at the writer boundary: with a 64 KiB peer recv window, the server
+/// writer must not emit any frame whose end offset exceeds 64 KiB until MAX_DATA grows the window.
+/// Before the fix the writer's `remote_max_data` is 8 MiB and it streams a >64 KiB message out in
+/// one shot, so the assertion fails.
+#[test]
+fn server_writer_respects_peer_recv_window_not_connection_window() {
+    sim(|| {
+        // Model the production split: large connection-level window, small per-stream recv window.
+        const CONNECTION_WINDOW: u32 = 8 * 1024 * 1024;
+        const PEER_RECV_WINDOW: u32 = 64 * 1024;
+
+        let mut params = s2n_quic_core::dc::testing::TEST_APPLICATION_PARAMS.clone();
+        params.remote_max_data = VarInt::from_u32(CONNECTION_WINDOW);
+        params.local_send_max_data = VarInt::from_u32(CONNECTION_WINDOW);
+        // The peer's reader advertises and enforces this; it is the only true bound on the writer.
+        params.local_recv_max_data = VarInt::from_u32(PEER_RECV_WINDOW);
+
+        let (mut writer, mut pusher) = PairBuilder::server().with_params(params).build();
+
+        // A message comfortably larger than the peer recv window but well within the connection
+        // window.
+        let payload_len = (PEER_RECV_WINDOW as usize) * 4;
+
+        async move {
+            // Collect everything the writer emits before any MAX_DATA is granted. The peer would
+            // enforce its advertised window of PEER_RECV_WINDOW; any frame whose end offset exceeds
+            // that is data the peer never authorized and would reset the connection over.
+            let mut max_end_offset = 0u64;
+            while let Some(frames) = pusher.recv_frames_timeout(Duration::from_millis(50)).await {
+                for frame in frames.iter() {
+                    let (offset, len) = match frame.header {
+                        Header::QueueData { offset, .. } => (offset.as_u64(), frame.payload.len()),
+                        Header::QueueMsg {
+                            stream_offset,
+                            chunk_size,
+                            chunk_index,
+                            ..
+                        } => (
+                            stream_offset.as_u64()
+                                + chunk_index.as_u64() * chunk_size.as_u64(),
+                            frame.payload.len(),
+                        ),
+                        // Blocked/other control frames carry no stream bytes.
+                        _ => continue,
+                    };
+                    max_end_offset = max_end_offset.max(offset + len as u64);
+                }
+            }
+
+            assert!(
+                max_end_offset <= PEER_RECV_WINDOW as u64,
+                "server writer sent data up to offset {max_end_offset} but the peer only advertised \
+                 a {PEER_RECV_WINDOW}-byte receive window; the overshoot is data the peer never \
+                 authorized and would trigger QUEUE_CONTROL_ERROR (\"sender exceeded receive \
+                 window\")",
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Data::new(payload_len as u64);
+            // Drive the writer once. It blocks once it has sent up to its (believed) window.
+            let slot = writer.0.slot_ptr();
+            let _ = core::future::poll_fn(|cx| {
+                let mut buf = Data::new(payload_len as u64);
+                match writer.0.poll_write_msg(
+                    cx,
+                    slot,
+                    &mut buf,
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                ) {
+                    Poll::Pending => Poll::Ready(()),
+                    Poll::Ready(_) => Poll::Ready(()),
+                }
+            })
+            .await;
+            // Keep the writer alive long enough for the pusher to drain frames.
+            let _ = &mut payload;
+            50.ms().sleep().await;
         }
         .primary()
         .spawn();
@@ -657,6 +801,55 @@ fn server_queue_control_budget_caps_transmitted_bytes() {
     });
 }
 
+/// When the writer can send part of its buffer but the remainder exceeds the remote window, the
+/// emitted data frame carries the in-band `blocked` bit and a `largest_offset` equal to the full
+/// high watermark — so the reader learns the writer wants more without a standalone frame.
+#[test]
+fn data_frame_carries_blocked_bit_when_partially_windowed() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        writer.0.remote_max_data = VarInt::from_u8(3);
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            let data = frames
+                .iter()
+                .find(|f| matches!(f.header, Header::QueueData { .. }))
+                .expect("expected a QueueData frame");
+            match data.header {
+                Header::QueueData {
+                    offset,
+                    largest_offset,
+                    blocked,
+                    ..
+                } => {
+                    assert_eq!(offset, VarInt::ZERO);
+                    assert!(
+                        blocked,
+                        "data frame must carry the blocked bit when more is buffered"
+                    );
+                    // High watermark is the full 6-byte buffer even though only 3 bytes fit.
+                    assert_eq!(largest_offset, VarInt::from_u8(6));
+                }
+                _ => unreachable!(),
+            }
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"abcdef");
+            let written = writer
+                .write_from(&mut payload)
+                .await
+                .expect("write should respect remote budget");
+            assert_eq!(written, 3);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
 #[test]
 fn client_preserves_max_data_on_out_of_order_lower_update() {
     sim(|| {
@@ -714,39 +907,46 @@ fn server_write_from_fin_blocks_while_budget_exhausted_then_sends_single_fin_fra
         writer.0.remote_max_data = VarInt::from_u8(1);
 
         async move {
+            // The first burst contains the "a" data frame and may also contain a standalone
+            // QueueDataBlocked signal (emitted when the follow-up write hits the exhausted window).
+            // Exactly one data frame, the rest blocked signals.
             let first = pusher.recv_frames().await;
-            assert_eq!(first.len(), 1, "expected exactly one frame");
-            let first_frame = first.front().unwrap();
+            let data: Vec<_> = first
+                .iter()
+                .filter(|f| matches!(f.header, Header::QueueData { .. }))
+                .collect();
+            assert_eq!(data.len(), 1, "expected exactly one data frame");
             assert!(matches!(
-                first_frame.header,
+                data[0].header,
                 Header::QueueData {
                     is_fin: false,
                     offset,
                     ..
                 } if offset == VarInt::ZERO
             ));
-            assert_eq!(first_frame.payload, &b"a"[..]);
-
-            let extra = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
+            assert_eq!(data[0].payload, &b"a"[..]);
             assert!(
-                extra.is_none(),
-                "expected no frame while remote flow budget is exhausted"
+                first.iter().all(|f| matches!(
+                    f.header,
+                    Header::QueueData { .. } | Header::QueueDataBlocked { .. }
+                )),
+                "only data or blocked frames expected in the first burst"
             );
 
             pusher.push_max_data(VarInt::from_u8(2));
 
+            // After MAX_DATA the FIN data frame goes out (the blocked signal, if any, was already
+            // consumed above).
             let second = pusher.recv_frames().await;
-            assert_eq!(second.len(), 1, "expected exactly one frame");
-            let second_frame = second.front().unwrap();
+            let fin = second
+                .iter()
+                .find(|f| matches!(f.header, Header::QueueData { is_fin: true, .. }))
+                .expect("expected a FIN data frame after MAX_DATA");
             assert!(matches!(
-                second_frame.header,
-                Header::QueueData {
-                    is_fin: true,
-                    offset,
-                    ..
-                } if offset == VarInt::from_u8(1)
+                fin.header,
+                Header::QueueData { offset, .. } if offset == VarInt::from_u8(1)
             ));
-            assert_eq!(second_frame.payload, &b"b"[..]);
+            assert_eq!(fin.payload, &b"b"[..]);
         }
         .primary()
         .spawn();
@@ -1550,30 +1750,42 @@ fn client_write_after_shutdown_returns_broken_pipe() {
     });
 }
 
-/// Local inflight budget (max_inflight_bytes) caps how much data the writer
-/// can send before completions free up space.
+/// The endpoint send credit pool is the sole local send bound: with a pool that holds only 3
+/// bytes, the writer sends 3 bytes and then blocks until the simulated admit path releases those
+/// credits back to the pool, at which point it can send more.
 #[test]
-fn server_local_inflight_budget_blocks_write() {
+fn server_send_pool_caps_local_write() {
     sim(|| {
-        let (mut writer, mut pusher) = make_server_pair();
-        writer.0.max_inflight_bytes = 3;
+        const CAPACITY: u64 = 3;
+        let pool = test_credit_pool(CAPACITY);
 
+        // Distributor folds released credits back into `available` and wakes the parked writer.
+        let dist = crate::credit::Distributor::new(pool.clone());
+        async move {
+            use crate::socket::channel::Budget;
+            dist.distribute(Budget::new(1 << 20), TestWakerSink).await;
+        }
+        .spawn();
+
+        let (mut writer, mut pusher) = PairBuilder::server().with_credit_pool(pool.clone()).build();
+
+        let pool_for_pusher = pool.clone();
         async move {
             let first = pusher.recv_frames().await;
             pusher.assembler.push_queue_data(&first);
             pusher.assembler.assert_payload(b"abc");
 
-            // Writer is blocked — no more frames
+            // Writer is blocked — the pool is drained and nothing has been admitted yet.
             let extra = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
             assert!(
                 extra.is_none(),
-                "writer should block when local inflight budget is exhausted"
+                "writer should block when the send pool is exhausted"
             );
 
-            // Free up budget via completions
-            pusher.complete_all(first, frame::TransmissionStatus::Acknowledged);
+            // Simulate the assembler admitting the first batch: release its credits back to the
+            // pool. This wakes the parked writer.
+            pool_for_pusher.release(sum_flow_credits(&first));
 
-            // Writer unblocks and sends more data
             let second = pusher.recv_frames().await;
             pusher.assembler.push_queue_data(&second);
             pusher.assembler.assert_payload(b"abcdef");
@@ -1584,10 +1796,10 @@ fn server_local_inflight_budget_blocks_write() {
         async move {
             let mut payload = Bytes::from_static(b"abcdef");
             let first = writer.write_from(&mut payload).await.expect("first write");
-            assert_eq!(first, 3, "capped by local inflight budget");
+            assert_eq!(first, 3, "capped by the send pool capacity");
 
             let second = writer.write_from(&mut payload).await.expect("second write");
-            assert_eq!(second, 3, "freed budget allows more data");
+            assert_eq!(second, 3, "released credits allow more data");
         }
         .primary()
         .spawn();
@@ -1908,11 +2120,14 @@ fn server_write_msg_blocks_when_remote_budget_zero() {
         writer.0.remote_max_data = VarInt::ZERO;
 
         async move {
-            // No frame should arrive while budget is zero.
+            // No data frame should arrive while budget is zero.
             let early = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
             assert!(
-                early.is_none(),
-                "expected no frame while remote flow budget is zero"
+                early
+                    .iter()
+                    .flat_map(|q| q.iter())
+                    .all(|f| matches!(f.header, Header::QueueDataBlocked { .. })),
+                "expected no data frame while remote flow budget is zero"
             );
 
             // Grant budget; the blocked write_msg should now complete.
@@ -1972,9 +2187,15 @@ fn server_write_msg_unblocks_after_max_data() {
         writer.0.remote_max_data = VarInt::ZERO;
 
         async move {
-            // First wait confirms nothing arrives while budget is 0.
-            let no_frames = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
-            assert!(no_frames.is_none(), "no frame expected before MAX_DATA");
+            // While budget is 0 no data frame arrives (only possibly a QueueDataBlocked signal).
+            let early = pusher.recv_frames_timeout(Duration::from_millis(100)).await;
+            assert!(
+                early
+                    .iter()
+                    .flat_map(|q| q.iter())
+                    .all(|f| matches!(f.header, Header::QueueDataBlocked { .. })),
+                "no data frame expected before MAX_DATA"
+            );
 
             pusher.push_max_data(VarInt::from_u16(8192));
 
@@ -1999,6 +2220,58 @@ fn server_write_msg_unblocks_after_max_data() {
                 )
                 .await
                 .expect("write_msg should complete after MAX_DATA");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// A write into a zero remote window with no data frame to carry the in-band `blocked` bit emits a
+/// standalone `QueueDataBlocked` frame carrying the desired high-water offset, and re-emits only
+/// when that watermark grows (dedup on `last_blocked_offset`).
+#[test]
+fn write_from_blocked_emits_queue_data_blocked() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        writer.0.remote_max_data = VarInt::ZERO;
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            let mut blocked = frames
+                .iter()
+                .filter_map(|f| match f.header {
+                    Header::QueueDataBlocked { desired_offset, .. } => Some(desired_offset),
+                    _ => None,
+                })
+                .peekable();
+            assert!(
+                blocked.peek().is_some(),
+                "expected a QueueDataBlocked frame, got {:?}",
+                frames.iter().map(|f| &f.header).collect::<Vec<_>>()
+            );
+            // The desired offset is the writer's high watermark (5 bytes buffered from offset 0).
+            assert_eq!(blocked.next(), Some(VarInt::from_u8(5)));
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let slot = writer.0.slot_ptr();
+            // Poll twice with the same buffered data: the first emits a blocked frame, the second
+            // must not re-emit (same high watermark → deduped).
+            for _ in 0..2 {
+                let pending = core::future::poll_fn(|cx| {
+                    let mut buf = Bytes::from_static(b"hello");
+                    match writer.0.poll_write_from(cx, slot, &mut buf, false) {
+                        Poll::Pending => Poll::Ready(true),
+                        Poll::Ready(_) => Poll::Ready(false),
+                    }
+                })
+                .await;
+                assert!(pending, "write must block while remote window is zero");
+            }
+            // Keep the writer alive so the pusher observes the frame before drop.
+            10.ms().sleep().await;
         }
         .primary()
         .spawn();
@@ -2274,44 +2547,54 @@ fn client_write_msg_zero_window_does_not_block_init() {
     });
 }
 
-/// write_msg yields cooperatively when the inner send_msg loop exhausts the
-/// coop budget, giving other tasks a chance to run even under continuous write
-/// pressure with unlimited credits.
+/// write_msg yields cooperatively when the inner send_msg chunk loop exhausts the per-frame coop
+/// budget, giving other tasks repeated chances to run even under continuous write pressure with
+/// unlimited credits. A single payload spanning many budgets must yield many times, so a competing
+/// task that runs once per yield is observed to run multiple times *during* the write.
 #[test]
-#[ignore = "needs endpoint-level harness to exercise multi-segment coop yielding"]
 fn write_msg_coop_yields_after_budget_completions() {
+    // The multi-budget payload emits thousands of per-frame trace lines — unreasonably large to
+    // snapshot; the interleaving assertion is the regression signal.
+    let _guard = crate::testing::without_snapshots();
     sim(|| {
         let (mut writer, mut pusher) = make_server_pair();
         writer.0.remote_max_data = VarInt::MAX;
 
-        let ran = Arc::new(AtomicBool::new(false));
-        let ran_clone = ran.clone();
+        // Counts how many times the competing task was scheduled. With per-frame coop yielding the
+        // writer hands control back repeatedly mid-message, so this climbs well above 1.
+        let runs = Arc::new(AtomicUsize::new(0));
+        let runs_clone = runs.clone();
+        let done = Arc::new(AtomicBool::new(false));
+        let done_clone = done.clone();
 
-        // Competing task: marks itself as having run, then keeps yielding.
+        let drain_done = done.clone();
+
+        // Competing task: tick once per scheduling, until the writer signals completion.
         async move {
-            ran_clone.store(true, Ordering::Relaxed);
-            loop {
+            while !done_clone.load(Ordering::Relaxed) {
+                runs_clone.fetch_add(1, Ordering::Relaxed);
                 bach::task::yield_now().await;
             }
         }
         .spawn();
 
-        // Frame-drainer task: keeps the frame channel from filling up.
+        // Frame-drainer task: keeps the frame channel from filling up. Bounded by `done` so the
+        // sim can terminate once the writer finishes (a perpetual self-waking task would otherwise
+        // keep bach runnable forever and spin wall-clock).
         async move {
-            loop {
-                let _ = pusher.recv_frames().await;
+            while !drain_done.load(Ordering::Relaxed) {
+                let _ = pusher.recv_frames_timeout(Duration::from_millis(1)).await;
             }
         }
         .spawn();
 
         async move {
-            // Use a payload large enough to require >128 segments so the inner
-            // coop check in send_msg's loop fires. Each segment is max_segment_size
-            // (~340KB at MTU 1472), so we need 128 * 340KB ≈ 43MB. Use a large
-            // Data buffer to avoid actual allocation of that much memory.
+            // Payload spanning many coop budgets so the inner send_msg chunk loop yields
+            // repeatedly. Sized in whole segments to keep the framing tidy; `Data` is a virtual
+            // generator so no real allocation occurs.
             let chunk_size = writer.0.msg_packet_size as usize;
             let max_segment_size = crate::queue::msg_entry::MAX_CHUNKS as usize * chunk_size;
-            let payload_len = max_segment_size * 130;
+            let payload_len = max_segment_size * 4;
             let mut payload = Data::new(payload_len as u64);
             writer
                 .write_msg(
@@ -2323,9 +2606,75 @@ fn write_msg_coop_yields_after_budget_completions() {
                 )
                 .await
                 .expect("write_msg should succeed");
+            done.store(true, Ordering::Relaxed);
+            // The write spanned many budgets (payload >> BUDGET frames), so the competing task must
+            // have been scheduled multiple times mid-write — proving repeated cooperative yields.
             assert!(
-                ran.load(Ordering::Relaxed),
-                "competing task should have run during write_msg coop yield"
+                runs.load(Ordering::Relaxed) > 1,
+                "competing task should run repeatedly during a multi-budget write_msg coop yield, ran {} time(s)",
+                runs.load(Ordering::Relaxed),
+            );
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// send_data (the `write_from` path) yields cooperatively when its per-frame coop budget is
+/// exhausted under a large buffer with effectively unlimited credit, and still transmits every
+/// byte. Mirrors `write_msg_coop_yields_after_budget_completions` for the QueueData path.
+#[test]
+fn send_data_yields_under_large_buffer() {
+    // >BUDGET QueueData frames emit too many per-frame trace lines to snapshot reasonably.
+    let _guard = crate::testing::without_snapshots();
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        writer.0.remote_max_data = VarInt::MAX;
+
+        let runs = Arc::new(AtomicUsize::new(0));
+        let runs_clone = runs.clone();
+        let done = Arc::new(AtomicBool::new(false));
+        let done_clone = done.clone();
+
+        let drain_done = done.clone();
+
+        async move {
+            while !done_clone.load(Ordering::Relaxed) {
+                runs_clone.fetch_add(1, Ordering::Relaxed);
+                bach::task::yield_now().await;
+            }
+        }
+        .spawn();
+
+        // Bounded drainer (see the write_msg variant for why a perpetual loop spins wall-clock).
+        async move {
+            while !drain_done.load(Ordering::Relaxed) {
+                let _ = pusher.recv_frames_timeout(Duration::from_millis(1)).await;
+            }
+        }
+        .spawn();
+
+        async move {
+            // Several budgets' worth of MTU-sized QueueData frames so send_data's per-frame coop
+            // break fires repeatedly across polls.
+            let mtu = writer.0.packet_size as usize;
+            let budget = crate::stream::coop::BUDGET as usize;
+            let total = mtu * budget * 4;
+            use s2n_quic_core::buffer::reader::Storage as _;
+            let mut payload = Data::new(total as u64);
+            let mut written = 0usize;
+            while !payload.buffer_is_empty() {
+                written += writer
+                    .write_from(&mut payload)
+                    .await
+                    .expect("write_from should succeed");
+            }
+            done.store(true, Ordering::Relaxed);
+            assert_eq!(written, total, "every buffered byte must be transmitted");
+            assert!(
+                runs.load(Ordering::Relaxed) > 1,
+                "competing task should run repeatedly during a multi-budget send_data coop yield, ran {} time(s)",
+                runs.load(Ordering::Relaxed),
             );
         }
         .primary()
@@ -2442,6 +2791,120 @@ fn client_write_msg_partial_segment_resume_must_use_queue_msg_not_queue_data() {
     });
 }
 
+/// Regression: resuming a partial QueueMsg segment must never `take_credits` more than the
+/// writer currently holds.
+///
+/// The init path (`force_first`) sends only chunk 0 of its first segment, leaving a multi-chunk
+/// pending segment. On resume the two segment-level credit guards in `send_msg`
+/// (segment-fits-in-remote-budget and pending_credits >= chunk_size) are both skipped because
+/// `is_resuming` is true, and the inner chunk loop calls `take_credits(chunk_len)` for each
+/// remaining chunk. A single pool acquire only tops `pending_credits` up by `max_single_acquire`,
+/// so when the pending segment spans more bytes than one acquire delivers, the loop drains the
+/// held credit below one chunk and the next `take_credits` underflows (debug panic; release builds
+/// silently stamp a too-small `flow_credits`, corrupting the receiver's flow accounting).
+///
+/// This is the residual of the production `Config::new(2 MiB)` regression: even once the
+/// per-acquire cap is floored at one chunk (so the writer makes forward progress), a segment
+/// larger than the cap still needs several acquires, and the resume loop must re-check held credit
+/// per chunk. Here the cap is pinned to exactly one chunk so each poll sends exactly one chunk —
+/// liveness is preserved while the multi-acquire underflow is exercised.
+#[test]
+fn write_msg_resume_does_not_underflow_credits_when_pool_cap_below_chunk() {
+    sim(|| {
+        // Build the pair first so we can read the negotiated chunk size, then pin the pool's
+        // per-acquire cap to exactly one chunk: a single acquire delivers one chunk's worth of
+        // credit, so a multi-chunk resume segment requires several acquires.
+        let chunk_size = {
+            let (probe, _) = PairBuilder::default().build();
+            probe.0.msg_packet_size as u64
+        };
+        let pool = crate::sync::Arc::new(crate::credit::Pool::new(
+            crate::credit::Config::new(2 * 1024 * 1024).with_max_single_acquire_uniform(chunk_size),
+        ));
+        let (mut writer, mut pusher) = PairBuilder::default()
+            .with_credit_pool(pool.clone())
+            .build();
+        assert_eq!(
+            pool.max_single_acquire(crate::credit::Priority::default()),
+            writer.0.msg_packet_size as u64,
+            "test precondition: per-acquire cap is one chunk, so a multi-chunk segment needs \
+             several acquires and the resume loop must re-check held credit per chunk"
+        );
+
+        // Distributor folds released/parked credit back into the pool and wakes the parked writer
+        // so the resume poll actually runs.
+        let dist = crate::credit::Distributor::new(pool.clone());
+        async move {
+            use crate::socket::channel::Budget;
+            dist.distribute(Budget::new(1 << 20), TestWakerSink).await;
+        }
+        .spawn();
+
+        // Several full chunks in one segment: init (force_first) sends only chunk 0 and parks the
+        // rest as a pending segment that spans multiple chunks. Resuming it requires more credit
+        // than one acquire delivers, so the writer sends one chunk per poll and re-acquires
+        // between chunks. Before the per-chunk guard, the resume loop kept taking full chunks past
+        // the credit it held and underflowed `take_credits`.
+        let chunk_bytes = writer.0.msg_packet_size as usize;
+        let payload_len = 4 * chunk_bytes;
+        let pool_for_pusher = pool.clone();
+
+        async move {
+            // Init bootstrap batch (chunk 0) — drain it and release its credits to simulate
+            // admission, then grant a large remote window so the writer confirms (InitSent→Open)
+            // and the resume is gated only by held credit, not the remote budget.
+            let init = pusher.recv_frames().await;
+            let mut total_payload: usize = init.iter().map(|f| f.payload.len()).sum();
+            pool_for_pusher.release(sum_flow_credits(&init));
+            pusher.push_max_data(VarInt::from_u32(1 << 20));
+
+            // Drain the remaining chunks batch-by-batch, releasing each batch's credits to simulate
+            // the assembler admitting them. Each release lets the distributor grant the next
+            // chunk's worth of credit (the cap is one chunk), waking the parked writer. Loop until
+            // the whole message has been received.
+            while total_payload < payload_len {
+                let batch = pusher
+                    .recv_frames_timeout(Duration::from_secs(5))
+                    .await
+                    .expect("writer should keep making progress, one chunk per acquire");
+                for frame in batch.iter() {
+                    total_payload += frame.payload.len();
+                    // Every chunk must carry credits equal to its payload — never a value
+                    // truncated by a saturating underflow.
+                    assert_eq!(
+                        frame.flow_credits,
+                        frame.payload.len() as u64,
+                        "each chunk must carry credits equal to its payload size"
+                    );
+                }
+                pool_for_pusher.release(sum_flow_credits(&batch));
+            }
+            assert_eq!(
+                total_payload, payload_len,
+                "all payload bytes must be transmitted across the resumed chunks"
+            );
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Data::new(payload_len as u64);
+            writer
+                .write_msg(
+                    &mut payload,
+                    MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await
+                .expect("write_msg should succeed without credit underflow");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
 /// write_msg with FIN on a large multi-segment payload marks FIN only on the
 /// last chunk of the last segment, not on intermediate segments.
 ///
@@ -2459,31 +2922,31 @@ fn write_msg_fin_only_on_last_chunk_of_last_segment() {
         let payload_len = first_segment + second_segment;
 
         async move {
-            let frames = pusher.recv_frames().await;
+            let frames = pusher.recv_frames_until_fin().await;
             assert!(!frames.is_empty());
 
             let mut fin_count = 0usize;
             let mut non_fin_before_fin = false;
             let mut last_was_fin = false;
 
+            // Per-frame coop yielding can split this message across polls, so the small final
+            // segment may be re-routed through the QueueData fast path (the buffer holds a single
+            // chunk on a fresh poll and `pending_chunk_index == 0`). Either framing is correct —
+            // assert only on FIN placement: exactly one FIN, nothing after it, non-FIN frames
+            // before it.
             for frame in frames.iter() {
-                match frame.header {
-                    Header::QueueMsg { is_fin, msg_id, .. } => {
-                        if last_was_fin {
-                            panic!(
-                                "frame after FIN: msg_id={} is_fin={}",
-                                msg_id.as_u64(),
-                                is_fin
-                            );
-                        }
-                        if is_fin {
-                            fin_count += 1;
-                            last_was_fin = true;
-                        } else {
-                            non_fin_before_fin = true;
-                        }
-                    }
-                    _ => panic!("expected QueueMsg, got {:?}", frame.header),
+                let is_fin = match frame.header {
+                    Header::QueueMsg { is_fin, .. } | Header::QueueData { is_fin, .. } => is_fin,
+                    _ => panic!("expected QueueMsg or QueueData, got {:?}", frame.header),
+                };
+                if last_was_fin {
+                    panic!("frame after FIN: {:?}", frame.header);
+                }
+                if is_fin {
+                    fin_count += 1;
+                    last_was_fin = true;
+                } else {
+                    non_fin_before_fin = true;
                 }
             }
 
@@ -2522,6 +2985,8 @@ fn test_credit_pool(capacity: u64) -> crate::sync::Arc<crate::credit::Pool> {
     crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config {
         capacity,
         max_single_acquire: [capacity; crate::credit::Priority::LEVELS],
+        // Floor == cap so a single acquire can drain the whole pool (no fair-share split).
+        min_grant_slice: [capacity; crate::credit::Priority::LEVELS],
     }))
 }
 
@@ -2746,6 +3211,163 @@ fn parked_writer_drop_transfers_ownership_to_pool() {
             // `drop_writer_alloc`. The test's success criterion is "no leak/panic at drop"; the
             // bach runtime tears down cleanly because the distributor handles the dead slot.
             drop(writer);
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// Dropping a writer that is parked on a credit acquire while still **holding** unconsumed
+/// `pending_credits` must release that credit back to the pool. This is the leak regression for
+/// `drop_writer_alloc`: that path runs only on the LINKED→DEAD abandon branch (writer dropped while
+/// parked), where the pool — not the app — frees the allocation, so it is the only place the held
+/// remainder can be returned.
+///
+/// Construction: the per-acquire cap is one chunk **plus a sub-chunk remainder**. The msg path
+/// frames the one whole chunk it can, leaving the remainder in `pending_credits`; since the
+/// remainder is below one chunk (`msg_progress_floor`), the resume loop re-acquires for the rest and
+/// parks — while still holding the remainder. Dropping there exercises the leak path. The test
+/// asserts the pool's `available` returns to the full capacity once the distributor reaps the dead
+/// slot; before the fix the remainder stayed permanently debited.
+#[test]
+fn parked_writer_drop_releases_held_pending_credits() {
+    let _no_snap = crate::testing::without_snapshots();
+    sim(|| {
+        let chunk_size = {
+            let (probe, _) = PairBuilder::default().build();
+            probe.0.msg_packet_size as u64
+        };
+        // Per-acquire cap = one chunk + a sub-chunk remainder. Each acquire delivers
+        // `chunk + remainder` credit; the msg path frames the one whole chunk, leaving `remainder`
+        // in `pending_credits`. Because `remainder < chunk` (the msg progress floor), the resume
+        // re-acquires for the next chunk — and with the pool drained that acquire parks while the
+        // writer is still holding `remainder`. That is the state the leak fix must clean up.
+        let remainder = chunk_size / 2;
+        let per_acquire = chunk_size + remainder;
+        // Capacity == one acquire's worth: a single acquire drains the pool, so the very next
+        // acquire parks. Small enough that even after the pusher admits the emitted chunk, the
+        // freed credit (`chunk`) is below the parked acquire's need (`chunk + remainder`), so the
+        // writer stays parked rather than being re-granted.
+        let capacity = per_acquire;
+        let pool = crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config {
+            capacity,
+            max_single_acquire: [per_acquire; crate::credit::Priority::LEVELS],
+            min_grant_slice: [per_acquire; crate::credit::Priority::LEVELS],
+        }));
+        let (mut writer, mut pusher) = PairBuilder::default()
+            .with_credit_pool(pool.clone())
+            .build();
+
+        let dist = crate::credit::Distributor::new(pool.clone());
+        async move {
+            use crate::socket::channel::Budget;
+            dist.distribute(Budget::new(1 << 20), TestWakerSink).await;
+        }
+        .spawn();
+
+        // Multi-chunk message so the writer must acquire more than once: the init sends chunk 0 and
+        // parks the rest as a pending multi-chunk segment that the resume loop drives.
+        let chunk_bytes = writer.0.msg_packet_size as usize;
+        let payload_len = 4 * chunk_bytes;
+
+        let dropped = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        // ── Pusher: collect emitted credit, but release it only AFTER the drop ──
+        // Holding releases until after the drop serves two purposes:
+        //   1. The pool stays drained, so the writer parks early (holding its sub-chunk remainder)
+        //      instead of being continuously re-granted.
+        //   2. The single post-drop release is what wakes the distributor, so its next pass reaps
+        //      the now-dead slot (recovering the parked acquire's bytes) AND runs `drop_writer_alloc`
+        //      (which must release the held remainder). Without a post-drop wake the dead slot is
+        //      never reaped and the pool can't reach quiescence.
+        // Once quiescent, `available == capacity` iff the held remainder was released; a leak leaves
+        // it short by exactly `remainder`.
+        let pool_for_pusher = pool.clone();
+        let dropped_pusher = dropped.clone();
+        async move {
+            let init = pusher.recv_frames().await;
+            let mut held = sum_flow_credits(&init);
+            pusher.push_max_data(VarInt::from_u32(1 << 20));
+
+            // Accumulate every emitted frame's credit without releasing, until the writer is dropped.
+            while !dropped_pusher.load(std::sync::atomic::Ordering::Relaxed) {
+                if let Some(batch) = pusher.recv_frames_timeout(Duration::from_millis(1)).await {
+                    held += sum_flow_credits(&batch);
+                }
+                bach::task::yield_now().await;
+            }
+            // Drain anything emitted right before the drop, then release everything at once. This
+            // release wakes the distributor to reap the dead slot and fold all returned credit back.
+            if let Some(batch) = pusher.recv_frames_timeout(Duration::from_millis(1)).await {
+                held += sum_flow_credits(&batch);
+            }
+            pool_for_pusher.release(held);
+        }
+        .primary()
+        .spawn();
+
+        let pool_for_assert = pool.clone();
+        async move {
+            // Drive the write until it confirms, frames the chunk it can afford, and parks holding
+            // the sub-chunk remainder.
+            let mut payload = Data::new(payload_len as u64);
+            for _ in 0..16 {
+                let done = core::future::poll_fn(|cx| {
+                    let slot = writer.0.slot_ptr();
+                    match writer.0.poll_write_msg(
+                        cx,
+                        slot,
+                        &mut payload,
+                        MsgFlags {
+                            is_fin: true,
+                            is_wakeup: true,
+                        },
+                    ) {
+                        Poll::Ready(r) => {
+                            r.expect("write_msg poll failed");
+                            Poll::Ready(true)
+                        }
+                        Poll::Pending => Poll::Ready(false),
+                    }
+                })
+                .await;
+                if done {
+                    break;
+                }
+                bach::task::yield_now().await;
+            }
+
+            // Precondition: the writer is parked (slot LINKED) and still holds credit. If either is
+            // false the test isn't exercising the leak path.
+            assert!(
+                writer.0.pending_credits > 0,
+                "test precondition: writer must be holding unconsumed credit at drop, got 0"
+            );
+            let slot = writer.0.slot_ptr();
+            assert!(
+                unsafe { slot.as_ref() }.is_linked(),
+                "test precondition: writer's slot must be parked (LINKED) at drop"
+            );
+
+            // Drop while parked & holding credit → LINKED→DEAD abandon → the distributor reaps the
+            // dead slot via `drop_writer_alloc`, which must release the held remainder.
+            drop(writer);
+            dropped.store(true, std::sync::atomic::Ordering::Relaxed);
+
+            // Let the pusher observe the drop, release all its held credit (waking the distributor),
+            // and the distributor reap the dead slot and fold all returned credit back into
+            // `available`. The pusher polls on a 1ms `recv_frames_timeout`, so advance real
+            // simulated time (not zero-time `yield_now`) to let that timeout elapse and the release
+            // + reap run to quiescence.
+            bach::time::sleep(Duration::from_millis(50)).await;
+
+            assert_eq!(
+                pool_for_assert.debug_available(),
+                capacity as i64,
+                "pool must fully recover after a parked writer holding credit is dropped; \
+                 a short result means the held pending_credits leaked \
+                 (regression in drop_writer_alloc)"
+            );
         }
         .primary()
         .spawn();

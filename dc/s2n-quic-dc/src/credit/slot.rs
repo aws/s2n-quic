@@ -278,6 +278,21 @@ impl Slot {
                     rc, RC_APP,
                     "abandon found unexpected refcount {rc} (expected APP or LINKED)"
                 );
+                // Memory ordering for this `granted` read:
+                //
+                // The CAS above failed, meaning the slot is RC_APP. It reached RC_APP exactly one
+                // of two ways, and our failed-CAS `Acquire` load synchronizes-with whichever store
+                // published it:
+                //   * `grant()` wrote `*granted = amount` and THEN did a `Release` CAS
+                //     LINKED→APP. Our `Acquire` observing that APP establishes happens-before, so
+                //     the `amount` write is visible here — no torn or stale read.
+                //   * `SlotPtr::drop` (pool close) wrote `*granted = GRANT_CLOSED` and THEN did a
+                //     `Release` CAS LINKED→APP. Same pairing publishes the sentinel.
+                //   * The slot was never linked (CAS expected LINKED, found APP from the start):
+                //     then we are the sole owner and `granted` is whatever the last
+                //     `poll_granted`/`prepare_park` left, which is single-threaded w.r.t. us.
+                // In every case the read is well-ordered; the `Acquire` failure ordering on the
+                // CAS is load-bearing and must not be weakened to `Relaxed`.
                 let granted = *self.granted.get();
                 if granted == GRANT_CLOSED {
                     AbandonResult::Closed

@@ -107,15 +107,19 @@ pub struct ClientState {
     pub(crate) free: Mutex<ClientFreeList>,
     /// Peer's available queue slots (populated by QueueFree frames).
     pub(crate) peer_free: sync::free_list::FreeList,
+    /// Per-stream unbacked initial recv window — bytes a peer may send before
+    /// any pool-backed window grants flow. Configured at endpoint construction.
+    pub(crate) initial_recv_window: u64,
 }
 
 impl ClientState {
-    pub fn new(max_peer_queues: VarInt) -> Self {
+    pub fn new(max_peer_queues: VarInt, initial_recv_window: u64) -> Self {
         Self {
             pages: PageTable::new(),
             next_binding: AtomicU64::new(1),
             free: Mutex::new(ClientFreeList::new()),
             peer_free: sync::free_list::FreeList::new(max_peer_queues),
+            initial_recv_window,
         }
     }
 
@@ -172,7 +176,10 @@ impl ClientState {
             .expect("slot index out of range after grow");
 
         let binding_id = self.next_binding_id();
-        if slot_ref.allocate_and_open(binding_id).is_err() {
+        if slot_ref
+            .allocate_and_open(binding_id, self.initial_recv_window)
+            .is_err()
+        {
             let mut free = self.free.lock().unwrap();
             free.push_freed(index);
             return None;
@@ -254,7 +261,7 @@ impl ClientDispatch {
         queue_id: VarInt,
         binding_id: VarInt,
         entry: intrusive::Entry<msg::Stream>,
-    ) -> Result<AutoWake, Error<intrusive::Entry<msg::Stream>>> {
+    ) -> Result<(AutoWake, u64), Error<intrusive::Entry<msg::Stream>>> {
         let index = queue_id.as_u64() as usize;
         let Some(slot) = self.view.get(index, &self.state.pages) else {
             return Err(Error::Unallocated(entry));
@@ -278,20 +285,23 @@ impl ClientDispatch {
 
     #[inline]
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn send_msg<E>(
         &mut self,
         queue_id: VarInt,
         binding_id: VarInt,
         msg_id: u64,
         stream_offset: u64,
+        peer_max_offset: u64,
         message_size: u32,
         chunk_size: u16,
         chunk_index: u32,
         payload_len: u32,
         is_fin: bool,
         is_wakeup: bool,
+        blocked: bool,
         write_fn: impl FnOnce(*mut u8, u32) -> Result<(), E>,
-    ) -> Result<AutoWake, super::MsgError<E>> {
+    ) -> Result<(AutoWake, u64), super::MsgError<E>> {
         let index = queue_id.as_u64() as usize;
         let Some(slot) = self.view.get(index, &self.state.pages) else {
             return Err(super::MsgError::Queue(Error::Unallocated(())));
@@ -300,12 +310,14 @@ impl ClientDispatch {
             binding_id,
             msg_id,
             stream_offset,
+            peer_max_offset,
             message_size,
             chunk_size,
             chunk_index,
             payload_len,
             is_fin,
             is_wakeup,
+            blocked,
             write_fn,
         )
     }
@@ -349,7 +361,7 @@ mod tests {
     }
 
     fn test_state(max_queues: u64) -> Arc<ClientState> {
-        Arc::new(ClientState::new(VarInt::new(max_queues).unwrap()))
+        Arc::new(ClientState::new(VarInt::new(max_queues).unwrap(), 0))
     }
 
     fn try_alloc(state: &Arc<ClientState>) -> Option<AllocResult> {

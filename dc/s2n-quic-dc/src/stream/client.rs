@@ -203,6 +203,8 @@ impl Client {
             alloc.stream,
             self.endpoint.clock.clone(),
             self.endpoint.reader_metrics.clone(),
+            self.endpoint.recv_credit_pool.clone(),
+            priority,
         );
 
         let stream = Stream::new(reader, writer);

@@ -31,7 +31,6 @@ pub mod stream;
 pub mod sync;
 pub mod task;
 pub mod time;
-pub mod uds;
 pub mod xorshift;
 
 #[deprecated = "use stream instead of stream3"]

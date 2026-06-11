@@ -33,7 +33,7 @@ impl QueueView {
         queue_id: VarInt,
         binding_id: VarInt,
         entry: intrusive::Entry<msg::Stream>,
-    ) -> Result<queue::AutoWake, queue::Error<intrusive::Entry<msg::Stream>>> {
+    ) -> Result<(queue::AutoWake, u64), queue::Error<intrusive::Entry<msg::Stream>>> {
         match self {
             Self::Client(d) => d.send_stream(queue_id, binding_id, entry),
             Self::Server(d) => d.send_stream(queue_id, binding_id, entry),
@@ -53,32 +53,37 @@ impl QueueView {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn send_msg<E>(
         &mut self,
         queue_id: VarInt,
         binding_id: VarInt,
         msg_id: u64,
         stream_offset: u64,
+        peer_max_offset: u64,
         message_size: u32,
         chunk_size: u16,
         chunk_index: u32,
         payload_len: u32,
         is_fin: bool,
         is_wakeup: bool,
+        blocked: bool,
         write_fn: impl FnOnce(*mut u8, u32) -> Result<(), E>,
-    ) -> Result<queue::AutoWake, queue::MsgError<E>> {
+    ) -> Result<(queue::AutoWake, u64), queue::MsgError<E>> {
         match self {
             Self::Client(d) => d.send_msg(
                 queue_id,
                 binding_id,
                 msg_id,
                 stream_offset,
+                peer_max_offset,
                 message_size,
                 chunk_size,
                 chunk_index,
                 payload_len,
                 is_fin,
                 is_wakeup,
+                blocked,
                 write_fn,
             ),
             Self::Server(d) => d.send_msg(
@@ -86,12 +91,14 @@ impl QueueView {
                 binding_id,
                 msg_id,
                 stream_offset,
+                peer_max_offset,
                 message_size,
                 chunk_size,
                 chunk_index,
                 payload_len,
                 is_fin,
                 is_wakeup,
+                blocked,
                 write_fn,
             ),
         }

@@ -195,13 +195,17 @@ impl Entry {
         // TODO: max_queues should be min(local_preference, remote_preference) once
         // the handshake negotiates it. For now we use the peer's advertised value as-is.
         let max_queues = parameters.max_queues;
+        // Per-stream unbacked initial recv window — bytes a peer may send before
+        // any pool-backed window grants flow. Sourced from the path-secret
+        // parameter so it can be tuned per-peer at handshake time.
+        let initial_recv_window = parameters.local_recv_max_data.as_u64();
         let queue_state = match secret.id().endpoint_type() {
-            s2n_quic_core::endpoint::Type::Client => {
-                QueueState::Client(Arc::new(crate::queue::ClientState::new(max_queues)))
-            }
-            s2n_quic_core::endpoint::Type::Server => {
-                QueueState::Server(Arc::new(crate::queue::ServerState::new(max_queues)))
-            }
+            s2n_quic_core::endpoint::Type::Client => QueueState::Client(Arc::new(
+                crate::queue::ClientState::new(max_queues, initial_recv_window),
+            )),
+            s2n_quic_core::endpoint::Type::Server => QueueState::Server(Arc::new(
+                crate::queue::ServerState::new(max_queues, initial_recv_window),
+            )),
         };
 
         Self {

@@ -4,11 +4,11 @@ assertion_line: 352
 expression: logs
 ---
 0:00:00.000000000 [main] TRACE c#credit.acquire.fast_path=1
-0:00:00.000000000 [main] TRACE c#credit.acquire.bytes=341313
-0:00:00.000000000 [main] TRACE m#tx.msg.segment_size=339968
-0:00:00.000000000 [main] TRACE m#tx.msg.chunks_per_segment=256
-0:00:00.000000000 [main] TRACE m#tx.msg.segment_size=1345
-0:00:00.000000000 [main] TRACE m#tx.msg.chunks_per_segment=2
+0:00:00.000000000 [main] TRACE c#credit.acquire.bytes=339257
+0:00:00.000000000 [main] TRACE m#tx.msg.segment_size=337920
+0:00:00.000000000 [main] TRACE m#tx.msg.chunks_per_segment=128
+0:00:00.000000000 [main] TRACE m#tx.msg.segment_size=337920
+0:00:00.000000000 [main] TRACE m#tx.msg.chunks_per_segment=128
 0:00:00.000000000 [main] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000000000 [main] DEBUG Writer dropping binding_id=1 status=FinSent next_offset=341313 inflight_bytes=341313 remote_max_data=4611686018427387903
+0:00:00.000000000 [main] DEBUG Writer dropping binding_id=1 status=FinSent next_offset=339257 inflight_bytes=339257 remote_max_data=4611686018427387903
 0:00:00.000000000 [main] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs

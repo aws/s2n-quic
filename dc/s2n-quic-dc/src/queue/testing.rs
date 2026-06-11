@@ -13,7 +13,9 @@ use std::sync::{
 pub fn make_stream_entry() -> intrusive::Entry<msg::Stream> {
     intrusive::Entry::new(msg::Stream::Data {
         offset: VarInt::ZERO,
+        peer_max_offset: VarInt::ZERO,
         fin: false,
+        blocked: false,
         payload: BytesMut::from(&[42][..]),
     })
 }

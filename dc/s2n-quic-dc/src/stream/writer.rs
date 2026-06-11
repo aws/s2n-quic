@@ -29,13 +29,6 @@
 
 // TODOs:
 //
-// Flow control:
-//
-// * Auto-tune max_inflight_bytes based on completion queue delivery rate. Currently using a
-//   fixed budget. If completions arrive quickly, grow the budget to keep the pipe full. If
-//   slow, shrink to avoid buffering data that doesn't contribute to throughput. Similar in
-//   spirit to recv_budget in the existing streams.
-//
 // Performance:
 //
 // * Pace out frame transmissions at 1us interval — right now we're passing `None` for
@@ -265,6 +258,18 @@ unsafe fn drop_writer_alloc(ptr: NonNull<crate::credit::Slot>) {
     // `assert_slot_at_offset_zero!`), so the cast points back to the original
     // allocation. The pool guarantees this is called exactly once.
     let ptr = ptr.cast::<WriterAlloc>();
+    // Release any credit the writer was still holding. This path runs when the writer was dropped
+    // while its slot was LINKED (the `AbandonResult::Abandoned` branch in `WriterAllocPtr::drop`),
+    // so the pool's dead-slot walk — not the app — frees the allocation. The app branch releases
+    // `pending_credits` itself; here the app is already gone, so we must release it on the pool's
+    // behalf or the budget bleeds (one sub-chunk remainder per writer abandoned mid-acquire). The
+    // slot is DEAD (refcount=0, pool-owned and popped from every list), so reading `Inner` is sound
+    // — no concurrent access remains. `release` only stages into `returned` and wakes the
+    // distributor, both safe to call from inside the distributor's own end-of-poll dead-slot drain.
+    let inner = &(*ptr.as_ptr()).inner;
+    if inner.pending_credits > 0 {
+        inner.send_credit_pool.release(inner.pending_credits);
+    }
     std::ptr::drop_in_place(&raw mut (*ptr.as_ptr()).inner);
     alloc::dealloc(ptr.as_ptr().cast(), Layout::new::<WriterAlloc>());
 }
@@ -303,10 +308,14 @@ struct Inner {
     acceptor_id: VarInt,
     /// Next byte offset to send
     next_offset: VarInt,
-    /// Number of bytes currently in flight (not yet acknowledged)
+    /// Highest desired offset for which we have emitted a standalone `QueueDataBlocked` frame.
+    /// Guards against re-emitting an identical signal every poll; only a larger high watermark
+    /// (genuinely new demand) triggers a fresh standalone frame. The in-band `blocked` bit on
+    /// data frames needs no such guard since it rides a frame that is going out anyway.
+    last_blocked_offset: u64,
+    /// Number of bytes currently in flight (not yet acknowledged). Tracked for observability; the
+    /// local send rate is bounded by the endpoint send credit pool, not a per-stream inflight cap.
     inflight_bytes: u64,
-    /// Maximum number of bytes allowed in flight (local flow control)
-    max_inflight_bytes: u64,
     /// The peer's initial receive window from handshake params. Used to cap the
     /// init segment so the message completes as soon as the server grants credits.
     initial_remote_max_data: u64,
@@ -386,8 +395,13 @@ impl Writer {
         let mtu = parameters.max_datagram_size();
         let packet_size = mtu.saturating_sub(MAX_QUEUE_DATA_HEADER_OVERHEAD);
         let msg_packet_size = mtu.saturating_sub(MAX_QUEUE_MSG_HEADER_OVERHEAD);
-        let max_inflight_bytes = parameters.local_send_max_data.as_u64();
-        let initial_remote_max_data = parameters.remote_max_data.as_u64();
+        // The peer's per-stream initial recv window — the only window the peer's reader advertises
+        // and enforces for free before any pool-backed MAX_DATA grant. NOT the connection-level
+        // `remote_max_data`: a writer that sized its budget by the (much larger) connection window
+        // would overshoot the per-stream window and the reader would reset the stream with
+        // QUEUE_CONTROL_ERROR. The local send window is not consulted at all — the endpoint send
+        // credit pool governs the local send rate now.
+        let initial_remote_max_data = parameters.local_recv_max_data.as_u64();
         let remote_max_data = VarInt::ZERO;
 
         Self(WriterAllocPtr::new(Inner {
@@ -405,8 +419,8 @@ impl Writer {
             dest_queue_id,
             acceptor_id,
             next_offset: VarInt::ZERO,
+            last_blocked_offset: 0,
             inflight_bytes: 0,
-            max_inflight_bytes,
             initial_remote_max_data,
             remote_max_data,
             status: Status::Init,
@@ -436,8 +450,11 @@ impl Writer {
         let mtu = parameters.max_datagram_size();
         let packet_size = mtu.saturating_sub(MAX_QUEUE_DATA_HEADER_OVERHEAD);
         let msg_packet_size = mtu.saturating_sub(MAX_QUEUE_MSG_HEADER_OVERHEAD);
-        let max_inflight_bytes = parameters.local_send_max_data.as_u64();
-        let initial_remote_max_data = parameters.remote_max_data.as_u64();
+        // The peer's per-stream initial recv window (see `new_client` for why this is
+        // `local_recv_max_data`, not the connection-level `remote_max_data`). The server writer
+        // starts in `Open` and seeds its `remote_max_data` from this so its very first burst stays
+        // within the window the peer's reader advertises for free.
+        let initial_remote_max_data = parameters.local_recv_max_data.as_u64();
 
         Self(WriterAllocPtr::new(Inner {
             frame_tx,
@@ -454,8 +471,8 @@ impl Writer {
             dest_queue_id,
             acceptor_id,
             next_offset: VarInt::ZERO,
+            last_blocked_offset: 0,
             inflight_bytes: 0,
-            max_inflight_bytes,
             initial_remote_max_data,
             remote_max_data: VarInt::new(initial_remote_max_data).unwrap_or(VarInt::MAX),
             status: Status::Open,
@@ -768,7 +785,10 @@ impl Inner {
         } else {
             self.flow_budget().min(buf.buffered_len() as u64)
         };
-        match unsafe { self.poll_acquire_credits(cx, slot, want) } {
+        // The msg path frames a full chunk at a time, so one chunk is the smallest credit that
+        // lets `send_msg` make progress; `poll_acquire_credits` caps it by `want` for a sub-chunk
+        // tail.
+        match unsafe { self.poll_acquire_credits(cx, slot, want, self.msg_progress_floor()) } {
             Poll::Ready(Ok(())) => {}
             Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
             Poll::Pending => return Poll::Pending,
@@ -820,9 +840,17 @@ impl Inner {
                 return Poll::Pending;
             }
 
+            // Per-frame budget exhausted by send_msg's chunk loop (or a prior call). Break out
+            // and let the coop gate yield on the next poll — avoiding a double-yield (a
+            // self-wake here plus another from the gate).
+            //
+            // Break-safe: send_msg's partial-segment state (`pending_chunk_index` /
+            // `pending_segment_size` / `pending_chunk_size` / `pending_stream_offset`) and
+            // `next_msg_id` already carry mid-message resume, and `next_offset` /
+            // `inflight_bytes` account for everything that went out. `buf` is the caller's
+            // buffer — what's left in it is exactly what the next poll will continue with.
             if !self.coop.consume() {
-                cx.waker().wake_by_ref();
-                return Poll::Pending;
+                break;
             }
 
             // Refresh budget: drain completions, process MAX_DATA, and top up credits before
@@ -830,11 +858,25 @@ impl Inner {
             self.poll_completions(cx)?;
             let _ = self.poll_remote_budget(cx)?;
             let want = self.flow_budget().min(buf.buffered_len() as u64);
-            match unsafe { self.poll_acquire_credits(cx, slot, want) } {
+            match unsafe { self.poll_acquire_credits(cx, slot, want, self.msg_progress_floor()) } {
                 Poll::Ready(Ok(())) => {}
                 Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
                 Poll::Pending => return Poll::Pending,
             }
+        }
+
+        Poll::Pending
+    }
+
+    /// Smallest credit that lets the QueueMsg path frame one chunk. When a partial segment is
+    /// pending the chunk size is fixed at `pending_chunk_size` (the receiver expects that size for
+    /// the rest of the segment); otherwise a fresh segment uses the full `msg_packet_size`.
+    #[inline]
+    fn msg_progress_floor(&self) -> u64 {
+        if self.pending_chunk_index > 0 {
+            self.pending_chunk_size as u64
+        } else {
+            self.msg_packet_size as u64
         }
     }
 
@@ -885,7 +927,9 @@ impl Inner {
         } else {
             self.flow_budget().min(buf.buffered_len() as u64)
         };
-        match unsafe { self.poll_acquire_credits(cx, slot, want) } {
+        // The byte-stream path frames whatever credit it holds (clamped per-frame by
+        // `min_send_budget`), so a single byte is enough forward progress.
+        match unsafe { self.poll_acquire_credits(cx, slot, want, 1) } {
             Poll::Ready(Ok(())) => {}
             Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
             Poll::Pending => return Poll::Pending,
@@ -917,6 +961,16 @@ impl Inner {
 
         let available = self.min_send_budget();
         if available == 0 && (!is_fin || !buf.buffer_is_empty()) {
+            // Fully blocked with data to send and no data frame to carry the in-band `blocked`
+            // bit. Emit a standalone QueueDataBlocked so the reader can grow its window. Gated to
+            // the remote-window-limited case (not local-budget-limited, which the reader can't fix)
+            // and deduped on `last_blocked_offset`.
+            if !buf.buffer_is_empty() {
+                let high_watermark = self.high_watermark(buf);
+                if high_watermark > self.remote_max_data.as_u64() {
+                    self.send_data_blocked_frame(high_watermark)?;
+                }
+            }
             return Poll::Pending;
         }
 
@@ -1018,7 +1072,10 @@ impl Inner {
                 queue_pair: self.queue_pair(),
                 binding_id: self.control_rx.binding_id(),
                 offset: self.next_offset,
+                // FIN: no data beyond this point, and the delta is omitted on the wire.
+                largest_offset: self.next_offset,
                 is_fin: true,
+                blocked: false,
                 dest_acceptor_id: self.dest_acceptor_id(),
                 priority: self.wire_priority(),
             },
@@ -1253,13 +1310,21 @@ impl Inner {
     {
         let (payload, bytes_read, actual_fin) = self.prepare_early_data(buf, is_fin)?;
 
+        // Base offset is 0 for the init frame; the high watermark is what we just read plus
+        // whatever remains buffered. Init bypasses flow control (it bootstraps the binding), so
+        // we never mark it blocked, but the hint still seeds the reader's window sizing.
+        let largest_offset =
+            VarInt::new((bytes_read + buf.buffered_len()) as u64).unwrap_or(VarInt::MAX);
+
         let flow_credits = self.take_credits(payload.len());
         let frame = Frame {
             header: Header::QueueData {
                 queue_pair: self.queue_pair(),
                 binding_id: self.control_rx.binding_id(),
                 offset: VarInt::ZERO,
+                largest_offset,
                 is_fin: actual_fin,
+                blocked: false,
                 dest_acceptor_id: Some(self.acceptor_id),
                 priority: self.wire_priority(),
             },
@@ -1335,13 +1400,12 @@ impl Inner {
     /// Used to compute how much credit we *want* to acquire from the pool. The credit clamp is
     /// applied separately by `min_send_budget`.
     fn flow_budget(&self) -> u64 {
-        let local_available = self.max_inflight_bytes.saturating_sub(self.inflight_bytes);
-        let remote_available = self
-            .remote_max_data
+        // The peer's advertised receive window is the only flow-control bound here; the local
+        // send rate is governed by the endpoint send credit pool (acquired in
+        // `poll_acquire_credits` and clamped by `min_send_budget`), not a per-stream inflight cap.
+        self.remote_max_data
             .as_u64()
-            .saturating_sub(self.next_offset.as_u64());
-
-        local_available.min(remote_available)
+            .saturating_sub(self.next_offset.as_u64())
     }
 
     /// Effective send budget for the current poll: the flow-control window further clamped by the
@@ -1349,6 +1413,51 @@ impl Inner {
     /// frame they can't attribute to a credit.
     fn min_send_budget(&self) -> u64 {
         self.flow_budget().min(self.pending_credits)
+    }
+
+    /// Absolute high watermark of stream data the writer currently wants to send:
+    /// `next_offset + buffered_len`. Carried to the reader as the `largest_offset` hint so it can
+    /// right-size the receive window. Stable across a single send call.
+    #[inline]
+    fn high_watermark<S>(&self, buf: &S) -> u64
+    where
+        S: buffer::reader::storage::Infallible,
+    {
+        self.next_offset
+            .as_u64()
+            .saturating_add(buf.buffered_len() as u64)
+    }
+
+    /// Emit a standalone `QueueDataBlocked` frame for the cold case where the writer is fully
+    /// blocked with no data frame to carry the in-band `blocked` bit. Deduped on
+    /// `last_blocked_offset` so an identical signal is not re-sent every poll; loss is handled by
+    /// normal retransmission, and the reader self-dedups on the monotonic `desired_offset`.
+    fn send_data_blocked_frame(&mut self, desired_offset: u64) -> io::Result<()> {
+        if desired_offset <= self.last_blocked_offset {
+            return Ok(());
+        }
+        let frame = Frame {
+            header: Header::QueueDataBlocked {
+                queue_pair: self.queue_pair(),
+                binding_id: self.control_rx.binding_id(),
+                desired_offset: VarInt::new(desired_offset).unwrap_or(VarInt::MAX),
+            },
+            payload: ByteVec::new(),
+            path_secret_entry: self.path_secret_entry.clone(),
+            completion: Some(self.completion_rx.sender()),
+            status: frame::TransmissionStatus::default(),
+            ttl: DEFAULT_TTL,
+            enqueued_at: Some(self.clock.now()),
+            flow_credits: 0,
+        };
+        self.send_frame(frame)?;
+        self.last_blocked_offset = desired_offset;
+        trace!(
+            binding_id = self.control_rx.binding_id().as_u64(),
+            desired_offset,
+            "Sent QueueDataBlocked"
+        );
+        Ok(())
     }
 
     /// Drain any delivered grant into `pending_credits`, then top up by `want` bytes from the pool
@@ -1368,6 +1477,7 @@ impl Inner {
         cx: &mut Context,
         slot: NonNull<crate::credit::Slot>,
         want: u64,
+        min_progress: u64,
     ) -> Poll<io::Result<()>> {
         // Drain any grant the distributor delivered while we were away.
         let slot_ref = unsafe { slot.as_ref() };
@@ -1390,10 +1500,29 @@ impl Inner {
             }
         }
 
-        if self.pending_credits >= want || want == 0 {
+        // We need only enough credit to emit one frame's worth of forward progress, not the whole
+        // `want` window. `min_progress` is that floor: 1 byte for the byte-stream path (any credit
+        // lets `send_data` emit a frame, clamped by `min_send_budget`) and one full chunk for the
+        // QueueMsg path (a chunk is the smallest unit `send_msg` can frame). Capped by `want` so a
+        // tail smaller than a chunk doesn't demand more than the window holds.
+        //
+        // Returning as soon as we hold `target` — rather than blocking for the full `want` — is
+        // what avoids the send-pool wedge: under contention the fair-share distributor hands out a
+        // partial `min_grant_slice` grant and wakes us. If we re-parked for the remainder without
+        // first sending (and eventually releasing) the slice we already hold, every contending
+        // writer would pin a sub-`want` slice, nothing would be sent, nothing released, and the
+        // pool would deadlock. Partials below `target` stay accumulated on `pending_credits` and we
+        // re-acquire for the rest; a partial we can't yet use still leaves us parked (Pending), so
+        // the wake stays registered. The leftover `pending_credits` is released on drop.
+        let target = min_progress.min(want);
+        if self.pending_credits >= target || want == 0 {
             return Poll::Ready(Ok(()));
         }
 
+        // We hold less than one frame's worth. Acquire the rest of `want` (the pool clamps to
+        // `max_single_acquire`, which is configured >= one chunk, so a successful acquire always
+        // lifts us to at least `target`); either the fast path satisfies it and we return `Ready`,
+        // or we park until the distributor grants a slice.
         let need = want - self.pending_credits;
         // SAFETY: caller's invariants: `slot` is this writer's idle slot.
         match unsafe {
@@ -1432,12 +1561,39 @@ impl Inner {
         let mut need_fin_packet = is_fin && buf.buffer_is_empty();
         let mut frames = Queue::new();
 
+        // High watermark of stream data the writer currently wants to send. Stable across this
+        // call: `next_offset` advances exactly as `buffered_len` shrinks. `blocked` is true when
+        // the writer wants to go past the advertised remote window — the one limit the reader can
+        // relieve by extending MAX_DATA (local/congestion limits are not the reader's to fix).
+        let high_watermark = self.high_watermark(buf);
+        let largest_offset = VarInt::new(high_watermark).unwrap_or(VarInt::MAX);
+        let blocked = high_watermark > self.remote_max_data.as_u64();
+
         // Capture enqueue time once for all frames in this send batch so that
         // every frame shares the same reference point for sojourn measurement.
         let batch_enqueued_at = Some(self.clock.now());
 
         loop {
             if !need_fin_packet && buf.buffer_is_empty() {
+                break;
+            }
+
+            // Per-frame coop accounting. Stop emitting frames when the budget is drained.
+            //
+            // Break-safe:
+            //   - Frames already produced this call sit in the local `frames` queue and will
+            //     flush via the unchanged `self.send_batch(frames)?` below the loop.
+            //   - `next_offset` / `inflight_bytes` advance per frame via `advance_offset`, so
+            //     the next poll re-derives `high_watermark`/`largest_offset`/`blocked` correctly
+            //     against the new offset.
+            //   - The remaining bytes are still in `buf` (the caller's storage); we never
+            //     consumed past what we framed.
+            //   - `need_fin_packet` covers the FIN-on-empty-buffer case. Because the coop gate
+            //     guarantees `budget >= 1` on entry to the body (it self-yields and refills when
+            //     exhausted), the first iteration always passes this check, so a pure-FIN call
+            //     always emits the FIN frame on this poll. Mid-stream, a budget-deferred FIN
+            //     produces one poll later — no loss.
+            if !self.coop.consume() {
                 break;
             }
 
@@ -1479,7 +1635,10 @@ impl Inner {
                     queue_pair: self.queue_pair(),
                     binding_id: self.control_rx.binding_id(),
                     offset,
+                    largest_offset,
                     is_fin: include_fin,
+                    // A FIN means we sent everything we have, so we are not blocked.
+                    blocked: blocked && !include_fin,
                     dest_acceptor_id: self.dest_acceptor_id(),
                     priority: self.wire_priority(),
                 },
@@ -1513,6 +1672,18 @@ impl Inner {
         }
 
         self.send_batch(frames)?;
+
+        if blocked && !buf.buffer_is_empty() {
+            if written > 0 {
+                // A data frame carried the in-band `blocked` bit for this high watermark. Record it
+                // so the standalone path (here and in the poll gate) won't re-emit the same signal.
+                self.last_blocked_offset = self.last_blocked_offset.max(high_watermark);
+            } else {
+                // Cold case: no data frame went out (window already exhausted), so no in-band bit
+                // was carried. Emit a standalone signal carrying the desired high watermark.
+                self.send_data_blocked_frame(high_watermark)?;
+            }
+        }
 
         Ok(written)
     }
@@ -1573,6 +1744,14 @@ impl Inner {
         let mut frames = Queue::new();
         let mut total_written = 0usize;
 
+        // High watermark of all data this call wants to send, stable across the segment loop.
+        // `blocked` is true when that watermark lies past the advertised remote window — the only
+        // limit the reader can relieve. Init (`force_first`) bypasses flow control, so it is never
+        // marked blocked even though the remote window may be zero during the handshake.
+        let high_watermark = self.high_watermark(buf);
+        let largest_offset = VarInt::new(high_watermark).unwrap_or(VarInt::MAX);
+        let blocked = !force_first && high_watermark > self.remote_max_data.as_u64();
+
         let mut is_first = true;
         while !buf.buffer_is_empty() {
             // Gate on remote window only — the receiver enforces this limit and
@@ -1595,9 +1774,15 @@ impl Inner {
                     .min(max_segment_size)
                     .min(self.initial_remote_max_data as usize)
             } else {
+                // Clamp by the credits actually held (`pending_credits`), not just the remote
+                // window. Credits were acquired via `flow_budget()` = min(local, remote); when the
+                // reader grows the remote window past our local send budget, sizing a segment by
+                // `remote_budget` alone would consume more credits than we hold and underflow
+                // `take_credits`. The remainder is sent on a later poll after re-acquiring.
                 buf.buffered_len()
                     .min(max_segment_size)
                     .min((remote_budget as usize).max(chunk_size as usize))
+                    .min((self.pending_credits as usize).max(chunk_size as usize))
             };
 
             let is_resuming = self.pending_chunk_index > 0;
@@ -1642,6 +1827,40 @@ impl Inner {
                 segment_size - (start_chunk_index as usize * chunk_size as usize).min(segment_size);
             while segment_remaining > 0 {
                 let chunk_len = (chunk_size as usize).min(segment_remaining);
+
+                // Per-frame coop accounting.
+                //
+                // Break-safe: the partial-segment save below (`pending_chunk_index` /
+                // `pending_segment_size` / `pending_chunk_size` / `pending_stream_offset`) is
+                // the exact same machinery the credit-bounded break (`pending_credits <
+                // chunk_len`, immediately below) relies on. The post-loop block sees
+                // `segment_remaining > 0`, persists the resume cursor, calls
+                // `advance_offset(bytes_sent)` for the chunks already framed, and breaks the
+                // outer segment loop. `next_msg_id` is only bumped on segment completion, so
+                // resuming chunks share the same msg_id. Nothing was consumed from `buf` past
+                // what we framed.
+                //
+                // Edge case: breaking on the very first chunk of a fresh segment leaves
+                // `pending_chunk_index == 0` (read elsewhere as "no resume"). That's
+                // identical to the credit-bounded break at the segment-level entry above, and
+                // produces a fresh segment next poll — same data, same offsets, no loss.
+                if !self.coop.consume() {
+                    break;
+                }
+
+                // Stop if the credit we currently hold can't cover this chunk. The non-resume
+                // entry guards this at the segment level (the `pending_credits < chunk_size` break
+                // above), but a resuming segment skips those guards and a single pool acquire only
+                // tops up by `max_single_acquire` — which may cover fewer chunks than the segment
+                // has. Re-checking per chunk keeps `take_credits` from underflowing; the remaining
+                // chunks fall through to the partial-segment save below and resume after the outer
+                // poll loop re-acquires. Liveness depends on `max_single_acquire >= chunk_size` so
+                // at least one chunk is sent per poll (otherwise this would break at chunk 0 with
+                // no forward progress).
+                if (self.pending_credits as usize) < chunk_len {
+                    break;
+                }
+
                 let mut payload = ByteVec::new();
                 let mut writer = payload.with_write_limit(chunk_len);
                 buf.infallible_copy_into(&mut writer);
@@ -1654,11 +1873,16 @@ impl Inner {
                         binding_id: self.control_rx.binding_id(),
                         msg_id: VarInt::new(msg_id).unwrap_or(VarInt::MAX),
                         stream_offset,
+                        largest_offset,
                         message_size: VarInt::new(segment_size as u64).unwrap_or(VarInt::MAX),
                         chunk_size: VarInt::new(chunk_size as u64).unwrap_or(VarInt::MAX),
                         chunk_index: VarInt::new(chunk_index as u64).unwrap_or(VarInt::MAX),
                         is_fin: segment_is_fin,
                         is_wakeup,
+                        // A FIN segment sent everything; otherwise carry the call-level blocked
+                        // state. The reader dedups on the desired offset, so repeating the bit
+                        // across a segment's chunks is harmless.
+                        blocked: blocked && !segment_is_fin,
                         dest_acceptor_id: self.dest_acceptor_id(),
                         priority: self.wire_priority(),
                     },
@@ -1695,12 +1919,18 @@ impl Inner {
                 self.pending_chunk_size = chunk_size;
                 self.pending_stream_offset = stream_offset;
 
-                self.metrics
-                    .tx_msg_segment_size
-                    .record_value(segment_size as u64);
-                self.metrics
-                    .tx_msg_chunks_per_segment
-                    .record_value(chunks_sent as u64);
+                // Skip the histogram record when no chunk went out this call (e.g. the coop
+                // budget or credit ran out exactly at the segment boundary). Recording a
+                // 0-chunk "segment" would pollute the per-segment distribution with a phantom
+                // empty segment; the resuming call records the segment once it actually emits.
+                if chunks_sent > 0 {
+                    self.metrics
+                        .tx_msg_segment_size
+                        .record_value(segment_size as u64);
+                    self.metrics
+                        .tx_msg_chunks_per_segment
+                        .record_value(chunks_sent as u64);
+                }
 
                 self.advance_offset(bytes_sent)?;
                 total_written += bytes_sent;
@@ -1731,6 +1961,17 @@ impl Inner {
 
         if !frames.is_empty() {
             self.send_batch(frames)?;
+        }
+
+        if blocked && !buf.buffer_is_empty() {
+            if total_written > 0 {
+                // Frames carried the in-band `blocked` bit; record the watermark so the standalone
+                // path won't re-emit the same signal.
+                self.last_blocked_offset = self.last_blocked_offset.max(high_watermark);
+            } else {
+                // Cold case: no frame went out, so emit a standalone signal.
+                self.send_data_blocked_frame(high_watermark)?;
+            }
         }
 
         Ok(total_written)

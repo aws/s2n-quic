@@ -746,6 +746,7 @@ where
             reader_metrics: reader_metrics.clone(),
             writer_metrics: writer_metrics.clone(),
             send_credit_pool: send_credit_pool.clone(),
+            recv_credit_pool: recv_credit_pool.clone(),
         });
     }
 
@@ -919,6 +920,10 @@ struct RecvDispatchParts<Clk, AckSnd, Route> {
     /// Endpoint-wide send credit pool, plumbed through to `Writer::new_server` so
     /// server-side stream Writers can register their `Slot` against it.
     send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
+    /// Endpoint-wide recv credit pool. Dispatch releases bytes here on each new
+    /// payload arrival, and Readers register their `Slot` against it for
+    /// window-extension acquires.
+    recv_credit_pool: crate::sync::Arc<crate::credit::Pool>,
 }
 
 /// Ingredients for the background worker (invalidation validation + future housekeeping).
@@ -1236,6 +1241,7 @@ where
                     rd.reader_metrics,
                     rd.writer_metrics,
                     rd.send_credit_pool,
+                    rd.recv_credit_pool,
                 );
                 let variant = format!("recv.dispatch.{recv_dispatch_idx}");
                 let task_counter = counter_registry

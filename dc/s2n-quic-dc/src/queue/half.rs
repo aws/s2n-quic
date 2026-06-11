@@ -255,7 +255,9 @@ mod tests {
         for i in 0..3u8 {
             let entry = crate::intrusive::Entry::new(msg::Stream::Data {
                 offset: s2n_quic_core::varint::VarInt::from_u8(i),
+                peer_max_offset: s2n_quic_core::varint::VarInt::from_u8(i),
                 fin: false,
+                blocked: false,
                 payload: bytes::BytesMut::from(&[i][..]),
             });
             push_ok(&half, entry);

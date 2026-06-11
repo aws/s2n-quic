@@ -7,4 +7,4 @@ expression: logs
 0:00:00.000000000 [main] TRACE c#credit.acquire.bytes=5
 0:00:00.000000000 [main] DEBUG poll_remote_budget received messages binding_id=1 status=Open msg_count=1
 0:00:00.000000000 [main] DEBUG event=on_shutdown prev=Open next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
-0:00:00.000000000 [main] DEBUG Writer dropping binding_id=1 status=Shutdown next_offset=5 inflight_bytes=5 remote_max_data=14720
+0:00:00.000000000 [main] DEBUG Writer dropping binding_id=1 status=Shutdown next_offset=5 inflight_bytes=5 remote_max_data=1048576
