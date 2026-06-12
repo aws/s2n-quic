@@ -226,7 +226,20 @@ impl Future for ClientAllocFuture<'_> {
         }
 
         match this.state.peer_free.poll_alloc(&mut this.waiter, cx) {
-            Poll::Ready(Some(dest_queue_id)) => Poll::Ready(this.state.alloc_local(dest_queue_id)),
+            Poll::Ready(Some(dest_queue_id)) => {
+                match this.state.alloc_local(dest_queue_id) {
+                    Some(result) => Poll::Ready(Some(result)),
+                    // We popped a peer ID but couldn't pair it with a local slot
+                    // (the local free list is closed/exhausted). Return the peer ID
+                    // to the free list instead of dropping it on the floor —
+                    // otherwise it leaks and the wake it consumed is wasted, which
+                    // can strand another waiter. `release` re-wakes a parked waiter.
+                    None => {
+                        this.state.peer_free.release(dest_queue_id);
+                        Poll::Ready(None)
+                    }
+                }
+            }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }
