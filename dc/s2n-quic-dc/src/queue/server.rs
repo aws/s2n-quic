@@ -224,20 +224,24 @@ impl ServerView {
             }
         }
 
-        // Slot is unallocated. Reject stale/duplicate init frames from an old
-        // generation: a recycled slot preserves its previous binding_id as a
-        // tombstone (see `Slot::mark_unallocated`), and only a strictly greater
-        // binding may re-allocate it. This mirrors the tombstone check in
-        // `bind_and_push_stream`; without it a delayed/reordered init from a
-        // freed binding would resurrect the slot under a zombie binding_id.
+        // Fast path: reject stale/duplicate init frames from an old generation before
+        // taking the slot locks. A recycled slot preserves its previous binding_id as a
+        // tombstone (see `Slot::mark_unallocated`), and only a strictly greater binding
+        // may re-allocate it. This `stored` read is lock-free and NOT atomic with the
+        // allocation below, so it is only an optimization — `allocate_and_open`
+        // re-validates the tombstone under the slot locks and returns
+        // `AllocateOutcome::Stale` if a concurrent recycle bumped the tombstone in the
+        // window between this read and the allocation. That in-lock check is what
+        // actually guarantees a recycled slot can never be resurrected under a zombie
+        // binding_id; this mirrors `bind_and_push_stream`.
         let tombstone = stored & !super::slot::UNALLOCATED_BIT;
         if binding_id.as_u64() <= tombstone {
             return Err(Error::StaleBinding(()));
         }
 
-        // Slot is unallocated — bind it
+        // Slot is unallocated — bind it (tombstone re-checked under the lock).
         match slot.allocate_and_open(binding_id, self.state.initial_recv_window) {
-            Ok(true) => {
+            Ok(super::slot::AllocateOutcome::Allocated) => {
                 let slot_ptr = slot.as_ptr();
                 let on_free = OnFree::Server {
                     path_entry: path_entry.clone(),
@@ -252,10 +256,13 @@ impl ServerView {
                     release_bytes: 0,
                 })
             }
-            Ok(false) => Ok(BindResult::Bound {
+            Ok(super::slot::AllocateOutcome::AlreadyBound) => Ok(BindResult::Bound {
                 waker: AutoWake::default(),
                 release_bytes: 0,
             }),
+            // A concurrent recycle bumped the tombstone past `binding_id` after the
+            // lock-free fast-path read passed — reject as stale.
+            Ok(super::slot::AllocateOutcome::Stale) => Err(Error::StaleBinding(())),
             Err(_) => Err(Error::SenderClosed),
         }
     }

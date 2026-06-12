@@ -1075,3 +1075,192 @@ fn orphaned_shell_survives_cancelled_probe_tail() {
         "no bytes should remain in flight once the only frame was cancelled"
     );
 }
+
+/// Builds a QueueData frame carrying a `payload_len`-byte payload, near a full MTU.
+/// Used to construct an inflight packet large enough that an ACK frame in the same
+/// segment crowds the probe retransmit out (forcing `assemble_probe` → `DoesNotFit`).
+fn make_sized_data_frame(
+    entry: &Arc<PathSecretEntry>,
+    payload_len: usize,
+) -> crate::intrusive::Entry<Frame> {
+    use crate::packet::datagram::QueuePair;
+
+    let mut payload = ByteVec::new();
+    payload.push_back(Bytes::from(vec![0x5a_u8; payload_len]));
+    Frame {
+        header: Header::QueueData {
+            queue_pair: QueuePair {
+                source_queue_id: VarInt::from_u8(1),
+                dest_queue_id: VarInt::from_u8(2),
+            },
+            binding_id: VarInt::from_u8(1),
+            offset: VarInt::ZERO,
+            largest_offset: VarInt::ZERO,
+            is_fin: false,
+            blocked: false,
+            dest_acceptor_id: None,
+            priority: crate::credit::Priority::default(),
+        },
+        payload,
+        path_secret_entry: entry.clone(),
+        completion: None,
+        status: TransmissionStatus::default(),
+        ttl: DEFAULT_TTL,
+        enqueued_at: None,
+        flow_credits: 0,
+    }
+    .into()
+}
+
+/// Builds a `pending_acks` submission carrying a minimal first ACK range and no
+/// extra ranges, stamped with `recv_time` for ack_delay computation.
+fn make_pending_ack(
+    entry: &Arc<PathSecretEntry>,
+    recv_time: crate::time::precision::Timestamp,
+) -> crate::intrusive::Entry<crate::endpoint::msg::Sender> {
+    use crate::endpoint::{ack::state::Submission, id, msg};
+    use s2n_quic_core::frame::ack::EcnCounts;
+
+    crate::intrusive::Entry::new(msg::Sender::PendingAck(Submission {
+        largest_acknowledged: VarInt::from_u8(7),
+        ack_range: VarInt::from_u8(7),
+        extra_ranges: Bytes::new(),
+        ecn_counts: EcnCounts::default(),
+        largest_recv_time: recv_time,
+        path_secret_entry: entry.clone(),
+        local_sender_id: id::LocalSenderId::from_index(0),
+        remote_sender_id: id::RemoteSenderId::new(VarInt::from_u8(0)),
+        recv_worker_id: id::RecvDispatchWorkerId::new(0),
+    }))
+}
+
+/// Repro: a PTO probe segment's budget is consumed by an ACK-only packet, advancing the
+/// probe-state countdown without ever retransmitting the genuinely-outstanding data.
+///
+/// `assemble()` runs Phase 1 (drain direct ACK submissions) before Phase 2 (PTO probe
+/// retransmit). When a PTO is requested and an ACK is also pending, Phase 1 emits the ACK
+/// frame (marked ack-eliciting because `probe_state.is_requested()`, assemble.rs:184) and
+/// consumes part of the single segment's budget. Phase 2 then tries to retransmit the oldest
+/// inflight data frame as a probe — but with the ACK already in the segment and only one GSO
+/// segment available (`max_segments == 1`), the large data frame no longer fits, so
+/// `assemble_probe` returns `ProbeResult::DoesNotFit` (assemble.rs:841-847) and nothing is
+/// added to the inflight map.
+///
+/// The defect: after encoding, `context.pto.probe_state.on_transmit()` (assemble.rs:492) fires
+/// unconditionally inside the `if is_ack_eliciting` block — gated on "an ack-eliciting packet
+/// was sent" rather than "a probe retransmit was sent". So the ACK-only packet advances the
+/// probe budget (`ProbeTwice → ProbeOnce`) even though the lost data was never retransmitted.
+/// The ACK-only packet is then stripped before inflight insertion (assemble.rs:466-475), so when
+/// the peer ACKs it, `process_ack` finds no inflight packet acked, `max_acked_tx_time` is `None`,
+/// and `detect_loss` is skipped (ack.rs:226). The probe budget is spent without driving recovery
+/// of the outstanding data, delaying tail-loss recovery by at least one PTO period.
+///
+/// Correct behavior: the probe budget must be consumed only when a probe retransmit (or Ping) is
+/// actually emitted. An ACK-only packet that crowds the probe out must leave `probe_state`
+/// unchanged so the next assembly round retries the probe.
+#[test]
+fn ack_only_segment_must_not_consume_pto_probe_budget() {
+    use crate::stream::endpoint::send::ProbeState;
+
+    let mtu = 1500;
+    let registry = Registry::new();
+    let (mut context, entry) = make_context(mtu, &registry);
+
+    let clock = Clock::new(Duration::from_micros(1));
+    // Single GSO segment: there is no second segment for Phase 2 to retry the probe in, so the
+    // probe is fully crowded out by the ACK for this assembly round.
+    let gso = make_gso(1);
+    let pool = pool::Pool::new(u16::MAX);
+    let mut header_buf = Vec::new();
+    let mut cancelled = Queue::new();
+    let mut ack_completions = Queue::new();
+    let (mut freed_batch_tx, _freed_batch_rx) = crate::queue::freed_batch_channel();
+
+    let send_counters = crate::endpoint::counters::Send::new(
+        &crate::counter::Registry::default(),
+        crate::endpoint::id::LocalSenderId::from_index(0),
+    );
+    let source_sender_id = crate::endpoint::id::LocalSenderId::new(VarInt::from_u8(1));
+    let source_control_port = 443;
+
+    let credit_pool = unused_credit_pool();
+    macro_rules! run_assemble {
+        () => {
+            assemble::<SyncRecycler, _>(
+                &mut context,
+                ImmediateQueueStatus::Empty,
+                &clock,
+                source_sender_id,
+                source_control_port,
+                &gso,
+                pool.alloc::<SyncRecycler>().expect("pool alloc failed"),
+                &mut header_buf,
+                &mut cancelled,
+                &mut ack_completions,
+                &mut freed_batch_tx,
+                &AssemblerCounters::new(&registry),
+                &send_counters,
+                &credit_pool,
+            )
+        };
+    }
+
+    // ── Round 1: send a near-MTU data frame at PN 0. ──
+    // Sized so that once an ACK frame occupies part of the segment, this frame's retransmit no
+    // longer fits — forcing the `DoesNotFit` path in Phase 2 on the next round.
+    context.push_back_frame(make_sized_data_frame(&entry, mtu as usize - 60));
+    let _ = run_assemble!().expect("initial data should assemble");
+    assert!(context.inflight.has_inflight(), "PN 0 is in flight");
+    let range = context.inflight.get_range();
+    let pn0 = range.start();
+    assert_eq!(range.start(), range.end(), "exactly one inflight entry (PN 0)");
+    let bytes_before = context.cca.bytes_in_flight();
+    assert!(bytes_before > 0, "live packet contributes bytes_in_flight");
+    // The round-1 packet must nearly fill the MTU, so that adding even a small ACK frame in
+    // round 2 pushes the probe retransmit past the segment boundary.
+    assert!(
+        bytes_before as usize > mtu as usize - 40,
+        "test setup: the inflight packet ({bytes_before} bytes) must nearly fill the MTU \
+         ({mtu}) so an ACK crowds out the retransmit"
+    );
+
+    // ── Round 2: PTO fires AND an ACK is pending. ──
+    // Phase 1 emits the ACK (fits, marked ack-eliciting by the pending probe). Phase 2 cannot fit
+    // the data-frame retransmit alongside it in the single segment → `DoesNotFit`. No probe is
+    // inserted into the inflight map.
+    context.pto.probe_state = ProbeState::ProbeTwice;
+    context
+        .pending_acks
+        .push_back(make_pending_ack(&entry, clock.get_time()));
+
+    let end_before = context.inflight.get_range().end();
+    let _ = run_assemble!();
+
+    // The probe was NOT sent: no new (higher) PN entered the inflight map, and PN 0 did not
+    // become a shell — its bytes are unchanged.
+    assert_eq!(
+        context.inflight.get_range().end(),
+        end_before,
+        "no probe retransmit was emitted: the inflight map's high PN must be unchanged"
+    );
+    assert_eq!(
+        context.cca.bytes_in_flight(),
+        bytes_before,
+        "PN {} must still be a live (non-shell) inflight packet — its bytes are unchanged",
+        pn0.as_u64(),
+    );
+
+    // The defect: the ACK-only packet consumed the probe budget. The probe budget must be spent
+    // only when a probe is actually emitted, so `probe_state` must remain `ProbeTwice` and the
+    // next assembly round must retry the probe. On the current code this FAILS — `on_transmit`
+    // fired on the ACK-only packet, advancing the state to `ProbeOnce`.
+    assert_eq!(
+        context.pto.probe_state,
+        ProbeState::ProbeTwice,
+        "an ACK-only packet that crowded out the probe must NOT consume the PTO probe budget; \
+         probe_state advanced to {:?}, so the outstanding data at PN {} was never retransmitted \
+         yet a probe segment was spent",
+        context.pto.probe_state,
+        pn0.as_u64(),
+    );
+}

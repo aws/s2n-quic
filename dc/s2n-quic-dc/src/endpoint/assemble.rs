@@ -486,10 +486,23 @@ where
                     );
                 }
 
-                // Notify probe state that an ack-eliciting packet was transmitted.
-                // This clears `Requested → Idle`; if already Idle (e.g. second segment
-                // in this assembly round) the NoOp result is silently ignored.
-                let _ = context.pto.probe_state.on_transmit();
+                // Notify probe state that a probe segment was transmitted — but only when this
+                // packet actually carries probe content. After stripping ACK and Ping frames,
+                // either real frames remain (a retransmit or pending-data probe that enters the
+                // inflight map, so the peer's ACK can drive loss detection) or a Ping was emitted
+                // (`has_ping`, the "nothing to retransmit" second segment). Gating on `is_ack_eliciting`
+                // alone would let an ACK-only packet — one that is ack-eliciting merely because a probe
+                // is requested (see Phase 1), but whose probe retransmit was crowded out of the segment
+                // (`ProbeResult::DoesNotFit`) — consume the probe budget without retransmitting the
+                // outstanding data. That ACK-only packet is stripped before inflight insertion, so when
+                // the peer ACKs it `process_ack` finds nothing acked and skips loss detection; the lost
+                // data would go unrecovered while the probe budget was spent. Leaving `probe_state`
+                // unchanged lets the next assembly round retry the probe.
+                if !packet_frames.is_empty() || has_ping {
+                    // This clears `Requested → Idle`; if already Idle (e.g. second segment in this
+                    // assembly round) the NoOp result is silently ignored.
+                    let _ = context.pto.probe_state.on_transmit();
+                }
 
                 // Register in inflight map only if data frames remain after stripping ACKs.
                 // An ACK-only packet that was ack-eliciting (PING-style ACK) satisfies the

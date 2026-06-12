@@ -178,6 +178,18 @@ pub(crate) enum BindState {
     NewBinding(half::AutoWake),
 }
 
+/// Result of `Slot::allocate_and_open`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AllocateOutcome {
+    /// A new binding was created and both receiver halves were opened.
+    Allocated,
+    /// The slot was already bound (a concurrent caller won the allocation).
+    AlreadyBound,
+    /// The incoming binding_id is `<=` the slot's tombstone — a stale/duplicate
+    /// init for an already-recycled binding. Nothing was changed.
+    Stale,
+}
+
 impl Slot {
     /// Create a new, unallocated slot with its page-table index baked in.
     ///
@@ -471,23 +483,41 @@ impl Slot {
 
     /// Set `binding_id` and open both receiver halves in one critical section.
     ///
-    /// Acquires both half locks (stream → control) so that the binding store
-    /// and the `HAS_RECEIVER` flag updates are never visible in a partial state.
-    /// Returns `Ok(true)` if a new allocation was performed, `Ok(false)` if the
-    /// slot was already bound (concurrent race), or `Err(Closed)` if the sender
-    /// side has already been closed.
+    /// Acquires both half locks (stream → control) so that the binding store, the
+    /// tombstone re-validation, and the `HAS_RECEIVER` flag updates are never
+    /// visible in a partial state and never race a concurrent recycle. Returns:
+    /// - `Ok(Allocated)` — a new binding was created and both halves opened.
+    /// - `Ok(AlreadyBound)` — the slot was already bound (a concurrent caller won).
+    /// - `Ok(Stale)` — the incoming `binding_id` is `<=` the slot's tombstone, i.e.
+    ///   a stale/duplicate init for an already-recycled binding.
+    /// - `Err(Closed)` — the sender side has already been closed.
     #[inline]
     pub(crate) fn allocate_and_open(
         &self,
         binding_id: VarInt,
         initial_window: u64,
-    ) -> Result<bool, half::Closed> {
+    ) -> Result<AllocateOutcome, half::Closed> {
         let mut s = self.stream.inner.lock();
         let mut c = self.control.inner.lock();
 
         // Re-check inside the lock: a concurrent caller may have already bound.
         if s.flags.contains(Flags::HAS_RECEIVER) && c.flags.contains(Flags::HAS_RECEIVER) {
-            return Ok(false);
+            return Ok(AllocateOutcome::AlreadyBound);
+        }
+
+        // Re-validate the binding_id against the slot's tombstone *under the lock*.
+        // Callers (e.g. `ServerView::bind_for_msg`) classify the binding from a
+        // lock-free `binding_id_raw()` read that is NOT atomic with this allocation:
+        // between that read and acquiring these locks, a concurrent init could have
+        // allocated this slot under a higher binding and then freed it, bumping the
+        // tombstone. A recycled slot only accepts bindings strictly greater than its
+        // previous binding_id, so reject anything `<=` the tombstone here — mirroring
+        // `bind_and_push_stream`, which does the same comparison inside these locks.
+        // Without this re-check a delayed/duplicate/reordered init could resurrect the
+        // slot under a zombie binding_id below its own tombstone.
+        let tombstone = self.binding_id.load(Ordering::Relaxed) & !UNALLOCATED_BIT;
+        if binding_id.as_u64() <= tombstone {
+            return Ok(AllocateOutcome::Stale);
         }
 
         Self::allocate_and_open_locked(&mut s, &mut c, &self.binding_id, binding_id)?;
@@ -497,7 +527,7 @@ impl Slot {
         // halves are locked, so this plain store can't race a reader.
         self.advertised_window
             .store(initial_window, Ordering::Release);
-        Ok(true)
+        Ok(AllocateOutcome::Allocated)
     }
 
     /// Bind the slot (if unallocated) and push the first stream entry atomically.
@@ -955,6 +985,64 @@ mod tests {
         simulate_receiver_drop(&slot);
         let result = slot.bind_and_push_stream(v(6), make_stream_entry(), 0);
         assert!(matches!(result, Ok((BindState::NewBinding(_), _))));
+    }
+
+    // ── allocate_and_open tombstone re-validation (the `bind_for_msg` path) ──
+    //
+    // `ServerView::bind_for_msg` classifies the binding from a lock-free
+    // `binding_id_raw()` read, then calls `allocate_and_open`. Those two steps are
+    // not atomic: a concurrent init can allocate-and-recycle the slot in between,
+    // bumping the tombstone. `allocate_and_open` must therefore re-check the
+    // tombstone under the slot locks and reject a stale/equal binding — otherwise a
+    // delayed/duplicate init resurrects the slot under a zombie binding_id below its
+    // own tombstone. These tests drive `allocate_and_open` directly (the in-lock
+    // check) on a recycled slot, the same coverage `bind_and_push_stream` has via
+    // `bind_and_push_stale_on_recycled` / `bind_and_push_equal_on_recycled`.
+
+    #[test]
+    fn allocate_and_open_rejects_stale_on_recycled() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(5), 0).unwrap();
+        simulate_receiver_drop(&slot); // tombstone = 5
+        // A stale init (binding 4 < tombstone 5) must NOT resurrect the slot.
+        assert_eq!(
+            slot.allocate_and_open(v(4), 0),
+            Ok(AllocateOutcome::Stale),
+            "binding below the tombstone must be rejected under the lock"
+        );
+        // The slot stays unallocated with its tombstone intact.
+        let raw = slot.binding_id.load(Ordering::Relaxed);
+        assert_ne!(raw & UNALLOCATED_BIT, 0, "slot must remain unallocated");
+        assert_eq!(raw & !UNALLOCATED_BIT, 5, "tombstone must be unchanged");
+    }
+
+    #[test]
+    fn allocate_and_open_rejects_equal_on_recycled() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(5), 0).unwrap();
+        simulate_receiver_drop(&slot); // tombstone = 5
+        // A duplicate init for the just-freed binding (5 == tombstone 5) is stale too.
+        assert_eq!(
+            slot.allocate_and_open(v(5), 0),
+            Ok(AllocateOutcome::Stale),
+            "binding equal to the tombstone must be rejected under the lock"
+        );
+    }
+
+    #[test]
+    fn allocate_and_open_allows_new_binding_after_recycle() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(5), 0).unwrap();
+        simulate_receiver_drop(&slot); // tombstone = 5
+        // A strictly-greater binding is a legitimate new generation.
+        assert_eq!(
+            slot.allocate_and_open(v(6), 0),
+            Ok(AllocateOutcome::Allocated),
+            "binding above the tombstone must allocate"
+        );
+        let raw = slot.binding_id.load(Ordering::Relaxed);
+        assert_eq!(raw & UNALLOCATED_BIT, 0, "slot must now be allocated");
+        assert_eq!(raw & !UNALLOCATED_BIT, 6);
     }
 
     #[test]

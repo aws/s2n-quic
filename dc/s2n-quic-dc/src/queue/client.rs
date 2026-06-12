@@ -176,10 +176,13 @@ impl ClientState {
             .expect("slot index out of range after grow");
 
         let binding_id = self.next_binding_id();
-        if slot_ref
-            .allocate_and_open(binding_id, self.initial_recv_window)
-            .is_err()
-        {
+        // A freshly-popped free slot with a monotonic binding_id can only allocate
+        // cleanly; treat any other outcome (sender closed, or — impossibly — a stale
+        // or already-bound slot) as a failed allocation and return the slot.
+        if !matches!(
+            slot_ref.allocate_and_open(binding_id, self.initial_recv_window),
+            Ok(super::slot::AllocateOutcome::Allocated)
+        ) {
             let mut free = self.free.lock().unwrap();
             free.push_freed(index);
             return None;
