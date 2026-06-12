@@ -95,10 +95,7 @@ impl PairBuilder {
         self
     }
 
-    fn with_application_data(
-        mut self,
-        data: crate::path::secret::map::ApplicationData,
-    ) -> Self {
+    fn with_application_data(mut self, data: crate::path::secret::map::ApplicationData) -> Self {
         self.application_data = Some(data);
         self
     }

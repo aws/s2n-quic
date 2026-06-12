@@ -1213,7 +1213,11 @@ fn ack_only_segment_must_not_consume_pto_probe_budget() {
     assert!(context.inflight.has_inflight(), "PN 0 is in flight");
     let range = context.inflight.get_range();
     let pn0 = range.start();
-    assert_eq!(range.start(), range.end(), "exactly one inflight entry (PN 0)");
+    assert_eq!(
+        range.start(),
+        range.end(),
+        "exactly one inflight entry (PN 0)"
+    );
     let bytes_before = context.cca.bytes_in_flight();
     assert!(bytes_before > 0, "live packet contributes bytes_in_flight");
     // The round-1 packet must nearly fill the MTU, so that adding even a small ACK frame in

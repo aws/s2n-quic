@@ -60,7 +60,9 @@ fn setup_with_rates(
         per_socket_rate,
         Budgets::default(),
         crate::counter::Registry::default(),
-        crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::new(1_000_000))),
+        crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::new(
+            1_000_000,
+        ))),
     );
 
     (frame_tx, rxs)

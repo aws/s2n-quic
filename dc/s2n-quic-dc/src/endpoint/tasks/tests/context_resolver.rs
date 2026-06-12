@@ -267,7 +267,9 @@ fn wheel_router_routes_all_interest_combinations() {
 fn entry_without_data_addrs() -> Arc<PathSecretEntry> {
     let addr: SocketAddr = "127.0.0.1:4433".parse().unwrap();
     // Note: deliberately do NOT call `set_peer_data_addrs`.
-    PathSecretEntry::builder(addr).socket_sender_count(8).build()
+    PathSecretEntry::builder(addr)
+        .socket_sender_count(8)
+        .build()
 }
 
 /// A single-frame `FrameBatch` whose frame carries `flow_credits` borrowed from the send
@@ -331,7 +333,9 @@ fn context_not_ready_releases_flow_credits() {
             let slot_ptr = std::ptr::NonNull::from(&*slot);
             match unsafe { pool.poll_acquire(&mut cx, slot_ptr, CAP, Priority::default()) } {
                 core::task::Poll::Ready(n) => n,
-                core::task::Poll::Pending => panic!("fast-path acquire should succeed with ample capacity"),
+                core::task::Poll::Pending => {
+                    panic!("fast-path acquire should succeed with ample capacity")
+                }
             }
         };
         assert!(credit > 0, "expected a non-zero fast-path grant");
@@ -406,7 +410,8 @@ fn context_not_ready_releases_flow_credits() {
             // The credit the dropped frame was holding must have been returned to the pool.
             let recovered = pool.debug_available() as u64 + pool.debug_returned();
             assert_eq!(
-                recovered, CAP,
+                recovered,
+                CAP,
                 "send-credit leak: {} bytes of flow_credits were dropped with the batch and \
                  never released back to the pool (have {}, expected {})",
                 CAP - recovered,

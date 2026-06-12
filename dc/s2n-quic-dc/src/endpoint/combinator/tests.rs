@@ -44,8 +44,9 @@ where
         &registry,
         "test.writer",
     ));
-    let send_credit_pool =
-        crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::new(1_000_000)));
+    let send_credit_pool = crate::sync::Arc::new(crate::credit::Pool::new(
+        crate::credit::Config::new(1_000_000),
+    ));
     CompletionDispatcher::new(rx, clock, reader_metrics, writer_metrics, send_credit_pool)
 }
 
@@ -457,8 +458,9 @@ fn pick_two_propagates_on_consumed() {
         },
     ];
     let registry = crate::counter::Registry::default();
-    let pool =
-        crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::new(1_000_000)));
+    let pool = crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::new(
+        1_000_000,
+    )));
     let mut pick_two = PickTwo::new(
         rx,
         senders.into(),

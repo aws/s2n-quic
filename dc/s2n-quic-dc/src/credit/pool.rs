@@ -240,7 +240,8 @@ impl Pool {
         {
             let weak = Arc::downgrade(self);
             registry.register_gauge_callback(format!("{prefix}.outstanding"), move || {
-                weak.upgrade().map_or(0, |p| p.observed_outstanding() as i64)
+                weak.upgrade()
+                    .map_or(0, |p| p.observed_outstanding() as i64)
             });
         }
         {

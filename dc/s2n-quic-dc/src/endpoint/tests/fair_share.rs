@@ -1412,7 +1412,8 @@ fn run_recv_churn_cancel(
                             if payload.is_finished() {
                                 break;
                             }
-                            match timeout(CHUNK_TIMEOUT, writer.write_from_fin(&mut payload)).await {
+                            match timeout(CHUNK_TIMEOUT, writer.write_from_fin(&mut payload)).await
+                            {
                                 Ok(Ok(_)) => {}
                                 Ok(Err(_)) => break,
                                 Err(_) => break,
@@ -1431,8 +1432,8 @@ fn run_recv_churn_cancel(
         {
             let shortfall_cap = shortfall_cap.clone();
             async move {
-                let recv_pool_config = CreditConfig::new(recv_cap)
-                    .with_max_single_acquire_uniform(max_single_acquire);
+                let recv_pool_config =
+                    CreditConfig::new(recv_cap).with_max_single_acquire_uniform(max_single_acquire);
                 let config = SimEndpointConfig::default()
                     .send_window(window)
                     .recv_credit_pool_config(recv_pool_config);
@@ -1465,18 +1466,18 @@ fn run_recv_churn_cancel(
                             loop {
                                 let before = rx.current_offset().as_u64();
                                 let (reader, _writer) = stream.split();
-                                let n = match timeout(CHUNK_TIMEOUT, reader.read_into(&mut rx)).await
-                                {
-                                    Ok(Ok(n)) => n,
-                                    Ok(Err(_)) => break,
-                                    Err(_) => {
-                                        panic!(
-                                            "reader stalled at offset {before}/{body_len} — \
+                                let n =
+                                    match timeout(CHUNK_TIMEOUT, reader.read_into(&mut rx)).await {
+                                        Ok(Ok(n)) => n,
+                                        Ok(Err(_)) => break,
+                                        Err(_) => {
+                                            panic!(
+                                                "reader stalled at offset {before}/{body_len} — \
                                              recv pool drained by leaked credit on cancelled \
                                              readers?"
-                                        );
-                                    }
-                                };
+                                            );
+                                        }
+                                    };
                                 if n == 0 {
                                     break;
                                 }
@@ -1619,8 +1620,8 @@ fn run_loss_read_stall(
         {
             let readers_done_cl = readers_done_cl.clone();
             async move {
-                let recv_pool_config = CreditConfig::new(recv_cap)
-                    .with_max_single_acquire_uniform(max_single_acquire);
+                let recv_pool_config =
+                    CreditConfig::new(recv_cap).with_max_single_acquire_uniform(max_single_acquire);
                 let mut client = Client::with_config(
                     SimEndpointConfig::default()
                         .send_window(window)
@@ -1753,8 +1754,8 @@ fn run_full_stew(
         {
             let shortfall_cap = shortfall_cap.clone();
             async move {
-                let send_pool_config = CreditConfig::new(send_cap)
-                    .with_max_single_acquire_uniform(max_single_acquire);
+                let send_pool_config =
+                    CreditConfig::new(send_cap).with_max_single_acquire_uniform(max_single_acquire);
                 let server = SimEndpointConfig::default()
                     .send_window(window)
                     .send_credit_pool_config(send_pool_config)
@@ -1774,7 +1775,8 @@ fn run_full_stew(
                             if payload.is_finished() {
                                 break;
                             }
-                            match timeout(CHUNK_TIMEOUT, writer.write_from_fin(&mut payload)).await {
+                            match timeout(CHUNK_TIMEOUT, writer.write_from_fin(&mut payload)).await
+                            {
                                 Ok(Ok(_)) => {}
                                 Ok(Err(_)) => break,
                                 Err(_) => {
@@ -1801,9 +1803,8 @@ fn run_full_stew(
         // ── Client: reader, cancels 2/3 mid-read, churns rounds, under loss ─────
         {
             async move {
-                let mut client = Client::with_config(
-                    SimEndpointConfig::default().send_window(window),
-                );
+                let mut client =
+                    Client::with_config(SimEndpointConfig::default().send_window(window));
 
                 for _round in 0..rounds {
                     let mut streams = Vec::with_capacity(streams_per_round);
@@ -1830,12 +1831,12 @@ fn run_full_stew(
                             let mut read_total = 0u64;
                             loop {
                                 let (reader, _writer) = stream.split();
-                                let n = match timeout(CHUNK_TIMEOUT, reader.read_into(&mut rx)).await
-                                {
-                                    Ok(Ok(n)) => n,
-                                    Ok(Err(_)) => break,
-                                    Err(_) => break,
-                                };
+                                let n =
+                                    match timeout(CHUNK_TIMEOUT, reader.read_into(&mut rx)).await {
+                                        Ok(Ok(n)) => n,
+                                        Ok(Err(_)) => break,
+                                        Err(_) => break,
+                                    };
                                 if n == 0 {
                                     break;
                                 }

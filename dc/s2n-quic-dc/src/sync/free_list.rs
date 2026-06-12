@@ -485,9 +485,11 @@ mod tests {
         let mut ids = IntervalSet::new();
         let _ = ids.insert_value(VarInt::from_u8(0));
         let _ = ids.insert_value(VarInt::from_u8(1));
-        let res = list.free(VarInt::from_u8(1), ids.inclusive_ranges().map(Ok), &mut |w| {
-            w.wake()
-        });
+        let res = list.free(
+            VarInt::from_u8(1),
+            ids.inclusive_ranges().map(Ok),
+            &mut |w| w.wake(),
+        );
         assert_eq!(res.slots, 2, "two slots freed");
 
         // free woke W0 and W1 (the budget equals the two IDs freed), not W2 yet.
@@ -548,7 +550,11 @@ mod tests {
         // A caller "allocated" peer ID 7 elsewhere but couldn't use it; it hands
         // the ID back. The parked waiter must be woken and the ID allocatable.
         list.release(VarInt::from_u8(7));
-        assert_eq!(c0.0.load(Ordering::SeqCst), 1, "parked waiter woken on release");
+        assert_eq!(
+            c0.0.load(Ordering::SeqCst),
+            1,
+            "parked waiter woken on release"
+        );
         assert!(matches!(poll(&mut f0, &w0), Poll::Ready(Some(id)) if id == VarInt::from_u8(7)));
     }
 
@@ -606,10 +612,11 @@ mod tests {
                 let mut ids = IntervalSet::new();
                 let _ = ids.insert_value(VarInt::from_u8(0));
                 let _ = ids.insert_value(VarInt::from_u8(1));
-                let res =
-                    list.free(VarInt::from_u8(1), ids.inclusive_ranges().map(Ok), &mut |w| {
-                        w.wake()
-                    });
+                let res = list.free(
+                    VarInt::from_u8(1),
+                    ids.inclusive_ranges().map(Ok),
+                    &mut |w| w.wake(),
+                );
                 assert_eq!(res.slots, 2);
 
                 // Cancel the first woken waiter (h0) before it can re-poll and
@@ -718,7 +725,9 @@ mod tests {
             r(10, 10),
             Err(DecoderError::InvariantViolation("delta overflow")),
         ];
-        let res = list.free(VarInt::from_u8(1), retransmit.into_iter(), &mut |w| w.wake());
+        let res = list.free(VarInt::from_u8(1), retransmit.into_iter(), &mut |w| {
+            w.wake()
+        });
         assert_eq!(res.slots, 0, "identical retransmission is a duplicate");
         assert_eq!(
             list.try_alloc(),

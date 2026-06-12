@@ -807,7 +807,10 @@ fn pending_rx_subbudget_drain_loses_wakeup_on_task_migration() {
             // Poll #2 with waker B (the task migrated): drains the sub-budget pending_rx remainder,
             // skipping poll_swap, so the slot is NOT updated to B. Still a gap → Pending.
             let p2 = reader.poll_read_into(&mut Context::from_waker(&waker_b), &mut buf);
-            assert!(matches!(p2, Poll::Pending), "still blocked on the gap at offset 0");
+            assert!(
+                matches!(p2, Poll::Pending),
+                "still blocked on the gap at offset 0"
+            );
 
             // The endpoint fills the gap (after its sleep). Wait for that to land.
             bach::time::sleep(Duration::from_millis(50)).await;
@@ -826,7 +829,9 @@ fn pending_rx_subbudget_drain_loses_wakeup_on_task_migration() {
 
             // And a re-poll with B now delivers all the buffered bytes.
             match reader.poll_read_into(&mut Context::from_waker(&waker_b), &mut buf) {
-                Poll::Ready(Ok(n)) => assert!(n > 0, "data must be deliverable once the gap is filled"),
+                Poll::Ready(Ok(n)) => {
+                    assert!(n > 0, "data must be deliverable once the gap is filled")
+                }
                 other => panic!("expected data after gap fill, got {other:?}"),
             }
         }

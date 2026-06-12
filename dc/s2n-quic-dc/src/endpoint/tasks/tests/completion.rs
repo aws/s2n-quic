@@ -36,8 +36,9 @@ impl CompletionHarnessBuilder {
             &registry,
             "test.writer",
         ));
-        let send_credit_pool =
-            crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::new(1_000_000)));
+        let send_credit_pool = crate::sync::Arc::new(crate::credit::Pool::new(
+            crate::credit::Config::new(1_000_000),
+        ));
         let rx = tasks::completion_dispatcher(
             frame_rx,
             wake_tx,

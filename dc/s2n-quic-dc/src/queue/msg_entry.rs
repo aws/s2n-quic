@@ -301,8 +301,14 @@ mod tests {
         let mut entry = MsgEntry::new(65536, CHUNK_SIZE, 0, 0, false, true);
         // First observation latches and reports "first"; every subsequent one is suppressed, so
         // dispatch injects the synthetic blocked signal once per stalled message, not per chunk.
-        assert!(entry.mark_synth_signal_sent(), "first call must report first");
-        assert!(!entry.mark_synth_signal_sent(), "second call must be deduped");
+        assert!(
+            entry.mark_synth_signal_sent(),
+            "first call must report first"
+        );
+        assert!(
+            !entry.mark_synth_signal_sent(),
+            "second call must be deduped"
+        );
         assert!(!entry.mark_synth_signal_sent(), "and stays deduped");
     }
 
