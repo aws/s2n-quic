@@ -531,6 +531,17 @@ impl Reader {
         *self.0.path_secret_entry.peer()
     }
 
+    /// Returns the application data stored in the path secret entry for this stream.
+    ///
+    /// Application data is set at handshake time via the `make_application_data` callback
+    /// and provides a way to carry negotiated per-connection state (e.g. authorization
+    /// context, routing hints) into every stream opened on that path secret without
+    /// maintaining a separate mapping.
+    #[inline]
+    pub fn application_data(&self) -> Option<&crate::path::secret::map::ApplicationData> {
+        self.0.path_secret_entry.application_data().as_ref()
+    }
+
     pub(crate) fn send_reset(&mut self, error_code: VarInt) {
         if self.0.status.is_terminal() {
             return;

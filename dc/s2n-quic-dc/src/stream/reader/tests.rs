@@ -62,11 +62,20 @@ fn make_pair_with_pool_and_initial_window(
     recv_credit_pool: crate::sync::Arc<crate::credit::Pool>,
     initial_recv_window: u64,
 ) -> (Reader, Pusher) {
-    let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
-    let path_secret_entry = PathSecretEntry::builder(peer)
-        .endpoint_type(endpoint::Type::Client)
-        .build();
+    make_pair_with_pool_and_initial_window_and_entry(
+        recv_credit_pool,
+        initial_recv_window,
+        PathSecretEntry::builder("127.0.0.1:4433".parse().unwrap())
+            .endpoint_type(endpoint::Type::Client)
+            .build(),
+    )
+}
 
+fn make_pair_with_pool_and_initial_window_and_entry(
+    recv_credit_pool: crate::sync::Arc<crate::credit::Pool>,
+    initial_recv_window: u64,
+    path_secret_entry: std::sync::Arc<PathSecretEntry>,
+) -> (Reader, Pusher) {
     let client_state = std::sync::Arc::new(crate::queue::ClientState::new(
         VarInt::from_u16(100),
         initial_recv_window,
@@ -164,6 +173,28 @@ fn peer_addr_returns_handshake_addr() {
     let (reader, _) = make_pair();
     let expected: SocketAddr = "127.0.0.1:4433".parse().unwrap();
     assert_eq!(reader.peer_addr(), expected);
+}
+
+#[test]
+fn application_data_is_none_when_not_set() {
+    let (reader, _) = make_pair();
+    assert!(reader.application_data().is_none());
+}
+
+#[test]
+fn application_data_returns_value_from_path_secret_entry() {
+    let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
+    let data: crate::path::secret::map::ApplicationData = Arc::new(42u32);
+    let entry = PathSecretEntry::builder(peer)
+        .endpoint_type(endpoint::Type::Client)
+        .application_data(Some(data.clone()))
+        .build();
+    let pool = crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::default()));
+    let (reader, _) = make_pair_with_pool_and_initial_window_and_entry(pool, 0, entry);
+    let returned = reader
+        .application_data()
+        .expect("application_data should be Some");
+    assert!(Arc::ptr_eq(returned, &data));
 }
 
 /// Finding 2 (bootstrap deadlock): a server reader must advertise its initial window — the

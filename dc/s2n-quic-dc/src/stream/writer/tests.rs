@@ -45,6 +45,7 @@ struct PairBuilder {
     credit_pool: Option<crate::sync::Arc<crate::credit::Pool>>,
     priority: crate::credit::Priority,
     params: Option<s2n_quic_core::dc::ApplicationParams>,
+    application_data: Option<crate::path::secret::map::ApplicationData>,
 }
 
 impl Default for PairBuilder {
@@ -54,6 +55,7 @@ impl Default for PairBuilder {
             credit_pool: None,
             priority: crate::credit::Priority::default(),
             params: None,
+            application_data: None,
         }
     }
 }
@@ -65,6 +67,7 @@ impl PairBuilder {
             credit_pool: None,
             priority: crate::credit::Priority::default(),
             params: None,
+            application_data: None,
         }
     }
 
@@ -92,12 +95,23 @@ impl PairBuilder {
         self
     }
 
+    fn with_application_data(
+        mut self,
+        data: crate::path::secret::map::ApplicationData,
+    ) -> Self {
+        self.application_data = Some(data);
+        self
+    }
+
     fn build(self) -> (Writer, Pusher) {
         let acceptor_id = VarInt::from_u8(7);
         let peer: SocketAddr = "127.0.0.1:4433".parse().unwrap();
         let mut entry_builder = PathSecretEntry::builder(peer).endpoint_type(self.ep_type);
         if let Some(params) = self.params {
             entry_builder = entry_builder.params(params);
+        }
+        if self.application_data.is_some() {
+            entry_builder = entry_builder.application_data(self.application_data);
         }
         let path_secret_entry = entry_builder.build();
 
@@ -166,6 +180,24 @@ fn peer_addr_returns_handshake_addr() {
     let (writer, _) = make_client_pair();
     let expected: SocketAddr = "127.0.0.1:4433".parse().unwrap();
     assert_eq!(writer.peer_addr(), expected);
+}
+
+#[test]
+fn application_data_is_none_when_not_set() {
+    let (writer, _) = make_client_pair();
+    assert!(writer.application_data().is_none());
+}
+
+#[test]
+fn application_data_returns_value_from_path_secret_entry() {
+    let data: crate::path::secret::map::ApplicationData = Arc::new(42u32);
+    let (writer, _) = PairBuilder::default()
+        .with_application_data(data.clone())
+        .build();
+    let returned = writer
+        .application_data()
+        .expect("application_data should be Some");
+    assert!(Arc::ptr_eq(returned, &data));
 }
 
 /// Reassembles payload from a sequence of data frames, validating contiguous
