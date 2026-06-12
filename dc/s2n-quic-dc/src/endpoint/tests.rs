@@ -3699,7 +3699,10 @@ fn queue_msg_write_msg_deadlock_message_exceeds_window_no_wakeup() {
             // stall detector aborts the run.
             let mut resp = Data::new(RESPONSE_SIZE as u64);
             loop {
-                let n = reader.read_into(&mut resp).await.expect("client read error");
+                let n = reader
+                    .read_into(&mut resp)
+                    .await
+                    .expect("client read error");
                 if n == 0 {
                     break;
                 }

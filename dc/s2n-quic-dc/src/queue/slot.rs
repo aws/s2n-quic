@@ -553,8 +553,8 @@ impl Slot {
                 // messages were outstanding at once; the reader drives the window up to
                 // `peer_max_offset` on its own (distributor wakeups + clamp self-wakes), so demand
                 // need not be re-asserted per message for liveness.
-                let first_signal =
-                    desired > self.advertised_window() && desired > stream.extra.synth_signal_offset;
+                let first_signal = desired > self.advertised_window()
+                    && desired > stream.extra.synth_signal_offset;
                 if first_signal {
                     stream.extra.synth_signal_offset = desired;
                     let entry: intrusive::Entry<msg::Stream> = msg::Stream::Blocked {
@@ -1354,13 +1354,13 @@ mod tests {
         // NOT fire) but blocked=true. The writer hints demand (peer_max_offset) beyond this segment.
         let result = slot.push_msg(
             v(1),
-            0,    // msg_id
-            0,    // stream_offset
-            8192, // peer_max_offset — writer wants to send more than this segment
-            4096, // message_size
-            4096, // chunk_size (one chunk)
-            0,    // chunk_index
-            4096, // payload_len
+            0,     // msg_id
+            0,     // stream_offset
+            8192,  // peer_max_offset — writer wants to send more than this segment
+            4096,  // message_size
+            4096,  // chunk_size (one chunk)
+            0,     // chunk_index
+            4096,  // payload_len
             false, // is_fin
             false, // is_wakeup
             true,  // blocked
