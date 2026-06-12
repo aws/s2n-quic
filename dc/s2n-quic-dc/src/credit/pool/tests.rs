@@ -239,6 +239,77 @@ fn park_and_grant() {
 }
 
 #[test]
+fn observability_gauges_track_inflight_and_leak() {
+    // The pull-based gauges read the conservation invariant
+    // `available + outstanding + returned + in_flight == capacity`. This proves they read out the
+    // three states an operator cares about: healthy in-flight under load, conservation at
+    // quiescence, and the leak fingerprint (in_flight floored positive while idle).
+    let mut h = Harness::new(cfg(100, 100));
+
+    // Quiescent at construction: nothing acquired, nothing parked, nothing in flight.
+    assert_eq!(h.pool.observed_outstanding(), 0);
+    assert_eq!(h.pool.observed_in_flight(), 0);
+
+    // Fast-path acquire 30 → that credit is now in flight (acquired, not yet released).
+    let counter = Arc::new(WakeCounter::default());
+    let waker = Waker::from(counter.clone());
+    let a = alloc_test_slot();
+    let r = unsafe { h.poll_acquire(a, 30, Priority::Medium, &waker) };
+    assert_eq!(r, Poll::Ready(30));
+    assert_eq!(h.pool.observed_in_flight(), 30);
+    assert_eq!(h.pool.observed_outstanding(), 0);
+
+    // Acquire the remaining 70 (drains the pool), then a third acquire of 70 must park: it leaves
+    // its -70 in `available` and shows up as outstanding demand, not in flight.
+    let b = alloc_test_slot();
+    assert_eq!(
+        unsafe { h.poll_acquire(b, 70, Priority::Medium, &waker) },
+        Poll::Ready(70)
+    );
+    assert_eq!(h.pool.observed_in_flight(), 100); // whole pool in flight
+    let c = alloc_test_slot();
+    assert!(matches!(
+        unsafe { h.poll_acquire(c, 70, Priority::Medium, &waker) },
+        Poll::Pending
+    ));
+    // The distributor must publish paid_demand before `outstanding` is observable; a park alone
+    // doesn't update the mirror. Pre-publish: parked_demand=70, published_paid_demand=0.
+    assert_eq!(h.pool.observed_outstanding(), 70);
+    // in_flight is still the 100 truly acquired — the parked waiter's debit is cancelled by
+    // outstanding in the residual, so a park does not masquerade as a leak.
+    assert_eq!(h.pool.observed_in_flight(), 100);
+
+    // Release the 100 in flight. The distributor grants the parked waiter 70 and writes the
+    // remaining 30 back to `available`. After a poll cycle the gauges reconcile to: 70 in flight
+    // (the granted waiter), 30 free, nothing outstanding.
+    h.release(100);
+    h.distribute();
+    assert_eq!(h.pool.observed_outstanding(), 0);
+    assert_eq!(h.pool.observed_in_flight(), 70);
+
+    // The leak fingerprint: as long as the 70 granted to `c` is never released, in_flight stays
+    // pinned at 70 with no outstanding demand and no pending returns. A credit leak is precisely
+    // this — a holder that drops without releasing — so at idle the operator reads a positive
+    // in_flight that never decays. The gauge can't distinguish "legitimately in flight" from
+    // "leaked"; the idle-and-floored-positive shape over time is the signal.
+    assert_eq!(h.pool.observed_outstanding(), 0);
+    assert_eq!(h.pool.debug_returned(), 0);
+    assert_eq!(h.pool.observed_in_flight(), 70);
+
+    // Releasing it closes the books: in_flight returns to 0 after reconciliation. A real leak
+    // would skip this release and the gauge would stay at 70.
+    h.release(70);
+    h.distribute();
+    assert_eq!(h.pool.observed_in_flight(), 0);
+
+    unsafe {
+        free_test_slot(a);
+        free_test_slot(b);
+        free_test_slot(c);
+    }
+}
+
+#[test]
 fn full_grants_to_multiple_waiters() {
     // Three waiters each requesting 20; releasing 60 grants all three their full request.
     let mut h = Harness::new(cfg(0, 1000));

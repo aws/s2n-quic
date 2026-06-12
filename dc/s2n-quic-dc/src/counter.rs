@@ -2759,6 +2759,26 @@ impl Registry {
         self.gauge_handle(inner, metric_id)
     }
 
+    /// Register a **pull-based** gauge: the supplied closure is invoked by the reporter once per
+    /// emit interval to produce the current value, instead of the caller pushing updates into an
+    /// owned atomic. Use this when the value is cheap to compute on demand and pushing every
+    /// change would be wasteful — e.g. a value derived from atomics that mutate millions of times
+    /// per interval, where only the sampled snapshot matters.
+    ///
+    /// There is no returned handle: the gauge has no backing store the caller writes to. A value
+    /// of zero is suppressed from the metrics output (same as [`register_gauge`]).
+    ///
+    /// [`register_gauge`]: Self::register_gauge
+    pub fn register_gauge_callback<F>(&self, label: impl core::fmt::Display, mut f: F)
+    where
+        F: FnMut() -> i64 + 'static + Send,
+    {
+        let label = label.to_string();
+        self.register_metric_metadata(&label, None, MetricKind::Gauge, None, "");
+        self.inner
+            .register_list_callback(label, None, Unit::Count, move || NonZeroDisplay(f()));
+    }
+
     pub fn register_nominal_gauge(
         &self,
         label: impl core::fmt::Display,

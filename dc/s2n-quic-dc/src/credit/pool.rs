@@ -154,6 +154,13 @@ pub struct Pool {
     /// one will ever read on a closed pool) and the distributor's waker (a no-op load when the
     /// distributor is gone). Skipping the check there saves an atomic on the hot release path.
     tiers: [CachePadded<Mutex<Tier>>; Priority::LEVELS],
+    /// The distributor's private `paid_demand`, mirrored here once per poll cycle purely for
+    /// observability. The grant path keeps incrementing the distributor-local `u64` (no atomic
+    /// RMW per grant); only the running total is stored here, so the pull-based `outstanding` /
+    /// `in_flight` gauges can recover live demand as `parked_demand − published_paid_demand`
+    /// without reaching into the distributor. Never read on the hot path. See
+    /// [`Pool::register_gauges`].
+    published_paid_demand: AtomicU64,
     /// Observability handles. Default is a no-op `Registry` (every emit is dropped on the floor).
     /// Wire in real counters via [`Pool::with_counters`].
     counters: Counters,
@@ -190,8 +197,87 @@ impl Pool {
             config,
             waker: TaskWaker::new(),
             tiers: std::array::from_fn(|_| CachePadded::new(Mutex::new(Tier::new()))),
+            published_paid_demand: AtomicU64::new(0),
             counters,
         }
+    }
+
+    /// Register the pull-based observability gauges for this pool against `registry`, under
+    /// `prefix` (e.g. `"credit.send"`). Each gauge is a closure the reporter invokes once per emit
+    /// interval — nothing is computed between samples and the hot paths are untouched. Call once,
+    /// after the pool is wrapped in its `Arc`; the closures hold a `Weak<Pool>` so they go quiet
+    /// (emit nothing) once the pool is dropped.
+    ///
+    /// The four gauges are read straight off the conservation invariant
+    /// (`available + outstanding + returned + in_flight == capacity`, see the module docs):
+    ///
+    /// * `{prefix}.available` — free credit the fast path can debit now. **Negative** while waiters
+    ///   are parked (each park leaves its `-req` in place), so sustained-negative is backlog depth,
+    ///   not an error.
+    /// * `{prefix}.outstanding` — parked demand not yet granted (`parked_demand − paid_demand`).
+    /// * `{prefix}.returned_pending` — returned-but-not-yet-reconciled credit (the `returned`
+    ///   staging buffer; the distributor's `carry` surplus is reported separately as
+    ///   `{prefix}.distributor.carry_bytes`). Near-zero in steady state.
+    /// * `{prefix}.in_flight` — **the leak signal.** Credit acquired but not released, recovered as
+    ///   the residual `capacity − available − outstanding − returned`. Large under load is healthy
+    ///   (credit legitimately in flight); the leak fingerprint is this flooring at a positive value
+    ///   while throughput is idle and `outstanding` is zero — credit that left and never came back.
+    ///
+    /// The reads are not one atomic snapshot (the fast path mutates `available`, releasers mutate
+    /// `returned`, producers mutate `parked_demand` concurrently), so a sampled value can be off by
+    /// whatever lands mid-read. That is fine for a monitoring gauge: the signal is the steady-state
+    /// value across intervals, not any single sample.
+    pub fn register_gauges(self: &Arc<Self>, registry: &crate::counter::Registry, prefix: &str) {
+        // `available` reads the i64 directly: negative is meaningful (parked-waiter backlog), so it
+        // is reported as-is rather than clamped.
+        {
+            let weak = Arc::downgrade(self);
+            registry.register_gauge_callback(format!("{prefix}.available"), move || {
+                weak.upgrade()
+                    .map_or(0, |p| p.available.load(Ordering::Relaxed))
+            });
+        }
+        {
+            let weak = Arc::downgrade(self);
+            registry.register_gauge_callback(format!("{prefix}.outstanding"), move || {
+                weak.upgrade().map_or(0, |p| p.observed_outstanding() as i64)
+            });
+        }
+        {
+            let weak = Arc::downgrade(self);
+            registry.register_gauge_callback(format!("{prefix}.returned_pending"), move || {
+                weak.upgrade()
+                    .map_or(0, |p| p.returned.load(Ordering::Relaxed) as i64)
+            });
+        }
+        {
+            let weak = Arc::downgrade(self);
+            registry.register_gauge_callback(format!("{prefix}.in_flight"), move || {
+                weak.upgrade().map_or(0, |p| p.observed_in_flight())
+            });
+        }
+    }
+
+    /// Parked demand not yet granted, recovered from the monotonic `parked_demand` minus the
+    /// distributor's last-published `paid_demand`. `saturating_sub` guards the inherent read skew:
+    /// the two values are sampled separately, so a grant landing between them could otherwise
+    /// underflow. Observability only — see [`register_gauges`](Self::register_gauges).
+    #[inline]
+    fn observed_outstanding(&self) -> u64 {
+        self.parked_demand
+            .load(Ordering::Relaxed)
+            .saturating_sub(self.published_paid_demand.load(Ordering::Relaxed))
+    }
+
+    /// Credit acquired but not yet released — the leak signal — as the residual of the conservation
+    /// invariant. Reads are not a coherent snapshot, so the result can be transiently off; the
+    /// diagnostic value is its steady state. Observability only.
+    #[inline]
+    fn observed_in_flight(&self) -> i64 {
+        self.config.capacity as i64
+            - self.available.load(Ordering::Relaxed)
+            - self.observed_outstanding() as i64
+            - self.returned.load(Ordering::Relaxed) as i64
     }
 
     /// Acquire `n` bytes, parking the slot if the pool cannot satisfy it immediately.
@@ -517,6 +603,13 @@ impl Distributor {
         // `dead` drops here at the end of the poll cycle — its drop walks the list and runs each
         // slot's `drop_fn`, freeing the outer allocations outside the work loop.
         drop(dead);
+
+        // Mirror the running `paid_demand` for the pull-based `outstanding`/`in_flight` gauges. One
+        // relaxed store per poll cycle (not per pass, not per grant) — the grant path keeps using
+        // the cheap distributor-local `u64`. See [`Pool::register_gauges`].
+        self.pool
+            .published_paid_demand
+            .store(self.paid_demand, Ordering::Relaxed);
 
         result
     }

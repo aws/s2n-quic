@@ -465,6 +465,11 @@ where
         recv_credit_pool_config,
         crate::credit::Counters::new_with_prefix(&counter_registry, "credit.recv"),
     ));
+    // Pull-based pool-state gauges (available / outstanding / returned_pending / in_flight). The
+    // reporter samples these closures once per interval; the leak signal is `in_flight` flooring
+    // positive while the pool is idle. See `credit::Pool::register_gauges`.
+    send_credit_pool.register_gauges(&counter_registry, "credit.send");
+    recv_credit_pool.register_gauges(&counter_registry, "credit.recv");
     let send_credit_distributor = crate::credit::Distributor::new(send_credit_pool.clone());
     let recv_credit_distributor = crate::credit::Distributor::new(recv_credit_pool.clone());
 
