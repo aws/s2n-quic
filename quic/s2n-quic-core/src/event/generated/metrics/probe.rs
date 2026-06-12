@@ -535,173 +535,226 @@ mod counter {
     }
     define!(
         extern "probe" {
-            # [link_name = s2n_quic__event__counter__application_protocol_information]
+            #[link_name =
+        s2n_quic__event__counter__application_protocol_information]
             fn application_protocol_information(value: u64);
-            # [link_name = s2n_quic__event__counter__server_name_information]
+            #[link_name =
+        s2n_quic__event__counter__server_name_information]
             fn server_name_information(value: u64);
-            # [link_name = s2n_quic__event__counter__key_exchange_group]
+            #[link_name =
+        s2n_quic__event__counter__key_exchange_group]
             fn key_exchange_group(value: u64);
-            # [link_name = s2n_quic__event__counter__packet_skipped]
+            #[link_name = s2n_quic__event__counter__packet_skipped]
             fn packet_skipped(value: u64);
-            # [link_name = s2n_quic__event__counter__packet_sent]
+            #[link_name = s2n_quic__event__counter__packet_sent]
             fn packet_sent(value: u64);
-            # [link_name = s2n_quic__event__counter__packet_sent__bytes__total]
+            #[link_name = s2n_quic__event__counter__packet_sent__bytes__total]
             fn packet_sent__bytes__total(value: u64);
-            # [link_name = s2n_quic__event__counter__packet_received]
+            #[link_name =
+        s2n_quic__event__counter__packet_received]
             fn packet_received(value: u64);
-            # [link_name = s2n_quic__event__counter__packet_received__bytes__total]
+            #[link_name = s2n_quic__event__counter__packet_received__bytes__total]
             fn packet_received__bytes__total(value: u64);
-            # [link_name = s2n_quic__event__counter__active_path_updated]
+            #[link_name =
+        s2n_quic__event__counter__active_path_updated]
             fn active_path_updated(value: u64);
-            # [link_name = s2n_quic__event__counter__path_created]
+            #[link_name = s2n_quic__event__counter__path_created]
             fn path_created(value: u64);
-            # [link_name = s2n_quic__event__counter__frame_sent]
+            #[link_name = s2n_quic__event__counter__frame_sent]
             fn frame_sent(value: u64);
-            # [link_name = s2n_quic__event__counter__frame_received]
+            #[link_name = s2n_quic__event__counter__frame_received]
             fn frame_received(value: u64);
-            # [link_name = s2n_quic__event__counter__connection_close_frame_received]
+            #[link_name =
+        s2n_quic__event__counter__connection_close_frame_received]
             fn connection_close_frame_received(value: u64);
-            # [link_name = s2n_quic__event__counter__packet_lost]
+            #[link_name =
+        s2n_quic__event__counter__packet_lost]
             fn packet_lost(value: u64);
-            # [link_name = s2n_quic__event__counter__packet_lost__bytes__total]
+            #[link_name =
+        s2n_quic__event__counter__packet_lost__bytes__total]
             fn packet_lost__bytes__total(value: u64);
-            # [link_name = s2n_quic__event__counter__recovery_metrics]
+            #[link_name =
+        s2n_quic__event__counter__recovery_metrics]
             fn recovery_metrics(value: u64);
-            # [link_name = s2n_quic__event__counter__congestion]
+            #[link_name = s2n_quic__event__counter__congestion]
             fn congestion(value: u64);
-            # [link_name = s2n_quic__event__counter__rx_ack_range_dropped]
+            #[link_name = s2n_quic__event__counter__rx_ack_range_dropped]
             fn rx_ack_range_dropped(value: u64);
-            # [link_name = s2n_quic__event__counter__ack_range_received]
+            #[link_name =
+        s2n_quic__event__counter__ack_range_received]
             fn ack_range_received(value: u64);
-            # [link_name = s2n_quic__event__counter__ack_range_sent]
+            #[link_name = s2n_quic__event__counter__ack_range_sent]
             fn ack_range_sent(value: u64);
-            # [link_name = s2n_quic__event__counter__packet_dropped]
+            #[link_name = s2n_quic__event__counter__packet_dropped]
             fn packet_dropped(value: u64);
-            # [link_name = s2n_quic__event__counter__key_update]
+            #[link_name = s2n_quic__event__counter__key_update]
             fn key_update(value: u64);
-            # [link_name = s2n_quic__event__counter__key_space_discarded]
+            #[link_name =
+        s2n_quic__event__counter__key_space_discarded]
             fn key_space_discarded(value: u64);
-            # [link_name = s2n_quic__event__counter__connection_started]
+            #[link_name = s2n_quic__event__counter__connection_started]
             fn connection_started(value: u64);
-            # [link_name = s2n_quic__event__counter__duplicate_packet]
+            #[link_name =
+        s2n_quic__event__counter__duplicate_packet]
             fn duplicate_packet(value: u64);
-            # [link_name = s2n_quic__event__counter__transport_parameters_received]
+            #[link_name = s2n_quic__event__counter__transport_parameters_received]
             fn transport_parameters_received(value: u64);
-            # [link_name = s2n_quic__event__counter__datagram_sent]
+            #[link_name =
+        s2n_quic__event__counter__datagram_sent]
             fn datagram_sent(value: u64);
-            # [link_name = s2n_quic__event__counter__datagram_sent__bytes__total]
+            #[link_name = s2n_quic__event__counter__datagram_sent__bytes__total]
             fn datagram_sent__bytes__total(value: u64);
-            # [link_name = s2n_quic__event__counter__datagram_received]
+            #[link_name =
+        s2n_quic__event__counter__datagram_received]
             fn datagram_received(value: u64);
-            # [link_name = s2n_quic__event__counter__datagram_received__bytes__total]
+            #[link_name = s2n_quic__event__counter__datagram_received__bytes__total]
             fn datagram_received__bytes__total(value: u64);
-            # [link_name = s2n_quic__event__counter__datagram_dropped]
+            #[link_name =
+        s2n_quic__event__counter__datagram_dropped]
             fn datagram_dropped(value: u64);
-            # [link_name = s2n_quic__event__counter__datagram_dropped__bytes__total]
+            #[link_name = s2n_quic__event__counter__datagram_dropped__bytes__total]
             fn datagram_dropped__bytes__total(value: u64);
-            # [link_name = s2n_quic__event__counter__handshake_remote_address_change_observed]
+            #[link_name =
+        s2n_quic__event__counter__handshake_remote_address_change_observed]
             fn handshake_remote_address_change_observed(value: u64);
-            # [link_name = s2n_quic__event__counter__connection_id_updated]
+            #[link_name =
+        s2n_quic__event__counter__connection_id_updated]
             fn connection_id_updated(value: u64);
-            # [link_name = s2n_quic__event__counter__ecn_state_changed]
+            #[link_name = s2n_quic__event__counter__ecn_state_changed]
             fn ecn_state_changed(value: u64);
-            # [link_name = s2n_quic__event__counter__connection_migration_denied]
+            #[link_name =
+        s2n_quic__event__counter__connection_migration_denied]
             fn connection_migration_denied(value: u64);
-            # [link_name = s2n_quic__event__counter__handshake_status_updated]
+            #[link_name =
+        s2n_quic__event__counter__handshake_status_updated]
             fn handshake_status_updated(value: u64);
-            # [link_name = s2n_quic__event__counter__tls_exporter_ready]
+            #[link_name =
+        s2n_quic__event__counter__tls_exporter_ready]
             fn tls_exporter_ready(value: u64);
-            # [link_name = s2n_quic__event__counter__tls_handshake_failed]
+            #[link_name = s2n_quic__event__counter__tls_handshake_failed]
             fn tls_handshake_failed(value: u64);
-            # [link_name = s2n_quic__event__counter__path_challenge_updated]
+            #[link_name =
+        s2n_quic__event__counter__path_challenge_updated]
             fn path_challenge_updated(value: u64);
-            # [link_name = s2n_quic__event__counter__tls_client_hello]
+            #[link_name = s2n_quic__event__counter__tls_client_hello]
             fn tls_client_hello(value: u64);
-            # [link_name = s2n_quic__event__counter__tls_server_hello]
+            #[link_name =
+        s2n_quic__event__counter__tls_server_hello]
             fn tls_server_hello(value: u64);
-            # [link_name = s2n_quic__event__counter__rx_stream_progress]
+            #[link_name = s2n_quic__event__counter__rx_stream_progress]
             fn rx_stream_progress(value: u64);
-            # [link_name = s2n_quic__event__counter__rx_stream_progress__bytes__total]
+            #[link_name =
+        s2n_quic__event__counter__rx_stream_progress__bytes__total]
             fn rx_stream_progress__bytes__total(value: u64);
-            # [link_name = s2n_quic__event__counter__tx_stream_progress]
+            #[link_name =
+        s2n_quic__event__counter__tx_stream_progress]
             fn tx_stream_progress(value: u64);
-            # [link_name = s2n_quic__event__counter__tx_stream_progress__bytes__total]
+            #[link_name = s2n_quic__event__counter__tx_stream_progress__bytes__total]
             fn tx_stream_progress__bytes__total(value: u64);
-            # [link_name = s2n_quic__event__counter__keep_alive_timer_expired]
+            #[link_name =
+        s2n_quic__event__counter__keep_alive_timer_expired]
             fn keep_alive_timer_expired(value: u64);
-            # [link_name = s2n_quic__event__counter__mtu_updated]
+            #[link_name =
+        s2n_quic__event__counter__mtu_updated]
             fn mtu_updated(value: u64);
-            # [link_name = s2n_quic__event__counter__mtu_probing_complete_received]
+            #[link_name =
+        s2n_quic__event__counter__mtu_probing_complete_received]
             fn mtu_probing_complete_received(value: u64);
-            # [link_name = s2n_quic__event__counter__slow_start_exited]
+            #[link_name =
+        s2n_quic__event__counter__slow_start_exited]
             fn slow_start_exited(value: u64);
-            # [link_name = s2n_quic__event__counter__delivery_rate_sampled]
+            #[link_name = s2n_quic__event__counter__delivery_rate_sampled]
             fn delivery_rate_sampled(value: u64);
-            # [link_name = s2n_quic__event__counter__pacing_rate_updated]
+            #[link_name =
+        s2n_quic__event__counter__pacing_rate_updated]
             fn pacing_rate_updated(value: u64);
-            # [link_name = s2n_quic__event__counter__bbr_state_changed]
+            #[link_name = s2n_quic__event__counter__bbr_state_changed]
             fn bbr_state_changed(value: u64);
-            # [link_name = s2n_quic__event__counter__dc_state_changed]
+            #[link_name =
+        s2n_quic__event__counter__dc_state_changed]
             fn dc_state_changed(value: u64);
-            # [link_name = s2n_quic__event__counter__dc_path_created]
+            #[link_name = s2n_quic__event__counter__dc_path_created]
             fn dc_path_created(value: u64);
-            # [link_name = s2n_quic__event__counter__connection_closed]
+            #[link_name = s2n_quic__event__counter__connection_closed]
             fn connection_closed(value: u64);
-            # [link_name = s2n_quic__event__counter__version_information]
+            #[link_name =
+        s2n_quic__event__counter__version_information]
             fn version_information(value: u64);
-            # [link_name = s2n_quic__event__counter__endpoint_packet_sent]
+            #[link_name = s2n_quic__event__counter__endpoint_packet_sent]
             fn endpoint_packet_sent(value: u64);
-            # [link_name = s2n_quic__event__counter__endpoint_packet_received]
+            #[link_name =
+        s2n_quic__event__counter__endpoint_packet_received]
             fn endpoint_packet_received(value: u64);
-            # [link_name = s2n_quic__event__counter__endpoint_datagram_sent]
+            #[link_name =
+        s2n_quic__event__counter__endpoint_datagram_sent]
             fn endpoint_datagram_sent(value: u64);
-            # [link_name = s2n_quic__event__counter__endpoint_datagram_received]
+            #[link_name = s2n_quic__event__counter__endpoint_datagram_received]
             fn endpoint_datagram_received(value: u64);
-            # [link_name = s2n_quic__event__counter__endpoint_datagram_dropped]
+            #[link_name =
+        s2n_quic__event__counter__endpoint_datagram_dropped]
             fn endpoint_datagram_dropped(value: u64);
-            # [link_name = s2n_quic__event__counter__endpoint_connection_attempt_failed]
+            #[link_name =
+        s2n_quic__event__counter__endpoint_connection_attempt_failed]
             fn endpoint_connection_attempt_failed(value: u64);
-            # [link_name = s2n_quic__event__counter__endpoint_connection_attempt_deduplicated]
+            #[link_name =
+        s2n_quic__event__counter__endpoint_connection_attempt_deduplicated]
             fn endpoint_connection_attempt_deduplicated(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_tx]
+            #[link_name =
+        s2n_quic__event__counter__platform_tx]
             fn platform_tx(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_tx__packets__total]
+            #[link_name =
+        s2n_quic__event__counter__platform_tx__packets__total]
             fn platform_tx__packets__total(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_tx__syscalls__total]
+            #[link_name =
+        s2n_quic__event__counter__platform_tx__syscalls__total]
             fn platform_tx__syscalls__total(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_tx__syscalls__blocked__total]
+            #[link_name =
+        s2n_quic__event__counter__platform_tx__syscalls__blocked__total]
             fn platform_tx__syscalls__blocked__total(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_tx__errors__total]
+            #[link_name =
+        s2n_quic__event__counter__platform_tx__errors__total]
             fn platform_tx__errors__total(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_tx__errors__dropped__total]
+            #[link_name =
+        s2n_quic__event__counter__platform_tx__errors__dropped__total]
             fn platform_tx__errors__dropped__total(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_tx_error]
+            #[link_name =
+        s2n_quic__event__counter__platform_tx_error]
             fn platform_tx_error(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_rx]
+            #[link_name = s2n_quic__event__counter__platform_rx]
             fn platform_rx(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_rx__packets__total]
+            #[link_name = s2n_quic__event__counter__platform_rx__packets__total]
             fn platform_rx__packets__total(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_rx__syscalls__total]
+            #[link_name =
+        s2n_quic__event__counter__platform_rx__syscalls__total]
             fn platform_rx__syscalls__total(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_rx__syscalls__blocked__total]
+            #[link_name =
+        s2n_quic__event__counter__platform_rx__syscalls__blocked__total]
             fn platform_rx__syscalls__blocked__total(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_rx__errors__total]
+            #[link_name =
+        s2n_quic__event__counter__platform_rx__errors__total]
             fn platform_rx__errors__total(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_rx__errors__dropped__total]
+            #[link_name =
+        s2n_quic__event__counter__platform_rx__errors__dropped__total]
             fn platform_rx__errors__dropped__total(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_rx_error]
+            #[link_name =
+        s2n_quic__event__counter__platform_rx_error]
             fn platform_rx_error(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_feature_configured]
+            #[link_name = s2n_quic__event__counter__platform_feature_configured]
             fn platform_feature_configured(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_rx_socket_stats]
+            #[link_name =
+        s2n_quic__event__counter__platform_rx_socket_stats]
             fn platform_rx_socket_stats(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_rx_socket_stats__packets__total]
+            #[link_name =
+        s2n_quic__event__counter__platform_rx_socket_stats__packets__total]
             fn platform_rx_socket_stats__packets__total(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_event_loop_wakeup]
+            #[link_name =
+        s2n_quic__event__counter__platform_event_loop_wakeup]
             fn platform_event_loop_wakeup(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_event_loop_sleep]
+            #[link_name =
+        s2n_quic__event__counter__platform_event_loop_sleep]
             fn platform_event_loop_sleep(value: u64);
-            # [link_name = s2n_quic__event__counter__platform_event_loop_started]
+            #[link_name =
+        s2n_quic__event__counter__platform_event_loop_started]
             fn platform_event_loop_started(value: u64);
         }
     );
@@ -728,11 +781,14 @@ mod counter {
         }
         define!(
             extern "probe" {
-                # [link_name = s2n_quic__event__counter__bool__packet_lost__is_mtu_probe]
+                #[link_name =
+            s2n_quic__event__counter__bool__packet_lost__is_mtu_probe]
                 fn packet_lost__is_mtu_probe(value: bool);
-                # [link_name = s2n_quic__event__counter__bool__recovery_metrics__congestion_limited]
+                #[link_name =
+            s2n_quic__event__counter__bool__recovery_metrics__congestion_limited]
                 fn recovery_metrics__congestion_limited(value: bool);
-                # [link_name = s2n_quic__event__counter__bool__mtu_updated__search_complete]
+                #[link_name =
+            s2n_quic__event__counter__bool__mtu_updated__search_complete]
                 fn mtu_updated__search_complete(value: bool);
             }
         );
@@ -802,95 +858,121 @@ mod counter {
         }
         define!(
             extern "probe" {
-                # [link_name = s2n_quic__event__counter__nominal__packet_sent__kind]
+                #[link_name =
+            s2n_quic__event__counter__nominal__packet_sent__kind]
                 fn packet_sent__kind(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__packet_sent__transmission_mode]
+                #[link_name =
+            s2n_quic__event__counter__nominal__packet_sent__transmission_mode]
                 fn packet_sent__transmission_mode(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic__event__counter__nominal__packet_received__kind]
+                #[link_name =
+            s2n_quic__event__counter__nominal__packet_received__kind]
                 fn packet_received__kind(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__frame_sent__packet]
+                #[link_name =
+            s2n_quic__event__counter__nominal__frame_sent__packet]
                 fn frame_sent__packet(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__frame_sent__frame]
+                #[link_name = s2n_quic__event__counter__nominal__frame_sent__frame]
                 fn frame_sent__frame(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__frame_received__packet]
+                #[link_name = s2n_quic__event__counter__nominal__frame_received__packet]
                 fn frame_received__packet(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__frame_received__frame]
+                #[link_name =
+            s2n_quic__event__counter__nominal__frame_received__frame]
                 fn frame_received__frame(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__connection_close_frame_received__packet]
+                #[link_name =
+            s2n_quic__event__counter__nominal__connection_close_frame_received__packet]
                 fn connection_close_frame_received__packet(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic__event__counter__nominal__packet_lost__kind]
+                #[link_name =
+            s2n_quic__event__counter__nominal__packet_lost__kind]
                 fn packet_lost__kind(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__congestion__source]
+                #[link_name = s2n_quic__event__counter__nominal__congestion__source]
                 fn congestion__source(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__ack_range_received__packet]
+                #[link_name = s2n_quic__event__counter__nominal__ack_range_received__packet]
                 fn ack_range_received__packet(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__ack_range_sent__packet]
+                #[link_name =
+            s2n_quic__event__counter__nominal__ack_range_sent__packet]
                 fn ack_range_sent__packet(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__packet_dropped__reason]
+                #[link_name =
+            s2n_quic__event__counter__nominal__packet_dropped__reason]
                 fn packet_dropped__reason(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__key_update__key_type]
+                #[link_name =
+            s2n_quic__event__counter__nominal__key_update__key_type]
                 fn key_update__key_type(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__key_update__cipher_suite]
+                #[link_name = s2n_quic__event__counter__nominal__key_update__cipher_suite]
                 fn key_update__cipher_suite(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__key_space_discarded__space]
+                #[link_name =
+            s2n_quic__event__counter__nominal__key_space_discarded__space]
                 fn key_space_discarded__space(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__duplicate_packet__kind]
+                #[link_name =
+            s2n_quic__event__counter__nominal__duplicate_packet__kind]
                 fn duplicate_packet__kind(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__duplicate_packet__error]
+                #[link_name =
+            s2n_quic__event__counter__nominal__duplicate_packet__error]
                 fn duplicate_packet__error(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__datagram_dropped__reason]
+                #[link_name =
+            s2n_quic__event__counter__nominal__datagram_dropped__reason]
                 fn datagram_dropped__reason(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__ecn_state_changed__state]
+                #[link_name =
+            s2n_quic__event__counter__nominal__ecn_state_changed__state]
                 fn ecn_state_changed__state(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__connection_migration_denied__reason]
+                #[link_name =
+            s2n_quic__event__counter__nominal__connection_migration_denied__reason]
                 fn connection_migration_denied__reason(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic__event__counter__nominal__handshake_status_updated__status]
+                #[link_name =
+            s2n_quic__event__counter__nominal__handshake_status_updated__status]
                 fn handshake_status_updated__status(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic__event__counter__nominal__path_challenge_updated__status]
+                #[link_name =
+            s2n_quic__event__counter__nominal__path_challenge_updated__status]
                 fn path_challenge_updated__status(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic__event__counter__nominal__mtu_updated__cause]
+                #[link_name =
+            s2n_quic__event__counter__nominal__mtu_updated__cause]
                 fn mtu_updated__cause(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__mtu_probing_complete_received__packet]
+                #[link_name =
+            s2n_quic__event__counter__nominal__mtu_probing_complete_received__packet]
                 fn mtu_probing_complete_received__packet(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic__event__counter__nominal__slow_start_exited__cause]
+                #[link_name =
+            s2n_quic__event__counter__nominal__slow_start_exited__cause]
                 fn slow_start_exited__cause(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__bbr_state_changed__state]
+                #[link_name =
+            s2n_quic__event__counter__nominal__bbr_state_changed__state]
                 fn bbr_state_changed__state(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__dc_state_changed__state]
+                #[link_name =
+            s2n_quic__event__counter__nominal__dc_state_changed__state]
                 fn dc_state_changed__state(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__connection_closed__error]
+                #[link_name =
+            s2n_quic__event__counter__nominal__connection_closed__error]
                 fn connection_closed__error(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__endpoint_datagram_dropped__reason]
+                #[link_name =
+            s2n_quic__event__counter__nominal__endpoint_datagram_dropped__reason]
                 fn endpoint_datagram_dropped__reason(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic__event__counter__nominal__endpoint_connection_attempt_failed__error]
+                #[link_name =
+            s2n_quic__event__counter__nominal__endpoint_connection_attempt_failed__error]
                 fn endpoint_connection_attempt_failed__error(
                     value: u64,
                     variant: u64,
@@ -971,85 +1053,117 @@ mod measure {
     }
     define!(
         extern "probe" {
-            # [link_name = s2n_quic__event__measure__packet_sent__bytes]
+            #[link_name = s2n_quic__event__measure__packet_sent__bytes]
             fn packet_sent__bytes(value: u64);
-            # [link_name = s2n_quic__event__measure__packet_received__bytes]
+            #[link_name =
+        s2n_quic__event__measure__packet_received__bytes]
             fn packet_received__bytes(value: u64);
-            # [link_name = s2n_quic__event__measure__packet_lost__bytes]
+            #[link_name = s2n_quic__event__measure__packet_lost__bytes]
             fn packet_lost__bytes(value: u64);
-            # [link_name = s2n_quic__event__measure__recovery_metrics__min_rtt]
+            #[link_name =
+        s2n_quic__event__measure__recovery_metrics__min_rtt]
             fn recovery_metrics__min_rtt(value: u64);
-            # [link_name = s2n_quic__event__measure__recovery_metrics__smoothed_rtt]
+            #[link_name =
+        s2n_quic__event__measure__recovery_metrics__smoothed_rtt]
             fn recovery_metrics__smoothed_rtt(value: u64);
-            # [link_name = s2n_quic__event__measure__recovery_metrics__latest_rtt]
+            #[link_name =
+        s2n_quic__event__measure__recovery_metrics__latest_rtt]
             fn recovery_metrics__latest_rtt(value: u64);
-            # [link_name = s2n_quic__event__measure__recovery_metrics__rtt_variance]
+            #[link_name =
+        s2n_quic__event__measure__recovery_metrics__rtt_variance]
             fn recovery_metrics__rtt_variance(value: u64);
-            # [link_name = s2n_quic__event__measure__recovery_metrics__max_ack_delay]
+            #[link_name =
+        s2n_quic__event__measure__recovery_metrics__max_ack_delay]
             fn recovery_metrics__max_ack_delay(value: u64);
-            # [link_name = s2n_quic__event__measure__recovery_metrics__pto_count]
+            #[link_name =
+        s2n_quic__event__measure__recovery_metrics__pto_count]
             fn recovery_metrics__pto_count(value: u64);
-            # [link_name = s2n_quic__event__measure__recovery_metrics__congestion_window]
+            #[link_name =
+        s2n_quic__event__measure__recovery_metrics__congestion_window]
             fn recovery_metrics__congestion_window(value: u64);
-            # [link_name = s2n_quic__event__measure__recovery_metrics__bytes_in_flight]
+            #[link_name =
+        s2n_quic__event__measure__recovery_metrics__bytes_in_flight]
             fn recovery_metrics__bytes_in_flight(value: u64);
-            # [link_name = s2n_quic__event__measure__datagram_sent__bytes]
+            #[link_name =
+        s2n_quic__event__measure__datagram_sent__bytes]
             fn datagram_sent__bytes(value: u64);
-            # [link_name = s2n_quic__event__measure__datagram_sent__gso_offset]
+            #[link_name = s2n_quic__event__measure__datagram_sent__gso_offset]
             fn datagram_sent__gso_offset(value: u64);
-            # [link_name = s2n_quic__event__measure__datagram_received__bytes]
+            #[link_name =
+        s2n_quic__event__measure__datagram_received__bytes]
             fn datagram_received__bytes(value: u64);
-            # [link_name = s2n_quic__event__measure__datagram_dropped__bytes]
+            #[link_name =
+        s2n_quic__event__measure__datagram_dropped__bytes]
             fn datagram_dropped__bytes(value: u64);
-            # [link_name = s2n_quic__event__measure__rx_stream_progress__bytes]
+            #[link_name =
+        s2n_quic__event__measure__rx_stream_progress__bytes]
             fn rx_stream_progress__bytes(value: u64);
-            # [link_name = s2n_quic__event__measure__tx_stream_progress__bytes]
+            #[link_name =
+        s2n_quic__event__measure__tx_stream_progress__bytes]
             fn tx_stream_progress__bytes(value: u64);
-            # [link_name = s2n_quic__event__measure__mtu_updated__mtu]
+            #[link_name =
+        s2n_quic__event__measure__mtu_updated__mtu]
             fn mtu_updated__mtu(value: u64);
-            # [link_name = s2n_quic__event__measure__mtu_probing_complete_received__mtu]
+            #[link_name = s2n_quic__event__measure__mtu_probing_complete_received__mtu]
             fn mtu_probing_complete_received__mtu(value: u64);
-            # [link_name = s2n_quic__event__measure__slow_start_exited__congestion_window]
+            #[link_name =
+        s2n_quic__event__measure__slow_start_exited__congestion_window]
             fn slow_start_exited__congestion_window(value: u64);
-            # [link_name = s2n_quic__event__measure__pacing_rate_updated__bytes_per_second]
+            #[link_name =
+        s2n_quic__event__measure__pacing_rate_updated__bytes_per_second]
             fn pacing_rate_updated__bytes_per_second(value: u64);
-            # [link_name = s2n_quic__event__measure__pacing_rate_updated__burst_size]
+            #[link_name =
+        s2n_quic__event__measure__pacing_rate_updated__burst_size]
             fn pacing_rate_updated__burst_size(value: u64);
-            # [link_name = s2n_quic__event__measure__pacing_rate_updated__pacing_gain]
+            #[link_name =
+        s2n_quic__event__measure__pacing_rate_updated__pacing_gain]
             fn pacing_rate_updated__pacing_gain(value: u64);
-            # [link_name = s2n_quic__event__measure__endpoint_datagram_sent__bytes]
+            #[link_name =
+        s2n_quic__event__measure__endpoint_datagram_sent__bytes]
             fn endpoint_datagram_sent__bytes(value: u64);
-            # [link_name = s2n_quic__event__measure__endpoint_datagram_sent__bytes__total]
+            #[link_name =
+        s2n_quic__event__measure__endpoint_datagram_sent__bytes__total]
             fn endpoint_datagram_sent__bytes__total(value: u64);
-            # [link_name = s2n_quic__event__measure__endpoint_datagram_sent__gso_offset]
+            #[link_name =
+        s2n_quic__event__measure__endpoint_datagram_sent__gso_offset]
             fn endpoint_datagram_sent__gso_offset(value: u64);
-            # [link_name = s2n_quic__event__measure__endpoint_datagram_received__bytes]
+            #[link_name =
+        s2n_quic__event__measure__endpoint_datagram_received__bytes]
             fn endpoint_datagram_received__bytes(value: u64);
-            # [link_name = s2n_quic__event__measure__endpoint_datagram_received__bytes__total]
+            #[link_name =
+        s2n_quic__event__measure__endpoint_datagram_received__bytes__total]
             fn endpoint_datagram_received__bytes__total(value: u64);
-            # [link_name = s2n_quic__event__measure__endpoint_datagram_dropped__bytes]
+            #[link_name =
+        s2n_quic__event__measure__endpoint_datagram_dropped__bytes]
             fn endpoint_datagram_dropped__bytes(value: u64);
-            # [link_name = s2n_quic__event__measure__endpoint_datagram_dropped__bytes__total]
+            #[link_name =
+        s2n_quic__event__measure__endpoint_datagram_dropped__bytes__total]
             fn endpoint_datagram_dropped__bytes__total(value: u64);
-            # [link_name = s2n_quic__event__measure__platform_tx__packets]
+            #[link_name =
+        s2n_quic__event__measure__platform_tx__packets]
             fn platform_tx__packets(value: u64);
-            # [link_name = s2n_quic__event__measure__platform_tx__syscalls]
+            #[link_name = s2n_quic__event__measure__platform_tx__syscalls]
             fn platform_tx__syscalls(value: u64);
-            # [link_name = s2n_quic__event__measure__platform_tx__syscalls__blocked]
+            #[link_name =
+        s2n_quic__event__measure__platform_tx__syscalls__blocked]
             fn platform_tx__syscalls__blocked(value: u64);
-            # [link_name = s2n_quic__event__measure__platform_tx__errors]
+            #[link_name =
+        s2n_quic__event__measure__platform_tx__errors]
             fn platform_tx__errors(value: u64);
-            # [link_name = s2n_quic__event__measure__platform_tx__errors__dropped]
+            #[link_name = s2n_quic__event__measure__platform_tx__errors__dropped]
             fn platform_tx__errors__dropped(value: u64);
-            # [link_name = s2n_quic__event__measure__platform_rx__packets]
+            #[link_name =
+        s2n_quic__event__measure__platform_rx__packets]
             fn platform_rx__packets(value: u64);
-            # [link_name = s2n_quic__event__measure__platform_rx__syscalls]
+            #[link_name = s2n_quic__event__measure__platform_rx__syscalls]
             fn platform_rx__syscalls(value: u64);
-            # [link_name = s2n_quic__event__measure__platform_rx__syscalls__blocked]
+            #[link_name =
+        s2n_quic__event__measure__platform_rx__syscalls__blocked]
             fn platform_rx__syscalls__blocked(value: u64);
-            # [link_name = s2n_quic__event__measure__platform_rx__errors]
+            #[link_name =
+        s2n_quic__event__measure__platform_rx__errors]
             fn platform_rx__errors(value: u64);
-            # [link_name = s2n_quic__event__measure__platform_rx__errors__dropped]
+            #[link_name = s2n_quic__event__measure__platform_rx__errors__dropped]
             fn platform_rx__errors__dropped(value: u64);
         }
     );
@@ -1128,35 +1242,47 @@ mod timer {
     }
     define!(
         extern "probe" {
-            # [link_name = s2n_quic__event__timer__key_space_discarded__initial__latency]
+            #[link_name =
+        s2n_quic__event__timer__key_space_discarded__initial__latency]
             fn key_space_discarded__initial__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__key_space_discarded__handshake__latency]
+            #[link_name
+        = s2n_quic__event__timer__key_space_discarded__handshake__latency]
             fn key_space_discarded__handshake__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__key_space_discarded__one_rtt__latency]
+            #[link_name = s2n_quic__event__timer__key_space_discarded__one_rtt__latency]
             fn key_space_discarded__one_rtt__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__transport_parameters_received__latency]
+            #[link_name
+        = s2n_quic__event__timer__transport_parameters_received__latency]
             fn transport_parameters_received__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__handshake_status_updated__complete__latency]
+            #[link_name
+        = s2n_quic__event__timer__handshake_status_updated__complete__latency]
             fn handshake_status_updated__complete__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__handshake_status_updated__confirmed__latency]
+            #[link_name =
+        s2n_quic__event__timer__handshake_status_updated__confirmed__latency]
             fn handshake_status_updated__confirmed__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__handshake_status_updated__handshake_done_acked__latency]
+            #[link_name =
+        s2n_quic__event__timer__handshake_status_updated__handshake_done_acked__latency]
             fn handshake_status_updated__handshake_done_acked__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__tls_client_hello__latency]
+            #[link_name =
+        s2n_quic__event__timer__tls_client_hello__latency]
             fn tls_client_hello__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__tls_server_hello__latency]
+            #[link_name =
+        s2n_quic__event__timer__tls_server_hello__latency]
             fn tls_server_hello__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__dc_state_changed__version_negotiated__latency]
+            #[link_name =
+        s2n_quic__event__timer__dc_state_changed__version_negotiated__latency]
             fn dc_state_changed__version_negotiated__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__dc_state_changed__no_version_negotiated__latency]
+            #[link_name =
+        s2n_quic__event__timer__dc_state_changed__no_version_negotiated__latency]
             fn dc_state_changed__no_version_negotiated__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__dc_state_changed__path_secrets__latency]
+            #[link_name = s2n_quic__event__timer__dc_state_changed__path_secrets__latency]
             fn dc_state_changed__path_secrets__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__dc_state_changed__complete__latency]
+            #[link_name = s2n_quic__event__timer__dc_state_changed__complete__latency]
             fn dc_state_changed__complete__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__connection_closed__latency]
+            #[link_name =
+        s2n_quic__event__timer__connection_closed__latency]
             fn connection_closed__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__platform_event_loop_sleep__processing_duration]
+            #[link_name =
+        s2n_quic__event__timer__platform_event_loop_sleep__processing_duration]
             fn platform_event_loop_sleep__processing_duration(value: core::time::Duration);
         }
     );
@@ -1185,7 +1311,8 @@ mod timer {
         }
         define!(
             extern "probe" {
-                # [link_name = s2n_quic__event__timer__nominal__slow_start_exited__latency]
+                #[link_name =
+            s2n_quic__event__timer__nominal__slow_start_exited__latency]
                 fn slow_start_exited__latency(
                     value: core::time::Duration,
                     variant: u64,

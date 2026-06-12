@@ -9,7 +9,7 @@
 use super::*;
 pub(crate) mod metrics;
 pub mod api {
-    #![doc = r" This module contains events that are emitted to the [`Subscriber`](crate::event::Subscriber)"]
+    //! This module contains events that are emitted to the [`Subscriber`](crate::event::Subscriber)
     use super::*;
     #[allow(unused_imports)]
     use crate::event::metrics::aggregate;
@@ -157,16 +157,18 @@ pub mod api {
     }
 }
 pub mod tracing {
-    #![doc = r" This module contains event integration with [`tracing`](https://docs.rs/tracing)"]
+    //! This module contains event integration with [`tracing`](https://docs.rs/tracing)
     use super::api;
-    #[doc = r" Emits events with [`tracing`](https://docs.rs/tracing)"]
+    /// Emits events with [`tracing`](https://docs.rs/tracing)
     #[derive(Clone, Debug)]
     pub struct Subscriber {
         root: tracing::Span,
     }
     impl Default for Subscriber {
         fn default() -> Self {
-            let root = tracing :: span ! (target : "c_ffi_events_test" , tracing :: Level :: DEBUG , "c_ffi_events_test");
+            let root = tracing::span!(
+                target : "c_ffi_events_test", tracing::Level::DEBUG, "c_ffi_events_test"
+            );
             Self { root }
         }
     }
@@ -183,7 +185,10 @@ pub mod tracing {
             _info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext {
             let parent = self.parent(meta);
-            tracing :: span ! (target : "c_ffi_events" , parent : parent , tracing :: Level :: DEBUG , "conn" , id = meta . id)
+            tracing::span!(
+                target : "c_ffi_events", parent : parent, tracing::Level::DEBUG, "conn",
+                id = meta.id
+            )
         }
         #[inline]
         fn on_byte_array_event(
@@ -194,7 +199,10 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::ByteArrayEvent { data } = event;
-            tracing :: event ! (target : "byte_array_event" , parent : id , tracing :: Level :: DEBUG , { data = tracing :: field :: debug (data) });
+            tracing::event!(
+                target : "byte_array_event", parent : id, tracing::Level::DEBUG, { data =
+                tracing::field::debug(data) }
+            );
         }
         #[inline]
         fn on_enum_event(
@@ -205,13 +213,19 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::EnumEvent { value } = event;
-            tracing :: event ! (target : "enum_event" , parent : id , tracing :: Level :: DEBUG , { value = tracing :: field :: debug (value) });
+            tracing::event!(
+                target : "enum_event", parent : id, tracing::Level::DEBUG, { value =
+                tracing::field::debug(value) }
+            );
         }
         #[inline]
         fn on_count_event(&mut self, meta: &api::EndpointMeta, event: &api::CountEvent) {
             let parent = self.parent(meta);
             let api::CountEvent { count } = event;
-            tracing :: event ! (target : "count_event" , parent : parent , tracing :: Level :: DEBUG , { count = tracing :: field :: debug (count) });
+            tracing::event!(
+                target : "count_event", parent : parent, tracing::Level::DEBUG, { count =
+                tracing::field::debug(count) }
+            );
         }
     }
 }
@@ -328,58 +342,58 @@ mod traits {
     use crate::event::Meta;
     use core::fmt;
     use s2n_quic_core::query;
-    #[doc = r" Allows for events to be subscribed to"]
+    /// Allows for events to be subscribed to
     pub trait Subscriber: 'static + Send {
-        #[doc = r" An application provided type associated with each connection."]
-        #[doc = r""]
-        #[doc = r" The context provides a mechanism for applications to provide a custom type"]
-        #[doc = r" and update it on each event, e.g. computing statistics. Each event"]
-        #[doc = r" invocation (e.g. [`Subscriber::on_packet_sent`]) also provides mutable"]
-        #[doc = r" access to the context `&mut ConnectionContext` and allows for updating the"]
-        #[doc = r" context."]
-        #[doc = r""]
-        #[doc = r" ```no_run"]
-        #[doc = r" # mod s2n_quic { pub mod provider { pub mod event {"]
-        #[doc = r" #     pub use s2n_quic_core::event::{api as events, api::ConnectionInfo, api::ConnectionMeta, Subscriber};"]
-        #[doc = r" # }}}"]
-        #[doc = r" use s2n_quic::provider::event::{"]
-        #[doc = r"     ConnectionInfo, ConnectionMeta, Subscriber, events::PacketSent"]
-        #[doc = r" };"]
-        #[doc = r""]
-        #[doc = r" pub struct MyEventSubscriber;"]
-        #[doc = r""]
-        #[doc = r" pub struct MyEventContext {"]
-        #[doc = r"     packet_sent: u64,"]
-        #[doc = r" }"]
-        #[doc = r""]
-        #[doc = r" impl Subscriber for MyEventSubscriber {"]
-        #[doc = r"     type ConnectionContext = MyEventContext;"]
-        #[doc = r""]
-        #[doc = r"     fn create_connection_context("]
-        #[doc = r"         &mut self, _meta: &ConnectionMeta,"]
-        #[doc = r"         _info: &ConnectionInfo,"]
-        #[doc = r"     ) -> Self::ConnectionContext {"]
-        #[doc = r"         MyEventContext { packet_sent: 0 }"]
-        #[doc = r"     }"]
-        #[doc = r""]
-        #[doc = r"     fn on_packet_sent("]
-        #[doc = r"         &mut self,"]
-        #[doc = r"         context: &mut Self::ConnectionContext,"]
-        #[doc = r"         _meta: &ConnectionMeta,"]
-        #[doc = r"         _event: &PacketSent,"]
-        #[doc = r"     ) {"]
-        #[doc = r"         context.packet_sent += 1;"]
-        #[doc = r"     }"]
-        #[doc = r" }"]
-        #[doc = r"  ```"]
+        /// An application provided type associated with each connection.
+        ///
+        /// The context provides a mechanism for applications to provide a custom type
+        /// and update it on each event, e.g. computing statistics. Each event
+        /// invocation (e.g. [`Subscriber::on_packet_sent`]) also provides mutable
+        /// access to the context `&mut ConnectionContext` and allows for updating the
+        /// context.
+        ///
+        /// ```no_run
+        /// # mod s2n_quic { pub mod provider { pub mod event {
+        /// #     pub use s2n_quic_core::event::{api as events, api::ConnectionInfo, api::ConnectionMeta, Subscriber};
+        /// # }}}
+        /// use s2n_quic::provider::event::{
+        ///     ConnectionInfo, ConnectionMeta, Subscriber, events::PacketSent
+        /// };
+        ///
+        /// pub struct MyEventSubscriber;
+        ///
+        /// pub struct MyEventContext {
+        ///     packet_sent: u64,
+        /// }
+        ///
+        /// impl Subscriber for MyEventSubscriber {
+        ///     type ConnectionContext = MyEventContext;
+        ///
+        ///     fn create_connection_context(
+        ///         &mut self, _meta: &ConnectionMeta,
+        ///         _info: &ConnectionInfo,
+        ///     ) -> Self::ConnectionContext {
+        ///         MyEventContext { packet_sent: 0 }
+        ///     }
+        ///
+        ///     fn on_packet_sent(
+        ///         &mut self,
+        ///         context: &mut Self::ConnectionContext,
+        ///         _meta: &ConnectionMeta,
+        ///         _event: &PacketSent,
+        ///     ) {
+        ///         context.packet_sent += 1;
+        ///     }
+        /// }
+        ///  ```
         type ConnectionContext: 'static + Send;
-        #[doc = r" Creates a context to be passed to each connection-related event"]
+        /// Creates a context to be passed to each connection-related event
         fn create_connection_context(
             &mut self,
             meta: &api::ConnectionMeta,
             info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext;
-        #[doc = "Called when the `ByteArrayEvent` event is triggered"]
+        ///Called when the `ByteArrayEvent` event is triggered
         #[inline]
         fn on_byte_array_event(
             &mut self,
@@ -391,7 +405,7 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `EnumEvent` event is triggered"]
+        ///Called when the `EnumEvent` event is triggered
         #[inline]
         fn on_enum_event(
             &mut self,
@@ -403,19 +417,19 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `CountEvent` event is triggered"]
+        ///Called when the `CountEvent` event is triggered
         #[inline]
         fn on_count_event(&mut self, meta: &api::EndpointMeta, event: &api::CountEvent) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called for each event that relates to the endpoint and all connections"]
+        /// Called for each event that relates to the endpoint and all connections
         #[inline]
         fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Called for each event that relates to a connection"]
+        /// Called for each event that relates to a connection
         #[inline]
         fn on_connection_event<E: Event>(
             &mut self,
@@ -427,7 +441,7 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
-        #[doc = r" Used for querying the `Subscriber::ConnectionContext` on a Subscriber"]
+        /// Used for querying the `Subscriber::ConnectionContext` on a Subscriber
         #[inline]
         fn query(
             context: &Self::ConnectionContext,
@@ -435,7 +449,7 @@ mod traits {
         ) -> query::ControlFlow {
             query.execute(context)
         }
-        #[doc = r" Used for querying and mutating the `Subscriber::ConnectionContext` on a Subscriber"]
+        /// Used for querying and mutating the `Subscriber::ConnectionContext` on a Subscriber
         #[inline]
         fn query_mut(
             context: &mut Self::ConnectionContext,
@@ -444,8 +458,8 @@ mod traits {
             query.execute_mut(context)
         }
     }
-    #[doc = r" Subscriber is implemented for a 2-element tuple to make it easy to compose multiple"]
-    #[doc = r" subscribers."]
+    /// Subscriber is implemented for a 2-element tuple to make it easy to compose multiple
+    /// subscribers.
     impl<A, B> Subscriber for (A, B)
     where
         A: Subscriber,
@@ -525,9 +539,9 @@ mod traits {
         }
     }
     pub trait EndpointPublisher {
-        #[doc = "Publishes a `CountEvent` event to the publisher's subscriber"]
+        ///Publishes a `CountEvent` event to the publisher's subscriber
         fn on_count_event(&mut self, event: builder::CountEvent);
-        #[doc = r" Returns the QUIC version, if any"]
+        /// Returns the QUIC version, if any
         fn quic_version(&self) -> Option<u32>;
     }
     pub struct EndpointPublisherSubscriber<'a, Sub: Subscriber> {
@@ -570,13 +584,13 @@ mod traits {
         }
     }
     pub trait ConnectionPublisher {
-        #[doc = "Publishes a `ByteArrayEvent` event to the publisher's subscriber"]
+        ///Publishes a `ByteArrayEvent` event to the publisher's subscriber
         fn on_byte_array_event(&mut self, event: builder::ByteArrayEvent);
-        #[doc = "Publishes a `EnumEvent` event to the publisher's subscriber"]
+        ///Publishes a `EnumEvent` event to the publisher's subscriber
         fn on_enum_event(&mut self, event: builder::EnumEvent);
-        #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
+        /// Returns the QUIC version negotiated for the current connection, if any
         fn quic_version(&self) -> u32;
-        #[doc = r" Returns the [`Subject`] for the current publisher"]
+        /// Returns the [`Subject`] for the current publisher
         fn subject(&self) -> api::Subject;
     }
     pub struct ConnectionPublisherSubscriber<'a, Sub: Subscriber> {
@@ -660,21 +674,21 @@ pub mod testing {
             }
         }
         impl Subscriber {
-            #[doc = r" Creates a subscriber with snapshot assertions enabled"]
+            /// Creates a subscriber with snapshot assertions enabled
             #[track_caller]
             pub fn snapshot() -> Self {
                 let mut sub = Self::no_snapshot();
                 sub.location = Location::from_thread_name();
                 sub
             }
-            #[doc = r" Creates a subscriber with snapshot assertions enabled"]
+            /// Creates a subscriber with snapshot assertions enabled
             #[track_caller]
             pub fn named_snapshot<Name: core::fmt::Display>(name: Name) -> Self {
                 let mut sub = Self::no_snapshot();
                 sub.location = Some(Location::new(name));
                 sub
             }
-            #[doc = r" Creates a subscriber with snapshot assertions disabled"]
+            /// Creates a subscriber with snapshot assertions disabled
             pub fn no_snapshot() -> Self {
                 Self {
                     location: None,
@@ -719,21 +733,21 @@ pub mod testing {
         }
     }
     impl Subscriber {
-        #[doc = r" Creates a subscriber with snapshot assertions enabled"]
+        /// Creates a subscriber with snapshot assertions enabled
         #[track_caller]
         pub fn snapshot() -> Self {
             let mut sub = Self::no_snapshot();
             sub.location = Location::from_thread_name();
             sub
         }
-        #[doc = r" Creates a subscriber with snapshot assertions enabled"]
+        /// Creates a subscriber with snapshot assertions enabled
         #[track_caller]
         pub fn named_snapshot<Name: core::fmt::Display>(name: Name) -> Self {
             let mut sub = Self::no_snapshot();
             sub.location = Some(Location::new(name));
             sub
         }
-        #[doc = r" Creates a subscriber with snapshot assertions disabled"]
+        /// Creates a subscriber with snapshot assertions disabled
         pub fn no_snapshot() -> Self {
             Self {
                 location: None,
@@ -797,21 +811,21 @@ pub mod testing {
         pub count_event: u64,
     }
     impl Publisher {
-        #[doc = r" Creates a publisher with snapshot assertions enabled"]
+        /// Creates a publisher with snapshot assertions enabled
         #[track_caller]
         pub fn snapshot() -> Self {
             let mut sub = Self::no_snapshot();
             sub.location = Location::from_thread_name();
             sub
         }
-        #[doc = r" Creates a subscriber with snapshot assertions enabled"]
+        /// Creates a subscriber with snapshot assertions enabled
         #[track_caller]
         pub fn named_snapshot<Name: core::fmt::Display>(name: Name) -> Self {
             let mut sub = Self::no_snapshot();
             sub.location = Some(Location::new(name));
             sub
         }
-        #[doc = r" Creates a publisher with snapshot assertions disabled"]
+        /// Creates a publisher with snapshot assertions disabled
         pub fn no_snapshot() -> Self {
             Self {
                 location: None,

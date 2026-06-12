@@ -87,12 +87,12 @@ impl<R: Registry + Default> Default for Subscriber<R> {
     }
 }
 impl<R: Registry> Subscriber<R> {
-    #[doc = r" Creates a new subscriber with the given registry"]
-    #[doc = r""]
-    #[doc = r" # Note"]
-    #[doc = r""]
-    #[doc = r" All of the recorders are registered on initialization and cached for the lifetime"]
-    #[doc = r" of the subscriber."]
+    /// Creates a new subscriber with the given registry
+    ///
+    /// # Note
+    ///
+    /// All of the recorders are registered on initialization and cached for the lifetime
+    /// of the subscriber.
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
@@ -139,7 +139,7 @@ impl<R: Registry> Subscriber<R> {
             registry,
         }
     }
-    #[doc = r" Returns all of the registered counters"]
+    /// Returns all of the registered counters
     #[inline]
     pub fn counters(&self) -> impl Iterator<Item = (&'static Info, &R::Counter)> + '_ {
         self.counters
@@ -159,7 +159,7 @@ impl<R: Registry> Subscriber<R> {
         let counter = &self.counters[id];
         counter.record(info, value);
     }
-    #[doc = r" Returns all of the registered bool counters"]
+    /// Returns all of the registered bool counters
     #[inline]
     pub fn bool_counters(&self) -> impl Iterator<Item = (&'static Info, &R::BoolCounter)> + '_ {
         core::iter::empty()
@@ -171,7 +171,7 @@ impl<R: Registry> Subscriber<R> {
         let counter = &self.bool_counters[id];
         counter.record(info, value);
     }
-    #[doc = r" Returns all of the registered nominal counters"]
+    /// Returns all of the registered nominal counters
     #[inline]
     pub fn nominal_counters(
         &self,
@@ -188,7 +188,7 @@ impl<R: Registry> Subscriber<R> {
         let counter = &self.nominal_counters[idx];
         counter.record(info, value.as_variant(), 1usize);
     }
-    #[doc = r" Returns all of the registered measures"]
+    /// Returns all of the registered measures
     #[inline]
     pub fn measures(&self) -> impl Iterator<Item = (&'static Info, &R::Measure)> + '_ {
         core::iter::empty()
@@ -200,7 +200,7 @@ impl<R: Registry> Subscriber<R> {
         let measure = &self.measures[id];
         measure.record(info, value);
     }
-    #[doc = r" Returns all of the registered gauges"]
+    /// Returns all of the registered gauges
     #[inline]
     pub fn gauges(&self) -> impl Iterator<Item = (&'static Info, &R::Gauge)> + '_ {
         core::iter::empty()
@@ -212,7 +212,7 @@ impl<R: Registry> Subscriber<R> {
         let gauge = &self.gauges[id];
         gauge.record(info, value);
     }
-    #[doc = r" Returns all of the registered timers"]
+    /// Returns all of the registered timers
     #[inline]
     pub fn timers(&self) -> impl Iterator<Item = (&'static Info, &R::Timer)> + '_ {
         core::iter::empty()

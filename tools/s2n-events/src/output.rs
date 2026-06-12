@@ -71,7 +71,19 @@ impl Output {
         put!("// This file was generated with the `s2n-events` crate and any required");
         put!("// changes should be made there.");
         put!();
-        put!("{}", output.to_token_stream());
+
+        // `proc_macro2`'s token printer emits everything on a single line, which `rustfmt` can
+        // choke on for very large items (e.g. the generated `INFO` arrays). Pre-format with
+        // `prettyplease` to produce well-structured multi-line source, then hand off to `rustfmt`
+        // for the final, project-consistent formatting.
+        let tokens = output.to_token_stream();
+        let parsed: syn::File = syn::parse2(tokens).unwrap_or_else(|e| {
+            panic!(
+                "failed to parse generated tokens for {}: {e}",
+                path.display()
+            )
+        });
+        put!("{}", prettyplease::unparse(&parsed));
 
         let status = std::process::Command::new("rustfmt")
             .arg(&path)
