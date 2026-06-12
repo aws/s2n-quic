@@ -11,20 +11,20 @@ pub fn new(capacity: usize) -> secret::Map {
     let signer = secret::stateless_reset::Signer::random();
 
     if s2n_quic_platform::io::testing::is_in_env() {
-        secret::Map::new(
-            signer,
-            capacity,
-            false,
-            crate::time::bach::Clock::default(),
-            subscriber,
-        )
+        secret::Map::builder()
+            .with_signer(signer)
+            .with_capacity(capacity)
+            .with_clock(crate::time::bach::Clock::default())
+            .with_subscriber(subscriber)
+            .build()
+            .unwrap()
     } else {
-        secret::Map::new(
-            signer,
-            capacity,
-            false,
-            s2n_quic_core::time::StdClock::default(),
-            subscriber,
-        )
+        secret::Map::builder()
+            .with_signer(signer)
+            .with_capacity(capacity)
+            .with_clock(s2n_quic_core::time::StdClock::default())
+            .with_subscriber(subscriber)
+            .build()
+            .unwrap()
     }
 }

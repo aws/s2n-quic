@@ -64,6 +64,7 @@ where
     signer: Option<stateless_reset::Signer>,
     capacity: Option<usize>,
     should_evict_on_unknown_path_secret: bool,
+    advertised_peer_info: Option<bytes::Bytes>,
     clock: Option<C>,
     subscriber: Option<S>,
 }
@@ -78,6 +79,7 @@ where
             signer: None,
             capacity: None,
             should_evict_on_unknown_path_secret: false,
+            advertised_peer_info: None,
             clock: None,
             subscriber: None,
         }
@@ -98,6 +100,16 @@ where
         self
     }
 
+    pub fn with_advertised_peer_info(mut self, bytes: bytes::Bytes) -> Self {
+        tracing::debug!(
+            target: "dc_negotiation",
+            len = bytes.len(),
+            "with_advertised_peer_info: stamping local DcPeerInfo transport parameter"
+        );
+        self.advertised_peer_info = Some(bytes);
+        self
+    }
+
     pub fn with_clock<C2: 'static + time::Clock + Sync + Send>(
         self,
         clock: C2,
@@ -106,6 +118,7 @@ where
             clock: Some(clock),
             subscriber: self.subscriber,
             should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
+            advertised_peer_info: self.advertised_peer_info,
             signer: self.signer,
             capacity: self.capacity,
         }
@@ -116,12 +129,19 @@ where
             clock: self.clock,
             subscriber: Some(subscriber),
             should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
+            advertised_peer_info: self.advertised_peer_info,
             signer: self.signer,
             capacity: self.capacity,
         }
     }
 
-    pub fn build(self) -> Result<Arc<State<C, S>>, StateBuilderError> {
+    pub fn build(self) -> Result<super::Map, StateBuilderError> {
+        let store = self.build_state()?;
+        let store: Arc<dyn Store> = store;
+        Ok(super::Map { store })
+    }
+
+    pub fn build_state(self) -> Result<Arc<State<C, S>>, StateBuilderError> {
         let signer = self.signer.ok_or(StateBuilderError::MissingSigner)?;
         let capacity = self.capacity.ok_or(StateBuilderError::MissingCapacity)?;
         let clock = self.clock.ok_or(StateBuilderError::MissingClock)?;
@@ -133,6 +153,7 @@ where
             signer,
             capacity,
             self.should_evict_on_unknown_path_secret,
+            self.advertised_peer_info,
             clock,
             subscriber,
         ))
@@ -386,7 +407,7 @@ impl IdMap {
     }
 }
 
-pub(super) struct State<C, S>
+pub struct State<C, S>
 where
     C: 'static + time::Clock + Sync + Send,
     S: event::Subscriber,
@@ -430,6 +451,8 @@ where
     pub(super) request_handshake: RwLock<
         Option<Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>>,
     >,
+
+    advertised_peer_info: Option<bytes::Bytes>,
 
     cleaner: Cleaner,
 
@@ -532,6 +555,7 @@ where
         signer: stateless_reset::Signer,
         capacity: usize,
         should_evict_on_unknown_path_secret: bool,
+        advertised_peer_info: Option<bytes::Bytes>,
         clock: C,
         subscriber: S,
     ) -> Arc<Self> {
@@ -561,6 +585,7 @@ where
             clock,
             subscriber,
             request_handshake: RwLock::new(None),
+            advertised_peer_info,
             mk_application_data: RwLock::new(None),
         };
 
@@ -855,6 +880,10 @@ where
         cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
     ) {
         self.register_request_handshake(cb);
+    }
+
+    fn advertised_peer_info(&self) -> Option<bytes::Bytes> {
+        self.advertised_peer_info.clone()
     }
 
     #[allow(clippy::type_complexity)]

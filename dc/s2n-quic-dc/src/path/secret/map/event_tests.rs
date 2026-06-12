@@ -33,7 +33,13 @@ fn map(capacity: usize) -> Map {
 fn map_sub(capacity: usize, sub: Arc<Subscriber>) -> Map {
     let signer = stateless_reset::Signer::random();
 
-    let map = Map::new(signer, capacity, false, NoopClock, sub);
+    let map = Map::builder()
+        .with_signer(signer)
+        .with_capacity(capacity)
+        .with_clock(NoopClock)
+        .with_subscriber(sub)
+        .build()
+        .unwrap();
 
     // stop the cleaner thread to avoid any out of order events
     map.test_stop_cleaner();
@@ -136,4 +142,21 @@ fn control_packets() {
             secret
         );
     }
+}
+
+#[test]
+fn advertised_peer_info_from_builder() {
+    let payload = bytes::Bytes::from_static(b"local-peer-info");
+    let map = Map::builder()
+        .with_signer(stateless_reset::Signer::random())
+        .with_capacity(10)
+        .with_advertised_peer_info(payload.clone())
+        .with_clock(NoopClock)
+        .with_subscriber(crate::event::tracing::Subscriber::default())
+        .build()
+        .unwrap();
+
+    map.test_stop_cleaner();
+
+    assert_eq!(map.advertised_peer_info(), Some(payload));
 }

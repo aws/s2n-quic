@@ -27,7 +27,7 @@ fn cleans_after_delay() {
         .with_capacity(50)
         .with_clock(Clock)
         .with_subscriber(tracing::Subscriber::default())
-        .build()
+        .build_state()
         .unwrap();
 
     // Stop background processing. We expect to manually invoke clean, and a background worker
@@ -64,7 +64,7 @@ fn thread_shutdown() {
             tracing::Subscriber::default(),
             testing::Subscriber::snapshot(),
         ))
-        .build()
+        .build_state()
         .unwrap();
     let state = Arc::downgrade(&map);
     drop(map);
@@ -292,7 +292,7 @@ fn check_invariants_inner(should_evict_on_unknown_path_secret: bool) {
                 .with_evict_on_unknown_path_secret(should_evict_on_unknown_path_secret)
                 .with_clock(Clock)
                 .with_subscriber(tracing::Subscriber::default())
-                .build()
+                .build_state()
                 .unwrap();
 
             // Avoid background work interfering with testing.
@@ -340,7 +340,7 @@ fn check_invariants_no_overflow() {
                 .with_capacity(10_000)
                 .with_clock(Clock)
                 .with_subscriber(tracing::Subscriber::default())
-                .build()
+                .build_state()
                 .unwrap();
 
             // Avoid background work interfering with testing.
@@ -369,7 +369,7 @@ fn no_memory_growth() {
         .with_capacity(100_000)
         .with_clock(Clock)
         .with_subscriber(tracing::Subscriber::default())
-        .build()
+        .build_state()
         .unwrap();
     map.cleaner.stop();
 
@@ -388,7 +388,7 @@ fn unknown_path_secret_evicts() {
         .with_evict_on_unknown_path_secret(true)
         .with_clock(Clock)
         .with_subscriber(tracing::Subscriber::default())
-        .build()
+        .build_state()
         .unwrap();
 
     let entry = fake_entry(0);
@@ -443,7 +443,7 @@ fn test_state() -> Arc<State<Clock, tracing::Subscriber>> {
         .with_capacity(10)
         .with_clock(Clock)
         .with_subscriber(tracing::Subscriber::default())
-        .build()
+        .build_state()
         .unwrap();
     map.cleaner.stop();
     map

@@ -93,6 +93,8 @@ pub trait Store: 'static + Send + Sync + time::Clock {
         cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
     );
 
+    fn advertised_peer_info(&self) -> Option<bytes::Bytes>;
+
     fn check_dedup(
         &self,
         entry: &Entry,

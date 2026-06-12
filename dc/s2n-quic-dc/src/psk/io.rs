@@ -777,13 +777,13 @@ mod tests {
             let tls = TestTlsProvider {};
             let subscriber = NoopSubscriber {};
 
-            let server_map = Map::new(
-                Signer::new(b"default"),
-                50_000,
-                false,
-                StdClock::default(),
-                subscriber.clone(),
-            );
+            let server_map = Map::builder()
+                .with_signer(Signer::new(b"default"))
+                .with_capacity(50_000)
+                .with_clock(StdClock::default())
+                .with_subscriber(subscriber.clone())
+                .build()
+                .unwrap();
 
             let server_builder = crate::psk::server::Builder::default();
             let (server_addr_rx, server_guard) = if let Some(limiter) = endpoint_limits {
@@ -804,13 +804,13 @@ mod tests {
                 )
             };
 
-            let client_map = Map::new(
-                Signer::new(b"default"),
-                50_000,
-                false,
-                StdClock::default(),
-                subscriber.clone(),
-            );
+            let client_map = Map::builder()
+                .with_signer(Signer::new(b"default"))
+                .with_capacity(50_000)
+                .with_clock(StdClock::default())
+                .with_subscriber(subscriber.clone())
+                .build()
+                .unwrap();
 
             let client = Client::bind::<
                 <TestTlsProvider as Provider>::Client,

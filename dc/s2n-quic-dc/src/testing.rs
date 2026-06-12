@@ -555,13 +555,13 @@ impl Pair {
                 "[::1]:0".parse().unwrap(),
                 tls_materials_provider.clone(),
                 test_event_subscriber.clone(),
-                Map::new(
-                    Signer::new(b"default"),
-                    50_000,
-                    false,
-                    StdClock::default(),
-                    test_event_subscriber.clone(),
-                ),
+                Map::builder()
+                    .with_signer(Signer::new(b"default"))
+                    .with_capacity(50_000)
+                    .with_clock(StdClock::default())
+                    .with_subscriber(test_event_subscriber.clone())
+                    .build()
+                    .unwrap(),
             )
             .await
             .unwrap();
@@ -570,13 +570,13 @@ impl Pair {
             .client()
             .start(
                 "[::]:0".parse().unwrap(),
-                Map::new(
-                    Signer::new(b"default"),
-                    50_000,
-                    false,
-                    StdClock::default(),
-                    test_event_subscriber.clone(),
-                ),
+                Map::builder()
+                    .with_signer(Signer::new(b"default"))
+                    .with_capacity(50_000)
+                    .with_clock(StdClock::default())
+                    .with_subscriber(test_event_subscriber.clone())
+                    .build()
+                    .unwrap(),
                 tls_materials_provider,
                 test_event_subscriber,
                 server_name(),
@@ -598,13 +598,13 @@ impl Pair {
                 "[::1]:0".parse().unwrap(),
                 tls_materials_provider.clone(),
                 test_event_subscriber.clone(),
-                Map::new(
-                    Signer::new(b"default"),
-                    50_000,
-                    false,
-                    StdClock::default(),
-                    test_event_subscriber.clone(),
-                ),
+                Map::builder()
+                    .with_signer(Signer::new(b"default"))
+                    .with_capacity(50_000)
+                    .with_clock(StdClock::default())
+                    .with_subscriber(test_event_subscriber.clone())
+                    .build()
+                    .unwrap(),
             )
             .unwrap();
 
@@ -612,13 +612,13 @@ impl Pair {
             .client()
             .start(
                 "[::]:0".parse().unwrap(),
-                Map::new(
-                    Signer::new(b"default"),
-                    50_000,
-                    false,
-                    StdClock::default(),
-                    test_event_subscriber.clone(),
-                ),
+                Map::builder()
+                    .with_signer(Signer::new(b"default"))
+                    .with_capacity(50_000)
+                    .with_clock(StdClock::default())
+                    .with_subscriber(test_event_subscriber.clone())
+                    .build()
+                    .unwrap(),
                 tls_materials_provider,
                 test_event_subscriber,
                 server_name(),

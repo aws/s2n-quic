@@ -24,7 +24,14 @@ pub fn create(
     let signer = Signer::new(b"dc-tester");
     let clock = s2n_quic_dc::time::tokio::Clock::default();
     let subscriber = s2n_quic_dc::event::tracing::Subscriber::default();
-    let map = secret::Map::new(signer, 50_000, true, clock, subscriber);
+    let map = secret::Map::builder()
+        .with_signer(signer)
+        .with_capacity(50_000)
+        .with_evict_on_unknown_path_secret(true)
+        .with_clock(clock)
+        .with_subscriber(subscriber)
+        .build()
+        .unwrap();
 
     let gso = endpoint::Gso::default();
     let num_sockets = config.recv_io_workers.max(config.send_sockets);
