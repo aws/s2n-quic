@@ -3588,6 +3588,129 @@ fn queue_msg_write_msg_deadlock_message_exceeds_window() {
     });
 }
 
+/// Regression for the flow-control deadlock introduced by removing the writer's
+/// forced-wakeup-under-flow-pressure heuristic (`is_wakeup |= remote_budget <= max_segment_size`,
+/// commit "remove forced wakes on flow blocked"). It exercises the `write_msg` path with
+/// `is_wakeup: false` over a window only one chunk wide.
+///
+/// The server streams an 8KB message through a ~1320-byte (one-chunk) window. The first segment is
+/// a single chunk that arrives and *completes* — taking the segment-complete (`Some`/`Ready`)
+/// branch of `push_msg`, delivering data carrying the writer's `blocked` bit into the reader's
+/// stream queue. The three paths that could wake the parked reader all miss:
+///   * The `flush_watermark` gate only wakes when `delivered.stream_offset < flush_watermark`, and
+///     `flush_watermark` only advances on an `is_fin || is_wakeup` chunk. With `is_wakeup: false`
+///     the FIN rides the LAST segment — unsendable until the window grows — so it never advances.
+///   * The synthetic-blocked signal only fires for an *incomplete* segment (the `None` branch);
+///     this single-chunk segment completed, so it never fires.
+///   * The writer's standalone `QueueDataBlocked` only fires when `total_written == 0`; the writer
+///     sent the first chunk, so `total_written > 0` and no standalone signal goes out.
+///
+/// Result: deliverable data sits in a parked reader's queue, the writer is blocked on a window only
+/// the reader can grow by draining, and nobody re-signals — a permanent stall. The read uses a bare
+/// `await` (no `timeout` wrapper): a timeout's timer firing would re-poll the parked reader and mask
+/// the bug, so without the fix this hangs until bach's stall detector aborts the run.
+///
+/// The fix wakes the reader whenever a completed segment carries the writer's `blocked` bit
+/// (`queue/slot.rs` `push_msg`).
+#[test]
+fn queue_msg_write_msg_deadlock_message_exceeds_window_no_wakeup() {
+    use crate::endpoint::testing::sim::SimEndpointConfig;
+
+    let _guard = crate::testing::without_snapshots();
+    sim(|| {
+        let acceptor_id = VarInt::from_u8(1);
+        // A window of ~1 chunk (msg_packet_size ≈ 1320 over a 1500 MTU). The first segment is then
+        // a single chunk that completes on arrival — taking the `Some`/`Ready` branch and NEVER the
+        // incomplete-segment `None` branch that fires the synthetic blocked signal. The remainder
+        // cannot be sent until the window grows.
+        const WINDOW: u32 = 1320;
+        const RESPONSE_SIZE: usize = 8 * 1024; // > one window
+
+        async move {
+            let server = SimEndpointConfig::default()
+                .send_window(VarInt::from_u32(WINDOW))
+                .server();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            let stream = timeout(5.s(), acceptor.recv())
+                .await
+                .expect("server accept timeout")
+                .expect("server stream closed");
+            let (mut reader, mut writer) = stream.into_split();
+
+            // Read client request
+            let mut req = Data::new(64);
+            loop {
+                let n = timeout(5.s(), reader.read_into(&mut req))
+                    .await
+                    .expect("server read timeout")
+                    .expect("server read");
+                if n == 0 {
+                    break;
+                }
+            }
+
+            // Stream a response larger than the window with NO wakeup boundary.
+            let mut response = Data::new(RESPONSE_SIZE as u64);
+            writer
+                .write_msg(
+                    &mut response,
+                    crate::stream::MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                )
+                .await
+                .expect("server write_msg");
+            writer.shutdown().expect("server shutdown");
+        }
+        .group("server")
+        .primary()
+        .spawn();
+
+        async move {
+            let mut client = SimEndpointConfig::default()
+                .send_window(VarInt::from_u32(WINDOW))
+                .client();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+            let (mut reader, mut writer) = stream.into_split();
+
+            // Send small request
+            let mut req = Data::new(64);
+            writer
+                .write_msg(
+                    &mut req,
+                    crate::stream::MsgFlags {
+                        is_fin: true,
+                        is_wakeup: true,
+                    },
+                )
+                .await
+                .expect("client write request");
+
+            // Read response with a BARE await (no timeout wrapper). The timeout's timer firing was
+            // previously re-polling the parked reader and masking the stall; without it, if the
+            // reader is never woken by the receive path the sim makes no further progress and bach's
+            // stall detector aborts the run.
+            let mut resp = Data::new(RESPONSE_SIZE as u64);
+            loop {
+                let n = reader.read_into(&mut resp).await.expect("client read error");
+                if n == 0 {
+                    break;
+                }
+            }
+            assert!(resp.is_finished());
+        }
+        .group("client")
+        .spawn();
+    });
+}
+
 /// Twenty nodes gossip with 3 random peers every second for 30 simulated minutes.
 ///
 /// This exercises the routing hash, symmetric 5-tuple dispatch, and multi-sender

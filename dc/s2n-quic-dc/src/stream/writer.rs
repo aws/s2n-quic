@@ -100,8 +100,10 @@ use std::{
 pub struct MsgFlags {
     /// End of stream — all frames in this message carry is_fin.
     pub is_fin: bool,
-    /// Request receiver wakeup on message completion.
-    /// Overridden to true when flow control budget is nearly exhausted.
+    /// Request receiver wakeup on message completion. Flow-control progress no longer depends on
+    /// this flag: the receiver wakes the reader on its own when a delivered segment carries the
+    /// writer's `blocked` bit, or via the synthetic/standalone blocked signals (see
+    /// `queue/slot.rs` `push_msg` and `send_data_blocked_frame`).
     pub is_wakeup: bool,
 }
 

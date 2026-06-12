@@ -71,6 +71,24 @@ pub(crate) struct StreamState {
     /// When the MsgTable segment later completes with `is_wakeup: false`, the
     /// reader is never re-woken and hangs indefinitely.
     pub(crate) flush_watermark: u64,
+    /// Highest `desired` offset for which a *synthetic* blocked signal has already
+    /// been injected on this slot. Gates the oversized-QueueMsg signal in
+    /// [`Slot::push_msg`]: a synthetic signal fires only when the writer's hinted
+    /// demand exceeds BOTH the advertised window and this watermark, after which the
+    /// watermark advances to that demand.
+    ///
+    /// This is the cross-message dedup. Every chunk of one message carries the same
+    /// `largest_offset` demand, so the first chunk signals and the rest are
+    /// suppressed; and a later message whose demand the reader already knows about
+    /// (its `desired` is at or below the watermark) adds no new information, so it is
+    /// suppressed too. The reader's own retry machinery — distributor wakeups when
+    /// the recv pool refills, self-wakes when a single acquire is clamped below the
+    /// target — drives `remote_max_data` up to `peer_max_offset` without needing the
+    /// demand re-asserted per message, so one signal per genuinely-higher demand is
+    /// sufficient for liveness. Re-signaling only on `desired >` avoids the burst of
+    /// redundant reader wakeups that one-signal-per-message produced when many
+    /// oversized messages were outstanding at once. Reset to 0 in [`Self::clear`].
+    pub(crate) synth_signal_offset: u64,
     /// Highest stream offset (exclusive end) ever observed for this binding,
     /// across QueueData and QueueMsg dispatches. Used to release recv-credit
     /// to the endpoint pool exactly once per byte regardless of retransmits
@@ -93,6 +111,7 @@ impl StreamState {
     pub(crate) fn clear(&mut self) {
         self.msg_table = None;
         self.flush_watermark = 0;
+        self.synth_signal_offset = 0;
         self.max_received_offset = 0;
         self.recv_finished = false;
         // initial_window_remaining is reset by the caller on bind because the
@@ -204,6 +223,7 @@ impl Slot {
             stream: Half::with_extra(StreamState {
                 msg_table: None,
                 flush_watermark: 0,
+                synth_signal_offset: 0,
                 max_received_offset: 0,
                 initial_window_remaining: 0,
                 recv_finished: false,
@@ -345,9 +365,9 @@ impl Slot {
     /// exactly as a real `QueueDataBlocked` would. The reader opens its window to that demand (see
     /// the "Window sizing" docs on [`crate::stream`]'s reader). The `synthetic` flag tells the reader
     /// this is known, bounded demand, NOT streaming back-pressure, so it must not ramp the
-    /// speculative `growth_ratio` headroom. Deduped via a per-message latch on the MsgTable entry
-    /// ([`MsgTable::mark_synth_signal_sent`]) so the signal goes out once per stalled message, not
-    /// once per chunk.
+    /// speculative `growth_ratio` headroom. Deduped via the slot-level `synth_signal_offset`
+    /// watermark so the signal goes out once per genuinely-higher demand, not once per chunk or once
+    /// per message — see [`StreamState::synth_signal_offset`].
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn push_msg<E>(
         &self,
@@ -459,6 +479,17 @@ impl Slot {
                     let mut should_wake = false;
                     for delivered in table.drain_complete() {
                         should_wake |= delivered.stream_offset < watermark;
+                        // A completed segment carrying the writer's `blocked` bit means the writer
+                        // is flow-control-blocked: it has more to send than the advertised window
+                        // admits and cannot make progress until the reader drains this data and
+                        // grows the window (via `on_blocked_signal` → MAX_DATA). The reader can only
+                        // do that if it is woken — and with `is_wakeup`/`is_fin` unset (both ride
+                        // the final, still-unsendable segment) the `flush_watermark` gate above does
+                        // not fire. This is the segment-completed counterpart to the synthetic
+                        // blocked signal emitted for segments that never complete; without it a
+                        // reader parked with the blocked data sitting undrained in its queue is
+                        // never woken and the stream deadlocks.
+                        should_wake |= delivered.blocked;
                         let entry: intrusive::Entry<msg::Stream> = msg::Stream::Data {
                             offset: VarInt::new(delivered.stream_offset).unwrap_or(VarInt::MAX),
                             peer_max_offset: VarInt::new(delivered.largest_offset)
@@ -507,20 +538,25 @@ impl Slot {
             //   * `segment_end` (`stream_offset + message_size`) — the floor: this specific segment
             //     must be coverable to complete. `peer_max_offset` is normally >= it, but take the
             //     max defensively in case a hint lagged.
-            // Deduped via a per-message latch on the MsgTable entry (`mark_synth_signal_sent`) so
-            // the signal goes out once per stalled message, not once per chunk; a message's demand
-            // is constant across its chunks, so there is no higher demand to re-signal. The returned
+            // Deduped via the slot-level `synth_signal_offset` watermark (see below); the returned
             // waker wakes a reader parked with no deliverable data.
             None => {
                 let segment_end = stream_offset.saturating_add(message_size as u64);
                 let desired = peer_max_offset.max(segment_end);
-                let first_signal = desired > self.advertised_window()
-                    && stream
-                        .extra
-                        .msg_table
-                        .as_mut()
-                        .is_some_and(|t| t.mark_synth_signal_sent(msg_id));
+                // Fire only when this demand is genuinely new: it must exceed BOTH the window the
+                // reader has already advertised AND the demand a prior synthetic signal already
+                // surfaced on this slot. The slot-level `synth_signal_offset` watermark subsumes the
+                // old per-message latch — every chunk of one message carries the same `desired`, so
+                // the first signals and the rest are suppressed, and a later message whose demand the
+                // reader already knows adds nothing. Suppressing on `desired <=` avoids the burst of
+                // redundant reader wakeups that one-signal-per-message produced when many oversized
+                // messages were outstanding at once; the reader drives the window up to
+                // `peer_max_offset` on its own (distributor wakeups + clamp self-wakes), so demand
+                // need not be re-asserted per message for liveness.
+                let first_signal =
+                    desired > self.advertised_window() && desired > stream.extra.synth_signal_offset;
                 if first_signal {
+                    stream.extra.synth_signal_offset = desired;
                     let entry: intrusive::Entry<msg::Stream> = msg::Stream::Blocked {
                         desired_offset: VarInt::new(desired).unwrap_or(VarInt::MAX),
                         synthetic: true,
@@ -1294,6 +1330,56 @@ mod tests {
         assert_eq!(wake_count.load(Ordering::SeqCst), 1);
     }
 
+    /// A segment that *completes* on a single chunk while carrying the writer's `blocked` bit must
+    /// wake the reader, even though no `is_fin`/`is_wakeup` boundary advanced the `flush_watermark`.
+    ///
+    /// This is the segment-complete counterpart to the synthetic-blocked signal (which only covers
+    /// segments that never complete). Without the `should_wake |= delivered.blocked` term, a writer
+    /// blocked on a one-chunk-wide window delivers its first chunk into a parked reader's queue and
+    /// never wakes it: the reader can't drain to grow the window, the writer can't proceed, and the
+    /// stream deadlocks. See `endpoint::tests::queue_msg_write_msg_deadlock_message_exceeds_window_no_wakeup`.
+    #[test]
+    fn push_msg_wakes_on_blocked_bit_when_segment_completes() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(1), 0).unwrap();
+
+        let (waker, wake_count) = test_waker();
+        {
+            let mut s = slot.stream.inner.lock();
+            s.waker = Some(waker.clone());
+        }
+
+        // A single-chunk segment (message_size == chunk_size) that completes immediately, with
+        // is_fin=false and is_wakeup=false (so flush_watermark stays at 0 → the watermark gate does
+        // NOT fire) but blocked=true. The writer hints demand (peer_max_offset) beyond this segment.
+        let result = slot.push_msg(
+            v(1),
+            0,    // msg_id
+            0,    // stream_offset
+            8192, // peer_max_offset — writer wants to send more than this segment
+            4096, // message_size
+            4096, // chunk_size (one chunk)
+            0,    // chunk_index
+            4096, // payload_len
+            false, // is_fin
+            false, // is_wakeup
+            true,  // blocked
+            |ptr, len| {
+                unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
+                Ok::<(), ()>(())
+            },
+        );
+        assert!(result.is_ok());
+        drop(result);
+
+        assert_eq!(
+            wake_count.load(Ordering::SeqCst),
+            1,
+            "a completed segment carrying the writer's blocked bit must wake the reader so it can \
+             drain and grow the window"
+        );
+    }
+
     #[test]
     fn push_msg_detects_rebind_during_write_and_completes_to_new_binding() {
         let slot = Slot::with_queue_id(v(0));
@@ -1546,6 +1632,7 @@ mod tests {
         let mut state = StreamState {
             msg_table: None,
             flush_watermark: 0,
+            synth_signal_offset: 0,
             max_received_offset: 0,
             // No unbacked initial window: model the post-bootstrap / zero-initial-window slot where
             // every byte is accounted as pool-backed.
@@ -1581,6 +1668,7 @@ mod tests {
         let mut state = StreamState {
             msg_table: None,
             flush_watermark: 0,
+            synth_signal_offset: 0,
             max_received_offset: 0,
             initial_window_remaining: 4,
             recv_finished: false,
