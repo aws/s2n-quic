@@ -1030,8 +1030,8 @@ impl Interceptor for RandomShort {
 }
 
 /// Tests that DcPeerInfo bytes are exchanged during the QUIC handshake:
-/// - The server's `local_peer_info()` is received by the client in `ConnectionInfo::peer_info`
-/// - The client's `local_peer_info()` is received by the server in `ConnectionInfo::peer_info`
+/// - The server's `advertised_peer_info()` is received by the client in `ConnectionInfo::peer_info`
+/// - The client's `advertised_peer_info()` is received by the server in `ConnectionInfo::peer_info`
 #[test]
 fn dc_peer_info_exchange() -> Result<()> {
     use std::sync::{Arc, Mutex};
@@ -1040,9 +1040,9 @@ fn dc_peer_info_exchange() -> Result<()> {
     let client_payload = bytes::Bytes::from_static(b"client-negotiation-payload");
 
     let server_dc =
-        MockDcEndpoint::new(&SERVER_TOKENS).with_local_peer_info(server_payload.clone());
+        MockDcEndpoint::new(&SERVER_TOKENS).with_advertised_peer_info(server_payload.clone());
     let client_dc =
-        MockDcEndpoint::new(&CLIENT_TOKENS).with_local_peer_info(client_payload.clone());
+        MockDcEndpoint::new(&CLIENT_TOKENS).with_advertised_peer_info(client_payload.clone());
 
     // Grab handles to check received peer info after the handshake
     let server_received = server_dc.received_peer_info_handle();
@@ -1063,7 +1063,7 @@ fn dc_peer_info_exchange() -> Result<()> {
     assert_eq!(
         server_got.as_ref(),
         Some(&client_payload),
-        "Server should receive client's local_peer_info via DcPeerInfo transport parameter"
+        "Server should receive client's advertised_peer_info via DcPeerInfo transport parameter"
     );
 
     // The client should have received the server's payload
@@ -1071,7 +1071,7 @@ fn dc_peer_info_exchange() -> Result<()> {
     assert_eq!(
         client_got.as_ref(),
         Some(&server_payload),
-        "Client should receive server's local_peer_info via DcPeerInfo transport parameter"
+        "Client should receive server's advertised_peer_info via DcPeerInfo transport parameter"
     );
 
     Ok(())
@@ -1080,7 +1080,7 @@ fn dc_peer_info_exchange() -> Result<()> {
 /// Tests that when no peer info is configured, `ConnectionInfo::peer_info` is `None`
 #[test]
 fn dc_peer_info_none_when_not_configured() -> Result<()> {
-    // Standard MockDcEndpoint without local_peer_info set
+    // Standard MockDcEndpoint without advertised_peer_info set
     let server_dc = MockDcEndpoint::new(&SERVER_TOKENS);
     let client_dc = MockDcEndpoint::new(&CLIENT_TOKENS);
 

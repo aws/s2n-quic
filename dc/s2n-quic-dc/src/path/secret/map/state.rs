@@ -451,7 +451,7 @@ where
         Option<
             Box<
                 dyn Fn(
-                        &dyn s2n_quic_core::crypto::tls::TlsSession,
+                        super::ApplicationDataRequest,
                     ) -> Result<Option<ApplicationData>, ApplicationDataError>
                     + Send
                     + Sync,
@@ -862,7 +862,7 @@ where
         &self,
         cb: Box<
             dyn Fn(
-                    &dyn s2n_quic_core::crypto::tls::TlsSession,
+                    super::ApplicationDataRequest,
                 ) -> Result<Option<ApplicationData>, ApplicationDataError>
                 + Send
                 + Sync,
@@ -1341,14 +1341,14 @@ where
 
     fn application_data(
         &self,
-        session: &dyn s2n_quic_core::crypto::tls::TlsSession,
+        request: super::ApplicationDataRequest,
     ) -> Result<Option<ApplicationData>, ApplicationDataError> {
         if let Some(ctxt) = &*self
             .mk_application_data
             .read()
             .unwrap_or_else(|e| e.into_inner())
         {
-            (ctxt)(session)
+            (ctxt)(request)
         } else {
             Ok(None)
         }

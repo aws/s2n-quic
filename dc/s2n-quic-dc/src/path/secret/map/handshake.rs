@@ -31,6 +31,8 @@ struct HandshakingPathInner {
     secret: Option<schedule::Secret>,
     entry: Option<Arc<Entry>>,
     application_data: Option<ApplicationData>,
+    /// Remote peer's PeerInfo bytes from the DcPeerInfo transport parameter.
+    peer_info: Option<bytes::Bytes>,
     map: Map,
 
     error: Option<Box<dyn Error + Send + Sync>>,
@@ -43,6 +45,8 @@ impl HandshakingPath {
             event::api::EndpointType::Client { .. } => endpoint::Type::Client,
         };
 
+        let peer_info = connection_info.peer_info.clone();
+
         HandshakingPath {
             inner: Arc::new(Mutex::new(HandshakingPathInner {
                 peer: connection_info.remote_address.clone().into(),
@@ -52,6 +56,7 @@ impl HandshakingPath {
                 secret: None,
                 entry: None,
                 application_data: None,
+                peer_info,
                 map,
                 error: None,
             })),
@@ -96,6 +101,10 @@ impl dc::Endpoint for Map {
             Err(_) => false,
         }
     }
+
+    fn advertised_peer_info(&self) -> Option<bytes::Bytes> {
+        self.advertised_peer_info()
+    }
 }
 
 impl dc::Path for HandshakingPath {
@@ -129,7 +138,11 @@ impl HandshakingPathInner {
         &mut self,
         session: &impl s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
-        match self.map.store.application_data(session) {
+        let request = super::ApplicationDataRequest {
+            tls: session,
+            peer_info: self.peer_info.as_ref(),
+        };
+        match self.map.store.application_data(request) {
             Ok(application_data) => {
                 self.application_data = application_data;
             }

@@ -1236,7 +1236,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     MtuProbingCompleteSupport::Disabled
                 };
 
-            if let Some(peer_info) = endpoint_context.dc.local_peer_info() {
+            if let Some(peer_info) = endpoint_context.dc.advertised_peer_info() {
                 transport_parameters.dc_peer_info =
                     s2n_quic_core::transport::parameters::DcPeerInfo::new(peer_info);
             }

@@ -20,7 +20,7 @@ pub struct MockDcEndpoint {
     pub on_possible_secret_control_packet: fn() -> bool,
     mtu_probing_complete_support: MtuProbingCompleteSupport,
     #[cfg(feature = "alloc")]
-    local_peer_info: Option<bytes::Bytes>,
+    advertised_peer_info: Option<bytes::Bytes>,
     /// Captures the `peer_info` received from the remote peer during `new_path()`.
     #[cfg(feature = "alloc")]
     received_peer_info: Arc<Mutex<Option<bytes::Bytes>>>,
@@ -33,7 +33,7 @@ impl MockDcEndpoint {
             on_possible_secret_control_packet_count: Arc::new(AtomicU8::default()),
             on_possible_secret_control_packet: || false,
             mtu_probing_complete_support: MtuProbingCompleteSupport::Enabled,
-            local_peer_info: None,
+            advertised_peer_info: None,
             received_peer_info: Arc::new(Mutex::new(None)),
         }
     }
@@ -47,8 +47,8 @@ impl MockDcEndpoint {
     }
 
     #[cfg(feature = "alloc")]
-    pub fn with_local_peer_info(mut self, peer_info: bytes::Bytes) -> Self {
-        self.local_peer_info = Some(peer_info);
+    pub fn with_advertised_peer_info(mut self, peer_info: bytes::Bytes) -> Self {
+        self.advertised_peer_info = Some(peer_info);
         self
     }
 
@@ -112,8 +112,8 @@ impl dc::Endpoint for MockDcEndpoint {
     }
 
     #[cfg(feature = "alloc")]
-    fn local_peer_info(&self) -> Option<bytes::Bytes> {
-        self.local_peer_info.clone()
+    fn advertised_peer_info(&self) -> Option<bytes::Bytes> {
+        self.advertised_peer_info.clone()
     }
 }
 

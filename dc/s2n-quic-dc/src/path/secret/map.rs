@@ -47,8 +47,8 @@ use store::Store;
 #[cfg(any(test, feature = "testing"))]
 pub use entry::TestEntryBuilder;
 pub use entry::{
-    ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, ControlPair,
-    PeerDataAddrs, MAX_PEER_DATA_ADDRS,
+    ApplicationData, ApplicationDataError, ApplicationDataRequest, ApplicationPair, Bidirectional,
+    ControlPair, PeerDataAddrs, MAX_PEER_DATA_ADDRS,
 };
 pub use handshake::HandshakingPath;
 pub use peer::Peer;
@@ -70,6 +70,11 @@ pub(crate) use status::Dedup;
 #[derive(Clone)]
 pub struct Map {
     store: Arc<dyn Store>,
+    /// The local `DcPeerInfo` payload this endpoint advertises to peers (sent as
+    /// the outbound QUIC transport parameter). Distinct from the *inbound*
+    /// `Entry::peer_info`, which is what a remote peer advertised to us. Set
+    /// once before the Map is used for connections; never changes after that.
+    advertised_peer_info: Arc<std::sync::OnceLock<bytes::Bytes>>,
 }
 
 impl PartialEq for Map {
@@ -111,7 +116,10 @@ impl Map {
             .build()
             .unwrap();
 
-        Self { store }
+        Self {
+            store,
+            advertised_peer_info: Arc::new(std::sync::OnceLock::new()),
+        }
     }
 
     /// The number of trusted secrets.
@@ -151,6 +159,22 @@ impl Map {
         cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
     ) {
         self.store.register_request_handshake(cb);
+    }
+
+    /// Set the local `DcPeerInfo` payload this endpoint advertises to peers
+    /// (the outbound QUIC transport parameter).
+    pub fn set_advertised_peer_info(&self, bytes: bytes::Bytes) {
+        tracing::debug!(
+            target: "dc_negotiation",
+            len = bytes.len(),
+            "set_advertised_peer_info: stamping local DcPeerInfo transport parameter"
+        );
+        let _ = self.advertised_peer_info.set(bytes);
+    }
+
+    /// Get a clone of the local `DcPeerInfo` payload advertised to peers.
+    pub fn advertised_peer_info(&self) -> Option<bytes::Bytes> {
+        self.advertised_peer_info.get().cloned()
     }
 
     /// Gets the [`Peer`] entry for the given address
@@ -507,9 +531,7 @@ impl Map {
     pub fn register_make_application_data(
         &self,
         cb: Box<
-            dyn Fn(
-                    &dyn s2n_quic_core::crypto::tls::TlsSession,
-                ) -> Result<Option<ApplicationData>, ApplicationDataError>
+            dyn Fn(ApplicationDataRequest) -> Result<Option<ApplicationData>, ApplicationDataError>
                 + Send
                 + Sync,
         >,

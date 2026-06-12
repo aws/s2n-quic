@@ -33,6 +33,20 @@ mod tests;
 
 pub type ApplicationData = Arc<dyn Any + Send + Sync>;
 
+/// Inputs to the `make_application_data` callback (registered via
+/// [`super::Map`]). Bundled in a `#[non_exhaustive]` struct so additional
+/// context (e.g. cert chain, endpoint type) can be added later without
+/// breaking the callback signature.
+///
+/// `peer_info` is the remote peer's `DcPeerInfo` transport-parameter bytes,
+/// available here so application-level negotiation can run once at handshake
+/// time and store its result as the connection's [`ApplicationData`].
+#[non_exhaustive]
+pub struct ApplicationDataRequest<'a> {
+    pub tls: &'a dyn s2n_quic_core::crypto::tls::TlsSession,
+    pub peer_info: Option<&'a bytes::Bytes>,
+}
+
 pub const MAX_PEER_DATA_ADDRS: usize = 128;
 
 pub type PeerDataAddrs = tokio::sync::SetOnce<Arc<[s2n_quic_core::inet::SocketAddressV6]>>;
@@ -177,6 +191,7 @@ impl Entry {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_socket_senders(
         peer: SocketAddr,
         secret: schedule::Secret,
@@ -603,6 +618,7 @@ pub struct TestEntryBuilder<'a> {
     generation: u64,
     params: Option<dc::ApplicationParams>,
     signer: Option<&'a super::stateless_reset::Signer>,
+    application_data: Option<ApplicationData>,
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -616,7 +632,15 @@ impl<'a> TestEntryBuilder<'a> {
             generation: 0,
             params: None,
             signer: None,
+            application_data: None,
         }
+    }
+
+    /// Set the `application_data` the built `Entry` will carry (as the
+    /// `make_application_data` hook would produce at handshake time).
+    pub fn application_data(mut self, application_data: Option<ApplicationData>) -> Self {
+        self.application_data = application_data;
+        self
     }
 
     pub fn local(mut self, addr: SocketAddr) -> Self {
@@ -691,7 +715,7 @@ impl<'a> TestEntryBuilder<'a> {
             receiver::State::new(),
             params,
             crate::time::DefaultClock::default().now().into(),
-            None,
+            self.application_data.clone(),
             self.socket_sender_count,
         ))
     }

@@ -34,13 +34,14 @@ pub trait Endpoint: 'static + Send {
         true
     }
 
-    /// Returns the local peer info bytes to be sent as a QUIC transport parameter
-    /// during the TLS handshake. The remote peer will receive these bytes in its
+    /// Returns the local `DcPeerInfo` payload this endpoint advertises to the
+    /// remote peer (sent as a QUIC transport parameter during the TLS
+    /// handshake). The remote peer receives these bytes in its
     /// `ConnectionInfo::peer_info` field.
     ///
-    /// Returns `None` if no peer info should be sent (default).
+    /// Returns `None` if no peer info should be advertised (default).
     #[cfg(feature = "alloc")]
-    fn local_peer_info(&self) -> Option<bytes::Bytes> {
+    fn advertised_peer_info(&self) -> Option<bytes::Bytes> {
         None
     }
 }

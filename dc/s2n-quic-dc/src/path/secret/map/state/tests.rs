@@ -410,3 +410,131 @@ fn unknown_path_secret_evicts() {
     assert!(!map.ids.contains_key(entry.id()), "{:?}", map.ids);
     assert!(!map.client_peers.contains_key(entry.peer()));
 }
+
+// ─── application_data / ApplicationDataRequest flow ───────────────────────────
+
+/// Minimal `TlsSession` stub for exercising the `make_application_data`
+/// callback without driving a full TLS handshake. The callback under test only
+/// consumes `request.peer_info`, so these methods are never meaningfully called.
+struct StubTlsSession;
+
+impl s2n_quic_core::crypto::tls::TlsSession for StubTlsSession {
+    fn tls_exporter(
+        &self,
+        _label: &[u8],
+        _context: &[u8],
+        _output: &mut [u8],
+    ) -> Result<(), s2n_quic_core::crypto::tls::TlsExportError> {
+        Ok(())
+    }
+
+    fn cipher_suite(&self) -> s2n_quic_core::crypto::tls::CipherSuite {
+        s2n_quic_core::crypto::tls::CipherSuite::TLS_AES_128_GCM_SHA256
+    }
+
+    fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, s2n_quic_core::crypto::tls::ChainError> {
+        Ok(vec![])
+    }
+}
+
+fn test_state() -> Arc<State<Clock, tracing::Subscriber>> {
+    let map = State::builder()
+        .with_signer(stateless_reset::Signer::new(b"secret"))
+        .with_capacity(10)
+        .with_clock(Clock)
+        .with_subscriber(tracing::Subscriber::default())
+        .build()
+        .unwrap();
+    map.cleaner.stop();
+    map
+}
+
+/// With no `make_application_data` registered, the store yields `None`.
+#[test]
+fn application_data_none_without_callback() {
+    let map = test_state();
+    let request = super::super::ApplicationDataRequest {
+        tls: &StubTlsSession,
+        peer_info: None,
+    };
+    let data = Store::application_data(&*map, request).unwrap();
+    assert!(data.is_none());
+}
+
+/// The registered callback receives the request's `peer_info` and its returned
+/// `ApplicationData` is what the store yields. This is the hook Membrain uses to
+/// compute negotiation at handshake time and stash the result on the `Entry`.
+#[test]
+fn application_data_callback_receives_peer_info_and_returns_data() {
+    let map = test_state();
+
+    // The callback echoes the peer_info length as its application data, so the
+    // assertion proves it actually saw the bytes we passed in the request.
+    Store::register_make_application_data(
+        &*map,
+        Box::new(|request: super::super::ApplicationDataRequest| {
+            let len = request.peer_info.map_or(0, |b| b.len());
+            let data: super::super::ApplicationData = Arc::new(len);
+            Ok(Some(data))
+        }),
+    );
+
+    let peer_info = bytes::Bytes::from_static(b"hello-peer-info");
+    let request = super::super::ApplicationDataRequest {
+        tls: &StubTlsSession,
+        peer_info: Some(&peer_info),
+    };
+    let data = Store::application_data(&*map, request)
+        .unwrap()
+        .expect("callback returns Some");
+    let observed_len = data.downcast::<usize>().expect("usize application data");
+    assert_eq!(*observed_len, peer_info.len());
+}
+
+/// A callback that returns `Err` surfaces the error (the handshake path turns
+/// this into an APPLICATION_ERROR, aborting the connection).
+#[test]
+fn application_data_callback_error_propagates() {
+    let map = test_state();
+    Store::register_make_application_data(
+        &*map,
+        Box::new(|_request: super::super::ApplicationDataRequest| {
+            Err(super::super::ApplicationDataError {
+                msg: "boom",
+                inner: "negotiation failed".into(),
+            })
+        }),
+    );
+
+    let request = super::super::ApplicationDataRequest {
+        tls: &StubTlsSession,
+        peer_info: None,
+    };
+    let err = Store::application_data(&*map, request).unwrap_err();
+    assert_eq!(err.msg, "boom");
+}
+
+/// The `Entry` carries the `application_data` it was constructed with — the
+/// value the handshake path moves in (produced by the `make_application_data`
+/// callback at handshake time).
+#[test]
+fn entry_carries_application_data_from_constructor() {
+    let app_data: super::super::ApplicationData = Arc::new(7u32);
+
+    let entry = Entry::builder((Ipv4Addr::LOCALHOST, 1).into())
+        .application_data(Some(app_data))
+        .build();
+
+    let stored = entry
+        .application_data()
+        .as_ref()
+        .expect("application data present");
+    assert_eq!(*stored.clone().downcast::<u32>().unwrap(), 7);
+}
+
+/// An `Entry` built without negotiation carries no application data.
+#[test]
+fn entry_without_negotiation_has_no_application_data() {
+    let entry = Entry::builder((Ipv4Addr::LOCALHOST, 1).into()).build();
+    assert!(entry.application_data().is_none());
+}

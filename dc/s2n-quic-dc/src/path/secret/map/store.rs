@@ -173,7 +173,7 @@ pub trait Store: 'static + Send + Sync + time::Clock {
         &self,
         cb: Box<
             dyn Fn(
-                    &dyn s2n_quic_core::crypto::tls::TlsSession,
+                    super::ApplicationDataRequest,
                 ) -> Result<Option<ApplicationData>, ApplicationDataError>
                 + Send
                 + Sync,
@@ -182,7 +182,7 @@ pub trait Store: 'static + Send + Sync + time::Clock {
 
     fn application_data(
         &self,
-        session: &dyn s2n_quic_core::crypto::tls::TlsSession,
+        request: super::ApplicationDataRequest,
     ) -> Result<Option<ApplicationData>, ApplicationDataError>;
 
     #[cfg(test)]
