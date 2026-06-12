@@ -320,6 +320,23 @@ impl Pool {
     pub(crate) fn debug_parked_demand(&self) -> u64 {
         self.parked_demand.load(Ordering::Relaxed)
     }
+
+    /// Total credit currently accounted for in the pool's free counters:
+    /// `available + returned`. At a quiescent point with no parked waiters and
+    /// nothing in flight this must equal `capacity`; a leak on a stream
+    /// teardown path (reset/cancel) shows up as this sum falling short.
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn debug_free_total(&self) -> i64 {
+        self.available.load(Ordering::Relaxed) + self.returned.load(Ordering::Relaxed) as i64
+    }
+
+    /// The configured capacity, for conservation assertions.
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn debug_capacity(&self) -> u64 {
+        self.config.capacity
+    }
 }
 
 /// The single owner of all credit distribution.

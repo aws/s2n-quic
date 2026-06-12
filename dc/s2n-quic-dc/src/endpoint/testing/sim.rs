@@ -835,6 +835,12 @@ impl Server {
         &self.endpoint.data_addrs
     }
 
+    /// Returns the endpoint's send credit pool. Tests use this to assert
+    /// credit conservation (`available + returned == capacity` at quiescence).
+    pub fn send_credit_pool(&self) -> crate::sync::Arc<crate::credit::Pool> {
+        self.endpoint.send_credit_pool.clone()
+    }
+
     /// Register a channel-based acceptor for incoming streams.
     ///
     /// Returns an [`accept_channel::Receiver<Stream>`] that yields accepted streams.

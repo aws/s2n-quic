@@ -623,6 +623,7 @@ where
         recv_credit_distributor,
         send_credit_waker_sink: send_credit_distributor_waker_sink,
         recv_credit_waker_sink: recv_credit_distributor_waker_sink,
+        send_credit_pool: send_credit_pool.clone(),
     });
 
     for (idx, drain) in waker_drains.into_iter().enumerate() {
@@ -839,6 +840,9 @@ struct FrameDispatchParts<Clk> {
     /// Send-direction credit-pool distributor. Spawned alongside the frame-dispatch
     /// task on the same worker so distribution and submission share a thread.
     send_credit_distributor: crate::credit::Distributor,
+    /// Send credit pool handle, passed to `frame_dispatch` so the pick-two router can
+    /// return credit when it has to drop an undeliverable batch (worker teardown).
+    send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
     /// Recv-direction credit-pool distributor. Reserved for the Reader integration;
     /// spawned today so the close path is wired and `recv_credit_pool.release` works.
     recv_credit_distributor: crate::credit::Distributor,
@@ -1057,6 +1061,7 @@ where
                     fd.per_socket_send_rate,
                     budgets,
                     counter_registry.clone(),
+                    fd.send_credit_pool,
                 );
                 tasks::spawn_credit_distributor(
                     &mut local,

@@ -44,12 +44,15 @@ where
         &registry,
         "test.writer",
     ));
-    CompletionDispatcher::new(rx, clock, reader_metrics, writer_metrics)
+    let send_credit_pool =
+        crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::new(1_000_000)));
+    CompletionDispatcher::new(rx, clock, reader_metrics, writer_metrics, send_credit_pool)
 }
 
 struct TestItem {
     path_secret_entry: Arc<PathSecretEntry>,
     byte_cost: u64,
+    flow_credits: u64,
     drop_counter: Arc<AtomicUsize>,
 }
 
@@ -73,6 +76,12 @@ impl PathSecretMapEntry for TestItem {
 
 impl AssignSender for TestItem {
     fn set_sender_id(&mut self, _id: crate::endpoint::id::LocalSenderId) {}
+}
+
+impl FlowCredits for TestItem {
+    fn total_flow_credits(&self) -> u64 {
+        self.flow_credits
+    }
 }
 
 struct TestSender {
@@ -144,6 +153,7 @@ fn new_test_item(
     TestItem {
         path_secret_entry,
         byte_cost: 123,
+        flow_credits: 0,
         drop_counter,
     }
 }
@@ -374,13 +384,17 @@ fn sender_error_returns_value() {
 
 #[test]
 fn pick_two_drops_unsent_entry_on_shutdown() {
+    const CAP: u64 = 1_000_000;
+    const CREDIT: u64 = 4096;
+
     let drop_counter = Arc::new(AtomicUsize::new(0));
+    // The dropped item carries borrowed send-pool credit; PickTwo must return it on the
+    // undeliverable path or it leaks (Frame has no Drop that releases flow_credits).
+    let pool = crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::new(CAP)));
+    let mut item = new_test_item(test_path_secret_entry(), drop_counter.clone());
+    item.flow_credits = CREDIT;
     let rx = TestReceiver {
-        values: [new_test_item(
-            test_path_secret_entry(),
-            drop_counter.clone(),
-        )]
-        .into(),
+        values: [item].into(),
         consumed: 0,
     };
     let senders = vec![
@@ -401,6 +415,7 @@ fn pick_two_drops_unsent_entry_on_shutdown() {
         crate::socket::rate::Rate::new(10.0),
         crate::xorshift::Rng::new(),
         &registry,
+        pool.clone(),
     );
     let mut fut = core::pin::pin!(crate::socket::channel::ReceiverExt::drain_budgeted(
         pick_two, None
@@ -408,6 +423,15 @@ fn pick_two_drops_unsent_entry_on_shutdown() {
     let result = with_noop_context(|cx| fut.as_mut().poll(cx));
     assert_eq!(result, Poll::Ready(()));
     assert_eq!(drop_counter.load(Ordering::Relaxed), 1);
+    // The batch's borrowed credit was released back to the pool when it was dropped. The pool
+    // started full (CAP) and the item's `flow_credits` were fabricated (not drained from the
+    // pool), so a release shows up as the balance rising to `CAP + CREDIT`. The point is that
+    // a release happened at all — the undeliverable-drop path no longer leaks.
+    assert_eq!(
+        pool.debug_available() as u64 + pool.debug_returned(),
+        CAP + CREDIT,
+        "PickTwo did not release flow_credits on the undeliverable-batch drop path",
+    );
 }
 
 /// Regression test: PickTwo must call `on_consumed` on the inner receiver after successfully
@@ -433,6 +457,8 @@ fn pick_two_propagates_on_consumed() {
         },
     ];
     let registry = crate::counter::Registry::default();
+    let pool =
+        crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config::new(1_000_000)));
     let mut pick_two = PickTwo::new(
         rx,
         senders.into(),
@@ -440,6 +466,7 @@ fn pick_two_propagates_on_consumed() {
         crate::socket::rate::Rate::new(10.0),
         crate::xorshift::Rng::new(),
         &registry,
+        pool,
     );
 
     let result = with_noop_context(|cx| {

@@ -72,6 +72,7 @@ mod tests;
 ///   keep the underlying executor running for progress.
 /// - `overall_send_rate`, `per_socket_send_rate`, and `budgets` bound how aggressively work is
 ///   drained once the tasks are spawned.
+#[allow(clippy::too_many_arguments)]
 pub fn frame_dispatch<S, Clk>(
     spawner: &mut impl Spawner,
     frame_rx: SubmissionReceiver,
@@ -82,6 +83,7 @@ pub fn frame_dispatch<S, Clk>(
     per_socket_send_rate: Rate,
     budgets: Budgets,
     counter_registry: counter::Registry,
+    send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
 ) where
     S: UnboundedSender<Entry<FrameBatch>> + 'static,
     Clk: precision::Clock + Clone + 'static,
@@ -152,6 +154,7 @@ pub fn frame_dispatch<S, Clk>(
             per_socket_send_rate,
             rng,
             &counter_registry,
+            send_credit_pool,
         );
         let task_counter = counter_registry
             .register_task("task.frame_dispatch")
@@ -390,6 +393,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             GaugedSender::new(tx_wheel_tx.clone(), tx_wheel_sender),
             GaugedSender::new(pto_wheel_tx.clone(), pto_wheel_sender),
             GaugedSender::new(idle_wheel_tx.clone(), idle_wheel_sender),
+            send_credit_pool.clone(),
         );
         let task_counter = counter_registry
             .register_nominal_task("task.context_resolver", &variant)
@@ -472,6 +476,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
             stream_clock.clone(),
             reader_metrics.clone(),
             writer_metrics.clone(),
+            send_credit_pool.clone(),
         );
         let task_counter = counter_registry
             .register_nominal_task("task.completion", &variant)
@@ -769,6 +774,7 @@ pub fn send_worker<Socket, Clk, WakerSink, AckComp>(
 ///   no wheel work is emitted.
 /// - Otherwise the batch is appended to the peer's pending send state and the resulting wheel
 ///   interest is forwarded to `immediate_tx`, `tx_wheel_tx`, `pto_wheel_tx`, and `idle_wheel_tx`.
+#[allow(clippy::too_many_arguments)]
 pub fn context_resolver<BatchRx, Clk, ImmW, TxW, PtoW, IdleW>(
     batch_rx: BatchRx,
     mut send_caches: IdMap<LocalSendSocketId, Rc<RefCell<send::Cache>>>,
@@ -779,6 +785,7 @@ pub fn context_resolver<BatchRx, Clk, ImmW, TxW, PtoW, IdleW>(
     tx_wheel_tx: TxW,
     pto_wheel_tx: PtoW,
     idle_wheel_tx: IdleW,
+    send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
 ) -> impl Receiver<()>
 where
     BatchRx: Receiver<Entry<FrameBatch>>,
@@ -815,7 +822,18 @@ where
                 match cache.get_or_insert(batch.path_secret_entry(), &clock) {
                     Ok(ctx) => ctx,
                     Err(error) => {
-                        warn!(?error, peer = %batch.path_secret_entry().peer(), "dropping batch: send context not ready");
+                        // The batch is about to be dropped (the `Flatten` below discards a
+                        // `None`). Frames carry `flow_credits` borrowed from the send credit
+                        // pool and have no `Drop` that returns them — release them here, or the
+                        // credit leaks for the endpoint's lifetime. This reject path is taken
+                        // for the first batch(es) to a freshly-handshaked peer whose data addrs
+                        // have not been exchanged yet, so under sustained connection churn an
+                        // unreleased leak slowly drains the pool and stalls every writer.
+                        let leaked = batch.total_flow_credits();
+                        if leaked > 0 {
+                            send_credit_pool.release(leaked);
+                        }
+                        warn!(?error, peer = %batch.path_secret_entry().peer(), released_credits = leaked, "dropping batch: send context not ready");
                         return None;
                     }
                 }
@@ -949,12 +967,19 @@ pub fn completion_dispatcher<R, WakerSink>(
     stream_clock: crate::time::DefaultClock,
     reader_metrics: Arc<crate::stream::metrics::ReaderMetrics>,
     writer_metrics: Arc<crate::stream::metrics::WriterMetrics>,
+    send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
 ) -> impl Receiver<()>
 where
     R: Receiver<Entry<Frame>>,
     WakerSink: UnboundedSender<crate::queue::AutoWake>,
 {
-    let rx = CompletionDispatcher::new(completed_rx, stream_clock, reader_metrics, writer_metrics);
+    let rx = CompletionDispatcher::new(
+        completed_rx,
+        stream_clock,
+        reader_metrics,
+        writer_metrics,
+        send_credit_pool,
+    );
     Map::new(rx, move |waker: crate::queue::AutoWake| {
         let _ = waker_sink.send(waker);
     })

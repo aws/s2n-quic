@@ -353,6 +353,210 @@ fn fair_share_smoke_small() {
     assert_eq!(readers, 4, "all 4 readers must complete");
 }
 
+/// Reproduction of the dc-tester **read-path** send-pool drain under mid-stream cancellation.
+///
+/// In dc-tester reads, the aggregator issues each read to all 3 storage replicas and keeps the
+/// first response, cancelling the other 2 by dropping/resetting its reader. The storage node is the
+/// bulk **sender**, so it is *storage's send credit pool* that must recover the credit held by a
+/// stream that gets cancelled mid-transfer. Writes never exercise this (the aggregator is the
+/// sender on writes and is never reset), so a reset-path send-credit leak is invisible until reads
+/// run — exactly the production symptom (storage RX at 144 Gbps, TX pinned at ~1.7 Gbps, reads
+/// timing out).
+///
+/// This test maps the roles directly: the **server is the bulk sender** with a deliberately
+/// undersized send pool, and the **client is the reader** that cancels a fraction of streams
+/// mid-read (the first-wins replica cancellation). It runs many rounds so any per-cancel leak
+/// accumulates and drains the pool. After every stream has settled and the pool is quiescent, the
+/// pool must conserve `available + returned == capacity`; a reset-path leak shows up as the free
+/// total falling short. The liveness watchdog on the surviving (un-cancelled) streams is the
+/// secondary signal — once the pool drains, their writers can no longer acquire and stall.
+fn run_reset_cancel_drain(
+    rounds: usize,
+    streams_per_round: usize,
+    body_len: u64,
+    cancel_after: u64,
+    send_cap: u64,
+    max_single_acquire: u64,
+) -> i64 {
+    let acceptor_id = VarInt::from_u8(1);
+
+    // Captured out of the sim so the assertion can run after the simulation closes.
+    let leak = Arc::new(AtomicUsize::new(0));
+    let leak_capture = leak.clone();
+
+    sim(|| {
+        // ── Server: undersized SEND pool, acts as the bulk sender (storage) ─────
+        {
+            let leak_capture = leak_capture.clone();
+            async move {
+                let send_pool_config = CreditConfig::new(send_cap)
+                    .with_max_single_acquire_uniform(max_single_acquire);
+                let server = SimEndpointConfig::default()
+                    .send_credit_pool_config(send_pool_config)
+                    .server();
+                // Expose the send pool so we can check conservation once everything quiesces.
+                let send_pool = server.send_credit_pool();
+                let mut acceptor = server
+                    .register_acceptor_channel(acceptor_id, streams_per_round * rounds * 2)
+                    .expect("acceptor registration failed");
+
+                let mut idx = 0usize;
+                while let Some(stream) = acceptor.recv().await {
+                    let stream_idx = idx;
+                    idx += 1;
+                    // Each accepted stream's server side is the SENDER: push the full body. If the
+                    // client cancels mid-read, the writer observes a reset and must release any
+                    // send credit it was holding back to the pool.
+                    async move {
+                        let (mut reader, mut writer) = stream.into_split();
+                        // Drain the small client request first so the stream is established.
+                        let mut req = Data::new(64);
+                        let _ = timeout(CHUNK_TIMEOUT, reader.read_into(&mut req)).await;
+                        // Now stream the bulk response — this is the credit-consuming send.
+                        let mut payload = Data::new(body_len);
+                        loop {
+                            if payload.is_finished() {
+                                break;
+                            }
+                            match timeout(CHUNK_TIMEOUT, writer.write_from_fin(&mut payload)).await {
+                                Ok(Ok(_)) => {}
+                                // Cancelled by the peer reset, or genuinely done — either way this
+                                // sender is finished. A real wedge (pool drained by leaked credit)
+                                // surfaces on a *different*, un-cancelled stream's writer as a
+                                // stall, panicking via the watchdog in `drive_writer`.
+                                Ok(Err(_)) => break,
+                                Err(_) => break,
+                            }
+                        }
+                        let _ = stream_idx;
+                    }
+                    .primary()
+                    .spawn();
+                }
+
+                // After the acceptor channel closes (all clients done and dropped), the system is
+                // quiescent: no writer holds credit, nothing is in flight. The send pool must have
+                // recovered every byte. Capture the shortfall for the post-sim assertion.
+                let shortfall = send_pool.debug_capacity() as i64 - send_pool.debug_free_total();
+                leak_capture.store(shortfall.max(0) as usize, Ordering::Relaxed);
+            }
+            .group("server")
+            .spawn();
+        }
+
+        // ── Client: reader that cancels a fraction of streams mid-read ──────────
+        {
+            async move {
+                let mut client = Client::new();
+
+                for round in 0..rounds {
+                    let mut streams = Vec::with_capacity(streams_per_round);
+                    for _ in 0..streams_per_round {
+                        let stream = client
+                            .connect("server:0", acceptor_id)
+                            .await
+                            .expect("connect failed");
+                        streams.push(stream);
+                    }
+
+                    for (i, mut stream) in streams.into_iter().enumerate() {
+                        // Cancel 2 of every 3 streams mid-read, mirroring the aggregator keeping
+                        // the first of 3 replicas and resetting the rest. The kept stream drains
+                        // fully; the cancelled ones reset after `cancel_after` bytes.
+                        let cancel = i % 3 != 0;
+                        async move {
+                            // Send a small request so the server accepts the stream and starts
+                            // streaming the response back (mirrors a read request → bulk response).
+                            {
+                                let (_reader, writer) = stream.split();
+                                let mut req = Data::new(64);
+                                writer
+                                    .write_from_fin(&mut req)
+                                    .await
+                                    .expect("client request write failed");
+                            }
+                            let mut rx = Data::new(body_len);
+                            let mut read_total = 0u64;
+                            loop {
+                                let before = rx.current_offset().as_u64();
+                                // Re-borrow the reader each iteration so `stream` stays owned and
+                                // can be `reset()` on the cancel branch below.
+                                let (reader, _writer) = stream.split();
+                                let n = match timeout(CHUNK_TIMEOUT, reader.read_into(&mut rx)).await
+                                {
+                                    Ok(Ok(n)) => n,
+                                    Ok(Err(_)) => break,
+                                    Err(_) => {
+                                        panic!(
+                                            "reader stalled at offset {before}/{body_len} — \
+                                             surviving stream could not make progress (send pool \
+                                             drained by leaked credit on cancelled streams?)"
+                                        );
+                                    }
+                                };
+                                if n == 0 {
+                                    break;
+                                }
+                                read_total += n as u64;
+                                if cancel && read_total >= cancel_after {
+                                    // First-wins cancellation: reset the stream mid-read. This
+                                    // sends a QueueReset to the server's writer, which must
+                                    // release its held send credit.
+                                    stream.reset(crate::stream::endpoint::Error::StopSending);
+                                    break;
+                                }
+                            }
+                            // `stream` drops here, tearing down both halves.
+                            let _ = round;
+                        }
+                        .primary()
+                        .spawn();
+                    }
+
+                    // Let this round's streams settle before opening the next.
+                    bach::time::sleep(Duration::from_millis(50)).await;
+                }
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        }
+    });
+
+    leak.load(Ordering::Relaxed) as i64
+}
+
+/// Send credit must be fully recovered when streams are cancelled mid-transfer by a peer reset —
+/// the dc-tester read path (storage = sender, aggregator cancels 2 of 3 replicas). If the reset
+/// teardown leaks any held send credit, the pool drains over successive rounds and the conservation
+/// check (`available + returned == capacity`) fails; on a real cluster this manifests as storage
+/// receiving full rate but unable to send read responses.
+#[test]
+fn reset_cancel_send_credit_conserved() {
+    let _no_snap = crate::testing::without_snapshots();
+    let _no_trace = crate::testing::without_tracing();
+
+    // 6 rounds × 24 streams = 144 cancellable transfers. 512 KiB body each, cancel survivors after
+    // 128 KiB. 2 MiB send pool, 256 KiB per-acquire cap — production dc-tester sizing, oversubscribed
+    // (24 concurrent senders vs a pool that holds ~8 windows) so any credit withheld by a
+    // cancelled-but-not-yet-dropped writer drains it and stalls survivors.
+    let leak = run_reset_cancel_drain(
+        6,
+        24,
+        512 * 1024,
+        128 * 1024,
+        2 * 1024 * 1024,
+        256 * 1024,
+    );
+
+    info!(leak, "reset_cancel send pool shortfall");
+    assert_eq!(
+        leak, 0,
+        "send credit pool leaked {leak} bytes across reset-cancelled streams \
+         (available + returned fell {leak} short of capacity)"
+    );
+}
+
 /// The real reproduction: 100 concurrent bulk uploads against a dc-tester-sized recv pool
 /// (16 MiB capacity, 2 MiB per-acquire cap). With a 1 MiB per-stream initial window only ~16
 /// streams can hold a full window at once, so the distributor must round-robin credit across all

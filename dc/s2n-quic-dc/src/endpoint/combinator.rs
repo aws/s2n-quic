@@ -209,6 +209,20 @@ impl FrameBatch {
     pub fn into_queues(self) -> ([Queue<Frame>; Priority::LEVELS], [u64; Priority::LEVELS]) {
         (self.queues, self.byte_costs)
     }
+
+    /// Total `flow_credits` borrowed from the send credit pool across every frame in this
+    /// batch. Used when the batch is rejected before it can reach the assembler's admit
+    /// path (e.g. the destination send context cannot be created): the credit must be
+    /// returned to the pool, otherwise it leaks for the endpoint's lifetime. `Frame` has
+    /// no `Drop` that releases credit, so a dropped credit-bearing frame is a silent leak.
+    #[inline]
+    pub fn total_flow_credits(&self) -> u64 {
+        self.queues
+            .iter()
+            .flat_map(|q| q.iter())
+            .map(|f| f.flow_credits)
+            .sum()
+    }
 }
 
 #[cfg(test)]
@@ -426,6 +440,28 @@ impl<T: AssignSender> AssignSender for crate::intrusive::Entry<T> {
     }
 }
 
+/// Total send-pool credit borrowed by the frames a routed item carries. Lets a routing
+/// combinator (e.g. [`PickTwo`]) return that credit to the pool when it has to drop the item
+/// instead of delivering it — `Frame` has no `Drop` that releases `flow_credits`, so a dropped
+/// credit-bearing frame is otherwise a silent leak.
+pub trait FlowCredits {
+    fn total_flow_credits(&self) -> u64;
+}
+
+impl FlowCredits for FrameBatch {
+    #[inline]
+    fn total_flow_credits(&self) -> u64 {
+        FrameBatch::total_flow_credits(self)
+    }
+}
+
+impl<T: FlowCredits> FlowCredits for crate::intrusive::Entry<T> {
+    #[inline]
+    fn total_flow_credits(&self) -> u64 {
+        (**self).total_flow_credits()
+    }
+}
+
 // ── PickTwo ───────────────────────────────────────────────────────────────
 
 /// Receiver combinator that routes items to socket senders using a hybrid round-robin +
@@ -449,6 +485,10 @@ pub struct PickTwo<T, R, S, Clk> {
     pick_counters: IdMap<LocalSenderId, crate::counter::Counter>,
     rejected_counters: IdMap<LocalSenderId, crate::counter::Summary>,
     score_delta: crate::counter::Summary,
+    /// Send credit pool. A routed batch that can't be delivered (the chosen worker's receiver
+    /// is gone — worker teardown) is dropped here; its frames still hold borrowed credit that
+    /// must return to the pool, since `Frame` has no `Drop` that releases it.
+    send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
     value: PhantomData<fn() -> T>,
 }
 
@@ -459,6 +499,7 @@ where
     S: UnboundedSender<T>,
     Clk: precision::Clock,
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         rx: R,
         senders: IdMap<LocalSenderId, S>,
@@ -466,6 +507,7 @@ where
         per_socket_send_rate: Rate,
         rng: crate::xorshift::Rng,
         counter_registry: &crate::counter::Registry,
+        send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
     ) -> Self {
         let socket_edts = crate::endpoint::edt::Local::new(senders.len(), per_socket_send_rate);
         let pick_counters = senders
@@ -499,6 +541,7 @@ where
             pick_counters,
             rejected_counters,
             score_delta,
+            send_credit_pool,
             value: PhantomData,
         }
     }
@@ -581,7 +624,7 @@ where
 
 impl<T, R, S, Clk> Receiver<()> for PickTwo<T, R, S, Clk>
 where
-    T: ByteCost + PathSecretMapEntry + AssignSender,
+    T: ByteCost + PathSecretMapEntry + AssignSender + FlowCredits,
     R: Receiver<T>,
     S: UnboundedSender<T>,
     Clk: precision::Clock,
@@ -611,7 +654,17 @@ where
                 self.rx.on_consumed(byte_cost);
                 Poll::Ready(Some(()))
             }
-            Err(_) => Poll::Ready(None),
+            Err(value) => {
+                // The chosen worker's receiver is gone (worker teardown): this batch will
+                // never be delivered or assembled, so any send-pool credit its frames hold
+                // must be returned, otherwise it leaks. Then signal end-of-stream by dropping
+                // `value`.
+                let leaked = value.total_flow_credits();
+                if leaked > 0 {
+                    self.send_credit_pool.release(leaked);
+                }
+                Poll::Ready(None)
+            }
         }
     }
 
@@ -910,6 +963,13 @@ pub(crate) struct CompletionDispatcher<R> {
     clock: crate::time::DefaultClock,
     reader_metrics: Arc<crate::stream::metrics::ReaderMetrics>,
     writer_metrics: Arc<crate::stream::metrics::WriterMetrics>,
+    /// Send credit pool. Frames reach the dispatcher either acknowledged/cancelled from the
+    /// inflight map (their `flow_credits` were zeroed at admit) or as drained pending frames
+    /// from `Context::drain_frames` on invalidation / idle-PeerDead — those never made it to
+    /// the wire and still hold their borrowed credit. `flow_credits > 0` is exactly the
+    /// "never admitted" marker, so releasing here returns that credit to the pool. Without it
+    /// the credit leaks for the endpoint's lifetime (`Frame` has no `Drop` that releases it).
+    send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
 }
 
 impl<R> CompletionDispatcher<R>
@@ -921,6 +981,7 @@ where
         clock: crate::time::DefaultClock,
         reader_metrics: Arc<crate::stream::metrics::ReaderMetrics>,
         writer_metrics: Arc<crate::stream::metrics::WriterMetrics>,
+        send_credit_pool: crate::sync::Arc<crate::credit::Pool>,
     ) -> Self {
         Self {
             inner,
@@ -928,6 +989,7 @@ where
             clock,
             reader_metrics,
             writer_metrics,
+            send_credit_pool,
         }
     }
 
@@ -992,7 +1054,7 @@ where
                 return Poll::Ready(Some(self.flush()));
             }
 
-            let frame = match self.inner.poll_recv(cx, budget) {
+            let mut frame = match self.inner.poll_recv(cx, budget) {
                 Poll::Ready(Some(frame)) => frame,
                 Poll::Ready(None) => {
                     if self.batch.is_empty() {
@@ -1009,6 +1071,17 @@ where
                     return Poll::Pending;
                 }
             };
+
+            // Release any send-pool credit the frame still holds. A non-zero `flow_credits`
+            // here means the frame never reached the assembler's admit path (which zeroes it):
+            // it is a pending frame drained on invalidation / idle-PeerDead. Release exactly
+            // once on intake — before either dropping (not-notify) or forwarding the frame —
+            // and zero it so a downstream consumer can't double-release. No-op for the common
+            // acked/cancelled-from-inflight case where `flow_credits == 0`.
+            if frame.flow_credits > 0 {
+                self.send_credit_pool
+                    .release(core::mem::take(&mut frame.flow_credits));
+            }
 
             if !Self::should_notify(&frame) {
                 // Record ack sojourn for frames silently dropped by FailuresOnly channels
