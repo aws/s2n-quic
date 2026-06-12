@@ -348,6 +348,23 @@ impl<T> Receiver<T> {
         if !inner.open {
             return Poll::Ready(None);
         }
+        // Slots register lazily on the first poll, so the last `Sender::drop`
+        // may have iterated the slot list before this slot was registered —
+        // meaning it never set `open = false` on us. Re-check `sender_count`
+        // while still holding `inner`: if all senders are gone we must report
+        // closed rather than park on a waker nobody will ever fire.
+        //
+        // This is race-free against a concurrent `Sender::drop`: drop performs
+        // `fetch_sub(sender_count)` *before* locking the slot list, and our
+        // `ensure_registered` pushed this slot under that same lock before we
+        // reach here. So if we observe `sender_count > 0`, the dropping sender
+        // has not yet locked the slot list and will therefore see our slot and
+        // close it; if it already locked the slot list (possibly missing us),
+        // its prior `fetch_sub` is visible and we observe `0`.
+        if self.shared.sender_count.load(Ordering::Acquire) == 0 {
+            inner.open = false;
+            return Poll::Ready(None);
+        }
         if inner
             .waker
             .as_ref()
@@ -514,6 +531,38 @@ mod tests {
 
             async move {
                 1.ms().sleep().await;
+                drop(sender);
+            }
+            .primary()
+            .spawn();
+        });
+    }
+
+    /// Regression: the channel must close even if the last sender drops *before*
+    /// the receiver has ever polled (i.e. before its slot is registered).
+    ///
+    /// Slots register lazily on the first poll, but the close signal is only
+    /// delivered by the last `Sender::drop` iterating the registered slots. A
+    /// receiver that registers *after* the senders are gone must still observe
+    /// `None` rather than parking forever.
+    #[test]
+    fn close_before_first_poll_returns_none() {
+        sim(|| {
+            let (sender, mut rx) = new::<u32>(4.into());
+
+            async move {
+                // Sleep so the sender drops before we ever poll/register the slot.
+                1.ms().sleep().await;
+                assert!(
+                    rx.recv().await.is_none(),
+                    "receiver should see None even if it had not polled before close"
+                );
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                // Drop the only sender immediately, before the receiver registers.
                 drop(sender);
             }
             .primary()
