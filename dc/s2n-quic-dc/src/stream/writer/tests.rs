@@ -2448,7 +2448,10 @@ fn write_msg_blocked_with_no_chunk_sent_emits_queue_data_blocked() {
                 }
             })
             .await;
-            assert!(pending, "write_msg must block while the remote window is zero");
+            assert!(
+                pending,
+                "write_msg must block while the remote window is zero"
+            );
             // Keep the writer alive so the pusher observes the frame before drop.
             10.ms().sleep().await;
         }
