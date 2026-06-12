@@ -3838,3 +3838,149 @@ fn twenty_node_gossip_no_routing_asymmetry() {
         }
     });
 }
+
+/// BUG HUNT: QueueMsg `GapExceeded` silent-drop-but-ACK.
+///
+/// The receiver's MsgTable caps in-flight messages at `MAX_PENDING_MESSAGES` (64). `base_id` only
+/// advances when the FRONT (lowest) msg_id completes and drains. The writer's flow control is
+/// purely byte-based — there is NO per-stream cap on the number of in-flight msg_ids. So if an
+/// early msg_id stalls (its first chunk is lost and awaiting PTO retransmit) while the writer keeps
+/// emitting later small multi-chunk messages, msg_id >= base+64 hits `InsertError::GapExceeded`.
+///
+/// `Slot::push_msg` swallows that error as `Ok((AutoWake::default(), 0))` (queue/slot.rs ~419), and
+/// the dispatch path ACKs the packet unconditionally (packet-number based, QueueMsg is
+/// ack-eliciting; endpoint/dispatch.rs ~418). The writer sees the ACK, frees its inflight budget,
+/// and NEVER retransmits the dropped message. Result: a permanent stream hole — the server reader
+/// can never assemble all the data and hangs forever.
+///
+/// Each message is multi-chunk (> packet_size) so it routes via QueueMsg (not the single-chunk
+/// QueueData fast path that bypasses the MsgTable). We drop ONLY one early data packet exactly once,
+/// then let everything else through; PTO eventually re-sends it and the head completes, but by then
+/// 64+ later messages have piled up and the overflow ones were dropped-but-ACKed and are gone.
+///
+/// Unlike a lost-wakeup stall (where a `timeout` re-poll would drain still-buffered data and mask
+/// the bug), here the data is GENUINELY LOST — no re-poll can recover it — so a bounded `timeout`
+/// is a legitimate detector: it fires precisely because the missing bytes never arrive. We assert
+/// the server read completes within a generous sim-time bound; with the bug it never does.
+///
+/// IGNORED + documents why the `MAX_PENDING_MESSAGES` cap is **not enforced in production**. The
+/// cap reject is gated to `cfg!(test)` (see `MsgTable::insert`) precisely because of the stall this
+/// test demonstrates: enforcing it silently drops + ACKs the overflow frame, so the writer never
+/// retransmits and the stream hangs forever. Run it with `--run-ignored` to see the stall under the
+/// test-only enforcement; in production the reject is disabled so this cannot happen. Un-ignore (and
+/// drop the `cfg!(test)` gate) once the cap is reworked with a writer completion signal — see the
+/// TODO on `MAX_PENDING_MESSAGES` in `queue/msg_table.rs`.
+#[test]
+#[ignore = "documents why MAX_PENDING_MESSAGES enforcement is cfg!(test)-only: enforcing it silently drops+ACKs on overflow and hangs the stream — see msg_table.rs TODO"]
+fn queue_msg_gap_exceeded_silent_drop_stalls_reader() {
+    let client_data_packets = Arc::new(AtomicUsize::new(0));
+    let server_completed = Arc::new(AtomicBool::new(false));
+    let server_completed_check = server_completed.clone();
+
+    sim(|| {
+        let acceptor_id = VarInt::from_u8(1);
+        // Each message must span >1 chunk to route via QueueMsg. At MTU 1500 the msg packet size is
+        // ~1348 bytes, so ~4 KiB gives ~3 chunks per message. 80 messages * ~4 KiB ~= 320 KiB,
+        // comfortably inside the 1 MiB default window, so the writer can keep all of them in flight.
+        const MSG_SIZE: usize = 4096;
+        const NUM_MSGS: usize = 80;
+
+        let server_completed = server_completed.clone();
+        let mut client_addr = MonitorHostAddr::new("client");
+        {
+            let client_data_packets = client_data_packets.clone();
+            bach::net::monitor::on_packet_sent(move |packet| {
+                if client_addr.is_packet_source(packet) {
+                    let idx = client_data_packets.fetch_add(1, Ordering::Relaxed) + 1;
+                    // Packet #1 is the init probe (msg_id 0, chunk 0) that establishes the binding.
+                    // We must let the binding form, so drop packet #2 instead: by then msg_id 0 is
+                    // mid-flight and dropping a chunk of it (or an early message) stalls the head of
+                    // the MsgTable while later messages pile up past the 64-slot limit.
+                    if idx == 2 {
+                        info!("dropping client data packet #{idx} to stall MsgTable head");
+                        return bach::net::monitor::Command::Drop;
+                    }
+                }
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        async move {
+            let server = Server::new();
+            let mut acceptor = server
+                .register_acceptor_channel(acceptor_id, 8)
+                .expect("acceptor registration failed");
+
+            while let Some(stream) = acceptor.recv().await {
+                let server_completed = server_completed.clone();
+                async move {
+                    let (mut reader, _writer) = stream.into_split();
+                    let total = (MSG_SIZE * NUM_MSGS) as u64;
+                    let mut recv = Data::new(total);
+                    // Generous sim-time bound. With the bug the read never completes (the dropped,
+                    // gap-exceeded messages are gone); the timeout fires legitimately because the
+                    // bytes never arrive — there is no buffered data for a re-poll to mask.
+                    let result = timeout(120.s(), async {
+                        loop {
+                            let n = reader.read_into(&mut recv).await.expect("server read");
+                            if n == 0 {
+                                break;
+                            }
+                        }
+                    })
+                    .await;
+                    assert!(
+                        result.is_ok(),
+                        "server read STALLED: a GapExceeded silent drop left a permanent hole — \
+                         later QueueMsg messages (msg_id >= base+64) were dropped but ACKed, so the \
+                         writer never retransmitted them and the {total} bytes never complete"
+                    );
+                    assert!(recv.is_finished(), "server must receive ALL {total} bytes");
+                    server_completed.store(true, Ordering::Relaxed);
+                    info!("server received all data");
+                }
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = Client::new();
+            let stream = client
+                .connect("server:0", acceptor_id)
+                .await
+                .expect("connect failed");
+
+            let (_reader, mut writer) = stream.into_split();
+
+            // Emit NUM_MSGS separate multi-chunk messages back to back. Only the last carries FIN.
+            for i in 0..NUM_MSGS {
+                let is_last = i == NUM_MSGS - 1;
+                let mut data = Data::new(MSG_SIZE as u64);
+                writer
+                    .write_msg(
+                        &mut data,
+                        crate::stream::MsgFlags {
+                            is_fin: is_last,
+                            is_wakeup: is_last,
+                        },
+                    )
+                    .await
+                    .expect("client write_msg");
+            }
+
+            info!("client sent all {NUM_MSGS} messages");
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+
+    assert!(
+        server_completed_check.load(Ordering::Relaxed),
+        "server never completed the read — QueueMsg GapExceeded silently dropped ACKed data, \
+         leaving a permanent stream hole"
+    );
+}

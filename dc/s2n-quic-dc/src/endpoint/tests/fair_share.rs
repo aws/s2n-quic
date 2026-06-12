@@ -1095,6 +1095,30 @@ fn giant_msg_small_window_no_stall() {
     assert_eq!(readers, 4, "all 4 readers must complete");
 }
 
+/// REGRESSION (cluster repro): a single large `write_msg` that crosses *many* receive-window
+/// boundaries — the steady-state regime, not the first-segment edge the other `giant_msg_*` tests
+/// pin. On the dc-tester cluster a single-stream `xlarge-request-msg` (128 MiB–4 GiB per message)
+/// sends ~1 window's worth then stalls mid-transfer with zero loss/PTO/window_blocked, while the
+/// byte-stream (`write_from`) path sustains line rate. The existing `giant_msg_*` tests only run a
+/// 512 KiB message across ~2 windows, so they verify the window *starts* growing but never run long
+/// enough to catch a stall that recurs after the window has already opened and the reader is
+/// re-arming credit window-after-window.
+///
+/// This drives an 8 MiB message against a 64 KiB window (≈128 window crossings) so the
+/// reader must keep growing/re-arming across the whole transfer. If a window-growth signal is lost
+/// after the first round — e.g. the synthetic-blocked dedup suppresses a genuinely-needed re-signal
+/// — the writer parks with no wake and `drain_reader`/the writer timeout fires.
+#[test]
+fn giant_msg_many_windows_no_stall() {
+    let _no_snap = crate::testing::without_snapshots();
+
+    let (writers, readers) = run_giant_msg_small_window(1, 8 * 1024 * 1024, 64 * 1024);
+
+    info!(writers, readers, "giant_msg_many_windows result");
+    assert_eq!(writers, 1, "giant-msg writer must complete");
+    assert_eq!(readers, 1, "reader must complete");
+}
+
 /// Harder variant: a segment more than 2× the window. A single `on_blocked_signal` doubling
 /// (growth_ratio 1→2) only covers up to 2× the bootstrap window; a segment past that needs the
 /// window to grow further while `consumed` is still stuck at 0 (nothing delivered). This pins

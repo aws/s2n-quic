@@ -1796,7 +1796,16 @@ impl Inner {
             // If resuming a partial segment, use the originally declared size.
             // For init (force_first), cap to initial_remote_max_data so the message
             // completes as soon as the server grants its first credits.
-            // For normal path, use full max_segment_size — budget gates below.
+            // Segment ALLOCATION is decoupled from flow control: a fresh segment is always a full
+            // `max_segment_size` (or the remaining buffer if smaller). It is NOT clamped by the
+            // remote window or the local send credit — those gate how many segments/chunks go out
+            // over time, not how big a segment's allocation is. The per-chunk credit break below
+            // (`pending_credits < chunk_len`) plus the partial-segment resume
+            // (`pending_chunk_index`) send a full-size segment across as many credit grants as it
+            // takes. This keeps msg_id count proportional to bytes/`max_segment_size` rather than
+            // bytes/credit-slice, so the receiver's `MAX_PENDING_MESSAGES` cap is bounded by the
+            // flow window (window / max_segment_size segments in flight) instead of being blown out
+            // by tiny credit-clamped segments.
             let segment_size = if self.pending_chunk_index > 0 {
                 self.pending_segment_size
             } else if force_first {
@@ -1804,19 +1813,19 @@ impl Inner {
                     .min(max_segment_size)
                     .min(self.initial_remote_max_data as usize)
             } else {
-                // Clamp by the credits actually held (`pending_credits`), not just the remote
-                // window. Credits were acquired via `flow_budget()` = min(local, remote); when the
-                // reader grows the remote window past our local send budget, sizing a segment by
-                // `remote_budget` alone would consume more credits than we hold and underflow
-                // `take_credits`. The remainder is sent on a later poll after re-acquiring.
-                buf.buffered_len()
-                    .min(max_segment_size)
-                    .min((remote_budget as usize).max(chunk_size as usize))
-                    .min((self.pending_credits as usize).max(chunk_size as usize))
+                buf.buffered_len().min(max_segment_size)
             };
 
             let is_resuming = self.pending_chunk_index > 0;
-            if !is_resuming && !(is_first && force_first) && (remote_budget as usize) < segment_size
+            // Flow control gates how many CHUNKS go out, not the segment allocation. A full-size
+            // segment is allowed to start as long as we can send at least its first chunk; the
+            // per-chunk break below (and the partial-segment resume) dribble the rest as the remote
+            // window and local credit allow. Requiring the whole `segment_size` to fit the window
+            // up front (the old `remote_budget < segment_size` break) is what forced segments to be
+            // clamped to the window/credit and blew out the receiver's msg_id count.
+            if !is_resuming
+                && !(is_first && force_first)
+                && (remote_budget as usize) < chunk_size as usize
             {
                 break;
             }
