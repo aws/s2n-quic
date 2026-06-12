@@ -330,6 +330,24 @@ impl Slot {
     ///
     /// If `write_fn` returns `Err`, the checkout is cleared without marking received
     /// (the transport will retransmit).
+    ///
+    /// # Oversized-message deadlock breaker
+    ///
+    /// A QueueMsg message is delivered only once a whole segment is reassembled. A message whose
+    /// extent (`stream_offset + message_size`) lies past the reader's advertised receive window can
+    /// therefore *never* complete: every chunk stays checked out in the [`MsgTable`] and nothing is
+    /// delivered. The writer's demand hints (`peer_max_offset` / the in-band `blocked` bit) ride
+    /// inside those undelivered chunks, so the reader would never learn it must grow the window — a
+    /// mutual stall (writer waits for window, reader waits for a completed message to learn the
+    /// demand). We have the demand in hand here on the very first chunk, so when a segment won't fit
+    /// the advertised window we inject a *synthetic* `msg::Stream::Blocked { synthetic: true }`
+    /// carrying the writer's hinted demand directly onto the stream queue — bypassing the MsgTable,
+    /// exactly as a real `QueueDataBlocked` would. The reader opens its window to that demand (see
+    /// the "Window sizing" docs on [`crate::stream`]'s reader). The `synthetic` flag tells the reader
+    /// this is known, bounded demand, NOT streaming back-pressure, so it must not ramp the
+    /// speculative `growth_ratio` headroom. Deduped via a per-message latch on the MsgTable entry
+    /// ([`MsgTable::mark_synth_signal_sent`]) so the signal goes out once per stalled message, not
+    /// once per chunk.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn push_msg<E>(
         &self,
@@ -477,7 +495,53 @@ impl Slot {
                     Ok((half::AutoWake::default(), release_bytes))
                 }
             }
-            None => Ok((half::AutoWake::default(), release_bytes)),
+            // The segment did NOT complete this chunk. If its full extent lies past the reader's
+            // advertised window it can *never* complete (every chunk stays checked out in the
+            // MsgTable, nothing is delivered) and the writer's demand hints are stranded inside
+            // those undelivered chunks — the synthetic signal is the ONLY path those hints can
+            // reach the reader, since the chunks themselves never deliver. So carry the writer's
+            // full hinted demand, not just this segment's end:
+            //   * `peer_max_offset` — the writer's `largest_offset` high watermark (`next_offset +
+            //     buffered_len`), i.e. everything it wants to send. Opening the window to this lets
+            //     a multi-segment message advance without re-blocking once per segment.
+            //   * `segment_end` (`stream_offset + message_size`) — the floor: this specific segment
+            //     must be coverable to complete. `peer_max_offset` is normally >= it, but take the
+            //     max defensively in case a hint lagged.
+            // Deduped via a per-message latch on the MsgTable entry (`mark_synth_signal_sent`) so
+            // the signal goes out once per stalled message, not once per chunk; a message's demand
+            // is constant across its chunks, so there is no higher demand to re-signal. The returned
+            // waker wakes a reader parked with no deliverable data.
+            None => {
+                let segment_end = stream_offset.saturating_add(message_size as u64);
+                let desired = peer_max_offset.max(segment_end);
+                let first_signal = desired > self.advertised_window()
+                    && stream
+                        .extra
+                        .msg_table
+                        .as_mut()
+                        .is_some_and(|t| t.mark_synth_signal_sent(msg_id));
+                if first_signal {
+                    let entry: intrusive::Entry<msg::Stream> = msg::Stream::Blocked {
+                        desired_offset: VarInt::new(desired).unwrap_or(VarInt::MAX),
+                        synthetic: true,
+                    }
+                    .into();
+                    stream.queue.push_back(entry);
+                    trace!(
+                        msg_id,
+                        stream_offset,
+                        message_size,
+                        segment_end,
+                        peer_max_offset,
+                        desired,
+                        advertised = self.advertised_window(),
+                        "slot::send_msg synthetic blocked signal (segment exceeds advertised window)"
+                    );
+                    Ok((stream.take_waker(), release_bytes))
+                } else {
+                    Ok((half::AutoWake::default(), release_bytes))
+                }
+            }
         }
     }
 
@@ -1004,7 +1068,7 @@ mod tests {
         let slot = Slot::with_queue_id(v(0));
         slot.allocate_and_open(v(5), 0).unwrap();
         simulate_receiver_drop(&slot); // tombstone = 5
-        // A stale init (binding 4 < tombstone 5) must NOT resurrect the slot.
+                                       // A stale init (binding 4 < tombstone 5) must NOT resurrect the slot.
         assert_eq!(
             slot.allocate_and_open(v(4), 0),
             Ok(AllocateOutcome::Stale),
@@ -1021,7 +1085,7 @@ mod tests {
         let slot = Slot::with_queue_id(v(0));
         slot.allocate_and_open(v(5), 0).unwrap();
         simulate_receiver_drop(&slot); // tombstone = 5
-        // A duplicate init for the just-freed binding (5 == tombstone 5) is stale too.
+                                       // A duplicate init for the just-freed binding (5 == tombstone 5) is stale too.
         assert_eq!(
             slot.allocate_and_open(v(5), 0),
             Ok(AllocateOutcome::Stale),
@@ -1034,7 +1098,7 @@ mod tests {
         let slot = Slot::with_queue_id(v(0));
         slot.allocate_and_open(v(5), 0).unwrap();
         simulate_receiver_drop(&slot); // tombstone = 5
-        // A strictly-greater binding is a legitimate new generation.
+                                       // A strictly-greater binding is a legitimate new generation.
         assert_eq!(
             slot.allocate_and_open(v(6), 0),
             Ok(AllocateOutcome::Allocated),

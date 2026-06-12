@@ -6,10 +6,12 @@ expression: logs
 0:00:00.000000000 [main] DEBUG Reader dropped before FIN received - sent STOP_SENDING binding_id=1
 0:00:00.000000000 [main] TRACE c#credit.release.bytes=1048576
 0:00:00.000000000 [main] TRACE c#credit.release.calls=1
+0:00:00.000000000 [main] DEBUG distributor created
 0:00:00.000000000 [main] TRACE c#credit.release.bytes=64
 0:00:00.000000000 [main] TRACE c#credit.release.calls=1
 0:00:00.000000000 [main] TRACE c#credit.acquire.fast_path=1
 0:00:00.000000000 [main] TRACE c#credit.acquire.bytes=3145728
+0:00:01.000000000 [main] DEBUG distributor dropping; closing pool
 0:00:01.000000000 [main] DEBUG Reader dropping binding_id=1 status=Open final_size=None consumed_len=64 total_received_len=64 is_writing_complete=false is_reading_complete=false
 0:00:01.000000000 [main] DEBUG Reader dropped before FIN received - sent STOP_SENDING binding_id=1
 0:00:01.000000000 [main] TRACE c#credit.release.bytes=4194240

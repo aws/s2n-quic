@@ -234,6 +234,22 @@ impl MsgTable {
         }
     }
 
+    /// Latch "a synthetic blocked signal has been injected for this message," returning `true` only
+    /// the first time. Dispatch calls this when an incomplete message's extent exceeds the reader's
+    /// advertised window, to inject the deadlock-breaking signal once per message rather than once
+    /// per arriving chunk. See [`crate::queue::slot::Slot::push_msg`]. Returns `false` if the entry
+    /// is gone (delivered/poisoned) so no signal is emitted for it.
+    pub(crate) fn mark_synth_signal_sent(&mut self, msg_id: u64) -> bool {
+        if msg_id < self.base_id {
+            return false;
+        }
+        let index = (msg_id - self.base_id) as usize;
+        match self.entries.get_mut(index) {
+            Some(Some(entry)) => entry.mark_synth_signal_sent(),
+            _ => false,
+        }
+    }
+
     /// Cancel a checkout without marking received (write failed, e.g. decrypt error).
     /// The chunk can be retried on a future retransmission.
     pub(crate) fn cancel_checkout(&mut self, msg_id: u64, chunk_index: u32) {

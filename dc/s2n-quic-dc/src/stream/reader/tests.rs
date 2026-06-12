@@ -334,11 +334,21 @@ impl Pusher {
         });
     }
 
-    /// Push a standalone `QueueDataBlocked` signal.
+    /// Push a standalone `QueueDataBlocked` signal (real peer streaming back-pressure).
     #[allow(dead_code)]
     fn push_blocked(&mut self, desired_offset: u64) {
         self.push(msg::Stream::Blocked {
             desired_offset: VarInt::new(desired_offset).unwrap(),
+            synthetic: false,
+        });
+    }
+
+    /// Push a synthetic blocked signal (receiver-generated for an oversized QueueMsg segment).
+    #[allow(dead_code)]
+    fn push_synthetic_blocked(&mut self, desired_offset: u64) {
+        self.push(msg::Stream::Blocked {
+            desired_offset: VarInt::new(desired_offset).unwrap(),
+            synthetic: true,
         });
     }
 
@@ -1362,6 +1372,67 @@ fn blocked_signal_doubles_growth_ratio_and_dedups() {
     });
 }
 
+/// A *synthetic* blocked signal (receiver-generated for an oversized QueueMsg segment) opens the
+/// window straight to the known demand offset, bypassing the streaming slow-start ramp. This is the
+/// distinction from [`blocked_signal_doubles_growth_ratio_and_dedups`]: a real peer signal ramps
+/// `growth_ratio`; a synthetic one targets a fixed, bounded offset because the demand is known.
+#[test]
+fn synthetic_blocked_opens_window_to_known_demand_without_growth() {
+    sim(|| {
+        // Pool ceiling well above the demand so a single extension could in principle cover it; the
+        // point under test is that the *target* is the known demand, not a slow-start multiple.
+        let probe = make_pair().0;
+        let window_size = probe.0.window_size;
+        drop(probe);
+        let cap = window_size.saturating_mul(64).max(1024 * 1024);
+        let pool = crate::sync::Arc::new(crate::credit::Pool::new(
+            crate::credit::Config::new(cap).with_max_single_acquire_uniform(cap),
+        ));
+        // Hold a distributor so acquires are granted rather than parking.
+        let distributor = crate::credit::Distributor::new(pool.clone());
+        let (mut reader, mut pusher) = make_pair_with_pool(pool);
+
+        // A known message demand of 4× the bootstrap window — past the initial slow-start cap (1×).
+        let demand = window_size.saturating_mul(4);
+
+        let payload = vec![0xabu8; 64];
+        let payload_len = payload.len();
+
+        async move {
+            // A little real data so the reader's poll makes progress (returns Ready), plus the
+            // synthetic blocked carrying the known demand.
+            pusher.push_data(0, &payload, false);
+            pusher.push_synthetic_blocked(demand);
+            let _keep_alive = &distributor;
+            1.s().sleep().await;
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut buf = BytesMut::with_capacity(payload_len + 16);
+            let _ = reader.read_into(&mut buf).await.expect("read failed");
+            for _ in 0..8 {
+                bach::task::yield_now().await;
+            }
+            // The advertised window reached the known demand, even though `growth_ratio` never moved
+            // off its initial 1× (the synthetic path does not ramp slow-start).
+            assert_eq!(
+                reader.0.growth_ratio, 1,
+                "synthetic blocked must not drive the streaming growth ramp"
+            );
+            assert!(
+                reader.0.remote_max_data.as_u64() >= demand,
+                "window must open to the known message demand: advertised={}, demand={demand}",
+                reader.0.remote_max_data.as_u64(),
+            );
+            1.s().sleep().await;
+        }
+        .primary()
+        .spawn();
+    });
+}
+
 /// Repro for the bulk-streaming throughput collapse observed in dc-tester (xlarge-request fell to
 /// ~3.5 Gbps once reader flow control was wired up).
 ///
@@ -1373,26 +1444,24 @@ fn blocked_signal_doubles_growth_ratio_and_dedups() {
 /// window, the sender's flow-control budget (`remote_max_data - next_offset`) is capped there and
 /// the link runs at a fraction of capacity.
 ///
-/// This pins the failure to the window-growth *ceiling*. The reader doubles `window_size *
-/// growth_ratio` on each blocked signal but clamps the ratio to `max_single_acquire / window_size`
-/// (see `Inner::max_growth_ratio`). The dc-tester recv pool uses `max_single_acquire = 2 MiB` with a
-/// 1 MiB initial window, so the ratio saturates at 2× — the advertised window can never exceed
-/// ~2 MiB, far below the multi-MiB BDP a 30 Gbps × ~500 µs path needs. The pool here mirrors that
-/// production sizing exactly so the test exercises the real ceiling, not an artificially generous one.
+/// The window must track the writer's hinted demand directly, limited only by the recv pool — not
+/// by the streaming slow-start ramp. The writer advertises a high-water mark (`peer_max_offset`)
+/// far past what has been advertised; the reader pursues it across `max_single_acquire`-sized
+/// acquires (parking and re-arming as the pool grants), so the advertised window leads consumption
+/// by a BDP-class margin. `growth_ratio` adds headroom *beyond* the observed demand but does not cap
+/// it — so even with a constant demand hint (which `growth_ratio`'s consume-paced dedup would pin at
+/// a low multiple) the window still opens to that demand. The pool here mirrors production sizing
+/// (16 MiB capacity, 8 MiB per-acquire) so the acquire-slicing path is exercised, not bypassed.
 ///
 /// Assertion: after the application has consumed `TARGET` bytes from a perpetually-blocked writer,
-/// the advertised window must lead `consumed` by at least a BDP-class margin (`min_lead`). On the
-/// pre-fix policy the lead saturates at ~2× the initial window, so this fails; a fix that lets the
-/// window open to the BDP (e.g. decoupling growth from `max_single_acquire`, or seeding a larger
-/// window) makes it pass.
+/// the advertised window must lead `consumed` by at least a BDP-class margin (`min_lead`). A policy
+/// that clamps the demand to a small multiple of the initial window (the original bug) fails this;
+/// pursuing demand directly passes it.
 #[test]
 fn bulk_stream_opens_window_to_bdp() {
     sim(|| {
-        // Pool sized so the per-request ceiling (`max_single_acquire`) is a generous multiple of the
-        // 1 MiB initial window. This is what discriminates the bug from the fix: the slow-start ramp
-        // dedups on a constant demand and pins `growth_ratio` at 2 (→ ~2 MiB lead) regardless of how
-        // wide the ceiling is, whereas a demand-driven target opens straight to the ceiling. With a
-        // 2 MiB ceiling (== 2× window) the two are indistinguishable; an 8 MiB ceiling separates them.
+        // Pool sized so the per-request ceiling (`max_single_acquire`, 8 MiB) is a generous multiple
+        // of the 1 MiB initial window, so the window can open well past a couple of initial windows.
         let pool = crate::sync::Arc::new(crate::credit::Pool::new(
             crate::credit::Config::new(16 * 1024 * 1024)
                 .with_max_single_acquire_uniform(8 * 1024 * 1024),

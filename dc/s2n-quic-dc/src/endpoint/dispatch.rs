@@ -1482,7 +1482,13 @@ fn handle_queue_data_blocked(
     waker_sink: &mut impl channel::UnboundedSender<AutoWake>,
 ) {
     let local_queue_id = queue_pair.dest_queue_id;
-    let entry = msg::Stream::Blocked { desired_offset }.into();
+    // A real `QueueDataBlocked` frame from the peer writer: streaming back-pressure, open-ended
+    // demand → `synthetic: false` so the reader applies multiplicative slow-start growth.
+    let entry = msg::Stream::Blocked {
+        desired_offset,
+        synthetic: false,
+    }
+    .into();
 
     match peer
         .queue_view

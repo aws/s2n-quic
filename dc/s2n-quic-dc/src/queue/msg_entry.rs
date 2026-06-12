@@ -33,6 +33,17 @@ pub(crate) struct MsgEntry {
     is_fin: bool,
     /// Writer signaled flow-control blocked on at least one chunk; folded across chunks (OR).
     blocked: bool,
+    /// Whether dispatch has already injected a synthetic blocked signal for this message.
+    ///
+    /// A message larger than the reader's advertised window can never complete (its chunks stay
+    /// checked out and are never delivered), so dispatch synthesizes a blocked signal carrying the demand
+    /// to make the reader grow its window — see [`crate::queue::slot::Slot::push_msg`]. Without deduplication,
+    /// dispatch would inject that signal once per arriving chunk (up to `MAX_CHUNKS`); this latches after
+    /// the first so the signal goes out once per message.
+    /// demand (`largest_offset`, the writer's whole-message high-water mark, identical on every
+    /// chunk) does not rise within the message — so there is no higher demand to re-signal. Scoped
+    /// to the entry: it is cleared for free when the entry drops on completion/eviction.
+    synth_signal_sent: bool,
 }
 
 /// Result of attempting to check out a chunk for writing.
@@ -100,6 +111,7 @@ impl MsgEntry {
             poisoned: false,
             is_fin,
             blocked,
+            synth_signal_sent: false,
         }
     }
 
@@ -140,6 +152,16 @@ impl MsgEntry {
     pub(crate) fn observe_blocked_signal(&mut self, largest_offset: u64, blocked: bool) {
         self.largest_offset = self.largest_offset.max(largest_offset);
         self.blocked |= blocked;
+    }
+
+    /// Latch "a synthetic blocked signal has been injected for this message," returning `true` only
+    /// on the first call. Dispatch uses this to inject the signal once per stalled message rather
+    /// than once per arriving chunk. See [`synth_signal_sent`](Self::synth_signal_sent).
+    #[inline]
+    pub(crate) fn mark_synth_signal_sent(&mut self) -> bool {
+        let first = !self.synth_signal_sent;
+        self.synth_signal_sent = true;
+        first
     }
 
     #[inline]
@@ -272,6 +294,16 @@ mod tests {
         assert!(!entry.is_fin());
         assert!(!entry.is_poisoned());
         assert!(!entry.has_checkouts());
+    }
+
+    #[test]
+    fn synth_signal_latch_fires_once() {
+        let mut entry = MsgEntry::new(65536, CHUNK_SIZE, 0, 0, false, true);
+        // First observation latches and reports "first"; every subsequent one is suppressed, so
+        // dispatch injects the synthetic blocked signal once per stalled message, not per chunk.
+        assert!(entry.mark_synth_signal_sent(), "first call must report first");
+        assert!(!entry.mark_synth_signal_sent(), "second call must be deduped");
+        assert!(!entry.mark_synth_signal_sent(), "and stays deduped");
     }
 
     #[test]
