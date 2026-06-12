@@ -1835,10 +1835,15 @@ impl Inner {
                 buf.buffered_len() <= segment_size
             };
 
-            // Preserve caller intent, but force wakeups as remote flow control
-            // becomes tight so the receiver drains MsgTable entries and sends
-            // MAX_DATA to unblock subsequent segments.
-            let is_wakeup = flags.is_wakeup || remote_budget <= max_segment_size as u64;
+            // Honor the caller's wakeup intent verbatim — `is_wakeup`/`is_fin` are the
+            // application's message-boundary signals and we must not conflate them with
+            // flow control. Window growth no longer depends on a forced wakeup: when a
+            // segment exceeds the advertised window the receiver injects a synthetic
+            // blocked signal from the first chunk's `message_size`/`largest_offset`
+            // (`queue/slot.rs` push_msg), and when the window is so exhausted that not even
+            // one chunk goes out, the writer emits a standalone `QueueDataBlocked` below.
+            // Either way the reader learns to grow its window without a spurious wakeup.
+            let is_wakeup = flags.is_wakeup;
 
             let stream_offset = if self.pending_chunk_index > 0 {
                 self.pending_stream_offset

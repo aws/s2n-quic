@@ -2381,6 +2381,82 @@ fn write_from_blocked_emits_queue_data_blocked() {
     });
 }
 
+/// `write_msg` into a zero remote window — where NOT A SINGLE chunk can be sent — must emit a
+/// standalone `QueueDataBlocked` frame carrying the writer's demand.
+///
+/// This is the case the receiver-side synthetic blocked signal (slot.rs `push_msg`) CANNOT cover:
+/// the synthetic path needs at least one chunk to reach the MsgTable so it can read `message_size`
+/// /`largest_offset` and discover `desired > advertised_window`. When the window is fully exhausted
+/// and zero chunks go out, the receiver learns nothing — so the WRITER is the only party that can
+/// prod the reader to grow its window. Removing the writer's forced-wakeup heuristic
+/// (`is_wakeup |= remote_budget <= max_segment_size`) is only safe if this standalone signal is
+/// reliably emitted here.
+///
+/// The pre-existing `server_write_msg_blocks_when_remote_budget_zero` only asserts that no *data*
+/// frame goes out (`all(matches!(QueueDataBlocked))` is vacuously true on an empty batch); it does
+/// NOT positively confirm a blocked frame is sent. This test does.
+#[test]
+fn write_msg_blocked_with_no_chunk_sent_emits_queue_data_blocked() {
+    sim(|| {
+        let (mut writer, mut pusher) = make_server_pair();
+        // Zero remote window: the segment loop breaks before framing any chunk.
+        writer.0.remote_max_data = VarInt::ZERO;
+
+        async move {
+            let frames = pusher.recv_frames().await;
+            let desired = frames.iter().find_map(|f| match f.header {
+                Header::QueueDataBlocked { desired_offset, .. } => Some(desired_offset),
+                _ => None,
+            });
+            assert!(
+                desired.is_some(),
+                "expected a standalone QueueDataBlocked when write_msg cannot send any chunk into a \
+                 zero window, got {:?}",
+                frames.iter().map(|f| &f.header).collect::<Vec<_>>()
+            );
+            // No QueueMsg/QueueData frame should have gone out — nothing fit the window.
+            assert!(
+                frames.iter().all(|f| !matches!(
+                    f.header,
+                    Header::QueueMsg { .. } | Header::QueueData { .. }
+                )),
+                "no data frame should be sent into a zero window"
+            );
+            // Demand is the writer's high watermark (11 bytes buffered from offset 0).
+            assert_eq!(desired, Some(VarInt::from_u8(11)));
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let slot = writer.0.slot_ptr();
+            let pending = core::future::poll_fn(|cx| {
+                let mut buf = Bytes::from_static(b"hello world");
+                match writer.0.poll_write_msg(
+                    cx,
+                    slot,
+                    &mut buf,
+                    // No wakeup boundary, no fin: the exact flags that, post-heuristic-removal,
+                    // rely on the standalone blocked frame to drive window growth.
+                    MsgFlags {
+                        is_fin: false,
+                        is_wakeup: false,
+                    },
+                ) {
+                    Poll::Pending => Poll::Ready(true),
+                    Poll::Ready(_) => Poll::Ready(false),
+                }
+            })
+            .await;
+            assert!(pending, "write_msg must block while the remote window is zero");
+            // Keep the writer alive so the pusher observes the frame before drop.
+            10.ms().sleep().await;
+        }
+        .primary()
+        .spawn();
+    });
+}
+
 /// write_msg returns ConnectionReset when a remote Reset arrives before the
 /// write can complete.
 #[test]

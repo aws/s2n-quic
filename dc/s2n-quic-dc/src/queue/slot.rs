@@ -1592,4 +1592,71 @@ mod tests {
         assert_eq!(state.observe_offset(4, advertised), 0);
         assert_eq!(state.observe_offset(10, advertised), 6);
     }
+
+    /// "Correct usage" of the atomic-message API: a multi-segment unit where only the LAST
+    /// segment carries the wakeup boundary (`is_fin`/`is_wakeup`), matching the writer
+    /// (`stream/writer.rs`: `segment_is_fin = is_last_segment && flags.is_fin`).
+    ///
+    /// The watermark is set to the END of the flagged segment (`stream_offset + message_size`,
+    /// slot.rs push_msg), so it lands ABOVE every earlier segment's `stream_offset`. The reader
+    /// parks between segments and is woken exactly once — on the final segment — with the whole
+    /// unit deliverable. Intermediate (`is_wakeup=false`) segments correctly do NOT wake.
+    ///
+    /// This is the case the `flush_watermark` design handles correctly: under correct writer
+    /// usage no wakeup is lost. Contrast `push_msg_steady_state_segments_lose_wakeup_*`, which
+    /// drives the API with NO wakeup boundary on any segment.
+    #[test]
+    fn push_msg_atomic_message_wakes_once_on_final_segment() {
+        let slot = Slot::with_queue_id(v(0));
+        slot.allocate_and_open(v(1), 0).unwrap();
+
+        let seg = 4096u64;
+        // Three in-order segments forming one atomic unit: msg_ids 0,1,2 at offsets 0,seg,2*seg.
+        // Only the last carries the wakeup boundary (is_fin=true here).
+        let segments = [(0u64, 0u64, false), (1, seg, false), (2, 2 * seg, true)];
+
+        let (waker, wake_count) = test_waker();
+
+        for (msg_id, offset, is_fin) in segments {
+            // Reader parks before each segment: (re)register its waker.
+            {
+                let mut s = slot.stream.inner.lock();
+                s.waker = Some(waker.clone());
+            }
+            let r = slot.push_msg(
+                v(1),
+                msg_id,
+                offset,
+                0,
+                seg as u32,
+                seg as u16,
+                0,
+                seg as u32,
+                is_fin,
+                false, // is_wakeup=false on every segment; the FIN is the only boundary
+                false,
+                |ptr, len| {
+                    unsafe { core::ptr::write_bytes(ptr, msg_id as u8, len as usize) };
+                    Ok::<(), ()>(())
+                },
+            );
+            assert!(r.is_ok());
+            drop(r);
+            // Drain whatever was delivered so the reader stays "caught up" and re-parks.
+            {
+                let mut s = slot.stream.inner.lock();
+                let _ = core::mem::take(&mut s.queue);
+            }
+        }
+
+        // The FIN segment set the watermark to 2*seg + seg = 3*seg, which is STRICTLY above
+        // every segment's stream_offset (0, seg, 2*seg) — so the final delivery wakes, and the
+        // two intermediate ones correctly do not. Exactly one wakeup for the whole atomic unit.
+        assert_eq!(
+            wake_count.load(Ordering::SeqCst),
+            1,
+            "an atomic multi-segment message must wake the reader exactly once, on the segment \
+             carrying the wakeup boundary"
+        );
+    }
 }
