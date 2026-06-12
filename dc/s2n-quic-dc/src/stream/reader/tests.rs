@@ -695,6 +695,136 @@ fn stashed_reset_after_budget_is_observed() {
     });
 }
 
+/// Regression: a sub-budget `pending_rx` drain that makes no contiguous progress must still
+/// (re)register the polling task's waker on the stream half, or a later data arrival is lost.
+///
+/// The lost wakeup, step by step (see `poll_stream_rx`):
+///   1. The endpoint delivers `BUDGET + k` (k < BUDGET) stream frames in one batch, ALL at offsets
+///      past the read cursor (a gap at offset 0 — the out-of-order / loss regime). The first poll
+///      (waker A) drains `BUDGET` frames into the reassembler behind the gap (0 bytes deliverable),
+///      breaks on the coop budget, and stashes the remaining `k` frames in `pending_rx`. That first
+///      poll went through `poll_swap`, so the stream-half slot holds waker A.
+///   2. The task migrates and re-polls with a DIFFERENT waker B (normal under select!/timeout/
+///      FuturesUnordered/work-stealing — `Future::poll` does not promise a stable waker). Because
+///      `pending_rx` is non-empty, `poll_stream_rx` takes the stash and SKIPS `poll_swap` entirely,
+///      so the slot is never updated to B. The `k` stashed frames still don't fill the gap, so the
+///      drain delivers 0 bytes and returns `Pending` as a *natural wait* (budget not exhausted) —
+///      no coop self-wake either.
+///   3. The endpoint now sends offset 0 (fills the gap → data is deliverable). `push_stream` wakes
+///      whatever the slot holds: waker A, the stale one. Waker B — the live task — is never woken,
+///      so the read hangs forever despite fully-deliverable data sitting in the reassembler.
+///
+/// This polls the reader manually with two distinct counting wakers to model the task migration.
+/// It asserts B (the waker live at the time the gap is filled) is woken; on the current code only A
+/// is, so the assertion fails — proving the lost wakeup.
+#[test]
+fn pending_rx_subbudget_drain_loses_wakeup_on_task_migration() {
+    use core::{
+        sync::atomic::{AtomicUsize, Ordering},
+        task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+    };
+
+    // A waker that records how many times it was woken.
+    struct CountingWaker(AtomicUsize);
+    fn counting_waker(inner: Arc<CountingWaker>) -> Waker {
+        unsafe fn clone(p: *const ()) -> RawWaker {
+            let arc = Arc::from_raw(p as *const CountingWaker);
+            let cloned = arc.clone();
+            let _ = Arc::into_raw(arc);
+            RawWaker::new(Arc::into_raw(cloned) as *const (), &VTABLE)
+        }
+        unsafe fn wake(p: *const ()) {
+            let arc = Arc::from_raw(p as *const CountingWaker);
+            arc.0.fetch_add(1, Ordering::SeqCst);
+        }
+        unsafe fn wake_by_ref(p: *const ()) {
+            let arc = Arc::from_raw(p as *const CountingWaker);
+            arc.0.fetch_add(1, Ordering::SeqCst);
+            let _ = Arc::into_raw(arc);
+        }
+        unsafe fn drop_fn(p: *const ()) {
+            let _ = Arc::from_raw(p as *const CountingWaker);
+        }
+        static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop_fn);
+        let raw = RawWaker::new(Arc::into_raw(inner) as *const (), &VTABLE);
+        unsafe { Waker::from_raw(raw) }
+    }
+
+    // >BUDGET frames → huge snapshot; rely on explicit assertions.
+    let _guard = crate::testing::without_snapshots();
+    sim(|| {
+        let (mut reader, mut pusher) = make_pair();
+        let budget = crate::stream::coop::BUDGET as u64;
+        // BUDGET + 8 frames, ALL at offset >= 1 so there is a gap at offset 0 and nothing is
+        // deliverable yet. After the first poll drains BUDGET and stashes 8, the remainder is
+        // sub-budget — the path that skips `poll_swap`.
+        let gap_frames = budget + 8;
+
+        async move {
+            for offset in 1..=gap_frames {
+                pusher.push_data(offset, b"x", false);
+            }
+
+            // Give the app task a moment to perform its two manual polls and park.
+            bach::time::sleep(Duration::from_millis(10)).await;
+
+            // Fill the gap. `push_stream` wakes whatever waker the slot holds.
+            pusher.push_data(0, b"x", false);
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let a = Arc::new(CountingWaker(AtomicUsize::new(0)));
+            let b = Arc::new(CountingWaker(AtomicUsize::new(0)));
+            let waker_a = counting_waker(a.clone());
+            let waker_b = counting_waker(b.clone());
+
+            // Let the endpoint enqueue the full gap backlog first.
+            bach::time::sleep(Duration::from_millis(1)).await;
+
+            let mut buf = BytesMut::with_capacity((gap_frames + 2) as usize);
+
+            // Poll #1 with waker A: drains BUDGET frames behind the gap, stashes the 8-frame
+            // remainder in pending_rx. Goes through poll_swap, so the slot holds waker A.
+            let p1 = reader.poll_read_into(&mut Context::from_waker(&waker_a), &mut buf);
+            assert!(matches!(p1, Poll::Pending), "no contiguous data yet");
+            assert!(
+                !reader.0.pending_rx.is_empty(),
+                "sub-budget remainder must be stashed for the migration path"
+            );
+
+            // Poll #2 with waker B (the task migrated): drains the sub-budget pending_rx remainder,
+            // skipping poll_swap, so the slot is NOT updated to B. Still a gap → Pending.
+            let p2 = reader.poll_read_into(&mut Context::from_waker(&waker_b), &mut buf);
+            assert!(matches!(p2, Poll::Pending), "still blocked on the gap at offset 0");
+
+            // The endpoint fills the gap (after its sleep). Wait for that to land.
+            bach::time::sleep(Duration::from_millis(50)).await;
+
+            // The live waker (B, used on the most recent poll) MUST have been woken. On the buggy
+            // code the slot still holds the stale waker A, so B is never told and the real task
+            // would hang forever despite deliverable data.
+            assert_eq!(
+                b.0.load(Ordering::SeqCst),
+                1,
+                "BUG: lost wakeup — the gap-filling arrival woke the stale waker A \
+                 (a.woken={}), not the live waker B. A migrated reader task hangs forever \
+                 with fully-deliverable data buffered.",
+                a.0.load(Ordering::SeqCst)
+            );
+
+            // And a re-poll with B now delivers all the buffered bytes.
+            match reader.poll_read_into(&mut Context::from_waker(&waker_b), &mut buf) {
+                Poll::Ready(Ok(n)) => assert!(n > 0, "data must be deliverable once the gap is filled"),
+                other => panic!("expected data after gap fill, got {other:?}"),
+            }
+        }
+        .primary()
+        .spawn();
+    });
+}
+
 /// A reset terminates a read with `ConnectionReset`.
 #[test]
 fn reset_terminates_read() {

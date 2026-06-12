@@ -580,3 +580,539 @@ fn fair_share_100_streams_no_stragglers() {
     assert_eq!(writers, 100, "all 100 writers must complete");
     assert_eq!(readers, 100, "all 100 readers must complete");
 }
+
+/// Recv-credit conservation under the dc-tester **read** pattern with mid-read cancellation and
+/// connection churn — the path the committed `reset_cancel_send_credit_conserved` test does NOT
+/// cover (it only checks the *server send* pool).
+///
+/// Here the **client is the reader** that drops/cancels streams mid-transfer, so it is the
+/// *client's RECV credit pool* under scrutiny. Each reader that the application abandons mid-stream
+/// must reconcile its advertised receive window via `finish_recv_accounting` and return every
+/// pool-backed credit it advertised-but-never-filled. Connection churn (fresh queue slots each
+/// round, recycled bindings) is what stresses the per-slot `advertised_window` / `recv_finished`
+/// reconciliation against `observe_offset`'s per-arrival release.
+///
+/// If the reader teardown leaks any advertised-but-unfilled recv credit, the client recv pool
+/// drains over rounds and later readers can no longer advertise a window — their peer writers stall
+/// and the surviving (un-cancelled) streams' chunk watchdog fires. At quiescence the pool must
+/// conserve `available + returned == capacity`.
+#[allow(clippy::too_many_arguments)]
+fn run_recv_churn_cancel(
+    rounds: usize,
+    streams_per_round: usize,
+    body_len: u64,
+    cancel_after: u64,
+    recv_cap: u64,
+    max_single_acquire: u64,
+    per_stream_window: u64,
+) -> i64 {
+    let acceptor_id = VarInt::from_u8(1);
+    let shortfall = Arc::new(AtomicUsize::new(0));
+    let shortfall_cap = shortfall.clone();
+    let window = VarInt::new(per_stream_window).unwrap();
+
+    sim(move || {
+        // ── Server: bulk sender (large send pool, never the bottleneck) ─────────
+        {
+            async move {
+                let server = SimEndpointConfig::default()
+                    .send_window(window)
+                    .recv_credit_pool_config(
+                        CreditConfig::new(recv_cap)
+                            .with_max_single_acquire_uniform(max_single_acquire),
+                    )
+                    .server();
+                let mut acceptor = server
+                    .register_acceptor_channel(acceptor_id, streams_per_round * rounds * 2)
+                    .expect("acceptor registration failed");
+
+                while let Some(stream) = acceptor.recv().await {
+                    async move {
+                        let (mut reader, mut writer) = stream.into_split();
+                        let mut req = Data::new(64);
+                        let _ = timeout(CHUNK_TIMEOUT, reader.read_into(&mut req)).await;
+                        let mut payload = Data::new(body_len);
+                        loop {
+                            if payload.is_finished() {
+                                break;
+                            }
+                            match timeout(CHUNK_TIMEOUT, writer.write_from_fin(&mut payload)).await {
+                                Ok(Ok(_)) => {}
+                                Ok(Err(_)) => break,
+                                Err(_) => break,
+                            }
+                        }
+                    }
+                    .primary()
+                    .spawn();
+                }
+            }
+            .group("server")
+            .spawn();
+        }
+
+        // ── Client: reader pool under test, cancels 2/3 mid-read, churns rounds ──
+        {
+            let shortfall_cap = shortfall_cap.clone();
+            async move {
+                let recv_pool_config = CreditConfig::new(recv_cap)
+                    .with_max_single_acquire_uniform(max_single_acquire);
+                let config = SimEndpointConfig::default()
+                    .send_window(window)
+                    .recv_credit_pool_config(recv_pool_config);
+                let mut client = Client::with_config(config);
+                let recv_pool = client.recv_credit_pool();
+
+                for _round in 0..rounds {
+                    let mut streams = Vec::with_capacity(streams_per_round);
+                    for _ in 0..streams_per_round {
+                        let stream = client
+                            .connect("server:0", acceptor_id)
+                            .await
+                            .expect("connect failed");
+                        streams.push(stream);
+                    }
+
+                    let mut handles = Vec::with_capacity(streams_per_round);
+                    for (i, mut stream) in streams.into_iter().enumerate() {
+                        let cancel = i % 3 != 0;
+                        let handle = async move {
+                            {
+                                let (_reader, writer) = stream.split();
+                                let mut req = Data::new(64);
+                                if writer.write_from_fin(&mut req).await.is_err() {
+                                    return;
+                                }
+                            }
+                            let mut rx = Data::new(body_len);
+                            let mut read_total = 0u64;
+                            loop {
+                                let before = rx.current_offset().as_u64();
+                                let (reader, _writer) = stream.split();
+                                let n = match timeout(CHUNK_TIMEOUT, reader.read_into(&mut rx)).await
+                                {
+                                    Ok(Ok(n)) => n,
+                                    Ok(Err(_)) => break,
+                                    Err(_) => {
+                                        panic!(
+                                            "reader stalled at offset {before}/{body_len} — \
+                                             recv pool drained by leaked credit on cancelled \
+                                             readers?"
+                                        );
+                                    }
+                                };
+                                if n == 0 {
+                                    break;
+                                }
+                                read_total += n as u64;
+                                if cancel && read_total >= cancel_after {
+                                    stream.reset(crate::stream::endpoint::Error::StopSending);
+                                    break;
+                                }
+                            }
+                        }
+                        .primary()
+                        .spawn();
+                        handles.push(handle);
+                    }
+
+                    for handle in handles {
+                        let _ = handle.await;
+                    }
+                    bach::time::sleep(Duration::from_millis(50)).await;
+                }
+
+                // Drain the final teardown before sampling.
+                bach::time::sleep(Duration::from_secs(1)).await;
+                let s = recv_pool.debug_capacity() as i64 - recv_pool.debug_free_total();
+                shortfall_cap.store(s.max(0) as usize, Ordering::Relaxed);
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        }
+    });
+
+    shortfall.load(Ordering::Relaxed) as i64
+}
+
+/// Recv credit must be fully recovered when a reader is cancelled mid-transfer. The client reader
+/// abandons 2 of 3 streams mid-read across churned rounds; if `finish_recv_accounting` fails to
+/// return the advertised-but-unfilled window on any teardown, the recv pool drains and the
+/// conservation check fails.
+#[test]
+fn recv_cancel_credit_conserved() {
+    let _no_snap = crate::testing::without_snapshots();
+    let _no_trace = crate::testing::without_tracing();
+
+    // 6 rounds × 24 streams = 144 cancellable reads. 512 KiB body, cancel survivors after 128 KiB.
+    // 8 MiB recv pool, 2 MiB per-acquire cap, 256 KiB initial window — so each reader must acquire
+    // pool credit (body is past the initial window) and a cancelled reader holds advertised window
+    // that must come back.
+    let leak = run_recv_churn_cancel(
+        6,
+        24,
+        512 * 1024,
+        128 * 1024,
+        8 * 1024 * 1024,
+        2 * 1024 * 1024,
+        256 * 1024,
+    );
+
+    info!(leak, "recv_cancel recv pool shortfall");
+    assert_eq!(
+        leak, 0,
+        "recv credit pool leaked {leak} bytes across reset-cancelled readers \
+         (available + returned fell {leak} short of capacity)"
+    );
+}
+
+/// Read-pattern stall reproduction **with packet loss**. The production cluster shows growing
+/// PN-threshold loss over time alongside reads timing out; this drives many concurrent reads with
+/// a small per-stream window (so the reader must emit a MAX_DATA top-up roughly every window's
+/// worth of consumption) and drops a deterministic 1-in-N fraction of packets in both directions.
+///
+/// The hypothesis under test: a lost `QueueMaxData` (window grant) wedges the peer writer. The
+/// writer advances `remote_max_data` only from MAX_DATA frames it actually receives; the reader
+/// advances its local `remote_max_data` the moment it *sends* a grant and computes the next
+/// `delta` against that already-advanced value. So a dropped MAX_DATA can only be recovered by
+/// retransmission of that exact frame — never re-derived by the reader's top-up logic. If that
+/// retransmission ever fails to fire (e.g. the frame completed/cancelled out of the inflight map,
+/// or window growth latched), the writer stalls forever with data to send and the reader parks
+/// waiting for bytes that will never come. The chunk watchdog in `drain_reader`/`drive_writer`
+/// fires on either side.
+fn run_loss_read_stall(
+    num_streams: usize,
+    body_len: u64,
+    per_stream_window: u64,
+    recv_cap: u64,
+    max_single_acquire: u64,
+    drop_one_in: u64,
+) -> (usize, usize) {
+    let acceptor_id = VarInt::from_u8(1);
+    let writers_done = Arc::new(AtomicUsize::new(0));
+    let readers_done = Arc::new(AtomicUsize::new(0));
+    let writers_done_sv = writers_done.clone();
+    let readers_done_cl = readers_done.clone();
+    let window = VarInt::new(per_stream_window).unwrap();
+
+    sim(move || {
+        // Deterministic partial loss in BOTH directions. A free-running counter dropping every
+        // Nth packet exercises MAX_DATA / data / ACK loss uniformly without RNG.
+        {
+            let mut pkt = 0u64;
+            bach::net::monitor::on_packet_sent(move |_packet| {
+                pkt += 1;
+                if drop_one_in > 0 && pkt % drop_one_in == 0 {
+                    return bach::net::monitor::Command::Drop;
+                }
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        // ── Server: bulk sender; large pools so only loss + window gate it ──────
+        {
+            let writers_done_sv = writers_done_sv.clone();
+            async move {
+                let server = SimEndpointConfig::default().send_window(window).server();
+                let mut acceptor = server
+                    .register_acceptor_channel(acceptor_id, num_streams * 2)
+                    .expect("acceptor registration failed");
+
+                let mut idx = 0usize;
+                while let Some(stream) = acceptor.recv().await {
+                    let writers_done_sv = writers_done_sv.clone();
+                    let stream_idx = idx;
+                    idx += 1;
+                    async move {
+                        let (mut reader, mut writer) = stream.into_split();
+                        let mut req = Data::new(64);
+                        let _ = timeout(CHUNK_TIMEOUT, reader.read_into(&mut req)).await;
+                        drive_writer(&mut writer, body_len, stream_idx).await;
+                        writers_done_sv.fetch_add(1, Ordering::Relaxed);
+                    }
+                    .primary()
+                    .spawn();
+                }
+            }
+            .group("server")
+            .spawn();
+        }
+
+        // ── Client: many concurrent readers, small window forces MAX_DATA churn ─
+        {
+            let readers_done_cl = readers_done_cl.clone();
+            async move {
+                let recv_pool_config = CreditConfig::new(recv_cap)
+                    .with_max_single_acquire_uniform(max_single_acquire);
+                let mut client = Client::with_config(
+                    SimEndpointConfig::default()
+                        .send_window(window)
+                        .recv_credit_pool_config(recv_pool_config),
+                );
+
+                let mut streams = Vec::with_capacity(num_streams);
+                for _ in 0..num_streams {
+                    let stream = client
+                        .connect("server:0", acceptor_id)
+                        .await
+                        .expect("connect failed");
+                    streams.push(stream);
+                }
+
+                for (i, mut stream) in streams.into_iter().enumerate() {
+                    let readers_done_cl = readers_done_cl.clone();
+                    async move {
+                        {
+                            let (_reader, writer) = stream.split();
+                            let mut req = Data::new(64);
+                            writer.write_from_fin(&mut req).await.expect("req write");
+                        }
+                        let (mut reader, _writer) = stream.into_split();
+                        drain_reader(&mut reader, body_len, i).await;
+                        readers_done_cl.fetch_add(1, Ordering::Relaxed);
+                    }
+                    .primary()
+                    .spawn();
+                }
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        }
+    });
+
+    (
+        writers_done.load(Ordering::Relaxed),
+        readers_done.load(Ordering::Relaxed),
+    )
+}
+
+/// Read pattern under sustained partial packet loss must still complete: a lost MAX_DATA window
+/// grant must always be recovered by retransmission, never permanently stall the peer writer.
+#[test]
+fn loss_read_pattern_no_stall() {
+    let _no_snap = crate::testing::without_snapshots();
+    let _no_trace = crate::testing::without_tracing();
+
+    // 16 concurrent reads, 1 MiB each, 128 KiB per-stream window (8 MAX_DATA top-ups per stream),
+    // drop every 7th packet in both directions. Large recv pool so the *only* gates are the
+    // per-stream window and loss recovery — isolating the lost-MAX_DATA hypothesis.
+    let (writers, readers) = run_loss_read_stall(
+        16,
+        1024 * 1024,
+        128 * 1024,
+        64 * 1024 * 1024,
+        2 * 1024 * 1024,
+        7,
+    );
+
+    info!(writers, readers, "loss_read_pattern result");
+    assert_eq!(writers, 16, "all 16 writers must complete under loss");
+    assert_eq!(readers, 16, "all 16 readers must complete under loss");
+}
+
+/// Heavier-loss variant: tiny window (32 KiB → 32 MAX_DATA top-ups per stream) and 1-in-3 packet
+/// loss, which makes MAX_DATA loss the common case rather than the exception. If any single lost
+/// window grant fails to be retransmitted, a writer wedges and its reader's watchdog fires.
+#[test]
+fn heavy_loss_read_pattern_no_stall() {
+    let _no_snap = crate::testing::without_snapshots();
+    let _no_trace = crate::testing::without_tracing();
+
+    let (writers, readers) = run_loss_read_stall(
+        8,
+        512 * 1024,
+        32 * 1024,
+        64 * 1024 * 1024,
+        2 * 1024 * 1024,
+        3,
+    );
+
+    info!(writers, readers, "heavy_loss_read_pattern result");
+    assert_eq!(writers, 8, "all 8 writers must complete under heavy loss");
+    assert_eq!(readers, 8, "all 8 readers must complete under heavy loss");
+}
+
+/// The full production stew: contended **server send pool** (storage is the bulk sender) + read
+/// pattern + first-wins cancellation (aggregator keeps 1 of 3 replicas) + connection churn +
+/// partial packet loss, all at once. This is the regime where the cluster stalls: storage RX at
+/// line rate, TX pinned far below, reads timing out, PN-threshold loss climbing.
+///
+/// The combination is what no isolated test covers. A cancelled reader resets mid-transfer (loss
+/// can delay or drop that reset, so the server writer keeps its inflight frames longer); a lost
+/// MAX_DATA delays a survivor's window; a churned binding recycles a slot whose prior generation
+/// may still have credit in flight. If any of these interactions strands send-pool credit, the
+/// pool drains over rounds and survivors stall — caught by the watchdog — and the post-sim
+/// conservation check (`available + returned == capacity`) fails.
+#[allow(clippy::too_many_arguments)]
+fn run_full_stew(
+    rounds: usize,
+    streams_per_round: usize,
+    body_len: u64,
+    cancel_after: u64,
+    per_stream_window: u64,
+    send_cap: u64,
+    max_single_acquire: u64,
+    drop_one_in: u64,
+) -> i64 {
+    let acceptor_id = VarInt::from_u8(1);
+    let shortfall = Arc::new(AtomicUsize::new(0));
+    let shortfall_cap = shortfall.clone();
+    let window = VarInt::new(per_stream_window).unwrap();
+
+    sim(move || {
+        {
+            let mut pkt = 0u64;
+            bach::net::monitor::on_packet_sent(move |_packet| {
+                pkt += 1;
+                if drop_one_in > 0 && pkt % drop_one_in == 0 {
+                    return bach::net::monitor::Command::Drop;
+                }
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        // ── Server: bulk sender, undersized SEND pool (storage) ─────────────────
+        {
+            let shortfall_cap = shortfall_cap.clone();
+            async move {
+                let send_pool_config = CreditConfig::new(send_cap)
+                    .with_max_single_acquire_uniform(max_single_acquire);
+                let server = SimEndpointConfig::default()
+                    .send_window(window)
+                    .send_credit_pool_config(send_pool_config)
+                    .server();
+                let send_pool = server.send_credit_pool();
+                let mut acceptor = server
+                    .register_acceptor_channel(acceptor_id, streams_per_round * rounds * 2)
+                    .expect("acceptor registration failed");
+
+                while let Some(stream) = acceptor.recv().await {
+                    async move {
+                        let (mut reader, mut writer) = stream.into_split();
+                        let mut req = Data::new(64);
+                        let _ = timeout(CHUNK_TIMEOUT, reader.read_into(&mut req)).await;
+                        let mut payload = Data::new(body_len);
+                        loop {
+                            if payload.is_finished() {
+                                break;
+                            }
+                            match timeout(CHUNK_TIMEOUT, writer.write_from_fin(&mut payload)).await {
+                                Ok(Ok(_)) => {}
+                                Ok(Err(_)) => break,
+                                Err(_) => {
+                                    panic!(
+                                        "server writer stalled mid-send — send pool drained by \
+                                         stranded credit under loss+cancel+churn"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    .primary()
+                    .spawn();
+                }
+
+                bach::time::sleep(Duration::from_secs(2)).await;
+                let s = send_pool.debug_capacity() as i64 - send_pool.debug_free_total();
+                shortfall_cap.store(s.max(0) as usize, Ordering::Relaxed);
+            }
+            .group("server")
+            .spawn();
+        }
+
+        // ── Client: reader, cancels 2/3 mid-read, churns rounds, under loss ─────
+        {
+            async move {
+                let mut client = Client::with_config(
+                    SimEndpointConfig::default().send_window(window),
+                );
+
+                for _round in 0..rounds {
+                    let mut streams = Vec::with_capacity(streams_per_round);
+                    for _ in 0..streams_per_round {
+                        let stream = client
+                            .connect("server:0", acceptor_id)
+                            .await
+                            .expect("connect failed");
+                        streams.push(stream);
+                    }
+
+                    let mut handles = Vec::with_capacity(streams_per_round);
+                    for (i, mut stream) in streams.into_iter().enumerate() {
+                        let cancel = i % 3 != 0;
+                        let handle = async move {
+                            {
+                                let (_reader, writer) = stream.split();
+                                let mut req = Data::new(64);
+                                if writer.write_from_fin(&mut req).await.is_err() {
+                                    return;
+                                }
+                            }
+                            let mut rx = Data::new(body_len);
+                            let mut read_total = 0u64;
+                            loop {
+                                let (reader, _writer) = stream.split();
+                                let n = match timeout(CHUNK_TIMEOUT, reader.read_into(&mut rx)).await
+                                {
+                                    Ok(Ok(n)) => n,
+                                    Ok(Err(_)) => break,
+                                    Err(_) => break,
+                                };
+                                if n == 0 {
+                                    break;
+                                }
+                                read_total += n as u64;
+                                if cancel && read_total >= cancel_after {
+                                    stream.reset(crate::stream::endpoint::Error::StopSending);
+                                    break;
+                                }
+                            }
+                        }
+                        .primary()
+                        .spawn();
+                        handles.push(handle);
+                    }
+
+                    for handle in handles {
+                        let _ = handle.await;
+                    }
+                    bach::time::sleep(Duration::from_millis(50)).await;
+                }
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        }
+    });
+
+    shortfall.load(Ordering::Relaxed) as i64
+}
+
+/// Full production stew must conserve send credit and never stall survivors.
+#[test]
+fn full_stew_loss_cancel_churn_conserves() {
+    let _no_snap = crate::testing::without_snapshots();
+    let _no_trace = crate::testing::without_tracing();
+
+    // 6 rounds × 12 streams = 72 transfers, 256 KiB body, cancel survivors after 64 KiB,
+    // 64 KiB per-stream window (4 MAX_DATA top-ups/stream), 2 MiB send pool / 256 KiB cap
+    // (production sizing), drop every 5th packet.
+    let leak = run_full_stew(
+        6,
+        12,
+        256 * 1024,
+        64 * 1024,
+        64 * 1024,
+        2 * 1024 * 1024,
+        256 * 1024,
+        5,
+    );
+
+    info!(leak, "full_stew send pool shortfall");
+    assert_eq!(
+        leak, 0,
+        "send credit pool leaked {leak} bytes under loss+cancel+churn"
+    );
+}

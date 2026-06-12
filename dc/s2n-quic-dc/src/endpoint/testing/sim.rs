@@ -841,6 +841,12 @@ impl Server {
         self.endpoint.send_credit_pool.clone()
     }
 
+    /// Returns the endpoint's recv credit pool. Tests use this to assert
+    /// recv-credit conservation under reader teardown / cancellation.
+    pub fn recv_credit_pool(&self) -> crate::sync::Arc<crate::credit::Pool> {
+        self.endpoint.recv_credit_pool.clone()
+    }
+
     /// Register a channel-based acceptor for incoming streams.
     ///
     /// Returns an [`accept_channel::Receiver<Stream>`] that yields accepted streams.
@@ -903,6 +909,17 @@ impl Client {
     /// Returns all recv data addresses advertised to peers.
     pub fn data_addrs(&self) -> &[SocketAddr] {
         &self.endpoint.data_addrs
+    }
+
+    /// Returns the endpoint's recv credit pool. Tests use this to assert
+    /// recv-credit conservation under reader teardown / cancellation.
+    pub fn recv_credit_pool(&self) -> crate::sync::Arc<crate::credit::Pool> {
+        self.endpoint.recv_credit_pool.clone()
+    }
+
+    /// Returns the endpoint's send credit pool.
+    pub fn send_credit_pool(&self) -> crate::sync::Arc<crate::credit::Pool> {
+        self.endpoint.send_credit_pool.clone()
     }
 
     /// Connect to a peer, returning a bidirectional [`Stream`].

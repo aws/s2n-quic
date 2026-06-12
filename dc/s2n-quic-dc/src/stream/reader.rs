@@ -875,21 +875,38 @@ impl Inner {
     {
         // Drain any frames stashed by a previous budget-exhausted break BEFORE pulling a fresh
         // batch off the slot — preserves wire order, since `pending_rx` always holds frames
-        // that arrived earlier than anything still in the slot. When `pending_rx` is non-empty
-        // we skip `poll_swap` entirely so we don't register the slot waker without need; the
-        // gate's self-wake (when budget exhausts again) covers re-entry.
-        let mut queue = if !self.pending_rx.is_empty() {
-            core::mem::take(&mut self.pending_rx)
-        } else {
-            match self.stream_rx.poll_swap(cx) {
-                Poll::Ready(Ok(q)) => q,
-                Poll::Ready(Err(_)) => {
+        // that arrived earlier than anything still in the slot.
+        //
+        // We ALWAYS `poll_swap`, even when `pending_rx` is non-empty. `poll_swap` is the only
+        // place the stream-half waker is (re)registered, and the polling task's waker can change
+        // between polls (task migration under select!/timeout/FuturesUnordered/work-stealing — the
+        // `Future::poll` contract does not promise a stable waker). If we drained `pending_rx`
+        // without re-registering and that remainder made no contiguous progress (a gap at the read
+        // cursor — the out-of-order / loss regime), we'd return `Pending` as a natural wait having
+        // left the slot holding a STALE waker; the next arrival would wake the wrong task and the
+        // read would hang forever despite deliverable data. Fresh slot frames are appended AFTER
+        // the stashed ones so wire order is preserved; the coop budget still bounds per-poll work
+        // and re-stashes any leftover.
+        let mut queue = core::mem::take(&mut self.pending_rx);
+        match self.stream_rx.poll_swap(cx) {
+            Poll::Ready(Ok(mut fresh)) => queue.append(&mut fresh),
+            Poll::Ready(Err(_)) => {
+                // Channel closed. If we have stashed frames to deliver, fall through and drain
+                // them first; the closure resurfaces on a later poll once `pending_rx` is empty.
+                // With nothing stashed, surface the closure now.
+                if queue.is_empty() {
                     return Poll::Ready(Err(io::Error::new(
                         io::ErrorKind::BrokenPipe,
                         "stream channel closed",
-                    )))
+                    )));
                 }
-                Poll::Pending => return Poll::Pending,
+            }
+            // Pending registered the current waker on the slot. If we have stashed frames, drain
+            // them; otherwise propagate the wait (waker is now correctly registered).
+            Poll::Pending => {
+                if queue.is_empty() {
+                    return Poll::Pending;
+                }
             }
         };
 
@@ -899,8 +916,9 @@ impl Inner {
             // Break-safe: `entry` was just popped but not yet consumed (its `into_inner` is in
             // the match below). On budget-exhaust we push it back to the front of `queue` so
             // the next drain sees it first, then move `queue` into `pending_rx`. `pending_rx`
-            // is provably empty here (we drained it above; no frame can have entered it since
-            // the field is only written here). Returning `Ready(Ok(()))` lets the outer
+            // is provably empty here (we `take`-d it above and have not written it since; no frame
+            // can have entered it as the field is only written here). Returning `Ready(Ok(()))`
+            // lets the outer
             // `poll_read_into_inner` deliver the bytes we already wrote into the reassembler;
             // the gate yields on the *next* poll because budget is now zero.
             if !self.coop.consume() {
