@@ -968,6 +968,12 @@ impl Inner {
             if !buf.buffer_is_empty() {
                 let high_watermark = self.high_watermark(buf);
                 if high_watermark > self.remote_max_data.as_u64() {
+                    // Window-starved (remote window exhausted), not merely credit-starved. Count
+                    // the episode once per newly-reached high watermark — `send_data_blocked_frame`
+                    // advances `last_blocked_offset`, so the busy-poll re-entry doesn't re-count.
+                    if high_watermark > self.last_blocked_offset {
+                        self.metrics.flow.window_blocked.add(1);
+                    }
                     self.send_data_blocked_frame(high_watermark)?;
                 }
             }
@@ -1459,6 +1465,7 @@ impl Inner {
         };
         self.send_frame(frame)?;
         self.last_blocked_offset = desired_offset;
+        self.metrics.flow.data_blocked_sent.add(1);
         trace!(
             binding_id = self.control_rx.binding_id().as_u64(),
             desired_offset,
@@ -1688,6 +1695,9 @@ impl Inner {
             } else {
                 // Cold case: no data frame went out (window already exhausted), so no in-band bit
                 // was carried. Emit a standalone signal carrying the desired high watermark.
+                if high_watermark > self.last_blocked_offset {
+                    self.metrics.flow.window_blocked.add(1);
+                }
                 self.send_data_blocked_frame(high_watermark)?;
             }
         }
@@ -1977,6 +1987,9 @@ impl Inner {
                 self.last_blocked_offset = self.last_blocked_offset.max(high_watermark);
             } else {
                 // Cold case: no frame went out, so emit a standalone signal.
+                if high_watermark > self.last_blocked_offset {
+                    self.metrics.flow.window_blocked.add(1);
+                }
                 self.send_data_blocked_frame(high_watermark)?;
             }
         }

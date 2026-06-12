@@ -3196,6 +3196,8 @@ expression: logs
 0:00:00.000521000 [server] TRACE g#q.router_to_batcher.depth[p2]=843
 0:00:00.000521000 [server] TRACE m#q.router_to_batcher.depth_dist[p2]=843
 0:00:00.000521000 [server] TRACE m#task.priority_router.drained=4
+0:00:00.000521000 [server] TRACE c#tx.flow.window_blocked=1
+0:00:00.000521000 [server] TRACE c#tx.flow.data_blocked_sent=1
 0:00:00.000521000 [server] TRACE m#task.idle_wheel.drained[send.worker.3]=0
 0:00:00.000521000 [server] TRACE c#q.wheel_to_assembler.receiver[send.7.task.assembler.send.7]=1
 0:00:00.000521000 [server] TRACE c#q.wheel_to_assembler.drain[send.7]=1

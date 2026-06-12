@@ -5,6 +5,8 @@ expression: logs
 ---
 0:00:00.000000000 [main] TRACE c#credit.acquire.fast_path=1
 0:00:00.000000000 [main] TRACE c#credit.acquire.bytes=1
+0:00:00.000000000 [main] TRACE c#tx.flow.window_blocked=1
+0:00:00.000000000 [main] TRACE c#tx.flow.data_blocked_sent=1
 0:00:00.000000000 [main] DEBUG poll_remote_budget received messages binding_id=1 status=Open msg_count=1
 0:00:00.000000000 [main] TRACE c#credit.acquire.fast_path=1
 0:00:00.000000000 [main] TRACE c#credit.acquire.bytes=1

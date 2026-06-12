@@ -1,5 +1,6 @@
 ---
 source: dc/s2n-quic-dc/src/testing.rs
+assertion_line: 352
 expression: logs
 ---
 0:00:00.000000000 [main] DEBUG distributor created
@@ -7,6 +8,8 @@ expression: logs
 0:00:00.000000000 [main] TRACE c#credit.release.calls=1
 0:00:00.000000000 [main] TRACE c#credit.acquire.parked[Medium]=1
 0:00:00.000000000 [main] TRACE c#credit.acquire.bytes=524289
+0:00:00.000000000 [main] TRACE c#rx.flow.max_data_not_sent[credit_parked]=1
+0:00:00.000000000 [main] TRACE c#rx.flow.max_data_not_sent[granted_zero]=1
 0:00:00.000000000 [main] TRACE c#credit.release.bytes=64
 0:00:00.000000000 [main] TRACE c#credit.release.calls=1
 0:00:00.000000000 [main] DEBUG Reader dropping binding_id=1 status=Open final_size=None consumed_len=524353 total_received_len=524353 is_writing_complete=false is_reading_complete=false

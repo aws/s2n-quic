@@ -18,7 +18,7 @@
 //! [`Frame::enqueued_at`]: crate::endpoint::frame::Frame::enqueued_at
 
 use crate::{
-    counter::{Registry, Summary, Timer, Unit},
+    counter::{Counter, Registry, Summary, Timer, Unit},
     endpoint::frame::FailureReason,
     time::precision::Timestamp,
 };
@@ -90,6 +90,47 @@ impl SojournMetrics {
     }
 }
 
+/// Per-stream receive-side flow-control counters.
+///
+/// The reader owns the advertised receive window (`remote_max_data` on the peer's writer): it
+/// grows the window by acquiring recv-pool credit and sending MAX_DATA frames in
+/// [`Reader::maybe_send_max_data`]. When the window stops advancing, the peer writer stalls with
+/// no transport-level error — these counters expose *why* the window stopped growing, which is
+/// otherwise invisible.
+///
+/// Only the two failure branches are counted, not the benign early-returns
+/// (below-threshold / delta-zero): `maybe_send_max_data` is called on every read-poll, including
+/// empty busy-poll Pending polls, so counting the common idle path would both swamp the signal
+/// and add a per-poll atomic. These two fire only on a genuine window-growth *attempt* that
+/// couldn't be fully satisfied — a bounded, meaningful event.
+///
+/// [`Reader::maybe_send_max_data`]: crate::stream::recv::Reader
+#[derive(Clone)]
+pub struct ReaderFlowMetrics {
+    /// The reader wanted to grow the window but the recv credit pool `poll_acquire` parked: only a
+    /// partial (or zero) extension could be advertised this turn. **This is the recv-side stall
+    /// signal.** Nonzero is normal under pool contention; the diagnostic is a *sustained* rate, or
+    /// this pinned high while the reader makes no read progress — a reader stuck here cannot open
+    /// the window, which starves the peer writer.
+    pub max_data_credit_parked: Counter,
+    /// The reader wanted to grow the window but collected zero credit (unbacked exhausted, no
+    /// prior grant, fresh acquire parked) so advertised nothing at all — the window did not move
+    /// despite the writer asking for more room. A transient blip is normal (the next poll
+    /// re-tries when the distributor delivers); sustained growth is the hard recv-side stall.
+    pub max_data_granted_zero: Counter,
+}
+
+impl ReaderFlowMetrics {
+    pub fn new(registry: &Registry) -> Self {
+        Self {
+            max_data_credit_parked: registry
+                .register_nominal("rx.flow.max_data_not_sent", "credit_parked"),
+            max_data_granted_zero: registry
+                .register_nominal("rx.flow.max_data_not_sent", "granted_zero"),
+        }
+    }
+}
+
 /// Metrics for the read half of a stream.
 ///
 /// Passed into [`Reader`](crate::stream::Reader) at construction time. Carries
@@ -98,12 +139,44 @@ impl SojournMetrics {
 #[derive(Clone)]
 pub struct ReaderMetrics {
     pub sojourn: SojournMetrics,
+    pub flow: ReaderFlowMetrics,
 }
 
 impl ReaderMetrics {
     pub fn new(registry: &Registry, label: &str) -> Self {
         Self {
             sojourn: SojournMetrics::new(registry, label),
+            flow: ReaderFlowMetrics::new(registry),
+        }
+    }
+}
+
+/// Per-stream send-side flow-control counters.
+///
+/// The writer's per-poll send budget is `min(flow_budget(), pending_credits)`, where
+/// `flow_budget() = remote_max_data − next_offset` is the room left in the peer's advertised
+/// receive window. When that window is exhausted the writer produces no frame and parks — but
+/// because `poll_acquire_credits` short-circuits on a zero `want`, the credit pool sees an
+/// *idle* writer, not a blocked one. These counters make the window-starved stall observable.
+#[derive(Clone)]
+pub struct WriterFlowMetrics {
+    /// The writer had buffered data to send but the peer's advertised window was fully consumed
+    /// (`flow_budget() == 0`), so it parked without emitting a data frame. **This is the send-side
+    /// stall signal.** A fast writer routinely outrunning the window makes this nonzero in healthy
+    /// operation — the diagnostic is a *sustained* rate, or this climbing while throughput is flat.
+    /// Pair with `rx.flow.max_data_not_sent` on the peer to see why the window isn't growing.
+    pub window_blocked: Counter,
+    /// Standalone `QueueDataBlocked` frames emitted (the cold path where no data frame carries the
+    /// in-band blocked bit). Climbing here while the peer's `rx.flow.max_data_not_sent` also climbs
+    /// is the smoking gun for a wedged window.
+    pub data_blocked_sent: Counter,
+}
+
+impl WriterFlowMetrics {
+    pub fn new(registry: &Registry) -> Self {
+        Self {
+            window_blocked: registry.register("tx.flow.window_blocked"),
+            data_blocked_sent: registry.register("tx.flow.data_blocked_sent"),
         }
     }
 }
@@ -118,6 +191,7 @@ pub struct WriterMetrics {
     pub sojourn: SojournMetrics,
     pub tx_msg_segment_size: Summary,
     pub tx_msg_chunks_per_segment: Summary,
+    pub flow: WriterFlowMetrics,
 }
 
 impl WriterMetrics {
@@ -127,6 +201,7 @@ impl WriterMetrics {
             tx_msg_segment_size: registry.register_summary("tx.msg.segment_size", Unit::Byte),
             tx_msg_chunks_per_segment: registry
                 .register_summary("tx.msg.chunks_per_segment", Unit::Count),
+            flow: WriterFlowMetrics::new(registry),
         }
     }
 }

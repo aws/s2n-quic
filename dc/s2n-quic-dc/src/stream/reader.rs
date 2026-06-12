@@ -1243,11 +1243,20 @@ impl Inner {
                     // on the reader, so dropping it would strand it. Advertise
                     // the partial and let the next poll re-evaluate when the
                     // distributor delivers the rest.
+                    //
+                    // Recv-side stall signal: we wanted to grow the window but
+                    // the pool couldn't satisfy it. A partial may still go out
+                    // below; `granted == 0` is the harder stall, counted there.
+                    self.metrics.flow.max_data_credit_parked.add(1);
                 }
             }
         }
 
         if granted == 0 {
+            // Hard stall: the writer asked for more room (we passed the
+            // hint/threshold gate above) but we collected no credit at all, so
+            // the window does not move this turn. The peer writer stays blocked.
+            self.metrics.flow.max_data_granted_zero.add(1);
             return Ok(());
         }
 
