@@ -225,3 +225,24 @@ paxos.acceptors = 3
 paxos.prepare = { request_size = 1024, response_size = 100 }
 paxos.accept = { request_size = 52428800, response_size = 100 }
 paxos.learn = { request_size = 100, response_size = 100 }
+
+# --- quorum-read: speculative/hedged read ---
+# Fan out `fanout` concurrent requests for the same large value, read a small
+# header from each response, randomly keep one and cancel the rest mid-transfer,
+# then read the survivor's full body. Models a Paxos-style read that hedges
+# across replicas for tail latency and abandons the losers once a winner is chosen.
+
+[[client.workloads]]
+name = "quorum-read-3"
+workers = 32
+request_size = 1024
+response_size = 536870912
+quorum_read = { fanout = 3, header_size = 64 }
+
+[[client.workloads]]
+name = "quorum-read-3-msg"
+workers = 32
+use_msg = true
+request_size = 1024
+response_size = 536870912
+quorum_read = { fanout = 3, header_size = 64 }

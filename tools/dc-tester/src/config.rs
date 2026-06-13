@@ -250,6 +250,43 @@ pub struct WorkloadConfig {
     /// If set, run a Paxos-like multi-phase workload instead of simple request-response
     #[serde(default)]
     pub paxos: Option<PaxosConfig>,
+
+    /// If set, run a quorum-read workload: fan out N concurrent requests for the
+    /// same large value, read a small header from each, randomly keep one and
+    /// cancel the rest, then read the full body from the survivor.
+    #[serde(default)]
+    pub quorum_read: Option<QuorumReadConfig>,
+}
+
+/// Configuration for the quorum-read (speculative/hedged read) workload.
+///
+/// Simulates a Paxos-style read: the client issues `fanout` concurrent requests
+/// for the same value, reads a small header from each response to confirm
+/// liveness, then commits to a single randomly-chosen survivor and cancels the
+/// remaining streams mid-transfer. The `request_size`/`response_size` on the
+/// parent workload drive the per-stream request body and the (large) response
+/// body respectively.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QuorumReadConfig {
+    /// Number of concurrent requests to fan out per round.
+    #[serde(default = "QuorumReadConfig::default_fanout")]
+    pub fanout: usize,
+
+    /// Number of leading response bytes to read as a header before selecting a
+    /// survivor and cancelling the rest.
+    #[serde(default = "QuorumReadConfig::default_header_size")]
+    pub header_size: u64,
+}
+
+impl QuorumReadConfig {
+    fn default_fanout() -> usize {
+        3
+    }
+
+    fn default_header_size() -> u64 {
+        64
+    }
 }
 
 /// Configuration for the Paxos-like multi-phase workload
@@ -309,6 +346,7 @@ impl Default for WorkloadConfig {
             request_delay_ms: 0,
             use_msg: false,
             paxos: None,
+            quorum_read: None,
         }
     }
 }

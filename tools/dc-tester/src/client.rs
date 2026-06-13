@@ -239,6 +239,10 @@ async fn execute_request(
     workload: &WorkloadConfig,
     rng: &mut s2n_quic_dc::xorshift::Rng,
 ) -> io::Result<(u64, u64)> {
+    if workload.quorum_read.is_some() {
+        return execute_quorum_read(client, server_addr, workload, rng).await;
+    }
+
     let request_size = workload.request_size.sample(rng);
     let response_size = workload.response_size.sample(rng);
     execute_single_message(
@@ -249,6 +253,133 @@ async fn execute_request(
         workload.use_msg,
     )
     .await
+}
+
+/// Quorum-read workload: fan out `fanout` concurrent requests for the same large
+/// value, read a small header from each, randomly pick one survivor, cancel the
+/// rest by dropping their streams mid-transfer, then read the survivor's full body.
+///
+/// This models a Paxos-style speculative read where the client only needs one
+/// complete copy but hedges across replicas for tail-latency, abandoning the
+/// losers as soon as a winner is chosen.
+async fn execute_quorum_read(
+    client: &mut s2n_quic_dc::stream::Client,
+    server_addr: SocketAddr,
+    workload: &WorkloadConfig,
+    rng: &mut s2n_quic_dc::xorshift::Rng,
+) -> io::Result<(u64, u64)> {
+    let config = workload.quorum_read.as_ref().unwrap();
+    let fanout = config.fanout.max(1);
+    let request_size = workload.request_size.sample(rng);
+    // Sample one response size so every replica returns the same value size.
+    let response_size = workload.response_size.sample(rng);
+    let header_size = config.header_size.min(response_size);
+    let use_msg = workload.use_msg;
+
+    // Open all fanout streams and send each request, then read the header from each.
+    let mut join_set = JoinSet::new();
+    for _ in 0..fanout {
+        let mut client = client.clone();
+        join_set.spawn(async move {
+            let stream = client
+                .connect(
+                    server_addr,
+                    VarInt::ZERO,
+                    s2n_quic_dc::credit::Priority::default(),
+                )
+                .await?;
+            let (mut reader, mut writer) = stream.into_split();
+
+            let wire_response_size = if use_msg {
+                response_size | USE_MSG_FLAG
+            } else {
+                response_size
+            };
+
+            // Send the request body up front.
+            let header = wire_response_size.to_be_bytes();
+            let mut payload = (&header[..]).chain(Data::new(request_size));
+            if use_msg {
+                writer
+                    .write_msg(
+                        &mut payload,
+                        MsgFlags {
+                            is_fin: true,
+                            is_wakeup: true,
+                        },
+                    )
+                    .await?;
+            } else {
+                while !payload.buffer_is_empty() {
+                    writer.write_from_fin(&mut payload).await?;
+                }
+            }
+
+            // Read just the header portion of the response to confirm liveness.
+            // Reuse a full-size Data validator so the survivor can keep reading
+            // from where the header left off.
+            let mut response = Data::new(response_size);
+            while response.current_offset() < header_size {
+                let n = reader.read_into(&mut response).await?;
+                if n == 0 {
+                    break;
+                }
+            }
+
+            // Hand back the live halves (and how much we've already read) so the
+            // survivor can finish draining; losers are dropped, cancelling them.
+            io::Result::Ok((reader, response))
+        });
+    }
+
+    // Collect all live streams that returned a header. Streams that errored are
+    // dropped from the set.
+    let mut survivors = Vec::with_capacity(fanout);
+    let mut last_error = None;
+    while let Some(result) = join_set.join_next().await {
+        match result.map_err(io::Error::other)? {
+            Ok(stream) => survivors.push(stream),
+            Err(e) => last_error = Some(e),
+        }
+    }
+
+    if survivors.is_empty() {
+        return Err(last_error
+            .unwrap_or_else(|| io::Error::other("no replica returned a response header")));
+    }
+
+    // A request (8-byte header + body) was sent to every replica that responded.
+    let replicas = survivors.len() as u64;
+    let total_sent = (8 + request_size) * replicas;
+    // Every replica delivered at least `header_size` bytes before selection; the
+    // losers are cancelled there, while the survivor goes on to deliver its full body.
+    let losers = replicas - 1;
+
+    // Randomly pick one survivor and drop the rest, cancelling their streams
+    // mid-transfer.
+    let winner_idx = (rng.next_u64() as usize) % survivors.len();
+    let (mut reader, mut response) = survivors.swap_remove(winner_idx);
+    drop(survivors);
+
+    // Drain the rest of the chosen response body.
+    loop {
+        let n = reader.read_into(&mut response).await?;
+        if n == 0 {
+            break;
+        }
+    }
+
+    if !response.is_finished() {
+        return Err(io::Error::other(format!(
+            "survivor response not fully received: expected {} bytes, got {} bytes",
+            response_size,
+            response.current_offset()
+        )));
+    }
+
+    let total_received = response_size + header_size * losers;
+
+    Ok((total_sent, total_received))
 }
 
 #[derive(Clone)]
