@@ -63,7 +63,7 @@ use crate::{
     socket::channel::Budget,
     sync::{lock, Arc, AtomicI64, AtomicU64, Mutex, Ordering},
     time::precision,
-    tracing::{debug, info, trace},
+    tracing::{debug, trace},
 };
 use core::{
     task::{Context, Poll, Waker},
@@ -686,7 +686,7 @@ impl Distributor {
                 // operationally significant event. Carries wedge depth so the log alone tells the
                 // story without correlating a separate scrape.
                 let deficit = (capacity as i64 - available).max(0);
-                info!(target: "credit::pool", inject, deficit, "refill engaged");
+                debug!(target: "credit::pool", inject, deficit, "refill engaged");
             }
             trace!(target: "credit::pool", inject, available, "refill tick");
         } else {

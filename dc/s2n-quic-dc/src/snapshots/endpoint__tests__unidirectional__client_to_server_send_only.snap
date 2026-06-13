@@ -1484,7 +1484,7 @@ expression: logs
 0:00:00.001342000 [client] TRACE c#credit.send.refill.bytes_injected=47355
 0:00:00.001342000 [client] TRACE c#credit.send.refill.ticks=1
 0:00:00.001342000 [client] TRACE c#!credit.send.refill.sustained_engaged=1
-0:00:00.001342000 [client]  INFO refill engaged inject=47355 deficit=47355
+0:00:00.001342000 [client] DEBUG refill engaged inject=47355 deficit=47355
 0:00:00.001342000 [client] TRACE c#credit.send.distributor.passes=1
 0:00:00.001342000 [client] TRACE c#credit.send.distributor.passes=1
 0:00:00.001342000 [client] TRACE c#credit.recv.distributor.passes=1

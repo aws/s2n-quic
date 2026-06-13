@@ -13,7 +13,7 @@ expression: logs
 0:00:00.000001000 [main] TRACE c#credit.refill.bytes_injected=3
 0:00:00.000001000 [main] TRACE c#credit.refill.ticks=1
 0:00:00.000001000 [main] TRACE c#!credit.refill.sustained_engaged=1
-0:00:00.000001000 [main]  INFO refill engaged inject=3 deficit=6
+0:00:00.000001000 [main] DEBUG refill engaged inject=3 deficit=6
 0:00:00.000001000 [main] TRACE c#credit.distributor.passes=1
 0:00:00.000001000 [main] TRACE c#credit.distributor.granted=1
 0:00:00.000001000 [main] TRACE c#credit.distributor.passes=1

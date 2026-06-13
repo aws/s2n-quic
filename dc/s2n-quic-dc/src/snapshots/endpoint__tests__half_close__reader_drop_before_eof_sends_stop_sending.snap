@@ -12824,7 +12824,7 @@ expression: logs
 0:00:00.001342000 [server] TRACE c#credit.send.refill.bytes_injected=942080
 0:00:00.001342000 [server] TRACE c#credit.send.refill.ticks=1
 0:00:00.001342000 [server] TRACE c#!credit.send.refill.sustained_engaged=1
-0:00:00.001342000 [server]  INFO refill engaged inject=942080 deficit=942080
+0:00:00.001342000 [server] DEBUG refill engaged inject=942080 deficit=942080
 0:00:00.001342000 [server] TRACE c#credit.send.distributor.passes=1
 0:00:00.001342000 [server] TRACE c#credit.send.distributor.passes=1
 0:00:00.001342000 [server] TRACE c#credit.recv.distributor.passes=1
