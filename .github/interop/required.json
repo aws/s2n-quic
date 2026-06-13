@@ -355,6 +355,9 @@
     "quinn": [
       "client",
       "server"
+    ],
+    "haproxy": [
+      "server"
     ]
   },
   "retry": {
@@ -652,6 +655,7 @@
       "server"
     ],
     "kwik": [
+      "client",
       "server"
     ],
     "lsquic": [
@@ -713,7 +717,9 @@
   "handshakecorruption": {
     "aioquic": [],
     "kwik": [],
-    "lsquic": [],
+    "lsquic": [
+      "server"
+    ],
     "msquic": [],
     "mvfst": [],
     "neqo": [
@@ -728,7 +734,9 @@
       "client",
       "server"
     ],
-    "quic-go": [],
+    "quic-go": [
+      "client"
+    ],
     "quiche": [],
     "s2n-quic": [
       "client",
@@ -738,7 +746,13 @@
       "client",
       "server"
     ],
-    "xquic": []
+    "xquic": [],
+    "nginx": [
+      "server"
+    ],
+    "quinn": [
+      "server"
+    ]
   },
   "transfercorruption": {
     "aioquic": [
@@ -810,7 +824,9 @@
       "client",
       "server"
     ],
-    "kwik": [],
+    "kwik": [
+      "client"
+    ],
     "lsquic": [
       "client",
       "server"
@@ -861,13 +877,16 @@
       "client",
       "server"
     ],
-    "kwik": [],
+    "kwik": [
+      "client"
+    ],
     "lsquic": [
       "client",
       "server"
     ],
     "msquic": [
-      "client"
+      "client",
+      "server"
     ],
     "mvfst": [
       "client"
