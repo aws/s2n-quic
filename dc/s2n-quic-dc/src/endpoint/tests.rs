@@ -3737,7 +3737,16 @@ fn twenty_node_gossip_no_routing_asymmetry() {
         for node_idx in 0..NUM_NODES {
             let routing_asymmetry_count = routing_asymmetry_count.clone();
             async move {
-                let mut peer = Peer::new();
+                // Disable the refill pacer: with 20 endpoints each arming a per-direction refill
+                // timer, the pacer's idle timer wakeups dominate this 5-minute many-node simulation
+                // for no benefit (the test never wedges a credit pool). The pacer itself is covered
+                // by `merge_order_held_open_deadlock` and `refill_pacer_unblocks_writer_without_release`.
+                use crate::endpoint::testing::sim::SimEndpointConfig;
+                let mut peer = Peer::with_config(SimEndpointConfig {
+                    recv_credit_pool_config: crate::credit::Config::default().without_refill(),
+                    send_credit_pool_config: crate::credit::Config::default().without_refill(),
+                    ..SimEndpointConfig::default()
+                });
                 let mut acceptor = peer
                     .register_acceptor_channel(acceptor_id, 4096)
                     .expect("acceptor registration");

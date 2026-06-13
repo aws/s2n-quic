@@ -36,7 +36,11 @@ use crate::{
     tracing::*,
 };
 use bach::time::timeout;
-use s2n_quic_core::{buffer::reader::Reader as _, stream::testing::Data, varint::VarInt};
+use s2n_quic_core::{
+    buffer::{reader::Reader as _, writer::Storage as _},
+    stream::testing::Data,
+    varint::VarInt,
+};
 use std::{
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -1889,6 +1893,221 @@ fn run_full_stew(
     });
 
     shortfall.load(Ordering::Relaxed) as i64
+}
+
+/// RED REPRO — recv-credit deadlock from held-open reader streams.
+///
+/// A reader's live pool credit is its advertised-but-unfilled window. The dispatch side releases
+/// credit per byte that ARRIVES (`observe_offset`), and `finish_recv_accounting` returns the
+/// remaining advertised gap — but the latter runs from EXACTLY one place: `ReaderAllocPtr::drop`.
+/// So a reader the application opens, reads partway, and then stops polling WITHOUT dropping holds
+/// its advertised-window credit indefinitely. (Note: this disproves the "buffered-but-unconsumed
+/// data holds credit" model — arriving bytes release on arrival regardless of consumption. What
+/// actually strands is the advertised window the reader is holding that the writer hasn't filled.)
+///
+/// Construction: a client opens N streams, the server streams a large body down each (incrementally,
+/// in small chunks, so the reader keeps advertising a window ahead of delivery). The client reads a
+/// tiny prefix from ALL of them in ONE task, holding every reader handle alive, then drains them in
+/// reverse order. With a recv pool smaller than the N held-open advertised windows, the pool
+/// exhausts: every reader after the first ~`pool/window` parks forever waiting for credit, its peer
+/// writer stays window-blocked, and the drain stalls — caught by the `CHUNK_TIMEOUT` watchdog.
+///
+/// The decisive structural difference from a task-per-stream test: all readers live in a SINGLE task
+/// and stay held open across the entire drain loop, so their credit is never released by a stream
+/// future completing and dropping.
+///
+/// This is the `recv-credit-pool-deadlock.md` scenario, reproduced purely at the transport layer.
+/// On HEAD it panics (stall / early EOF). It is the regression gate for the fix.
+#[allow(clippy::too_many_arguments)]
+fn run_merge_order_deadlock(
+    num_streams: usize,
+    body_len: u64,
+    read_prefix: u64,
+    write_chunk: u64,
+    per_stream_window: u64,
+    recv_cap: u64,
+    max_single_acquire: u64,
+) {
+    let acceptor_id = VarInt::from_u8(1);
+    let window = VarInt::new(per_stream_window).unwrap();
+
+    sim(move || {
+        // ── Server: accept each stream, read the hello, then send a large body. ──
+        {
+            async move {
+                let server = SimEndpointConfig::default().send_window(window).server();
+                let mut acceptor = server
+                    .register_acceptor_channel(acceptor_id, num_streams * 2)
+                    .expect("acceptor registration failed");
+                let mut idx = 0usize;
+                while let Some(stream) = acceptor.recv().await {
+                    let stream_idx = idx;
+                    idx += 1;
+                    async move {
+                        let (mut reader, mut writer) = stream.into_split();
+                        // Read the client's hello.
+                        let mut hello = Data::new(64);
+                        let _ = timeout(CHUNK_TIMEOUT, reader.read_into(&mut hello)).await;
+                        // Stream the response body incrementally WITHOUT a FIN, so the reader
+                        // never learns final_size and keeps ramping its window ahead of demand
+                        // (the growth_ratio runway). Cap each write to a small slice so the writer
+                        // genuinely hits the window edge repeatedly rather than dumping the whole
+                        // buffer and acquiring against it in one shot. A window-blocked write just
+                        // stops — we only need to fill the reader's advertised window so credit
+                        // gets committed.
+                        let mut payload = Data::new(body_len);
+                        while !payload.is_finished() {
+                            let mut slice = payload.with_read_limit(write_chunk as usize);
+                            match timeout(CHUNK_TIMEOUT, writer.write_from(&mut slice)).await {
+                                Ok(Ok(_)) => {}
+                                Ok(Err(_)) => break,
+                                Err(_) => break,
+                            }
+                        }
+                        let _ = stream_idx;
+                    }
+                    .primary()
+                    .spawn();
+                }
+            }
+            .group("server")
+            .spawn();
+        }
+
+        // ── Client: the READER under contention. Sized recv pool. Opens all streams,
+        //    sends a hello on each, reads a tiny prefix from ALL of them holding every
+        //    reader open, then tries to fully drain stream 0. ─────────────────────
+        {
+            async move {
+                let recv_pool_config =
+                    CreditConfig::new(recv_cap).with_max_single_acquire_uniform(max_single_acquire);
+                let mut client = Client::with_config(
+                    SimEndpointConfig::default()
+                        .send_window(window)
+                        .recv_credit_pool_config(recv_pool_config),
+                );
+                let pool = client.recv_credit_pool();
+                let pool_snapshot = |phase: &str| {
+                    info!(
+                        phase,
+                        available = pool.debug_available(),
+                        returned = pool.debug_returned(),
+                        free_total = pool.debug_free_total(),
+                        capacity = pool.debug_capacity(),
+                        "recv pool balance"
+                    );
+                };
+
+                // Open all streams and send a hello on each so the server starts responding.
+                let mut readers = Vec::with_capacity(num_streams);
+                for _ in 0..num_streams {
+                    let stream = client
+                        .connect("server:0", acceptor_id)
+                        .await
+                        .expect("connect failed");
+                    let (reader, mut writer) = stream.into_split();
+                    let mut hello = Data::new(64);
+                    writer
+                        .write_from_fin(&mut hello)
+                        .await
+                        .expect("hello write failed");
+                    readers.push(reader);
+                }
+
+                // Read a tiny prefix from EVERY stream, holding them all open. Each forces its
+                // reader to advertise a pool-backed window ahead of what we consume.
+                let mut prefix_bufs: Vec<Data> =
+                    (0..num_streams).map(|_| Data::new(body_len)).collect();
+                for (i, reader) in readers.iter_mut().enumerate() {
+                    let rx = &mut prefix_bufs[i];
+                    let mut got = 0u64;
+                    while got < read_prefix {
+                        let mut limited = rx.with_write_limit((read_prefix - got) as usize);
+                        match timeout(CHUNK_TIMEOUT, reader.read_into(&mut limited)).await {
+                            Ok(Ok(0)) => break,
+                            Ok(Ok(n)) => got += n as u64,
+                            Ok(Err(_)) => break,
+                            Err(_) => break,
+                        }
+                    }
+                }
+                pool_snapshot("after_prefix_reads");
+                // Let the held streams' windows fill (writers stream up to what was advertised),
+                // so per-arrival observe_offset releases run before we measure.
+                bach::time::sleep(Duration::from_millis(500)).await;
+                pool_snapshot("after_settle");
+
+                // Now fully drain every stream in REVERSE order, continuing from each prefix
+                // buffer (so the offset validator stays consistent). Crucially we do NOT drop a
+                // reader after draining it — all readers stay held open for the whole loop, so
+                // their advertised windows stay pinned. Draining the highest-indexed stream first
+                // faces the maximal set of still-pinned windows ahead of it: if the pool is
+                // exhausted by the held windows it can never grow its own window and stalls
+                // forever — caught by the watchdog.
+                // The server streams without a FIN, so there is no EOF — drain until each stream
+                // has delivered the full `body_len`.
+                for idx in (0..num_streams).rev() {
+                    pool_snapshot(&format!("before_drain_stream_{idx}"));
+                    let reader = &mut readers[idx];
+                    let rx = &mut prefix_bufs[idx];
+                    loop {
+                        let before = rx.current_offset().as_u64();
+                        if before >= body_len {
+                            break;
+                        }
+                        match timeout(CHUNK_TIMEOUT, reader.read_into(rx)).await {
+                            Ok(res) => {
+                                let n = res.expect("reader chunk failed");
+                                if n == 0 {
+                                    // EOF before the full body: the server's writer gave up because
+                                    // this reader never advertised enough window — the held-open
+                                    // readers pinned the recv pool (recv-credit deadlock).
+                                    panic!(
+                                        "stream {idx} hit EOF at {before}/{body_len} before the \
+                                         full body — recv-credit deadlock starved its window"
+                                    );
+                                }
+                            }
+                            Err(_) => {
+                                panic!(
+                                    "reader stalled draining stream {idx}: no chunk within \
+                                     {CHUNK_TIMEOUT:?} at offset {before}/{body_len} — the other \
+                                     held-open readers pinned the recv pool (recv-credit deadlock)"
+                                );
+                            }
+                        }
+                    }
+                }
+
+                // Keep everything alive until after every drain completes.
+                drop(readers);
+                drop(prefix_bufs);
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        }
+    });
+}
+
+/// Many open-but-unconsumed reader streams must not deadlock a stream the app wants to drain.
+#[test]
+fn merge_order_held_open_deadlock() {
+    let _no_snap = crate::testing::without_snapshots();
+
+    // 64 streams, 4 MiB body each, read only the first 16 KiB of each, server streams in 8 KiB
+    // chunks (so it repeatedly hits the window edge and ramps the reader's growth_ratio runway),
+    // 64 KiB per-stream window, 1 MiB recv pool / 256 KiB per-acquire cap. 64 held-open windows
+    // (advertised ahead of delivery) >> the tiny pool → later streams starve.
+    run_merge_order_deadlock(
+        64,
+        4 * 1024 * 1024,
+        16 * 1024,
+        8 * 1024,
+        64 * 1024,
+        1024 * 1024,
+        256 * 1024,
+    );
 }
 
 /// Full production stew must conserve send credit and never stall survivors.

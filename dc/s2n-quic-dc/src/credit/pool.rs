@@ -62,9 +62,13 @@ use crate::{
     intrusive::List,
     socket::channel::Budget,
     sync::{lock, Arc, AtomicI64, AtomicU64, Mutex, Ordering},
-    tracing::{debug, trace},
+    time::precision,
+    tracing::{debug, info, trace},
 };
-use core::task::{Context, Poll, Waker};
+use core::{
+    task::{Context, Poll, Waker},
+    time::Duration,
+};
 use crossbeam_utils::CachePadded;
 use std::{collections::VecDeque, ptr::NonNull};
 
@@ -426,6 +430,38 @@ impl Pool {
     }
 }
 
+/// Decide how many bytes the refill pacer injects this tick.
+///
+/// This is the whole policy of the liveness floor, isolated as a pure function so it is exhaustively
+/// unit-testable without a clock or a live pool. The model:
+///
+/// * `quantum` is the per-tick budget (one `max_single_acquire`, so it always clears
+///   `min_grant_slice` and one tick fully serves the head waiter). With the interval derived from
+///   the configured rate, injecting one quantum per tick yields exactly that average rate.
+/// * `released_since_tick` is how much real credit `release` returned since the previous tick. We
+///   inject only the shortfall `quantum − released_since_tick`: under healthy load releases meet or
+///   exceed the quantum and we inject **nothing** — "as if the pacer never ran." In a wedge releases
+///   are zero and we inject the full quantum.
+/// * The `capacity − available` cap stops a *healthy idle* pool (no traffic, no waiters) from
+///   filling past `capacity` forever. In a wedge `available` is deeply negative, so the cap is far
+///   larger than `quantum` and never binds — the shortfall term governs. `available` is clamped at 0
+///   first because negative `available` is owed-to-parkers, not headroom to fill.
+///
+/// Injected credit is folded into the distributor's next `pass` exactly like a real release (capped
+/// by the existing no-snipe writeback), so no separate clamp or conservation special-casing is
+/// needed downstream.
+#[inline]
+pub(crate) fn pacer_inject(
+    available: i64,
+    released_since_tick: u64,
+    quantum: u64,
+    capacity: u64,
+) -> u64 {
+    let shortfall = quantum.saturating_sub(released_since_tick);
+    let headroom = capacity.saturating_sub(available.max(0) as u64);
+    shortfall.min(headroom)
+}
+
 /// The single owner of all credit distribution.
 ///
 /// Holds the task-local mirror (one list per priority) and an [`Arc`] to the shared [`Pool`]. Run
@@ -492,6 +528,20 @@ pub struct Distributor {
     /// `pass` appends grants; the sink drains them via [`WakerSink::append_wakers`] before
     /// the function returns.
     pending_wakers: VecDeque<Waker>,
+
+    /// Refill-pacer credit waiting to be injected, folded into `pull` at the top of the next `pass`
+    /// exactly like a real release. Distributor-local (not staged through the shared `returned`
+    /// atomic) so the pacer never calls `waker.wake()` on its own task — a self-wake would stall
+    /// simulated time under `sim()` and never let the timer mature. Always 0 when refill is
+    /// unconfigured.
+    refill_pending: u64,
+    /// Real bytes released (via `returned.swap` in `pass`) since the last pacer tick. The pacer
+    /// subtracts this from its per-tick quantum so a round where releases already met the rate
+    /// injects nothing. Accumulated from the swap value `pass` already reads; reset each tick.
+    released_since_tick: u64,
+    /// Current run length of consecutive injecting ticks, for the `refill.sustained_engaged` /
+    /// `refill.consecutive_ticks` signals. Reset to 0 on any tick that skipped (releases met rate).
+    refill_consecutive_ticks: u64,
 }
 
 impl Distributor {
@@ -503,6 +553,9 @@ impl Distributor {
             paid_demand: 0,
             carry: 0,
             pending_wakers: VecDeque::new(),
+            refill_pending: 0,
+            released_since_tick: 0,
+            refill_consecutive_ticks: 0,
         }
     }
 
@@ -528,10 +581,25 @@ impl Distributor {
     /// A grant has already mutated the slot's `granted` field and cannot be retracted, so the
     /// sink MUST either queue or invoke every waker handed to it before returning. See
     /// [`WakerSink`] for the contract.
-    pub async fn distribute<W>(mut self, mut budget: Budget, mut wakers_tx: W)
+    ///
+    /// # Refill pacer
+    ///
+    /// When the pool's [`Config::refill`] is set, a paced liveness floor runs alongside the normal
+    /// release-driven loop: a timer fires every `interval` (derived so one quantum per tick averages
+    /// the configured rate) and injects the shortfall of real releases against that quantum. The
+    /// timer is the *only* thing that wakes the distributor during a wedge — a `park` does not wake
+    /// it and, by definition, no `release` arrives — so injection breaks the circular wait. Under
+    /// healthy load real releases meet the rate and the tick injects nothing. The timer is always
+    /// armed and only re-armed *after it fires* (edge-triggered): re-arming on every poll would let
+    /// release/budget wakes keep pushing the deadline out so it never matures. When `refill` is
+    /// `None` the timer is never armed and this is byte-identical to the pre-pacer loop.
+    pub async fn distribute<W, Clk>(mut self, mut budget: Budget, mut wakers_tx: W, clock: Clk)
     where
         W: WakerSink,
+        Clk: precision::Clock,
     {
+        use precision::Timer as _;
+
         // Register exactly once on the first poll. Subsequent polls keep the registered waker —
         // the steady-state loop below never touches it.
         core::future::poll_fn(|cx| {
@@ -540,9 +608,49 @@ impl Distributor {
         })
         .await;
 
+        // Per-tick quantum: the largest single grant, so it always clears `min_grant_slice` and one
+        // tick fully serves the head waiter. Interval is the time for `rate` to deliver one quantum,
+        // so injecting one quantum per tick averages exactly `rate`. Both fixed for the pool's life.
+        let refill = self.pool.config.refill.map(|r| {
+            let quantum = self
+                .pool
+                .config
+                .max_single_acquire
+                .iter()
+                .copied()
+                .max()
+                .unwrap_or(1)
+                .max(1);
+            let interval_nanos = r.rate.nanos_for_bytes(quantum).max(1);
+            (quantum, Duration::from_nanos(interval_nanos))
+        });
+
+        let mut timer = clock.timer();
+        if let Some((_, interval)) = refill {
+            timer.update(clock.now() + interval);
+        }
+
         core::future::poll_fn(move |cx| {
             budget.reset();
             let _ = self.poll_distribute(&mut budget, &mut wakers_tx);
+
+            // Refill pacer. Poll the timer every wake (release / budget self-wake / timer); act only
+            // on a fire, and re-arm only then (edge-triggered — see the method docs). `poll_ready`
+            // returns `Ready` immediately when the timer is unarmed, so this is gated on `refill`.
+            if let Some((quantum, interval)) = refill {
+                if timer.poll_ready(cx).is_ready() {
+                    self.pacer_tick(quantum);
+                    // Inject reaches a parked waiter via the pass below, run on the same poll.
+                    let _ = self.poll_distribute(&mut budget, &mut wakers_tx);
+                    timer.update(clock.now() + interval);
+                    // Re-poll the freshly-armed timer so its sleep future registers our waker for
+                    // the new deadline. Without this second poll the task is only re-polled on the
+                    // next release/budget wake — but in a wedge neither fires, so the timer would
+                    // never mature again and the pacer would stall after one tick (a lost wakeup).
+                    let _ = timer.poll_ready(cx);
+                }
+            }
+
             // poll_distribute always returns Pending (it loops until quiescent); honor the
             // standard budget-exhausted self-wake.
             if budget.take_needs_wake() {
@@ -551,6 +659,52 @@ impl Distributor {
             Poll::Pending
         })
         .await
+    }
+
+    /// One refill-pacer tick: inject the shortfall of real releases against the quantum, fold it
+    /// into the next `pass`, and publish the pacer gauges. Pure-policy decision lives in
+    /// [`pacer_inject`]; this wires it to live distributor state. Never wakes its own task — the
+    /// injected credit rides the granting pass the caller runs immediately after.
+    fn pacer_tick(&mut self, quantum: u64) {
+        let available = self.pool.available.load(Ordering::Relaxed);
+        let capacity = self.pool.config.capacity;
+        let released = core::mem::take(&mut self.released_since_tick);
+
+        let inject = pacer_inject(available, released, quantum, capacity);
+
+        if inject > 0 {
+            self.refill_pending = self.refill_pending.saturating_add(inject);
+            self.refill_consecutive_ticks += 1;
+            self.pool.counters.refill_bytes_injected.add(inject);
+            self.pool.counters.refill_ticks.add(1);
+            // Each run of consecutive injecting ticks is one sustained-engaged event; count the
+            // run's onset so a transient wedge (a short burst) reads ~0 while a pool that relies on
+            // injection indefinitely climbs.
+            if self.refill_consecutive_ticks == 1 {
+                self.pool.counters.refill_sustained_engaged.add(1);
+                // Edge-triggered, permanent: a pool transitioning into pacer-dependence is an
+                // operationally significant event. Carries wedge depth so the log alone tells the
+                // story without correlating a separate scrape.
+                let deficit = (capacity as i64 - available).max(0);
+                info!(target: "credit::pool", inject, deficit, "refill engaged");
+            }
+            trace!(target: "credit::pool", inject, available, "refill tick");
+        } else {
+            // Releases met the rate this round — "as if the pacer never ran."
+            if self.refill_consecutive_ticks > 0 {
+                debug!(target: "credit::pool", "refill idle (releases caught up)");
+            }
+            self.refill_consecutive_ticks = 0;
+            self.pool.counters.refill_skipped.add(1);
+        }
+
+        // Publish the live pacer gauges (deficit = wedge depth while parked, else 0).
+        let deficit = (capacity as i64 - available).max(0);
+        self.pool.counters.refill_deficit.set(deficit);
+        self.pool
+            .counters
+            .refill_consecutive_ticks
+            .set(self.refill_consecutive_ticks as i64);
     }
 
     /// Run bounded distribution passes until quiescent or the budget is exhausted, then flush any
@@ -648,7 +802,14 @@ impl Distributor {
         // Fold any `carry` surplus from the previous pass back into `pull`. Carry exists when the
         // previous pass could not write the full pulled credit back to `available` without driving
         // it positive past live parked demand (which would let a fresh fast-path acquirer snipe).
-        let pull = self.pool.returned.swap(0, Ordering::Acquire) + self.carry;
+        // The swap reads *real* releases only — the pacer folds its injection through
+        // `refill_pending` below, never through `returned`. Accumulate the real-release volume so
+        // the next pacer tick can subtract it from its quantum (a round where releases met the rate
+        // injects nothing). Then add any pacer injection: it joins `pull` and is governed by the
+        // same no-snipe writeback cap as a real release, so it needs no separate handling.
+        let released = self.pool.returned.swap(0, Ordering::Acquire);
+        self.released_since_tick = self.released_since_tick.saturating_add(released);
+        let pull = released + self.carry + core::mem::take(&mut self.refill_pending);
         self.carry = 0;
         let outstanding =
             (self.pool.parked_demand.load(Ordering::Acquire) - self.paid_demand) as i64;

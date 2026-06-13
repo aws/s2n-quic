@@ -457,6 +457,26 @@ where
     // The send pool gates outbound stream admission via the Writer; the recv pool
     // is constructed today for symmetry but is not yet acquired against (Reader
     // integration is a follow-up).
+    //
+    // Bind the refill pacer (the liveness floor) to the endpoint's configured send rate. The pacer
+    // guarantees the pool keeps delivering credit at that rate even when no release arrives,
+    // breaking the concurrent-stream-overcommit wedge. The config default enables refill (with a
+    // placeholder rate); here we substitute the real rate. A caller that explicitly *disabled*
+    // refill (`refill: None`, via `Config::without_refill`) is preserved — `.map` only rewrites the
+    // rate of an already-enabled refill, it never re-enables a disabled one.
+    let refill_rate = overall_send_rate;
+    let send_credit_pool_config = crate::credit::Config {
+        refill: send_credit_pool_config
+            .refill
+            .map(|_| crate::credit::Refill { rate: refill_rate }),
+        ..send_credit_pool_config
+    };
+    let recv_credit_pool_config = crate::credit::Config {
+        refill: recv_credit_pool_config
+            .refill
+            .map(|_| crate::credit::Refill { rate: refill_rate }),
+        ..recv_credit_pool_config
+    };
     let send_credit_pool = crate::sync::Arc::new(crate::credit::Pool::with_counters(
         send_credit_pool_config,
         crate::credit::Counters::new_with_prefix(&counter_registry, "credit.send"),
@@ -1056,6 +1076,9 @@ where
 
         runtime.spawn_local(id, move |mut local| {
             if let Some(fd) = frame_dispatch {
+                // Clone the clock before `frame_dispatch` consumes `fd.clock` by value — the two
+                // credit distributors spawned below each need their own handle for the refill pacer.
+                let credit_clock = fd.clock.clone();
                 tasks::frame_dispatch(
                     &mut local,
                     fd.frame_rx,
@@ -1075,6 +1098,7 @@ where
                     fd.send_credit_waker_sink,
                     &counter_registry,
                     "send",
+                    credit_clock.clone(),
                 );
                 tasks::spawn_credit_distributor(
                     &mut local,
@@ -1083,6 +1107,7 @@ where
                     fd.recv_credit_waker_sink,
                     &counter_registry,
                     "recv",
+                    credit_clock,
                 );
             }
 

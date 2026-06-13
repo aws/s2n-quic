@@ -1866,7 +1866,12 @@ fn server_send_pool_caps_local_write() {
         let dist = crate::credit::Distributor::new(pool.clone());
         async move {
             use crate::socket::channel::Budget;
-            dist.distribute(Budget::new(1 << 20), TestWakerSink).await;
+            dist.distribute(
+                Budget::new(1 << 20),
+                TestWakerSink,
+                crate::time::bach::Clock::default(),
+            )
+            .await;
         }
         .spawn();
 
@@ -1903,6 +1908,58 @@ fn server_send_pool_caps_local_write() {
 
             let second = writer.write_from(&mut payload).await.expect("second write");
             assert_eq!(second, 3, "released credits allow more data");
+        }
+        .primary()
+        .spawn();
+    });
+}
+
+/// The refill pacer is a liveness floor: with a drained 3-byte pool and **no** real release ever
+/// fed back, the writer's second batch is still admitted purely because the pacer injects credit on
+/// its timer. This is the wedge-break mechanism in miniature — the distributor wakes only on
+/// release, none arrives, and only the pacer's timer-driven injection lets the parked writer
+/// proceed. Contrast `server_send_pool_caps_local_write`, which feeds a manual release.
+#[test]
+fn refill_pacer_unblocks_writer_without_release() {
+    sim(|| {
+        use crate::socket::rate::Rate;
+        const CAPACITY: u64 = 3;
+        // A high rate so the per-quantum interval is short and the test resolves in little simulated
+        // time; the quantum is `max_single_acquire == CAPACITY`.
+        let pool = test_credit_pool_with_refill(CAPACITY, Rate::new(25.0));
+
+        let dist = crate::credit::Distributor::new(pool.clone());
+        async move {
+            use crate::socket::channel::Budget;
+            dist.distribute(
+                Budget::new(1 << 20),
+                TestWakerSink,
+                crate::time::bach::Clock::default(),
+            )
+            .await;
+        }
+        .spawn();
+
+        let (mut writer, mut pusher) = PairBuilder::server().with_credit_pool(pool.clone()).build();
+
+        async move {
+            // Drain the pusher so frames don't back up, but NEVER release credit to the pool.
+            let _first = pusher.recv_frames().await;
+            let _second = pusher.recv_frames().await;
+        }
+        .primary()
+        .spawn();
+
+        async move {
+            let mut payload = Bytes::from_static(b"abcdef");
+            let first = writer.write_from(&mut payload).await.expect("first write");
+            assert_eq!(first, 3, "capped by the send pool capacity");
+
+            // No release is ever issued. Only the refill pacer can unblock this second write; if the
+            // pacer were broken (lost wakeup / never re-arming), this await would hang and the sim
+            // liveness watchdog would fire.
+            let second = writer.write_from(&mut payload).await.expect("second write");
+            assert_eq!(second, 3, "refill pacer alone admits the second batch");
         }
         .primary()
         .spawn();
@@ -3018,7 +3075,12 @@ fn write_msg_resume_does_not_underflow_credits_when_pool_cap_below_chunk() {
         let dist = crate::credit::Distributor::new(pool.clone());
         async move {
             use crate::socket::channel::Budget;
-            dist.distribute(Budget::new(1 << 20), TestWakerSink).await;
+            dist.distribute(
+                Budget::new(1 << 20),
+                TestWakerSink,
+                crate::time::bach::Clock::default(),
+            )
+            .await;
         }
         .spawn();
 
@@ -3169,6 +3231,21 @@ fn test_credit_pool(capacity: u64) -> crate::sync::Arc<crate::credit::Pool> {
         max_single_acquire: [capacity; crate::credit::Priority::LEVELS],
         // Floor == cap so a single acquire can drain the whole pool (no fair-share split).
         min_grant_slice: [capacity; crate::credit::Priority::LEVELS],
+        refill: None,
+    }))
+}
+
+/// Like [`test_credit_pool`] but with the refill pacer enabled at `rate`. Used to prove the pacer
+/// alone (no real release) keeps a parked writer making progress.
+fn test_credit_pool_with_refill(
+    capacity: u64,
+    rate: crate::socket::rate::Rate,
+) -> crate::sync::Arc<crate::credit::Pool> {
+    crate::sync::Arc::new(crate::credit::Pool::new(crate::credit::Config {
+        capacity,
+        max_single_acquire: [capacity; crate::credit::Priority::LEVELS],
+        min_grant_slice: [capacity; crate::credit::Priority::LEVELS],
+        refill: Some(crate::credit::Refill { rate }),
     }))
 }
 
@@ -3195,7 +3272,12 @@ fn credit_pool_round_trip_attaches_credits_and_admit_restores_capacity() {
         let dist = crate::credit::Distributor::new(pool.clone());
         async move {
             use crate::socket::channel::Budget;
-            dist.distribute(Budget::new(1 << 20), TestWakerSink).await;
+            dist.distribute(
+                Budget::new(1 << 20),
+                TestWakerSink,
+                crate::time::bach::Clock::default(),
+            )
+            .await;
         }
         .spawn();
 
@@ -3275,7 +3357,12 @@ fn credit_pool_parked_write_unblocks_after_release() {
         let dist = crate::credit::Distributor::new(pool.clone());
         async move {
             use crate::socket::channel::Budget;
-            dist.distribute(Budget::new(1 << 20), TestWakerSink).await;
+            dist.distribute(
+                Budget::new(1 << 20),
+                TestWakerSink,
+                crate::time::bach::Clock::default(),
+            )
+            .await;
         }
         .spawn();
 
@@ -3345,7 +3432,12 @@ fn parked_writer_drop_transfers_ownership_to_pool() {
         let dist = crate::credit::Distributor::new(pool.clone());
         async move {
             use crate::socket::channel::Budget;
-            dist.distribute(Budget::new(1 << 20), TestWakerSink).await;
+            dist.distribute(
+                Budget::new(1 << 20),
+                TestWakerSink,
+                crate::time::bach::Clock::default(),
+            )
+            .await;
         }
         .spawn();
 
@@ -3435,6 +3527,7 @@ fn parked_writer_drop_releases_held_pending_credits() {
             capacity,
             max_single_acquire: [per_acquire; crate::credit::Priority::LEVELS],
             min_grant_slice: [per_acquire; crate::credit::Priority::LEVELS],
+            refill: None,
         }));
         let (mut writer, mut pusher) = PairBuilder::default()
             .with_credit_pool(pool.clone())
@@ -3443,7 +3536,12 @@ fn parked_writer_drop_releases_held_pending_credits() {
         let dist = crate::credit::Distributor::new(pool.clone());
         async move {
             use crate::socket::channel::Budget;
-            dist.distribute(Budget::new(1 << 20), TestWakerSink).await;
+            dist.distribute(
+                Budget::new(1 << 20),
+                TestWakerSink,
+                crate::time::bach::Clock::default(),
+            )
+            .await;
         }
         .spawn();
 

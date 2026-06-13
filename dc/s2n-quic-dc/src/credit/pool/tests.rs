@@ -71,6 +71,7 @@ fn cfg(capacity: u64, max_single_acquire: u64) -> Config {
         // tests exercise the pre-fair-share full-grant contract they were written against. Tests
         // that specifically exercise demand-elastic splitting set a smaller slice explicitly.
         min_grant_slice: [max_single_acquire; Priority::LEVELS],
+        refill: None,
     }
 }
 
@@ -1152,6 +1153,7 @@ fn per_priority_caps_in_pool_acquire() {
             10, 1000, 1000, 1000, // Highest, High, MediumHigh, Medium
             1000, 1000, 1000, 1000, // MediumLow, Low, Lowest, Background
         ],
+        refill: None,
     });
 
     let waker = Waker::from(Arc::new(WakeCounter::default()));
@@ -1327,6 +1329,7 @@ fn cfg_slice(capacity: u64, max_single_acquire: u64, min_grant_slice: u64) -> Co
         capacity,
         max_single_acquire: [max_single_acquire; Priority::LEVELS],
         min_grant_slice: [min_grant_slice; Priority::LEVELS],
+        refill: None,
     }
 }
 
@@ -1547,4 +1550,56 @@ fn fair_share_partial_grant_refund_conserves() {
         free_test_slot(drain_slot);
         free_test_slot(slot);
     }
+}
+
+// ---- Refill pacer policy (`pacer_inject`) -----------------------------------------------------
+//
+// The pacer's whole decision is the pure `pacer_inject(available, released_since_tick, quantum,
+// capacity)`. These tests pin its behaviour without a clock or live pool; the timer/wiring is
+// exercised end-to-end by `endpoint::tests::fair_share::merge_order_held_open_deadlock`.
+
+use crate::credit::pool::pacer_inject;
+
+#[test]
+fn pacer_injects_full_quantum_in_a_wedge() {
+    // Deeply negative `available` (every byte owed to parkers) and zero releases this round: inject
+    // the whole quantum. The `capacity - available` headroom is huge here, so it never binds.
+    assert_eq!(pacer_inject(-2_818_048, 0, 256 * 1024, 1024 * 1024), 256 * 1024);
+}
+
+#[test]
+fn pacer_skips_when_releases_met_the_rate() {
+    // Real releases this round met or exceeded the quantum → inject nothing ("as if it never ran").
+    assert_eq!(pacer_inject(-500_000, 256 * 1024, 256 * 1024, 1024 * 1024), 0);
+    assert_eq!(pacer_inject(-500_000, 300 * 1024, 256 * 1024, 1024 * 1024), 0);
+}
+
+#[test]
+fn pacer_injects_only_the_shortfall() {
+    // Releases delivered part of the quantum; inject just the remainder.
+    let quantum = 256 * 1024;
+    let released = 100 * 1024;
+    assert_eq!(
+        pacer_inject(-500_000, released, quantum, 1024 * 1024),
+        quantum - released
+    );
+}
+
+#[test]
+fn pacer_does_not_overfill_a_healthy_idle_pool() {
+    // No waiters, `available` already near capacity: the `capacity - available` cap stops the pacer
+    // from pushing the free level past `capacity`. With `available == capacity` it injects nothing.
+    assert_eq!(pacer_inject(1024 * 1024, 0, 256 * 1024, 1024 * 1024), 0);
+    // Slightly below capacity: inject only up to the cap, not the full quantum.
+    assert_eq!(pacer_inject(1000 * 1024, 0, 256 * 1024, 1024 * 1024), 24 * 1024);
+}
+
+#[test]
+fn pacer_headroom_uses_zero_floor_for_negative_available() {
+    // Negative `available` is owed-to-parkers, not headroom; it must not inflate the cap. With a
+    // small capacity and a large negative available, headroom is `capacity - 0 = capacity`, so the
+    // shortfall (quantum) governs as long as it fits under capacity.
+    assert_eq!(pacer_inject(-10_000, 0, 4096, 8192), 4096);
+    // Quantum larger than capacity is capped at capacity (can't create more free than the pool).
+    assert_eq!(pacer_inject(-10_000, 0, 16384, 8192), 8192);
 }

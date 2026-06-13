@@ -182,14 +182,17 @@ pub fn frame_dispatch<S, Clk>(
 ///
 /// [`Distributor`]: crate::credit::Distributor
 /// [`VecDeque::append`]: std::collections::VecDeque::append
-pub fn spawn_credit_distributor(
+pub fn spawn_credit_distributor<Clk>(
     spawner: &mut impl Spawner,
     distributor: crate::credit::Distributor,
     budget: usize,
     waker_sink: endpoint::waker::Sink,
     counter_registry: &counter::Registry,
     task_label: &str,
-) {
+    clock: Clk,
+) where
+    Clk: crate::time::precision::Clock,
+{
     let task_counter = counter_registry
         .register_nominal_task("task.credit_distributor", task_label)
         .with_registration_metadata(
@@ -201,7 +204,7 @@ pub fn spawn_credit_distributor(
     let task_name = format!("task.credit_distributor.{task_label}");
     spawner.spawn_named(
         &task_name,
-        distributor.distribute(Budget::new(budget), waker_sink),
+        distributor.distribute(Budget::new(budget), waker_sink, clock),
     );
 }
 

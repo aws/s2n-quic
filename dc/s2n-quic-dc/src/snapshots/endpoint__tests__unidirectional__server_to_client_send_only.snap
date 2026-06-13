@@ -1,6 +1,5 @@
 ---
 source: dc/s2n-quic-dc/src/testing.rs
-assertion_line: 352
 expression: logs
 ---
 0:00:00.000000000 [server] DEBUG s2n_quic_dc: capacity=50000
@@ -1758,6 +1757,22 @@ expression: logs
 0:00:00.001041000 [client] TRACE g#q.dispatch.depth[recv.dispatch.0]=0
 0:00:00.001041000 [client] DEBUG event=on_flush_complete prev=Flushed next=Idle location=dc/s2n-quic-dc/src/endpoint/recv.rs
 0:00:00.001041000 [client] TRACE m#task.ack_completion.drained[recv.dispatch.0]=1
+0:00:00.001342000 [server] TRACE c#credit.send.distributor.passes=1
+0:00:00.001342000 [server] TRACE c#credit.send.refill.bytes_injected=47355
+0:00:00.001342000 [server] TRACE c#credit.send.refill.ticks=1
+0:00:00.001342000 [server] TRACE c#!credit.send.refill.sustained_engaged=1
+0:00:00.001342000 [server]  INFO refill engaged inject=47355 deficit=47355
+0:00:00.001342000 [server] TRACE c#credit.send.distributor.passes=1
+0:00:00.001342000 [server] TRACE c#credit.send.distributor.passes=1
+0:00:00.001342000 [server] TRACE c#credit.recv.distributor.passes=1
+0:00:00.001342000 [server] TRACE c#credit.recv.refill.skipped=1
+0:00:00.001342000 [server] TRACE c#credit.recv.distributor.passes=1
+0:00:00.001342000 [client] TRACE c#credit.send.distributor.passes=1
+0:00:00.001342000 [client] TRACE c#credit.send.refill.skipped=1
+0:00:00.001342000 [client] TRACE c#credit.send.distributor.passes=1
+0:00:00.001342000 [client] TRACE c#credit.recv.distributor.passes=1
+0:00:00.001342000 [client] TRACE c#credit.recv.refill.skipped=1
+0:00:00.001342000 [client] TRACE c#credit.recv.distributor.passes=1
 0:00:00.001521000 [server] TRACE c#socket.rx.ops[recv.1]=1
 0:00:00.001521000 [server] TRACE c#socket.rx.bytes[recv.1]=51
 0:00:00.001521000 [server] TRACE c#router.routed=1
@@ -4190,6 +4205,19 @@ expression: logs
 0:00:00.002521000 [server] TRACE m#task.tx_wheel.drained[send.worker.3]=0
 0:00:00.002521000 [server] TRACE c#credit.send.distributor.passes=1
 0:00:00.002521000 [server] TRACE c#credit.send.distributor.passes=1
+0:00:00.002684000 [server] TRACE c#credit.send.distributor.passes=1
+0:00:00.002684000 [server] DEBUG refill idle (releases caught up)
+0:00:00.002684000 [server] TRACE c#credit.send.refill.skipped=1
+0:00:00.002684000 [server] TRACE c#credit.send.distributor.passes=1
+0:00:00.002684000 [server] TRACE c#credit.recv.distributor.passes=1
+0:00:00.002684000 [server] TRACE c#credit.recv.refill.skipped=1
+0:00:00.002684000 [server] TRACE c#credit.recv.distributor.passes=1
+0:00:00.002684000 [client] TRACE c#credit.send.distributor.passes=1
+0:00:00.002684000 [client] TRACE c#credit.send.refill.skipped=1
+0:00:00.002684000 [client] TRACE c#credit.send.distributor.passes=1
+0:00:00.002684000 [client] TRACE c#credit.recv.distributor.passes=1
+0:00:00.002684000 [client] TRACE c#credit.recv.refill.skipped=1
+0:00:00.002684000 [client] TRACE c#credit.recv.distributor.passes=1
 0:00:00.003021000 [client] TRACE c#socket.rx.ops[recv.7]=1
 0:00:00.003021000 [client] TRACE c#socket.rx.bytes[recv.7]=11278
 0:00:00.003021000 [client] TRACE c#router.routed=1

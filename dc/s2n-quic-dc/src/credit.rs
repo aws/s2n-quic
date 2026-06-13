@@ -7,7 +7,7 @@ mod pool;
 mod slot;
 mod waker;
 
-pub use config::Config;
+pub use config::{Config, Refill};
 pub use counters::Counters;
 pub use pool::{Distributor, Pool, Priority, WakerSink};
 pub use slot::{AbandonResult, DeadSlot, DeadSlotQueue, GrantResult, Slot};

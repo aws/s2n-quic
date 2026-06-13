@@ -1,6 +1,5 @@
 ---
 source: dc/s2n-quic-dc/src/testing.rs
-assertion_line: 352
 expression: logs
 ---
 0:00:00.000000000 [server] DEBUG s2n_quic_dc: capacity=50000
@@ -12821,6 +12820,22 @@ expression: logs
 0:00:00.001159000 [client] TRACE g#q.dispatch.depth[recv.dispatch.0]=0
 0:00:00.001159000 [client] DEBUG event=on_flush_complete prev=Flushed next=Idle location=dc/s2n-quic-dc/src/endpoint/recv.rs
 0:00:00.001159000 [client] TRACE m#task.ack_completion.drained[recv.dispatch.0]=1
+0:00:00.001342000 [server] TRACE c#credit.send.distributor.passes=1
+0:00:00.001342000 [server] TRACE c#credit.send.refill.bytes_injected=942080
+0:00:00.001342000 [server] TRACE c#credit.send.refill.ticks=1
+0:00:00.001342000 [server] TRACE c#!credit.send.refill.sustained_engaged=1
+0:00:00.001342000 [server]  INFO refill engaged inject=942080 deficit=942080
+0:00:00.001342000 [server] TRACE c#credit.send.distributor.passes=1
+0:00:00.001342000 [server] TRACE c#credit.send.distributor.passes=1
+0:00:00.001342000 [server] TRACE c#credit.recv.distributor.passes=1
+0:00:00.001342000 [server] TRACE c#credit.recv.refill.skipped=1
+0:00:00.001342000 [server] TRACE c#credit.recv.distributor.passes=1
+0:00:00.001342000 [client] TRACE c#credit.send.distributor.passes=1
+0:00:00.001342000 [client] TRACE c#credit.send.refill.skipped=1
+0:00:00.001342000 [client] TRACE c#credit.send.distributor.passes=1
+0:00:00.001342000 [client] TRACE c#credit.recv.distributor.passes=1
+0:00:00.001342000 [client] TRACE c#credit.recv.refill.skipped=1
+0:00:00.001342000 [client] TRACE c#credit.recv.distributor.passes=1
 0:00:00.001521000 [server] TRACE c#socket.rx.ops[recv.1]=1
 0:00:00.001521000 [server] TRACE c#socket.rx.bytes[recv.1]=51
 0:00:00.001521000 [server] TRACE c#router.routed=1

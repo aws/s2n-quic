@@ -216,6 +216,7 @@ fn server_advertises_initial_window_against_drained_pool() {
             capacity: 0,
             max_single_acquire: [u64::MAX; crate::credit::Priority::LEVELS],
             min_grant_slice: [u64::MAX; crate::credit::Priority::LEVELS],
+            refill: None,
         };
         let pool = crate::sync::Arc::new(crate::credit::Pool::new(cfg));
         // Hold a distributor so the pool stays open (drop would close it and change the path).
@@ -2051,6 +2052,7 @@ fn maybe_send_max_data_re_polls_without_double_parking() {
             capacity: 0,
             max_single_acquire: [u64::MAX; crate::credit::Priority::LEVELS],
             min_grant_slice: [u64::MAX; crate::credit::Priority::LEVELS],
+            refill: None,
         };
         let pool = crate::sync::Arc::new(crate::credit::Pool::new(cfg));
         // Keep a distributor alive (so the pool stays open) but never

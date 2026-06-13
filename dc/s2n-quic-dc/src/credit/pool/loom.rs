@@ -136,6 +136,7 @@ fn park_races_distributor_no_overcommit() {
             max_single_acquire: [100; Priority::LEVELS],
             // Floor == cap: full grants, so these concurrency-invariant tests are unaffected by slicing.
             min_grant_slice: [100; Priority::LEVELS],
+            refill: None,
         }));
 
         // Park a waiter wanting CAP → available = -CAP, parked_demand = CAP.
@@ -229,6 +230,7 @@ fn release_wakes_parked_waiter() {
             max_single_acquire: [100; Priority::LEVELS],
             // Floor == cap: full grants, so these concurrency-invariant tests are unaffected by slicing.
             min_grant_slice: [100; Priority::LEVELS],
+            refill: None,
         }));
 
         let slot = alloc_slot();
@@ -269,6 +271,7 @@ fn concurrent_releases_accumulate() {
             max_single_acquire: [100; Priority::LEVELS],
             // Floor == cap: full grants, so these concurrency-invariant tests are unaffected by slicing.
             min_grant_slice: [100; Priority::LEVELS],
+            refill: None,
         }));
 
         let slot = alloc_slot();
@@ -316,6 +319,7 @@ fn budget_exhaustion_conservation() {
             max_single_acquire: [100; Priority::LEVELS],
             // Floor == cap: full grants, so these concurrency-invariant tests are unaffected by slicing.
             min_grant_slice: [100; Priority::LEVELS],
+            refill: None,
         }));
 
         let s1 = alloc_slot();
@@ -370,6 +374,7 @@ fn distributor_drop_races_release() {
             max_single_acquire: [100; Priority::LEVELS],
             // Floor == cap: full grants, so these concurrency-invariant tests are unaffected by slicing.
             min_grant_slice: [100; Priority::LEVELS],
+            refill: None,
         }));
 
         let slot = alloc_slot();
@@ -423,6 +428,7 @@ fn distributor_drop_races_poll_acquire() {
             max_single_acquire: [100; Priority::LEVELS],
             // Floor == cap: full grants, so these concurrency-invariant tests are unaffected by slicing.
             min_grant_slice: [100; Priority::LEVELS],
+            refill: None,
         }));
 
         let dist = Distributor::new(pool.clone());
@@ -469,6 +475,7 @@ fn newcomer_cannot_snipe() {
             max_single_acquire: [100; Priority::LEVELS],
             // Floor == cap: full grants, so these concurrency-invariant tests are unaffected by slicing.
             min_grant_slice: [100; Priority::LEVELS],
+            refill: None,
         }));
 
         // Pre-park a waiter requesting 10 → available = -10.
@@ -541,6 +548,7 @@ fn grant_races_abandon_reads_exact_granted() {
             max_single_acquire: [100; Priority::LEVELS],
             // Floor == cap: full grants, so these concurrency-invariant tests are unaffected by slicing.
             min_grant_slice: [100; Priority::LEVELS],
+            refill: None,
         }));
 
         // Drain capacity with a throwaway fast-path acquire so the next acquire is forced to park.

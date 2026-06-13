@@ -23,7 +23,7 @@ pub struct Rate {
 }
 
 impl Rate {
-    pub fn new(gigabits_per_second: f64) -> Self {
+    pub const fn new(gigabits_per_second: f64) -> Self {
         // nanos/byte = 8 / Gbps
         let nanos_per_byte = 8.0 / gigabits_per_second;
 

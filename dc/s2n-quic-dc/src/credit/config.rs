@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::pool::Priority;
+use crate::socket::rate::Rate;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Config {
@@ -34,6 +35,51 @@ pub struct Config {
     /// (finer round-robin, lower head-of-line delay) while bulk tiers use a larger one (fewer
     /// re-acquire round-trips per unit of throughput).
     pub min_grant_slice: [u64; Priority::LEVELS],
+
+    /// Paced refill: a liveness floor that guarantees the pool keeps delivering credit at a minimum
+    /// rate even when no `release` arrives.
+    ///
+    /// # Why this exists
+    ///
+    /// The shared recv pool can wedge when an application opens more concurrent receive streams
+    /// than the pool can simultaneously back: each reader advertises a window (debiting the pool)
+    /// but the application consumes them in an order it cannot complete, because the stream it
+    /// needs next is parked waiting for credit that is held — as advertised window or as
+    /// filled-but-unconsumed buffer — by streams it has not reached yet. At that point
+    /// `available + outstanding == 0` (every byte is either in flight or owed to a parker), so the
+    /// distributor can grant nobody and no `release` will ever arrive: a circular wait. The
+    /// distributor wakes only on `release` (a `park` does not wake it), so it sleeps through the
+    /// wedge forever.
+    ///
+    /// When `refill` is set, a pacer in the distributor injects one `max_single_acquire`-sized
+    /// quantum per tick, with the tick interval derived so the *average* injection rate equals
+    /// `rate` (interval = time for `rate` to deliver one quantum). Each tick injects the quantum
+    /// **minus whatever real releases already delivered that round** — so under healthy load
+    /// (releases meeting or exceeding the rate) it injects nothing and is effectively dormant, while
+    /// in a wedge (releases at zero) it injects the full quantum and keeps the parked queue served.
+    /// Sizing the quantum at the largest single grant guarantees it clears `min_grant_slice` (so a
+    /// tick always makes real grant progress) and that one tick fully serves the head waiter.
+    /// Injected credit flows through the pool's `returned` staging identically to a real release, so
+    /// the existing no-snipe writeback governs it and no separate clamp is needed.
+    ///
+    /// This deliberately relaxes strict conservation: a late release landing on top of injected
+    /// credit can transiently push the pool above nominal `capacity`. That overshoot is intended —
+    /// a release that did not arrive in time did not contribute to bandwidth — and self-drains as
+    /// flow re-establishes. Aggregate buffered recv memory remains bounded by the per-stream
+    /// advertised-window caps (`Σ ≤ streams * max_single_acquire`), not by nominal `capacity`.
+    pub refill: Option<Refill>,
+}
+
+/// Paced-refill parameters. See [`Config::refill`].
+#[derive(Clone, Copy, Debug)]
+pub struct Refill {
+    /// Average rate of the liveness floor. The pacer injects one `max_single_acquire`-sized quantum
+    /// per tick and derives the tick interval from this rate (interval = time for `rate` to deliver
+    /// one quantum), so the average injection rate is exactly `rate` regardless of the quantum size.
+    /// Sourced from the endpoint's overall send rate (or a fraction of it) so the floor tracks the
+    /// line rate the system was already running at — fast enough that a transient wedge does not
+    /// crater throughput.
+    pub rate: Rate,
 }
 
 /// Default minimum fair-share grant slice: a handful of MTU-sized frames. Large enough that a
@@ -57,9 +103,19 @@ impl Default for Config {
                 large, large, large, large, // MediumLow, Low, Lowest, Background
             ],
             min_grant_slice: [DEFAULT_MIN_GRANT_SLICE; Priority::LEVELS],
+            refill: Some(DEFAULT_REFILL),
         }
     }
 }
+
+/// Default refill: the liveness floor is **on by default**. The `rate` here is a placeholder; the
+/// endpoint substitutes its own `overall_send_rate` when building the pools (see `endpoint::setup`).
+/// A caller that wants the pacer off sets `refill: None` explicitly — the endpoint preserves that
+/// choice (it only overrides the *rate* of an already-enabled refill, never re-enables a disabled
+/// one).
+const DEFAULT_REFILL: Refill = Refill {
+    rate: Rate::new(10.0),
+};
 
 impl Config {
     /// Construct a config with the given capacity and the default per-priority caps scaled to
@@ -76,7 +132,24 @@ impl Config {
                 large, large, large, large, // MediumLow, Low, Lowest, Background
             ],
             min_grant_slice: [DEFAULT_MIN_GRANT_SLICE; Priority::LEVELS],
+            refill: Some(DEFAULT_REFILL),
         }
+    }
+
+    /// Enable paced refill (a liveness floor) with the given parameters. See [`Config::refill`].
+    #[inline]
+    pub fn with_refill(mut self, refill: Refill) -> Self {
+        self.refill = Some(refill);
+        self
+    }
+
+    /// Disable the paced-refill liveness floor. The endpoint preserves this — it will not re-enable
+    /// refill on a pool whose config opted out. Use for tests/workloads where the per-endpoint
+    /// refill timer's wakeups are undesirable (e.g. large many-node simulations).
+    #[inline]
+    pub fn without_refill(mut self) -> Self {
+        self.refill = None;
+        self
     }
 
     /// Override the per-priority cap with a single value applied uniformly.
@@ -141,6 +214,9 @@ impl Config {
             capacity,
             max_single_acquire,
             min_grant_slice,
+            // Carried through unchanged: the refill pacer derives its per-tick quantum from
+            // `max_single_acquire` (already normalized above), so it needs no separate clamp.
+            refill: self.refill,
         }
     }
 
@@ -160,6 +236,7 @@ mod tests {
             capacity: 1000,
             max_single_acquire: [u64::MAX; Priority::LEVELS],
             min_grant_slice: [DEFAULT_MIN_GRANT_SLICE; Priority::LEVELS],
+            refill: None,
         }
         .normalized();
         for entry in c.max_single_acquire.iter() {
@@ -173,6 +250,7 @@ mod tests {
             capacity: 1000,
             max_single_acquire: [0; Priority::LEVELS],
             min_grant_slice: [DEFAULT_MIN_GRANT_SLICE; Priority::LEVELS],
+            refill: None,
         }
         .normalized();
         for entry in c.max_single_acquire.iter() {
@@ -187,6 +265,7 @@ mod tests {
             capacity: 1000,
             max_single_acquire: caps,
             min_grant_slice: [DEFAULT_MIN_GRANT_SLICE; Priority::LEVELS],
+            refill: None,
         }
         .normalized();
         let priorities = [

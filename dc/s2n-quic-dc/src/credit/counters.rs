@@ -13,6 +13,10 @@
 //!     persistent nonzero rate means the budget is tuned too tight or the pool is overdriven.
 //!   - `!credit.abandon.granted_race` — abandon-vs-grant CAS losses. Correct behaviour, but a
 //!     sustained nonzero value means callers are dropping `AcquireFuture`s aggressively.
+//!   - `!credit.{dir}.refill.sustained_engaged` — runs of consecutive pacer ticks that injected
+//!     credit with no intervening release-met-rate tick. A short burst breaks a transient wedge and
+//!     is fine; sustained growth means the pool relies on injection indefinitely — an undersized
+//!     pool for the workload's concurrency, or a credit leak the pacer is masking.
 //!
 //! All counters and gauges are constructed from a [`crate::counter::Registry`]. Use
 //! [`Counters::default`] when no registry is wired up — it registers against a default `Registry`
@@ -61,6 +65,30 @@ pub struct Counters {
     /// the distributor's `is_dead` check and its grant CAS — correct behaviour, but a high rate
     /// signals callers dropping futures aggressively. (`!`-prefixed: investigate when nonzero.)
     pub abandon_granted_race: Counter,
+
+    /// Bytes injected by the refill pacer (the liveness floor). Zero unless `Config::refill` is set
+    /// and the pool actually wedged; pairs with `release.bytes` to gauge how much forward progress
+    /// came from injection vs. real releases.
+    pub refill_bytes_injected: Counter,
+    /// Pacer ticks that injected credit (the round's real releases fell short of the rate). Each is
+    /// a tick the pacer kept the parked queue moving.
+    pub refill_ticks: Counter,
+    /// Pacer ticks that injected nothing because real releases already met or exceeded the rate this
+    /// round — the pool was healthy, so it was "as if the pacer never ran."
+    pub refill_skipped: Counter,
+    /// Runs of consecutive injecting ticks with no intervening skip. A short burst breaks a
+    /// transient wedge; sustained growth means the pool relies on injection indefinitely (undersized
+    /// pool or a masked leak). (`!`-prefixed: investigate when growing.)
+    pub refill_sustained_engaged: Counter,
+    /// Current run length of consecutive injecting ticks (resets to 0 on a skip). The live
+    /// counterpart to `refill_sustained_engaged`: a sampled scrape of this run length answers "is
+    /// the pool wedged right now, and for how long" where the monotonic counters only answer "ever".
+    /// Published by the distributor once per tick.
+    pub refill_consecutive_ticks: Gauge,
+    /// Wedge depth in bytes: `max(0, capacity − available)` while a waiter is parked, else 0. Would
+    /// have read ~2.8 MB on the repro that motivated the pacer. Published by the distributor each
+    /// tick (it already reads `available` every pass).
+    pub refill_deficit: Gauge,
 }
 
 impl Counters {
@@ -109,6 +137,14 @@ impl Counters {
             distributor_budget_exhausted: registry
                 .register(format!("!{prefix}.distributor.budget_exhausted")),
             abandon_granted_race: registry.register(format!("!{prefix}.abandon.granted_race")),
+            refill_bytes_injected: registry.register_bytes(format!("{prefix}.refill.bytes_injected")),
+            refill_ticks: registry.register(format!("{prefix}.refill.ticks")),
+            refill_skipped: registry.register(format!("{prefix}.refill.skipped")),
+            refill_sustained_engaged: registry
+                .register(format!("!{prefix}.refill.sustained_engaged")),
+            refill_consecutive_ticks: registry
+                .register_gauge(format!("{prefix}.refill.consecutive_ticks")),
+            refill_deficit: registry.register_gauge(format!("{prefix}.refill.deficit")),
         }
     }
 }

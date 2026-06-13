@@ -1,0 +1,24 @@
+---
+source: dc/s2n-quic-dc/src/testing.rs
+expression: logs
+---
+0:00:00.000000000 [main] DEBUG distributor created
+0:00:00.000000000 [main] TRACE c#credit.distributor.passes=1
+0:00:00.000000000 [main] TRACE c#credit.acquire.fast_path=1
+0:00:00.000000000 [main] TRACE c#credit.acquire.bytes=3
+0:00:00.000000000 [main] TRACE c#credit.acquire.parked[Medium]=1
+0:00:00.000000000 [main] TRACE c#credit.acquire.bytes=3
+0:00:00.000000000 [main] TRACE c#credit.distributor.passes=1
+0:00:00.000001000 [main] TRACE c#credit.distributor.passes=1
+0:00:00.000001000 [main] TRACE c#credit.refill.bytes_injected=3
+0:00:00.000001000 [main] TRACE c#credit.refill.ticks=1
+0:00:00.000001000 [main] TRACE c#!credit.refill.sustained_engaged=1
+0:00:00.000001000 [main]  INFO refill engaged inject=3 deficit=6
+0:00:00.000001000 [main] TRACE c#credit.distributor.passes=1
+0:00:00.000001000 [main] TRACE c#credit.distributor.granted=1
+0:00:00.000001000 [main] TRACE c#credit.distributor.passes=1
+0:00:00.000001000 [main] DEBUG Writer dropping binding_id=1 status=Open next_offset=6 inflight_bytes=6 remote_max_data=1048576
+0:00:00.000001000 [main] DEBUG Sent FIN binding_id=1
+0:00:00.000001000 [main] DEBUG event=on_send_fin prev=Open next=FinSent location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.000001000 [main] DEBUG event=on_shutdown prev=FinSent next=Shutdown location=dc/s2n-quic-dc/src/stream/writer.rs
+0:00:00.000001000 [main] DEBUG distributor dropping; closing pool
