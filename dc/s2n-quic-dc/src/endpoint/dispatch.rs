@@ -32,6 +32,9 @@ use core::time::Duration;
 use s2n_quic_core::varint::VarInt;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
+#[cfg(test)]
+mod tests;
+
 pub(crate) enum Error {
     PeerStateLookup {
         dest_addr: crate::msg::addr::Addr,
@@ -68,6 +71,19 @@ enum DecryptResult {
 enum FastPathError {
     HeaderMismatch,
     WriteFailed,
+    /// The packet's routing fields steered it to a binding we are rejecting
+    /// (stale/unallocated/future binding, missing acceptor, or not a server view), so the
+    /// scatter-decrypt never ran and the packet is still un-authenticated. The caller must
+    /// authenticate it in place before ACKing.
+    ///
+    /// Why this matters: a binding rejection is not retransmittable, so `process` ACKs it to
+    /// stop the peer resending. But `queue_id`/`binding_id` are cleartext routing fields carried
+    /// as AEAD associated data — an in-flight corruption of those bytes reroutes an otherwise
+    /// valid packet (destined for a *live* stream) to a dead binding. ACKing it un-authenticated
+    /// would make the sender free that packet number and stop retransmitting, leaving a permanent
+    /// hole on the real stream. Authenticating means a tampered packet fails the AEAD tag check
+    /// and the ACK is suppressed, so the genuine packet is retransmitted and recovers.
+    AuthForDrop,
 }
 
 /// Fast path: decrypt a single-QueueMsg-frame packet directly into the slot buffer.
@@ -113,7 +129,8 @@ fn decrypt_fast_path(
     // Handle init: bind the slot before attempting push_msg
     if let Some(acceptor_id) = dest_acceptor_id {
         let Some(server_view) = queue_view.as_server_mut() else {
-            return Ok(AutoWake::default());
+            // Un-authenticated reject — caller must authenticate before ACKing. See `AuthForDrop`.
+            return Err(FastPathError::AuthForDrop);
         };
 
         let Some(acceptor_sender) = acceptor_registry.get(acceptor_id) else {
@@ -126,7 +143,8 @@ fn decrypt_fast_path(
                 error::ACCEPTOR_NOT_FOUND,
                 frame_tx,
             );
-            return Ok(AutoWake::default());
+            // Un-authenticated reject — caller must authenticate before ACKing. See `AuthForDrop`.
+            return Err(FastPathError::AuthForDrop);
         };
 
         match server_view.bind_for_msg(
@@ -184,7 +202,8 @@ fn decrypt_fast_path(
                 }
             }
             Ok(crate::queue::BindResult::Bound { .. }) => {}
-            Err(_) => return Ok(AutoWake::default()),
+            // Un-authenticated reject — caller must authenticate before ACKing. See `AuthForDrop`.
+            Err(_) => return Err(FastPathError::AuthForDrop),
         }
     }
 
@@ -230,7 +249,10 @@ fn decrypt_fast_path(
             recv_credit_pool.release(release_bytes);
             w
         }
-        Err(crate::queue::MsgError::Queue(_)) => AutoWake::default(),
+        // `send_msg` rejected on binding validation *before* invoking the scatter-decrypt
+        // write callback, so the packet was never authenticated. Caller must authenticate
+        // before ACKing — see `AuthForDrop`.
+        Err(crate::queue::MsgError::Queue(_)) => return Err(FastPathError::AuthForDrop),
         Err(crate::queue::MsgError::Write(_)) => return Err(FastPathError::WriteFailed),
     })
 }
@@ -241,7 +263,7 @@ fn decrypt_fast_path(
 /// dispatches each frame in the packet to its type-specific handler. Response frames
 /// (ACKs, QueueValidateRequest, QueueReset) are emitted to `response_tx`.
 pub(crate) fn process<Clk, Route>(
-    packet: Entry<packet::datagram::decoder::Packet<descriptor::Filled>>,
+    mut packet: Entry<packet::datagram::decoder::Packet<descriptor::Filled>>,
     recv_cache: &mut recv::Cache,
     ack_burst_tx: &mut impl channel::UnboundedSender<Rc<RefCell<recv::Context>>>,
     idle_wheel_tx: &mut impl channel::UnboundedSender<Rc<RefCell<recv::Context>>>,
@@ -273,13 +295,17 @@ where
         RoutingInfo::None => return Err(Error::MissingSenderId),
     };
 
-    // Collect the fields we need before the closure captures `packet`.
-    let app_header_slice: &[u8] = packet.application_header();
+    // Collect the fields we need before the closure borrows `packet` mutably. All of these
+    // are `Copy`, so nothing keeps `packet` borrowed across the closure — the fast path's
+    // `AuthForDrop` recovery needs `&mut packet` to decrypt in place.
     let decrypt_len = packet.decrypt_into_len();
     let ecn = packet.storage().ecn();
+    let remote_addr = packet.storage().remote_address().get();
+    let source_control_port = packet.source_control_port();
 
     // Detect single-QueueMsg frame for the fast path (scatter-decrypt into slot buffer).
-    let single_queue_msg = decode::detect_single_queue_msg(app_header_slice, decrypt_len);
+    let single_queue_msg =
+        decode::detect_single_queue_msg(packet.application_header(), decrypt_len);
 
     // Get or create peer receive state, decrypting the packet on-demand.
     //
@@ -300,7 +326,7 @@ where
 
         // Fast path: single QueueMsg frame — decrypt directly into the slot buffer.
         if let Some(header) = single_queue_msg {
-            return decrypt_fast_path(
+            return match decrypt_fast_path(
                 header,
                 opener,
                 &packet,
@@ -316,9 +342,18 @@ where
                 writer_metrics,
                 send_credit_pool,
                 recv_credit_pool,
-            )
-            .map(DecryptResult::FastPath)
-            .ok();
+            ) {
+                Ok(waker) => Some(DecryptResult::FastPath(waker)),
+                // The packet routed to a binding we are rejecting, so the scatter-decrypt
+                // never ran. Authenticate it in place before the caller ACKs: a tampered
+                // packet fails here and returns `None` → `CacheError::DecryptFailed` → no ACK
+                // → the genuine packet is retransmitted. See `FastPathError::AuthForDrop`.
+                Err(FastPathError::AuthForDrop) => match packet.decrypt_in_place(opener) {
+                    Ok(()) => Some(DecryptResult::FastPath(AutoWake::default())),
+                    Err(_) => None,
+                },
+                Err(FastPathError::HeaderMismatch) | Err(FastPathError::WriteFailed) => None,
+            };
         }
 
         // Slow path: allocate BytesMut, decrypt into it, dispatch frames later.
@@ -349,7 +384,6 @@ where
     };
     let (decrypt_result, peer_rc, cache_hit) = {
         let _guard = counters.rx_peer_lookup_time.start();
-        let remote_addr = packet.storage().remote_address().get();
         match recv_cache.get_or_insert(
             &credentials,
             crate::endpoint::id::RemoteSenderId::new(source_sender_id),
@@ -363,7 +397,7 @@ where
             Ok(v) => v,
             Err(recv::CacheError::PathSecretNotFound) => {
                 let mut dest_addr = crate::msg::addr::Addr::new(remote_addr);
-                dest_addr.set_port(packet.source_control_port());
+                dest_addr.set_port(source_control_port);
                 return Err(Error::PeerStateLookup {
                     dest_addr,
                     credentials,
@@ -383,7 +417,7 @@ where
             }
             Err(recv::CacheError::ReplayDetected) => {
                 let mut dest_addr = crate::msg::addr::Addr::new(remote_addr);
-                dest_addr.set_port(packet.source_control_port());
+                dest_addr.set_port(source_control_port);
                 return Err(Error::StaleKey {
                     dest_addr,
                     credentials,
@@ -456,9 +490,11 @@ where
     };
     let mut payload_storage = payload_storage;
 
-    // Multi-frame packet: `app_header_slice` contains the per-frame metadata
+    // Multi-frame packet: the application header holds the per-frame metadata
     // (Header type tag + optional payload_len VarInt) and `payload_storage`
-    // contains the concatenated, decrypted frame payloads.
+    // contains the concatenated, decrypted frame payloads. The slow path decrypts into a
+    // separate buffer (not in place), so the packet's cleartext application header is intact.
+    let app_header_slice: &[u8] = packet.application_header();
 
     let _dispatch_guard = counters.rx_dispatch_time.start();
     let mut is_ack_eliciting = false;
