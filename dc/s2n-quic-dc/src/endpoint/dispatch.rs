@@ -253,6 +253,13 @@ fn decrypt_fast_path(
         // write callback, so the packet was never authenticated. Caller must authenticate
         // before ACKing — see `AuthForDrop`.
         Err(crate::queue::MsgError::Queue(_)) => return Err(FastPathError::AuthForDrop),
+        // The `MsgTable` rejected the chunk's geometry *before* the scatter-decrypt ran, so the
+        // packet is likewise un-authenticated. Geometry fields (`msg_id`, `chunk_index`,
+        // `message_size`, `chunk_size`, …) are cleartext AEAD associated data, so an in-flight
+        // corruption of any of them lands here for an otherwise-valid live-stream packet —
+        // authenticate before ACKing so a tampered packet is dropped (→ retransmit) rather than
+        // ACKed into a permanent stream hole. See `AuthForDrop`.
+        Err(crate::queue::MsgError::InsertRejected) => return Err(FastPathError::AuthForDrop),
         Err(crate::queue::MsgError::Write(_)) => return Err(FastPathError::WriteFailed),
     })
 }
@@ -1077,6 +1084,16 @@ fn handle_queue_msg(
         }
         Err(crate::queue::MsgError::Queue(crate::queue::Error::SenderClosed)) => {}
         Err(crate::queue::MsgError::Queue(crate::queue::Error::CapExceeded(_))) => {}
+        Err(crate::queue::MsgError::InsertRejected) => {
+            // The MsgTable rejected this chunk's geometry. On the slow path the packet was already
+            // authenticated (decrypted up front before frame dispatch), so dropping the chunk is
+            // safe and the packet is still legitimately ACKed by the caller.
+            trace!(
+                binding_id = binding_id.as_u64(),
+                queue_id = local_queue_id.as_u64(),
+                "QueueMsg mixed-path insert rejected - dropping"
+            );
+        }
         Err(crate::queue::MsgError::Write(_)) => {
             trace!(
                 binding_id = binding_id.as_u64(),

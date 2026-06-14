@@ -156,12 +156,17 @@ pub(crate) fn process_ack<Clk, Rand>(
     // covered by a later (smaller) range in the same ACK frame.
     context.rtt_tracker.on_ack_done(max_acked_pn);
 
-    // Update RTT estimator and CCA.
+    // Update the RTT estimator.
+    //
+    // This must happen before loss detection because `detect_loss` derives its time-threshold
+    // from `loss_time_threshold()`, which depends on the smoothed RTT. The matching CCA success
+    // update (`on_packet_ack`) is deliberately deferred until *after* loss detection and ECN —
+    // see the `on_packet_ack` call below.
     //
     // Data ACKs take priority: if any inflight data packet was acknowledged we
     // compute the RTT sample from the most recently sent one. Otherwise, fall
     // back to the ack-only RTT sample (read-heavy path) if one is available.
-    if let Some((time_sent, cc_info)) = cca_args {
+    if let Some((time_sent, _cc_info)) = cca_args {
         let rtt_sample = now
             .saturating_duration_since(time_sent)
             .saturating_sub(ack_delay)
@@ -173,15 +178,6 @@ pub(crate) fn process_ack<Clk, Rand>(
             now,
             true,
             PacketNumberSpace::ApplicationData,
-        );
-
-        context.cca.on_packet_ack(
-            cc_info.first_sent_time,
-            bytes_acked,
-            cc_info,
-            &context.rtt_estimator,
-            random,
-            now,
         );
     } else if let Some(ack_only_time_sent) = ack_only_rtt_sample {
         // No data was ACKed in this frame, but the peer acknowledged our
@@ -234,6 +230,26 @@ pub(crate) fn process_ack<Clk, Rand>(
             cancelled,
             now,
             random,
+        );
+    }
+
+    // Apply the CCA success update *after* loss detection and ECN.
+    //
+    // BBRv2 adapts its loss-based lower bounds (`bw_lo`/`inflight_lo`) inside `on_packet_ack`,
+    // but only on a loss-round boundary and only when loss for that round has already been
+    // recorded. Running `detect_loss` first ensures a boundary-closing ACK that also carries
+    // loss reacts in the same round, matching the canonical recovery manager which detects loss
+    // before calling `on_ack`. The RTT estimator was already updated above (loss detection
+    // depends on it). `cca_args`/`bytes_acked` were captured during the ACK-removal pass, so this
+    // adds no extra iteration over the inflight map.
+    if let Some((_time_sent, cc_info)) = cca_args {
+        context.cca.on_packet_ack(
+            cc_info.first_sent_time,
+            bytes_acked,
+            cc_info,
+            &context.rtt_estimator,
+            random,
+            now,
         );
     }
 

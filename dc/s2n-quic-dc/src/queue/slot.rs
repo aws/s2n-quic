@@ -418,7 +418,13 @@ impl Slot {
                 ),
                 Err(e) => {
                     trace!(msg_id, chunk_index, ?e, "slot::send_msg insert failed");
-                    return Ok((half::AutoWake::default(), 0));
+                    // The insert was rejected BEFORE `write_fn` ran. On the fast path `write_fn`
+                    // is the scatter-decrypt — the only AEAD authentication on that path — so this
+                    // chunk has not been authenticated. Surface it distinctly (rather than the old
+                    // `Ok((default, 0))`) so the fast path can authenticate-before-ACK instead of
+                    // ACKing an un-verified packet. The slow path, already decrypted up front,
+                    // treats this as a benign drop.
+                    return Err(super::MsgError::InsertRejected);
                 }
             }
         };

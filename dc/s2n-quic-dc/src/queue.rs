@@ -69,6 +69,13 @@ pub enum Error<T> {
 pub enum MsgError<E> {
     /// Queue validation failed before the write callback could complete.
     Queue(Error<()>),
+    /// The `MsgTable` rejected the chunk's geometry (duplicate, stale, gap, overflow, size/chunk
+    /// mismatch, …) — a reject that fires *before* the write callback runs. On the fast path the
+    /// write callback IS the scatter-decrypt (the only AEAD authentication on that path), so a
+    /// reject here means the packet was never authenticated; the caller must authenticate before
+    /// ACKing (see `endpoint::dispatch::FastPathError::AuthForDrop`). On the slow path the packet
+    /// was already decrypted up front, so this is just a dropped-but-ACKed chunk.
+    InsertRejected,
     /// The caller-provided write callback failed.
     Write(E),
 }

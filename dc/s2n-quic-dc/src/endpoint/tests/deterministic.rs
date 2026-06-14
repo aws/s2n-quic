@@ -1076,3 +1076,261 @@ fn loss_latency_distribution() {
         "n={n}\nmean={mean:?}\np50={p50:?}\np90={p90:?}\np99={p99:?}\nmax={max:?}"
     ));
 }
+
+// ── Bidirectional / ACK loss recovery ────────────────────────────────────────
+
+/// Runs a bidirectional-loss echo: packets in BOTH directions (including ACKs
+/// flowing client→server) are dropped according to a seeded PRNG with a fixed
+/// per-packet drop probability.
+///
+/// The existing [`DroppedPackets`] suite only drops server→client packets, so
+/// the client's send-path recovery and ACK loss are never exercised. This is the
+/// regime where a "stuck in PTO probing, never recovers" bug would hide: an ACK
+/// burst loss can drive a sender's inflight map empty (PTO disarms) while pending
+/// frames remain, and if the context is never rescheduled the transfer hangs.
+///
+/// `drop_in_1000` is the drop probability expressed in parts-per-thousand applied
+/// independently to every packet on every link. Returns the elapsed simulated
+/// time; panics (via the transfer timeout) if recovery wedges.
+fn bidirectional_loss_sim(seed: u64, drop_in_1000: u64, body_len: usize) -> Duration {
+    const TRANSFER_TIMEOUT: Duration = Duration::from_secs(60);
+
+    let acceptor_id = VarInt::from_u8(1);
+
+    let end_time: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+    let end_time_inner = end_time.clone();
+
+    let _guard = without_tracing();
+    sim(|| {
+        {
+            // Drop packets on every link in both directions using a deterministic
+            // PRNG. No source filter — ACKs (client→server) are equally subject to
+            // loss, unlike the one-directional DroppedPackets suite.
+            let rng = Arc::new(Mutex::new(xorshift::Rng::with_seed(seed)));
+            bach::net::monitor::on_packet_sent(move |_packet| {
+                let roll = rng.lock().unwrap().next_u64() % 1000;
+                if roll < drop_in_1000 {
+                    return bach::net::monitor::Command::Drop;
+                }
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        // ── Client ────────────────────────────────────────────────────────
+        {
+            let end_time = end_time_inner.clone();
+            async move {
+                let mut client = Client::new();
+                let stream = client
+                    .connect("server:0", acceptor_id)
+                    .await
+                    .expect("connect failed");
+
+                let (mut reader, mut writer) = stream.into_split();
+                let mut body = Data::new(body_len as u64);
+
+                timeout(TRANSFER_TIMEOUT, async {
+                    writer
+                        .write_all_from_fin(&mut body)
+                        .await
+                        .expect("client write");
+
+                    let mut rx = Data::new(body_len as u64);
+                    let _ = reader.read_to_end(&mut rx).await.expect("client read");
+                    assert!(rx.is_finished(), "client did not receive complete echo");
+                })
+                .await
+                .expect("transfer timed out — recovery wedged");
+
+                *end_time.lock().unwrap() = Some(Instant::now());
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        }
+
+        // ── Server ────────────────────────────────────────────────────────
+        {
+            async move {
+                let server = Server::new();
+                let mut acceptor = server
+                    .register_acceptor_channel(acceptor_id, 8)
+                    .expect("acceptor registration failed");
+
+                while let Some(stream) = acceptor.recv().await {
+                    async move {
+                        let stream = stream;
+                        let (mut reader, mut writer) = stream.into_split();
+
+                        let mut rx = Data::new(body_len as u64);
+                        let _ = reader.read_to_end(&mut rx).await.expect("server read");
+                        assert!(rx.is_finished(), "server did not receive complete request");
+
+                        let mut response = Data::new(body_len as u64);
+                        writer
+                            .write_all_from_fin(&mut response)
+                            .await
+                            .expect("server write");
+                    }
+                    .primary()
+                    .spawn();
+                }
+            }
+            .group("server")
+            .spawn();
+        }
+    });
+
+    let elapsed = end_time.lock().unwrap().unwrap().elapsed_since_start();
+    elapsed
+}
+
+/// A 64 KiB echo with heavy (30%) loss in BOTH directions must still complete.
+/// If the sender wedges in PTO probing after an ACK-loss burst, this hangs and
+/// the transfer timeout fires.
+#[test]
+fn bidirectional_loss_recovers() {
+    let elapsed = bidirectional_loss_sim(0x1234_5678_9abc_def0, 300, 1 << 16);
+    info!(?elapsed, "bidirectional loss transfer completed");
+}
+
+/// Sweep several seeds and loss rates (including very heavy 50% bidirectional
+/// loss) to widen the search for a recovery wedge. Liveness only.
+#[test]
+fn bidirectional_loss_seed_sweep() {
+    let _guard = without_tracing();
+    for seed in 0..16u64 {
+        for &drop in &[200u64, 350, 500] {
+            let _ = bidirectional_loss_sim(
+                seed.wrapping_mul(0x9e37_79b9_7f4a_7c15).wrapping_add(1),
+                drop,
+                1 << 15,
+            );
+        }
+    }
+}
+
+/// Extreme sustained bidirectional loss (70–90%). At these rates the PTO backs
+/// off deeply (up to MAX_BACKOFF) and the sender spends almost all its time
+/// probing. This is the harshest test of the "start probing → never pull out"
+/// hypothesis: if any probe/ACK interaction wedges the inflight map, the 60s
+/// transfer timeout fires.
+#[test]
+fn extreme_bidirectional_loss_recovers() {
+    let _guard = without_tracing();
+    for seed in 0..8u64 {
+        for &drop in &[700u64, 800, 900] {
+            let _ = bidirectional_loss_sim(
+                seed.wrapping_mul(0xa24b_aed4_963e_e407).wrapping_add(7),
+                drop,
+                1 << 13,
+            );
+        }
+    }
+}
+
+/// Drops a contiguous burst at the *tail* of the transfer in both directions.
+///
+/// Tail loss is the canonical PTO trigger: the data (and its retransmits) plus
+/// the ACKs that would acknowledge them are all dropped for a window, so the
+/// sender exhausts its ACK-clocked sending and must rely entirely on PTO probes
+/// to make forward progress once the window reopens. This exercises the
+/// enter-probing / exit-probing transition directly.
+///
+/// `tail_drop_start` is the global packet index at which an unconditional drop
+/// window of `tail_drop_len` packets begins (both directions). After the window
+/// the link is clean, so recovery depends solely on the sender resuming from the
+/// probe state.
+fn tail_loss_sim(tail_drop_start: usize, tail_drop_len: usize, body_len: usize) -> Duration {
+    const TRANSFER_TIMEOUT: Duration = Duration::from_secs(60);
+
+    let acceptor_id = VarInt::from_u8(1);
+    let end_time: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+    let end_time_inner = end_time.clone();
+
+    let _guard = without_tracing();
+    sim(|| {
+        {
+            let idx = AtomicUsize::new(0);
+            let drop_end = tail_drop_start + tail_drop_len;
+            bach::net::monitor::on_packet_sent(move |_packet| {
+                let i = idx.fetch_add(1, Ordering::Relaxed);
+                if i >= tail_drop_start && i < drop_end {
+                    return bach::net::monitor::Command::Drop;
+                }
+                bach::net::monitor::Command::Pass
+            });
+        }
+
+        {
+            let end_time = end_time_inner.clone();
+            async move {
+                let mut client = Client::new();
+                let stream = client
+                    .connect("server:0", acceptor_id)
+                    .await
+                    .expect("connect failed");
+                let (mut reader, mut writer) = stream.into_split();
+                let mut body = Data::new(body_len as u64);
+                timeout(TRANSFER_TIMEOUT, async {
+                    writer
+                        .write_all_from_fin(&mut body)
+                        .await
+                        .expect("client write");
+                    let mut rx = Data::new(body_len as u64);
+                    let _ = reader.read_to_end(&mut rx).await.expect("client read");
+                    assert!(rx.is_finished(), "client did not receive complete echo");
+                })
+                .await
+                .expect("transfer timed out — probe recovery wedged");
+                *end_time.lock().unwrap() = Some(Instant::now());
+            }
+            .group("client")
+            .primary()
+            .spawn();
+        }
+
+        {
+            async move {
+                let server = Server::new();
+                let mut acceptor = server
+                    .register_acceptor_channel(acceptor_id, 8)
+                    .expect("acceptor registration failed");
+                while let Some(stream) = acceptor.recv().await {
+                    async move {
+                        let stream = stream;
+                        let (mut reader, mut writer) = stream.into_split();
+                        let mut rx = Data::new(body_len as u64);
+                        let _ = reader.read_to_end(&mut rx).await.expect("server read");
+                        assert!(rx.is_finished(), "server did not receive complete request");
+                        let mut response = Data::new(body_len as u64);
+                        writer
+                            .write_all_from_fin(&mut response)
+                            .await
+                            .expect("server write");
+                    }
+                    .primary()
+                    .spawn();
+                }
+            }
+            .group("server")
+            .spawn();
+        }
+    });
+
+    let elapsed = end_time.lock().unwrap().unwrap().elapsed_since_start();
+    elapsed
+}
+
+/// Sweep tail-loss windows of increasing length at several offsets. A long tail
+/// drop forces deep PTO backoff; recovery must still complete once the link
+/// reopens.
+#[test]
+fn tail_loss_recovers() {
+    let _guard = without_tracing();
+    for &start in &[8usize, 20, 50] {
+        for &len in &[5usize, 15, 30, 60] {
+            let _ = tail_loss_sim(start, len, 1 << 14);
+        }
+    }
+}

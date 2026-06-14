@@ -423,4 +423,115 @@ mod tests {
         assert_eq!(Bandwidth::ZERO, state.bw_latest);
         assert_eq!(0, state.inflight_latest);
     }
+
+    /// Proves that the order of `on_packet_lost` relative to the ACK-driven `update`/`advance`
+    /// cycle changes whether the loss-based lower bound (`inflight_lo`) is clamped in the round
+    /// where the loss actually occurred.
+    ///
+    /// Background: the canonical recovery manager runs loss detection *before* `on_ack`
+    /// (`manager::detect_and_remove_lost_packets` at the top of `process_new_acked_packets`),
+    /// whereas the dc stack (`endpoint::ack::process_ack`) runs `on_ack` *first*, then loss
+    /// detection. `on_ack` drives `update` (which adapts the lower bounds, but only when
+    /// `loss_in_round()` is already true on a loss-round boundary) and then `advance` (which
+    /// resets the per-round loss state). `on_packet_lost` is what sets `loss_in_round()`.
+    ///
+    /// The scenario below makes a single ACK close a loss round (`delivered_bytes` reaches the
+    /// armed round end) in the same event as a reported loss. Replaying that event in the two
+    /// orders yields different `inflight_lo`, confirming the divergence is real.
+    #[test]
+    fn loss_before_vs_after_ack_changes_lower_bound() {
+        // Replays one "ACK closes a loss round, with loss in the same event" step, in the chosen
+        // order, and returns the resulting `inflight_lo`.
+        //
+        // `loss_first == true`  models the canonical (loss-before-ack) order.
+        // `loss_first == false` models the dc (ack-before-loss) order.
+        fn run(loss_first: bool) -> u64 {
+            let now = NoopClock.get_time();
+            // A congestion-limited rate sample with real delivered volume so the models update.
+            let rate_sample = RateSample {
+                interval: Duration::from_millis(10),
+                delivered_bytes: 1000,
+                ..Default::default()
+            };
+            // The boundary-closing packet: its prior-delivered snapshot (1000) reaches the round
+            // end armed by the loss, so `update` reports `round_start`.
+            let packet_info = PacketInfo {
+                delivered_bytes: 1000,
+                delivered_time: now,
+                lost_bytes: 0,
+                ecn_ce_count: 0,
+                first_sent_time: now,
+                bytes_in_flight: 0,
+                is_app_limited: false,
+            };
+            let cwnd = 100_000;
+            let delivered_bytes = 1000;
+
+            let mut state = State::default();
+            let mut data_rate_model = data_rate::Model::new();
+            let mut data_volume_model = data_volume::Model::new();
+            // Seed a max_bw so the lower-bound clamp has a finite value to work from.
+            data_rate_model.update_max_bw(rate_sample);
+
+            let update =
+                |state: &mut State, drm: &mut data_rate::Model, dvm: &mut data_volume::Model| {
+                    state.update(
+                        packet_info,
+                        rate_sample,
+                        delivered_bytes,
+                        drm,
+                        dvm,
+                        false, // not probing for bandwidth → lower bounds may update
+                        cwnd,
+                        1.0,
+                    );
+                };
+
+            if loss_first {
+                // Canonical: loss is recorded before the boundary-closing ACK is processed, so the
+                // `update` for that ACK sees loss_in_round() == true and clamps.
+                state.on_packet_lost(delivered_bytes, true);
+                update(&mut state, &mut data_rate_model, &mut data_volume_model);
+                state.advance(rate_sample);
+            } else {
+                // dc: the boundary-closing ACK is processed first (loss_in_round() == false → no
+                // clamp), then `advance` resets the round, then the loss is recorded — into the
+                // *next* round, where no further boundary ACK arrives in this event.
+                update(&mut state, &mut data_rate_model, &mut data_volume_model);
+                state.advance(rate_sample);
+                state.on_packet_lost(delivered_bytes, true);
+            }
+
+            data_volume_model.inflight_lo()
+        }
+
+        let canonical = run(true);
+        let dc = run(false);
+
+        // Canonical clamps inflight_lo to a finite value on the loss round; dc misses that round
+        // and leaves inflight_lo at its unclamped default (u64::MAX).
+        assert_eq!(
+            canonical,
+            cwnd_clamp(),
+            "canonical (loss-before-ack) should clamp inflight_lo on the loss round"
+        );
+        assert_eq!(
+            dc,
+            u64::MAX,
+            "dc (ack-before-loss) misses the clamp on the loss round, leaving inflight_lo unset"
+        );
+        assert_ne!(
+            canonical, dc,
+            "loss/ack ordering must change inflight_lo (canonical={canonical}, dc={dc})"
+        );
+    }
+
+    /// The clamped `inflight_lo` value the canonical ordering produces in
+    /// [`loss_before_vs_after_ack_changes_lower_bound`]: with `inflight_latest == 0` and
+    /// `inflight_lo` initialized to `cwnd`, `update_lower_bound` yields `max(0, BETA * cwnd)`.
+    fn cwnd_clamp() -> u64 {
+        use crate::recovery::bbr::BETA;
+        let cwnd = 100_000u64;
+        (BETA * cwnd).to_integer()
+    }
 }

@@ -28,6 +28,26 @@ fn sealed_queue_msg_packet(
     crate::crypto::awslc::open::Application,
     usize,
 ) {
+    // Geometry consistent with the 17-byte payload: a single-chunk message.
+    sealed_queue_msg_packet_geometry(dest_queue_id, binding_id, 17, 17, 0)
+}
+
+/// Like [`sealed_queue_msg_packet`] but lets the caller override the message-geometry header
+/// fields (`message_size`, `chunk_size`, `chunk_index`). These are cleartext routing/geometry
+/// fields carried as AEAD associated data, so an in-flight bit-flip of any of them produces a
+/// packet exactly like this — one whose header decodes fine but whose geometry the receiver's
+/// `MsgTable::insert` rejects (e.g. `chunk_index` past the implied chunk count → `OffsetOverflow`).
+fn sealed_queue_msg_packet_geometry(
+    dest_queue_id: VarInt,
+    binding_id: VarInt,
+    message_size: u64,
+    chunk_size: u64,
+    chunk_index: u64,
+) -> (
+    datagram::decoder::Packet<crate::socket::pool::descriptor::Filled>,
+    crate::crypto::awslc::open::Application,
+    usize,
+) {
     let peer: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let sealer_entry = PathSecretEntry::builder(peer)
         .endpoint_type(endpoint::Type::Client)
@@ -55,9 +75,9 @@ fn sealed_queue_msg_packet(
         msg_id: VarInt::ZERO,
         stream_offset: VarInt::ZERO,
         largest_offset: VarInt::new(payload.len() as u64).unwrap(),
-        message_size: VarInt::new(payload.len() as u64).unwrap(),
-        chunk_size: VarInt::new(payload.len() as u64).unwrap(),
-        chunk_index: VarInt::ZERO,
+        message_size: VarInt::new(message_size).unwrap(),
+        chunk_size: VarInt::new(chunk_size).unwrap(),
+        chunk_index: VarInt::new(chunk_index).unwrap(),
         is_fin: true,
         is_wakeup: true,
         blocked: false,
@@ -131,6 +151,44 @@ fn fresh_server_view() -> recv::QueueView {
         }
         _ => unreachable!("server entry must have server queue state"),
     }
+}
+
+/// A server `QueueView` with the slot at `(queue_id, binding_id)` already bound, so a QueueMsg
+/// routed there passes `validate_msg_dispatch` (binding matches) and reaches `MsgTable::insert`
+/// — the geometry-validation stage. Used to exercise the live-stream insert-reject path, as
+/// opposed to `fresh_server_view`'s unallocated-binding reject.
+fn bound_server_view(queue_id: VarInt, binding_id: VarInt) -> recv::QueueView {
+    let entry = PathSecretEntry::builder("127.0.0.1:4433".parse().unwrap())
+        .endpoint_type(endpoint::Type::Server)
+        .build();
+    let mut view = match entry.queue_state() {
+        crate::path::secret::map::entry::QueueState::Server(state) => {
+            recv::QueueView::Server(state.view())
+        }
+        _ => unreachable!("server entry must have server queue state"),
+    };
+
+    let (freed_batch_tx, freed_batch_rx) = crate::queue::freed_batch_channel();
+    let mut freed_batch_tx = freed_batch_tx;
+    let server = view.as_server_mut().expect("server view");
+    let result = server.bind_for_msg(queue_id, binding_id, &entry, &mut freed_batch_tx);
+    let crate::queue::BindResult::NewBinding {
+        stream, control, ..
+    } = result.ok().expect("slot must bind for the test setup")
+    else {
+        panic!("expected NewBinding for a fresh slot");
+    };
+
+    // The receivers (`stream`/`control`) MUST stay alive: dropping them clears the slot's
+    // HAS_RECEIVER flag and frees the binding, which would un-bind the slot and make the
+    // dispatch below hit the `Unallocated` reject instead of the `MsgTable::insert` reject we
+    // want to exercise. The path-secret `entry` likewise keeps the shared `ServerState` (and its
+    // page table) alive. Leak all three for the short-lived test rather than threading them out.
+    std::mem::forget(stream);
+    std::mem::forget(control);
+    std::mem::forget(freed_batch_rx);
+    std::mem::forget(entry);
+    view
 }
 
 /// Assembles the auxiliary args `decrypt_fast_path` needs but that play no role in the
@@ -282,4 +340,83 @@ fn fast_path_auth_for_drop_distinguishes_tampered_packet() {
              genuine packet is retransmitted"
         );
     }
+}
+
+/// REPRO (fails on HEAD): a QueueMsg whose AEAD-authenticated *geometry* fields were corrupted in
+/// flight routes to a LIVE, bound slot, passes `validate_msg_dispatch`, then is rejected by
+/// `MsgTable::insert` (here `chunk_index` past the implied chunk count → `OffsetOverflow`). The
+/// fast-path scatter-decrypt — the ONLY place the AEAD tag is checked on this path — never runs,
+/// because `Slot::push_msg` swallows the insert error as `Ok((AutoWake::default(), 0))` BEFORE
+/// invoking the write callback.
+///
+/// `decrypt_fast_path` therefore returns `Ok(AutoWake::default())` and `process` ACKs an
+/// un-authenticated packet. This is the same vulnerability class the `AuthForDrop` fix closed for
+/// the binding-reject path (`MsgError::Queue`), but the `MsgTable::insert` rejections take a
+/// different return (`Ok`, not `MsgError::Queue`) and were missed. The consequence is identical:
+/// corrupting an in-flight chunk's geometry makes the sender free that packet number and stop
+/// retransmitting → permanent stream hole on a live stream.
+///
+/// The fix should route insert-rejections that fired before authentication through
+/// `FastPathError::AuthForDrop` as well, so the closure authenticates in place and suppresses the
+/// ACK on a tampered packet.
+#[test]
+fn fast_path_insert_reject_requires_auth_before_ack() {
+    let dest_queue_id = VarInt::from_u8(0);
+    let binding_id = VarInt::from_u8(1);
+
+    // message_size=17, chunk_size=17 → exactly 1 chunk (index 0). A corrupted chunk_index of 5
+    // is past that count, so MsgTable::insert returns OffsetOverflow.
+    let (packet, opener, decrypt_len) =
+        sealed_queue_msg_packet_geometry(dest_queue_id, binding_id, 17, 17, 5);
+    let header = single_queue_msg_header(&packet, decrypt_len);
+
+    let mut view = bound_server_view(dest_queue_id, binding_id);
+    // Sanity: confirm the slot is actually bound, so we exercise the `MsgTable::insert` reject
+    // path and NOT the unallocated-binding reject (which returns AuthForDrop for a different
+    // reason — without this guard the test could pass even if the binding silently failed).
+    {
+        let server = view.as_server_mut().unwrap();
+        // Use a non-front msg_id (10) so the message completes but does NOT drain (the table
+        // front is still the never-sent msg_id 0), leaving `base_id == 0`. That keeps msg_id 0
+        // fresh for the corrupted packet below, so it hits `OffsetOverflow` (a fresh entry with
+        // 1 chunk vs chunk_index 5) rather than `Stale`.
+        let probe = server.send_msg::<core::convert::Infallible>(
+            dest_queue_id,
+            binding_id,
+            10, // msg_id (non-front, stays buffered)
+            0,  // stream_offset
+            17, // peer_max_offset
+            17, // message_size
+            17, // chunk_size
+            0,  // chunk_index (valid: 1-chunk message)
+            17, // payload_len
+            false,
+            false,
+            false,
+            |ptr, len| {
+                unsafe { core::ptr::write_bytes(ptr, 0, len as usize) };
+                Ok(())
+            },
+        );
+        assert!(
+            probe.is_ok(),
+            "setup: a VALID-geometry QueueMsg to this slot must succeed (Ok), proving the slot is \
+             bound; if this were an Unallocated error the test below would pass for the wrong reason"
+        );
+    }
+    let mut harness = FastPathHarness::new();
+
+    let result = harness.call(header, &opener, &packet, decrypt_len, &mut view);
+    assert!(
+        matches!(result, Err(FastPathError::AuthForDrop)),
+        "a QueueMsg rejected by MsgTable::insert BEFORE the scatter-decrypt was never \
+         authenticated, so the fast path must demand auth-before-ACK (AuthForDrop) rather than \
+         report success and let `process` ACK an un-verified packet — got {}",
+        match result {
+            Ok(_) => "Ok (packet would be ACKed un-authenticated — BUG)",
+            Err(FastPathError::HeaderMismatch) => "HeaderMismatch",
+            Err(FastPathError::WriteFailed) => "WriteFailed",
+            Err(FastPathError::AuthForDrop) => "AuthForDrop",
+        }
+    );
 }
