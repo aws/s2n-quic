@@ -137,7 +137,8 @@ impl Counters {
             distributor_budget_exhausted: registry
                 .register(format!("!{prefix}.distributor.budget_exhausted")),
             abandon_granted_race: registry.register(format!("!{prefix}.abandon.granted_race")),
-            refill_bytes_injected: registry.register_bytes(format!("{prefix}.refill.bytes_injected")),
+            refill_bytes_injected: registry
+                .register_bytes(format!("{prefix}.refill.bytes_injected")),
             refill_ticks: registry.register(format!("{prefix}.refill.ticks")),
             refill_skipped: registry.register(format!("{prefix}.refill.skipped")),
             refill_sustained_engaged: registry

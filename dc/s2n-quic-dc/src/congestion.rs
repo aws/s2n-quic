@@ -98,12 +98,15 @@ impl Controller {
         &mut self,
         bytes_lost: u32,
         packet_info: PacketInfo,
+        new_loss_burst: bool,
         random_generator: &mut dyn random::Generator,
         now: Timestamp,
     ) {
-        // TODO where do these come from?
+        // BBRv2 ignores `persistent_congestion` entirely (it's `_persistent_congestion` in
+        // BbrCongestionController::on_packet_lost). The only canonical consumer of that flag is
+        // `RttEstimator::on_persistent_congestion`, which lives outside the CCA. So computing it
+        // here would feed a value the controller discards — leave it false.
         let persistent_congestion = false;
-        let new_loss_burst = false;
 
         let publisher = &mut NoopPublisher;
         self.controller.on_packet_lost(

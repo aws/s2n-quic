@@ -332,6 +332,20 @@ impl Iterator for AckRangeIter<'_> {
     }
 }
 
+/// Whether `pn` begins a new loss burst, given the previous lost packet number (if any).
+///
+/// A loss burst is a maximal run of consecutively-numbered lost packets. Because the lost packets
+/// are processed in strictly ascending PN order, `pn` continues the current burst only when it is
+/// exactly one greater than the previous lost PN; any gap (a packet that was ACKed or never sent)
+/// — or the very first lost packet — starts a new burst. BBRv2 counts these bursts per round
+/// (`loss_bursts_in_round`) to drive startup-exit-on-loss and lower-bound adaptation, so the
+/// count must reflect true discontiguity, not merely "loss occurred". Matches the canonical
+/// recovery manager's `checked_distance(prev) != Some(1)` check.
+#[inline]
+fn starts_new_loss_burst(prev_lost_pn: Option<VarInt>, pn: VarInt) -> bool {
+    prev_lost_pn.is_none_or(|prev| pn.checked_sub(prev) != Some(VarInt::from_u8(1)))
+}
+
 /// Detect lost packets using QUIC PN-threshold and time-threshold algorithms.
 ///
 /// Packets sent before `max_acked_pn` are declared lost when either:
@@ -378,21 +392,36 @@ fn detect_loss<Rand>(
     let mut lost_count = 0usize;
     let mut cancelled_count = 0usize;
     let mut ttl_exhausted_count = 0usize;
+    // Tracks the previous lost packet number so we can tell BBRv2 whether each lost packet
+    // begins a new loss burst (a discontiguous run of lost PNs). `remove_range` yields PNs in
+    // strictly ascending order, so a packet starts a new burst unless it is exactly one greater
+    // than the previous lost packet. BBRv2's startup-exit-on-loss and lower-bound adaptation
+    // both key off the *count* of distinct bursts in a round, so this must be accurate, not just
+    // "loss occurred". Computed inline in the existing loop — no extra pass, no allocation.
+    let mut prev_lost_pn: Option<VarInt> = None;
 
     for (num, mut packet) in context.inflight.remove_range(range) {
         let tx_info = packet.transmission_info.take().unwrap();
+
+        let new_loss_burst = starts_new_loss_burst(prev_lost_pn, num);
+        prev_lost_pn = Some(num);
 
         trace!(
             pn = num.as_u64(),
             max_acked = max_acked_pn.as_u64(),
             time_sent = ?tx_info.time_sent,
+            new_loss_burst,
             "Packet lost by PN threshold"
         );
 
         if tx_info.sent_bytes > 0 {
-            context
-                .cca
-                .on_packet_lost(tx_info.sent_bytes as u32, tx_info.cc_info, random, now);
+            context.cca.on_packet_lost(
+                tx_info.sent_bytes as u32,
+                tx_info.cc_info,
+                new_loss_burst,
+                random,
+                now,
+            );
         }
 
         for mut entry in packet.frames {
@@ -592,6 +621,39 @@ mod tests {
         assert!(completed.0.is_empty());
         assert!(context.inflight.remove(make_pn(1)).is_none());
         assert!(context.inflight.remove(make_pn(2)).is_some());
+    }
+
+    /// `new_loss_burst` must mark a new burst on the first lost packet and on every PN gap, but
+    /// not within a contiguous run. BBRv2's `loss_bursts_in_round` keys off this distinction, so
+    /// gapped loss (selective ACKs, reordering) must count as multiple bursts.
+    #[test]
+    fn new_loss_burst_tracks_discontiguous_runs() {
+        let pn = |n: u64| VarInt::new(n).unwrap();
+
+        // First lost packet always starts a burst.
+        assert!(starts_new_loss_burst(None, pn(5)));
+
+        // Contiguous successor continues the same burst.
+        assert!(!starts_new_loss_burst(Some(pn(5)), pn(6)));
+
+        // A gap (7 was ACKed / never sent) starts a new burst.
+        assert!(starts_new_loss_burst(Some(pn(6)), pn(9)));
+
+        // ...and the packet right after the gap continues that new burst.
+        assert!(!starts_new_loss_burst(Some(pn(9)), pn(10)));
+
+        // The full sequence 5,6,9,10 therefore yields exactly two bursts (at 5 and at 9).
+        let lost = [5u64, 6, 9, 10];
+        let mut prev = None;
+        let bursts = lost
+            .iter()
+            .filter(|&&n| {
+                let new = starts_new_loss_burst(prev, pn(n));
+                prev = Some(pn(n));
+                new
+            })
+            .count();
+        assert_eq!(bursts, 2, "5,6,9,10 is two contiguous runs");
     }
 
     /// When an ACK drains all bytes in flight, any leftover zero-byte shells (probe

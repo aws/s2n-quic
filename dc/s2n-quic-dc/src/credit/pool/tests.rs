@@ -1564,14 +1564,23 @@ use crate::credit::pool::pacer_inject;
 fn pacer_injects_full_quantum_in_a_wedge() {
     // Deeply negative `available` (every byte owed to parkers) and zero releases this round: inject
     // the whole quantum. The `capacity - available` headroom is huge here, so it never binds.
-    assert_eq!(pacer_inject(-2_818_048, 0, 256 * 1024, 1024 * 1024), 256 * 1024);
+    assert_eq!(
+        pacer_inject(-2_818_048, 0, 256 * 1024, 1024 * 1024),
+        256 * 1024
+    );
 }
 
 #[test]
 fn pacer_skips_when_releases_met_the_rate() {
     // Real releases this round met or exceeded the quantum → inject nothing ("as if it never ran").
-    assert_eq!(pacer_inject(-500_000, 256 * 1024, 256 * 1024, 1024 * 1024), 0);
-    assert_eq!(pacer_inject(-500_000, 300 * 1024, 256 * 1024, 1024 * 1024), 0);
+    assert_eq!(
+        pacer_inject(-500_000, 256 * 1024, 256 * 1024, 1024 * 1024),
+        0
+    );
+    assert_eq!(
+        pacer_inject(-500_000, 300 * 1024, 256 * 1024, 1024 * 1024),
+        0
+    );
 }
 
 #[test]
@@ -1591,7 +1600,10 @@ fn pacer_does_not_overfill_a_healthy_idle_pool() {
     // from pushing the free level past `capacity`. With `available == capacity` it injects nothing.
     assert_eq!(pacer_inject(1024 * 1024, 0, 256 * 1024, 1024 * 1024), 0);
     // Slightly below capacity: inject only up to the cap, not the full quantum.
-    assert_eq!(pacer_inject(1000 * 1024, 0, 256 * 1024, 1024 * 1024), 24 * 1024);
+    assert_eq!(
+        pacer_inject(1000 * 1024, 0, 256 * 1024, 1024 * 1024),
+        24 * 1024
+    );
 }
 
 #[test]

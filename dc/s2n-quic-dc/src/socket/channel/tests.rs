@@ -606,7 +606,10 @@ fn flatten_segments_does_not_drop_buffered_segment_when_budget_exhausted() {
     assert_eq!(first.len(), 3);
     assert!(budget.is_exhausted());
 
-    assert!(matches!(flat.poll_recv(&mut cx, &mut budget), Poll::Pending));
+    assert!(matches!(
+        flat.poll_recv(&mut cx, &mut budget),
+        Poll::Pending
+    ));
 
     budget.reset();
     let second = match flat.poll_recv(&mut cx, &mut budget) {
@@ -616,7 +619,10 @@ fn flatten_segments_does_not_drop_buffered_segment_when_budget_exhausted() {
     assert_eq!(second.len(), 3);
 
     budget.reset();
-    assert!(matches!(flat.poll_recv(&mut cx, &mut budget), Poll::Ready(None)));
+    assert!(matches!(
+        flat.poll_recv(&mut cx, &mut budget),
+        Poll::Ready(None)
+    ));
 }
 
 // ── Paced tests ────────────────────────────────────────────────────

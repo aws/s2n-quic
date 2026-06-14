@@ -344,8 +344,9 @@ async fn execute_quorum_read(
     }
 
     if survivors.is_empty() {
-        return Err(last_error
-            .unwrap_or_else(|| io::Error::other("no replica returned a response header")));
+        return Err(
+            last_error.unwrap_or_else(|| io::Error::other("no replica returned a response header"))
+        );
     }
 
     // A request (8-byte header + body) was sent to every replica that responded.

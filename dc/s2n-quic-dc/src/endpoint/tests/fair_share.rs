@@ -60,13 +60,24 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(10);
 /// ready — a bug) from a genuine stall. Panics on either, naming the offset so a straggler is
 /// immediately identifiable.
 async fn drive_writer(writer: &mut crate::stream::Writer, body_len: u64, stream_idx: usize) {
+    drive_writer_with_timeout(writer, body_len, stream_idx, CHUNK_TIMEOUT).await
+}
+
+/// As [`drive_writer`] but with a caller-supplied per-chunk watchdog. Heavy-loss regimes where
+/// the CCA legitimately throttles need a longer budget than the default [`CHUNK_TIMEOUT`].
+async fn drive_writer_with_timeout(
+    writer: &mut crate::stream::Writer,
+    body_len: u64,
+    stream_idx: usize,
+    chunk_timeout: Duration,
+) {
     let mut payload = Data::new(body_len);
     loop {
         if payload.is_finished() {
             break;
         }
         let before = payload.current_offset().as_u64();
-        match timeout(CHUNK_TIMEOUT, writer.write_from_fin(&mut payload)).await {
+        match timeout(chunk_timeout, writer.write_from_fin(&mut payload)).await {
             Ok(res) => {
                 res.expect("writer chunk failed");
             }
@@ -81,12 +92,12 @@ async fn drive_writer(writer: &mut crate::stream::Writer, body_len: u64, stream_
                     Ok(Ok(n)) if n > 0 => {
                         panic!(
                             "BUG: missed waker on writer! wrote {n} bytes on immediate retry \
-                             after {CHUNK_TIMEOUT:?}. stream={stream_idx} offset={before}/{body_len}"
+                             after {chunk_timeout:?}. stream={stream_idx} offset={before}/{body_len}"
                         );
                     }
                     _ => {
                         panic!(
-                            "writer stalled: no chunk produced within {CHUNK_TIMEOUT:?} and none \
+                            "writer stalled: no chunk produced within {chunk_timeout:?} and none \
                              on retry. stream={stream_idx} offset={before}/{body_len} \
                              (peer reader never advertised enough window — recv-credit starvation)"
                         );
@@ -100,21 +111,32 @@ async fn drive_writer(writer: &mut crate::stream::Writer, body_len: u64, stream_
 /// Drain a reader to EOF one chunk at a time, asserting liveness on every chunk. Mirrors the
 /// writer-side watchdog and dc-tester's `recv` loop.
 async fn drain_reader(reader: &mut crate::stream::Reader, body_len: u64, stream_idx: usize) {
+    drain_reader_with_timeout(reader, body_len, stream_idx, CHUNK_TIMEOUT).await
+}
+
+/// As [`drain_reader`] but with a caller-supplied per-chunk watchdog. Heavy-loss regimes where
+/// the peer's CCA legitimately throttles need a longer budget than the default [`CHUNK_TIMEOUT`].
+async fn drain_reader_with_timeout(
+    reader: &mut crate::stream::Reader,
+    body_len: u64,
+    stream_idx: usize,
+    chunk_timeout: Duration,
+) {
     let mut rx = Data::new(body_len);
     loop {
         let before = rx.current_offset().as_u64();
-        let n = match timeout(CHUNK_TIMEOUT, reader.read_into(&mut rx)).await {
+        let n = match timeout(chunk_timeout, reader.read_into(&mut rx)).await {
             Ok(res) => res.expect("reader chunk failed"),
             Err(_) => match timeout(Duration::from_millis(1), reader.read_into(&mut rx)).await {
                 Ok(Ok(n)) if n > 0 => {
                     panic!(
                             "BUG: missed waker on reader! read {n} bytes on immediate retry \
-                             after {CHUNK_TIMEOUT:?}. stream={stream_idx} offset={before}/{body_len}"
+                             after {chunk_timeout:?}. stream={stream_idx} offset={before}/{body_len}"
                         );
                 }
                 _ => {
                     panic!(
-                        "reader stalled: no chunk produced within {CHUNK_TIMEOUT:?} and none \
+                        "reader stalled: no chunk produced within {chunk_timeout:?} and none \
                              on retry. stream={stream_idx} offset={before}/{body_len} \
                              (reader could not acquire recv credit to advertise window)"
                     );
@@ -1586,6 +1608,7 @@ fn recv_cancel_credit_conserved() {
 /// or window growth latched), the writer stalls forever with data to send and the reader parks
 /// waiting for bytes that will never come. The chunk watchdog in `drain_reader`/`drive_writer`
 /// fires on either side.
+#[allow(clippy::too_many_arguments)]
 fn run_loss_read_stall(
     num_streams: usize,
     body_len: u64,
@@ -1593,6 +1616,7 @@ fn run_loss_read_stall(
     recv_cap: u64,
     max_single_acquire: u64,
     drop_one_in: u64,
+    chunk_timeout: Duration,
 ) -> (usize, usize) {
     let acceptor_id = VarInt::from_u8(1);
     let writers_done = Arc::new(AtomicUsize::new(0));
@@ -1633,7 +1657,8 @@ fn run_loss_read_stall(
                         let (mut reader, mut writer) = stream.into_split();
                         let mut req = Data::new(64);
                         let _ = timeout(CHUNK_TIMEOUT, reader.read_into(&mut req)).await;
-                        drive_writer(&mut writer, body_len, stream_idx).await;
+                        drive_writer_with_timeout(&mut writer, body_len, stream_idx, chunk_timeout)
+                            .await;
                         writers_done_sv.fetch_add(1, Ordering::Relaxed);
                     }
                     .primary()
@@ -1674,7 +1699,7 @@ fn run_loss_read_stall(
                             writer.write_from_fin(&mut req).await.expect("req write");
                         }
                         let (mut reader, _writer) = stream.into_split();
-                        drain_reader(&mut reader, body_len, i).await;
+                        drain_reader_with_timeout(&mut reader, body_len, i, chunk_timeout).await;
                         readers_done_cl.fetch_add(1, Ordering::Relaxed);
                     }
                     .primary()
@@ -1710,6 +1735,7 @@ fn loss_read_pattern_no_stall() {
         64 * 1024 * 1024,
         2 * 1024 * 1024,
         7,
+        CHUNK_TIMEOUT,
     );
 
     info!(writers, readers, "loss_read_pattern result");
@@ -1720,6 +1746,14 @@ fn loss_read_pattern_no_stall() {
 /// Heavier-loss variant: tiny window (32 KiB → 32 MAX_DATA top-ups per stream) and 1-in-3 packet
 /// loss, which makes MAX_DATA loss the common case rather than the exception. If any single lost
 /// window grant fails to be retransmitted, a writer wedges and its reader's watchdog fires.
+///
+/// At 1-in-3 (~33%) loss — far above BBRv2's 2% loss threshold — the sender's CCA legitimately
+/// throttles: `new_loss_burst` drives `loss_bursts_in_round`, which clamps `bw_lo`/`inflight_lo`
+/// and exits Startup on loss. The unluckiest stream's first chunk can then take well over the
+/// default 10s [`CHUNK_TIMEOUT`] to arrive — that is correct congestion response, not a stall.
+/// This test only asserts *eventual* completion (no permanent wedge), so it uses a relaxed
+/// per-chunk watchdog. The wedge-detection intent is preserved: a genuine lost-MAX_DATA stall
+/// never recovers and will still blow the longer budget.
 #[test]
 fn heavy_loss_read_pattern_no_stall() {
     let _no_snap = crate::testing::without_snapshots();
@@ -1732,6 +1766,7 @@ fn heavy_loss_read_pattern_no_stall() {
         64 * 1024 * 1024,
         2 * 1024 * 1024,
         3,
+        Duration::from_secs(120),
     );
 
     info!(writers, readers, "heavy_loss_read_pattern result");
