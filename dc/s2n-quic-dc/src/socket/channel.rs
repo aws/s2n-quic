@@ -1245,14 +1245,16 @@ where
     ) -> Poll<Option<descriptor::Filled>> {
         loop {
             // Drain any buffered segments first
-            if let Some(segment) = self.iter.next() {
+            if !self.iter.is_empty() {
                 if budget.is_exhausted() {
                     budget.set_needs_wake();
                     return Poll::Pending;
                 }
-                // Subsequent items from buffer consume budget
-                budget.consume();
-                return Poll::Ready(Some(segment));
+                if let Some(segment) = self.iter.next() {
+                    // Subsequent items from buffer consume budget
+                    budget.consume();
+                    return Poll::Ready(Some(segment));
+                }
             }
 
             // Pull next Segments from inner (inner consumes budget for the acquisition)

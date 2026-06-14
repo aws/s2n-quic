@@ -946,6 +946,11 @@ impl<R: Recycler> SegmentsIter<R> {
             segment_len: 0,
         }
     }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.descriptor.is_none()
+    }
 }
 
 impl<R: Recycler> Iterator for SegmentsIter<R> {

@@ -554,6 +554,71 @@ fn flatten_empty_queue_skipped() {
     });
 }
 
+#[test]
+fn flatten_segments_does_not_drop_buffered_segment_when_budget_exhausted() {
+    use std::net::{Ipv4Addr, SocketAddr};
+
+    struct OneShotSegmentsRx {
+        segments: Option<crate::socket::pool::descriptor::Segments>,
+    }
+
+    impl Receiver<crate::socket::pool::descriptor::Segments> for OneShotSegmentsRx {
+        fn poll_recv(
+            &mut self,
+            _cx: &mut core::task::Context<'_>,
+            budget: &mut Budget,
+        ) -> Poll<Option<crate::socket::pool::descriptor::Segments>> {
+            if budget.is_exhausted() {
+                budget.set_needs_wake();
+                return Poll::Pending;
+            }
+
+            budget.consume();
+            Poll::Ready(self.segments.take())
+        }
+
+        fn on_consumed(&mut self, _bytes: u64) {}
+    }
+
+    let pool = crate::socket::pool::Pool::new(64);
+    let unfilled = pool
+        .alloc::<crate::socket::pool::descriptor::SyncRecycler>()
+        .expect("descriptor alloc");
+    let segments = unfilled
+        .fill_with(|addr, cmsg, mut payload| {
+            addr.set(SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 12345).into());
+            cmsg.set_segment_len(3);
+            payload[..6].copy_from_slice(b"abcdef");
+            Ok::<_, ()>(6)
+        })
+        .expect("fill descriptor");
+
+    let mut cx = noop_cx();
+    let mut flat = FlattenSegments::new(OneShotSegmentsRx {
+        segments: Some(segments),
+    });
+    let mut budget = Budget::new(1);
+
+    let first = match flat.poll_recv(&mut cx, &mut budget) {
+        Poll::Ready(Some(segment)) => segment,
+        other => panic!("expected first segment, got {other:?}"),
+    };
+    assert_eq!(first.len(), 3);
+    assert!(budget.is_exhausted());
+
+    assert!(matches!(flat.poll_recv(&mut cx, &mut budget), Poll::Pending));
+
+    budget.reset();
+    let second = match flat.poll_recv(&mut cx, &mut budget) {
+        Poll::Ready(Some(segment)) => segment,
+        other => panic!("expected second segment, got {other:?}"),
+    };
+    assert_eq!(second.len(), 3);
+
+    budget.reset();
+    assert!(matches!(flat.poll_recv(&mut cx, &mut budget), Poll::Ready(None)));
+}
+
 // ── Paced tests ────────────────────────────────────────────────────
 
 #[test]
