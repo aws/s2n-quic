@@ -728,6 +728,116 @@ fn reader_drop_after_eof_does_not_send_stop_sending() {
     });
 }
 
+// ── acceptor_noslots_after_bind_resets_client ────────────────────────────────
+
+/// REPRO (expected to fail on HEAD): when the server's acceptor channel has a
+/// registered receiver that has never polled, `Sender::send` returns
+/// `SendError::NoSlots`. By that point `decrypt_fast_path` /
+/// `handle_queue_msg_init` have ALREADY bound the slot, so the dispatch arm
+/// calls `stream.disable()` — a LOCAL-ONLY teardown that emits no `QueueReset`
+/// (see `Stream::disable` → `Reader::force_reset`, whose doc says "the caller
+/// will emit a reset via another path"). But this caller doesn't.
+///
+/// Meanwhile the QueueInit packet is authenticated and ACKed (the slow/fast path
+/// both ACK once the slot is bound). The client writer therefore:
+///   1. receives the ACK → frees the QueueInit packet number → stops retransmit,
+///   2. stays in `InitSent` forever (no control frame ever confirms the binding),
+///   3. and once the server's receivers drop, the slot is tombstoned, so every
+///      subsequent frame for binding N is dropped as StaleBinding and ACKed.
+///
+/// No reset ever reaches the client, so it never observes `ConnectionReset`.
+/// The contrast: the acceptor-NOT-FOUND arm DOES `send_reset(...)`, and the
+/// eviction arm DOES `ev.reset(ServerBusy)`. Only NoSlots/Closed are silent.
+///
+/// Expected (post-fix): the client write loop eventually fails with
+/// `ConnectionReset`. On HEAD it hangs until the test timeout.
+///
+/// ## Why >1 MiB of writes?
+///
+/// Same reasoning as `server_reader_drop_sends_stop_sending`: with
+/// `remote_max_data = 1 MiB`, small writes never block, so the client task never
+/// yields to observe a reset. Writing past the window forces a flow-control pause.
+#[test]
+fn acceptor_noslots_after_bind_resets_client() {
+    let _guard = crate::testing::without_snapshots();
+    crate::testing::sim(|| {
+        use crate::testing::ext::*;
+
+        const CHUNK_SIZE: usize = 1024;
+        const MAX_WRITES: usize = 3000;
+
+        async move {
+            let server = crate::stream::endpoint::testing::sim::Server::new();
+            // Register an acceptor channel but NEVER poll it. Slots register
+            // lazily on first poll, so the channel has receiver_count > 0 but no
+            // registered slots → `Sender::send` returns `SendError::NoSlots`.
+            let _acceptor = server
+                .register_acceptor_channel(ACCEPTOR_ID, 8)
+                .expect("acceptor registration");
+
+            // Hold the receiver alive (so the channel is NoSlots, not Closed) for
+            // the whole test, but never call recv().
+            bach::time::sleep(Duration::from_secs(30)).await;
+            drop(_acceptor);
+        }
+        .group("server")
+        .spawn();
+
+        async move {
+            let mut client = crate::stream::endpoint::testing::sim::Client::new();
+            let stream = client
+                .connect("server:0", ACCEPTOR_ID)
+                .await
+                .expect("connect");
+            let (_reader, mut writer) = stream.into_split();
+
+            // Drive writes until either a reset surfaces (correct) or the test
+            // times out (the bug: the writer wedges in InitSent forever).
+            let result = timeout(Duration::from_secs(10), async {
+                for _ in 0..MAX_WRITES {
+                    let mut data = Data::new(CHUNK_SIZE as u64);
+                    match writer.write_from(&mut data).await {
+                        Ok(_) => {}
+                        Err(e) => return Some(e),
+                    }
+                }
+                None
+            })
+            .await;
+
+            match result {
+                Ok(Some(e)) => {
+                    assert_eq!(
+                        e.kind(),
+                        std::io::ErrorKind::ConnectionReset,
+                        "client should observe ConnectionReset after the server's \
+                         acceptor rejected the bound stream (NoSlots), got: {e:?}"
+                    );
+                    info!("client observed reset as expected: {e}");
+                }
+                Ok(None) => {
+                    panic!(
+                        "BUG: client wrote {MAX_WRITES} chunks without any error. The \
+                         server's acceptor returned NoSlots AFTER binding the slot, tore \
+                         it down via local-only disable() (no QueueReset), yet ACKed the \
+                         QueueInit. The client never learns the stream is dead."
+                    );
+                }
+                Err(_) => {
+                    panic!(
+                        "BUG: client write loop hung for 10s. The QueueInit was ACKed but \
+                         the server tore down the bound slot silently (NoSlots → disable() \
+                         with no reset frame), wedging the writer in InitSent forever."
+                    );
+                }
+            }
+        }
+        .group("client")
+        .primary()
+        .spawn();
+    });
+}
+
 // ── write_after_shutdown_returns_broken_pipe ─────────────────────────────────
 
 /// After calling `shutdown()` (or `write_all_from_fin`), subsequent write

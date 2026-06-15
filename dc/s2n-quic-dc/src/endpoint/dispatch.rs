@@ -194,10 +194,30 @@ fn decrypt_fast_path(
                     Err(acceptor::channel::SendError::Closed(mut s)) => {
                         s.disable();
                         counters.rx_init_acceptor_closed.add(1);
+                        // `disable()` tears the bound slot down locally only (no frame). The
+                        // client is still establishing this binding and the QueueInit it sent
+                        // gets ACKed, so without an explicit reset it wedges in InitSent forever.
+                        // Notify it like the acceptor-not-found arm does.
+                        send_reset(
+                            path_entry,
+                            queue_pair.source_queue_id,
+                            binding_id,
+                            error::ACCEPTOR_NOT_FOUND,
+                            frame_tx,
+                        );
                     }
                     Err(acceptor::channel::SendError::NoSlots(mut s)) => {
                         s.disable();
                         counters.rx_init_acceptor_no_slots.add(1);
+                        // See the `Closed` arm: the client must be reset explicitly or it
+                        // wedges in InitSent after its QueueInit is ACKed.
+                        send_reset(
+                            path_entry,
+                            queue_pair.source_queue_id,
+                            binding_id,
+                            error::SERVER_BUSY,
+                            frame_tx,
+                        );
                     }
                 }
             }
@@ -1199,10 +1219,26 @@ fn handle_queue_msg_init(
                 Err(acceptor::channel::SendError::Closed(mut stream)) => {
                     stream.disable();
                     counters.rx_init_acceptor_closed.add(1);
+                    // `disable()` is a local-only teardown; reset the client explicitly so its
+                    // ACKed QueueInit doesn't leave the writer wedged in InitSent forever.
+                    send_reset(
+                        &peer.path_entry,
+                        queue_pair.source_queue_id,
+                        binding_id,
+                        error::ACCEPTOR_NOT_FOUND,
+                        frame_tx,
+                    );
                 }
                 Err(acceptor::channel::SendError::NoSlots(mut stream)) => {
                     stream.disable();
                     counters.rx_init_acceptor_no_slots.add(1);
+                    send_reset(
+                        &peer.path_entry,
+                        queue_pair.source_queue_id,
+                        binding_id,
+                        error::SERVER_BUSY,
+                        frame_tx,
+                    );
                 }
             }
         }
@@ -1345,10 +1381,26 @@ fn handle_queue_data_init(
                 Err(acceptor::channel::SendError::Closed(mut stream)) => {
                     stream.disable();
                     counters.rx_init_acceptor_closed.add(1);
+                    // `disable()` is a local-only teardown; reset the client explicitly so its
+                    // ACKed QueueInit doesn't leave the writer wedged in InitSent forever.
+                    send_reset(
+                        &peer.path_entry,
+                        queue_pair.source_queue_id,
+                        binding_id,
+                        error::ACCEPTOR_NOT_FOUND,
+                        frame_tx,
+                    );
                 }
                 Err(acceptor::channel::SendError::NoSlots(mut stream)) => {
                     stream.disable();
                     counters.rx_init_acceptor_no_slots.add(1);
+                    send_reset(
+                        &peer.path_entry,
+                        queue_pair.source_queue_id,
+                        binding_id,
+                        error::SERVER_BUSY,
+                        frame_tx,
+                    );
                 }
             }
 
