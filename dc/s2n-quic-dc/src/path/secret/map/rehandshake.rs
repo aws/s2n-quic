@@ -38,6 +38,10 @@ impl RehandshakeState {
             #[cfg(test)]
             builder.start_paused(true);
         }
+        #[expect(
+            clippy::unwrap_used,
+            reason = "FIXME: building the tokio runtime is fallible (resource exhaustion); this should propagate the error rather than panic"
+        )]
         let runtime = builder.build().unwrap();
         let _guard = runtime.enter();
         let now = Instant::now();
@@ -139,6 +143,10 @@ impl RehandshakeState {
             last_spawn = Instant::now();
 
             // Wait for a slot if we're at capacity
+            #[expect(
+                clippy::unwrap_used,
+                reason = "acquire_owned only errors when the semaphore is closed, and this semaphore is never closed"
+            )]
             let permit = self
                 .runtime
                 .block_on(self.semaphore.clone().acquire_owned())

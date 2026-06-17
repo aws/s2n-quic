@@ -54,6 +54,11 @@ impl<T: 'static, Key: 'static> FreeVec<T, Key> {
     }
 
     #[inline]
+    #[allow(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "the lock is only poisoned if another thread already panicked while holding it"
+    )]
     pub fn alloc(&self, key: Option<&Key>) -> Option<(Control<T, Key>, Stream<T, Key>)>
     where
         Key: Copy + Eq + Hash,
@@ -83,6 +88,10 @@ impl<T: 'static, Key: 'static> FreeVec<T, Key> {
 
     #[inline]
     pub fn record_region(&self, region: Region<T, Key>, mut descriptors: Vec<Descriptor<T, Key>>) {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "the lock is only poisoned if another thread already panicked while holding it"
+        )]
         let mut inner = self.inner.lock().unwrap();
         inner.regions.push(region);
         let prev = inner.total;
@@ -98,6 +107,11 @@ impl<T: 'static, Key: 'static> FreeVec<T, Key> {
     }
 
     #[inline]
+    #[allow(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "the lock is only poisoned if another thread already panicked while holding it"
+    )]
     fn try_free(&self) -> Option<FreeInner<T, Key>> {
         let mut inner = self.inner.lock().unwrap();
         inner.open = false;
@@ -124,6 +138,11 @@ where
     Key: 'static + Send + Sync + Eq + Hash,
 {
     #[inline]
+    #[allow(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "the lock is only poisoned if another thread already panicked while holding it"
+    )]
     fn free(&self, mut descriptor: Descriptor<T, Key>) -> Option<Box<dyn 'static + Send>> {
         if let Some(key) = unsafe {
             // SAFETY: the descriptor is only owned by the free list

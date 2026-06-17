@@ -1,3 +1,7 @@
 msrv = "1.88.0"
 # // https://github.com/aws/s2n-quic/pull/2251
 too-many-arguments-threshold = 100
+# Avoid linting on unwraps in consts and tests where they can't bubble into production panics.
+allow-unwrap-in-consts = true
+allow-unwrap-in-tests = true
+allow-panic-in-tests = true

@@ -218,6 +218,10 @@ pub(super) async fn server<
         }
     };
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "FIXME: local_addr is a fallible socket op; the error should be sent on the channel instead of unwrapped"
+    )]
     let _ = on_ready.send(Ok(server.local_addr().unwrap()));
 
     while let Some(mut connection) = server.server.accept().await {

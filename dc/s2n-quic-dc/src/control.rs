@@ -11,6 +11,11 @@ pub struct Control {
 }
 
 impl Control {
+    #[expect(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "FIXME: local_addr is a fallible socket op and should propagate the error rather than unwrap"
+    )]
     pub fn new(address: SocketAddr, map: Map) -> std::io::Result<Self> {
         let socket = Arc::new(std::net::UdpSocket::bind(address)?);
         let port = socket.local_addr().unwrap().port();

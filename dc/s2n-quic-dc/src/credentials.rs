@@ -14,6 +14,13 @@ use s2n_codec::{
 pub use s2n_quic_core::varint::VarInt as KeyId;
 
 #[cfg(any(test, feature = "testing"))]
+#[allow(
+    clippy::unwrap_used,
+    clippy::unwrap_in_result,
+    clippy::panic,
+    clippy::panic_in_result_fn,
+    reason = "test-support helpers may panic to surface setup failures"
+)]
 pub mod testing;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, FromBytes, IntoBytes, Unaligned, PartialOrd, Ord)]
@@ -29,6 +36,10 @@ impl Id {
         // The ID has very high quality entropy already, so write just one half of it to keep hash
         // costs as low as possible. For the main use of the Hash impl in the fixed-size ID map
         // this translates to just directly using these bytes for the indexing.
+        #[expect(
+            clippy::unwrap_used,
+            reason = "slicing exactly 8 bytes always converts to [u8; 8]"
+        )]
         u64::from_ne_bytes(self.0[..8].try_into().unwrap())
     }
 }
@@ -79,6 +90,10 @@ impl s2n_quic_core::probe::Arg for Id {
     fn into_usdt(self) -> isize {
         // we have to truncate the bytes, but 64 bits should be unique enough for these purposes
         let slice = &self.0[..core::mem::size_of::<usize>()];
+        #[expect(
+            clippy::unwrap_used,
+            reason = "slice length equals size_of::<usize>() so the conversion always succeeds"
+        )]
         let bytes = slice.try_into().unwrap();
         usize::from_ne_bytes(bytes).into_usdt()
     }
