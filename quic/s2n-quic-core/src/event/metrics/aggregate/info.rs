@@ -142,7 +142,11 @@ impl AsRef<str> for Str {
 impl AsRef<CStr> for Str {
     #[inline]
     fn as_ref(&self) -> &CStr {
-        unsafe { CStr::from_bytes_with_nul_unchecked(self.as_bytes()) }
+        // Use `self.0.as_bytes()` to access the inner str directly, which
+        // includes the nul terminator. Using `self.as_bytes()` would go through
+        // `Deref` which strips the nul byte, violating the safety contract of
+        // `CStr::from_bytes_with_nul_unchecked`.
+        unsafe { CStr::from_bytes_with_nul_unchecked(self.0.as_bytes()) }
     }
 }
 
