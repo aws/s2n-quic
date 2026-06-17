@@ -1065,227 +1065,329 @@ mod counter {
     }
     define!(
         extern "probe" {
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_started]
+            #[link_name = s2n_quic_dc__event__counter__acceptor_tcp_started]
             fn acceptor_tcp_started(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_loop_iteration_completed]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_loop_iteration_completed]
             fn acceptor_tcp_loop_iteration_completed(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_fresh_enqueued]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_fresh_enqueued]
             fn acceptor_tcp_fresh_enqueued(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_fresh_batch_completed]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_fresh_batch_completed]
             fn acceptor_tcp_fresh_batch_completed(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_stream_dropped]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_stream_dropped]
             fn acceptor_tcp_stream_dropped(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_stream_replaced]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_stream_replaced]
             fn acceptor_tcp_stream_replaced(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_packet_received]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_packet_received]
             fn acceptor_tcp_packet_received(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_tls_started]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_tls_started]
             fn acceptor_tcp_tls_started(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_tls_stream_enqueued]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_tls_stream_enqueued]
             fn acceptor_tcp_tls_stream_enqueued(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_tls_stream_rejected]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_tls_stream_rejected]
             fn acceptor_tcp_tls_stream_rejected(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_packet_dropped]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_packet_dropped]
             fn acceptor_tcp_packet_dropped(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_stream_enqueued]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_stream_enqueued]
             fn acceptor_tcp_stream_enqueued(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_io_error]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_io_error]
             fn acceptor_tcp_io_error(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_socket_sent]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_socket_sent]
             fn acceptor_tcp_socket_sent(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_socket_sent__blocked_count_host]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_socket_sent__blocked_count_host]
             fn acceptor_tcp_socket_sent__blocked_count_host(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_socket_received]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_socket_received]
             fn acceptor_tcp_socket_received(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_udp_started]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_udp_started]
             fn acceptor_udp_started(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_udp_datagram_received]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_udp_datagram_received]
             fn acceptor_udp_datagram_received(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_udp_packet_received]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_udp_packet_received]
             fn acceptor_udp_packet_received(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_udp_packet_dropped]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_udp_packet_dropped]
             fn acceptor_udp_packet_dropped(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_udp_stream_enqueued]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_udp_stream_enqueued]
             fn acceptor_udp_stream_enqueued(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_udp_io_error]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_udp_io_error]
             fn acceptor_udp_io_error(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_stream_pruned]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_stream_pruned]
             fn acceptor_stream_pruned(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__acceptor_stream_dequeued]
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_stream_dequeued]
             fn acceptor_stream_dequeued(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_write_flushed]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_write_flushed]
             fn stream_write_flushed(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_write_flushed__committed__total]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_write_flushed__committed__total]
             fn stream_write_flushed__committed__total(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_write_fin_flushed]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_write_fin_flushed]
             fn stream_write_fin_flushed(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_write_fin_flushed__committed__total]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_write_fin_flushed__committed__total]
             fn stream_write_fin_flushed__committed__total(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_write_blocked]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_write_blocked]
             fn stream_write_blocked(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_write_errored]
+            #[link_name = s2n_quic_dc__event__counter__stream_write_errored]
             fn stream_write_errored(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_write_key_updated]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_write_key_updated]
             fn stream_write_key_updated(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_write_allocated]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_write_allocated]
             fn stream_write_allocated(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_write_shutdown]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_write_shutdown]
             fn stream_write_shutdown(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_write_socket_flushed]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_write_socket_flushed]
             fn stream_write_socket_flushed(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_write_socket_flushed__committed__total]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_write_socket_flushed__committed__total]
             fn stream_write_socket_flushed__committed__total(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_write_socket_blocked]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_write_socket_blocked]
             fn stream_write_socket_blocked(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_write_socket_errored]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_write_socket_errored]
             fn stream_write_socket_errored(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_read_flushed]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_read_flushed]
             fn stream_read_flushed(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_read_flushed__committed__total]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_read_flushed__committed__total]
             fn stream_read_flushed__committed__total(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_read_fin_flushed]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_read_fin_flushed]
             fn stream_read_fin_flushed(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_read_blocked]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_read_blocked]
             fn stream_read_blocked(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_read_errored]
+            #[link_name = s2n_quic_dc__event__counter__stream_read_errored]
             fn stream_read_errored(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_read_key_updated]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_read_key_updated]
             fn stream_read_key_updated(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_read_shutdown]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_read_shutdown]
             fn stream_read_shutdown(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_read_socket_flushed]
+            #[link_name = s2n_quic_dc__event__counter__stream_read_socket_flushed]
             fn stream_read_socket_flushed(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_read_socket_flushed__committed__total]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_read_socket_flushed__committed__total]
             fn stream_read_socket_flushed__committed__total(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_read_socket_blocked]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_read_socket_blocked]
             fn stream_read_socket_blocked(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_read_socket_errored]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_read_socket_errored]
             fn stream_read_socket_errored(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_decrypt_packet]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_decrypt_packet]
             fn stream_decrypt_packet(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_tcp_connect]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_tcp_connect]
             fn stream_tcp_connect(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_tls_connect]
+            #[link_name = s2n_quic_dc__event__counter__stream_tls_connect]
             fn stream_tls_connect(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_connect]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_connect]
             fn stream_connect(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_connect_error]
+            #[link_name = s2n_quic_dc__event__counter__stream_connect_error]
             fn stream_connect_error(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_packet_transmitted]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_packet_transmitted]
             fn stream_packet_transmitted(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_packet_transmitted__payload_len__total]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_packet_transmitted__payload_len__total]
             fn stream_packet_transmitted__payload_len__total(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_probe_transmitted]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_probe_transmitted]
             fn stream_probe_transmitted(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_packet_received]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_packet_received]
             fn stream_packet_received(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_packet_received__payload_len__total]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_packet_received__payload_len__total]
             fn stream_packet_received__payload_len__total(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_packet_lost]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_packet_lost]
             fn stream_packet_lost(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_packet_lost__payload_len__total]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_packet_lost__payload_len__total]
             fn stream_packet_lost__payload_len__total(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_packet_acked]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_packet_acked]
             fn stream_packet_acked(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_packet_acked__payload_len__total]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_packet_acked__payload_len__total]
             fn stream_packet_acked__payload_len__total(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_packet_spuriously_retransmitted]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_packet_spuriously_retransmitted]
             fn stream_packet_spuriously_retransmitted(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_packet_spuriously_retransmitted__payload_len__total]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_packet_spuriously_retransmitted__payload_len__total]
             fn stream_packet_spuriously_retransmitted__payload_len__total(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_max_data_received]
+            #[link_name = s2n_quic_dc__event__counter__stream_max_data_received]
             fn stream_max_data_received(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_max_data_received__increase__total]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_max_data_received__increase__total]
             fn stream_max_data_received__increase__total(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_control_packet_transmitted]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_control_packet_transmitted]
             fn stream_control_packet_transmitted(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_control_packet_received]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_control_packet_received]
             fn stream_control_packet_received(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_receiver_errored]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_receiver_errored]
             fn stream_receiver_errored(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_sender_errored]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_sender_errored]
             fn stream_sender_errored(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stream_handshake_packet_rejected]
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_handshake_packet_rejected]
             fn stream_handshake_packet_rejected(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__connection_closed]
+            #[link_name =
+        s2n_quic_dc__event__counter__connection_closed]
             fn connection_closed(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__endpoint_initialized]
+            #[link_name = s2n_quic_dc__event__counter__endpoint_initialized]
             fn endpoint_initialized(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__dc_connection_timeout]
+            #[link_name =
+        s2n_quic_dc__event__counter__dc_connection_timeout]
             fn dc_connection_timeout(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_initialized]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_initialized]
             fn path_secret_map_initialized(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_uninitialized]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_uninitialized]
             fn path_secret_map_uninitialized(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_background_handshake_requested]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_background_handshake_requested]
             fn path_secret_map_background_handshake_requested(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_entry_inserted]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_entry_inserted]
             fn path_secret_map_entry_inserted(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_entry_ready]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_entry_ready]
             fn path_secret_map_entry_ready(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_entry_replaced]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_entry_replaced]
             fn path_secret_map_entry_replaced(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_id_entry_evicted]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_id_entry_evicted]
             fn path_secret_map_id_entry_evicted(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_address_entry_evicted]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_address_entry_evicted]
             fn path_secret_map_address_entry_evicted(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__unknown_path_secret_packet_sent]
+            #[link_name =
+        s2n_quic_dc__event__counter__unknown_path_secret_packet_sent]
             fn unknown_path_secret_packet_sent(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__unknown_path_secret_packet_received]
+            #[link_name =
+        s2n_quic_dc__event__counter__unknown_path_secret_packet_received]
             fn unknown_path_secret_packet_received(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__unknown_path_secret_packet_accepted]
+            #[link_name =
+        s2n_quic_dc__event__counter__unknown_path_secret_packet_accepted]
             fn unknown_path_secret_packet_accepted(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__unknown_path_secret_packet_rejected]
+            #[link_name =
+        s2n_quic_dc__event__counter__unknown_path_secret_packet_rejected]
             fn unknown_path_secret_packet_rejected(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__unknown_path_secret_packet_dropped]
+            #[link_name =
+        s2n_quic_dc__event__counter__unknown_path_secret_packet_dropped]
             fn unknown_path_secret_packet_dropped(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__key_accepted]
+            #[link_name =
+        s2n_quic_dc__event__counter__key_accepted]
             fn key_accepted(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__replay_definitely_detected]
+            #[link_name = s2n_quic_dc__event__counter__replay_definitely_detected]
             fn replay_definitely_detected(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__replay_potentially_detected]
+            #[link_name =
+        s2n_quic_dc__event__counter__replay_potentially_detected]
             fn replay_potentially_detected(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__replay_detected_packet_sent]
+            #[link_name =
+        s2n_quic_dc__event__counter__replay_detected_packet_sent]
             fn replay_detected_packet_sent(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__replay_detected_packet_received]
+            #[link_name =
+        s2n_quic_dc__event__counter__replay_detected_packet_received]
             fn replay_detected_packet_received(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__replay_detected_packet_accepted]
+            #[link_name =
+        s2n_quic_dc__event__counter__replay_detected_packet_accepted]
             fn replay_detected_packet_accepted(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__replay_detected_packet_rejected]
+            #[link_name =
+        s2n_quic_dc__event__counter__replay_detected_packet_rejected]
             fn replay_detected_packet_rejected(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__replay_detected_packet_dropped]
+            #[link_name =
+        s2n_quic_dc__event__counter__replay_detected_packet_dropped]
             fn replay_detected_packet_dropped(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stale_key_packet_sent]
+            #[link_name =
+        s2n_quic_dc__event__counter__stale_key_packet_sent]
             fn stale_key_packet_sent(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stale_key_packet_received]
+            #[link_name =
+        s2n_quic_dc__event__counter__stale_key_packet_received]
             fn stale_key_packet_received(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stale_key_packet_accepted]
+            #[link_name =
+        s2n_quic_dc__event__counter__stale_key_packet_accepted]
             fn stale_key_packet_accepted(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stale_key_packet_rejected]
+            #[link_name =
+        s2n_quic_dc__event__counter__stale_key_packet_rejected]
             fn stale_key_packet_rejected(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__stale_key_packet_dropped]
+            #[link_name =
+        s2n_quic_dc__event__counter__stale_key_packet_dropped]
             fn stale_key_packet_dropped(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_address_cache_accessed]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_address_cache_accessed]
             fn path_secret_map_address_cache_accessed(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_address_cache_accessed_hit]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_address_cache_accessed_hit]
             fn path_secret_map_address_cache_accessed_hit(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_id_cache_accessed]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_id_cache_accessed]
             fn path_secret_map_id_cache_accessed(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_id_cache_accessed_hit]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_id_cache_accessed_hit]
             fn path_secret_map_id_cache_accessed_hit(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_cleaner_cycled]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_cleaner_cycled]
             fn path_secret_map_cleaner_cycled(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_id_write_lock]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_id_write_lock]
             fn path_secret_map_id_write_lock(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_address_write_lock]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_address_write_lock]
             fn path_secret_map_address_write_lock(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_datagram_encrypt]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_datagram_encrypt]
             fn path_secret_map_datagram_encrypt(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_datagram_encrypt__packet_len__total]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_datagram_encrypt__packet_len__total]
             fn path_secret_map_datagram_encrypt__packet_len__total(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_datagram_decrypt]
+            #[link_name
+        = s2n_quic_dc__event__counter__path_secret_map_datagram_decrypt]
             fn path_secret_map_datagram_decrypt(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_datagram_decrypt__packet_len__total]
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_datagram_decrypt__packet_len__total]
             fn path_secret_map_datagram_decrypt__packet_len__total(value: u64);
         }
     );
@@ -1361,49 +1463,71 @@ mod counter {
         }
         define!(
             extern "probe" {
-                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_tcp_packet_received__is_fin]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__acceptor_tcp_packet_received__is_fin]
                 fn acceptor_tcp_packet_received__is_fin(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_tcp_packet_received__is_fin_known]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__acceptor_tcp_packet_received__is_fin_known]
                 fn acceptor_tcp_packet_received__is_fin_known(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_zero_offset]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_zero_offset]
                 fn acceptor_udp_packet_received__is_zero_offset(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_retransmission]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_retransmission]
                 fn acceptor_udp_packet_received__is_retransmission(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_fin]
+                #[link_name
+            = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_fin]
                 fn acceptor_udp_packet_received__is_fin(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_fin_known]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_fin_known]
                 fn acceptor_udp_packet_received__is_fin_known(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__stream_write_shutdown__background]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__stream_write_shutdown__background]
                 fn stream_write_shutdown__background(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__stream_read_shutdown__background]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__stream_read_shutdown__background]
                 fn stream_read_shutdown__background(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__stream_decrypt_packet__decrypted_in_place]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__stream_decrypt_packet__decrypted_in_place]
                 fn stream_decrypt_packet__decrypted_in_place(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__stream_tcp_connect__error]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__stream_tcp_connect__error]
                 fn stream_tcp_connect__error(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__stream_tls_connect__error]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__stream_tls_connect__error]
                 fn stream_tls_connect__error(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__stream_connect__error]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__stream_connect__error]
                 fn stream_connect__error(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__stream_packet_transmitted__retransmission]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__stream_packet_transmitted__retransmission]
                 fn stream_packet_transmitted__retransmission(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__stream_packet_received__retransmission]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__stream_packet_received__retransmission]
                 fn stream_packet_received__retransmission(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__stream_packet_lost__retransmission]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__stream_packet_lost__retransmission]
                 fn stream_packet_lost__retransmission(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__stream_packet_acked__retransmission]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__stream_packet_acked__retransmission]
                 fn stream_packet_acked__retransmission(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__stream_packet_spuriously_retransmitted__retransmission]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__stream_packet_spuriously_retransmitted__retransmission]
                 fn stream_packet_spuriously_retransmitted__retransmission(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__stream_control_packet_received__authenticated]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__stream_control_packet_received__authenticated]
                 fn stream_control_packet_received__authenticated(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__endpoint_initialized__tcp]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__endpoint_initialized__tcp]
                 fn endpoint_initialized__tcp(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__endpoint_initialized__udp]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__endpoint_initialized__udp]
                 fn endpoint_initialized__udp(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__path_secret_map_address_cache_accessed__hit]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__path_secret_map_address_cache_accessed__hit]
                 fn path_secret_map_address_cache_accessed__hit(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__path_secret_map_id_cache_accessed__hit]
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__path_secret_map_id_cache_accessed__hit]
                 fn path_secret_map_id_cache_accessed__hit(value: bool);
             }
         );
@@ -1527,199 +1651,234 @@ mod counter {
         }
         define!(
             extern "probe" {
-                # [link_name = s2n_quic_dc__event__counter__nominal__acceptor_tcp_stream_dropped__reason]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__acceptor_tcp_stream_dropped__reason]
                 fn acceptor_tcp_stream_dropped__reason(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__acceptor_tcp_packet_dropped__reason]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__acceptor_tcp_packet_dropped__reason]
                 fn acceptor_tcp_packet_dropped__reason(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__acceptor_tcp_io_error__source]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__acceptor_tcp_io_error__source]
                 fn acceptor_tcp_io_error__source(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__acceptor_udp_packet_dropped__reason]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__acceptor_udp_packet_dropped__reason]
                 fn acceptor_udp_packet_dropped__reason(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__acceptor_stream_pruned__reason]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__acceptor_stream_pruned__reason]
                 fn acceptor_stream_pruned__reason(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__stream_connect__tcp]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__stream_connect__tcp]
                 fn stream_connect__tcp(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic_dc__event__counter__nominal__stream_connect__handshake]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__stream_connect__handshake]
                 fn stream_connect__handshake(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic_dc__event__counter__nominal__stream_connect_error__reason]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__stream_connect_error__reason]
                 fn stream_connect_error__reason(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic_dc__event__counter__nominal__stream_handshake_packet_rejected__reason]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__stream_handshake_packet_rejected__reason]
                 fn stream_handshake_packet_rejected__reason(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__endpoint_initialized__acceptor__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__endpoint_initialized__acceptor__protocol]
                 fn endpoint_initialized__acceptor__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__endpoint_initialized__handshake__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__endpoint_initialized__handshake__protocol]
                 fn endpoint_initialized__handshake__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__dc_connection_timeout__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__dc_connection_timeout__peer_address__protocol]
                 fn dc_connection_timeout__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__path_secret_map_background_handshake_requested__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__path_secret_map_background_handshake_requested__peer_address__protocol]
                 fn path_secret_map_background_handshake_requested__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__path_secret_map_entry_inserted__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__path_secret_map_entry_inserted__peer_address__protocol]
                 fn path_secret_map_entry_inserted__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__path_secret_map_entry_ready__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__path_secret_map_entry_ready__peer_address__protocol]
                 fn path_secret_map_entry_ready__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__path_secret_map_entry_replaced__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__path_secret_map_entry_replaced__peer_address__protocol]
                 fn path_secret_map_entry_replaced__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__path_secret_map_id_entry_evicted__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__path_secret_map_id_entry_evicted__peer_address__protocol]
                 fn path_secret_map_id_entry_evicted__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__path_secret_map_address_entry_evicted__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__path_secret_map_address_entry_evicted__peer_address__protocol]
                 fn path_secret_map_address_entry_evicted__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__unknown_path_secret_packet_sent__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__unknown_path_secret_packet_sent__peer_address__protocol]
                 fn unknown_path_secret_packet_sent__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__unknown_path_secret_packet_received__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__unknown_path_secret_packet_received__peer_address__protocol]
                 fn unknown_path_secret_packet_received__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__unknown_path_secret_packet_accepted__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__unknown_path_secret_packet_accepted__peer_address__protocol]
                 fn unknown_path_secret_packet_accepted__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__unknown_path_secret_packet_rejected__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__unknown_path_secret_packet_rejected__peer_address__protocol]
                 fn unknown_path_secret_packet_rejected__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__unknown_path_secret_packet_dropped__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__unknown_path_secret_packet_dropped__peer_address__protocol]
                 fn unknown_path_secret_packet_dropped__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__replay_detected_packet_sent__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__replay_detected_packet_sent__peer_address__protocol]
                 fn replay_detected_packet_sent__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__replay_detected_packet_received__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__replay_detected_packet_received__peer_address__protocol]
                 fn replay_detected_packet_received__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__replay_detected_packet_accepted__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__replay_detected_packet_accepted__peer_address__protocol]
                 fn replay_detected_packet_accepted__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__replay_detected_packet_rejected__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__replay_detected_packet_rejected__peer_address__protocol]
                 fn replay_detected_packet_rejected__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__replay_detected_packet_dropped__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__replay_detected_packet_dropped__peer_address__protocol]
                 fn replay_detected_packet_dropped__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__stale_key_packet_sent__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__stale_key_packet_sent__peer_address__protocol]
                 fn stale_key_packet_sent__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__stale_key_packet_received__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__stale_key_packet_received__peer_address__protocol]
                 fn stale_key_packet_received__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__stale_key_packet_accepted__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__stale_key_packet_accepted__peer_address__protocol]
                 fn stale_key_packet_accepted__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__stale_key_packet_rejected__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__stale_key_packet_rejected__peer_address__protocol]
                 fn stale_key_packet_rejected__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__stale_key_packet_dropped__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__stale_key_packet_dropped__peer_address__protocol]
                 fn stale_key_packet_dropped__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__path_secret_map_address_cache_accessed__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__path_secret_map_address_cache_accessed__peer_address__protocol]
                 fn path_secret_map_address_cache_accessed__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__path_secret_map_address_cache_accessed_hit__peer_address__protocol]
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__path_secret_map_address_cache_accessed_hit__peer_address__protocol]
                 fn path_secret_map_address_cache_accessed_hit__peer_address__protocol(
                     value: u64,
                     variant: u64,
@@ -2060,261 +2219,390 @@ mod measure {
     }
     define!(
         extern "probe" {
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_started__backlog]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_started__backlog]
             fn acceptor_tcp_started__backlog(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_loop_iteration_completed__pending_streams]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_loop_iteration_completed__pending_streams]
             fn acceptor_tcp_loop_iteration_completed__pending_streams(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_loop_iteration_completed__slots_idle]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_loop_iteration_completed__slots_idle]
             fn acceptor_tcp_loop_iteration_completed__slots_idle(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_loop_iteration_completed__slot_utilization]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_loop_iteration_completed__slot_utilization]
             fn acceptor_tcp_loop_iteration_completed__slot_utilization(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_loop_iteration_completed__max_sojourn_time]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_loop_iteration_completed__max_sojourn_time]
             fn acceptor_tcp_loop_iteration_completed__max_sojourn_time(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_fresh_batch_completed__enqueued]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_fresh_batch_completed__enqueued]
             fn acceptor_tcp_fresh_batch_completed__enqueued(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_fresh_batch_completed__dropped]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_fresh_batch_completed__dropped]
             fn acceptor_tcp_fresh_batch_completed__dropped(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_fresh_batch_completed__errored]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_fresh_batch_completed__errored]
             fn acceptor_tcp_fresh_batch_completed__errored(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_stream_replaced__buffer_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_stream_replaced__buffer_len]
             fn acceptor_tcp_stream_replaced__buffer_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_packet_received__payload_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_packet_received__payload_len]
             fn acceptor_tcp_packet_received__payload_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_stream_enqueued__blocked_count]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_stream_enqueued__blocked_count]
             fn acceptor_tcp_stream_enqueued__blocked_count(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_socket_sent__blocked_count_stream]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_socket_sent__blocked_count_stream]
             fn acceptor_tcp_socket_sent__blocked_count_stream(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_socket_sent__len]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_socket_sent__len]
             fn acceptor_tcp_socket_sent__len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_socket_received__len]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_tcp_socket_received__len]
             fn acceptor_tcp_socket_received__len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_udp_datagram_received__len]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_udp_datagram_received__len]
             fn acceptor_udp_datagram_received__len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__acceptor_udp_packet_received__payload_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_udp_packet_received__payload_len]
             fn acceptor_udp_packet_received__payload_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_flushed__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_flushed__conn]
             fn stream_write_flushed__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_flushed__provided]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_flushed__provided]
             fn stream_write_flushed__provided(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_flushed__committed]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_flushed__committed]
             fn stream_write_flushed__committed(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_flushed__committed__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_flushed__committed__conn]
             fn stream_write_flushed__committed__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_flushed__processing_duration]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_flushed__processing_duration]
             fn stream_write_flushed__processing_duration(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_flushed__processing_duration__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_flushed__processing_duration__conn]
             fn stream_write_flushed__processing_duration__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_fin_flushed__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_fin_flushed__conn]
             fn stream_write_fin_flushed__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_fin_flushed__provided]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_fin_flushed__provided]
             fn stream_write_fin_flushed__provided(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_fin_flushed__committed]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_fin_flushed__committed]
             fn stream_write_fin_flushed__committed(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_fin_flushed__committed__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_fin_flushed__committed__conn]
             fn stream_write_fin_flushed__committed__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_fin_flushed__processing_duration]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_fin_flushed__processing_duration]
             fn stream_write_fin_flushed__processing_duration(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_fin_flushed__processing_duration__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_fin_flushed__processing_duration__conn]
             fn stream_write_fin_flushed__processing_duration__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_blocked__conn]
+            #[link_name
+        = s2n_quic_dc__event__measure__stream_write_blocked__conn]
             fn stream_write_blocked__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_blocked__provided]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_blocked__provided]
             fn stream_write_blocked__provided(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_blocked__processing_duration]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_blocked__processing_duration]
             fn stream_write_blocked__processing_duration(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_blocked__processing_duration__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_blocked__processing_duration__conn]
             fn stream_write_blocked__processing_duration__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_errored__provided]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_errored__provided]
             fn stream_write_errored__provided(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_errored__processing_duration]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_errored__processing_duration]
             fn stream_write_errored__processing_duration(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_errored__processing_duration__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_errored__processing_duration__conn]
             fn stream_write_errored__processing_duration__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_allocated__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_allocated__conn]
             fn stream_write_allocated__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_allocated__allocated_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_allocated__allocated_len]
             fn stream_write_allocated__allocated_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_allocated__allocated_len__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_allocated__allocated_len__conn]
             fn stream_write_allocated__allocated_len__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_shutdown__buffer_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_shutdown__buffer_len]
             fn stream_write_shutdown__buffer_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_socket_flushed__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_socket_flushed__conn]
             fn stream_write_socket_flushed__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_socket_flushed__provided]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_socket_flushed__provided]
             fn stream_write_socket_flushed__provided(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_socket_flushed__committed]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_socket_flushed__committed]
             fn stream_write_socket_flushed__committed(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_socket_flushed__committed__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_socket_flushed__committed__conn]
             fn stream_write_socket_flushed__committed__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_socket_blocked__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_socket_blocked__conn]
             fn stream_write_socket_blocked__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_socket_blocked__provided]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_socket_blocked__provided]
             fn stream_write_socket_blocked__provided(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_socket_errored__provided]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_write_socket_errored__provided]
             fn stream_write_socket_errored__provided(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_flushed__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_flushed__conn]
             fn stream_read_flushed__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_flushed__capacity]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_flushed__capacity]
             fn stream_read_flushed__capacity(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_flushed__committed]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_flushed__committed]
             fn stream_read_flushed__committed(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_flushed__committed__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_flushed__committed__conn]
             fn stream_read_flushed__committed__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_flushed__processing_duration]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_flushed__processing_duration]
             fn stream_read_flushed__processing_duration(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_flushed__processing_duration__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_flushed__processing_duration__conn]
             fn stream_read_flushed__processing_duration__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_fin_flushed__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_fin_flushed__conn]
             fn stream_read_fin_flushed__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_fin_flushed__capacity]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_fin_flushed__capacity]
             fn stream_read_fin_flushed__capacity(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_fin_flushed__processing_duration]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_fin_flushed__processing_duration]
             fn stream_read_fin_flushed__processing_duration(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_fin_flushed__processing_duration__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_fin_flushed__processing_duration__conn]
             fn stream_read_fin_flushed__processing_duration__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_blocked__capacity]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_blocked__capacity]
             fn stream_read_blocked__capacity(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_blocked__processing_duration]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_blocked__processing_duration]
             fn stream_read_blocked__processing_duration(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_blocked__processing_duration__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_blocked__processing_duration__conn]
             fn stream_read_blocked__processing_duration__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_errored__capacity]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_errored__capacity]
             fn stream_read_errored__capacity(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_errored__processing_duration]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_errored__processing_duration]
             fn stream_read_errored__processing_duration(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_errored__processing_duration__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_errored__processing_duration__conn]
             fn stream_read_errored__processing_duration__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_socket_flushed__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_socket_flushed__conn]
             fn stream_read_socket_flushed__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_socket_flushed__capacity]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_socket_flushed__capacity]
             fn stream_read_socket_flushed__capacity(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_socket_flushed__committed]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_socket_flushed__committed]
             fn stream_read_socket_flushed__committed(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_socket_flushed__committed__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_socket_flushed__committed__conn]
             fn stream_read_socket_flushed__committed__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_socket_blocked__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_socket_blocked__conn]
             fn stream_read_socket_blocked__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_socket_blocked__capacity]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_socket_blocked__capacity]
             fn stream_read_socket_blocked__capacity(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_read_socket_errored__capacity]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_socket_errored__capacity]
             fn stream_read_socket_errored__capacity(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_decrypt_packet__forced_copy]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_decrypt_packet__forced_copy]
             fn stream_decrypt_packet__forced_copy(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_decrypt_packet__required_application_buffer]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_decrypt_packet__required_application_buffer]
             fn stream_decrypt_packet__required_application_buffer(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_transmitted__packet_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_transmitted__packet_len]
             fn stream_packet_transmitted__packet_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_transmitted__payload_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_transmitted__payload_len]
             fn stream_packet_transmitted__payload_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_transmitted__payload_len__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_transmitted__payload_len__conn]
             fn stream_packet_transmitted__payload_len__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_probe_transmitted__packet_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_probe_transmitted__packet_len]
             fn stream_probe_transmitted__packet_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_received__packet_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_received__packet_len]
             fn stream_packet_received__packet_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_received__payload_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_received__payload_len]
             fn stream_packet_received__payload_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_received__payload_len__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_received__payload_len__conn]
             fn stream_packet_received__payload_len__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_lost__packet_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_lost__packet_len]
             fn stream_packet_lost__packet_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_lost__payload_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_lost__payload_len]
             fn stream_packet_lost__payload_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_lost__payload_len__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_lost__payload_len__conn]
             fn stream_packet_lost__payload_len__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_lost__lifetime]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_lost__lifetime]
             fn stream_packet_lost__lifetime(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_acked__packet_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_acked__packet_len]
             fn stream_packet_acked__packet_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_acked__payload_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_acked__payload_len]
             fn stream_packet_acked__payload_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_acked__payload_len__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_acked__payload_len__conn]
             fn stream_packet_acked__payload_len__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_acked__lifetime]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_acked__lifetime]
             fn stream_packet_acked__lifetime(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_spuriously_retransmitted__packet_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_spuriously_retransmitted__packet_len]
             fn stream_packet_spuriously_retransmitted__packet_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_spuriously_retransmitted__payload_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_packet_spuriously_retransmitted__payload_len]
             fn stream_packet_spuriously_retransmitted__payload_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_packet_spuriously_retransmitted__payload_len__conn]
+            #[link_name
+        =
+        s2n_quic_dc__event__measure__stream_packet_spuriously_retransmitted__payload_len__conn]
             fn stream_packet_spuriously_retransmitted__payload_len__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_max_data_received__increase]
+            #[link_name = s2n_quic_dc__event__measure__stream_max_data_received__increase]
             fn stream_max_data_received__increase(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_control_packet_transmitted__packet_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_control_packet_transmitted__packet_len]
             fn stream_control_packet_transmitted__packet_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_control_packet_transmitted__control_data_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_control_packet_transmitted__control_data_len]
             fn stream_control_packet_transmitted__control_data_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_control_packet_received__packet_len]
+            #[link_name
+        = s2n_quic_dc__event__measure__stream_control_packet_received__packet_len]
             fn stream_control_packet_received__packet_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_control_packet_received__control_data_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_control_packet_received__control_data_len]
             fn stream_control_packet_received__control_data_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_handshake_packet_rejected__conn]
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_handshake_packet_rejected__conn]
             fn stream_handshake_packet_rejected__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_initialized__capacity]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_initialized__capacity]
             fn path_secret_map_initialized__capacity(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_uninitialized__capacity]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_uninitialized__capacity]
             fn path_secret_map_uninitialized__capacity(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_uninitialized__entries]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_uninitialized__entries]
             fn path_secret_map_uninitialized__entries(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_uninitialized__lifetime]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_uninitialized__lifetime]
             fn path_secret_map_uninitialized__lifetime(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_id_entry_evicted__age]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_id_entry_evicted__age]
             fn path_secret_map_id_entry_evicted__age(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_address_entry_evicted__age]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_address_entry_evicted__age]
             fn path_secret_map_address_entry_evicted__age(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__key_accepted__gap]
+            #[link_name =
+        s2n_quic_dc__event__measure__key_accepted__gap]
             fn key_accepted__gap(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__key_accepted__forward_shift]
+            #[link_name = s2n_quic_dc__event__measure__key_accepted__forward_shift]
             fn key_accepted__forward_shift(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__replay_potentially_detected__gap]
+            #[link_name =
+        s2n_quic_dc__event__measure__replay_potentially_detected__gap]
             fn replay_potentially_detected__gap(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_address_cache_accessed_hit__age]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_address_cache_accessed_hit__age]
             fn path_secret_map_address_cache_accessed_hit__age(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_id_cache_accessed_hit__age]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_id_cache_accessed_hit__age]
             fn path_secret_map_id_cache_accessed_hit__age(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id]
             fn path_secret_map_cleaner_cycled__entries__id(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__retired]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__retired]
             fn path_secret_map_cleaner_cycled__entries__id__retired(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__active]
+            #[link_name
+        =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__active]
             fn path_secret_map_cleaner_cycled__entries__id__active(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__active__utilization]
+            #[link_name
+        =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__active__utilization]
             fn path_secret_map_cleaner_cycled__entries__id__active__utilization(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__utilization]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__utilization]
             fn path_secret_map_cleaner_cycled__entries__id__utilization(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__utilization__initial]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__utilization__initial]
             fn path_secret_map_cleaner_cycled__entries__id__utilization__initial(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address]
             fn path_secret_map_cleaner_cycled__entries__address(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__active]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__active]
             fn path_secret_map_cleaner_cycled__entries__address__active(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__active__utilization]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__active__utilization]
             fn path_secret_map_cleaner_cycled__entries__address__active__utilization(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__retired]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__retired]
             fn path_secret_map_cleaner_cycled__entries__address__retired(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__utilization]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__utilization]
             fn path_secret_map_cleaner_cycled__entries__address__utilization(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__utilization__initial]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__utilization__initial]
             fn path_secret_map_cleaner_cycled__entries__address__utilization__initial(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_requests]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_requests]
             fn path_secret_map_cleaner_cycled__handshake_requests(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_requests__skipped]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_requests__skipped]
             fn path_secret_map_cleaner_cycled__handshake_requests__skipped(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_lock_duration]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_lock_duration]
             fn path_secret_map_cleaner_cycled__handshake_lock_duration(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__total_duration]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__total_duration]
             fn path_secret_map_cleaner_cycled__total_duration(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_id_write_lock__acquire]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_id_write_lock__acquire]
             fn path_secret_map_id_write_lock__acquire(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_id_write_lock__duration]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_id_write_lock__duration]
             fn path_secret_map_id_write_lock__duration(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_address_write_lock__acquire]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_address_write_lock__acquire]
             fn path_secret_map_address_write_lock__acquire(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_address_write_lock__duration]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_address_write_lock__duration]
             fn path_secret_map_address_write_lock__duration(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_datagram_encrypt__packet_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_datagram_encrypt__packet_len]
             fn path_secret_map_datagram_encrypt__packet_len(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_datagram_decrypt__packet_len]
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_datagram_decrypt__packet_len]
             fn path_secret_map_datagram_decrypt__packet_len(value: u64);
         }
     );
@@ -2407,61 +2695,84 @@ mod timer {
     }
     define!(
         extern "probe" {
-            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_loop_iteration_completed__processing_duration]
+            #[link_name =
+        s2n_quic_dc__event__timer__acceptor_tcp_loop_iteration_completed__processing_duration]
             fn acceptor_tcp_loop_iteration_completed__processing_duration(
                 value: core::time::Duration,
             );
-            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_stream_replaced__sojourn_time]
+            #[link_name =
+        s2n_quic_dc__event__timer__acceptor_tcp_stream_replaced__sojourn_time]
             fn acceptor_tcp_stream_replaced__sojourn_time(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_packet_received__sojourn_time]
+            #[link_name =
+        s2n_quic_dc__event__timer__acceptor_tcp_packet_received__sojourn_time]
             fn acceptor_tcp_packet_received__sojourn_time(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_tls_started__sojourn_time]
+            #[link_name = s2n_quic_dc__event__timer__acceptor_tcp_tls_started__sojourn_time]
             fn acceptor_tcp_tls_started__sojourn_time(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_tls_stream_enqueued__sojourn_time]
+            #[link_name =
+        s2n_quic_dc__event__timer__acceptor_tcp_tls_stream_enqueued__sojourn_time]
             fn acceptor_tcp_tls_stream_enqueued__sojourn_time(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_tls_stream_rejected__sojourn_time]
+            #[link_name =
+        s2n_quic_dc__event__timer__acceptor_tcp_tls_stream_rejected__sojourn_time]
             fn acceptor_tcp_tls_stream_rejected__sojourn_time(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_packet_dropped__sojourn_time]
+            #[link_name =
+        s2n_quic_dc__event__timer__acceptor_tcp_packet_dropped__sojourn_time]
             fn acceptor_tcp_packet_dropped__sojourn_time(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_stream_enqueued__sojourn_time]
+            #[link_name =
+        s2n_quic_dc__event__timer__acceptor_tcp_stream_enqueued__sojourn_time]
             fn acceptor_tcp_stream_enqueued__sojourn_time(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_socket_sent__sojourn_time]
+            #[link_name = s2n_quic_dc__event__timer__acceptor_tcp_socket_sent__sojourn_time]
             fn acceptor_tcp_socket_sent__sojourn_time(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_socket_received__transfer_time]
+            #[link_name =
+        s2n_quic_dc__event__timer__acceptor_tcp_socket_received__transfer_time]
             fn acceptor_tcp_socket_received__transfer_time(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__acceptor_stream_pruned__sojourn_time]
+            #[link_name = s2n_quic_dc__event__timer__acceptor_stream_pruned__sojourn_time]
             fn acceptor_stream_pruned__sojourn_time(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__acceptor_stream_dequeued__sojourn_time]
+            #[link_name =
+        s2n_quic_dc__event__timer__acceptor_stream_dequeued__sojourn_time]
             fn acceptor_stream_dequeued__sojourn_time(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__acceptor_stream_dequeued__queue_sojourn_time]
+            #[link_name
+        = s2n_quic_dc__event__timer__acceptor_stream_dequeued__queue_sojourn_time]
             fn acceptor_stream_dequeued__queue_sojourn_time(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_write_flushed__latency]
+            #[link_name = s2n_quic_dc__event__timer__stream_write_flushed__latency]
             fn stream_write_flushed__latency(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_write_fin_flushed__latency]
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_write_fin_flushed__latency]
             fn stream_write_fin_flushed__latency(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_write_blocked__latency]
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_write_blocked__latency]
             fn stream_write_blocked__latency(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_write_errored__latency]
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_write_errored__latency]
             fn stream_write_errored__latency(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_write_shutdown__latency]
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_write_shutdown__latency]
             fn stream_write_shutdown__latency(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_read_flushed__latency]
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_read_flushed__latency]
             fn stream_read_flushed__latency(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_read_fin_flushed__latency]
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_read_fin_flushed__latency]
             fn stream_read_fin_flushed__latency(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_read_blocked__latency]
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_read_blocked__latency]
             fn stream_read_blocked__latency(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_read_errored__latency]
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_read_errored__latency]
             fn stream_read_errored__latency(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_read_shutdown__latency]
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_read_shutdown__latency]
             fn stream_read_shutdown__latency(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_tcp_connect__tcp_latency]
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_tcp_connect__tcp_latency]
             fn stream_tcp_connect__tcp_latency(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_tls_connect__tcp_latency]
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_tls_connect__tcp_latency]
             fn stream_tls_connect__tcp_latency(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_tls_connect__tls_latency]
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_tls_connect__tls_latency]
             fn stream_tls_connect__tls_latency(value: core::time::Duration);
-            # [link_name = s2n_quic_dc__event__timer__stream_connect_error__latency]
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_connect_error__latency]
             fn stream_connect_error__latency(value: core::time::Duration);
         }
     );
