@@ -670,7 +670,8 @@ fn minimum_initial_packet() {
 // to find the network MTU. Test asserts that both sides reach MTU search complete even
 // though one side starts probing further away from the network MTU than the other.
 // This is meant to emulate the network scenario where one side experiences a much
-// smaller MTU than the other.
+// smaller MTU than the other. We technically could enhance the test network to apply different
+// MTUs to the two sides of the connection, but this works for now.
 fn asymmetrical_mtu_probe() {
     #[derive(Default, Clone)]
     // Subscriber that keeps track of when the MTU search completes
