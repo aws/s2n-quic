@@ -687,7 +687,6 @@ fn asymmetrical_mtu_probe() {
             _meta: &events::ConnectionMeta,
             _info: &events::ConnectionInfo,
         ) -> Self::ConnectionContext {
-            ()
         }
 
         fn on_mtu_updated(
