@@ -215,6 +215,10 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Normal<'_, C
         self.path_manager
             .active_path()
             .transmission_interest(query)?;
+        // The MTU controller transmission_interest() function includes the interest for MTU probes,
+        // which are not sent in Normal packets, and the interest for sending the MTUConfirmComplete frame,
+        // which are sent in Normal packets.
+        // We therefore only call the completion_transmission_needed() function here to check interest.
         if self
             .path_manager
             .active_path()

@@ -5,7 +5,7 @@ use super::*;
 use s2n_codec::encoder::scatter;
 use s2n_quic::provider::tls;
 use s2n_quic_core::{
-    event::api::{MtuUpdated, MtuUpdatedCause, Subject},
+    event::api::{MtuUpdated, MtuUpdatedCause, Subject, TransmissionMode::MtuProbing},
     packet::interceptor::{Interceptor, Packet},
     path::{
         mtu::{self},
@@ -678,6 +678,7 @@ fn asymmetrical_mtu_probe() {
     struct MtuComplete {
         search_complete: Arc<Mutex<bool>>,
         waker: Arc<Mutex<Option<std::task::Waker>>>,
+        mtu_probe_counter: u8,
     }
 
     impl event::Subscriber for MtuComplete {
@@ -698,9 +699,23 @@ fn asymmetrical_mtu_probe() {
         ) {
             if event.search_complete {
                 *self.search_complete.lock().unwrap() = true;
+                // An endpoint will need 23 probes to go from an initial MTU of 8940 to a network MTU of 1500.
+                let expected_probe_count = 23;
+                assert_eq!(self.mtu_probe_counter, expected_probe_count);
                 if let Some(waker) = self.waker.lock().unwrap().take() {
                     waker.wake();
                 }
+            }
+        }
+
+        fn on_packet_sent(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &events::ConnectionMeta,
+            event: &events::PacketSent,
+        ) {
+            if matches!(event.transmission_mode, MtuProbing { .. }) {
+                self.mtu_probe_counter += 1;
             }
         }
     }
