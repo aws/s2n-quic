@@ -671,7 +671,7 @@ fn minimum_initial_packet() {
 // though one side starts probing further away from the network MTU than the other.
 // This is meant to emulate the network scenario where one side experiences a much
 // smaller MTU than the other.
-fn dc_asymmetrical_mtu_probe() {
+fn asymmetrical_mtu_probe() {
     #[derive(Default, Clone)]
     // Subscriber that keeps track of when the MTU search completes
     struct MtuComplete {
