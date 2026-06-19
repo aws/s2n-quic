@@ -5,9 +5,17 @@ use super::*;
 use s2n_codec::encoder::scatter;
 use s2n_quic::provider::tls;
 use s2n_quic_core::{
-    event::api::Subject,
+    event::api::{MtuUpdated, MtuUpdatedCause, Subject, TransmissionMode::MtuProbing},
     packet::interceptor::{Interceptor, Packet},
-    path::{mtu, BaseMtu, InitialMtu},
+    path::{
+        mtu::{self},
+        BaseMtu, InitialMtu,
+    },
+};
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 macro_rules! mtu_test {
@@ -655,6 +663,148 @@ fn minimum_initial_packet() {
             recorder::PacketDropReason::UndersizedInitialPacket,
         ]
     );
+}
+
+#[test]
+// Tests the scenario where two sides of the connection need different probe searches
+// to find the network MTU. Test asserts that both sides reach MTU search complete even
+// though one side starts probing further away from the network MTU than the other.
+// This is meant to emulate the network scenario where one side experiences a much
+// smaller MTU than the other. We technically could enhance the test network to apply different
+// MTUs to the two sides of the connection, but this works for now.
+fn asymmetrical_mtu_probe() {
+    #[derive(Default, Clone)]
+    // Subscriber that keeps track of when the MTU search completes
+    struct MtuComplete {
+        search_complete: Arc<Mutex<bool>>,
+        waker: Arc<Mutex<Option<std::task::Waker>>>,
+        mtu_probe_counter: u8,
+    }
+
+    impl event::Subscriber for MtuComplete {
+        type ConnectionContext = ();
+
+        fn create_connection_context(
+            &mut self,
+            _meta: &events::ConnectionMeta,
+            _info: &events::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+        }
+
+        fn on_mtu_updated(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &events::ConnectionMeta,
+            event: &events::MtuUpdated,
+        ) {
+            if event.search_complete {
+                *self.search_complete.lock().unwrap() = true;
+                // An endpoint will need 23 probes to go from an initial MTU of 8940 to a network MTU of 1500.
+                let expected_probe_count = 23;
+                assert_eq!(self.mtu_probe_counter, expected_probe_count);
+                if let Some(waker) = self.waker.lock().unwrap().take() {
+                    waker.wake();
+                }
+            }
+        }
+
+        fn on_packet_sent(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &events::ConnectionMeta,
+            event: &events::PacketSent,
+        ) {
+            if matches!(event.transmission_mode, MtuProbing { .. }) {
+                self.mtu_probe_counter += 1;
+            }
+        }
+    }
+
+    // Future that allows us to wait until the MTU search completes
+    impl Future for MtuComplete {
+        type Output = ();
+
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            *self.waker.lock().unwrap() = Some(cx.waker().clone());
+            if *self.search_complete.lock().unwrap() {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        }
+    }
+
+    let model = Model::default();
+    let client_subscriber = MtuComplete::default();
+    let server_subscriber = recorder::MtuUpdated::new();
+    let server_mtu_events = server_subscriber.events();
+
+    test(model.clone(), |handle| {
+        // Client's initial MTU is set up to be much higher than the network MTU, meaning many
+        // rounds of probing will be necessary to get to MTU complete. Meanwhile the server is set up
+        // to find the network MTU in its first probe.
+        let client_mtu = 8940;
+        let server_mtu = 1500;
+        model.set_max_udp_payload(server_mtu);
+
+        let server_mtu_config = handle
+            .builder()
+            .with_max_mtu(server_mtu)
+            .with_initial_mtu(server_mtu);
+
+        let client_mtu_config = handle
+            .builder()
+            .with_max_mtu(client_mtu)
+            .with_initial_mtu(client_mtu);
+
+        let server = Server::builder()
+            .with_io(server_mtu_config.build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event((tracing_events(true, model.clone()), server_subscriber))?
+            .start()?;
+
+        let client = Client::builder()
+            .with_io(client_mtu_config.build()?)?
+            .with_tls(certificates::CERT_PEM)?
+            .with_event((
+                tracing_events(true, model.clone()),
+                client_subscriber.clone(),
+            ))?
+            .start()?;
+
+        let addr = start_server(server)?;
+
+        primary::spawn({
+            async move {
+                let connect = Connect::new(addr).with_server_name("localhost");
+                let conn = client.connect(connect).await.unwrap();
+                client_subscriber.await;
+                drop(conn);
+            }
+        });
+
+        Ok(addr)
+    })
+    .unwrap();
+
+    // Server completes MTU search on the second update
+    assert!(matches!(
+        server_mtu_events.lock().unwrap().remove(0),
+        MtuUpdated {
+            search_complete: false,
+            cause: MtuUpdatedCause::NewPath { .. },
+            ..
+        }
+    ));
+    assert!(matches!(
+        server_mtu_events.lock().unwrap().remove(0),
+        MtuUpdated {
+            search_complete: true,
+            cause: MtuUpdatedCause::InitialMtuPacketAcknowledged { .. },
+            ..
+        }
+    ));
+    assert_eq!(server_mtu_events.lock().unwrap().len(), 0);
 }
 
 /// Erase client hello

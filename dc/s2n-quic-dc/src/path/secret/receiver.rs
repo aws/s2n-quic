@@ -125,7 +125,7 @@ impl State {
         } else {
             // Even on a 32-bit platform we'd hit the check above (since seen is way smaller than
             // 2^32).
-            seen.shift_right(delta as usize);
+            seen.shift_end(delta as usize);
         }
 
         let Ok(idx) = usize::try_from(new_max - key_id) else {
