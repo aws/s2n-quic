@@ -324,6 +324,8 @@ mod id {
         PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__RETIRED,
         PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION,
         PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION,
@@ -859,6 +861,11 @@ mod id {
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD: usize =
+        InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION: usize =
+        InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION
+            as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED: usize =
@@ -1531,6 +1538,8 @@ mod id {
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__RETIRED,
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION,
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL,
+        MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD,
+        MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION,
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS,
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED,
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION,
@@ -1783,6 +1792,10 @@ mod id {
         usize =
         Measures::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL
             as usize;
+    pub const MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD: usize =
+        Measures::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD as usize;
+    pub const MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION: usize = Measures::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION
+        as usize;
     pub const MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS: usize =
         Measures::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS as usize;
     pub const MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED: usize =
@@ -1889,7 +1902,7 @@ mod id {
     pub const TIMERS_STREAM_CONNECT_ERROR__LATENCY: usize =
         Timers::TIMERS_STREAM_CONNECT_ERROR__LATENCY as usize;
 }
-static INFO: &[Info; 323usize] = &[
+static INFO: &[Info; 325usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_STARTED,
         name: Str::new("acceptor_tcp_started\0"),
@@ -3733,6 +3746,18 @@ static INFO: &[Info; 323usize] = &[
     }
     .build(),
     info::Builder {
+        id: id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id.in_last_hs_period\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id.in_last_hs_period.utilization\0"),
+        units: Units::Percent,
+    }
+    .build(),
+    info::Builder {
         id: id::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS,
         name: Str::new("path_secret_map_cleaner_cycled.handshake_requests\0"),
         units: Units::None,
@@ -3874,7 +3899,7 @@ pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
     nominal_counter_offsets: Box<[usize; 35usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure; 128usize]>,
+    measures: Box<[R::Measure; 130usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
@@ -3905,7 +3930,7 @@ impl<R: Registry> Subscriber<R> {
         let mut bool_counters = Vec::with_capacity(22usize);
         let mut nominal_counters = Vec::with_capacity(35usize);
         let mut nominal_counter_offsets = Vec::with_capacity(35usize);
-        let mut measures = Vec::with_capacity(128usize);
+        let mut measures = Vec::with_capacity(130usize);
         let mut gauges = Vec::with_capacity(0usize);
         let mut timers = Vec::with_capacity(27usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
@@ -4801,6 +4826,12 @@ impl<R: Registry> Subscriber<R> {
         ));
         measures.push(registry.register_measure(
             &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL],
+        ));
+        measures.push(registry.register_measure(
+            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD],
+        ));
+        measures.push(registry.register_measure(
+            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION],
         ));
         measures.push(
             registry
@@ -6121,6 +6152,18 @@ impl<R: Registry> Subscriber<R> {
                     id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL => {
                         (
                             &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION],
                             entry,
                         )
                     }
@@ -9076,6 +9119,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL,
             id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL,
             event.address_entries_initial_utilization,
+        );
+        self.measure(
+            id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD,
+            id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD,
+            event.id_entries_in_last_hs_period,
+        );
+        self.measure(
+            id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION,
+            id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION,
+            event.id_entries_in_last_hs_period_utilization,
         );
         self.measure(
             id::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS,

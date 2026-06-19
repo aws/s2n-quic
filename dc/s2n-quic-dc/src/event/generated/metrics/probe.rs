@@ -320,6 +320,8 @@ mod id {
         PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__RETIRED,
         PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION,
         PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION,
@@ -855,6 +857,11 @@ mod id {
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD: usize =
+        InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION: usize =
+        InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION
+            as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED: usize =
@@ -2178,6 +2185,14 @@ mod measure {
                 id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL => {
                     Self(path_secret_map_cleaner_cycled__entries__address__utilization__initial)
                 }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD => {
+                    Self(path_secret_map_cleaner_cycled__entries__id__in_last_hs_period)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION => {
+                    Self(
+                        path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__utilization,
+                    )
+                }
                 id::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS => {
                     Self(path_secret_map_cleaner_cycled__handshake_requests)
                 }
@@ -2574,6 +2589,14 @@ mod measure {
             #[link_name =
         s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__utilization__initial]
             fn path_secret_map_cleaner_cycled__entries__address__utilization__initial(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__in_last_hs_period]
+            fn path_secret_map_cleaner_cycled__entries__id__in_last_hs_period(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__utilization]
+            fn path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__utilization(
+                value: u64,
+            );
             #[link_name =
         s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_requests]
             fn path_secret_map_cleaner_cycled__handshake_requests(value: u64);

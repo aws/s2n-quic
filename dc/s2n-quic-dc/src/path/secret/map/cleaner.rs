@@ -126,6 +126,10 @@ impl Cleaner {
         let address_entries_initial = state.peers.len();
         let mut address_entries_retired = 0usize;
         let mut address_entries_active = 0usize;
+        // Entries created within the last rehandshake period. This tracks how much of the cache
+        // churns over a single rehandshake period, which is useful for understanding capacity
+        // pressure relative to the rate at which we re-handshake peers.
+        let mut id_entries_in_last_hs_period = 0usize;
 
         // We want to avoid taking long lived locks which affect gets on the maps (where we want
         // p100 latency to be in microseconds at most).
@@ -153,6 +157,10 @@ impl Cleaner {
         )]
         let mut rehandshake = state.rehandshake.lock().unwrap();
         let refill_rehandshakes = rehandshake.needs_refill();
+        // Compute the cutoff once (rather than calling `Instant::now()` per entry via `age()`) so
+        // we can cheaply compare each entry's creation timestamp directly. Entries created at or
+        // after this cutoff are considered to have been created within the last rehandshake period.
+        let recent_cutoff = Instant::now().checked_sub(rehandshake.rehandshake_period());
 
         // FIXME: add metrics for queue depth?
         // These are sort of equivalent to the ID map -- so maybe not worth it for now unless we
@@ -162,8 +170,17 @@ impl Cleaner {
                 return false;
             };
 
+            // Entries created within the last rehandshake period. If subtraction underflowed
+            // (period exceeds process uptime), all entries are considered recent.
+            let in_rehandshake_period =
+                recent_cutoff.is_none_or(|cutoff| entry.creation_time() >= cutoff);
+
             if entry.take_accessed_id() {
                 id_entries_active += 1;
+            }
+
+            if in_rehandshake_period {
+                id_entries_in_last_hs_period += 1;
             }
 
             // Avoid double counting by making sure we have unique peer IPs.
@@ -242,6 +259,8 @@ impl Cleaner {
                 address_entries_utilization: utilization(address_entries),
                 address_entries_initial_utilization: utilization(address_entries_initial),
                 address_entries_retired,
+                id_entries_in_last_hs_period,
+                id_entries_in_last_hs_period_utilization: utilization(id_entries_in_last_hs_period),
                 handshake_requests,
                 handshake_requests_skipped,
                 handshake_lock_duration,
