@@ -43,6 +43,13 @@ pub use entry::{
 pub use handshake::HandshakingPath;
 pub use peer::Peer;
 
+/// Result of [`Map::open_once`], carrying the opener together with metadata about the peer.
+pub struct Opened {
+    pub opener: open::Once,
+    pub application_data: Option<ApplicationData>,
+    pub peer: SocketAddr,
+}
+
 pub(crate) use size_of::SizeOf;
 pub(crate) use status::Dedup;
 
@@ -167,12 +174,18 @@ impl Map {
         credentials: &Credentials,
         queue_id: Option<VarInt>,
         control_out: &mut Vec<u8>,
-    ) -> Option<open::Once> {
+    ) -> Option<Opened> {
         let entry = self
             .store
             .pre_authentication(credentials, queue_id, control_out)?;
+        let application_data = entry.application_data().clone();
+        let peer = *entry.peer();
         let opener = entry.uni_opener(self.clone(), credentials, queue_id);
-        Some(opener)
+        Some(Opened {
+            opener,
+            application_data,
+            peer,
+        })
     }
 
     pub fn open_once_with_application_data(
