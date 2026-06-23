@@ -42,6 +42,8 @@ mod id {
         ACCEPTOR_TCP_TLS_STREAM_ENQUEUED__SOJOURN_TIME,
         ACCEPTOR_TCP_TLS_STREAM_REJECTED,
         ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME,
+        ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED,
+        ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME,
         ACCEPTOR_TCP_PACKET_DROPPED,
         ACCEPTOR_TCP_PACKET_DROPPED__REASON,
         ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME,
@@ -388,6 +390,10 @@ mod id {
         InfoId::ACCEPTOR_TCP_TLS_STREAM_REJECTED as usize;
     pub const ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME: usize =
         InfoId::ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME as usize;
+    pub const ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED: usize =
+        InfoId::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED as usize;
+    pub const ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME: usize =
+        InfoId::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME as usize;
     pub const ACCEPTOR_TCP_PACKET_DROPPED: usize = InfoId::ACCEPTOR_TCP_PACKET_DROPPED as usize;
     pub const ACCEPTOR_TCP_PACKET_DROPPED__REASON: usize =
         InfoId::ACCEPTOR_TCP_PACKET_DROPPED__REASON as usize;
@@ -907,6 +913,9 @@ mod counter {
                 id::ACCEPTOR_TCP_TLS_STARTED => Self(acceptor_tcp_tls_started),
                 id::ACCEPTOR_TCP_TLS_STREAM_ENQUEUED => Self(acceptor_tcp_tls_stream_enqueued),
                 id::ACCEPTOR_TCP_TLS_STREAM_REJECTED => Self(acceptor_tcp_tls_stream_rejected),
+                id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED => {
+                    Self(acceptor_tcp_synthetic_tls_stream_rejected)
+                }
                 id::ACCEPTOR_TCP_PACKET_DROPPED => Self(acceptor_tcp_packet_dropped),
                 id::ACCEPTOR_TCP_STREAM_ENQUEUED => Self(acceptor_tcp_stream_enqueued),
                 id::ACCEPTOR_TCP_IO_ERROR => Self(acceptor_tcp_io_error),
@@ -1094,6 +1103,9 @@ mod counter {
             #[link_name =
         s2n_quic_dc__event__counter__acceptor_tcp_tls_stream_rejected]
             fn acceptor_tcp_tls_stream_rejected(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_synthetic_tls_stream_rejected]
+            fn acceptor_tcp_synthetic_tls_stream_rejected(value: u64);
             #[link_name =
         s2n_quic_dc__event__counter__acceptor_tcp_packet_dropped]
             fn acceptor_tcp_packet_dropped(value: u64);
@@ -2649,6 +2661,9 @@ mod timer {
                 id::ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME => {
                     Self(acceptor_tcp_tls_stream_rejected__sojourn_time)
                 }
+                id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME => {
+                    Self(acceptor_tcp_synthetic_tls_stream_rejected__sojourn_time)
+                }
                 id::ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME => {
                     Self(acceptor_tcp_packet_dropped__sojourn_time)
                 }
@@ -2714,6 +2729,11 @@ mod timer {
             #[link_name =
         s2n_quic_dc__event__timer__acceptor_tcp_tls_stream_rejected__sojourn_time]
             fn acceptor_tcp_tls_stream_rejected__sojourn_time(value: core::time::Duration);
+            #[link_name =
+        s2n_quic_dc__event__timer__acceptor_tcp_synthetic_tls_stream_rejected__sojourn_time]
+            fn acceptor_tcp_synthetic_tls_stream_rejected__sojourn_time(
+                value: core::time::Duration,
+            );
             #[link_name =
         s2n_quic_dc__event__timer__acceptor_tcp_packet_dropped__sojourn_time]
             fn acceptor_tcp_packet_dropped__sojourn_time(value: core::time::Duration);

@@ -314,6 +314,25 @@ impl S2nTlsConnection {
     pub(crate) fn peer_cert_chain(&self) -> Option<&CertificateChain> {
         self.cert_chain.as_ref()
     }
+
+    /// Returns whether this is an inbound connection likely originating from a synthetic caller.
+    ///
+    /// Returns false if we're not sure.
+    pub(crate) fn is_synthetic(&self) -> bool {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
+        let mut guard = self.connection.lock().unwrap();
+        let conn: &mut s2n_tls::connection::Connection = (*guard.0).as_mut();
+        let Ok(ch) = conn.client_hello() else {
+            return false;
+        };
+        let Ok(random) = ch.random() else {
+            return false;
+        };
+        random.starts_with(b"s2n-proctor")
+    }
 }
 
 /// `NegotiateContext` for poll_negotiate.
