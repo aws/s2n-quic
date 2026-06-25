@@ -46,6 +46,8 @@ mod id {
         ACCEPTOR_TCP_TLS_STREAM_ENQUEUED__SOJOURN_TIME,
         ACCEPTOR_TCP_TLS_STREAM_REJECTED,
         ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME,
+        ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED,
+        ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME,
         ACCEPTOR_TCP_PACKET_DROPPED,
         ACCEPTOR_TCP_PACKET_DROPPED__REASON,
         ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME,
@@ -394,6 +396,10 @@ mod id {
         InfoId::ACCEPTOR_TCP_TLS_STREAM_REJECTED as usize;
     pub const ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME: usize =
         InfoId::ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME as usize;
+    pub const ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED: usize =
+        InfoId::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED as usize;
+    pub const ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME: usize =
+        InfoId::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME as usize;
     pub const ACCEPTOR_TCP_PACKET_DROPPED: usize = InfoId::ACCEPTOR_TCP_PACKET_DROPPED as usize;
     pub const ACCEPTOR_TCP_PACKET_DROPPED__REASON: usize =
         InfoId::ACCEPTOR_TCP_PACKET_DROPPED__REASON as usize;
@@ -910,6 +916,7 @@ mod id {
         COUNTERS_ACCEPTOR_TCP_TLS_STARTED,
         COUNTERS_ACCEPTOR_TCP_TLS_STREAM_ENQUEUED,
         COUNTERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED,
+        COUNTERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED,
         COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED,
         COUNTERS_ACCEPTOR_TCP_STREAM_ENQUEUED,
         COUNTERS_ACCEPTOR_TCP_IO_ERROR,
@@ -1032,6 +1039,8 @@ mod id {
         Counters::COUNTERS_ACCEPTOR_TCP_TLS_STREAM_ENQUEUED as usize;
     pub const COUNTERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED: usize =
         Counters::COUNTERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED as usize;
+    pub const COUNTERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED: usize =
+        Counters::COUNTERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED as usize;
     pub const COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED: usize =
         Counters::COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED as usize;
     pub const COUNTERS_ACCEPTOR_TCP_STREAM_ENQUEUED: usize =
@@ -1825,6 +1834,7 @@ mod id {
         TIMERS_ACCEPTOR_TCP_TLS_STARTED__SOJOURN_TIME,
         TIMERS_ACCEPTOR_TCP_TLS_STREAM_ENQUEUED__SOJOURN_TIME,
         TIMERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME,
+        TIMERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME,
         TIMERS_ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME,
         TIMERS_ACCEPTOR_TCP_STREAM_ENQUEUED__SOJOURN_TIME,
         TIMERS_ACCEPTOR_TCP_SOCKET_SENT__SOJOURN_TIME,
@@ -1859,6 +1869,8 @@ mod id {
         Timers::TIMERS_ACCEPTOR_TCP_TLS_STREAM_ENQUEUED__SOJOURN_TIME as usize;
     pub const TIMERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME: usize =
         Timers::TIMERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME as usize;
+    pub const TIMERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME: usize =
+        Timers::TIMERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME as usize;
     pub const TIMERS_ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME: usize =
         Timers::TIMERS_ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME as usize;
     pub const TIMERS_ACCEPTOR_TCP_STREAM_ENQUEUED__SOJOURN_TIME: usize =
@@ -2074,6 +2086,18 @@ static INFO: &[Info; 325usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME,
         name: Str::new("acceptor_tcp_tls_stream_rejected.sojourn_time\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED,
+        name: Str::new("acceptor_tcp_synthetic_tls_stream_rejected\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME,
+        name: Str::new("acceptor_tcp_synthetic_tls_stream_rejected.sojourn_time\0"),
         units: Units::Duration,
     }
     .build(),
@@ -3891,7 +3915,7 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 111usize]>,
+    counters: Box<[R::Counter; 112usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 22usize]>,
     #[allow(dead_code)]
@@ -3903,7 +3927,7 @@ pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
-    timers: Box<[R::Timer; 27usize]>,
+    timers: Box<[R::Timer; 28usize]>,
     #[allow(dead_code)]
     nominal_timers: Box<[R::NominalTimer]>,
     #[allow(dead_code)]
@@ -3926,13 +3950,13 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(111usize);
+        let mut counters = Vec::with_capacity(112usize);
         let mut bool_counters = Vec::with_capacity(22usize);
         let mut nominal_counters = Vec::with_capacity(35usize);
         let mut nominal_counter_offsets = Vec::with_capacity(35usize);
         let mut measures = Vec::with_capacity(130usize);
         let mut gauges = Vec::with_capacity(0usize);
-        let mut timers = Vec::with_capacity(27usize);
+        let mut timers = Vec::with_capacity(28usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
         let mut nominal_timer_offsets = Vec::with_capacity(0usize);
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_STARTED]));
@@ -3945,6 +3969,8 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_TLS_STARTED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_TLS_STREAM_ENQUEUED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_TLS_STREAM_REJECTED]));
+        counters
+            .push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_PACKET_DROPPED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_STREAM_ENQUEUED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_IO_ERROR]));
@@ -4877,6 +4903,11 @@ impl<R: Registry> Subscriber<R> {
         timers.push(
             registry.register_timer(&INFO[id::ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME]),
         );
+        timers.push(
+            registry.register_timer(
+                &INFO[id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME],
+            ),
+        );
         timers.push(registry.register_timer(&INFO[id::ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME]));
         timers.push(registry.register_timer(&INFO[id::ACCEPTOR_TCP_STREAM_ENQUEUED__SOJOURN_TIME]));
         timers.push(registry.register_timer(&INFO[id::ACCEPTOR_TCP_SOCKET_SENT__SOJOURN_TIME]));
@@ -4961,6 +4992,9 @@ impl<R: Registry> Subscriber<R> {
                 }
                 id::COUNTERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED => {
                     (&INFO[id::ACCEPTOR_TCP_TLS_STREAM_REJECTED], entry)
+                }
+                id::COUNTERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED => {
+                    (&INFO[id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED], entry)
                 }
                 id::COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED => {
                     (&INFO[id::ACCEPTOR_TCP_PACKET_DROPPED], entry)
@@ -6260,6 +6294,10 @@ impl<R: Registry> Subscriber<R> {
                     &INFO[id::ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME],
                     entry,
                 ),
+                id::TIMERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME => (
+                    &INFO[id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME],
+                    entry,
+                ),
                 id::TIMERS_ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME => {
                     (&INFO[id::ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME], entry)
                 }
@@ -6637,6 +6675,27 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         self.time(
             id::ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME,
             id::TIMERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME,
+            event.sojourn_time,
+        );
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_acceptor_tcp_synthetic_tls_stream_rejected(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::AcceptorTcpSyntheticTlsStreamRejected,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED,
+            id::COUNTERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED,
+            1usize,
+        );
+        self.time(
+            id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME,
+            id::TIMERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME,
             event.sojourn_time,
         );
         let _ = event;

@@ -266,6 +266,34 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// Emitted when a synthetic TLS stream is rejected.
+    ///
+    /// These are TLS streams detected as coming from a synthetic source (e.g., scanner for endpoint
+    /// compliance). Typically failures here are expected at a much higher rate.
+    pub struct AcceptorTcpSyntheticTlsStreamRejected<'a> {
+        /// The address of the packet's sender
+        pub remote_address: SocketAddress<'a>,
+        /// The amount of time the TCP stream spent on handshaking before being rejected
+        /// since being accepted from the kernel
+        pub sojourn_time: core::time::Duration,
+        /// The error encountered
+        pub error: &'a std::io::Error,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for AcceptorTcpSyntheticTlsStreamRejected<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AcceptorTcpSyntheticTlsStreamRejected");
+            fmt.field("remote_address", &self.remote_address);
+            fmt.field("sojourn_time", &self.sojourn_time);
+            fmt.field("error", &self.error);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for AcceptorTcpSyntheticTlsStreamRejected<'a> {
+        const NAME: &'static str = "acceptor:tcp:tls_synthetic_stream_rejected";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     /// Emitted when the TCP acceptor received an invalid initial packet
     pub struct AcceptorTcpPacketDropped<'a> {
         /// The address of the packet's sender
@@ -2850,6 +2878,26 @@ pub mod tracing {
             );
         }
         #[inline]
+        fn on_acceptor_tcp_synthetic_tls_stream_rejected(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpSyntheticTlsStreamRejected,
+        ) {
+            let parent = self.parent(meta);
+            let api::AcceptorTcpSyntheticTlsStreamRejected {
+                remote_address,
+                sojourn_time,
+                error,
+            } = event;
+            tracing::event!(
+                target : "acceptor_tcp_synthetic_tls_stream_rejected", parent : parent,
+                tracing::Level::DEBUG, { remote_address =
+                tracing::field::debug(remote_address), sojourn_time =
+                tracing::field::debug(sojourn_time), error = tracing::field::debug(error)
+                }
+            );
+        }
+        #[inline]
         fn on_acceptor_tcp_packet_dropped(
             &self,
             meta: &api::EndpointMeta,
@@ -4712,6 +4760,37 @@ pub mod builder {
                 error,
             } = self;
             api::AcceptorTcpTlsStreamRejected {
+                remote_address: remote_address.into_event(),
+                sojourn_time: sojourn_time.into_event(),
+                error: error.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    /// Emitted when a synthetic TLS stream is rejected.
+    ///
+    /// These are TLS streams detected as coming from a synthetic source (e.g., scanner for endpoint
+    /// compliance). Typically failures here are expected at a much higher rate.
+    pub struct AcceptorTcpSyntheticTlsStreamRejected<'a> {
+        /// The address of the packet's sender
+        pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        /// The amount of time the TCP stream spent on handshaking before being rejected
+        /// since being accepted from the kernel
+        pub sojourn_time: core::time::Duration,
+        /// The error encountered
+        pub error: &'a std::io::Error,
+    }
+    impl<'a> IntoEvent<api::AcceptorTcpSyntheticTlsStreamRejected<'a>>
+        for AcceptorTcpSyntheticTlsStreamRejected<'a>
+    {
+        #[inline]
+        fn into_event(self) -> api::AcceptorTcpSyntheticTlsStreamRejected<'a> {
+            let AcceptorTcpSyntheticTlsStreamRejected {
+                remote_address,
+                sojourn_time,
+                error,
+            } = self;
+            api::AcceptorTcpSyntheticTlsStreamRejected {
                 remote_address: remote_address.into_event(),
                 sojourn_time: sojourn_time.into_event(),
                 error: error.into_event(),
@@ -7047,6 +7126,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        ///Called when the `AcceptorTcpSyntheticTlsStreamRejected` event is triggered
+        #[inline]
+        fn on_acceptor_tcp_synthetic_tls_stream_rejected(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpSyntheticTlsStreamRejected,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         ///Called when the `AcceptorTcpPacketDropped` event is triggered
         #[inline]
         fn on_acceptor_tcp_packet_dropped(
@@ -8089,6 +8178,15 @@ mod traits {
                 .on_acceptor_tcp_tls_stream_rejected(meta, event);
         }
         #[inline]
+        fn on_acceptor_tcp_synthetic_tls_stream_rejected(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpSyntheticTlsStreamRejected,
+        ) {
+            self.as_ref()
+                .on_acceptor_tcp_synthetic_tls_stream_rejected(meta, event);
+        }
+        #[inline]
         fn on_acceptor_tcp_packet_dropped(
             &self,
             meta: &api::EndpointMeta,
@@ -8963,6 +9061,15 @@ mod traits {
             (self.1).on_acceptor_tcp_tls_stream_rejected(meta, event);
         }
         #[inline]
+        fn on_acceptor_tcp_synthetic_tls_stream_rejected(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpSyntheticTlsStreamRejected,
+        ) {
+            (self.0).on_acceptor_tcp_synthetic_tls_stream_rejected(meta, event);
+            (self.1).on_acceptor_tcp_synthetic_tls_stream_rejected(meta, event);
+        }
+        #[inline]
         fn on_acceptor_tcp_packet_dropped(
             &self,
             meta: &api::EndpointMeta,
@@ -9815,6 +9922,11 @@ mod traits {
         fn on_acceptor_tcp_tls_stream_enqueued(&self, event: builder::AcceptorTcpTlsStreamEnqueued);
         ///Publishes a `AcceptorTcpTlsStreamRejected` event to the publisher's subscriber
         fn on_acceptor_tcp_tls_stream_rejected(&self, event: builder::AcceptorTcpTlsStreamRejected);
+        ///Publishes a `AcceptorTcpSyntheticTlsStreamRejected` event to the publisher's subscriber
+        fn on_acceptor_tcp_synthetic_tls_stream_rejected(
+            &self,
+            event: builder::AcceptorTcpSyntheticTlsStreamRejected,
+        );
         ///Publishes a `AcceptorTcpPacketDropped` event to the publisher's subscriber
         fn on_acceptor_tcp_packet_dropped(&self, event: builder::AcceptorTcpPacketDropped);
         ///Publishes a `AcceptorTcpStreamEnqueued` event to the publisher's subscriber
@@ -10066,6 +10178,16 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_acceptor_tcp_tls_stream_rejected(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_acceptor_tcp_synthetic_tls_stream_rejected(
+            &self,
+            event: builder::AcceptorTcpSyntheticTlsStreamRejected,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_acceptor_tcp_synthetic_tls_stream_rejected(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -10931,6 +11053,7 @@ pub mod testing {
             pub acceptor_tcp_tls_started: AtomicU64,
             pub acceptor_tcp_tls_stream_enqueued: AtomicU64,
             pub acceptor_tcp_tls_stream_rejected: AtomicU64,
+            pub acceptor_tcp_synthetic_tls_stream_rejected: AtomicU64,
             pub acceptor_tcp_packet_dropped: AtomicU64,
             pub acceptor_tcp_stream_enqueued: AtomicU64,
             pub acceptor_tcp_io_error: AtomicU64,
@@ -11026,6 +11149,7 @@ pub mod testing {
                     acceptor_tcp_tls_started: AtomicU64::new(0),
                     acceptor_tcp_tls_stream_enqueued: AtomicU64::new(0),
                     acceptor_tcp_tls_stream_rejected: AtomicU64::new(0),
+                    acceptor_tcp_synthetic_tls_stream_rejected: AtomicU64::new(0),
                     acceptor_tcp_packet_dropped: AtomicU64::new(0),
                     acceptor_tcp_stream_enqueued: AtomicU64::new(0),
                     acceptor_tcp_io_error: AtomicU64::new(0),
@@ -11204,6 +11328,18 @@ pub mod testing {
                 event: &api::AcceptorTcpTlsStreamRejected,
             ) {
                 self.acceptor_tcp_tls_stream_rejected
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_acceptor_tcp_synthetic_tls_stream_rejected(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::AcceptorTcpSyntheticTlsStreamRejected,
+            ) {
+                self.acceptor_tcp_synthetic_tls_stream_rejected
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -11854,6 +11990,7 @@ pub mod testing {
         pub acceptor_tcp_tls_started: AtomicU64,
         pub acceptor_tcp_tls_stream_enqueued: AtomicU64,
         pub acceptor_tcp_tls_stream_rejected: AtomicU64,
+        pub acceptor_tcp_synthetic_tls_stream_rejected: AtomicU64,
         pub acceptor_tcp_packet_dropped: AtomicU64,
         pub acceptor_tcp_stream_enqueued: AtomicU64,
         pub acceptor_tcp_io_error: AtomicU64,
@@ -11982,6 +12119,7 @@ pub mod testing {
                 acceptor_tcp_tls_started: AtomicU64::new(0),
                 acceptor_tcp_tls_stream_enqueued: AtomicU64::new(0),
                 acceptor_tcp_tls_stream_rejected: AtomicU64::new(0),
+                acceptor_tcp_synthetic_tls_stream_rejected: AtomicU64::new(0),
                 acceptor_tcp_packet_dropped: AtomicU64::new(0),
                 acceptor_tcp_stream_enqueued: AtomicU64::new(0),
                 acceptor_tcp_io_error: AtomicU64::new(0),
@@ -12193,6 +12331,18 @@ pub mod testing {
             event: &api::AcceptorTcpTlsStreamRejected,
         ) {
             self.acceptor_tcp_tls_stream_rejected
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_tcp_synthetic_tls_stream_rejected(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpSyntheticTlsStreamRejected,
+        ) {
+            self.acceptor_tcp_synthetic_tls_stream_rejected
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -13311,6 +13461,7 @@ pub mod testing {
         pub acceptor_tcp_tls_started: AtomicU64,
         pub acceptor_tcp_tls_stream_enqueued: AtomicU64,
         pub acceptor_tcp_tls_stream_rejected: AtomicU64,
+        pub acceptor_tcp_synthetic_tls_stream_rejected: AtomicU64,
         pub acceptor_tcp_packet_dropped: AtomicU64,
         pub acceptor_tcp_stream_enqueued: AtomicU64,
         pub acceptor_tcp_io_error: AtomicU64,
@@ -13429,6 +13580,7 @@ pub mod testing {
                 acceptor_tcp_tls_started: AtomicU64::new(0),
                 acceptor_tcp_tls_stream_enqueued: AtomicU64::new(0),
                 acceptor_tcp_tls_stream_rejected: AtomicU64::new(0),
+                acceptor_tcp_synthetic_tls_stream_rejected: AtomicU64::new(0),
                 acceptor_tcp_packet_dropped: AtomicU64::new(0),
                 acceptor_tcp_stream_enqueued: AtomicU64::new(0),
                 acceptor_tcp_io_error: AtomicU64::new(0),
@@ -13605,6 +13757,17 @@ pub mod testing {
             event: builder::AcceptorTcpTlsStreamRejected,
         ) {
             self.acceptor_tcp_tls_stream_rejected
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_tcp_synthetic_tls_stream_rejected(
+            &self,
+            event: builder::AcceptorTcpSyntheticTlsStreamRejected,
+        ) {
+            self.acceptor_tcp_synthetic_tls_stream_rejected
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);

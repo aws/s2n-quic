@@ -424,6 +424,134 @@ async fn unauthenticated_closure() {
     assert_eq!(err.kind(), std::io::ErrorKind::UnexpectedEof, "{:?}", err);
 }
 
+/// Appends a single `Extension { uint16 extension_type; opaque extension_data<0..2^16-1> }` to
+/// `extensions`.
+fn push_extension(extensions: &mut Vec<u8>, extension_type: u16, extension_data: &[u8]) {
+    extensions.extend_from_slice(&extension_type.to_be_bytes());
+    extensions.extend_from_slice(&(extension_data.len() as u16).to_be_bytes());
+    extensions.extend_from_slice(extension_data);
+}
+
+/// Builds a single TLS 1.3 ClientHello record carrying the provided 32-byte client random.
+///
+/// The bytes are hand-encoded per RFC 8446 4.1.2:
+///
+/// ```text
+/// struct {
+///     ProtocolVersion legacy_version = 0x0303;    /* TLS v1.2 */
+///     Random random;
+///     opaque legacy_session_id<0..32>;
+///     CipherSuite cipher_suites<2..2^16-2>;
+///     opaque legacy_compression_methods<1..2^8-1>;
+///     Extension extensions<8..2^16-1>;
+/// } ClientHello;
+/// ```
+///
+/// It is a complete enough ClientHello (advertising TLS 1.3, a mutually-supported group, and a
+/// matching key share) that the server proceeds to send a ServerHello rather than a
+/// HelloRetryRequest. That matters because a HelloRetryRequest causes s2n-tls to discard the
+/// parsed ClientHello (and thus the client random that `is_synthetic` reads). The handshake is not
+/// expected to complete -- the peer goes away -- but the client random is recorded along the way.
+fn client_hello_record(random: &[u8; 32]) -> Vec<u8> {
+    // The secp256r1 (NIST P-256) generator point in uncompressed form (0x04 || X || Y). It is a
+    // valid point on the curve, so it serves as a well-formed key_share public key.
+    const SECP256R1_GENERATOR: [u8; 65] = [
+        0x04, 0x6b, 0x17, 0xd1, 0xf2, 0xe1, 0x2c, 0x42, 0x47, 0xf8, 0xbc, 0xe6, 0xe5, 0x63, 0xa4,
+        0x40, 0xf2, 0x77, 0x03, 0x7d, 0x81, 0x2d, 0xeb, 0x33, 0xa0, 0xf4, 0xa1, 0x39, 0x45, 0xd8,
+        0x98, 0xc2, 0x96, 0x4f, 0xe3, 0x42, 0xe2, 0xfe, 0x1a, 0x7f, 0x9b, 0x8e, 0xe7, 0xeb, 0x4a,
+        0x7c, 0x0f, 0x9e, 0x16, 0x2b, 0xce, 0x33, 0x57, 0x6b, 0x31, 0x5e, 0xce, 0xcb, 0xb6, 0x40,
+        0x68, 0x37, 0xbf, 0x51, 0xf5,
+    ];
+    const SECP256R1: u16 = 0x0017;
+
+    let mut extensions = vec![];
+    // supported_versions: advertise TLS 1.3 (0x0304), which is how a TLS 1.3 ClientHello is
+    // identified (the legacy_version below stays at 0x0303).
+    push_extension(&mut extensions, 0x002b, &[0x02, 0x03, 0x04]);
+    // supported_groups: a list of one group, secp256r1.
+    push_extension(&mut extensions, 0x000a, &[0x00, 0x02, 0x00, 0x17]);
+    // signature_algorithms: a list of one scheme, rsa_pss_rsae_sha256 (0x0804). Not actually used
+    // before the ClientHello is recorded, but a well-formed ClientHello carries one.
+    push_extension(&mut extensions, 0x000d, &[0x00, 0x02, 0x08, 0x04]);
+    // key_share: a single KeyShareEntry for secp256r1 carrying the generator point.
+    let mut key_share = vec![];
+    key_share.extend_from_slice(&SECP256R1.to_be_bytes());
+    key_share.extend_from_slice(&(SECP256R1_GENERATOR.len() as u16).to_be_bytes());
+    key_share.extend_from_slice(&SECP256R1_GENERATOR);
+    let mut key_share_ext = (key_share.len() as u16).to_be_bytes().to_vec();
+    key_share_ext.extend_from_slice(&key_share);
+    push_extension(&mut extensions, 0x0033, &key_share_ext);
+
+    // ClientHello body.
+    let mut body = vec![];
+    body.extend_from_slice(&[0x03, 0x03]); // legacy_version = TLS 1.2
+    body.extend_from_slice(random); // Random[32]
+    body.push(0x00); // legacy_session_id: empty (length 0)
+    body.extend_from_slice(&[0x00, 0x02, 0x13, 0x01]); // cipher_suites: len 2, TLS_AES_128_GCM_SHA256
+    body.extend_from_slice(&[0x01, 0x00]); // legacy_compression_methods: len 1, "null"
+    body.extend_from_slice(&(extensions.len() as u16).to_be_bytes());
+    body.extend_from_slice(&extensions);
+
+    // Handshake header: msg_type = client_hello (1), then a uint24 length.
+    let mut handshake = vec![0x01];
+    let len = body.len();
+    handshake.extend_from_slice(&[(len >> 16) as u8, (len >> 8) as u8, len as u8]);
+    handshake.extend_from_slice(&body);
+
+    // Record header: content_type = handshake (22), legacy record version, then a uint16 length.
+    let mut record = vec![0x16, 0x03, 0x01];
+    record.extend_from_slice(&(handshake.len() as u16).to_be_bytes());
+    record.extend_from_slice(&handshake);
+    record
+}
+
+/// Runs the given ClientHello record through a fresh server connection at EOF and reports whether
+/// it is classified as synthetic.
+async fn detect_synthetic(random: &[u8; 32]) -> bool {
+    // A peer that immediately closes, so the handshake reads our buffered ClientHello and then
+    // hits EOF.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        if let Ok((conn, _)) = listener.accept().await {
+            drop(conn);
+        }
+    });
+    let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+
+    let socket = Arc::new(crate::stream::socket::application::Single(stream));
+    let conn: crate::stream::tls::Conn = Box::new(
+        s2n_tls::connection::Builder::build_connection(
+            &server_config(),
+            s2n_tls::enums::Mode::Server,
+        )
+        .unwrap(),
+    );
+    let mut connection =
+        crate::stream::tls::S2nTlsConnection::from_connection(socket, conn).unwrap();
+
+    let buffer = crate::msg::recv::Message::new_from_packet(client_hello_record(random), addr);
+    // The handshake is expected to fail (we never send a complete handshake / the peer is gone),
+    // but s2n-tls parses and stores the client random first, which is what `is_synthetic` reads.
+    let _ = connection.negotiate(Some(buffer)).await;
+
+    connection.is_synthetic()
+}
+
+#[tokio::test]
+async fn detects_synthetic_client_random() {
+    let mut random = [0u8; 32];
+    random[..b"s2n-proctor".len()].copy_from_slice(b"s2n-proctor");
+    assert!(detect_synthetic(&random).await);
+}
+
+#[tokio::test]
+async fn ignores_non_synthetic_client_random() {
+    // A random without the synthetic marker must not be misclassified.
+    let random = [0x42u8; 32];
+    assert!(!detect_synthetic(&random).await);
+}
+
 #[derive(Clone)]
 struct DummyHandshake {
     hs: crate::psk::server::Provider,
