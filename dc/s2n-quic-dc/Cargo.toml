@@ -78,6 +78,7 @@ s2n-quic-platform = { path = "../../quic/s2n-quic-platform", features = [
 ] }
 tokio = { version = "1", features = ["full", "test-util"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tempfile = "3.27"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"

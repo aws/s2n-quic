@@ -170,6 +170,13 @@ impl Entry {
         &self.secret
     }
 
+    /// The epoch of the most recent access to this entry (via either id or address), as recorded
+    /// by [`Self::set_accessed_id`] / [`Self::set_accessed_addr`]. Returns epoch 0 if never
+    /// accessed.
+    pub fn accessed_at_epoch(&self) -> Epoch {
+        Epoch(self.accessed_at.accessed_at_epoch())
+    }
+
     pub fn set_accessed_id(&self, epoch: Epoch) {
         self.accessed_at.set_accessed(epoch);
         self.accessed.fetch_or(0b10, Ordering::Relaxed);

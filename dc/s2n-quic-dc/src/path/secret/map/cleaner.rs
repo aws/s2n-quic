@@ -18,6 +18,19 @@ use std::{
 
 const EVICTION_CYCLES: u64 = if cfg!(test) { 0 } else { 10 };
 
+/// The cleaner loop runs roughly once per this interval. Serialization periods are expressed as a
+/// number of these cycles, and the access-time epoch advances once per cycle.
+pub(super) const CLEANER_CYCLE: Duration = Duration::from_secs(60);
+
+/// Converts a serialization `period` into a number of cleaner cycles (at least one).
+///
+/// The cleaner already runs on a jittered ~once-per-minute cadence, so rather than jittering the
+/// serialization time separately we pick a random cycle within each window of this many cycles to
+/// serialize in. This spreads writes across processes for free.
+fn period_in_cycles(period: Duration) -> u64 {
+    (period.as_secs() / CLEANER_CYCLE.as_secs()).max(1)
+}
+
 pub struct Cleaner {
     should_stop: AtomicBool,
     thread: Mutex<Option<std::thread::JoinHandle<()>>>,
@@ -80,33 +93,68 @@ impl Cleaner {
             return;
         }
 
+        // The serialization period, expressed in cleaner cycles, if configured. The cleaner drives
+        // serialization so we don't need a second background thread.
+        let serialize_cycles = state
+            .serializer
+            .as_ref()
+            .and_then(|s| s.period())
+            .map(period_in_cycles);
+
         let state = Arc::downgrade(&state);
         let handle = std::thread::Builder::new()
             .name("dc_quic::cleaner".into())
-            .spawn(move || loop {
-                // in tests, we should try and be as deterministic as possible
-                let pause = if cfg!(test) {
-                    Duration::from_secs(60).as_millis() as u64
-                } else {
-                    rand::rng().random_range(
-                        Duration::from_secs(5).as_millis() as u64
-                            ..Duration::from_secs(60).as_millis() as u64,
-                    )
-                };
+            .spawn(move || {
+                // We serialize at most once per `serialize_cycles` window. `cycle` counts cleaner
+                // runs within the current window (wrapping back to 0 at the window boundary) and
+                // `serialize_at` is the randomly-chosen cycle within the window in which we write.
+                // Re-rolled each window so the cleaner's own jitter spreads writes across
+                // processes without a separate timer.
+                let mut cycle = 0u64;
+                let mut serialize_at =
+                    serialize_cycles.map(|cycles| rand::rng().random_range(0..cycles));
 
-                let next_start = Instant::now() + Duration::from_secs(60);
-                std::thread::park_timeout(Duration::from_millis(pause));
+                loop {
+                    // in tests, we should try and be as deterministic as possible
+                    let pause = if cfg!(test) {
+                        CLEANER_CYCLE.as_millis() as u64
+                    } else {
+                        rand::rng().random_range(
+                            Duration::from_secs(5).as_millis() as u64
+                                ..CLEANER_CYCLE.as_millis() as u64,
+                        )
+                    };
 
-                let Some(state) = state.upgrade() else {
-                    break;
-                };
-                if state.cleaner().should_stop.load(Ordering::Relaxed) {
-                    break;
+                    let next_start = Instant::now() + CLEANER_CYCLE;
+                    std::thread::park_timeout(Duration::from_millis(pause));
+
+                    let Some(state) = state.upgrade() else {
+                        break;
+                    };
+                    if state.cleaner().should_stop.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    state.cleaner().clean(&state, EVICTION_CYCLES);
+
+                    // Serialize the map in the chosen cycle of each window, then advance the cycle
+                    // counter and re-roll at the window boundary.
+                    if let Some(cycles) = serialize_cycles {
+                        if Some(cycle) == serialize_at {
+                            if let Err(err) = state.serialize_to_disk() {
+                                tracing::warn!(%err, "failed to serialize path secret map to disk");
+                            }
+                        }
+
+                        cycle += 1;
+                        if cycle >= cycles {
+                            cycle = 0;
+                            serialize_at = Some(rand::rng().random_range(0..cycles));
+                        }
+                    }
+
+                    // pause the rest of the time to run once a minute, not twice a minute
+                    std::thread::park_timeout(next_start.saturating_duration_since(Instant::now()));
                 }
-                state.cleaner().clean(&state, EVICTION_CYCLES);
-
-                // pause the rest of the time to run once a minute, not twice a minute
-                std::thread::park_timeout(next_start.saturating_duration_since(Instant::now()));
             });
         #[expect(
             clippy::unwrap_used,
