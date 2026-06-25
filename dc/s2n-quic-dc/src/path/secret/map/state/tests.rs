@@ -10,7 +10,7 @@ use s2n_quic_core::{dc, time::NoopClock as Clock};
 use std::{
     collections::HashSet,
     fmt,
-    net::{Ipv4Addr, SocketAddrV4},
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
 };
 
 fn fake_entry(port: u16) -> Arc<Entry> {
@@ -80,6 +80,59 @@ fn thread_shutdown() {
     }
 
     panic!("thread did not shut down after {max_time:?}");
+}
+
+#[test]
+fn serialize_to_disk_writes_configured_entries() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("secrets");
+
+    let signer = stateless_reset::Signer::new(b"secret");
+    let map = State::builder()
+        .with_signer(signer)
+        .with_capacity(50)
+        .with_clock(Clock)
+        .with_subscriber(tracing::Subscriber::default())
+        .with_serializer(disk::Serializer::builder(&path).build().unwrap())
+        .build()
+        .unwrap();
+
+    // Stop background processing so the cleaner thread doesn't race our manual serialization.
+    map.cleaner.stop();
+
+    let first = fake_entry(1);
+    let second = fake_entry(2);
+    map.test_insert(first.clone());
+    map.test_insert(second.clone());
+
+    map.serialize_to_disk().unwrap();
+
+    let mut decoded: Vec<SocketAddr> = disk::deserialize(&path)
+        .unwrap()
+        .map(|e| e.unwrap().peer)
+        .collect();
+    decoded.sort();
+
+    let mut expected = vec![*first.peer(), *second.peer()];
+    expected.sort();
+
+    assert_eq!(decoded, expected);
+}
+
+#[test]
+fn serialize_to_disk_without_serializer_is_noop() {
+    let signer = stateless_reset::Signer::new(b"secret");
+    let map = State::builder()
+        .with_signer(signer)
+        .with_capacity(50)
+        .with_clock(Clock)
+        .with_subscriber(tracing::Subscriber::default())
+        .build()
+        .unwrap();
+    map.cleaner.stop();
+
+    // No serializer configured: this is a no-op and must not error.
+    map.serialize_to_disk().unwrap();
 }
 
 #[derive(Debug, Default)]
