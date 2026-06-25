@@ -65,6 +65,10 @@ impl RehandshakeState {
         self.queue.is_empty()
     }
 
+    pub(super) fn rehandshake_period(&self) -> Duration {
+        self.rehandshake_period
+    }
+
     pub(super) fn push(&mut self, peer: SocketAddr) {
         self.queue.push(SocketAddress::from(peer).to_ipv6_mapped());
     }

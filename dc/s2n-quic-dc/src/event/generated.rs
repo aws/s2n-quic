@@ -2463,6 +2463,12 @@ pub mod api {
         pub address_entries_utilization: f32,
         /// The utilization percentage of the available number of address entries before the cycle
         pub address_entries_initial_utilization: f32,
+        /// The number of Path Secret ID entries created within the last rehandshake period (usually 24
+        /// hours)
+        pub id_entries_in_last_hs_period: usize,
+        /// The utilization percentage of Path Secret ID entries created within the last rehandshake
+        /// period (usually 24 hours)
+        pub id_entries_in_last_hs_period_utilization: f32,
         /// The number of handshake requests that are pending after the cleaning cycle
         pub handshake_requests: usize,
         /// The number of handshake requests that were skipped in the cycle due to running out of time
@@ -2504,6 +2510,14 @@ pub mod api {
             fmt.field(
                 "address_entries_initial_utilization",
                 &self.address_entries_initial_utilization,
+            );
+            fmt.field(
+                "id_entries_in_last_hs_period",
+                &self.id_entries_in_last_hs_period,
+            );
+            fmt.field(
+                "id_entries_in_last_hs_period_utilization",
+                &self.id_entries_in_last_hs_period_utilization,
             );
             fmt.field("handshake_requests", &self.handshake_requests);
             fmt.field(
@@ -4350,6 +4364,8 @@ pub mod tracing {
                 address_entries_retired,
                 address_entries_utilization,
                 address_entries_initial_utilization,
+                id_entries_in_last_hs_period,
+                id_entries_in_last_hs_period_utilization,
                 handshake_requests,
                 handshake_requests_skipped,
                 handshake_lock_duration,
@@ -4374,6 +4390,10 @@ pub mod tracing {
                 tracing::field::debug(address_entries_utilization),
                 address_entries_initial_utilization =
                 tracing::field::debug(address_entries_initial_utilization),
+                id_entries_in_last_hs_period =
+                tracing::field::debug(id_entries_in_last_hs_period),
+                id_entries_in_last_hs_period_utilization =
+                tracing::field::debug(id_entries_in_last_hs_period_utilization),
                 handshake_requests = tracing::field::debug(handshake_requests),
                 handshake_requests_skipped =
                 tracing::field::debug(handshake_requests_skipped),
@@ -6745,6 +6765,12 @@ pub mod builder {
         pub address_entries_utilization: f32,
         /// The utilization percentage of the available number of address entries before the cycle
         pub address_entries_initial_utilization: f32,
+        /// The number of Path Secret ID entries created within the last rehandshake period (usually 24
+        /// hours)
+        pub id_entries_in_last_hs_period: usize,
+        /// The utilization percentage of Path Secret ID entries created within the last rehandshake
+        /// period (usually 24 hours)
+        pub id_entries_in_last_hs_period_utilization: f32,
         /// The number of handshake requests that are pending after the cleaning cycle
         pub handshake_requests: usize,
         /// The number of handshake requests that were skipped in the cycle due to running out of time
@@ -6772,6 +6798,8 @@ pub mod builder {
                 address_entries_retired,
                 address_entries_utilization,
                 address_entries_initial_utilization,
+                id_entries_in_last_hs_period,
+                id_entries_in_last_hs_period_utilization,
                 handshake_requests,
                 handshake_requests_skipped,
                 handshake_lock_duration,
@@ -6790,6 +6818,9 @@ pub mod builder {
                 address_entries_retired: address_entries_retired.into_event(),
                 address_entries_utilization: address_entries_utilization.into_event(),
                 address_entries_initial_utilization: address_entries_initial_utilization
+                    .into_event(),
+                id_entries_in_last_hs_period: id_entries_in_last_hs_period.into_event(),
+                id_entries_in_last_hs_period_utilization: id_entries_in_last_hs_period_utilization
                     .into_event(),
                 handshake_requests: handshake_requests.into_event(),
                 handshake_requests_skipped: handshake_requests_skipped.into_event(),

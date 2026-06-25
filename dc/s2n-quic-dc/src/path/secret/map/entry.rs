@@ -285,6 +285,10 @@ impl Entry {
         self.creation_time.elapsed()
     }
 
+    pub fn creation_time(&self) -> Instant {
+        self.creation_time
+    }
+
     pub fn receiver(&self) -> &receiver::State {
         &self.receiver
     }
