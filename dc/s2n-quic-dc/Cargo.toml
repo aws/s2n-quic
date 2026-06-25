@@ -48,7 +48,7 @@ s2n-codec = { version = "=0.83.0", path = "../../common/s2n-codec", default-feat
 s2n-quic = { version = "=1.83.0", path = "../../quic/s2n-quic", features = ["unstable-provider-connection-close-formatter", "unstable-provider-dc", "unstable-provider-random", "unstable-offload-tls"] }
 s2n-quic-core = { version = "=0.83.0", path = "../../quic/s2n-quic-core", default-features = false }
 s2n-quic-platform = { version = "=0.83.0", path = "../../quic/s2n-quic-platform" }
-s2n-tls = "0.3"
+s2n-tls = "0.3.38"
 slotmap = "1"
 hashbrown = "0.17"
 thiserror = "2"
