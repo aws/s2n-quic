@@ -328,6 +328,11 @@ mod id {
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION,
         PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION,
+        PATH_SECRET_MAP_SERIALIZED,
+        PATH_SECRET_MAP_SERIALIZED__ENTRIES,
+        PATH_SECRET_MAP_SERIALIZED__FILE_SIZE,
+        PATH_SECRET_MAP_SERIALIZED__DURATION,
+        PATH_SECRET_MAP_SERIALIZED__ERROR,
         PATH_SECRET_MAP_ID_WRITE_LOCK,
         PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE,
         PATH_SECRET_MAP_ID_WRITE_LOCK__DURATION,
@@ -876,6 +881,15 @@ mod id {
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION as usize;
+    pub const PATH_SECRET_MAP_SERIALIZED: usize = InfoId::PATH_SECRET_MAP_SERIALIZED as usize;
+    pub const PATH_SECRET_MAP_SERIALIZED__ENTRIES: usize =
+        InfoId::PATH_SECRET_MAP_SERIALIZED__ENTRIES as usize;
+    pub const PATH_SECRET_MAP_SERIALIZED__FILE_SIZE: usize =
+        InfoId::PATH_SECRET_MAP_SERIALIZED__FILE_SIZE as usize;
+    pub const PATH_SECRET_MAP_SERIALIZED__DURATION: usize =
+        InfoId::PATH_SECRET_MAP_SERIALIZED__DURATION as usize;
+    pub const PATH_SECRET_MAP_SERIALIZED__ERROR: usize =
+        InfoId::PATH_SECRET_MAP_SERIALIZED__ERROR as usize;
     pub const PATH_SECRET_MAP_ID_WRITE_LOCK: usize = InfoId::PATH_SECRET_MAP_ID_WRITE_LOCK as usize;
     pub const PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE: usize =
         InfoId::PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE as usize;
@@ -1060,6 +1074,7 @@ mod counter {
                     Self(path_secret_map_id_cache_accessed_hit)
                 }
                 id::PATH_SECRET_MAP_CLEANER_CYCLED => Self(path_secret_map_cleaner_cycled),
+                id::PATH_SECRET_MAP_SERIALIZED => Self(path_secret_map_serialized),
                 id::PATH_SECRET_MAP_ID_WRITE_LOCK => Self(path_secret_map_id_write_lock),
                 id::PATH_SECRET_MAP_ADDRESS_WRITE_LOCK => Self(path_secret_map_address_write_lock),
                 id::PATH_SECRET_MAP_DATAGRAM_ENCRYPT => Self(path_secret_map_datagram_encrypt),
@@ -1391,6 +1406,9 @@ mod counter {
         s2n_quic_dc__event__counter__path_secret_map_cleaner_cycled]
             fn path_secret_map_cleaner_cycled(value: u64);
             #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_serialized]
+            fn path_secret_map_serialized(value: u64);
+            #[link_name =
         s2n_quic_dc__event__counter__path_secret_map_id_write_lock]
             fn path_secret_map_id_write_lock(value: u64);
             #[link_name =
@@ -1471,6 +1489,9 @@ mod counter {
                     id::PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT => {
                         Self(path_secret_map_id_cache_accessed__hit)
                     }
+                    id::PATH_SECRET_MAP_SERIALIZED__ERROR => {
+                        Self(path_secret_map_serialized__error)
+                    }
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -1548,6 +1569,9 @@ mod counter {
                 #[link_name =
             s2n_quic_dc__event__counter__bool__path_secret_map_id_cache_accessed__hit]
                 fn path_secret_map_id_cache_accessed__hit(value: bool);
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__path_secret_map_serialized__error]
+                fn path_secret_map_serialized__error(value: bool);
             }
         );
     }
@@ -2217,6 +2241,15 @@ mod measure {
                 id::PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION => {
                     Self(path_secret_map_cleaner_cycled__total_duration)
                 }
+                id::PATH_SECRET_MAP_SERIALIZED__ENTRIES => {
+                    Self(path_secret_map_serialized__entries)
+                }
+                id::PATH_SECRET_MAP_SERIALIZED__FILE_SIZE => {
+                    Self(path_secret_map_serialized__file_size)
+                }
+                id::PATH_SECRET_MAP_SERIALIZED__DURATION => {
+                    Self(path_secret_map_serialized__duration)
+                }
                 id::PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE => {
                     Self(path_secret_map_id_write_lock__acquire)
                 }
@@ -2621,6 +2654,15 @@ mod measure {
             #[link_name =
         s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__total_duration]
             fn path_secret_map_cleaner_cycled__total_duration(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_serialized__entries]
+            fn path_secret_map_serialized__entries(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_serialized__file_size]
+            fn path_secret_map_serialized__file_size(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_serialized__duration]
+            fn path_secret_map_serialized__duration(value: u64);
             #[link_name =
         s2n_quic_dc__event__measure__path_secret_map_id_write_lock__acquire]
             fn path_secret_map_id_write_lock__acquire(value: u64);

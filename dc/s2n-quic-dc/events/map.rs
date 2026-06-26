@@ -447,6 +447,27 @@ struct PathSecretMapCleanerCycled {
     duration: core::time::Duration,
 }
 
+#[event("path_secret_map:serialized")]
+#[subject(endpoint)]
+/// Emitted when the path secret map is serialized to disk
+struct PathSecretMapSerialized {
+    /// The number of entries written to the serialized file
+    #[measure("entries")]
+    entries: usize,
+
+    /// The size of the serialized file, in bytes
+    #[measure("file_size", Bytes)]
+    file_size: usize,
+
+    /// How long serialization took
+    #[measure("duration", Duration)]
+    duration: core::time::Duration,
+
+    /// Whether serialization failed
+    #[bool_counter("error")]
+    error: bool,
+}
+
 #[event("path_secret_map:id_cache_write_lock")]
 #[subject(endpoint)]
 struct PathSecretMapIdWriteLock {

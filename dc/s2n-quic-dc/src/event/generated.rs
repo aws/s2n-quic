@@ -2562,6 +2562,33 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// Emitted when the path secret map is serialized to disk
+    pub struct PathSecretMapSerialized {
+        /// The number of entries written to the serialized file
+        pub entries: usize,
+        /// The size of the serialized file, in bytes
+        pub file_size: usize,
+        /// How long serialization took
+        pub duration: core::time::Duration,
+        /// Whether serialization failed
+        pub error: bool,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PathSecretMapSerialized {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PathSecretMapSerialized");
+            fmt.field("entries", &self.entries);
+            fmt.field("file_size", &self.file_size);
+            fmt.field("duration", &self.duration);
+            fmt.field("error", &self.error);
+            fmt.finish()
+        }
+    }
+    impl Event for PathSecretMapSerialized {
+        const NAME: &'static str = "path_secret_map:serialized";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct PathSecretMapIdWriteLock {
         pub acquire: core::time::Duration,
         pub duration: core::time::Duration,
@@ -4447,6 +4474,26 @@ pub mod tracing {
                 tracing::field::debug(handshake_requests_skipped),
                 handshake_lock_duration = tracing::field::debug(handshake_lock_duration),
                 duration = tracing::field::debug(duration) }
+            );
+        }
+        #[inline]
+        fn on_path_secret_map_serialized(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapSerialized,
+        ) {
+            let parent = self.parent(meta);
+            let api::PathSecretMapSerialized {
+                entries,
+                file_size,
+                duration,
+                error,
+            } = event;
+            tracing::event!(
+                target : "path_secret_map_serialized", parent : parent,
+                tracing::Level::DEBUG, { entries = tracing::field::debug(entries),
+                file_size = tracing::field::debug(file_size), duration =
+                tracing::field::debug(duration), error = tracing::field::debug(error) }
             );
         }
         #[inline]
@@ -6909,6 +6956,35 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// Emitted when the path secret map is serialized to disk
+    pub struct PathSecretMapSerialized {
+        /// The number of entries written to the serialized file
+        pub entries: usize,
+        /// The size of the serialized file, in bytes
+        pub file_size: usize,
+        /// How long serialization took
+        pub duration: core::time::Duration,
+        /// Whether serialization failed
+        pub error: bool,
+    }
+    impl IntoEvent<api::PathSecretMapSerialized> for PathSecretMapSerialized {
+        #[inline]
+        fn into_event(self) -> api::PathSecretMapSerialized {
+            let PathSecretMapSerialized {
+                entries,
+                file_size,
+                duration,
+                error,
+            } = self;
+            api::PathSecretMapSerialized {
+                entries: entries.into_event(),
+                file_size: file_size.into_event(),
+                duration: duration.into_event(),
+                error: error.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct PathSecretMapIdWriteLock {
         pub acquire: core::time::Duration,
         pub duration: core::time::Duration,
@@ -8016,6 +8092,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        ///Called when the `PathSecretMapSerialized` event is triggered
+        #[inline]
+        fn on_path_secret_map_serialized(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapSerialized,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         ///Called when the `PathSecretMapIdWriteLock` event is triggered
         #[inline]
         fn on_path_secret_map_id_write_lock(
@@ -8901,6 +8987,14 @@ mod traits {
             event: &api::PathSecretMapCleanerCycled,
         ) {
             self.as_ref().on_path_secret_map_cleaner_cycled(meta, event);
+        }
+        #[inline]
+        fn on_path_secret_map_serialized(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapSerialized,
+        ) {
+            self.as_ref().on_path_secret_map_serialized(meta, event);
         }
         #[inline]
         fn on_path_secret_map_id_write_lock(
@@ -9834,6 +9928,15 @@ mod traits {
             (self.1).on_path_secret_map_cleaner_cycled(meta, event);
         }
         #[inline]
+        fn on_path_secret_map_serialized(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapSerialized,
+        ) {
+            (self.0).on_path_secret_map_serialized(meta, event);
+            (self.1).on_path_secret_map_serialized(meta, event);
+        }
+        #[inline]
         fn on_path_secret_map_id_write_lock(
             &self,
             meta: &api::EndpointMeta,
@@ -10057,6 +10160,8 @@ mod traits {
         );
         ///Publishes a `PathSecretMapCleanerCycled` event to the publisher's subscriber
         fn on_path_secret_map_cleaner_cycled(&self, event: builder::PathSecretMapCleanerCycled);
+        ///Publishes a `PathSecretMapSerialized` event to the publisher's subscriber
+        fn on_path_secret_map_serialized(&self, event: builder::PathSecretMapSerialized);
         ///Publishes a `PathSecretMapIdWriteLock` event to the publisher's subscriber
         fn on_path_secret_map_id_write_lock(&self, event: builder::PathSecretMapIdWriteLock);
         ///Publishes a `PathSecretMapAddressWriteLock` event to the publisher's subscriber
@@ -10557,6 +10662,13 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_path_secret_map_cleaner_cycled(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_path_secret_map_serialized(&self, event: builder::PathSecretMapSerialized) {
+            let event = event.into_event();
+            self.subscriber
+                .on_path_secret_map_serialized(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -11104,6 +11216,7 @@ pub mod testing {
             pub path_secret_map_id_cache_accessed: AtomicU64,
             pub path_secret_map_id_cache_accessed_hit: AtomicU64,
             pub path_secret_map_cleaner_cycled: AtomicU64,
+            pub path_secret_map_serialized: AtomicU64,
             pub path_secret_map_id_write_lock: AtomicU64,
             pub path_secret_map_address_write_lock: AtomicU64,
             pub path_secret_map_datagram_encrypt: AtomicU64,
@@ -11200,6 +11313,7 @@ pub mod testing {
                     path_secret_map_id_cache_accessed: AtomicU64::new(0),
                     path_secret_map_id_cache_accessed_hit: AtomicU64::new(0),
                     path_secret_map_cleaner_cycled: AtomicU64::new(0),
+                    path_secret_map_serialized: AtomicU64::new(0),
                     path_secret_map_id_write_lock: AtomicU64::new(0),
                     path_secret_map_address_write_lock: AtomicU64::new(0),
                     path_secret_map_datagram_encrypt: AtomicU64::new(0),
@@ -11926,6 +12040,18 @@ pub mod testing {
                 let out = format!("{meta:?} {event:?}");
                 self.output.lock().unwrap().push(out);
             }
+            fn on_path_secret_map_serialized(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::PathSecretMapSerialized,
+            ) {
+                self.path_secret_map_serialized
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
             fn on_path_secret_map_id_write_lock(
                 &self,
                 meta: &api::EndpointMeta,
@@ -12074,6 +12200,7 @@ pub mod testing {
         pub path_secret_map_id_cache_accessed: AtomicU64,
         pub path_secret_map_id_cache_accessed_hit: AtomicU64,
         pub path_secret_map_cleaner_cycled: AtomicU64,
+        pub path_secret_map_serialized: AtomicU64,
         pub path_secret_map_id_write_lock: AtomicU64,
         pub path_secret_map_address_write_lock: AtomicU64,
         pub path_secret_map_datagram_encrypt: AtomicU64,
@@ -12203,6 +12330,7 @@ pub mod testing {
                 path_secret_map_id_cache_accessed: AtomicU64::new(0),
                 path_secret_map_id_cache_accessed_hit: AtomicU64::new(0),
                 path_secret_map_cleaner_cycled: AtomicU64::new(0),
+                path_secret_map_serialized: AtomicU64::new(0),
                 path_secret_map_id_write_lock: AtomicU64::new(0),
                 path_secret_map_address_write_lock: AtomicU64::new(0),
                 path_secret_map_datagram_encrypt: AtomicU64::new(0),
@@ -13398,6 +13526,18 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
+        fn on_path_secret_map_serialized(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapSerialized,
+        ) {
+            self.path_secret_map_serialized
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
         fn on_path_secret_map_id_write_lock(
             &self,
             meta: &api::EndpointMeta,
@@ -13545,6 +13685,7 @@ pub mod testing {
         pub path_secret_map_id_cache_accessed: AtomicU64,
         pub path_secret_map_id_cache_accessed_hit: AtomicU64,
         pub path_secret_map_cleaner_cycled: AtomicU64,
+        pub path_secret_map_serialized: AtomicU64,
         pub path_secret_map_id_write_lock: AtomicU64,
         pub path_secret_map_address_write_lock: AtomicU64,
         pub path_secret_map_datagram_encrypt: AtomicU64,
@@ -13664,6 +13805,7 @@ pub mod testing {
                 path_secret_map_id_cache_accessed: AtomicU64::new(0),
                 path_secret_map_id_cache_accessed_hit: AtomicU64::new(0),
                 path_secret_map_cleaner_cycled: AtomicU64::new(0),
+                path_secret_map_serialized: AtomicU64::new(0),
                 path_secret_map_id_write_lock: AtomicU64::new(0),
                 path_secret_map_address_write_lock: AtomicU64::new(0),
                 path_secret_map_datagram_encrypt: AtomicU64::new(0),
@@ -14186,6 +14328,14 @@ pub mod testing {
         }
         fn on_path_secret_map_cleaner_cycled(&self, event: builder::PathSecretMapCleanerCycled) {
             self.path_secret_map_cleaner_cycled
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_path_secret_map_serialized(&self, event: builder::PathSecretMapSerialized) {
+            self.path_secret_map_serialized
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
