@@ -24,6 +24,16 @@ pub struct Cleaner {
     epoch: AtomicU64,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Epoch(pub(crate) u64);
+
+impl Epoch {
+    #[inline]
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
 impl Drop for Cleaner {
     fn drop(&mut self) {
         self.stop();
@@ -203,7 +213,7 @@ impl Cleaner {
 
             let retained = if let Some(retired_at) = entry.retired_at() {
                 // retain if we aren't yet ready to evict.
-                current_epoch.saturating_sub(retired_at) < eviction_cycles
+                current_epoch.saturating_sub(retired_at.get()) < eviction_cycles
             } else {
                 // always retain non-retired entries.
                 true
@@ -269,7 +279,7 @@ impl Cleaner {
         );
     }
 
-    pub fn epoch(&self) -> u64 {
-        self.epoch.load(Ordering::Relaxed)
+    pub fn epoch(&self) -> Epoch {
+        Epoch(self.epoch.load(Ordering::Relaxed))
     }
 }

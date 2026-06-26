@@ -10,6 +10,7 @@ use crate::{
     credentials::{self, Credentials},
     packet::{secret_control as control, WireVersion},
     path::secret::{
+        map::Epoch,
         open, receiver,
         schedule::{self, Initiator},
         seal, sender,
@@ -20,9 +21,10 @@ use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{dc, varint::VarInt};
 use std::{
     any::Any,
+    fmt,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicU32, AtomicU8, Ordering},
+        atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering},
         Arc,
     },
     time::{Duration, Instant},
@@ -47,6 +49,7 @@ pub struct Entry {
     peer: SocketAddr,
     secret: schedule::Secret,
     retired: IsRetired,
+    accessed_at: AccessedAt,
     sender: sender::State,
     receiver: receiver::State,
     parameters: dc::ApplicationParams,
@@ -68,6 +71,7 @@ impl SizeOf for Entry {
             parameters,
             accessed,
             application_data,
+            accessed_at,
         } = self;
         creation_time.size()
             + peer.size()
@@ -78,6 +82,7 @@ impl SizeOf for Entry {
             + parameters.size()
             + accessed.size()
             + application_data.size()
+            + accessed_at.size()
     }
 }
 
@@ -121,6 +126,7 @@ impl Entry {
             receiver,
             parameters,
             accessed: AtomicU8::new(0),
+            accessed_at: AccessedAt(AtomicU64::new(0)),
             application_data,
         }
     }
@@ -164,11 +170,13 @@ impl Entry {
         &self.secret
     }
 
-    pub fn set_accessed_id(&self) {
+    pub fn set_accessed_id(&self, epoch: Epoch) {
+        self.accessed_at.set_accessed(epoch);
         self.accessed.fetch_or(0b10, Ordering::Relaxed);
     }
 
-    pub fn set_accessed_addr(&self) {
+    pub fn set_accessed_addr(&self, epoch: Epoch) {
+        self.accessed_at.set_accessed(epoch);
         self.accessed.fetch_or(0b01, Ordering::Relaxed);
     }
 
@@ -180,11 +188,11 @@ impl Entry {
         self.accessed.fetch_and(!0b01, Ordering::Relaxed) & 0b01 != 0
     }
 
-    pub fn retire(&self, at_epoch: u64) {
+    pub fn retire(&self, at_epoch: Epoch) {
         self.retired.retire(at_epoch);
     }
 
-    pub fn retired_at(&self) -> Option<u64> {
+    pub fn retired_at(&self) -> Option<Epoch> {
         self.retired.retired_at()
     }
 
@@ -385,3 +393,37 @@ impl ControlPair {
         Self { sealer, opener }
     }
 }
+
+// Stores a epoch (similar to RetiredAt) for the last access.
+//
+// This gives a rough sense of how long ago the most recent access was. Epochs increment roughly
+// every minute (via cleaner thread).
+#[derive(Default)]
+struct AccessedAt(AtomicU64);
+
+impl fmt::Debug for AccessedAt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("AccessedAt")
+            .field(&self.accessed_at_epoch())
+            .finish()
+    }
+}
+
+impl AccessedAt {
+    pub fn set_accessed(&self, at_epoch: Epoch) {
+        // Intentionally load before storing -- we want to avoid contention. In practice access
+        // likely involved some contention anyway (Arc ref-count, Mutex's on the maps) but good to
+        // avoid extra cost if we can.
+        if self.0.load(Ordering::Relaxed) < at_epoch.get() {
+            // It's OK if we lose a store, at worst this makes the access time about a minute
+            // wrong, and for frequently-accessed entries that'll quickly recover.
+            self.0.store(at_epoch.get(), Ordering::Relaxed);
+        }
+    }
+
+    pub fn accessed_at_epoch(&self) -> u64 {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+impl SizeOf for AccessedAt {}

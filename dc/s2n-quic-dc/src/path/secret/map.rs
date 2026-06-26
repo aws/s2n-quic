@@ -37,6 +37,7 @@ mod event_tests;
 pub use entry::Entry;
 use store::Store;
 
+pub(crate) use cleaner::Epoch;
 pub use entry::{
     ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, ControlPair,
 };
