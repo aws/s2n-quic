@@ -253,9 +253,6 @@ jobs:
         target: [native]
         env: [default]
         include:
-          - rust: ${{ needs.env.outputs.msrv }}
-            # s2n-quic-dc-metrics crate' MSRV is 1.88.0, which is higher than the rest
-            exclude: --exclude s2n-quic-dc-metrics
           - os: windows-latest
             # s2n-tls and s2n-quic-dc don't currently build on windows
             exclude: --exclude s2n-quic-tls --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics
