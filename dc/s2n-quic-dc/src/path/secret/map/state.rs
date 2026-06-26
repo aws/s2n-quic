@@ -601,6 +601,9 @@ where
     ///
     /// Does nothing (returning `Ok(())`) if no serializer was configured. The set of entries is
     /// snapshotted from the eviction queue, which holds a weak reference to every live entry.
+    ///
+    /// Emits a `path_secret_map:serialized` event recording how long serialization took, the
+    /// number of entries written, the resulting file size, and whether it failed.
     pub(super) fn serialize_to_disk(&self) -> std::io::Result<()> {
         let Some(serializer) = self.serializer.as_ref() else {
             return Ok(());
@@ -615,7 +618,24 @@ where
             queue.iter().cloned().collect()
         };
 
-        serializer.serialize(&entries, self.cleaner.epoch())
+        let start = self.clock.get_time();
+        let result = serializer.serialize(&entries, self.cleaner.epoch());
+        let duration = self.clock.get_time().saturating_duration_since(start);
+
+        let (entries_written, file_size) = match &result {
+            Ok(stats) => (stats.entries, stats.file_size),
+            Err(_) => (0, 0),
+        };
+
+        self.subscriber()
+            .on_path_secret_map_serialized(event::builder::PathSecretMapSerialized {
+                entries: entries_written,
+                file_size: file_size as usize,
+                duration,
+                error: result.is_err(),
+            });
+
+        result.map(|_| ())
     }
 
     // Sometimes called with queue lock held -- must not acquire it.

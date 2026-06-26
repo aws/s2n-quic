@@ -120,6 +120,41 @@ fn serialize_to_disk_writes_configured_entries() {
 }
 
 #[test]
+fn serialize_to_disk_emits_event() {
+    use std::sync::atomic::Ordering;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("secrets");
+
+    let subscriber = Arc::new(testing::Subscriber::no_snapshot());
+
+    let signer = stateless_reset::Signer::new(b"secret");
+    let map = State::builder()
+        .with_signer(signer)
+        .with_capacity(50)
+        .with_clock(Clock)
+        .with_subscriber(subscriber.clone())
+        .with_serializer(disk::Serializer::builder(&path).build().unwrap())
+        .build()
+        .unwrap();
+
+    // Stop background processing so the cleaner thread doesn't race our manual serialization.
+    map.cleaner.stop();
+
+    map.test_insert(fake_entry(1));
+    map.test_insert(fake_entry(2));
+
+    map.serialize_to_disk().unwrap();
+
+    assert_eq!(
+        subscriber
+            .path_secret_map_serialized
+            .load(Ordering::Relaxed),
+        1
+    );
+}
+
+#[test]
 fn serialize_to_disk_without_serializer_is_noop() {
     let signer = stateless_reset::Signer::new(b"secret");
     let map = State::builder()
