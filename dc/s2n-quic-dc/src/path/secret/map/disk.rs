@@ -215,6 +215,7 @@ impl Serializer {
     /// relative to `current_epoch`.
     ///
     /// `entries` is iterated and any still-live entry passing the recency filter is written.
+    /// Returns the number of entries written and the resulting file size.
     ///
     /// This is `pub(crate)` because it references the crate-internal [`Entry`] and [`Epoch`] types;
     /// callers outside the crate drive serialization through the path secret map builder instead.
@@ -222,7 +223,7 @@ impl Serializer {
         &self,
         entries: &[Weak<Entry>],
         current_epoch: Epoch,
-    ) -> io::Result<()> {
+    ) -> io::Result<SerializeStats> {
         self.serialize_with_max_size(entries, current_epoch, MAX_SERIALIZED_SIZE)
     }
 
@@ -233,7 +234,7 @@ impl Serializer {
         entries: &[Weak<Entry>],
         current_epoch: Epoch,
         max_size: u64,
-    ) -> io::Result<()> {
+    ) -> io::Result<SerializeStats> {
         // Hold the write lock for the whole operation so a concurrent serialization (e.g. the
         // background cleaner racing an ad-hoc call) can't clobber our `.tmp` file or rename.
         let _guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
@@ -256,6 +257,7 @@ impl Serializer {
             .unwrap_or(0);
         output.write_all(&started_at.to_le_bytes())?;
 
+        let mut written = 0;
         for entry in entries.iter() {
             // Stop adding new entries once the file has grown past the maximum serialized size.
             // Entries are tiny (tens of bytes) relative to the margin we keep below MAX_FILE_SIZE,
@@ -273,6 +275,7 @@ impl Serializer {
                 continue;
             }
 
+            written += 1;
             let peer = entry.peer();
             match peer {
                 SocketAddr::V4(addr) => {
@@ -300,10 +303,24 @@ impl Serializer {
 
         output.flush()?;
 
+        let file_size = output.bytes_written();
+
         std::fs::rename(&tmp_path, &self.path)?;
 
-        Ok(())
+        Ok(SerializeStats {
+            entries: written,
+            file_size,
+        })
     }
+}
+
+/// Statistics about a completed serialization.
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct SerializeStats {
+    /// The number of entries written to the file.
+    pub(crate) entries: usize,
+    /// The total size of the written file, in bytes.
+    pub(crate) file_size: u64,
 }
 
 /// A single entry read back from a persisted file.
