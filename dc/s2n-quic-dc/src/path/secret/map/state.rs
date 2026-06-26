@@ -851,7 +851,7 @@ where
         );
 
         if let Some(entry) = &result {
-            entry.set_accessed_addr();
+            entry.set_accessed_addr(self.cleaner.epoch());
             self.subscriber()
                 .on_path_secret_map_address_cache_accessed_hit(
                     event::builder::PathSecretMapAddressCacheAccessedHit {
@@ -879,7 +879,7 @@ where
         );
 
         if let Some(entry) = &result {
-            entry.set_accessed_id();
+            entry.set_accessed_id(self.cleaner.epoch());
             self.subscriber().on_path_secret_map_id_cache_accessed_hit(
                 event::builder::PathSecretMapIdCacheAccessedHit {
                     credential_id: id.into_event(),
