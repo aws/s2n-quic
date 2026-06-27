@@ -416,9 +416,11 @@ impl<Config: endpoint::Config> Manager<Config> {
             .rtt_estimator
             .for_new_path(limits.initial_round_trip_time());
 
-        let mtu_config = mtu.config(&remote_address).map_err(|_err| {
+        let mtu_config = mtu.config(&remote_address).map_err(|err| {
             event::builder::DatagramDropReason::InvalidMtuConfiguration {
-                endpoint_mtu_config: mtu.endpoint_config().into_event(),
+                endpoint_mtu_config: err.endpoint_config.into_event(),
+                conn_mtu_config: err.conn_config.into_event(),
+                remote_addr: err.remote_addr.into_event(),
             }
         })?;
 
