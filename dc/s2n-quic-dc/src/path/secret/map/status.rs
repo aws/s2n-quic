@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{Entry, Map};
-use crate::crypto;
+use crate::{crypto, path::secret::map::Epoch};
 use core::{
     fmt,
     sync::atomic::{AtomicU64, Ordering},
@@ -24,12 +24,14 @@ impl fmt::Debug for IsRetired {
 }
 
 impl IsRetired {
-    pub fn retire(&self, at_epoch: u64) {
-        self.0.store(at_epoch, Ordering::Relaxed);
+    pub fn retire(&self, at_epoch: Epoch) {
+        self.0.store(at_epoch.get(), Ordering::Relaxed);
     }
 
-    pub fn retired_at(&self) -> Option<u64> {
-        Some(self.0.load(Ordering::Relaxed)).filter(|v| *v > 0)
+    pub fn retired_at(&self) -> Option<Epoch> {
+        Some(self.0.load(Ordering::Relaxed))
+            .filter(|v| *v > 0)
+            .map(Epoch)
     }
 
     pub fn is_retired(&self) -> bool {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    cleaner::Cleaner, stateless_reset, ApplicationData, ApplicationDataError, Entry, Store,
+    cleaner::Cleaner, disk, stateless_reset, ApplicationData, ApplicationDataError, Entry, Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -32,7 +32,7 @@ mod tests;
 
 #[derive(Debug)]
 #[allow(clippy::enum_variant_names)]
-pub enum StateBuilderError {
+pub(crate) enum StateBuilderError {
     MissingSigner,
     MissingCapacity,
     MissingClock,
@@ -62,6 +62,7 @@ where
     should_evict_on_unknown_path_secret: bool,
     clock: Option<C>,
     subscriber: Option<S>,
+    serializer: Option<disk::Serializer>,
 }
 
 impl<C, S> StateBuilder<C, S>
@@ -76,6 +77,7 @@ where
             should_evict_on_unknown_path_secret: false,
             clock: None,
             subscriber: None,
+            serializer: None,
         }
     }
 
@@ -104,6 +106,7 @@ where
             should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
             signer: self.signer,
             capacity: self.capacity,
+            serializer: self.serializer,
         }
     }
 
@@ -114,7 +117,18 @@ where
             should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
             signer: self.signer,
             capacity: self.capacity,
+            serializer: self.serializer,
         }
+    }
+
+    /// Configures on-disk serialization of the map.
+    ///
+    /// The [`disk::Serializer`] carries where to write, the (optional) periodic interval, and which
+    /// entries to include by recency of access. If the serializer has a period set, the background
+    /// cleaner serializes the map periodically (jittered within the period).
+    pub fn with_serializer(mut self, serializer: disk::Serializer) -> Self {
+        self.serializer = Some(serializer);
+        self
     }
 
     pub fn build(self) -> Result<Arc<State<C, S>>, StateBuilderError> {
@@ -131,6 +145,7 @@ where
             self.should_evict_on_unknown_path_secret,
             clock,
             subscriber,
+            self.serializer,
         ))
     }
 }
@@ -421,6 +436,11 @@ where
 
     cleaner: Cleaner,
 
+    // If set, configures on-disk serialization of the map. Used both for ad-hoc serialization
+    // (via `serialize_to_disk`) and, when the serializer has background serialization enabled,
+    // periodic serialization driven by the cleaner.
+    pub(super) serializer: Option<disk::Serializer>,
+
     // Avoids allocating/deallocating on each cleaner run.
     // We use a PeerMap to save memory -- an Arc is 8 bytes, SocketAddr is 32 bytes.
     pub(super) cleaner_peer_seen: PeerMap,
@@ -515,6 +535,7 @@ where
         should_evict_on_unknown_path_secret: bool,
         clock: C,
         subscriber: S,
+        serializer: Option<disk::Serializer>,
     ) -> Arc<Self> {
         let control_socket = control_socket();
 
@@ -533,6 +554,7 @@ where
             eviction_queue: Default::default(),
             cleaner_peer_seen: Default::default(),
             cleaner: Cleaner::new(),
+            serializer,
             rehandshake: Mutex::new(super::rehandshake::RehandshakeState::new(
                 rehandshake_period,
             )),
@@ -573,6 +595,47 @@ where
             .on_path_secret_map_initialized(event::builder::PathSecretMapInitialized { capacity });
 
         state
+    }
+
+    /// Serializes the current map to disk using the configured [`disk::Serializer`].
+    ///
+    /// Does nothing (returning `Ok(())`) if no serializer was configured. The set of entries is
+    /// snapshotted from the eviction queue, which holds a weak reference to every live entry.
+    ///
+    /// Emits a `path_secret_map:serialized` event recording how long serialization took, the
+    /// number of entries written, the resulting file size, and whether it failed.
+    pub(super) fn serialize_to_disk(&self) -> std::io::Result<()> {
+        let Some(serializer) = self.serializer.as_ref() else {
+            return Ok(());
+        };
+
+        // Clone the weak references out under the lock so we don't hold it across the write.
+        let entries: Vec<Weak<Entry>> = {
+            let queue = self
+                .eviction_queue
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            queue.iter().cloned().collect()
+        };
+
+        let start = self.clock.get_time();
+        let result = serializer.serialize(&entries, self.cleaner.epoch());
+        let duration = self.clock.get_time().saturating_duration_since(start);
+
+        let (entries_written, file_size) = match &result {
+            Ok(stats) => (stats.entries, stats.file_size),
+            Err(_) => (0, 0),
+        };
+
+        self.subscriber()
+            .on_path_secret_map_serialized(event::builder::PathSecretMapSerialized {
+                entries: entries_written,
+                file_size: file_size as usize,
+                duration,
+                error: result.is_err(),
+            });
+
+        result.map(|_| ())
     }
 
     // Sometimes called with queue lock held -- must not acquire it.
@@ -716,6 +779,11 @@ where
         self.should_evict_on_unknown_path_secret
     }
 
+    fn serialize_to_disk(&self) -> std::io::Result<()> {
+        // Resolves to the inherent method on `State`, which the cleaner also uses.
+        State::serialize_to_disk(self)
+    }
+
     fn drop_state(&self) {
         self.ids.clear();
         self.peers.clear();
@@ -851,7 +919,7 @@ where
         );
 
         if let Some(entry) = &result {
-            entry.set_accessed_addr();
+            entry.set_accessed_addr(self.cleaner.epoch());
             self.subscriber()
                 .on_path_secret_map_address_cache_accessed_hit(
                     event::builder::PathSecretMapAddressCacheAccessedHit {
@@ -879,7 +947,7 @@ where
         );
 
         if let Some(entry) = &result {
-            entry.set_accessed_id();
+            entry.set_accessed_id(self.cleaner.epoch());
             self.subscriber().on_path_secret_map_id_cache_accessed_hit(
                 event::builder::PathSecretMapIdCacheAccessedHit {
                     credential_id: id.into_event(),
