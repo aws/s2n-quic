@@ -82,25 +82,15 @@ impl Dedup {
     }
 
     #[inline]
-    pub(crate) fn disable(&self) {
-        // TODO
-    }
-
-    #[inline]
     pub fn check(&self) -> crypto::open::Result {
-        *self.cell.get_or_init(|| {
-            match self.init.take() {
-                Some(DedupInit {
-                    entry,
-                    key_id,
-                    queue_id,
-                    map,
-                }) => map.store.check_dedup(&entry, key_id, queue_id),
-                None => {
-                    // Dedup has been poisoned! TODO log this
-                    Err(crypto::open::Error::ReplayPotentiallyDetected { gap: None })
-                }
-            }
+        *self.cell.get_or_init(|| match self.init.take() {
+            Some(DedupInit {
+                entry,
+                key_id,
+                queue_id,
+                map,
+            }) => map.store.check_dedup(&entry, key_id, queue_id),
+            None => Err(crypto::open::Error::ReplayPotentiallyDetected { gap: None }),
         })
     }
 }
