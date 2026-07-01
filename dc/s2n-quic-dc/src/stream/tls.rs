@@ -452,6 +452,10 @@ where
     )]
     let message = ctx.cast::<M>().as_mut::<'a>().unwrap();
 
+    // Clamp the length such that we can never fail when converting the written length into an i32
+    // for the return type.
+    let len = len.clamp(0, i32::MAX as u32);
+
     let mut buf = std::slice::from_raw_parts(buf, len as usize);
 
     while !buf.is_empty() {
@@ -486,7 +490,7 @@ where
 
     #[expect(
         clippy::unwrap_used,
-        reason = "FIXME: len comes from s2n-tls and a value greater than i32::MAX would panic"
+        reason = "clamped original length such that this is infallible"
     )]
     i32::try_from(len).unwrap()
 }
