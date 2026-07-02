@@ -28,10 +28,10 @@ impl Provider {
         tls_materials_provider: Provider,
         subscriber: Subscriber,
         builder: super::server::Builder<Event>,
-    ) -> (
+    ) -> std::io::Result<(
         oneshot::Receiver<Result<SocketAddr, super::io::Error>>,
         DropGuard,
-    ) {
+    )> {
         let (tx, rx) = oneshot::channel();
         let server = io::server(
             addr,
@@ -43,24 +43,21 @@ impl Provider {
         );
         let token = tokio_util::sync::CancellationToken::new();
         let cancelled = token.clone().cancelled_owned();
-        #[expect(clippy::unwrap_used, reason = "FIXME: spawning a thread is fallible (resource exhaustion); should propagate the error")]
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
         std::thread::Builder::new()
             .name(String::from("hs-server"))
             .spawn(move || {
-                #[expect(clippy::unwrap_used, reason = "FIXME: building the tokio runtime is fallible (resource exhaustion); should propagate the error")]
-                let rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .unwrap();
                 rt.block_on(async move {
                     tokio::select! {
                         _ = cancelled => {}
                         _ = server => {}
                     }
                 });
-            })
-            .unwrap();
-        (rx, token.drop_guard())
+            })?;
+        Ok((rx, token.drop_guard()))
     }
 
     /// Returns a [`Builder`] which is able to configure the [`Provider`]

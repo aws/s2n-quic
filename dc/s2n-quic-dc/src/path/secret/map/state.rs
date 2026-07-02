@@ -37,6 +37,7 @@ pub(crate) enum StateBuilderError {
     MissingCapacity,
     MissingClock,
     MissingSubscriber,
+    Io(std::io::Error),
 }
 
 impl std::fmt::Display for StateBuilderError {
@@ -46,6 +47,7 @@ impl std::fmt::Display for StateBuilderError {
             StateBuilderError::MissingCapacity => write!(f, "capacity is required"),
             StateBuilderError::MissingClock => write!(f, "clock is required"),
             StateBuilderError::MissingSubscriber => write!(f, "subscriber is required"),
+            StateBuilderError::Io(err) => write!(f, "{err}"),
         }
     }
 }
@@ -139,14 +141,15 @@ where
             .subscriber
             .ok_or(StateBuilderError::MissingSubscriber)?;
 
-        Ok(State::new(
+        State::new(
             signer,
             capacity,
             self.should_evict_on_unknown_path_secret,
             clock,
             subscriber,
             self.serializer,
-        ))
+        )
+        .map_err(StateBuilderError::Io)
     }
 }
 
@@ -529,6 +532,7 @@ where
     C: 'static + time::Clock + Sync + Send,
     S: event::Subscriber,
 {
+    #[expect(clippy::unwrap_in_result, reason = "lock poison")]
     pub fn new(
         signer: stateless_reset::Signer,
         capacity: usize,
@@ -536,7 +540,7 @@ where
         clock: C,
         subscriber: S,
         serializer: Option<disk::Serializer>,
-    ) -> Arc<Self> {
+    ) -> std::io::Result<Arc<Self>> {
         let control_socket = control_socket();
 
         let init_time = clock.get_time();
@@ -557,7 +561,7 @@ where
             serializer,
             rehandshake: Mutex::new(super::rehandshake::RehandshakeState::new(
                 rehandshake_period,
-            )),
+            )?),
             signer,
             control_socket,
             init_time,
@@ -588,13 +592,13 @@ where
 
         let state = Arc::new(state);
 
-        state.cleaner.spawn_thread(state.clone());
+        state.cleaner.spawn_thread(state.clone())?;
 
         state
             .subscriber()
             .on_path_secret_map_initialized(event::builder::PathSecretMapInitialized { capacity });
 
-        state
+        Ok(state)
     }
 
     /// Serializes the current map to disk using the configured [`disk::Serializer`].

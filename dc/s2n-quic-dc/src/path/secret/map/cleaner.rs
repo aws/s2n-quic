@@ -82,7 +82,8 @@ impl Cleaner {
         }
     }
 
-    pub fn spawn_thread<C, S>(&self, state: Arc<State<C, S>>)
+    #[expect(clippy::unwrap_in_result)]
+    pub fn spawn_thread<C, S>(&self, state: Arc<State<C, S>>) -> std::io::Result<()>
     where
         C: 'static + time::Clock + Send + Sync,
         S: event::Subscriber,
@@ -90,7 +91,7 @@ impl Cleaner {
         // check to see if we're in a simulation before spawning a thread
         #[cfg(any(test, feature = "testing"))]
         if bach::is_active() {
-            return;
+            return Ok(());
         }
 
         // The serialization period, expressed in cleaner cycles, if configured. The cleaner drives
@@ -156,15 +157,13 @@ impl Cleaner {
                     std::thread::park_timeout(next_start.saturating_duration_since(Instant::now()));
                 }
             });
-        #[expect(
-            clippy::unwrap_used,
-            reason = "FIXME: spawning the cleaner thread is fallible (resource exhaustion)"
-        )]
-        let handle = handle.unwrap();
+        let handle = handle?;
         #[expect(clippy::unwrap_used, reason = "panic only if already panicked")]
         {
             *self.thread.lock().unwrap() = Some(handle);
         }
+
+        Ok(())
     }
 
     /// Periodic maintenance for various maps.

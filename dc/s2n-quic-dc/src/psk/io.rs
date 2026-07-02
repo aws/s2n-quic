@@ -214,15 +214,21 @@ pub(super) async fn server<
         Err(e) => {
             tracing::error!("failed to bind server to {:?}: {:?}", address, e);
             let _ = on_ready.send(Err(e));
+            // Bail early, we're failing startup.
             return;
         }
     };
 
-    #[expect(
-        clippy::unwrap_used,
-        reason = "FIXME: local_addr is a fallible socket op; the error should be sent on the channel instead of unwrapped"
-    )]
-    let _ = on_ready.send(Ok(server.local_addr().unwrap()));
+    match server.local_addr() {
+        Ok(addr) => {
+            let _ = on_ready.send(Ok(addr));
+        }
+        Err(err) => {
+            let _ = on_ready.send(Err(err.into()));
+            // Bail early, we're failing startup.
+            return;
+        }
+    }
 
     while let Some(mut connection) = server.server.accept().await {
         let map_clone = map.clone();
@@ -726,7 +732,8 @@ mod tests {
                     subscriber.clone(),
                     server_builder,
                 )
-            };
+            }
+            .unwrap();
 
             let client_map = Map::new(
                 Signer::new(b"default"),
@@ -894,7 +901,8 @@ mod tests {
             tls.clone(),
             subscriber.clone(),
             server_builder,
-        );
+        )
+        .unwrap();
 
         let client_map = Map::new(
             Signer::new(b"default"),

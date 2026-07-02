@@ -164,7 +164,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             tls_materials_provider,
             subscriber,
             self,
-        );
+        )?;
         let local_addr = rx.await??;
         Ok(Provider::new(map, local_addr, guard))
     }
@@ -186,7 +186,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             tls_materials_provider,
             subscriber,
             self,
-        );
+        )?;
         let local_addr = rx.blocking_recv()??;
         Ok(Provider::new(map, local_addr, guard))
     }
