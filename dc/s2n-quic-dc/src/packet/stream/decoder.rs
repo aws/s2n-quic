@@ -389,11 +389,6 @@ impl Packet<'_> {
     }
 
     #[inline(always)]
-    #[expect(
-        clippy::unwrap_used,
-        clippy::unwrap_in_result,
-        reason = "FIXME: support decoding const-known slices directly into arrays"
-    )]
     fn retransmit_impl<K>(
         buffer: DecoderBufferMut,
         space: stream::PacketSpace,
@@ -448,11 +443,6 @@ impl Packet<'_> {
         let (original_packet_number, buffer) = buffer.decode::<VarInt>()?;
         let (retransmission_packet_number_buffer, buffer) =
             buffer.decode_slice(size_of::<RelativeRetransmissionOffset>())?;
-        let retransmission_packet_number_buffer =
-            retransmission_packet_number_buffer.into_less_safe_slice();
-        let retransmission_packet_number_buffer: &mut [u8;
-                 size_of::<RelativeRetransmissionOffset>(
-            )] = retransmission_packet_number_buffer.try_into().unwrap();
 
         let (_next_expected_control_packet, buffer) = buffer.decode::<VarInt>()?;
         let (_stream_offset, buffer) = buffer.decode::<VarInt>()?;
@@ -476,8 +466,9 @@ impl Packet<'_> {
             .map_err(|_| DecoderError::InvariantViolation("packet is too old"))?;
 
         // undo the previous retransmission if needed
-        let prev_value =
-            RelativeRetransmissionOffset::from_be_bytes(*retransmission_packet_number_buffer);
+        let prev_value = RelativeRetransmissionOffset::from_be_bytes(
+            retransmission_packet_number_buffer.peek().decode_exact()?,
+        );
         if prev_value != 0 {
             let retransmission_packet_number =
                 original_packet_number + VarInt::from_u32(prev_value);
@@ -488,7 +479,9 @@ impl Packet<'_> {
             );
         }
 
-        retransmission_packet_number_buffer.copy_from_slice(&relative.to_be_bytes());
+        retransmission_packet_number_buffer
+            .into_less_safe_slice()
+            .copy_from_slice(&relative.to_be_bytes());
 
         key.retransmission_tag(
             original_packet_number.as_u64(),
