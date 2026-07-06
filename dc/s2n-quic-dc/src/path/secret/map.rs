@@ -19,6 +19,7 @@ use std::{net::SocketAddr, sync::Arc};
 use tokio::task::JoinHandle;
 
 mod cleaner;
+mod disk;
 mod entry;
 pub mod handshake;
 mod peer;
@@ -34,9 +35,12 @@ pub mod testing;
 #[cfg(test)]
 mod event_tests;
 
+pub use disk::{deserialize, DiskEntry, Entries, Serializer, SerializerBuilder};
 pub use entry::Entry;
+use state::StateBuilderError;
 use store::Store;
 
+pub(crate) use cleaner::Epoch;
 pub use entry::{
     ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, ControlPair,
 };
@@ -72,7 +76,76 @@ impl fmt::Debug for Map {
     }
 }
 
+/// A builder for [`Map`].
+pub struct Builder<C, S>
+where
+    C: 'static + time::Clock + Sync + Send,
+    S: event::Subscriber,
+{
+    inner: state::StateBuilder<C, S>,
+}
+
+impl<C, S> Builder<C, S>
+where
+    C: 'static + time::Clock + Sync + Send,
+    S: event::Subscriber,
+{
+    pub fn with_signer(mut self, signer: stateless_reset::Signer) -> Self {
+        self.inner = self.inner.with_signer(signer);
+        self
+    }
+
+    pub fn with_capacity(mut self, capacity: usize) -> Self {
+        self.inner = self.inner.with_capacity(capacity);
+        self
+    }
+
+    pub fn with_evict_on_unknown_path_secret(mut self, should_evict: bool) -> Self {
+        self.inner = self.inner.with_evict_on_unknown_path_secret(should_evict);
+        self
+    }
+
+    pub fn with_clock<C2: 'static + time::Clock + Sync + Send>(self, clock: C2) -> Builder<C2, S> {
+        Builder {
+            inner: self.inner.with_clock(clock),
+        }
+    }
+
+    pub fn with_subscriber<S2: event::Subscriber>(self, subscriber: S2) -> Builder<C, S2> {
+        Builder {
+            inner: self.inner.with_subscriber(subscriber),
+        }
+    }
+
+    /// Configures on-disk serialization of the map.
+    pub fn with_serializer(mut self, serializer: Serializer) -> Self {
+        self.inner = self.inner.with_serializer(serializer);
+        self
+    }
+
+    /// Builds the [`Map`].
+    pub fn build(self) -> Result<Map, MapBuilderError> {
+        Ok(Map {
+            store: self.inner.build().map_err(MapBuilderError)?,
+        })
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub struct MapBuilderError(StateBuilderError);
+
 impl Map {
+    /// Begins configuring a [`Map`].
+    ///
+    /// The signer, capacity, clock, and subscriber are all required; [`Builder::build`] fails if
+    /// any are missing.
+    pub fn builder() -> Builder<time::StdClock, crate::event::tracing::Subscriber> {
+        Builder {
+            inner: state::State::builder(),
+        }
+    }
+
     pub fn new<C, S>(
         signer: stateless_reset::Signer,
         capacity: usize,
@@ -88,16 +161,14 @@ impl Map {
             clippy::unwrap_used,
             reason = "build only fails if a required field is unset, we control the required field set"
         )]
-        let store = state::State::builder()
+        Self::builder()
+            .with_clock(clock)
+            .with_subscriber(subscriber)
             .with_signer(signer)
             .with_capacity(capacity)
             .with_evict_on_unknown_path_secret(should_evict_on_unknown_path_secret)
-            .with_clock(clock)
-            .with_subscriber(subscriber)
             .build()
-            .unwrap();
-
-        Self { store }
+            .unwrap()
     }
 
     /// The number of trusted secrets.
@@ -118,6 +189,15 @@ impl Map {
 
     pub fn drop_state(&self) {
         self.store.drop_state();
+    }
+
+    /// Serializes the current map to disk using the serializer configured at construction.
+    ///
+    /// This is a no-op (returning `Ok(())`) if no serializer was configured. It can be called
+    /// regardless of whether background serialization is enabled, letting callers drive
+    /// serialization on their own schedule.
+    pub fn serialize_to_disk(&self) -> std::io::Result<()> {
+        self.store.serialize_to_disk()
     }
 
     pub fn contains(&self, peer: &SocketAddr) -> bool {

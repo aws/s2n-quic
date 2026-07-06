@@ -213,7 +213,7 @@ jobs:
         env:
           RUSTDOCFLAGS: --cfg docsrs
 
-      - uses: aws-actions/configure-aws-credentials@v6.2.0
+      - uses: aws-actions/configure-aws-credentials@v6.2.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -253,9 +253,6 @@ jobs:
         target: [native]
         env: [default]
         include:
-          - rust: ${{ needs.env.outputs.msrv }}
-            # s2n-quic-dc-metrics crate' MSRV is 1.88.0, which is higher than the rest
-            exclude: --exclude s2n-quic-dc-metrics
           - os: windows-latest
             # s2n-tls and s2n-quic-dc don't currently build on windows
             exclude: --exclude s2n-quic-tls --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics
@@ -279,7 +276,7 @@ jobs:
             target: native
             env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE=""
             # s2n-quic-dc requires platform features
-            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics
+            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics --exclude s2n-quic-bench
           - rust: stable
             os: ubuntu-latest
             target: native
@@ -480,7 +477,7 @@ jobs:
       - name: Run cargo llvm-cov
         run: cargo llvm-cov --html --no-fail-fast --workspace --exclude s2n-quic-qns --all-features
 
-      - uses: aws-actions/configure-aws-credentials@v6.2.0
+      - uses: aws-actions/configure-aws-credentials@v6.2.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -594,7 +591,7 @@ jobs:
         run: |
           ./scripts/recovery-sim
 
-      - uses: aws-actions/configure-aws-credentials@v6.2.0
+      - uses: aws-actions/configure-aws-credentials@v6.2.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -645,7 +642,7 @@ jobs:
         run: |
           ./scripts/sim
 
-      - uses: aws-actions/configure-aws-credentials@v6.2.0
+      - uses: aws-actions/configure-aws-credentials@v6.2.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -790,7 +787,7 @@ jobs:
           cd examples/echo
           cargo build --timings --release --workspace
 
-      - uses: aws-actions/configure-aws-credentials@v6.2.0
+      - uses: aws-actions/configure-aws-credentials@v6.2.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -893,7 +890,7 @@ jobs:
           mv report.tsv target/report/
           mv dhat-heap.json target/report/
 
-      - uses: aws-actions/configure-aws-credentials@v6.2.0
+      - uses: aws-actions/configure-aws-credentials@v6.2.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -1025,7 +1022,7 @@ jobs:
     if: ${{ always() }}
     needs: [env, rustfmt, clippy, udeps, doc, test, asan, fips, miri, no_std, compliance, coverage, crates, examples, recovery-simulations, sims, copyright, s2n-events, generate-events, snapshots, timing, typos, kani, dhat, loom, xdp, dc-wireshark]
     steps:
-      - uses: aws-actions/configure-aws-credentials@v6.2.0
+      - uses: aws-actions/configure-aws-credentials@v6.2.1
         if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole

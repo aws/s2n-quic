@@ -320,13 +320,11 @@ impl Builder {
 
         let env = env.build()?;
 
-        #[expect(
-            clippy::unwrap_used,
-            reason = "FIXME: propagate local_addr failure from pool_addr"
-        )]
         if self.enable_udp && enable_udp_pool {
             // update the address with the selected port
-            self.acceptor_addr = env.pool_addr().unwrap();
+            self.acceptor_addr = env
+                .pool_addr()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "udp pool_addr failed"))?;
             // don't use the owned socket acceptor
             self.enable_udp = false;
         }

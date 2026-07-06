@@ -193,20 +193,44 @@ where
                 .unwrap_or_else(|_| Err(std::io::Error::from(std::io::ErrorKind::TimedOut)));
 
             if let Err(error) = result {
-                env.endpoint_publisher()
-                    .on_acceptor_tcp_tls_stream_rejected(
-                        event::builder::AcceptorTcpTlsStreamRejected {
-                            remote_address: &remote_addr,
-                            sojourn_time: env
-                                .clock()
-                                .get_time()
-                                .saturating_duration_since(kernel_accept_time),
-                            error: &error,
-                        },
-                    );
+                if error.get_ref().is_some_and(|e| e.is::<Synthetic>()) {
+                    env.endpoint_publisher()
+                        .on_acceptor_tcp_synthetic_tls_stream_rejected(
+                            event::builder::AcceptorTcpSyntheticTlsStreamRejected {
+                                remote_address: &remote_addr,
+                                sojourn_time: env
+                                    .clock()
+                                    .get_time()
+                                    .saturating_duration_since(kernel_accept_time),
+                                error: &error,
+                            },
+                        );
+                } else {
+                    env.endpoint_publisher()
+                        .on_acceptor_tcp_tls_stream_rejected(
+                            event::builder::AcceptorTcpTlsStreamRejected {
+                                remote_address: &remote_addr,
+                                sojourn_time: env
+                                    .clock()
+                                    .get_time()
+                                    .saturating_duration_since(kernel_accept_time),
+                                error: &error,
+                            },
+                        );
+                }
             }
         });
         Ok(())
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("synthetic failure: {0}")]
+struct Synthetic(#[source] std::io::Error);
+
+impl From<Synthetic> for std::io::Error {
+    fn from(value: Synthetic) -> Self {
+        std::io::Error::new(value.0.kind(), value)
     }
 }
 
@@ -233,7 +257,13 @@ async fn accept_conn<Sub: event::Subscriber + Clone>(
     let mut connection =
         crate::stream::tls::S2nTlsConnection::from_connection(socket.clone(), conn)?;
 
-    connection.negotiate(Some(buffer)).await?;
+    connection.negotiate(Some(buffer)).await.map_err(|e| {
+        if connection.is_synthetic() {
+            std::io::Error::from(Synthetic(e))
+        } else {
+            e
+        }
+    })?;
 
     // The handshake is complete at this point, so the stream should be considered open. Eventually
     // at this point we'll want to export the TLS keys from the connection and add those into the
