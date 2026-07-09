@@ -69,21 +69,18 @@ impl<Buffer> Iterator for Drain<'_, Buffer> {
                 return Some(event);
             }
 
-            if let Some(events) = self.queue.queue.pop() {
-                // https://doc.rust-lang.org/std/collections/struct.VecDeque.html#impl-From%3CVec%3CT,+A%3E%3E-for-VecDeque%3CT,+A%3E
-                // > This conversion is guaranteed to run in O(1) time and to not re-allocate the Vec’s
-                // > buffer or allocate any additional memory.
-                let prev = core::mem::replace(&mut self.current, events.into());
-                // https://doc.rust-lang.org/std/collections/struct.VecDeque.html#impl-From%3CVecDeque%3CT,+A%3E%3E-for-Vec%3CT,+A%3E
-                // > This never needs to re-allocate, but does need to do O(n) data movement if the circular buffer
-                // > doesn’t happen to be at the beginning of the allocation.
-                //
-                // NOTE prev should be empty at this point so this conversion is free
-                debug_assert!(prev.is_empty());
-                let _ = self.queue.free_batches.push(prev.into());
-            } else {
-                return None;
-            }
+            let events = self.queue.queue.pop()?;
+            // https://doc.rust-lang.org/std/collections/struct.VecDeque.html#impl-From%3CVec%3CT,+A%3E%3E-for-VecDeque%3CT,+A%3E
+            // > This conversion is guaranteed to run in O(1) time and to not re-allocate the Vec’s
+            // > buffer or allocate any additional memory.
+            let prev = core::mem::replace(&mut self.current, events.into());
+            // https://doc.rust-lang.org/std/collections/struct.VecDeque.html#impl-From%3CVecDeque%3CT,+A%3E%3E-for-Vec%3CT,+A%3E
+            // > This never needs to re-allocate, but does need to do O(n) data movement if the circular buffer
+            // > doesn’t happen to be at the beginning of the allocation.
+            //
+            // NOTE prev should be empty at this point so this conversion is free
+            debug_assert!(prev.is_empty());
+            let _ = self.queue.free_batches.push(prev.into());
         }
     }
 }
