@@ -154,19 +154,6 @@ pub mod open {
 
     macro_rules! with_dedup {
         () => {
-            /// Disables replay prevention allowing the decryption key to be reused.
-            ///
-            /// ## Safety
-            /// Disabling replay prevention is insecure because it makes it possible for
-            /// active network attackers to cause a peer to accept previously processed
-            /// data as new. For example, if a packet contains a mutating request such
-            /// as adding +1 to a value in a database, an attacker can keep replaying
-            /// packets to increment the value beyond what the original legitimate
-            /// sender of the packet intended.
-            pub unsafe fn disable_replay_prevention(&mut self) {
-                self.dedup.disable();
-            }
-
             /// Ensures the key has not been used before
             #[inline]
             pub fn on_decrypt_success(&self, payload: &mut UninitSlice) -> open::Result {
