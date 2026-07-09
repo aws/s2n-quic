@@ -48,17 +48,13 @@ where
     Sub: event::Subscriber + Clone,
 {
     #[inline]
-    #[expect(
-        clippy::unwrap_used,
-        reason = "FIXME: local_addr() is a fallible syscall; this should propagate the error instead of unwrapping"
-    )]
     pub fn new<B: PollBehavior<Sub> + Clone>(acceptor: &super::Acceptor<Sub, B>) -> Self {
         Self {
             recv_buffer: msg::recv::Message::new(u16::MAX),
             env: acceptor.env.clone(),
             secrets: acceptor.secrets.clone(),
             accept_flavor: acceptor.accept_flavor,
-            local_port: acceptor.socket.get_ref().local_addr().unwrap().port(),
+            local_port: acceptor.local_addr.port(),
         }
     }
 }

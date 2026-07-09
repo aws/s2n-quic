@@ -314,6 +314,25 @@ impl S2nTlsConnection {
     pub(crate) fn peer_cert_chain(&self) -> Option<&CertificateChain> {
         self.cert_chain.as_ref()
     }
+
+    /// Returns whether this is an inbound connection likely originating from a synthetic caller.
+    ///
+    /// Returns false if we're not sure.
+    pub(crate) fn is_synthetic(&self) -> bool {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
+        let mut guard = self.connection.lock().unwrap();
+        let conn: &mut s2n_tls::connection::Connection = (*guard.0).as_mut();
+        let Ok(ch) = conn.client_hello() else {
+            return false;
+        };
+        let Ok(random) = ch.random() else {
+            return false;
+        };
+        random.starts_with(b"s2n-proctor")
+    }
 }
 
 /// `NegotiateContext` for poll_negotiate.
@@ -433,6 +452,10 @@ where
     )]
     let message = ctx.cast::<M>().as_mut::<'a>().unwrap();
 
+    // Clamp the length such that we can never fail when converting the written length into an i32
+    // for the return type.
+    let len = len.clamp(0, i32::MAX as u32);
+
     let mut buf = std::slice::from_raw_parts(buf, len as usize);
 
     while !buf.is_empty() {
@@ -467,7 +490,7 @@ where
 
     #[expect(
         clippy::unwrap_used,
-        reason = "FIXME: len comes from s2n-tls and a value greater than i32::MAX would panic"
+        reason = "clamped original length such that this is infallible"
     )]
     i32::try_from(len).unwrap()
 }

@@ -52,13 +52,13 @@ impl std::hash::Hash for Id {
 
 impl fmt::Debug for Id {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        format_args!("{:#01x}", u128::from_be_bytes(self.0)).fmt(f)
+        format_args!("{:#x}", u128::from_be_bytes(self.0)).fmt(f)
     }
 }
 
 impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        format_args!("{:#01x}", u128::from_be_bytes(self.0)).fmt(f)
+        format_args!("{:#x}", u128::from_be_bytes(self.0)).fmt(f)
     }
 }
 

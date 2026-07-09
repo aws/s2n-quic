@@ -158,20 +158,6 @@ pub struct Environment<Sub> {
     recv_pool: Option<Arc<pool::Pool>>,
 }
 
-impl<Sub> Default for Environment<Sub>
-where
-    Sub: event::Subscriber + Clone + Default,
-{
-    #[inline]
-    fn default() -> Self {
-        #[expect(
-            clippy::unwrap_used,
-            reason = "FIXME: build() constructs tokio runtimes which can fail under resource exhaustion"
-        )]
-        Self::builder().build().unwrap()
-    }
-}
-
 impl<Sub> Environment<Sub>
 where
     Sub: event::Subscriber + Clone + Default,

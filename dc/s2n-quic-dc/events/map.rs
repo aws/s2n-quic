@@ -418,6 +418,16 @@ struct PathSecretMapCleanerCycled {
     #[measure("entries.address.utilization.initial", Percent)]
     address_entries_initial_utilization: f32,
 
+    /// The number of Path Secret ID entries created within the last rehandshake period (usually 24
+    /// hours)
+    #[measure("entries.id.in_last_hs_period")]
+    id_entries_in_last_hs_period: usize,
+
+    /// The utilization percentage of Path Secret ID entries created within the last rehandshake
+    /// period (usually 24 hours)
+    #[measure("entries.id.in_last_hs_period.utilization", Percent)]
+    id_entries_in_last_hs_period_utilization: f32,
+
     /// The number of handshake requests that are pending after the cleaning cycle
     #[measure("handshake_requests")]
     handshake_requests: usize,
@@ -435,6 +445,27 @@ struct PathSecretMapCleanerCycled {
     /// Total duration of a cycle.
     #[measure("total_duration", Duration)]
     duration: core::time::Duration,
+}
+
+#[event("path_secret_map:serialized")]
+#[subject(endpoint)]
+/// Emitted when the path secret map is serialized to disk
+struct PathSecretMapSerialized {
+    /// The number of entries written to the serialized file
+    #[measure("entries")]
+    entries: usize,
+
+    /// The size of the serialized file, in bytes
+    #[measure("file_size", Bytes)]
+    file_size: usize,
+
+    /// How long serialization took
+    #[measure("duration", Duration)]
+    duration: core::time::Duration,
+
+    /// Whether serialization failed
+    #[bool_counter("error")]
+    error: bool,
 }
 
 #[event("path_secret_map:id_cache_write_lock")]
