@@ -31,33 +31,23 @@ struct State {
     local_addr: SocketAddr,
 }
 
-fn make_runtime() -> (Arc<Runtime>, DropGuard) {
-    #[expect(
-        clippy::unwrap_used,
-        reason = "FIXME: building the tokio runtime is fallible (resource exhaustion); should propagate the error"
-    )]
+fn make_runtime() -> std::io::Result<(Arc<Runtime>, DropGuard)> {
     let runtime = Arc::new(
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
-            .build()
-            .unwrap(),
+            .build()?,
     );
 
     let token = tokio_util::sync::CancellationToken::new();
     let cancelled = token.clone().cancelled_owned();
     let rt = runtime.clone();
-    #[expect(
-        clippy::unwrap_used,
-        reason = "FIXME: spawning a thread is fallible (resource exhaustion); should propagate the error"
-    )]
     std::thread::Builder::new()
         .name(String::from("hs-client"))
         .spawn(move || {
             rt.block_on(cancelled);
-        })
-        .unwrap();
+        })?;
 
-    (runtime, token.drop_guard())
+    Ok((runtime, token.drop_guard()))
 }
 
 impl State {
@@ -72,7 +62,7 @@ impl State {
         subscriber: Subscriber,
         builder: Builder<Event>,
     ) -> io::Result<Self> {
-        let (runtime, rt_guard) = make_runtime();
+        let (runtime, rt_guard) = make_runtime()?;
         let guard = runtime.enter();
         let client = io::Client::bind::<Provider, Subscriber, Event>(
             addr,
