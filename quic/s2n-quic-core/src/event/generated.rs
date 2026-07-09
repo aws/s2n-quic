@@ -1133,7 +1133,7 @@ pub mod api {
             packet_type: PacketType,
         },
         #[non_exhaustive]
-        #[doc = " The connection has already closed"]
+        /// The connection has already closed
         ConnectionClosed {
             path: Path<'a>,
             packet_type: PacketType,
@@ -5764,7 +5764,7 @@ pub mod builder {
             path: Path<'a>,
             packet_type: PacketType,
         },
-        #[doc = " The connection has already closed"]
+        /// The connection has already closed
         ConnectionClosed {
             path: Path<'a>,
             packet_type: PacketType,
@@ -7522,7 +7522,8 @@ pub mod supervisor {
 pub use traits::*;
 mod traits {
     use super::*;
-    use crate::{event::Meta, query};
+    use crate::event::Meta;
+    use crate::query;
     use core::fmt;
     /// Allows for events to be subscribed to
     pub trait Subscriber: 'static + Send {
