@@ -135,10 +135,10 @@ impl MetricsWriter {
     }
 
     fn open_writer(&self, now: DateTime<Utc>) -> std::io::Result<ActiveWriter> {
-        let mut filename = format!("{}.{}", &self.filename_prefix, now.format("%Y-%m-%d-%H"));
+        let mut filename = format!("{}.{}", self.filename_prefix, now.format("%Y-%m-%d-%H"));
         let mut start_time = now.date_naive().and_hms_opt(now.hour(), 0, 0).unwrap();
         if self.log_rotation.num_minutes() < 60 {
-            filename = format!("{}.{}", &self.filename_prefix, now.format("%Y-%m-%d-%H-%M"));
+            filename = format!("{}.{}", self.filename_prefix, now.format("%Y-%m-%d-%H-%M"));
             start_time = now
                 .date_naive()
                 .and_hms_opt(now.hour(), now.minute(), 0)

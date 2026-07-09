@@ -73,6 +73,10 @@ impl Default for Builder {
 impl Builder {
     common_builder_methods!();
 
+    /// The provided path will be used to unlink + bind a Unix socket. Users on the local system
+    /// that can connect to this socket can send traffic to the application with no additional
+    /// authentication being performed, so appropriate access controls should be enforced. These
+    /// are the responsibility of the application owner.
     pub fn with_socket_path(mut self, path: &Path) -> Self {
         self.socket_path = Some(path.to_path_buf());
         self
