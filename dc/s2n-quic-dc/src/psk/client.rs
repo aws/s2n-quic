@@ -154,9 +154,8 @@ impl Provider {
             return Ok((peer, HandshakeKind::Cached));
         }
 
-        // Unconditionally request a background handshake. This schedules any re-handshaking
-        // needed. We put this after get_tracked because that saves us a global lock to check
-        // presence in the map in the happy path.
+        // Ensure that even if the future is dropped a handshake is driven to completion in th
+        // background.
         if self.state.runtime.is_some() {
             let _ = self.background_handshake_with(peer, server_name.clone());
         }
@@ -243,12 +242,6 @@ impl Provider {
         peer: SocketAddr,
         server_name: Name,
     ) -> std::io::Result<HandshakeKind> {
-        // Unconditionally request a background handshake. This schedules any re-handshaking
-        // needed.
-        if self.state.runtime.is_some() {
-            let _ = self.background_handshake_with(peer, server_name.clone());
-        }
-
         if self.state.map.contains(&peer) {
             return Ok(HandshakeKind::Cached);
         }
