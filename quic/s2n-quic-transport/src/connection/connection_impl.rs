@@ -1390,9 +1390,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
         if let Some((space, _status)) = self.space_manager.initial_mut() {
-            // Previously we had a bug where we processed packets past connection closure unintentionally. This assert
-            // will error in the future if we mistakenly start allowing this again.
-            debug_assert!(!matches!(self.state, ConnectionState::Closing));
+            debug_assert!(
+                !matches!(self.state, ConnectionState::Closing),
+                "The packet space should be discarded as soon as the Closing state is entered"
+            );
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 path_id,
@@ -1449,9 +1450,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
-            // Previously we had a bug where we processed packets past connection closure unintentionally. This assert
-            // will error in the future if we mistakenly start allowing this again.
-            debug_assert!(!matches!(self.state, ConnectionState::Closing));
+            debug_assert!(
+                !matches!(self.state, ConnectionState::Closing),
+                "The packet space should be discarded as soon as the Closing state is entered"
+            );
 
             //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
             //# A server MUST discard an Initial packet that is carried
@@ -1579,9 +1581,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         if let Some((space, handshake_status)) = self.space_manager.handshake_mut() {
-            // Previously we had a bug where we processed packets past connection closure unintentionally. This assert
-            // will error in the future if we mistakenly start allowing this again.
-            debug_assert!(!matches!(self.state, ConnectionState::Closing));
+            debug_assert!(
+                !matches!(self.state, ConnectionState::Closing),
+                "The packet space should be discarded as soon as the Closing state is entered"
+            );
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 path_id,
@@ -2077,9 +2080,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .on_retry_packet(retry_source_connection_id);
 
         if let Some((space, _handshake_status)) = self.space_manager.initial_mut() {
-            // Previously we had a bug where we processed packets past connection closure unintentionally. This assert
-            // will error in the future if we mistakenly start allowing this again.
-            debug_assert!(!matches!(self.state, ConnectionState::Closing));
+            debug_assert!(
+                !matches!(self.state, ConnectionState::Closing),
+                "The packet space should be discarded as soon as the Closing state is entered"
+            );
 
             space.on_retry_packet(
                 path,
