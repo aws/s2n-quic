@@ -50,6 +50,8 @@
 //!
 //! **NOTE**: this will override the platform detection and always use [`s2n-tls`][s2n-tls] by default.
 //!
+//! **NOTE**: on Windows, [`s2n-tls`][s2n-tls] only builds with the GNU/MinGW toolchain it does not build with the MSVC toolchain.
+//!
 //! ### `provider-tls-fips`
 //!
 //! **FIPS mode with `provider-tls-s2n`**
