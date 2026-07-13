@@ -1390,6 +1390,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
         if let Some((space, _status)) = self.space_manager.initial_mut() {
+            debug_assert!(
+                !matches!(self.state, ConnectionState::Closing),
+                "The packet space should be discarded as soon as the Closing state is entered"
+            );
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 path_id,
@@ -1446,6 +1450,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
+            debug_assert!(
+                !matches!(self.state, ConnectionState::Closing),
+                "The packet space should be discarded as soon as the Closing state is entered"
+            );
+
             //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
             //# A server MUST discard an Initial packet that is carried
             //# in a UDP datagram with a payload that is smaller than the
@@ -1572,6 +1581,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         if let Some((space, handshake_status)) = self.space_manager.handshake_mut() {
+            debug_assert!(
+                !matches!(self.state, ConnectionState::Closing),
+                "The packet space should be discarded as soon as the Closing state is entered"
+            );
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 path_id,
@@ -1693,6 +1706,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         limits_endpoint: &mut Config::ConnectionLimits,
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#10.2.1
+        //# An endpoint that is closing is not required to process any received frame.
+        if matches!(self.state, ConnectionState::Closing) {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::ConnectionClosed {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::OneRtt,
+                },
+            });
+            return Ok(());
+        }
 
         //= https://www.rfc-editor.org/rfc/rfc9001#section-5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
@@ -2054,6 +2080,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .on_retry_packet(retry_source_connection_id);
 
         if let Some((space, _handshake_status)) = self.space_manager.initial_mut() {
+            debug_assert!(
+                !matches!(self.state, ConnectionState::Closing),
+                "The packet space should be discarded as soon as the Closing state is entered"
+            );
+
             space.on_retry_packet(
                 path,
                 path_id,
