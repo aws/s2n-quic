@@ -1390,6 +1390,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
         if let Some((space, _status)) = self.space_manager.initial_mut() {
+            // Previously we had a bug where we processed packets past connection closure unintentionally. This assert
+            // will error in the future if we mistakenly start allowing this again.
             debug_assert!(!matches!(self.state, ConnectionState::Closing));
             let packet = space.validate_and_decrypt_packet(
                 packet,
@@ -1447,6 +1449,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
+            // Previously we had a bug where we processed packets past connection closure unintentionally. This assert
+            // will error in the future if we mistakenly start allowing this again.
             debug_assert!(!matches!(self.state, ConnectionState::Closing));
 
             //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
@@ -1575,6 +1579,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         if let Some((space, handshake_status)) = self.space_manager.handshake_mut() {
+            // Previously we had a bug where we processed packets past connection closure unintentionally. This assert
+            // will error in the future if we mistakenly start allowing this again.
             debug_assert!(!matches!(self.state, ConnectionState::Closing));
             let packet = space.validate_and_decrypt_packet(
                 packet,
@@ -2071,6 +2077,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .on_retry_packet(retry_source_connection_id);
 
         if let Some((space, _handshake_status)) = self.space_manager.initial_mut() {
+            // Previously we had a bug where we processed packets past connection closure unintentionally. This assert
+            // will error in the future if we mistakenly start allowing this again.
             debug_assert!(!matches!(self.state, ConnectionState::Closing));
 
             space.on_retry_packet(
