@@ -199,9 +199,19 @@ mod default_tls {
     //
     // Note: I know this looks like a mess. And it is. Hopefully in the future cargo will support
     // platform-specific default features.
+    //
+    // The default provider is s2n-tls on unix and whenever `provider-tls-default-s2n` forces it;
+    // otherwise it is rustls. We only add the impl below when the default type doesn't already
+    // have one from the explicit `rustls`/`s2n_tls` provider modules, to avoid conflicting impls.
     #[cfg(not(any(
-        all(not(unix), feature = "s2n-quic-rustls"),
-        all(unix, feature = "s2n-quic-tls")
+        all(
+            not(any(unix, feature = "provider-tls-default-s2n")),
+            feature = "s2n-quic-rustls"
+        ),
+        all(
+            any(unix, feature = "provider-tls-default-s2n"),
+            feature = "s2n-quic-tls"
+        )
     )))]
     mod default_provider {
         use super::*;

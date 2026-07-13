@@ -327,6 +327,105 @@ jobs:
         run: |
           ${{ matrix.target != 'native' && 'cross' || 'cargo' }} test --workspace ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
 
+  # The previous build runs on MSVC. s2n-quic can use s2n-tls, but only on MinGW, so we need a new job to test that.
+  test-windows-gnu:
+    runs-on: windows-latest
+    name: Windows s2n-tls (${{ matrix.sys }})
+    env:
+      # msys2 ships clang, not gcc, but cc-rs defaults to gcc for *-gnu.
+      CC: clang
+      CXX: clang++
+      # gnullvm doesn't auto-link winpthreads, so s2n's pthread/clock_gettime/nanosleep symbols
+      # are undefined; -lpthread links it explicitly. Both vars are needed: RUSTFLAGS for the
+      # normal link, RUSTDOCFLAGS for doctests.
+      CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_RUSTFLAGS: -Clink-arg=-lpthread
+      CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_RUSTDOCFLAGS: -Clink-arg=-lpthread
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sys: ucrt64
+            pkg-prefix: mingw-w64-ucrt-x86_64
+            env-path: /ucrt64
+            rust-host: x86_64-pc-windows-gnu
+          - sys: mingw64
+            pkg-prefix: mingw-w64-x86_64
+            env-path: /mingw64
+            rust-host: x86_64-pc-windows-gnu
+          - sys: clang64
+            pkg-prefix: mingw-w64-clang-x86_64
+            env-path: /clang64
+            # clang64 targets gnullvm, which has no host toolchain, so cross-compile to it from
+            # the gnu host. rust-host is the host we install; cargo-target is what we build for.
+            rust-host: x86_64-pc-windows-gnu
+            cargo-target: x86_64-pc-windows-gnullvm
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+          submodules: true
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.sys }}
+          update: true
+          install: >-
+            ${{ matrix.pkg-prefix }}-clang
+            ${{ matrix.pkg-prefix }}-clang-libs
+            ${{ matrix.pkg-prefix }}-cmake
+            ${{ matrix.pkg-prefix }}-ninja
+            ${{ matrix.pkg-prefix }}-go
+            ${{ matrix.pkg-prefix }}-nasm
+            ${{ matrix.pkg-prefix }}-rustup
+            make
+            perl
+            git
+            diffutils
+            jq
+
+      - name: Install Rust toolchain
+        shell: msys2 {0}
+        run: |
+          set -eu
+          # Force the MinGW gnu host; otherwise rustup picks the runner's MSVC host, which can't
+          # build the C dependencies. The repo's rust-toolchain file pins the channel, so this
+          # installs that channel for the gnu host.
+          rustup set default-host ${{ matrix.rust-host }}
+          rustup show active-toolchain
+
+          # clang64 has no gnullvm host toolchain, so cross-compile to gnullvm from the gnu host.
+          if [ -n "${{ matrix.cargo-target }}" ]; then
+            rustup target add ${{ matrix.cargo-target }}
+            echo "CARGO_BUILD_TARGET=${{ matrix.cargo-target }}" >> "$GITHUB_ENV"
+            # aws-lc-sys has no prebuilt bindings for gnullvm, so it runs bindgen at build time.
+            # Install bindgen-cli (on PATH) built for the gnullvm environment.
+            cargo install --locked --target ${{ matrix.cargo-target }} \
+              --root "${{ matrix.env-path }}" bindgen-cli
+          fi
+
+      # openssl-src doesn't pass `-j` to make on Windows, so the vendored OpenSSL build runs
+      # single-threaded. Export MAKEFLAGS so make parallelizes.
+      - name: Enable parallel make for vendored OpenSSL
+        shell: msys2 {0}
+        run: echo "MAKEFLAGS=-j$(nproc)" >> "$GITHUB_ENV"
+
+      - name: Restore fuzz corpus
+        shell: msys2 {0}
+        run: |
+          find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
+
+      # Force s2n-tls as the default TLS provider so the whole suite runs through s2n-tls.
+      - name: Run cargo test
+        shell: msys2 {0}
+        run: |
+          set -eu
+          cargo test --workspace \
+            --exclude s2n-quic-dc \
+            --exclude s2n-quic-dc-benches \
+            --exclude s2n-quic-dc-metrics \
+            --features s2n-tls-default
+
   asan:
     runs-on: ubuntu-latest
     steps:

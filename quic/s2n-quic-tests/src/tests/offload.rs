@@ -152,7 +152,7 @@ fn failed_tls_handshake() {
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
 fn mtls() {
     let model = Model::default();
     test(model.clone(), |handle| {
@@ -190,7 +190,7 @@ fn mtls() {
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
 fn async_client_hello() {
     use futures::{ready, FutureExt};
     use s2n_quic::provider::tls::s2n_tls::{

@@ -98,7 +98,10 @@ fn buffer_limit_test() {
 
     // Rustls emits INTERNAL_ERROR and S2N-TLS emits UNEXPECTED_MESSAGE error
     // when the server close the connection due to large Client Hello.
-    let expected_error = if cfg!(target_os = "windows") {
+    //
+    // rustls is the default TLS provider on Windows, unless the `s2n-tls-default` feature forces
+    // s2n-tls (e.g. when exercising s2n-tls on Windows with the GNU/MinGW toolchain).
+    let expected_error = if cfg!(target_os = "windows") && !cfg!(feature = "s2n-tls-default") {
         TlsError::INTERNAL_ERROR
     } else {
         TlsError::UNEXPECTED_MESSAGE
