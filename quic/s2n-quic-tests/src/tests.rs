@@ -49,14 +49,8 @@ mod self_test;
 mod skip_packets;
 mod slow_tls;
 mod tls_context;
-// quiche does not currently build on 32-bit platforms
-// see https://github.com/cloudflare/quiche/issues/2097
-//
 // quiche also depends on BoringSSL, which does not build with the Windows MinGW-family toolchains.
-#[cfg(all(
-    not(target_arch = "x86"),
-    not(all(target_os = "windows", not(target_env = "msvc")))
-))]
+#[cfg(not(all(target_os = "windows", not(target_env = "msvc"))))]
 mod zero_length_cid_client_connection_migration;
 
 // These tests use the s2n-tls provider (e.g. the ClientHelloCallback trait or mTLS providers).
