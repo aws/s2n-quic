@@ -189,6 +189,9 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     packet_buffer: Vec<u8>,
     /// Tracks which type of packet is currently stored in packet_buffer
     stored_packet_type: Option<PacketNumberSpace>,
+    /// Timestamp at which the first (oldest) packet currently sitting in
+    /// `packet_buffer` was buffered. Cleared when the buffer is drained.
+    first_buffered_at: Option<Timestamp>,
 }
 
 struct EventContext<Config: endpoint::Config> {
@@ -288,6 +291,29 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         packet_interceptor: &mut Config::PacketInterceptor,
         connection_id_validator: &Config::ConnectionIdFormat,
     ) -> Result<(), connection::Error> {
+        if !self.packet_buffer.is_empty() {
+            let packet_type = match self.stored_packet_type {
+                Some(PacketNumberSpace::Handshake) => event::builder::PacketType::Handshake,
+                Some(PacketNumberSpace::ApplicationData) => event::builder::PacketType::OneRtt,
+                // Initial packets are never buffered here; if we somehow end
+                // up in this state, still emit a drain event but with the
+                // conservative Handshake label.
+                _ => event::builder::PacketType::Handshake,
+            };
+            let oldest_buffered_duration = self
+                .first_buffered_at
+                .map(|t| timestamp.saturating_duration_since(t))
+                .unwrap_or_default();
+            let buffer_len = self.packet_buffer.len();
+            let mut publisher = self.event_context.publisher(timestamp, subscriber);
+            publisher.on_packet_buffer_drained(event::builder::PacketBufferDrained {
+                packet_type,
+                buffer_len,
+                oldest_buffered_duration,
+            });
+        }
+        self.first_buffered_at = None;
+
         let mut payload: Vec<u8> = self.packet_buffer.drain(..).collect();
         let buffer = DecoderBufferMut::new(payload.as_mut_slice());
 
@@ -751,6 +777,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             event_context,
             packet_buffer: Vec::new(),
             stored_packet_type: None,
+            first_buffered_at: None,
         };
 
         if Config::ENDPOINT_TYPE.is_client() {
@@ -1667,8 +1694,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             let packet_bytes = packet.get_wire_bytes();
             if packet_bytes.len() + self.packet_buffer.len() <= self.limits.packet_buffer_size() {
+                let packet_len = packet_bytes.len();
                 self.packet_buffer.extend(packet_bytes);
-                self.stored_packet_type = Some(PacketNumberSpace::Handshake)
+                self.stored_packet_type = Some(PacketNumberSpace::Handshake);
+                if self.first_buffered_at.is_none() {
+                    self.first_buffered_at = Some(datagram.timestamp);
+                }
+                publisher.on_packet_buffered(event::builder::PacketBuffered {
+                    packet_type: event::builder::PacketType::Handshake,
+                    packet_len,
+                    buffer_len: self.packet_buffer.len(),
+                });
             } else {
                 let path = &self.path_manager[path_id];
                 publisher.on_packet_dropped(event::builder::PacketDropped {
@@ -1757,8 +1793,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     // We only store one packet of application data for now. This is due to the fact that
                     // short packets do not contain a length prefix, therefore, we would have to store additional
                     // length info per packet to properly parse them once the application space is created.
+                    let packet_len = packet_bytes.len();
                     self.packet_buffer = packet_bytes;
-                    self.stored_packet_type = Some(PacketNumberSpace::ApplicationData)
+                    self.stored_packet_type = Some(PacketNumberSpace::ApplicationData);
+                    if self.first_buffered_at.is_none() {
+                        self.first_buffered_at = Some(datagram.timestamp);
+                    }
+                    publisher.on_packet_buffered(event::builder::PacketBuffered {
+                        packet_type: event::builder::PacketType::OneRtt,
+                        packet_len,
+                        buffer_len: self.packet_buffer.len(),
+                    });
                 } else {
                     let path = &self.path_manager[path_id];
                     publisher.on_packet_dropped(event::builder::PacketDropped {

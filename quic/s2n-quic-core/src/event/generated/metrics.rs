@@ -45,6 +45,8 @@ pub struct Context<R: Recorder> {
     ack_range_received: u64,
     ack_range_sent: u64,
     packet_dropped: u64,
+    packet_buffered: u64,
+    packet_buffer_drained: u64,
     key_update: u64,
     key_space_discarded: u64,
     connection_started: u64,
@@ -115,6 +117,8 @@ where
             ack_range_received: 0,
             ack_range_sent: 0,
             packet_dropped: 0,
+            packet_buffered: 0,
+            packet_buffer_drained: 0,
             key_update: 0,
             key_space_discarded: 0,
             connection_started: 0,
@@ -356,6 +360,28 @@ where
         context.packet_dropped += 1;
         self.subscriber
             .on_packet_dropped(&mut context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_packet_buffered(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::PacketBuffered,
+    ) {
+        context.packet_buffered += 1;
+        self.subscriber
+            .on_packet_buffered(&mut context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_packet_buffer_drained(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::PacketBufferDrained,
+    ) {
+        context.packet_buffer_drained += 1;
+        self.subscriber
+            .on_packet_buffer_drained(&mut context.recorder, meta, event);
     }
     #[inline]
     fn on_key_update(
@@ -735,6 +761,10 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("ack_range_sent", self.ack_range_sent as _);
         self.recorder
             .increment_counter("packet_dropped", self.packet_dropped as _);
+        self.recorder
+            .increment_counter("packet_buffered", self.packet_buffered as _);
+        self.recorder
+            .increment_counter("packet_buffer_drained", self.packet_buffer_drained as _);
         self.recorder
             .increment_counter("key_update", self.key_update as _);
         self.recorder

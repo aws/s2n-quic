@@ -214,6 +214,42 @@ struct PacketDropped<'a> {
     reason: PacketDropReason<'a>,
 }
 
+#[event("transport:packet_buffered")]
+/// A packet was buffered on the connection because keys for its packet
+/// number space were not yet available.
+struct PacketBuffered {
+    #[nominal_counter("packet_type")]
+    packet_type: PacketType,
+    /// The wire-length of the packet that was buffered.
+    #[measure("bytes", Bytes)]
+    #[counter("bytes.total", Bytes)]
+    packet_len: usize,
+    /// The total number of bytes held in the connection's packet buffer
+    /// after this packet was appended.
+    #[measure("buffer_len", Bytes)]
+    buffer_len: usize,
+}
+
+#[event("transport:packet_buffer_drained")]
+/// The connection's packet buffer was drained after the corresponding key
+/// space became available. All previously buffered packets are now being
+/// processed.
+struct PacketBufferDrained {
+    #[nominal_counter("packet_type")]
+    packet_type: PacketType,
+    /// The total number of bytes drained from the packet buffer.
+    #[measure("bytes", Bytes)]
+    #[counter("bytes.total", Bytes)]
+    buffer_len: usize,
+    /// The elapsed time from when the first packet was buffered until this
+    /// drain occurred. For drains of the 1-RTT buffer (which only holds a
+    /// single packet) this is that packet's buffered duration. For drains of
+    /// the Handshake buffer (which can accumulate multiple packets) this is
+    /// the age of the oldest packet in the batch.
+    #[timer("oldest_buffered_duration")]
+    oldest_buffered_duration: core::time::Duration,
+}
+
 #[event("security:key_update")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.2.1
 /// Crypto key updated
