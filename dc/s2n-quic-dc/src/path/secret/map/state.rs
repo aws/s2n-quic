@@ -643,9 +643,15 @@ where
     }
 
     // Sometimes called with queue lock held -- must not acquire it.
-    pub(super) fn evict(&self, evicted: &Arc<Entry>) -> (bool, bool) {
+    pub(super) fn evict(
+        &self,
+        evicted: &Arc<Entry>,
+        reason: event::builder::EvictionReason,
+    ) -> (bool, bool) {
         let mut id_removed = false;
         let mut peer_removed = false;
+
+        let current_epoch = self.cleaner.epoch();
 
         // A concurrent cleaner can drop the entry from the `ids` map so we need to
         // re-check whether we actually evicted something.
@@ -656,6 +662,9 @@ where
                     peer_address: SocketAddress::from(*evicted.peer()).into_event(),
                     credential_id: evicted.id().into_event(),
                     age: evicted.age(),
+                    reason: reason.clone(),
+                    time_since_last_accessed: current_epoch
+                        .duration_since(evicted.accessed_at_epoch()),
                 },
             );
         }
@@ -673,6 +682,9 @@ where
                     peer_address: SocketAddress::from(*evicted.peer()).into_event(),
                     credential_id: evicted.id().into_event(),
                     age: evicted.age(),
+                    reason,
+                    time_since_last_accessed: current_epoch
+                        .duration_since(evicted.accessed_at_epoch()),
                 },
             );
         }
@@ -836,7 +848,7 @@ where
                 drop(queue);
 
                 if let Some(evicted) = element.upgrade() {
-                    self.evict(&evicted);
+                    self.evict(&evicted, event::builder::EvictionReason::Capacity);
                 }
             }
         }
@@ -867,6 +879,7 @@ where
                     peer_address: SocketAddress::from(peer).into_event(),
                     new_credential_id: id.into_event(),
                     previous_credential_id: prev_id.into_event(),
+                    replaced_age: prev.age(),
                 },
             );
         }
@@ -1027,19 +1040,44 @@ where
             return None;
         };
 
+        // Only evict if it's been at least 10 seconds since this entry was created.
+        //
+        // If this is on the server (i.e. a client is telling a server that it did not have the
+        // secret cached), this is entirely harmless to skip because clients can always
+        // negotiate a new secret. It carries the benefit that if the client has learned of the
+        // unknown path secret *after* sending UnknownPathSecret (e.g., because the server started
+        // encrypting for a secret before the handshake finished inserting on the client), we will
+        // no longer drop the just-created secret for no reason.
+        //
+        // If this is a client (i.e., the server did not have the secret cached), then evicting
+        // a just-inserted secret due to a late-arriving UnknownPathSecret is actively harmful
+        // (likely to cause impact). If the entry is genuinely unknown to the server, the
+        // requested handshake above should allow us to recover soon regardless (or we will
+        // naturally do so on a subsequent request).
+        //
+        // For a repeated fast server restart, this does lengthen the time period in which we will
+        // repeatedly see exceptions thrown on connect() rather than delaying until a handshake
+        // completes. But such fast server restarts in short succession should be rare, so this
+        // seems like a reasonable tradeoff.
+        let should_evict = self.should_evict_on_unknown_path_secret()
+            // FIXME: Adjust our tests to backdate/forward date entries instead?
+            && (cfg!(test) || entry.age() > Duration::from_secs(10));
+        let scheduled_handshake = self
+            .request_handshake(*entry.peer(), HandshakeReason::Remote)
+            .is_some();
+
         self.subscriber().on_unknown_path_secret_packet_accepted(
             event::builder::UnknownPathSecretPacketAccepted {
                 credential_id: packet.credential_id.into_event(),
                 peer_address,
+                age: entry.age(),
+                evicted: should_evict,
+                scheduled_handshake,
             },
         );
 
-        // FIXME: More actively schedule a new handshake.
-        // See comment on requested_handshakes for details.
-        self.request_handshake(*entry.peer(), HandshakeReason::Remote);
-
-        if self.should_evict_on_unknown_path_secret() {
-            self.evict(&entry);
+        if should_evict {
+            self.evict(&entry, event::builder::EvictionReason::UnknownPathSecret);
         }
 
         Some(packet)

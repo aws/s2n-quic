@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Integration tests for s2n-quic"
 authors = ["AWS s2n"]
 edition = "2021"
-rust-version = "1.89"
+rust-version = "1.92"
 license = "Apache-2.0"
 # this only contains internal tests and should not be published
 publish = false
@@ -14,6 +14,7 @@ publish = false
 bach = "0.1.0"
 bytes = { version = "1", default-features = false }
 futures = { version = "0.3", default-features = false, features = ["std"] }
+quiche = "0.29"
 rand = { version = "0.10", features = ["chacha"] }
 s2n-codec = { path = "../../common/s2n-codec" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["branch-tracing", "event-tracing", "probe-tracing", "testing"] }
@@ -24,11 +25,6 @@ tokio = { version = "1", features = ["full"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zerocopy = { version = "0.8", features = ["derive"] }
-
-# quiche does not currently build on 32-bit platforms
-# see https://github.com/cloudflare/quiche/issues/2097
-[target.'cfg(not(target_arch = "x86"))'.dependencies]
-quiche = "0.29"
 
 # s2n-tls is required by ch_callback_server_local_address_test and doesn't build on Windows
 [target.'cfg(not(target_os = "windows"))'.dependencies]

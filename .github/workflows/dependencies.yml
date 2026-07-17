@@ -63,4 +63,5 @@ jobs:
 
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check --config .github/config/cargo-deny.toml
+          arguments: --all-features --config .github/config/cargo-deny.toml
+          command: check

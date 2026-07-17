@@ -138,6 +138,7 @@ pub const DEFAULT_BACKLOG: u16 = libc::SOMAXCONN as _;
 
 pub struct Builder {
     backlog: Option<NonZeroU16>,
+    socket_backlog: Option<NonZeroU16>,
     workers: Option<usize>,
     acceptor_addr: SocketAddr,
     span: Option<tracing::Span>,
@@ -156,6 +157,7 @@ impl Default for Builder {
     fn default() -> Self {
         Self {
             backlog: None,
+            socket_backlog: None,
             workers: None,
             // FIXME: Don't default to a fixed port?
             #[expect(
@@ -266,6 +268,11 @@ impl Builder {
 
     pub fn with_attach_reuseport_ebpf(mut self, fd: Arc<OwnedFd>) -> Self {
         self.attach_reuseport_ebpf = Some(fd);
+        self
+    }
+
+    pub fn with_socket_backlog(mut self, socket_backlog: NonZeroU16) -> Self {
+        self.socket_backlog = Some(socket_backlog);
         self
     }
 
@@ -380,12 +387,19 @@ impl Builder {
             .div_ceil(concurrency.clamp(0, MAX_TCP_WORKERS))
             .max(1);
 
+        // Let applications set the socket backlog:
+        let socket_backlog = self
+            .socket_backlog
+            .map(NonZeroU16::get)
+            .unwrap_or(DEFAULT_BACKLOG) as usize;
+
         Start {
             enable_tcp: self.enable_tcp,
             enable_udp: self.enable_udp,
             accept_flavor: self.accept_flavor,
             linger: self.linger,
             backlog,
+            socket_backlog,
             concurrency,
             server: &mut server,
             stream_sender,
@@ -407,6 +421,7 @@ struct Start<'a, H: Handshake + Clone, S: event::Subscriber + Clone> {
     enable_udp: bool,
     accept_flavor: accept::Flavor,
     backlog: usize,
+    socket_backlog: usize,
     concurrency: usize,
     server: &'a mut Server<H, S>,
     stream_sender: accept::Sender<S>,
@@ -496,12 +511,14 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
     fn socket_opts(&self, local_addr: SocketAddr) -> socket::Options {
         let mut options = socket::Options::new(local_addr);
 
-        // Explicitly do **not** set the socket backlog to self.backlog. While we split the
+        // We do now allow applications to set the kernel backlog.  While we split the
         // configured backlog amongst our in-process queues as concurrency increases, it doesn't
         // make sense to shrink the kernel backlogs -- that just causes packet drops and generally
-        // bad behavior.
+        // bad behavior -- but we'll let them do it.
         //
         // This is especially true for TCP where we don't have workers matching concurrency.
+        options.backlog = self.socket_backlog;
+
         options.send_buffer = self.send_buffer;
         options.recv_buffer = self.recv_buffer;
         options.reuse_address = self.reuse_addr;
