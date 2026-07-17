@@ -614,7 +614,7 @@ fn dc_possible_secret_control_packet(
         .with_dc(dc_endpoint)?
         .with_packet_interceptor(RandomShort::default())?;
 
-    let (client_events, _server_events) = self_test(server, client, true, None, None, true)?;
+    let (client_events, _server_events) = self_test(server, client, true, None, None, false)?;
 
     assert_eq!(
         1,
