@@ -9,21 +9,32 @@ use std::{
     time::SystemTime,
 };
 
-/// Serializes `peers` (writing every entry), reads them back, and returns the decoded entries
-/// alongside the recorded `started_at` timestamp.
-fn roundtrip(peers: &[SocketAddr]) -> (SystemTime, Vec<SocketAddr>) {
+/// The expected on-disk representation of `entry`.
+fn disk_entry(entry: &Arc<Entry>) -> DiskEntry {
+    DiskEntry {
+        peer: *entry.peer(),
+        id: *entry.id(),
+    }
+}
+
+/// Serializes fake entries for `peers` (writing every entry), reads them back, and returns the
+/// recorded `started_at` timestamp, the decoded entries, and the entries' expected on-disk
+/// representation.
+fn roundtrip(peers: &[SocketAddr]) -> (SystemTime, Vec<DiskEntry>, Vec<DiskEntry>) {
     let entries: Vec<Arc<Entry>> = peers.iter().map(|peer| Entry::fake(*peer, None)).collect();
+    let expected = entries.iter().map(disk_entry).collect();
     // Epoch is irrelevant without a recency filter configured.
-    roundtrip_with(&entries, Epoch(0), |s| s)
+    let (started_at, decoded) = roundtrip_with(&entries, Epoch(0), |s| s);
+    (started_at, decoded, expected)
 }
 
 /// Serializes `entries` through a [`Serializer`] configured by `configure` (at `current_epoch`),
-/// reads them back, and returns the decoded peers alongside the recorded `started_at` timestamp.
+/// reads them back, and returns the decoded entries alongside the recorded `started_at` timestamp.
 fn roundtrip_with(
     entries: &[Arc<Entry>],
     current_epoch: Epoch,
     configure: impl FnOnce(SerializerBuilder) -> SerializerBuilder,
-) -> (SystemTime, Vec<SocketAddr>) {
+) -> (SystemTime, Vec<DiskEntry>) {
     let weak: Vec<Weak<Entry>> = entries.iter().map(Arc::downgrade).collect();
 
     let dir = tempfile::tempdir().unwrap();
@@ -34,7 +45,7 @@ fn roundtrip_with(
 
     let entries = deserialize(serializer.path()).unwrap();
     let started_at = entries.started_at;
-    let decoded = entries.map(|e| e.unwrap().peer).collect();
+    let decoded = entries.map(|e| e.unwrap()).collect();
 
     (started_at, decoded)
 }
@@ -42,16 +53,16 @@ fn roundtrip_with(
 #[test]
 fn roundtrip_ipv4() {
     let peer = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 1), 4433));
-    let (_, decoded) = roundtrip(&[peer]);
-    assert_eq!(decoded, vec![peer]);
+    let (_, decoded, expected) = roundtrip(&[peer]);
+    assert_eq!(decoded, expected);
 }
 
 #[test]
 fn roundtrip_ipv6_minimal() {
     // flowinfo and scope_id are both zero, exercising the compact (tag 1) encoding.
     let peer = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::LOCALHOST, 4433, 0, 0));
-    let (_, decoded) = roundtrip(&[peer]);
-    assert_eq!(decoded, vec![peer]);
+    let (_, decoded, expected) = roundtrip(&[peer]);
+    assert_eq!(decoded, expected);
 }
 
 #[test]
@@ -63,8 +74,8 @@ fn roundtrip_ipv6_full() {
         7,
         42,
     ));
-    let (_, decoded) = roundtrip(&[peer]);
-    assert_eq!(decoded, vec![peer]);
+    let (_, decoded, expected) = roundtrip(&[peer]);
+    assert_eq!(decoded, expected);
 }
 
 #[test]
@@ -75,13 +86,13 @@ fn roundtrip_multiple() {
         SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::LOCALHOST, 3, 1, 2)),
         SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 4), 4)),
     ];
-    let (_, decoded) = roundtrip(&peers);
-    assert_eq!(decoded, peers);
+    let (_, decoded, expected) = roundtrip(&peers);
+    assert_eq!(decoded, expected);
 }
 
 #[test]
 fn roundtrip_empty() {
-    let (_, decoded) = roundtrip(&[]);
+    let (_, decoded, _) = roundtrip(&[]);
     assert!(decoded.is_empty());
 }
 
@@ -89,7 +100,7 @@ fn roundtrip_empty() {
 fn started_at_is_recent() {
     let before = SystemTime::now();
     let peer = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 4433));
-    let (started_at, _) = roundtrip(&[peer]);
+    let (started_at, _, _) = roundtrip(&[peer]);
     let after = SystemTime::now();
 
     // The timestamp is stored at one-second granularity, so allow the truncation slack.
@@ -116,8 +127,9 @@ fn max_idle_filters_stale_entries() {
 
     // At epoch 12 with a 5-epoch idle window, the cutoff is epoch 7: only `recent` (epoch 10)
     // survives, `stale` (epoch 4) is dropped.
+    let expected = vec![disk_entry(&recent)];
     let (_, decoded) = roundtrip_with(&[recent, stale], Epoch(12), |s| s.with_max_idle(5 * EPOCH));
-    assert_eq!(decoded, vec![recent_peer]);
+    assert_eq!(decoded, expected);
 }
 
 #[test]
@@ -128,8 +140,9 @@ fn max_idle_boundary_is_inclusive() {
 
     // At epoch 10 with a 3-epoch idle window the cutoff is exactly epoch 7, and an entry accessed
     // at the cutoff is kept.
+    let expected = vec![disk_entry(&entry)];
     let (_, decoded) = roundtrip_with(&[entry], Epoch(10), |s| s.with_max_idle(3 * EPOCH));
-    assert_eq!(decoded, vec![peer]);
+    assert_eq!(decoded, expected);
 }
 
 #[test]
@@ -151,8 +164,9 @@ fn idle_window_wider_than_epoch_keeps_everything() {
 
     // When the idle window exceeds the current epoch the cutoff saturates at 0, so even
     // long-idle entries are retained.
+    let expected = vec![disk_entry(&entry)];
     let (_, decoded) = roundtrip_with(&[entry], Epoch(3), |s| s.with_max_idle(100 * EPOCH));
-    assert_eq!(decoded, vec![peer]);
+    assert_eq!(decoded, expected);
 }
 
 #[test]
@@ -167,17 +181,18 @@ fn with_max_idle_rounds_to_nearest_epoch() {
     kept.set_accessed_addr(Epoch(3));
     dropped.set_accessed_addr(Epoch(2));
 
+    let expected = vec![disk_entry(&kept)];
     let (_, decoded) = roundtrip_with(&[kept, dropped], Epoch(5), |s| {
         s.with_max_idle(EPOCH + EPOCH / 2)
     });
-    assert_eq!(decoded, vec![kept_peer]);
+    assert_eq!(decoded, expected);
 }
 
 #[test]
 fn max_size_stops_adding_entries() {
-    // Each IPv4 entry encodes to 7 bytes (1 tag + 4 IP + 2 port). With a cap just above the
-    // header/version/timestamp prefix, only a couple of entries fit before the writer trips the
-    // limit and the rest are dropped.
+    // Each IPv4 entry encodes to 23 bytes (1 tag + 4 IP + 2 port + 16 credential ID). With a cap
+    // just above the header/version/timestamp prefix, only the first entry fits before the writer
+    // trips the limit and the rest are dropped.
     let peers: Vec<SocketAddr> = (0..100)
         .map(|i| SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, i as u8), i)))
         .collect();
@@ -194,16 +209,17 @@ fn max_size_stops_adding_entries() {
         .serialize_with_max_size(&weak, Epoch(0), prefix + 20)
         .unwrap();
 
-    let decoded: Vec<SocketAddr> = deserialize(serializer.path())
+    let decoded: Vec<DiskEntry> = deserialize(serializer.path())
         .unwrap()
-        .map(|e| e.unwrap().peer)
+        .map(|e| e.unwrap())
         .collect();
 
     // We stop only after exceeding the cap, so we get a few entries but far fewer than 100, and
     // they are a prefix of the input in iteration order.
+    let expected: Vec<DiskEntry> = entries.iter().map(disk_entry).collect();
     assert!(!decoded.is_empty());
     assert!(decoded.len() < peers.len());
-    assert_eq!(decoded, peers[..decoded.len()]);
+    assert_eq!(decoded[..], expected[..decoded.len()]);
 }
 
 #[test]
@@ -224,6 +240,26 @@ fn build_accepts_existing_directory() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("secrets");
     assert!(Serializer::builder(&path).build().is_ok());
+}
+
+#[test]
+fn rejects_old_version() {
+    // A file written by the previous (v0) format must be rejected as unsupported rather than
+    // misdecoded: v0 entries do not carry credential IDs.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("secrets");
+
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(HEADER.as_bytes());
+    bytes.extend_from_slice(b"v0");
+    bytes.extend_from_slice(&0u64.to_le_bytes());
+    std::fs::write(&path, &bytes).unwrap();
+
+    let err = match deserialize(&path) {
+        Ok(_) => panic!("expected deserialize to reject an old version"),
+        Err(err) => err,
+    };
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 }
 
 #[test]
