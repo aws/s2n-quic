@@ -3,7 +3,7 @@
 
 //! This module implements on-disk persistence for the path secret map.
 //!
-//! Only part of the information is persisted (today, just entry socket addresses).
+//! Only part of the information is persisted (today, entry socket addresses and credential IDs).
 
 use std::{
     fmt,
@@ -15,12 +15,15 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use crate::path::secret::map::{cleaner::CLEANER_CYCLE, Entry, Epoch};
+use crate::{
+    credentials,
+    path::secret::map::{cleaner::CLEANER_CYCLE, Entry, Epoch},
+};
 
 const HEADER: &str = "s2n-quic-dc path secret map";
 
 /// The version identifier written immediately after the [`HEADER`].
-const VERSION: &[u8] = b"v0";
+const VERSION: &[u8] = b"v1";
 
 /// Maximum size of a persisted file we are willing to read into memory.
 const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
@@ -299,6 +302,8 @@ impl Serializer {
                     }
                 }
             }
+
+            output.write_all(&entry.id()[..])?;
         }
 
         output.flush()?;
@@ -326,8 +331,10 @@ pub(crate) struct SerializeStats {
 /// A single entry read back from a persisted file.
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
+#[non_exhaustive]
 pub struct DiskEntry {
     pub peer: SocketAddr,
+    pub id: credentials::Id,
 }
 
 /// Reads the file at `path` fully into memory and returns an iterator yielding the entries it
@@ -437,7 +444,9 @@ fn read_entry(reader: &mut Reader) -> io::Result<DiskEntry> {
         other => return Err(invalid_data(format!("unknown peer tag {other}"))),
     };
 
-    Ok(DiskEntry { peer })
+    let id = credentials::Id::from(reader.take_array::<16>()?);
+
+    Ok(DiskEntry { peer, id })
 }
 
 /// A cursor over an in-memory byte buffer.
