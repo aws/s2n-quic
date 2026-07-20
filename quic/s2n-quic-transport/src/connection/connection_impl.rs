@@ -1708,7 +1708,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             } else {
                 let path = &self.path_manager[path_id];
                 publisher.on_packet_dropped(event::builder::PacketDropped {
-                    reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                    reason: event::builder::PacketDropReason::PacketBufferOutOfSpace {
                         path: path_event!(path, path_id),
                         packet_type: event::builder::PacketType::Handshake,
                     },
@@ -1807,8 +1807,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 } else {
                     let path = &self.path_manager[path_id];
                     publisher.on_packet_dropped(event::builder::PacketDropped {
-                        reason: event::builder::PacketDropReason::HandshakeNotComplete {
+                        reason: event::builder::PacketDropReason::PacketBufferOutOfSpace {
                             path: path_event!(path, path_id),
+                            packet_type: event::builder::PacketType::OneRtt,
                         },
                     });
                 }

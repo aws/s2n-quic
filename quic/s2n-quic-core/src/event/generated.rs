@@ -1133,6 +1133,13 @@ pub mod api {
             packet_type: PacketType,
         },
         #[non_exhaustive]
+        /// The packet space for a received packet did not exist and there was not enough space in the
+        /// packet buffer to store it for later processing.
+        PacketBufferOutOfSpace {
+            path: Path<'a>,
+            packet_type: PacketType,
+        },
+        #[non_exhaustive]
         /// The connection has already closed
         ConnectionClosed {
             path: Path<'a>,
@@ -1202,8 +1209,13 @@ pub mod api {
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("CONNECTION_CLOSED\0"),
+                name: aggregate::info::Str::new("PACKET_BUFFER_OUT_OF_SPACE\0"),
                 id: 12usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("CONNECTION_CLOSED\0"),
+                id: 13usize,
             }
             .build(),
         ];
@@ -1222,7 +1234,8 @@ pub mod api {
                 Self::UndersizedInitialPacket { .. } => 9usize,
                 Self::InitialConnectionIdInvalidSpace { .. } => 10usize,
                 Self::PacketSpaceDoesNotExist { .. } => 11usize,
-                Self::ConnectionClosed { .. } => 12usize,
+                Self::PacketBufferOutOfSpace { .. } => 12usize,
+                Self::ConnectionClosed { .. } => 13usize,
             }
         }
     }
@@ -5858,6 +5871,12 @@ pub mod builder {
             path: Path<'a>,
             packet_type: PacketType,
         },
+        /// The packet space for a received packet did not exist and there was not enough space in the
+        /// packet buffer to store it for later processing.
+        PacketBufferOutOfSpace {
+            path: Path<'a>,
+            packet_type: PacketType,
+        },
         /// The connection has already closed
         ConnectionClosed {
             path: Path<'a>,
@@ -5914,6 +5933,10 @@ pub mod builder {
                     }
                 }
                 Self::PacketSpaceDoesNotExist { path, packet_type } => PacketSpaceDoesNotExist {
+                    path: path.into_event(),
+                    packet_type: packet_type.into_event(),
+                },
+                Self::PacketBufferOutOfSpace { path, packet_type } => PacketBufferOutOfSpace {
                     path: path.into_event(),
                     packet_type: packet_type.into_event(),
                 },
@@ -7672,8 +7695,7 @@ pub mod supervisor {
 pub use traits::*;
 mod traits {
     use super::*;
-    use crate::event::Meta;
-    use crate::query;
+    use crate::{event::Meta, query};
     use core::fmt;
     /// Allows for events to be subscribed to
     pub trait Subscriber: 'static + Send {
