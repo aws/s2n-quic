@@ -142,7 +142,11 @@ impl AsRef<str> for Str {
 impl AsRef<CStr> for Str {
     #[inline]
     fn as_ref(&self) -> &CStr {
-        unsafe { CStr::from_bytes_with_nul_unchecked(self.as_bytes()) }
+        // Access the inner str directly via `self.0.as_bytes()` so the nul
+        // terminator is included. `self.as_bytes()` would go through `Deref`,
+        // which strips the nul byte and would violate the safety contract of
+        // `CStr::from_bytes_with_nul_unchecked`.
+        unsafe { CStr::from_bytes_with_nul_unchecked(self.0.as_bytes()) }
     }
 }
 
@@ -150,5 +154,36 @@ impl probe::Arg for &Str {
     #[inline]
     fn into_usdt(self) -> isize {
         self.0.as_ptr() as _
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::ffi::CStr;
+
+    /// Ensures `AsRef<CStr>` returns a CStr whose bytes match the source string and whose nul terminator is preserved.
+    #[test]
+    fn str_as_cstr_is_valid() {
+        let s = Str::new("hello\0");
+        let c: &CStr = s.as_ref();
+        assert_eq!(c.to_bytes(), b"hello");
+        assert_eq!(c.to_bytes_with_nul(), b"hello\0");
+    }
+
+    #[test]
+    fn str_deref_excludes_nul() {
+        let s = Str::new("hello\0");
+        let deref: &str = s;
+        assert_eq!(deref, "hello");
+        // Ensure as_bytes via Deref does not include the nul
+        assert_eq!(s.as_bytes(), b"hello");
+    }
+
+    #[test]
+    fn str_as_ref_str_excludes_nul() {
+        let s = Str::new("test\0");
+        let r: &str = s.as_ref();
+        assert_eq!(r, "test");
     }
 }
