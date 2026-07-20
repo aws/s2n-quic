@@ -34,9 +34,6 @@ provider-event-tracing = ["s2n-quic-core/event-tracing", "tracing"]
 provider-tls-default = ["s2n-quic-tls-default"]
 provider-tls-rustls = ["s2n-quic-rustls"]
 provider-tls-s2n = ["s2n-quic-tls"]
-# Force s2n-tls to be the default TLS provider even on targets where rustls is the default.
-# It is primarily useful for exercising s2n-tls on Windows with GNU/MinGW toolchain.
-provider-tls-default-s2n = ["provider-tls-default", "s2n-quic-tls-default/s2n-tls-default"]
 
 # List of unstable features. Add new unstable features to the check in s2n-quic/src/lib.rs
 #

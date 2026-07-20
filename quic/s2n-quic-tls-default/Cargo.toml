@@ -16,10 +16,6 @@ exclude = ["corpus.tar.gz"]
 # preserves the selective compilation of the two tls crates.
 fips = ["s2n-quic-tls?/fips"]
 
-# Force s2n-tls to be the default TLS provider even on targets where rustls is the default.
-# It is primarily useful for exercising s2n-tls on Windows with GNU/MinGW toolchain.
-s2n-tls-default = ["dep:s2n-quic-tls"]
-
 # Declare `s2n-quic-tls` as an optional dependency since the `?` syntax for features requires
 # the dependency be optional.
 #

@@ -364,14 +364,13 @@ impl s2n_quic::provider::random::Generator for Random {
 }
 
 // s2n-tls builds on unix and on Windows with the GNU/MinGW toolchain.
-// These helpers use the s2n-tls provider explicitly so the tests exercise s2n-tls on all such targets.
 #[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
 mod mtls {
     use super::*;
-    use s2n_quic::provider::tls::s2n_tls;
+    use s2n_quic::provider::tls;
 
-    pub fn build_client_mtls_provider(ca_cert: &str) -> Result<s2n_tls::Client> {
-        let tls = s2n_tls::Client::builder()
+    pub fn build_client_mtls_provider(ca_cert: &str) -> Result<tls::default::Client> {
+        let tls = tls::default::Client::builder()
             .with_certificate(ca_cert)?
             .with_client_identity(
                 certificates::MTLS_CLIENT_CERT,
@@ -381,8 +380,8 @@ mod mtls {
         Ok(tls)
     }
 
-    pub fn build_server_mtls_provider(ca_cert: &str) -> Result<s2n_tls::Server> {
-        let tls = s2n_tls::Server::builder()
+    pub fn build_server_mtls_provider(ca_cert: &str) -> Result<tls::default::Server> {
+        let tls = tls::default::Server::builder()
             .with_certificate(
                 certificates::MTLS_SERVER_CERT,
                 certificates::MTLS_SERVER_KEY,
@@ -466,7 +465,7 @@ pub mod resumption {
     pub fn build_server_resumption_provider(
         cert: &str,
         key: &str,
-    ) -> Result<tls::s2n_tls::Server<Server>> {
+    ) -> Result<tls::default::Server<Server>> {
         let mut tls = Server::builder().with_certificate(cert, key)?;
 
         let config = tls.config_mut();
@@ -484,7 +483,7 @@ pub mod resumption {
     pub fn build_client_resumption_provider(
         cert: &str,
         handler: &SessionTicketHandler,
-    ) -> Result<tls::s2n_tls::Client> {
+    ) -> Result<tls::default::Client> {
         let mut tls = tls::s2n_tls::Client::builder().with_certificate(cert)?;
         let config = tls.config_mut();
         config

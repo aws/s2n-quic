@@ -334,7 +334,6 @@ jobs:
     env:
       # msys2 ships clang, not gcc, but cc-rs defaults to gcc for *-gnu.
       CC: clang
-      CXX: clang++
       # gnullvm doesn't auto-link winpthreads, so s2n's pthread/clock_gettime/nanosleep symbols
       # are undefined; -lpthread links it explicitly. Both vars are needed: RUSTFLAGS for the
       # normal link, RUSTDOCFLAGS for doctests.
@@ -380,7 +379,6 @@ jobs:
             ${{ matrix.pkg-prefix }}-rustup
             make
             perl
-            git
             diffutils
             jq
 
@@ -415,7 +413,11 @@ jobs:
         run: |
           find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
 
-      # Force s2n-tls as the default TLS provider so the whole suite runs through s2n-tls.
+      # s2n-quic-tests depends on s2n-quic with `default-features = false`
+      # + `provider-tls-s2n` so on its own it resolves the default TLS provider to s2n-tls. Exclude the crates that pull in
+      # `provider-tls-default` and that we don't need to test here: qns/sim/h3/bench, plus s2n-quic itself
+      # (its own tests build it with default features, and `--workspace` can't disable a member's own
+      # defaults). That leaves s2n-quic-tests exercising s2n-tls.
       - name: Run cargo test
         shell: msys2 {0}
         run: |
@@ -424,7 +426,11 @@ jobs:
             --exclude s2n-quic-dc \
             --exclude s2n-quic-dc-benches \
             --exclude s2n-quic-dc-metrics \
-            --features s2n-tls-default
+            --exclude s2n-quic-qns \
+            --exclude s2n-quic-sim \
+            --exclude s2n-quic-h3 \
+            --exclude s2n-quic-bench \
+            --exclude s2n-quic
 
   asan:
     runs-on: ubuntu-latest
@@ -1119,7 +1125,7 @@ jobs:
   ci-status-report:
     runs-on: ubuntu-latest
     if: ${{ always() }}
-    needs: [env, rustfmt, clippy, udeps, doc, test, asan, fips, miri, no_std, compliance, coverage, crates, examples, recovery-simulations, sims, copyright, s2n-events, generate-events, snapshots, timing, typos, kani, dhat, loom, xdp, dc-wireshark]
+    needs: [env, rustfmt, clippy, udeps, doc, test, test-windows-gnu, asan, fips, miri, no_std, compliance, coverage, crates, examples, recovery-simulations, sims, copyright, s2n-events, generate-events, snapshots, timing, typos, kani, dhat, loom, xdp, dc-wireshark]
     steps:
       - uses: aws-actions/configure-aws-credentials@6.2.2
         if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
