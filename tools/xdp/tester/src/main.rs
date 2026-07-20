@@ -3,7 +3,7 @@
 
 use anyhow::Context;
 use aya::{
-    programs::{Xdp, XdpFlags},
+    programs::{Xdp, XdpMode},
     Ebpf,
 };
 use aya_log::EbpfLogger;
@@ -58,8 +58,8 @@ async fn main() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
-    program.attach(&opt.iface, XdpFlags::default())
-        .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
+    program.attach(&opt.iface, XdpMode::default())
+        .context("failed to attach the XDP program with default mode - try changing XdpMode::default() to XdpMode::Skb")?;
 
     info!("Waiting for Ctrl-C...");
     signal::ctrl_c().await?;
