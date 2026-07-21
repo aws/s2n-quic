@@ -9,15 +9,68 @@
 //! The default provider does not support tokens delivered in a NEW_TOKEN frame.
 
 use core::{mem::size_of, time::Duration};
-use hash_hasher::HashHasher;
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
     connection, event::api::SocketAddress, random, time::Timestamp, token::Source,
 };
 use s2n_quic_crypto::{constant_time, digest, hmac};
-use std::hash::{Hash, Hasher};
+use std::collections::HashSet;
 use zerocopy::{FromBytes, IntoBytes, Unaligned};
 use zeroize::Zeroizing;
+
+//= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.4
+//# To protect against such attacks, servers MUST ensure that
+//# replay of tokens is prevented or limited.
+/// Tracks retry tokens that have already been validated so that replays can be
+/// detected.
+///
+/// A retry token is only accepted while the [`BaseKey`] that signed it remains
+/// valid (at most two key rotation periods, ~2 seconds by default); once the
+/// key rotates the token fails HMAC validation regardless. The filter therefore
+/// only needs to remember tokens seen within that short window, and it is
+/// cleared wholesale when the key rotates.
+///
+/// Because the window is short and bounded, an exact set of token HMACs is used
+/// rather than a probabilistic filter. This avoids false positives entirely: a
+/// probabilistic filter can spuriously flag a legitimate first-use token as a
+/// replay, causing that client's handshake to fail. The tradeoff is memory per
+/// entry, which is bounded by [`Self::MAX_ENTRIES`].
+#[derive(Debug, Default)]
+struct DuplicateFilter {
+    seen: HashSet<[u8; 32]>,
+}
+
+impl DuplicateFilter {
+    /// The maximum number of tokens to track per key.
+    ///
+    /// Each entry is the 32-byte token HMAC. Including hash-set overhead this
+    /// bounds memory to a few MiB per key (there are two keys). When the set is
+    /// full, additional tokens are not recorded and are treated as valid. This
+    /// biases toward availability -- a legitimate token is never rejected --
+    /// at the cost of potentially failing to detect a replay once capacity is
+    /// exceeded. This matches the graceful degradation of the previous
+    /// cuckoo-filter implementation, which silently dropped inserts once full.
+    ///
+    /// When a rate limiter is used to trigger Retry (the only way retry tokens
+    /// are issued), the number of tokens issued within a key rotation period is
+    /// bounded well below this value in typical deployments.
+    const MAX_ENTRIES: usize = 128 * 1024;
+
+    /// Returns `true` if the token has previously been recorded as seen.
+    fn contains(&self, token: &Token) -> bool {
+        self.seen.contains(&token.hmac)
+    }
+
+    /// Records the token as seen.
+    ///
+    /// Does nothing once [`Self::MAX_ENTRIES`] tokens are being tracked, to
+    /// bound memory consumption.
+    fn insert(&mut self, token: &Token) {
+        if self.seen.len() < Self::MAX_ENTRIES {
+            self.seen.insert(token.hmac);
+        }
+    }
+}
 
 struct BaseKey {
     active_duration: Duration,
@@ -25,10 +78,9 @@ struct BaseKey {
     // HMAC key for signing and verifying
     key: Option<(Timestamp, hmac::Key)>,
 
-    //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.4
-    //# To protect against such attacks, servers MUST ensure that
-    //# replay of tokens is prevented or limited.
-    duplicate_filter: Option<cuckoofilter::CuckooFilter<HashHasher>>,
+    // Tracks previously validated tokens to detect replays. Lazily allocated on
+    // first validated token and cleared when the key rotates.
+    duplicate_filter: Option<DuplicateFilter>,
 }
 
 impl BaseKey {
@@ -60,14 +112,13 @@ impl BaseKey {
 
         let expires_at = now.checked_add(self.active_duration)?;
 
-        // TODO in addition to generating new key material, clear out the filter used for detecting
-        // duplicates.
         let mut key_material = Zeroizing::new([0; digest::SHA256_OUTPUT_LEN]);
         random.private_random_fill(&mut key_material[..]);
         let key = hmac::Key::new(hmac::HMAC_SHA256, key_material.as_ref());
 
-        // TODO clear the filter instead of recreating. This is pending a merge to crates.io
-        // (https://github.com/axiomhq/rust-cuckoofilter/pull/52)
+        // Clear the duplicate filter along with the key material. Tokens signed
+        // by the previous key will no longer validate, so there is no need to
+        // track them for replay detection.
         self.duplicate_filter = None;
 
         self.key = Some((expires_at, key));
@@ -209,15 +260,10 @@ impl Format {
         if constant_time::verify_slices_are_equal(&token.hmac, tag.as_ref()).is_ok() {
             // Only add the token once it has been validated. This will prevent the filter from
             // being filled with garbage tokens.
-
-            // Ignore the outcome of adding a token to the filter because we always want to
-            // continue the connection if the filter fails.
-            let _ = self.keys[token.header.key_id() as usize]
+            self.keys[token.header.key_id() as usize]
                 .duplicate_filter
-                .get_or_insert_with(|| {
-                    cuckoofilter::CuckooFilter::with_capacity(cuckoofilter::DEFAULT_CAPACITY)
-                })
-                .add(token);
+                .get_or_insert_with(DuplicateFilter::default)
+                .insert(token);
 
             return token.original_destination_connection_id();
         }
@@ -444,13 +490,6 @@ struct Token {
 
 s2n_codec::zerocopy_value_codec!(Token);
 
-impl Hash for Token {
-    /// Token hashes are taken from the hmac
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(&self.hmac);
-    }
-}
-
 impl Token {
     pub fn original_destination_connection_id(&self) -> Option<connection::InitialId> {
         let dcid = self
@@ -470,6 +509,7 @@ mod tests {
     };
     use s2n_quic_platform::time;
     use std::{net::SocketAddr, sync::Arc};
+    use zerocopy::FromZeros;
 
     const TEST_KEY_ROTATION_PERIOD: Duration = Duration::from_millis(1000);
 
@@ -692,6 +732,51 @@ mod tests {
 
         // Second attempt with the same token should fail because the token is a duplicate
         assert!(format.validate_token(&mut context, &buf).is_none());
+    }
+
+    fn test_token_with_hmac(byte: u8) -> Token {
+        let mut token = Token::new_zeroed();
+        token.hmac = [byte; 32];
+        token
+    }
+
+    #[test]
+    fn duplicate_filter_tracks_seen_tokens() {
+        let mut filter = DuplicateFilter::default();
+        let token = test_token_with_hmac(1);
+
+        assert!(!filter.contains(&token));
+        filter.insert(&token);
+        assert!(filter.contains(&token));
+
+        // A different token is not considered seen
+        let other = test_token_with_hmac(2);
+        assert!(!filter.contains(&other));
+    }
+
+    #[test]
+    fn duplicate_filter_bounds_capacity() {
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.4
+        //= type=test
+        //# To protect against such attacks, servers MUST ensure that
+        //# replay of tokens is prevented or limited.
+        // Once the filter is full it stops recording tokens to bound memory. A
+        // token that was never recorded is not reported as a duplicate, biasing
+        // toward accepting connections rather than rejecting legitimate ones.
+        let mut filter = DuplicateFilter::default();
+
+        for i in 0..DuplicateFilter::MAX_ENTRIES {
+            let mut token = Token::new_zeroed();
+            token.hmac[..8].copy_from_slice(&(i as u64).to_be_bytes());
+            filter.insert(&token);
+        }
+        assert_eq!(filter.seen.len(), DuplicateFilter::MAX_ENTRIES);
+
+        // Inserting beyond the cap is a no-op and the extra token is not tracked
+        let overflow = test_token_with_hmac(0xff);
+        filter.insert(&overflow);
+        assert_eq!(filter.seen.len(), DuplicateFilter::MAX_ENTRIES);
+        assert!(!filter.contains(&overflow));
     }
 
     #[test]

@@ -21,8 +21,6 @@ provider-tls-fips = [
     "s2n-quic-rustls?/fips",
 ]
 provider-address-token-default = [
-    "cuckoofilter",
-    "hash_hasher",
     "s2n-quic-crypto",
     "zerocopy",
     "zeroize",
@@ -67,9 +65,7 @@ unstable-offload-tls = []
 [dependencies]
 bytes = { version = "1", default-features = false }
 cfg-if = "1"
-cuckoofilter = { version = "0.5", optional = true }
 futures = { version = "0.3", default-features = false, features = ["std"] }
-hash_hasher = { version = "2", optional = true }
 humansize = { version = "2", optional = true }
 rand = { version = "0.10", features = ["chacha"] }
 s2n-codec = { version = "=0.83.0", path = "../../common/s2n-codec" }
