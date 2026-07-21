@@ -6,7 +6,10 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
     task::Poll,
 };
-use openssl::{ec::EcKey, ecdsa::EcdsaSig};
+use p256::{
+    ecdsa::{signature::hazmat::PrehashSigner, Signature, SigningKey},
+    pkcs8::DecodePrivateKey,
+};
 use pin_project::pin_project;
 use s2n_quic_core::{
     crypto::tls::{
@@ -146,12 +149,14 @@ impl ConnectionFuture for MyPrivateKeyFuture {
         let mut in_buf = vec![0; in_buf_size];
         op.input(&mut in_buf)?;
 
-        let key = EcKey::private_key_from_pem(KEY_PEM.as_bytes())
-            .expect("Failed to create EcKey from pem");
-        let sig = EcdsaSig::sign(&in_buf, &key).expect("Failed to sign input");
-        let out = sig.to_der().expect("Failed to convert signature to der");
+        let key =
+            SigningKey::from_pkcs8_pem(KEY_PEM).expect("Failed to create SigningKey from pem");
+        // s2n-tls hands us the digest to sign, so sign the prehash directly
+        // rather than re-hashing the input.
+        let sig: Signature = key.sign_prehash(&in_buf).expect("Failed to sign input");
+        let out = sig.to_der();
 
-        op.set_output(conn, &out)?;
+        op.set_output(conn, out.as_bytes())?;
         Poll::Ready(Ok(()))
     }
 }
