@@ -72,6 +72,7 @@ mod id {
         PACKET_BUFFER_DRAINED__BYTES__TOTAL,
         PACKET_BUFFER_DRAINED__BYTES,
         PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION,
+        PACKET_BUFFER_ERROR,
         KEY_UPDATE,
         KEY_UPDATE__KEY_TYPE,
         KEY_UPDATE__CIPHER_SUITE,
@@ -270,6 +271,7 @@ mod id {
     pub const PACKET_BUFFER_DRAINED__BYTES: usize = InfoId::PACKET_BUFFER_DRAINED__BYTES as usize;
     pub const PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION: usize =
         InfoId::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION as usize;
+    pub const PACKET_BUFFER_ERROR: usize = InfoId::PACKET_BUFFER_ERROR as usize;
     pub const KEY_UPDATE: usize = InfoId::KEY_UPDATE as usize;
     pub const KEY_UPDATE__KEY_TYPE: usize = InfoId::KEY_UPDATE__KEY_TYPE as usize;
     pub const KEY_UPDATE__CIPHER_SUITE: usize = InfoId::KEY_UPDATE__CIPHER_SUITE as usize;
@@ -476,6 +478,7 @@ mod counter {
                 id::PACKET_BUFFER_DRAINED__BYTES__TOTAL => {
                     Self(packet_buffer_drained__bytes__total)
                 }
+                id::PACKET_BUFFER_ERROR => Self(packet_buffer_error),
                 id::KEY_UPDATE => Self(key_update),
                 id::KEY_SPACE_DISCARDED => Self(key_space_discarded),
                 id::CONNECTION_STARTED => Self(connection_started),
@@ -628,17 +631,19 @@ mod counter {
         s2n_quic__event__counter__packet_buffer_drained__bytes__total]
             fn packet_buffer_drained__bytes__total(value: u64);
             #[link_name =
-        s2n_quic__event__counter__key_update]
+        s2n_quic__event__counter__packet_buffer_error]
+            fn packet_buffer_error(value: u64);
+            #[link_name = s2n_quic__event__counter__key_update]
             fn key_update(value: u64);
-            #[link_name =
-        s2n_quic__event__counter__key_space_discarded]
+            #[link_name = s2n_quic__event__counter__key_space_discarded]
             fn key_space_discarded(value: u64);
-            #[link_name = s2n_quic__event__counter__connection_started]
-            fn connection_started(value: u64);
             #[link_name =
-        s2n_quic__event__counter__duplicate_packet]
+        s2n_quic__event__counter__connection_started]
+            fn connection_started(value: u64);
+            #[link_name = s2n_quic__event__counter__duplicate_packet]
             fn duplicate_packet(value: u64);
-            #[link_name = s2n_quic__event__counter__transport_parameters_received]
+            #[link_name =
+        s2n_quic__event__counter__transport_parameters_received]
             fn transport_parameters_received(value: u64);
             #[link_name =
         s2n_quic__event__counter__datagram_sent]

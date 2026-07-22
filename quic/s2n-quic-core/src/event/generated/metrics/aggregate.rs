@@ -74,6 +74,7 @@ mod id {
         PACKET_BUFFER_DRAINED__BYTES__TOTAL,
         PACKET_BUFFER_DRAINED__BYTES,
         PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION,
+        PACKET_BUFFER_ERROR,
         KEY_UPDATE,
         KEY_UPDATE__KEY_TYPE,
         KEY_UPDATE__CIPHER_SUITE,
@@ -272,6 +273,7 @@ mod id {
     pub const PACKET_BUFFER_DRAINED__BYTES: usize = InfoId::PACKET_BUFFER_DRAINED__BYTES as usize;
     pub const PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION: usize =
         InfoId::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION as usize;
+    pub const PACKET_BUFFER_ERROR: usize = InfoId::PACKET_BUFFER_ERROR as usize;
     pub const KEY_UPDATE: usize = InfoId::KEY_UPDATE as usize;
     pub const KEY_UPDATE__KEY_TYPE: usize = InfoId::KEY_UPDATE__KEY_TYPE as usize;
     pub const KEY_UPDATE__CIPHER_SUITE: usize = InfoId::KEY_UPDATE__CIPHER_SUITE as usize;
@@ -470,6 +472,7 @@ mod id {
         COUNTERS_PACKET_BUFFERED__BYTES__TOTAL,
         COUNTERS_PACKET_BUFFER_DRAINED,
         COUNTERS_PACKET_BUFFER_DRAINED__BYTES__TOTAL,
+        COUNTERS_PACKET_BUFFER_ERROR,
         COUNTERS_KEY_UPDATE,
         COUNTERS_KEY_SPACE_DISCARDED,
         COUNTERS_CONNECTION_STARTED,
@@ -569,6 +572,7 @@ mod id {
         Counters::COUNTERS_PACKET_BUFFER_DRAINED as usize;
     pub const COUNTERS_PACKET_BUFFER_DRAINED__BYTES__TOTAL: usize =
         Counters::COUNTERS_PACKET_BUFFER_DRAINED__BYTES__TOTAL as usize;
+    pub const COUNTERS_PACKET_BUFFER_ERROR: usize = Counters::COUNTERS_PACKET_BUFFER_ERROR as usize;
     pub const COUNTERS_KEY_UPDATE: usize = Counters::COUNTERS_KEY_UPDATE as usize;
     pub const COUNTERS_KEY_SPACE_DISCARDED: usize = Counters::COUNTERS_KEY_SPACE_DISCARDED as usize;
     pub const COUNTERS_CONNECTION_STARTED: usize = Counters::COUNTERS_CONNECTION_STARTED as usize;
@@ -974,7 +978,7 @@ mod id {
     pub const NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY: usize =
         NominalTimers::NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY as usize;
 }
-static INFO: &[Info; 184usize] = &[
+static INFO: &[Info; 185usize] = &[
     info::Builder {
         id: id::APPLICATION_PROTOCOL_INFORMATION,
         name: Str::new("application_protocol_information\0"),
@@ -1315,6 +1319,12 @@ static INFO: &[Info; 184usize] = &[
         id: id::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION,
         name: Str::new("packet_buffer_drained.oldest_buffered_duration\0"),
         units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::PACKET_BUFFER_ERROR,
+        name: Str::new("packet_buffer_error\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
@@ -2087,7 +2097,7 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 88usize]>,
+    counters: Box<[R::Counter; 89usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 3usize]>,
     #[allow(dead_code)]
@@ -2122,7 +2132,7 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(88usize);
+        let mut counters = Vec::with_capacity(89usize);
         let mut bool_counters = Vec::with_capacity(3usize);
         let mut nominal_counters = Vec::with_capacity(33usize);
         let mut nominal_counter_offsets = Vec::with_capacity(33usize);
@@ -2156,6 +2166,7 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::PACKET_BUFFERED__BYTES__TOTAL]));
         counters.push(registry.register_counter(&INFO[id::PACKET_BUFFER_DRAINED]));
         counters.push(registry.register_counter(&INFO[id::PACKET_BUFFER_DRAINED__BYTES__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PACKET_BUFFER_ERROR]));
         counters.push(registry.register_counter(&INFO[id::KEY_UPDATE]));
         counters.push(registry.register_counter(&INFO[id::KEY_SPACE_DISCARDED]));
         counters.push(registry.register_counter(&INFO[id::CONNECTION_STARTED]));
@@ -2816,6 +2827,7 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_PACKET_BUFFER_DRAINED__BYTES__TOTAL => {
                     (&INFO[id::PACKET_BUFFER_DRAINED__BYTES__TOTAL], entry)
                 }
+                id::COUNTERS_PACKET_BUFFER_ERROR => (&INFO[id::PACKET_BUFFER_ERROR], entry),
                 id::COUNTERS_KEY_UPDATE => (&INFO[id::KEY_UPDATE], entry),
                 id::COUNTERS_KEY_SPACE_DISCARDED => (&INFO[id::KEY_SPACE_DISCARDED], entry),
                 id::COUNTERS_CONNECTION_STARTED => (&INFO[id::CONNECTION_STARTED], entry),
@@ -3949,6 +3961,24 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION,
             id::TIMERS_PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION,
             event.oldest_buffered_duration,
+        );
+        let _ = context;
+        let _ = meta;
+        let _ = event;
+    }
+    #[inline]
+    fn on_packet_buffer_error(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::PacketBufferError,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::PACKET_BUFFER_ERROR,
+            id::COUNTERS_PACKET_BUFFER_ERROR,
+            1usize,
         );
         let _ = context;
         let _ = meta;

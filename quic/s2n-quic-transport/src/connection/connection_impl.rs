@@ -332,7 +332,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         let path_id = self.path_manager.active_path_id();
         let mut check_for_stateless_reset = false;
 
-        self.handle_remaining_packets(
+        match self.handle_remaining_packets(
             &path_handle,
             &datagram_info,
             path_id,
@@ -345,7 +345,14 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             dc,
             limits,
             &mut check_for_stateless_reset,
-        )?;
+        ) {
+            Ok(()) => (),
+            Err(err) => {
+                let mut publisher = self.event_context.publisher(timestamp, subscriber);
+                publisher.on_packet_buffer_error(event::builder::PacketBufferError {});
+                return Err(err);
+            }
+        }
         Ok(())
     }
 

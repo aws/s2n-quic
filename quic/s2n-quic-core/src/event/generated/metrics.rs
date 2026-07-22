@@ -47,6 +47,7 @@ pub struct Context<R: Recorder> {
     packet_dropped: u64,
     packet_buffered: u64,
     packet_buffer_drained: u64,
+    packet_buffer_error: u64,
     key_update: u64,
     key_space_discarded: u64,
     connection_started: u64,
@@ -119,6 +120,7 @@ where
             packet_dropped: 0,
             packet_buffered: 0,
             packet_buffer_drained: 0,
+            packet_buffer_error: 0,
             key_update: 0,
             key_space_discarded: 0,
             connection_started: 0,
@@ -382,6 +384,17 @@ where
         context.packet_buffer_drained += 1;
         self.subscriber
             .on_packet_buffer_drained(&mut context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_packet_buffer_error(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::PacketBufferError,
+    ) {
+        context.packet_buffer_error += 1;
+        self.subscriber
+            .on_packet_buffer_error(&mut context.recorder, meta, event);
     }
     #[inline]
     fn on_key_update(
@@ -765,6 +778,8 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("packet_buffered", self.packet_buffered as _);
         self.recorder
             .increment_counter("packet_buffer_drained", self.packet_buffer_drained as _);
+        self.recorder
+            .increment_counter("packet_buffer_error", self.packet_buffer_error as _);
         self.recorder
             .increment_counter("key_update", self.key_update as _);
         self.recorder

@@ -250,6 +250,10 @@ struct PacketBufferDrained {
     oldest_buffered_duration: core::time::Duration,
 }
 
+#[event("transport:packet_buffer_error")]
+/// Connection failure occurred while processing a packet from the connection's packet buffer
+struct PacketBufferError {}
+
 #[event("security:key_update")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.2.1
 /// Crypto key updated
