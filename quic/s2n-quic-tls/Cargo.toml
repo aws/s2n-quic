@@ -29,7 +29,7 @@ s2n-tls = { version = "0.3.31", features = ["quic"] }
 [dev-dependencies]
 checkers = "0.7"
 pin-project = { version = "1" }
-p256 = { version = "0.13", features = ["ecdsa", "pem"] }
+aws-lc-rs = "1.12"
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-rustls = { path = "../s2n-quic-rustls" }
 
