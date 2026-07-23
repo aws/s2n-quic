@@ -257,18 +257,26 @@ mod id {
         PATH_SECRET_MAP_ENTRY_READY__PEER_ADDRESS__PROTOCOL,
         PATH_SECRET_MAP_ENTRY_REPLACED,
         PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL,
+        PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE,
         PATH_SECRET_MAP_ID_ENTRY_EVICTED,
         PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL,
         PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE,
+        PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED,
+        PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON,
         PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED,
         PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL,
         PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE,
+        PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED,
+        PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON,
         UNKNOWN_PATH_SECRET_PACKET_SENT,
         UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL,
         UNKNOWN_PATH_SECRET_PACKET_RECEIVED,
         UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL,
         UNKNOWN_PATH_SECRET_PACKET_ACCEPTED,
         UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL,
+        UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE,
+        UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED,
+        UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
         UNKNOWN_PATH_SECRET_PACKET_REJECTED,
         UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL,
         UNKNOWN_PATH_SECRET_PACKET_DROPPED,
@@ -749,18 +757,28 @@ mod id {
         InfoId::PATH_SECRET_MAP_ENTRY_REPLACED as usize;
     pub const PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL as usize;
+    pub const PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE: usize =
+        InfoId::PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE as usize;
     pub const PATH_SECRET_MAP_ID_ENTRY_EVICTED: usize =
         InfoId::PATH_SECRET_MAP_ID_ENTRY_EVICTED as usize;
     pub const PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL as usize;
     pub const PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE: usize =
         InfoId::PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE as usize;
+    pub const PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED: usize =
+        InfoId::PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED as usize;
+    pub const PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON: usize =
+        InfoId::PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON as usize;
     pub const PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED: usize =
         InfoId::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED as usize;
     pub const PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL as usize;
     pub const PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE: usize =
         InfoId::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE as usize;
+    pub const PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED: usize =
+        InfoId::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED as usize;
+    pub const PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON: usize =
+        InfoId::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON as usize;
     pub const UNKNOWN_PATH_SECRET_PACKET_SENT: usize =
         InfoId::UNKNOWN_PATH_SECRET_PACKET_SENT as usize;
     pub const UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL: usize =
@@ -773,6 +791,12 @@ mod id {
         InfoId::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED as usize;
     pub const UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL as usize;
+    pub const UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE: usize =
+        InfoId::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE as usize;
+    pub const UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED: usize =
+        InfoId::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED as usize;
+    pub const UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE: usize =
+        InfoId::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE as usize;
     pub const UNKNOWN_PATH_SECRET_PACKET_REJECTED: usize =
         InfoId::UNKNOWN_PATH_SECRET_PACKET_REJECTED as usize;
     pub const UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL: usize =
@@ -1483,6 +1507,12 @@ mod counter {
                     }
                     id::ENDPOINT_INITIALIZED__TCP => Self(endpoint_initialized__tcp),
                     id::ENDPOINT_INITIALIZED__UDP => Self(endpoint_initialized__udp),
+                    id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED => {
+                        Self(unknown_path_secret_packet_accepted__evicted)
+                    }
+                    id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE => {
+                        Self(unknown_path_secret_packet_accepted__scheduled_handshake)
+                    }
                     id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT => {
                         Self(path_secret_map_address_cache_accessed__hit)
                     }
@@ -1564,6 +1594,12 @@ mod counter {
             s2n_quic_dc__event__counter__bool__endpoint_initialized__udp]
                 fn endpoint_initialized__udp(value: bool);
                 #[link_name =
+            s2n_quic_dc__event__counter__bool__unknown_path_secret_packet_accepted__evicted]
+                fn unknown_path_secret_packet_accepted__evicted(value: bool);
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__unknown_path_secret_packet_accepted__scheduled_handshake]
+                fn unknown_path_secret_packet_accepted__scheduled_handshake(value: bool);
+                #[link_name =
             s2n_quic_dc__event__counter__bool__path_secret_map_address_cache_accessed__hit]
                 fn path_secret_map_address_cache_accessed__hit(value: bool);
                 #[link_name =
@@ -1624,8 +1660,14 @@ mod counter {
                     id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL => {
                         Self(path_secret_map_id_entry_evicted__peer_address__protocol)
                     }
+                    id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON => {
+                        Self(path_secret_map_id_entry_evicted__reason)
+                    }
                     id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL => {
                         Self(path_secret_map_address_entry_evicted__peer_address__protocol)
+                    }
+                    id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON => {
+                        Self(path_secret_map_address_entry_evicted__reason)
                     }
                     id::UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL => {
                         Self(unknown_path_secret_packet_sent__peer_address__protocol)
@@ -1802,8 +1844,22 @@ mod counter {
                     variant_name: &info::Str,
                 );
                 #[link_name =
+            s2n_quic_dc__event__counter__nominal__path_secret_map_id_entry_evicted__reason]
+                fn path_secret_map_id_entry_evicted__reason(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
+                #[link_name =
             s2n_quic_dc__event__counter__nominal__path_secret_map_address_entry_evicted__peer_address__protocol]
                 fn path_secret_map_address_entry_evicted__peer_address__protocol(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__path_secret_map_address_entry_evicted__reason]
+                fn path_secret_map_address_entry_evicted__reason(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
@@ -2170,11 +2226,23 @@ mod measure {
                 id::PATH_SECRET_MAP_UNINITIALIZED__LIFETIME => {
                     Self(path_secret_map_uninitialized__lifetime)
                 }
+                id::PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE => {
+                    Self(path_secret_map_entry_replaced__replaced_age)
+                }
                 id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE => {
                     Self(path_secret_map_id_entry_evicted__age)
                 }
+                id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED => {
+                    Self(path_secret_map_id_entry_evicted__time_since_last_accessed)
+                }
                 id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE => {
                     Self(path_secret_map_address_entry_evicted__age)
+                }
+                id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED => {
+                    Self(path_secret_map_address_entry_evicted__time_since_last_accessed)
+                }
+                id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE => {
+                    Self(unknown_path_secret_packet_accepted__age)
                 }
                 id::KEY_ACCEPTED__GAP => Self(key_accepted__gap),
                 id::KEY_ACCEPTED__FORWARD_SHIFT => Self(key_accepted__forward_shift),
@@ -2577,11 +2645,23 @@ mod measure {
         s2n_quic_dc__event__measure__path_secret_map_uninitialized__lifetime]
             fn path_secret_map_uninitialized__lifetime(value: u64);
             #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_entry_replaced__replaced_age]
+            fn path_secret_map_entry_replaced__replaced_age(value: u64);
+            #[link_name =
         s2n_quic_dc__event__measure__path_secret_map_id_entry_evicted__age]
             fn path_secret_map_id_entry_evicted__age(value: u64);
             #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_id_entry_evicted__time_since_last_accessed]
+            fn path_secret_map_id_entry_evicted__time_since_last_accessed(value: u64);
+            #[link_name =
         s2n_quic_dc__event__measure__path_secret_map_address_entry_evicted__age]
             fn path_secret_map_address_entry_evicted__age(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_address_entry_evicted__time_since_last_accessed]
+            fn path_secret_map_address_entry_evicted__time_since_last_accessed(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__unknown_path_secret_packet_accepted__age]
+            fn unknown_path_secret_packet_accepted__age(value: u64);
             #[link_name =
         s2n_quic_dc__event__measure__key_accepted__gap]
             fn key_accepted__gap(value: u64);
