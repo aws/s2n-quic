@@ -87,7 +87,7 @@ struct BaseKey {
     key: Option<(Timestamp, hmac::Key)>,
 
     // Tracks previously validated tokens to detect replays. Lazily allocated on
-    // first validated token and cleared when the key rotates.
+    // the first validated token and dropped when the key rotates.
     duplicate_filter: Option<DuplicateFilter>,
 }
 
@@ -215,8 +215,10 @@ impl Format {
             self.current_key ^= 1;
             self.current_key_rotates_at = now + self.key_rotation_period;
 
-            // TODO either clear the duplicate filter here, or implement in the BaseKey logic
-            // https://github.com/aws/s2n-quic/issues/173
+            // The duplicate filter is not touched here: this only flips which
+            // key signs new tokens, while both keys remain valid for validation
+            // during the overlap. Each key's filter is dropped when that key's
+            // material regenerates, in `BaseKey::poll_key`.
         }
         self.current_key
     }
