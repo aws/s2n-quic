@@ -30,7 +30,7 @@ macro_rules! mtu_test {
                 $impl
             }
 
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
             #[test]
             fn mutual_auth() {
                 let $client = build_client_mtls_provider(certificates::MTLS_CA_CERT).unwrap();

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /// Tests resumption handshake
-#[cfg(unix)]
+#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
 #[test]
 fn resumption_handshake() {
     use super::*;

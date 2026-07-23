@@ -363,7 +363,8 @@ impl s2n_quic::provider::random::Generator for Random {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+// s2n-tls builds on unix and on Windows with the GNU/MinGW toolchain.
+#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
 mod mtls {
     use super::*;
     use s2n_quic::provider::tls;
@@ -414,7 +415,7 @@ mod slow_tls {
     }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
 pub mod resumption {
     use super::*;
     use s2n_quic::provider::tls::{
@@ -493,7 +494,7 @@ pub mod resumption {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
 pub use mtls::*;
 
 pub use slow_tls::SlowTlsProvider;

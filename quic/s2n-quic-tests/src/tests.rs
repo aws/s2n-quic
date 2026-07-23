@@ -49,27 +49,28 @@ mod self_test;
 mod skip_packets;
 mod slow_tls;
 mod tls_context;
+// quiche also depends on BoringSSL, which does not build with the Windows MinGW-family toolchains.
+#[cfg(not(all(target_os = "windows", not(target_env = "msvc"))))]
 mod zero_length_cid_client_connection_migration;
 
-// The ClientHelloCallback trait is only available with s2n-tls
-#[cfg(not(target_os = "windows"))]
+// These tests use the s2n-tls provider (e.g. the ClientHelloCallback trait or mTLS providers).
+// s2n-tls builds on unix and on Windows with the GNU/MinGW toolchain (target_env = "gnu"), but
+// not with MSVC.
+#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
 mod ch_callback_connection_info;
-// TODO: https://github.com/aws/s2n-quic/issues/1726
-//
-// The rustls tls provider is used on windows and has different
-// build options than s2n-tls. We should build the rustls provider with
-// mTLS enabled and remove the `cfg(target_os("windows"))`.
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
 mod chain;
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
 mod client_handshake_confirm;
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
 mod dc;
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
 mod dc_connection_close;
-#[cfg(not(target_os = "windows"))]
+// s2n-tls fips feature depends on aws-lc-fips-sys which can't be built on Windows with MinGW toolchain.
+// see: https://github.com/aws/aws-lc/issues/3207
+#[cfg(unix)]
 mod fips;
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
 mod mtls;
 // This test uses real OS sockets, which conflicts with bach's simulated time scope on Windows.
 #[cfg(not(target_os = "windows"))]
