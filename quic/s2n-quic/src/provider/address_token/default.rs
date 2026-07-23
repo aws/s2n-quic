@@ -49,14 +49,15 @@ impl DuplicateFilter {
     /// live token count, so typical usage is far below this bound; the cap only
     /// limits the worst case under high retry volume.
     ///
-    /// When the set is full, additional tokens are not recorded and are treated
-    /// as valid. This biases toward availability -- a legitimate token is never
-    /// rejected -- at the cost of potentially failing to detect a replay once
-    /// capacity is exceeded.
+    /// When the set is full, a token that is not already recorded is rejected
+    /// rather than accepted without tracking. Accepting an untracked token would
+    /// mean a later replay of it could not be detected, so this fails closed to
+    /// preserve the anti-replay guarantee.
     ///
     /// Reaching this cap requires sustaining on the order of 8k validated retry
     /// tokens per second across a key rotation period, far above expected rates
-    /// and further bounded by any endpoint rate limiter used to trigger Retry.
+    /// and further bounded by any endpoint rate limiter used to trigger Retry,
+    /// so this rejection path is not expected to be hit in practice.
     const MAX_ENTRIES: usize = 16 * 1024;
 
     /// Returns `true` if the token has previously been recorded as seen.
@@ -64,13 +65,17 @@ impl DuplicateFilter {
         self.seen.contains(&token.hmac)
     }
 
-    /// Records the token as seen.
+    /// Records the token as seen, returning `true` if it was recorded.
     ///
-    /// Does nothing once [`Self::MAX_ENTRIES`] tokens are being tracked, to
-    /// bound memory consumption.
-    fn insert(&mut self, token: &Token) {
+    /// Returns `false` once [`Self::MAX_ENTRIES`] tokens are being tracked. The
+    /// caller must reject a token that could not be recorded, since a later
+    /// replay of it could no longer be detected.
+    fn insert(&mut self, token: &Token) -> bool {
         if self.seen.len() < Self::MAX_ENTRIES {
             self.seen.insert(token.hmac);
+            true
+        } else {
+            false
         }
     }
 }
@@ -263,10 +268,16 @@ impl Format {
         if constant_time::verify_slices_are_equal(&token.hmac, tag.as_ref()).is_ok() {
             // Only add the token once it has been validated. This will prevent the filter from
             // being filled with garbage tokens.
-            self.keys[token.header.key_id() as usize]
+            //
+            // If the filter is full the token cannot be recorded, so reject it: accepting an
+            // untracked token would allow a later replay of it to go undetected.
+            if !self.keys[token.header.key_id() as usize]
                 .duplicate_filter
                 .get_or_insert_with(DuplicateFilter::default)
-                .insert(token);
+                .insert(token)
+            {
+                return None;
+            }
 
             return token.original_destination_connection_id();
         }
@@ -749,7 +760,7 @@ mod tests {
         let token = test_token_with_hmac(1);
 
         assert!(!filter.contains(&token));
-        filter.insert(&token);
+        assert!(filter.insert(&token));
         assert!(filter.contains(&token));
 
         // A different token is not considered seen
@@ -763,23 +774,28 @@ mod tests {
         //= type=test
         //# To protect against such attacks, servers MUST ensure that
         //# replay of tokens is prevented or limited.
-        // Once the filter is full it stops recording tokens to bound memory. A
-        // token that was never recorded is not reported as a duplicate, biasing
-        // toward accepting connections rather than rejecting legitimate ones.
+        // Once the filter is full it stops recording new tokens to bound memory.
+        // `insert` reports this by returning `false` so the caller can reject the
+        // token, failing closed to preserve replay detection.
         let mut filter = DuplicateFilter::default();
 
         for i in 0..DuplicateFilter::MAX_ENTRIES {
             let mut token = Token::new_zeroed();
             token.hmac[..8].copy_from_slice(&(i as u64).to_be_bytes());
-            filter.insert(&token);
+            assert!(filter.insert(&token));
         }
         assert_eq!(filter.seen.len(), DuplicateFilter::MAX_ENTRIES);
 
-        // Inserting beyond the cap is a no-op and the extra token is not tracked
+        // A new token beyond the cap is not recorded and insert reports failure
         let overflow = test_token_with_hmac(0xff);
-        filter.insert(&overflow);
+        assert!(!filter.insert(&overflow));
         assert_eq!(filter.seen.len(), DuplicateFilter::MAX_ENTRIES);
         assert!(!filter.contains(&overflow));
+
+        // An already-recorded token is still detectable at capacity
+        let mut seen = Token::new_zeroed();
+        seen.hmac[..8].copy_from_slice(&0u64.to_be_bytes());
+        assert!(filter.contains(&seen));
     }
 
     #[test]
