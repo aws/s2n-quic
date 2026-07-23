@@ -1133,6 +1133,13 @@ pub mod api {
             packet_type: PacketType,
         },
         #[non_exhaustive]
+        /// The packet space for a received packet did not exist and there was not enough space in the
+        /// packet buffer to store it for later processing.
+        PacketBufferOutOfSpace {
+            path: Path<'a>,
+            packet_type: PacketType,
+        },
+        #[non_exhaustive]
         /// The connection has already closed
         ConnectionClosed {
             path: Path<'a>,
@@ -1202,8 +1209,13 @@ pub mod api {
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("CONNECTION_CLOSED\0"),
+                name: aggregate::info::Str::new("PACKET_BUFFER_OUT_OF_SPACE\0"),
                 id: 12usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("CONNECTION_CLOSED\0"),
+                id: 13usize,
             }
             .build(),
         ];
@@ -1222,7 +1234,8 @@ pub mod api {
                 Self::UndersizedInitialPacket { .. } => 9usize,
                 Self::InitialConnectionIdInvalidSpace { .. } => 10usize,
                 Self::PacketSpaceDoesNotExist { .. } => 11usize,
-                Self::ConnectionClosed { .. } => 12usize,
+                Self::PacketBufferOutOfSpace { .. } => 12usize,
+                Self::ConnectionClosed { .. } => 13usize,
             }
         }
     }
@@ -2273,6 +2286,74 @@ pub mod api {
     }
     impl<'a> Event for PacketDropped<'a> {
         const NAME: &'static str = "transport:packet_dropped";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    /// A packet was buffered on the connection because keys for its packet
+    /// number space were not yet available.
+    pub struct PacketBuffered {
+        pub packet_type: PacketType,
+        /// The wire-length of the packet that was buffered.
+        pub packet_len: usize,
+        /// The total number of bytes held in the connection's packet buffer
+        /// after this packet was appended.
+        pub buffer_len: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PacketBuffered {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PacketBuffered");
+            fmt.field("packet_type", &self.packet_type);
+            fmt.field("packet_len", &self.packet_len);
+            fmt.field("buffer_len", &self.buffer_len);
+            fmt.finish()
+        }
+    }
+    impl Event for PacketBuffered {
+        const NAME: &'static str = "transport:packet_buffered";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    /// The connection's packet buffer was drained after the corresponding key
+    /// space became available. All previously buffered packets are now being
+    /// processed.
+    pub struct PacketBufferDrained {
+        pub packet_type: PacketType,
+        /// The total number of bytes drained from the packet buffer.
+        pub buffer_len: usize,
+        /// The elapsed time from when the first packet was buffered until this
+        /// drain occurred. For drains of the 1-RTT buffer (which only holds a
+        /// single packet) this is that packet's buffered duration. For drains of
+        /// the Handshake buffer (which can accumulate multiple packets) this is
+        /// the age of the oldest packet in the batch.
+        pub oldest_buffered_duration: core::time::Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PacketBufferDrained {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PacketBufferDrained");
+            fmt.field("packet_type", &self.packet_type);
+            fmt.field("buffer_len", &self.buffer_len);
+            fmt.field("oldest_buffered_duration", &self.oldest_buffered_duration);
+            fmt.finish()
+        }
+    }
+    impl Event for PacketBufferDrained {
+        const NAME: &'static str = "transport:packet_buffer_drained";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    /// Connection failure occurred while processing a packet from the connection's packet buffer
+    pub struct PacketBufferError {}
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PacketBufferError {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PacketBufferError");
+            fmt.finish()
+        }
+    }
+    impl Event for PacketBufferError {
+        const NAME: &'static str = "transport:packet_buffer_error";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -4188,6 +4269,59 @@ pub mod tracing {
             );
         }
         #[inline]
+        fn on_packet_buffered(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::PacketBuffered,
+        ) {
+            let id = context.id();
+            let api::PacketBuffered {
+                packet_type,
+                packet_len,
+                buffer_len,
+            } = event;
+            tracing::event!(
+                target : "packet_buffered", parent : id, tracing::Level::DEBUG, {
+                packet_type = tracing::field::debug(packet_type), packet_len =
+                tracing::field::debug(packet_len), buffer_len =
+                tracing::field::debug(buffer_len) }
+            );
+        }
+        #[inline]
+        fn on_packet_buffer_drained(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::PacketBufferDrained,
+        ) {
+            let id = context.id();
+            let api::PacketBufferDrained {
+                packet_type,
+                buffer_len,
+                oldest_buffered_duration,
+            } = event;
+            tracing::event!(
+                target : "packet_buffer_drained", parent : id, tracing::Level::DEBUG, {
+                packet_type = tracing::field::debug(packet_type), buffer_len =
+                tracing::field::debug(buffer_len), oldest_buffered_duration =
+                tracing::field::debug(oldest_buffered_duration) }
+            );
+        }
+        #[inline]
+        fn on_packet_buffer_error(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::PacketBufferError,
+        ) {
+            let id = context.id();
+            let api::PacketBufferError {} = event;
+            tracing::event!(
+                target : "packet_buffer_error", parent : id, tracing::Level::DEBUG, {}
+            );
+        }
+        #[inline]
         fn on_key_update(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -5764,6 +5898,12 @@ pub mod builder {
             path: Path<'a>,
             packet_type: PacketType,
         },
+        /// The packet space for a received packet did not exist and there was not enough space in the
+        /// packet buffer to store it for later processing.
+        PacketBufferOutOfSpace {
+            path: Path<'a>,
+            packet_type: PacketType,
+        },
         /// The connection has already closed
         ConnectionClosed {
             path: Path<'a>,
@@ -5820,6 +5960,10 @@ pub mod builder {
                     }
                 }
                 Self::PacketSpaceDoesNotExist { path, packet_type } => PacketSpaceDoesNotExist {
+                    path: path.into_event(),
+                    packet_type: packet_type.into_event(),
+                },
+                Self::PacketBufferOutOfSpace { path, packet_type } => PacketBufferOutOfSpace {
                     path: path.into_event(),
                     packet_type: packet_type.into_event(),
                 },
@@ -6556,6 +6700,72 @@ pub mod builder {
             api::PacketDropped {
                 reason: reason.into_event(),
             }
+        }
+    }
+    #[derive(Clone, Debug)]
+    /// A packet was buffered on the connection because keys for its packet
+    /// number space were not yet available.
+    pub struct PacketBuffered {
+        pub packet_type: PacketType,
+        /// The wire-length of the packet that was buffered.
+        pub packet_len: usize,
+        /// The total number of bytes held in the connection's packet buffer
+        /// after this packet was appended.
+        pub buffer_len: usize,
+    }
+    impl IntoEvent<api::PacketBuffered> for PacketBuffered {
+        #[inline]
+        fn into_event(self) -> api::PacketBuffered {
+            let PacketBuffered {
+                packet_type,
+                packet_len,
+                buffer_len,
+            } = self;
+            api::PacketBuffered {
+                packet_type: packet_type.into_event(),
+                packet_len: packet_len.into_event(),
+                buffer_len: buffer_len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    /// The connection's packet buffer was drained after the corresponding key
+    /// space became available. All previously buffered packets are now being
+    /// processed.
+    pub struct PacketBufferDrained {
+        pub packet_type: PacketType,
+        /// The total number of bytes drained from the packet buffer.
+        pub buffer_len: usize,
+        /// The elapsed time from when the first packet was buffered until this
+        /// drain occurred. For drains of the 1-RTT buffer (which only holds a
+        /// single packet) this is that packet's buffered duration. For drains of
+        /// the Handshake buffer (which can accumulate multiple packets) this is
+        /// the age of the oldest packet in the batch.
+        pub oldest_buffered_duration: core::time::Duration,
+    }
+    impl IntoEvent<api::PacketBufferDrained> for PacketBufferDrained {
+        #[inline]
+        fn into_event(self) -> api::PacketBufferDrained {
+            let PacketBufferDrained {
+                packet_type,
+                buffer_len,
+                oldest_buffered_duration,
+            } = self;
+            api::PacketBufferDrained {
+                packet_type: packet_type.into_event(),
+                buffer_len: buffer_len.into_event(),
+                oldest_buffered_duration: oldest_buffered_duration.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    /// Connection failure occurred while processing a packet from the connection's packet buffer
+    pub struct PacketBufferError {}
+    impl IntoEvent<api::PacketBufferError> for PacketBufferError {
+        #[inline]
+        fn into_event(self) -> api::PacketBufferError {
+            let PacketBufferError {} = self;
+            api::PacketBufferError {}
         }
     }
     #[derive(Clone, Debug)]
@@ -7839,6 +8049,42 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        ///Called when the `PacketBuffered` event is triggered
+        #[inline]
+        fn on_packet_buffered(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketBuffered,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        ///Called when the `PacketBufferDrained` event is triggered
+        #[inline]
+        fn on_packet_buffer_drained(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketBufferDrained,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        ///Called when the `PacketBufferError` event is triggered
+        #[inline]
+        fn on_packet_buffer_error(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketBufferError,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         ///Called when the `KeyUpdate` event is triggered
         #[inline]
         fn on_key_update(
@@ -8643,6 +8889,36 @@ mod traits {
             (self.1).on_packet_dropped(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_packet_buffered(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketBuffered,
+        ) {
+            (self.0).on_packet_buffered(&mut context.0, meta, event);
+            (self.1).on_packet_buffered(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_packet_buffer_drained(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketBufferDrained,
+        ) {
+            (self.0).on_packet_buffer_drained(&mut context.0, meta, event);
+            (self.1).on_packet_buffer_drained(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_packet_buffer_error(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketBufferError,
+        ) {
+            (self.0).on_packet_buffer_error(&mut context.0, meta, event);
+            (self.1).on_packet_buffer_error(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_key_update(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -9356,6 +9632,12 @@ mod traits {
         fn on_ack_range_sent(&mut self, event: builder::AckRangeSent);
         ///Publishes a `PacketDropped` event to the publisher's subscriber
         fn on_packet_dropped(&mut self, event: builder::PacketDropped);
+        ///Publishes a `PacketBuffered` event to the publisher's subscriber
+        fn on_packet_buffered(&mut self, event: builder::PacketBuffered);
+        ///Publishes a `PacketBufferDrained` event to the publisher's subscriber
+        fn on_packet_buffer_drained(&mut self, event: builder::PacketBufferDrained);
+        ///Publishes a `PacketBufferError` event to the publisher's subscriber
+        fn on_packet_buffer_error(&mut self, event: builder::PacketBufferError);
         ///Publishes a `KeyUpdate` event to the publisher's subscriber
         fn on_key_update(&mut self, event: builder::KeyUpdate);
         ///Publishes a `KeySpaceDiscarded` event to the publisher's subscriber
@@ -9629,6 +9911,33 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_packet_dropped(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_packet_buffered(&mut self, event: builder::PacketBuffered) {
+            let event = event.into_event();
+            self.subscriber
+                .on_packet_buffered(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_packet_buffer_drained(&mut self, event: builder::PacketBufferDrained) {
+            let event = event.into_event();
+            self.subscriber
+                .on_packet_buffer_drained(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_packet_buffer_error(&mut self, event: builder::PacketBufferError) {
+            let event = event.into_event();
+            self.subscriber
+                .on_packet_buffer_error(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -10211,6 +10520,9 @@ pub mod testing {
         pub ack_range_received: u64,
         pub ack_range_sent: u64,
         pub packet_dropped: u64,
+        pub packet_buffered: u64,
+        pub packet_buffer_drained: u64,
+        pub packet_buffer_error: u64,
         pub key_update: u64,
         pub key_space_discarded: u64,
         pub connection_started: u64,
@@ -10308,6 +10620,9 @@ pub mod testing {
                 ack_range_received: 0,
                 ack_range_sent: 0,
                 packet_dropped: 0,
+                packet_buffered: 0,
+                packet_buffer_drained: 0,
+                packet_buffer_error: 0,
                 key_update: 0,
                 key_space_discarded: 0,
                 connection_started: 0,
@@ -10626,6 +10941,48 @@ pub mod testing {
             event: &api::PacketDropped,
         ) {
             self.packet_dropped += 1;
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_packet_buffered(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketBuffered,
+        ) {
+            self.packet_buffered += 1;
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_packet_buffer_drained(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketBufferDrained,
+        ) {
+            self.packet_buffer_drained += 1;
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_packet_buffer_error(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketBufferError,
+        ) {
+            self.packet_buffer_error += 1;
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -11248,6 +11605,9 @@ pub mod testing {
         pub ack_range_received: u64,
         pub ack_range_sent: u64,
         pub packet_dropped: u64,
+        pub packet_buffered: u64,
+        pub packet_buffer_drained: u64,
+        pub packet_buffer_error: u64,
         pub key_update: u64,
         pub key_space_discarded: u64,
         pub connection_started: u64,
@@ -11335,6 +11695,9 @@ pub mod testing {
                 ack_range_received: 0,
                 ack_range_sent: 0,
                 packet_dropped: 0,
+                packet_buffered: 0,
+                packet_buffer_drained: 0,
+                packet_buffer_error: 0,
                 key_update: 0,
                 key_space_discarded: 0,
                 connection_started: 0,
@@ -11687,6 +12050,33 @@ pub mod testing {
         }
         fn on_packet_dropped(&mut self, event: builder::PacketDropped) {
             self.packet_dropped += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_packet_buffered(&mut self, event: builder::PacketBuffered) {
+            self.packet_buffered += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_packet_buffer_drained(&mut self, event: builder::PacketBufferDrained) {
+            self.packet_buffer_drained += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_packet_buffer_error(&mut self, event: builder::PacketBufferError) {
+            self.packet_buffer_error += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);
