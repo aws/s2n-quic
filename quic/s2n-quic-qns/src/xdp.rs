@@ -82,13 +82,13 @@ impl core::str::FromStr for XdpMode {
     }
 }
 
-impl From<XdpMode> for programs::xdp::XdpFlags {
+impl From<XdpMode> for programs::xdp::XdpMode {
     fn from(mode: XdpMode) -> Self {
         match mode {
-            XdpMode::Auto => Self::default(),
-            XdpMode::Skb => Self::SKB_MODE,
-            XdpMode::Drv => Self::DRV_MODE,
-            XdpMode::Hw => Self::HW_MODE,
+            XdpMode::Auto => Self::Default,
+            XdpMode::Skb => Self::Skb,
+            XdpMode::Drv => Self::Driver,
+            XdpMode::Hw => Self::Hardware,
         }
     }
 }
