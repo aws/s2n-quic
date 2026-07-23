@@ -27,7 +27,11 @@ See the [API documentation](https://docs.rs/s2n-quic), [examples](https://github
 s2n-quic = "1"
 ```
 
-**NOTE**: On unix-like systems, [`s2n-tls`](https://github.com/aws/s2n-tls) will be used as the default TLS provider.
+**NOTE**: The default TLS provider depends on the platform. On unix-like systems,
+[`s2n-tls`](https://github.com/aws/s2n-tls) is used as the default TLS provider. On Windows,
+[`rustls`](https://crates.io/crates/rustls) is the default; `s2n-tls` can also be used on Windows,
+but only when building with the GNU/MinGW toolchain: it does not build with the MSVC toolchain.
+
 On linux systems, [`aws-lc-rs`](https://github.com/awslabs/aws-lc-rs) will be used for cryptographic
 operations. A C compiler and CMake may be required on these systems for installation.
 
