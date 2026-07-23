@@ -43,18 +43,21 @@ struct DuplicateFilter {
 impl DuplicateFilter {
     /// The maximum number of tokens to track per key.
     ///
-    /// Each entry is the 32-byte token HMAC. Including hash-set overhead this
-    /// bounds memory to a few MiB per key (there are two keys). When the set is
-    /// full, additional tokens are not recorded and are treated as valid. This
-    /// biases toward availability -- a legitimate token is never rejected --
-    /// at the cost of potentially failing to detect a replay once capacity is
-    /// exceeded. This matches the graceful degradation of the previous
-    /// cuckoo-filter implementation, which silently dropped inserts once full.
+    /// Each entry is the 32-byte token HMAC. At this cap the underlying table
+    /// grows to 32Ki buckets, bounding worst-case memory to ~1 MiB per key
+    /// (~2 MiB across both keys). The set is allocated lazily and grows with the
+    /// live token count, so typical usage is far below this bound; the cap only
+    /// limits the worst case under high retry volume.
     ///
-    /// When a rate limiter is used to trigger Retry (the only way retry tokens
-    /// are issued), the number of tokens issued within a key rotation period is
-    /// bounded well below this value in typical deployments.
-    const MAX_ENTRIES: usize = 128 * 1024;
+    /// When the set is full, additional tokens are not recorded and are treated
+    /// as valid. This biases toward availability -- a legitimate token is never
+    /// rejected -- at the cost of potentially failing to detect a replay once
+    /// capacity is exceeded.
+    ///
+    /// Reaching this cap requires sustaining on the order of 8k validated retry
+    /// tokens per second across a key rotation period, far above expected rates
+    /// and further bounded by any endpoint rate limiter used to trigger Retry.
+    const MAX_ENTRIES: usize = 16 * 1024;
 
     /// Returns `true` if the token has previously been recorded as seen.
     fn contains(&self, token: &Token) -> bool {
