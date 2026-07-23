@@ -83,8 +83,6 @@ pub enum Outcome {
 pub enum DenyReason {
     // The new address uses a port that is blocked
     BlockedPort,
-    // The new address uses a port in a different scope
-    PortScopeChanged,
     // The new address uses an IP in a different scope
     IpScopeChanged,
     // All connection migrations are disabled
@@ -96,7 +94,6 @@ impl IntoEvent<event::builder::ConnectionMigrationDenied> for DenyReason {
     fn into_event(self) -> event::builder::ConnectionMigrationDenied {
         let reason = match self {
             DenyReason::BlockedPort => event::builder::MigrationDenyReason::BlockedPort,
-            DenyReason::PortScopeChanged => event::builder::MigrationDenyReason::PortScopeChanged,
             DenyReason::IpScopeChanged => event::builder::MigrationDenyReason::IpScopeChange,
             DenyReason::ConnectionMigrationDisabled => {
                 event::builder::MigrationDenyReason::ConnectionMigrationDisabled
@@ -138,13 +135,6 @@ pub mod default {
             //# datagrams that match these patterns prior to validating the
             //# destination address.
 
-            // NOTE: this may cause reachability issues if a peer or NAT use different
-            //       port scopes for the same connection. Additional research may
-            //       be required to determine if this countermeasure needs to be relaxed.
-            if PortScope::new(active_addr.port()) != PortScope::new(packet_addr.port()) {
-                return Outcome::Deny(DenyReason::PortScopeChanged);
-            }
-
             //= https://www.rfc-editor.org/rfc/rfc9000#section-21.5.6
             //# Endpoints MAY prevent connection attempts or
             //# migration to a loopback address.  Endpoints SHOULD NOT allow
@@ -163,33 +153,6 @@ pub mod default {
             match (active_addr.unicast_scope(), packet_addr.unicast_scope()) {
                 (Some(a), Some(b)) if a == b => Outcome::Allow,
                 _ => Outcome::Deny(DenyReason::IpScopeChanged),
-            }
-        }
-    }
-
-    #[derive(Debug, PartialEq, Eq)]
-    enum PortScope {
-        System,
-        User,
-        Dynamic,
-    }
-
-    impl PortScope {
-        #[inline]
-        pub const fn new(value: u16) -> Self {
-            //= https://www.rfc-editor.org/rfc/rfc6335#section-6
-            //# o  the System Ports, also known as the Well Known Ports, from 0-1023
-            //#    (assigned by IANA)
-            //#
-            //# o  the User Ports, also known as the Registered Ports, from 1024-
-            //#    49151 (assigned by IANA)
-            //#
-            //# o  the Dynamic Ports, also known as the Private or Ephemeral Ports,
-            //#    from 49152-65535 (never assigned)
-            match value {
-                0..=1023 => Self::System,
-                1024..=49151 => Self::User,
-                49152..=65535 => Self::Dynamic,
             }
         }
     }
