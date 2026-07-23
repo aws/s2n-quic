@@ -262,34 +262,38 @@ impl Format {
         context: &mut super::Context<'_>,
         token: &Token,
     ) -> Option<connection::InitialId> {
-        if self.keys[token.header.key_id() as usize]
-            .duplicate_filter
-            .as_ref()
-            .is_some_and(|f| f.contains(token))
-        {
+        let tag = self.tag_retry_token(token, context)?;
+
+        // Verify the token is authentic before consulting the duplicate filter.
+        //
+        // The filter is backed by a HashSet whose lookups are not constant-time.
+        // Gating it behind the constant-time HMAC comparison ensures those
+        // variable-time operations only ever run on tokens we actually minted,
+        // so a client submitting forged tokens cannot use the filter's timing as
+        // an oracle (and cannot cause any filter work on unauthenticated input).
+        if constant_time::verify_slices_are_equal(&token.hmac, tag.as_ref()).is_err() {
             return None;
         }
 
-        let tag = self.tag_retry_token(token, context)?;
+        let duplicate_filter = self.keys[token.header.key_id() as usize]
+            .duplicate_filter
+            .get_or_insert_with(DuplicateFilter::default);
 
-        if constant_time::verify_slices_are_equal(&token.hmac, tag.as_ref()).is_ok() {
-            // Only add the token once it has been validated. This will prevent the filter from
-            // being filled with garbage tokens.
-            //
-            // If the filter is full the token cannot be recorded, so reject it: accepting an
-            // untracked token would allow a later replay of it to go undetected.
-            if !self.keys[token.header.key_id() as usize]
-                .duplicate_filter
-                .get_or_insert_with(DuplicateFilter::default)
-                .insert(token)
-            {
-                return None;
-            }
-
-            return token.original_destination_connection_id();
+        // Reject a token we have already seen as a replay.
+        if duplicate_filter.contains(token) {
+            return None;
         }
 
-        None
+        // Record the token now that it has been validated. This will prevent the filter from
+        // being filled with garbage tokens.
+        //
+        // If the filter is full the token cannot be recorded, so reject it: accepting an
+        // untracked token would allow a later replay of it to go undetected.
+        if !duplicate_filter.insert(token) {
+            return None;
+        }
+
+        token.original_destination_connection_id()
     }
 }
 
