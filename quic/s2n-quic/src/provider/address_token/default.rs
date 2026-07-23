@@ -124,9 +124,16 @@ impl BaseKey {
         random.private_random_fill(&mut key_material[..]);
         let key = hmac::Key::new(hmac::HMAC_SHA256, key_material.as_ref());
 
-        // Clear the duplicate filter along with the key material. Tokens signed
+        // Drop the duplicate filter along with the key material. Tokens signed
         // by the previous key will no longer validate, so there is no need to
         // track them for replay detection.
+        //
+        // We drop the filter (releasing its allocation) rather than clearing it
+        // in place. Retry token issuance is expected to be bursty and transient,
+        // and clearing would pin the burst's high-water-mark allocation for the
+        // lifetime of the endpoint. Dropping returns memory to zero between
+        // bursts; the set re-grows lazily on the next validated token, and that
+        // re-growth cost is only paid if another burst actually arrives.
         self.duplicate_filter = None;
 
         self.key = Some((expires_at, key));
