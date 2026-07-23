@@ -1332,8 +1332,6 @@ pub mod api {
         #[non_exhaustive]
         BlockedPort {},
         #[non_exhaustive]
-        PortScopeChanged {},
-        #[non_exhaustive]
         IpScopeChange {},
         #[non_exhaustive]
         ConnectionMigrationDisabled {},
@@ -1365,7 +1363,6 @@ pub mod api {
         fn variant_idx(&self) -> usize {
             match self {
                 Self::BlockedPort { .. } => 0usize,
-                Self::PortScopeChanged { .. } => 1usize,
                 Self::IpScopeChange { .. } => 2usize,
                 Self::ConnectionMigrationDisabled { .. } => 3usize,
             }
@@ -6040,7 +6037,6 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub enum MigrationDenyReason {
         BlockedPort,
-        PortScopeChanged,
         IpScopeChange,
         ConnectionMigrationDisabled,
     }
@@ -6050,7 +6046,6 @@ pub mod builder {
             use api::MigrationDenyReason::*;
             match self {
                 Self::BlockedPort => BlockedPort {},
-                Self::PortScopeChanged => PortScopeChanged {},
                 Self::IpScopeChange => IpScopeChange {},
                 Self::ConnectionMigrationDisabled => ConnectionMigrationDisabled {},
             }
