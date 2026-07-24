@@ -33,7 +33,7 @@ use core::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    application::{self, ServerName},
+    application::ServerName,
     connection::{
         error::Error,
         id::{Classification, Generator as _},
@@ -2281,7 +2281,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         )
     }
 
-    fn application_close(&mut self, error: Option<application::Error>) {
+    fn application_close(&mut self, error: Option<connection::Error>) {
         if self.error.is_err() {
             return;
         }
@@ -2290,7 +2290,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.open_registry = None;
 
         if let Some(error) = error {
-            self.error = Err(connection::Error::application(error));
+            self.error = Err(error);
+            // This will put all streams into Reset state and wake all tasks
+            if let Some((space, _)) = self.space_manager.application_mut() {
+                space.stream_manager.close(error);
+            }
         } else {
             // give the connection some time to flush all outstanding streams
             self.state = ConnectionState::Flushing;
