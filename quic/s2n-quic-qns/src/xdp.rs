@@ -202,16 +202,20 @@ impl Xdp {
 
     fn bpf_task(&self, port: u16, rx_fds: Vec<(u32, socket::Fd)>) -> Result<()> {
         // load the default BPF program from s2n-quic-xdp
-        let mut bpf = if self.bpf_trace {
+        let (mut bpf, logger) = if self.bpf_trace {
             let mut bpf = Ebpf::load(bpf::DEFAULT_PROGRAM_TRACE)?;
 
-            if let Err(err) = aya_log::EbpfLogger::init(&mut bpf) {
-                eprint!("error initializing BPF trace: {err:?}");
-            }
+            let logger = match aya_log::EbpfLogger::init(&mut bpf) {
+                Ok(logger) => Some(logger),
+                Err(err) => {
+                    eprint!("error initializing BPF trace: {err:?}");
+                    None
+                }
+            };
 
-            bpf
+            (bpf, logger)
         } else {
-            Ebpf::load(bpf::DEFAULT_PROGRAM)?
+            (Ebpf::load(bpf::DEFAULT_PROGRAM)?, None)
         };
 
         let interface = self.interface.clone();
@@ -226,6 +230,22 @@ impl Xdp {
 
         // attach the BPF program to the interface
         let link_id = program.attach(&interface, xdp_mode)?;
+
+        // Continuously drain the eBPF trace logs, if tracing is enabled.
+        if let Some(logger) = logger {
+            let mut logger =
+                tokio::io::unix::AsyncFd::with_interest(logger, tokio::io::Interest::READABLE)?;
+            tokio::spawn(async move {
+                loop {
+                    let mut guard = logger
+                        .readable_mut()
+                        .await
+                        .expect("failed to poll eBPF logger");
+                    guard.get_inner_mut().flush();
+                    guard.clear_ready();
+                }
+            });
+        }
 
         let bpf_task = async move {
             // register the port as active
