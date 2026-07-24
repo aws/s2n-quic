@@ -647,6 +647,9 @@
     "xquic": [],
     "haproxy": [
       "server"
+    ],
+    "quinn": [
+      "server"
     ]
   },
   "transferloss": {
@@ -715,7 +718,9 @@
     ]
   },
   "handshakecorruption": {
-    "aioquic": [],
+    "aioquic": [
+      "client"
+    ],
     "kwik": [],
     "lsquic": [
       "client",
