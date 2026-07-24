@@ -62,11 +62,10 @@ impl DuplicateFilter {
 
     /// Records the token as seen, returning `true` if it was newly recorded.
     ///
-    /// Mirrors [`HashSet::insert`] semantics: returns `false` if the token was
-    /// already recorded, indicating a replay. Also returns `false` if
-    /// [`Self::MAX_ENTRIES`] tokens are already being tracked and the token
-    /// could not be recorded, since a later replay of it could not be detected.
-    /// In either case the caller must reject the token.
+    /// Returns `false` if the token was already recorded, indicating a replay.
+    /// Also returns `false` if [`Self::MAX_ENTRIES`] tokens are already being
+    /// tracked and the token could not be recorded, since a later replay of it
+    /// could not be detected. In either case the caller must reject the token.
     fn insert(&mut self, token: &Token) -> bool {
         if self.seen.len() < Self::MAX_ENTRIES {
             self.seen.insert(token.hmac)
@@ -82,9 +81,10 @@ struct BaseKey {
     // HMAC key for signing and verifying
     key: Option<(Timestamp, hmac::Key)>,
 
-    // Tracks previously validated tokens to detect replays. Lazily allocated on
-    // the first validated token and dropped when the key rotates.
-    duplicate_filter: Option<DuplicateFilter>,
+    // Tracks previously validated tokens to detect replays. An empty filter
+    // performs no heap allocation; the backing storage is allocated on the
+    // first validated token and released when the key rotates.
+    duplicate_filter: DuplicateFilter,
 }
 
 impl BaseKey {
@@ -92,7 +92,7 @@ impl BaseKey {
         Self {
             active_duration,
             key: None,
-            duplicate_filter: None,
+            duplicate_filter: DuplicateFilter::default(),
         }
     }
 
@@ -120,17 +120,18 @@ impl BaseKey {
         random.private_random_fill(&mut key_material[..]);
         let key = hmac::Key::new(hmac::HMAC_SHA256, key_material.as_ref());
 
-        // Drop the duplicate filter along with the key material. Tokens signed
-        // by the previous key will no longer validate, so there is no need to
-        // track them for replay detection.
+        // Replace the duplicate filter along with the key material. Tokens
+        // signed by the previous key will no longer validate, so there is no
+        // need to track them for replay detection.
         //
-        // We drop the filter (releasing its allocation) rather than clearing it
-        // in place. Retry token issuance is expected to be bursty and transient,
-        // and clearing would pin the burst's high-water-mark allocation for the
-        // lifetime of the endpoint. Dropping returns memory to zero between
-        // bursts; the set re-grows lazily on the next validated token, and that
-        // re-growth cost is only paid if another burst actually arrives.
-        self.duplicate_filter = None;
+        // Replacing with a fresh (allocation-free) filter releases the old
+        // allocation rather than clearing it in place. Retry token issuance is
+        // expected to be bursty and transient, and clearing would pin the
+        // burst's high-water-mark allocation for the lifetime of the endpoint.
+        // Replacement returns memory to zero between bursts; the set re-grows
+        // lazily on the next validated token, and that re-growth cost is only
+        // paid if another burst actually arrives.
+        self.duplicate_filter = DuplicateFilter::default();
 
         self.key = Some((expires_at, key));
 
@@ -283,7 +284,6 @@ impl Format {
         // undetected.
         if !self.keys[token.header.key_id() as usize]
             .duplicate_filter
-            .get_or_insert_with(DuplicateFilter::default)
             .insert(token)
         {
             return None;
