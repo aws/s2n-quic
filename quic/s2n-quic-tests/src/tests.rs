@@ -26,6 +26,7 @@ use std::{
 
 mod blackhole;
 mod buffer_limit;
+mod close_all_stream_after_endpoint_drop;
 mod connection_limits;
 mod connection_migration;
 mod deduplicate;
