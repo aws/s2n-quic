@@ -350,6 +350,18 @@ impl Map {
         }
     }
 
+    /// Sends an already-encoded secret control packet in `buffer` to `dst` using the map's
+    /// control socket, emitting the corresponding packet-sent metric (e.g.
+    /// `UnknownPathSecretPacketSent`).
+    ///
+    /// `buffer` should contain a fully-encoded secret control packet, such as the one written
+    /// into the `control_out` buffer by [`Map::open_once`],
+    /// [`Map::open_once_with_application_data`], and related methods when the path secret is
+    /// unknown. Sending is best-effort: if the map has no control socket the packet is dropped.
+    pub fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]) {
+        self.store.send_control_packet(dst, buffer);
+    }
+
     pub fn handle_stale_key_packet<'a>(
         &self,
         packet: &'a control::stale_key::Packet,
