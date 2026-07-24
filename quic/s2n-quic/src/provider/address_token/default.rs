@@ -60,20 +60,16 @@ impl DuplicateFilter {
     /// so this rejection path is not expected to be hit in practice.
     const MAX_ENTRIES: usize = 16 * 1024;
 
-    /// Returns `true` if the token has previously been recorded as seen.
-    fn contains(&self, token: &Token) -> bool {
-        self.seen.contains(&token.hmac)
-    }
-
-    /// Records the token as seen, returning `true` if it was recorded.
+    /// Records the token as seen, returning `true` if it was newly recorded.
     ///
-    /// Returns `false` once [`Self::MAX_ENTRIES`] tokens are being tracked. The
-    /// caller must reject a token that could not be recorded, since a later
-    /// replay of it could no longer be detected.
+    /// Mirrors [`HashSet::insert`] semantics: returns `false` if the token was
+    /// already recorded, indicating a replay. Also returns `false` if
+    /// [`Self::MAX_ENTRIES`] tokens are already being tracked and the token
+    /// could not be recorded, since a later replay of it could not be detected.
+    /// In either case the caller must reject the token.
     fn insert(&mut self, token: &Token) -> bool {
         if self.seen.len() < Self::MAX_ENTRIES {
-            self.seen.insert(token.hmac);
-            true
+            self.seen.insert(token.hmac)
         } else {
             false
         }
@@ -277,21 +273,19 @@ impl Format {
             return None;
         }
 
-        let duplicate_filter = self.keys[token.header.key_id() as usize]
-            .duplicate_filter
-            .get_or_insert_with(DuplicateFilter::default);
-
-        // Reject a token we have already seen as a replay.
-        if duplicate_filter.contains(token) {
-            return None;
-        }
-
-        // Record the token now that it has been validated. This will prevent the filter from
-        // being filled with garbage tokens.
+        // Record the token now that it has been validated. Only recording
+        // validated tokens prevents the filter from being filled with garbage
+        // tokens.
         //
-        // If the filter is full the token cannot be recorded, so reject it: accepting an
-        // untracked token would allow a later replay of it to go undetected.
-        if !duplicate_filter.insert(token) {
+        // `insert` returns `false` if the token was already recorded (a replay)
+        // or if the filter is full and cannot record it. Reject in both cases:
+        // accepting an untracked token would allow a later replay of it to go
+        // undetected.
+        if !self.keys[token.header.key_id() as usize]
+            .duplicate_filter
+            .get_or_insert_with(DuplicateFilter::default)
+            .insert(token)
+        {
             return None;
         }
 
@@ -772,13 +766,15 @@ mod tests {
         let mut filter = DuplicateFilter::default();
         let token = test_token_with_hmac(1);
 
-        assert!(!filter.contains(&token));
+        // A new token is recorded
         assert!(filter.insert(&token));
-        assert!(filter.contains(&token));
 
-        // A different token is not considered seen
+        // Re-inserting the same token reports it as already seen
+        assert!(!filter.insert(&token));
+
+        // A different token is not affected
         let other = test_token_with_hmac(2);
-        assert!(!filter.contains(&other));
+        assert!(filter.insert(&other));
     }
 
     #[test]
@@ -803,12 +799,14 @@ mod tests {
         let overflow = test_token_with_hmac(0xff);
         assert!(!filter.insert(&overflow));
         assert_eq!(filter.seen.len(), DuplicateFilter::MAX_ENTRIES);
-        assert!(!filter.contains(&overflow));
+        assert!(!filter.seen.contains(&overflow.hmac));
 
-        // An already-recorded token is still detectable at capacity
+        // An already-recorded token is still tracked at capacity, so a replay
+        // of it continues to be rejected
         let mut seen = Token::new_zeroed();
         seen.hmac[..8].copy_from_slice(&0u64.to_be_bytes());
-        assert!(filter.contains(&seen));
+        assert!(filter.seen.contains(&seen.hmac));
+        assert!(!filter.insert(&seen));
     }
 
     #[test]
