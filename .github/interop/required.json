@@ -715,13 +715,17 @@
     ]
   },
   "handshakecorruption": {
-    "aioquic": [],
+    "aioquic": [
+      "client"
+    ],
     "kwik": [],
     "lsquic": [
       "client",
       "server"
     ],
-    "msquic": [],
+    "msquic": [
+      "server"
+    ],
     "mvfst": [],
     "neqo": [
       "client",
@@ -749,6 +753,9 @@
     ],
     "xquic": [],
     "quinn": [
+      "server"
+    ],
+    "haproxy": [
       "server"
     ]
   },
