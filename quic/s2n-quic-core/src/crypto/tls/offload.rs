@@ -290,7 +290,7 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                 }
                 Err(_) => {
                     // For whatever reason the TLS task was cancelled. We cannot continue the handshake.
-                    return Poll::Ready(Err(transport::Error::from(tls::Error::HANDSHAKE_FAILURE)));
+                    return Poll::Ready(Err(TLS_TASK_CANCELLED));
                 }
             },
             Poll::Pending => (),
@@ -333,7 +333,7 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                 }
                 Err(_) => {
                     // For whatever reason the TLS task was cancelled. We cannot continue the handshake.
-                    return Poll::Ready(Err(transport::Error::from(tls::Error::HANDSHAKE_FAILURE)));
+                    return Poll::Ready(Err(TLS_TASK_CANCELLED));
                 }
             },
             Poll::Pending => (),
@@ -364,6 +364,9 @@ struct AllowedToSend {
 
 const SLICE_ERROR: crate::transport::Error =
     crate::transport::Error::INTERNAL_ERROR.with_reason("Slice is full");
+
+const TLS_TASK_CANCELLED: crate::transport::Error =
+    crate::transport::Error::INTERNAL_ERROR.with_reason("TLS task cancelled");
 
 #[derive(Debug)]
 struct RemoteContext<'a, Request, H> {
