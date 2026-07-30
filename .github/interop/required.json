@@ -569,7 +569,9 @@
       "client",
       "server"
     ],
-    "mvfst": [],
+    "mvfst": [
+      "client"
+    ],
     "neqo": [
       "client",
       "server"
@@ -598,7 +600,9 @@
       "client",
       "server"
     ],
-    "xquic": [],
+    "xquic": [
+      "server"
+    ],
     "go-x-net": [
       "client",
       "server"
