@@ -1,0 +1,23 @@
+{
+  // rust-analyzer requires a toolchain of 1.94.0 or newer (see
+  // https://github.com/rust-lang/rust-analyzer/commit/f0d63081622929ed3ec29a2d3448d261053769c3),
+  // while this repository pins `rust-toolchain` to the MSRV. Running the language
+  // server against the MSRV sysroot breaks std macro resolution, since the sysroot
+  // crates are no longer implicitly `#[macro_use]`d
+  // (https://github.com/rust-lang/rust-analyzer/pull/22784).
+  //
+  // Point only the language server at stable so that editor analysis works, while
+  // `cargo build`/`clippy`/`fmt` run from a terminal continue to resolve the pinned
+  // MSRV toolchain and keep catching MSRV violations locally.
+  "rust-analyzer.server.extraEnv": { "RUSTUP_TOOLCHAIN": "stable" },
+
+  // The language server now checks with a different rustc than terminal builds use.
+  // Give it its own target directory so the two don't invalidate each other's
+  // fingerprints and trigger full rebuilds.
+  "rust-analyzer.cargo.targetDir": true,
+
+  // Prevent stable's cargo from rewriting a Cargo.lock that the pinned toolchain
+  // has to read.
+  "rust-analyzer.cargo.extraArgs": ["--locked"],
+  "rust-analyzer.check.extraArgs": ["--locked"]
+}
