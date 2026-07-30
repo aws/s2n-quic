@@ -17,7 +17,7 @@ futures = { version = "0.3", default-features = false, features = ["std"] }
 rand = { version = "0.10", features = ["chacha"] }
 s2n-codec = { path = "../../common/s2n-codec" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["branch-tracing", "event-tracing", "probe-tracing", "testing"] }
-s2n-quic = { path = "../s2n-quic", default-features = false, features = ["provider-address-token-default", "provider-event-tracing", "unstable-provider-io-testing", "unstable-provider-dc", "unstable-provider-packet-interceptor", "unstable-provider-random", "unstable-offload-tls"] }
+s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "unstable-provider-io-testing", "unstable-provider-dc", "unstable-provider-packet-interceptor", "unstable-provider-random", "unstable-offload-tls"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["tokio-runtime"] }
 s2n-quic-transport = { path = "../s2n-quic-transport", features = ["unstable_resumption", "unstable-provider-dc"] }
 tokio = { version = "1", features = ["full"] }
@@ -25,16 +25,14 @@ tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zerocopy = { version = "0.8", features = ["derive"] }
 
-# quiche also depends on BoringSSL, which doesn't build with the Windows MinGW-family
-# toolchains. BoringSSL does build on Windows MSVC, so quiche is only excluded on the
-# non-MSVC Windows targets.
+# quiche depends on BoringSSL, which builds on unix and on Windows MSVC, but not with the Windows MinGW-family toolchains.
 [target.'cfg(not(all(target_os = "windows", not(target_env = "msvc"))))'.dependencies]
 quiche = "0.29"
 
-# s2n-tls is required by ch_callback_server_local_address_test. It builds on unix and on Windows
-# with the GNU/MinGW toolchain, but not with MSVC. We depend on s2n-quic with
-# `default-features = false` + `provider-tls-s2n` so this crate does not pull in `provider-tls-default`;
-# with `provider-tls-default` off, `tls::default` resolves to s2n-tls on these targets.
+# s2n-tls builds on unix and on Windows with the GNU/MinGW toolchain, but not with MSVC. Tests
+# that need it specifically (mTLS, the ClientHelloCallback trait, session resumption) name the
+# `s2n_tls` provider explicitly rather than going through `tls::default`, so this does not
+# change which provider `provider-tls-default` resolves to on any target.
 [target.'cfg(any(unix, all(target_os = "windows", target_env = "gnu")))'.dependencies]
 s2n-tls = "0.3.40"
-s2n-quic = { path = "../s2n-quic", default-features = false, features = ["provider-address-token-default", "provider-event-tracing", "provider-tls-s2n", "unstable-provider-io-testing", "unstable-provider-dc", "unstable-provider-packet-interceptor", "unstable-provider-random", "unstable-offload-tls", "unstable_client_hello"] }
+s2n-quic = { path = "../s2n-quic", features = ["provider-tls-s2n", "unstable_client_hello"] }

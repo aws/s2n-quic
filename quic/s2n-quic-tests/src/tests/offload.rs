@@ -152,7 +152,7 @@ fn failed_tls_handshake() {
 }
 
 #[test]
-#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
+#[cfg(s2n_tls_provider)]
 fn mtls() {
     let model = Model::default();
     test(model.clone(), |handle| {
@@ -190,7 +190,7 @@ fn mtls() {
 }
 
 #[test]
-#[cfg(any(unix, all(target_os = "windows", target_env = "gnu")))]
+#[cfg(s2n_tls_provider)]
 fn async_client_hello() {
     use futures::{ready, FutureExt};
     use s2n_quic::provider::tls::s2n_tls::{
@@ -237,14 +237,15 @@ fn async_client_hello() {
         }
     }
     test(model.clone(), |handle| {
-        let server_endpoint = default::Server::builder()
+        // the ClientHelloCallback trait is specific to the s2n-tls provider
+        let server_endpoint = s2n_tls::Server::builder()
             .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
             .unwrap()
             .with_client_hello_handler(MyCallbackHandler)
             .unwrap()
             .build()
             .unwrap();
-        let client_endpoint = default::Client::builder()
+        let client_endpoint = s2n_tls::Client::builder()
             .with_certificate(certificates::CERT_PEM)
             .unwrap()
             .build()

@@ -404,24 +404,13 @@ jobs:
         run: |
           find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
 
-      # s2n-quic-tests depends on s2n-quic with `default-features = false`
-      # + `provider-tls-s2n` so on its own it resolves the default TLS provider to s2n-tls. Exclude the crates that pull in
-      # `provider-tls-default` and that we don't need to test here: qns/sim/h3/bench, plus s2n-quic itself
-      # (its own tests build it with default features, and `--workspace` can't disable a member's own
-      # defaults). That leaves s2n-quic-tests exercising s2n-tls.
+      # Tests the workspace `default-members`, which excludes the `dc/` crates. Crates and tests
+      # that can't build on the MinGW toolchains are gated in their own manifests.
       - name: Run cargo test
         shell: msys2 {0}
         run: |
           set -eu
-          cargo test --workspace \
-            --exclude s2n-quic-dc \
-            --exclude s2n-quic-dc-benches \
-            --exclude s2n-quic-dc-metrics \
-            --exclude s2n-quic-qns \
-            --exclude s2n-quic-sim \
-            --exclude s2n-quic-h3 \
-            --exclude s2n-quic-bench \
-            --exclude s2n-quic
+          cargo test
 
   asan:
     runs-on: ubuntu-latest
