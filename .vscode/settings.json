@@ -17,7 +17,7 @@
   "rust-analyzer.cargo.targetDir": true,
 
   // Prevent stable's cargo from rewriting a Cargo.lock that the pinned toolchain
-  // has to read.
-  "rust-analyzer.cargo.extraArgs": ["--locked"],
-  "rust-analyzer.check.extraArgs": ["--locked"]
+  // has to read. This is passed to every cargo invocation, including `cargo
+  // check`, so it must not be repeated in `check.extraArgs`.
+  "rust-analyzer.cargo.extraArgs": ["--locked"]
 }
