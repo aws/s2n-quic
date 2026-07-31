@@ -76,11 +76,15 @@ jobs:
             echo "Error: MSRV did not parse correctly"
             exit 1
           fi
-          # Nothing forces the crates to agree on an MSRV now that it is no
-          # longer pinned in one place, so fail loudly if they drift apart
-          # rather than silently testing the wrong version.
-          if [ $(git ls-files '*Cargo.toml' | xargs grep -h '^rust-version' | sort -u | wc -l) -ne 1 ]; then
-            echo "Error: crates do not agree on a single rust-version"
+          # The MSRV above is the floor s2n-quic promises to its users, so no
+          # crate may declare a lower `rust-version` than it. A crate requiring a
+          # higher one is allowed: the xdp and wireshark workspaces have needed
+          # that in the past when their dependencies outpaced the repository
+          # MSRV. Nothing pins these together anymore, so check it explicitly
+          # rather than silently testing a version some crate does not support.
+          export LOWEST=$(git ls-files '*Cargo.toml' | xargs grep -h '^rust-version' | sed -E 's/^rust-version *= *"(.+)"/\1/' | sort -V | head -1)
+          if [ "$LOWEST" != "$MSRV" ]; then
+            echo "Error: a crate declares rust-version $LOWEST, below the $MSRV MSRV of s2n-quic"
             git ls-files '*Cargo.toml' | xargs grep -H '^rust-version' | sort -u
             exit 1
           fi
