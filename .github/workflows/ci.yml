@@ -69,8 +69,9 @@ jobs:
         run: |
           rustup show active-toolchain
           # The MSRV is declared by the `rust-version` field of each crate. It is
-          # deliberately not derived from `rust-toolchain`, which tracks a recent
-          # stable release so that tooling such as rust-analyzer keeps working.
+          # deliberately not tied to the toolchain anyone happens to be building
+          # with; jobs that need a specific toolchain install and override it
+          # themselves.
           export MSRV=$(grep -m1 '^rust-version' quic/s2n-quic/Cargo.toml | sed -E 's/^rust-version *= *"(.+)"/\1/')
           if [ -z "$MSRV" ]; then
             echo "Error: MSRV did not parse correctly"
