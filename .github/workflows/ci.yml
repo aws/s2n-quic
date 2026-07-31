@@ -68,9 +68,20 @@ jobs:
         id: definitions
         run: |
           rustup show active-toolchain
-          export MSRV=$(rustup show active-toolchain | awk -F'-' '{print $1}')
+          # The MSRV is declared by the `rust-version` field of each crate. It is
+          # deliberately not derived from `rust-toolchain`, which tracks a recent
+          # stable release so that tooling such as rust-analyzer keeps working.
+          export MSRV=$(grep -m1 '^rust-version' quic/s2n-quic/Cargo.toml | sed -E 's/^rust-version *= *"(.+)"/\1/')
           if [ -z "$MSRV" ]; then
             echo "Error: MSRV did not parse correctly"
+            exit 1
+          fi
+          # Nothing forces the crates to agree on an MSRV now that it is no
+          # longer pinned in one place, so fail loudly if they drift apart
+          # rather than silently testing the wrong version.
+          if [ $(git ls-files '*Cargo.toml' | xargs grep -h '^rust-version' | sort -u | wc -l) -ne 1 ]; then
+            echo "Error: crates do not agree on a single rust-version"
+            git ls-files '*Cargo.toml' | xargs grep -H '^rust-version' | sort -u
             exit 1
           fi
           echo "msrv=$MSRV"

@@ -1,3 +1,11 @@
 [toolchain]
-channel = "1.92.0"
+# The toolchain used for local development and for the CI jobs that don't pin a
+# version themselves. This intentionally tracks recent stable rather than the
+# MSRV; pinning it to the MSRV left contributors on a toolchain too old for
+# current tooling, notably rust-analyzer.
+#
+# The MSRV is declared by the `rust-version` field of each crate and is enforced
+# by the CI test matrix, which builds and tests against it explicitly, and by
+# clippy's `incompatible_msrv` lint.
+channel = "stable"
 components = [ "rustc", "clippy", "rustfmt" ]
