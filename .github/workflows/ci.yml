@@ -399,10 +399,9 @@ jobs:
         shell: msys2 {0}
         run: |
           set -eu
-          # Force the MinGW gnu host; otherwise rustup picks the runner's MSVC host, which can't
-          # build the C dependencies. The repo's rust-toolchain file pins the channel, so this
-          # installs that channel for the gnu host.
+          # Force the MinGW gnu host; otherwise rustup picks the runner's MSVC host, which can't build the C dependencies.
           rustup set default-host ${{ matrix.rust-host }}
+          rustup default stable
           rustup show active-toolchain
 
           # clang64 has no gnullvm host toolchain, so cross-compile to gnullvm from the gnu host.

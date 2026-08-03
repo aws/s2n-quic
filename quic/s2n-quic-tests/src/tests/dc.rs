@@ -82,6 +82,8 @@ const LEN_FACTOR: u16 = 10;
 //                                               # dc_state_changed: state=Complete
 #[test]
 fn dc_handshake_self_test() -> Result<()> {
+    // This test requires methods that is implemented only with s2n-tls. `tls::default` is rustls on windows-gnu,
+    // where DC would never negotiate and the handshake would fail.
     let server_tls = s2n_tls::Server::builder()
         .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)?
         .build()?;
