@@ -58,9 +58,6 @@ jobs:
         with:
           submodules: true
 
-      - name: "Remove rust-toolchain"
-        run: rm rust-toolchain
-
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           arguments: --all-features --config .github/config/cargo-deny.toml

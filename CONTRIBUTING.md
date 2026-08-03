@@ -40,6 +40,18 @@ GitHub provides additional document on [forking a repository](https://help.githu
 [creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
 
 
+## Development toolchain
+
+`s2n-quic` is developed against a recent stable Rust toolchain, along with the `clippy` and `rustfmt` components:
+
+```
+rustup toolchain install stable --component clippy,rustfmt
+```
+
+This is separate from the minimum supported Rust version. The MSRV is declared by the `rust-version` field of each crate and is verified in CI, so there is no need to develop against it directly. Clippy is configured with the MSRV through the `msrv` key in `.clippy.toml`, which reports uses of standard library APIs that are newer than the MSRV allows.
+
+Building the eBPF programs under `tools/xdp/ebpf` requires the nightly toolchain pinned by `tools/xdp/ebpf/rust-toolchain.toml`, which `cargo xtask` selects automatically.
+
 ## Finding contributions to work on
 Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any 'help wanted' issues is a great place to start.
 
