@@ -68,9 +68,25 @@ jobs:
         id: definitions
         run: |
           rustup show active-toolchain
-          export MSRV=$(rustup show active-toolchain | awk -F'-' '{print $1}')
+          # The MSRV is declared by the `rust-version` field of each crate. It is
+          # deliberately not tied to the toolchain anyone happens to be building
+          # with; jobs that need a specific toolchain install and override it
+          # themselves.
+          export MSRV=$(grep -m1 '^rust-version' quic/s2n-quic/Cargo.toml | sed -E 's/^rust-version *= *"(.+)"/\1/')
           if [ -z "$MSRV" ]; then
             echo "Error: MSRV did not parse correctly"
+            exit 1
+          fi
+          # The MSRV above is the floor s2n-quic promises to its users, so no
+          # crate may declare a lower `rust-version` than it. A crate requiring a
+          # higher one is allowed: the xdp and wireshark workspaces have needed
+          # that in the past when their dependencies outpaced the repository
+          # MSRV. Nothing pins these together anymore, so check it explicitly
+          # rather than silently testing a version some crate does not support.
+          export LOWEST=$(git ls-files '*Cargo.toml' | xargs grep -h '^rust-version' | sed -E 's/^rust-version *= *"(.+)"/\1/' | sort -V | head -1)
+          if [ "$LOWEST" != "$MSRV" ]; then
+            echo "Error: a crate declares rust-version $LOWEST, below the $MSRV MSRV of s2n-quic"
+            git ls-files '*Cargo.toml' | xargs grep -H '^rust-version' | sort -u
             exit 1
           fi
           echo "msrv=$MSRV"
@@ -213,7 +229,7 @@ jobs:
         env:
           RUSTDOCFLAGS: --cfg docsrs
 
-      - uses: aws-actions/configure-aws-credentials@6.2.2
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -562,7 +578,7 @@ jobs:
       - name: Run cargo llvm-cov
         run: cargo llvm-cov --html --no-fail-fast --workspace --exclude s2n-quic-qns --all-features
 
-      - uses: aws-actions/configure-aws-credentials@6.2.2
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -676,7 +692,7 @@ jobs:
         run: |
           ./scripts/recovery-sim
 
-      - uses: aws-actions/configure-aws-credentials@6.2.2
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -727,7 +743,7 @@ jobs:
         run: |
           ./scripts/sim
 
-      - uses: aws-actions/configure-aws-credentials@6.2.2
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -872,7 +888,7 @@ jobs:
           cd examples/echo
           cargo build --timings --release --workspace
 
-      - uses: aws-actions/configure-aws-credentials@6.2.2
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -975,7 +991,7 @@ jobs:
           mv report.tsv target/report/
           mv dhat-heap.json target/report/
 
-      - uses: aws-actions/configure-aws-credentials@6.2.2
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -1107,7 +1123,7 @@ jobs:
     if: ${{ always() }}
     needs: [env, rustfmt, clippy, udeps, doc, test, test-windows-gnu, asan, fips, miri, no_std, compliance, coverage, crates, examples, recovery-simulations, sims, copyright, s2n-events, generate-events, snapshots, timing, typos, kani, dhat, loom, xdp, dc-wireshark]
     steps:
-      - uses: aws-actions/configure-aws-credentials@6.2.2
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole

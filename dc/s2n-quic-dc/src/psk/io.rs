@@ -139,11 +139,11 @@ impl Server {
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
         macro_rules! build_and_start {
-            ($tls:expr) => {{
+            ($tls:expr, $limits:expr) => {{
                 let s = s2n_quic::Server::builder()
                     .with_io(io)?
                     .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
-                    .with_limits(connection_limits)?
+                    .with_limits($limits)?
                     .with_dc(map.clone())?
                     .with_event((event, builder.event_subscriber))?
                     .with_tls($tls)?;
@@ -177,9 +177,15 @@ impl Server {
                 .with_executor(TokioExecutor { runtime })
                 .build();
 
-            build_and_start!(tls)
+            // We need packet storage when offloading is turned on due to this issue:
+            // https://github.com/aws/s2n-quic/issues/2601. The size needs to be large enough
+            // to store a packet with the given MTU.
+            let connection_limits =
+                connection_limits.with_packet_buffer_size(DEFAULT_MTU as u32)?;
+
+            build_and_start!(tls, connection_limits)
         } else {
-            build_and_start!(tls_materials_provider)
+            build_and_start!(tls_materials_provider, connection_limits)
         };
 
         Ok(Self { server })
