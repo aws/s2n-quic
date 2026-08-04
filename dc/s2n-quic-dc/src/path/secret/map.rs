@@ -3,7 +3,7 @@
 
 use crate::{
     credentials::{Credentials, Id},
-    event,
+    event::{self},
     packet::{secret_control as control, Packet},
     path::secret::{
         open,
@@ -16,7 +16,7 @@ use crate::{
 use core::fmt;
 use s2n_quic_core::{dc, time, varint::VarInt};
 use std::{net::SocketAddr, sync::Arc};
-use tokio::task::JoinHandle;
+use tokio::{runtime::RuntimeMetrics, task::JoinHandle};
 
 mod cleaner;
 mod disk;
@@ -324,6 +324,11 @@ impl Map {
     /// Emits a DcConnectionTimeout event via the subscriber
     pub fn on_dc_connection_timeout(&self, peer_address: &SocketAddr) {
         self.store.on_dc_connection_timeout(peer_address);
+    }
+
+    /// Emits a OffloadRuntimeMetrics event via the subscriber
+    pub fn on_offload_runtime_metrics(&self, metrics: &RuntimeMetrics) {
+        self.store.on_offload_runtime_metrics(metrics);
     }
 
     /// Emits a datagram encrypt event with the wire packet length

@@ -25,7 +25,7 @@ use std::{
     sync::{Arc, Mutex, RwLock, Weak},
     time::Duration,
 };
-use tokio::task::JoinHandle;
+use tokio::{runtime::RuntimeMetrics, task::JoinHandle};
 
 #[cfg(test)]
 mod tests;
@@ -1351,6 +1351,14 @@ where
         self.subscriber().on_path_secret_map_datagram_decrypt(
             event::builder::PathSecretMapDatagramDecrypt { packet_len },
         );
+    }
+
+    fn on_offload_runtime_metrics(&self, metrics: &RuntimeMetrics) {
+        self.subscriber()
+            .on_offload_runtime_metrics(event::builder::OffloadRuntimeMetrics {
+                global_queue_depth: metrics.global_queue_depth(),
+                num_alive_tasks: metrics.num_alive_tasks(),
+            });
     }
 }
 

@@ -21,3 +21,12 @@ struct DcConnectionTimeout<'a> {
     #[nominal_counter("peer_address.protocol")]
     peer_address: SocketAddress<'a>,
 }
+
+#[event("runtime:offload_metrics")]
+#[subject(endpoint)]
+struct OffloadRuntimeMetrics {
+    #[measure("global_queue_depth", Count)]
+    global_queue_depth: usize,
+    #[measure("num_alive_tasks", Count)]
+    num_alive_tasks: usize,
+}

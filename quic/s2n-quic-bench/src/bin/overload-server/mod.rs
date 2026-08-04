@@ -35,7 +35,7 @@ fn new_map(capacity: usize) -> secret::Map {
         capacity,
         false,
         StdClock::default(),
-        s2n_quic_dc::event::disabled::Subscriber::default(),
+        QueueSubscriber,
     )
 }
 
@@ -93,6 +93,27 @@ mod mtls {
     }
 }
 
+struct QueueSubscriber;
+impl s2n_quic_dc::event::Subscriber for QueueSubscriber {
+    type ConnectionContext = ();
+
+    fn create_connection_context(
+        &self,
+        _meta: &s2n_quic_dc::event::api::ConnectionMeta,
+        _info: &s2n_quic_dc::event::api::ConnectionInfo,
+    ) -> Self::ConnectionContext {
+        ()
+    }
+
+    fn on_offload_runtime_metrics(
+        &self,
+        meta: &s2n_quic_dc::event::api::EndpointMeta,
+        event: &s2n_quic_dc::event::api::OffloadRuntimeMetrics,
+    ) {
+        println!("{:?}", event);
+    }
+}
+
 pub fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_env("S2N_LOG"))
@@ -106,6 +127,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let sub = s2n_quic::provider::event::disabled::Subscriber;
 
     let server = server::Provider::builder()
+        .with_thread_count(3)
         .start_blocking(
             "127.0.0.1:0".parse().unwrap(),
             mtls::build_server_mtls_provider(certificates::MTLS_CA_CERT)?,

@@ -100,6 +100,7 @@ impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
 
 pub struct Server {
     server: s2n_quic::Server,
+    offload_handle: Option<tokio::runtime::Handle>,
 }
 
 impl Server {
@@ -159,13 +160,15 @@ impl Server {
             }};
         }
 
-        let server = if builder.thread_offload_count > 0 {
+        let (server, handle) = if builder.thread_offload_count > 0 {
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 // Hs=handshake, s=server, offload
                 .thread_name("hs-s-offload")
                 .worker_threads(builder.thread_offload_count)
                 .enable_all()
                 .build()?;
+
+            let handle = runtime.handle().clone();
 
             let tls = s2n_quic::provider::tls::offload::OffloadBuilder::new()
                 .with_endpoint(tls_materials_provider)
@@ -183,12 +186,18 @@ impl Server {
             let connection_limits =
                 connection_limits.with_packet_buffer_size(DEFAULT_MTU as u32)?;
 
-            build_and_start!(tls, connection_limits)
+            (build_and_start!(tls, connection_limits), Some(handle))
         } else {
-            build_and_start!(tls_materials_provider, connection_limits)
+            (
+                build_and_start!(tls_materials_provider, connection_limits),
+                None,
+            )
         };
 
-        Ok(Self { server })
+        Ok(Self {
+            server,
+            offload_handle: handle,
+        })
     }
 
     #[allow(dead_code)]
@@ -238,6 +247,9 @@ pub(super) async fn server<
 
     while let Some(mut connection) = server.server.accept().await {
         let map_clone = map.clone();
+        if let Some(handle) = &server.offload_handle {
+            map_clone.on_offload_runtime_metrics(&handle.metrics());
+        }
         tokio::spawn(async move {
             // The accepted connection must remain open until the client has finished inserting
             // the entry into its map. The client indicates this by sending a ConnectionClose
