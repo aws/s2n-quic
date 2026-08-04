@@ -282,6 +282,88 @@ fn on_mtu_updated() {
     assert_eq!(1500, manager.path().mtu);
 }
 
+/// A graceful close while the server is stuck in `ServerTokensSent` emits `DcStateIncomplete` reporting that state.
+#[test]
+fn on_close_server_incomplete_graceful() {
+    let mut publisher = Publisher::snapshot();
+    let mut manager: Manager<Server> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
+
+    assert!(manager
+        .on_path_secrets_ready(&Session, &mut publisher)
+        .is_ok());
+    manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_1].iter(), &mut publisher);
+    assert!(manager.state.is_server_tokens_sent());
+
+    manager.on_close(true, &mut publisher);
+
+    // the snapshot captures the emitted `DcStateIncomplete { state: ServerTokensSent }`
+    assert_eq!(1, publisher.dc_state_incomplete);
+}
+
+/// A graceful close while the client is stuck in `ClientPathSecretsReady` emits `DcStateIncomplete`.
+#[test]
+fn on_close_client_incomplete_graceful() {
+    let mut publisher = Publisher::snapshot();
+    let mut manager: Manager<Client> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
+
+    assert!(manager
+        .on_path_secrets_ready(&Session, &mut publisher)
+        .is_ok());
+    assert!(manager.state.is_path_secrets_ready());
+
+    manager.on_close(true, &mut publisher);
+
+    // the snapshot captures the emitted `DcStateIncomplete { state: ClientPathSecretsReady }`
+    assert_eq!(1, publisher.dc_state_incomplete);
+}
+
+/// An error close does not emit `DcStateIncomplete`, even when the dc handshake is incomplete.
+#[test]
+fn on_close_error_does_not_emit() {
+    let mut publisher = Publisher::no_snapshot();
+    let mut manager: Manager<Server> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
+
+    assert!(manager
+        .on_path_secrets_ready(&Session, &mut publisher)
+        .is_ok());
+    manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_1].iter(), &mut publisher);
+    assert!(manager.state.is_server_tokens_sent());
+
+    manager.on_close(false, &mut publisher);
+
+    assert_eq!(0, publisher.dc_state_incomplete);
+}
+
+/// A completed dc handshake does not emit `DcStateIncomplete` on close.
+#[test]
+fn on_close_complete_does_not_emit() {
+    let mut publisher = Publisher::no_snapshot();
+    let mut manager: Manager<Client> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
+
+    assert!(manager
+        .on_path_secrets_ready(&Session, &mut publisher)
+        .is_ok());
+    // the client completes as soon as it receives the peer's tokens
+    manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_1].iter(), &mut publisher);
+    assert!(manager.state.is_complete());
+
+    manager.on_close(true, &mut publisher);
+
+    assert_eq!(0, publisher.dc_state_incomplete);
+}
+
+/// A disabled `dc::Manager` does not emit `DcStateIncomplete` on close.
+#[test]
+fn on_close_disabled_does_not_emit() {
+    let mut publisher = Publisher::no_snapshot();
+    let mut manager: Manager<Server> = Manager::disabled();
+    assert!(manager.state.is_complete());
+
+    manager.on_close(true, &mut publisher);
+
+    assert_eq!(0, publisher.dc_state_incomplete);
+}
+
 #[test]
 #[cfg_attr(miri, ignore)]
 fn snapshots() {

@@ -517,6 +517,13 @@ struct DcPathCreated<'a> {
     path: &'a (dyn core::any::Any + Send + 'static),
 }
 
+#[event("transport:dc_state_incomplete")]
+/// The dc handshake did not reach the `Complete` or an error state before the connection closed
+struct DcStateIncomplete {
+    #[nominal_counter("state")]
+    state: DcHandshakeState,
+}
+
 // NOTE - This event MUST come last, since connection-level aggregation depends on it
 #[event("connectivity:connection_closed")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.1.3

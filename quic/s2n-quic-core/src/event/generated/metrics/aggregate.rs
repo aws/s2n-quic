@@ -151,6 +151,8 @@ mod id {
         DC_STATE_CHANGED__COMPLETE__LATENCY,
         DC_STATE_CHANGED__STATE,
         DC_PATH_CREATED,
+        DC_STATE_INCOMPLETE,
+        DC_STATE_INCOMPLETE__STATE,
         CONNECTION_CLOSED,
         CONNECTION_CLOSED__LATENCY,
         CONNECTION_CLOSED__ERROR,
@@ -375,6 +377,8 @@ mod id {
         InfoId::DC_STATE_CHANGED__COMPLETE__LATENCY as usize;
     pub const DC_STATE_CHANGED__STATE: usize = InfoId::DC_STATE_CHANGED__STATE as usize;
     pub const DC_PATH_CREATED: usize = InfoId::DC_PATH_CREATED as usize;
+    pub const DC_STATE_INCOMPLETE: usize = InfoId::DC_STATE_INCOMPLETE as usize;
+    pub const DC_STATE_INCOMPLETE__STATE: usize = InfoId::DC_STATE_INCOMPLETE__STATE as usize;
     pub const CONNECTION_CLOSED: usize = InfoId::CONNECTION_CLOSED as usize;
     pub const CONNECTION_CLOSED__LATENCY: usize = InfoId::CONNECTION_CLOSED__LATENCY as usize;
     pub const CONNECTION_CLOSED__ERROR: usize = InfoId::CONNECTION_CLOSED__ERROR as usize;
@@ -507,6 +511,7 @@ mod id {
         COUNTERS_BBR_STATE_CHANGED,
         COUNTERS_DC_STATE_CHANGED,
         COUNTERS_DC_PATH_CREATED,
+        COUNTERS_DC_STATE_INCOMPLETE,
         COUNTERS_CONNECTION_CLOSED,
         COUNTERS_VERSION_INFORMATION,
         COUNTERS_ENDPOINT_PACKET_SENT,
@@ -622,6 +627,7 @@ mod id {
     pub const COUNTERS_BBR_STATE_CHANGED: usize = Counters::COUNTERS_BBR_STATE_CHANGED as usize;
     pub const COUNTERS_DC_STATE_CHANGED: usize = Counters::COUNTERS_DC_STATE_CHANGED as usize;
     pub const COUNTERS_DC_PATH_CREATED: usize = Counters::COUNTERS_DC_PATH_CREATED as usize;
+    pub const COUNTERS_DC_STATE_INCOMPLETE: usize = Counters::COUNTERS_DC_STATE_INCOMPLETE as usize;
     pub const COUNTERS_CONNECTION_CLOSED: usize = Counters::COUNTERS_CONNECTION_CLOSED as usize;
     pub const COUNTERS_VERSION_INFORMATION: usize = Counters::COUNTERS_VERSION_INFORMATION as usize;
     pub const COUNTERS_ENDPOINT_PACKET_SENT: usize =
@@ -720,6 +726,7 @@ mod id {
         NOMINAL_COUNTERS_SLOW_START_EXITED__CAUSE,
         NOMINAL_COUNTERS_BBR_STATE_CHANGED__STATE,
         NOMINAL_COUNTERS_DC_STATE_CHANGED__STATE,
+        NOMINAL_COUNTERS_DC_STATE_INCOMPLETE__STATE,
         NOMINAL_COUNTERS_CONNECTION_CLOSED__ERROR,
         NOMINAL_COUNTERS_ENDPOINT_DATAGRAM_DROPPED__REASON,
         NOMINAL_COUNTERS_ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR,
@@ -784,6 +791,8 @@ mod id {
         NominalCounters::NOMINAL_COUNTERS_BBR_STATE_CHANGED__STATE as usize;
     pub const NOMINAL_COUNTERS_DC_STATE_CHANGED__STATE: usize =
         NominalCounters::NOMINAL_COUNTERS_DC_STATE_CHANGED__STATE as usize;
+    pub const NOMINAL_COUNTERS_DC_STATE_INCOMPLETE__STATE: usize =
+        NominalCounters::NOMINAL_COUNTERS_DC_STATE_INCOMPLETE__STATE as usize;
     pub const NOMINAL_COUNTERS_CONNECTION_CLOSED__ERROR: usize =
         NominalCounters::NOMINAL_COUNTERS_CONNECTION_CLOSED__ERROR as usize;
     pub const NOMINAL_COUNTERS_ENDPOINT_DATAGRAM_DROPPED__REASON: usize =
@@ -978,7 +987,7 @@ mod id {
     pub const NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY: usize =
         NominalTimers::NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY as usize;
 }
-static INFO: &[Info; 185usize] = &[
+static INFO: &[Info; 187usize] = &[
     info::Builder {
         id: id::APPLICATION_PROTOCOL_INFORMATION,
         name: Str::new("application_protocol_information\0"),
@@ -1784,6 +1793,18 @@ static INFO: &[Info; 185usize] = &[
     }
     .build(),
     info::Builder {
+        id: id::DC_STATE_INCOMPLETE,
+        name: Str::new("dc_state_incomplete\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::DC_STATE_INCOMPLETE__STATE,
+        name: Str::new("dc_state_incomplete.state\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
         id: id::CONNECTION_CLOSED,
         name: Str::new("connection_closed\0"),
         units: Units::None,
@@ -2097,13 +2118,13 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 89usize]>,
+    counters: Box<[R::Counter; 90usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 3usize]>,
     #[allow(dead_code)]
     nominal_counters: Box<[R::NominalCounter]>,
     #[allow(dead_code)]
-    nominal_counter_offsets: Box<[usize; 33usize]>,
+    nominal_counter_offsets: Box<[usize; 34usize]>,
     #[allow(dead_code)]
     measures: Box<[R::Measure; 43usize]>,
     #[allow(dead_code)]
@@ -2132,10 +2153,10 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(89usize);
+        let mut counters = Vec::with_capacity(90usize);
         let mut bool_counters = Vec::with_capacity(3usize);
-        let mut nominal_counters = Vec::with_capacity(33usize);
-        let mut nominal_counter_offsets = Vec::with_capacity(33usize);
+        let mut nominal_counters = Vec::with_capacity(34usize);
+        let mut nominal_counter_offsets = Vec::with_capacity(34usize);
         let mut measures = Vec::with_capacity(43usize);
         let mut gauges = Vec::with_capacity(0usize);
         let mut timers = Vec::with_capacity(16usize);
@@ -2202,6 +2223,7 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::BBR_STATE_CHANGED]));
         counters.push(registry.register_counter(&INFO[id::DC_STATE_CHANGED]));
         counters.push(registry.register_counter(&INFO[id::DC_PATH_CREATED]));
+        counters.push(registry.register_counter(&INFO[id::DC_STATE_INCOMPLETE]));
         counters.push(registry.register_counter(&INFO[id::CONNECTION_CLOSED]));
         counters.push(registry.register_counter(&INFO[id::VERSION_INFORMATION]));
         counters.push(registry.register_counter(&INFO[id::ENDPOINT_PACKET_SENT]));
@@ -2630,6 +2652,21 @@ impl<R: Registry> Subscriber<R> {
             {
                 let offset = nominal_counters.len();
                 let mut count = 0;
+                for variant in <DcHandshakeState as AsVariant>::VARIANTS.iter() {
+                    nominal_counters.push(
+                        registry.register_nominal_counter(
+                            &INFO[id::DC_STATE_INCOMPLETE__STATE],
+                            variant,
+                        ),
+                    );
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
                 for variant in <crate::connection::Error as AsVariant>::VARIANTS.iter() {
                     nominal_counters.push(
                         registry
@@ -2884,6 +2921,7 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_BBR_STATE_CHANGED => (&INFO[id::BBR_STATE_CHANGED], entry),
                 id::COUNTERS_DC_STATE_CHANGED => (&INFO[id::DC_STATE_CHANGED], entry),
                 id::COUNTERS_DC_PATH_CREATED => (&INFO[id::DC_PATH_CREATED], entry),
+                id::COUNTERS_DC_STATE_INCOMPLETE => (&INFO[id::DC_STATE_INCOMPLETE], entry),
                 id::COUNTERS_CONNECTION_CLOSED => (&INFO[id::CONNECTION_CLOSED], entry),
                 id::COUNTERS_VERSION_INFORMATION => (&INFO[id::VERSION_INFORMATION], entry),
                 id::COUNTERS_ENDPOINT_PACKET_SENT => (&INFO[id::ENDPOINT_PACKET_SENT], entry),
@@ -3201,6 +3239,12 @@ impl<R: Registry> Subscriber<R> {
                     let variants = <DcState as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
                     (&INFO[id::DC_STATE_CHANGED__STATE], entries, variants)
+                }
+                id::NOMINAL_COUNTERS_DC_STATE_INCOMPLETE__STATE => {
+                    let offset = *entry;
+                    let variants = <DcHandshakeState as AsVariant>::VARIANTS;
+                    let entries = &self.nominal_counters[offset..offset + variants.len()];
+                    (&INFO[id::DC_STATE_INCOMPLETE__STATE], entries, variants)
                 }
                 id::NOMINAL_COUNTERS_CONNECTION_CLOSED__ERROR => {
                     let offset = *entry;
@@ -4772,6 +4816,29 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         #[allow(unused_imports)]
         use api::*;
         self.count(id::DC_PATH_CREATED, id::COUNTERS_DC_PATH_CREATED, 1usize);
+        let _ = context;
+        let _ = meta;
+        let _ = event;
+    }
+    #[inline]
+    fn on_dc_state_incomplete(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::DcStateIncomplete,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::DC_STATE_INCOMPLETE,
+            id::COUNTERS_DC_STATE_INCOMPLETE,
+            1usize,
+        );
+        self.count_nominal(
+            id::DC_STATE_INCOMPLETE__STATE,
+            id::NOMINAL_COUNTERS_DC_STATE_INCOMPLETE__STATE,
+            &event.state,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;
