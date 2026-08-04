@@ -26,8 +26,8 @@ fips = ["s2n-quic-tls?/fips"]
 [dependencies]
 s2n-quic-tls = { version = "=0.85.0", path = "../s2n-quic-tls", optional = true }
 
-[target.'cfg(unix)'.dependencies]
+[target.'cfg(any(unix, all(target_os = "windows", target_env = "gnu")))'.dependencies]
 s2n-quic-tls = { version = "=0.85.0", path = "../s2n-quic-tls" }
 
-[target.'cfg(not(unix))'.dependencies]
+[target.'cfg(not(any(unix, all(target_os = "windows", target_env = "gnu"))))'.dependencies]
 s2n-quic-rustls = { version = "=0.85.0", path = "../s2n-quic-rustls" }

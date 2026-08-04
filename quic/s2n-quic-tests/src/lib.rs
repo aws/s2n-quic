@@ -363,7 +363,13 @@ impl s2n_quic::provider::random::Generator for Random {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+// mTLS is only wired up for the s2n-tls provider. On the `s2n_tls_provider` targets (unix and
+// Windows GNU/MinGW) `tls::default` resolves to s2n-tls, so gate on that cfg and go through the
+// default provider.
+//
+// TODO: https://github.com/aws/s2n-quic/issues/1726
+// Build the rustls provider with mTLS enabled so these tests can run against either provider.
+#[cfg(s2n_tls_provider)]
 mod mtls {
     use super::*;
     use s2n_quic::provider::tls;
@@ -414,7 +420,8 @@ mod slow_tls {
     }
 }
 
-#[cfg(unix)]
+// Session resumption is only wired up for the s2n-tls provider.
+#[cfg(s2n_tls_provider)]
 pub mod resumption {
     use super::*;
     use s2n_quic::provider::tls::{
@@ -493,7 +500,7 @@ pub mod resumption {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(s2n_tls_provider)]
 pub use mtls::*;
 
 pub use slow_tls::SlowTlsProvider;
