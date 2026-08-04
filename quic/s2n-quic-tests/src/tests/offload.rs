@@ -237,15 +237,14 @@ fn async_client_hello() {
         }
     }
     test(model.clone(), |handle| {
-        // the ClientHelloCallback trait is specific to the s2n-tls provider
-        let server_endpoint = s2n_tls::Server::builder()
+        let server_endpoint = default::Server::builder()
             .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
             .unwrap()
             .with_client_hello_handler(MyCallbackHandler)
             .unwrap()
             .build()
             .unwrap();
-        let client_endpoint = s2n_tls::Client::builder()
+        let client_endpoint = default::Client::builder()
             .with_certificate(certificates::CERT_PEM)
             .unwrap()
             .build()

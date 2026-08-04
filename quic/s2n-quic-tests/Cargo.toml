@@ -29,10 +29,5 @@ zerocopy = { version = "0.8", features = ["derive"] }
 [target.'cfg(not(all(target_os = "windows", not(target_env = "msvc"))))'.dependencies]
 quiche = "0.29"
 
-# s2n-tls builds on unix and on Windows with the GNU/MinGW toolchain, but not with MSVC. Tests
-# that need it specifically (mTLS, the ClientHelloCallback trait, session resumption) name the
-# `s2n_tls` provider explicitly rather than going through `tls::default`, so this does not
-# change which provider `provider-tls-default` resolves to on any target.
 [target.'cfg(any(unix, all(target_os = "windows", target_env = "gnu")))'.dependencies]
-s2n-tls = "0.3.40"
 s2n-quic = { path = "../s2n-quic", features = ["provider-tls-s2n", "unstable_client_hello"] }

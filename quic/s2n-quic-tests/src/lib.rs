@@ -363,18 +363,19 @@ impl s2n_quic::provider::random::Generator for Random {
     }
 }
 
-// mTLS is only wired up for the s2n-tls provider, so name it explicitly rather than relying on
-// `tls::default` resolving to s2n-tls.
+// mTLS is only wired up for the s2n-tls provider. On the `s2n_tls_provider` targets (unix and
+// Windows GNU/MinGW) `tls::default` resolves to s2n-tls, so gate on that cfg and go through the
+// default provider.
 //
 // TODO: https://github.com/aws/s2n-quic/issues/1726
 // Build the rustls provider with mTLS enabled so these tests can run against either provider.
 #[cfg(s2n_tls_provider)]
 mod mtls {
     use super::*;
-    use s2n_quic::provider::tls::s2n_tls as tls;
+    use s2n_quic::provider::tls;
 
-    pub fn build_client_mtls_provider(ca_cert: &str) -> Result<tls::Client> {
-        let tls = tls::Client::builder()
+    pub fn build_client_mtls_provider(ca_cert: &str) -> Result<tls::default::Client> {
+        let tls = tls::default::Client::builder()
             .with_certificate(ca_cert)?
             .with_client_identity(
                 certificates::MTLS_CLIENT_CERT,
@@ -384,8 +385,8 @@ mod mtls {
         Ok(tls)
     }
 
-    pub fn build_server_mtls_provider(ca_cert: &str) -> Result<tls::Server> {
-        let tls = tls::Server::builder()
+    pub fn build_server_mtls_provider(ca_cert: &str) -> Result<tls::default::Server> {
+        let tls = tls::default::Server::builder()
             .with_certificate(
                 certificates::MTLS_SERVER_CERT,
                 certificates::MTLS_SERVER_KEY,
@@ -424,7 +425,7 @@ mod slow_tls {
 pub mod resumption {
     use super::*;
     use s2n_quic::provider::tls::{
-        s2n_tls as tls,
+        self,
         s2n_tls::{
             callbacks::{ConnectionFuture, SessionTicket, SessionTicketCallback},
             config::ConnectionInitializer,
@@ -467,7 +468,10 @@ pub mod resumption {
         }
     }
 
-    pub fn build_server_resumption_provider(cert: &str, key: &str) -> Result<tls::Server<Server>> {
+    pub fn build_server_resumption_provider(
+        cert: &str,
+        key: &str,
+    ) -> Result<tls::default::Server<Server>> {
         let mut tls = Server::builder().with_certificate(cert, key)?;
 
         let config = tls.config_mut();
@@ -485,8 +489,8 @@ pub mod resumption {
     pub fn build_client_resumption_provider(
         cert: &str,
         handler: &SessionTicketHandler,
-    ) -> Result<tls::Client> {
-        let mut tls = tls::Client::builder().with_certificate(cert)?;
+    ) -> Result<tls::default::Client> {
+        let mut tls = tls::s2n_tls::Client::builder().with_certificate(cert)?;
         let config = tls.config_mut();
         config
             .enable_session_tickets(true)?

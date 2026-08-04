@@ -9,10 +9,7 @@ use s2n_quic::{
     provider::{
         dc,
         io::testing::Result,
-        tls::{
-            offload::{Executor, ExporterHandler, OffloadBuilder},
-            s2n_tls,
-        },
+        tls::offload::{Executor, ExporterHandler, OffloadBuilder},
     },
     server::{self, ServerProviders},
 };
@@ -82,19 +79,11 @@ const LEN_FACTOR: u16 = 10;
 //                                               # dc_state_changed: state=Complete
 #[test]
 fn dc_handshake_self_test() -> Result<()> {
-    // This test requires methods that is implemented only with s2n-tls. `tls::default` is rustls on windows-gnu,
-    // where DC would never negotiate and the handshake would fail.
-    let server_tls = s2n_tls::Server::builder()
-        .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)?
-        .build()?;
     let server = Server::builder()
-        .with_tls(server_tls)?
+        .with_tls(SERVER_CERTS)?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
-    let client_tls = s2n_tls::Client::builder()
-        .with_certificate(certificates::CERT_PEM)?
-        .build()?;
     let client = Client::builder()
-        .with_tls(client_tls)?
+        .with_tls(certificates::CERT_PEM)?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
     self_test(server, client, true, None, None, true)?;
