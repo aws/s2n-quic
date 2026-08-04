@@ -62,6 +62,17 @@ mod id {
         ACK_RANGE_SENT__PACKET,
         PACKET_DROPPED,
         PACKET_DROPPED__REASON,
+        PACKET_BUFFERED,
+        PACKET_BUFFERED__PACKET_TYPE,
+        PACKET_BUFFERED__BYTES__TOTAL,
+        PACKET_BUFFERED__BYTES,
+        PACKET_BUFFERED__BUFFER_LEN,
+        PACKET_BUFFER_DRAINED,
+        PACKET_BUFFER_DRAINED__PACKET_TYPE,
+        PACKET_BUFFER_DRAINED__BYTES__TOTAL,
+        PACKET_BUFFER_DRAINED__BYTES,
+        PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION,
+        PACKET_BUFFER_ERROR,
         KEY_UPDATE,
         KEY_UPDATE__KEY_TYPE,
         KEY_UPDATE__CIPHER_SUITE,
@@ -247,6 +258,20 @@ mod id {
     pub const ACK_RANGE_SENT__PACKET: usize = InfoId::ACK_RANGE_SENT__PACKET as usize;
     pub const PACKET_DROPPED: usize = InfoId::PACKET_DROPPED as usize;
     pub const PACKET_DROPPED__REASON: usize = InfoId::PACKET_DROPPED__REASON as usize;
+    pub const PACKET_BUFFERED: usize = InfoId::PACKET_BUFFERED as usize;
+    pub const PACKET_BUFFERED__PACKET_TYPE: usize = InfoId::PACKET_BUFFERED__PACKET_TYPE as usize;
+    pub const PACKET_BUFFERED__BYTES__TOTAL: usize = InfoId::PACKET_BUFFERED__BYTES__TOTAL as usize;
+    pub const PACKET_BUFFERED__BYTES: usize = InfoId::PACKET_BUFFERED__BYTES as usize;
+    pub const PACKET_BUFFERED__BUFFER_LEN: usize = InfoId::PACKET_BUFFERED__BUFFER_LEN as usize;
+    pub const PACKET_BUFFER_DRAINED: usize = InfoId::PACKET_BUFFER_DRAINED as usize;
+    pub const PACKET_BUFFER_DRAINED__PACKET_TYPE: usize =
+        InfoId::PACKET_BUFFER_DRAINED__PACKET_TYPE as usize;
+    pub const PACKET_BUFFER_DRAINED__BYTES__TOTAL: usize =
+        InfoId::PACKET_BUFFER_DRAINED__BYTES__TOTAL as usize;
+    pub const PACKET_BUFFER_DRAINED__BYTES: usize = InfoId::PACKET_BUFFER_DRAINED__BYTES as usize;
+    pub const PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION: usize =
+        InfoId::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION as usize;
+    pub const PACKET_BUFFER_ERROR: usize = InfoId::PACKET_BUFFER_ERROR as usize;
     pub const KEY_UPDATE: usize = InfoId::KEY_UPDATE as usize;
     pub const KEY_UPDATE__KEY_TYPE: usize = InfoId::KEY_UPDATE__KEY_TYPE as usize;
     pub const KEY_UPDATE__CIPHER_SUITE: usize = InfoId::KEY_UPDATE__CIPHER_SUITE as usize;
@@ -447,6 +472,13 @@ mod counter {
                 id::ACK_RANGE_RECEIVED => Self(ack_range_received),
                 id::ACK_RANGE_SENT => Self(ack_range_sent),
                 id::PACKET_DROPPED => Self(packet_dropped),
+                id::PACKET_BUFFERED => Self(packet_buffered),
+                id::PACKET_BUFFERED__BYTES__TOTAL => Self(packet_buffered__bytes__total),
+                id::PACKET_BUFFER_DRAINED => Self(packet_buffer_drained),
+                id::PACKET_BUFFER_DRAINED__BYTES__TOTAL => {
+                    Self(packet_buffer_drained__bytes__total)
+                }
+                id::PACKET_BUFFER_ERROR => Self(packet_buffer_error),
                 id::KEY_UPDATE => Self(key_update),
                 id::KEY_SPACE_DISCARDED => Self(key_space_discarded),
                 id::CONNECTION_STARTED => Self(connection_started),
@@ -587,17 +619,31 @@ mod counter {
             fn ack_range_sent(value: u64);
             #[link_name = s2n_quic__event__counter__packet_dropped]
             fn packet_dropped(value: u64);
+            #[link_name =
+        s2n_quic__event__counter__packet_buffered]
+            fn packet_buffered(value: u64);
+            #[link_name = s2n_quic__event__counter__packet_buffered__bytes__total]
+            fn packet_buffered__bytes__total(value: u64);
+            #[link_name =
+        s2n_quic__event__counter__packet_buffer_drained]
+            fn packet_buffer_drained(value: u64);
+            #[link_name =
+        s2n_quic__event__counter__packet_buffer_drained__bytes__total]
+            fn packet_buffer_drained__bytes__total(value: u64);
+            #[link_name =
+        s2n_quic__event__counter__packet_buffer_error]
+            fn packet_buffer_error(value: u64);
             #[link_name = s2n_quic__event__counter__key_update]
             fn key_update(value: u64);
-            #[link_name =
-        s2n_quic__event__counter__key_space_discarded]
+            #[link_name = s2n_quic__event__counter__key_space_discarded]
             fn key_space_discarded(value: u64);
-            #[link_name = s2n_quic__event__counter__connection_started]
-            fn connection_started(value: u64);
             #[link_name =
-        s2n_quic__event__counter__duplicate_packet]
+        s2n_quic__event__counter__connection_started]
+            fn connection_started(value: u64);
+            #[link_name = s2n_quic__event__counter__duplicate_packet]
             fn duplicate_packet(value: u64);
-            #[link_name = s2n_quic__event__counter__transport_parameters_received]
+            #[link_name =
+        s2n_quic__event__counter__transport_parameters_received]
             fn transport_parameters_received(value: u64);
             #[link_name =
         s2n_quic__event__counter__datagram_sent]
@@ -816,6 +862,10 @@ mod counter {
                     id::ACK_RANGE_RECEIVED__PACKET => Self(ack_range_received__packet),
                     id::ACK_RANGE_SENT__PACKET => Self(ack_range_sent__packet),
                     id::PACKET_DROPPED__REASON => Self(packet_dropped__reason),
+                    id::PACKET_BUFFERED__PACKET_TYPE => Self(packet_buffered__packet_type),
+                    id::PACKET_BUFFER_DRAINED__PACKET_TYPE => {
+                        Self(packet_buffer_drained__packet_type)
+                    }
                     id::KEY_UPDATE__KEY_TYPE => Self(key_update__key_type),
                     id::KEY_UPDATE__CIPHER_SUITE => Self(key_update__cipher_suite),
                     id::KEY_SPACE_DISCARDED__SPACE => Self(key_space_discarded__space),
@@ -901,6 +951,16 @@ mod counter {
                 #[link_name =
             s2n_quic__event__counter__nominal__packet_dropped__reason]
                 fn packet_dropped__reason(value: u64, variant: u64, variant_name: &info::Str);
+                #[link_name =
+            s2n_quic__event__counter__nominal__packet_buffered__packet_type]
+                fn packet_buffered__packet_type(value: u64, variant: u64, variant_name: &info::Str);
+                #[link_name =
+            s2n_quic__event__counter__nominal__packet_buffer_drained__packet_type]
+                fn packet_buffer_drained__packet_type(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
                 #[link_name =
             s2n_quic__event__counter__nominal__key_update__key_type]
                 fn key_update__key_type(value: u64, variant: u64, variant_name: &info::Str);
@@ -1003,6 +1063,9 @@ mod measure {
                     Self(recovery_metrics__congestion_window)
                 }
                 id::RECOVERY_METRICS__BYTES_IN_FLIGHT => Self(recovery_metrics__bytes_in_flight),
+                id::PACKET_BUFFERED__BYTES => Self(packet_buffered__bytes),
+                id::PACKET_BUFFERED__BUFFER_LEN => Self(packet_buffered__buffer_len),
+                id::PACKET_BUFFER_DRAINED__BYTES => Self(packet_buffer_drained__bytes),
                 id::DATAGRAM_SENT__BYTES => Self(datagram_sent__bytes),
                 id::DATAGRAM_SENT__GSO_OFFSET => Self(datagram_sent__gso_offset),
                 id::DATAGRAM_RECEIVED__BYTES => Self(datagram_received__bytes),
@@ -1084,6 +1147,14 @@ mod measure {
             #[link_name =
         s2n_quic__event__measure__recovery_metrics__bytes_in_flight]
             fn recovery_metrics__bytes_in_flight(value: u64);
+            #[link_name =
+        s2n_quic__event__measure__packet_buffered__bytes]
+            fn packet_buffered__bytes(value: u64);
+            #[link_name = s2n_quic__event__measure__packet_buffered__buffer_len]
+            fn packet_buffered__buffer_len(value: u64);
+            #[link_name =
+        s2n_quic__event__measure__packet_buffer_drained__bytes]
+            fn packet_buffer_drained__bytes(value: u64);
             #[link_name =
         s2n_quic__event__measure__datagram_sent__bytes]
             fn datagram_sent__bytes(value: u64);
@@ -1192,6 +1263,9 @@ mod timer {
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
             match info.id {
+                id::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION => {
+                    Self(packet_buffer_drained__oldest_buffered_duration)
+                }
                 id::KEY_SPACE_DISCARDED__INITIAL__LATENCY => {
                     Self(key_space_discarded__initial__latency)
                 }
@@ -1243,7 +1317,9 @@ mod timer {
     define!(
         extern "probe" {
             #[link_name =
-        s2n_quic__event__timer__key_space_discarded__initial__latency]
+        s2n_quic__event__timer__packet_buffer_drained__oldest_buffered_duration]
+            fn packet_buffer_drained__oldest_buffered_duration(value: core::time::Duration);
+            #[link_name = s2n_quic__event__timer__key_space_discarded__initial__latency]
             fn key_space_discarded__initial__latency(value: core::time::Duration);
             #[link_name
         = s2n_quic__event__timer__key_space_discarded__handshake__latency]

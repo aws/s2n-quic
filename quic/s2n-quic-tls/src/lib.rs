@@ -4,7 +4,9 @@
 use s2n_quic_core::application::ServerName;
 
 /// Ensure memory is correctly managed in tests
-#[cfg(test)]
+/// `checkers` doesn't work well on Windows. It's only used for these
+/// allocation-sanity checks, so we gate it to non-Windows targets.
+#[cfg(all(test, not(target_os = "windows")))]
 #[global_allocator]
 static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 

@@ -1961,6 +1961,8 @@ pub mod api {
         pub peer_address: SocketAddress<'a>,
         pub new_credential_id: &'a [u8],
         pub previous_credential_id: &'a [u8],
+        /// Time since insertion of the replaced entry
+        pub replaced_age: core::time::Duration,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for PathSecretMapEntryReplaced<'a> {
@@ -1969,6 +1971,7 @@ pub mod api {
             fmt.field("peer_address", &self.peer_address);
             fmt.field("new_credential_id", &"[HIDDEN]");
             fmt.field("previous_credential_id", &"[HIDDEN]");
+            fmt.field("replaced_age", &self.replaced_age);
             fmt.finish()
         }
     }
@@ -1983,6 +1986,8 @@ pub mod api {
         pub credential_id: &'a [u8],
         /// Time since insertion of this entry
         pub age: core::time::Duration,
+        pub time_since_last_accessed: core::time::Duration,
+        pub reason: EvictionReason,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for PathSecretMapIdEntryEvicted<'a> {
@@ -1990,7 +1995,9 @@ pub mod api {
             let mut fmt = fmt.debug_struct("PathSecretMapIdEntryEvicted");
             fmt.field("peer_address", &self.peer_address);
             fmt.field("credential_id", &"[HIDDEN]");
-            fmt.field("age", &self.age);
+            fmt.field("age", &"[HIDDEN]");
+            fmt.field("time_since_last_accessed", &self.time_since_last_accessed);
+            fmt.field("reason", &self.reason);
             fmt.finish()
         }
     }
@@ -2005,6 +2012,8 @@ pub mod api {
         pub credential_id: &'a [u8],
         /// Time since insertion of this entry
         pub age: core::time::Duration,
+        pub time_since_last_accessed: core::time::Duration,
+        pub reason: EvictionReason,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for PathSecretMapAddressEntryEvicted<'a> {
@@ -2013,6 +2022,8 @@ pub mod api {
             fmt.field("peer_address", &self.peer_address);
             fmt.field("credential_id", &"[HIDDEN]");
             fmt.field("age", &self.age);
+            fmt.field("time_since_last_accessed", &self.time_since_last_accessed);
+            fmt.field("reason", &self.reason);
             fmt.finish()
         }
     }
@@ -2063,6 +2074,10 @@ pub mod api {
     pub struct UnknownPathSecretPacketAccepted<'a> {
         pub peer_address: SocketAddress<'a>,
         pub credential_id: &'a [u8],
+        /// The age of the entry the peer indicated it doesn't know about.
+        pub age: core::time::Duration,
+        pub evicted: bool,
+        pub scheduled_handshake: bool,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for UnknownPathSecretPacketAccepted<'a> {
@@ -2070,6 +2085,9 @@ pub mod api {
             let mut fmt = fmt.debug_struct("UnknownPathSecretPacketAccepted");
             fmt.field("peer_address", &self.peer_address);
             fmt.field("credential_id", &"[HIDDEN]");
+            fmt.field("age", &"[HIDDEN]");
+            fmt.field("evicted", &self.evicted);
+            fmt.field("scheduled_handshake", &self.scheduled_handshake);
             fmt.finish()
         }
     }
@@ -2658,6 +2676,46 @@ pub mod api {
     }
     impl Event for PathSecretMapDatagramDecrypt {
         const NAME: &'static str = "path_secret_map:datagram_decrypt";
+    }
+    #[non_exhaustive]
+    #[derive(Debug, Copy, Clone)]
+    pub enum EvictionReason {
+        #[non_exhaustive]
+        /// Capacity of map exceeded.
+        Capacity {},
+        #[non_exhaustive]
+        /// UnknownPathSecret received, removing entry.
+        UnknownPathSecret {},
+        #[non_exhaustive]
+        /// A newer entry is replacing this one, so we're retiring these.
+        Retiring {},
+    }
+    impl aggregate::AsVariant for EvictionReason {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("CAPACITY\0"),
+                id: 0usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("UNKNOWN_PATH_SECRET\0"),
+                id: 1usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("RETIRING\0"),
+                id: 2usize,
+            }
+            .build(),
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Capacity { .. } => 0usize,
+                Self::UnknownPathSecret { .. } => 1usize,
+                Self::Retiring { .. } => 2usize,
+            }
+        }
     }
     impl IntoEvent<builder::AcceptorPacketDropReason> for s2n_codec::DecoderError {
         fn into_event(self) -> builder::AcceptorPacketDropReason {
@@ -3992,13 +4050,15 @@ pub mod tracing {
                 peer_address,
                 new_credential_id,
                 previous_credential_id,
+                replaced_age,
             } = event;
             tracing::event!(
                 target : "path_secret_map_entry_replaced", parent : parent,
                 tracing::Level::DEBUG, { peer_address =
                 tracing::field::debug(peer_address), new_credential_id =
                 tracing::field::debug(new_credential_id), previous_credential_id =
-                tracing::field::debug(previous_credential_id) }
+                tracing::field::debug(previous_credential_id), replaced_age =
+                tracing::field::debug(replaced_age) }
             );
         }
         #[inline]
@@ -4012,12 +4072,17 @@ pub mod tracing {
                 peer_address,
                 credential_id,
                 age,
+                time_since_last_accessed,
+                reason,
             } = event;
             tracing::event!(
                 target : "path_secret_map_id_entry_evicted", parent : parent,
                 tracing::Level::DEBUG, { peer_address =
                 tracing::field::debug(peer_address), credential_id =
-                tracing::field::debug(credential_id), age = tracing::field::debug(age) }
+                tracing::field::debug(credential_id), age = tracing::field::debug(age),
+                time_since_last_accessed =
+                tracing::field::debug(time_since_last_accessed), reason =
+                tracing::field::debug(reason) }
             );
         }
         #[inline]
@@ -4031,12 +4096,17 @@ pub mod tracing {
                 peer_address,
                 credential_id,
                 age,
+                time_since_last_accessed,
+                reason,
             } = event;
             tracing::event!(
                 target : "path_secret_map_address_entry_evicted", parent : parent,
                 tracing::Level::DEBUG, { peer_address =
                 tracing::field::debug(peer_address), credential_id =
-                tracing::field::debug(credential_id), age = tracing::field::debug(age) }
+                tracing::field::debug(credential_id), age = tracing::field::debug(age),
+                time_since_last_accessed =
+                tracing::field::debug(time_since_last_accessed), reason =
+                tracing::field::debug(reason) }
             );
         }
         #[inline]
@@ -4085,12 +4155,17 @@ pub mod tracing {
             let api::UnknownPathSecretPacketAccepted {
                 peer_address,
                 credential_id,
+                age,
+                evicted,
+                scheduled_handshake,
             } = event;
             tracing::event!(
                 target : "unknown_path_secret_packet_accepted", parent : parent,
                 tracing::Level::DEBUG, { peer_address =
                 tracing::field::debug(peer_address), credential_id =
-                tracing::field::debug(credential_id) }
+                tracing::field::debug(credential_id), age = tracing::field::debug(age),
+                evicted = tracing::field::debug(evicted), scheduled_handshake =
+                tracing::field::debug(scheduled_handshake) }
             );
         }
         #[inline]
@@ -6352,6 +6427,8 @@ pub mod builder {
         pub peer_address: SocketAddress<'a>,
         pub new_credential_id: &'a [u8],
         pub previous_credential_id: &'a [u8],
+        /// Time since insertion of the replaced entry
+        pub replaced_age: core::time::Duration,
     }
     impl<'a> IntoEvent<api::PathSecretMapEntryReplaced<'a>> for PathSecretMapEntryReplaced<'a> {
         #[inline]
@@ -6360,11 +6437,13 @@ pub mod builder {
                 peer_address,
                 new_credential_id,
                 previous_credential_id,
+                replaced_age,
             } = self;
             api::PathSecretMapEntryReplaced {
                 peer_address: peer_address.into_event(),
                 new_credential_id: new_credential_id.into_event(),
                 previous_credential_id: previous_credential_id.into_event(),
+                replaced_age: replaced_age.into_event(),
             }
         }
     }
@@ -6375,6 +6454,8 @@ pub mod builder {
         pub credential_id: &'a [u8],
         /// Time since insertion of this entry
         pub age: core::time::Duration,
+        pub time_since_last_accessed: core::time::Duration,
+        pub reason: EvictionReason,
     }
     impl<'a> IntoEvent<api::PathSecretMapIdEntryEvicted<'a>> for PathSecretMapIdEntryEvicted<'a> {
         #[inline]
@@ -6383,11 +6464,15 @@ pub mod builder {
                 peer_address,
                 credential_id,
                 age,
+                time_since_last_accessed,
+                reason,
             } = self;
             api::PathSecretMapIdEntryEvicted {
                 peer_address: peer_address.into_event(),
                 credential_id: credential_id.into_event(),
                 age: age.into_event(),
+                time_since_last_accessed: time_since_last_accessed.into_event(),
+                reason: reason.into_event(),
             }
         }
     }
@@ -6398,6 +6483,8 @@ pub mod builder {
         pub credential_id: &'a [u8],
         /// Time since insertion of this entry
         pub age: core::time::Duration,
+        pub time_since_last_accessed: core::time::Duration,
+        pub reason: EvictionReason,
     }
     impl<'a> IntoEvent<api::PathSecretMapAddressEntryEvicted<'a>>
         for PathSecretMapAddressEntryEvicted<'a>
@@ -6408,11 +6495,15 @@ pub mod builder {
                 peer_address,
                 credential_id,
                 age,
+                time_since_last_accessed,
+                reason,
             } = self;
             api::PathSecretMapAddressEntryEvicted {
                 peer_address: peer_address.into_event(),
                 credential_id: credential_id.into_event(),
                 age: age.into_event(),
+                time_since_last_accessed: time_since_last_accessed.into_event(),
+                reason: reason.into_event(),
             }
         }
     }
@@ -6461,6 +6552,10 @@ pub mod builder {
     pub struct UnknownPathSecretPacketAccepted<'a> {
         pub peer_address: SocketAddress<'a>,
         pub credential_id: &'a [u8],
+        /// The age of the entry the peer indicated it doesn't know about.
+        pub age: core::time::Duration,
+        pub evicted: bool,
+        pub scheduled_handshake: bool,
     }
     impl<'a> IntoEvent<api::UnknownPathSecretPacketAccepted<'a>>
         for UnknownPathSecretPacketAccepted<'a>
@@ -6470,10 +6565,16 @@ pub mod builder {
             let UnknownPathSecretPacketAccepted {
                 peer_address,
                 credential_id,
+                age,
+                evicted,
+                scheduled_handshake,
             } = self;
             api::UnknownPathSecretPacketAccepted {
                 peer_address: peer_address.into_event(),
                 credential_id: credential_id.into_event(),
+                age: age.into_event(),
+                evicted: evicted.into_event(),
+                scheduled_handshake: scheduled_handshake.into_event(),
             }
         }
     }
@@ -7041,6 +7142,26 @@ pub mod builder {
             let PathSecretMapDatagramDecrypt { packet_len } = self;
             api::PathSecretMapDatagramDecrypt {
                 packet_len: packet_len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub enum EvictionReason {
+        /// Capacity of map exceeded.
+        Capacity,
+        /// UnknownPathSecret received, removing entry.
+        UnknownPathSecret,
+        /// A newer entry is replacing this one, so we're retiring these.
+        Retiring,
+    }
+    impl IntoEvent<api::EvictionReason> for EvictionReason {
+        #[inline]
+        fn into_event(self) -> api::EvictionReason {
+            use api::EvictionReason::*;
+            match self {
+                Self::Capacity => Capacity {},
+                Self::UnknownPathSecret => UnknownPathSecret {},
+                Self::Retiring => Retiring {},
             }
         }
     }

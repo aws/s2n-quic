@@ -32,7 +32,7 @@ jobs:
     permissions:
       id-token: write  # Required for GITHUB_TOKEN usage
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: true
 
@@ -54,12 +54,9 @@ jobs:
   deny:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: true
-
-      - name: "Remove rust-toolchain"
-        run: rm rust-toolchain
 
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:

@@ -22,9 +22,6 @@ ignore = [
 multiple-versions = "deny"
 
 skip-tree = [
-    # This dependency needs to be updated or removed (see https://github.com/axiomhq/rust-cuckoofilter/pull/53)
-    { name = "cuckoofilter" },
-
     # all of these are going to be just test dependencies
     { name = "bach" },
     { name = "bolero" },

@@ -902,6 +902,17 @@ enum PacketDropReason<'a> {
         path: Path<'a>,
         packet_type: PacketType,
     },
+    /// The packet space for a received packet did not exist and there was not enough space in the
+    /// packet buffer to store it for later processing.
+    PacketBufferOutOfSpace {
+        path: Path<'a>,
+        packet_type: PacketType,
+    },
+    /// The connection has already closed
+    ConnectionClosed {
+        path: Path<'a>,
+        packet_type: PacketType,
+    },
 }
 
 #[deprecated(note = "use on_rx_ack_range_dropped event instead")]

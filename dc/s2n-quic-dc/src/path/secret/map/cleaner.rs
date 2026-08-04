@@ -45,6 +45,11 @@ impl Epoch {
     pub fn get(self) -> u64 {
         self.0
     }
+
+    pub(crate) fn duration_since(&self, base: Epoch) -> Duration {
+        let delta = self.0.saturating_sub(base.0);
+        CLEANER_CYCLE.saturating_mul(u32::try_from(delta).unwrap_or(u32::MAX))
+    }
 }
 
 impl Drop for Cleaner {
@@ -267,7 +272,8 @@ impl Cleaner {
             };
 
             if !retained {
-                let (id_removed, peer_removed) = state.evict(&entry);
+                let (id_removed, peer_removed) =
+                    state.evict(&entry, event::builder::EvictionReason::Retiring);
                 if id_removed {
                     id_entries_retired += 1;
                 }

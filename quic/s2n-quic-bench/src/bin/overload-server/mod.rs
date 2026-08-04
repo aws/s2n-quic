@@ -149,8 +149,8 @@ pub fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         let client = client::Provider::builder()
             .with_success_jitter(Duration::ZERO)
-            //.with_error_jitter(Duration::ZERO)
-            //.with_await_dedup_removal(true)
+            .with_error_jitter(Duration::ZERO)
+            .with_await_dedup_removal(true)
             .start(
                 "127.0.0.1:0".parse().unwrap(),
                 new_map(10),

@@ -66,6 +66,20 @@ struct PathSecretMapEntryReplaced<'a> {
 
     #[snapshot("[HIDDEN]")]
     previous_credential_id: &'a [u8],
+
+    /// Time since insertion of the replaced entry
+    #[measure("replaced_age", Duration)]
+    replaced_age: core::time::Duration,
+}
+
+#[derive(Debug, Copy, Clone)]
+enum EvictionReason {
+    /// Capacity of map exceeded.
+    Capacity,
+    /// UnknownPathSecret received, removing entry.
+    UnknownPathSecret,
+    /// A newer entry is replacing this one, so we're retiring these.
+    Retiring,
 }
 
 #[event("path_secret_map:id_entry_evicted")]
@@ -80,7 +94,14 @@ struct PathSecretMapIdEntryEvicted<'a> {
 
     /// Time since insertion of this entry
     #[measure("age", Duration)]
+    #[snapshot("[HIDDEN]")]
     age: core::time::Duration,
+
+    #[measure("time_since_last_accessed", Duration)]
+    time_since_last_accessed: core::time::Duration,
+
+    #[nominal_counter("reason")]
+    reason: EvictionReason,
 }
 
 #[event("path_secret_map:addr_entry_evicted")]
@@ -96,6 +117,12 @@ struct PathSecretMapAddressEntryEvicted<'a> {
     /// Time since insertion of this entry
     #[measure("age", Duration)]
     age: core::time::Duration,
+
+    #[measure("time_since_last_accessed", Duration)]
+    time_since_last_accessed: core::time::Duration,
+
+    #[nominal_counter("reason")]
+    reason: EvictionReason,
 }
 
 #[event("path_secret_map:unknown_path_secret_packet_sent")]
@@ -129,6 +156,17 @@ struct UnknownPathSecretPacketAccepted<'a> {
 
     #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
+
+    /// The age of the entry the peer indicated it doesn't know about.
+    #[measure("age", Duration)]
+    #[snapshot("[HIDDEN]")]
+    age: core::time::Duration,
+
+    #[bool_counter("evicted")]
+    evicted: bool,
+
+    #[bool_counter("scheduled_handshake")]
+    scheduled_handshake: bool,
 }
 
 #[event("path_secret_map:unknown_path_secret_packet_rejected")]
