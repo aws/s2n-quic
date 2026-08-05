@@ -6,27 +6,32 @@ use crate::{
     Result,
 };
 use anyhow::anyhow;
+use clap::{builder::TypedValueParser as _, Args};
 use std::{collections::HashMap, fs, io};
-use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Args)]
 pub struct Query {
-    #[structopt(long)]
+    #[clap(long)]
     header: Option<Option<bool>>,
 
-    #[structopt(long)]
+    #[clap(long)]
     clients: Option<Option<bool>>,
 
-    #[structopt(long)]
+    #[clap(long)]
     servers: Option<Option<bool>>,
 
-    #[structopt(long, short)]
+    #[clap(long, short)]
     filter: Vec<stats::Filter>,
 
-    #[structopt(long, short, possible_values = &*stats::QUERY_NAMES)]
+    #[clap(
+        long,
+        short,
+        value_parser = clap::builder::PossibleValuesParser::new(stats::QUERY_NAMES.iter().copied())
+            .map(|s| s.parse::<stats::Query>().unwrap()),
+    )]
     query: Vec<stats::Query>,
 
-    #[structopt(long)]
+    #[clap(long)]
     with_seed: bool,
 
     input: Option<String>,

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::CliRange;
+use clap::Args;
 use jiff::SignedDuration;
 use serde::Deserialize;
-use structopt::StructOpt;
 
 macro_rules! config {
     (struct Config { $(#[name = $name:literal] #[default = $default:literal] $field:ident: $ty:ty),* $(,)? }) => {
@@ -18,11 +18,11 @@ macro_rules! config {
         }
         use defaults::*;
 
-        #[derive(Clone, Debug, StructOpt, Deserialize)]
+        #[derive(Clone, Debug, Args, Deserialize)]
         #[serde(deny_unknown_fields)]
         pub struct Config {
             $(
-                #[structopt(long, default_value = $default)]
+                #[clap(long, default_value = $default)]
                 #[serde(default = $name)]
                 pub $field: $ty,
             )*

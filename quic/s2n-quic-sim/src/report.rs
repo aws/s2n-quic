@@ -5,35 +5,45 @@ use crate::{
     stats::{self, Connection, Filter, Parameters, Query, Stats, QUERY_NAMES},
     Result,
 };
+use clap::{builder::TypedValueParser as _, Args};
 use serde_json::json;
 use std::{
     collections::{BTreeSet, HashMap},
     fs, io,
     path::PathBuf,
 };
-use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Args)]
 pub struct Report {
-    #[structopt(long, short)]
+    #[clap(long, short)]
     filter: Vec<Filter>,
 
-    #[structopt(long, short, possible_values = &*QUERY_NAMES)]
+    #[clap(
+        long,
+        short,
+        value_parser = clap::builder::PossibleValuesParser::new(QUERY_NAMES.iter().copied())
+            .map(|s| s.parse::<Query>().unwrap()),
+    )]
     x: Query,
 
-    #[structopt(long, default_value = "100")]
+    #[clap(long, default_value = "100")]
     x_width: u32,
 
-    #[structopt(long, short, possible_values = &*QUERY_NAMES)]
+    #[clap(
+        long,
+        short,
+        value_parser = clap::builder::PossibleValuesParser::new(QUERY_NAMES.iter().copied())
+            .map(|s| s.parse::<Query>().unwrap()),
+    )]
     y: Query,
 
-    #[structopt(long, default_value = "100")]
+    #[clap(long, default_value = "100")]
     y_width: u32,
 
-    #[structopt(long)]
+    #[clap(long)]
     title: Option<String>,
 
-    #[structopt(long, default_value = "blues")]
+    #[clap(long, default_value = "blues")]
     palette: String,
 
     input: PathBuf,

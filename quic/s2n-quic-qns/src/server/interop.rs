@@ -8,6 +8,7 @@ use crate::{
     server::{h09, h3},
     tls, Result,
 };
+use clap::{builder::TypedValueParser as _, Args};
 use s2n_quic::{
     provider::{
         endpoint_limits,
@@ -19,36 +20,40 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use structopt::StructOpt;
 use tokio::spawn;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Args)]
 pub struct Interop {
-    #[structopt(long, default_value = "hq-interop")]
+    #[clap(long, default_value = "hq-interop")]
     application_protocols: Vec<String>,
 
-    #[structopt(long, default_value = ".")]
+    #[clap(long, default_value = ".")]
     www_dir: PathBuf,
 
-    #[structopt(long, env = "TESTCASE", possible_values = &Testcase::supported(is_supported_testcase))]
+    #[clap(
+        long,
+        env = "TESTCASE",
+        value_parser = clap::builder::PossibleValuesParser::new(Testcase::supported(is_supported_testcase))
+            .map(|s| s.parse::<Testcase>().unwrap()),
+    )]
     testcase: Option<Testcase>,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     limits: crate::limits::Limits,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     tls: tls::Server,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     io: crate::io::Server,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     runtime: crate::runtime::Runtime,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     congestion_controller: crate::congestion_control::CongestionControl,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     intercept: Intercept,
 }
 

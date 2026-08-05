@@ -2,62 +2,62 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{client, intercept::Intercept, perf, task, tls, Result};
+use clap::Args;
 use s2n_quic::{client::Connect, provider::event, Client, Connection};
-use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Args)]
 pub struct Perf {
-    #[structopt(short, long, default_value = "127.0.0.1")]
+    #[clap(short, long, default_value = "127.0.0.1")]
     ip: std::net::IpAddr,
 
-    #[structopt(short, long, default_value = "443")]
+    #[clap(short, long, default_value = "443")]
     port: u16,
 
-    #[structopt(short, long)]
+    #[clap(short, long)]
     server_name: Option<String>,
 
     //= https://tools.ietf.org/id/draft-banks-quic-performance-00#2.1
     //# The ALPN used by the QUIC performance protocol is "perf".
-    #[structopt(long, default_value = "perf")]
+    #[clap(long, default_value = "perf")]
     application_protocols: Vec<String>,
 
     /// The total number of connections to open from the client
-    #[structopt(long, default_value = "1")]
+    #[clap(long, default_value = "1")]
     connections: usize,
 
     /// Defines the number of concurrent connections to open at any given time
-    #[structopt(long, default_value = "10")]
+    #[clap(long, default_value = "10")]
     concurrency: u64,
 
-    #[structopt(long, default_value)]
+    #[clap(long, default_value_t)]
     send: u64,
 
-    #[structopt(long, default_value)]
+    #[clap(long, default_value_t)]
     receive: u64,
 
-    #[structopt(long, default_value = "1")]
+    #[clap(long, default_value = "1")]
     streams: u64,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     limits: crate::limits::Limits,
 
     /// Logs statistics for the endpoint
-    #[structopt(long)]
+    #[clap(long)]
     stats: bool,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     io: crate::io::Client,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     tls: tls::Client,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     runtime: crate::runtime::Runtime,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     congestion_controller: crate::congestion_control::CongestionControl,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     intercept: Intercept,
 }
 

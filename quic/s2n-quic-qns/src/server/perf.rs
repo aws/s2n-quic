@@ -2,45 +2,45 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{intercept::Intercept, perf, server, tls, Result};
+use clap::Args;
 use futures::future::try_join_all;
 use s2n_quic::{
     provider::event,
     stream::{BidirectionalStream, ReceiveStream, SendStream},
     Connection, Server,
 };
-use structopt::StructOpt;
 use tokio::spawn;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Args)]
 pub struct Perf {
     //= https://tools.ietf.org/id/draft-banks-quic-performance-00#2.1
     //# The ALPN used by the QUIC performance protocol is "perf".
-    #[structopt(long, default_value = "perf")]
+    #[clap(long, default_value = "perf")]
     application_protocols: Vec<String>,
 
-    #[structopt(long)]
+    #[clap(long)]
     connections: Option<usize>,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     limits: crate::limits::Limits,
 
     /// Logs statistics for the endpoint
-    #[structopt(long)]
+    #[clap(long)]
     stats: bool,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     tls: tls::Server,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     io: crate::io::Server,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     runtime: crate::runtime::Runtime,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     congestion_controller: crate::congestion_control::CongestionControl,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     intercept: Intercept,
 }
 

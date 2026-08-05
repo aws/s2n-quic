@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{stats, Result};
+use clap::Args;
 use indicatif::{ParallelProgressIterator, ProgressBar};
 use rayon::prelude::*;
 use s2n_quic::provider::io::testing::{test_seed, Model};
-use structopt::StructOpt;
 
 mod config;
 pub use config::Config;
@@ -16,15 +16,15 @@ mod events;
 mod range;
 use range::CliRange;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Args)]
 pub struct Run {
-    #[structopt(flatten)]
+    #[clap(flatten)]
     config: Config,
 
-    #[structopt(long)]
+    #[clap(long)]
     seed: Vec<u64>,
 
-    #[structopt(long)]
+    #[clap(long)]
     progress: bool,
 }
 
