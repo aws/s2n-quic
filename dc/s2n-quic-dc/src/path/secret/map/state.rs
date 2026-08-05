@@ -1359,6 +1359,15 @@ where
                 global_queue_depth: metrics.global_queue_depth(),
                 num_alive_tasks: metrics.num_alive_tasks(),
             });
+
+        for idx in 0..metrics.num_workers() {
+            self.subscriber().on_offload_runtime_worker_metrics(
+                event::builder::OffloadRuntimeWorkerMetrics {
+                    park_count: metrics.worker_park_count(idx),
+                    busy_duration: metrics.worker_total_busy_duration(idx),
+                },
+            );
+        }
     }
 }
 

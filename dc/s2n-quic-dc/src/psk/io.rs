@@ -245,11 +245,23 @@ pub(super) async fn server<
         }
     }
 
+    let map_clone2 = map.clone();
+    if let Some(handle) = &server.offload_handle {
+        let h = handle.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                let metrics = h.metrics();
+                map_clone2.on_offload_runtime_metrics(&metrics);
+            }
+        });
+    }
+
     while let Some(mut connection) = server.server.accept().await {
         let map_clone = map.clone();
-        if let Some(handle) = &server.offload_handle {
-            map_clone.on_offload_runtime_metrics(&handle.metrics());
-        }
+
         tokio::spawn(async move {
             // The accepted connection must remain open until the client has finished inserting
             // the entry into its map. The client indicates this by sending a ConnectionClose

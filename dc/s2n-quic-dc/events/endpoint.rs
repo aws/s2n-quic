@@ -30,3 +30,12 @@ struct OffloadRuntimeMetrics {
     #[measure("num_alive_tasks", Count)]
     num_alive_tasks: usize,
 }
+
+#[event("runtime:offload_worker_metrics")]
+#[subject(endpoint)]
+struct OffloadRuntimeWorkerMetrics {
+    #[measure("park_count", Count)]
+    park_count: u64,
+    #[measure("busy_duration", Duration)]
+    busy_duration: core::time::Duration,
+}
