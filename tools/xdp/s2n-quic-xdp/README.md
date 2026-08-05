@@ -10,18 +10,9 @@ program used to steer QUIC traffic into userspace.
 
 ## Status
 
-The crate intentionally exposes primitives rather than a single high-level
-"build me an AF_XDP provider" helper. As described in the original
-integration PR ([#1765](https://github.com/aws/s2n-quic/pull/1765)), an
-"easy mode" was deferred to gather real-world feedback before settling on a
-public API shape:
-
-> applications will need to use this code as a starting point. We may add
-> an "easy mode" in the future to simplify this integration but I think it's
-> best to unblock and get some feedback first.
-
-Until that lands, the canonical reference for wiring the primitives in this
-crate into a working `s2n_quic::provider::io::Provider` is
+This crate intentionally exposes primitives rather than a single high-level
+"build me an AF_XDP provider" helper. The canonical reference for wiring
+these primitives into a working `s2n_quic::provider::io::Provider` is
 [`quic/s2n-quic-qns/src/xdp.rs`](../../../quic/s2n-quic-qns/src/xdp.rs).
 Both server and client setup live there and can be adapted as a starting
 point.
@@ -91,8 +82,7 @@ sudo ip netns del xdpns
   `EINVAL`. Either create the veth with `numrxqueues 16 numtxqueues 16` (as
   above) or bring up additional queues with `ethtool -L <iface> rx N tx N`.
 
-- **`unstable-provider-io-xdp` is unstable.** The API surface, including
-  the high-level "easy mode" referenced above, may change.
+- **`unstable-provider-io-xdp` is unstable.** The API surface may change.
 
 ## Developing this crate
 
