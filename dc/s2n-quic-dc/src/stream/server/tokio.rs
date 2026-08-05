@@ -138,6 +138,7 @@ pub const DEFAULT_BACKLOG: u16 = libc::SOMAXCONN as _;
 
 pub struct Builder {
     backlog: Option<NonZeroU16>,
+    socket_backlog: Option<NonZeroU16>,
     workers: Option<usize>,
     acceptor_addr: SocketAddr,
     span: Option<tracing::Span>,
@@ -156,8 +157,13 @@ impl Default for Builder {
     fn default() -> Self {
         Self {
             backlog: None,
+            socket_backlog: None,
             workers: None,
             // FIXME: Don't default to a fixed port?
+            #[expect(
+                clippy::unwrap_used,
+                reason = "parsing a compile-time constant socket address that is known valid"
+            )]
             acceptor_addr: "[::]:4444".parse().unwrap(),
             span: None,
             enable_udp: true,
@@ -265,6 +271,11 @@ impl Builder {
         self
     }
 
+    pub fn with_socket_backlog(mut self, socket_backlog: NonZeroU16) -> Self {
+        self.socket_backlog = Some(socket_backlog);
+        self
+    }
+
     pub fn build<H: Handshake + Clone, S: event::Subscriber + Clone>(
         mut self,
         handshake: H,
@@ -278,6 +289,10 @@ impl Builder {
             ))
         );
 
+        #[expect(
+            clippy::unwrap_used,
+            reason = "converting the constant 1 to NonZeroUsize is infallible"
+        )]
         let concurrency: usize = self.workers.unwrap_or_else(|| {
             std::thread::available_parallelism()
                 .unwrap_or_else(|_| 1.try_into().unwrap())
@@ -314,7 +329,9 @@ impl Builder {
 
         if self.enable_udp && enable_udp_pool {
             // update the address with the selected port
-            self.acceptor_addr = env.pool_addr().unwrap();
+            self.acceptor_addr = env
+                .pool_addr()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "udp pool_addr failed"))?;
             // don't use the owned socket acceptor
             self.enable_udp = false;
         }
@@ -370,12 +387,19 @@ impl Builder {
             .div_ceil(concurrency.clamp(0, MAX_TCP_WORKERS))
             .max(1);
 
+        // Let applications set the socket backlog:
+        let socket_backlog = self
+            .socket_backlog
+            .map(NonZeroU16::get)
+            .unwrap_or(DEFAULT_BACKLOG) as usize;
+
         Start {
             enable_tcp: self.enable_tcp,
             enable_udp: self.enable_udp,
             accept_flavor: self.accept_flavor,
             linger: self.linger,
             backlog,
+            socket_backlog,
             concurrency,
             server: &mut server,
             stream_sender,
@@ -397,6 +421,7 @@ struct Start<'a, H: Handshake + Clone, S: event::Subscriber + Clone> {
     enable_udp: bool,
     accept_flavor: accept::Flavor,
     backlog: usize,
+    socket_backlog: usize,
     concurrency: usize,
     server: &'a mut Server<H, S>,
     stream_sender: accept::Sender<S>,
@@ -486,12 +511,14 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
     fn socket_opts(&self, local_addr: SocketAddr) -> socket::Options {
         let mut options = socket::Options::new(local_addr);
 
-        // Explicitly do **not** set the socket backlog to self.backlog. While we split the
+        // We do now allow applications to set the kernel backlog.  While we split the
         // configured backlog amongst our in-process queues as concurrency increases, it doesn't
         // make sense to shrink the kernel backlogs -- that just causes packet drops and generally
-        // bad behavior.
+        // bad behavior -- but we'll let them do it.
         //
         // This is especially true for TCP where we don't have workers matching concurrency.
+        options.backlog = self.socket_backlog;
+
         options.send_buffer = self.send_buffer;
         options.recv_buffer = self.recv_buffer;
         options.reuse_address = self.reuse_addr;

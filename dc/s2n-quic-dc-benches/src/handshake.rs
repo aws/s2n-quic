@@ -41,7 +41,8 @@ async fn make_server() -> (TestSetup, tokio_util::sync::DropGuard) {
         tls.clone(),
         subscriber.clone(),
         server_builder,
-    );
+    )
+    .unwrap();
 
     let server_addr = server_addr_rx.await.unwrap().unwrap();
     let server_name: s2n_quic::server::Name = "localhost".into();

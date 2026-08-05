@@ -158,16 +158,6 @@ pub struct Environment<Sub> {
     recv_pool: Option<Arc<pool::Pool>>,
 }
 
-impl<Sub> Default for Environment<Sub>
-where
-    Sub: event::Subscriber + Clone + Default,
-{
-    #[inline]
-    fn default() -> Self {
-        Self::builder().build().unwrap()
-    }
-}
-
 impl<Sub> Environment<Sub>
 where
     Sub: event::Subscriber + Clone + Default,

@@ -22,6 +22,7 @@ impl Signer {
     /// producing invalid `UnknownPathSecret` packets.
     pub fn random() -> Self {
         let mut secret = [0u8; 32];
+        #[expect(clippy::unwrap_used, reason = "no recovery from broken entropy pool")]
         aws_lc_rs::rand::fill(&mut secret).unwrap();
         Self::new(&secret)
     }

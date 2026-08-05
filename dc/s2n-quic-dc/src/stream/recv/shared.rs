@@ -209,6 +209,10 @@ impl State {
         Pub: event::ConnectionPublisher,
     {
         let waker = {
+            #[expect(
+                clippy::unwrap_used,
+                reason = "the lock is only poisoned if another thread already panicked while holding it"
+            )]
             let mut inner = self.inner.lock().unwrap();
             inner.receiver.on_error(error, source, publisher);
             inner.application_waker.take()

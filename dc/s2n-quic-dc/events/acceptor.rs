@@ -187,6 +187,27 @@ struct AcceptorTcpTlsStreamRejected<'a> {
     error: &'a std::io::Error,
 }
 
+/// Emitted when a synthetic TLS stream is rejected.
+///
+/// These are TLS streams detected as coming from a synthetic source (e.g., scanner for endpoint
+/// compliance). Typically failures here are expected at a much higher rate.
+#[event("acceptor:tcp:tls_synthetic_stream_rejected")]
+#[subject(endpoint)]
+struct AcceptorTcpSyntheticTlsStreamRejected<'a> {
+    /// The address of the packet's sender
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    remote_address: SocketAddress<'a>,
+
+    /// The amount of time the TCP stream spent on handshaking before being rejected
+    /// since being accepted from the kernel
+    #[timer("sojourn_time")]
+    sojourn_time: core::time::Duration,
+
+    /// The error encountered
+    #[builder(&'a std::io::Error)]
+    error: &'a std::io::Error,
+}
+
 /// Emitted when the TCP acceptor received an invalid initial packet
 #[event("acceptor:tcp:packet_dropped")]
 #[subject(endpoint)]

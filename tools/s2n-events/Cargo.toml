@@ -4,7 +4,7 @@ name = "s2n-events"
 version = "0.1.0"
 authors = ["AWS s2n"]
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.92"
 license = "Apache-2.0"
 # This is a commit-time crate and should not be published
 publish = false
@@ -15,6 +15,7 @@ testing = []
 [dependencies]
 glob = "0.3"
 heck = "0.5"
+prettyplease = "0.2"
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full", "extra-traits"] }

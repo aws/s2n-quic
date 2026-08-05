@@ -137,6 +137,10 @@ where
 
         let pending_senders: Arc<[_]> = pending_senders.into();
 
+        #[expect(
+            clippy::unwrap_used,
+            reason = "the lock is only poisoned if another thread already panicked while holding it"
+        )]
         let mut senders = self.senders.pages.write().unwrap();
 
         // check if another pool instance already updated the senders list
@@ -190,6 +194,10 @@ impl<T: 'static, Key: 'static> Region<T, Key> {
         // first create the descriptor layout
         let descriptor = Layout::new::<DescriptorInner<T, Key>>().pad_to_align();
 
+        #[expect(
+            clippy::unwrap_used,
+            reason = "page_size is the PAGE_SIZE const generic (256, or 8 under debug_assertions) and the descriptor size is a compile-time constant, so the multiplication and layout construction cannot overflow"
+        )]
         let descriptors = {
             // TODO use `descriptor.repeat(page_size)` once stable
             // https://doc.rust-lang.org/stable/core/alloc/struct.Layout.html#method.repeat

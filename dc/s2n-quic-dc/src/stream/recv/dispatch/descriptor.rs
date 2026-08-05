@@ -107,6 +107,10 @@ impl<T: 'static, Key: 'static> Descriptor<T, Key> {
         let inner = self.inner();
 
         // open the queues back up for receiving
+        #[expect(
+            clippy::unwrap_used,
+            reason = "the queues only fail to open if the lock was poisoned by another thread panicking while holding it"
+        )]
         inner.stream.open_receivers(&inner.control).unwrap();
 
         // set the key on the descriptor

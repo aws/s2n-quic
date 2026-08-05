@@ -848,6 +848,10 @@ impl State {
         let max_data = frame::MaxData {
             maximum_data: self.max_data,
         };
+        #[expect(
+            clippy::unwrap_used,
+            reason = "a MaxData frame's encoding size is a small constant well below VarInt::MAX"
+        )]
         let max_data_encoding_size: VarInt = max_data.encoding_size().try_into().unwrap();
 
         // compute the recovery ACKs first so we have enough space for those - if we run out, the sender will
@@ -1000,6 +1004,10 @@ impl State {
             .connection_close()
             .unwrap_or_else(|| s2n_quic_core::transport::Error::NO_ERROR.into());
 
+        #[expect(
+            clippy::unwrap_used,
+            reason = "a ConnectionClose frame's encoding size is bounded well below VarInt::MAX"
+        )]
         let encoding_size = frame.encoding_size().try_into().unwrap();
 
         let result = control::encoder::encode(

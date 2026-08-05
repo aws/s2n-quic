@@ -93,6 +93,10 @@ where
 
     if cfg!(debug_assertions) {
         let decoder = s2n_codec::DecoderBufferMut::new(slice);
+        #[expect(
+            clippy::unwrap_used,
+            reason = "debug-assertions-only round-trip check that the packet we just encoded decodes successfully"
+        )]
         let (packet, remaining) =
             super::decoder::Packet::decode(decoder, (), crypto.tag_len()).unwrap();
         assert!(remaining.is_empty());
@@ -164,6 +168,10 @@ where
 
     if cfg!(debug_assertions) {
         let decoder = s2n_codec::DecoderBufferMut::new(slice);
+        #[expect(
+            clippy::unwrap_used,
+            reason = "debug-assertions-only round-trip check that the packet we just encoded decodes successfully"
+        )]
         let (packet, remaining) =
             super::decoder::Packet::decode(decoder, (), crypto.tag_len()).unwrap();
         assert!(remaining.is_empty());
@@ -242,6 +250,10 @@ where
         }
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "payload_len is bounded by the encoder's remaining capacity (must be <= isize::MAX bytes)"
+    )]
     let payload_len = {
         // TODO compute payload len for the given encoder
         let buffered_len = payload.buffered_len();

@@ -69,6 +69,10 @@ impl Crypto {
         update: impl FnOnce(&mut Sealer),
     ) -> R {
         let lock = &self.app_sealer;
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
         let mut guard = lock.lock().unwrap();
         let result = seal(&guard);
 
@@ -88,6 +92,10 @@ impl Crypto {
         subscriber: &shared::Subscriber<Sub>,
     ) -> R {
         let lock = &self.app_opener;
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
         let mut guard = lock.lock().unwrap();
         let result = open(&guard);
 

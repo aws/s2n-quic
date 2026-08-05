@@ -77,6 +77,11 @@ pub trait Store: 'static + Send + Sync {
         queue_id: Option<VarInt>,
     ) -> crate::crypto::open::Result;
 
+    /// Serializes the current map to disk using the configured serializer.
+    ///
+    /// Does nothing (returning `Ok(())`) if no serializer was configured.
+    fn serialize_to_disk(&self) -> std::io::Result<()>;
+
     #[cfg(any(test, feature = "testing"))]
     fn test_insert(&self, entry: Arc<Entry>) {
         self.on_new_path_secrets(entry.clone());

@@ -135,6 +135,10 @@ where
     }
 
     #[inline]
+    #[allow(
+        clippy::unwrap_in_result,
+        reason = "the recv pool is always configured before setup is called for a Pooled peer"
+    )]
     fn setup(
         self,
         env: &Environment<Sub>,

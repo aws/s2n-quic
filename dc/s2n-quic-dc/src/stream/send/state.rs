@@ -94,6 +94,10 @@ impl ErrorState {
 
         match self.error.kind {
             Kind::ApplicationError { error } => Some(frame::ConnectionClose {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "application::Error, which wraps a VarInt, so *error is within VarInt range"
+                )]
                 error_code: VarInt::new(*error).unwrap(),
                 frame_type: None,
                 reason: None,
@@ -159,6 +163,10 @@ impl State {
 
         // initialize the pending data left to send
         let mut unacked_ranges = IntervalSet::new();
+        #[expect(
+            clippy::unwrap_used,
+            reason = "inserting a single valid range into a freshly-created empty IntervalSet cannot fail"
+        )]
         unacked_ranges.insert(VarInt::ZERO..=VarInt::MAX).unwrap();
 
         let cca = congestion::Controller::new(max_datagram_size);
@@ -1030,6 +1038,10 @@ impl State {
     }
 
     #[inline]
+    #[expect(
+        clippy::unwrap_in_result,
+        reason = "the popped retransmission was just observed via peek() and the recovery packet number cannot reach 2^62 in practice"
+    )]
     fn try_transmit_retransmissions<C, Clk, Pub>(
         &mut self,
         control_key: &C,
@@ -1144,6 +1156,11 @@ impl State {
     }
 
     #[inline]
+    #[expect(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "the recovery packet number cannot reach 2^62 in practice and a ConnectionClose frame's encoding size is bounded well below VarInt::MAX"
+    )]
     pub fn try_transmit_probe<C, Clk>(
         &mut self,
         control_key: &C,
@@ -1345,6 +1362,10 @@ impl State {
 
     #[cfg(debug_assertions)]
     #[inline]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "debug-only invariant check: the ranges being removed were just derived from the unacked set, so removal cannot fail"
+    )]
     fn invariants(&self) {
         if !self.unacked_ranges.is_empty() {
             let mut unacked_ranges = self.unacked_ranges.clone();

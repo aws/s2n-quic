@@ -40,6 +40,10 @@ impl Set {
         // reserve space in the locally ready set
         self.ready.resize_for_id(id);
         let state = self.state.clone();
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
         state.ready.lock().unwrap().resize_for_id(id);
         Waker::from(Arc::new(Slot { id, state }))
     }
@@ -47,6 +51,10 @@ impl Set {
     /// Returns all of the IDs that are woken
     #[inline]
     pub fn drain(&mut self) -> impl Iterator<Item = usize> + '_ {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
         let mut state = self.state.ready.lock().unwrap();
         core::mem::swap(&mut self.ready, &mut state);
         self.ready.drain()
@@ -67,6 +75,10 @@ struct Slot {
 impl Wake for Slot {
     #[inline]
     fn wake(self: Arc<Self>) {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
         let mut ready = self.state.ready.lock().unwrap();
         unsafe {
             // SAFETY: the bitset was grown at the time of the call to [`Set::waker`]

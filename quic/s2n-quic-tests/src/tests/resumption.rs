@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /// Tests resumption handshake
-#[cfg(unix)]
+#[cfg(s2n_tls_provider)]
 #[test]
 fn resumption_handshake() {
     use super::*;

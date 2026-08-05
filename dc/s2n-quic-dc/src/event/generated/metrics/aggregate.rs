@@ -46,6 +46,8 @@ mod id {
         ACCEPTOR_TCP_TLS_STREAM_ENQUEUED__SOJOURN_TIME,
         ACCEPTOR_TCP_TLS_STREAM_REJECTED,
         ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME,
+        ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED,
+        ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME,
         ACCEPTOR_TCP_PACKET_DROPPED,
         ACCEPTOR_TCP_PACKET_DROPPED__REASON,
         ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME,
@@ -259,18 +261,26 @@ mod id {
         PATH_SECRET_MAP_ENTRY_READY__PEER_ADDRESS__PROTOCOL,
         PATH_SECRET_MAP_ENTRY_REPLACED,
         PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL,
+        PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE,
         PATH_SECRET_MAP_ID_ENTRY_EVICTED,
         PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL,
         PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE,
+        PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED,
+        PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON,
         PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED,
         PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL,
         PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE,
+        PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED,
+        PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON,
         UNKNOWN_PATH_SECRET_PACKET_SENT,
         UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL,
         UNKNOWN_PATH_SECRET_PACKET_RECEIVED,
         UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL,
         UNKNOWN_PATH_SECRET_PACKET_ACCEPTED,
         UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL,
+        UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE,
+        UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED,
+        UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
         UNKNOWN_PATH_SECRET_PACKET_REJECTED,
         UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL,
         UNKNOWN_PATH_SECRET_PACKET_DROPPED,
@@ -324,10 +334,17 @@ mod id {
         PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__RETIRED,
         PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION,
         PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION,
         PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION,
+        PATH_SECRET_MAP_SERIALIZED,
+        PATH_SECRET_MAP_SERIALIZED__ENTRIES,
+        PATH_SECRET_MAP_SERIALIZED__FILE_SIZE,
+        PATH_SECRET_MAP_SERIALIZED__DURATION,
+        PATH_SECRET_MAP_SERIALIZED__ERROR,
         PATH_SECRET_MAP_ID_WRITE_LOCK,
         PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE,
         PATH_SECRET_MAP_ID_WRITE_LOCK__DURATION,
@@ -392,6 +409,10 @@ mod id {
         InfoId::ACCEPTOR_TCP_TLS_STREAM_REJECTED as usize;
     pub const ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME: usize =
         InfoId::ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME as usize;
+    pub const ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED: usize =
+        InfoId::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED as usize;
+    pub const ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME: usize =
+        InfoId::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME as usize;
     pub const ACCEPTOR_TCP_PACKET_DROPPED: usize = InfoId::ACCEPTOR_TCP_PACKET_DROPPED as usize;
     pub const ACCEPTOR_TCP_PACKET_DROPPED__REASON: usize =
         InfoId::ACCEPTOR_TCP_PACKET_DROPPED__REASON as usize;
@@ -740,18 +761,28 @@ mod id {
         InfoId::PATH_SECRET_MAP_ENTRY_REPLACED as usize;
     pub const PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL as usize;
+    pub const PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE: usize =
+        InfoId::PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE as usize;
     pub const PATH_SECRET_MAP_ID_ENTRY_EVICTED: usize =
         InfoId::PATH_SECRET_MAP_ID_ENTRY_EVICTED as usize;
     pub const PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL as usize;
     pub const PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE: usize =
         InfoId::PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE as usize;
+    pub const PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED: usize =
+        InfoId::PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED as usize;
+    pub const PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON: usize =
+        InfoId::PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON as usize;
     pub const PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED: usize =
         InfoId::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED as usize;
     pub const PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL as usize;
     pub const PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE: usize =
         InfoId::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE as usize;
+    pub const PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED: usize =
+        InfoId::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED as usize;
+    pub const PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON: usize =
+        InfoId::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON as usize;
     pub const UNKNOWN_PATH_SECRET_PACKET_SENT: usize =
         InfoId::UNKNOWN_PATH_SECRET_PACKET_SENT as usize;
     pub const UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL: usize =
@@ -764,6 +795,12 @@ mod id {
         InfoId::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED as usize;
     pub const UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL as usize;
+    pub const UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE: usize =
+        InfoId::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE as usize;
+    pub const UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED: usize =
+        InfoId::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED as usize;
+    pub const UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE: usize =
+        InfoId::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE as usize;
     pub const UNKNOWN_PATH_SECRET_PACKET_REJECTED: usize =
         InfoId::UNKNOWN_PATH_SECRET_PACKET_REJECTED as usize;
     pub const UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL: usize =
@@ -859,6 +896,11 @@ mod id {
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD: usize =
+        InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION: usize =
+        InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION
+            as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED: usize =
@@ -867,6 +909,15 @@ mod id {
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION as usize;
+    pub const PATH_SECRET_MAP_SERIALIZED: usize = InfoId::PATH_SECRET_MAP_SERIALIZED as usize;
+    pub const PATH_SECRET_MAP_SERIALIZED__ENTRIES: usize =
+        InfoId::PATH_SECRET_MAP_SERIALIZED__ENTRIES as usize;
+    pub const PATH_SECRET_MAP_SERIALIZED__FILE_SIZE: usize =
+        InfoId::PATH_SECRET_MAP_SERIALIZED__FILE_SIZE as usize;
+    pub const PATH_SECRET_MAP_SERIALIZED__DURATION: usize =
+        InfoId::PATH_SECRET_MAP_SERIALIZED__DURATION as usize;
+    pub const PATH_SECRET_MAP_SERIALIZED__ERROR: usize =
+        InfoId::PATH_SECRET_MAP_SERIALIZED__ERROR as usize;
     pub const PATH_SECRET_MAP_ID_WRITE_LOCK: usize = InfoId::PATH_SECRET_MAP_ID_WRITE_LOCK as usize;
     pub const PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE: usize =
         InfoId::PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE as usize;
@@ -903,6 +954,7 @@ mod id {
         COUNTERS_ACCEPTOR_TCP_TLS_STARTED,
         COUNTERS_ACCEPTOR_TCP_TLS_STREAM_ENQUEUED,
         COUNTERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED,
+        COUNTERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED,
         COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED,
         COUNTERS_ACCEPTOR_TCP_STREAM_ENQUEUED,
         COUNTERS_ACCEPTOR_TCP_IO_ERROR,
@@ -998,6 +1050,7 @@ mod id {
         COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED,
         COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT,
         COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED,
+        COUNTERS_PATH_SECRET_MAP_SERIALIZED,
         COUNTERS_PATH_SECRET_MAP_ID_WRITE_LOCK,
         COUNTERS_PATH_SECRET_MAP_ADDRESS_WRITE_LOCK,
         COUNTERS_PATH_SECRET_MAP_DATAGRAM_ENCRYPT,
@@ -1025,6 +1078,8 @@ mod id {
         Counters::COUNTERS_ACCEPTOR_TCP_TLS_STREAM_ENQUEUED as usize;
     pub const COUNTERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED: usize =
         Counters::COUNTERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED as usize;
+    pub const COUNTERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED: usize =
+        Counters::COUNTERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED as usize;
     pub const COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED: usize =
         Counters::COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED as usize;
     pub const COUNTERS_ACCEPTOR_TCP_STREAM_ENQUEUED: usize =
@@ -1205,6 +1260,8 @@ mod id {
         Counters::COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT as usize;
     pub const COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED: usize =
         Counters::COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED as usize;
+    pub const COUNTERS_PATH_SECRET_MAP_SERIALIZED: usize =
+        Counters::COUNTERS_PATH_SECRET_MAP_SERIALIZED as usize;
     pub const COUNTERS_PATH_SECRET_MAP_ID_WRITE_LOCK: usize =
         Counters::COUNTERS_PATH_SECRET_MAP_ID_WRITE_LOCK as usize;
     pub const COUNTERS_PATH_SECRET_MAP_ADDRESS_WRITE_LOCK: usize =
@@ -1240,8 +1297,11 @@ mod id {
         BOOL_COUNTERS_STREAM_CONTROL_PACKET_RECEIVED__AUTHENTICATED,
         BOOL_COUNTERS_ENDPOINT_INITIALIZED__TCP,
         BOOL_COUNTERS_ENDPOINT_INITIALIZED__UDP,
+        BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED,
+        BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
         BOOL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT,
         BOOL_COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT,
+        BOOL_COUNTERS_PATH_SECRET_MAP_SERIALIZED__ERROR,
     }
     pub const BOOL_COUNTERS_ACCEPTOR_TCP_PACKET_RECEIVED__IS_FIN: usize =
         BoolCounters::BOOL_COUNTERS_ACCEPTOR_TCP_PACKET_RECEIVED__IS_FIN as usize;
@@ -1283,10 +1343,17 @@ mod id {
         BoolCounters::BOOL_COUNTERS_ENDPOINT_INITIALIZED__TCP as usize;
     pub const BOOL_COUNTERS_ENDPOINT_INITIALIZED__UDP: usize =
         BoolCounters::BOOL_COUNTERS_ENDPOINT_INITIALIZED__UDP as usize;
+    pub const BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED: usize =
+        BoolCounters::BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED as usize;
+    pub const BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE: usize =
+        BoolCounters::BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE
+            as usize;
     pub const BOOL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT: usize =
         BoolCounters::BOOL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT as usize;
     pub const BOOL_COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT: usize =
         BoolCounters::BOOL_COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT as usize;
+    pub const BOOL_COUNTERS_PATH_SECRET_MAP_SERIALIZED__ERROR: usize =
+        BoolCounters::BOOL_COUNTERS_PATH_SECRET_MAP_SERIALIZED__ERROR as usize;
     #[allow(non_camel_case_types)]
     #[allow(clippy::upper_case_acronyms)]
     enum NominalCounters {
@@ -1307,7 +1374,9 @@ mod id {
         NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_READY__PEER_ADDRESS__PROTOCOL,
         NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL,
         NOMINAL_COUNTERS_PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL,
+        NOMINAL_COUNTERS_PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON,
         NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL,
+        NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON,
         NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL,
         NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL,
         NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL,
@@ -1350,7 +1419,8 @@ mod id {
         NominalCounters::NOMINAL_COUNTERS_ENDPOINT_INITIALIZED__HANDSHAKE__PROTOCOL as usize;
     pub const NOMINAL_COUNTERS_DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL: usize =
         NominalCounters::NOMINAL_COUNTERS_DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL as usize;
-    pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL : usize = NominalCounters :: NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL as usize ;
+    pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL: usize = NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL
+        as usize;
     pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL: usize =
         NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL
             as usize;
@@ -1363,13 +1433,21 @@ mod id {
     pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL: usize =
         NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL
             as usize;
-    pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL : usize = NominalCounters :: NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL as usize ;
+    pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON: usize =
+        NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON as usize;
+    pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL: usize = NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL
+        as usize;
+    pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON: usize =
+        NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON as usize;
     pub const NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL: usize =
         NominalCounters::NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL
             as usize;
-    pub const NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL : usize = NominalCounters :: NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL as usize ;
-    pub const NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL : usize = NominalCounters :: NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL as usize ;
-    pub const NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL : usize = NominalCounters :: NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL as usize ;
+    pub const NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL: usize = NominalCounters::NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL
+        as usize;
+    pub const NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL: usize = NominalCounters::NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL
+        as usize;
+    pub const NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL: usize = NominalCounters::NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL
+        as usize;
     pub const NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL: usize =
         NominalCounters::NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL
             as usize;
@@ -1401,8 +1479,10 @@ mod id {
             as usize;
     pub const NOMINAL_COUNTERS_STALE_KEY_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL: usize =
         NominalCounters::NOMINAL_COUNTERS_STALE_KEY_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL as usize;
-    pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__PEER_ADDRESS__PROTOCOL : usize = NominalCounters :: NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__PEER_ADDRESS__PROTOCOL as usize ;
-    pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__PEER_ADDRESS__PROTOCOL : usize = NominalCounters :: NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__PEER_ADDRESS__PROTOCOL as usize ;
+    pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__PEER_ADDRESS__PROTOCOL: usize = NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__PEER_ADDRESS__PROTOCOL
+        as usize;
+    pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__PEER_ADDRESS__PROTOCOL: usize = NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__PEER_ADDRESS__PROTOCOL
+        as usize;
     #[allow(non_camel_case_types)]
     #[allow(clippy::upper_case_acronyms)]
     enum Measures {
@@ -1505,8 +1585,12 @@ mod id {
         MEASURES_PATH_SECRET_MAP_UNINITIALIZED__CAPACITY,
         MEASURES_PATH_SECRET_MAP_UNINITIALIZED__ENTRIES,
         MEASURES_PATH_SECRET_MAP_UNINITIALIZED__LIFETIME,
+        MEASURES_PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE,
         MEASURES_PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE,
+        MEASURES_PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED,
         MEASURES_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE,
+        MEASURES_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED,
+        MEASURES_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE,
         MEASURES_KEY_ACCEPTED__GAP,
         MEASURES_KEY_ACCEPTED__FORWARD_SHIFT,
         MEASURES_REPLAY_POTENTIALLY_DETECTED__GAP,
@@ -1524,10 +1608,15 @@ mod id {
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__RETIRED,
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION,
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL,
+        MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD,
+        MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION,
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS,
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED,
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION,
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION,
+        MEASURES_PATH_SECRET_MAP_SERIALIZED__ENTRIES,
+        MEASURES_PATH_SECRET_MAP_SERIALIZED__FILE_SIZE,
+        MEASURES_PATH_SECRET_MAP_SERIALIZED__DURATION,
         MEASURES_PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE,
         MEASURES_PATH_SECRET_MAP_ID_WRITE_LOCK__DURATION,
         MEASURES_PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__ACQUIRE,
@@ -1733,10 +1822,18 @@ mod id {
         Measures::MEASURES_PATH_SECRET_MAP_UNINITIALIZED__ENTRIES as usize;
     pub const MEASURES_PATH_SECRET_MAP_UNINITIALIZED__LIFETIME: usize =
         Measures::MEASURES_PATH_SECRET_MAP_UNINITIALIZED__LIFETIME as usize;
+    pub const MEASURES_PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE: usize =
+        Measures::MEASURES_PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE as usize;
     pub const MEASURES_PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE: usize =
         Measures::MEASURES_PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE as usize;
+    pub const MEASURES_PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED: usize =
+        Measures::MEASURES_PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED as usize;
     pub const MEASURES_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE: usize =
         Measures::MEASURES_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE as usize;
+    pub const MEASURES_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED: usize =
+        Measures::MEASURES_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED as usize;
+    pub const MEASURES_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE: usize =
+        Measures::MEASURES_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE as usize;
     pub const MEASURES_KEY_ACCEPTED__GAP: usize = Measures::MEASURES_KEY_ACCEPTED__GAP as usize;
     pub const MEASURES_KEY_ACCEPTED__FORWARD_SHIFT: usize =
         Measures::MEASURES_KEY_ACCEPTED__FORWARD_SHIFT as usize;
@@ -1776,6 +1873,10 @@ mod id {
         usize =
         Measures::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL
             as usize;
+    pub const MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD: usize =
+        Measures::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD as usize;
+    pub const MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION: usize = Measures::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION
+        as usize;
     pub const MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS: usize =
         Measures::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS as usize;
     pub const MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED: usize =
@@ -1784,6 +1885,12 @@ mod id {
         Measures::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION as usize;
     pub const MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION: usize =
         Measures::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION as usize;
+    pub const MEASURES_PATH_SECRET_MAP_SERIALIZED__ENTRIES: usize =
+        Measures::MEASURES_PATH_SECRET_MAP_SERIALIZED__ENTRIES as usize;
+    pub const MEASURES_PATH_SECRET_MAP_SERIALIZED__FILE_SIZE: usize =
+        Measures::MEASURES_PATH_SECRET_MAP_SERIALIZED__FILE_SIZE as usize;
+    pub const MEASURES_PATH_SECRET_MAP_SERIALIZED__DURATION: usize =
+        Measures::MEASURES_PATH_SECRET_MAP_SERIALIZED__DURATION as usize;
     pub const MEASURES_PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE: usize =
         Measures::MEASURES_PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE as usize;
     pub const MEASURES_PATH_SECRET_MAP_ID_WRITE_LOCK__DURATION: usize =
@@ -1805,6 +1912,7 @@ mod id {
         TIMERS_ACCEPTOR_TCP_TLS_STARTED__SOJOURN_TIME,
         TIMERS_ACCEPTOR_TCP_TLS_STREAM_ENQUEUED__SOJOURN_TIME,
         TIMERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME,
+        TIMERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME,
         TIMERS_ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME,
         TIMERS_ACCEPTOR_TCP_STREAM_ENQUEUED__SOJOURN_TIME,
         TIMERS_ACCEPTOR_TCP_SOCKET_SENT__SOJOURN_TIME,
@@ -1839,6 +1947,8 @@ mod id {
         Timers::TIMERS_ACCEPTOR_TCP_TLS_STREAM_ENQUEUED__SOJOURN_TIME as usize;
     pub const TIMERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME: usize =
         Timers::TIMERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME as usize;
+    pub const TIMERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME: usize =
+        Timers::TIMERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME as usize;
     pub const TIMERS_ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME: usize =
         Timers::TIMERS_ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME as usize;
     pub const TIMERS_ACCEPTOR_TCP_STREAM_ENQUEUED__SOJOURN_TIME: usize =
@@ -1882,7 +1992,7 @@ mod id {
     pub const TIMERS_STREAM_CONNECT_ERROR__LATENCY: usize =
         Timers::TIMERS_STREAM_CONNECT_ERROR__LATENCY as usize;
 }
-static INFO: &[Info; 323usize] = &[
+static INFO: &[Info; 340usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_STARTED,
         name: Str::new("acceptor_tcp_started\0"),
@@ -2054,6 +2164,18 @@ static INFO: &[Info; 323usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME,
         name: Str::new("acceptor_tcp_tls_stream_rejected.sojourn_time\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED,
+        name: Str::new("acceptor_tcp_synthetic_tls_stream_rejected\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME,
+        name: Str::new("acceptor_tcp_synthetic_tls_stream_rejected.sojourn_time\0"),
         units: Units::Duration,
     }
     .build(),
@@ -3336,6 +3458,12 @@ static INFO: &[Info; 323usize] = &[
     }
     .build(),
     info::Builder {
+        id: id::PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE,
+        name: Str::new("path_secret_map_entry_replaced.replaced_age\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
         id: id::PATH_SECRET_MAP_ID_ENTRY_EVICTED,
         name: Str::new("path_secret_map_id_entry_evicted\0"),
         units: Units::None,
@@ -3354,6 +3482,18 @@ static INFO: &[Info; 323usize] = &[
     }
     .build(),
     info::Builder {
+        id: id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED,
+        name: Str::new("path_secret_map_id_entry_evicted.time_since_last_accessed\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON,
+        name: Str::new("path_secret_map_id_entry_evicted.reason\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
         id: id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED,
         name: Str::new("path_secret_map_address_entry_evicted\0"),
         units: Units::None,
@@ -3369,6 +3509,18 @@ static INFO: &[Info; 323usize] = &[
         id: id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE,
         name: Str::new("path_secret_map_address_entry_evicted.age\0"),
         units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED,
+        name: Str::new("path_secret_map_address_entry_evicted.time_since_last_accessed\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON,
+        name: Str::new("path_secret_map_address_entry_evicted.reason\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
@@ -3404,6 +3556,24 @@ static INFO: &[Info; 323usize] = &[
     info::Builder {
         id: id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL,
         name: Str::new("unknown_path_secret_packet_accepted.peer_address.protocol\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE,
+        name: Str::new("unknown_path_secret_packet_accepted.age\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED,
+        name: Str::new("unknown_path_secret_packet_accepted.evicted\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
+        name: Str::new("unknown_path_secret_packet_accepted.scheduled_handshake\0"),
         units: Units::None,
     }
     .build(),
@@ -3726,6 +3896,18 @@ static INFO: &[Info; 323usize] = &[
     }
     .build(),
     info::Builder {
+        id: id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id.in_last_hs_period\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id.in_last_hs_period.utilization\0"),
+        units: Units::Percent,
+    }
+    .build(),
+    info::Builder {
         id: id::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS,
         name: Str::new("path_secret_map_cleaner_cycled.handshake_requests\0"),
         units: Units::None,
@@ -3747,6 +3929,36 @@ static INFO: &[Info; 323usize] = &[
         id: id::PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION,
         name: Str::new("path_secret_map_cleaner_cycled.total_duration\0"),
         units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::PATH_SECRET_MAP_SERIALIZED,
+        name: Str::new("path_secret_map_serialized\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::PATH_SECRET_MAP_SERIALIZED__ENTRIES,
+        name: Str::new("path_secret_map_serialized.entries\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::PATH_SECRET_MAP_SERIALIZED__FILE_SIZE,
+        name: Str::new("path_secret_map_serialized.file_size\0"),
+        units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: id::PATH_SECRET_MAP_SERIALIZED__DURATION,
+        name: Str::new("path_secret_map_serialized.duration\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::PATH_SECRET_MAP_SERIALIZED__ERROR,
+        name: Str::new("path_secret_map_serialized.error\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
@@ -3859,19 +4071,19 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 111usize]>,
+    counters: Box<[R::Counter; 113usize]>,
     #[allow(dead_code)]
-    bool_counters: Box<[R::BoolCounter; 22usize]>,
+    bool_counters: Box<[R::BoolCounter; 25usize]>,
     #[allow(dead_code)]
     nominal_counters: Box<[R::NominalCounter]>,
     #[allow(dead_code)]
-    nominal_counter_offsets: Box<[usize; 35usize]>,
+    nominal_counter_offsets: Box<[usize; 37usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure; 128usize]>,
+    measures: Box<[R::Measure; 137usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
-    timers: Box<[R::Timer; 27usize]>,
+    timers: Box<[R::Timer; 28usize]>,
     #[allow(dead_code)]
     nominal_timers: Box<[R::NominalTimer]>,
     #[allow(dead_code)]
@@ -3885,22 +4097,22 @@ impl<R: Registry + Default> Default for Subscriber<R> {
     }
 }
 impl<R: Registry> Subscriber<R> {
-    #[doc = r" Creates a new subscriber with the given registry"]
-    #[doc = r""]
-    #[doc = r" # Note"]
-    #[doc = r""]
-    #[doc = r" All of the recorders are registered on initialization and cached for the lifetime"]
-    #[doc = r" of the subscriber."]
+    /// Creates a new subscriber with the given registry
+    ///
+    /// # Note
+    ///
+    /// All of the recorders are registered on initialization and cached for the lifetime
+    /// of the subscriber.
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(111usize);
-        let mut bool_counters = Vec::with_capacity(22usize);
-        let mut nominal_counters = Vec::with_capacity(35usize);
-        let mut nominal_counter_offsets = Vec::with_capacity(35usize);
-        let mut measures = Vec::with_capacity(128usize);
+        let mut counters = Vec::with_capacity(113usize);
+        let mut bool_counters = Vec::with_capacity(25usize);
+        let mut nominal_counters = Vec::with_capacity(37usize);
+        let mut nominal_counter_offsets = Vec::with_capacity(37usize);
+        let mut measures = Vec::with_capacity(137usize);
         let mut gauges = Vec::with_capacity(0usize);
-        let mut timers = Vec::with_capacity(27usize);
+        let mut timers = Vec::with_capacity(28usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
         let mut nominal_timer_offsets = Vec::with_capacity(0usize);
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_STARTED]));
@@ -3913,6 +4125,8 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_TLS_STARTED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_TLS_STREAM_ENQUEUED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_TLS_STREAM_REJECTED]));
+        counters
+            .push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_PACKET_DROPPED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_STREAM_ENQUEUED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_IO_ERROR]));
@@ -4025,6 +4239,7 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_ID_CACHE_ACCESSED]));
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT]));
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED]));
+        counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_SERIALIZED]));
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_ID_WRITE_LOCK]));
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_ADDRESS_WRITE_LOCK]));
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_DATAGRAM_ENCRYPT]));
@@ -4084,11 +4299,19 @@ impl<R: Registry> Subscriber<R> {
         bool_counters.push(registry.register_bool_counter(&INFO[id::ENDPOINT_INITIALIZED__TCP]));
         bool_counters.push(registry.register_bool_counter(&INFO[id::ENDPOINT_INITIALIZED__UDP]));
         bool_counters.push(
+            registry.register_bool_counter(&INFO[id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED]),
+        );
+        bool_counters.push(registry.register_bool_counter(
+            &INFO[id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE],
+        ));
+        bool_counters.push(
             registry.register_bool_counter(&INFO[id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT]),
         );
         bool_counters.push(
             registry.register_bool_counter(&INFO[id::PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT]),
         );
+        bool_counters
+            .push(registry.register_bool_counter(&INFO[id::PATH_SECRET_MAP_SERIALIZED__ERROR]));
         {
             #[allow(unused_imports)]
             use api::*;
@@ -4253,7 +4476,14 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
-                    nominal_counters . push (registry . register_nominal_counter (& INFO [id :: PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL] , variant)) ;
+                    nominal_counters
+                        .push(
+                            registry
+                                .register_nominal_counter(
+                                    &INFO[id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL],
+                                    variant,
+                                ),
+                        );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -4314,9 +4544,35 @@ impl<R: Registry> Subscriber<R> {
             {
                 let offset = nominal_counters.len();
                 let mut count = 0;
+                for variant in <EvictionReason as AsVariant>::VARIANTS.iter() {
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON],
+                        variant,
+                    ));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters.push(registry.register_nominal_counter(
                         &INFO[id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL],
+                        variant,
+                    ));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <EvictionReason as AsVariant>::VARIANTS.iter() {
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON],
                         variant,
                     ));
                     count += 1;
@@ -4536,7 +4792,14 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
-                    nominal_counters . push (registry . register_nominal_counter (& INFO [id :: PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__PEER_ADDRESS__PROTOCOL] , variant)) ;
+                    nominal_counters
+                        .push(
+                            registry
+                                .register_nominal_counter(
+                                    &INFO[id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__PEER_ADDRESS__PROTOCOL],
+                                    variant,
+                                ),
+                        );
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -4728,9 +4991,20 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[id::PATH_SECRET_MAP_UNINITIALIZED__ENTRIES]));
         measures
             .push(registry.register_measure(&INFO[id::PATH_SECRET_MAP_UNINITIALIZED__LIFETIME]));
+        measures.push(
+            registry.register_measure(&INFO[id::PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE]),
+        );
         measures.push(registry.register_measure(&INFO[id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE]));
+        measures.push(registry.register_measure(
+            &INFO[id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED],
+        ));
         measures
             .push(registry.register_measure(&INFO[id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE]));
+        measures.push(registry.register_measure(
+            &INFO[id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED],
+        ));
+        measures
+            .push(registry.register_measure(&INFO[id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE]));
         measures.push(registry.register_measure(&INFO[id::KEY_ACCEPTED__GAP]));
         measures.push(registry.register_measure(&INFO[id::KEY_ACCEPTED__FORWARD_SHIFT]));
         measures.push(registry.register_measure(&INFO[id::REPLAY_POTENTIALLY_DETECTED__GAP]));
@@ -4781,6 +5055,12 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(
             &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL],
         ));
+        measures.push(registry.register_measure(
+            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD],
+        ));
+        measures.push(registry.register_measure(
+            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION],
+        ));
         measures.push(
             registry
                 .register_measure(&INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS]),
@@ -4796,6 +5076,9 @@ impl<R: Registry> Subscriber<R> {
         measures.push(
             registry.register_measure(&INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION]),
         );
+        measures.push(registry.register_measure(&INFO[id::PATH_SECRET_MAP_SERIALIZED__ENTRIES]));
+        measures.push(registry.register_measure(&INFO[id::PATH_SECRET_MAP_SERIALIZED__FILE_SIZE]));
+        measures.push(registry.register_measure(&INFO[id::PATH_SECRET_MAP_SERIALIZED__DURATION]));
         measures.push(registry.register_measure(&INFO[id::PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE]));
         measures
             .push(registry.register_measure(&INFO[id::PATH_SECRET_MAP_ID_WRITE_LOCK__DURATION]));
@@ -4824,6 +5107,11 @@ impl<R: Registry> Subscriber<R> {
         );
         timers.push(
             registry.register_timer(&INFO[id::ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME]),
+        );
+        timers.push(
+            registry.register_timer(
+                &INFO[id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME],
+            ),
         );
         timers.push(registry.register_timer(&INFO[id::ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME]));
         timers.push(registry.register_timer(&INFO[id::ACCEPTOR_TCP_STREAM_ENQUEUED__SOJOURN_TIME]));
@@ -4875,7 +5163,7 @@ impl<R: Registry> Subscriber<R> {
             registry,
         }
     }
-    #[doc = r" Returns all of the registered counters"]
+    /// Returns all of the registered counters
     #[inline]
     pub fn counters(&self) -> impl Iterator<Item = (&'static Info, &R::Counter)> + '_ {
         self.counters
@@ -4909,6 +5197,9 @@ impl<R: Registry> Subscriber<R> {
                 }
                 id::COUNTERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED => {
                     (&INFO[id::ACCEPTOR_TCP_TLS_STREAM_REJECTED], entry)
+                }
+                id::COUNTERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED => {
+                    (&INFO[id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED], entry)
                 }
                 id::COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED => {
                     (&INFO[id::ACCEPTOR_TCP_PACKET_DROPPED], entry)
@@ -5141,6 +5432,9 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED => {
                     (&INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED], entry)
                 }
+                id::COUNTERS_PATH_SECRET_MAP_SERIALIZED => {
+                    (&INFO[id::PATH_SECRET_MAP_SERIALIZED], entry)
+                }
                 id::COUNTERS_PATH_SECRET_MAP_ID_WRITE_LOCK => {
                     (&INFO[id::PATH_SECRET_MAP_ID_WRITE_LOCK], entry)
                 }
@@ -5171,7 +5465,7 @@ impl<R: Registry> Subscriber<R> {
         let counter = &self.counters[id];
         counter.record(info, value);
     }
-    #[doc = r" Returns all of the registered bool counters"]
+    /// Returns all of the registered bool counters
     #[inline]
     pub fn bool_counters(&self) -> impl Iterator<Item = (&'static Info, &R::BoolCounter)> + '_ {
         self.bool_counters
@@ -5242,12 +5536,23 @@ impl<R: Registry> Subscriber<R> {
                 id::BOOL_COUNTERS_ENDPOINT_INITIALIZED__UDP => {
                     (&INFO[id::ENDPOINT_INITIALIZED__UDP], entry)
                 }
+                id::BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED => (
+                    &INFO[id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED],
+                    entry,
+                ),
+                id::BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE => (
+                    &INFO[id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE],
+                    entry,
+                ),
                 id::BOOL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT => (
                     &INFO[id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT],
                     entry,
                 ),
                 id::BOOL_COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT => {
                     (&INFO[id::PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT], entry)
+                }
+                id::BOOL_COUNTERS_PATH_SECRET_MAP_SERIALIZED__ERROR => {
+                    (&INFO[id::PATH_SECRET_MAP_SERIALIZED__ERROR], entry)
                 }
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
@@ -5259,14 +5564,408 @@ impl<R: Registry> Subscriber<R> {
         let counter = &self.bool_counters[id];
         counter.record(info, value);
     }
-    #[doc = r" Returns all of the registered nominal counters"]
+    /// Returns all of the registered nominal counters
     #[inline]
     pub fn nominal_counters(
         &self,
     ) -> impl Iterator<Item = (&'static Info, &[R::NominalCounter], &[info::Variant])> + '_ {
         #[allow(unused_imports)]
         use api::*;
-        self . nominal_counter_offsets . iter () . enumerate () . map (| (idx , entry) | { match idx { id :: NOMINAL_COUNTERS_ACCEPTOR_TCP_STREAM_DROPPED__REASON => { let offset = * entry ; let variants = < AcceptorTcpStreamDropReason as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: ACCEPTOR_TCP_STREAM_DROPPED__REASON] , entries , variants) } id :: NOMINAL_COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED__REASON => { let offset = * entry ; let variants = < AcceptorPacketDropReason as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: ACCEPTOR_TCP_PACKET_DROPPED__REASON] , entries , variants) } id :: NOMINAL_COUNTERS_ACCEPTOR_TCP_IO_ERROR__SOURCE => { let offset = * entry ; let variants = < AcceptorTcpIoErrorSource as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: ACCEPTOR_TCP_IO_ERROR__SOURCE] , entries , variants) } id :: NOMINAL_COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED__REASON => { let offset = * entry ; let variants = < AcceptorPacketDropReason as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: ACCEPTOR_UDP_PACKET_DROPPED__REASON] , entries , variants) } id :: NOMINAL_COUNTERS_ACCEPTOR_STREAM_PRUNED__REASON => { let offset = * entry ; let variants = < AcceptorStreamPruneReason as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: ACCEPTOR_STREAM_PRUNED__REASON] , entries , variants) } id :: NOMINAL_COUNTERS_STREAM_CONNECT__TCP => { let offset = * entry ; let variants = < MaybeBoolCounter as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: STREAM_CONNECT__TCP] , entries , variants) } id :: NOMINAL_COUNTERS_STREAM_CONNECT__HANDSHAKE => { let offset = * entry ; let variants = < MaybeBoolCounter as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: STREAM_CONNECT__HANDSHAKE] , entries , variants) } id :: NOMINAL_COUNTERS_STREAM_CONNECT_ERROR__REASON => { let offset = * entry ; let variants = < StreamTcpConnectErrorReason as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: STREAM_CONNECT_ERROR__REASON] , entries , variants) } id :: NOMINAL_COUNTERS_STREAM_HANDSHAKE_PACKET_REJECTED__REASON => { let offset = * entry ; let variants = < StreamHandshakePacketRejectedReason as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: STREAM_HANDSHAKE_PACKET_REJECTED__REASON] , entries , variants) } id :: NOMINAL_COUNTERS_ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_ENDPOINT_INITIALIZED__HANDSHAKE__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: ENDPOINT_INITIALIZED__HANDSHAKE__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_READY__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: PATH_SECRET_MAP_ENTRY_READY__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: UNKNOWN_PATH_SECRET_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_REPLAY_DETECTED_PACKET_SENT__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: REPLAY_DETECTED_PACKET_SENT__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_REPLAY_DETECTED_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: REPLAY_DETECTED_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_REPLAY_DETECTED_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: REPLAY_DETECTED_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_REPLAY_DETECTED_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: REPLAY_DETECTED_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_REPLAY_DETECTED_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: REPLAY_DETECTED_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_STALE_KEY_PACKET_SENT__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: STALE_KEY_PACKET_SENT__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_STALE_KEY_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: STALE_KEY_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_STALE_KEY_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: STALE_KEY_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__PEER_ADDRESS__PROTOCOL] , entries , variants) } id :: NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__PEER_ADDRESS__PROTOCOL => { let offset = * entry ; let variants = < SocketAddress as AsVariant > :: VARIANTS ; let entries = & self . nominal_counters [offset .. offset + variants . len ()] ; (& INFO [id :: PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__PEER_ADDRESS__PROTOCOL] , entries , variants) } _ => unsafe { core :: hint :: unreachable_unchecked () } , } })
+        self.nominal_counter_offsets
+            .iter()
+            .enumerate()
+            .map(|(idx, entry)| {
+                match idx {
+                    id::NOMINAL_COUNTERS_ACCEPTOR_TCP_STREAM_DROPPED__REASON => {
+                        let offset = *entry;
+                        let variants = <AcceptorTcpStreamDropReason as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::ACCEPTOR_TCP_STREAM_DROPPED__REASON],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED__REASON => {
+                        let offset = *entry;
+                        let variants = <AcceptorPacketDropReason as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::ACCEPTOR_TCP_PACKET_DROPPED__REASON],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_ACCEPTOR_TCP_IO_ERROR__SOURCE => {
+                        let offset = *entry;
+                        let variants = <AcceptorTcpIoErrorSource as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (&INFO[id::ACCEPTOR_TCP_IO_ERROR__SOURCE], entries, variants)
+                    }
+                    id::NOMINAL_COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED__REASON => {
+                        let offset = *entry;
+                        let variants = <AcceptorPacketDropReason as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::ACCEPTOR_UDP_PACKET_DROPPED__REASON],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_ACCEPTOR_STREAM_PRUNED__REASON => {
+                        let offset = *entry;
+                        let variants = <AcceptorStreamPruneReason as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (&INFO[id::ACCEPTOR_STREAM_PRUNED__REASON], entries, variants)
+                    }
+                    id::NOMINAL_COUNTERS_STREAM_CONNECT__TCP => {
+                        let offset = *entry;
+                        let variants = <MaybeBoolCounter as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (&INFO[id::STREAM_CONNECT__TCP], entries, variants)
+                    }
+                    id::NOMINAL_COUNTERS_STREAM_CONNECT__HANDSHAKE => {
+                        let offset = *entry;
+                        let variants = <MaybeBoolCounter as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (&INFO[id::STREAM_CONNECT__HANDSHAKE], entries, variants)
+                    }
+                    id::NOMINAL_COUNTERS_STREAM_CONNECT_ERROR__REASON => {
+                        let offset = *entry;
+                        let variants = <StreamTcpConnectErrorReason as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (&INFO[id::STREAM_CONNECT_ERROR__REASON], entries, variants)
+                    }
+                    id::NOMINAL_COUNTERS_STREAM_HANDSHAKE_PACKET_REJECTED__REASON => {
+                        let offset = *entry;
+                        let variants = <StreamHandshakePacketRejectedReason as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::STREAM_HANDSHAKE_PACKET_REJECTED__REASON],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_ENDPOINT_INITIALIZED__HANDSHAKE__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::ENDPOINT_INITIALIZED__HANDSHAKE__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_READY__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::PATH_SECRET_MAP_ENTRY_READY__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON => {
+                        let offset = *entry;
+                        let variants = <EvictionReason as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON => {
+                        let offset = *entry;
+                        let variants = <EvictionReason as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::UNKNOWN_PATH_SECRET_PACKET_SENT__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::UNKNOWN_PATH_SECRET_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::UNKNOWN_PATH_SECRET_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::UNKNOWN_PATH_SECRET_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_REPLAY_DETECTED_PACKET_SENT__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::REPLAY_DETECTED_PACKET_SENT__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_REPLAY_DETECTED_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::REPLAY_DETECTED_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_REPLAY_DETECTED_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::REPLAY_DETECTED_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_REPLAY_DETECTED_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::REPLAY_DETECTED_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_REPLAY_DETECTED_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::REPLAY_DETECTED_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_STALE_KEY_PACKET_SENT__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::STALE_KEY_PACKET_SENT__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_STALE_KEY_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::STALE_KEY_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_STALE_KEY_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::STALE_KEY_PACKET_DROPPED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    _ => unsafe { core::hint::unreachable_unchecked() }
+                }
+            })
     }
     #[allow(dead_code)]
     #[inline(always)]
@@ -5276,10 +5975,545 @@ impl<R: Registry> Subscriber<R> {
         let counter = &self.nominal_counters[idx];
         counter.record(info, value.as_variant(), 1usize);
     }
-    #[doc = r" Returns all of the registered measures"]
+    /// Returns all of the registered measures
     #[inline]
     pub fn measures(&self) -> impl Iterator<Item = (&'static Info, &R::Measure)> + '_ {
-        self . measures . iter () . enumerate () . map (| (idx , entry) | { match idx { id :: MEASURES_ACCEPTOR_TCP_STARTED__BACKLOG => (& INFO [id :: ACCEPTOR_TCP_STARTED__BACKLOG] , entry) , id :: MEASURES_ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PENDING_STREAMS => (& INFO [id :: ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PENDING_STREAMS] , entry) , id :: MEASURES_ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOTS_IDLE => (& INFO [id :: ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOTS_IDLE] , entry) , id :: MEASURES_ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOT_UTILIZATION => (& INFO [id :: ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOT_UTILIZATION] , entry) , id :: MEASURES_ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__MAX_SOJOURN_TIME => (& INFO [id :: ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__MAX_SOJOURN_TIME] , entry) , id :: MEASURES_ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ENQUEUED => (& INFO [id :: ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ENQUEUED] , entry) , id :: MEASURES_ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__DROPPED => (& INFO [id :: ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__DROPPED] , entry) , id :: MEASURES_ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ERRORED => (& INFO [id :: ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ERRORED] , entry) , id :: MEASURES_ACCEPTOR_TCP_STREAM_REPLACED__BUFFER_LEN => (& INFO [id :: ACCEPTOR_TCP_STREAM_REPLACED__BUFFER_LEN] , entry) , id :: MEASURES_ACCEPTOR_TCP_PACKET_RECEIVED__PAYLOAD_LEN => (& INFO [id :: ACCEPTOR_TCP_PACKET_RECEIVED__PAYLOAD_LEN] , entry) , id :: MEASURES_ACCEPTOR_TCP_STREAM_ENQUEUED__BLOCKED_COUNT => (& INFO [id :: ACCEPTOR_TCP_STREAM_ENQUEUED__BLOCKED_COUNT] , entry) , id :: MEASURES_ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_STREAM => (& INFO [id :: ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_STREAM] , entry) , id :: MEASURES_ACCEPTOR_TCP_SOCKET_SENT__LEN => (& INFO [id :: ACCEPTOR_TCP_SOCKET_SENT__LEN] , entry) , id :: MEASURES_ACCEPTOR_TCP_SOCKET_RECEIVED__LEN => (& INFO [id :: ACCEPTOR_TCP_SOCKET_RECEIVED__LEN] , entry) , id :: MEASURES_ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN => (& INFO [id :: ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN] , entry) , id :: MEASURES_ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN => (& INFO [id :: ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN] , entry) , id :: MEASURES_STREAM_WRITE_FLUSHED__CONN => (& INFO [id :: STREAM_WRITE_FLUSHED__CONN] , entry) , id :: MEASURES_STREAM_WRITE_FLUSHED__PROVIDED => (& INFO [id :: STREAM_WRITE_FLUSHED__PROVIDED] , entry) , id :: MEASURES_STREAM_WRITE_FLUSHED__COMMITTED => (& INFO [id :: STREAM_WRITE_FLUSHED__COMMITTED] , entry) , id :: MEASURES_STREAM_WRITE_FLUSHED__COMMITTED__CONN => (& INFO [id :: STREAM_WRITE_FLUSHED__COMMITTED__CONN] , entry) , id :: MEASURES_STREAM_WRITE_FLUSHED__PROCESSING_DURATION => (& INFO [id :: STREAM_WRITE_FLUSHED__PROCESSING_DURATION] , entry) , id :: MEASURES_STREAM_WRITE_FLUSHED__PROCESSING_DURATION__CONN => (& INFO [id :: STREAM_WRITE_FLUSHED__PROCESSING_DURATION__CONN] , entry) , id :: MEASURES_STREAM_WRITE_FIN_FLUSHED__CONN => (& INFO [id :: STREAM_WRITE_FIN_FLUSHED__CONN] , entry) , id :: MEASURES_STREAM_WRITE_FIN_FLUSHED__PROVIDED => (& INFO [id :: STREAM_WRITE_FIN_FLUSHED__PROVIDED] , entry) , id :: MEASURES_STREAM_WRITE_FIN_FLUSHED__COMMITTED => (& INFO [id :: STREAM_WRITE_FIN_FLUSHED__COMMITTED] , entry) , id :: MEASURES_STREAM_WRITE_FIN_FLUSHED__COMMITTED__CONN => (& INFO [id :: STREAM_WRITE_FIN_FLUSHED__COMMITTED__CONN] , entry) , id :: MEASURES_STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION => (& INFO [id :: STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION] , entry) , id :: MEASURES_STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION__CONN => (& INFO [id :: STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION__CONN] , entry) , id :: MEASURES_STREAM_WRITE_BLOCKED__CONN => (& INFO [id :: STREAM_WRITE_BLOCKED__CONN] , entry) , id :: MEASURES_STREAM_WRITE_BLOCKED__PROVIDED => (& INFO [id :: STREAM_WRITE_BLOCKED__PROVIDED] , entry) , id :: MEASURES_STREAM_WRITE_BLOCKED__PROCESSING_DURATION => (& INFO [id :: STREAM_WRITE_BLOCKED__PROCESSING_DURATION] , entry) , id :: MEASURES_STREAM_WRITE_BLOCKED__PROCESSING_DURATION__CONN => (& INFO [id :: STREAM_WRITE_BLOCKED__PROCESSING_DURATION__CONN] , entry) , id :: MEASURES_STREAM_WRITE_ERRORED__PROVIDED => (& INFO [id :: STREAM_WRITE_ERRORED__PROVIDED] , entry) , id :: MEASURES_STREAM_WRITE_ERRORED__PROCESSING_DURATION => (& INFO [id :: STREAM_WRITE_ERRORED__PROCESSING_DURATION] , entry) , id :: MEASURES_STREAM_WRITE_ERRORED__PROCESSING_DURATION__CONN => (& INFO [id :: STREAM_WRITE_ERRORED__PROCESSING_DURATION__CONN] , entry) , id :: MEASURES_STREAM_WRITE_ALLOCATED__CONN => (& INFO [id :: STREAM_WRITE_ALLOCATED__CONN] , entry) , id :: MEASURES_STREAM_WRITE_ALLOCATED__ALLOCATED_LEN => (& INFO [id :: STREAM_WRITE_ALLOCATED__ALLOCATED_LEN] , entry) , id :: MEASURES_STREAM_WRITE_ALLOCATED__ALLOCATED_LEN__CONN => (& INFO [id :: STREAM_WRITE_ALLOCATED__ALLOCATED_LEN__CONN] , entry) , id :: MEASURES_STREAM_WRITE_SHUTDOWN__BUFFER_LEN => (& INFO [id :: STREAM_WRITE_SHUTDOWN__BUFFER_LEN] , entry) , id :: MEASURES_STREAM_WRITE_SOCKET_FLUSHED__CONN => (& INFO [id :: STREAM_WRITE_SOCKET_FLUSHED__CONN] , entry) , id :: MEASURES_STREAM_WRITE_SOCKET_FLUSHED__PROVIDED => (& INFO [id :: STREAM_WRITE_SOCKET_FLUSHED__PROVIDED] , entry) , id :: MEASURES_STREAM_WRITE_SOCKET_FLUSHED__COMMITTED => (& INFO [id :: STREAM_WRITE_SOCKET_FLUSHED__COMMITTED] , entry) , id :: MEASURES_STREAM_WRITE_SOCKET_FLUSHED__COMMITTED__CONN => (& INFO [id :: STREAM_WRITE_SOCKET_FLUSHED__COMMITTED__CONN] , entry) , id :: MEASURES_STREAM_WRITE_SOCKET_BLOCKED__CONN => (& INFO [id :: STREAM_WRITE_SOCKET_BLOCKED__CONN] , entry) , id :: MEASURES_STREAM_WRITE_SOCKET_BLOCKED__PROVIDED => (& INFO [id :: STREAM_WRITE_SOCKET_BLOCKED__PROVIDED] , entry) , id :: MEASURES_STREAM_WRITE_SOCKET_ERRORED__PROVIDED => (& INFO [id :: STREAM_WRITE_SOCKET_ERRORED__PROVIDED] , entry) , id :: MEASURES_STREAM_READ_FLUSHED__CONN => (& INFO [id :: STREAM_READ_FLUSHED__CONN] , entry) , id :: MEASURES_STREAM_READ_FLUSHED__CAPACITY => (& INFO [id :: STREAM_READ_FLUSHED__CAPACITY] , entry) , id :: MEASURES_STREAM_READ_FLUSHED__COMMITTED => (& INFO [id :: STREAM_READ_FLUSHED__COMMITTED] , entry) , id :: MEASURES_STREAM_READ_FLUSHED__COMMITTED__CONN => (& INFO [id :: STREAM_READ_FLUSHED__COMMITTED__CONN] , entry) , id :: MEASURES_STREAM_READ_FLUSHED__PROCESSING_DURATION => (& INFO [id :: STREAM_READ_FLUSHED__PROCESSING_DURATION] , entry) , id :: MEASURES_STREAM_READ_FLUSHED__PROCESSING_DURATION__CONN => (& INFO [id :: STREAM_READ_FLUSHED__PROCESSING_DURATION__CONN] , entry) , id :: MEASURES_STREAM_READ_FIN_FLUSHED__CONN => (& INFO [id :: STREAM_READ_FIN_FLUSHED__CONN] , entry) , id :: MEASURES_STREAM_READ_FIN_FLUSHED__CAPACITY => (& INFO [id :: STREAM_READ_FIN_FLUSHED__CAPACITY] , entry) , id :: MEASURES_STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION => (& INFO [id :: STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION] , entry) , id :: MEASURES_STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION__CONN => (& INFO [id :: STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION__CONN] , entry) , id :: MEASURES_STREAM_READ_BLOCKED__CAPACITY => (& INFO [id :: STREAM_READ_BLOCKED__CAPACITY] , entry) , id :: MEASURES_STREAM_READ_BLOCKED__PROCESSING_DURATION => (& INFO [id :: STREAM_READ_BLOCKED__PROCESSING_DURATION] , entry) , id :: MEASURES_STREAM_READ_BLOCKED__PROCESSING_DURATION__CONN => (& INFO [id :: STREAM_READ_BLOCKED__PROCESSING_DURATION__CONN] , entry) , id :: MEASURES_STREAM_READ_ERRORED__CAPACITY => (& INFO [id :: STREAM_READ_ERRORED__CAPACITY] , entry) , id :: MEASURES_STREAM_READ_ERRORED__PROCESSING_DURATION => (& INFO [id :: STREAM_READ_ERRORED__PROCESSING_DURATION] , entry) , id :: MEASURES_STREAM_READ_ERRORED__PROCESSING_DURATION__CONN => (& INFO [id :: STREAM_READ_ERRORED__PROCESSING_DURATION__CONN] , entry) , id :: MEASURES_STREAM_READ_SOCKET_FLUSHED__CONN => (& INFO [id :: STREAM_READ_SOCKET_FLUSHED__CONN] , entry) , id :: MEASURES_STREAM_READ_SOCKET_FLUSHED__CAPACITY => (& INFO [id :: STREAM_READ_SOCKET_FLUSHED__CAPACITY] , entry) , id :: MEASURES_STREAM_READ_SOCKET_FLUSHED__COMMITTED => (& INFO [id :: STREAM_READ_SOCKET_FLUSHED__COMMITTED] , entry) , id :: MEASURES_STREAM_READ_SOCKET_FLUSHED__COMMITTED__CONN => (& INFO [id :: STREAM_READ_SOCKET_FLUSHED__COMMITTED__CONN] , entry) , id :: MEASURES_STREAM_READ_SOCKET_BLOCKED__CONN => (& INFO [id :: STREAM_READ_SOCKET_BLOCKED__CONN] , entry) , id :: MEASURES_STREAM_READ_SOCKET_BLOCKED__CAPACITY => (& INFO [id :: STREAM_READ_SOCKET_BLOCKED__CAPACITY] , entry) , id :: MEASURES_STREAM_READ_SOCKET_ERRORED__CAPACITY => (& INFO [id :: STREAM_READ_SOCKET_ERRORED__CAPACITY] , entry) , id :: MEASURES_STREAM_DECRYPT_PACKET__FORCED_COPY => (& INFO [id :: STREAM_DECRYPT_PACKET__FORCED_COPY] , entry) , id :: MEASURES_STREAM_DECRYPT_PACKET__REQUIRED_APPLICATION_BUFFER => (& INFO [id :: STREAM_DECRYPT_PACKET__REQUIRED_APPLICATION_BUFFER] , entry) , id :: MEASURES_STREAM_PACKET_TRANSMITTED__PACKET_LEN => (& INFO [id :: STREAM_PACKET_TRANSMITTED__PACKET_LEN] , entry) , id :: MEASURES_STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN => (& INFO [id :: STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN] , entry) , id :: MEASURES_STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN__CONN => (& INFO [id :: STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN__CONN] , entry) , id :: MEASURES_STREAM_PROBE_TRANSMITTED__PACKET_LEN => (& INFO [id :: STREAM_PROBE_TRANSMITTED__PACKET_LEN] , entry) , id :: MEASURES_STREAM_PACKET_RECEIVED__PACKET_LEN => (& INFO [id :: STREAM_PACKET_RECEIVED__PACKET_LEN] , entry) , id :: MEASURES_STREAM_PACKET_RECEIVED__PAYLOAD_LEN => (& INFO [id :: STREAM_PACKET_RECEIVED__PAYLOAD_LEN] , entry) , id :: MEASURES_STREAM_PACKET_RECEIVED__PAYLOAD_LEN__CONN => (& INFO [id :: STREAM_PACKET_RECEIVED__PAYLOAD_LEN__CONN] , entry) , id :: MEASURES_STREAM_PACKET_LOST__PACKET_LEN => (& INFO [id :: STREAM_PACKET_LOST__PACKET_LEN] , entry) , id :: MEASURES_STREAM_PACKET_LOST__PAYLOAD_LEN => (& INFO [id :: STREAM_PACKET_LOST__PAYLOAD_LEN] , entry) , id :: MEASURES_STREAM_PACKET_LOST__PAYLOAD_LEN__CONN => (& INFO [id :: STREAM_PACKET_LOST__PAYLOAD_LEN__CONN] , entry) , id :: MEASURES_STREAM_PACKET_LOST__LIFETIME => (& INFO [id :: STREAM_PACKET_LOST__LIFETIME] , entry) , id :: MEASURES_STREAM_PACKET_ACKED__PACKET_LEN => (& INFO [id :: STREAM_PACKET_ACKED__PACKET_LEN] , entry) , id :: MEASURES_STREAM_PACKET_ACKED__PAYLOAD_LEN => (& INFO [id :: STREAM_PACKET_ACKED__PAYLOAD_LEN] , entry) , id :: MEASURES_STREAM_PACKET_ACKED__PAYLOAD_LEN__CONN => (& INFO [id :: STREAM_PACKET_ACKED__PAYLOAD_LEN__CONN] , entry) , id :: MEASURES_STREAM_PACKET_ACKED__LIFETIME => (& INFO [id :: STREAM_PACKET_ACKED__LIFETIME] , entry) , id :: MEASURES_STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PACKET_LEN => (& INFO [id :: STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PACKET_LEN] , entry) , id :: MEASURES_STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN => (& INFO [id :: STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN] , entry) , id :: MEASURES_STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN__CONN => (& INFO [id :: STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN__CONN] , entry) , id :: MEASURES_STREAM_MAX_DATA_RECEIVED__INCREASE => (& INFO [id :: STREAM_MAX_DATA_RECEIVED__INCREASE] , entry) , id :: MEASURES_STREAM_CONTROL_PACKET_TRANSMITTED__PACKET_LEN => (& INFO [id :: STREAM_CONTROL_PACKET_TRANSMITTED__PACKET_LEN] , entry) , id :: MEASURES_STREAM_CONTROL_PACKET_TRANSMITTED__CONTROL_DATA_LEN => (& INFO [id :: STREAM_CONTROL_PACKET_TRANSMITTED__CONTROL_DATA_LEN] , entry) , id :: MEASURES_STREAM_CONTROL_PACKET_RECEIVED__PACKET_LEN => (& INFO [id :: STREAM_CONTROL_PACKET_RECEIVED__PACKET_LEN] , entry) , id :: MEASURES_STREAM_CONTROL_PACKET_RECEIVED__CONTROL_DATA_LEN => (& INFO [id :: STREAM_CONTROL_PACKET_RECEIVED__CONTROL_DATA_LEN] , entry) , id :: MEASURES_STREAM_HANDSHAKE_PACKET_REJECTED__CONN => (& INFO [id :: STREAM_HANDSHAKE_PACKET_REJECTED__CONN] , entry) , id :: MEASURES_PATH_SECRET_MAP_INITIALIZED__CAPACITY => (& INFO [id :: PATH_SECRET_MAP_INITIALIZED__CAPACITY] , entry) , id :: MEASURES_PATH_SECRET_MAP_UNINITIALIZED__CAPACITY => (& INFO [id :: PATH_SECRET_MAP_UNINITIALIZED__CAPACITY] , entry) , id :: MEASURES_PATH_SECRET_MAP_UNINITIALIZED__ENTRIES => (& INFO [id :: PATH_SECRET_MAP_UNINITIALIZED__ENTRIES] , entry) , id :: MEASURES_PATH_SECRET_MAP_UNINITIALIZED__LIFETIME => (& INFO [id :: PATH_SECRET_MAP_UNINITIALIZED__LIFETIME] , entry) , id :: MEASURES_PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE => (& INFO [id :: PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE] , entry) , id :: MEASURES_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE => (& INFO [id :: PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE] , entry) , id :: MEASURES_KEY_ACCEPTED__GAP => (& INFO [id :: KEY_ACCEPTED__GAP] , entry) , id :: MEASURES_KEY_ACCEPTED__FORWARD_SHIFT => (& INFO [id :: KEY_ACCEPTED__FORWARD_SHIFT] , entry) , id :: MEASURES_REPLAY_POTENTIALLY_DETECTED__GAP => (& INFO [id :: REPLAY_POTENTIALLY_DETECTED__GAP] , entry) , id :: MEASURES_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE => (& INFO [id :: PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE] , entry) , id :: MEASURES_PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT__AGE => (& INFO [id :: PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT__AGE] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__RETIRED => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__RETIRED] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE__UTILIZATION => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE__UTILIZATION] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION__INITIAL => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION__INITIAL] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE__UTILIZATION => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE__UTILIZATION] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__RETIRED => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__RETIRED] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION] , entry) , id :: MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION => (& INFO [id :: PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION] , entry) , id :: MEASURES_PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE => (& INFO [id :: PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE] , entry) , id :: MEASURES_PATH_SECRET_MAP_ID_WRITE_LOCK__DURATION => (& INFO [id :: PATH_SECRET_MAP_ID_WRITE_LOCK__DURATION] , entry) , id :: MEASURES_PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__ACQUIRE => (& INFO [id :: PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__ACQUIRE] , entry) , id :: MEASURES_PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__DURATION => (& INFO [id :: PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__DURATION] , entry) , id :: MEASURES_PATH_SECRET_MAP_DATAGRAM_ENCRYPT__PACKET_LEN => (& INFO [id :: PATH_SECRET_MAP_DATAGRAM_ENCRYPT__PACKET_LEN] , entry) , id :: MEASURES_PATH_SECRET_MAP_DATAGRAM_DECRYPT__PACKET_LEN => (& INFO [id :: PATH_SECRET_MAP_DATAGRAM_DECRYPT__PACKET_LEN] , entry) , _ => unsafe { core :: hint :: unreachable_unchecked () } , } })
+        self.measures
+            .iter()
+            .enumerate()
+            .map(|(idx, entry)| {
+                match idx {
+                    id::MEASURES_ACCEPTOR_TCP_STARTED__BACKLOG => {
+                        (&INFO[id::ACCEPTOR_TCP_STARTED__BACKLOG], entry)
+                    }
+                    id::MEASURES_ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PENDING_STREAMS => {
+                        (
+                            &INFO[id::ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PENDING_STREAMS],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOTS_IDLE => {
+                        (
+                            &INFO[id::ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOTS_IDLE],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOT_UTILIZATION => {
+                        (
+                            &INFO[id::ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__SLOT_UTILIZATION],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__MAX_SOJOURN_TIME => {
+                        (
+                            &INFO[id::ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__MAX_SOJOURN_TIME],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ENQUEUED => {
+                        (&INFO[id::ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ENQUEUED], entry)
+                    }
+                    id::MEASURES_ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__DROPPED => {
+                        (&INFO[id::ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__DROPPED], entry)
+                    }
+                    id::MEASURES_ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ERRORED => {
+                        (&INFO[id::ACCEPTOR_TCP_FRESH_BATCH_COMPLETED__ERRORED], entry)
+                    }
+                    id::MEASURES_ACCEPTOR_TCP_STREAM_REPLACED__BUFFER_LEN => {
+                        (&INFO[id::ACCEPTOR_TCP_STREAM_REPLACED__BUFFER_LEN], entry)
+                    }
+                    id::MEASURES_ACCEPTOR_TCP_PACKET_RECEIVED__PAYLOAD_LEN => {
+                        (&INFO[id::ACCEPTOR_TCP_PACKET_RECEIVED__PAYLOAD_LEN], entry)
+                    }
+                    id::MEASURES_ACCEPTOR_TCP_STREAM_ENQUEUED__BLOCKED_COUNT => {
+                        (&INFO[id::ACCEPTOR_TCP_STREAM_ENQUEUED__BLOCKED_COUNT], entry)
+                    }
+                    id::MEASURES_ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_STREAM => {
+                        (
+                            &INFO[id::ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_STREAM],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_ACCEPTOR_TCP_SOCKET_SENT__LEN => {
+                        (&INFO[id::ACCEPTOR_TCP_SOCKET_SENT__LEN], entry)
+                    }
+                    id::MEASURES_ACCEPTOR_TCP_SOCKET_RECEIVED__LEN => {
+                        (&INFO[id::ACCEPTOR_TCP_SOCKET_RECEIVED__LEN], entry)
+                    }
+                    id::MEASURES_ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN => {
+                        (&INFO[id::ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN], entry)
+                    }
+                    id::MEASURES_ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN => {
+                        (&INFO[id::ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_FLUSHED__CONN => {
+                        (&INFO[id::STREAM_WRITE_FLUSHED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_FLUSHED__PROVIDED => {
+                        (&INFO[id::STREAM_WRITE_FLUSHED__PROVIDED], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_FLUSHED__COMMITTED => {
+                        (&INFO[id::STREAM_WRITE_FLUSHED__COMMITTED], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_FLUSHED__COMMITTED__CONN => {
+                        (&INFO[id::STREAM_WRITE_FLUSHED__COMMITTED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_FLUSHED__PROCESSING_DURATION => {
+                        (&INFO[id::STREAM_WRITE_FLUSHED__PROCESSING_DURATION], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_FLUSHED__PROCESSING_DURATION__CONN => {
+                        (
+                            &INFO[id::STREAM_WRITE_FLUSHED__PROCESSING_DURATION__CONN],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_WRITE_FIN_FLUSHED__CONN => {
+                        (&INFO[id::STREAM_WRITE_FIN_FLUSHED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_FIN_FLUSHED__PROVIDED => {
+                        (&INFO[id::STREAM_WRITE_FIN_FLUSHED__PROVIDED], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_FIN_FLUSHED__COMMITTED => {
+                        (&INFO[id::STREAM_WRITE_FIN_FLUSHED__COMMITTED], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_FIN_FLUSHED__COMMITTED__CONN => {
+                        (&INFO[id::STREAM_WRITE_FIN_FLUSHED__COMMITTED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION => {
+                        (&INFO[id::STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION__CONN => {
+                        (
+                            &INFO[id::STREAM_WRITE_FIN_FLUSHED__PROCESSING_DURATION__CONN],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_WRITE_BLOCKED__CONN => {
+                        (&INFO[id::STREAM_WRITE_BLOCKED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_BLOCKED__PROVIDED => {
+                        (&INFO[id::STREAM_WRITE_BLOCKED__PROVIDED], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_BLOCKED__PROCESSING_DURATION => {
+                        (&INFO[id::STREAM_WRITE_BLOCKED__PROCESSING_DURATION], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_BLOCKED__PROCESSING_DURATION__CONN => {
+                        (
+                            &INFO[id::STREAM_WRITE_BLOCKED__PROCESSING_DURATION__CONN],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_WRITE_ERRORED__PROVIDED => {
+                        (&INFO[id::STREAM_WRITE_ERRORED__PROVIDED], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_ERRORED__PROCESSING_DURATION => {
+                        (&INFO[id::STREAM_WRITE_ERRORED__PROCESSING_DURATION], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_ERRORED__PROCESSING_DURATION__CONN => {
+                        (
+                            &INFO[id::STREAM_WRITE_ERRORED__PROCESSING_DURATION__CONN],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_WRITE_ALLOCATED__CONN => {
+                        (&INFO[id::STREAM_WRITE_ALLOCATED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_ALLOCATED__ALLOCATED_LEN => {
+                        (&INFO[id::STREAM_WRITE_ALLOCATED__ALLOCATED_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_ALLOCATED__ALLOCATED_LEN__CONN => {
+                        (&INFO[id::STREAM_WRITE_ALLOCATED__ALLOCATED_LEN__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_SHUTDOWN__BUFFER_LEN => {
+                        (&INFO[id::STREAM_WRITE_SHUTDOWN__BUFFER_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_SOCKET_FLUSHED__CONN => {
+                        (&INFO[id::STREAM_WRITE_SOCKET_FLUSHED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_SOCKET_FLUSHED__PROVIDED => {
+                        (&INFO[id::STREAM_WRITE_SOCKET_FLUSHED__PROVIDED], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_SOCKET_FLUSHED__COMMITTED => {
+                        (&INFO[id::STREAM_WRITE_SOCKET_FLUSHED__COMMITTED], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_SOCKET_FLUSHED__COMMITTED__CONN => {
+                        (&INFO[id::STREAM_WRITE_SOCKET_FLUSHED__COMMITTED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_SOCKET_BLOCKED__CONN => {
+                        (&INFO[id::STREAM_WRITE_SOCKET_BLOCKED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_SOCKET_BLOCKED__PROVIDED => {
+                        (&INFO[id::STREAM_WRITE_SOCKET_BLOCKED__PROVIDED], entry)
+                    }
+                    id::MEASURES_STREAM_WRITE_SOCKET_ERRORED__PROVIDED => {
+                        (&INFO[id::STREAM_WRITE_SOCKET_ERRORED__PROVIDED], entry)
+                    }
+                    id::MEASURES_STREAM_READ_FLUSHED__CONN => {
+                        (&INFO[id::STREAM_READ_FLUSHED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_READ_FLUSHED__CAPACITY => {
+                        (&INFO[id::STREAM_READ_FLUSHED__CAPACITY], entry)
+                    }
+                    id::MEASURES_STREAM_READ_FLUSHED__COMMITTED => {
+                        (&INFO[id::STREAM_READ_FLUSHED__COMMITTED], entry)
+                    }
+                    id::MEASURES_STREAM_READ_FLUSHED__COMMITTED__CONN => {
+                        (&INFO[id::STREAM_READ_FLUSHED__COMMITTED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_READ_FLUSHED__PROCESSING_DURATION => {
+                        (&INFO[id::STREAM_READ_FLUSHED__PROCESSING_DURATION], entry)
+                    }
+                    id::MEASURES_STREAM_READ_FLUSHED__PROCESSING_DURATION__CONN => {
+                        (
+                            &INFO[id::STREAM_READ_FLUSHED__PROCESSING_DURATION__CONN],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_READ_FIN_FLUSHED__CONN => {
+                        (&INFO[id::STREAM_READ_FIN_FLUSHED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_READ_FIN_FLUSHED__CAPACITY => {
+                        (&INFO[id::STREAM_READ_FIN_FLUSHED__CAPACITY], entry)
+                    }
+                    id::MEASURES_STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION => {
+                        (&INFO[id::STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION], entry)
+                    }
+                    id::MEASURES_STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION__CONN => {
+                        (
+                            &INFO[id::STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION__CONN],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_READ_BLOCKED__CAPACITY => {
+                        (&INFO[id::STREAM_READ_BLOCKED__CAPACITY], entry)
+                    }
+                    id::MEASURES_STREAM_READ_BLOCKED__PROCESSING_DURATION => {
+                        (&INFO[id::STREAM_READ_BLOCKED__PROCESSING_DURATION], entry)
+                    }
+                    id::MEASURES_STREAM_READ_BLOCKED__PROCESSING_DURATION__CONN => {
+                        (
+                            &INFO[id::STREAM_READ_BLOCKED__PROCESSING_DURATION__CONN],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_READ_ERRORED__CAPACITY => {
+                        (&INFO[id::STREAM_READ_ERRORED__CAPACITY], entry)
+                    }
+                    id::MEASURES_STREAM_READ_ERRORED__PROCESSING_DURATION => {
+                        (&INFO[id::STREAM_READ_ERRORED__PROCESSING_DURATION], entry)
+                    }
+                    id::MEASURES_STREAM_READ_ERRORED__PROCESSING_DURATION__CONN => {
+                        (
+                            &INFO[id::STREAM_READ_ERRORED__PROCESSING_DURATION__CONN],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_READ_SOCKET_FLUSHED__CONN => {
+                        (&INFO[id::STREAM_READ_SOCKET_FLUSHED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_READ_SOCKET_FLUSHED__CAPACITY => {
+                        (&INFO[id::STREAM_READ_SOCKET_FLUSHED__CAPACITY], entry)
+                    }
+                    id::MEASURES_STREAM_READ_SOCKET_FLUSHED__COMMITTED => {
+                        (&INFO[id::STREAM_READ_SOCKET_FLUSHED__COMMITTED], entry)
+                    }
+                    id::MEASURES_STREAM_READ_SOCKET_FLUSHED__COMMITTED__CONN => {
+                        (&INFO[id::STREAM_READ_SOCKET_FLUSHED__COMMITTED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_READ_SOCKET_BLOCKED__CONN => {
+                        (&INFO[id::STREAM_READ_SOCKET_BLOCKED__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_READ_SOCKET_BLOCKED__CAPACITY => {
+                        (&INFO[id::STREAM_READ_SOCKET_BLOCKED__CAPACITY], entry)
+                    }
+                    id::MEASURES_STREAM_READ_SOCKET_ERRORED__CAPACITY => {
+                        (&INFO[id::STREAM_READ_SOCKET_ERRORED__CAPACITY], entry)
+                    }
+                    id::MEASURES_STREAM_DECRYPT_PACKET__FORCED_COPY => {
+                        (&INFO[id::STREAM_DECRYPT_PACKET__FORCED_COPY], entry)
+                    }
+                    id::MEASURES_STREAM_DECRYPT_PACKET__REQUIRED_APPLICATION_BUFFER => {
+                        (
+                            &INFO[id::STREAM_DECRYPT_PACKET__REQUIRED_APPLICATION_BUFFER],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_PACKET_TRANSMITTED__PACKET_LEN => {
+                        (&INFO[id::STREAM_PACKET_TRANSMITTED__PACKET_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN => {
+                        (&INFO[id::STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN__CONN => {
+                        (&INFO[id::STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_PROBE_TRANSMITTED__PACKET_LEN => {
+                        (&INFO[id::STREAM_PROBE_TRANSMITTED__PACKET_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_RECEIVED__PACKET_LEN => {
+                        (&INFO[id::STREAM_PACKET_RECEIVED__PACKET_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_RECEIVED__PAYLOAD_LEN => {
+                        (&INFO[id::STREAM_PACKET_RECEIVED__PAYLOAD_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_RECEIVED__PAYLOAD_LEN__CONN => {
+                        (&INFO[id::STREAM_PACKET_RECEIVED__PAYLOAD_LEN__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_LOST__PACKET_LEN => {
+                        (&INFO[id::STREAM_PACKET_LOST__PACKET_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_LOST__PAYLOAD_LEN => {
+                        (&INFO[id::STREAM_PACKET_LOST__PAYLOAD_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_LOST__PAYLOAD_LEN__CONN => {
+                        (&INFO[id::STREAM_PACKET_LOST__PAYLOAD_LEN__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_LOST__LIFETIME => {
+                        (&INFO[id::STREAM_PACKET_LOST__LIFETIME], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_ACKED__PACKET_LEN => {
+                        (&INFO[id::STREAM_PACKET_ACKED__PACKET_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_ACKED__PAYLOAD_LEN => {
+                        (&INFO[id::STREAM_PACKET_ACKED__PAYLOAD_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_ACKED__PAYLOAD_LEN__CONN => {
+                        (&INFO[id::STREAM_PACKET_ACKED__PAYLOAD_LEN__CONN], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_ACKED__LIFETIME => {
+                        (&INFO[id::STREAM_PACKET_ACKED__LIFETIME], entry)
+                    }
+                    id::MEASURES_STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PACKET_LEN => {
+                        (
+                            &INFO[id::STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PACKET_LEN],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN => {
+                        (
+                            &INFO[id::STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN__CONN => {
+                        (
+                            &INFO[id::STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN__CONN],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_MAX_DATA_RECEIVED__INCREASE => {
+                        (&INFO[id::STREAM_MAX_DATA_RECEIVED__INCREASE], entry)
+                    }
+                    id::MEASURES_STREAM_CONTROL_PACKET_TRANSMITTED__PACKET_LEN => {
+                        (&INFO[id::STREAM_CONTROL_PACKET_TRANSMITTED__PACKET_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_CONTROL_PACKET_TRANSMITTED__CONTROL_DATA_LEN => {
+                        (
+                            &INFO[id::STREAM_CONTROL_PACKET_TRANSMITTED__CONTROL_DATA_LEN],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_CONTROL_PACKET_RECEIVED__PACKET_LEN => {
+                        (&INFO[id::STREAM_CONTROL_PACKET_RECEIVED__PACKET_LEN], entry)
+                    }
+                    id::MEASURES_STREAM_CONTROL_PACKET_RECEIVED__CONTROL_DATA_LEN => {
+                        (
+                            &INFO[id::STREAM_CONTROL_PACKET_RECEIVED__CONTROL_DATA_LEN],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_STREAM_HANDSHAKE_PACKET_REJECTED__CONN => {
+                        (&INFO[id::STREAM_HANDSHAKE_PACKET_REJECTED__CONN], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_INITIALIZED__CAPACITY => {
+                        (&INFO[id::PATH_SECRET_MAP_INITIALIZED__CAPACITY], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_UNINITIALIZED__CAPACITY => {
+                        (&INFO[id::PATH_SECRET_MAP_UNINITIALIZED__CAPACITY], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_UNINITIALIZED__ENTRIES => {
+                        (&INFO[id::PATH_SECRET_MAP_UNINITIALIZED__ENTRIES], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_UNINITIALIZED__LIFETIME => {
+                        (&INFO[id::PATH_SECRET_MAP_UNINITIALIZED__LIFETIME], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE => {
+                        (&INFO[id::PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE => {
+                        (&INFO[id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE => {
+                        (&INFO[id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE => {
+                        (&INFO[id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE], entry)
+                    }
+                    id::MEASURES_KEY_ACCEPTED__GAP => {
+                        (&INFO[id::KEY_ACCEPTED__GAP], entry)
+                    }
+                    id::MEASURES_KEY_ACCEPTED__FORWARD_SHIFT => {
+                        (&INFO[id::KEY_ACCEPTED__FORWARD_SHIFT], entry)
+                    }
+                    id::MEASURES_REPLAY_POTENTIALLY_DETECTED__GAP => {
+                        (&INFO[id::REPLAY_POTENTIALLY_DETECTED__GAP], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT__AGE => {
+                        (&INFO[id::PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT__AGE], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID => {
+                        (&INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__RETIRED => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__RETIRED],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE__UTILIZATION => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE__UTILIZATION],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION__INITIAL => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION__INITIAL],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE__UTILIZATION => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE__UTILIZATION],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__RETIRED => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__RETIRED],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION => {
+                        (
+                            &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION],
+                            entry,
+                        )
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_SERIALIZED__ENTRIES => {
+                        (&INFO[id::PATH_SECRET_MAP_SERIALIZED__ENTRIES], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_SERIALIZED__FILE_SIZE => {
+                        (&INFO[id::PATH_SECRET_MAP_SERIALIZED__FILE_SIZE], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_SERIALIZED__DURATION => {
+                        (&INFO[id::PATH_SECRET_MAP_SERIALIZED__DURATION], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE => {
+                        (&INFO[id::PATH_SECRET_MAP_ID_WRITE_LOCK__ACQUIRE], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_ID_WRITE_LOCK__DURATION => {
+                        (&INFO[id::PATH_SECRET_MAP_ID_WRITE_LOCK__DURATION], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__ACQUIRE => {
+                        (&INFO[id::PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__ACQUIRE], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__DURATION => {
+                        (&INFO[id::PATH_SECRET_MAP_ADDRESS_WRITE_LOCK__DURATION], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_DATAGRAM_ENCRYPT__PACKET_LEN => {
+                        (&INFO[id::PATH_SECRET_MAP_DATAGRAM_ENCRYPT__PACKET_LEN], entry)
+                    }
+                    id::MEASURES_PATH_SECRET_MAP_DATAGRAM_DECRYPT__PACKET_LEN => {
+                        (&INFO[id::PATH_SECRET_MAP_DATAGRAM_DECRYPT__PACKET_LEN], entry)
+                    }
+                    _ => unsafe { core::hint::unreachable_unchecked() }
+                }
+            })
     }
     #[allow(dead_code)]
     #[inline(always)]
@@ -5288,7 +6522,7 @@ impl<R: Registry> Subscriber<R> {
         let measure = &self.measures[id];
         measure.record(info, value);
     }
-    #[doc = r" Returns all of the registered gauges"]
+    /// Returns all of the registered gauges
     #[inline]
     pub fn gauges(&self) -> impl Iterator<Item = (&'static Info, &R::Gauge)> + '_ {
         core::iter::empty()
@@ -5300,7 +6534,7 @@ impl<R: Registry> Subscriber<R> {
         let gauge = &self.gauges[id];
         gauge.record(info, value);
     }
-    #[doc = r" Returns all of the registered timers"]
+    /// Returns all of the registered timers
     #[inline]
     pub fn timers(&self) -> impl Iterator<Item = (&'static Info, &R::Timer)> + '_ {
         self.timers
@@ -5326,6 +6560,10 @@ impl<R: Registry> Subscriber<R> {
                 ),
                 id::TIMERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME => (
                     &INFO[id::ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME],
+                    entry,
+                ),
+                id::TIMERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME => (
+                    &INFO[id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME],
                     entry,
                 ),
                 id::TIMERS_ACCEPTOR_TCP_PACKET_DROPPED__SOJOURN_TIME => {
@@ -5705,6 +6943,27 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         self.time(
             id::ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME,
             id::TIMERS_ACCEPTOR_TCP_TLS_STREAM_REJECTED__SOJOURN_TIME,
+            event.sojourn_time,
+        );
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_acceptor_tcp_synthetic_tls_stream_rejected(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::AcceptorTcpSyntheticTlsStreamRejected,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED,
+            id::COUNTERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED,
+            1usize,
+        );
+        self.time(
+            id::ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME,
+            id::TIMERS_ACCEPTOR_TCP_SYNTHETIC_TLS_STREAM_REJECTED__SOJOURN_TIME,
             event.sojourn_time,
         );
         let _ = event;
@@ -7532,7 +8791,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED,
             1usize,
         );
-        self . count_nominal (id :: PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL , id :: NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL , & event . peer_address) ;
+        self.count_nominal(
+            id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL,
+            id::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL,
+            &event.peer_address,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -7596,6 +8859,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL,
             &event.peer_address,
         );
+        self.measure(
+            id::PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE,
+            id::MEASURES_PATH_SECRET_MAP_ENTRY_REPLACED__REPLACED_AGE,
+            event.replaced_age,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -7622,6 +8890,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::MEASURES_PATH_SECRET_MAP_ID_ENTRY_EVICTED__AGE,
             event.age,
         );
+        self.measure(
+            id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED,
+            id::MEASURES_PATH_SECRET_MAP_ID_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED,
+            event.time_since_last_accessed,
+        );
+        self.count_nominal(
+            id::PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON,
+            id::NOMINAL_COUNTERS_PATH_SECRET_MAP_ID_ENTRY_EVICTED__REASON,
+            &event.reason,
+        );
         let _ = event;
         let _ = meta;
     }
@@ -7647,6 +8925,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE,
             id::MEASURES_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__AGE,
             event.age,
+        );
+        self.measure(
+            id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED,
+            id::MEASURES_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__TIME_SINCE_LAST_ACCESSED,
+            event.time_since_last_accessed,
+        );
+        self.count_nominal(
+            id::PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON,
+            id::NOMINAL_COUNTERS_PATH_SECRET_MAP_ADDRESS_ENTRY_EVICTED__REASON,
+            &event.reason,
         );
         let _ = event;
         let _ = meta;
@@ -7710,6 +8998,21 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL,
             id::NOMINAL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL,
             &event.peer_address,
+        );
+        self.measure(
+            id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE,
+            id::MEASURES_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__AGE,
+            event.age,
+        );
+        self.count_bool(
+            id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED,
+            id::BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED,
+            event.evicted,
+        );
+        self.count_bool(
+            id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
+            id::BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
+            event.scheduled_handshake,
         );
         let _ = event;
         let _ = meta;
@@ -8185,6 +9488,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             event.address_entries_initial_utilization,
         );
         self.measure(
+            id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD,
+            id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD,
+            event.id_entries_in_last_hs_period,
+        );
+        self.measure(
+            id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION,
+            id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION,
+            event.id_entries_in_last_hs_period_utilization,
+        );
+        self.measure(
             id::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS,
             id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS,
             event.handshake_requests,
@@ -8203,6 +9516,42 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION,
             id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION,
             event.duration,
+        );
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_path_secret_map_serialized(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::PathSecretMapSerialized,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::PATH_SECRET_MAP_SERIALIZED,
+            id::COUNTERS_PATH_SECRET_MAP_SERIALIZED,
+            1usize,
+        );
+        self.measure(
+            id::PATH_SECRET_MAP_SERIALIZED__ENTRIES,
+            id::MEASURES_PATH_SECRET_MAP_SERIALIZED__ENTRIES,
+            event.entries,
+        );
+        self.measure(
+            id::PATH_SECRET_MAP_SERIALIZED__FILE_SIZE,
+            id::MEASURES_PATH_SECRET_MAP_SERIALIZED__FILE_SIZE,
+            event.file_size,
+        );
+        self.measure(
+            id::PATH_SECRET_MAP_SERIALIZED__DURATION,
+            id::MEASURES_PATH_SECRET_MAP_SERIALIZED__DURATION,
+            event.duration,
+        );
+        self.count_bool(
+            id::PATH_SECRET_MAP_SERIALIZED__ERROR,
+            id::BOOL_COUNTERS_PATH_SECRET_MAP_SERIALIZED__ERROR,
+            event.error,
         );
         let _ = event;
         let _ = meta;

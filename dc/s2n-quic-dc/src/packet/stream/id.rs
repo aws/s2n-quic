@@ -128,7 +128,13 @@ impl Id {
             0b00
         };
         let value = (queue_id << 2) | is_reliable | is_bidirectional;
-        VarInt::new(value).unwrap()
+        #[expect(
+            clippy::unwrap_used,
+            reason = "queue_id is < MAX_QUEUE_ID (2^60) by construction, so (queue_id << 2) | flags is < 2^62 and always a valid VarInt"
+        )]
+        {
+            VarInt::new(value).unwrap()
+        }
     }
 
     #[inline]
@@ -140,6 +146,11 @@ impl Id {
         let is_reliable = *value & IS_RELIABLE_MASK == IS_RELIABLE_MASK;
         let is_bidirectional = *value & IS_BIDIRECTIONAL_MASK == IS_BIDIRECTIONAL_MASK;
         Some(Self {
+            #[allow(
+                clippy::unwrap_used,
+                clippy::unwrap_in_result,
+                reason = "queue_id is a right-shift of an existing VarInt and is bounds-checked against MAX_QUEUE_ID above, so it is always a valid VarInt"
+            )]
             queue_id: VarInt::new(queue_id).unwrap(),
             is_reliable,
             is_bidirectional,

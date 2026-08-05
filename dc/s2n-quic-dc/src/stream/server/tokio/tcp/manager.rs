@@ -303,6 +303,11 @@ where
     }
 
     #[inline]
+    #[expect(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "if no free worker is available then by_sojourn_time is guaranteed non-empty, so front() is always Some"
+    )]
     fn next_worker<C: Clock>(&mut self, clock: &C) -> Option<usize> {
         // if we have a free worker then use that
         if let Some(idx) = self.free.pop_front(&mut self.workers) {

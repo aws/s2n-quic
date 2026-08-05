@@ -12,16 +12,16 @@ ignore = [
   "RUSTSEC-2024-0370",
   # `ansi_term` is a dependency of `structopt` and only used in s2n-quic-qns and s2n-quic-sim
   # https://github.com/aws/s2n-quic/issues/2324
-  "RUSTSEC-2021-0139"
+  "RUSTSEC-2021-0139",
+  # `structopt` is in maintenance mode and only used in s2n-quic-qns and s2n-quic-sim
+  # https://github.com/aws/s2n-quic/issues/2324
+  "RUSTSEC-2022-0104"
 ]
 
 [bans]
 multiple-versions = "deny"
 
 skip-tree = [
-    # This dependency needs to be updated or removed (see https://github.com/axiomhq/rust-cuckoofilter/pull/53)
-    { name = "cuckoofilter" },
-
     # all of these are going to be just test dependencies
     { name = "bach" },
     { name = "bolero" },

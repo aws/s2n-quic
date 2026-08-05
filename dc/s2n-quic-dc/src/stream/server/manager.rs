@@ -96,6 +96,10 @@ impl Default for Builder {
             backlog: None,
             workers: None,
             // FIXME: Don't default to a fixed port?
+            #[expect(
+                clippy::unwrap_used,
+                reason = "parsing a compile-time constant socket address that is known valid"
+            )]
             acceptor_addr: "[::]:4444".parse().unwrap(),
             span: None,
             enable_udp: true,
@@ -132,6 +136,10 @@ impl Builder {
             ))
         );
 
+        #[expect(
+            clippy::unwrap_used,
+            reason = "converting the constant 1 to NonZeroUsize is infallible since 1 is non-zero"
+        )]
         let concurrency: usize = self.workers.unwrap_or_else(|| {
             std::thread::available_parallelism()
                 .unwrap_or_else(|_| 1.try_into().unwrap())

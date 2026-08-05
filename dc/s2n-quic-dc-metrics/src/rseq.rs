@@ -118,11 +118,14 @@ pub(crate) trait Absorb: Sized + Default {
 static PRINTED_MEMBARRIER_WARNING: AtomicBool = AtomicBool::new(false);
 
 impl<T: Absorb> Channels<T> {
-    #[cfg_attr(not(target_os = "linux"), allow(unused_assignments))]
+    #[cfg_attr(
+        not(all(target_os = "linux", target_pointer_width = "64")),
+        allow(unused_assignments)
+    )]
     pub(crate) fn new() -> Self {
         let mut must_use_fallback = false;
 
-        #[cfg(target_os = "linux")]
+        #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
         {
             let ret = unsafe {
                 libc::syscall(
@@ -148,7 +151,7 @@ impl<T: Absorb> Channels<T> {
             }
         }
 
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
         {
             must_use_fallback = true;
         }
@@ -175,12 +178,12 @@ impl<T: Absorb> Channels<T> {
         len
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
     pub(crate) fn steal_pages(&self) {
         self.aggregate_fallback(true);
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     pub(crate) fn steal_pages(&self) {
         if self.must_use_fallback {
             self.aggregate_fallback(true);
@@ -253,12 +256,12 @@ impl<T: Absorb> Channels<T> {
         self.aggregate.lock().expect("propagate panic")
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
     pub(crate) fn send_event(&self, event: u64) {
         self.fallback_push(event)
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     pub(crate) fn send_event(&self, event: u64) {
         if self.must_use_fallback {
             return self.fallback_push(event);
@@ -269,7 +272,7 @@ impl<T: Absorb> Channels<T> {
     }
 
     // Separate function for unit testing.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     fn send_event_inner(&self, event: u64, rseq_ptr: NonNull<Rseq>) {
         unsafe {
             #[cfg(target_arch = "x86_64")]
@@ -482,7 +485,7 @@ impl<T: Absorb> Channels<T> {
     }
 
     #[cold]
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     #[cfg_attr(target_arch = "aarch64", target_feature(enable = "lse"))]
     fn send_event_slow(&self, rseq_ptr: NonNull<Rseq>, serialized_event: u64) {
         let mut new_page = self.empty_pages.pop().unwrap_or_else(Page::new);
@@ -760,6 +763,7 @@ fn rseq_init() -> NonNull<Rseq> {
     rseq_ptr
 }
 
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 fn dlsym(symbol: &CStr) -> std::io::Result<*mut std::ffi::c_void> {
     unsafe {
         // clear previous errors
@@ -778,6 +782,7 @@ fn dlsym(symbol: &CStr) -> std::io::Result<*mut std::ffi::c_void> {
     }
 }
 
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 fn thread_plus_offset(offset: libc::ptrdiff_t) -> *mut std::ffi::c_void {
     let output: *mut std::ffi::c_void;
     // As far as I can tell, both of these should work in the most general case.
@@ -795,6 +800,7 @@ fn thread_plus_offset(offset: libc::ptrdiff_t) -> *mut std::ffi::c_void {
     output.wrapping_offset(offset)
 }
 
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 fn from_libc() -> std::io::Result<*mut Rseq> {
     let _size = dlsym(c"__rseq_size")?.cast::<u32>();
     let offset = dlsym(c"__rseq_offset")?.cast::<libc::ptrdiff_t>(); // ptrdiff_t
@@ -803,9 +809,14 @@ fn from_libc() -> std::io::Result<*mut Rseq> {
     Ok(thread_plus_offset(unsafe { offset.read() }).cast())
 }
 
+#[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
+fn from_libc() -> std::io::Result<*mut Rseq> {
+    return Err(std::io::Error::from(std::io::ErrorKind::Unsupported));
+}
+
 #[allow(clippy::needless_return)]
 fn sys_rseq(rseq_abi: *mut Rseq, flags: i32) -> std::io::Result<()> {
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     {
         let ret = unsafe {
             libc::syscall(
@@ -823,7 +834,7 @@ fn sys_rseq(rseq_abi: *mut Rseq, flags: i32) -> std::io::Result<()> {
         return Ok(());
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
     {
         Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
     }
@@ -912,7 +923,7 @@ mod tests {
         .unwrap();
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     #[test]
     fn check_send_branches() {
         let mut rseq = Rseq {
@@ -974,7 +985,7 @@ mod tests {
         drop(channels);
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     #[test]
     // `lse` enablement on aarch64
     #[allow(unused_unsafe)]

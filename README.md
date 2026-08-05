@@ -27,7 +27,12 @@ See the [API documentation](https://docs.rs/s2n-quic), [examples](https://github
 s2n-quic = "1"
 ```
 
-**NOTE**: On unix-like systems, [`s2n-tls`](https://github.com/aws/s2n-tls) will be used as the default TLS provider.
+**NOTE**: The default TLS provider depends on the platform. On unix-like systems, and on Windows
+when building with the GNU/MinGW toolchain, [`s2n-tls`](https://github.com/aws/s2n-tls) is used as
+the default TLS provider. On Windows with the MSVC toolchain,
+[`rustls`](https://crates.io/crates/rustls) is the default, because `s2n-tls` does not build with
+MSVC.
+
 On linux systems, [`aws-lc-rs`](https://github.com/awslabs/aws-lc-rs) will be used for cryptographic
 operations. A C compiler and CMake may be required on these systems for installation.
 
@@ -111,7 +116,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 `s2n-quic` will maintain a rolling MSRV (minimum supported rust version) policy of at least 6 months. The current s2n-quic version is not guaranteed to build on Rust versions earlier than the MSRV.
 
-The current MSRV is [1.88.0][msrv-url].
+The current MSRV is [1.92.0][msrv-url].
 
 ## Supported Operating Systems
 
@@ -138,5 +143,5 @@ This project is licensed under the [Apache-2.0 License][license-url].
 [docs-url]: https://docs.rs/s2n-quic
 [dependencies-badge]: https://img.shields.io/librariesio/release/cargo/s2n-quic.svg
 [dependencies-url]: https://crates.io/crates/s2n-quic/dependencies
-[msrv-badge]: https://img.shields.io/badge/MSRV-1.88.0-green
-[msrv-url]: https://blog.rust-lang.org/2025/06/26/Rust-1.88.0/
+[msrv-badge]: https://img.shields.io/badge/MSRV-1.92.0-green
+[msrv-url]: https://blog.rust-lang.org/2025/12/11/Rust-1.92.0/

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    cleaner::Cleaner, stateless_reset, ApplicationData, ApplicationDataError, Entry, Store,
+    cleaner::Cleaner, disk, stateless_reset, ApplicationData, ApplicationDataError, Entry, Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -32,11 +32,12 @@ mod tests;
 
 #[derive(Debug)]
 #[allow(clippy::enum_variant_names)]
-pub enum StateBuilderError {
+pub(crate) enum StateBuilderError {
     MissingSigner,
     MissingCapacity,
     MissingClock,
     MissingSubscriber,
+    Io(std::io::Error),
 }
 
 impl std::fmt::Display for StateBuilderError {
@@ -46,6 +47,7 @@ impl std::fmt::Display for StateBuilderError {
             StateBuilderError::MissingCapacity => write!(f, "capacity is required"),
             StateBuilderError::MissingClock => write!(f, "clock is required"),
             StateBuilderError::MissingSubscriber => write!(f, "subscriber is required"),
+            StateBuilderError::Io(err) => write!(f, "{err}"),
         }
     }
 }
@@ -62,6 +64,7 @@ where
     should_evict_on_unknown_path_secret: bool,
     clock: Option<C>,
     subscriber: Option<S>,
+    serializer: Option<disk::Serializer>,
 }
 
 impl<C, S> StateBuilder<C, S>
@@ -76,6 +79,7 @@ where
             should_evict_on_unknown_path_secret: false,
             clock: None,
             subscriber: None,
+            serializer: None,
         }
     }
 
@@ -104,6 +108,7 @@ where
             should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
             signer: self.signer,
             capacity: self.capacity,
+            serializer: self.serializer,
         }
     }
 
@@ -114,7 +119,18 @@ where
             should_evict_on_unknown_path_secret: self.should_evict_on_unknown_path_secret,
             signer: self.signer,
             capacity: self.capacity,
+            serializer: self.serializer,
         }
+    }
+
+    /// Configures on-disk serialization of the map.
+    ///
+    /// The [`disk::Serializer`] carries where to write, the (optional) periodic interval, and which
+    /// entries to include by recency of access. If the serializer has a period set, the background
+    /// cleaner serializes the map periodically (jittered within the period).
+    pub fn with_serializer(mut self, serializer: disk::Serializer) -> Self {
+        self.serializer = Some(serializer);
+        self
     }
 
     pub fn build(self) -> Result<Arc<State<C, S>>, StateBuilderError> {
@@ -125,13 +141,15 @@ where
             .subscriber
             .ok_or(StateBuilderError::MissingSubscriber)?;
 
-        Ok(State::new(
+        State::new(
             signer,
             capacity,
             self.should_evict_on_unknown_path_secret,
             clock,
             subscriber,
-        ))
+            self.serializer,
+        )
+        .map_err(StateBuilderError::Io)
     }
 }
 
@@ -164,6 +182,10 @@ impl<F: FnOnce()> Drop for PeerWriteGuard<'_, F> {
         unsafe {
             ManuallyDrop::drop(&mut self.guard);
         }
+        #[expect(
+            clippy::unwrap_used,
+            reason = "cb is always Some until this Drop impl takes it exactly once"
+        )]
         (self.cb.take().unwrap())();
     }
 }
@@ -417,6 +439,11 @@ where
 
     cleaner: Cleaner,
 
+    // If set, configures on-disk serialization of the map. Used both for ad-hoc serialization
+    // (via `serialize_to_disk`) and, when the serializer has background serialization enabled,
+    // periodic serialization driven by the cleaner.
+    pub(super) serializer: Option<disk::Serializer>,
+
     // Avoids allocating/deallocating on each cleaner run.
     // We use a PeerMap to save memory -- an Arc is 8 bytes, SocketAddr is 32 bytes.
     pub(super) cleaner_peer_seen: PeerMap,
@@ -456,6 +483,10 @@ fn control_socket() -> Option<Arc<std::net::UdpSocket>> {
     // per process.
     static CONTROL_SOCKET: Mutex<Weak<std::net::UdpSocket>> = Mutex::new(Weak::new());
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "lock is only poisoned if another thread already panicked while holding it"
+    )]
     let mut guard = CONTROL_SOCKET.lock().unwrap();
     if let Some(socket) = guard.upgrade() {
         return Some(socket);
@@ -465,6 +496,10 @@ fn control_socket() -> Option<Arc<std::net::UdpSocket>> {
     let addrs = ["[::]:0", "0.0.0.0:0"];
 
     for addr in addrs {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "addr comes from a fixed list of compile-time constant address literals that are known valid"
+        )]
         let mut options = crate::socket::Options::new(addr.parse().unwrap());
         options.blocking = false;
         options.only_v6 = false;
@@ -497,13 +532,15 @@ where
     C: 'static + time::Clock + Sync + Send,
     S: event::Subscriber,
 {
+    #[expect(clippy::unwrap_in_result, reason = "lock poison")]
     pub fn new(
         signer: stateless_reset::Signer,
         capacity: usize,
         should_evict_on_unknown_path_secret: bool,
         clock: C,
         subscriber: S,
-    ) -> Arc<Self> {
+        serializer: Option<disk::Serializer>,
+    ) -> std::io::Result<Arc<Self>> {
         let control_socket = control_socket();
 
         let init_time = clock.get_time();
@@ -521,9 +558,10 @@ where
             eviction_queue: Default::default(),
             cleaner_peer_seen: Default::default(),
             cleaner: Cleaner::new(),
+            serializer,
             rehandshake: Mutex::new(super::rehandshake::RehandshakeState::new(
                 rehandshake_period,
-            )),
+            )?),
             signer,
             control_socket,
             init_time,
@@ -542,6 +580,10 @@ where
         state.peers.reserve(2 * state.max_capacity);
         state.ids.reserve(2 * state.max_capacity);
         state.cleaner_peer_seen.reserve(2 * state.max_capacity);
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
         state
             .rehandshake
             .get_mut()
@@ -550,19 +592,66 @@ where
 
         let state = Arc::new(state);
 
-        state.cleaner.spawn_thread(state.clone());
+        state.cleaner.spawn_thread(state.clone())?;
 
         state
             .subscriber()
             .on_path_secret_map_initialized(event::builder::PathSecretMapInitialized { capacity });
 
-        state
+        Ok(state)
+    }
+
+    /// Serializes the current map to disk using the configured [`disk::Serializer`].
+    ///
+    /// Does nothing (returning `Ok(())`) if no serializer was configured. The set of entries is
+    /// snapshotted from the eviction queue, which holds a weak reference to every live entry.
+    ///
+    /// Emits a `path_secret_map:serialized` event recording how long serialization took, the
+    /// number of entries written, the resulting file size, and whether it failed.
+    pub(super) fn serialize_to_disk(&self) -> std::io::Result<()> {
+        let Some(serializer) = self.serializer.as_ref() else {
+            return Ok(());
+        };
+
+        // Clone the weak references out under the lock so we don't hold it across the write.
+        let entries: Vec<Weak<Entry>> = {
+            let queue = self
+                .eviction_queue
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            queue.iter().cloned().collect()
+        };
+
+        let start = self.clock.get_time();
+        let result = serializer.serialize(&entries, self.cleaner.epoch());
+        let duration = self.clock.get_time().saturating_duration_since(start);
+
+        let (entries_written, file_size) = match &result {
+            Ok(stats) => (stats.entries, stats.file_size),
+            Err(_) => (0, 0),
+        };
+
+        self.subscriber()
+            .on_path_secret_map_serialized(event::builder::PathSecretMapSerialized {
+                entries: entries_written,
+                file_size: file_size as usize,
+                duration,
+                error: result.is_err(),
+            });
+
+        result.map(|_| ())
     }
 
     // Sometimes called with queue lock held -- must not acquire it.
-    pub(super) fn evict(&self, evicted: &Arc<Entry>) -> (bool, bool) {
+    pub(super) fn evict(
+        &self,
+        evicted: &Arc<Entry>,
+        reason: event::builder::EvictionReason,
+    ) -> (bool, bool) {
         let mut id_removed = false;
         let mut peer_removed = false;
+
+        let current_epoch = self.cleaner.epoch();
 
         // A concurrent cleaner can drop the entry from the `ids` map so we need to
         // re-check whether we actually evicted something.
@@ -573,6 +662,9 @@ where
                     peer_address: SocketAddress::from(*evicted.peer()).into_event(),
                     credential_id: evicted.id().into_event(),
                     age: evicted.age(),
+                    reason: reason.clone(),
+                    time_since_last_accessed: current_epoch
+                        .duration_since(evicted.accessed_at_epoch()),
                 },
             );
         }
@@ -590,6 +682,9 @@ where
                     peer_address: SocketAddress::from(*evicted.peer()).into_event(),
                     credential_id: evicted.id().into_event(),
                     age: evicted.age(),
+                    reason,
+                    time_since_last_accessed: current_epoch
+                        .duration_since(evicted.accessed_at_epoch()),
                 },
             );
         }
@@ -700,6 +795,11 @@ where
         self.should_evict_on_unknown_path_secret
     }
 
+    fn serialize_to_disk(&self) -> std::io::Result<()> {
+        // Resolves to the inherent method on `State`, which the cleaner also uses.
+        State::serialize_to_disk(self)
+    }
+
     fn drop_state(&self) {
         self.ids.clear();
         self.peers.clear();
@@ -709,6 +809,10 @@ where
         self.peers.contains_key(peer)
     }
 
+    #[expect(
+        clippy::panic,
+        reason = "FIXME: inserting a duplicate path secret ID should fail the handshake rather than panic"
+    )]
     fn on_new_path_secrets(&self, entry: Arc<Entry>) {
         let id = *entry.id();
         let peer = entry.peer();
@@ -733,6 +837,10 @@ where
                 // FIXME: Consider a more interesting algorithm, e.g., scanning the first N entries
                 // if the popped entry is still live to see if we can avoid dropping a live entry.
                 // May not be worth it in practice.
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "queue is non-empty here because its length was just checked to exceed max_capacity"
+                )]
                 let element = queue.pop_front().unwrap();
                 // Drop the queue lock prior to dropping element in case we wind up deallocating
                 // This reduces lock contention and avoids interleaving locks (requiring careful
@@ -740,7 +848,7 @@ where
                 drop(queue);
 
                 if let Some(evicted) = element.upgrade() {
-                    self.evict(&evicted);
+                    self.evict(&evicted, event::builder::EvictionReason::Capacity);
                 }
             }
         }
@@ -771,6 +879,7 @@ where
                     peer_address: SocketAddress::from(peer).into_event(),
                     new_credential_id: id.into_event(),
                     previous_credential_id: prev_id.into_event(),
+                    replaced_age: prev.age(),
                 },
             );
         }
@@ -827,7 +936,7 @@ where
         );
 
         if let Some(entry) = &result {
-            entry.set_accessed_addr();
+            entry.set_accessed_addr(self.cleaner.epoch());
             self.subscriber()
                 .on_path_secret_map_address_cache_accessed_hit(
                     event::builder::PathSecretMapAddressCacheAccessedHit {
@@ -855,7 +964,7 @@ where
         );
 
         if let Some(entry) = &result {
-            entry.set_accessed_id();
+            entry.set_accessed_id(self.cleaner.epoch());
             self.subscriber().on_path_secret_map_id_cache_accessed_hit(
                 event::builder::PathSecretMapIdCacheAccessedHit {
                     credential_id: id.into_event(),
@@ -931,19 +1040,44 @@ where
             return None;
         };
 
+        // Only evict if it's been at least 10 seconds since this entry was created.
+        //
+        // If this is on the server (i.e. a client is telling a server that it did not have the
+        // secret cached), this is entirely harmless to skip because clients can always
+        // negotiate a new secret. It carries the benefit that if the client has learned of the
+        // unknown path secret *after* sending UnknownPathSecret (e.g., because the server started
+        // encrypting for a secret before the handshake finished inserting on the client), we will
+        // no longer drop the just-created secret for no reason.
+        //
+        // If this is a client (i.e., the server did not have the secret cached), then evicting
+        // a just-inserted secret due to a late-arriving UnknownPathSecret is actively harmful
+        // (likely to cause impact). If the entry is genuinely unknown to the server, the
+        // requested handshake above should allow us to recover soon regardless (or we will
+        // naturally do so on a subsequent request).
+        //
+        // For a repeated fast server restart, this does lengthen the time period in which we will
+        // repeatedly see exceptions thrown on connect() rather than delaying until a handshake
+        // completes. But such fast server restarts in short succession should be rare, so this
+        // seems like a reasonable tradeoff.
+        let should_evict = self.should_evict_on_unknown_path_secret()
+            // FIXME: Adjust our tests to backdate/forward date entries instead?
+            && (cfg!(test) || entry.age() > Duration::from_secs(10));
+        let scheduled_handshake = self
+            .request_handshake(*entry.peer(), HandshakeReason::Remote)
+            .is_some();
+
         self.subscriber().on_unknown_path_secret_packet_accepted(
             event::builder::UnknownPathSecretPacketAccepted {
                 credential_id: packet.credential_id.into_event(),
                 peer_address,
+                age: entry.age(),
+                evicted: should_evict,
+                scheduled_handshake,
             },
         );
 
-        // FIXME: More actively schedule a new handshake.
-        // See comment on requested_handshakes for details.
-        self.request_handshake(*entry.peer(), HandshakeReason::Remote);
-
-        if self.should_evict_on_unknown_path_secret() {
-            self.evict(&entry);
+        if should_evict {
+            self.evict(&entry, event::builder::EvictionReason::UnknownPathSecret);
         }
 
         Some(packet)

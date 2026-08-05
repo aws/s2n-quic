@@ -183,6 +183,10 @@ where
                     ));
 
                     self.arm_peek_timer();
+                    #[expect(
+                        clippy::unwrap_used,
+                        reason = "we matched on the PeekPacket state above so this transition is always valid"
+                    )]
                     self.state.on_peek_packet().unwrap();
                     continue;
                 }
@@ -193,6 +197,10 @@ where
                     ready!(self.peek_timer.poll_ready(cx));
 
                     // the application isn't making progress so emit the timer expired event
+                    #[expect(
+                        clippy::unwrap_used,
+                        reason = "we matched on the EpochTimeout state above so this transition is always valid"
+                    )]
                     self.state.on_epoch_unchanged().unwrap();
 
                     // only log this message after the first observation

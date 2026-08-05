@@ -41,6 +41,8 @@ const CLIENT_TOKENS: [stateless_reset::Token; 1] = [TEST_TOKEN_2];
 const SERVER_CLOSE_ERROR_CODE: VarInt = VarInt::from_u8(111);
 const CLIENT_CLOSE_ERROR_CODE: VarInt = VarInt::from_u8(222);
 
+const PACKET_STORAGE_BUFFER: u32 = 1000;
+
 // s2n-tls randomness is not stubbed out to be deterministic, so we need to adjust packet lengths
 // to avoid random test failures. We want to avoid stubbing the lengths out entirely because part
 // of the goal of the snapshots is to have those lengths in the log, so we avoid redacting the
@@ -84,7 +86,7 @@ fn dc_handshake_self_test() -> Result<()> {
         .with_tls(certificates::CERT_PEM)?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
-    self_test(server, client, true, None, None, true, false)?;
+    self_test(server, client, true, None, None, true)?;
 
     Ok(())
 }
@@ -141,7 +143,6 @@ fn dc_mtls_handshake_self_test() -> Result<()> {
             PacketSnapshot::named_snapshot("dc_mtls_handshake__server"),
             PacketSnapshot::named_snapshot("dc_mtls_handshake__client"),
         ),
-        false,
     )?;
 
     Ok(())
@@ -178,7 +179,6 @@ fn dc_mtls_handshake_auth_failure_self_test() -> Result<()> {
         Some(expected_client_error),
         None,
         true,
-        false,
     )?;
 
     Ok(())
@@ -223,7 +223,6 @@ fn dc_mtls_handshake_server_not_supported_self_test() -> Result<()> {
         )),
         Some(expected_server_error),
         true,
-        false,
     )?;
 
     Ok(())
@@ -273,7 +272,6 @@ fn dc_mtls_handshake_client_not_supported_self_test() -> Result<()> {
             "peer does not support specified dc versions",
         )),
         true,
-        false,
     )?;
 
     Ok(())
@@ -301,7 +299,7 @@ fn mtu_probing_complete_frame_exchange_test() -> Result<()> {
         .with_tls(client_tls)?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
-    let (client_events, server_events) = self_test(server, client, true, None, None, true, false)?;
+    let (client_events, server_events) = self_test(server, client, true, None, None, true)?;
 
     // Verify that client received MtuProbingComplete from server
     let client_mtu_complete_events = client_events
@@ -408,7 +406,7 @@ fn mtu_probing_complete_asymmetric_support_test(
     )?;
 
     let (client_events, server_events) =
-        self_test_with_mtu(server, client, true, None, None, false, None, false)?;
+        self_test_with_mtu(server, client, true, None, None, false, None)?;
 
     // Verify that client did NOT receive MtuProbingComplete from server
     let client_mtu_complete_events = client_events
@@ -509,7 +507,7 @@ fn mtu_probing_complete_frame_exchange_jumbo_mtu_test() -> Result<()> {
 
     // Use 9000 byte MTU for jumbo frames
     let (client_events, server_events) =
-        self_test_with_mtu(server, client, true, None, None, true, Some(9000), false)?;
+        self_test_with_mtu(server, client, true, None, None, true, Some(9000))?;
 
     let expected_mtu = 8972;
 
@@ -616,8 +614,7 @@ fn dc_possible_secret_control_packet(
         .with_dc(dc_endpoint)?
         .with_packet_interceptor(RandomShort::default())?;
 
-    let (client_events, _server_events) =
-        self_test(server, client, true, None, None, false, false)?;
+    let (client_events, _server_events) = self_test(server, client, true, None, None, false)?;
 
     assert_eq!(
         1,
@@ -647,6 +644,8 @@ fn dc_possible_secret_control_packet(
 
 #[test]
 fn dc_mtls_handshake_with_server_offloading_test() -> Result<()> {
+    let limits =
+        s2n_quic::provider::limits::Limits::new().with_packet_buffer_size(PACKET_STORAGE_BUFFER)?;
     let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
     let server_endpoint = OffloadBuilder::new()
         .with_endpoint(server_tls)
@@ -656,6 +655,7 @@ fn dc_mtls_handshake_with_server_offloading_test() -> Result<()> {
         })
         .build();
     let server = Server::builder()
+        .with_limits(limits)?
         .with_tls(server_endpoint)?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
@@ -664,17 +664,15 @@ fn dc_mtls_handshake_with_server_offloading_test() -> Result<()> {
         .with_tls(client_tls)?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
-    // with_blocklist is false because of this issue: https://github.com/aws/s2n-quic/issues/2601.
-    // Packet loss is expected because the client sends the last Handshake message packet along with
-    // the first OneRTT packet in the same datagram. With offloading enabled the OneRtt packet is
-    // dropped while the Handshake packet is being processed.
-    self_test(server, client, true, None, None, false, true)?;
+    self_test(server, client, true, None, None, true)?;
 
     Ok(())
 }
 
 #[test]
 fn dc_mtls_handshake_auth_failure_with_server_offloading_test() -> Result<()> {
+    let limits =
+        s2n_quic::provider::limits::Limits::new().with_packet_buffer_size(PACKET_STORAGE_BUFFER)?;
     let server_tls = build_server_mtls_provider(certificates::UNTRUSTED_CERT_PEM)?;
     let server_endpoint = OffloadBuilder::new()
         .with_endpoint(server_tls)
@@ -684,6 +682,7 @@ fn dc_mtls_handshake_auth_failure_with_server_offloading_test() -> Result<()> {
         })
         .build();
     let server = Server::builder()
+        .with_limits(limits)?
         .with_tls(server_endpoint)?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
@@ -704,17 +703,12 @@ fn dc_mtls_handshake_auth_failure_with_server_offloading_test() -> Result<()> {
     }
     .into();
 
-    // with_blocklist is false because of this issue: https://github.com/aws/s2n-quic/issues/2601.
-    // Packet loss is expected because the client sends the last Handshake message packet along with
-    // the first OneRTT packet in the same datagram. With offloading enabled the OneRtt packet is
-    // dropped while the Handshake packet is being processed.
     self_test(
         server,
         client,
         true,
         Some(expected_client_error),
         None,
-        false,
         true,
     )?;
 
@@ -729,7 +723,6 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     expected_client_error: Option<connection::Error>,
     expected_server_error: Option<connection::Error>,
     with_blocklist: bool,
-    offload: bool,
 ) -> Result<(DcRecorder, DcRecorder)> {
     self_test_inner(
         server,
@@ -740,7 +733,6 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
         with_blocklist,
         None,
         (PacketSnapshot::new(), PacketSnapshot::new()),
-        offload,
     )
 }
 
@@ -753,7 +745,6 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
     expected_server_error: Option<connection::Error>,
     with_blocklist: bool,
     max_mtu: Option<u16>,
-    offload: bool,
 ) -> Result<(DcRecorder, DcRecorder)> {
     self_test_inner(
         server,
@@ -764,7 +755,6 @@ fn self_test_with_mtu<S: ServerProviders, C: ClientProviders>(
         with_blocklist,
         max_mtu,
         (PacketSnapshot::new(), PacketSnapshot::new()),
-        offload,
     )
 }
 
@@ -778,7 +768,6 @@ fn self_test_inner<S: ServerProviders, C: ClientProviders>(
     with_blocklist: bool,
     max_mtu: Option<u16>,
     packet_snapshots: (PacketSnapshot, PacketSnapshot),
-    offload: bool,
 ) -> Result<(DcRecorder, DcRecorder)> {
     let model = Model::default();
     let rtt = Duration::from_millis(100);
@@ -955,37 +944,18 @@ fn self_test_inner<S: ServerProviders, C: ClientProviders>(
             .duration_since_start()
     );
 
-    // Server completes in 2.5 RTTs measured from the start of the test, since it takes .5 RTT
-    // for the Initial from the client to reach the server.
-    // In the case of offloading, server is dc-complete in 3.5 RTTs since the client's first
-    // Stateless Reset packet is dropped due to this issue: https://github.com/aws/s2n-quic/issues/2601.
-    if offload {
-        assert_eq!(
-            rtt.mul_f64(3.5),
-            server_dc_state_changed_events[2]
-                .timestamp
-                .duration_since_start()
-        );
-        assert_eq!(
-            rtt * 3,
-            client_dc_state_changed_events[2]
-                .timestamp
-                .duration_since_start()
-        );
-    } else {
-        assert_eq!(
-            rtt.mul_f32(2.5),
-            server_dc_state_changed_events[2]
-                .timestamp
-                .duration_since_start()
-        );
-        assert_eq!(
-            rtt * 2,
-            client_dc_state_changed_events[2]
-                .timestamp
-                .duration_since_start()
-        );
-    }
+    assert_eq!(
+        rtt.mul_f32(2.5),
+        server_dc_state_changed_events[2]
+            .timestamp
+            .duration_since_start()
+    );
+    assert_eq!(
+        rtt * 2,
+        client_dc_state_changed_events[2]
+            .timestamp
+            .duration_since_start()
+    );
 
     let client_mtu_events = client_events.mtu_updated_events.lock().unwrap().clone();
     let server_mtu_events = server_events.mtu_updated_events.lock().unwrap().clone();

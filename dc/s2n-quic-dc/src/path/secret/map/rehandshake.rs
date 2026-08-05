@@ -22,26 +22,26 @@ pub(super) struct RehandshakeState {
 }
 
 impl RehandshakeState {
-    pub(super) fn new(rehandshake_period: Duration) -> Self {
+    pub(super) fn new(rehandshake_period: Duration) -> std::io::Result<Self> {
         Self::new_with_runtime(rehandshake_period, false)
     }
 
     #[cfg(test)]
-    fn new_with_paused_time(rehandshake_period: Duration) -> Self {
+    fn new_with_paused_time(rehandshake_period: Duration) -> std::io::Result<Self> {
         Self::new_with_runtime(rehandshake_period, true)
     }
 
-    fn new_with_runtime(rehandshake_period: Duration, start_paused: bool) -> Self {
+    fn new_with_runtime(rehandshake_period: Duration, start_paused: bool) -> std::io::Result<Self> {
         let mut builder = tokio::runtime::Builder::new_current_thread();
         builder.enable_all();
         if start_paused {
             #[cfg(test)]
             builder.start_paused(true);
         }
-        let runtime = builder.build().unwrap();
+        let runtime = builder.build()?;
         let _guard = runtime.enter();
         let now = Instant::now();
-        Self {
+        Ok(Self {
             queue: Default::default(),
             handshake_at: Default::default(),
             schedule_handshake_at: now,
@@ -54,11 +54,15 @@ impl RehandshakeState {
             // handshakes in the handshake client (currently limited to 5).
             semaphore: Arc::new(Semaphore::new(2)),
             runtime: ManuallyDrop::new(runtime),
-        }
+        })
     }
 
     pub(super) fn needs_refill(&mut self) -> bool {
         self.queue.is_empty()
+    }
+
+    pub(super) fn rehandshake_period(&self) -> Duration {
+        self.rehandshake_period
     }
 
     pub(super) fn push(&mut self, peer: SocketAddr) {
@@ -139,6 +143,10 @@ impl RehandshakeState {
             last_spawn = Instant::now();
 
             // Wait for a slot if we're at capacity
+            #[expect(
+                clippy::unwrap_used,
+                reason = "acquire_owned only errors when the semaphore is closed, and this semaphore is never closed"
+            )]
             let permit = self
                 .runtime
                 .block_on(self.semaphore.clone().acquire_owned())

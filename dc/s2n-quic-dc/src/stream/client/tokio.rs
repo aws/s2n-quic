@@ -586,7 +586,10 @@ where
         });
 
     let (Some(Ok(socket)), Some(Ok(entry))) = (socket, peer) else {
-        // unwrap is OK -- if socket or peer isn't present the error should be set.
+        #[expect(
+            clippy::unwrap_used,
+            reason = "if socket or peer isn't present the error is always set, as documented above"
+        )]
         return Err(error.unwrap());
     };
 

@@ -4,7 +4,7 @@ name = "s2n-quic-qns"
 version = "0.1.0"
 authors = ["AWS s2n"]
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.92"
 license = "Apache-2.0"
 publish = false
 
@@ -14,8 +14,8 @@ trace = ["s2n-quic-core/branch-tracing", "s2n-quic-core/probe-tracing", "s2n-qui
 xdp = ["s2n-quic/unstable-provider-io-xdp", "aya", "aya-log"]
 
 [dependencies]
-aya = { version = "0.13", optional = true }
-aya-log = { version = "0.2.1", optional = true }
+aya = { version = "0.14", optional = true }
+aya-log = { version = "0.3.0", optional = true }
 bytes = { version = "1", default-features = false }
 cfg-if = "1"
 futures = "0.3"

@@ -222,6 +222,10 @@ impl HandshakingPathInner {
         &mut self,
         stateless_reset_tokens: impl Iterator<Item = &'a s2n_quic_core::stateless_reset::Token>,
     ) {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "protocol invariant enforced in frame parsing"
+        )]
         // TODO: support multiple stateless reset tokens
         let sender = sender::State::new(
             stateless_reset_tokens

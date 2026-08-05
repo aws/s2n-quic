@@ -52,6 +52,10 @@ impl State {
 
         // The atomic will not be incremented (i.e., would have panic'd above) if we do not fit
         // into a VarInt.
+        #[expect(
+            clippy::unwrap_used,
+            reason = "id was produced by a successful VarInt::try_from in fetch_update, so it is provably in range"
+        )]
         VarInt::try_from(id).unwrap()
     }
 

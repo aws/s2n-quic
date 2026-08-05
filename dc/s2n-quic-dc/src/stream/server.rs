@@ -57,6 +57,10 @@ impl InitialPacket {
     }
 
     #[inline]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "VarInt::ZERO is provably in range for unreliable_unidirectional"
+    )]
     pub fn empty() -> Self {
         Self {
             credentials: Credentials {

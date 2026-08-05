@@ -14,7 +14,7 @@ use std::{
 #[test]
 fn test_limits_concurrency() {
     // Use a short rehandshake period so we schedule multiple handshakes per minute
-    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60));
+    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
 
     // Add 10 peers
     for i in 0..10 {
@@ -48,7 +48,7 @@ fn test_limits_concurrency() {
 #[test]
 fn test_limits_concurrency_for_fast_handshakes() {
     // Use a short rehandshake period so we schedule multiple handshakes per minute
-    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60));
+    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
 
     // Add 10 peers
     for i in 0..10 {
@@ -83,7 +83,7 @@ fn test_limits_concurrency_for_fast_handshakes() {
 #[test]
 fn test_waits_for_completion() {
     // Use a short rehandshake period so we schedule multiple handshakes per minute
-    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60));
+    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
 
     for i in 0..5 {
         state.push(SocketAddr::from(([127, 0, 0, 1], 4000 + i)));
@@ -109,7 +109,7 @@ fn test_waits_for_completion() {
 #[test]
 fn test_respects_60_second_deadline() {
     // Use a short rehandshake period so we try to schedule many handshakes
-    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(120));
+    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(120)).unwrap();
 
     // Add many peers
     for i in 0..100 {
@@ -144,7 +144,7 @@ fn test_respects_60_second_deadline() {
 #[test]
 fn test_keeps_unscheduled_in_queue() {
     // Use a short rehandshake period
-    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60));
+    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
 
     for i in 0..20 {
         state.push(SocketAddr::from(([127, 0, 0, 1], 4000 + i)));
@@ -174,7 +174,7 @@ fn test_keeps_unscheduled_in_queue() {
 
 #[test]
 fn test_cancelled_task_does_not_panic() {
-    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60));
+    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
 
     state.push(SocketAddr::from(([127, 0, 0, 1], 4000)));
 
@@ -192,7 +192,7 @@ fn test_cancelled_task_does_not_panic() {
 #[test]
 fn test_tail_handshake_scheduling() {
     // Use a long rehandshake period so tail handshake logic is used
-    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(3600));
+    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(3600)).unwrap();
 
     // Single peer - should use tail handshake logic
     state.push(SocketAddr::from(([127, 0, 0, 1], 4000)));
