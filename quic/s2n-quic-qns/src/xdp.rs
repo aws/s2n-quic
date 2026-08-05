@@ -6,6 +6,7 @@ use aya::{
     maps::{HashMap, MapData, XskMap},
     programs, Ebpf,
 };
+use clap::Args;
 use s2n_quic::provider::io::{
     self,
     xdp::{
@@ -22,37 +23,36 @@ use s2n_quic::provider::io::{
 };
 use s2n_quic_core::task::cooldown::Cooldown;
 use std::{ffi::CString, net::SocketAddr, os::unix::io::AsRawFd, sync::Arc};
-use structopt::StructOpt;
 use tokio::{io::unix::AsyncFd, net::UdpSocket};
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Args)]
 pub struct Xdp {
-    #[structopt(long, default_value = "lo")]
+    #[clap(long, default_value = "lo")]
     interface: String,
 
     // Default values come from https://elixir.bootlin.com/linux/v6.3.9/source/tools/testing/selftests/bpf/xsk.h#L185
-    #[structopt(long, default_value = "2048")]
+    #[clap(long, default_value = "2048")]
     tx_queue_len: u32,
 
-    #[structopt(long, default_value = "2048")]
+    #[clap(long, default_value = "2048")]
     rx_queue_len: u32,
 
-    #[structopt(long, default_value = "4096")]
+    #[clap(long, default_value = "4096")]
     frame_size: u32,
 
-    #[structopt(long)]
+    #[clap(long)]
     xdp_stats: bool,
 
-    #[structopt(long)]
+    #[clap(long)]
     bpf_trace: bool,
 
-    #[structopt(long, default_value = "auto")]
+    #[clap(long, default_value = "auto")]
     xdp_mode: XdpMode,
 
-    #[structopt(long)]
+    #[clap(long)]
     no_checksum: bool,
 
-    #[structopt(long, default_value)]
+    #[clap(long, default_value_t)]
     rx_cooldown: u16,
 }
 

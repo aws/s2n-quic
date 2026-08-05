@@ -2,27 +2,28 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Result;
+use clap::Args;
 use s2n_quic::provider::tls as s2n_quic_tls_provider;
 #[allow(deprecated)]
 use s2n_quic::provider::tls::rustls::rustls as rustls_crate;
 use std::{path::PathBuf, str::FromStr};
-use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Args)]
+#[group(skip)]
 pub struct Server {
-    #[structopt(long)]
+    #[clap(long)]
     pub certificate: Option<PathBuf>,
 
-    #[structopt(long)]
+    #[clap(long)]
     pub private_key: Option<PathBuf>,
 
-    #[structopt(long, default_value)]
+    #[clap(long, default_value_t)]
     pub tls: TlsProviders,
 
     /// The key to use for session tickets/PSKs
     ///
     /// Must be at least 16 bytes
-    #[structopt(long)]
+    #[clap(long)]
     pub ticket_key: Option<String>,
 }
 
@@ -82,16 +83,17 @@ impl Server {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Args)]
+#[group(skip)]
 pub struct Client {
-    #[structopt(long)]
+    #[clap(long)]
     pub ca: Option<PathBuf>,
 
-    #[structopt(long, default_value)]
+    #[clap(long, default_value_t)]
     pub tls: TlsProviders,
 
     /// disable verification of the server certificate (rustls only)
-    #[structopt(long)]
+    #[clap(long)]
     pub disable_cert_verification: bool,
 }
 

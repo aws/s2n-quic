@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use structopt::StructOpt;
+use clap::{Parser, Subcommand};
 
 pub type Error = Box<dyn 'static + std::error::Error + Send + Sync>;
 pub type Result<T, E = Error> = core::result::Result<T, E>;
@@ -42,7 +42,7 @@ fn main() {
         .event_format(format)
         .init();
 
-    match Arguments::from_args_safe() {
+    match Arguments::try_parse() {
         Ok(args) => {
             if let Err(error) = args.run() {
                 eprintln!("Error: {error:?}");
@@ -50,35 +50,49 @@ fn main() {
             }
         }
         Err(error) => {
-            if error.use_stderr() {
+            use clap::error::ErrorKind;
+
+            // Help/version output is printed to stdout with a successful exit code
+            if matches!(
+                error.kind(),
+                ErrorKind::DisplayHelp
+                    | ErrorKind::DisplayVersion
+                    | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+            ) {
+                println!("{error}");
+            } else {
                 eprintln!("{error}");
 
                 // https://github.com/marten-seemann/quic-interop-runner/blob/cd223804bf3f102c3567758ea100577febe486ff/interop.py#L102
                 // The interop runner wants us to exit with code 127 when an invalid argument is passed
                 std::process::exit(127);
-            } else {
-                println!("{error}");
             }
         }
     };
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 enum Arguments {
-    Interop(Interop),
-    Perf(Perf),
+    Interop {
+        #[clap(subcommand)]
+        subject: Interop,
+    },
+    Perf {
+        #[clap(subcommand)]
+        subject: Perf,
+    },
 }
 
 impl Arguments {
     pub fn run(&self) -> Result<()> {
         match self {
-            Self::Interop(subject) => subject.run(),
-            Self::Perf(subject) => subject.run(),
+            Self::Interop { subject } => subject.run(),
+            Self::Perf { subject } => subject.run(),
         }
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Subcommand)]
 enum Interop {
     Server(server::Interop),
     Client(client::Interop),
@@ -93,7 +107,7 @@ impl Interop {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Subcommand)]
 enum Perf {
     Server(server::Perf),
     Client(client::Perf),

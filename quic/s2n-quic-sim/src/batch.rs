@@ -15,18 +15,17 @@ use std::{
     process::Command,
     str::FromStr,
 };
-use structopt::StructOpt;
 
 static INDEX: &str = include_str!("./batch.html");
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, clap::Args)]
 pub struct Batch {
     plans: Vec<Plan>,
 
-    #[structopt(short, long, default_value = "target/s2n-quic-sim")]
+    #[clap(short, long, default_value = "target/s2n-quic-sim")]
     out: PathBuf,
 
-    #[structopt(long)]
+    #[clap(long)]
     skip_run: bool,
 }
 
