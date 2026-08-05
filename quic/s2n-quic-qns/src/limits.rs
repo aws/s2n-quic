@@ -3,25 +3,25 @@
 
 use core::time::Duration;
 
-#[derive(Debug, structopt::StructOpt)]
+#[derive(Debug, clap::Args)]
 pub struct Limits {
     /// The maximum bits/sec for each connection
-    #[structopt(long, default_value = "150")]
+    #[clap(long, default_value = "150")]
     pub max_throughput: u64,
 
     /// The expected RTT in milliseconds
-    #[structopt(long, default_value = "100")]
+    #[clap(long, default_value = "100")]
     pub expected_rtt: u64,
 
-    #[structopt(long)]
+    #[clap(long)]
     pub stream_send_buffer_size: Option<u32>,
 
     /// The maximum time (in seconds) the handshake may take to complete
-    #[structopt(long, default_value = "300")]
+    #[clap(long, default_value = "300")]
     pub max_handshake_duration: u64,
 
     /// The maximum time (in seconds) a connection will remain open without contact from the peer
-    #[structopt(long, default_value = "300")]
+    #[clap(long, default_value = "300")]
     pub max_idle_timeout: u64,
 }
 

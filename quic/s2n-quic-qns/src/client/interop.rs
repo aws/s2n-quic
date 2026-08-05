@@ -8,6 +8,7 @@ use crate::{
     interop::Testcase,
     task, tls, Result,
 };
+use clap::{builder::TypedValueParser as _, Args};
 use core::time::Duration;
 use s2n_quic::{client::Connect, provider::event, Client};
 use std::{
@@ -15,52 +16,56 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
-use structopt::StructOpt;
 use tokio::net::lookup_host;
 use url::{Host, Url};
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Args)]
 pub struct Interop {
-    #[structopt(short, long)]
+    #[clap(short, long)]
     ip: Option<std::net::IpAddr>,
 
-    #[structopt(short, long, default_value = "443")]
+    #[clap(short, long, default_value = "443")]
     port: u16,
 
-    #[structopt(long, default_value = "hq-interop")]
+    #[clap(long, default_value = "hq-interop")]
     application_protocols: Vec<String>,
 
-    #[structopt(long)]
+    #[clap(long)]
     download_dir: Option<PathBuf>,
 
-    #[structopt(long, parse(try_from_str = parse_duration))]
+    #[clap(long, value_parser = parse_duration)]
     keep_alive: Option<Duration>,
 
-    #[structopt(long, env = "TESTCASE", possible_values = &Testcase::supported(is_supported_testcase))]
+    #[clap(
+        long,
+        env = "TESTCASE",
+        value_parser = clap::builder::PossibleValuesParser::new(Testcase::supported(is_supported_testcase))
+            .map(|s| s.parse::<Testcase>().unwrap()),
+    )]
     testcase: Option<Testcase>,
 
-    #[structopt(long, default_value = "20")]
+    #[clap(long, default_value = "20")]
     concurrency: u64,
 
-    #[structopt(min_values = 1, required = true)]
+    #[clap(required = true)]
     requests: Vec<Url>,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     limits: crate::limits::Limits,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     io: crate::io::Client,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     tls: tls::Client,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     runtime: crate::runtime::Runtime,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     congestion_controller: crate::congestion_control::CongestionControl,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     intercept: Intercept,
 }
 
