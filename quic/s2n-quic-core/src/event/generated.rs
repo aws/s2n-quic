@@ -1826,8 +1826,7 @@ pub mod api {
     /// The state the dc handshake state machine reached
     ///
     /// Unlike `DcState`, this mirrors the internal `dc::Manager` states so that,
-    /// when the handshake does not complete, the exact state it stalled in can be
-    /// reported.
+    /// when the handshake does not complete, the exact state it stalled in can be reported.
     pub enum DcHandshakeState {
         #[non_exhaustive]
         /// Client path created; TLS not yet far enough to derive secrets
@@ -1842,8 +1841,7 @@ pub mod api {
         /// Server derived secrets and is waiting for the client's tokens
         ServerPathSecretsReady {},
         #[non_exhaustive]
-        /// Server received the client's tokens, sent its own, and is waiting for
-        /// the client's ACK
+        /// Server received the client's tokens, sent its own, and is waiting for the client's ACK
         ServerTokensSent {},
         #[non_exhaustive]
         /// Handshake done and map entries finalized
@@ -2988,16 +2986,7 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    /// The dc handshake did not reach the `Complete` state before the connection closed
-    ///
-    /// Emitted when the connection closes while the dc handshake had been
-    /// negotiated but had not yet reached `Complete`. The handshake was not
-    /// abandoned by the endpoint; rather its state machine is stuck partway
-    /// through (for example, a server stuck in `ServerTokensSent` because it never
-    /// received the client's ACK). This surfaces the last state the handshake
-    /// reached, allowing endpoints that closed without erroring but also without
-    /// completing the dc handshake to be detected, which likely indicates a
-    /// problem.
+    /// The dc handshake did not reach the `Complete` or an error state before the connection closed
     pub struct DcStateIncomplete {
         pub state: DcHandshakeState,
     }
@@ -6385,8 +6374,7 @@ pub mod builder {
     /// The state the dc handshake state machine reached
     ///
     /// Unlike `DcState`, this mirrors the internal `dc::Manager` states so that,
-    /// when the handshake does not complete, the exact state it stalled in can be
-    /// reported.
+    /// when the handshake does not complete, the exact state it stalled in can be reported.
     pub enum DcHandshakeState {
         /// Client path created; TLS not yet far enough to derive secrets
         InitClient,
@@ -6396,8 +6384,7 @@ pub mod builder {
         ClientPathSecretsReady,
         /// Server derived secrets and is waiting for the client's tokens
         ServerPathSecretsReady,
-        /// Server received the client's tokens, sent its own, and is waiting for
-        /// the client's ACK
+        /// Server received the client's tokens, sent its own, and is waiting for the client's ACK
         ServerTokensSent,
         /// Handshake done and map entries finalized
         Complete,
@@ -7440,16 +7427,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    /// The dc handshake did not reach the `Complete` state before the connection closed
-    ///
-    /// Emitted when the connection closes while the dc handshake had been
-    /// negotiated but had not yet reached `Complete`. The handshake was not
-    /// abandoned by the endpoint; rather its state machine is stuck partway
-    /// through (for example, a server stuck in `ServerTokensSent` because it never
-    /// received the client's ACK). This surfaces the last state the handshake
-    /// reached, allowing endpoints that closed without erroring but also without
-    /// completing the dc handshake to be detected, which likely indicates a
-    /// problem.
+    /// The dc handshake did not reach the `Complete` or an error state before the connection closed
     pub struct DcStateIncomplete {
         pub state: DcHandshakeState,
     }
@@ -7903,8 +7881,7 @@ pub mod supervisor {
 pub use traits::*;
 mod traits {
     use super::*;
-    use crate::event::Meta;
-    use crate::query;
+    use crate::{event::Meta, query};
     use core::fmt;
     /// Allows for events to be subscribed to
     pub trait Subscriber: 'static + Send {

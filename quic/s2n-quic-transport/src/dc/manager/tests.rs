@@ -342,7 +342,6 @@ fn on_close_server_incomplete_graceful() {
     assert!(manager.state.is_server_tokens_sent());
 
     manager.on_close(true, &mut publisher);
-    drop(publisher);
 
     assert!(matches!(
         recorder.state,
@@ -370,7 +369,6 @@ fn on_close_client_incomplete_graceful() {
     assert!(manager.state.is_path_secrets_ready());
 
     manager.on_close(true, &mut publisher);
-    drop(publisher);
 
     assert!(matches!(
         recorder.state,
@@ -398,7 +396,6 @@ fn on_close_error_does_not_emit() {
     assert!(manager.state.is_server_tokens_sent());
 
     manager.on_close(false, &mut publisher);
-    drop(publisher);
 
     assert!(recorder.state.is_none());
 }
@@ -424,7 +421,6 @@ fn on_close_complete_does_not_emit() {
     assert!(manager.state.is_complete());
 
     manager.on_close(true, &mut publisher);
-    drop(publisher);
 
     assert!(recorder.state.is_none());
 }
@@ -445,7 +441,6 @@ fn on_close_disabled_does_not_emit() {
     assert!(manager.state.is_complete());
 
     manager.on_close(true, &mut publisher);
-    drop(publisher);
 
     assert!(recorder.state.is_none());
 }
