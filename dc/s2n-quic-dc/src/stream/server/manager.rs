@@ -148,7 +148,12 @@ impl Builder {
 
         let backlog: usize = self.backlog.map(NonZeroU16::get).unwrap_or(DEFAULT_BACKLOG) as usize;
 
-        let env = env::Builder::new(subscriber).with_threads(concurrency);
+        // FIXME: This is configuring runtimes that likely won't be used as the manager doesn't do
+        // dataplane I/O. For now, do the easy thing and configure just one thread per threadpool.
+        // In the future we'll want to get rid of them entirely.
+        let env = env::Builder::new(subscriber)
+            .with_threads(1)
+            .with_thread_name_prefix("mgr-dc".into());
 
         let enable_udp_pool = true;
 
@@ -162,11 +167,17 @@ impl Builder {
             // TODO UDP
         }
 
-        // TODO is it better to spawn one current_thread runtime per concurrency?
+        // If we've not enabled UDP support, clamp the # of threads we spawn to the TCP worker
+        // count. No reason to spawn extra threads that would largely just sit idle.
+        let acceptor_concurrency = if self.enable_udp {
+            concurrency
+        } else {
+            concurrency.clamp(1, MAX_TCP_WORKERS)
+        };
         let acceptor_rt: runtime::Shared<S> = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
-            .thread_name("acceptor")
-            .worker_threads(concurrency)
+            .thread_name("mgr-acceptor")
+            .worker_threads(acceptor_concurrency)
             .build()?
             .into();
 
@@ -186,7 +197,7 @@ impl Builder {
         // split the backlog between all of the workers
         // this is only used in TCP, so clamp division to maximum TCP worker concurrency
         let backlog = backlog
-            .div_ceil(concurrency.clamp(0, MAX_TCP_WORKERS))
+            .div_ceil(acceptor_concurrency.clamp(0, MAX_TCP_WORKERS))
             .max(1);
         let path = self.socket_path.ok_or(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -199,7 +210,7 @@ impl Builder {
             accept_flavor: self.accept_flavor,
             linger: self.linger,
             backlog,
-            concurrency,
+            concurrency: acceptor_concurrency,
             server: &mut server,
             span,
             next_id: 0,

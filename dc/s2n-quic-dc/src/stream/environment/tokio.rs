@@ -62,6 +62,11 @@ where
         }
     }
 
+    pub fn with_thread_name_prefix(mut self, prefix: String) -> Self {
+        self.thread_name_prefix = Some(prefix);
+        self
+    }
+
     pub fn with_threads(mut self, threads: usize) -> Self {
         self.threads = Some(threads);
         self
