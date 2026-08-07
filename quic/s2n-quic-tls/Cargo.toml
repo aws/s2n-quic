@@ -33,9 +33,3 @@ pin-project = { version = "1" }
 aws-lc-rs = "1.12"
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-rustls = { path = "../s2n-quic-rustls" }
-
-[lints.rust.unexpected_cfgs]
-level = "warn"
-check-cfg = [
-    'cfg(s2n_quic_enable_pq_tls)',
-]
