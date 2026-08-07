@@ -321,10 +321,10 @@ fn connection_meta(endpoint_type: s2n_quic_core::endpoint::Type) -> event::build
     }
 }
 
-/// A graceful close while the server is stuck in `ServerTokensSent` emits `DcStateIncomplete`
+/// A no-error close while the server is stuck in `ServerTokensSent` emits `DcStateIncomplete`
 /// reporting that exact state.
 #[test]
-fn on_close_server_incomplete_graceful() {
+fn on_close_server_incomplete_no_error() {
     let mut recorder = IncompleteRecorder::default();
     let mut context = ();
     let mut publisher = event::ConnectionPublisherSubscriber::new(
@@ -349,10 +349,10 @@ fn on_close_server_incomplete_graceful() {
     ));
 }
 
-/// A graceful close while the client is stuck in `ClientPathSecretsReady` emits `DcStateIncomplete`
+/// A no-error close while the client is stuck in `ClientPathSecretsReady` emits `DcStateIncomplete`
 /// reporting that exact state.
 #[test]
-fn on_close_client_incomplete_graceful() {
+fn on_close_client_incomplete_no_error() {
     let mut recorder = IncompleteRecorder::default();
     let mut context = ();
     let mut publisher = event::ConnectionPublisherSubscriber::new(

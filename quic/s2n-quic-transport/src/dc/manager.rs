@@ -232,20 +232,20 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Called when the connection is closing
     ///
     /// If the dc handshake was negotiated but never reached the `Complete`
-    /// state on a clean close, emits a `DcStateIncomplete` event reporting the
-    /// last state the handshake reached.
+    /// state on a no-error close, emits a `DcStateIncomplete` event reporting
+    /// the last state the handshake reached.
     ///
-    /// `graceful` indicates the connection closed without an error. An error
-    /// close already surfaces a problem loudly via `ConnectionClosed`, so this
-    /// event is intentionally limited to the silent case: the QUIC handshake
-    /// completed and the connection closed cleanly, yet the dc state never reach
-    /// Complete and nothing else signals that anything went wrong.
+    /// `closed_without_error` indicates the connection closed without an error.
+    /// A close that carries an error already surfaces a problem loudly via `ConnectionClosed`,
+    /// so this event is intentionally limited to the silent case: the QUIC handshake completed
+    /// and the connection closed without an error, yet the dc state never
+    /// reached `Complete` and nothing else signals that anything went wrong.
     pub fn on_close<Pub: event::ConnectionPublisher>(
         &mut self,
-        graceful: bool,
+        closed_without_error: bool,
         publisher: &mut Pub,
     ) {
-        ensure!(graceful);
+        ensure!(closed_without_error);
         ensure!(!self.state.is_complete());
 
         publisher.on_dc_state_incomplete(DcStateIncomplete {
