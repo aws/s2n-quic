@@ -10,10 +10,7 @@ use s2n_quic_core::application::ServerName;
 #[global_allocator]
 static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 
-#[cfg(s2n_quic_enable_pq_tls)]
 static DEFAULT_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::DEFAULT_PQ;
-#[cfg(not(s2n_quic_enable_pq_tls))]
-static DEFAULT_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::DEFAULT_TLS13;
 
 #[non_exhaustive]
 pub struct ConnectionContext<'a> {
