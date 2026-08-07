@@ -91,7 +91,16 @@ impl Builder {
             ))
         );
 
-        let env = env::Builder::new(subscriber).build()?;
+        let mut env = env::Builder::new(subscriber);
+
+        if !self.enable_udp {
+            // If we only have TCP, there shouldn't be significant load on the background worker
+            // threads, so reduce thread count. Only the background shutdowns get sent there for
+            // TCP workloads.
+            env = env.with_threads(1);
+        }
+
+        let env = env.build()?;
 
         let mut span = self.span.unwrap_or_else(tracing::span::Span::current);
         if span.is_none() {

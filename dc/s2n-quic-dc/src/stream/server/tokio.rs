@@ -336,11 +336,20 @@ impl Builder {
             self.enable_udp = false;
         }
 
-        // TODO is it better to spawn one current_thread runtime per concurrency?
+        // If we've not enabled UDP support, clamp the # of threads we spawn to the TCP worker
+        // count + 1. No reason to spawn extra threads that would largely just sit idle.
+        //
+        // We add one to allow for additional work done in the pruner and stats worker, even though
+        // in most cases those are fairly idle.
+        let acceptor_concurrency = if self.enable_udp {
+            concurrency
+        } else {
+            concurrency.clamp(1, MAX_TCP_WORKERS + 1)
+        };
         let acceptor_rt: runtime::Shared<S> = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .thread_name("acceptor")
-            .worker_threads(concurrency)
+            .worker_threads(acceptor_concurrency)
             .build()?
             .into();
 
