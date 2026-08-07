@@ -14,7 +14,10 @@ use s2n_quic_core::{
     dc,
     dc::{Endpoint, Path},
     ensure, event,
-    event::builder::{DcState, DcStateChanged},
+    event::{
+        builder::{DcHandshakeState, DcState, DcStateChanged, DcStateIncomplete},
+        IntoEvent,
+    },
     frame::DcStatelessResetTokens,
     packet::number::PacketNumber,
     state::{event, is},
@@ -63,6 +66,20 @@ impl State {
             ServerPathSecretsReady => ServerTokensSent
         );
         on_stateless_reset_tokens_acked(ServerTokensSent => Complete);
+    }
+}
+
+impl IntoEvent<DcHandshakeState> for &State {
+    #[inline]
+    fn into_event(self) -> DcHandshakeState {
+        match self {
+            State::InitClient => DcHandshakeState::InitClient,
+            State::InitServer => DcHandshakeState::InitServer,
+            State::ClientPathSecretsReady => DcHandshakeState::ClientPathSecretsReady,
+            State::ServerPathSecretsReady => DcHandshakeState::ServerPathSecretsReady,
+            State::ServerTokensSent => DcHandshakeState::ServerTokensSent,
+            State::Complete => DcHandshakeState::Complete,
+        }
     }
 }
 
@@ -210,6 +227,30 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Called when the MTU of the path has changed
     pub fn on_mtu_updated(&mut self, max_datagram_size: u16) {
         self.path.on_mtu_updated(max_datagram_size)
+    }
+
+    /// Called when the connection is closing
+    ///
+    /// If the dc handshake was negotiated but never reached the `Complete`
+    /// state on a no-error close, emits a `DcStateIncomplete` event reporting
+    /// the last state the handshake reached.
+    ///
+    /// `closed_without_error` indicates the connection closed without an error.
+    /// A close that carries an error already surfaces a problem loudly via `ConnectionClosed`,
+    /// so this event is intentionally limited to the silent case: the QUIC handshake completed
+    /// and the connection closed without an error, yet the dc state never
+    /// reached `Complete` and nothing else signals that anything went wrong.
+    pub fn on_close<Pub: event::ConnectionPublisher>(
+        &mut self,
+        closed_without_error: bool,
+        publisher: &mut Pub,
+    ) {
+        ensure!(closed_without_error);
+        ensure!(!self.state.is_complete());
+
+        publisher.on_dc_state_incomplete(DcStateIncomplete {
+            state: (&self.state).into_event(),
+        });
     }
 
     #[cfg(any(test, feature = "testing"))]

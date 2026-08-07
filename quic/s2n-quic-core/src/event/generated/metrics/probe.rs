@@ -149,6 +149,8 @@ mod id {
         DC_STATE_CHANGED__COMPLETE__LATENCY,
         DC_STATE_CHANGED__STATE,
         DC_PATH_CREATED,
+        DC_STATE_INCOMPLETE,
+        DC_STATE_INCOMPLETE__STATE,
         CONNECTION_CLOSED,
         CONNECTION_CLOSED__LATENCY,
         CONNECTION_CLOSED__ERROR,
@@ -373,6 +375,8 @@ mod id {
         InfoId::DC_STATE_CHANGED__COMPLETE__LATENCY as usize;
     pub const DC_STATE_CHANGED__STATE: usize = InfoId::DC_STATE_CHANGED__STATE as usize;
     pub const DC_PATH_CREATED: usize = InfoId::DC_PATH_CREATED as usize;
+    pub const DC_STATE_INCOMPLETE: usize = InfoId::DC_STATE_INCOMPLETE as usize;
+    pub const DC_STATE_INCOMPLETE__STATE: usize = InfoId::DC_STATE_INCOMPLETE__STATE as usize;
     pub const CONNECTION_CLOSED: usize = InfoId::CONNECTION_CLOSED as usize;
     pub const CONNECTION_CLOSED__LATENCY: usize = InfoId::CONNECTION_CLOSED__LATENCY as usize;
     pub const CONNECTION_CLOSED__ERROR: usize = InfoId::CONNECTION_CLOSED__ERROR as usize;
@@ -515,6 +519,7 @@ mod counter {
                 id::BBR_STATE_CHANGED => Self(bbr_state_changed),
                 id::DC_STATE_CHANGED => Self(dc_state_changed),
                 id::DC_PATH_CREATED => Self(dc_path_created),
+                id::DC_STATE_INCOMPLETE => Self(dc_state_incomplete),
                 id::CONNECTION_CLOSED => Self(connection_closed),
                 id::VERSION_INFORMATION => Self(version_information),
                 id::ENDPOINT_PACKET_SENT => Self(endpoint_packet_sent),
@@ -721,15 +726,17 @@ mod counter {
             fn dc_state_changed(value: u64);
             #[link_name = s2n_quic__event__counter__dc_path_created]
             fn dc_path_created(value: u64);
-            #[link_name = s2n_quic__event__counter__connection_closed]
+            #[link_name = s2n_quic__event__counter__dc_state_incomplete]
+            fn dc_state_incomplete(value: u64);
+            #[link_name =
+        s2n_quic__event__counter__connection_closed]
             fn connection_closed(value: u64);
-            #[link_name =
-        s2n_quic__event__counter__version_information]
+            #[link_name = s2n_quic__event__counter__version_information]
             fn version_information(value: u64);
-            #[link_name = s2n_quic__event__counter__endpoint_packet_sent]
-            fn endpoint_packet_sent(value: u64);
             #[link_name =
-        s2n_quic__event__counter__endpoint_packet_received]
+        s2n_quic__event__counter__endpoint_packet_sent]
+            fn endpoint_packet_sent(value: u64);
+            #[link_name = s2n_quic__event__counter__endpoint_packet_received]
             fn endpoint_packet_received(value: u64);
             #[link_name =
         s2n_quic__event__counter__endpoint_datagram_sent]
@@ -885,6 +892,7 @@ mod counter {
                     id::SLOW_START_EXITED__CAUSE => Self(slow_start_exited__cause),
                     id::BBR_STATE_CHANGED__STATE => Self(bbr_state_changed__state),
                     id::DC_STATE_CHANGED__STATE => Self(dc_state_changed__state),
+                    id::DC_STATE_INCOMPLETE__STATE => Self(dc_state_incomplete__state),
                     id::CONNECTION_CLOSED__ERROR => Self(connection_closed__error),
                     id::ENDPOINT_DATAGRAM_DROPPED__REASON => {
                         Self(endpoint_datagram_dropped__reason)
@@ -1021,6 +1029,9 @@ mod counter {
                 #[link_name =
             s2n_quic__event__counter__nominal__dc_state_changed__state]
                 fn dc_state_changed__state(value: u64, variant: u64, variant_name: &info::Str);
+                #[link_name =
+            s2n_quic__event__counter__nominal__dc_state_incomplete__state]
+                fn dc_state_incomplete__state(value: u64, variant: u64, variant_name: &info::Str);
                 #[link_name =
             s2n_quic__event__counter__nominal__connection_closed__error]
                 fn connection_closed__error(value: u64, variant: u64, variant_name: &info::Str);

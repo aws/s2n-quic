@@ -1823,6 +1823,77 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// The state the dc handshake state machine reached
+    ///
+    /// Unlike `DcState`, this mirrors the internal `dc::Manager` states so that,
+    /// when the handshake does not complete, the exact state it stalled in can be reported.
+    pub enum DcHandshakeState {
+        #[non_exhaustive]
+        /// Client path created; TLS not yet far enough to derive secrets
+        InitClient {},
+        #[non_exhaustive]
+        /// Server path created; TLS not yet far enough to derive secrets
+        InitServer {},
+        #[non_exhaustive]
+        /// Client derived secrets and sent its `DC_STATELESS_RESET_TOKENS`
+        ClientPathSecretsReady {},
+        #[non_exhaustive]
+        /// Server derived secrets and is waiting for the client's tokens
+        ServerPathSecretsReady {},
+        #[non_exhaustive]
+        /// Server received the client's tokens, sent its own, and is waiting for the client's ACK
+        ServerTokensSent {},
+        #[non_exhaustive]
+        /// Handshake done and map entries finalized
+        Complete {},
+    }
+    impl aggregate::AsVariant for DcHandshakeState {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("INIT_CLIENT\0"),
+                id: 0usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("INIT_SERVER\0"),
+                id: 1usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("CLIENT_PATH_SECRETS_READY\0"),
+                id: 2usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("SERVER_PATH_SECRETS_READY\0"),
+                id: 3usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("SERVER_TOKENS_SENT\0"),
+                id: 4usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("COMPLETE\0"),
+                id: 5usize,
+            }
+            .build(),
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::InitClient { .. } => 0usize,
+                Self::InitServer { .. } => 1usize,
+                Self::ClientPathSecretsReady { .. } => 2usize,
+                Self::ServerPathSecretsReady { .. } => 3usize,
+                Self::ServerTokensSent { .. } => 4usize,
+                Self::Complete { .. } => 5usize,
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     /// The mode in which a packet is being transmitted
     pub enum TransmissionMode {
         #[non_exhaustive]
@@ -2912,6 +2983,23 @@ pub mod api {
     }
     impl<'a> Event for DcPathCreated<'a> {
         const NAME: &'static str = "transport:dc_path_created";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    /// The dc handshake did not reach the `Complete` or an error state before the connection closed
+    pub struct DcStateIncomplete {
+        pub state: DcHandshakeState,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for DcStateIncomplete {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("DcStateIncomplete");
+            fmt.field("state", &self.state);
+            fmt.finish()
+        }
+    }
+    impl Event for DcStateIncomplete {
+        const NAME: &'static str = "transport:dc_state_incomplete";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -4805,6 +4893,20 @@ pub mod tracing {
             );
         }
         #[inline]
+        fn on_dc_state_incomplete(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::DcStateIncomplete,
+        ) {
+            let id = context.id();
+            let api::DcStateIncomplete { state } = event;
+            tracing::event!(
+                target : "dc_state_incomplete", parent : id, tracing::Level::DEBUG, {
+                state = tracing::field::debug(state) }
+            );
+        }
+        #[inline]
         fn on_connection_closed(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -6269,6 +6371,39 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// The state the dc handshake state machine reached
+    ///
+    /// Unlike `DcState`, this mirrors the internal `dc::Manager` states so that,
+    /// when the handshake does not complete, the exact state it stalled in can be reported.
+    pub enum DcHandshakeState {
+        /// Client path created; TLS not yet far enough to derive secrets
+        InitClient,
+        /// Server path created; TLS not yet far enough to derive secrets
+        InitServer,
+        /// Client derived secrets and sent its `DC_STATELESS_RESET_TOKENS`
+        ClientPathSecretsReady,
+        /// Server derived secrets and is waiting for the client's tokens
+        ServerPathSecretsReady,
+        /// Server received the client's tokens, sent its own, and is waiting for the client's ACK
+        ServerTokensSent,
+        /// Handshake done and map entries finalized
+        Complete,
+    }
+    impl IntoEvent<api::DcHandshakeState> for DcHandshakeState {
+        #[inline]
+        fn into_event(self) -> api::DcHandshakeState {
+            use api::DcHandshakeState::*;
+            match self {
+                Self::InitClient => InitClient {},
+                Self::InitServer => InitServer {},
+                Self::ClientPathSecretsReady => ClientPathSecretsReady {},
+                Self::ServerPathSecretsReady => ServerPathSecretsReady {},
+                Self::ServerTokensSent => ServerTokensSent {},
+                Self::Complete => Complete {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     /// The mode in which a packet is being transmitted
     pub enum TransmissionMode {
         /// Loss recovery probing to detect lost packets
@@ -7288,6 +7423,20 @@ pub mod builder {
             let DcPathCreated { path } = self;
             api::DcPathCreated {
                 path: path.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    /// The dc handshake did not reach the `Complete` or an error state before the connection closed
+    pub struct DcStateIncomplete {
+        pub state: DcHandshakeState,
+    }
+    impl IntoEvent<api::DcStateIncomplete> for DcStateIncomplete {
+        #[inline]
+        fn into_event(self) -> api::DcStateIncomplete {
+            let DcStateIncomplete { state } = self;
+            api::DcStateIncomplete {
+                state: state.into_event(),
             }
         }
     }
@@ -8433,6 +8582,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        ///Called when the `DcStateIncomplete` event is triggered
+        #[inline]
+        fn on_dc_state_incomplete(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::DcStateIncomplete,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         ///Called when the `ConnectionClosed` event is triggered
         #[inline]
         fn on_connection_closed(
@@ -9209,6 +9370,16 @@ mod traits {
             (self.1).on_dc_path_created(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_dc_state_incomplete(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::DcStateIncomplete,
+        ) {
+            (self.0).on_dc_state_incomplete(&mut context.0, meta, event);
+            (self.1).on_dc_state_incomplete(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_connection_closed(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -9699,6 +9870,8 @@ mod traits {
         fn on_dc_state_changed(&mut self, event: builder::DcStateChanged);
         ///Publishes a `DcPathCreated` event to the publisher's subscriber
         fn on_dc_path_created(&mut self, event: builder::DcPathCreated);
+        ///Publishes a `DcStateIncomplete` event to the publisher's subscriber
+        fn on_dc_state_incomplete(&mut self, event: builder::DcStateIncomplete);
         ///Publishes a `ConnectionClosed` event to the publisher's subscriber
         fn on_connection_closed(&mut self, event: builder::ConnectionClosed);
         /// Returns the QUIC version negotiated for the current connection, if any
@@ -10213,6 +10386,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_dc_state_incomplete(&mut self, event: builder::DcStateIncomplete) {
+            let event = event.into_event();
+            self.subscriber
+                .on_dc_state_incomplete(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn on_connection_closed(&mut self, event: builder::ConnectionClosed) {
             let event = event.into_event();
             self.subscriber
@@ -10552,6 +10734,7 @@ pub mod testing {
         pub bbr_state_changed: u64,
         pub dc_state_changed: u64,
         pub dc_path_created: u64,
+        pub dc_state_incomplete: u64,
         pub connection_closed: u64,
         pub version_information: u64,
         pub endpoint_packet_sent: u64,
@@ -10652,6 +10835,7 @@ pub mod testing {
                 bbr_state_changed: 0,
                 dc_state_changed: 0,
                 dc_path_created: 0,
+                dc_state_incomplete: 0,
                 connection_closed: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
@@ -11396,6 +11580,20 @@ pub mod testing {
                 self.output.push(out);
             }
         }
+        fn on_dc_state_incomplete(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::DcStateIncomplete,
+        ) {
+            self.dc_state_incomplete += 1;
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+        }
         fn on_connection_closed(
             &mut self,
             _context: &mut Self::ConnectionContext,
@@ -11637,6 +11835,7 @@ pub mod testing {
         pub bbr_state_changed: u64,
         pub dc_state_changed: u64,
         pub dc_path_created: u64,
+        pub dc_state_incomplete: u64,
         pub connection_closed: u64,
         pub version_information: u64,
         pub endpoint_packet_sent: u64,
@@ -11727,6 +11926,7 @@ pub mod testing {
                 bbr_state_changed: 0,
                 dc_state_changed: 0,
                 dc_path_created: 0,
+                dc_state_incomplete: 0,
                 connection_closed: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
@@ -12344,6 +12544,15 @@ pub mod testing {
         }
         fn on_dc_path_created(&mut self, event: builder::DcPathCreated) {
             self.dc_path_created += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_dc_state_incomplete(&mut self, event: builder::DcStateIncomplete) {
+            self.dc_state_incomplete += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);

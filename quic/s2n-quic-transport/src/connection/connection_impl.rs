@@ -870,6 +870,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
 
+        if let Some((space, _)) = self.space_manager.application_mut() {
+            let closed_without_error = matches!(error, connection::Error::Closed { .. });
+            space
+                .dc_manager
+                .on_close(closed_without_error, &mut publisher);
+        }
+
         publisher.on_connection_closed(event::builder::ConnectionClosed { error });
 
         // We don't need any timers anymore

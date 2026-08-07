@@ -77,6 +77,7 @@ pub struct Context<R: Recorder> {
     bbr_state_changed: u64,
     dc_state_changed: u64,
     dc_path_created: u64,
+    dc_state_incomplete: u64,
     connection_closed: u64,
 }
 impl<R: Recorder> Context<R> {
@@ -150,6 +151,7 @@ where
             bbr_state_changed: 0,
             dc_state_changed: 0,
             dc_path_created: 0,
+            dc_state_incomplete: 0,
             connection_closed: 0,
         }
     }
@@ -719,6 +721,17 @@ where
             .on_dc_path_created(&mut context.recorder, meta, event);
     }
     #[inline]
+    fn on_dc_state_incomplete(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::DcStateIncomplete,
+    ) {
+        context.dc_state_incomplete += 1;
+        self.subscriber
+            .on_dc_state_incomplete(&mut context.recorder, meta, event);
+    }
+    #[inline]
     fn on_connection_closed(
         &mut self,
         context: &mut Self::ConnectionContext,
@@ -850,6 +863,8 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("dc_state_changed", self.dc_state_changed as _);
         self.recorder
             .increment_counter("dc_path_created", self.dc_path_created as _);
+        self.recorder
+            .increment_counter("dc_state_incomplete", self.dc_state_incomplete as _);
         self.recorder
             .increment_counter("connection_closed", self.connection_closed as _);
     }
