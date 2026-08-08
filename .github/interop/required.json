@@ -638,7 +638,9 @@
       "client",
       "server"
     ],
-    "quic-go": [],
+    "quic-go": [
+      "client"
+    ],
     "quiche": [],
     "s2n-quic": [
       "client",
@@ -760,6 +762,9 @@
       "server"
     ],
     "haproxy": [
+      "server"
+    ],
+    "nginx": [
       "server"
     ]
   },
