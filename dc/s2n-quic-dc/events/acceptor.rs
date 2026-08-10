@@ -177,6 +177,10 @@ struct AcceptorTcpTlsStreamRejected<'a> {
     #[builder(&'a s2n_quic_core::inet::SocketAddress)]
     remote_address: SocketAddress<'a>,
 
+    /// The local address of the server
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    local_address: SocketAddress<'a>,
+
     /// The amount of time the TCP stream spent on handshaking before being rejected
     /// since being accepted from the kernel
     #[timer("sojourn_time")]
@@ -197,6 +201,10 @@ struct AcceptorTcpSyntheticTlsStreamRejected<'a> {
     /// The address of the packet's sender
     #[builder(&'a s2n_quic_core::inet::SocketAddress)]
     remote_address: SocketAddress<'a>,
+
+    /// The local address of the server
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    local_address: SocketAddress<'a>,
 
     /// The amount of time the TCP stream spent on handshaking before being rejected
     /// since being accepted from the kernel

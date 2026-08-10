@@ -245,6 +245,8 @@ pub mod api {
     pub struct AcceptorTcpTlsStreamRejected<'a> {
         /// The address of the packet's sender
         pub remote_address: SocketAddress<'a>,
+        /// The local address of the server
+        pub local_address: SocketAddress<'a>,
         /// The amount of time the TCP stream spent on handshaking before being rejected
         /// since being accepted from the kernel
         pub sojourn_time: core::time::Duration,
@@ -256,6 +258,7 @@ pub mod api {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("AcceptorTcpTlsStreamRejected");
             fmt.field("remote_address", &self.remote_address);
+            fmt.field("local_address", &self.local_address);
             fmt.field("sojourn_time", &self.sojourn_time);
             fmt.field("error", &self.error);
             fmt.finish()
@@ -273,6 +276,8 @@ pub mod api {
     pub struct AcceptorTcpSyntheticTlsStreamRejected<'a> {
         /// The address of the packet's sender
         pub remote_address: SocketAddress<'a>,
+        /// The local address of the server
+        pub local_address: SocketAddress<'a>,
         /// The amount of time the TCP stream spent on handshaking before being rejected
         /// since being accepted from the kernel
         pub sojourn_time: core::time::Duration,
@@ -284,6 +289,7 @@ pub mod api {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("AcceptorTcpSyntheticTlsStreamRejected");
             fmt.field("remote_address", &self.remote_address);
+            fmt.field("local_address", &self.local_address);
             fmt.field("sojourn_time", &self.sojourn_time);
             fmt.field("error", &self.error);
             fmt.finish()
@@ -1329,6 +1335,23 @@ pub mod api {
     }
     impl Event for StreamTlsConnect {
         const NAME: &'static str = "stream:tls_connect";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    /// Emitted when a TLS stream connect fails.
+    pub struct StreamTlsConnectError<'a> {
+        pub error: &'a std::io::Error,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for StreamTlsConnectError<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamTlsConnectError");
+            fmt.field("error", &self.error);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for StreamTlsConnectError<'a> {
+        const NAME: &'static str = "stream:tls_connect_error";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2951,13 +2974,15 @@ pub mod tracing {
             let parent = self.parent(meta);
             let api::AcceptorTcpTlsStreamRejected {
                 remote_address,
+                local_address,
                 sojourn_time,
                 error,
             } = event;
             tracing::event!(
                 target : "acceptor_tcp_tls_stream_rejected", parent : parent,
                 tracing::Level::DEBUG, { remote_address =
-                tracing::field::debug(remote_address), sojourn_time =
+                tracing::field::debug(remote_address), local_address =
+                tracing::field::debug(local_address), sojourn_time =
                 tracing::field::debug(sojourn_time), error = tracing::field::debug(error)
                 }
             );
@@ -2971,13 +2996,15 @@ pub mod tracing {
             let parent = self.parent(meta);
             let api::AcceptorTcpSyntheticTlsStreamRejected {
                 remote_address,
+                local_address,
                 sojourn_time,
                 error,
             } = event;
             tracing::event!(
                 target : "acceptor_tcp_synthetic_tls_stream_rejected", parent : parent,
                 tracing::Level::DEBUG, { remote_address =
-                tracing::field::debug(remote_address), sojourn_time =
+                tracing::field::debug(remote_address), local_address =
+                tracing::field::debug(local_address), sojourn_time =
                 tracing::field::debug(sojourn_time), error = tracing::field::debug(error)
                 }
             );
@@ -3624,6 +3651,19 @@ pub mod tracing {
                 error = tracing::field::debug(error), tcp_latency =
                 tracing::field::debug(tcp_latency), tls_latency =
                 tracing::field::debug(tls_latency) }
+            );
+        }
+        #[inline]
+        fn on_stream_tls_connect_error(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamTlsConnectError,
+        ) {
+            let parent = self.parent(meta);
+            let api::StreamTlsConnectError { error } = event;
+            tracing::event!(
+                target : "stream_tls_connect_error", parent : parent,
+                tracing::Level::DEBUG, { error = tracing::field::debug(error) }
             );
         }
         #[inline]
@@ -4867,6 +4907,8 @@ pub mod builder {
     pub struct AcceptorTcpTlsStreamRejected<'a> {
         /// The address of the packet's sender
         pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        /// The local address of the server
+        pub local_address: &'a s2n_quic_core::inet::SocketAddress,
         /// The amount of time the TCP stream spent on handshaking before being rejected
         /// since being accepted from the kernel
         pub sojourn_time: core::time::Duration,
@@ -4878,11 +4920,13 @@ pub mod builder {
         fn into_event(self) -> api::AcceptorTcpTlsStreamRejected<'a> {
             let AcceptorTcpTlsStreamRejected {
                 remote_address,
+                local_address,
                 sojourn_time,
                 error,
             } = self;
             api::AcceptorTcpTlsStreamRejected {
                 remote_address: remote_address.into_event(),
+                local_address: local_address.into_event(),
                 sojourn_time: sojourn_time.into_event(),
                 error: error.into_event(),
             }
@@ -4896,6 +4940,8 @@ pub mod builder {
     pub struct AcceptorTcpSyntheticTlsStreamRejected<'a> {
         /// The address of the packet's sender
         pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        /// The local address of the server
+        pub local_address: &'a s2n_quic_core::inet::SocketAddress,
         /// The amount of time the TCP stream spent on handshaking before being rejected
         /// since being accepted from the kernel
         pub sojourn_time: core::time::Duration,
@@ -4909,11 +4955,13 @@ pub mod builder {
         fn into_event(self) -> api::AcceptorTcpSyntheticTlsStreamRejected<'a> {
             let AcceptorTcpSyntheticTlsStreamRejected {
                 remote_address,
+                local_address,
                 sojourn_time,
                 error,
             } = self;
             api::AcceptorTcpSyntheticTlsStreamRejected {
                 remote_address: remote_address.into_event(),
+                local_address: local_address.into_event(),
                 sojourn_time: sojourn_time.into_event(),
                 error: error.into_event(),
             }
@@ -5847,6 +5895,20 @@ pub mod builder {
                 error: error.into_event(),
                 tcp_latency: tcp_latency.into_event(),
                 tls_latency: tls_latency.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    /// Emitted when a TLS stream connect fails.
+    pub struct StreamTlsConnectError<'a> {
+        pub error: &'a std::io::Error,
+    }
+    impl<'a> IntoEvent<api::StreamTlsConnectError<'a>> for StreamTlsConnectError<'a> {
+        #[inline]
+        fn into_event(self) -> api::StreamTlsConnectError<'a> {
+            let StreamTlsConnectError { error } = self;
+            api::StreamTlsConnectError {
+                error: error.into_event(),
             }
         }
     }
@@ -7715,6 +7777,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        ///Called when the `StreamTlsConnectError` event is triggered
+        #[inline]
+        fn on_stream_tls_connect_error(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamTlsConnectError,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         ///Called when the `StreamConnect` event is triggered
         #[inline]
         fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
@@ -8697,6 +8769,14 @@ mod traits {
             self.as_ref().on_stream_tls_connect(meta, event);
         }
         #[inline]
+        fn on_stream_tls_connect_error(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamTlsConnectError,
+        ) {
+            self.as_ref().on_stream_tls_connect_error(meta, event);
+        }
+        #[inline]
         fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
             self.as_ref().on_stream_connect(meta, event);
         }
@@ -9612,6 +9692,15 @@ mod traits {
             (self.1).on_stream_tls_connect(meta, event);
         }
         #[inline]
+        fn on_stream_tls_connect_error(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamTlsConnectError,
+        ) {
+            (self.0).on_stream_tls_connect_error(meta, event);
+            (self.1).on_stream_tls_connect_error(meta, event);
+        }
+        #[inline]
         fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
             (self.0).on_stream_connect(meta, event);
             (self.1).on_stream_connect(meta, event);
@@ -10181,6 +10270,8 @@ mod traits {
         fn on_stream_tcp_connect(&self, event: builder::StreamTcpConnect);
         ///Publishes a `StreamTlsConnect` event to the publisher's subscriber
         fn on_stream_tls_connect(&self, event: builder::StreamTlsConnect);
+        ///Publishes a `StreamTlsConnectError` event to the publisher's subscriber
+        fn on_stream_tls_connect_error(&self, event: builder::StreamTlsConnectError);
         ///Publishes a `StreamConnect` event to the publisher's subscriber
         fn on_stream_connect(&self, event: builder::StreamConnect);
         ///Publishes a `StreamConnectError` event to the publisher's subscriber
@@ -10514,6 +10605,13 @@ mod traits {
         fn on_stream_tls_connect(&self, event: builder::StreamTlsConnect) {
             let event = event.into_event();
             self.subscriber.on_stream_tls_connect(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_tls_connect_error(&self, event: builder::StreamTlsConnectError) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_tls_connect_error(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -11302,6 +11400,7 @@ pub mod testing {
             pub acceptor_stream_dequeued: AtomicU64,
             pub stream_tcp_connect: AtomicU64,
             pub stream_tls_connect: AtomicU64,
+            pub stream_tls_connect_error: AtomicU64,
             pub stream_connect: AtomicU64,
             pub stream_connect_error: AtomicU64,
             pub endpoint_initialized: AtomicU64,
@@ -11399,6 +11498,7 @@ pub mod testing {
                     acceptor_stream_dequeued: AtomicU64::new(0),
                     stream_tcp_connect: AtomicU64::new(0),
                     stream_tls_connect: AtomicU64::new(0),
+                    stream_tls_connect_error: AtomicU64::new(0),
                     stream_connect: AtomicU64::new(0),
                     stream_connect_error: AtomicU64::new(0),
                     endpoint_initialized: AtomicU64::new(0),
@@ -11750,6 +11850,18 @@ pub mod testing {
                 event: &api::StreamTlsConnect,
             ) {
                 self.stream_tls_connect.fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_stream_tls_connect_error(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::StreamTlsConnectError,
+            ) {
+                self.stream_tls_connect_error
+                    .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 let out = format!("{meta:?} {event:?}");
@@ -12273,6 +12385,7 @@ pub mod testing {
         pub stream_decrypt_packet: AtomicU64,
         pub stream_tcp_connect: AtomicU64,
         pub stream_tls_connect: AtomicU64,
+        pub stream_tls_connect_error: AtomicU64,
         pub stream_connect: AtomicU64,
         pub stream_connect_error: AtomicU64,
         pub stream_packet_transmitted: AtomicU64,
@@ -12403,6 +12516,7 @@ pub mod testing {
                 stream_decrypt_packet: AtomicU64::new(0),
                 stream_tcp_connect: AtomicU64::new(0),
                 stream_tls_connect: AtomicU64::new(0),
+                stream_tls_connect_error: AtomicU64::new(0),
                 stream_connect: AtomicU64::new(0),
                 stream_connect_error: AtomicU64::new(0),
                 stream_packet_transmitted: AtomicU64::new(0),
@@ -13047,6 +13161,18 @@ pub mod testing {
         }
         fn on_stream_tls_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTlsConnect) {
             self.stream_tls_connect.fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_stream_tls_connect_error(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamTlsConnectError,
+        ) {
+            self.stream_tls_connect_error
+                .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
             let out = format!("{meta:?} {event:?}");
@@ -13758,6 +13884,7 @@ pub mod testing {
         pub stream_decrypt_packet: AtomicU64,
         pub stream_tcp_connect: AtomicU64,
         pub stream_tls_connect: AtomicU64,
+        pub stream_tls_connect_error: AtomicU64,
         pub stream_connect: AtomicU64,
         pub stream_connect_error: AtomicU64,
         pub stream_packet_transmitted: AtomicU64,
@@ -13878,6 +14005,7 @@ pub mod testing {
                 stream_decrypt_packet: AtomicU64::new(0),
                 stream_tcp_connect: AtomicU64::new(0),
                 stream_tls_connect: AtomicU64::new(0),
+                stream_tls_connect_error: AtomicU64::new(0),
                 stream_connect: AtomicU64::new(0),
                 stream_connect_error: AtomicU64::new(0),
                 stream_packet_transmitted: AtomicU64::new(0),
@@ -14146,6 +14274,14 @@ pub mod testing {
         }
         fn on_stream_tls_connect(&self, event: builder::StreamTlsConnect) {
             self.stream_tls_connect.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_stream_tls_connect_error(&self, event: builder::StreamTlsConnectError) {
+            self.stream_tls_connect_error
+                .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             let out = format!("{event:?}");

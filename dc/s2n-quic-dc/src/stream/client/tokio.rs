@@ -857,6 +857,13 @@ where
                 tls_latency: negotiate_end.saturating_duration_since(kernel_start_time),
             });
 
+        if let Err(error) = &res {
+            env.endpoint_publisher_with_time(negotiate_end)
+                .on_stream_tls_connect_error(event::builder::StreamTlsConnectError {
+                    error,
+                });
+        }
+
         // Return if negotiation failed.
         res?;
 

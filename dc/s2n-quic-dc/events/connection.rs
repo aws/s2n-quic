@@ -310,6 +310,14 @@ pub struct StreamTlsConnect {
     tls_latency: core::time::Duration,
 }
 
+/// Emitted when a TLS stream connect fails.
+#[event("stream:tls_connect_error")]
+#[subject(endpoint)]
+pub struct StreamTlsConnectError<'a> {
+    #[builder(&'a std::io::Error)]
+    error: &'a std::io::Error,
+}
+
 /// Tracks stream connect where dcQUIC owns the TCP connect().
 #[event("stream:connect")]
 #[subject(endpoint)]
