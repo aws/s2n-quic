@@ -130,10 +130,17 @@ where
         &self,
         socket: super::LazyBoundStream,
         remote_address: s2n_quic_core::inet::SocketAddress,
+        local_address: s2n_quic_core::inet::SocketAddress,
         buffer: crate::msg::recv::Message,
         kernel_accept_time: Timestamp,
     ) {
-        match self.spawn_inner(socket, remote_address, buffer, kernel_accept_time) {
+        match self.spawn_inner(
+            socket,
+            remote_address,
+            local_address,
+            buffer,
+            kernel_accept_time,
+        ) {
             Ok(()) => {}
             Err(error) => {
                 self.env
@@ -141,6 +148,7 @@ where
                     .on_acceptor_tcp_tls_stream_rejected(
                         event::builder::AcceptorTcpTlsStreamRejected {
                             remote_address: &remote_address,
+                            local_address: &local_address,
                             sojourn_time: self
                                 .env
                                 .clock()
@@ -157,6 +165,7 @@ where
         &self,
         socket: super::LazyBoundStream,
         remote_addr: s2n_quic_core::inet::SocketAddress,
+        local_addr: s2n_quic_core::inet::SocketAddress,
         buffer: crate::msg::recv::Message,
         kernel_accept_time: Timestamp,
     ) -> Result<(), s2n_tls::error::Error> {
@@ -198,6 +207,7 @@ where
                         .on_acceptor_tcp_synthetic_tls_stream_rejected(
                             event::builder::AcceptorTcpSyntheticTlsStreamRejected {
                                 remote_address: &remote_addr,
+                                local_address: &local_addr,
                                 sojourn_time: env
                                     .clock()
                                     .get_time()
@@ -210,6 +220,7 @@ where
                         .on_acceptor_tcp_tls_stream_rejected(
                             event::builder::AcceptorTcpTlsStreamRejected {
                                 remote_address: &remote_addr,
+                                local_address: &local_addr,
                                 sojourn_time: env
                                     .clock()
                                     .get_time()

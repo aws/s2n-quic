@@ -183,6 +183,7 @@ mod id {
         STREAM_TLS_CONNECT__ERROR,
         STREAM_TLS_CONNECT__TCP_LATENCY,
         STREAM_TLS_CONNECT__TLS_LATENCY,
+        STREAM_TLS_CONNECT_ERROR,
         STREAM_CONNECT,
         STREAM_CONNECT__ERROR,
         STREAM_CONNECT__TCP,
@@ -630,6 +631,7 @@ mod id {
         InfoId::STREAM_TLS_CONNECT__TCP_LATENCY as usize;
     pub const STREAM_TLS_CONNECT__TLS_LATENCY: usize =
         InfoId::STREAM_TLS_CONNECT__TLS_LATENCY as usize;
+    pub const STREAM_TLS_CONNECT_ERROR: usize = InfoId::STREAM_TLS_CONNECT_ERROR as usize;
     pub const STREAM_CONNECT: usize = InfoId::STREAM_CONNECT as usize;
     pub const STREAM_CONNECT__ERROR: usize = InfoId::STREAM_CONNECT__ERROR as usize;
     pub const STREAM_CONNECT__TCP: usize = InfoId::STREAM_CONNECT__TCP as usize;
@@ -996,6 +998,7 @@ mod id {
         COUNTERS_STREAM_DECRYPT_PACKET,
         COUNTERS_STREAM_TCP_CONNECT,
         COUNTERS_STREAM_TLS_CONNECT,
+        COUNTERS_STREAM_TLS_CONNECT_ERROR,
         COUNTERS_STREAM_CONNECT,
         COUNTERS_STREAM_CONNECT_ERROR,
         COUNTERS_STREAM_PACKET_TRANSMITTED,
@@ -1157,6 +1160,8 @@ mod id {
         Counters::COUNTERS_STREAM_DECRYPT_PACKET as usize;
     pub const COUNTERS_STREAM_TCP_CONNECT: usize = Counters::COUNTERS_STREAM_TCP_CONNECT as usize;
     pub const COUNTERS_STREAM_TLS_CONNECT: usize = Counters::COUNTERS_STREAM_TLS_CONNECT as usize;
+    pub const COUNTERS_STREAM_TLS_CONNECT_ERROR: usize =
+        Counters::COUNTERS_STREAM_TLS_CONNECT_ERROR as usize;
     pub const COUNTERS_STREAM_CONNECT: usize = Counters::COUNTERS_STREAM_CONNECT as usize;
     pub const COUNTERS_STREAM_CONNECT_ERROR: usize =
         Counters::COUNTERS_STREAM_CONNECT_ERROR as usize;
@@ -1992,7 +1997,7 @@ mod id {
     pub const TIMERS_STREAM_CONNECT_ERROR__LATENCY: usize =
         Timers::TIMERS_STREAM_CONNECT_ERROR__LATENCY as usize;
 }
-static INFO: &[Info; 340usize] = &[
+static INFO: &[Info; 341usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_STARTED,
         name: Str::new("acceptor_tcp_started\0"),
@@ -2987,6 +2992,12 @@ static INFO: &[Info; 340usize] = &[
         id: id::STREAM_TLS_CONNECT__TLS_LATENCY,
         name: Str::new("stream_tls_connect.tls_latency\0"),
         units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::STREAM_TLS_CONNECT_ERROR,
+        name: Str::new("stream_tls_connect_error\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
@@ -4071,7 +4082,7 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 113usize]>,
+    counters: Box<[R::Counter; 114usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 25usize]>,
     #[allow(dead_code)]
@@ -4106,7 +4117,7 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(113usize);
+        let mut counters = Vec::with_capacity(114usize);
         let mut bool_counters = Vec::with_capacity(25usize);
         let mut nominal_counters = Vec::with_capacity(37usize);
         let mut nominal_counter_offsets = Vec::with_capacity(37usize);
@@ -4175,6 +4186,7 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::STREAM_DECRYPT_PACKET]));
         counters.push(registry.register_counter(&INFO[id::STREAM_TCP_CONNECT]));
         counters.push(registry.register_counter(&INFO[id::STREAM_TLS_CONNECT]));
+        counters.push(registry.register_counter(&INFO[id::STREAM_TLS_CONNECT_ERROR]));
         counters.push(registry.register_counter(&INFO[id::STREAM_CONNECT]));
         counters.push(registry.register_counter(&INFO[id::STREAM_CONNECT_ERROR]));
         counters.push(registry.register_counter(&INFO[id::STREAM_PACKET_TRANSMITTED]));
@@ -5291,6 +5303,9 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_STREAM_DECRYPT_PACKET => (&INFO[id::STREAM_DECRYPT_PACKET], entry),
                 id::COUNTERS_STREAM_TCP_CONNECT => (&INFO[id::STREAM_TCP_CONNECT], entry),
                 id::COUNTERS_STREAM_TLS_CONNECT => (&INFO[id::STREAM_TLS_CONNECT], entry),
+                id::COUNTERS_STREAM_TLS_CONNECT_ERROR => {
+                    (&INFO[id::STREAM_TLS_CONNECT_ERROR], entry)
+                }
                 id::COUNTERS_STREAM_CONNECT => (&INFO[id::STREAM_CONNECT], entry),
                 id::COUNTERS_STREAM_CONNECT_ERROR => (&INFO[id::STREAM_CONNECT_ERROR], entry),
                 id::COUNTERS_STREAM_PACKET_TRANSMITTED => {
@@ -7997,6 +8012,22 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::STREAM_TLS_CONNECT__TLS_LATENCY,
             id::TIMERS_STREAM_TLS_CONNECT__TLS_LATENCY,
             event.tls_latency,
+        );
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_stream_tls_connect_error(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::StreamTlsConnectError,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::STREAM_TLS_CONNECT_ERROR,
+            id::COUNTERS_STREAM_TLS_CONNECT_ERROR,
+            1usize,
         );
         let _ = event;
         let _ = meta;

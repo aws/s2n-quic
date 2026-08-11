@@ -40,7 +40,7 @@ where
     env: Environment<Sub>,
     secrets: secret::Map,
     accept_flavor: accept::Flavor,
-    local_port: u16,
+    local_addr: s2n_quic_core::inet::SocketAddress,
 }
 
 impl<Sub> Context<Sub>
@@ -54,7 +54,7 @@ where
             env: acceptor.env.clone(),
             secrets: acceptor.secrets.clone(),
             accept_flavor: acceptor.accept_flavor,
-            local_port: acceptor.local_addr.port(),
+            local_addr: acceptor.local_addr.into(),
         }
     }
 }
@@ -398,7 +398,13 @@ where
                 InitialPacket::Dc(initial_packet) => initial_packet,
                 InitialPacket::Tls => {
                     if let Some(tls) = &self.tls {
-                        tls.spawn(socket, remote_address, recv_buffer.take(), queue_time);
+                        tls.spawn(
+                            socket,
+                            remote_address,
+                            context.local_addr,
+                            recv_buffer.take(),
+                            queue_time,
+                        );
                     } else {
                         publisher.on_acceptor_tcp_packet_dropped(
                             event::builder::AcceptorTcpPacketDropped {
@@ -464,7 +470,7 @@ where
             let peer = env::tcp::Reregistered {
                 socket,
                 peer_addr: remote_address,
-                local_port: context.local_port,
+                local_port: context.local_addr.port(),
                 recv_buffer,
             };
 

@@ -179,6 +179,7 @@ mod id {
         STREAM_TLS_CONNECT__ERROR,
         STREAM_TLS_CONNECT__TCP_LATENCY,
         STREAM_TLS_CONNECT__TLS_LATENCY,
+        STREAM_TLS_CONNECT_ERROR,
         STREAM_CONNECT,
         STREAM_CONNECT__ERROR,
         STREAM_CONNECT__TCP,
@@ -626,6 +627,7 @@ mod id {
         InfoId::STREAM_TLS_CONNECT__TCP_LATENCY as usize;
     pub const STREAM_TLS_CONNECT__TLS_LATENCY: usize =
         InfoId::STREAM_TLS_CONNECT__TLS_LATENCY as usize;
+    pub const STREAM_TLS_CONNECT_ERROR: usize = InfoId::STREAM_TLS_CONNECT_ERROR as usize;
     pub const STREAM_CONNECT: usize = InfoId::STREAM_CONNECT as usize;
     pub const STREAM_CONNECT__ERROR: usize = InfoId::STREAM_CONNECT__ERROR as usize;
     pub const STREAM_CONNECT__TCP: usize = InfoId::STREAM_CONNECT__TCP as usize;
@@ -1014,6 +1016,7 @@ mod counter {
                 id::STREAM_DECRYPT_PACKET => Self(stream_decrypt_packet),
                 id::STREAM_TCP_CONNECT => Self(stream_tcp_connect),
                 id::STREAM_TLS_CONNECT => Self(stream_tls_connect),
+                id::STREAM_TLS_CONNECT_ERROR => Self(stream_tls_connect_error),
                 id::STREAM_CONNECT => Self(stream_connect),
                 id::STREAM_CONNECT_ERROR => Self(stream_connect_error),
                 id::STREAM_PACKET_TRANSMITTED => Self(stream_packet_transmitted),
@@ -1271,6 +1274,9 @@ mod counter {
             fn stream_tcp_connect(value: u64);
             #[link_name = s2n_quic_dc__event__counter__stream_tls_connect]
             fn stream_tls_connect(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_tls_connect_error]
+            fn stream_tls_connect_error(value: u64);
             #[link_name =
         s2n_quic_dc__event__counter__stream_connect]
             fn stream_connect(value: u64);
