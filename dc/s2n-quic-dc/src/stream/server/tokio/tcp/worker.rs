@@ -398,7 +398,13 @@ where
                 InitialPacket::Dc(initial_packet) => initial_packet,
                 InitialPacket::Tls => {
                     if let Some(tls) = &self.tls {
-                        tls.spawn(socket, remote_address, context.local_addr, recv_buffer.take(), queue_time);
+                        tls.spawn(
+                            socket,
+                            remote_address,
+                            context.local_addr,
+                            recv_buffer.take(),
+                            queue_time,
+                        );
                     } else {
                         publisher.on_acceptor_tcp_packet_dropped(
                             event::builder::AcceptorTcpPacketDropped {

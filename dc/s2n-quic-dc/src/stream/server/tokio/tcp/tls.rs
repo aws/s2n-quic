@@ -134,7 +134,13 @@ where
         buffer: crate::msg::recv::Message,
         kernel_accept_time: Timestamp,
     ) {
-        match self.spawn_inner(socket, remote_address, local_address, buffer, kernel_accept_time) {
+        match self.spawn_inner(
+            socket,
+            remote_address,
+            local_address,
+            buffer,
+            kernel_accept_time,
+        ) {
             Ok(()) => {}
             Err(error) => {
                 self.env
