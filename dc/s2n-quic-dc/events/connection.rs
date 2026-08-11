@@ -297,9 +297,13 @@ pub struct StreamTcpConnect {
 /// Tracks TLS stream establishment.
 #[event("stream:tls_connect")]
 #[subject(endpoint)]
-pub struct StreamTlsConnect {
+pub struct StreamTlsConnect<'a> {
     #[bool_counter("error")]
     error: bool,
+
+    /// The remote address being connected to
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    remote_address: SocketAddress<'a>,
 
     // Does not include errors (otherwise we'd need to incorrectly emit zeros on tls_latency).
     #[timer("tcp_latency")]
@@ -314,6 +318,11 @@ pub struct StreamTlsConnect {
 #[event("stream:tls_connect_error")]
 #[subject(endpoint)]
 pub struct StreamTlsConnectError<'a> {
+    /// The remote address being connected to
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    remote_address: SocketAddress<'a>,
+
+    /// The error encountered
     #[builder(&'a std::io::Error)]
     error: &'a std::io::Error,
 }

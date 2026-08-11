@@ -850,9 +850,12 @@ where
 
         let negotiate_end = env.clock().get_time();
 
+        let remote_address: s2n_quic_core::inet::SocketAddress = addr.into();
+
         env.endpoint_publisher_with_time(negotiate_end)
             .on_stream_tls_connect(event::builder::StreamTlsConnect {
                 error: res.is_err(),
+                remote_address: &remote_address,
                 tcp_latency: kernel_start_time.saturating_duration_since(start),
                 tls_latency: negotiate_end.saturating_duration_since(kernel_start_time),
             });
@@ -860,6 +863,7 @@ where
         if let Err(error) = &res {
             env.endpoint_publisher_with_time(negotiate_end)
                 .on_stream_tls_connect_error(event::builder::StreamTlsConnectError {
+                    remote_address: &remote_address,
                     error,
                 });
         }

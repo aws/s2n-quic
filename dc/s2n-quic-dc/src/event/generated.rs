@@ -1318,34 +1318,41 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     /// Tracks TLS stream establishment.
-    pub struct StreamTlsConnect {
+    pub struct StreamTlsConnect<'a> {
         pub error: bool,
+        /// The remote address being connected to
+        pub remote_address: SocketAddress<'a>,
         pub tcp_latency: core::time::Duration,
         pub tls_latency: core::time::Duration,
     }
     #[cfg(any(test, feature = "testing"))]
-    impl crate::event::snapshot::Fmt for StreamTlsConnect {
+    impl<'a> crate::event::snapshot::Fmt for StreamTlsConnect<'a> {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("StreamTlsConnect");
             fmt.field("error", &self.error);
+            fmt.field("remote_address", &self.remote_address);
             fmt.field("tcp_latency", &self.tcp_latency);
             fmt.field("tls_latency", &self.tls_latency);
             fmt.finish()
         }
     }
-    impl Event for StreamTlsConnect {
+    impl<'a> Event for StreamTlsConnect<'a> {
         const NAME: &'static str = "stream:tls_connect";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     /// Emitted when a TLS stream connect fails.
     pub struct StreamTlsConnectError<'a> {
+        /// The remote address being connected to
+        pub remote_address: SocketAddress<'a>,
+        /// The error encountered
         pub error: &'a std::io::Error,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for StreamTlsConnectError<'a> {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("StreamTlsConnectError");
+            fmt.field("remote_address", &self.remote_address);
             fmt.field("error", &self.error);
             fmt.finish()
         }
@@ -3643,12 +3650,14 @@ pub mod tracing {
             let parent = self.parent(meta);
             let api::StreamTlsConnect {
                 error,
+                remote_address,
                 tcp_latency,
                 tls_latency,
             } = event;
             tracing::event!(
                 target : "stream_tls_connect", parent : parent, tracing::Level::DEBUG, {
-                error = tracing::field::debug(error), tcp_latency =
+                error = tracing::field::debug(error), remote_address =
+                tracing::field::debug(remote_address), tcp_latency =
                 tracing::field::debug(tcp_latency), tls_latency =
                 tracing::field::debug(tls_latency) }
             );
@@ -3660,10 +3669,15 @@ pub mod tracing {
             event: &api::StreamTlsConnectError,
         ) {
             let parent = self.parent(meta);
-            let api::StreamTlsConnectError { error } = event;
+            let api::StreamTlsConnectError {
+                remote_address,
+                error,
+            } = event;
             tracing::event!(
                 target : "stream_tls_connect_error", parent : parent,
-                tracing::Level::DEBUG, { error = tracing::field::debug(error) }
+                tracing::Level::DEBUG, { remote_address =
+                tracing::field::debug(remote_address), error =
+                tracing::field::debug(error) }
             );
         }
         #[inline]
@@ -5878,21 +5892,25 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     /// Tracks TLS stream establishment.
-    pub struct StreamTlsConnect {
+    pub struct StreamTlsConnect<'a> {
         pub error: bool,
+        /// The remote address being connected to
+        pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
         pub tcp_latency: core::time::Duration,
         pub tls_latency: core::time::Duration,
     }
-    impl IntoEvent<api::StreamTlsConnect> for StreamTlsConnect {
+    impl<'a> IntoEvent<api::StreamTlsConnect<'a>> for StreamTlsConnect<'a> {
         #[inline]
-        fn into_event(self) -> api::StreamTlsConnect {
+        fn into_event(self) -> api::StreamTlsConnect<'a> {
             let StreamTlsConnect {
                 error,
+                remote_address,
                 tcp_latency,
                 tls_latency,
             } = self;
             api::StreamTlsConnect {
                 error: error.into_event(),
+                remote_address: remote_address.into_event(),
                 tcp_latency: tcp_latency.into_event(),
                 tls_latency: tls_latency.into_event(),
             }
@@ -5901,13 +5919,20 @@ pub mod builder {
     #[derive(Clone, Debug)]
     /// Emitted when a TLS stream connect fails.
     pub struct StreamTlsConnectError<'a> {
+        /// The remote address being connected to
+        pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        /// The error encountered
         pub error: &'a std::io::Error,
     }
     impl<'a> IntoEvent<api::StreamTlsConnectError<'a>> for StreamTlsConnectError<'a> {
         #[inline]
         fn into_event(self) -> api::StreamTlsConnectError<'a> {
-            let StreamTlsConnectError { error } = self;
+            let StreamTlsConnectError {
+                remote_address,
+                error,
+            } = self;
             api::StreamTlsConnectError {
+                remote_address: remote_address.into_event(),
                 error: error.into_event(),
             }
         }
