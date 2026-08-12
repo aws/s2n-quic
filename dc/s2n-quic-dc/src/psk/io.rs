@@ -13,6 +13,7 @@ use s2n_quic::{
     server::Name,
 };
 use s2n_quic_core::{endpoint::Type, inet::SocketAddress};
+use s2n_quic_dc_metrics::{Registry, TaskMonitor};
 use std::{
     any::Any,
     hash::BuildHasher,
@@ -100,7 +101,7 @@ impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
 
 pub struct Server {
     server: s2n_quic::Server,
-    offload_handle: Option<tokio::runtime::Handle>,
+    offload_metrics: Option<Registry>,
 }
 
 impl Server {
@@ -160,7 +161,7 @@ impl Server {
             }};
         }
 
-        let (server, handle) = if builder.thread_offload_count > 0 {
+        let (server, registry) = if builder.thread_offload_count > 0 {
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 // Hs=handshake, s=server, offload
                 .thread_name("hs-s-offload")
@@ -169,7 +170,9 @@ impl Server {
                 .build()?;
 
             let handle = runtime.handle().clone();
-
+            let registry = Registry::new();
+            let interval_duration = Duration::new(1, 0);
+            registry.instrument_runtime("offload-runtime", &handle, interval_duration);
             let tls = s2n_quic::provider::tls::offload::OffloadBuilder::new()
                 .with_endpoint(tls_materials_provider)
                 .with_exporter(DCExporter {
@@ -186,7 +189,7 @@ impl Server {
             let connection_limits =
                 connection_limits.with_packet_buffer_size(DEFAULT_MTU as u32)?;
 
-            (build_and_start!(tls, connection_limits), Some(handle))
+            (build_and_start!(tls, connection_limits), Some(registry))
         } else {
             (
                 build_and_start!(tls_materials_provider, connection_limits),
@@ -196,7 +199,7 @@ impl Server {
 
         Ok(Self {
             server,
-            offload_handle: handle,
+            offload_metrics: registry,
         })
     }
 
@@ -246,15 +249,17 @@ pub(super) async fn server<
     }
 
     let map_clone2 = map.clone();
-    if let Some(handle) = &server.offload_handle {
-        let h = handle.clone();
+    if let Some(registry) = server.offload_metrics.take() {
+        //let h = handle.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(1));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 interval.tick().await;
-                let metrics = h.metrics();
-                map_clone2.on_offload_runtime_metrics(&metrics);
+                //let metrics = h.metrics();
+                let metrics = registry.take_current_metrics_line();
+                println!("metrics {:?}", metrics);
+                //map_clone2.on_offload_runtime_metrics(&metrics);
             }
         });
     }
