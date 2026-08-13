@@ -1892,39 +1892,21 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub struct OffloadRuntimeMetrics {
-        pub global_queue_depth: usize,
-        pub num_alive_tasks: usize,
+    pub struct OffloadTaskMetrics {
+        pub mean_poll_duration: core::time::Duration,
+        pub mean_scheduled_duration: core::time::Duration,
     }
     #[cfg(any(test, feature = "testing"))]
-    impl crate::event::snapshot::Fmt for OffloadRuntimeMetrics {
+    impl crate::event::snapshot::Fmt for OffloadTaskMetrics {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
-            let mut fmt = fmt.debug_struct("OffloadRuntimeMetrics");
-            fmt.field("global_queue_depth", &self.global_queue_depth);
-            fmt.field("num_alive_tasks", &self.num_alive_tasks);
+            let mut fmt = fmt.debug_struct("OffloadTaskMetrics");
+            fmt.field("mean_poll_duration", &self.mean_poll_duration);
+            fmt.field("mean_scheduled_duration", &self.mean_scheduled_duration);
             fmt.finish()
         }
     }
-    impl Event for OffloadRuntimeMetrics {
-        const NAME: &'static str = "runtime:offload_metrics";
-    }
-    #[derive(Clone, Debug)]
-    #[non_exhaustive]
-    pub struct OffloadRuntimeWorkerMetrics {
-        pub park_count: u64,
-        pub busy_duration: core::time::Duration,
-    }
-    #[cfg(any(test, feature = "testing"))]
-    impl crate::event::snapshot::Fmt for OffloadRuntimeWorkerMetrics {
-        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
-            let mut fmt = fmt.debug_struct("OffloadRuntimeWorkerMetrics");
-            fmt.field("park_count", &self.park_count);
-            fmt.field("busy_duration", &self.busy_duration);
-            fmt.finish()
-        }
-    }
-    impl Event for OffloadRuntimeWorkerMetrics {
-        const NAME: &'static str = "runtime:offload_worker_metrics";
+    impl Event for OffloadTaskMetrics {
+        const NAME: &'static str = "offload:task_metrics";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -4048,38 +4030,21 @@ pub mod tracing {
             );
         }
         #[inline]
-        fn on_offload_runtime_metrics(
+        fn on_offload_task_metrics(
             &self,
             meta: &api::EndpointMeta,
-            event: &api::OffloadRuntimeMetrics,
+            event: &api::OffloadTaskMetrics,
         ) {
             let parent = self.parent(meta);
-            let api::OffloadRuntimeMetrics {
-                global_queue_depth,
-                num_alive_tasks,
+            let api::OffloadTaskMetrics {
+                mean_poll_duration,
+                mean_scheduled_duration,
             } = event;
             tracing::event!(
-                target : "offload_runtime_metrics", parent : parent,
-                tracing::Level::DEBUG, { global_queue_depth =
-                tracing::field::debug(global_queue_depth), num_alive_tasks =
-                tracing::field::debug(num_alive_tasks) }
-            );
-        }
-        #[inline]
-        fn on_offload_runtime_worker_metrics(
-            &self,
-            meta: &api::EndpointMeta,
-            event: &api::OffloadRuntimeWorkerMetrics,
-        ) {
-            let parent = self.parent(meta);
-            let api::OffloadRuntimeWorkerMetrics {
-                park_count,
-                busy_duration,
-            } = event;
-            tracing::event!(
-                target : "offload_runtime_worker_metrics", parent : parent,
-                tracing::Level::DEBUG, { park_count = tracing::field::debug(park_count),
-                busy_duration = tracing::field::debug(busy_duration) }
+                target : "offload_task_metrics", parent : parent, tracing::Level::DEBUG,
+                { mean_poll_duration = tracing::field::debug(mean_poll_duration),
+                mean_scheduled_duration = tracing::field::debug(mean_scheduled_duration)
+                }
             );
         }
         #[inline]
@@ -6489,38 +6454,20 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub struct OffloadRuntimeMetrics {
-        pub global_queue_depth: usize,
-        pub num_alive_tasks: usize,
+    pub struct OffloadTaskMetrics {
+        pub mean_poll_duration: core::time::Duration,
+        pub mean_scheduled_duration: core::time::Duration,
     }
-    impl IntoEvent<api::OffloadRuntimeMetrics> for OffloadRuntimeMetrics {
+    impl IntoEvent<api::OffloadTaskMetrics> for OffloadTaskMetrics {
         #[inline]
-        fn into_event(self) -> api::OffloadRuntimeMetrics {
-            let OffloadRuntimeMetrics {
-                global_queue_depth,
-                num_alive_tasks,
+        fn into_event(self) -> api::OffloadTaskMetrics {
+            let OffloadTaskMetrics {
+                mean_poll_duration,
+                mean_scheduled_duration,
             } = self;
-            api::OffloadRuntimeMetrics {
-                global_queue_depth: global_queue_depth.into_event(),
-                num_alive_tasks: num_alive_tasks.into_event(),
-            }
-        }
-    }
-    #[derive(Clone, Debug)]
-    pub struct OffloadRuntimeWorkerMetrics {
-        pub park_count: u64,
-        pub busy_duration: core::time::Duration,
-    }
-    impl IntoEvent<api::OffloadRuntimeWorkerMetrics> for OffloadRuntimeWorkerMetrics {
-        #[inline]
-        fn into_event(self) -> api::OffloadRuntimeWorkerMetrics {
-            let OffloadRuntimeWorkerMetrics {
-                park_count,
-                busy_duration,
-            } = self;
-            api::OffloadRuntimeWorkerMetrics {
-                park_count: park_count.into_event(),
-                busy_duration: busy_duration.into_event(),
+            api::OffloadTaskMetrics {
+                mean_poll_duration: mean_poll_duration.into_event(),
+                mean_scheduled_duration: mean_scheduled_duration.into_event(),
             }
         }
     }
@@ -8111,22 +8058,12 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
-        ///Called when the `OffloadRuntimeMetrics` event is triggered
+        ///Called when the `OffloadTaskMetrics` event is triggered
         #[inline]
-        fn on_offload_runtime_metrics(
+        fn on_offload_task_metrics(
             &self,
             meta: &api::EndpointMeta,
-            event: &api::OffloadRuntimeMetrics,
-        ) {
-            let _ = meta;
-            let _ = event;
-        }
-        ///Called when the `OffloadRuntimeWorkerMetrics` event is triggered
-        #[inline]
-        fn on_offload_runtime_worker_metrics(
-            &self,
-            meta: &api::EndpointMeta,
-            event: &api::OffloadRuntimeWorkerMetrics,
+            event: &api::OffloadTaskMetrics,
         ) {
             let _ = meta;
             let _ = event;
@@ -9083,20 +9020,12 @@ mod traits {
             self.as_ref().on_dc_connection_timeout(meta, event);
         }
         #[inline]
-        fn on_offload_runtime_metrics(
+        fn on_offload_task_metrics(
             &self,
             meta: &api::EndpointMeta,
-            event: &api::OffloadRuntimeMetrics,
+            event: &api::OffloadTaskMetrics,
         ) {
-            self.as_ref().on_offload_runtime_metrics(meta, event);
-        }
-        #[inline]
-        fn on_offload_runtime_worker_metrics(
-            &self,
-            meta: &api::EndpointMeta,
-            event: &api::OffloadRuntimeWorkerMetrics,
-        ) {
-            self.as_ref().on_offload_runtime_worker_metrics(meta, event);
+            self.as_ref().on_offload_task_metrics(meta, event);
         }
         #[inline]
         fn on_path_secret_map_initialized(
@@ -10031,22 +9960,13 @@ mod traits {
             (self.1).on_dc_connection_timeout(meta, event);
         }
         #[inline]
-        fn on_offload_runtime_metrics(
+        fn on_offload_task_metrics(
             &self,
             meta: &api::EndpointMeta,
-            event: &api::OffloadRuntimeMetrics,
+            event: &api::OffloadTaskMetrics,
         ) {
-            (self.0).on_offload_runtime_metrics(meta, event);
-            (self.1).on_offload_runtime_metrics(meta, event);
-        }
-        #[inline]
-        fn on_offload_runtime_worker_metrics(
-            &self,
-            meta: &api::EndpointMeta,
-            event: &api::OffloadRuntimeWorkerMetrics,
-        ) {
-            (self.0).on_offload_runtime_worker_metrics(meta, event);
-            (self.1).on_offload_runtime_worker_metrics(meta, event);
+            (self.0).on_offload_task_metrics(meta, event);
+            (self.1).on_offload_task_metrics(meta, event);
         }
         #[inline]
         fn on_path_secret_map_initialized(
@@ -10466,10 +10386,8 @@ mod traits {
         fn on_endpoint_initialized(&self, event: builder::EndpointInitialized);
         ///Publishes a `DcConnectionTimeout` event to the publisher's subscriber
         fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout);
-        ///Publishes a `OffloadRuntimeMetrics` event to the publisher's subscriber
-        fn on_offload_runtime_metrics(&self, event: builder::OffloadRuntimeMetrics);
-        ///Publishes a `OffloadRuntimeWorkerMetrics` event to the publisher's subscriber
-        fn on_offload_runtime_worker_metrics(&self, event: builder::OffloadRuntimeWorkerMetrics);
+        ///Publishes a `OffloadTaskMetrics` event to the publisher's subscriber
+        fn on_offload_task_metrics(&self, event: builder::OffloadTaskMetrics);
         ///Publishes a `PathSecretMapInitialized` event to the publisher's subscriber
         fn on_path_secret_map_initialized(&self, event: builder::PathSecretMapInitialized);
         ///Publishes a `PathSecretMapUninitialized` event to the publisher's subscriber
@@ -10829,17 +10747,9 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
-        fn on_offload_runtime_metrics(&self, event: builder::OffloadRuntimeMetrics) {
+        fn on_offload_task_metrics(&self, event: builder::OffloadTaskMetrics) {
             let event = event.into_event();
-            self.subscriber
-                .on_offload_runtime_metrics(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_offload_runtime_worker_metrics(&self, event: builder::OffloadRuntimeWorkerMetrics) {
-            let event = event.into_event();
-            self.subscriber
-                .on_offload_runtime_worker_metrics(&self.meta, &event);
+            self.subscriber.on_offload_task_metrics(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -11609,8 +11519,7 @@ pub mod testing {
             pub stream_connect_error: AtomicU64,
             pub endpoint_initialized: AtomicU64,
             pub dc_connection_timeout: AtomicU64,
-            pub offload_runtime_metrics: AtomicU64,
-            pub offload_runtime_worker_metrics: AtomicU64,
+            pub offload_task_metrics: AtomicU64,
             pub path_secret_map_initialized: AtomicU64,
             pub path_secret_map_uninitialized: AtomicU64,
             pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -11709,8 +11618,7 @@ pub mod testing {
                     stream_connect_error: AtomicU64::new(0),
                     endpoint_initialized: AtomicU64::new(0),
                     dc_connection_timeout: AtomicU64::new(0),
-                    offload_runtime_metrics: AtomicU64::new(0),
-                    offload_runtime_worker_metrics: AtomicU64::new(0),
+                    offload_task_metrics: AtomicU64::new(0),
                     path_secret_map_initialized: AtomicU64::new(0),
                     path_secret_map_uninitialized: AtomicU64::new(0),
                     path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -12115,24 +12023,12 @@ pub mod testing {
                 let out = format!("{meta:?} {event:?}");
                 self.output.lock().unwrap().push(out);
             }
-            fn on_offload_runtime_metrics(
+            fn on_offload_task_metrics(
                 &self,
                 meta: &api::EndpointMeta,
-                event: &api::OffloadRuntimeMetrics,
+                event: &api::OffloadTaskMetrics,
             ) {
-                self.offload_runtime_metrics.fetch_add(1, Ordering::Relaxed);
-                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
-                let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                let out = format!("{meta:?} {event:?}");
-                self.output.lock().unwrap().push(out);
-            }
-            fn on_offload_runtime_worker_metrics(
-                &self,
-                meta: &api::EndpointMeta,
-                event: &api::OffloadRuntimeWorkerMetrics,
-            ) {
-                self.offload_runtime_worker_metrics
-                    .fetch_add(1, Ordering::Relaxed);
+                self.offload_task_metrics.fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 let out = format!("{meta:?} {event:?}");
@@ -12634,8 +12530,7 @@ pub mod testing {
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub dc_connection_timeout: AtomicU64,
-        pub offload_runtime_metrics: AtomicU64,
-        pub offload_runtime_worker_metrics: AtomicU64,
+        pub offload_task_metrics: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
         pub path_secret_map_uninitialized: AtomicU64,
         pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -12767,8 +12662,7 @@ pub mod testing {
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 dc_connection_timeout: AtomicU64::new(0),
-                offload_runtime_metrics: AtomicU64::new(0),
-                offload_runtime_worker_metrics: AtomicU64::new(0),
+                offload_task_metrics: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
                 path_secret_map_uninitialized: AtomicU64::new(0),
                 path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -13642,24 +13536,12 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
-        fn on_offload_runtime_metrics(
+        fn on_offload_task_metrics(
             &self,
             meta: &api::EndpointMeta,
-            event: &api::OffloadRuntimeMetrics,
+            event: &api::OffloadTaskMetrics,
         ) {
-            self.offload_runtime_metrics.fetch_add(1, Ordering::Relaxed);
-            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
-            let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            let out = format!("{meta:?} {event:?}");
-            self.output.lock().unwrap().push(out);
-        }
-        fn on_offload_runtime_worker_metrics(
-            &self,
-            meta: &api::EndpointMeta,
-            event: &api::OffloadRuntimeWorkerMetrics,
-        ) {
-            self.offload_runtime_worker_metrics
-                .fetch_add(1, Ordering::Relaxed);
+            self.offload_task_metrics.fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
             let out = format!("{meta:?} {event:?}");
@@ -14160,8 +14042,7 @@ pub mod testing {
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub dc_connection_timeout: AtomicU64,
-        pub offload_runtime_metrics: AtomicU64,
-        pub offload_runtime_worker_metrics: AtomicU64,
+        pub offload_task_metrics: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
         pub path_secret_map_uninitialized: AtomicU64,
         pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -14283,8 +14164,7 @@ pub mod testing {
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 dc_connection_timeout: AtomicU64::new(0),
-                offload_runtime_metrics: AtomicU64::new(0),
-                offload_runtime_worker_metrics: AtomicU64::new(0),
+                offload_task_metrics: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
                 path_secret_map_uninitialized: AtomicU64::new(0),
                 path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -14577,16 +14457,8 @@ pub mod testing {
             let out = format!("{event:?}");
             self.output.lock().unwrap().push(out);
         }
-        fn on_offload_runtime_metrics(&self, event: builder::OffloadRuntimeMetrics) {
-            self.offload_runtime_metrics.fetch_add(1, Ordering::Relaxed);
-            let event = event.into_event();
-            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            let out = format!("{event:?}");
-            self.output.lock().unwrap().push(out);
-        }
-        fn on_offload_runtime_worker_metrics(&self, event: builder::OffloadRuntimeWorkerMetrics) {
-            self.offload_runtime_worker_metrics
-                .fetch_add(1, Ordering::Relaxed);
+        fn on_offload_task_metrics(&self, event: builder::OffloadTaskMetrics) {
+            self.offload_task_metrics.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             let out = format!("{event:?}");

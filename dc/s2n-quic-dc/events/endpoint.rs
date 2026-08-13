@@ -22,20 +22,11 @@ struct DcConnectionTimeout<'a> {
     peer_address: SocketAddress<'a>,
 }
 
-#[event("runtime:offload_metrics")]
+#[event("offload:task_metrics")]
 #[subject(endpoint)]
-struct OffloadRuntimeMetrics {
-    #[measure("global_queue_depth", Count)]
-    global_queue_depth: usize,
-    #[measure("num_alive_tasks", Count)]
-    num_alive_tasks: usize,
-}
-
-#[event("runtime:offload_worker_metrics")]
-#[subject(endpoint)]
-struct OffloadRuntimeWorkerMetrics {
-    #[measure("park_count", Count)]
-    park_count: u64,
-    #[measure("busy_duration", Duration)]
-    busy_duration: core::time::Duration,
+struct OffloadTaskMetrics {
+    #[measure("mean_poll_duration", Duration)]
+    mean_poll_duration: core::time::Duration,
+    #[measure("mean_scheduled_duration", Duration)]
+    mean_scheduled_duration: core::time::Duration,
 }

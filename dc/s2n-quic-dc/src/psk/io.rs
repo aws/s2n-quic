@@ -170,7 +170,6 @@ impl Server {
                 .enable_all()
                 .build()?;
 
-            let handle = runtime.handle().clone();
             let monitor = tokio_metrics::TaskMonitor::new();
 
             let tls = s2n_quic::provider::tls::offload::OffloadBuilder::new()
@@ -254,20 +253,14 @@ pub(super) async fn server<
         }
     }
 
-    let map_clone2 = map.clone();
+    let map_clone = map.clone();
     if let Some(monitor) = server.offload_metrics.take() {
-        //let h = handle.clone();
-        let frequency = std::time::Duration::from_millis(500);
+        let frequency = std::time::Duration::new(1, 0);
         tokio::spawn(async move {
             loop {
-                for metrics in monitor.intervals() {
-                    println!("mean poll duration {:?}", metrics.mean_poll_duration());
-                    println!(
-                        "mean scheduled duration {:?}",
-                        metrics.mean_scheduled_duration()
-                    );
-                    tokio::time::sleep(frequency).await;
-                }
+                let metrics = monitor.cumulative();
+                map_clone.on_offload_task_metrics(&metrics);
+                tokio::time::sleep(frequency).await;
             }
         });
     }

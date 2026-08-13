@@ -25,7 +25,8 @@ use std::{
     sync::{Arc, Mutex, RwLock, Weak},
     time::Duration,
 };
-use tokio::{runtime::RuntimeMetrics, task::JoinHandle};
+use tokio::task::JoinHandle;
+use tokio_metrics::TaskMetrics;
 
 #[cfg(test)]
 mod tests;
@@ -1353,21 +1354,12 @@ where
         );
     }
 
-    fn on_offload_runtime_metrics(&self, metrics: &RuntimeMetrics) {
+    fn on_offload_task_metrics(&self, metrics: &TaskMetrics) {
         self.subscriber()
-            .on_offload_runtime_metrics(event::builder::OffloadRuntimeMetrics {
-                global_queue_depth: metrics.global_queue_depth(),
-                num_alive_tasks: metrics.num_alive_tasks(),
+            .on_offload_task_metrics(event::builder::OffloadTaskMetrics {
+                mean_poll_duration: metrics.mean_poll_duration(),
+                mean_scheduled_duration: metrics.mean_scheduled_duration(),
             });
-
-        for idx in 0..metrics.num_workers() {
-            self.subscriber().on_offload_runtime_worker_metrics(
-                event::builder::OffloadRuntimeWorkerMetrics {
-                    park_count: metrics.worker_park_count(idx),
-                    busy_duration: metrics.worker_total_busy_duration(idx),
-                },
-            );
-        }
     }
 }
 

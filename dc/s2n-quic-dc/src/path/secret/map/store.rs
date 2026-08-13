@@ -12,7 +12,8 @@ use core::time::Duration;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::varint::VarInt;
 use std::{net::SocketAddr, sync::Arc};
-use tokio::{runtime::RuntimeMetrics, task::JoinHandle};
+use tokio::task::JoinHandle;
+use tokio_metrics::TaskMetrics;
 
 pub trait Store: 'static + Send + Sync {
     fn secrets_len(&self) -> usize;
@@ -163,7 +164,7 @@ pub trait Store: 'static + Send + Sync {
 
     fn on_dc_connection_timeout(&self, peer_address: &SocketAddr);
 
-    fn on_offload_runtime_metrics(&self, metrics: &RuntimeMetrics);
+    fn on_offload_task_metrics(&self, metrics: &TaskMetrics);
 
     fn on_datagram_encrypt(&self, packet_len: usize);
 

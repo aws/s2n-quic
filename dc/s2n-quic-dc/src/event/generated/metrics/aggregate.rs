@@ -248,12 +248,9 @@ mod id {
         ENDPOINT_INITIALIZED__UDP,
         DC_CONNECTION_TIMEOUT,
         DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL,
-        OFFLOAD_RUNTIME_METRICS,
-        OFFLOAD_RUNTIME_METRICS__GLOBAL_QUEUE_DEPTH,
-        OFFLOAD_RUNTIME_METRICS__NUM_ALIVE_TASKS,
-        OFFLOAD_RUNTIME_WORKER_METRICS,
-        OFFLOAD_RUNTIME_WORKER_METRICS__PARK_COUNT,
-        OFFLOAD_RUNTIME_WORKER_METRICS__BUSY_DURATION,
+        OFFLOAD_TASK_METRICS,
+        OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION,
+        OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION,
         PATH_SECRET_MAP_INITIALIZED,
         PATH_SECRET_MAP_INITIALIZED__CAPACITY,
         PATH_SECRET_MAP_UNINITIALIZED,
@@ -744,17 +741,11 @@ mod id {
     pub const DC_CONNECTION_TIMEOUT: usize = InfoId::DC_CONNECTION_TIMEOUT as usize;
     pub const DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL as usize;
-    pub const OFFLOAD_RUNTIME_METRICS: usize = InfoId::OFFLOAD_RUNTIME_METRICS as usize;
-    pub const OFFLOAD_RUNTIME_METRICS__GLOBAL_QUEUE_DEPTH: usize =
-        InfoId::OFFLOAD_RUNTIME_METRICS__GLOBAL_QUEUE_DEPTH as usize;
-    pub const OFFLOAD_RUNTIME_METRICS__NUM_ALIVE_TASKS: usize =
-        InfoId::OFFLOAD_RUNTIME_METRICS__NUM_ALIVE_TASKS as usize;
-    pub const OFFLOAD_RUNTIME_WORKER_METRICS: usize =
-        InfoId::OFFLOAD_RUNTIME_WORKER_METRICS as usize;
-    pub const OFFLOAD_RUNTIME_WORKER_METRICS__PARK_COUNT: usize =
-        InfoId::OFFLOAD_RUNTIME_WORKER_METRICS__PARK_COUNT as usize;
-    pub const OFFLOAD_RUNTIME_WORKER_METRICS__BUSY_DURATION: usize =
-        InfoId::OFFLOAD_RUNTIME_WORKER_METRICS__BUSY_DURATION as usize;
+    pub const OFFLOAD_TASK_METRICS: usize = InfoId::OFFLOAD_TASK_METRICS as usize;
+    pub const OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION: usize =
+        InfoId::OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION as usize;
+    pub const OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION: usize =
+        InfoId::OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION as usize;
     pub const PATH_SECRET_MAP_INITIALIZED: usize = InfoId::PATH_SECRET_MAP_INITIALIZED as usize;
     pub const PATH_SECRET_MAP_INITIALIZED__CAPACITY: usize =
         InfoId::PATH_SECRET_MAP_INITIALIZED__CAPACITY as usize;
@@ -1039,8 +1030,7 @@ mod id {
         COUNTERS_CONNECTION_CLOSED,
         COUNTERS_ENDPOINT_INITIALIZED,
         COUNTERS_DC_CONNECTION_TIMEOUT,
-        COUNTERS_OFFLOAD_RUNTIME_METRICS,
-        COUNTERS_OFFLOAD_RUNTIME_WORKER_METRICS,
+        COUNTERS_OFFLOAD_TASK_METRICS,
         COUNTERS_PATH_SECRET_MAP_INITIALIZED,
         COUNTERS_PATH_SECRET_MAP_UNINITIALIZED,
         COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED,
@@ -1223,10 +1213,8 @@ mod id {
         Counters::COUNTERS_ENDPOINT_INITIALIZED as usize;
     pub const COUNTERS_DC_CONNECTION_TIMEOUT: usize =
         Counters::COUNTERS_DC_CONNECTION_TIMEOUT as usize;
-    pub const COUNTERS_OFFLOAD_RUNTIME_METRICS: usize =
-        Counters::COUNTERS_OFFLOAD_RUNTIME_METRICS as usize;
-    pub const COUNTERS_OFFLOAD_RUNTIME_WORKER_METRICS: usize =
-        Counters::COUNTERS_OFFLOAD_RUNTIME_WORKER_METRICS as usize;
+    pub const COUNTERS_OFFLOAD_TASK_METRICS: usize =
+        Counters::COUNTERS_OFFLOAD_TASK_METRICS as usize;
     pub const COUNTERS_PATH_SECRET_MAP_INITIALIZED: usize =
         Counters::COUNTERS_PATH_SECRET_MAP_INITIALIZED as usize;
     pub const COUNTERS_PATH_SECRET_MAP_UNINITIALIZED: usize =
@@ -1609,10 +1597,8 @@ mod id {
         MEASURES_STREAM_CONTROL_PACKET_RECEIVED__PACKET_LEN,
         MEASURES_STREAM_CONTROL_PACKET_RECEIVED__CONTROL_DATA_LEN,
         MEASURES_STREAM_HANDSHAKE_PACKET_REJECTED__CONN,
-        MEASURES_OFFLOAD_RUNTIME_METRICS__GLOBAL_QUEUE_DEPTH,
-        MEASURES_OFFLOAD_RUNTIME_METRICS__NUM_ALIVE_TASKS,
-        MEASURES_OFFLOAD_RUNTIME_WORKER_METRICS__PARK_COUNT,
-        MEASURES_OFFLOAD_RUNTIME_WORKER_METRICS__BUSY_DURATION,
+        MEASURES_OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION,
+        MEASURES_OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION,
         MEASURES_PATH_SECRET_MAP_INITIALIZED__CAPACITY,
         MEASURES_PATH_SECRET_MAP_UNINITIALIZED__CAPACITY,
         MEASURES_PATH_SECRET_MAP_UNINITIALIZED__ENTRIES,
@@ -1846,14 +1832,10 @@ mod id {
         Measures::MEASURES_STREAM_CONTROL_PACKET_RECEIVED__CONTROL_DATA_LEN as usize;
     pub const MEASURES_STREAM_HANDSHAKE_PACKET_REJECTED__CONN: usize =
         Measures::MEASURES_STREAM_HANDSHAKE_PACKET_REJECTED__CONN as usize;
-    pub const MEASURES_OFFLOAD_RUNTIME_METRICS__GLOBAL_QUEUE_DEPTH: usize =
-        Measures::MEASURES_OFFLOAD_RUNTIME_METRICS__GLOBAL_QUEUE_DEPTH as usize;
-    pub const MEASURES_OFFLOAD_RUNTIME_METRICS__NUM_ALIVE_TASKS: usize =
-        Measures::MEASURES_OFFLOAD_RUNTIME_METRICS__NUM_ALIVE_TASKS as usize;
-    pub const MEASURES_OFFLOAD_RUNTIME_WORKER_METRICS__PARK_COUNT: usize =
-        Measures::MEASURES_OFFLOAD_RUNTIME_WORKER_METRICS__PARK_COUNT as usize;
-    pub const MEASURES_OFFLOAD_RUNTIME_WORKER_METRICS__BUSY_DURATION: usize =
-        Measures::MEASURES_OFFLOAD_RUNTIME_WORKER_METRICS__BUSY_DURATION as usize;
+    pub const MEASURES_OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION: usize =
+        Measures::MEASURES_OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION as usize;
+    pub const MEASURES_OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION: usize =
+        Measures::MEASURES_OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION as usize;
     pub const MEASURES_PATH_SECRET_MAP_INITIALIZED__CAPACITY: usize =
         Measures::MEASURES_PATH_SECRET_MAP_INITIALIZED__CAPACITY as usize;
     pub const MEASURES_PATH_SECRET_MAP_UNINITIALIZED__CAPACITY: usize =
@@ -3420,38 +3402,20 @@ static INFO: &[Info; 341usize] = &[
     }
     .build(),
     info::Builder {
-        id: id::OFFLOAD_RUNTIME_METRICS,
-        name: Str::new("offload_runtime_metrics\0"),
+        id: id::OFFLOAD_TASK_METRICS,
+        name: Str::new("offload_task_metrics\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: id::OFFLOAD_RUNTIME_METRICS__GLOBAL_QUEUE_DEPTH,
-        name: Str::new("offload_runtime_metrics.global_queue_depth\0"),
-        units: Units::None,
+        id: id::OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION,
+        name: Str::new("offload_task_metrics.mean_poll_duration\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: id::OFFLOAD_RUNTIME_METRICS__NUM_ALIVE_TASKS,
-        name: Str::new("offload_runtime_metrics.num_alive_tasks\0"),
-        units: Units::None,
-    }
-    .build(),
-    info::Builder {
-        id: id::OFFLOAD_RUNTIME_WORKER_METRICS,
-        name: Str::new("offload_runtime_worker_metrics\0"),
-        units: Units::None,
-    }
-    .build(),
-    info::Builder {
-        id: id::OFFLOAD_RUNTIME_WORKER_METRICS__PARK_COUNT,
-        name: Str::new("offload_runtime_worker_metrics.park_count\0"),
-        units: Units::None,
-    }
-    .build(),
-    info::Builder {
-        id: id::OFFLOAD_RUNTIME_WORKER_METRICS__BUSY_DURATION,
-        name: Str::new("offload_runtime_worker_metrics.busy_duration\0"),
+        id: id::OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION,
+        name: Str::new("offload_task_metrics.mean_scheduled_duration\0"),
         units: Units::Duration,
     }
     .build(),
@@ -4153,7 +4117,7 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 115usize]>,
+    counters: Box<[R::Counter; 114usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 25usize]>,
     #[allow(dead_code)]
@@ -4161,7 +4125,7 @@ pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
     nominal_counter_offsets: Box<[usize; 37usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure; 141usize]>,
+    measures: Box<[R::Measure; 139usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
@@ -4188,11 +4152,11 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(115usize);
+        let mut counters = Vec::with_capacity(114usize);
         let mut bool_counters = Vec::with_capacity(25usize);
         let mut nominal_counters = Vec::with_capacity(37usize);
         let mut nominal_counter_offsets = Vec::with_capacity(37usize);
-        let mut measures = Vec::with_capacity(141usize);
+        let mut measures = Vec::with_capacity(139usize);
         let mut gauges = Vec::with_capacity(0usize);
         let mut timers = Vec::with_capacity(28usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
@@ -4288,8 +4252,7 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::CONNECTION_CLOSED]));
         counters.push(registry.register_counter(&INFO[id::ENDPOINT_INITIALIZED]));
         counters.push(registry.register_counter(&INFO[id::DC_CONNECTION_TIMEOUT]));
-        counters.push(registry.register_counter(&INFO[id::OFFLOAD_RUNTIME_METRICS]));
-        counters.push(registry.register_counter(&INFO[id::OFFLOAD_RUNTIME_WORKER_METRICS]));
+        counters.push(registry.register_counter(&INFO[id::OFFLOAD_TASK_METRICS]));
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_INITIALIZED]));
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_UNINITIALIZED]));
         counters.push(
@@ -5070,15 +5033,10 @@ impl<R: Registry> Subscriber<R> {
             registry.register_measure(&INFO[id::STREAM_CONTROL_PACKET_RECEIVED__CONTROL_DATA_LEN]),
         );
         measures.push(registry.register_measure(&INFO[id::STREAM_HANDSHAKE_PACKET_REJECTED__CONN]));
-        measures.push(
-            registry.register_measure(&INFO[id::OFFLOAD_RUNTIME_METRICS__GLOBAL_QUEUE_DEPTH]),
-        );
         measures
-            .push(registry.register_measure(&INFO[id::OFFLOAD_RUNTIME_METRICS__NUM_ALIVE_TASKS]));
-        measures
-            .push(registry.register_measure(&INFO[id::OFFLOAD_RUNTIME_WORKER_METRICS__PARK_COUNT]));
+            .push(registry.register_measure(&INFO[id::OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION]));
         measures.push(
-            registry.register_measure(&INFO[id::OFFLOAD_RUNTIME_WORKER_METRICS__BUSY_DURATION]),
+            registry.register_measure(&INFO[id::OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION]),
         );
         measures.push(registry.register_measure(&INFO[id::PATH_SECRET_MAP_INITIALIZED__CAPACITY]));
         measures
@@ -5440,10 +5398,7 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_CONNECTION_CLOSED => (&INFO[id::CONNECTION_CLOSED], entry),
                 id::COUNTERS_ENDPOINT_INITIALIZED => (&INFO[id::ENDPOINT_INITIALIZED], entry),
                 id::COUNTERS_DC_CONNECTION_TIMEOUT => (&INFO[id::DC_CONNECTION_TIMEOUT], entry),
-                id::COUNTERS_OFFLOAD_RUNTIME_METRICS => (&INFO[id::OFFLOAD_RUNTIME_METRICS], entry),
-                id::COUNTERS_OFFLOAD_RUNTIME_WORKER_METRICS => {
-                    (&INFO[id::OFFLOAD_RUNTIME_WORKER_METRICS], entry)
-                }
+                id::COUNTERS_OFFLOAD_TASK_METRICS => (&INFO[id::OFFLOAD_TASK_METRICS], entry),
                 id::COUNTERS_PATH_SECRET_MAP_INITIALIZED => {
                     (&INFO[id::PATH_SECRET_MAP_INITIALIZED], entry)
                 }
@@ -6427,17 +6382,11 @@ impl<R: Registry> Subscriber<R> {
                     id::MEASURES_STREAM_HANDSHAKE_PACKET_REJECTED__CONN => {
                         (&INFO[id::STREAM_HANDSHAKE_PACKET_REJECTED__CONN], entry)
                     }
-                    id::MEASURES_OFFLOAD_RUNTIME_METRICS__GLOBAL_QUEUE_DEPTH => {
-                        (&INFO[id::OFFLOAD_RUNTIME_METRICS__GLOBAL_QUEUE_DEPTH], entry)
+                    id::MEASURES_OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION => {
+                        (&INFO[id::OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION], entry)
                     }
-                    id::MEASURES_OFFLOAD_RUNTIME_METRICS__NUM_ALIVE_TASKS => {
-                        (&INFO[id::OFFLOAD_RUNTIME_METRICS__NUM_ALIVE_TASKS], entry)
-                    }
-                    id::MEASURES_OFFLOAD_RUNTIME_WORKER_METRICS__PARK_COUNT => {
-                        (&INFO[id::OFFLOAD_RUNTIME_WORKER_METRICS__PARK_COUNT], entry)
-                    }
-                    id::MEASURES_OFFLOAD_RUNTIME_WORKER_METRICS__BUSY_DURATION => {
-                        (&INFO[id::OFFLOAD_RUNTIME_WORKER_METRICS__BUSY_DURATION], entry)
+                    id::MEASURES_OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION => {
+                        (&INFO[id::OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION], entry)
                     }
                     id::MEASURES_PATH_SECRET_MAP_INITIALIZED__CAPACITY => {
                         (&INFO[id::PATH_SECRET_MAP_INITIALIZED__CAPACITY], entry)
@@ -8857,53 +8806,23 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         let _ = meta;
     }
     #[inline]
-    fn on_offload_runtime_metrics(
-        &self,
-        meta: &api::EndpointMeta,
-        event: &api::OffloadRuntimeMetrics,
-    ) {
+    fn on_offload_task_metrics(&self, meta: &api::EndpointMeta, event: &api::OffloadTaskMetrics) {
         #[allow(unused_imports)]
         use api::*;
         self.count(
-            id::OFFLOAD_RUNTIME_METRICS,
-            id::COUNTERS_OFFLOAD_RUNTIME_METRICS,
+            id::OFFLOAD_TASK_METRICS,
+            id::COUNTERS_OFFLOAD_TASK_METRICS,
             1usize,
         );
         self.measure(
-            id::OFFLOAD_RUNTIME_METRICS__GLOBAL_QUEUE_DEPTH,
-            id::MEASURES_OFFLOAD_RUNTIME_METRICS__GLOBAL_QUEUE_DEPTH,
-            event.global_queue_depth,
+            id::OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION,
+            id::MEASURES_OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION,
+            event.mean_poll_duration,
         );
         self.measure(
-            id::OFFLOAD_RUNTIME_METRICS__NUM_ALIVE_TASKS,
-            id::MEASURES_OFFLOAD_RUNTIME_METRICS__NUM_ALIVE_TASKS,
-            event.num_alive_tasks,
-        );
-        let _ = event;
-        let _ = meta;
-    }
-    #[inline]
-    fn on_offload_runtime_worker_metrics(
-        &self,
-        meta: &api::EndpointMeta,
-        event: &api::OffloadRuntimeWorkerMetrics,
-    ) {
-        #[allow(unused_imports)]
-        use api::*;
-        self.count(
-            id::OFFLOAD_RUNTIME_WORKER_METRICS,
-            id::COUNTERS_OFFLOAD_RUNTIME_WORKER_METRICS,
-            1usize,
-        );
-        self.measure(
-            id::OFFLOAD_RUNTIME_WORKER_METRICS__PARK_COUNT,
-            id::MEASURES_OFFLOAD_RUNTIME_WORKER_METRICS__PARK_COUNT,
-            event.park_count,
-        );
-        self.measure(
-            id::OFFLOAD_RUNTIME_WORKER_METRICS__BUSY_DURATION,
-            id::MEASURES_OFFLOAD_RUNTIME_WORKER_METRICS__BUSY_DURATION,
-            event.busy_duration,
+            id::OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION,
+            id::MEASURES_OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION,
+            event.mean_scheduled_duration,
         );
         let _ = event;
         let _ = meta;
