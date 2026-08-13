@@ -1065,11 +1065,10 @@ jobs:
           rustup toolchain install stable --profile minimal --component rustfmt
           rustup override set stable
 
-      - uses: camshaft/install@v1
-        with:
-          crate: bpf-linker
-
       - uses: camshaft/rust-cache@v1
+
+      - name: Install bpf-linker
+        run: cargo install bpf-linker@0.10.4
 
       - name: Build ebpf
         working-directory: tools/xdp
