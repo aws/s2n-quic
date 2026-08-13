@@ -2014,7 +2014,7 @@ mod id {
     pub const TIMERS_STREAM_CONNECT_ERROR__LATENCY: usize =
         Timers::TIMERS_STREAM_CONNECT_ERROR__LATENCY as usize;
 }
-static INFO: &[Info; 341usize] = &[
+static INFO: &[Info; 344usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_STARTED,
         name: Str::new("acceptor_tcp_started\0"),
@@ -4117,7 +4117,7 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 114usize]>,
+    counters: Box<[R::Counter; 115usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 25usize]>,
     #[allow(dead_code)]
@@ -4152,7 +4152,7 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(114usize);
+        let mut counters = Vec::with_capacity(115usize);
         let mut bool_counters = Vec::with_capacity(25usize);
         let mut nominal_counters = Vec::with_capacity(37usize);
         let mut nominal_counter_offsets = Vec::with_capacity(37usize);
