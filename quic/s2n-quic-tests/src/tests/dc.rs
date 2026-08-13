@@ -1548,10 +1548,7 @@ fn dc_completes_through_close<S: ServerProviders, C: ClientProviders>(
 
 // dcQUIC endpoints to drop all ACKs to see if dc states will reach complete
 #[test]
-fn dc_handshake_completes_when_token_ack_rides_the_close() -> Result<()> {
-    // Use an RSA certificate (fixed-length signatures) rather than the default ECDSA one.
-    // ECDSA signatures have a variable DER length, which makes the handshake packet lengths
-    // wobble run-to-run and destabilizes the packet snapshot; RSA keeps them deterministic.
+fn dc_handshake_completes_when_all_acks_are_dropped() -> Result<()> {
     let server = Server::builder()
         .with_tls((certificates::CERT_PKCS1_PEM, certificates::KEY_PKCS1_PEM))?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?
@@ -1572,10 +1569,10 @@ fn dc_handshake_completes_when_token_ack_rides_the_close() -> Result<()> {
         Duration::from_millis(300),
         (
             PacketSnapshot::named_snapshot(
-                "dc_handshake_completes_when_token_ack_rides_the_close__server",
+                "dc_handshake_completes_when_all_acks_are_dropped__server",
             ),
             PacketSnapshot::named_snapshot(
-                "dc_handshake_completes_when_token_ack_rides_the_close__client",
+                "dc_handshake_completes_when_all_acks_are_dropped__client",
             ),
         ),
     );
@@ -1655,7 +1652,7 @@ fn is_standalone_ack(bytes: &mut [u8]) -> bool {
 
 // Verify if CONNECTION_CLOSE got dropped, dcQUIC endpoints can reach complete
 #[test]
-fn dc_handshake_completes_when_first_close_is_dropped() -> Result<()> {
+fn dc_handshake_completes_when_all_acks_and_first_close_is_dropped() -> Result<()> {
     use std::sync::atomic::AtomicBool;
 
     // Shared across the client's close watcher and the server's interceptor.
@@ -1681,10 +1678,10 @@ fn dc_handshake_completes_when_first_close_is_dropped() -> Result<()> {
         Duration::from_secs(3),
         (
             PacketSnapshot::named_snapshot(
-                "dc_handshake_completes_when_first_close_is_dropped__server",
+                "dc_handshake_completes_when_all_acks_and_first_close_is_dropped__server",
             ),
             PacketSnapshot::named_snapshot(
-                "dc_handshake_completes_when_first_close_is_dropped__client",
+                "dc_handshake_completes_when_all_acks_and_first_close_is_dropped__client",
             ),
         ),
     );
