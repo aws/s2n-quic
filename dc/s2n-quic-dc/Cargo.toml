@@ -63,6 +63,7 @@ zeroize = "1"
 parking_lot = "0.12"
 bitvec = { version = "1.1.1", default-features = false }
 nix = {version = "0.31.1", features = ["socket", "uio", "fs", "time"] }
+tokio-metrics = "0.5.1"
 
 [dev-dependencies]
 bach = { version = "0.1.0", features = ["net", "tokio-compat"] }

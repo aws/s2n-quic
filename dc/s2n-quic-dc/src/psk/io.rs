@@ -13,7 +13,6 @@ use s2n_quic::{
     server::Name,
 };
 use s2n_quic_core::{endpoint::Type, inet::SocketAddress};
-use s2n_quic_dc_metrics::{Registry, TaskMonitor};
 use std::{
     any::Any,
     hash::BuildHasher,
@@ -26,6 +25,7 @@ use std::{
     time::Duration,
 };
 use tokio::{runtime::Runtime, sync::Semaphore, time::Instant as TokioInstant};
+use tokio_metrics::TaskMonitor;
 
 pub use crate::stream::DEFAULT_IDLE_TIMEOUT;
 pub const DEFAULT_MAX_DATA: u64 = 1u64 << 25;
@@ -49,10 +49,11 @@ pub type Result<T = (), E = Error> = core::result::Result<T, E>;
 
 struct TokioExecutor {
     runtime: Runtime,
+    monitor: TaskMonitor,
 }
 impl s2n_quic::provider::tls::offload::Executor for TokioExecutor {
     fn spawn(&self, task: impl core::future::Future<Output = ()> + Send + 'static) {
-        self.runtime.spawn(task);
+        self.runtime.spawn(self.monitor.instrument(task));
     }
 }
 #[derive(Clone)]
@@ -101,7 +102,7 @@ impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
 
 pub struct Server {
     server: s2n_quic::Server,
-    offload_metrics: Option<Registry>,
+    offload_metrics: Option<TaskMonitor>,
 }
 
 impl Server {
@@ -161,7 +162,7 @@ impl Server {
             }};
         }
 
-        let (server, registry) = if builder.thread_offload_count > 0 {
+        let (server, monitor) = if builder.thread_offload_count > 0 {
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 // Hs=handshake, s=server, offload
                 .thread_name("hs-s-offload")
@@ -170,9 +171,8 @@ impl Server {
                 .build()?;
 
             let handle = runtime.handle().clone();
-            let registry = Registry::new();
-            let interval_duration = Duration::new(1, 0);
-            registry.instrument_runtime("offload-runtime", &handle, interval_duration);
+            let monitor = tokio_metrics::TaskMonitor::new();
+
             let tls = s2n_quic::provider::tls::offload::OffloadBuilder::new()
                 .with_endpoint(tls_materials_provider)
                 .with_exporter(DCExporter {
@@ -180,7 +180,10 @@ impl Server {
                     endpoint_type: Type::Server,
                     map: map.clone(),
                 })
-                .with_executor(TokioExecutor { runtime })
+                .with_executor(TokioExecutor {
+                    runtime,
+                    monitor: monitor.clone(),
+                })
                 .build();
 
             // We need packet storage when offloading is turned on due to this issue:
@@ -189,7 +192,10 @@ impl Server {
             let connection_limits =
                 connection_limits.with_packet_buffer_size(DEFAULT_MTU as u32)?;
 
-            (build_and_start!(tls, connection_limits), Some(registry))
+            (
+                build_and_start!(tls, connection_limits),
+                Some(monitor.clone()),
+            )
         } else {
             (
                 build_and_start!(tls_materials_provider, connection_limits),
@@ -199,7 +205,7 @@ impl Server {
 
         Ok(Self {
             server,
-            offload_metrics: registry,
+            offload_metrics: monitor,
         })
     }
 
@@ -249,17 +255,19 @@ pub(super) async fn server<
     }
 
     let map_clone2 = map.clone();
-    if let Some(registry) = server.offload_metrics.take() {
+    if let Some(monitor) = server.offload_metrics.take() {
         //let h = handle.clone();
+        let frequency = std::time::Duration::from_millis(500);
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(1));
-            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
-                interval.tick().await;
-                //let metrics = h.metrics();
-                let metrics = registry.take_current_metrics_line();
-                println!("metrics {:?}", metrics);
-                //map_clone2.on_offload_runtime_metrics(&metrics);
+                for metrics in monitor.intervals() {
+                    println!("mean poll duration {:?}", metrics.mean_poll_duration());
+                    println!(
+                        "mean scheduled duration {:?}",
+                        metrics.mean_scheduled_duration()
+                    );
+                    tokio::time::sleep(frequency).await;
+                }
             }
         });
     }
