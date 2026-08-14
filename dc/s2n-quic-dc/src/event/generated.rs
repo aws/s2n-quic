@@ -1892,24 +1892,6 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub struct OffloadTaskMetrics {
-        pub mean_poll_duration: core::time::Duration,
-        pub mean_scheduled_duration: core::time::Duration,
-    }
-    #[cfg(any(test, feature = "testing"))]
-    impl crate::event::snapshot::Fmt for OffloadTaskMetrics {
-        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
-            let mut fmt = fmt.debug_struct("OffloadTaskMetrics");
-            fmt.field("mean_poll_duration", &self.mean_poll_duration);
-            fmt.field("mean_scheduled_duration", &self.mean_scheduled_duration);
-            fmt.finish()
-        }
-    }
-    impl Event for OffloadTaskMetrics {
-        const NAME: &'static str = "offload:task_metrics";
-    }
-    #[derive(Clone, Debug)]
-    #[non_exhaustive]
     pub struct PathSecretMapInitialized {
         /// The capacity of the path secret map
         pub capacity: usize,
@@ -4027,24 +4009,6 @@ pub mod tracing {
             tracing::event!(
                 target : "dc_connection_timeout", parent : parent, tracing::Level::DEBUG,
                 { peer_address = tracing::field::debug(peer_address) }
-            );
-        }
-        #[inline]
-        fn on_offload_task_metrics(
-            &self,
-            meta: &api::EndpointMeta,
-            event: &api::OffloadTaskMetrics,
-        ) {
-            let parent = self.parent(meta);
-            let api::OffloadTaskMetrics {
-                mean_poll_duration,
-                mean_scheduled_duration,
-            } = event;
-            tracing::event!(
-                target : "offload_task_metrics", parent : parent, tracing::Level::DEBUG,
-                { mean_poll_duration = tracing::field::debug(mean_poll_duration),
-                mean_scheduled_duration = tracing::field::debug(mean_scheduled_duration)
-                }
             );
         }
         #[inline]
@@ -6454,24 +6418,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub struct OffloadTaskMetrics {
-        pub mean_poll_duration: core::time::Duration,
-        pub mean_scheduled_duration: core::time::Duration,
-    }
-    impl IntoEvent<api::OffloadTaskMetrics> for OffloadTaskMetrics {
-        #[inline]
-        fn into_event(self) -> api::OffloadTaskMetrics {
-            let OffloadTaskMetrics {
-                mean_poll_duration,
-                mean_scheduled_duration,
-            } = self;
-            api::OffloadTaskMetrics {
-                mean_poll_duration: mean_poll_duration.into_event(),
-                mean_scheduled_duration: mean_scheduled_duration.into_event(),
-            }
-        }
-    }
-    #[derive(Clone, Debug)]
     pub struct PathSecretMapInitialized {
         /// The capacity of the path secret map
         pub capacity: usize,
@@ -8058,16 +8004,6 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
-        ///Called when the `OffloadTaskMetrics` event is triggered
-        #[inline]
-        fn on_offload_task_metrics(
-            &self,
-            meta: &api::EndpointMeta,
-            event: &api::OffloadTaskMetrics,
-        ) {
-            let _ = meta;
-            let _ = event;
-        }
         ///Called when the `PathSecretMapInitialized` event is triggered
         #[inline]
         fn on_path_secret_map_initialized(
@@ -9020,14 +8956,6 @@ mod traits {
             self.as_ref().on_dc_connection_timeout(meta, event);
         }
         #[inline]
-        fn on_offload_task_metrics(
-            &self,
-            meta: &api::EndpointMeta,
-            event: &api::OffloadTaskMetrics,
-        ) {
-            self.as_ref().on_offload_task_metrics(meta, event);
-        }
-        #[inline]
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -9960,15 +9888,6 @@ mod traits {
             (self.1).on_dc_connection_timeout(meta, event);
         }
         #[inline]
-        fn on_offload_task_metrics(
-            &self,
-            meta: &api::EndpointMeta,
-            event: &api::OffloadTaskMetrics,
-        ) {
-            (self.0).on_offload_task_metrics(meta, event);
-            (self.1).on_offload_task_metrics(meta, event);
-        }
-        #[inline]
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -10386,8 +10305,6 @@ mod traits {
         fn on_endpoint_initialized(&self, event: builder::EndpointInitialized);
         ///Publishes a `DcConnectionTimeout` event to the publisher's subscriber
         fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout);
-        ///Publishes a `OffloadTaskMetrics` event to the publisher's subscriber
-        fn on_offload_task_metrics(&self, event: builder::OffloadTaskMetrics);
         ///Publishes a `PathSecretMapInitialized` event to the publisher's subscriber
         fn on_path_secret_map_initialized(&self, event: builder::PathSecretMapInitialized);
         ///Publishes a `PathSecretMapUninitialized` event to the publisher's subscriber
@@ -10744,12 +10661,6 @@ mod traits {
         fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout) {
             let event = event.into_event();
             self.subscriber.on_dc_connection_timeout(&self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
-        fn on_offload_task_metrics(&self, event: builder::OffloadTaskMetrics) {
-            let event = event.into_event();
-            self.subscriber.on_offload_task_metrics(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -11519,7 +11430,6 @@ pub mod testing {
             pub stream_connect_error: AtomicU64,
             pub endpoint_initialized: AtomicU64,
             pub dc_connection_timeout: AtomicU64,
-            pub offload_task_metrics: AtomicU64,
             pub path_secret_map_initialized: AtomicU64,
             pub path_secret_map_uninitialized: AtomicU64,
             pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -11618,7 +11528,6 @@ pub mod testing {
                     stream_connect_error: AtomicU64::new(0),
                     endpoint_initialized: AtomicU64::new(0),
                     dc_connection_timeout: AtomicU64::new(0),
-                    offload_task_metrics: AtomicU64::new(0),
                     path_secret_map_initialized: AtomicU64::new(0),
                     path_secret_map_uninitialized: AtomicU64::new(0),
                     path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -12018,17 +11927,6 @@ pub mod testing {
                 event: &api::DcConnectionTimeout,
             ) {
                 self.dc_connection_timeout.fetch_add(1, Ordering::Relaxed);
-                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
-                let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                let out = format!("{meta:?} {event:?}");
-                self.output.lock().unwrap().push(out);
-            }
-            fn on_offload_task_metrics(
-                &self,
-                meta: &api::EndpointMeta,
-                event: &api::OffloadTaskMetrics,
-            ) {
-                self.offload_task_metrics.fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 let out = format!("{meta:?} {event:?}");
@@ -12530,7 +12428,6 @@ pub mod testing {
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub dc_connection_timeout: AtomicU64,
-        pub offload_task_metrics: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
         pub path_secret_map_uninitialized: AtomicU64,
         pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -12662,7 +12559,6 @@ pub mod testing {
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 dc_connection_timeout: AtomicU64::new(0),
-                offload_task_metrics: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
                 path_secret_map_uninitialized: AtomicU64::new(0),
                 path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -13536,17 +13432,6 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
-        fn on_offload_task_metrics(
-            &self,
-            meta: &api::EndpointMeta,
-            event: &api::OffloadTaskMetrics,
-        ) {
-            self.offload_task_metrics.fetch_add(1, Ordering::Relaxed);
-            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
-            let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            let out = format!("{meta:?} {event:?}");
-            self.output.lock().unwrap().push(out);
-        }
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -14042,7 +13927,6 @@ pub mod testing {
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub dc_connection_timeout: AtomicU64,
-        pub offload_task_metrics: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
         pub path_secret_map_uninitialized: AtomicU64,
         pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -14164,7 +14048,6 @@ pub mod testing {
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 dc_connection_timeout: AtomicU64::new(0),
-                offload_task_metrics: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
                 path_secret_map_uninitialized: AtomicU64::new(0),
                 path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -14452,13 +14335,6 @@ pub mod testing {
         }
         fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout) {
             self.dc_connection_timeout.fetch_add(1, Ordering::Relaxed);
-            let event = event.into_event();
-            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            let out = format!("{event:?}");
-            self.output.lock().unwrap().push(out);
-        }
-        fn on_offload_task_metrics(&self, event: builder::OffloadTaskMetrics) {
-            self.offload_task_metrics.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             let out = format!("{event:?}");

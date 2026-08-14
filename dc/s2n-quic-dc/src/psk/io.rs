@@ -253,21 +253,8 @@ pub(super) async fn server<
         }
     }
 
-    let map_clone = map.clone();
-    // if let Some(monitor) = server.offload_metrics.take() {
-    //     let frequency = std::time::Duration::new(1, 0);
-    //     tokio::spawn(async move {
-    //         loop {
-    //             let metrics = monitor.cumulative();
-    //             map_clone.on_offload_task_metrics(&metrics);
-    //             tokio::time::sleep(frequency).await;
-    //         }
-    //     });
-    // }
-
     while let Some(mut connection) = server.server.accept().await {
         let map_clone = map.clone();
-
         tokio::spawn(async move {
             // The accepted connection must remain open until the client has finished inserting
             // the entry into its map. The client indicates this by sending a ConnectionClose

@@ -21,12 +21,3 @@ struct DcConnectionTimeout<'a> {
     #[nominal_counter("peer_address.protocol")]
     peer_address: SocketAddress<'a>,
 }
-
-#[event("offload:task_metrics")]
-#[subject(endpoint)]
-struct OffloadTaskMetrics {
-    #[measure("mean_poll_duration", Duration)]
-    mean_poll_duration: core::time::Duration,
-    #[measure("mean_scheduled_duration", Duration)]
-    mean_scheduled_duration: core::time::Duration,
-}

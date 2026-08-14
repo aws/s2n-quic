@@ -244,9 +244,6 @@ mod id {
         ENDPOINT_INITIALIZED__UDP,
         DC_CONNECTION_TIMEOUT,
         DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL,
-        OFFLOAD_TASK_METRICS,
-        OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION,
-        OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION,
         PATH_SECRET_MAP_INITIALIZED,
         PATH_SECRET_MAP_INITIALIZED__CAPACITY,
         PATH_SECRET_MAP_UNINITIALIZED,
@@ -737,11 +734,6 @@ mod id {
     pub const DC_CONNECTION_TIMEOUT: usize = InfoId::DC_CONNECTION_TIMEOUT as usize;
     pub const DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL as usize;
-    pub const OFFLOAD_TASK_METRICS: usize = InfoId::OFFLOAD_TASK_METRICS as usize;
-    pub const OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION: usize =
-        InfoId::OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION as usize;
-    pub const OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION: usize =
-        InfoId::OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION as usize;
     pub const PATH_SECRET_MAP_INITIALIZED: usize = InfoId::PATH_SECRET_MAP_INITIALIZED as usize;
     pub const PATH_SECRET_MAP_INITIALIZED__CAPACITY: usize =
         InfoId::PATH_SECRET_MAP_INITIALIZED__CAPACITY as usize;
@@ -1062,7 +1054,6 @@ mod counter {
                 id::CONNECTION_CLOSED => Self(connection_closed),
                 id::ENDPOINT_INITIALIZED => Self(endpoint_initialized),
                 id::DC_CONNECTION_TIMEOUT => Self(dc_connection_timeout),
-                id::OFFLOAD_TASK_METRICS => Self(offload_task_metrics),
                 id::PATH_SECRET_MAP_INITIALIZED => Self(path_secret_map_initialized),
                 id::PATH_SECRET_MAP_UNINITIALIZED => Self(path_secret_map_uninitialized),
                 id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED => {
@@ -1353,9 +1344,7 @@ mod counter {
         s2n_quic_dc__event__counter__dc_connection_timeout]
             fn dc_connection_timeout(value: u64);
             #[link_name =
-        s2n_quic_dc__event__counter__offload_task_metrics]
-            fn offload_task_metrics(value: u64);
-            #[link_name = s2n_quic_dc__event__counter__path_secret_map_initialized]
+        s2n_quic_dc__event__counter__path_secret_map_initialized]
             fn path_secret_map_initialized(value: u64);
             #[link_name =
         s2n_quic_dc__event__counter__path_secret_map_uninitialized]
@@ -2231,12 +2220,6 @@ mod measure {
                 id::STREAM_HANDSHAKE_PACKET_REJECTED__CONN => {
                     Self(stream_handshake_packet_rejected__conn)
                 }
-                id::OFFLOAD_TASK_METRICS__MEAN_POLL_DURATION => {
-                    Self(offload_task_metrics__mean_poll_duration)
-                }
-                id::OFFLOAD_TASK_METRICS__MEAN_SCHEDULED_DURATION => {
-                    Self(offload_task_metrics__mean_scheduled_duration)
-                }
                 id::PATH_SECRET_MAP_INITIALIZED__CAPACITY => {
                     Self(path_secret_map_initialized__capacity)
                 }
@@ -2655,12 +2638,6 @@ mod measure {
             #[link_name =
         s2n_quic_dc__event__measure__stream_handshake_packet_rejected__conn]
             fn stream_handshake_packet_rejected__conn(value: u64);
-            #[link_name =
-        s2n_quic_dc__event__measure__offload_task_metrics__mean_poll_duration]
-            fn offload_task_metrics__mean_poll_duration(value: u64);
-            #[link_name =
-        s2n_quic_dc__event__measure__offload_task_metrics__mean_scheduled_duration]
-            fn offload_task_metrics__mean_scheduled_duration(value: u64);
             #[link_name =
         s2n_quic_dc__event__measure__path_secret_map_initialized__capacity]
             fn path_secret_map_initialized__capacity(value: u64);

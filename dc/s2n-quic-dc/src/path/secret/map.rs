@@ -3,7 +3,7 @@
 
 use crate::{
     credentials::{Credentials, Id},
-    event::{self},
+    event,
     packet::{secret_control as control, Packet},
     path::secret::{
         open,
